@@ -4,18 +4,20 @@
 
 | File | Description |
 |------|-------------|
-| [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md) | Devices, protocol, FBL detection, Windows/Linux architecture |
-| [09_Handshake_Protocol_Timing.txt](09_Handshake_Protocol_Timing.txt) | Critical handshake timing rules |
+| [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md) | Devices, protocol, FBL detection, architecture, CLI commands |
+| [09_Handshake_Protocol_Timing.txt](09_Handshake_Protocol_Timing.txt) | Critical handshake timing rules (init once, stream frames) |
+| [WINDOWS_UI_HIERARCHY.md](WINDOWS_UI_HIERARCHY.md) | Windows UI coordinates, background image patterns, resource naming |
+| [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md) | SCSI security considerations |
+| [UI_RESOURCE_MAPPING.md](UI_RESOURCE_MAPPING.md) | Windows resource → Linux asset mapping |
 
 ## Quick Links
 
 - [Main README](../README.md) - Installation and usage
-- [Settings](../data/settings.json) - Configuration
-- [Themes](../data/) - Theme directories (Theme320320, etc.)
+- [CLAUDE.md](../CLAUDE.md) - Development guide and architecture overview
 
 ## Windows TRCC Reference
 
-The Linux port is based on reverse-engineering the Windows TRCC application. Key namespaces:
+The Linux port is based on reverse-engineering the Windows TRCC 2.0.3 application. Key namespaces:
 
 | Namespace | Purpose |
 |-----------|---------|

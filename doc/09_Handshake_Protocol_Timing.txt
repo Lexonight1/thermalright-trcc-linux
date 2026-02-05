@@ -40,8 +40,8 @@ Timing:
 ─────────────────────────────────────
 
 Architecture:
-- trcc_gui_v2.py (single process, no daemon)
-- Direct SCSI commands via sg_raw
+- Single process PyQt6 GUI (trcc.cli gui) or CLI commands
+- Direct SCSI commands via sg_raw (lcd_driver.py)
 - No IPC needed (kernel handles SCSI)
 
 Initialization Sequence (first frame only):
@@ -58,17 +58,17 @@ Frame Streaming (subsequent frames):
   
   NO HANDSHAKE! Device stays initialized.
 
-Code Implementation (trcc_gui_v2.py):
-  class FormCZTV:
+Code Implementation (lcd_driver.py):
+  class LCDDriver:
       def __init__(self):
-          self.device_initialized = False  # Track handshake state
-      
-      def send_to_lcd(self):
-          need_init = not self.device_initialized  # Init only on first frame
+          self._initialized = False  # Track handshake state
+
+      def send_frame(self, rgb565_data, force_init=False):
+          need_init = force_init or not self._initialized
           if need_init:
-              self.device_initialized = True
-          
-          scsi_send_image(LCD_DEVICE, data, init=need_init)
+              self._initialized = True
+
+          self._scsi_send(rgb565_data, init=need_init)
 
 
 3. COMMON MISTAKES (AVOID!)
@@ -177,16 +177,12 @@ Console Output Should Show:
 ─────────────────
 
 Implementation:
-- trcc_gui_v2.py: GUI with device_initialized flag (lines 1428-1435)
-- trcc_handshake_v2.py: send_image(dev, data, init=bool)
+- lcd_driver.py: LCDDriver with _initialized flag (handshake once, stream frames)
+- core/controllers.py: FormCZTVController._send_frame_to_lcd() (applies brightness/rotation before send)
+
+Windows Reference:
 - Thermalright-usblcd/src/CLcdDriver.cpp: C++ driver (reference)
-
-Documentation:
-- 01_Windows_vs_Linux_Architecture.txt (IPC comparison)
-- 04_LibUsbDotNet_USB_Communication.txt (USB protocol details)
-
-Ghidra Reversing:
-- USBLCD.exe lines 20480-20540: Handshake implementation
+- USBLCD.exe lines 20480-20540: Handshake implementation (Ghidra)
 - TRCC.exe UCScreenImage: Frame rendering + shared memory write
 
 
@@ -200,8 +196,8 @@ Windows Complexity:
 - Why? Historical reasons (driver isolation)
 
 Linux Simplicity:
-- One process (trcc_gui_v2.py)
-- Direct SCSI commands
+- One process (PyQt6 GUI or CLI)
+- Direct SCSI commands via lcd_driver.py
 - Kernel handles device state
 - Result: Simpler, fewer moving parts
 

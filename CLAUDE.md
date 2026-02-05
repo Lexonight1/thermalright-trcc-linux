@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**TRCC Linux** - Native Linux port of Thermalright LCD Control Center (Windows TRCC 2.0.3) for controlling LCD displays on CPU coolers.
+**TRCC Linux** - Native Linux port of Thermalright LCD Control Center (Windows TRCC 2.0.3) for controlling 320x320 LCD displays on CPU coolers.
 
-- Python/Tkinter GUI matching Windows layout exactly
+- PyQt6 GUI matching Windows layout exactly
+- MVC architecture: GUI-independent controllers with callback-based views
 - SCSI protocol via sg_raw, RGB565 pixel format
 - Modular component architecture mirroring Windows UC* classes
 
@@ -20,53 +21,94 @@ PYTHONPATH=src python3 -m trcc.cli gui
 PYTHONPATH=src python3 -m trcc.cli gui --decorated
 
 # Device detection
-trcc detect
+PYTHONPATH=src python3 -m trcc.cli detect
+PYTHONPATH=src python3 -m trcc.cli detect --all
 
 # Send image to LCD
-trcc send image.png
+PYTHONPATH=src python3 -m trcc.cli send image.png
+
+# Setup udev rules + USB quirks (requires root)
+sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+PYTHONPATH=src python3 -m trcc.cli setup-udev --dry-run
 
 # Run tests
 pytest tests/
 
 # Download cloud themes
-trcc download themes-320
+PYTHONPATH=src python3 -m trcc.cli download themes-320
 ```
 
-## Source Locations
+## Source Layout
+
+```
+src/trcc/
+├── cli.py                  # CLI entry point (gui, detect, send, setup-udev, etc.)
+├── lcd_driver.py           # SCSI RGB565 frame send
+├── device_detector.py      # USB device scan + KNOWN_DEVICES registry
+├── device_implementations.py  # Per-device protocol variants
+├── scsi_device.py          # Low-level SCSI commands
+├── dc_parser.py            # Parse config1.dc overlay configs
+├── dc_writer.py            # Write config1.dc files
+├── overlay_renderer.py     # PIL-based overlay text/sensor rendering
+├── gif_animator.py         # GIF/video frame extraction (FFmpeg)
+├── system_info.py          # CPU/GPU/RAM/disk sensor collection
+├── cloud_downloader.py     # Cloud theme HTTP fetch
+├── theme_downloader.py     # Theme pack download manager
+├── paths.py                # XDG data/config path resolution
+├── core/
+│   ├── models.py           # ThemeInfo, DeviceInfo, VideoState, OverlayElement
+│   └── controllers.py      # FormCZTVController, ThemeController, DeviceController, etc.
+└── qt_components/
+    ├── qt_app_mvc.py       # Main MVC window (1454x800) - PRIMARY entry point
+    ├── base.py             # BasePanel, ImageLabel, pil_to_pixmap, set_background_pixmap
+    ├── constants.py        # Layout coords, Sizes, Colors, Styles
+    ├── assets.py           # Asset loader with lru_cache
+    ├── uc_device.py        # Device sidebar (180x800)
+    ├── uc_preview.py       # Preview frame (500x560)
+    ├── uc_theme_local.py   # Local themes browser
+    ├── uc_theme_web.py     # Cloud themes browser
+    ├── uc_theme_mask.py    # Cloud masks browser
+    ├── uc_theme_setting.py # Overlay editor / display mode panels
+    ├── uc_image_cut.py     # Image cropper
+    ├── uc_video_cut.py     # Video trimmer
+    ├── uc_about.py         # Settings / about panel (auto-start, language, etc.)
+    ├── uc_activity_sidebar.py  # Sensor element picker
+    ├── uc_info_module.py   # Live system info display
+    └── uc_system_info.py   # System info widget
+```
+
+### External References
 
 | What | Path |
 |------|------|
 | **Windows decompiled C#** | `/home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled/` |
-| **Extracted resources** | `assets/extracted_resx/TRCC.Properties.Resources/` |
-| **Linux Python sources** | `src/trcc/` |
-| **Session memory** | `~/.claude/.../memory/MEMORY.md` |
+| **GUI assets** | `src/assets/gui/` (PNG button/background images) |
+| **Theme data** | `src/data/Theme320320/` (local themes, not tracked in git) |
 
 ## Architecture
 
-### Windows→Linux Component Mapping
+### MVC Pattern
 
-| Windows Class | Linux File | Size | Purpose |
-|---------------|------------|------|---------|
-| Form1 | `trcc_app.py` | 1454x800 | Main shell |
-| FormCZTV | `form_cztv.py` | 1274x800 | LCD controller per device |
-| UCDevice | `uc_device.py` | 180x800 | Sidebar with device buttons |
-| UCThemeLocal | `uc_theme_local.py` | 732x652 | Local themes browser |
-| UCThemeWeb | `uc_theme_web.py` | 732x652 | Cloud themes browser |
-| UCThemeMask | `uc_theme_mask.py` | 732x652 | Cloud masks browser |
-| UCThemeSetting | `uc_theme_setting.py` | 732x661 | Settings container |
-| UCXiTongXianShi | `uc_xitong_xianshi.py` | 472x430 | Overlay editor (7x6 grid) |
-| UCPreview | `uc_preview.py` | 500x500 | Preview frame |
-| UCVideoCut | `uc_video_cut.py` | 500x702 | Video trimmer |
-| UCImageCut | `uc_image_cut.py` | 500x702 | Image cropper |
+Controllers in `core/controllers.py` are GUI-independent. Views subscribe via callbacks:
+```python
+controller.on_preview_update = lambda img: uc_preview.set_preview_image(img)
+controller.on_status_update = lambda text: uc_preview.set_status(text)
+```
+
+### PyQt6 Layout (Windows Coordinate Matching)
+
+```python
+# FormCZTV positions (relative to form_container at x=180)
+UCDevice:     (0, 0, 180, 800)      # sidebar
+UCPreview:    (16, 88, 500, 560)    # preview + controls
+PanelStack:   (532, 128, 732, 652)  # theme panels
+ModeButtons:  y=90                   # Local/Masks/Cloud/Settings
+BottomBar:    y=680                  # Rotation/Brightness/Save/Export/Import
+```
 
 ### Key Patterns
 
-**Delegate Pattern**: Components communicate via `invoke_delegate(cmd, info, data)`. Parent handles commands.
-
-**Background Images**: Three patterns exist:
-1. Component sets own default in `__init__()`
-2. Parent's .resx may override
-3. `FormCZTV.set_panel_images()` applies language-specific images at runtime
+**Background Images**: Use `QPalette` + `QBrush(pixmap)` + `setAutoFillBackground(True)`. Never use `setStyleSheet()` on containers — it blocks palette propagation to children.
 
 **Theme Directory Structure**:
 ```
@@ -78,6 +120,8 @@ src/data/Theme320320/
 │   └── Theme.png      # Preview thumbnail only
 ```
 
+**Tab Buttons**: Button order (0=Local, 1=Mask, 2=Cloud, 3=Settings) differs from panel order (0=Local, 1=Cloud, 2=Mask, 3=Settings). Mapping: `{0:0, 1:2, 2:1, 3:3}`.
+
 ## Critical Rule: Reference Windows C# First
 
 **ALWAYS read the decompiled Windows C# code before implementing or debugging.** The Windows code is the source of truth.
@@ -85,24 +129,9 @@ src/data/Theme320320/
 ### Process for New Features
 
 1. **Find the Windows class**: `TRCC.DCUserControl/{ClassName}.cs` or `TRCC.CZTV/FormCZTV.cs`
-
 2. **Get coordinates from .resx**: `TRCC.{Namespace}.{ClassName}.resx` contains `Point(x, y)` and `Size(w, h)`
-
-3. **Get images**: `assets/extracted_resx/TRCC.Properties.Resources/{ResourceName}.png`
-
+3. **Get images**: `src/assets/gui/{ResourceName}.png`
 4. **Check delegate commands**: Search for `delegate*.Invoke(cmd, ...)` to find command values
-
-### Reading Large C# Files
-
-FormCZTV.cs is ~6800 lines. Read in chunks:
-
-```bash
-# Find methods
-Grep pattern="private void \w+\(" path="FormCZTV.cs"
-
-# Read specific method
-Read file_path="FormCZTV.cs" offset=3582 limit=100
-```
 
 ### Key FormCZTV.cs Methods
 
@@ -116,11 +145,12 @@ Read file_path="FormCZTV.cs" offset=3582 limit=100
 
 ## Common Pitfalls
 
-- `UCPreview.set_preview_image(img)` - NOT `update_preview()`
+- `UCPreview.set_preview_image(img)` - NOT `update_preview()` (doesn't exist)
 - Check `VIDEO_AVAILABLE` not `OPENCV_AVAILABLE` for video support
-- Tkinter canvas z-order: use `tag_lower("background")` so thumbnails render on top
+- Don't call `super().mousePressEvent()` in thumbnail classes that override `clicked` signal signature
 - RGB565 conversion must use numpy for performance (not pixel-by-pixel loop)
 - SCSI send must be threaded to prevent GUI freeze
+- DC file `mask_position` is CENTER coords — convert to top-left for PIL paste
 
 ## Coding Standards
 
@@ -137,6 +167,7 @@ FFmpeg is the default (matches Windows). Key settings:
 - Frame skipping: `_lcd_send_interval = 4` (send every 4th frame to LCD)
 - Preload frames into memory (matches Windows Theme.zt pattern)
 - Threaded SCSI send with busy flag
+- Time-based frame selection with `time.perf_counter()`
 
 ## DC File Formats
 
@@ -151,14 +182,8 @@ FFmpeg is the default (matches Windows). Key settings:
 
 Categories by filename prefix: a=Gallery, b=Tech, c=HUD, d=Light, e=Nature, y=Aesthetic
 
-## Active TODOs
-
-- [ ] Add integration test for GUI rendering (screenshot compare)
-- [ ] Add font case-sensitivity tests (MSYH.TTC)
-- [ ] Polish UCComboBox styling to match Windows
-
 ## See Also
 
-- `docs/TECHNICAL_REFERENCE.md` - Protocol details, FBL codes
-- `docs/WINDOWS_CS_REFERENCE.md` - Detailed C# code analysis
-- `~/.claude/.../memory/MEMORY.md` - Session learnings
+- `doc/TECHNICAL_REFERENCE.md` - Protocol details, FBL codes
+- `doc/UI_RESOURCE_MAPPING.md` - Windows resource → Linux asset mapping
+- `doc/WINDOWS_UI_HIERARCHY.md` - Windows control hierarchy analysis

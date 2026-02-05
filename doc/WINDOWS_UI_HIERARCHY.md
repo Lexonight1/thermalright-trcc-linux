@@ -244,13 +244,17 @@ Some backgrounds are binary-embedded in the **parent's** .resx file:
 | A1 | Device buttons | A1CZTV, A1FROZEN_WARFRAME |
 | PL | Brightness levels | PL0, PL1, PL2, PL3 |
 
-## Linux Implementation Notes
+## Linux Implementation Notes (PyQt6)
 
-1. **Three-layer background system**:
+1. **Background images use QPalette, NOT stylesheets**:
+   - `QPalette` + `QBrush(pixmap)` + `setAutoFillBackground(True)` for image backgrounds
+   - If ANY ancestor has `setStyleSheet()`, it overrides QPalette on ALL descendants
+   - See `set_background_pixmap()` in `qt_components/base.py`
+2. **Three-layer background system** (same as Windows):
    - Components set default backgrounds in `__init__()` (Pattern 1)
-   - Parent's `__init__()` may override via child's `set_background_image()` (Pattern 2)
-   - `FormCZTV.set_panel_images()` sets language-specific backgrounds (Pattern 3)
-2. **All components implement `set_background_image()`** - abstracted in UCBase class
-3. **Resolution-aware preview** - UCScreenImageBK changes frame based on device resolution
-4. **Language support** - resources.py maps logical keys to {lang} variants
-5. **Type-dependent backgrounds** - Some components (UCXiTongXianShiSub, UCSystemInfoOptionsOne) change background based on internal type/state
+   - Parent may override via `set_background_pixmap()` (Pattern 2)
+   - `qt_app_mvc.py` `set_language()` re-applies all localized backgrounds (Pattern 3)
+3. **MVC architecture**: Controllers in `core/controllers.py` are GUI-independent; views subscribe via callbacks
+4. **Resolution-aware preview** - UCPreview changes frame image based on device resolution
+5. **Language support** - `Assets.get_localized(base_name, lang)` maps to {lang} suffixed resources
+6. **Coordinates match Windows exactly** - Layout constants in `qt_components/constants.py`

@@ -43,7 +43,7 @@ trcc_setup.c
 trcc_setup.h
 
 # Extracted Windows resources at root level (not for distribution)
-assets/
+/assets/
 
 # Data directories at root level (themes, cloud downloads, etc.)
 data/

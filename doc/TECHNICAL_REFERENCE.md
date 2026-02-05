@@ -134,27 +134,36 @@ Prefixes: `A0` (startup), `A1` (device images), `A2` (dropdowns), `D0` (device p
 
 ### Linux Port Files
 
+PyQt6 MVC architecture. Controllers are GUI-independent; views subscribe via callbacks.
+
 ```
 src/trcc/
-├── device_detector.py    # USB/SCSI device detection
-├── device_implementations.py  # Device-specific protocols
-├── fbl_detector.py       # FBL resolution detection
-├── lcd_driver.py         # Unified LCD driver
-├── trcc_handshake_v2.py  # Low-level SCSI commands
-├── dc_parser.py          # Theme config parser
-├── gif_animator.py       # GIF/video playback
-├── gui.py                # Main GUI application
-└── components/           # Modular UI components (matches Windows)
-    ├── base.py           # UCBase with delegate support
-    ├── trcc_app.py       # TRCCApp main shell
-    ├── form_cztv.py      # FormCZTV LCD controller
-    ├── uc_device.py      # UCDevice sidebar
-    ├── uc_theme_local.py # UCThemeLocal (5-col grid)
-    ├── uc_theme_web.py   # UCThemeWeb cloud themes
-    ├── uc_xitong_xianshi.py      # Overlay element manager (7×6 grid)
-    ├── uc_xitong_xianshi_sub.py  # Individual overlay element
-    ├── uc_xitong_xianshi_color.py # Color/font settings panel
-    └── ...
+├── cli.py                    # CLI entry point (gui, detect, send, setup-udev, etc.)
+├── lcd_driver.py             # Unified LCD driver (SCSI init + frame send)
+├── device_detector.py        # USB/SCSI device detection
+├── device_implementations.py # Device-specific protocols
+├── dc_parser.py              # Theme config parser (.dc files)
+├── gif_animator.py           # GIF/video/FFmpeg playback
+├── system_info.py            # CPU/GPU/RAM/HDD sensor polling
+├── overlay_renderer.py       # Renders sensor data onto theme images
+├── theme_downloader.py       # Cloud theme pack downloader
+│
+├── core/                     # MVC controllers (GUI-independent)
+│   ├── models.py             # ThemeInfo, DeviceInfo, VideoState, OverlayElement
+│   └── controllers.py        # FormCZTVController, DeviceController, etc.
+│
+└── qt_components/            # PyQt6 views
+    ├── qt_app_mvc.py         # Main MVC window (1454×800) — primary entry point
+    ├── base.py               # BasePanel, ImageLabel, pil_to_pixmap
+    ├── assets.py             # Asset loader with lru_cache
+    ├── constants.py          # Layout coordinates, colors, sizes
+    ├── uc_device.py          # Device sidebar (180×800)
+    ├── uc_preview.py         # Preview frame (500×500)
+    ├── uc_theme_local.py     # Local themes browser (5-col grid)
+    ├── uc_theme_web.py       # Cloud themes browser
+    ├── uc_theme_mask.py      # Cloud masks browser
+    ├── uc_theme_setting.py   # Overlay editor / settings panels
+    └── uc_about.py           # About / control center panel
 ```
 
 ### Device Detection Flow
@@ -200,40 +209,49 @@ The Linux port matches Windows behavior by using ffmpeg via subprocess. This is 
 
 ## Configuration
 
-Settings stored in `data/settings.json`:
+Settings stored in `~/.config/trcc/settings.json`:
 
 ```json
 {
-  "screen": {
-    "resolution": "320x320",
-    "brightness": 100,
-    "refresh_rate": 60
-  }
+  "selected_device": "/dev/sg0"
 }
 ```
 
 ## Quick Commands
 
 ```bash
+# Install udev rules + USB storage quirks (required once)
+sudo trcc setup-udev
+
 # Detect device
-lsscsi | grep USBLCD
+trcc detect
+trcc detect --all
 
 # Test display (red screen)
-python3 src/trcc/trcc_handshake_v2.py --device /dev/sg0 --color ff0000
+trcc test
 
-# Display image
-python3 src/trcc/trcc_handshake_v2.py --device /dev/sg0 --image photo.png
+# Send image to LCD
+trcc send image.png
+
+# Display solid color
+trcc color ff0000
 
 # Run GUI
-python3 -m trcc.gui
+PYTHONPATH=src python3 -m trcc.cli gui
+# or if installed:
+trcc gui
 ```
 
 ## Troubleshooting
 
 ### Permission denied
 ```bash
-sudo usermod -aG trcc $USER
-# or use udev rules in 99-trcc.rules
+# Install udev rules (preferred)
+sudo trcc setup-udev
+# Then replug the USB cable
+
+# Or manually:
+sudo chmod 666 /dev/sgX
 ```
 
 ### Device not found
