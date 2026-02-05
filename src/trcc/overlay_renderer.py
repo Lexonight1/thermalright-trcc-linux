@@ -50,6 +50,7 @@ class OverlayRenderer:
         self.background = None
         self.theme_mask = None
         self.theme_mask_position = (0, 0)
+        self.theme_mask_visible = True  # Windows: isDrawMbImage / SetDrawMengBan
         self.font_cache = {}
         self.flash_skip_index = -1  # Windows shanPingCount: skip this element during render
 
@@ -150,31 +151,39 @@ class OverlayRenderer:
         else:
             self.theme_mask_position = (0, 0)
 
-    def get_font(self, size, bold=False):
+    def get_font(self, size, bold=False, font_name=None):
         """
-        Get font with fallback chain.
+        Get font by name with fallback chain.
 
-        Priority: Bundled (assets/fonts/) -> User (~/.fonts/) -> System -> Default
+        If font_name is given, resolves it via fc-match. Otherwise uses
+        the default fallback chain (bundled → user → system).
 
         Args:
             size: Font size in points
             bold: Whether to use bold variant
+            font_name: Font family name (e.g. 'DejaVu Sans'), or None for default
 
         Returns:
             PIL ImageFont instance
         """
-        key = (size, bold)
+        key = (size, bold, font_name)
         if key in self.font_cache:
             return self.font_cache[key]
+
+        # Try resolving by name first (user-picked fonts)
+        if font_name and font_name != 'Microsoft YaHei':
+            path = self._resolve_font_path(font_name, bold)
+            if path:
+                self.font_cache[key] = ImageFont.truetype(path, size)
+                return self.font_cache[key]
 
         home = os.path.expanduser("~")
         fonts_dir = os.path.join(ASSETS_DIR, "fonts")
 
-        # Font search paths (priority order)
+        # Default fallback chain
         paths = [
             # Bundled fonts - Microsoft YaHei (matches Windows TRCC)
             os.path.join(fonts_dir, "MSYHBD.TTC" if bold else "MSYH.TTC"),
-            # Also try lowercase variants
             os.path.join(fonts_dir, "msyhbd.ttc" if bold else "msyh.ttc"),
             # User local fonts
             f"{home}/.local/share/fonts/{'MSYHBD.TTC' if bold else 'MSYH.TTC'}",
@@ -203,6 +212,38 @@ class OverlayRenderer:
         self.font_cache[key] = ImageFont.load_default()
         return self.font_cache[key]
 
+    def _resolve_font_path(self, font_name, bold=False):
+        """Resolve font family name to file path using fc-match."""
+        import subprocess
+        try:
+            style = 'Bold' if bold else 'Regular'
+            result = subprocess.run(
+                ['fc-match', f'{font_name}:style={style}', '--format=%{file}'],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0 and result.stdout and os.path.exists(result.stdout):
+                return result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # Manual scan: bundled assets, user local, /usr/local
+        home = os.path.expanduser("~")
+        scan_dirs = [
+            os.path.join(ASSETS_DIR, "fonts"),
+            os.path.join(home, '.local/share/fonts'),
+            os.path.join(home, '.fonts'),
+            '/usr/local/share/fonts',
+        ]
+        name_lower = font_name.lower().replace(' ', '')
+        for font_dir in scan_dirs:
+            if not os.path.isdir(font_dir):
+                continue
+            for fname in os.listdir(font_dir):
+                if name_lower in fname.lower().replace(' ', ''):
+                    return os.path.join(font_dir, fname)
+
+        return None
+
     def render(self, metrics=None):
         """
         Render the overlay with current settings.
@@ -219,7 +260,7 @@ class OverlayRenderer:
         metrics = metrics or {}
 
         # Fast path: no overlays, just return background as-is (video playback optimization)
-        has_overlays = self.theme_mask or (self.config and isinstance(self.config, dict))
+        has_overlays = (self.theme_mask and self.theme_mask_visible) or (self.config and isinstance(self.config, dict))
         if not has_overlays and self.background:
             return self.background
 
@@ -232,9 +273,16 @@ class OverlayRenderer:
             if img.mode != 'RGBA':
                 img = img.convert('RGBA')
 
-        # Apply theme mask
-        if self.theme_mask:
+        # Apply theme mask (Windows: isDrawMbImage check)
+        if self.theme_mask and self.theme_mask_visible:
             img.paste(self.theme_mask, self.theme_mask_position, self.theme_mask)
+
+        # Convert to RGB before drawing text (matches Windows GenerateImage pattern).
+        # Drawing text on RGBA causes PIL to replace alpha at anti-aliased edges;
+        # when pil_to_pixmap composites RGBA onto black, this creates dark fringes.
+        # Windows draws text on an RGB GDI+ Bitmap — no alpha issues.
+        if img.mode == 'RGBA':
+            img = img.convert('RGB')
 
         # Draw text overlays
         draw = ImageDraw.Draw(img)
@@ -273,11 +321,16 @@ class OverlayRenderer:
                 continue
 
             bold = font_cfg.get('style') == 'bold' if isinstance(font_cfg, dict) else False
-            font = self.get_font(font_size, bold=bold)
+            font_name = font_cfg.get('name') if isinstance(font_cfg, dict) else None
+            font = self.get_font(font_size, bold=bold, font_name=font_name)
             # Use center anchor - Windows TRCC uses center coordinates
             draw.text((x, y), text, fill=color, font=font, anchor='mm')
 
         return img
+
+    def set_mask_visible(self, visible):
+        """Toggle mask visibility without destroying it (Windows SetDrawMengBan)."""
+        self.theme_mask_visible = visible
 
     def clear(self):
         """Clear all settings."""
@@ -285,3 +338,4 @@ class OverlayRenderer:
         self.background = None
         self.theme_mask = None
         self.theme_mask_position = (0, 0)
+        self.theme_mask_visible = True

@@ -734,7 +734,6 @@ class TRCCMainWindowMVC(QMainWindow):
             lambda tid: self.uc_preview.set_status(f"Downloading: {tid}..."))
         self.uc_theme_web.download_finished.connect(self._on_cloud_download_finished)
         self.uc_theme_mask.mask_selected.connect(self._on_mask_clicked)
-        self.uc_theme_setting.overlay_changed.connect(self._on_overlay_changed)
         self.uc_preview.delegate.connect(self._on_preview_delegate)
 
         # Settings panel mode toggles and delegate
@@ -826,17 +825,21 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_preview.set_status(f"Mask: {mask_info.get('name', 'Unknown')}")
 
     def _on_overlay_changed(self, element_data: dict):
-        """Forward overlay change to controller."""
+        """Forward overlay change to controller for live preview."""
         if not element_data:
             return
-        # Forward to overlay controller for re-render
+        self.controller.overlay.set_config(element_data)
         self.controller.render_overlay_and_preview()
 
     def _on_background_toggle(self, enabled: bool):
-        """Handle background display toggle from settings."""
+        """Handle background display toggle from settings (Windows cmd 1 / myMode=0)."""
         if enabled:
+            # Stop other modes, show static background
             self._animation_timer.stop()
             self.controller.video.stop()
+            self._screencast_timer.stop()
+            self._screencast_active = False
+            self.controller.render_overlay_and_preview()
         self.uc_preview.set_status(f"Background: {'On' if enabled else 'Off'}")
 
     def _on_screencast_toggle(self, enabled: bool):
@@ -894,18 +897,27 @@ class TRCCMainWindowMVC(QMainWindow):
             self._pipewire_cast = None
 
     def _on_mask_display_toggle(self, enabled):
-        """Toggle mask visibility on preview/LCD."""
-        if not enabled:
-            self.controller.overlay.set_theme_mask(None)
+        """Toggle mask visibility on preview/LCD (Windows SetDrawMengBan)."""
+        self.controller.overlay.set_mask_visible(enabled)
+        self.controller.render_overlay_and_preview()
         self.uc_preview.set_status(f"Mask: {'On' if enabled else 'Off'}")
 
     def _switch_to_mask_tab(self):
         """Switch to Mask browser tab (panel index 2)."""
         self._show_panel(2)
 
+    def _on_mask_reset(self):
+        """Clear mask from preview (Windows buttonYDMB_Click / cmd 99)."""
+        self.controller.overlay.set_theme_mask(None)
+        self.controller.render_overlay_and_preview()
+        self.uc_preview.set_status("Mask cleared")
+
     def _on_video_display_toggle(self, enabled):
-        """Toggle video playback mode."""
+        """Toggle video playback mode (Windows cmd 3 / myMode=48)."""
         if enabled:
+            # Resume playback if video is loaded (Windows: ucBoFangQiKongZhi1.Player())
+            if self.controller.video.has_frames():
+                self.controller.play_pause()
             self.uc_preview.set_status("Video mode: On")
         else:
             self.controller.video.stop()
@@ -922,6 +934,8 @@ class TRCCMainWindowMVC(QMainWindow):
             self._on_mask_display_toggle(info)
         elif cmd == UCThemeSetting.CMD_MASK_LOAD:
             self._switch_to_mask_tab()
+        elif cmd == UCThemeSetting.CMD_MASK_RESET:
+            self._on_mask_reset()
         elif cmd == UCThemeSetting.CMD_VIDEO_LOAD:
             self._on_load_video_clicked()
         elif cmd == UCThemeSetting.CMD_VIDEO_TOGGLE:

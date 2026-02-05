@@ -284,6 +284,10 @@ class VideoController:
         """Check if currently playing."""
         return self.model.is_playing
 
+    def has_frames(self) -> bool:
+        """Check if video/animation frames are loaded."""
+        return bool(self.model.frames)
+
     def _on_model_state_changed(self, state: VideoState):
         """Handle model state changed."""
         if self.on_state_changed:
@@ -382,6 +386,12 @@ class OverlayController:
         if renderer:
             return renderer.theme_mask, renderer.theme_mask_position
         return None, None
+
+    def set_mask_visible(self, visible: bool):
+        """Toggle mask visibility without clearing it (Windows SetDrawMengBan)."""
+        renderer = self._ensure_renderer()
+        if renderer:
+            renderer.set_mask_visible(visible)
 
     def set_temp_unit(self, unit: int):
         """Set temperature display unit (0=Celsius, 1=Fahrenheit)."""

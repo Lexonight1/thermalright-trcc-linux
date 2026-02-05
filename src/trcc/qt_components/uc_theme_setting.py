@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QColorDialog, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPalette, QPainter, QPixmap, QIcon
+from PyQt6.QtGui import QColor, QFont, QPalette, QPainter, QPixmap, QIcon
 
 from .base import BasePanel, set_background_pixmap
 from .assets import load_pixmap, asset_exists
@@ -108,16 +108,33 @@ class OverlayElementWidget(QWidget):
 
     60x60 with background image per mode type, 3 text labels,
     and selection overlay. Matches Windows UCXiTongXianShiSub.
+
+    Windows UCXiTongXianShiSubTimer() updates cards with live data:
+    - label1: category name (CPU/GPU/etc.)
+    - label2: numeric value (52, 14:35, etc.)
+    - label3: unit (°C, %, MHz, etc.)
     """
 
     clicked = pyqtSignal(int)           # index
     double_clicked = pyqtSignal(int)    # index (delete)
+
+    # Metric key map: (main_count, sub_count) → system_info metric name
+    _METRIC_MAP = {
+        (0, 1): 'cpu_temp', (0, 2): 'cpu_percent', (0, 3): 'cpu_freq', (0, 4): 'cpu_power',
+        (1, 1): 'gpu_temp', (1, 2): 'gpu_usage', (1, 3): 'gpu_clock', (1, 4): 'gpu_power',
+        (2, 1): 'mem_percent', (2, 2): 'mem_clock',
+        (3, 1): 'disk_read', (3, 2): 'disk_write',
+        (4, 1): 'net_down', (4, 2): 'net_up',
+        (5, 1): 'fan_rpm',
+    }
 
     def __init__(self, index, parent=None):
         super().__init__(parent)
         self.index = index
         self.config = None  # element config dict or None (empty slot)
         self._selected = False
+        self._live_value = ''   # label2: formatted value
+        self._live_unit = ''    # label3: unit suffix
 
         self.setFixedSize(Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -134,15 +151,50 @@ class OverlayElementWidget(QWidget):
     def set_config(self, config):
         """Set element config or None to clear."""
         self.config = config
+        self._live_value = ''
+        self._live_unit = ''
         self.update()
 
     def set_selected(self, selected):
         self._selected = selected
         self.update()
 
+    def update_metrics(self, metrics):
+        """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
+        if not self.config or self.config.get('mode') != MODE_HARDWARE:
+            return
+        mc = self.config.get('main_count', 0)
+        sc = self.config.get('sub_count', 1)
+        metric_key = self._METRIC_MAP.get((mc, sc))
+        if not metric_key or metric_key not in metrics:
+            return
+        raw = metrics[metric_key]
+        # Split formatted value into number + unit (Windows regex pattern)
+        try:
+            from trcc.system_info import format_metric
+            formatted = format_metric(metric_key, raw,
+                                      temp_unit=self.config.get('mode_sub', 0))
+            # Separate number from unit: "52°C" → "52" + "°C"
+            import re
+            m = re.match(r'([\d.]+)(.*)', formatted)
+            if m:
+                self._live_value = m.group(1)
+                self._live_unit = m.group(2).strip()
+            else:
+                self._live_value = formatted
+                self._live_unit = ''
+        except ImportError:
+            self._live_value = str(int(raw)) if isinstance(raw, (int, float)) else str(raw)
+            self._live_unit = ''
+        self.update()
+
+    # Card UI font matching Windows 微软雅黑 10.5pt
+    _CARD_FONT = QFont('Microsoft YaHei', 10)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setFont(self._CARD_FONT)
 
         if self.config:
             mode = self.config.get('mode', MODE_TIME)
@@ -153,39 +205,61 @@ class OverlayElementWidget(QWidget):
             else:
                 painter.fillRect(self.rect(), QColor('#2D2D2D'))
 
-            # Draw labels
             color_str = self.config.get('color', '#FFFFFF')
 
             if mode == MODE_HARDWARE:
                 main_count = self.config.get('main_count', 0)
                 cat_color = CATEGORY_COLORS.get(main_count, '#9375FF')
                 cat_name = CATEGORY_NAMES.get(main_count, '???')
-                sub_count = self.config.get('sub_count', 1)
-                sub_name = SUB_METRICS.get(main_count, {}).get(sub_count, '--')
 
+                # label1: category name in category color (Windows: label1.ForeColor)
                 painter.setPen(QColor(cat_color))
                 painter.drawText(2, 1, 56, 18, Qt.AlignmentFlag.AlignCenter, cat_name)
+                # label2: live value or sub-metric name (Windows: label2.ForeColor = myColor)
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, sub_name)
-                painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter, '--')
+                if self._live_value:
+                    painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
+                                     self._live_value)
+                else:
+                    sub_name = SUB_METRICS.get(main_count, {}).get(
+                        self.config.get('sub_count', 1), '--')
+                    painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, sub_name)
+                # label3: unit suffix (Windows: label3.ForeColor = myColor)
+                painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter,
+                                 self._live_unit or '--')
             elif mode == MODE_TIME:
-                fmt = TIME_FORMATS.get(self.config.get('mode_sub', 0), 'HH:mm')
+                # Windows: label1+label3 hidden, only label2 visible
+                from datetime import datetime
+                mode_sub = self.config.get('mode_sub', 0)
+                if mode_sub == 1:
+                    text = datetime.now().strftime('%-I:%M %p')
+                else:
+                    text = datetime.now().strftime('%H:%M')
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, fmt)
+                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
             elif mode == MODE_DATE:
-                fmt = DATE_FORMATS.get(self.config.get('mode_sub', 1), 'yyyy/MM/dd')
+                # Windows: label1+label3 hidden, only label2 visible
+                from datetime import datetime
+                mode_sub = self.config.get('mode_sub', 0)
+                fmts = {0: '%Y/%m/%d', 1: '%Y/%m/%d', 2: '%d/%m/%Y', 3: '%m/%d', 4: '%d/%m'}
+                text = datetime.now().strftime(fmts.get(mode_sub, '%Y/%m/%d'))
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, 'Date')
+                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
             elif mode == MODE_WEEKDAY:
-                painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, 'Week')
-            elif mode == MODE_CUSTOM:
-                text = self.config.get('text', '') or 'Text'
+                # Windows: label1+label3 hidden, only label2 visible
+                # Windows uses SUN=0..SAT=6 array indexed by DayOfWeek
+                from datetime import datetime
+                days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
-                                 text[:6] if len(text) > 6 else text)
+                                 days[datetime.now().weekday()])
+            elif mode == MODE_CUSTOM:
+                # Windows: label1+label3 hidden, label2.Text = myText
+                text = self.config.get('text', '')
+                painter.setPen(QColor(color_str))
+                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
 
-            # Selection overlay
+            # Selection overlay (Windows: OnPaint draws imageSelect)
             if self._selected and not self._select_pixmap.isNull():
                 painter.drawPixmap(0, 0, self._select_pixmap)
             elif self._selected:
@@ -406,6 +480,7 @@ class OverlayGridPanel(QFrame):
                 'font': {
                     'size': cfg.get('font_size', 36),
                     'style': 'bold' if cfg.get('font_style', 0) == 1 else 'regular',
+                    'name': cfg.get('font_name', 'Microsoft YaHei'),
                 },
                 'enabled': True,
             }
@@ -441,7 +516,7 @@ class OverlayGridPanel(QFrame):
         """Load from OverlayRenderer config format."""
         configs = []
         for key, cfg in overlay_config.items():
-            if not isinstance(cfg, dict):
+            if not isinstance(cfg, dict) or not cfg.get('enabled', True):
                 continue
             elem = _default_element_config()
             elem['x'] = cfg.get('x', 100)
@@ -450,6 +525,9 @@ class OverlayGridPanel(QFrame):
             font = cfg.get('font', {})
             if isinstance(font, dict):
                 elem['font_size'] = font.get('size', 36)
+                elem['font_style'] = 1 if font.get('style') == 'bold' else 0
+                if font.get('name'):
+                    elem['font_name'] = font['name']
 
             metric = cfg.get('metric', '')
             if metric == 'time':
@@ -545,6 +623,9 @@ class ColorPickerPanel(QFrame):
         )
         self.font_btn.setText("Microsoft YaHei  36")
         self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.font_btn.clicked.connect(self._pick_font)
+        self._current_font_name = "Microsoft YaHei"
+        self._current_font_size = 36
 
         # Color picker area click target
         self.color_area_btn = QPushButton(self)
@@ -660,7 +741,20 @@ class ColorPickerPanel(QFrame):
         self.x_spin.blockSignals(False)
         self.y_spin.blockSignals(False)
 
+    def _pick_font(self):
+        """Open font dialog (matches Windows FontDialog in UCXiTongXianShiColor)."""
+        from PyQt6.QtWidgets import QFontDialog
+        current = QFont(self._current_font_name, self._current_font_size)
+        font, ok = QFontDialog.getFont(current, self, "Pick Font")
+        if ok:
+            self._current_font_name = font.family()
+            self._current_font_size = font.pointSize()
+            self.font_btn.setText(f"{font.family()}  {font.pointSize()}")
+            self.font_changed.emit(font.family(), font.pointSize())
+
     def set_font_display(self, font_name, font_size):
+        self._current_font_name = font_name
+        self._current_font_size = font_size
         self.font_btn.setText(f"{font_name}  {font_size}")
 
 
@@ -1251,6 +1345,7 @@ class UCThemeSetting(BasePanel):
         self.color_panel = ColorPickerPanel()
         self.color_panel.color_changed.connect(self._on_color_changed)
         self.color_panel.position_changed.connect(self._on_position_changed)
+        self.color_panel.font_changed.connect(self._on_font_changed)
         self.color_panel.eyedropper_requested.connect(self.eyedropper_requested.emit)
         self.right_stack.addWidget(self.color_panel)
 
@@ -1267,7 +1362,7 @@ class UCThemeSetting(BasePanel):
         self.data_table.text_changed.connect(self._on_text_changed)
 
         # Display mode panels
-        self.mask_panel = DisplayModePanel("mask", ["Load"], self)
+        self.mask_panel = DisplayModePanel("mask", ["Load", "Clear"], self)
         self.mask_panel.move(*Layout.MASK_PANEL)
         self.mask_panel.mode_changed.connect(self._on_mode_changed)
         self.mask_panel.action_requested.connect(self._on_action_requested)
@@ -1322,9 +1417,8 @@ class UCThemeSetting(BasePanel):
         self.right_stack.setCurrentWidget(self.color_panel)
 
     def _on_elements_changed(self):
-        """Any change to elements list — notify parent."""
+        """Any change to elements list — notify parent via delegate."""
         config = self.overlay_grid.to_overlay_config()
-        self.overlay_changed.emit(config)
         self.invoke_delegate(self.CMD_OVERLAY_CHANGED, config)
 
     def _on_color_changed(self, r, g, b):
@@ -1343,6 +1437,16 @@ class UCThemeSetting(BasePanel):
         if cfg is not None:
             cfg['x'] = x
             cfg['y'] = y
+            self.overlay_grid.update_element(idx, cfg)
+            self._on_elements_changed()
+
+    def _on_font_changed(self, font_name, font_size):
+        """Font picker changed — update selected element (Windows mode=4)."""
+        idx = self.overlay_grid.get_selected_index()
+        cfg = self.overlay_grid.get_selected_config()
+        if cfg is not None:
+            cfg['font_name'] = font_name
+            cfg['font_size'] = font_size
             self.overlay_grid.update_element(idx, cfg)
             self._on_elements_changed()
 

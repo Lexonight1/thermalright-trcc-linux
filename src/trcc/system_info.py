@@ -589,7 +589,7 @@ def get_all_metrics() -> Dict[str, float]:
 #   case 2: DateTime.Now.ToString("HH:mm")  -- same as case 0
 TIME_FORMATS = {
     0: "%H:%M",       # 24-hour (14:58)
-    1: "%I:%M %p",    # 12-hour with AM/PM (02:58 PM)
+    1: "%-I:%M %p",   # 12-hour with AM/PM, no leading zero (2:58 PM)
     2: "%H:%M",       # 24-hour (same as mode 0 in Windows)
 }
 

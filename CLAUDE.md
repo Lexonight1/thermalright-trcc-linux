@@ -6,10 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TRCC Linux** - Native Linux port of Thermalright LCD Control Center (Windows TRCC 2.0.3) for controlling 320x320 LCD displays on CPU coolers.
 
+**Current version: 1.1.0** (see `src/trcc/__version__.py`)
+
 - PyQt6 GUI matching Windows layout exactly
 - MVC architecture: GUI-independent controllers with callback-based views
 - SCSI protocol via sg_raw, RGB565 pixel format
 - Modular component architecture mirroring Windows UC* classes
+
+## Versioning
+
+Version is defined in two places (keep in sync):
+- `pyproject.toml` — `version = "X.Y.Z"` (used by pip/hatch)
+- `src/trcc/__version__.py` — `__version__ = "X.Y.Z"` (runtime access)
+
+Semantic versioning: MAJOR.MINOR.PATCH
+- MAJOR: Breaking changes
+- MINOR: New features, backward compatible
+- PATCH: Bug fixes only
 
 ## Commands
 
