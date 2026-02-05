@@ -4,13 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**TRCC Linux** - Native Linux port of Thermalright LCD Control Center (Windows TRCC 2.0.3) for controlling 320x320 LCD displays on CPU coolers.
+**TRCC Linux** - Native Linux port of Thermalright LCD Control Center (Windows TRCC 2.0.3) for controlling LCD displays on Thermalright CPU coolers, AIO pump heads, and fan hubs.
+
+**Repository:** https://github.com/Lexonight1/thermalright-trcc-linux
 
 **Current version: 1.1.0** (see `src/trcc/__version__.py`)
 
-- PyQt6 GUI matching Windows layout exactly
+**Status: Feature-complete** — 100% Windows feature parity achieved.
+
+- PyQt6 GUI matching Windows layout exactly (1454x800)
 - MVC architecture: GUI-independent controllers with callback-based views
 - SCSI protocol via sg_raw, RGB565 pixel format
+- Multi-resolution support: 240x240, 320x320, 480x480, 640x480
 - Modular component architecture mirroring Windows UC* classes
 
 ## Versioning
@@ -184,9 +189,10 @@ FFmpeg is the default (matches Windows). Key settings:
 
 ## DC File Formats
 
-**0xDC (Local themes)**: Background, mask, overlay element configs
-**0xDD (Cloud themes)**: Theme ID, preview URLs, video URL, config
-**Theme.zt**: Pre-rendered JPEG frames with timing (UCVideoCut export)
+**config1.dc (0xDD header)**: Overlay element configs, mask position, display settings
+**Theme.dc (0xDC header)**: Carousel config — enabled, interval, 6 theme slots, LCD rotation
+**Theme.zt (0xDC header)**: Pre-rendered JPEG frames with timing (video trimmer export)
+**.tr export**: Magic 0xDD,0xDC,0xDD,0xDC + config + 10240 padding + mask + background/video
 
 ## Cloud Theme Servers
 
