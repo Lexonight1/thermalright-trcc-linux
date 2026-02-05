@@ -23,13 +23,31 @@ _initialized_devices: Set[str] = set()
 # Low-level SCSI helpers (Mode 3 protocol, from USBLCD.exe 20480-20540)
 # =========================================================================
 
-# Frame chunk commands — 4 chunks totalling 0x42000 bytes (320×320×2)
-_FRAME_CHUNKS = [
-    (0x101F5,     0x10000),
-    (0x10101F5,   0x10000),
-    (0x20101F5,   0x10000),
-    (0x30101F5,   0x2000),
-]
+# Base command for frame data chunks; chunk index goes in bits [27:24]
+_FRAME_CMD_BASE = 0x101F5
+_CHUNK_SIZE = 0x10000  # 64 KiB per chunk (except possibly the last)
+
+
+def _get_frame_chunks(width: int, height: int) -> list:
+    """Calculate frame chunk commands for a given resolution.
+
+    Each chunk is up to 64 KiB. The command encodes the chunk index in
+    bits [27:24] above the base command 0x101F5.
+
+    For 320×320: 4 chunks (3×64K + 8K = 204,800 bytes)
+    For 480×480: 8 chunks (7×64K + 2K = 460,800 bytes)
+    """
+    total = width * height * 2  # RGB565: 2 bytes per pixel
+    chunks = []
+    offset = 0
+    idx = 0
+    while offset < total:
+        size = min(_CHUNK_SIZE, total - offset)
+        cmd = _FRAME_CMD_BASE | (idx << 24)
+        chunks.append((cmd, size))
+        offset += size
+        idx += 1
+    return chunks
 
 
 def _crc32(data: bytes) -> int:
@@ -78,14 +96,15 @@ def _init_device(dev: str):
     _scsi_write(dev, init_header, b'\x00' * 0xE100)
 
 
-def _send_frame(dev: str, rgb565_data: bytes):
-    """Send one RGB565 frame in 4 SCSI chunks."""
-    total_size = sum(size for _, size in _FRAME_CHUNKS)
+def _send_frame(dev: str, rgb565_data: bytes, width: int = 320, height: int = 320):
+    """Send one RGB565 frame in SCSI chunks sized for the resolution."""
+    chunks = _get_frame_chunks(width, height)
+    total_size = sum(size for _, size in chunks)
     if len(rgb565_data) < total_size:
         rgb565_data += b'\x00' * (total_size - len(rgb565_data))
 
     offset = 0
-    for cmd, size in _FRAME_CHUNKS:
+    for cmd, size in chunks:
         header = _build_header(cmd, size)
         _scsi_write(dev, header, rgb565_data[offset:offset + size])
         offset += size
@@ -162,7 +181,7 @@ def send_image_to_device(
             _init_device(device_path)
             _initialized_devices.add(device_path)
 
-        _send_frame(device_path, rgb565_data)
+        _send_frame(device_path, rgb565_data, width, height)
         return True
     except Exception as e:
         print(f"[!] SCSI send failed ({device_path}): {e}")

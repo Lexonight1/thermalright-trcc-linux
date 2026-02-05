@@ -257,6 +257,9 @@ class Layout:
     COLOR_SWATCH_DX = 19
     COLOR_SWATCH_SIZE = 14
 
+    # Eyedropper button (matches Windows buttonGetColor in UCXiTongXianShiColor)
+    COLOR_EYEDROPPER = (12, 276, 48, 48)
+
     # Display mode panel toggle/action positions
     TOGGLE_DEFAULT = (0, 0, 50, 50)
     TOGGLE_MASK = (5, 5, 36, 18)

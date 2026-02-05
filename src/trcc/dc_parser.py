@@ -964,9 +964,14 @@ if __name__ == '__main__':
     print(json.dumps(overlay, indent=2))
 
 
-def validate_theme(theme_path: str) -> dict:
+def validate_theme(theme_path: str, display_width: int = 320, display_height: int = 320) -> dict:
     """
     Validate a theme's config and return any issues found.
+
+    Args:
+        theme_path: Path to theme directory
+        display_width: LCD display width for bounds checking
+        display_height: LCD display height for bounds checking
 
     Returns dict with:
         'valid': bool
@@ -1018,14 +1023,15 @@ def validate_theme(theme_path: str) -> dict:
         # Check for elements with invalid positions
         for key, cfg in overlay.items():
             x, y = cfg.get('x', 0), cfg.get('y', 0)
-            if x < 0 or x > 320 or y < 0 or y > 320:
-                result['warnings'].append(f'{key}: position ({x}, {y}) outside 320x320')
+            if x < 0 or x > display_width or y < 0 or y > display_height:
+                result['warnings'].append(
+                    f'{key}: position ({x}, {y}) outside {display_width}x{display_height}')
 
         # Check mask settings
         mask = parsed.get('mask_settings', {})
         if mask.get('mask_enabled'):
             pos = mask.get('mask_position', (0, 0))
-            if pos[0] < 0 or pos[0] > 320 or pos[1] < 0 or pos[1] > 320:
+            if pos[0] < 0 or pos[0] > display_width or pos[1] < 0 or pos[1] > display_height:
                 result['warnings'].append(f'Mask position {pos} may be outside bounds')
 
         # Check for required files

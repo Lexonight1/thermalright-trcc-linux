@@ -3,6 +3,7 @@ Central path constants and utilities for TRCC.
 
 All path calculations happen once here. Components import what they need.
 """
+import json
 import os
 
 # PIL import (done once, shared by all components)
@@ -141,3 +142,52 @@ def build_search_paths(resource_dir: str = None) -> list:
         paths.append(resource_dir)
     paths.extend(RESOURCE_SEARCH_PATHS)
     return paths
+
+
+# =========================================================================
+# User configuration (persisted to ~/.config/trcc/config.json)
+# =========================================================================
+
+_XDG_CONFIG = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
+CONFIG_DIR = os.path.join(_XDG_CONFIG, 'trcc')
+CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
+
+# USBLCD (SCSI/RGB565) supported resolutions
+SUPPORTED_RESOLUTIONS = [
+    (240, 240),
+    (320, 320),
+    (480, 480),
+    (640, 480),
+]
+
+
+def load_config() -> dict:
+    """Load user config from disk. Returns empty dict on missing/corrupt file."""
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_config(config: dict):
+    """Save user config to disk."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+
+
+def get_saved_resolution() -> tuple:
+    """Get saved LCD resolution, defaulting to (320, 320)."""
+    config = load_config()
+    res = config.get('resolution', [320, 320])
+    if isinstance(res, list) and len(res) == 2:
+        return tuple(res)
+    return (320, 320)
+
+
+def save_resolution(width: int, height: int):
+    """Persist LCD resolution to config."""
+    config = load_config()
+    config['resolution'] = [width, height]
+    save_config(config)

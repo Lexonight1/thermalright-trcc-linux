@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon, QMenu,
 )
 from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QRegularExpressionValidator
+from PyQt6.QtCore import QRegularExpression as QRE
 
 # Import MVC core
 from ..core import (
@@ -41,6 +42,7 @@ from .uc_theme_mask import UCThemeMask
 from .uc_theme_setting import UCThemeSetting
 from .uc_about import UCAbout
 from .uc_system_info import UCSystemInfo
+from ..sensor_enumerator import SensorEnumerator
 from .uc_video_cut import UCVideoCut
 from .uc_image_cut import UCImageCut
 from .uc_info_module import UCInfoModule
@@ -120,6 +122,29 @@ class TRCCMainWindowMVC(QMainWindow):
         # Device hot-plug poll timer (5s interval)
         self._device_timer = QTimer(self)
         self._device_timer.timeout.connect(self._on_device_poll)
+
+        # Screencast timer (~6.67 FPS, matches Windows TPXSCount >= 3 at 50ms)
+        self._screencast_timer = QTimer(self)
+        self._screencast_timer.timeout.connect(self._on_screencast_tick)
+        self._screencast_x = 0
+        self._screencast_y = 0
+        self._screencast_w = 0
+        self._screencast_h = 0
+        self._screencast_active = False
+
+        # PipeWire portal capture for Wayland (GNOME/KDE)
+        self._pipewire_cast = None
+        self._screencast_border = True  # Windows myYcbk
+
+        # Element flash timer (Windows shanPingTimer: ~1s blink on element select)
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.timeout.connect(self._on_flash_timeout)
+
+        # Slideshow timer (Windows myLunBoTimer: auto-rotate themes)
+        self._slideshow_timer = QTimer(self)
+        self._slideshow_timer.timeout.connect(self._on_slideshow_tick)
+        self._slideshow_index = 0
 
         # Language for localized backgrounds
         self._lang = detect_language()
@@ -295,8 +320,12 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
 
+        # === Sensor Enumerator (hardware sensor discovery) ===
+        self._sensor_enumerator = SensorEnumerator()
+        self._sensor_enumerator.discover()
+
         # === System Info dashboard (hidden, shown by sensor/home button) ===
-        self.uc_system_info = UCSystemInfo(central)
+        self.uc_system_info = UCSystemInfo(self._sensor_enumerator, self._lang, central)
         self.uc_system_info.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_system_info.setVisible(False)
 
@@ -384,6 +413,40 @@ class TRCCMainWindowMVC(QMainWindow):
             self._metrics_timer.setInterval(ms)
         self.uc_preview.set_status(f"Refresh: {interval}s")
 
+    def _on_resolution_changed(self, width: int, height: int):
+        """Handle LCD resolution change from settings.
+
+        Updates controller, preview frame, image/video cutters,
+        theme directories, and cloud theme URLs.
+        """
+        self.controller.set_resolution(width, height)
+
+        # Update preview frame for new resolution
+        self.uc_preview.set_resolution(width, height)
+
+        # Update image/video cutters
+        self.uc_image_cut.set_resolution(width, height)
+        self.uc_video_cut.set_resolution(width, height)
+
+        # Update settings panel (screencast aspect ratio)
+        self.uc_theme_setting.set_resolution(width, height)
+
+        # Reload theme directories for new resolution
+        theme_dir = self._data_dir / f'Theme{width}{height}'
+        if theme_dir.exists():
+            self.uc_theme_local.set_theme_directory(theme_dir)
+
+        # Cloud themes — per-resolution videos directory
+        videos_dir = self._get_videos_dir(width, height)
+        self.uc_theme_web.set_videos_directory(videos_dir)
+        self.uc_theme_web.set_resolution(f'{width}x{height}')
+
+        masks_dir = self._data_dir / 'cloud_masks' / f'zt{width}{height}'
+        self.uc_theme_mask.set_mask_directory(masks_dir)
+        self.uc_theme_mask.set_resolution(f'{width}x{height}')
+
+        self.uc_preview.set_status(f"Resolution: {width}×{height}")
+
     def _create_bottom_controls(self):
         """Create bottom control bar matching Windows FormCZTV positions.
 
@@ -431,6 +494,9 @@ class TRCCMainWindowMVC(QMainWindow):
             "background-color: #232227; color: white; border: none;"
             " font-family: 'Microsoft YaHei'; font-size: 9pt;"
         )
+        # Block invalid filename chars (Windows Path.GetInvalidFileNameChars)
+        self.theme_name_input.setValidator(
+            QRegularExpressionValidator(QRE(r'[^/\\:*?"<>|\x00-\x1f]+')))
 
         # === Icon buttons (save/export/import) with text fallback ===
         self.save_btn = self._create_icon_or_text_btn(
@@ -462,11 +528,12 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _create_title_buttons(self):
         """Create title bar buttons (Help, Power/Close)."""
-        # Help button
+        # Help button — Windows opens LCDHelp.pdf; we open the install guide
         help_btn = create_image_button(
             self.form_container, *Layout.HELP_BTN,
             Assets.BTN_HELP, None, fallback_text="?"
         )
+        help_btn.clicked.connect(self._on_help_clicked)
 
         # Close/Power button
         close_btn = create_image_button(
@@ -474,6 +541,17 @@ class TRCCMainWindowMVC(QMainWindow):
             Assets.BTN_POWER, Assets.BTN_POWER_HOVER, fallback_text="X"
         )
         close_btn.clicked.connect(self.close)
+
+    def _on_help_clicked(self):
+        """Open User Guide PDF. Windows opens LCDHelp.pdf; we open Thermalright User Guide."""
+        import webbrowser
+        from pathlib import Path
+
+        doc = Path(__file__).resolve().parents[3] / 'doc' / 'User Guide.pdf'
+        if doc.exists():
+            webbrowser.open(doc.as_uri())
+        else:
+            webbrowser.open('https://github.com/thermalright/trcc-linux#readme')
 
     def _apply_settings_backgrounds(self):
         """Apply localized P01 backgrounds to display mode panels in UCThemeSetting.
@@ -532,6 +610,26 @@ class TRCCMainWindowMVC(QMainWindow):
         # Sync about panel
         self.uc_about.set_language(lang)
 
+    def _get_videos_dir(self, w: int, h: int) -> Path:
+        """Get cloud theme videos directory for a resolution.
+
+        Checks per-resolution bundled dir first, then flat fallback (for
+        backwards compat with existing 320x320 installs), then user cache.
+        """
+        # Per-resolution bundled: src/data/videos/{W}{H}/
+        per_res = self._data_dir / 'videos' / f'{w}{h}'
+        if per_res.exists():
+            return per_res
+
+        # Flat bundled: src/data/videos/ (only valid for 320x320 legacy)
+        flat = self._data_dir / 'videos'
+        if (w, h) == (320, 320) and flat.exists():
+            return flat
+
+        # User-downloaded cloud cache: ~/.trcc/cloud_themes/{W}{H}/
+        cache = Path.home() / '.trcc' / 'cloud_themes' / f'{w}{h}'
+        return cache
+
     def _init_theme_directories(self):
         """Initialize theme browser directories."""
         w, h = self.controller.lcd_width, self.controller.lcd_height
@@ -540,9 +638,9 @@ class TRCCMainWindowMVC(QMainWindow):
         if theme_dir.exists():
             self.uc_theme_local.set_theme_directory(theme_dir)
 
-        videos_dir = self._data_dir / 'videos'
-        if videos_dir.exists():
-            self.uc_theme_web.set_videos_directory(videos_dir)
+        videos_dir = self._get_videos_dir(w, h)
+        self.uc_theme_web.set_videos_directory(videos_dir)
+        self.uc_theme_web.set_resolution(f'{w}x{h}')
 
         masks_dir = self._data_dir / 'cloud_masks' / f'zt{w}{h}'
         self.uc_theme_mask.set_mask_directory(masks_dir)
@@ -629,7 +727,12 @@ class TRCCMainWindowMVC(QMainWindow):
         """Connect view widget signals to controller actions."""
         self.uc_device.device_selected.connect(self._on_device_widget_clicked)
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)
+        self.uc_theme_local.delete_requested.connect(self._on_delete_theme)
+        self.uc_theme_local.delegate.connect(self._on_local_delegate)
         self.uc_theme_web.theme_selected.connect(self._on_cloud_theme_clicked)
+        self.uc_theme_web.download_started.connect(
+            lambda tid: self.uc_preview.set_status(f"Downloading: {tid}..."))
+        self.uc_theme_web.download_finished.connect(self._on_cloud_download_finished)
         self.uc_theme_mask.mask_selected.connect(self._on_mask_clicked)
         self.uc_theme_setting.overlay_changed.connect(self._on_overlay_changed)
         self.uc_preview.delegate.connect(self._on_preview_delegate)
@@ -650,9 +753,19 @@ class TRCCMainWindowMVC(QMainWindow):
         # Overlay on/off toggle → info module visibility
         self.uc_theme_setting.overlay_grid.toggle_changed.connect(self._on_overlay_toggle)
 
-        # Screencast coordinate changes
+        # Screencast coordinate changes + border toggle
         self.uc_theme_setting.screencast_params_changed.connect(
             self._on_screencast_params_changed)
+        self.uc_theme_setting.screencast_panel.border_toggled.connect(
+            self._on_screencast_border_toggle)
+
+        # Element flash on select (Windows shanPingCount/shanPingTimer)
+        self.uc_theme_setting.overlay_grid.element_selected.connect(
+            self._on_element_flash)
+
+        # Screen capture and eyedropper
+        self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
+        self.uc_theme_setting.eyedropper_requested.connect(self._on_eyedropper_requested)
 
         # Mask download feedback
         self.uc_theme_mask.download_started.connect(
@@ -670,6 +783,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
+        self.uc_about.resolution_changed.connect(self._on_resolution_changed)
 
     def _on_device_widget_clicked(self, device_info: dict):
         """Forward device selection to controller."""
@@ -682,6 +796,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_local_theme_clicked(self, theme_info: dict):
         """Forward local theme selection to controller and load overlay config."""
+        self._slideshow_timer.stop()  # Manual select stops slideshow rotation
         self.stop_metrics()  # Reset metrics from previous theme
         path = Path(theme_info.get('path', ''))
         if path.exists():
@@ -725,8 +840,58 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_preview.set_status(f"Background: {'On' if enabled else 'Off'}")
 
     def _on_screencast_toggle(self, enabled: bool):
-        """Handle screencast toggle from settings."""
+        """Handle screencast toggle — start/stop real-time capture loop.
+
+        Matches Windows myMode=16 behavior: timer-driven CopyFromScreen
+        at ~6.67 FPS, scaled to LCD resolution and sent to device.
+
+        On Wayland (GNOME/KDE), tries PipeWire portal capture first.
+        Falls back to grab_screen_region() on X11 or when PipeWire is
+        unavailable.
+        """
+        self._screencast_active = enabled
+        if enabled:
+            # Stop other modes
+            self._animation_timer.stop()
+            self.controller.video.stop()
+
+            # Try PipeWire on Wayland (GNOME/KDE where grabWindow is blank)
+            from .screen_capture import is_wayland
+            if is_wayland() and self._pipewire_cast is None:
+                self._try_start_pipewire()
+
+            self._screencast_timer.start(150)  # ~6.67 FPS
+        else:
+            self._screencast_timer.stop()
+            self._stop_pipewire()
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
+
+    def _try_start_pipewire(self):
+        """Attempt to start PipeWire portal capture (non-blocking).
+
+        The portal triggers a user consent dialog. If the user approves,
+        _on_screencast_tick() will use PipeWire frames instead of
+        grab_screen_region().
+        """
+        from .pipewire_capture import PipeWireScreenCast, PIPEWIRE_AVAILABLE
+        if not PIPEWIRE_AVAILABLE:
+            return
+
+        import threading
+        self._pipewire_cast = PipeWireScreenCast()
+
+        def _start():
+            if not self._pipewire_cast.start(timeout=30):
+                self._pipewire_cast = None
+
+        # Start in background so portal dialog doesn't block the GUI
+        threading.Thread(target=_start, daemon=True).start()
+
+    def _stop_pipewire(self):
+        """Stop PipeWire capture if active."""
+        if self._pipewire_cast is not None:
+            self._pipewire_cast.stop()
+            self._pipewire_cast = None
 
     def _on_mask_display_toggle(self, enabled):
         """Toggle mask visibility on preview/LCD."""
@@ -916,8 +1081,188 @@ class TRCCMainWindowMVC(QMainWindow):
             self.stop_metrics()
 
     def _on_screencast_params_changed(self, x, y, w, h):
-        """Handle screencast coordinate changes from settings panel."""
+        """Store screencast region coordinates for the capture loop."""
+        self._screencast_x = x
+        self._screencast_y = y
+        self._screencast_w = w
+        self._screencast_h = h
         self.uc_preview.set_status(f"Cast: {x},{y} {w}x{h}")
+
+    def _on_screencast_border_toggle(self, visible: bool):
+        """Handle screen cast border visibility toggle (Windows myYcbk / cmd=69)."""
+        self._screencast_border = visible
+
+    def _on_element_flash(self, index: int, config: dict):
+        """Flash/blink selected overlay element on preview (Windows shanPingCount).
+
+        Hides the element for ~1 second so the user can spot its position.
+        """
+        self.controller.overlay.flash_skip_index = index
+        self._flash_timer.start(980)  # 14 ticks * 70ms = 980ms
+        self.controller.render_overlay_and_preview()
+
+    def _on_flash_timeout(self):
+        """End element flash — restore normal rendering."""
+        self.controller.overlay.flash_skip_index = -1
+        self.controller.render_overlay_and_preview()
+
+    # =========================================================================
+    # Delete Theme (Windows cmd=32)
+    # =========================================================================
+
+    def _on_delete_theme(self, theme_info: dict):
+        """Handle theme delete request — show confirmation, delete directory."""
+        from PyQt6.QtWidgets import QMessageBox
+        name = theme_info.get('name', 'Unknown')
+        reply = QMessageBox.question(
+            self, "Delete Theme",
+            f"Delete theme '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.uc_theme_local.delete_theme(theme_info)
+            # If deleted theme was the current one, clear preview
+            if (self.controller.current_theme and
+                    getattr(self.controller.current_theme, 'path', None) == theme_info.get('path')):
+                self.controller.current_image = None
+                self.uc_preview.set_image(None)
+            self.uc_preview.set_status(f"Deleted: {name}")
+
+    # =========================================================================
+    # Slideshow / Carousel (Windows cmd=48, myLunBoTimer)
+    # =========================================================================
+
+    def _on_local_delegate(self, cmd, info, data):
+        """Handle delegate events from local themes panel."""
+        if cmd == UCThemeLocal.CMD_SLIDESHOW:
+            self._update_slideshow_state()
+
+    def _update_slideshow_state(self):
+        """Update slideshow timer based on current UCThemeLocal state."""
+        if (self.uc_theme_local.is_slideshow()
+                and self.uc_theme_local.get_slideshow_themes()):
+            interval_s = self.uc_theme_local.get_slideshow_interval()
+            self._slideshow_index = 0
+            self._slideshow_timer.start(interval_s * 1000)
+        else:
+            self._slideshow_timer.stop()
+
+    def _on_slideshow_tick(self):
+        """Auto-rotate to next theme in slideshow (Windows Timer_event lunbo)."""
+        themes = self.uc_theme_local.get_slideshow_themes()
+        if not themes:
+            self._slideshow_timer.stop()
+            return
+
+        self._slideshow_index = (self._slideshow_index + 1) % len(themes)
+        theme_info = themes[self._slideshow_index]
+
+        # Load theme without resetting slideshow state
+        path = Path(theme_info.get('path', ''))
+        if path.exists():
+            theme = ThemeInfo.from_directory(path)
+            self.controller.themes.select_theme(theme)
+            self._load_theme_overlay_config(path)
+
+    # =========================================================================
+    # Cloud Theme Download Feedback
+    # =========================================================================
+
+    def _on_cloud_download_finished(self, theme_id: str, success: bool):
+        """Handle cloud theme download completion."""
+        if success:
+            self.uc_preview.set_status(f"Downloaded: {theme_id}")
+        else:
+            self.uc_preview.set_status(f"Download failed: {theme_id}")
+
+    def _on_screencast_tick(self):
+        """Capture screen region, scale to LCD, update preview, send to LCD.
+
+        Called every 150ms by _screencast_timer when screencast mode is active.
+        Matches Windows Timer_event() myMode==16 with TPXSCount>=3.
+
+        Uses PipeWire portal frames on Wayland (GNOME/KDE) when available,
+        with client-side crop to the user's X/Y/W/H region. Falls back to
+        grab_screen_region() on X11 or when PipeWire isn't running.
+        """
+        if (not self._screencast_active
+                or self._screencast_w <= 0
+                or self._screencast_h <= 0):
+            return
+
+        from PIL import Image as PILImage
+
+        pil_img = None
+
+        # Try PipeWire first (Wayland GNOME/KDE)
+        if self._pipewire_cast is not None and self._pipewire_cast.is_running:
+            frame = self._pipewire_cast.grab_frame()
+            if frame is not None:
+                fw, fh, rgb_bytes = frame
+                full = PILImage.frombytes('RGB', (fw, fh), rgb_bytes)
+                # Crop to user's selected region
+                x2 = min(self._screencast_x + self._screencast_w, fw)
+                y2 = min(self._screencast_y + self._screencast_h, fh)
+                x1 = min(self._screencast_x, fw)
+                y1 = min(self._screencast_y, fh)
+                if x2 > x1 and y2 > y1:
+                    pil_img = full.crop((x1, y1, x2, y2))
+
+        # Fallback: X11 / grim direct capture
+        if pil_img is None:
+            from .screen_capture import grab_screen_region
+            from .base import pixmap_to_pil
+
+            pixmap = grab_screen_region(
+                self._screencast_x, self._screencast_y,
+                self._screencast_w, self._screencast_h)
+            if pixmap.isNull():
+                return
+            pil_img = pixmap_to_pil(pixmap)
+
+        lcd_w, lcd_h = self.controller.lcd_width, self.controller.lcd_height
+        pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.LANCZOS)
+
+        # Apply overlay if enabled
+        if self.controller.overlay.is_enabled():
+            pil_img = self.controller.overlay.render(pil_img)
+
+        self.uc_preview.set_image(pil_img)
+        self.controller._send_frame_to_lcd(pil_img)
+
+    def _on_capture_requested(self):
+        """Launch screen capture overlay → feed to image cutter."""
+        from .screen_capture import ScreenCaptureOverlay
+        self._capture_overlay = ScreenCaptureOverlay()
+        self._capture_overlay.captured.connect(self._on_screen_captured)
+        self._capture_overlay.show()
+
+    def _on_screen_captured(self, pil_img):
+        """Handle captured screen region."""
+        self._capture_overlay = None
+        if pil_img is None:
+            return
+        w, h = self.controller.lcd_width, self.controller.lcd_height
+        self.uc_image_cut.load_image(pil_img, w, h)
+        self._show_image_cutter()
+
+    def _on_eyedropper_requested(self):
+        """Launch eyedropper color picker overlay."""
+        from .eyedropper import EyedropperOverlay
+        self._eyedropper_overlay = EyedropperOverlay()
+        self._eyedropper_overlay.color_picked.connect(self._on_eyedropper_picked)
+        self._eyedropper_overlay.cancelled.connect(self._on_eyedropper_done)
+        self._eyedropper_overlay.show()
+
+    def _on_eyedropper_picked(self, r, g, b):
+        """Handle picked color from eyedropper."""
+        self._eyedropper_overlay = None
+        self.uc_theme_setting.color_panel._apply_color(r, g, b)
+
+    def _on_eyedropper_done(self):
+        """Eyedropper cancelled."""
+        self._eyedropper_overlay = None
 
     # =========================================================================
     # DC File Loading
@@ -1069,6 +1414,9 @@ class TRCCMainWindowMVC(QMainWindow):
         # Full quit — stop timers and clean up
         self._tray.hide()
         self._animation_timer.stop()
+        self._slideshow_timer.stop()
+        self._screencast_timer.stop()
+        self._stop_pipewire()
         self._metrics_timer.stop()
         self._device_timer.stop()
         self.uc_system_info.stop_updates()

@@ -20,6 +20,7 @@ from .models import (
     VideoState, VideoModel, PlaybackState,
     OverlayElement, OverlayModel,
 )
+from ..paths import get_saved_resolution, save_resolution
 
 
 class ThemeController:
@@ -424,9 +425,10 @@ class FormCZTVController:
         # Working directory (Windows GifDirectory pattern)
         self.working_dir = Path(tempfile.mkdtemp(prefix='trcc_work_'))
 
-        # Current state
-        self.lcd_width = 320
-        self.lcd_height = 320
+        # Current state — read saved resolution (default 320x320)
+        saved_w, saved_h = get_saved_resolution()
+        self.lcd_width = saved_w
+        self.lcd_height = saved_h
         self.current_image: Optional[Any] = None  # PIL Image
         self.current_theme_path: Optional[Path] = None
         self.auto_send = True
@@ -437,6 +439,7 @@ class FormCZTVController:
         self.on_preview_update: Optional[Callable[[Any], None]] = None  # PIL Image
         self.on_status_update: Optional[Callable[[str], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
+        self.on_resolution_changed: Optional[Callable[[int, int], None]] = None
 
         # Wire up sub-controller callbacks
         self._setup_callbacks()
@@ -477,6 +480,8 @@ class FormCZTVController:
 
         Sets up theme directories and detects devices.
         """
+        self._data_dir = data_dir
+
         # Set LCD target size for video and overlay
         self.video.set_target_size(self.lcd_width, self.lcd_height)
         self.overlay.set_target_size(self.lcd_width, self.lcd_height)
@@ -498,12 +503,32 @@ class FormCZTVController:
         # Detect devices
         self.devices.detect_devices()
 
-    def set_resolution(self, width: int, height: int):
-        """Set LCD resolution."""
+    def set_resolution(self, width: int, height: int, persist: bool = True):
+        """Set LCD resolution, update sub-controllers, and optionally persist to config."""
+        if width == self.lcd_width and height == self.lcd_height:
+            return
         self.lcd_width = width
         self.lcd_height = height
         self.video.set_target_size(width, height)
         self.overlay.set_target_size(width, height)
+
+        if persist:
+            save_resolution(width, height)
+
+        # Reload theme directories for new resolution
+        if hasattr(self, '_data_dir') and self._data_dir:
+            theme_dir = self._data_dir / f'Theme{width}{height}'
+            masks_dir = self._data_dir / 'cloud_masks' / f'zt{width}{height}'
+            videos_dir = self._data_dir / 'videos'
+            self.themes.set_directories(
+                local_dir=theme_dir if theme_dir.exists() else None,
+                videos_dir=videos_dir if videos_dir.exists() else None,
+                masks_dir=masks_dir,
+            )
+            self.themes.load_local_themes((width, height))
+
+        if self.on_resolution_changed:
+            self.on_resolution_changed(width, height)
 
     def set_rotation(self, degrees: int):
         """Set display rotation (0, 90, 180, 270).

@@ -155,6 +155,24 @@ def pil_to_pixmap(pil_image):
     return QPixmap.fromImage(qimage)
 
 
+def pixmap_to_pil(pixmap):
+    """Convert QPixmap to PIL Image.
+
+    Args:
+        pixmap: QPixmap
+
+    Returns:
+        PIL Image (RGB)
+    """
+    qimage = pixmap.toImage().convertToFormat(QImage.Format.Format_RGB888)
+    width = qimage.width()
+    height = qimage.height()
+    ptr = qimage.bits()
+    ptr.setsize(qimage.sizeInBytes())
+    return Image.frombytes('RGB', (width, height), bytes(ptr), 'raw', 'RGB',
+                           qimage.bytesPerLine())
+
+
 def set_background_pixmap(widget, asset_name, width=None, height=None,
                           fallback_style=None):
     """Apply a background image to a widget via QPalette.

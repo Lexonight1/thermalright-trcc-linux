@@ -3,21 +3,96 @@ PyQt6 UCThemeLocal - Local themes browser panel.
 
 Matches Windows TRCC.DCUserControl.UCThemeLocal (732x652)
 Shows theme thumbnails in a 5-column scrollable grid.
+
+Features:
+- Filter: All / Default / User (Windows cmd 0/1/2)
+- Theme selection (Windows cmd 16)
+- Delete user themes with confirmation (Windows cmd 32)
+- Slideshow/carousel: select up to 6 themes for auto-rotation (Windows cmd 48)
 """
 
-from PyQt6.QtWidgets import QPushButton, QLineEdit
+import shutil
+from pathlib import Path
+
+from PyQt6.QtWidgets import QPushButton, QLineEdit, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 
-from .base import BaseThemeBrowser, BaseThumbnail, create_image_button
+from .base import BaseThemeBrowser, BaseThumbnail
 from .assets import load_pixmap
 from .constants import Sizes, Layout, Styles
-from pathlib import Path
 
 
 class ThemeThumbnail(BaseThumbnail):
-    """Local theme thumbnail. Uses default BaseThumbnail behavior."""
-    pass
+    """Local theme thumbnail with optional delete button and slideshow badge."""
+
+    delete_clicked = pyqtSignal(dict)
+    slideshow_toggled = pyqtSignal(dict)
+
+    def __init__(self, item_info: dict, parent=None):
+        self._slideshow_mode = False
+        super().__init__(item_info, parent)
+        self._delete_btn = None
+        self._badge_label = None
+
+    def set_deletable(self, deletable: bool):
+        """Show/hide delete button (top-right X) on this thumbnail."""
+        if deletable and self._delete_btn is None:
+            self._delete_btn = QPushButton("✕", self)
+            self._delete_btn.setGeometry(96, 2, 20, 20)
+            self._delete_btn.setStyleSheet(
+                "QPushButton { background: rgba(180, 40, 40, 200); color: white; "
+                "border: none; border-radius: 10px; font-size: 11px; font-weight: bold; }"
+                "QPushButton:hover { background: rgba(220, 50, 50, 255); }"
+            )
+            self._delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._delete_btn.clicked.connect(
+                lambda: self.delete_clicked.emit(self.item_info))
+            self._delete_btn.raise_()
+            self._delete_btn.show()
+        elif not deletable and self._delete_btn is not None:
+            self._delete_btn.deleteLater()
+            self._delete_btn = None
+
+    def set_slideshow_badge(self, number: int):
+        """Show slideshow badge. number=0 means unselected, 1-6 = position."""
+        if self._badge_label is None:
+            self._badge_label = QLabel(self)
+            self._badge_label.setFixedSize(22, 22)
+            self._badge_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._badge_label.move(92, 94)  # Bottom-right of 120x120 image area
+
+        if number > 0:
+            self._badge_label.setText(str(number))
+            self._badge_label.setStyleSheet(
+                "QLabel { background: rgba(74, 111, 165, 220); color: white; "
+                "border-radius: 11px; font-size: 12px; font-weight: bold; }"
+            )
+        else:
+            self._badge_label.setText("")
+            self._badge_label.setStyleSheet(
+                "QLabel { background: rgba(80, 80, 80, 180); "
+                "border: 2px solid #888; border-radius: 11px; }"
+            )
+        self._badge_label.show()
+
+    def clear_slideshow_badge(self):
+        """Remove slideshow badge."""
+        if self._badge_label is not None:
+            self._badge_label.hide()
+            self._badge_label.deleteLater()
+            self._badge_label = None
+
+    def set_slideshow_mode(self, enabled: bool):
+        """Toggle slideshow mode for click behavior."""
+        self._slideshow_mode = enabled
+
+    def mousePressEvent(self, event):
+        """In slideshow mode, clicking lower half toggles inclusion."""
+        if self._slideshow_mode and event.position().y() > 60:
+            self.slideshow_toggled.emit(self.item_info)
+            return
+        self.clicked.emit(self.item_info)
 
 
 class UCThemeLocal(BaseThemeBrowser):
@@ -32,21 +107,27 @@ class UCThemeLocal(BaseThemeBrowser):
     MODE_DEFAULT = 1
     MODE_USER = 2
 
+    MAX_SLIDESHOW = 6  # Windows LunBoArrayCount = 6
+
     CMD_THEME_SELECTED = 16
     CMD_FILTER_CHANGED = 3
     CMD_SLIDESHOW = 48
+    CMD_DELETE = 32
 
     slideshow_changed = pyqtSignal(bool, int, list)  # enabled, interval, theme_indices
+    delete_requested = pyqtSignal(dict)  # theme_info dict
 
     def __init__(self, parent=None):
         self.filter_mode = self.MODE_ALL
         self.theme_directory = None
         self._slideshow = False
         self._slideshow_interval = 3
+        self._lunbo_array = []  # Theme names in slideshow order (max 6)
+        self._all_themes = []   # Full unfiltered theme list
         super().__init__(parent)
 
     def _create_filter_buttons(self):
-        """Three filter buttons: All, Default, User."""
+        """Three filter buttons: All, Default, User + slideshow controls."""
         btn_normal, btn_active = self._load_filter_assets()
         self._filter_buttons = []
         self._btn_refs = [btn_normal, btn_active]
@@ -124,25 +205,96 @@ class UCThemeLocal(BaseThemeBrowser):
             self._show_empty_message()
             return
 
-        theme_dirs = []
+        # Load ALL themes (unfiltered) for index tracking and slideshow
+        all_dirs = []
         for item in sorted(self.theme_directory.iterdir()):
             if item.is_dir():
                 thumb = item / 'Theme.png'
                 bg = item / '00.png'
                 if thumb.exists() or bg.exists():
-                    theme_dirs.append({
+                    all_dirs.append({
                         'name': item.name,
                         'path': str(item),
                         'thumbnail': str(thumb if thumb.exists() else bg),
                         'is_user': item.name.startswith('User') or item.name.startswith('Custom'),
                     })
 
+        self._all_themes = all_dirs
+
+        # Filter for display
         if self.filter_mode == self.MODE_DEFAULT:
-            theme_dirs = [t for t in theme_dirs if not t.get('is_user')]
+            theme_dirs = [t for t in all_dirs if not t.get('is_user')]
         elif self.filter_mode == self.MODE_USER:
-            theme_dirs = [t for t in theme_dirs if t.get('is_user')]
+            theme_dirs = [t for t in all_dirs if t.get('is_user')]
+        else:
+            theme_dirs = list(all_dirs)
+
+        # Tag each with its global index in the unfiltered list
+        for t in theme_dirs:
+            try:
+                t['_index'] = self._all_themes.index(t)
+            except ValueError:
+                t['_index'] = 0
 
         self._populate_grid(theme_dirs)
+        self._apply_decorations()
+
+    def _populate_grid(self, items: list):
+        """Override to connect delete and slideshow signals on thumbnails."""
+        super()._populate_grid(items)
+        for widget in self.item_widgets:
+            if isinstance(widget, ThemeThumbnail):
+                widget.delete_clicked.connect(self._on_delete_clicked)
+                widget.slideshow_toggled.connect(self._on_slideshow_toggled)
+
+    def _apply_decorations(self):
+        """Apply delete buttons and slideshow badges based on current mode."""
+        for widget in self.item_widgets:
+            if not isinstance(widget, ThemeThumbnail):
+                continue
+
+            info = widget.item_info
+            idx = info.get('_index', 0)
+
+            # Delete buttons: not shown in slideshow mode (Windows behavior)
+            if not self._slideshow:
+                # Windows: MODE_ALL/DEFAULT shows delete only on index >= 5
+                # MODE_USER shows delete on ALL themes
+                if self.filter_mode == self.MODE_USER:
+                    widget.set_deletable(True)
+                elif idx >= 5:
+                    widget.set_deletable(True)
+                else:
+                    widget.set_deletable(False)
+            else:
+                widget.set_deletable(False)
+
+            # Slideshow badges
+            widget.set_slideshow_mode(self._slideshow)
+            if self._slideshow:
+                name = info.get('name', '')
+                if name in self._lunbo_array:
+                    pos = self._lunbo_array.index(name) + 1
+                    widget.set_slideshow_badge(pos)
+                else:
+                    widget.set_slideshow_badge(0)  # Empty circle
+            else:
+                widget.clear_slideshow_badge()
+
+    def _on_delete_clicked(self, item_info: dict):
+        """Forward delete request to parent (confirmation handled there)."""
+        self.delete_requested.emit(item_info)
+
+    def _on_slideshow_toggled(self, item_info: dict):
+        """Toggle theme in/out of slideshow array (Windows lunBoArray)."""
+        name = item_info.get('name', '')
+        if name in self._lunbo_array:
+            self._lunbo_array.remove(name)
+        elif len(self._lunbo_array) < self.MAX_SLIDESHOW:
+            self._lunbo_array.append(name)
+
+        self._apply_decorations()
+        self.invoke_delegate(self.CMD_SLIDESHOW)
 
     def _on_item_clicked(self, item_info: dict):
         """Extend base to also invoke delegate."""
@@ -156,6 +308,7 @@ class UCThemeLocal(BaseThemeBrowser):
         if not px.isNull():
             self.slideshow_btn.setIcon(QIcon(px))
             self.slideshow_btn.setIconSize(self.slideshow_btn.size())
+        self._apply_decorations()
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
     def _on_timer_changed(self):
@@ -176,5 +329,28 @@ class UCThemeLocal(BaseThemeBrowser):
     def get_slideshow_interval(self):
         return self._slideshow_interval
 
+    def get_slideshow_themes(self):
+        """Get list of theme info dicts in slideshow order."""
+        result = []
+        for name in self._lunbo_array:
+            for t in self._all_themes:
+                if t['name'] == name:
+                    result.append(t)
+                    break
+        return result
+
     def get_selected_theme(self):
         return self.selected_item
+
+    def delete_theme(self, theme_info: dict):
+        """Delete a theme directory and refresh the list."""
+        path = Path(theme_info.get('path', ''))
+        if path.exists() and path.is_dir():
+            shutil.rmtree(path)
+
+        # Remove from slideshow if present
+        name = theme_info.get('name', '')
+        if name in self._lunbo_array:
+            self._lunbo_array.remove(name)
+
+        self.load_themes()

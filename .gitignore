@@ -45,8 +45,35 @@ trcc_setup.h
 # Extracted Windows resources at root level (not for distribution)
 /assets/
 
-# Data directories at root level (themes, cloud downloads, etc.)
-data/
+# Theme data: ignore cloud-downloaded themes (numbered dirs like 000a, 001b)
+# but keep default Theme1-5 for supported SCSI resolutions
+src/data/Theme*/[0-9]*/
+src/data/Theme*/Theme.zt
+
+# Non-SCSI resolution theme dirs (USBLCDNEW/HID only — not supported yet)
+src/data/Theme240320/
+src/data/Theme320240/
+src/data/Theme360360/
+src/data/Theme480480y/
+src/data/Theme480640/
+src/data/Theme480800/
+src/data/Theme480854/
+src/data/Theme540960/
+src/data/Theme7201600/
+src/data/Theme800480/
+src/data/Theme854480/
+src/data/Theme960540/
+src/data/Theme1280480/
+src/data/Theme1920462/
+src/data/Theme4621920/
+src/data/Theme4801280/
+src/data/Theme/
+
+# Cloud theme video cache
+src/data/videos/
+
+# Root-level data dir (not src/data)
+/data/
 
 # Test screenshots/comparison photos
 expected_photos/

@@ -506,6 +506,7 @@ class ColorPickerPanel(QFrame):
     color_changed = pyqtSignal(int, int, int)
     position_changed = pyqtSignal(int, int)
     font_changed = pyqtSignal(str, int)
+    eyedropper_requested = pyqtSignal()  # launch eyedropper color picker
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -598,6 +599,19 @@ class ColorPickerPanel(QFrame):
             btn.setStyleSheet("background-color: transparent; border: none;")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._history_btns.append(btn)
+
+        # Eyedropper button (matches Windows buttonGetColor at (12, 276, 48, 48))
+        self.eyedropper_btn = QPushButton(self)
+        self.eyedropper_btn.setGeometry(*Layout.COLOR_EYEDROPPER)
+        eyedrop_pixmap = load_pixmap('P吸管.png', 48, 48)
+        if not eyedrop_pixmap.isNull():
+            self.eyedropper_btn.setIcon(QIcon(eyedrop_pixmap))
+            self.eyedropper_btn.setIconSize(self.eyedropper_btn.size())
+        self.eyedropper_btn.setFlat(True)
+        self.eyedropper_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
+        self.eyedropper_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.eyedropper_btn.setToolTip("Pick color from screen")
+        self.eyedropper_btn.clicked.connect(self.eyedropper_requested.emit)
 
     def _pick_color(self):
         color = QColorDialog.getColor(self._current_color, self, "Pick Color")
@@ -1025,6 +1039,8 @@ class ScreenCastPanel(DisplayModePanel):
         (1920, 462): 77.0 / 320.0,
     }
 
+    capture_requested = pyqtSignal()  # launch screen capture
+
     def __init__(self, parent=None):
         super().__init__("screencast", [], parent)
         self._updating = False
@@ -1205,11 +1221,14 @@ class UCThemeSetting(BasePanel):
     CMD_MASK_RESET = 99
     CMD_VIDEO_LOAD = 10
     CMD_OVERLAY_CHANGED = 128
+    CMD_EYEDROPPER = 112  # Matches Windows cmd for FormGetColor
 
     overlay_changed = pyqtSignal(dict)
     background_changed = pyqtSignal(bool)
     screencast_changed = pyqtSignal(bool)
     screencast_params_changed = pyqtSignal(int, int, int, int)  # x, y, w, h
+    eyedropper_requested = pyqtSignal()  # launch eyedropper color picker
+    capture_requested = pyqtSignal()     # launch screen capture
 
     def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
@@ -1232,6 +1251,7 @@ class UCThemeSetting(BasePanel):
         self.color_panel = ColorPickerPanel()
         self.color_panel.color_changed.connect(self._on_color_changed)
         self.color_panel.position_changed.connect(self._on_position_changed)
+        self.color_panel.eyedropper_requested.connect(self.eyedropper_requested.emit)
         self.right_stack.addWidget(self.color_panel)
 
         self.add_panel = AddElementPanel()
@@ -1261,6 +1281,7 @@ class UCThemeSetting(BasePanel):
         self.screencast_panel.move(*Layout.SCREENCAST_PANEL)
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
         self.screencast_panel.screencast_params_changed.connect(self._on_screencast_params)
+        self.screencast_panel.capture_requested.connect(self.capture_requested.emit)
 
         self.video_panel = DisplayModePanel("video", ["VideoLoad"], self)
         self.video_panel.move(*Layout.VIDEO_PANEL)

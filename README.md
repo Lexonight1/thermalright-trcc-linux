@@ -47,6 +47,12 @@ Resolutions: 240x240, 320x320, 360x360, 480x480, 480x800
 - Theme editor
 - Multi-device support
 
+## Support
+
+If you find this project useful, consider supporting development:
+
+[Buy Me a Coffee](https://buymeacoffee.com/Lexonight1)
+
 ## License
 
 GPL-3.0

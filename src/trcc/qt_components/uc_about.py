@@ -17,13 +17,14 @@ Windows controls (from UCAbout.cs):
 import webbrowser
 from pathlib import Path
 
-from PyQt6.QtWidgets import QPushButton, QLabel, QLineEdit
+from PyQt6.QtWidgets import QPushButton, QLabel, QLineEdit, QComboBox
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPalette, QBrush, QIcon, QIntValidator
 
 from .base import BasePanel, create_image_button
 from .assets import load_pixmap, Assets
 from .constants import Colors, Sizes, Layout, Styles
+from ..paths import SUPPORTED_RESOLUTIONS, get_saved_resolution
 
 
 # Linux autostart desktop file
@@ -75,6 +76,7 @@ class UCAbout(BasePanel):
     startup_changed = pyqtSignal(bool)       # auto-start enabled
     hdd_toggle_changed = pyqtSignal(bool)    # HDD info enabled
     refresh_changed = pyqtSignal(int)        # refresh interval (seconds)
+    resolution_changed = pyqtSignal(int, int)  # width, height
 
     def __init__(self, lang: str = 'en', parent=None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
@@ -140,6 +142,31 @@ class UCAbout(BasePanel):
             " font-family: 'Microsoft YaHei'; font-size: 9pt;"
         )
         self.refresh_input.editingFinished.connect(self._on_refresh_changed)
+
+        # === LCD Resolution selector ===
+        res_label = QLabel("LCD Resolution:", self)
+        res_label.setGeometry(197, 331, 95, 16)
+        res_label.setStyleSheet(
+            "color: #B4964F; font-size: 9pt; background: transparent;"
+        )
+
+        self.resolution_combo = QComboBox(self)
+        self.resolution_combo.setGeometry(297, 329, 100, 20)
+        self.resolution_combo.setStyleSheet(
+            "QComboBox { background-color: black; color: #B4964F; border: none;"
+            " font-size: 9pt; padding-left: 4px; }"
+            "QComboBox::drop-down { border: none; }"
+            "QComboBox QAbstractItemView { background-color: #1E1E1E;"
+            " color: #B4964F; selection-background-color: #3B6B9A; }"
+        )
+        saved_w, saved_h = get_saved_resolution()
+        for w, h in SUPPORTED_RESOLUTIONS:
+            self.resolution_combo.addItem(f"{w}×{h}", (w, h))
+            if (w, h) == (saved_w, saved_h):
+                self.resolution_combo.setCurrentIndex(
+                    self.resolution_combo.count() - 1)
+        self.resolution_combo.currentIndexChanged.connect(
+            self._on_resolution_changed)
 
         # === Language selection checkboxes ===
         for x, y, lang_suffix in Layout.ABOUT_LANG_BUTTONS:
@@ -237,6 +264,15 @@ class UCAbout(BasePanel):
     @property
     def refresh_interval(self):
         return self._refresh_interval
+
+    # --- Resolution ---
+
+    def _on_resolution_changed(self, index: int):
+        """Handle resolution dropdown change."""
+        data = self.resolution_combo.itemData(index)
+        if data:
+            w, h = data
+            self.resolution_changed.emit(w, h)
 
     # --- Language ---
 

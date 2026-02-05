@@ -145,11 +145,12 @@ class CloudThemeDownloader:
         self.resolution = resolution
         self.server = server
 
-        # Set cache directory
+        # Set cache directory (per-resolution, matching Windows Data\USBLCD\Web\{res}\)
         if cache_dir:
             self.cache_dir = Path(cache_dir)
         else:
-            self.cache_dir = Path.home() / ".trcc" / "cloud_themes"
+            res_dir = resolution.replace('x', '')
+            self.cache_dir = Path.home() / ".trcc" / "cloud_themes" / res_dir
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,13 +164,17 @@ class CloudThemeDownloader:
     def _update_base_url(self):
         """Update base URL based on resolution and server."""
         base = SERVERS.get(self.server, SERVERS['international'])
-        res_suffix = RESOLUTION_URLS.get(self.resolution, f"bj{self.resolution.replace('x', '')}")
-        self.base_url = base.replace('{resolution}', '').rstrip('/') + '/' + res_suffix + '/'
+        res_dir = self.resolution.replace('x', '')  # "320x320" -> "320320"
+        self.base_url = base.replace('{resolution}', res_dir)
 
     def set_resolution(self, resolution: str):
-        """Change the target resolution."""
+        """Change the target resolution and cache directory."""
         self.resolution = resolution
         self._update_base_url()
+        # Switch to resolution-specific cache directory
+        res_dir = resolution.replace('x', '')
+        self.cache_dir = Path.home() / ".trcc" / "cloud_themes" / res_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def set_server(self, server: str):
         """Change the server ('international' or 'china')."""

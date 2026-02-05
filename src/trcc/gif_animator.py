@@ -346,8 +346,8 @@ class VideoPlayer:
         except Exception as e:
             print(f"[!] ffprobe failed: {e}")
             self.fps = 30
-            self.width = 320
-            self.height = 320
+            self.width = self.target_size[0]
+            self.height = self.target_size[1]
         
         # Create temp directory for BMP frames (matching Windows TRCC)
         self._temp_dir = tempfile.mkdtemp(prefix='trcc_video_')

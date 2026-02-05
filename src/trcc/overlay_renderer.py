@@ -51,6 +51,7 @@ class OverlayRenderer:
         self.theme_mask = None
         self.theme_mask_position = (0, 0)
         self.font_cache = {}
+        self.flash_skip_index = -1  # Windows shanPingCount: skip this element during render
 
         # Format settings (matching Windows TRCC UCXiTongXianShiSub.cs)
         # Time: 0=HH:mm, 1=hh:mm AM/PM, 2=HH:mm (same as 0)
@@ -241,8 +242,11 @@ class OverlayRenderer:
         if not self.config or not isinstance(self.config, dict):
             return img
 
-        for key, cfg in self.config.items():
+        for elem_idx, (key, cfg) in enumerate(self.config.items()):
             if not isinstance(cfg, dict) or not cfg.get('enabled', True):
+                continue
+            # Windows shanPingCount: skip this element to create flash/blink effect
+            if elem_idx == self.flash_skip_index:
                 continue
 
             x = cfg.get('x', 10)
