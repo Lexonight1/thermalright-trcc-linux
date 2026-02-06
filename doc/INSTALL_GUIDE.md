@@ -8,8 +8,9 @@ A beginner-friendly guide to getting Thermalright LCD Control Center running on 
 
 1. [What is TRCC?](#what-is-trcc)
 2. [Compatible Coolers](#compatible-coolers)
-3. [Prerequisites](#prerequisites)
-4. [Step 1 - Install System Dependencies](#step-1---install-system-dependencies)
+3. [HID Device Support (Testing Branch)](#hid-device-support-testing-branch)
+4. [Prerequisites](#prerequisites)
+5. [Step 1 - Install System Dependencies](#step-1---install-system-dependencies)
    - [Fedora / RHEL / CentOS Stream / Rocky / Alma](#fedora--rhel--centos-stream--rocky--alma)
    - [Ubuntu / Debian / Linux Mint / Pop!_OS / Zorin / elementary](#ubuntu--debian--linux-mint--pop_os--zorin--elementary)
    - [Arch Linux / Manjaro / EndeavourOS / CachyOS / Garuda](#arch-linux--manjaro--endeavouros--cachyos--garuda)
@@ -21,25 +22,25 @@ A beginner-friendly guide to getting Thermalright LCD Control Center running on 
    - [Alpine Linux](#alpine-linux)
    - [Solus](#solus)
    - [Clear Linux](#clear-linux)
-5. [Step 2 - Download TRCC](#step-2---download-trcc)
-6. [Step 3 - Install Python Dependencies](#step-3---install-python-dependencies)
-7. [Step 4 - Set Up Device Permissions](#step-4---set-up-device-permissions)
-8. [Step 5 - Connect Your Cooler](#step-5---connect-your-cooler)
-9. [Step 6 - Run TRCC](#step-6---run-trcc)
-10. [Immutable / Atomic Distros](#immutable--atomic-distros)
+6. [Step 2 - Download TRCC](#step-2---download-trcc)
+7. [Step 3 - Install Python Dependencies](#step-3---install-python-dependencies)
+8. [Step 4 - Set Up Device Permissions](#step-4---set-up-device-permissions)
+9. [Step 5 - Connect Your Cooler](#step-5---connect-your-cooler)
+10. [Step 6 - Run TRCC](#step-6---run-trcc)
+11. [Immutable / Atomic Distros](#immutable--atomic-distros)
     - [Bazzite / Fedora Atomic / Aurora / Bluefin](#bazzite--fedora-atomic--aurora--bluefin)
     - [SteamOS (Steam Deck)](#steamos-steam-deck)
     - [Vanilla OS](#vanilla-os)
     - [ChromeOS (Crostini)](#chromeos-crostini)
-11. [Special Hardware](#special-hardware)
+12. [Special Hardware](#special-hardware)
     - [Asahi Linux (Apple Silicon)](#asahi-linux-apple-silicon)
     - [Raspberry Pi / ARM SBCs](#raspberry-pi--arm-sbcs)
     - [WSL2 (Windows Subsystem for Linux)](#wsl2-windows-subsystem-for-linux)
-12. [Using the GUI](#using-the-gui)
-13. [Command Line Usage](#command-line-usage)
-14. [Troubleshooting](#troubleshooting)
-15. [Wayland-Specific Notes](#wayland-specific-notes)
-16. [Uninstalling](#uninstalling)
+13. [Using the GUI](#using-the-gui)
+14. [Command Line Usage](#command-line-usage)
+15. [Troubleshooting](#troubleshooting)
+16. [Wayland-Specific Notes](#wayland-specific-notes)
+17. [Uninstalling](#uninstalling)
 
 ---
 
@@ -72,6 +73,130 @@ TRCC Linux works with these Thermalright products that have a built-in LCD displ
 - 640x480 pixels
 
 > **Note:** If your cooler came with a Windows-only CD or download link for "TRCC" or "CZTV" software, it's compatible.
+
+---
+
+## HID Device Support (Testing Branch)
+
+> **WE NEED TESTERS!** HID device support is implemented but **has not been validated with real hardware**. If you have an HID-protocol LCD device (see table below), please try the `hid-protocol-testing` branch and report your results — working or not — at https://github.com/Lexonight1/thermalright-trcc-linux/issues
+
+### Which protocol does my device use?
+
+Plug in your cooler and run `lsusb`. Find the VID:PID for your device and check the table:
+
+| VID:PID | Protocol | lsusb description | Notes |
+|---------|----------|-------------------|-------|
+| `87cd:70db` | **SCSI** | Thermalright LCD Display | Stable (main branch) |
+| `0416:5406` | **SCSI** | ALi Corp LCD Display | Stable (main branch) |
+| `0402:3922` | **SCSI** | FROZEN WARFRAME | Stable (main branch) |
+| `0416:530a` | **HID** | ALi Corp LCD Display (H) | **Testing — needs testers** |
+| `0416:53e6` | **HID** | ALi Corp LCD Display (ALi) | **Testing — needs testers** |
+
+**SCSI devices** (the first three) work on both the `main`/`stable` branch and this testing branch. No extra setup needed — follow the normal install steps below.
+
+**HID devices** (the last two) only work on the `hid-protocol-testing` branch. These use a completely different USB protocol (bulk transfer instead of SCSI commands) and require different system libraries.
+
+### Installing for HID devices
+
+#### 1. Clone the testing branch
+
+```bash
+git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git
+cd thermalright-trcc-linux
+```
+
+#### 2. Install HID USB libraries
+
+HID devices need `pyusb` (preferred) or `hidapi` (fallback) instead of `sg3_utils`:
+
+```bash
+# Fedora / RHEL / Nobara
+sudo dnf install libusb1-devel python3-pyusb
+# or: sudo dnf install hidapi-devel python3-hidapi
+
+# Ubuntu / Debian / Linux Mint / Pop!_OS
+sudo apt install libusb-1.0-0-dev python3-usb
+# or: sudo apt install libhidapi-dev python3-hidapi
+
+# Arch / Manjaro / EndeavourOS / CachyOS
+sudo pacman -S libusb python-pyusb
+# or: sudo pacman -S hidapi python-hidapi
+
+# openSUSE
+sudo zypper install libusb-1_0-devel python3-pyusb
+# or: sudo zypper install libhidapi-devel python3-hidapi
+
+# Or install via pip (any distro)
+pip install pyusb    # needs libusb-1.0 system lib
+pip install hidapi   # needs libhidapi system lib
+```
+
+> **You only need one backend** — `pyusb` is preferred, `hidapi` is the fallback. TRCC auto-detects which is available.
+
+#### 3. Install remaining dependencies
+
+Follow the normal [Step 1](#step-1---install-system-dependencies) for your distro, but **`sg3_utils` is optional for HID-only users** (it's only needed for SCSI devices). Everything else (PyQt6, FFmpeg, Pillow, etc.) is the same.
+
+#### 4. Install and run
+
+```bash
+pip install -e ".[hid]"     # installs TRCC + HID deps
+trcc gui                     # launch the GUI
+```
+
+Or without pip install:
+
+```bash
+pip install pyusb            # or hidapi
+PYTHONPATH=src python3 -m trcc.cli gui
+```
+
+#### 5. Verify detection
+
+```bash
+trcc detect --all
+```
+
+HID devices should show as:
+
+```
+Device 1:
+  Device: ALi Corp LCD Display (HID H)
+  USB VID:PID: 0416:530A
+  Protocol: HID (type 2)
+  Model: CZTV
+```
+
+### HID udev rules
+
+HID devices need different udev rules than SCSI devices. `trcc setup-udev` on this branch creates rules for both, but if you need to add them manually:
+
+```bash
+# /etc/udev/rules.d/99-trcc-lcd.rules
+# HID LCD devices — allow non-root access
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0666"
+```
+
+Then reload and replug:
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+# Unplug and replug USB cable
+```
+
+### Reporting test results
+
+If you're testing an HID device, please open an issue with:
+
+1. Your device's `lsusb` output (VID:PID)
+2. Output of `trcc detect --all`
+3. Whether sending images works (`trcc test`)
+4. Any error messages from `trcc gui -vv` (verbose debug mode)
+5. Your distro and kernel version (`uname -r`)
+
+Even "it doesn't work" reports are valuable — they help us debug the protocol.
 
 ---
 
@@ -385,12 +510,14 @@ sudo swupd bundle-add devpkg-pipewire
 | Package | Why it's needed |
 |---------|----------------|
 | `python3-pip` | Installs Python packages (like TRCC itself) |
-| `sg3_utils` | Sends data to the LCD over USB (SCSI commands) — **required** |
+| `sg3_utils` | Sends data to the LCD over USB (SCSI commands) — **required for SCSI devices** |
 | `PyQt6` / `python3-pyqt6` | The graphical user interface (GUI) toolkit |
 | `ffmpeg` | Video and GIF playback on the LCD |
 | `p7zip` / `7zip` | Extracts bundled theme `.7z` archives (optional if `py7zr` is installed) |
 | `grim` | Screen capture on Wayland desktops (optional) |
 | `python3-gobject` / `python3-dbus` | PipeWire screen capture for GNOME/KDE Wayland (optional) |
+| `pyusb` + `libusb` | USB communication for HID LCD devices (optional, testing branch only) |
+| `hidapi` + `libhidapi` | Fallback USB backend for HID LCD devices (optional, testing branch only) |
 
 ---
 
@@ -1226,6 +1353,43 @@ echo "options usb-storage quirks=87cd:70db:u,0416:5406:u,0402:3922:u" | sudo tee
 sudo update-initramfs -u  # Debian/Ubuntu
 # or
 sudo dracut --force       # Fedora/RHEL
+```
+
+### HID device detected but "No USB backend available"
+
+**Cause:** Neither `pyusb` nor `hidapi` is installed. HID devices need one of these.
+
+**Fix:**
+```bash
+# Install pyusb (preferred)
+pip install pyusb
+# Also need the system library:
+sudo apt install libusb-1.0-0-dev    # Debian/Ubuntu
+sudo dnf install libusb1-devel       # Fedora
+sudo pacman -S libusb                # Arch
+
+# Or install hidapi (alternative)
+pip install hidapi
+sudo apt install libhidapi-dev       # Debian/Ubuntu
+sudo dnf install hidapi-devel        # Fedora
+sudo pacman -S hidapi                # Arch
+```
+
+### HID device detected but "Permission denied" on USB
+
+**Cause:** udev rules not set up for HID USB devices, or missing group membership.
+
+**Fix:**
+```bash
+# Set up udev rules (covers both SCSI and HID)
+sudo trcc setup-udev
+# Unplug and replug USB cable
+
+# If that doesn't work, add the rule manually:
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0666"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0666"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+sudo udevadm control --reload-rules
+# Unplug and replug USB cable
 ```
 
 ### NixOS: "trcc setup-udev" doesn't work
