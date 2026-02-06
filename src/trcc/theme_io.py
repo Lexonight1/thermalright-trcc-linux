@@ -203,7 +203,8 @@ def export_theme(
                         f.write(struct.pack('<i', frame_len))
                         f.write(frame_data)
         else:
-            f.write(struct.pack('<i', 0))  # No background
+            f.write(struct.pack('<i', 0))  # marker: not Theme.zt
+            f.write(struct.pack('<i', 0))  # bg_len = 0 (no background)
 
     return True
 
