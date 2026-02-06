@@ -790,10 +790,11 @@ class FormCZTVController:
             if not bg_path.exists() and self.current_image:
                 self.current_image.save(str(bg_path))
 
-            # Generate thumbnail in working dir
+            # Generate thumbnail from rendered preview (background + mask + overlays)
             thumb_path = self.working_dir / 'Theme.png'
             if self.current_image:
-                thumb = self.current_image.copy()
+                rendered = self.overlay.render(self.current_image)
+                thumb = rendered.copy()
                 thumb.thumbnail((120, 120))
                 thumb.save(str(thumb_path))
 

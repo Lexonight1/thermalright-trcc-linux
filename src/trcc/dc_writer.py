@@ -404,11 +404,13 @@ def save_theme(theme_path: str,
         bg_path = os.path.join(theme_path, "00.png")
         background_image.save(bg_path)
 
-        # Also save as preview thumbnail
+        # Save preview thumbnail (background-only fallback;
+        # controller generates a better one with overlays/mask applied)
         preview_path = os.path.join(theme_path, "Theme.png")
-        thumb = background_image.copy()
-        thumb.thumbnail((120, 120))
-        thumb.save(preview_path)
+        if not os.path.exists(preview_path):
+            thumb = background_image.copy()
+            thumb.thumbnail((120, 120))
+            thumb.save(preview_path)
 
     # Save mask image
     if mask_image:
