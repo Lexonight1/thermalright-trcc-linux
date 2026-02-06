@@ -9,6 +9,7 @@ from trcc.system_info import (
     WEEKDAYS,
     find_hwmon_by_name,
     format_metric,
+    get_all_metrics,
     get_cpu_frequency,
     get_cpu_temperature,
     get_cpu_usage,
@@ -798,6 +799,411 @@ class TestFanSpeedsHwmon(unittest.TestCase):
         self.assertEqual(result['fan_cpu'], 1500.0)
         self.assertIn('fan_gpu', result)
         self.assertEqual(result['fan_gpu'], 900.0)
+
+
+# ── find_hwmon_by_name no match ──────────────────────────────────────────────
+
+class TestFindHwmonNoMatch(unittest.TestCase):
+
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.read_file', return_value='nct6775')
+    def test_returns_none_when_no_match(self, *_):
+        from trcc.system_info import find_hwmon_by_name
+        result = find_hwmon_by_name('nonexistent_driver_xyz')
+        self.assertIsNone(result)
+
+
+# ── CPU frequency /proc/cpuinfo fallback ─────────────────────────────────────
+
+class TestCpuFreqFallback(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('builtins.open', unittest.mock.mock_open(
+        read_data='processor\t: 0\ncpu MHz\t\t: 3600.123\n'))
+    def test_proc_cpuinfo_fallback(self, *_):
+        from trcc.system_info import get_cpu_frequency
+        result = get_cpu_frequency()
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 3600.123, places=2)
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('builtins.open', side_effect=FileNotFoundError)
+    def test_proc_cpuinfo_missing(self, _):
+        from trcc.system_info import get_cpu_frequency
+        result = get_cpu_frequency()
+        self.assertIsNone(result)
+
+
+# ── Memory fallbacks ─────────────────────────────────────────────────────────
+
+class TestMemoryFallbacks(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('builtins.open', unittest.mock.mock_open(
+        read_data='MemTotal:       16384000 kB\nMemAvailable:    8192000 kB\n'))
+    def test_memory_usage_proc_fallback(self):
+        from trcc.system_info import get_memory_usage
+        result = get_memory_usage()
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 50.0, delta=0.1)
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('builtins.open', unittest.mock.mock_open(
+        read_data='MemAvailable:    8192000 kB\n'))
+    def test_memory_available_proc(self):
+        from trcc.system_info import get_memory_available
+        result = get_memory_available()
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 8000.0, delta=1)
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('builtins.open', side_effect=FileNotFoundError)
+    def test_memory_available_missing(self, _):
+        from trcc.system_info import get_memory_available
+        result = get_memory_available()
+        self.assertIsNone(result)
+
+
+# ── Memory temperature paths ─────────────────────────────────────────────────
+
+class TestMemoryTemperature(unittest.TestCase):
+
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.read_file')
+    def test_hwmon_spd_temp(self, mock_read, _):
+        """Memory temp found via hwmon spd5118 sensor."""
+        def read_side(path):
+            if 'name' in path:
+                return 'spd5118'
+            if 'temp1_input' in path:
+                return '42000'
+            return None
+        mock_read.side_effect = read_side
+
+        from trcc.system_info import get_memory_temperature
+        result = get_memory_temperature()
+        self.assertAlmostEqual(result, 42.0)
+
+    @patch('trcc.system_info.os.path.exists', return_value=False)
+    @patch('trcc.system_info.subprocess.run')
+    def test_lm_sensors_fallback(self, mock_run, _):
+        """Memory temp found via lm-sensors output."""
+        # Section header must contain ddr/dimm/memory, then indented line with temp + _input
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='DDR5 DIMM Adapter\n  temp1_input: 38.500\n')
+        from trcc.system_info import get_memory_temperature
+        result = get_memory_temperature()
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 38.5)
+
+
+# ── Memory clock ─────────────────────────────────────────────────────────────
+
+class TestMemoryClock(unittest.TestCase):
+
+    @patch('trcc.system_info.subprocess.run')
+    def test_dmidecode_configured_speed(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='Memory Device\n\tConfigured Memory Speed: 5600 MT/s\n')
+        from trcc.system_info import get_memory_clock
+        result = get_memory_clock()
+        self.assertAlmostEqual(result, 5600.0)
+
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.os.listdir', return_value=['mc0'])
+    @patch('trcc.system_info.read_file', return_value='rank0: 4800 MHz')
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_edac_fallback(self, *_):
+        from trcc.system_info import get_memory_clock
+        result = get_memory_clock()
+        self.assertAlmostEqual(result, 4800.0)
+
+
+# ── Disk activity estimate fallback ──────────────────────────────────────────
+
+class TestDiskActivityEstimate(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    @patch('time.time', return_value=101.0)
+    def test_no_busy_time_uses_estimate(self, _, mock_psutil):
+        """Disk counters without busy_time → estimate from I/O bytes."""
+        import trcc.system_info as mod
+
+        current = MagicMock(spec=['read_bytes', 'write_bytes'])
+        current.read_bytes = 10 * 1024 * 1024
+        current.write_bytes = 5 * 1024 * 1024
+        mock_psutil.disk_io_counters.return_value = current
+
+        prev = MagicMock(spec=['read_bytes', 'write_bytes'])
+        prev.read_bytes = 0
+        prev.write_bytes = 0
+
+        old_prev = mod._prev_disk_io
+        old_time = mod._prev_disk_time
+        mod._prev_disk_io = prev
+        mod._prev_disk_time = 100.0
+
+        try:
+            from trcc.system_info import get_disk_stats
+            stats = get_disk_stats()
+            self.assertIn('disk_activity', stats)
+        finally:
+            mod._prev_disk_io = old_prev
+            mod._prev_disk_time = old_time
+
+
+# ── Network rate calculation ─────────────────────────────────────────────────
+
+class TestNetworkRates(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    @patch('time.time', return_value=101.0)
+    def test_net_rates_calculated(self, _, mock_psutil):
+        import trcc.system_info as mod
+
+        current = MagicMock()
+        current.bytes_sent = 200 * 1024
+        current.bytes_recv = 500 * 1024
+        mock_psutil.net_io_counters.return_value = current
+
+        prev = MagicMock()
+        prev.bytes_sent = 0
+        prev.bytes_recv = 0
+
+        old_prev = mod._prev_net_io
+        old_time = mod._prev_net_time
+        mod._prev_net_io = prev
+        mod._prev_net_time = 100.0
+
+        try:
+            from trcc.system_info import get_network_stats
+            stats = get_network_stats()
+            self.assertIn('net_up', stats)
+            self.assertIn('net_down', stats)
+            self.assertAlmostEqual(stats['net_up'], 200.0, delta=1)
+            self.assertAlmostEqual(stats['net_down'], 500.0, delta=1)
+        finally:
+            mod._prev_net_io = old_prev
+            mod._prev_net_time = old_time
+
+
+# ── Fan speed hwmon direct path ──────────────────────────────────────────────
+
+class TestFanSpeedHwmon(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.read_file')
+    def test_direct_hwmon_fans(self, mock_read, _):
+        """Fan speeds read directly from hwmon when psutil unavailable."""
+        def read_side(path):
+            if 'fan1_input' in path and 'hwmon0' in path:
+                return '1200'
+            if 'fan2_input' in path and 'hwmon0' in path:
+                return '900'
+            return None
+        mock_read.side_effect = read_side
+
+        from trcc.system_info import get_fan_speeds
+        result = get_fan_speeds()
+        self.assertEqual(result.get('fan_cpu'), 1200.0)
+        self.assertEqual(result.get('fan_gpu'), 900.0)
+
+
+# ── get_all_metrics None branches ────────────────────────────────────────────
+
+class TestGetAllMetricsNoneBranches(unittest.TestCase):
+
+    @patch('trcc.system_info.get_fan_speeds', return_value={})
+    @patch('trcc.system_info.get_network_stats', return_value={})
+    @patch('trcc.system_info.get_disk_stats', return_value={})
+    @patch('trcc.system_info.get_disk_temperature', return_value=None)
+    @patch('trcc.system_info.get_memory_clock', return_value=None)
+    @patch('trcc.system_info.get_memory_temperature', return_value=None)
+    @patch('trcc.system_info.get_memory_available', return_value=None)
+    @patch('trcc.system_info.get_memory_usage', return_value=None)
+    @patch('trcc.system_info.get_gpu_clock', return_value=None)
+    @patch('trcc.system_info.get_gpu_usage', return_value=None)
+    @patch('trcc.system_info.get_gpu_temperature', return_value=None)
+    @patch('trcc.system_info.get_cpu_frequency', return_value=None)
+    @patch('trcc.system_info.get_cpu_usage', return_value=None)
+    @patch('trcc.system_info.get_cpu_temperature', return_value=None)
+    def test_all_none_returns_minimal(self, *_):
+        """When all sensors return None, only date/time/weekday present."""
+        from trcc.system_info import get_all_metrics
+        result = get_all_metrics()
+        self.assertIn('date', result)
+        self.assertIn('time', result)
+        self.assertIn('weekday', result)
+        # No sensor keys should be present
+        self.assertNotIn('cpu_temp', result)
+        self.assertNotIn('gpu_temp', result)
+        self.assertNotIn('mem_percent', result)
+        self.assertNotIn('mem_clock', result)
+        self.assertNotIn('disk_temp', result)
+
+
+# ── Targeted coverage: exception / edge paths ────────────────────────────────
+
+class TestMemoryUsageExcept(unittest.TestCase):
+    """Cover except-Exception and return-None in get_memory_usage."""
+
+    def test_open_fails(self):
+        """open('/proc/meminfo') raises → except → return None (lines 227-230)."""
+        with patch('builtins.open', side_effect=PermissionError("denied")):
+            self.assertIsNone(get_memory_usage())
+
+    def test_memtotal_zero(self):
+        """MemTotal=0 → total=0 → return None (line 230)."""
+        fake = 'MemTotal:       0 kB\nMemAvailable:    0 kB\n'
+        with patch('builtins.open', unittest.mock.mock_open(read_data=fake)):
+            self.assertIsNone(get_memory_usage())
+
+
+class TestMemoryTempContinue(unittest.TestCase):
+    """Cover continue when hwmon sensor_name is None (line 258)."""
+
+    @patch('trcc.system_info.subprocess.run', side_effect=Exception)
+    @patch('trcc.system_info.read_file')
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    def test_skip_none_name(self, mock_exists, mock_read, _):
+        def read_side(path):
+            if 'hwmon0/name' in path:
+                return None          # triggers continue at line 258
+            if 'hwmon1/name' in path:
+                return 'ddr5_thermal'
+            if 'hwmon1/temp1_input' in path:
+                return '41000'
+            return None
+        mock_read.side_effect = read_side
+        self.assertAlmostEqual(get_memory_temperature(), 41.0)
+
+
+class TestMemoryTempSensorsExcept(unittest.TestCase):
+    """Cover except-Exception in lm_sensors path (lines 282-283)."""
+
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('trcc.system_info.os.path.exists', return_value=False)
+    def test_sensors_raises(self, *_):
+        self.assertIsNone(get_memory_temperature())
+
+
+class TestMemoryClockEdacExcept(unittest.TestCase):
+    """Cover except-Exception in EDAC mc section (lines 337-338)."""
+
+    @patch('trcc.system_info.os.listdir', side_effect=PermissionError)
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_edac_listdir_fails(self, *_):
+        self.assertIsNone(get_memory_clock())
+
+
+class TestDiskStatsNoBusyTimeClean(unittest.TestCase):
+    """Cover else branch for disk_activity estimate (lines 380-381).
+
+    Uses plain objects instead of MagicMock to avoid spec/hasattr ambiguity.
+    """
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_estimate_from_io(self, mock_psutil):
+        import trcc.system_info as si
+        import time as real_time
+
+        # Plain object — no busy_time attribute
+        class FakeIO:
+            def __init__(self, r, w):
+                self.read_bytes = r
+                self.write_bytes = w
+
+        old_prev, old_time = si._prev_disk_io, si._prev_disk_time
+        si._prev_disk_io = FakeIO(0, 0)
+        si._prev_disk_time = real_time.time() - 1.0
+
+        mock_psutil.disk_io_counters.return_value = FakeIO(2 * 1024 * 1024, 1024 * 1024)
+        try:
+            result = get_disk_stats()
+            self.assertIn('disk_activity', result)
+            self.assertGreater(result['disk_activity'], 0)
+        finally:
+            si._prev_disk_io = old_prev
+            si._prev_disk_time = old_time
+
+
+class TestNetworkStatsExcept(unittest.TestCase):
+    """Cover except-Exception in get_network_stats (lines 453-454)."""
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_psutil_raises(self, mock_psutil):
+        mock_psutil.net_io_counters.side_effect = RuntimeError("fail")
+        self.assertEqual(get_network_stats(), {})
+
+
+class TestDiskStatsExcept(unittest.TestCase):
+    """Cover except-Exception in get_disk_stats (lines 380-381)."""
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_psutil_raises(self, mock_psutil):
+        mock_psutil.disk_io_counters.side_effect = RuntimeError("fail")
+        self.assertEqual(get_disk_stats(), {})
+
+
+class TestFanSpeedsExceptPaths(unittest.TestCase):
+    """Cover psutil exception (lines 477-478) and hwmon ValueError (501-502)."""
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    @patch('trcc.system_info.os.path.exists', return_value=False)
+    def test_psutil_fans_exception(self, _, mock_psutil):
+        mock_psutil.sensors_fans.side_effect = RuntimeError
+        self.assertEqual(get_fan_speeds(), {})
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    @patch('trcc.system_info.read_file')
+    def test_hwmon_rpm_valueerror(self, mock_read, _):
+        def read_side(path):
+            if 'fan1_input' in path and 'hwmon0' in path:
+                return 'not_a_number'
+            return None
+        mock_read.side_effect = read_side
+        self.assertEqual(get_fan_speeds(), {})
+
+
+class TestGetAllMetricsAllPresent(unittest.TestCase):
+    """Cover not-None assignment branches (lines 540,544,548,560,564,569)."""
+
+    @patch('trcc.system_info.get_fan_speeds', return_value={'fan_cpu': 1200.0})
+    @patch('trcc.system_info.get_network_stats', return_value={'net_up': 100.0})
+    @patch('trcc.system_info.get_disk_stats', return_value={'disk_read': 50.0})
+    @patch('trcc.system_info.get_disk_temperature', return_value=40.0)
+    @patch('trcc.system_info.get_memory_clock', return_value=5600.0)
+    @patch('trcc.system_info.get_memory_temperature', return_value=38.0)
+    @patch('trcc.system_info.get_memory_available', return_value=8000.0)
+    @patch('trcc.system_info.get_memory_usage', return_value=50.0)
+    @patch('trcc.system_info.get_gpu_clock', return_value=2100.0)
+    @patch('trcc.system_info.get_gpu_usage', return_value=75.0)
+    @patch('trcc.system_info.get_gpu_temperature', return_value=65.0)
+    @patch('trcc.system_info.get_cpu_frequency', return_value=3500.0)
+    @patch('trcc.system_info.get_cpu_usage', return_value=25.0)
+    @patch('trcc.system_info.get_cpu_temperature', return_value=55.0)
+    def test_all_values_present(self, *_):
+        m = get_all_metrics()
+        self.assertAlmostEqual(m['gpu_temp'], 65.0)
+        self.assertAlmostEqual(m['gpu_usage'], 75.0)
+        self.assertAlmostEqual(m['gpu_clock'], 2100.0)
+        self.assertAlmostEqual(m['mem_temp'], 38.0)
+        self.assertAlmostEqual(m['mem_clock'], 5600.0)
+        self.assertAlmostEqual(m['disk_temp'], 40.0)
+        self.assertIn('fan_cpu', m)
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 """
 GIF and Video Animation Support for TRCC Linux
 
-Handles GIF theme playback and video frame extraction using OpenCV.
+Handles GIF theme playback and video frame extraction using FFmpeg.
 """
 
 from __future__ import annotations
@@ -12,20 +12,9 @@ import shutil
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 from PIL import Image
 
-# Try to import OpenCV
-try:
-    import cv2
-    import numpy as np
-    OPENCV_AVAILABLE = True
-except ImportError:
-    OPENCV_AVAILABLE = False
-    if TYPE_CHECKING:
-        import cv2
-        import numpy as np
 
 # Check for FFmpeg availability
 def _check_ffmpeg():
@@ -39,10 +28,9 @@ def _check_ffmpeg():
 
 FFMPEG_AVAILABLE = _check_ffmpeg()
 
-if not OPENCV_AVAILABLE and not FFMPEG_AVAILABLE:
-    print("[!] Neither OpenCV nor FFmpeg available for video support")
-    print("    Install OpenCV: pip3 install opencv-python")
-    print("    Or install FFmpeg: sudo dnf install ffmpeg / sudo apt install ffmpeg")
+if not FFMPEG_AVAILABLE:
+    print("[!] FFmpeg not available for video support")
+    print("    Install: sudo dnf install ffmpeg / sudo apt install ffmpeg")
 
 
 class AbstractMediaPlayer(ABC):
@@ -278,11 +266,10 @@ class GIFThemeLoader:
 
 class VideoPlayer(AbstractMediaPlayer):
     """
-    Video player using OpenCV or FFmpeg for frame extraction.
+    Video player using FFmpeg for frame extraction.
     Supports MP4, AVI, MKV, MOV, and other common formats.
 
-    Uses OpenCV (cv2) when available for best performance.
-    Falls back to FFmpeg subprocess (matching Windows TRCC behavior).
+    Uses FFmpeg subprocess matching Windows TRCC behavior.
     """
 
     def __init__(self, video_path, target_size=(320, 320)):
@@ -293,50 +280,24 @@ class VideoPlayer(AbstractMediaPlayer):
             video_path: Path to video file
             target_size: Target frame size (width, height)
         """
-        if not OPENCV_AVAILABLE and not FFMPEG_AVAILABLE:
-            raise RuntimeError("Neither OpenCV nor FFmpeg available. Install one:\n"
-                             "  pip3 install opencv-python\n"
-                             "  OR: sudo dnf install ffmpeg")
+        if not FFMPEG_AVAILABLE:
+            raise RuntimeError("FFmpeg not available. Install it:\n"
+                             "  sudo dnf install ffmpeg / sudo apt install ffmpeg")
 
         super().__init__()
         self.video_path = video_path
         self.target_size = target_size
-        self.cap = None
         self.fps = 30
         self.speed_multiplier = 1.0
         self.preload = True  # Preload frames for smooth playback (matches Windows Theme.zt pattern)
-        # Prefer FFmpeg (matches Windows TRCC which uses ffmpeg to extract frames)
-        self.use_opencv = False if FFMPEG_AVAILABLE else OPENCV_AVAILABLE
         self._temp_dir: str | None = None  # For FFmpeg temp files
 
         # Load video
         self._load_video()
 
     def _load_video(self):
-        """Load video file and extract metadata"""
-        if self.use_opencv:
-            self._load_video_opencv()
-        else:
-            self._load_video_ffmpeg()
-
-    def _load_video_opencv(self):
-        """Load video using OpenCV"""
-        self.cap = cv2.VideoCapture(self.video_path)
-
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open video: {self.video_path}")
-
-        # Get video properties
-        self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
-        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        print(f"[+] Video (OpenCV): {self.frame_count} frames @ {self.fps:.1f} FPS ({self.width}x{self.height})")
-
-        # Preload frames if enabled
-        if self.preload:
-            self._preload_frames_opencv()
+        """Load video file and extract metadata using FFmpeg."""
+        self._load_video_ffmpeg()
 
     def _load_video_ffmpeg(self):
         """
@@ -411,31 +372,6 @@ class VideoPlayer(AbstractMediaPlayer):
 
         print(f"[+] Video (FFmpeg): {self.frame_count} frames @ {self.fps:.1f} FPS")
 
-    def _preload_frames_opencv(self):
-        """Preload all frames using OpenCV"""
-        print(f"[*] Preloading {self.frame_count} frames (OpenCV)...")
-        self.frames = []
-
-        assert self.cap is not None and cv2 is not None
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-        for i in range(self.frame_count):
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-
-            # Convert BGR to RGB and resize
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_frame = Image.fromarray(frame_rgb)
-
-            if pil_frame.size != self.target_size:
-                pil_frame = pil_frame.resize(self.target_size, Image.Resampling.LANCZOS)
-
-            self.frames.append(pil_frame)
-
-        self.frame_count = len(self.frames)
-        print(f"[+] Preloaded {self.frame_count} frames")
-
     def _preload_frames_ffmpeg(self):
         """Load extracted BMP frames from temp directory"""
         self.frames = []
@@ -458,13 +394,6 @@ class VideoPlayer(AbstractMediaPlayer):
         self.frame_count = len(self.frames)
         print(f"[+] Loaded {self.frame_count} frames")
 
-    def _preload_frames(self):
-        """Preload all frames into memory for smooth playback"""
-        if self.use_opencv:
-            self._preload_frames_opencv()
-        else:
-            self._preload_frames_ffmpeg()
-
     def get_frame(self, frame_index=None):
         """
         Get a specific frame as PIL Image
@@ -478,40 +407,9 @@ class VideoPlayer(AbstractMediaPlayer):
         if frame_index is None:
             frame_index = self.current_frame
 
-        if self.preload:
-            # Return preloaded frame
-            if 0 <= frame_index < len(self.frames):
-                return self.frames[frame_index]
-            return self.frames[0] if self.frames else None
-        else:
-            # Read frame on demand (streaming mode)
-            if not self.cap or not self.cap.isOpened():
-                return None
-
-            # Only seek if we're not at the expected position
-            # (sequential playback doesn't need seeking)
-            current_pos = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            if current_pos != frame_index:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-
-            ret, frame = self.cap.read()
-            if ret:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_frame = Image.fromarray(frame_rgb)
-                if pil_frame.size != self.target_size:
-                    pil_frame = pil_frame.resize(self.target_size, Image.Resampling.LANCZOS)
-                return pil_frame
-            elif self.loop and frame_index > 0:
-                # End of video, loop back to start
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ret, frame = self.cap.read()
-                if ret:
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    pil_frame = Image.fromarray(frame_rgb)
-                    if pil_frame.size != self.target_size:
-                        pil_frame = pil_frame.resize(self.target_size, Image.Resampling.LANCZOS)
-                    return pil_frame
-            return None
+        if 0 <= frame_index < len(self.frames):
+            return self.frames[frame_index]
+        return self.frames[0] if self.frames else None
 
     def get_current_frame(self):
         """Get current frame as PIL Image"""
@@ -541,11 +439,7 @@ class VideoPlayer(AbstractMediaPlayer):
         return (self.current_frame / self.frame_count) * 100
 
     def close(self):
-        """Release video capture and cleanup temp files"""
-        cap = getattr(self, 'cap', None)
-        if cap:
-            cap.release()
-            self.cap = None
+        """Release resources and cleanup temp files."""
         self.frames = []
 
         # Clean up FFmpeg temp directory
@@ -578,63 +472,11 @@ class VideoPlayer(AbstractMediaPlayer):
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        # Try OpenCV first
-        if OPENCV_AVAILABLE:
-            return VideoPlayer._extract_frames_opencv(video_path, output_dir, target_size, max_frames)
-        elif FFMPEG_AVAILABLE:
+        if FFMPEG_AVAILABLE:
             return VideoPlayer._extract_frames_ffmpeg(video_path, output_dir, target_size, max_frames)
         else:
-            print("[!] Neither OpenCV nor FFmpeg available for video extraction")
+            print("[!] FFmpeg not available for video extraction")
             return 0
-
-    @staticmethod
-    def _extract_frames_opencv(video_path, output_dir, target_size, max_frames):
-        """Extract frames using OpenCV"""
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print(f"[!] Failed to open: {video_path}")
-            return 0
-
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30
-
-        if max_frames:
-            frame_count = min(frame_count, max_frames)
-
-        print(f"[*] Extracting {frame_count} frames (OpenCV)")
-
-        extracted = 0
-        for i in range(frame_count):
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Convert and resize
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_frame = Image.fromarray(frame_rgb)
-
-            if pil_frame.size != target_size:
-                pil_frame = pil_frame.resize(target_size, Image.Resampling.LANCZOS)
-
-            # Save frame
-            frame_path = os.path.join(output_dir, f"frame_{i:04d}.png")
-            pil_frame.save(frame_path)
-            extracted += 1
-
-            if (i + 1) % 100 == 0:
-                print(f"  [{i+1}/{frame_count}] frames extracted")
-
-        cap.release()
-
-        # Save metadata
-        meta_path = os.path.join(output_dir, "video_info.txt")
-        with open(meta_path, 'w') as f:
-            f.write(f"frames={extracted}\n")
-            f.write(f"fps={fps}\n")
-            f.write(f"size={target_size[0]}x{target_size[1]}\n")
-
-        print(f"[+] Extracted {extracted} frames to {output_dir}")
-        return extracted
 
     @staticmethod
     def _extract_frames_ffmpeg(video_path, output_dir, target_size, max_frames):
@@ -829,8 +671,8 @@ def test_video_player():
         player.close()
     else:
         print(f"[*] Loading Video: {file_path}")
-        if not OPENCV_AVAILABLE:
-            print("[!] OpenCV not installed. Run: pip3 install opencv-python")
+        if not FFMPEG_AVAILABLE:
+            print("[!] FFmpeg not installed. Run: sudo dnf install ffmpeg")
             return
         player = VideoPlayer(file_path)
         print(f"[+] Frames: {player.frame_count}")

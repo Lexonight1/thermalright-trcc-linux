@@ -13,6 +13,3 @@ py7zr>=0.20.0           # Extract bundled .7z theme archives
 # === Optional: Wayland screen capture (GNOME/KDE) ===
 # dbus-python>=1.3.0    # Uncomment for PipeWire portal capture
 # PyGObject>=3.42.0     # Uncomment for GStreamer frame grabbing
-
-# === Optional: Video (alternative to ffmpeg) ===
-# opencv-python>=4.8.0  # Uncomment if ffmpeg is not installed

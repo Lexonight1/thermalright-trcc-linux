@@ -37,10 +37,9 @@ from trcc.system_info import format_metric, get_all_metrics
 
 # Optional video support
 try:
-    from trcc.gif_animator import OPENCV_AVAILABLE, VideoPlayer
+    from trcc.gif_animator import VideoPlayer
 except ImportError:
     VideoPlayer = None
-    OPENCV_AVAILABLE = False
 
 __all__ = [
     # Version
@@ -59,5 +58,4 @@ __all__ = [
     "GIFAnimator",
     "GIFThemeLoader",
     "VideoPlayer",
-    "OPENCV_AVAILABLE",
 ]

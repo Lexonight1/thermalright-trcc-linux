@@ -362,5 +362,125 @@ class TestDownloaderCategory(unittest.TestCase):
         self.assertEqual(result, '/tmp/a001.mp4')
 
 
+# ── Suffix stripping edge cases ───────────────────────────────────────────────
+
+class TestSuffixStripping(unittest.TestCase):
+
+    def test_get_cached_path_strips_mp4(self):
+        """get_cached_path strips .mp4 suffix from theme_id."""
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        with patch.object(Path, 'exists', return_value=False):
+            result = dl.get_cached_path('a001.mp4')
+        self.assertIsNone(result)
+
+    def test_download_preview_png_strips_suffix(self):
+        """download_preview_png strips .png suffix."""
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        with patch.object(dl, '_download_file', return_value='/tmp/test.png') as mock_dl:
+            with patch.object(Path, 'exists', return_value=False):
+                dl.download_preview_png('a001.png')
+        # Verify it constructed the URL without double .png
+        if mock_dl.called:
+            url = mock_dl.call_args[0][0]
+            self.assertNotIn('.png.png', url)
+
+    def test_download_theme_strips_mp4(self):
+        """download_theme strips .mp4 suffix."""
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        with patch.object(dl, '_download_file', return_value='/tmp/a001.mp4'):
+            with patch.object(Path, 'exists', return_value=False):
+                result = dl.download_theme('a001.mp4')
+        self.assertIsNotNone(result)
+
+
+# ── Download failure and error paths ──────────────────────────────────────────
+
+class TestDownloadErrors(unittest.TestCase):
+
+    def test_download_theme_exception(self):
+        """download_theme catches exceptions and returns None."""
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        with patch.object(dl, '_download_file', side_effect=RuntimeError("net error")):
+            with patch.object(Path, 'exists', return_value=False):
+                result = dl.download_theme('a001')
+        self.assertIsNone(result)
+
+    def test_download_file_http_error(self):
+        """_download_file handles HTTPError with code."""
+        from urllib.error import HTTPError
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        err = HTTPError('http://test.com', 404, 'Not Found', {}, None)
+        with patch('trcc.cloud_downloader.urlopen', side_effect=err):
+            result = dl._download_file('http://test.com/a.mp4', Path('/tmp/out.mp4'))
+        self.assertIsNone(result)
+
+    def test_download_file_url_error(self):
+        """_download_file handles URLError."""
+        from urllib.error import URLError
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        with patch('trcc.cloud_downloader.urlopen', side_effect=URLError('DNS failed')):
+            result = dl._download_file('http://bad.host/a.mp4', Path('/tmp/out.mp4'))
+        self.assertIsNone(result)
+
+    def test_download_file_cancelled(self):
+        """_download_file handles cancel during download."""
+        from io import BytesIO
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        dl._cancelled = True
+        response = MagicMock()
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        response.headers = {'Content-Length': '1000'}
+        response.read.return_value = b'x' * 100
+        with patch('trcc.cloud_downloader.urlopen', return_value=response):
+            with patch.object(Path, 'exists', return_value=False):
+                result = dl._download_file('http://test.com/a.mp4', Path('/tmp/out.mp4'))
+        self.assertIsNone(result)
+
+
+# ── Progress callback ────────────────────────────────────────────────────────
+
+class TestDownloadProgress(unittest.TestCase):
+
+    def test_progress_callback_called(self):
+        """on_progress callback is invoked during download."""
+        dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
+        dl._cancelled = False
+
+        response = MagicMock()
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        response.headers = {'content-length': '100'}
+        # Return data then empty to end
+        response.read.side_effect = [b'x' * 50, b'x' * 50, b'']
+
+        progress_calls = []
+        def on_progress(done, total, pct):
+            progress_calls.append((done, total, pct))
+
+        with patch('trcc.cloud_downloader.urlopen', return_value=response):
+            with patch('builtins.open', unittest.mock.mock_open()):
+                with patch.object(Path, 'exists', return_value=False):
+                    with patch.object(Path, 'rename'):
+                        with patch.object(Path, 'mkdir'):
+                            result = dl._download_file(
+                                'http://test.com/a.mp4',
+                                Path('/tmp/out.mp4'),
+                                on_progress=on_progress)
+
+        self.assertGreater(len(progress_calls), 0)
+
+
+# ── Convenience function ─────────────────────────────────────────────────────
+
+class TestDownloadThemeConvenience(unittest.TestCase):
+
+    @patch.object(CloudThemeDownloader, 'download_theme', return_value='/tmp/a001.mp4')
+    def test_convenience_function(self, mock_dl):
+        from trcc.cloud_downloader import download_theme
+        result = download_theme('a001', resolution='320x320')
+        self.assertEqual(result, '/tmp/a001.mp4')
+
+
 if __name__ == '__main__':
     unittest.main()

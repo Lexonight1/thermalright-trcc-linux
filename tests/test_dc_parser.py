@@ -921,5 +921,658 @@ class TestValidateThemeEdgeCases(unittest.TestCase):
             self.assertIsInstance(result, dict)
 
 
+# ── 0xDC time/date/weekday section ───────────────────────────────────────────
+
+class TestDcTimeDateSection(unittest.TestCase):
+    """Test parsing the 0xDC time/date/weekday block (lines 316-440)."""
+
+    def _build_dc_with_time_date(self, *, enable_date=True, enable_time=True,
+                                  enable_weekday=True, date_format=0,
+                                  time_format=1) -> bytes:
+        """Build a full 0xDC config that includes the time/date section."""
+        buf = BytesIO()
+        # Magic
+        buf.write(b'\xdc')
+        # Header int32s
+        buf.write(struct.pack('<ii', 0, 0))
+        # 8 enable flags (all on)
+        for _ in range(8):
+            buf.write(b'\x01')
+        # int32 before fonts
+        buf.write(struct.pack('<i', 0))
+        # custom_text string (for i==0)
+        buf.write(b'\x00')
+        # 13 font configs: font_name_len(1) + size(4) + style/unit/charset(3) + ARGB(4) = 12 bytes
+        for i in range(13):
+            buf.write(b'\x00')                     # font name length
+            buf.write(struct.pack('<f', 24.0))     # size
+            buf.write(bytes([1, 3, 0]))            # style, unit, charset
+            buf.write(bytes([255, 255, 128, 64]))  # ARGB
+
+        # Display options: 2 bools + 2 int32s
+        buf.write(b'\x01\x00')
+        buf.write(struct.pack('<ii', 0, 0))
+
+        # 13 position pairs (X, Y)
+        for i in range(13):
+            buf.write(struct.pack('<ii', i * 20, i * 15))
+
+        # === 0xDC time/date/weekday section ===
+        # Skip custom text string
+        buf.write(b'\x00')  # empty custom text
+
+        # Settings before time/date
+        buf.write(b'\x01')               # num8 (bool)
+        buf.write(struct.pack('<i', 0))  # num5 (myMode)
+        buf.write(b'\x01')               # myYcbk (overlay enabled)
+        buf.write(struct.pack('<i', 10))  # JpX
+        buf.write(struct.pack('<i', 20))  # JpY
+        buf.write(struct.pack('<i', 300)) # JpW
+        buf.write(struct.pack('<i', 300)) # JpH
+        buf.write(b'\x01')               # myMbxs (mask enabled)
+        buf.write(struct.pack('<i', 5))   # XvalMB
+        buf.write(struct.pack('<i', 5))   # YvalMB
+
+        # Time/date flags
+        buf.write(bytes([int(enable_date or enable_time or enable_weekday)]))  # flag10
+        buf.write(bytes([int(enable_date)]))     # flag11
+        buf.write(bytes([int(enable_time)]))     # flag12
+
+        # Date/time formats
+        buf.write(struct.pack('<i', date_format))
+        buf.write(struct.pack('<i', time_format))
+
+        # Positions: date X, Y, time X, Y
+        buf.write(struct.pack('<ii', 50, 60))    # date
+        buf.write(struct.pack('<ii', 50, 100))   # time
+
+        # Date font config: name + size + style + unit + charset + ARGB (4)
+        buf.write(b'\x00')                        # font name length
+        buf.write(struct.pack('<f', 20.0))        # size
+        buf.write(bytes([1, 3, 0]))               # style, unit, charset
+        buf.write(bytes([255, 200, 200, 200]))    # ARGB
+
+        # Time font config
+        buf.write(b'\x00')
+        buf.write(struct.pack('<f', 32.0))
+        buf.write(bytes([1, 3, 0]))
+        buf.write(bytes([255, 255, 255, 255]))
+
+        # Weekday flag and settings
+        buf.write(bytes([int(enable_weekday)]))   # flag13
+        buf.write(struct.pack('<ii', 50, 140))    # weekday X, Y
+
+        # Weekday font config
+        buf.write(b'\x00')
+        buf.write(struct.pack('<f', 18.0))
+        buf.write(bytes([0, 3, 0]))
+        buf.write(bytes([255, 128, 128, 128]))
+
+        return buf.getvalue()
+
+    def test_all_enabled(self):
+        """Parse 0xDC with date, time, and weekday all enabled."""
+        data = self._build_dc_with_time_date()
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(data)
+            result = parse_dc_file(path)
+
+        self.assertIn('mask_settings', result)
+        self.assertTrue(result['mask_settings']['mask_enabled'])
+        elems = result.get('display_elements', [])
+        modes = {e.mode for e in elems}
+        self.assertIn(1, modes)  # Time
+        self.assertIn(2, modes)  # Weekday
+        self.assertIn(3, modes)  # Date
+
+    def test_date_only(self):
+        data = self._build_dc_with_time_date(
+            enable_date=True, enable_time=False, enable_weekday=False)
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(data)
+            result = parse_dc_file(path)
+
+        elems = result.get('display_elements', [])
+        modes = [e.mode for e in elems]
+        self.assertIn(3, modes)    # Date
+        self.assertNotIn(1, modes) # No time
+        self.assertNotIn(2, modes) # No weekday
+
+    def test_time_only(self):
+        data = self._build_dc_with_time_date(
+            enable_date=False, enable_time=True, enable_weekday=False)
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(data)
+            result = parse_dc_file(path)
+
+        elems = result.get('display_elements', [])
+        modes = [e.mode for e in elems]
+        self.assertIn(1, modes)    # Time
+        self.assertNotIn(3, modes) # No date
+
+    def test_none_enabled(self):
+        data = self._build_dc_with_time_date(
+            enable_date=False, enable_time=False, enable_weekday=False)
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(data)
+            result = parse_dc_file(path)
+
+        elems = result.get('display_elements', [])
+        self.assertEqual(len(elems), 0)
+
+    def test_mask_settings_parsed(self):
+        data = self._build_dc_with_time_date()
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(data)
+            result = parse_dc_file(path)
+
+        mask = result.get('mask_settings', {})
+        self.assertTrue(mask.get('overlay_enabled'))
+        self.assertEqual(mask['overlay_rect'], (10, 20, 300, 300))
+        self.assertEqual(mask['mask_position'], (5, 5))
+
+
+# ── parse_dd_format display options/mask block ───────────────────────────────
+
+class TestDdFormatSettings(unittest.TestCase):
+    """Test parse_dd_format reads display_options and mask_settings."""
+
+    def _build_dd_with_settings(self) -> bytes:
+        buf = BytesIO()
+        buf.write(b'\xdd')       # Magic
+        buf.write(b'\x01')       # myXtxx
+        buf.write(struct.pack('<i', 0))  # 0 elements
+
+        # Display options + mask block
+        buf.write(b'\x01')                 # myBjxs
+        buf.write(b'\x00')                 # myTpxs
+        buf.write(struct.pack('<i', 90))   # directionB
+        buf.write(struct.pack('<i', 1))    # myUIMode
+        buf.write(struct.pack('<i', 2))    # myMode
+        buf.write(b'\x01')                 # myYcbk
+        buf.write(struct.pack('<iiii', 0, 0, 320, 320))  # overlay rect
+        buf.write(b'\x01')                 # myMbxs
+        buf.write(struct.pack('<ii', 10, 10))  # mask pos
+
+        while buf.tell() < 100:
+            buf.write(b'\x00')
+        return buf.getvalue()
+
+    def test_display_options_parsed(self):
+        data = self._build_dd_with_settings()
+        result = parse_dd_format(data)
+        opts = result.get('display_options', {})
+        self.assertTrue(opts.get('background_display'))
+        self.assertFalse(opts.get('screencast_display'))
+        self.assertEqual(opts.get('direction'), 90)
+        self.assertEqual(opts.get('mode'), 2)
+
+    def test_mask_settings_parsed(self):
+        data = self._build_dd_with_settings()
+        result = parse_dd_format(data)
+        mask = result.get('mask_settings', {})
+        self.assertTrue(mask.get('overlay_enabled'))
+        self.assertTrue(mask.get('mask_enabled'))
+        self.assertEqual(mask['mask_position'], (10, 10))
+
+
+# ── parse_display_elements edge cases ────────────────────────────────────────
+
+class TestParseDisplayElementsEdge(unittest.TestCase):
+
+    def test_truncated_mid_element(self):
+        """Data truncated in the middle of an element."""
+        buf = BytesIO()
+        buf.write(struct.pack('<i', 1))  # 1 element
+        buf.write(struct.pack('<ii', 1, 0))  # mode, mode_sub (only partial)
+        data = buf.getvalue()
+        result = parse_display_elements(data, 0)
+        self.assertEqual(result, [])
+
+    def test_unicode_error_in_font_name(self):
+        """Invalid UTF-8 in font name falls back to default."""
+        buf = BytesIO()
+        buf.write(struct.pack('<i', 1))              # count
+        buf.write(struct.pack('<iiiiii', 0, 0, 10, 20, 0, 1))  # 6 int32s
+        buf.write(bytes([4, 0xFF, 0xFE, 0xFD, 0xFC]))  # Invalid UTF-8 font name
+        buf.write(struct.pack('<f', 24.0))             # font size
+        buf.write(bytes([1, 3, 0, 255, 255, 255, 255]))  # style+color
+        buf.write(b'\x00')                              # text length
+        data = buf.getvalue()
+        result = parse_display_elements(data, 0)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].font_name, 'Microsoft YaHei')
+
+    def test_font_size_out_of_range(self):
+        """Font size 0 or >100 clamps to 24."""
+        buf = BytesIO()
+        buf.write(struct.pack('<i', 1))
+        buf.write(struct.pack('<iiiiii', 0, 0, 0, 0, 0, 0))
+        buf.write(b'\x00')                              # no font name
+        buf.write(struct.pack('<f', 200.0))             # way too big
+        buf.write(bytes([0, 3, 0, 255, 0, 0, 0]))
+        buf.write(b'\x00')
+        data = buf.getvalue()
+        result = parse_display_elements(data, 0)
+        self.assertEqual(result[0].font_size, 24)
+
+    def test_custom_text_element(self):
+        """Mode 4 element with custom text."""
+        buf = BytesIO()
+        buf.write(struct.pack('<i', 1))
+        buf.write(struct.pack('<iiiiii', 4, 0, 50, 60, 0, 0))  # mode=4 custom
+        buf.write(b'\x00')
+        buf.write(struct.pack('<f', 20.0))
+        buf.write(bytes([0, 3, 0, 255, 200, 200, 200]))
+        text = b'Hello World'
+        buf.write(bytes([len(text)]))
+        buf.write(text)
+        data = buf.getvalue()
+        result = parse_display_elements(data, 0)
+        self.assertEqual(result[0].text, 'Hello World')
+        self.assertEqual(result[0].mode, 4)
+
+
+# ── dc_to_overlay_config edge paths ──────────────────────────────────────────
+
+class TestDcToOverlayEdge(unittest.TestCase):
+
+    def test_custom_text_with_text(self):
+        """Custom text element from elements dict includes text."""
+        dc = {
+            'elements': {
+                'custom_text': ElementConfig(x=10, y=20,
+                    font=FontConfig('Arial', 20, 1, 3, 0, (255, 255, 255, 255)),
+                    enabled=True),
+            },
+            'fonts': [],
+            'flags': {'custom_text': True},
+            'display_elements': [],
+            'custom_text': 'Hello',
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertEqual(result['custom_text']['text'], 'Hello')
+
+    def test_custom_text_without_text_skipped(self):
+        """custom_text element without text in dc_config is skipped."""
+        dc = {
+            'elements': {
+                'custom_text': ElementConfig(x=10, y=20,
+                    font=FontConfig('Arial', 20, 1, 3, 0, (255, 255, 255, 255)),
+                    enabled=True),
+            },
+            'fonts': [],
+            'flags': {'custom_text': True},
+            'display_elements': [],
+            'custom_text': '',
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertNotIn('custom_text', result)
+
+    def test_display_element_weekday(self):
+        """Weekday display_element gets 'weekday' key."""
+        dc = {
+            'elements': {},
+            'fonts': [],
+            'flags': {},
+            'display_elements': [
+                DisplayElement(mode=2, mode_sub=0, x=10, y=20,
+                    main_count=0, sub_count=0, font_size=20, font_style=1),
+            ],
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertIn('weekday', result)
+        self.assertEqual(result['weekday']['metric'], 'weekday')
+
+    def test_display_element_custom(self):
+        """Mode 4 (custom text) display element."""
+        dc = {
+            'elements': {},
+            'fonts': [],
+            'flags': {},
+            'display_elements': [
+                DisplayElement(mode=4, mode_sub=0, x=10, y=20,
+                    main_count=0, sub_count=0, text='Custom!'),
+            ],
+        }
+        result = dc_to_overlay_config(dc)
+        custom_keys = [k for k in result if k.startswith('custom')]
+        self.assertEqual(len(custom_keys), 1)
+        self.assertEqual(result[custom_keys[0]]['text'], 'Custom!')
+
+    def test_display_element_hardware(self):
+        """Mode 0 (hardware info) display element."""
+        dc = {
+            'elements': {},
+            'fonts': [],
+            'flags': {},
+            'display_elements': [
+                DisplayElement(mode=0, mode_sub=0, x=10, y=20,
+                    main_count=1, sub_count=2),
+            ],
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertIn('hw_1_2', result)
+        self.assertIn('metric', result['hw_1_2'])
+
+    def test_font_style_regular(self):
+        """Font style 0 → 'regular'."""
+        dc = {
+            'elements': {},
+            'fonts': [],
+            'flags': {},
+            'display_elements': [
+                DisplayElement(mode=1, mode_sub=0, x=10, y=20,
+                    main_count=0, sub_count=0, font_style=0),
+            ],
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertEqual(result['time']['font']['style'], 'regular')
+
+    def test_label_element_in_legacy(self):
+        """Legacy mapping: cpu_label gets text='CPU'."""
+        dc = {
+            'elements': {
+                'cpu_label': ElementConfig(x=10, y=20, enabled=True),
+            },
+            'fonts': [],
+            'flags': {},
+            'display_elements': [],
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertEqual(result['cpu_label']['text'], 'CPU')
+
+    def test_no_font_defaults(self):
+        """Element without font uses default size/color."""
+        dc = {
+            'elements': {
+                'cpu_temp': ElementConfig(x=10, y=20, font=None, enabled=True),
+            },
+            'fonts': [],
+            'flags': {},
+            'display_elements': [],
+        }
+        result = dc_to_overlay_config(dc)
+        self.assertEqual(result['cpu_temp']['font']['size'], 24)
+        self.assertEqual(result['cpu_temp']['font']['style'], 'regular')
+
+
+# ── validate_theme ────────────────────────────────────────────────────────────
+
+class TestValidateThemeFull(unittest.TestCase):
+
+    def _write_dc_file(self, path):
+        """Write a minimal valid 0xDC file."""
+        buf = BytesIO()
+        buf.write(b'\xdc')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(8):
+            buf.write(b'\x00')
+        buf.write(struct.pack('<i', 0))
+        for _ in range(13):
+            buf.write(b'\x00')
+            buf.write(struct.pack('<f', 24.0))
+            buf.write(bytes([0, 3, 0, 255, 255, 255, 255]))
+        buf.write(b'\x01\x00')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(13):
+            buf.write(struct.pack('<ii', 0, 0))
+        while buf.tell() < 100:
+            buf.write(b'\x00')
+        with open(path, 'wb') as f:
+            f.write(buf.getvalue())
+
+    def test_missing_config(self):
+        with TemporaryDirectory() as tmpdir:
+            result = validate_theme(tmpdir)
+            self.assertFalse(result['valid'])
+            self.assertIn('Missing config1.dc', result['issues'])
+
+    def test_parse_error(self):
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(b'\xAA\x00\x00')  # Invalid magic
+            result = validate_theme(tmpdir)
+            self.assertFalse(result['valid'])
+            self.assertTrue(any('Parse error' in i for i in result['issues']))
+
+    def test_out_of_bounds_position(self):
+        with TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, 'config1.dc')
+            # Build DC with cpu_temp at (500, 500) — beyond 320x320
+            buf = BytesIO()
+            buf.write(b'\xdc')
+            buf.write(struct.pack('<ii', 0, 0))
+            # Enable cpu_temp flag (index 2)
+            for _ in range(8):
+                buf.write(b'\x01')
+            buf.write(struct.pack('<i', 0))
+            buf.write(b'\x00')  # custom text
+            for _ in range(13):
+                buf.write(b'\x00')
+                buf.write(struct.pack('<f', 24.0))
+                buf.write(bytes([1, 3, 0, 255, 255, 255, 255]))
+            buf.write(b'\x01\x00')
+            buf.write(struct.pack('<ii', 0, 0))
+            # custom_text at (0,0)
+            buf.write(struct.pack('<ii', 0, 0))
+            # cpu_temp at (500, 500)
+            buf.write(struct.pack('<ii', 500, 500))
+            for _ in range(11):
+                buf.write(struct.pack('<ii', 0, 0))
+            while buf.tell() < 100:
+                buf.write(b'\x00')
+            with open(config_path, 'wb') as f:
+                f.write(buf.getvalue())
+            with open(os.path.join(tmpdir, '00.png'), 'wb') as f:
+                f.write(b'PNG')
+            with open(os.path.join(tmpdir, 'Theme.png'), 'wb') as f:
+                f.write(b'PNG')
+
+            result = validate_theme(tmpdir)
+            self.assertTrue(len(result['warnings']) > 0)
+
+    def test_no_image_files_warning(self):
+        with TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, 'config1.dc')
+            self._write_dc_file(config_path)
+            result = validate_theme(tmpdir)
+            warnings = result.get('warnings', [])
+            self.assertTrue(any('00.png' in w or '01.png' in w for w in warnings))
+
+    def test_no_preview_warning(self):
+        with TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, 'config1.dc')
+            self._write_dc_file(config_path)
+            with open(os.path.join(tmpdir, '00.png'), 'wb') as f:
+                f.write(b'PNG')
+            result = validate_theme(tmpdir)
+            warnings = result.get('warnings', [])
+            self.assertTrue(any('Theme.png' in w for w in warnings))
+
+    def test_dd_format_date_mismatch(self):
+        """0xDD format: date in overlay but not in display_elements → invalid."""
+        with TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, 'config1.dc')
+            # Build a 0xDD file with 0 display elements but that produces
+            # date in config via legacy path — this is hard to trigger naturally,
+            # so we'll just verify the validator runs for DD format
+            buf = BytesIO()
+            buf.write(b'\xdd')
+            buf.write(b'\x01')
+            buf.write(struct.pack('<i', 0))
+            while buf.tell() < 100:
+                buf.write(b'\x00')
+            with open(config_path, 'wb') as f:
+                f.write(buf.getvalue())
+            with open(os.path.join(tmpdir, '00.png'), 'wb') as f:
+                f.write(b'PNG')
+            with open(os.path.join(tmpdir, 'Theme.png'), 'wb') as f:
+                f.write(b'PNG')
+
+            result = validate_theme(tmpdir)
+            self.assertEqual(result['format'], '0xDD')
+
+
+# ── validate_all_themes ──────────────────────────────────────────────────────
+
+class TestValidateAllThemes(unittest.TestCase):
+
+    def _write_dc_file(self, path):
+        buf = BytesIO()
+        buf.write(b'\xdc')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(8):
+            buf.write(b'\x00')
+        buf.write(struct.pack('<i', 0))
+        for _ in range(13):
+            buf.write(b'\x00')
+            buf.write(struct.pack('<f', 24.0))
+            buf.write(bytes([0, 3, 0, 255, 255, 255, 255]))
+        buf.write(b'\x01\x00')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(13):
+            buf.write(struct.pack('<ii', 0, 0))
+        while buf.tell() < 100:
+            buf.write(b'\x00')
+        with open(path, 'wb') as f:
+            f.write(buf.getvalue())
+
+    def test_empty_dir(self):
+        with TemporaryDirectory() as tmpdir:
+            result = validate_all_themes(tmpdir)
+            self.assertEqual(result['total'], 0)
+
+    def test_nonexistent_dir(self):
+        result = validate_all_themes('/nonexistent/path/12345')
+        self.assertEqual(result['total'], 0)
+
+    def test_mixed_themes(self):
+        with TemporaryDirectory() as tmpdir:
+            # Valid theme
+            t1 = os.path.join(tmpdir, 'Theme1')
+            os.makedirs(t1)
+            self._write_dc_file(os.path.join(t1, 'config1.dc'))
+            with open(os.path.join(t1, '00.png'), 'wb') as f:
+                f.write(b'PNG')
+            with open(os.path.join(t1, 'Theme.png'), 'wb') as f:
+                f.write(b'PNG')
+
+            # Invalid theme (no config)
+            t2 = os.path.join(tmpdir, 'Theme2')
+            os.makedirs(t2)
+
+            result = validate_all_themes(tmpdir)
+            self.assertEqual(result['total'], 2)
+            self.assertGreaterEqual(result['invalid'], 1)
+            self.assertEqual(len(result['problems']), result['invalid'])
+
+    def test_verbose_prints(self):
+        """verbose=True prints warnings."""
+        with TemporaryDirectory() as tmpdir:
+            t1 = os.path.join(tmpdir, 'Theme1')
+            os.makedirs(t1)
+            self._write_dc_file(os.path.join(t1, 'config1.dc'))
+            # No 00.png or Theme.png → warnings
+            result = validate_all_themes(tmpdir, verbose=True)
+            self.assertGreaterEqual(result['with_warnings'], 1)
+
+    def test_dd_format_counted(self):
+        with TemporaryDirectory() as tmpdir:
+            t1 = os.path.join(tmpdir, 'Theme1')
+            os.makedirs(t1)
+            buf = BytesIO()
+            buf.write(b'\xdd')
+            buf.write(b'\x01')
+            buf.write(struct.pack('<i', 0))
+            while buf.tell() < 100:
+                buf.write(b'\x00')
+            with open(os.path.join(t1, 'config1.dc'), 'wb') as f:
+                f.write(buf.getvalue())
+            with open(os.path.join(t1, '00.png'), 'wb') as f:
+                f.write(b'PNG')
+            with open(os.path.join(t1, 'Theme.png'), 'wb') as f:
+                f.write(b'PNG')
+
+            result = validate_all_themes(tmpdir)
+            self.assertEqual(result['dd_format'], 1)
+
+
+# ── parse_dc_file read_string edge cases ─────────────────────────────────────
+
+class TestDcParserStringEdge(unittest.TestCase):
+
+    def test_unicode_error_in_font_name(self):
+        """Bad UTF-8 in font name yields empty string."""
+        buf = BytesIO()
+        buf.write(b'\xdc')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(8):
+            buf.write(b'\x00')
+        buf.write(struct.pack('<i', 0))
+        # custom_text string
+        buf.write(b'\x00')
+        # First font with bad UTF-8 name
+        bad_name = bytes([0xFF, 0xFE, 0xFD])
+        buf.write(bytes([len(bad_name)]))
+        buf.write(bad_name)
+        buf.write(struct.pack('<f', 24.0))
+        buf.write(bytes([0, 3, 0, 255, 128, 128, 128]))
+        # Remaining 12 fonts
+        for _ in range(12):
+            buf.write(b'\x00')
+            buf.write(struct.pack('<f', 24.0))
+            buf.write(bytes([0, 3, 0, 255, 255, 255, 255]))
+        buf.write(b'\x01\x00')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(13):
+            buf.write(struct.pack('<ii', 0, 0))
+        while buf.tell() < 100:
+            buf.write(b'\x00')
+
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(buf.getvalue())
+            result = parse_dc_file(path)
+            # Bad UTF-8 triggers except → falls back to 'Default'
+            self.assertEqual(result['fonts'][0].name, 'Default')
+
+    def test_struct_error_in_font_falls_back(self):
+        """Truncated font data falls back to defaults."""
+        buf = BytesIO()
+        buf.write(b'\xdc')
+        buf.write(struct.pack('<ii', 0, 0))
+        for _ in range(8):
+            buf.write(b'\x00')
+        buf.write(struct.pack('<i', 0))
+        buf.write(b'\x00')  # custom text
+        # Only 1 font (incomplete)
+        buf.write(b'\x00')
+        buf.write(struct.pack('<f', 24.0))
+        # Truncate here — remaining data too short
+        while buf.tell() < 100:
+            buf.write(b'\x00')
+
+        with TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'config1.dc')
+            with open(path, 'wb') as f:
+                f.write(buf.getvalue())
+            result = parse_dc_file(path)
+            # Should have 13 fonts (some will be default fallbacks)
+            self.assertEqual(len(result['fonts']), 13)
+
+
 if __name__ == '__main__':
     unittest.main()

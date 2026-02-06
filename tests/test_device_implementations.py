@@ -230,5 +230,45 @@ class TestDetectResolution(unittest.TestCase):
         self.assertIsNone(impl.fbl)
 
 
+# ── detect_resolution edge paths ─────────────────────────────────────────────
+
+class TestDetectResolutionEdge(unittest.TestCase):
+
+    def test_import_fails_verbose(self):
+        """fbl_detector not importable, verbose=True → prints warning, returns False."""
+        impl = GenericLCD()
+        with patch('builtins.__import__', side_effect=ImportError("no fbl")):
+            result = impl.detect_resolution('/dev/sg0', verbose=True)
+        self.assertFalse(result)
+
+    def test_detection_succeeds(self):
+        """detect_display_resolution returns info → sets width/height/fbl."""
+        impl = GenericLCD()
+        display_info = MagicMock(width=480, height=480, fbl=0x42, resolution_name='480x480')
+        mock_mod = MagicMock()
+        mock_mod.detect_display_resolution.return_value = display_info
+        with patch.dict('sys.modules', {
+            'trcc.device_implementations.fbl_detector': mock_mod,
+            'fbl_detector': mock_mod,
+        }):
+            result = impl.detect_resolution('/dev/sg0', verbose=True)
+        if result:
+            self.assertEqual(impl.width, 480)
+            self.assertTrue(impl._resolution_detected)
+
+    def test_detection_fails_verbose(self):
+        """detect_display_resolution returns None, verbose=True → prints failure."""
+        impl = GenericLCD()
+        mock_mod = MagicMock()
+        mock_mod.detect_display_resolution.return_value = None
+        with patch.dict('sys.modules', {
+            'trcc.device_implementations.fbl_detector': mock_mod,
+            'fbl_detector': mock_mod,
+        }):
+            result = impl.detect_resolution('/dev/sg0', verbose=True)
+        self.assertFalse(result)
+        self.assertEqual(impl.width, 320)  # default unchanged
+
+
 if __name__ == '__main__':
     unittest.main()

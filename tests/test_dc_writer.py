@@ -562,3 +562,112 @@ class TestTrVideoRoundtrip(unittest.TestCase):
             # Neither 00.png nor Theme.zt should exist
             self.assertFalse(os.path.exists(os.path.join(import_dir, '00.png')))
             self.assertFalse(os.path.exists(os.path.join(import_dir, 'Theme.zt')))
+
+
+# ── Targeted coverage: edge paths ────────────────────────────────────────────
+
+class TestWriteStringMultiByte(unittest.TestCase):
+    """Cover multi-byte length encoding for strings ≥128 chars (lines 270-271)."""
+
+    def test_long_string(self):
+        import io
+        buf = io.BytesIO()
+        long_name = 'A' * 200
+        _write_string(buf, long_name)
+        data = buf.getvalue()
+        # First byte: (200 & 0x7F) | 0x80 = 0xC8, second: 200 >> 7 = 1
+        self.assertEqual(data[0], (200 & 0x7F) | 0x80)
+        self.assertEqual(data[1], 200 >> 7)
+        self.assertIn(long_name.encode('utf-8'), data)
+
+
+class TestOverlayConfigToThemeMetrics(unittest.TestCase):
+    """Cover weekday/date/cpu/gpu/text metric branches (lines 321-330)."""
+
+    def test_weekday_metric(self):
+        config = {'weekday_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'weekday'}}
+        theme = overlay_config_to_theme(config)
+        elem = theme.elements[0]
+        self.assertEqual(elem.mode, 2)
+
+    def test_date_metric(self):
+        config = {'date_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'date', 'date_format': 3}}
+        theme = overlay_config_to_theme(config)
+        elem = theme.elements[0]
+        self.assertEqual(elem.mode, 3)
+        self.assertEqual(elem.mode_sub, 3)
+
+    def test_cpu_metric(self):
+        config = {'cpu_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'cpu_temp'}}
+        theme = overlay_config_to_theme(config)
+        elem = theme.elements[0]
+        self.assertEqual(elem.mode, 0)
+
+    def test_other_metric(self):
+        config = {'mem_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'mem_percent'}}
+        theme = overlay_config_to_theme(config)
+        elem = theme.elements[0]
+        self.assertEqual(elem.mode, 0)
+
+    def test_text_element(self):
+        config = {'text_0': {'enabled': True, 'x': 10, 'y': 20, 'text': 'Hello'}}
+        theme = overlay_config_to_theme(config)
+        elem = theme.elements[0]
+        self.assertEqual(elem.mode, 4)
+        self.assertEqual(elem.text, 'Hello')
+
+
+class TestSaveThemeMask(unittest.TestCase):
+    """Cover mask_image without position (line 431)."""
+
+    def test_mask_image_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            # Create minimal theme with mask but no position
+            from PIL import Image
+            bg = Image.new('RGB', (320, 320), 'black')
+            mask = Image.new('RGBA', (320, 320), (255, 0, 0, 128))
+            save_theme(d, bg, mask_image=mask, mask_position=None)
+            self.assertTrue(os.path.exists(os.path.join(d, 'config1.dc')))
+
+
+class TestCarouselConfigRoundTrip(unittest.TestCase):
+    """Cover write_carousel_config and read_carousel_config (lines 704, 747-753)."""
+
+    def test_write_and_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'Theme.dc')
+            config = CarouselConfig()
+            config.current_theme = 2
+            config.enabled = True
+            config.interval_seconds = 30
+            config.count = 3
+            config.theme_indices = [0, 1, 2]  # less than 6 — tests padding
+            config.lcd_rotation = 2
+            write_carousel_config(config, path)
+
+            loaded = read_carousel_config(path)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.current_theme, 2)
+            self.assertTrue(loaded.enabled)
+            self.assertEqual(loaded.interval_seconds, 30)
+            self.assertEqual(loaded.lcd_rotation, 2)
+            # Padded to 6 indices
+            self.assertEqual(len(loaded.theme_indices), 6)
+
+    def test_read_truncated_no_rotation(self):
+        """Carousel file without rotation field → defaults to 1 (lines 752-753)."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'Theme.dc')
+            with open(path, 'wb') as f:
+                f.write(struct.pack('B', 0xDC))      # magic
+                f.write(struct.pack('<i', 0))          # current_theme
+                f.write(struct.pack('?', True))        # enabled
+                f.write(struct.pack('<i', 10))         # interval
+                f.write(struct.pack('<i', 1))          # count
+                for i in range(6):
+                    f.write(struct.pack('<i', i))      # indices
+                # NO rotation field — should trigger struct.error fallback
+
+            loaded = read_carousel_config(path)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.lcd_rotation, 1)  # default

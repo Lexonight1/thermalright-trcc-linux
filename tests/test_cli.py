@@ -602,5 +602,178 @@ class TestTestDisplayExtra(unittest.TestCase):
         self.assertEqual(result, 0)
 
 
+# ── main() dispatch branches ──────────────────────────────────────────────────
+
+class TestMainDispatch(unittest.TestCase):
+    """Cover main() dispatch branches for test, send, color, info, reset, setup-udev."""
+
+    @patch('trcc.cli.test_display', return_value=0)
+    def test_dispatch_test(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'test']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.send_image', return_value=0)
+    def test_dispatch_send(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'send', 'image.png']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.send_color', return_value=0)
+    def test_dispatch_color(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'color', 'ff0000']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.show_info', return_value=0)
+    def test_dispatch_info(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'info']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.reset_device', return_value=0)
+    def test_dispatch_reset(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'reset']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.setup_udev', return_value=0)
+    def test_dispatch_setup_udev(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'setup-udev', '--dry-run']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.download_themes', return_value=0)
+    def test_dispatch_download(self, mock_fn):
+        with patch('sys.argv', ['trcc', 'download', '--list']):
+            result = main()
+        mock_fn.assert_called_once()
+        self.assertEqual(result, 0)
+
+
+# ── select_device exception ──────────────────────────────────────────────────
+
+class TestSelectDeviceException(unittest.TestCase):
+
+    @patch('trcc.device_detector.detect_devices', side_effect=RuntimeError("fail"))
+    def test_exception_returns_1(self, _):
+        result = select_device(1)
+        self.assertEqual(result, 1)
+
+
+# ── send_image success ────────────────────────────────────────────────────────
+
+class TestSendImageEdge(unittest.TestCase):
+
+    @patch('trcc.cli._get_selected_device', return_value='/dev/sg0')
+    def test_send_image_exception(self, _):
+        """send_image with nonexistent file → exception → returns 1."""
+        result = send_image('/nonexistent/file.png')
+        self.assertEqual(result, 1)
+
+
+# ── send_color exception ─────────────────────────────────────────────────────
+
+class TestSendColorEdge(unittest.TestCase):
+
+    @patch('trcc.lcd_driver.LCDDriver', side_effect=RuntimeError("fail"))
+    @patch('trcc.cli._get_selected_device', return_value='/dev/sg0')
+    def test_exception_returns_1(self, _, __):
+        result = send_color('ff0000')
+        self.assertEqual(result, 1)
+
+
+# ── show_info metrics display ─────────────────────────────────────────────────
+
+class TestShowInfoMetrics(unittest.TestCase):
+
+    @patch('trcc.system_info.format_metric', side_effect=lambda k, v: str(v))
+    @patch('trcc.system_info.get_all_metrics')
+    def test_shows_gpu_and_memory(self, mock_metrics, _):
+        mock_metrics.return_value = {
+            'cpu_temp': 65.0,
+            'cpu_percent': 42.0,
+            'cpu_freq': 3600,
+            'gpu_temp': 70.0,
+            'gpu_usage': 80.0,
+            'gpu_clock': 1800,
+            'mem_percent': 55.0,
+            'mem_used': 8192,
+            'mem_total': 16384,
+            'date': '2025-01-01',
+            'time': '12:00',
+            'weekday': 'Monday',
+        }
+        result = show_info()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.system_info.format_metric', side_effect=lambda k, v: str(v))
+    @patch('trcc.system_info.get_all_metrics')
+    def test_shows_partial_metrics(self, mock_metrics, _):
+        """Handles missing keys gracefully."""
+        mock_metrics.return_value = {'cpu_temp': 65.0}
+        result = show_info()
+        self.assertEqual(result, 0)
+
+
+# ── setup_udev non-dry-run ───────────────────────────────────────────────────
+
+class TestSetupUdevNonDry(unittest.TestCase):
+
+    @patch('os.system')
+    @patch('os.path.exists', return_value=True)
+    @patch('os.geteuid', return_value=0)
+    @patch('builtins.open', new_callable=unittest.mock.mock_open)
+    def test_root_writes_files(self, mock_open, mock_euid, mock_exists, mock_system):
+        result = setup_udev(dry_run=False)
+        self.assertEqual(result, 0)
+        # Should write udev rules and modprobe config
+        self.assertGreaterEqual(mock_open.call_count, 2)
+        mock_system.assert_any_call("udevadm control --reload-rules")
+        mock_system.assert_any_call("udevadm trigger")
+
+    @patch('os.geteuid', return_value=1000)
+    def test_non_root_returns_1(self, _):
+        result = setup_udev(dry_run=False)
+        self.assertEqual(result, 1)
+
+    @patch('os.system')
+    @patch('os.path.exists', return_value=False)
+    @patch('os.geteuid', return_value=0)
+    @patch('builtins.open', new_callable=unittest.mock.mock_open)
+    def test_root_no_sysfs_quirks(self, mock_open, mock_euid, mock_exists, mock_system):
+        """No quirks_sysfs file → skip writing quirks."""
+        result = setup_udev(dry_run=False)
+        self.assertEqual(result, 0)
+
+
+# ── download_themes edge paths ───────────────────────────────────────────────
+
+class TestDownloadThemesEdge(unittest.TestCase):
+
+    @patch('trcc.theme_downloader.show_info')
+    def test_show_info_mode(self, mock_info):
+        result = download_themes(pack='320x320', show_info=True)
+        mock_info.assert_called_once_with('320x320')
+        self.assertEqual(result, 0)
+
+    @patch('trcc.theme_downloader.download_pack', return_value=0)
+    def test_download_pack_call(self, mock_dl):
+        result = download_themes(pack='320x320')
+        mock_dl.assert_called_once_with('320x320', force=False)
+        self.assertEqual(result, 0)
+
+    @patch('trcc.theme_downloader.download_pack', side_effect=RuntimeError("net error"))
+    def test_exception_returns_1(self, _):
+        result = download_themes(pack='320x320')
+        self.assertEqual(result, 1)
+
+
 if __name__ == '__main__':
     unittest.main()

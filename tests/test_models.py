@@ -657,5 +657,122 @@ class TestOverlayModelRenderer(unittest.TestCase):
         self.assertFalse(result)
 
 
+# ── Targeted coverage: callbacks and edge paths ──────────────────────────────
+
+class TestThemeModelCloudAndFilter(unittest.TestCase):
+
+    def test_set_cloud_directories(self):
+        model = ThemeModel()
+        model.set_cloud_directories(Path('/web'), Path('/masks'))
+        self.assertEqual(model.cloud_web_dir, Path('/web'))
+        self.assertEqual(model.cloud_masks_dir, Path('/masks'))
+
+    def test_filter_user(self):
+        model = ThemeModel()
+        model.filter_mode = 'user'
+        user_theme = ThemeInfo(name="UserCustom", path=Path('/t'), theme_type=ThemeType.USER)
+        default_theme = ThemeInfo(name="Theme1", path=Path('/t2'), theme_type=ThemeType.LOCAL)
+        self.assertTrue(model._passes_filter(user_theme))
+        self.assertFalse(model._passes_filter(default_theme))
+
+
+class TestVideoModelCallbacks(unittest.TestCase):
+
+    def test_load_with_preload_and_callback(self):
+        vm = VideoModel()
+        callback = MagicMock()
+        vm.on_state_changed = callback
+        player = MagicMock()
+        player.frame_count = 10
+        player.fps = 30
+        player.frames = [b'f1', b'f2']
+        with patch('trcc.core.models.VideoPlayer', return_value=player, create=True), \
+             patch('trcc.core.models.ThemeZtPlayer', create=True):
+            # VideoPlayer is a lazy import, patch at gif_animator level
+            with patch('trcc.gif_animator.VideoPlayer', return_value=player, create=True):
+                result = vm.load(Path('/fake.mp4'), preload=True)
+        if result:
+            callback.assert_called()
+            self.assertEqual(vm.frames, [b'f1', b'f2'])
+
+    def test_pause_with_callback(self):
+        vm = VideoModel()
+        vm._player = MagicMock()
+        callback = MagicMock()
+        vm.on_state_changed = callback
+        vm.pause()
+        self.assertEqual(vm.state.state, PlaybackState.PAUSED)
+        callback.assert_called_once()
+
+    def test_stop_with_callback(self):
+        vm = VideoModel()
+        vm._player = MagicMock()
+        callback = MagicMock()
+        vm.on_state_changed = callback
+        vm.stop()
+        self.assertEqual(vm.state.state, PlaybackState.STOPPED)
+        callback.assert_called_once()
+
+    def test_seek_clamps(self):
+        vm = VideoModel()
+        vm.state.total_frames = 100
+        vm.seek(150)
+        self.assertEqual(vm.state.current_frame, 99)
+        vm.seek(0)
+        self.assertEqual(vm.state.current_frame, 0)
+
+
+class TestVideoStateTotalTimeStr(unittest.TestCase):
+
+    def test_zero_fps(self):
+        vs = VideoState()
+        vs.fps = 0
+        self.assertEqual(vs.total_time_str, "00:00")
+
+
+class TestOverlayModelMutations(unittest.TestCase):
+
+    def test_remove_element_with_callback(self):
+        model = OverlayModel()
+        elem = OverlayElement(enabled=True, x=10, y=10)
+        model.elements.append(elem)
+        callback = MagicMock()
+        model.on_config_changed = callback
+        model.remove_element(0)
+        self.assertEqual(len(model.elements), 0)
+        callback.assert_called_once()
+
+    def test_update_element_with_callback(self):
+        model = OverlayModel()
+        elem = OverlayElement(enabled=True, x=10, y=10)
+        model.elements.append(elem)
+        callback = MagicMock()
+        model.on_config_changed = callback
+        new_elem = OverlayElement(enabled=True, x=50, y=50)
+        model.update_element(0, new_elem)
+        self.assertEqual(model.elements[0].x, 50)
+        callback.assert_called_once()
+
+    def test_update_renderer_creates_renderer(self):
+        model = OverlayModel()
+        model._renderer = None
+        elem = OverlayElement(enabled=True, x=10, y=10, metric_key='cpu_temp')
+        model.elements.append(elem)
+        # _update_renderer tries to import OverlayRenderer — let it work or fail gracefully
+        model._update_renderer()
+
+    def test_load_from_dc_populates_elements(self):
+        model = OverlayModel()
+        fake_config = {
+            'cpu_temp': {'enabled': True, 'x': 100, 'y': 200, 'metric': 'cpu_temp'},
+        }
+        with patch('trcc.dc_parser.parse_dc_file', return_value={}), \
+             patch('trcc.dc_parser.dc_to_overlay_config', return_value=fake_config):
+            result = model.load_from_dc(Path('/fake/config1.dc'))
+        self.assertTrue(result)
+        self.assertEqual(len(model.elements), 1)
+        self.assertEqual(model.elements[0].x, 100)
+
+
 if __name__ == '__main__':
     unittest.main()

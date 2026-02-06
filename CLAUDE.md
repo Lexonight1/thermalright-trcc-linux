@@ -31,45 +31,54 @@ Semantic versioning: MAJOR.MINOR.PATCH
 
 ## Test Suite
 
-**880 tests** across 21 test files, **53% coverage** (10045 stmts, 4549 miss)
+**1209 tests** across 21 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
 
-Run: `pytest tests/` or with coverage: `pytest tests/ --cov=src/trcc --cov-report=term-missing`
+Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
+
+> **Note**: `pytest tests/` may hang during session cleanup due to cli.py subprocess test
+> teardown. Run modules individually or with `timeout 60`.
 
 | Test file | Module covered | Tests | Coverage |
 |-----------|---------------|-------|----------|
-| test_dc_parser | dc_parser | ~135 | 77% |
-| test_dc_writer | dc_writer | ~30 | 94% |
-| test_device_detector | device_detector | ~25 | 90% |
-| test_overlay_renderer | overlay_renderer | 25 | 71% |
-| test_paths | paths | 25 | 93% |
 | test_sysinfo_config | sysinfo_config | 18 | 100% |
-| test_device_implementations | device_implementations | ~29 | 92% |
-| test_scsi_device | scsi_device | ~35 | 97% |
-| test_models | core/models | ~67 | 96% |
-| test_theme_io | theme_io | ~17 | 95% |
-| test_gif_animator | gif_animator | 56 | 50% |
-| test_system_info | system_info | ~50 | 88% |
-| test_sensor_enumerator | sensor_enumerator | ~35 | 74% |
-| test_lcd_driver | lcd_driver | ~25 | 94% |
-| test_cloud_downloader | cloud_downloader | ~38 | 88% |
-| test_theme_downloader | theme_downloader | 41 | 90% |
-| test_cli | cli | 48 | 86% |
-| test_controllers | core/controllers | 43 | 46% |
-| test_qt_constants | qt_components/constants | 24 | 100% |
+| test_controllers | core/controllers | 169 | 99% |
+| test_device_implementations | device_implementations | 32 | 99% |
+| test_cloud_downloader | cloud_downloader | 47 | 98% |
+| test_dc_writer | dc_writer | 46 | 98% |
+| test_scsi_device | scsi_device | 35 | 97% |
+| test_gif_animator | gif_animator | 86 | 96% |
+| test_sensor_enumerator | sensor_enumerator | 72 | 96% |
+| test_models | core/models | 78 | 96% |
+| test_cli | cli | 66 | 95% |
+| test_device_detector | device_detector | 60 | 95% |
+| test_paths | paths | 54 | 95% |
+| test_theme_downloader | theme_downloader | 54 | 95% |
+| test_theme_io | theme_io | 17 | 95% |
+| test_system_info | system_info | 107 | 94% |
+| test_lcd_driver | lcd_driver | 25 | 94% |
+| test_dc_parser | dc_parser | 81 | 92% |
+| test_overlay_renderer | overlay_renderer | 66 | 92% |
+| test_qt_constants | qt_components/constants | 25 | 100% |
 | test_qt_base | qt_components/base | 27 | 83% |
-| test_qt_widgets | qt_components widgets+assets | 45 | varies |
+| test_qt_widgets | qt_components widgets+assets | 44 | varies |
 
 Qt tests require `QT_QPA_PLATFORM=offscreen` (headless, no display server).
 
 ### Testing Patterns & Gotchas
 
 - **Patch at definition site**: Functions imported locally inside methods (e.g., `from ..scsi_device import func` inside a class method) must be patched at the definition module (`trcc.scsi_device.func`), NOT the importing module
+- **Lazy imports in methods**: Several modules use lazy imports inside methods (`time` in `system_info.py`, `subprocess` in `device_detector.py`, `parse_dc_file` in `models.py`). Patch the global module (`time.sleep`), not the calling module's namespace
 - **Local time import**: `system_info.py` imports `time` locally inside `get_disk_stats()`/`get_network_stats()` → patch `time.time` directly, not `trcc.system_info.time`
 - **sorted() on MagicMock**: `sorted(path.glob('*'))` fails because MagicMock lacks `__lt__` → use `PurePosixPath` objects for hwmon test fixtures
 - **GIFAnimator constructor**: `__init__(self, gif_path)` — only takes `gif_path`, no `size` parameter
 - **dc_writer overlay_config format**: `font` must be dict `{'name': 'Arial'}` not string; `color` must be hex `'#FFFFFF'` not RGB tuple
 - **smartctl output parsing**: Code splits lines and checks `part.isdigit()` → mock output needs digits as separate whitespace-delimited tokens
 - **cloud_downloader cancel**: `download_category` resets `_cancelled = False` → use `side_effect` to set flag after first download call
+- **VideoModel.load lazy imports**: Creates players via lazy import from `..gif_animator` — no `_create_player` method to mock
+- **OverlayModel.load_from_dc**: Imports `parse_dc_file` lazily from `..dc_parser` — patch at `trcc.dc_parser.parse_dc_file`
+- **theme_downloader real archives**: Tests creating real tar.gz files for `download_pack`/`create_local_pack` — use `tarfile` module with themes inside
+- **cli.py session hang**: Test subprocess teardown sometimes hangs pytest session cleanup — use `timeout` wrapper or run individually
+- **Remaining uncoverable lines**: Module-level `except ImportError` fallbacks (e.g., psutil in system_info L17-18, format_metric in overlay_renderer L15-22) are impractical to cover
 
 ## Commands
 
@@ -222,7 +231,7 @@ To regenerate archives: `python tools/pack_theme_archives.py`
 ## Common Pitfalls
 
 - `UCPreview.set_preview_image(img)` - NOT `update_preview()` (doesn't exist)
-- Check `VIDEO_AVAILABLE` not `OPENCV_AVAILABLE` for video support
+- Check `VIDEO_AVAILABLE` not `FFMPEG_AVAILABLE` for video support
 - Don't call `super().mousePressEvent()` in thumbnail classes that override `clicked` signal signature
 - RGB565 conversion must use numpy for performance (not pixel-by-pixel loop)
 - SCSI send must be threaded to prevent GUI freeze
@@ -316,14 +325,12 @@ Prioritized list of remaining work:
 ### 3. ~~Type Checking~~ ✓ Done
 - pyright basic mode: 0 errors across full codebase
 
-### 4. Coverage Push to 60%+
-- Best remaining targets (testable without Qt display):
-  - `controllers.py` (46% → most impactful, 555 stmts)
-  - `gif_animator.py` (50% → video playback paths)
-  - `overlay_renderer.py` (71% → text rendering branches)
-  - `sensor_enumerator.py` (74% → discovery edge cases)
-  - `dc_parser.py` (77% → large uncovered parse_display_elements block L326-440)
-- Qt modules at 0-27% would need `QT_QPA_PLATFORM=offscreen` + heavy mocking
+### 4. ~~Coverage Push to 95%+~~ ✓ Done
+- 880 tests → **1209 tests** across 6 coverage sprints
+- All 18 non-Qt backend modules now **92-100%** (combined **96%**)
+- Modules pushed: gif_animator (50%→96%), overlay_renderer (71%→92%), sensor_enumerator (74%→96%), dc_parser (77%→92%), cli (86%→95%), cloud_downloader (88%→98%), system_info (88%→94%), device_detector (90%→95%), theme_downloader (90%→95%), device_implementations (92%→99%), models (96%→96%), dc_writer (94%→98%), paths (93%→95%), controllers (46%→99%)
+- Remaining uncovered lines are module-level `except ImportError` fallbacks (impractical)
+- Qt modules excluded (require display server / heavy mocking for diminishing returns)
 
 ### 5. Linting / Formatting
 - Add `ruff` for consistent style across codebase
@@ -338,7 +345,8 @@ Prioritized list of remaining work:
 
 ### 8. Version Bump → 1.2.0
 - Current: 1.1.1
-- Bump when: coverage 60%+ and linting in place
+- Coverage target achieved (96% non-Qt backend)
+- Bump when: linting in place
 - Update: `pyproject.toml`, `src/trcc/__version__.py`, `doc/CHANGELOG.md`
 
 ### 9. Packaging & Release

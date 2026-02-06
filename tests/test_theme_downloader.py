@@ -571,5 +571,248 @@ class TestDownloadPackExtra(unittest.TestCase):
         self.assertEqual(result, 1)
 
 
+# ── Targeted coverage: installed packs, extract error, download flow ─────────
+
+class TestGetInstalledPacksMeta(unittest.TestCase):
+    """Cover meta-file and no-meta theme counting paths (lines 89-103)."""
+
+    def test_meta_file_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            themes_dir = Path(d) / 'themes'
+            res_dir = themes_dir / '320320'
+            res_dir.mkdir(parents=True)
+            (res_dir / 'Theme1').mkdir()
+            meta = {'pack_name': 'themes-320320', 'version': '1.0'}
+            with open(res_dir / '.trcc-meta.json', 'w') as f:
+                json.dump(meta, f)
+
+            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                installed = get_installed_packs()
+            self.assertIn('themes-320320', installed)
+            self.assertEqual(installed['themes-320320']['version'], '1.0')
+
+    def test_no_meta_counts_themes(self):
+        with tempfile.TemporaryDirectory() as d:
+            themes_dir = Path(d) / 'themes'
+            res_dir = themes_dir / '320x320'
+            res_dir.mkdir(parents=True)
+            (res_dir / 'Theme1').mkdir()
+            (res_dir / 'Theme2').mkdir()
+
+            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                installed = get_installed_packs()
+            # Should create pack name from dir name
+            self.assertTrue(len(installed) > 0)
+
+    def test_meta_file_corrupt(self):
+        with tempfile.TemporaryDirectory() as d:
+            themes_dir = Path(d) / 'themes'
+            res_dir = themes_dir / '320320'
+            res_dir.mkdir(parents=True)
+            (res_dir / '.trcc-meta.json').write_text('not json')
+
+            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                installed = get_installed_packs()
+            # Corrupt meta should be silently ignored
+            self.assertIsInstance(installed, dict)
+
+
+class TestExtractArchiveError(unittest.TestCase):
+    """Cover extract exception path (lines 248-250)."""
+
+    def test_unknown_format(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake_archive = Path(d) / 'archive.xyz'
+            fake_archive.write_bytes(b'data')
+            result = extract_archive(fake_archive, Path(d) / 'out')
+            self.assertFalse(result)
+
+
+class TestDownloadPackAlreadyInstalled(unittest.TestCase):
+    """Cover already-installed version check (lines 271-276)."""
+
+    @patch('trcc.theme_downloader.get_installed_packs')
+    @patch('trcc.theme_downloader.THEME_REGISTRY', {
+        'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
+                      'url': 'http://x', 'sha256': 'abc'}
+    })
+    def test_same_version_skips(self, mock_installed):
+        mock_installed.return_value = {
+            'test-pack': {'version': '1.0'}
+        }
+        result = download_pack('test-pack', force=False)
+        self.assertEqual(result, 0)
+
+
+class TestDownloadPackPrimaryFails(unittest.TestCase):
+    """Cover download failure without mirror (lines 292-294)."""
+
+    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.download_with_progress', return_value=False)
+    @patch('trcc.theme_downloader.get_cache_dir')
+    @patch('trcc.theme_downloader.MIRROR_URLS', {})
+    @patch('trcc.theme_downloader.THEME_REGISTRY', {
+        'test-pack': {'name': 'Test', 'version': '2.0', 'resolution': '320x320',
+                      'url': 'http://x', 'sha256': 'abc', 'size_mb': 1}
+    })
+    def test_no_mirror_returns_1(self, mock_cache, mock_dl, mock_installed):
+        mock_cache.return_value = Path(tempfile.mkdtemp())
+        result = download_pack('test-pack')
+        self.assertEqual(result, 1)
+
+
+class TestDownloadPackFullInstall(unittest.TestCase):
+    """Cover successful download+extract+install flow (lines 329-370)."""
+
+    def test_install_themes_from_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            cache_dir = d / 'cache'
+            cache_dir.mkdir()
+            themes_dir = d / 'themes'
+            themes_dir.mkdir()
+
+            # Create a valid tar.gz with themes inside
+            archive_path = cache_dir / 'test-pack-1.0.tar.gz'
+            source = d / 'build'
+            source.mkdir()
+            pack_dir = source / 'test-pack'
+            pack_dir.mkdir()
+            t1 = pack_dir / 'Theme1'
+            t1.mkdir()
+            (t1 / 'config1.dc').write_bytes(b'\xdc')
+            (t1 / 'Theme.png').write_bytes(b'png')
+
+            with tarfile.open(archive_path, 'w:gz') as tar:
+                tar.add(pack_dir, arcname='test-pack')
+
+            sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+            with patch('trcc.theme_downloader.THEME_REGISTRY', {
+                'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
+                              'url': 'http://x', 'sha256': sha, 'size_mb': 1}
+            }), \
+                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                result = download_pack('test-pack')
+
+            self.assertEqual(result, 0)
+            self.assertTrue((themes_dir / '320320' / 'Theme1' / 'config1.dc').exists())
+            self.assertTrue((themes_dir / '320320' / '.trcc-meta.json').exists())
+
+    def test_themes_directly_in_temp(self):
+        """Themes at root of archive (no subdirectory wrapper)."""
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            cache_dir = d / 'cache'
+            cache_dir.mkdir()
+            themes_dir = d / 'themes'
+            themes_dir.mkdir()
+
+            # Create tar.gz with themes at root level
+            archive_path = cache_dir / 'test-pack-1.0.tar.gz'
+            source = d / 'build'
+            source.mkdir()
+            t1 = source / 'Theme1'
+            t1.mkdir()
+            (t1 / 'config1.dc').write_bytes(b'\xdc')
+
+            with tarfile.open(archive_path, 'w:gz') as tar:
+                tar.add(t1, arcname='Theme1')
+
+            sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+            with patch('trcc.theme_downloader.THEME_REGISTRY', {
+                'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
+                              'url': 'http://x', 'sha256': sha, 'size_mb': 1}
+            }), \
+                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                result = download_pack('test-pack')
+
+            self.assertEqual(result, 0)
+
+    def test_no_themes_in_archive(self):
+        """Archive has no theme directories → returns 1."""
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            cache_dir = d / 'cache'
+            cache_dir.mkdir()
+            themes_dir = d / 'themes'
+            themes_dir.mkdir()
+
+            # Create tar.gz with no theme content
+            archive_path = cache_dir / 'test-pack-1.0.tar.gz'
+            empty_dir = d / 'empty'
+            empty_dir.mkdir()
+            (empty_dir / 'readme.txt').write_text('hello')
+
+            with tarfile.open(archive_path, 'w:gz') as tar:
+                tar.add(empty_dir / 'readme.txt', arcname='readme.txt')
+
+            sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+            with patch('trcc.theme_downloader.THEME_REGISTRY', {
+                'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
+                              'url': 'http://x', 'sha256': sha, 'size_mb': 1}
+            }), \
+                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                result = download_pack('test-pack')
+
+            self.assertEqual(result, 1)
+
+
+class TestRemovePackNotFound(unittest.TestCase):
+    """Cover remove_pack directory-not-found (lines 393-394)."""
+
+    @patch('trcc.theme_downloader.get_user_themes_dir')
+    @patch('trcc.theme_downloader.get_installed_packs')
+    def test_dir_not_exists(self, mock_installed, mock_dir):
+        mock_installed.return_value = {
+            'test-pack': {'resolution': '320x320', 'version': '1.0'}
+        }
+        mock_dir.return_value = Path('/nonexistent/themes')
+        result = remove_pack('test-pack')
+        self.assertEqual(result, 1)
+
+
+class TestCreateLocalPackNoThemes(unittest.TestCase):
+    """Cover create_local_pack with empty dir (lines 420-422)."""
+
+    def test_empty_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            result = create_local_pack(d, 'test', '320x320')
+            self.assertEqual(result, 1)
+
+    def test_source_not_found(self):
+        result = create_local_pack('/nonexistent', 'test', '320x320')
+        self.assertEqual(result, 1)
+
+
+class TestCreateLocalPackSuccess(unittest.TestCase):
+    """Cover create_local_pack archive creation (lines 430-435+)."""
+
+    def test_creates_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / 'source'
+            source.mkdir()
+            t1 = source / 'Theme1'
+            t1.mkdir()
+            (t1 / 'config1.dc').write_bytes(b'data')
+
+            orig_cwd = os.getcwd()
+            os.chdir(d)
+            try:
+                result = create_local_pack(str(source), 'testpack', '320x320')
+                self.assertEqual(result, 0)
+                self.assertTrue(os.path.exists('testpack.tar.gz'))
+            finally:
+                os.chdir(orig_cwd)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -43,17 +43,12 @@ wayland = [
     "dbus-python>=1.3.0",
     "PyGObject>=3.42.0",
 ]
-# NOTE: For video playback, ffmpeg system package is RECOMMENDED (matches Windows TRCC)
-# This opencv extra is an alternative if ffmpeg is not available on your system
-video = [
-    "opencv-python>=4.8.0",
-]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
 ]
 all = [
-    "trcc-linux[nvidia,wayland,video,dev]",
+    "trcc-linux[nvidia,wayland,dev]",
 ]
 
 [project.urls]
