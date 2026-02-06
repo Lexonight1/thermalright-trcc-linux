@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
 USB LCD Device Detector
-Finds Thermalright LCD devices and maps them to SCSI devices.
+Finds Thermalright LCD devices and maps them to SCSI or HID devices.
 
 Supported devices:
-- Thermalright: VID=0x87CD (34733), PID=0x70DB (28891)
-- ALi Corp:     VID=0x0416 (1046),  PID=0x5406 (21510)
+- Thermalright: VID=0x87CD, PID=0x70DB  (SCSI)
+- ALi Corp:     VID=0x0416, PID=0x5406  (SCSI)
+- FROZEN WARFRAME: VID=0x0402, PID=0x3922 (SCSI)
+- ALi Corp HID H:  VID=0x0416, PID=0x530A (HID Type 2)
+- ALi Corp HID ALi: VID=0x0416, PID=0x53E6 (HID Type 3)
 """
 
 import os
@@ -29,6 +32,8 @@ class DetectedDevice:
     implementation: str = "generic"  # Device-specific implementation
     model: str = "CZTV"  # Device model for button image lookup
     button_image: str = "A1CZTV"  # Button image prefix (without .png)
+    protocol: str = "scsi"  # "scsi" or "hid"
+    device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
 
 
 # Known LCD devices (SCSI/USB Mass Storage)
@@ -58,6 +63,27 @@ KNOWN_DEVICES = {
         "model": "FROZEN_WARFRAME",
         "button_image": "A1FROZEN_WARFRAME",
         "implementation": "ali_corp_lcd_v1"
+    },
+    # HID devices (from USBLCDNEW.exe — USB bulk transfer protocol)
+    # Type 2: "H" variant — DA/DB/DC/DD magic, 512-byte aligned JPEG frames
+    (0x0416, 0x530A): {
+        "vendor": "ALi Corp",
+        "product": "LCD Display (HID H)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "hid_type2",
+        "protocol": "hid",
+        "device_type": 2,
+    },
+    # Type 3: "ALi" variant — F5 prefix, fixed 204816-byte frames with ACK
+    (0x0416, 0x53E6): {
+        "vendor": "ALi Corp",
+        "product": "LCD Display (HID ALi)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "hid_type3",
+        "protocol": "hid",
+        "device_type": 3,
     },
 }
 
@@ -121,7 +147,9 @@ def find_usb_devices() -> List[DetectedDevice]:
             usb_path=usb_path,
             implementation=device_info["implementation"],
             model=device_info.get("model", "CZTV"),
-            button_image=device_info.get("button_image", "A1CZTV")
+            button_image=device_info.get("button_image", "A1CZTV"),
+            protocol=device_info.get("protocol", "scsi"),
+            device_type=device_info.get("device_type", 1),
         ))
 
     return devices
@@ -375,7 +403,9 @@ def print_device_info(device: DetectedDevice):
     print(f"Device: {device.vendor_name} {device.product_name}")
     print(f"  USB VID:PID: {device.vid:04X}:{device.pid:04X}")
     print(f"  USB Path: {device.usb_path}")
-    print(f"  SCSI Device: {device.scsi_device or 'Not found'}")
+    print(f"  Protocol: {device.protocol.upper()} (type {device.device_type})")
+    if device.protocol == "scsi":
+        print(f"  SCSI Device: {device.scsi_device or 'Not found'}")
     print(f"  Model: {device.model}")
     print(f"  Button Image: {device.button_image}")
     print(f"  Implementation: {device.implementation}")

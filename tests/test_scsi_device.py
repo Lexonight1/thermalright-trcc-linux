@@ -239,6 +239,8 @@ class TestFindLCDDevices(unittest.TestCase):
         dev.button_image = 'btn.png'
         dev.vid = 0x87CD
         dev.pid = 0x70DB
+        dev.protocol = 'scsi'
+        dev.device_type = 1
         mock_detect.return_value = [dev]
 
         mock_driver = MagicMock()
@@ -256,6 +258,8 @@ class TestFindLCDDevices(unittest.TestCase):
     def test_skips_devices_without_scsi(self, mock_detect):
         dev = MagicMock()
         dev.scsi_device = None
+        dev.protocol = 'scsi'
+        dev.device_type = 1
         mock_detect.return_value = [dev]
         self.assertEqual(find_lcd_devices(), [])
 
@@ -270,6 +274,8 @@ class TestFindLCDDevices(unittest.TestCase):
         dev.button_image = None
         dev.vid = 1
         dev.pid = 2
+        dev.protocol = 'scsi'
+        dev.device_type = 1
         mock_detect.return_value = [dev]
 
         devices = find_lcd_devices()

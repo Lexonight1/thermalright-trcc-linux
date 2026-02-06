@@ -48,7 +48,7 @@ class TestDetectedDevice(unittest.TestCase):
         expected_fields = {
             'vid', 'pid', 'vendor_name', 'product_name',
             'usb_path', 'scsi_device', 'implementation',
-            'model', 'button_image'
+            'model', 'button_image', 'protocol', 'device_type'
         }
         self.assertEqual(field_names, expected_fields)
 

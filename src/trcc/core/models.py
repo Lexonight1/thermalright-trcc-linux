@@ -217,7 +217,7 @@ class DeviceInfo:
     path: str  # /dev/sgX
     resolution: Tuple[int, int] = (320, 320)
 
-    # Device properties (from SCSI inquiry / detection)
+    # Device properties (from detection)
     vendor: Optional[str] = None
     product: Optional[str] = None
     model: Optional[str] = None
@@ -225,6 +225,8 @@ class DeviceInfo:
     pid: int = 0
     device_index: int = 0  # 0-based ordinal among detected devices
     fbl_code: Optional[int] = None  # Resolution identifier
+    protocol: str = "scsi"  # "scsi" or "hid"
+    device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
 
     # State
     connected: bool = True
@@ -273,6 +275,8 @@ class DeviceModel:
                     vid=d.get('vid', 0),
                     pid=d.get('pid', 0),
                     device_index=d.get('device_index', 0),
+                    protocol=d.get('protocol', 'scsi'),
+                    device_type=d.get('device_type', 1),
                 )
                 for d in raw_devices
             ]
@@ -296,10 +300,13 @@ class DeviceModel:
 
     def send_image(self, rgb565_data: bytes, width: int, height: int) -> bool:
         """
-        Send image data to selected device.
+        Send image data to selected device via factory-routed protocol.
+
+        Uses DeviceSenderFactory to pick the right sender (SCSI or HID)
+        based on the selected device's protocol field.
 
         Args:
-            rgb565_data: RGB565 pixel data
+            rgb565_data: RGB565 pixel data (SCSI) or image bytes (HID)
             width: Image width
             height: Image height
 
@@ -310,15 +317,11 @@ class DeviceModel:
             return False
 
         try:
-            from ..scsi_device import send_image_to_device
+            from ..device_factory import DeviceSenderFactory
             self._send_busy = True
 
-            success = send_image_to_device(
-                self.selected_device.path,
-                rgb565_data,
-                width,
-                height
-            )
+            sender = DeviceSenderFactory.get_sender(self.selected_device)
+            success = sender.send(rgb565_data, width, height)
 
             self._send_busy = False
 
