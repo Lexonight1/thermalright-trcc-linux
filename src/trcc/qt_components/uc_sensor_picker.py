@@ -9,6 +9,8 @@ Used by the System Info dashboard to let users assign any sensor to any
 panel row.
 """
 
+from __future__ import annotations
+
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QIcon, QPalette
 from PyQt6.QtWidgets import (
@@ -142,7 +144,7 @@ class SensorPickerDialog(QDialog):
             self._bg_ref = bg
         else:
             palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, QPalette.ColorRole.Window)
+            palette.setColor(QPalette.ColorRole.Window, palette.color(QPalette.ColorRole.Window))
             self.setStyleSheet("background-color: #1A1A2E;")
 
         # OK button

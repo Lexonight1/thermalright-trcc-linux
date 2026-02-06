@@ -5,10 +5,13 @@ GIF and Video Animation Support for TRCC Linux
 Handles GIF theme playback and video frame extraction using OpenCV.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
 import tempfile
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
@@ -19,8 +22,9 @@ try:
     OPENCV_AVAILABLE = True
 except ImportError:
     OPENCV_AVAILABLE = False
-    cv2 = None
-    np = None
+    if TYPE_CHECKING:
+        import cv2
+        import numpy as np
 
 # Check for FFmpeg availability
 def _check_ffmpeg():
@@ -79,6 +83,7 @@ class GIFAnimator:
 
     def _extract_frames(self):
         """Extract all frames and their delays"""
+        assert self.image is not None
         self.image.seek(0)
 
         for i in range(self.frame_count):
@@ -279,7 +284,7 @@ class VideoPlayer:
         self.preload = True  # Preload frames for smooth playback (matches Windows Theme.zt pattern)
         # Prefer FFmpeg (matches Windows TRCC which uses ffmpeg to extract frames)
         self.use_opencv = False if FFMPEG_AVAILABLE else OPENCV_AVAILABLE
-        self._temp_dir = None  # For FFmpeg temp files
+        self._temp_dir: str | None = None  # For FFmpeg temp files
 
         # Load video
         self._load_video()
@@ -351,6 +356,7 @@ class VideoPlayer:
 
         # Create temp directory for BMP frames (matching Windows TRCC)
         self._temp_dir = tempfile.mkdtemp(prefix='trcc_video_')
+        assert self._temp_dir is not None
 
         # Extract frames with FFmpeg (matching Windows command)
         # Windows: ffmpeg -i "{VIDEO}" -y -r 16 -s {W}x{H} -f image2 "{OUTPUT}%04d.bmp"
@@ -387,6 +393,7 @@ class VideoPlayer:
         print(f"[*] Preloading {self.frame_count} frames (OpenCV)...")
         self.frames = []
 
+        assert self.cap is not None and cv2 is not None
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
         for i in range(self.frame_count):
@@ -411,6 +418,7 @@ class VideoPlayer:
         self.frames = []
 
         # Get sorted list of BMP files
+        assert self._temp_dir is not None
         bmp_files = sorted([f for f in os.listdir(self._temp_dir) if f.endswith('.bmp')])
 
         print(f"[*] Loading {len(bmp_files)} BMP frames...")

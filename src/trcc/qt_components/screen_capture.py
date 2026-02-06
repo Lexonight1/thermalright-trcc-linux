@@ -9,6 +9,7 @@ Matches Windows FormScreenshot functionality but adapted for Linux:
 
 Works on both X11 and Wayland via fallback chain.
 """
+from __future__ import annotations
 
 import os
 import subprocess
@@ -43,7 +44,7 @@ def grab_full_screen() -> QPixmap:
     # Try Qt native capture first (works on X11, may be blank on Wayland)
     screen = QApplication.primaryScreen()
     if screen:
-        pixmap = screen.grabWindow(0)
+        pixmap = screen.grabWindow(0)  # type: ignore[arg-type]
         if not pixmap.isNull() and pixmap.width() > 1:
             return pixmap
 
@@ -90,7 +91,7 @@ def grab_screen_region(x: int, y: int, w: int, h: int) -> QPixmap:
     # Try Qt native capture with region (works on X11)
     screen = QApplication.primaryScreen()
     if screen:
-        pixmap = screen.grabWindow(0, x, y, w, h)
+        pixmap = screen.grabWindow(0, x, y, w, h)  # type: ignore[arg-type]
         if not pixmap.isNull() and pixmap.width() > 1:
             return pixmap
 

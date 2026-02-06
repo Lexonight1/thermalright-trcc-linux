@@ -10,6 +10,7 @@ Features:
 - Delete user themes with confirmation (Windows cmd 32)
 - Slideshow/carousel: select up to 6 themes for auto-rotation (Windows cmd 48)
 """
+from __future__ import annotations
 
 import shutil
 from pathlib import Path
@@ -179,7 +180,7 @@ class UCThemeLocal(BaseThemeBrowser):
         if not export_px.isNull():
             self.export_btn.setIcon(QIcon(export_px))
             self.export_btn.setIconSize(self.export_btn.size())
-            self.export_btn._img_ref = export_px
+            self.export_btn._img_ref = export_px  # type: ignore[attr-defined]
 
     def _create_thumbnail(self, item_info: dict) -> ThemeThumbnail:
         return ThemeThumbnail(item_info)

@@ -5,6 +5,8 @@ Matches Windows TRCC.DCUserControl.UCThemeMask (732x652)
 Shows cloud layout masks with download functionality.
 """
 
+from __future__ import annotations
+
 import threading
 from pathlib import Path
 
@@ -179,6 +181,7 @@ class UCThemeMask(BaseThemeBrowser):
                 import zipfile
 
                 mask_url = f"{base_url}{mask_id}.zip"
+                assert self.mask_directory is not None
                 mask_dir = self.mask_directory / mask_id
 
                 print(f"[+] Downloading mask {mask_id} from {mask_url}")

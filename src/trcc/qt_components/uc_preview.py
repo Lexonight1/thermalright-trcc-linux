@@ -4,6 +4,7 @@ PyQt6 UCPreview - Preview panel with frame.
 Matches Windows TRCC.DCUserControl.UCScreenImageBK (500x500)
 Contains the LCD preview with decorative frame.
 """
+from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -112,7 +113,7 @@ class UCPreview(BasePanel):
         if not play_pix.isNull():
             self.play_btn.setIcon(QIcon(play_pix))
             self.play_btn.setIconSize(self.play_btn.size())
-            self.play_btn._img_refs = [play_pix, pause_pix]
+            self.play_btn._img_refs = [play_pix, pause_pix]  # type: ignore[attr-defined]
         else:
             self.play_btn.setText("▶")
         self.play_btn.setFlat(True)

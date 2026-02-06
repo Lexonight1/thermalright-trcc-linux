@@ -13,6 +13,8 @@ Matches Windows TRCC UCSystemInfoOptions:
 - Config persistence via sysinfo_config.json
 """
 
+from __future__ import annotations
+
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPalette
 from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QWidget
@@ -329,7 +331,7 @@ class UCSystemInfo(QWidget):
                 )
             self._add_btn.setGeometry(add_x, add_y, PANEL_W, PANEL_H)
             self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._add_btn.mousePressEvent = lambda e: self._on_add_clicked()
+            self._add_btn.mousePressEvent = lambda e: self._on_add_clicked()  # type: ignore[assignment]
             self._add_btn.show()
 
             # Fill remaining slots with empty placeholders

@@ -3,10 +3,13 @@ Central path constants and utilities for TRCC.
 
 All path calculations happen once here. Components import what they need.
 """
+from __future__ import annotations
+
 import json
 import logging
 import os
 import subprocess
+from typing import TYPE_CHECKING, Optional
 
 log = logging.getLogger(__name__)
 
@@ -15,9 +18,9 @@ try:
     from PIL import Image, ImageTk
     PIL_AVAILABLE = True
 except ImportError:
-    Image = None
-    ImageTk = None
     PIL_AVAILABLE = False
+    if TYPE_CHECKING:
+        from PIL import Image, ImageTk
 
 # Base directories (calculated once at import time)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  # src/trcc/
@@ -195,7 +198,7 @@ def ensure_web_masks_extracted(width: int, height: int) -> bool:
     return _extract_7z(archive, masks_dir)
 
 
-def find_resource(filename: str, search_paths: list = None) -> str | None:
+def find_resource(filename: str, search_paths: Optional[list] = None) -> Optional[str]:
     """Find a resource file in search paths.
 
     Args:
@@ -215,7 +218,7 @@ def find_resource(filename: str, search_paths: list = None) -> str | None:
     return None
 
 
-def load_image(filename: str, search_paths: list = None, as_photoimage: bool = True):
+def load_image(filename: str, search_paths: Optional[list] = None, as_photoimage: bool = True):
     """Load an image from resource paths.
 
     Args:
@@ -242,7 +245,7 @@ def load_image(filename: str, search_paths: list = None, as_photoimage: bool = T
         return None
 
 
-def build_search_paths(resource_dir: str = None) -> list:
+def build_search_paths(resource_dir: Optional[str] = None) -> list:
     """Build search paths list with optional custom directory first.
 
     Args:

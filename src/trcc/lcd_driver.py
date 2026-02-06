@@ -15,8 +15,8 @@ try:
     from .device_detector import DetectedDevice, detect_devices, get_default_device
     from .device_implementations import LCDDeviceImplementation, get_implementation
 except ImportError:
-    from device_detector import DetectedDevice, detect_devices, get_default_device
-    from device_implementations import LCDDeviceImplementation, get_implementation
+    from trcc.device_detector import DetectedDevice, detect_devices, get_default_device  # type: ignore[no-redef]
+    from trcc.device_implementations import LCDDeviceImplementation, get_implementation  # type: ignore[no-redef]
 
 
 class LCDDriver:
@@ -132,6 +132,7 @@ class LCDDriver:
         """Initialize device (call once at startup)"""
         if self.initialized:
             return
+        assert self.implementation is not None
 
         # Step 1: Poll device
         poll_cmd, poll_size = self.implementation.get_poll_command()
@@ -191,12 +192,13 @@ class LCDDriver:
 
         try:
             from PIL import Image
+            assert self.implementation is not None
             width, height = self.implementation.resolution
             img = Image.open(path).convert('RGB').resize((width, height))
             data = bytearray()
             for y in range(height):
                 for x in range(width):
-                    r, g, b = img.getpixel((x, y))
+                    r, g, b = img.getpixel((x, y))  # type: ignore[misc]
                     data.extend(self.implementation.rgb_to_bytes(r, g, b))
             return bytes(data)
         except ImportError:

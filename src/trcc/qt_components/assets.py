@@ -4,6 +4,7 @@ Asset loader for PyQt6 GUI components.
 Loads background images and icons from assets/gui/ directory.
 Images are extracted from Windows TRCC resources using tools/extract_resx_images.py
 """
+from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
@@ -30,7 +31,7 @@ def get_asset_path(name: str) -> Path:
 
 
 @lru_cache(maxsize=64)
-def load_pixmap(name: str, scale_width: int = None, scale_height: int = None) -> QPixmap:
+def load_pixmap(name: str, scale_width: int | None = None, scale_height: int | None = None) -> QPixmap:
     """
     Load a pixmap from assets directory.
 

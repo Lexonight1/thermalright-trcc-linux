@@ -11,6 +11,8 @@ Windows behavior:
 - Downloaded themes show animated thumbnail previews from the MP4
 """
 
+from __future__ import annotations
+
 import subprocess
 import threading
 from pathlib import Path
@@ -290,6 +292,8 @@ class UCThemeWeb(BaseThemeBrowser):
 
     def _extract_preview(self, theme_id: str):
         """Extract first frame from MP4 as PNG preview via FFmpeg."""
+        if self.web_directory is None:
+            return
         try:
             mp4_path = self.web_directory / f"{theme_id}.mp4"
             png_path = self.web_directory / f"{theme_id}.png"

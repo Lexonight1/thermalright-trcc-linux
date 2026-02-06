@@ -6,6 +6,7 @@ Controllers are GUI-framework independent. They:
 2. Provide methods that Views call for user actions
 3. Emit callbacks that Views subscribe to for updates
 """
+from __future__ import annotations
 
 import shutil
 import tempfile
@@ -73,7 +74,7 @@ class ThemeController:
         """Set theme directories."""
         if local_dir:
             self.model.set_local_directory(local_dir)
-        if web_dir or masks_dir:
+        if web_dir and masks_dir:
             self.model.set_cloud_directories(web_dir, masks_dir)
 
     def load_local_themes(self, resolution: Tuple[int, int] = (320, 320)):
@@ -613,6 +614,7 @@ class FormCZTVController:
         self.current_theme_path = theme.path
 
         # Copy theme to working dir (Windows: CopyDireToDire(storage → GifDirectory))
+        assert theme.path is not None
         self._copy_theme_to_working_dir(theme.path)
 
         # Parse DC configuration file from working dir
@@ -713,7 +715,7 @@ class FormCZTVController:
         except Exception as e:
             self._handle_error(f"Failed to load image: {e}")
 
-    def _create_mask_background(self, theme: ThemeInfo):
+    def _create_mask_background(self, theme: ThemeInfo | None = None):
         """Create transparent background for mask-only theme."""
         try:
             from PIL import Image
@@ -753,7 +755,7 @@ class FormCZTVController:
 
         return None
 
-    def _load_theme_mask(self, mask_path: Path, dc_path: Path = None):
+    def _load_theme_mask(self, mask_path: Path, dc_path: Path | None = None):
         """Load mask image with position from DC config.
 
         Reference: form_cztv.py:1077-1093

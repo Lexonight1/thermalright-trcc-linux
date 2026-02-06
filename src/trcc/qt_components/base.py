@@ -10,6 +10,8 @@ Provides common functionality:
 - create_image_button: flat image button factory
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -259,7 +261,7 @@ def create_image_button(parent, x, y, w, h, normal_img, active_img,
         btn.setIcon(icon)
         btn.setIconSize(btn.size())
         # Store pixmaps to prevent GC
-        btn._img_refs = [normal_pix, active_pix]
+        btn._img_refs = [normal_pix, active_pix]  # type: ignore[attr-defined]
     elif fallback_text:
         btn.setText(fallback_text)
         btn.setStyleSheet(f"""

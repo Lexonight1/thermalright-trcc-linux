@@ -14,6 +14,7 @@ Windows layout (from UCThemeSetting.resx):
 - ucTouPingXianShi1:     (10, 551) 351x100  - Screen cast toggle
 - ucShiPingBoFangQi1:    (371, 551) 351x100 - Video player toggle
 """
+from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPalette
@@ -1030,10 +1031,10 @@ class DisplayModePanel(QFrame):
     mode_changed = pyqtSignal(str, bool)
     action_requested = pyqtSignal(str)
 
-    def __init__(self, mode_id, actions=None, parent=None):
+    def __init__(self, mode_id, actions: list[str] | None = None, parent=None):
         super().__init__(parent)
         self.mode_id = mode_id
-        self.actions = actions or []
+        self.actions: list[str] = actions or []
 
         self.setFixedSize(Sizes.DISPLAY_MODE_W, Sizes.DISPLAY_MODE_H)
         self.setAutoFillBackground(True)
@@ -1539,3 +1540,7 @@ class UCThemeSetting(BasePanel):
 
     def set_overlay_enabled(self, enabled: bool):
         self.overlay_grid.set_overlay_enabled(enabled)
+
+    def set_resolution(self, width: int, height: int):
+        """Delegate resolution to screencast panel."""
+        self.screencast_panel.set_resolution(width, height)

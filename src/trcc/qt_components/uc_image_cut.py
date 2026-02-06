@@ -5,6 +5,7 @@ Matches Windows TRCC UCImageCut functionality (500x702).
 Provides pan, zoom, rotation, and fit-mode controls for cropping
 images to LCD target resolution.
 """
+from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import (
@@ -204,6 +205,8 @@ class UCImageCut(QWidget):
         if not self._source_image:
             return
         img = self._get_rotated_source()
+        if img is None:
+            return
         src_w, src_h = img.size
         self._zoom = self._target_w / src_w if src_w > 0 else 1.0
         self._slider_x = max(SLIDER_X_MIN, min(SLIDER_X_MAX,
@@ -217,6 +220,8 @@ class UCImageCut(QWidget):
         if not self._source_image:
             return
         img = self._get_rotated_source()
+        if img is None:
+            return
         src_w, src_h = img.size
         self._zoom = self._target_h / src_h if src_h > 0 else 1.0
         self._slider_x = max(SLIDER_X_MIN, min(SLIDER_X_MAX,

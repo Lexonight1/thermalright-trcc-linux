@@ -101,3 +101,30 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
+
+[tool.coverage.run]
+source = ["trcc"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.pyright]
+pythonVersion = "3.9"
+pythonPlatform = "Linux"
+include = ["src"]
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportOptionalMemberAccess = "warning"
+reportAttributeAccessIssue = "warning"
+reportArgumentType = "warning"
+reportCallIssue = "warning"
+reportOptionalOperand = "warning"

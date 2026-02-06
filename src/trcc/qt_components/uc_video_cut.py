@@ -6,6 +6,8 @@ Provides timeline scrubber with in/out handles, fit modes, rotation,
 and Theme.zt export.
 """
 
+from __future__ import annotations
+
 import os
 import struct
 import subprocess
@@ -537,7 +539,7 @@ class UCVideoCut(QWidget):
         from PyQt6.QtGui import QImage
         h, w, ch = frame.shape
         bytes_per_line = ch * w
-        qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        qimg = QImage(bytes(frame.data), w, h, bytes_per_line, QImage.Format.Format_RGB888)
         self._preview_pixmap = QPixmap.fromImage(qimg)
 
         self._lbl_current.setText(_format_time(ms))

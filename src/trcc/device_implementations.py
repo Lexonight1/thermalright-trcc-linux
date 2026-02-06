@@ -77,10 +77,10 @@ class LCDDeviceImplementation(ABC):
             True if detection succeeded, False otherwise
         """
         try:
-            from .fbl_detector import detect_display_resolution
+            from .fbl_detector import detect_display_resolution  # type: ignore[import-not-found]
         except ImportError:
             try:
-                from fbl_detector import detect_display_resolution
+                from fbl_detector import detect_display_resolution  # type: ignore[import-not-found]
             except ImportError:
                 if verbose:
                     print("[!] fbl_detector module not available")

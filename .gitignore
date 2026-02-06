@@ -59,6 +59,7 @@ src/data/Theme*/Theme[1-5]/
 src/data/Theme320320/
 src/data/Web/320320
 src/data/Web/zt320320
+src/data/Web/zt240240
 
 
 # Cloud theme cache (PNGs extracted from .7z at runtime, MP4s downloaded on-demand)

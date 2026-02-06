@@ -30,7 +30,12 @@ jobs:
           sudo apt-get install -y libgl1 libegl1
 
       - name: Install package
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" pyright
 
-      - name: Run tests
-        run: pytest tests/ --tb=short -q
+      - name: Type check with pyright
+        run: pyright src/
+
+      - name: Run tests with coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/ --cov=trcc --cov-report=term-missing --cov-branch --tb=short -q

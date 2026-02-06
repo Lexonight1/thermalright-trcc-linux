@@ -10,6 +10,7 @@ Visual polish matches Windows TRCC exactly:
 - Windows asset images for buttons, tabs, panels
 - Exact coordinate positioning matching Windows InitializeComponent()
 """
+from __future__ import annotations
 
 import locale
 import os
@@ -114,7 +115,7 @@ class TRCCMainWindowMVC(QMainWindow):
     - Subscribes to controller callbacks for updates
     """
 
-    def __init__(self, data_dir: Path = None, decorated: bool = False):
+    def __init__(self, data_dir: Path | None = None, decorated: bool = False):
         super().__init__()
 
         self._decorated = decorated
@@ -219,10 +220,12 @@ class TRCCMainWindowMVC(QMainWindow):
 
         menu = QMenu()
         show_action = menu.addAction("Show/Hide")
-        show_action.triggered.connect(self._toggle_visibility)
+        if show_action:
+            show_action.triggered.connect(self._toggle_visibility)
         menu.addSeparator()
         exit_action = menu.addAction("Exit")
-        exit_action.triggered.connect(self._quit_app)
+        if exit_action:
+            exit_action.triggered.connect(self._quit_app)
         self._tray.setContextMenu(menu)
 
         self._tray.activated.connect(self._on_tray_activated)
@@ -377,8 +380,9 @@ class TRCCMainWindowMVC(QMainWindow):
         ]
 
         for rect, normal_img, active_img, panel_idx in tab_configs:
+            x, y, w, h = rect
             btn = create_image_button(
-                self.form_container, *rect,
+                self.form_container, x, y, w, h,
                 normal_img, active_img, checkable=True
             )
             btn.clicked.connect(lambda checked, idx=panel_idx: self._show_panel(idx))
@@ -1008,10 +1012,11 @@ class TRCCMainWindowMVC(QMainWindow):
             return
 
         import threading
-        self._pipewire_cast = PipeWireScreenCast()
+        cast = PipeWireScreenCast()
+        self._pipewire_cast = cast
 
         def _start():
-            if not self._pipewire_cast.start(timeout=30):
+            if not cast.start(timeout=30):
                 self._pipewire_cast = None
 
         # Start in background so portal dialog doesn't block the GUI
@@ -1266,13 +1271,13 @@ class TRCCMainWindowMVC(QMainWindow):
 
         Hides the element for ~1 second so the user can spot its position.
         """
-        self.controller.overlay.flash_skip_index = index
+        self.controller.overlay.flash_skip_index = index  # type: ignore[attr-defined]
         self._flash_timer.start(980)  # 14 ticks * 70ms = 980ms
         self.controller.render_overlay_and_preview()
 
     def _on_flash_timeout(self):
         """End element flash — restore normal rendering."""
-        self.controller.overlay.flash_skip_index = -1
+        self.controller.overlay.flash_skip_index = -1  # type: ignore[attr-defined]
         self.controller.render_overlay_and_preview()
 
     # =========================================================================
@@ -1292,8 +1297,8 @@ class TRCCMainWindowMVC(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self.uc_theme_local.delete_theme(theme_info)
             # If deleted theme was the current one, clear preview
-            if (self.controller.current_theme and
-                    getattr(self.controller.current_theme, 'path', None) == theme_info.get('path')):
+            if (self.controller.current_theme and  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+                    getattr(self.controller.current_theme, 'path', None) == theme_info.get('path')):  # pyright: ignore[reportAttributeAccessIssue]
                 self.controller.current_image = None
                 self.uc_preview.set_image(None)
             self.uc_preview.set_status(f"Deleted: {name}")
@@ -1493,7 +1498,7 @@ class TRCCMainWindowMVC(QMainWindow):
             pil_img = pixmap_to_pil(pixmap)
 
         lcd_w, lcd_h = self.controller.lcd_width, self.controller.lcd_height
-        pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.LANCZOS)
+        pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.Resampling.LANCZOS)
 
         # Apply overlay if enabled
         if self.controller.overlay.is_enabled():
@@ -1546,7 +1551,7 @@ class TRCCMainWindowMVC(QMainWindow):
             return
         try:
             from ..dc_parser import dc_to_overlay_config, parse_dc_file
-            dc_data = parse_dc_file(dc_path)
+            dc_data = parse_dc_file(str(dc_path))
             overlay_config = dc_to_overlay_config(dc_data)
             self.uc_theme_setting.load_from_overlay_config(overlay_config)
 
@@ -1705,10 +1710,12 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.video.stop()
         self.controller.cleanup()
         event.accept()
-        QApplication.instance().quit()
+        app = QApplication.instance()
+        if app:
+            app.quit()
 
 
-def run_mvc_app(data_dir: Path = None, decorated: bool = False):
+def run_mvc_app(data_dir: Path | None = None, decorated: bool = False):
     """Run the MVC PyQt6 application."""
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)

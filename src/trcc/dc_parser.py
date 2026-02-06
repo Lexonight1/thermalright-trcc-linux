@@ -62,8 +62,8 @@ class DisplayElement:
     mode_sub: int       # Format variant
     x: int              # X position
     y: int              # Y position
-    main_count: int     # For hardware info - sensor category
-    sub_count: int      # For hardware info - specific sensor
+    main_count: int = 0     # For hardware info - sensor category
+    sub_count: int = 0      # For hardware info - specific sensor
     font_name: str = "Microsoft YaHei"
     font_size: float = 24.0
     font_style: int = 1  # 0=Regular, 1=Bold, 2=Italic

@@ -375,8 +375,8 @@ def _metric_to_hardware_ids(metric: str) -> Tuple[int, int]:
 def save_theme(theme_path: str,
                background_image=None,
                mask_image=None,
-               overlay_config: dict = None,
-               mask_position: Tuple[int, int] = None,
+               overlay_config: Optional[dict] = None,
+               mask_position: Optional[Tuple[int, int]] = None,
                display_width: int = 320,
                display_height: int = 320) -> None:
     """
@@ -798,7 +798,7 @@ if __name__ == '__main__':
         print(f"Test theme created at: {test_path}")
 
         # Verify by reading back
-        from dc_parser import parse_dc_file
+        from trcc.dc_parser import parse_dc_file
         parsed = parse_dc_file(os.path.join(test_path, "config1.dc"))
         print(f"Verified: {len(parsed['display_elements'])} elements")
 

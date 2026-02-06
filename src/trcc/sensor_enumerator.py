@@ -352,8 +352,8 @@ class SensorEnumerator:
                 pass
             try:
                 mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                readings[f"{prefix}:vram_used"] = mem.used / (1024 * 1024)
-                readings[f"{prefix}:vram_total"] = mem.total / (1024 * 1024)
+                readings[f"{prefix}:vram_used"] = int(mem.used) / (1024 * 1024)
+                readings[f"{prefix}:vram_total"] = int(mem.total) / (1024 * 1024)
             except Exception:
                 pass
             try:
