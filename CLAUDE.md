@@ -31,7 +31,7 @@ Semantic versioning: MAJOR.MINOR.PATCH
 
 ## Test Suite
 
-527 tests across 18 test files — `pytest tests/`
+623 tests across 21 test files — `QT_QPA_PLATFORM=offscreen pytest tests/`
 
 | Test file | Module covered | Tests |
 |-----------|---------------|-------|
@@ -53,8 +53,11 @@ Semantic versioning: MAJOR.MINOR.PATCH
 | test_theme_downloader | theme_downloader | 30 |
 | test_cli | cli | 26 |
 | test_controllers | core/controllers | 43 |
+| test_qt_constants | qt_components/constants | 24 |
+| test_qt_base | qt_components/base | 27 |
+| test_qt_widgets | qt_components widgets+assets | 45 |
 
-**Not tested** (GUI/heavy I/O): qt_components/*
+Qt tests require `QT_QPA_PLATFORM=offscreen` (headless, no display server).
 
 ## Commands
 

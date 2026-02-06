@@ -12,6 +12,7 @@ Visual polish matches Windows TRCC exactly:
 """
 
 import locale
+import os
 import sys
 from pathlib import Path
 
@@ -84,7 +85,9 @@ LOCALE_TO_LANG = {
 def detect_language() -> str:
     """Detect system language and return Windows asset suffix."""
     try:
-        lang = locale.getdefaultlocale()[0] or 'en'
+        lang = (locale.getlocale()[0]
+                or os.environ.get('LANG', '').split('.')[0]
+                or 'en')
     except Exception:
         lang = 'en'
 
