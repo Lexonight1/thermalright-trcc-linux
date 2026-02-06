@@ -1,8 +1,14 @@
 """
-Tests for DeviceSenderFactory — protocol routing (SCSI vs HID).
+Tests for DeviceProtocolFactory — protocol routing (SCSI vs HID).
 
-Tests the factory pattern, sender creation, caching, and end-to-end
+Tests the observer-pattern factory, protocol creation, caching, and end-to-end
 wiring from DeviceModel.send_image() through the factory.
+
+Architecture mirrors Windows:
+  - DelegateFormCZTV (USBLCD)    → ScsiProtocol
+  - DelegateFormCZTVHid (USBLCDNEW) → HidProtocol
+
+Both implement DeviceProtocol ABC. The GUI fires commands; protocols route.
 """
 
 import pytest
@@ -32,10 +38,16 @@ class FakeDeviceInfo:
 
 
 # =========================================================================
-# Import targets
+# Import targets (new names + backward-compatible aliases)
 # =========================================================================
 
 from trcc.device_factory import (
+    # New names
+    DeviceProtocol,
+    DeviceProtocolFactory,
+    HidProtocol,
+    ScsiProtocol,
+    # Backward-compatible aliases
     DeviceSender,
     DeviceSenderFactory,
     HidSender,
@@ -50,9 +62,9 @@ from trcc.device_factory import (
 @pytest.fixture(autouse=True)
 def _clear_factory_cache():
     """Ensure factory cache is empty before/after each test."""
-    DeviceSenderFactory.close_all()
+    DeviceProtocolFactory.close_all()
     yield
-    DeviceSenderFactory.close_all()
+    DeviceProtocolFactory.close_all()
 
 
 @pytest.fixture
@@ -91,82 +103,175 @@ def hid_type3_device():
 
 
 # =========================================================================
-# Tests: DeviceSender ABC
+# Tests: DeviceProtocol ABC
 # =========================================================================
 
-class TestDeviceSenderABC:
+class TestDeviceProtocolABC:
     """Verify the abstract base class contract."""
 
     def test_cannot_instantiate_abc(self):
         with pytest.raises(TypeError):
-            DeviceSender()
+            DeviceProtocol()
 
-    def test_scsi_sender_is_device_sender(self):
-        s = ScsiSender("/dev/sg0")
-        assert isinstance(s, DeviceSender)
+    def test_scsi_protocol_is_device_protocol(self):
+        s = ScsiProtocol("/dev/sg0")
+        assert isinstance(s, DeviceProtocol)
 
-    def test_hid_sender_is_device_sender(self):
-        s = HidSender(0x0416, 0x530A, 2)
-        assert isinstance(s, DeviceSender)
+    def test_hid_protocol_is_device_protocol(self):
+        s = HidProtocol(0x0416, 0x530A, 2)
+        assert isinstance(s, DeviceProtocol)
+
+    def test_backward_compat_aliases(self):
+        """Old class names still work."""
+        assert DeviceSender is DeviceProtocol
+        assert ScsiSender is ScsiProtocol
+        assert HidSender is HidProtocol
+        assert DeviceSenderFactory is DeviceProtocolFactory
 
 
 # =========================================================================
-# Tests: ScsiSender
+# Tests: Observer callbacks on DeviceProtocol
 # =========================================================================
 
-class TestScsiSender:
-    """Test SCSI sender creation and send routing."""
+class TestObserverCallbacks:
+    """Test observer pattern on protocol instances."""
+
+    @patch("trcc.scsi_device.send_image_to_device", return_value=True)
+    def test_on_send_complete_fires_on_success(self, mock_send):
+        s = ScsiProtocol("/dev/sg0")
+        callback = MagicMock()
+        s.on_send_complete = callback
+
+        s.send_image(b'\x00' * 100, 320, 320)
+
+        callback.assert_called_once_with(True)
+
+    @patch("trcc.scsi_device.send_image_to_device", return_value=False)
+    def test_on_send_complete_fires_on_failure(self, mock_send):
+        s = ScsiProtocol("/dev/sg0")
+        callback = MagicMock()
+        s.on_send_complete = callback
+
+        s.send_image(b'\x00' * 100, 320, 320)
+
+        callback.assert_called_once_with(False)
+
+    @patch("trcc.scsi_device.send_image_to_device", side_effect=Exception("SCSI error"))
+    def test_on_error_fires_on_exception(self, mock_send):
+        s = ScsiProtocol("/dev/sg0")
+        error_cb = MagicMock()
+        s.on_error = error_cb
+
+        s.send_image(b'\x00', 320, 320)
+
+        error_cb.assert_called_once()
+        assert "SCSI" in error_cb.call_args[0][0]
+
+    @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
+    @patch("trcc.hid_device.PyUsbTransport")
+    @patch("trcc.hid_device.send_image_to_hid_device", return_value=True)
+    def test_hid_state_changed_on_transport_open(self, mock_send, MockPyUsb):
+        mock_transport = MagicMock()
+        MockPyUsb.return_value = mock_transport
+
+        s = HidProtocol(0x0416, 0x530A, 2)
+        state_cb = MagicMock()
+        s.on_state_changed = state_cb
+
+        s.send_image(b'\x00' * 100, 320, 320)
+
+        state_cb.assert_called_with("transport_open", True)
+
+    def test_hid_state_changed_on_close(self):
+        s = HidProtocol(0x0416, 0x530A, 2)
+        s._transport = MagicMock()  # Simulate open transport
+        state_cb = MagicMock()
+        s.on_state_changed = state_cb
+
+        s.close()
+
+        state_cb.assert_called_with("transport_open", False)
+
+    def test_no_callback_when_not_set(self):
+        """Observer callbacks are optional — no crash when None."""
+        s = ScsiProtocol("/dev/sg0")
+        assert s.on_send_complete is None
+        assert s.on_error is None
+        assert s.on_state_changed is None
+        # Should not raise
+        s._notify_send_complete(True)
+        s._notify_error("test")
+        s._notify_state_changed("key", "val")
+
+
+# =========================================================================
+# Tests: ScsiProtocol
+# =========================================================================
+
+class TestScsiProtocol:
+    """Test SCSI protocol creation and send routing."""
 
     def test_create(self):
-        s = ScsiSender("/dev/sg0")
-        assert s.protocol == "scsi"
+        s = ScsiProtocol("/dev/sg0")
+        assert s.protocol_name == "scsi"
         assert "/dev/sg0" in repr(s)
-
-    @patch("trcc.device_factory.ScsiSender.send")
-    def test_send_delegates_to_scsi_device(self, mock_send):
-        mock_send.return_value = True
-        s = ScsiSender("/dev/sg0")
-        result = s.send(b'\x00' * 100, 320, 320)
-        assert result is True
-        mock_send.assert_called_once()
 
     @patch("trcc.scsi_device.send_image_to_device")
     def test_send_calls_scsi_send_image(self, mock_scsi_send):
         mock_scsi_send.return_value = True
-        s = ScsiSender("/dev/sg0")
+        s = ScsiProtocol("/dev/sg0")
         data = b'\xAB' * 204800
-        result = s.send(data, 320, 320)
+        result = s.send_image(data, 320, 320)
         assert result is True
         mock_scsi_send.assert_called_once_with("/dev/sg0", data, 320, 320)
 
     @patch("trcc.scsi_device.send_image_to_device")
     def test_send_returns_false_on_failure(self, mock_scsi_send):
         mock_scsi_send.return_value = False
-        s = ScsiSender("/dev/sg0")
-        result = s.send(b'\x00', 320, 320)
+        s = ScsiProtocol("/dev/sg0")
+        result = s.send_image(b'\x00', 320, 320)
+        assert result is False
+
+    @patch("trcc.scsi_device.send_image_to_device", side_effect=Exception("hw err"))
+    def test_send_returns_false_on_exception(self, mock_scsi_send):
+        s = ScsiProtocol("/dev/sg0")
+        result = s.send_image(b'\x00', 320, 320)
         assert result is False
 
     def test_close_is_noop(self):
-        s = ScsiSender("/dev/sg0")
+        s = ScsiProtocol("/dev/sg0")
         s.close()  # Should not raise
 
+    def test_get_info_returns_protocol_info(self):
+        s = ScsiProtocol("/dev/sg0")
+        info = s.get_info()
+        assert info.protocol == "scsi"
+        assert info.device_type == 1
+        assert info.is_scsi is True
+        assert "SCSI" in info.protocol_display
+
+    def test_is_available_checks_sg_raw(self):
+        s = ScsiProtocol("/dev/sg0")
+        # is_available depends on system state, just verify it returns bool
+        assert isinstance(s.is_available, bool)
+
 
 # =========================================================================
-# Tests: HidSender
+# Tests: HidProtocol
 # =========================================================================
 
-class TestHidSender:
-    """Test HID sender creation and send routing."""
+class TestHidProtocol:
+    """Test HID protocol creation and send routing."""
 
     def test_create_type2(self):
-        s = HidSender(0x0416, 0x530A, 2)
-        assert s.protocol == "hid"
+        s = HidProtocol(0x0416, 0x530A, 2)
+        assert s.protocol_name == "hid"
         assert "0416" in repr(s)
         assert "530a" in repr(s)
         assert "type=2" in repr(s)
 
     def test_create_type3(self):
-        s = HidSender(0x0416, 0x53E6, 3)
+        s = HidProtocol(0x0416, 0x53E6, 3)
         assert "53e6" in repr(s)
         assert "type=3" in repr(s)
 
@@ -178,8 +283,8 @@ class TestHidSender:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidSender(0x0416, 0x530A, 2)
-        result = s.send(b'\x00' * 100, 320, 320)
+        s = HidProtocol(0x0416, 0x530A, 2)
+        result = s.send_image(b'\x00' * 100, 320, 320)
 
         assert result is True
         MockPyUsb.assert_called_once_with(0x0416, 0x530A)
@@ -195,8 +300,8 @@ class TestHidSender:
         MockHidApi.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidSender(0x0416, 0x53E6, 3)
-        result = s.send(b'\xFF' * 50, 320, 320)
+        s = HidProtocol(0x0416, 0x53E6, 3)
+        result = s.send_image(b'\xFF' * 50, 320, 320)
 
         assert result is True
         MockHidApi.assert_called_once_with(0x0416, 0x53E6)
@@ -205,10 +310,16 @@ class TestHidSender:
 
     @patch("trcc.hid_device.PYUSB_AVAILABLE", False)
     @patch("trcc.hid_device.HIDAPI_AVAILABLE", False)
-    def test_send_raises_when_no_backend(self):
-        s = HidSender(0x0416, 0x530A, 2)
-        with pytest.raises(ImportError, match="No USB backend"):
-            s.send(b'\x00', 320, 320)
+    def test_send_returns_false_when_no_backend(self):
+        """No backend → error callback + returns False (not exception to caller)."""
+        s = HidProtocol(0x0416, 0x530A, 2)
+        error_cb = MagicMock()
+        s.on_error = error_cb
+
+        result = s.send_image(b'\x00', 320, 320)
+
+        assert result is False
+        error_cb.assert_called_once()
 
     @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
     @patch("trcc.hid_device.PyUsbTransport")
@@ -218,9 +329,9 @@ class TestHidSender:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidSender(0x0416, 0x530A, 2)
-        s.send(b'\x00', 320, 320)
-        s.send(b'\x01', 320, 320)
+        s = HidProtocol(0x0416, 0x530A, 2)
+        s.send_image(b'\x00', 320, 320)
+        s.send_image(b'\x01', 320, 320)
 
         # Transport created and opened only once
         MockPyUsb.assert_called_once()
@@ -228,7 +339,7 @@ class TestHidSender:
         assert mock_send_hid.call_count == 2
 
     def test_close_without_transport(self):
-        s = HidSender(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x530A, 2)
         s.close()  # No transport, should not raise
 
     @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
@@ -239,72 +350,80 @@ class TestHidSender:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidSender(0x0416, 0x530A, 2)
-        s.send(b'\x00', 320, 320)
+        s = HidProtocol(0x0416, 0x530A, 2)
+        s.send_image(b'\x00', 320, 320)
         s.close()
 
         mock_transport.close.assert_called_once()
         assert s._transport is None
 
+    def test_get_info_returns_protocol_info(self):
+        s = HidProtocol(0x0416, 0x530A, 2)
+        info = s.get_info()
+        assert info.protocol == "hid"
+        assert info.device_type == 2
+        assert info.is_hid is True
+        assert "HID" in info.protocol_display
+
 
 # =========================================================================
-# Tests: DeviceSenderFactory
+# Tests: DeviceProtocolFactory
 # =========================================================================
 
-class TestDeviceSenderFactory:
+class TestDeviceProtocolFactory:
     """Test factory creation, caching, and routing."""
 
-    def test_create_scsi_sender(self, scsi_device):
-        sender = DeviceSenderFactory.create_sender(scsi_device)
-        assert isinstance(sender, ScsiSender)
-        assert sender.protocol == "scsi"
+    def test_create_scsi_protocol(self, scsi_device):
+        proto = DeviceProtocolFactory.create_protocol(scsi_device)
+        assert isinstance(proto, ScsiProtocol)
+        assert proto.protocol_name == "scsi"
 
-    def test_create_hid_type2_sender(self, hid_type2_device):
-        sender = DeviceSenderFactory.create_sender(hid_type2_device)
-        assert isinstance(sender, HidSender)
-        assert sender._device_type == 2
+    def test_create_hid_type2_protocol(self, hid_type2_device):
+        proto = DeviceProtocolFactory.create_protocol(hid_type2_device)
+        assert isinstance(proto, HidProtocol)
+        assert proto._device_type == 2
 
-    def test_create_hid_type3_sender(self, hid_type3_device):
-        sender = DeviceSenderFactory.create_sender(hid_type3_device)
-        assert isinstance(sender, HidSender)
-        assert sender._device_type == 3
+    def test_create_hid_type3_protocol(self, hid_type3_device):
+        proto = DeviceProtocolFactory.create_protocol(hid_type3_device)
+        assert isinstance(proto, HidProtocol)
+        assert proto._device_type == 3
 
     def test_unknown_protocol_raises(self):
         device = FakeDeviceInfo(protocol="bluetooth")
         with pytest.raises(ValueError, match="Unknown protocol"):
-            DeviceSenderFactory.create_sender(device)
+            DeviceProtocolFactory.create_protocol(device)
 
-    def test_get_sender_caches(self, scsi_device):
-        s1 = DeviceSenderFactory.get_sender(scsi_device)
-        s2 = DeviceSenderFactory.get_sender(scsi_device)
-        assert s1 is s2
-        assert DeviceSenderFactory.get_cached_count() == 1
+    def test_get_protocol_caches(self, scsi_device):
+        p1 = DeviceProtocolFactory.get_protocol(scsi_device)
+        p2 = DeviceProtocolFactory.get_protocol(scsi_device)
+        assert p1 is p2
+        assert DeviceProtocolFactory.get_cached_count() == 1
 
-    def test_different_devices_get_different_senders(self, scsi_device, hid_type2_device):
-        s1 = DeviceSenderFactory.get_sender(scsi_device)
-        s2 = DeviceSenderFactory.get_sender(hid_type2_device)
-        assert s1 is not s2
-        assert DeviceSenderFactory.get_cached_count() == 2
+    def test_different_devices_get_different_protocols(self, scsi_device, hid_type2_device):
+        p1 = DeviceProtocolFactory.get_protocol(scsi_device)
+        p2 = DeviceProtocolFactory.get_protocol(hid_type2_device)
+        assert p1 is not p2
+        assert DeviceProtocolFactory.get_cached_count() == 2
 
-    def test_remove_sender(self, scsi_device):
-        DeviceSenderFactory.get_sender(scsi_device)
-        assert DeviceSenderFactory.get_cached_count() == 1
-        DeviceSenderFactory.remove_sender(scsi_device)
-        assert DeviceSenderFactory.get_cached_count() == 0
+    def test_remove_protocol(self, scsi_device):
+        DeviceProtocolFactory.get_protocol(scsi_device)
+        assert DeviceProtocolFactory.get_cached_count() == 1
+        DeviceProtocolFactory.remove_protocol(scsi_device)
+        assert DeviceProtocolFactory.get_cached_count() == 0
 
     def test_close_all(self, scsi_device, hid_type2_device):
-        DeviceSenderFactory.get_sender(scsi_device)
-        DeviceSenderFactory.get_sender(hid_type2_device)
-        assert DeviceSenderFactory.get_cached_count() == 2
-        DeviceSenderFactory.close_all()
-        assert DeviceSenderFactory.get_cached_count() == 0
+        DeviceProtocolFactory.get_protocol(scsi_device)
+        DeviceProtocolFactory.get_protocol(hid_type2_device)
+        assert DeviceProtocolFactory.get_cached_count() == 2
+        DeviceProtocolFactory.close_all()
+        assert DeviceProtocolFactory.get_cached_count() == 0
 
     def test_device_key_format(self, scsi_device):
-        key = DeviceSenderFactory._device_key(scsi_device)
+        key = DeviceProtocolFactory._device_key(scsi_device)
         assert key == "87cd_70db_/dev/sg0"
 
     def test_hid_device_key_format(self, hid_type2_device):
-        key = DeviceSenderFactory._device_key(hid_type2_device)
+        key = DeviceProtocolFactory._device_key(hid_type2_device)
         assert key == "0416_530a_hid:0416:530a"
 
     def test_default_protocol_is_scsi(self):
@@ -313,16 +432,20 @@ class TestDeviceSenderFactory:
             path = "/dev/sg1"
             vid = 0x87CD
             pid = 0x70DB
-        sender = DeviceSenderFactory.create_sender(BareDevice())
-        assert isinstance(sender, ScsiSender)
+        proto = DeviceProtocolFactory.create_protocol(BareDevice())
+        assert isinstance(proto, ScsiProtocol)
 
 
 # =========================================================================
-# Tests: End-to-end wiring (DeviceModel → Factory → Sender)
+# Tests: End-to-end wiring (DeviceModel → Factory → Protocol)
 # =========================================================================
 
 class TestDeviceModelFactoryWiring:
-    """Test that DeviceModel.send_image() routes through the factory."""
+    """Test that DeviceModel.send_image() routes through the factory.
+
+    Mirrors Windows: GUI fires delegateForm.Invoke(cmd, ...) →
+    DelegateFormCZTV (SCSI) or DelegateFormCZTVHid (HID).
+    """
 
     def _make_model(self, device_info):
         """Create a DeviceModel with a selected device."""
@@ -709,6 +832,16 @@ class TestProtocolInfo:
         from trcc.device_factory import get_protocol_info
         info = get_protocol_info(hid_type2_device)
         assert info.transport_open is False
+
+    @patch("trcc.scsi_device.send_image_to_device", return_value=True)
+    def test_cached_protocol_delegates_get_info(self, mock_send, scsi_device):
+        """When a protocol is cached, get_protocol_info delegates to proto.get_info()."""
+        from trcc.device_factory import get_protocol_info
+        # Create and cache a protocol
+        proto = DeviceProtocolFactory.get_protocol(scsi_device)
+        info = get_protocol_info(scsi_device)
+        assert info.protocol == "scsi"
+        assert info.is_scsi is True
 
 
 # =========================================================================

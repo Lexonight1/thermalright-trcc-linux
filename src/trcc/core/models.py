@@ -298,30 +298,32 @@ class DeviceModel:
         if self.on_selection_changed:
             self.on_selection_changed(device)
 
-    def send_image(self, rgb565_data: bytes, width: int, height: int) -> bool:
+    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         """
         Send image data to selected device via factory-routed protocol.
 
-        Uses DeviceSenderFactory to pick the right sender (SCSI or HID)
-        based on the selected device's protocol field.
+        Uses DeviceProtocolFactory to pick the right protocol (SCSI or HID)
+        based on the selected device's protocol field.  The GUI just fires
+        this command — the protocol layer handles routing (like Windows
+        DelegateFormCZTV vs DelegateFormCZTVHid).
 
         Args:
-            rgb565_data: RGB565 pixel data (SCSI) or image bytes (HID)
-            width: Image width
-            height: Image height
+            image_data: Pixel bytes (RGB565 for SCSI, JPEG for HID).
+            width: Image width in pixels.
+            height: Image height in pixels.
 
         Returns:
-            True if send was successful
+            True if send was successful.
         """
         if not self.selected_device or self._send_busy:
             return False
 
         try:
-            from ..device_factory import DeviceSenderFactory
+            from ..device_factory import DeviceProtocolFactory
             self._send_busy = True
 
-            sender = DeviceSenderFactory.get_sender(self.selected_device)
-            success = sender.send(rgb565_data, width, height)
+            protocol = DeviceProtocolFactory.get_protocol(self.selected_device)
+            success = protocol.send_image(image_data, width, height)
 
             self._send_busy = False
 
