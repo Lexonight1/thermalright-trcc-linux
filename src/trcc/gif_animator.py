@@ -29,7 +29,7 @@ def _check_ffmpeg():
         result = subprocess.run(['ffmpeg', '-version'],
                               capture_output=True, timeout=5)
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 FFMPEG_AVAILABLE = _check_ffmpeg()
@@ -248,7 +248,7 @@ class VideoPlayer:
     """
     Video player using OpenCV or FFmpeg for frame extraction.
     Supports MP4, AVI, MKV, MOV, and other common formats.
-    
+
     Uses OpenCV (cv2) when available for best performance.
     Falls back to FFmpeg subprocess (matching Windows TRCC behavior).
     """
@@ -341,7 +341,7 @@ class VideoPlayer:
                     # Frame count might be 'N/A'
                     try:
                         self.frame_count = int(parts[3])
-                    except:
+                    except (ValueError, IndexError):
                         self.frame_count = 0  # Will count during extraction
         except Exception as e:
             print(f"[!] ffprobe failed: {e}")

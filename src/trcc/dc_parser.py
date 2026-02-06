@@ -143,7 +143,7 @@ def parse_dc_file(filepath: str) -> dict:
         if length > 0 and pos + length <= len(data):
             try:
                 s = data[pos:pos + length].decode('utf-8')
-            except:
+            except (UnicodeDecodeError, ValueError):
                 s = ""
             pos += length
             return s
@@ -500,7 +500,7 @@ def parse_dd_format(data: bytes) -> dict:
         if length > 0 and pos + length <= len(data):
             try:
                 s = data[pos:pos + length].decode('utf-8')
-            except:
+            except (UnicodeDecodeError, ValueError):
                 s = ""
             pos += length
             return s
@@ -549,8 +549,8 @@ def parse_dd_format(data: bytes) -> dict:
             font_name = read_string()
             font_size = read_float()
             font_style = read_byte()
-            font_unit = read_byte()
-            font_charset = read_byte()
+            _font_unit = read_byte()
+            _font_charset = read_byte()
 
             # Read color
             alpha = read_byte()
@@ -693,7 +693,7 @@ def parse_display_elements(data: bytes, start_pos: int) -> List[DisplayElement]:
             if font_name_len > 0 and pos + font_name_len <= len(data):
                 try:
                     font_name = data[pos:pos + font_name_len].decode('utf-8')
-                except:
+                except (UnicodeDecodeError, ValueError):
                     font_name = "Microsoft YaHei"
                 pos += font_name_len
 
@@ -708,9 +708,9 @@ def parse_display_elements(data: bytes, start_pos: int) -> List[DisplayElement]:
                 break
             font_style = data[pos]
             pos += 1
-            font_unit = data[pos]
+            _font_unit = data[pos]
             pos += 1
-            charset = data[pos]
+            _charset = data[pos]
             pos += 1
             alpha = data[pos]
             pos += 1
@@ -729,7 +729,7 @@ def parse_display_elements(data: bytes, start_pos: int) -> List[DisplayElement]:
                 if text_len > 0 and pos + text_len <= len(data):
                     try:
                         text = data[pos:pos + text_len].decode('utf-8')
-                    except:
+                    except (UnicodeDecodeError, ValueError):
                         text = ""
                     pos += text_len
 

@@ -19,7 +19,9 @@ try:
     SCSI_AVAILABLE = True
 except ImportError:
     SCSI_AVAILABLE = False
-    find_lcd_devices = lambda: []
+
+    def find_lcd_devices():
+        return []
 
 
 # Map device model names to A1 image base names (without .png)

@@ -259,7 +259,7 @@ def detect_devices() -> List[DetectedDevice]:
     return devices
 
 
-def get_default_device() -> Optional[DeviceInfo]:
+def get_default_device() -> Optional[DetectedDevice]:
     """Get the first available LCD device"""
     devices = detect_devices()
 
@@ -293,9 +293,9 @@ def usb_reset_device(usb_path: str) -> bool:
             return False
 
         with open(busnum_path) as f:
-            bus = f.read().strip()
+            _bus = f.read().strip()
         with open(devnum_path) as f:
-            dev = f.read().strip()
+            _dev = f.read().strip()
 
         # Use usbreset or authorized mechanism
         # Method 1: Try authorized=0/1 (safest)
@@ -368,7 +368,7 @@ def check_device_health(device_path: str) -> bool:
         return False
 
 
-def print_device_info(device: DeviceInfo):
+def print_device_info(device: DetectedDevice):
     """Pretty print device information"""
     print(f"Device: {device.vendor_name} {device.product_name}")
     print(f"  USB VID:PID: {device.vid:04X}:{device.pid:04X}")

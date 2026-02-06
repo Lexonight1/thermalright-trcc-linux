@@ -258,7 +258,7 @@ class UCSystemInfo(QWidget):
         self.setAutoFillBackground(True)
 
         # Load config and auto-map any empty bindings
-        panels = self._config.load()
+        self._config.load()
         self._config.auto_map(self._enumerator)
         self._config.save()
 

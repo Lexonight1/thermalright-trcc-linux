@@ -34,7 +34,7 @@ try:
     from dbus.mainloop.glib import DBusGMainLoop
     gi.require_version('Gst', '1.0')
     gi.require_version('GstApp', '1.0')
-    from gi.repository import GLib, Gst, GstApp
+    from gi.repository import GLib, Gst, GstApp  # noqa: F401
     Gst.init(None)
     PIPEWIRE_AVAILABLE = True
 except (ImportError, ValueError) as e:

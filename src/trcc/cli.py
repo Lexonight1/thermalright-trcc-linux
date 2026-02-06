@@ -92,7 +92,7 @@ Examples:
     color_parser.add_argument("--device", "-d", help="Device path")
 
     # Info command
-    info_parser = subparsers.add_parser("info", help="Show system metrics")
+    subparsers.add_parser("info", help="Show system metrics")
 
     # Reset command
     reset_parser = subparsers.add_parser("reset", help="Reset/reinitialize LCD device")

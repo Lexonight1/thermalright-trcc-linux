@@ -31,7 +31,7 @@ def read_file(path: str) -> Optional[str]:
     try:
         with open(path, 'r') as f:
             return f.read().strip()
-    except:
+    except Exception:
         return None
 
 
@@ -73,7 +73,7 @@ def get_cpu_temperature() -> Optional[float]:
                 match = re.search(r':\s*([0-9.]+)', line)
                 if match:
                     return float(match.group(1))
-    except:
+    except Exception:
         pass
 
     return None
@@ -99,7 +99,7 @@ def get_cpu_usage() -> Optional[float]:
                 # Need previous values for delta calculation
                 # For simplicity, just return a rough estimate
                 return min(100.0, (active / total) * 100) if total > 0 else 0.0
-    except:
+    except Exception:
         pass
 
     # Fallback: use /proc/loadavg
@@ -109,7 +109,7 @@ def get_cpu_usage() -> Optional[float]:
             load = float(loadavg.split()[0])
             # Approximate percentage based on load
             return min(100.0, load * 10)
-    except:
+    except Exception:
         pass
 
     return None
@@ -130,7 +130,7 @@ def get_cpu_frequency() -> Optional[float]:
                     match = re.search(r':\s*([0-9.]+)', line)
                     if match:
                         return float(match.group(1))
-    except:
+    except Exception:
         pass
 
     return None
@@ -153,7 +153,7 @@ def get_gpu_temperature() -> Optional[float]:
         )
         if result.returncode == 0:
             return float(result.stdout.strip())
-    except:
+    except Exception:
         pass
 
     return None
@@ -177,7 +177,7 @@ def get_gpu_usage() -> Optional[float]:
         )
         if result.returncode == 0:
             return float(result.stdout.strip())
-    except:
+    except Exception:
         pass
 
     return None
@@ -200,7 +200,7 @@ def get_gpu_clock() -> Optional[float]:
         )
         if result.returncode == 0:
             return float(result.stdout.strip())
-    except:
+    except Exception:
         pass
 
     return None
@@ -224,7 +224,7 @@ def get_memory_usage() -> Optional[float]:
             if total > 0:
                 used = total - available
                 return (used / total) * 100
-    except:
+    except Exception:
         pass
 
     return None
@@ -239,7 +239,7 @@ def get_memory_available() -> Optional[float]:
                     # Value is in kB, convert to MB
                     kb = int(line.split()[1])
                     return kb / 1024.0
-    except:
+    except Exception:
         pass
     return None
 
@@ -279,7 +279,7 @@ def get_memory_temperature() -> Optional[float]:
                     match = re.search(r':\s*([0-9.]+)', line)
                     if match:
                         return float(match.group(1))
-    except:
+    except Exception:
         pass
 
     return None
@@ -306,7 +306,7 @@ def get_memory_clock() -> Optional[float]:
                     match = re.search(r'(\d+)\s*(?:MT/s|MHz)', line)
                     if match:
                         return float(match.group(1))
-    except:
+    except Exception:
         pass
 
     # Try lshw (also requires root typically)
@@ -320,7 +320,7 @@ def get_memory_clock() -> Optional[float]:
             match = re.search(r'(\d+)\s*(?:MT/s|MHz)', result.stdout)
             if match:
                 return float(match.group(1))
-    except:
+    except Exception:
         pass
 
     # Try reading from /sys EDAC (rarely has frequency)
@@ -334,7 +334,7 @@ def get_memory_clock() -> Optional[float]:
                     match = re.search(r'(\d+)\s*MHz', content)
                     if match:
                         return float(match.group(1))
-        except:
+        except Exception:
             pass
 
     return None
@@ -412,7 +412,7 @@ def get_disk_temperature() -> Optional[float]:
                     for i, part in enumerate(parts):
                         if part.isdigit() and int(part) < 100:
                             return float(part)
-    except:
+    except Exception:
         pass
 
     return None
