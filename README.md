@@ -58,52 +58,87 @@ Built with PyQt6, matching the original Windows UI pixel-for-pixel. **Feature-co
 
 ## Install
 
-### System dependencies
+### 1. System dependencies
 
-**Fedora:**
+#### Fedora / RHEL / CentOS Stream
+
 ```bash
-sudo dnf install sg3_utils lsscsi usbutils ffmpeg
+# Minimal (LCD communication + GUI)
+sudo dnf install sg3_utils usbutils python3-pip ffmpeg
+
+# Full (adds Wayland screen capture, NVIDIA monitoring, extra sensor support)
+sudo dnf install sg3_utils usbutils lsscsi python3-pip ffmpeg \
+  python3-gobject python3-dbus gstreamer1-plugins-base gstreamer1-plugin-pipewire \
+  lm_sensors smartmontools p7zip-plugins
 ```
 
-**Ubuntu / Debian:**
+#### Ubuntu / Debian / Linux Mint / Pop!_OS
+
 ```bash
-sudo apt install sg3-utils lsscsi usbutils ffmpeg
+# Minimal (LCD communication + GUI)
+sudo apt install sg3-utils usbutils python3-pip ffmpeg
+
+# Full (adds Wayland screen capture, NVIDIA monitoring, extra sensor support)
+sudo apt install sg3-utils usbutils lsscsi python3-pip ffmpeg \
+  python3-gi python3-dbus gstreamer1.0-plugins-base gstreamer1.0-pipewire \
+  lm-sensors smartmontools p7zip-full
 ```
 
-**Arch:**
+#### Arch Linux / Manjaro / EndeavourOS
+
 ```bash
-sudo pacman -S sg3_utils lsscsi usbutils ffmpeg
+# Minimal (LCD communication + GUI)
+sudo pacman -S sg3_utils usbutils python-pip ffmpeg
+
+# Full (adds Wayland screen capture, NVIDIA monitoring, extra sensor support)
+sudo pacman -S sg3_utils usbutils lsscsi python-pip ffmpeg \
+  python-gobject python-dbus gst-plugins-base gst-plugin-pipewire \
+  lm_sensors smartmontools p7zip
 ```
 
-### Python package
+#### openSUSE
 
 ```bash
+# Minimal (LCD communication + GUI)
+sudo zypper install sg3_utils usbutils python3-pip ffmpeg
+
+# Full (adds Wayland screen capture, NVIDIA monitoring, extra sensor support)
+sudo zypper install sg3_utils usbutils lsscsi python3-pip ffmpeg \
+  python3-gobject python3-dbus-python gstreamer-plugins-base gstreamer-plugin-pipewire \
+  sensors smartmontools p7zip-full
+```
+
+### 2. Python packages
+
+```bash
+# Install TRCC and all dependencies
 pip install -e .
+
+# Or install with all optional extras
+pip install -e ".[all]"
 ```
 
-Or install dependencies manually:
-```bash
-pip install Pillow psutil requests py7zr  # Core
-pip install PyQt6                        # GUI (required)
-pip install pystray                      # Optional: system tray
-pip install pynvml                       # Optional: NVIDIA GPU sensors
-```
-
-#### Wayland screen capture (optional)
-
-For screen casting on GNOME/KDE Wayland (where X11 screen grab is unavailable):
+<details>
+<summary>Manual pip install (if not using pyproject.toml)</summary>
 
 ```bash
+# Required
+pip install PyQt6 Pillow psutil py7zr
+
+# Optional: NVIDIA GPU sensors
+pip install pynvml
+
+# Optional: Wayland screen capture (GNOME/KDE)
 pip install dbus-python PyGObject
 ```
+</details>
 
-Also requires `gstreamer`, `gst-plugins-base`, and `gst-plugins-good` system packages (usually pre-installed on GNOME/KDE).
-
-### Device access (udev)
+### 3. Device access (udev)
 
 ```bash
 # Automatic setup (recommended)
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo trcc setup-udev
+# or: sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
 
 # Or manual
 echo 'SUBSYSTEM=="scsi_generic", MODE="0666"' | sudo tee /etc/udev/rules.d/99-trcc.rules

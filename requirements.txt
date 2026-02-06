@@ -1,0 +1,18 @@
+# TRCC Linux - Python dependencies
+# Install: pip install -r requirements.txt
+
+# === Required ===
+PyQt6>=6.5.0            # GUI framework
+Pillow>=10.0.0          # Image processing, overlay rendering
+psutil>=5.9.0           # CPU/RAM/disk/network sensors
+py7zr>=0.20.0           # Extract bundled .7z theme archives
+
+# === Optional: NVIDIA GPU sensors ===
+# pynvml>=11.0.0        # Uncomment for NVIDIA GPU temp/usage/clock/VRAM
+
+# === Optional: Wayland screen capture (GNOME/KDE) ===
+# dbus-python>=1.3.0    # Uncomment for PipeWire portal capture
+# PyGObject>=3.42.0     # Uncomment for GStreamer frame grabbing
+
+# === Optional: Video (alternative to ffmpeg) ===
+# opencv-python>=4.8.0  # Uncomment if ffmpeg is not installed
