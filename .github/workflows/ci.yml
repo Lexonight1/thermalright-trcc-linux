@@ -94,41 +94,7 @@ jobs:
 
       - name: Produce findings summary file ✅
         id: summary
-        run: |
-          python - <<'PY'
-import json,os
-summary={'pip_high':0,'bandit_high':0,'safety_high':0,'total_findings':0}
-if os.path.exists('pip_audit_results.json'):
-    try:
-        j=json.load(open('pip_audit_results.json'))
-        vulns=j.get('vulns') or j.get('vulnerabilities') or j
-        high=sum(1 for v in vulns if str(v.get('severity','')).lower() in ('high','critical'))
-        summary['pip_high']=high
-        summary['total_findings']+=len(vulns) if isinstance(vulns,list) else 0
-    except Exception:
-        pass
-if os.path.exists('bandit_report.json'):
-    try:
-        j=json.load(open('bandit_report.json'))
-        high=sum(1 for r in j.get('results',[]) if r.get('issue_severity','').upper()=='HIGH')
-        summary['bandit_high']=high
-        summary['total_findings']+=sum(1 for r in j.get('results',[]))
-    except Exception:
-        pass
-if os.path.exists('safety_report.json'):
-    try:
-        j=json.load(open('safety_report.json'))
-        vulns=j.get('vulnerabilities') if isinstance(j, dict) else j
-        total=len(vulns) if isinstance(vulns,list) else 0
-        high=sum(1 for v in vulns if str(v.get('severity','')).lower() in ('high','critical'))
-        summary['safety_high']=high
-        summary['total_findings']+=total
-    except Exception:
-        pass
-open('security_findings.json','w').write(json.dumps(summary))
-print('Security summary:')
-print(json.dumps(summary))
-PY
+        run: python .github/scripts/security_summary.py
 
       - name: Upload security reports and summary
         if: always()
@@ -155,37 +121,26 @@ PY
 
       - name: Inspect findings & decide
         id: inspect
-        run: |
-          python - <<'PY'
-import json,os
-try:
-    s=json.load(open('security_reports/security_findings.json'))
-except Exception:
-    s={'pip_high':0,'bandit_high':0,'safety_high':0,'total_findings':0}
-print('Summary:',s)
-found = any(s.get(k,0)>0 for k in ('pip_high','bandit_high','safety_high'))
-with open(os.environ['GITHUB_OUTPUT'],'a') as fh:
-    fh.write(f'found={str(found).lower()}\n')
-    fh.write('summary='+json.dumps(s)+'\n')
-PY
+        run: python .github/scripts/security_inspect.py
 
       - name: Create issue for security findings
         if: steps.inspect.outputs.found == 'true'
-        uses: peter-evans/create-issue@v4
-        with:
-          title: '[SECURITY] High/Critical findings in CI scans'
-          labels: security,automated
-          body: |
-            The automated security scans detected **high/critical** findings.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title '[SECURITY] High/Critical findings in CI scans' \
+            --label 'security,automated' \
+            --body "The automated security scans detected **high/critical** findings.
 
-            Summary:
-            ```json
-            ${{ steps.inspect.outputs.summary }}
-            ```
+          Summary:
+          \`\`\`json
+          ${{ steps.inspect.outputs.summary }}
+          \`\`\`
 
-            Full scan reports are attached to the workflow run as artifacts (security-reports).
+          Full scan reports are attached to the workflow run as artifacts (security-reports).
 
-            Please triage and assign as appropriate. If this issue is a false positive, add the reason and close.
+          Please triage and assign as appropriate. If this issue is a false positive, add the reason and close."
 
   build-artifacts:
     name: Build artifacts (wheel + sdist)
@@ -216,9 +171,9 @@ PY
           name: dist-artifacts
           path: dist/*
 
-      - name: Optional: Create GitHub Release (draft) when tag present
+      - name: Create GitHub Release (draft) when tag present
         if: startsWith(github.ref, 'refs/tags/')
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
-          files: dist/*
+          artifacts: dist/*

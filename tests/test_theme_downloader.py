@@ -242,9 +242,10 @@ class TestDownloadWithProgress(unittest.TestCase):
     @patch('trcc.theme_downloader.urlopen')
     def test_http_error(self, mock_urlopen):
         """HTTPError returns False."""
+        from email.message import Message
         from urllib.error import HTTPError
         mock_urlopen.side_effect = HTTPError(
-            'http://x', 404, 'Not Found', {}, None
+            'http://x', 404, 'Not Found', Message(), None
         )
 
         with tempfile.TemporaryDirectory() as tmp:

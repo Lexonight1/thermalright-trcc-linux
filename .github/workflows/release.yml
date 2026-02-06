@@ -36,7 +36,7 @@ jobs:
         with:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          files: dist/*
+          artifacts: dist/*
 
       - name: Upload dist to actions artifacts
         uses: actions/upload-artifact@v4
