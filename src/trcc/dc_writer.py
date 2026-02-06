@@ -295,9 +295,10 @@ def overlay_config_to_theme(overlay_config: dict,
         if not cfg.get('enabled', True):
             continue
 
-        elem = DisplayElement()
-        elem.x = cfg.get('x', 0)
-        elem.y = cfg.get('y', 0)
+        elem = DisplayElement(
+            mode=0, mode_sub=0, x=cfg.get('x', 0), y=cfg.get('y', 0),
+            main_count=0, sub_count=0,
+        )
 
         # Parse font settings
         font_cfg = cfg.get('font', {})
@@ -548,13 +549,14 @@ def import_theme(tr_path: str, theme_path: str) -> None:
 
     elements = []
     for _ in range(count):
-        elem = DisplayElement()
-        elem.mode = read_int32()
-        elem.mode_sub = read_int32()
-        elem.x = read_int32()
-        elem.y = read_int32()
-        elem.main_count = read_int32()
-        elem.sub_count = read_int32()
+        elem = DisplayElement(
+            mode=read_int32(),
+            mode_sub=read_int32(),
+            x=read_int32(),
+            y=read_int32(),
+            main_count=read_int32(),
+            sub_count=read_int32(),
+        )
         elem.font_name = read_string()
         elem.font_size = read_float()
         elem.font_style = read_byte()
