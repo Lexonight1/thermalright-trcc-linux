@@ -1,6 +1,6 @@
 # TRCC Linux
 
-[![Version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
+[![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-41cd52.svg)](https://www.riverbankcomputing.com/software/pyqt/)
