@@ -726,6 +726,19 @@ class TRCCMainWindowMVC(QMainWindow):
         self.rotation_combo.blockSignals(False)
         self.controller.set_rotation(rotation_index * 90)
 
+        # Restore per-device theme
+        saved_theme = cfg.get('theme_path')
+        if saved_theme:
+            theme_path = Path(saved_theme)
+            if theme_path.exists():
+                if theme_path.suffix in ('.mp4', '.avi', '.mkv', '.webm'):
+                    preview = theme_path.parent / f"{theme_path.stem}.png"
+                    theme = ThemeInfo.from_video(
+                        theme_path, preview if preview.exists() else None)
+                    self.controller.themes.select_theme(theme)
+                else:
+                    self._select_theme_from_path(theme_path)
+
     def _on_send_complete(self, success: bool):
         """Handle LCD send completion."""
         self.uc_preview.set_status("Sent to LCD" if success else "Send failed")
@@ -829,6 +842,8 @@ class TRCCMainWindowMVC(QMainWindow):
         theme = ThemeInfo.from_directory(path)
         self.controller.themes.select_theme(theme)
         self._load_theme_overlay_config(path)
+        if self._active_device_key:
+            save_device_setting(self._active_device_key, 'theme_path', str(path))
 
     def _on_local_theme_clicked(self, theme_info: dict):
         """Forward local theme selection to controller."""
@@ -846,6 +861,9 @@ class TRCCMainWindowMVC(QMainWindow):
             preview_path = video_path.parent / f"{video_path.stem}.png"
             theme = ThemeInfo.from_video(video_path, preview_path if preview_path.exists() else None)
             self.controller.themes.select_theme(theme)
+            if self._active_device_key:
+                save_device_setting(self._active_device_key, 'theme_path',
+                                    str(video_path))
 
     def _on_mask_clicked(self, mask_info: dict):
         """Apply mask overlay on top of current content (preserves video)."""
