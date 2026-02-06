@@ -171,7 +171,7 @@ pip install -e .
 If you have `git` installed (most distros include it):
 
 ```bash
-git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 ```
 
@@ -349,7 +349,7 @@ which sg_raw
 ### Step 2 — Clone TRCC
 
 ```bash
-git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 ```
 
@@ -453,7 +453,7 @@ distrobox enter trcc
 
 # Inside the container — normal Fedora commands work
 sudo dnf install python3-pip sg3_utils ffmpeg
-git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e .
 
