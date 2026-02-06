@@ -39,13 +39,27 @@ class LCDDeviceImplementation(ABC):
         return (0x1F5, 0xE100)
 
     def get_frame_chunks(self) -> list:
-        """Get frame chunk commands [(cmd, size), ...]"""
-        return [
-            (0x101F5, 0x10000),
-            (0x10101F5, 0x10000),
-            (0x20101F5, 0x10000),
-            (0x30101F5, 0x2000),
-        ]
+        """Get frame chunk commands [(cmd, size), ...] for current resolution.
+
+        Each chunk is up to 64 KiB.  The chunk index is encoded in bits [27:24]
+        above the base command 0x101F5.
+
+        For 320x320: 4 chunks (3x64K + 8K = 204,800 bytes)
+        For 480x480: 8 chunks (7x64K + 2K = 460,800 bytes)
+        """
+        base_cmd = 0x101F5
+        chunk_size = 0x10000  # 64 KiB
+        total = self.width * self.height * 2  # RGB565: 2 bytes per pixel
+        chunks = []
+        offset = 0
+        idx = 0
+        while offset < total:
+            size = min(chunk_size, total - offset)
+            cmd = base_cmd | (idx << 24)
+            chunks.append((cmd, size))
+            offset += size
+            idx += 1
+        return chunks
 
     def needs_init_per_frame(self) -> bool:
         """Whether device needs init before each frame"""

@@ -207,8 +207,12 @@ class UCThemeLocal(BaseThemeBrowser):
             return
 
         # Load ALL themes (unfiltered) for index tracking and slideshow
+        # Sort: default themes first, then custom/user themes (alphabetical within each group)
         all_dirs = []
-        for item in sorted(self.theme_directory.iterdir()):
+        def _sort_key(p):
+            is_user = p.name.startswith('User') or p.name.startswith('Custom')
+            return (is_user, p.name)
+        for item in sorted(self.theme_directory.iterdir(), key=_sort_key):
             if item.is_dir():
                 thumb = item / 'Theme.png'
                 bg = item / '00.png'

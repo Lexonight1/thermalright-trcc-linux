@@ -157,8 +157,8 @@ class LCDDriver:
         if not self.implementation:
             raise RuntimeError("No implementation loaded")
 
-        # Init if needed
-        if force_init or (not self.initialized and self.implementation.needs_init_per_frame()):
+        # Init if needed (poll + init handshake before first frame)
+        if force_init or not self.initialized:
             self.init_device()
 
         # Get frame chunks from implementation

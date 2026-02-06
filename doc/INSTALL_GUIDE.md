@@ -96,7 +96,7 @@ These are system-level packages that TRCC needs. Open a terminal and run the com
 
 ```bash
 # Required (GUI + device communication + video playback)
-sudo dnf install python3-pip sg3_utils PyQt6 ffmpeg
+sudo dnf install python3-pip sg3_utils python3-pyqt6 ffmpeg
 
 # Optional (screen capture on Wayland, system tray)
 sudo dnf install grim python3-gobject python3-dbus pipewire-devel
@@ -629,6 +629,32 @@ sudo trcc setup-udev
 ```bash
 pip install PyQt6
 ```
+
+### "Qt_6_PRIVATE_API not found" when launching GUI
+
+**Cause:** The pip-installed PyQt6 bundles its own Qt6 libraries, but your system's Qt6 (`/lib64/libQt6Core.so.6`) is being loaded instead. The version mismatch causes a symbol error. This is common on Fedora 42+ and other distros with newer system Qt6.
+
+**Fix (recommended):** Use the system PyQt6 package instead of pip, so it matches the system Qt6:
+```bash
+# Fedora
+sudo dnf install python3-pyqt6
+pip uninstall PyQt6 PyQt6-Qt6 PyQt6-sip
+
+# Ubuntu/Debian
+sudo apt install python3-pyqt6
+pip uninstall PyQt6 PyQt6-Qt6 PyQt6-sip
+
+# Arch
+sudo pacman -S python-pyqt6
+pip uninstall PyQt6 PyQt6-Qt6 PyQt6-sip
+```
+
+**Fix (alternative):** If the system package isn't available, force the pip PyQt6 to use its own bundled Qt6 libraries:
+```bash
+LD_LIBRARY_PATH=$(python3 -c "import PyQt6; print(PyQt6.__path__[0])")/Qt6/lib trcc gui
+```
+
+> **Why this happens:** pip's PyQt6 wheel is compiled against a specific Qt6 version. When your system has a different Qt6 version in `/lib64/`, the linker finds the system one first, causing the `Qt_6_PRIVATE_API` mismatch. The system `python3-pyqt6` package is built against the same Qt6, so they always match.
 
 ### LCD stays blank or shows old image
 

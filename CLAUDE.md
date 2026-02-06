@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Repository:** https://github.com/Lexonight1/thermalright-trcc-linux
 
-**Current version: 1.1.1** (see `src/trcc/__version__.py`)
+**Current version: 1.1.2** (see `src/trcc/__version__.py`)
 
 **Status: Feature-complete** — 100% Windows feature parity achieved.
 
