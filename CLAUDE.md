@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Repository:** https://github.com/Lexonight1/thermalright-trcc-linux
 
-**Current version: 1.1.2** (see `src/trcc/__version__.py`)
+**Current version: 1.1.3** (see `src/trcc/__version__.py`)
 
 **Status: Feature-complete** — 100% Windows feature parity achieved.
 
@@ -126,7 +126,7 @@ src/trcc/
 ├── cloud_downloader.py     # Cloud theme HTTP fetch
 ├── theme_downloader.py     # Theme pack download manager
 ├── theme_io.py             # Theme export/import (.tr format)
-├── paths.py                # XDG data/config, per-device config, .7z extraction
+├── paths.py                # XDG paths, per-device config, .7z extraction, cross-distro helpers
 ├── core/
 │   ├── models.py           # ThemeInfo, DeviceInfo, VideoState, OverlayElement
 │   └── controllers.py      # FormCZTVController, ThemeController, DeviceController, etc.
@@ -295,6 +295,20 @@ Config structure:
 Key functions in `paths.py`: `device_config_key()`, `get_device_config()`, `save_device_setting()`.
 DeviceInfo dataclass fields: `model`, `vid`, `pid`, `device_index`.
 
+## Cross-Distro Compatibility
+
+All platform-specific helpers are centralized in `paths.py` (single source of truth):
+
+- **`require_sg_raw()`** — verifies `sg_raw` is on `$PATH` via `shutil.which()`, raises `FileNotFoundError` with install instructions for 8+ distro families (Fedora, Debian, Arch, openSUSE, Void, Alpine, Gentoo, NixOS)
+- **`find_scsi_devices()`** — dynamically scans `/sys/class/scsi_generic/` instead of hardcoded `range(16)`
+- **`FONT_SEARCH_DIRS`** — 20+ font directories covering all major distros (Fedora, Debian/Ubuntu, Arch, Void, Alpine, openSUSE, NixOS, Guix, Garuda, Mint)
+- **`FONTS_DIR`** — bundled fonts in `src/assets/fonts/` (first in search order)
+
+Consumers import from `paths.py`:
+- `scsi_device.py`, `lcd_driver.py` → `require_sg_raw()`
+- `device_detector.py` → `find_scsi_devices()` (aliased as `_find_sg_entries`)
+- `overlay_renderer.py` → `FONT_SEARCH_DIRS`, `FONTS_DIR`
+
 ## DC File Formats
 
 **config1.dc (0xDD header)**: Overlay element configs, mask position, display settings
@@ -332,30 +346,39 @@ Prioritized list of remaining work:
 - Remaining uncovered lines are module-level `except ImportError` fallbacks (impractical)
 - Qt modules excluded (require display server / heavy mocking for diminishing returns)
 
-### 5. Linting / Formatting
+### 5. ~~Cross-Distro Compatibility~~ ✓ Done
+- Centralized all platform helpers in `paths.py` (single source of truth)
+- `require_sg_raw()` with install instructions for 8+ distro families
+- Dynamic SCSI scan via sysfs (no hardcoded `range(16)`)
+- `FONT_SEARCH_DIRS` covering 20+ font paths across all major distros
+- `os.system()` → `subprocess.run()` in cli.py
+- Install guide covers 25+ Linux distributions
+
+### 6. Linting / Formatting
 - Add `ruff` for consistent style across codebase
 - Auto-fix and enforce in CI
 
-### 6. Type Annotation Hardening
+### 7. Type Annotation Hardening
 - Move pyright from basic → strict on key modules
 - Add missing type hints (system_info, sensor_enumerator especially)
 
-### 7. Integration Tests
+### 8. Integration Tests
 - End-to-end device detection → theme loading → LCD write pipeline (mocked hardware)
 
-### 8. Version Bump → 1.2.0
-- Current: 1.1.1
+### 9. Version Bump → 1.2.0
+- Current: 1.1.3
 - Coverage target achieved (96% non-Qt backend)
+- Cross-distro compatibility done
 - Bump when: linting in place
 - Update: `pyproject.toml`, `src/trcc/__version__.py`, `doc/CHANGELOG.md`
 
-### 9. Packaging & Release
+### 10. Packaging & Release
 - Build wheel: `python -m build`
 - Verify `pip install .` works cleanly, entry points
 - Create GitHub Release with .whl artifact
 - Consider PyPI publish
 
-### 10. README Polish
+### 11. README Polish
 - Add CI badge (tests passing)
 - Add coverage badge
 - Screenshot/demo GIF

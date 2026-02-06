@@ -19,7 +19,7 @@ src/trcc/
 ├── cloud_downloader.py          # Cloud theme HTTP fetch
 ├── theme_downloader.py          # Theme pack download manager
 ├── theme_io.py                  # Theme export/import (.tr format)
-├── paths.py                     # XDG data/config, per-device config, .7z extraction
+├── paths.py                     # XDG paths, per-device config, .7z extraction, cross-distro helpers
 ├── __version__.py               # Version info
 ├── core/
 │   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
@@ -66,6 +66,15 @@ Each connected LCD is identified by `"{index}:{vid:04x}_{pid:04x}"` (e.g. `"0:87
 ### Asset System
 
 726 GUI assets extracted from the Windows application, applied via QPalette (not stylesheets) to match the original dark theme exactly.
+
+### Cross-Distro Compatibility
+
+All platform-specific helpers are centralized in `paths.py`:
+
+- **`require_sg_raw()`** — verifies sg_raw availability, provides distro-specific install instructions
+- **`find_scsi_devices()`** — dynamic sysfs scan of `/sys/class/scsi_generic/`
+- **`FONT_SEARCH_DIRS`** — 20+ font directories covering Fedora, Debian/Ubuntu, Arch, Void, Alpine, openSUSE, NixOS, Guix, and more
+- **`FONTS_DIR`** — bundled fonts fallback in `src/assets/fonts/`
 
 ### Theme Archives
 

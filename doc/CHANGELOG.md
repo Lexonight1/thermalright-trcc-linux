@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.1.3
+
+### Cross-Distro Compatibility
+- Centralized all platform-specific helpers in `paths.py` (single source of truth)
+- `require_sg_raw()` with install instructions for 8+ distro families (Fedora, Debian, Arch, openSUSE, Void, Alpine, Gentoo, NixOS)
+- Dynamic SCSI device scan via `/sys/class/scsi_generic/` (replaces hardcoded `range(16)`)
+- `FONT_SEARCH_DIRS` covering 20+ font directories across all major Linux distros
+- Replaced `os.system()` with `subprocess.run()` in cli.py for security/correctness
+- Install guide expanded to cover 25+ Linux distributions
+
+### Bug Fixes
+- Theme.png preview now includes rendered overlays and masks (was showing raw background only)
+- `dc_writer.py` only writes fallback Theme.png if one doesn't already exist (controller writes the better rendered version)
+- Fixed cli.py `--version` flag (was stuck at 1.1.0)
+
+## v1.1.2
+
+### Bug Fixes
+- Fixed LCD send: init handshake (poll + init) was being skipped on first frame send
+- Dynamic frame chunk calculation for all resolutions (was hardcoded to 320x320)
+- Local themes grid now sorts default themes (Theme1-5) first
+- Added Qt6 installation docs for additional distros
+
+### Test Suite (1209 tests, 96% coverage)
+- Expanded from 880 → 1209 tests across 6 coverage sprints
+- All 18 non-Qt backend modules now 92-100% covered (combined 96%)
+- Added 3 Qt component test files (test_qt_constants, test_qt_base, test_qt_widgets)
+
 ## v1.1.1
 
 ### Test Suite (298 tests)
