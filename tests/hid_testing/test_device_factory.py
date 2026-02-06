@@ -617,3 +617,136 @@ class TestDeviceInfoProtocol:
 
         assert model.selected_device.protocol == "hid"
         assert model.selected_device.device_type == 3
+
+
+# =========================================================================
+# Tests: ProtocolInfo API
+# =========================================================================
+
+class TestProtocolInfo:
+    """Test the get_protocol_info() GUI API."""
+
+    def test_protocol_info_scsi_device(self, scsi_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(scsi_device)
+        assert info.protocol == "scsi"
+        assert info.device_type == 1
+        assert info.is_scsi is True
+        assert info.is_hid is False
+        assert "SCSI" in info.protocol_display
+        assert "sg_raw" in info.active_backend or info.active_backend == "none"
+
+    def test_protocol_info_hid_type2(self, hid_type2_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type2_device)
+        assert info.protocol == "hid"
+        assert info.device_type == 2
+        assert info.is_hid is True
+        assert info.is_scsi is False
+        assert "HID" in info.protocol_display
+        assert "Type 2" in info.device_type_display
+
+    def test_protocol_info_hid_type3(self, hid_type3_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type3_device)
+        assert info.device_type == 3
+        assert "Type 3" in info.device_type_display
+        assert "ALi" in info.device_type_display
+
+    def test_protocol_info_no_device(self):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(None)
+        assert info.protocol == "none"
+        assert info.protocol_display == "No device"
+        assert info.active_backend == "none"
+
+    def test_protocol_info_has_backends_dict(self, scsi_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(scsi_device)
+        assert "sg_raw" in info.backends
+        assert "pyusb" in info.backends
+        assert "hidapi" in info.backends
+        assert all(isinstance(v, bool) for v in info.backends.values())
+
+    def test_has_backend_scsi(self, scsi_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(scsi_device)
+        # has_backend depends on sg_raw being installed
+        assert info.has_backend == info.backends["sg_raw"]
+
+    @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
+    @patch("trcc.hid_device.HIDAPI_AVAILABLE", False)
+    def test_hid_active_backend_pyusb(self, hid_type2_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type2_device)
+        assert info.active_backend == "pyusb"
+        assert info.has_backend is True
+
+    @patch("trcc.hid_device.PYUSB_AVAILABLE", False)
+    @patch("trcc.hid_device.HIDAPI_AVAILABLE", True)
+    def test_hid_active_backend_hidapi(self, hid_type3_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type3_device)
+        assert info.active_backend == "hidapi"
+        assert info.has_backend is True
+
+    @patch("trcc.hid_device.PYUSB_AVAILABLE", False)
+    @patch("trcc.hid_device.HIDAPI_AVAILABLE", False)
+    def test_hid_no_backend(self, hid_type2_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type2_device)
+        assert info.active_backend == "none"
+        assert info.has_backend is False
+
+    def test_get_backend_availability(self):
+        from trcc.device_factory import get_backend_availability
+        avail = get_backend_availability()
+        assert "sg_raw" in avail
+        assert "pyusb" in avail
+        assert "hidapi" in avail
+
+    def test_transport_open_false_by_default(self, hid_type2_device):
+        from trcc.device_factory import get_protocol_info
+        info = get_protocol_info(hid_type2_device)
+        assert info.transport_open is False
+
+
+# =========================================================================
+# Tests: DeviceController.get_protocol_info()
+# =========================================================================
+
+class TestDeviceControllerProtocolInfo:
+    """Test the controller API the GUI calls."""
+
+    def test_no_device_selected(self):
+        from trcc.core.controllers import DeviceController
+        ctrl = DeviceController()
+        info = ctrl.get_protocol_info()
+        assert info is not None
+        assert info.protocol == "none"
+
+    def test_scsi_device_selected(self):
+        from trcc.core.controllers import DeviceController
+        from trcc.core.models import DeviceInfo
+        ctrl = DeviceController()
+        ctrl.model.selected_device = DeviceInfo(
+            name="LCD", path="/dev/sg0",
+            protocol="scsi", device_type=1,
+        )
+        info = ctrl.get_protocol_info()
+        assert info.protocol == "scsi"
+        assert info.is_scsi is True
+
+    def test_hid_device_selected(self):
+        from trcc.core.controllers import DeviceController
+        from trcc.core.models import DeviceInfo
+        ctrl = DeviceController()
+        ctrl.model.selected_device = DeviceInfo(
+            name="HID LCD", path="hid:0416:530a",
+            vid=0x0416, pid=0x530A,
+            protocol="hid", device_type=2,
+        )
+        info = ctrl.get_protocol_info()
+        assert info.protocol == "hid"
+        assert info.is_hid is True
+        assert info.device_type == 2

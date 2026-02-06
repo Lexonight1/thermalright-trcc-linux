@@ -188,6 +188,22 @@ class DeviceController:
         if self.on_send_complete:
             self.on_send_complete(success)
 
+    def get_protocol_info(self):
+        """Get protocol/backend info for the selected device.
+
+        Returns a ProtocolInfo dataclass the GUI can read to display
+        what protocol (SCSI or HID) and backend (sg_raw, pyusb, hidapi)
+        the current device is using.
+
+        Returns:
+            ProtocolInfo (from device_factory) or None on import error.
+        """
+        try:
+            from ..device_factory import get_protocol_info
+            return get_protocol_info(self.model.selected_device)
+        except ImportError:
+            return None
+
 
 class VideoController:
     """

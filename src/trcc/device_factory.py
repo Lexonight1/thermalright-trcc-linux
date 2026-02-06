@@ -13,7 +13,8 @@ Usage::
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 
 # =========================================================================
@@ -220,3 +221,145 @@ class DeviceSenderFactory:
     def get_cached_count(cls) -> int:
         """Number of cached senders (for testing)."""
         return len(cls._senders)
+
+
+# =========================================================================
+# Protocol Info API — for GUI to query device/backend state
+# =========================================================================
+
+# Protocol type names for display
+PROTOCOL_NAMES = {
+    "scsi": "SCSI (sg_raw)",
+    "hid": "HID (USB bulk)",
+}
+
+DEVICE_TYPE_NAMES = {
+    1: "SCSI RGB565",
+    2: "HID Type 2 (H)",
+    3: "HID Type 3 (ALi)",
+}
+
+
+@dataclass
+class ProtocolInfo:
+    """Protocol and backend info for a device — returned to the GUI.
+
+    Usage in GUI::
+
+        info = get_protocol_info(device)
+        label.setText(f"{info.protocol_display} via {info.active_backend}")
+    """
+    # Device identity
+    protocol: str = "scsi"        # "scsi" or "hid"
+    device_type: int = 1          # 1/2/3
+    protocol_display: str = ""    # Human-readable, e.g. "SCSI (sg_raw)"
+    device_type_display: str = "" # Human-readable, e.g. "HID Type 3 (ALi)"
+
+    # Active backend for this device
+    active_backend: str = ""      # "sg_raw", "pyusb", "hidapi", or "none"
+
+    # What's installed on the system
+    backends: Dict[str, bool] = field(default_factory=dict)
+
+    # Transport state (HID only)
+    transport_open: bool = False
+
+    @property
+    def is_scsi(self) -> bool:
+        return self.protocol == "scsi"
+
+    @property
+    def is_hid(self) -> bool:
+        return self.protocol == "hid"
+
+    @property
+    def has_backend(self) -> bool:
+        """Whether at least one usable backend is available."""
+        if self.protocol == "scsi":
+            return self.backends.get("sg_raw", False)
+        return self.backends.get("pyusb", False) or self.backends.get("hidapi", False)
+
+
+def _check_sg_raw() -> bool:
+    """Check if sg_raw is available on the system."""
+    import shutil
+    return shutil.which("sg_raw") is not None
+
+
+def get_backend_availability() -> Dict[str, bool]:
+    """Check which USB/SCSI backends are installed.
+
+    Returns dict with keys: sg_raw, pyusb, hidapi — each True/False.
+    """
+    hid_pyusb = False
+    hid_hidapi = False
+    try:
+        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        hid_pyusb = PYUSB_AVAILABLE
+        hid_hidapi = HIDAPI_AVAILABLE
+    except ImportError:
+        pass
+
+    return {
+        "sg_raw": _check_sg_raw(),
+        "pyusb": hid_pyusb,
+        "hidapi": hid_hidapi,
+    }
+
+
+def get_protocol_info(device_info=None) -> ProtocolInfo:
+    """Get protocol/backend info for a device (or system defaults).
+
+    The GUI calls this to display what protocol a device uses and
+    which backend library is active.
+
+    Args:
+        device_info: DeviceInfo object (or None for system-level info).
+
+    Returns:
+        ProtocolInfo with all fields populated.
+    """
+    backends = get_backend_availability()
+
+    if device_info is None:
+        return ProtocolInfo(
+            protocol="none",
+            device_type=0,
+            protocol_display="No device",
+            device_type_display="",
+            active_backend="none",
+            backends=backends,
+        )
+
+    protocol = getattr(device_info, 'protocol', 'scsi')
+    device_type = getattr(device_info, 'device_type', 1)
+
+    # Determine active backend
+    if protocol == "scsi":
+        active = "sg_raw" if backends["sg_raw"] else "none"
+    elif protocol == "hid":
+        if backends["pyusb"]:
+            active = "pyusb"
+        elif backends["hidapi"]:
+            active = "hidapi"
+        else:
+            active = "none"
+    else:
+        active = "none"
+
+    # Check transport state from cached sender
+    transport_open = False
+    key = DeviceSenderFactory._device_key(device_info)
+    sender = DeviceSenderFactory._senders.get(key)
+    if isinstance(sender, HidSender) and sender._transport is not None:
+        transport_open = getattr(sender._transport, 'is_open', False)
+
+    return ProtocolInfo(
+        protocol=protocol,
+        device_type=device_type,
+        protocol_display=PROTOCOL_NAMES.get(protocol, protocol),
+        device_type_display=DEVICE_TYPE_NAMES.get(device_type, f"Type {device_type}"),
+        active_backend=active,
+        backends=backends,
+        transport_open=transport_open,
+    )
