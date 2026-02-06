@@ -42,14 +42,15 @@ from typing import Optional, List, Tuple, Callable, Dict
 
 # Category definitions matching Windows FormCZTV.CheakWebFile
 # (prefix, display_name, count)
+# Counts updated to match actual server/preview availability
 CATEGORIES = [
     ('all', 'All', 0),
-    ('a', 'Gallery', 20),
-    ('b', 'Tech', 15),
-    ('c', 'HUD', 10),
-    ('d', 'Light', 10),
-    ('e', 'Nature', 10),
-    ('y', 'Aesthetic', 5),
+    ('a', 'Gallery', 82),
+    ('b', 'Tech', 25),
+    ('c', 'HUD', 72),
+    ('d', 'Light', 55),
+    ('e', 'Nature', 54),
+    ('y', 'Aesthetic', 10),
 ]
 
 # Category name lookup
@@ -229,6 +230,27 @@ class CloudThemeDownloader:
     def is_cached(self, theme_id: str) -> bool:
         """Check if theme is already downloaded."""
         return self.get_cached_path(theme_id) is not None
+
+    def download_preview_png(self, theme_id: str) -> Optional[str]:
+        """Download PNG preview image for a theme from the server.
+
+        Small file (~few KB), much faster than downloading the full MP4.
+
+        Args:
+            theme_id: Theme ID (e.g., 'a001')
+
+        Returns:
+            Path to downloaded PNG, or None if not available
+        """
+        if theme_id.endswith('.png'):
+            theme_id = theme_id[:-4]
+
+        dest = self.cache_dir / f"{theme_id}.png"
+        if dest.exists():
+            return str(dest)
+
+        url = f"{self.base_url}{theme_id}.png"
+        return self._download_file(url, dest)
 
     def download_theme(
         self,

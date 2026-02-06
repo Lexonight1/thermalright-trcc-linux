@@ -52,10 +52,10 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/thermalright/trcc-linux"
-Documentation = "https://github.com/thermalright/trcc-linux#readme"
-Repository = "https://github.com/thermalright/trcc-linux"
-Issues = "https://github.com/thermalright/trcc-linux/issues"
+Homepage = "https://github.com/Lexonight1/thermalright-trcc-linux"
+Documentation = "https://github.com/Lexonight1/thermalright-trcc-linux#readme"
+Repository = "https://github.com/Lexonight1/thermalright-trcc-linux"
+Issues = "https://github.com/Lexonight1/thermalright-trcc-linux/issues"
 
 [project.scripts]
 trcc = "trcc.cli:main"

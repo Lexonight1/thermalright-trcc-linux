@@ -560,26 +560,12 @@ class FormCZTVController:
         Rectangular displays: extra +90° base (not yet needed, all current devices square).
         """
         self.rotation = degrees % 360
-        # Refresh preview and resend with new rotation
-        if self.current_image:
-            image = self.current_image
-            if self.overlay.is_enabled():
-                image = self.overlay.render(image)
-            self._update_preview(image)
-            if self.auto_send:
-                self._send_frame_to_lcd(self.current_image)
+        self._render_and_send()
 
     def set_brightness(self, percent: int):
         """Set display brightness (25, 50, 100)."""
         self.brightness = max(0, min(100, percent))
-        # Refresh preview and resend with new brightness (same pattern as set_rotation)
-        if self.current_image:
-            image = self.current_image
-            if self.overlay.is_enabled():
-                image = self.overlay.render(image)
-            self._update_preview(image)
-            if self.auto_send:
-                self._send_frame_to_lcd(self.current_image)
+        self._render_and_send()
 
     # =========================================================================
     # Theme Operations
@@ -608,17 +594,7 @@ class FormCZTVController:
 
         # Parse DC configuration file from working dir
         dc_path = self.working_dir / 'config1.dc'
-        overlay_config = {}
-        if dc_path.exists():
-            try:
-                from ..dc_parser import parse_dc_file, dc_to_overlay_config
-                dc_data = parse_dc_file(str(dc_path))
-                overlay_config = dc_to_overlay_config(dc_data)
-                self.overlay.set_config(overlay_config)
-                # Set config resolution for dynamic font scaling
-                self.overlay.set_config_resolution(self.lcd_width, self.lcd_height)
-            except Exception as e:
-                print(f"[!] Failed to parse DC file: {e}")
+        self._load_dc_config(dc_path)
 
         # Load background / animation from working dir
         bg_path = self.working_dir / '00.png'
@@ -654,8 +630,50 @@ class FormCZTVController:
 
         if theme.animation_path:
             self.video.load(theme.animation_path)
+            # Show first frame immediately so preview updates before timer fires
+            first_frame = self.video.model.get_frame(0)
+            if first_frame:
+                self.current_image = first_frame
+                self._update_preview(first_frame)
             self.video.play()
             self._update_status(f"Cloud Theme: {theme.name}")
+
+    def apply_mask(self, mask_dir: Path):
+        """Apply a mask overlay on top of the current content.
+
+        Unlike load_local_theme(), this does NOT stop the video or reset the
+        background. It only copies mask files to working dir, loads the mask
+        and DC config, and enables the overlay.
+
+        Windows: ThemeMask delegate → applies mask on top of whatever's showing.
+        """
+        if not mask_dir or not mask_dir.exists():
+            return
+
+        # Copy mask files to working dir (01.png, config1.dc, Theme.png)
+        for f in mask_dir.iterdir():
+            if f.is_file():
+                shutil.copy2(str(f), str(self.working_dir / f.name))
+
+        # Load DC config
+        dc_path = self.working_dir / 'config1.dc'
+        self._load_dc_config(dc_path)
+
+        # Load mask image
+        mask_path = self.working_dir / '01.png'
+        if mask_path.exists():
+            self._load_theme_mask(mask_path, dc_path if dc_path.exists() else None)
+
+        # Enable overlay so mask + metrics render
+        self.overlay.enable(True)
+
+        # If no background exists yet, create black
+        if not self.current_image:
+            self._create_mask_background(None)
+
+        # Render and update preview (don't stop video — it renders on next tick)
+        self.render_overlay_and_preview()
+        self._update_status(f"Mask: {mask_dir.name}")
 
     def _load_static_image(self, path: Path):
         """Load a static image file."""
@@ -667,15 +685,7 @@ class FormCZTVController:
                 img = img.convert('RGB')
 
             self.current_image = img
-
-            # Apply overlay if enabled
-            if self.overlay.is_enabled():
-                img = self.overlay.render(img)
-
-            self._update_preview(img)
-
-            if self.auto_send:
-                self._send_frame_to_lcd(img)
+            self._render_and_send()
 
         except Exception as e:
             self._handle_error(f"Failed to load image: {e}")
@@ -732,55 +742,6 @@ class FormCZTVController:
             self.overlay.set_theme_mask(mask_img, mask_position)
         except Exception as e:
             print(f"[!] Failed to load mask: {e}")
-
-    def apply_mask(self, mask_dir: Path):
-        """Apply a cloud mask to the current theme.
-
-        Loads 01.png and config1.dc from mask_dir, copies them to working dir,
-        sets overlay config, and updates preview.
-
-        Windows pattern: mask edits go to working dir, not theme storage.
-        Reference: form_cztv.py:1327-1410
-        """
-        mask_path = mask_dir / '01.png'
-        config_path = mask_dir / 'config1.dc'
-
-        if not mask_path.exists():
-            self._handle_error(f"Mask not found: {mask_path}")
-            return
-
-        try:
-            from PIL import Image
-
-            # Copy mask files to working dir (Windows: edits go to GifDirectory)
-            shutil.copy2(str(mask_path), str(self.working_dir / '01.png'))
-            if config_path.exists():
-                shutil.copy2(str(config_path), str(self.working_dir / 'config1.dc'))
-
-            mask_img = Image.open(mask_path)
-            mask_position = self._parse_mask_position(config_path, mask_img)
-
-            # Also load overlay config from mask's DC
-            if config_path.exists():
-                try:
-                    from ..dc_parser import parse_dc_file, dc_to_overlay_config
-                    dc_data = parse_dc_file(str(config_path))
-                    overlay_config = dc_to_overlay_config(dc_data)
-                    self.overlay.set_config(overlay_config)
-                except Exception as e:
-                    print(f"[!] Failed to parse mask config: {e}")
-
-            self.overlay.set_theme_mask(mask_img, mask_position)
-
-            # Re-render preview
-            img = self.render_overlay_and_preview()
-            if img and self.auto_send:
-                self._send_frame_to_lcd(img)
-
-            self._update_status(f"Applied mask: {mask_dir.name}")
-
-        except Exception as e:
-            self._handle_error(f"Failed to apply mask: {e}")
 
     def load_image_file(self, path: Path):
         """Load a static image file (from settings panel 'Load Image')."""
@@ -1024,13 +985,45 @@ class FormCZTVController:
             rotated = self._apply_rotation(adjusted)
             self.on_preview_update(rotated)
 
+    def _load_dc_config(self, dc_path: Path):
+        """Parse DC config file and apply overlay settings.
+
+        Shared by load_local_theme() and any path that loads a config1.dc.
+        """
+        if not dc_path or not dc_path.exists():
+            return
+        try:
+            from ..dc_parser import parse_dc_file, dc_to_overlay_config
+            dc_data = parse_dc_file(str(dc_path))
+            overlay_config = dc_to_overlay_config(dc_data)
+            self.overlay.set_config(overlay_config)
+            self.overlay.set_config_resolution(self.lcd_width, self.lcd_height)
+        except Exception as e:
+            print(f"[!] Failed to parse DC file: {e}")
+
+    def _render_and_send(self):
+        """Render overlay on current_image, update preview, and send to LCD.
+
+        Shared by set_rotation(), set_brightness(), _load_static_image(), etc.
+        """
+        if not self.current_image:
+            return
+        image = self.current_image
+        if self.overlay.is_enabled():
+            image = self.overlay.render(image)
+        self._update_preview(image)
+        if self.auto_send:
+            self._send_frame_to_lcd(self.current_image)
+
     def render_overlay_and_preview(self):
         """Re-render overlay on current_image and update preview.
 
         Returns the rendered image (with overlay applied), or None.
+        Windows: GenerateImage() always starts with a black-filled bitmap,
+        so mask-only themes render on black even without 00.png.
         """
         if not self.current_image:
-            return None
+            self._create_mask_background(None)
         img = self.overlay.render(self.current_image)
         self._update_preview(img)
         return img

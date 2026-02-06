@@ -72,6 +72,24 @@ src/data/Theme/
 # Cloud theme video cache
 src/data/videos/
 
+# Downloaded cloud themes (MP4s, full theme packs — too large for git)
+src/data/cloud_themes/
+
+# Downloaded cloud masks
+src/data/cloud_masks/
+
+# Dev tooling artifacts
+src/data/settings.json
+src/data/ui_*.json
+
+# User themes / runtime data
+src/data/themes/
+src/data/images/
+src/data/web_cache/
+
+# Stray files in theme root dirs
+src/data/Theme*/01.png
+
 # Root-level data dir (not src/data)
 /data/
 
@@ -103,6 +121,9 @@ trcc.desktop
 
 # Built theme packages (can be regenerated)
 packages/
+
+# Large binary docs (too big for git)
+doc/*.pdf
 
 # Build artifacts
 dist/

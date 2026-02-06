@@ -138,32 +138,47 @@ PyQt6 MVC architecture. Controllers are GUI-independent; views subscribe via cal
 
 ```
 src/trcc/
-├── cli.py                    # CLI entry point (gui, detect, send, setup-udev, etc.)
-├── lcd_driver.py             # Unified LCD driver (SCSI init + frame send)
-├── device_detector.py        # USB/SCSI device detection
-├── device_implementations.py # Device-specific protocols
-├── dc_parser.py              # Theme config parser (.dc files)
-├── gif_animator.py           # GIF/video/FFmpeg playback
-├── system_info.py            # CPU/GPU/RAM/HDD sensor polling
-├── overlay_renderer.py       # Renders sensor data onto theme images
-├── theme_downloader.py       # Cloud theme pack downloader
-│
-├── core/                     # MVC controllers (GUI-independent)
-│   ├── models.py             # ThemeInfo, DeviceInfo, VideoState, OverlayElement
-│   └── controllers.py        # FormCZTVController, DeviceController, etc.
-│
-└── qt_components/            # PyQt6 views
-    ├── qt_app_mvc.py         # Main MVC window (1454×800) — primary entry point
-    ├── base.py               # BasePanel, ImageLabel, pil_to_pixmap
-    ├── assets.py             # Asset loader with lru_cache
-    ├── constants.py          # Layout coordinates, colors, sizes
-    ├── uc_device.py          # Device sidebar (180×800)
-    ├── uc_preview.py         # Preview frame (500×500)
-    ├── uc_theme_local.py     # Local themes browser (5-col grid)
-    ├── uc_theme_web.py       # Cloud themes browser
-    ├── uc_theme_mask.py      # Cloud masks browser
-    ├── uc_theme_setting.py   # Overlay editor / settings panels
-    └── uc_about.py           # About / control center panel
+├── cli.py                       # CLI entry point
+├── lcd_driver.py                # SCSI RGB565 frame send
+├── device_detector.py           # USB device scan + KNOWN_DEVICES registry
+├── device_implementations.py    # Per-device protocol variants
+├── scsi_device.py               # Low-level SCSI commands
+├── dc_parser.py                 # Parse config1.dc overlay configs
+├── dc_writer.py                 # Write config1.dc files
+├── overlay_renderer.py          # PIL-based text/sensor overlay rendering
+├── gif_animator.py              # FFmpeg video frame extraction
+├── sensor_enumerator.py         # Hardware sensor discovery (hwmon, pynvml, psutil, RAPL)
+├── sysinfo_config.py            # Dashboard panel config persistence
+├── system_info.py               # CPU/GPU/RAM/disk sensor collection
+├── cloud_downloader.py          # Cloud theme HTTP fetch
+├── theme_downloader.py          # Theme pack download manager
+├── theme_io.py                  # Theme export/import (.tr format)
+├── paths.py                     # XDG data/config path resolution
+├── __version__.py               # Version info
+├── core/
+│   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
+│   └── controllers.py           # GUI-independent MVC controllers
+└── qt_components/
+    ├── qt_app_mvc.py            # Main window (1454x800)
+    ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
+    ├── constants.py             # Layout coords, sizes, colors, styles
+    ├── assets.py                # Asset loader with lru_cache
+    ├── eyedropper.py            # Fullscreen color picker
+    ├── screen_capture.py        # X11/Wayland screen grab
+    ├── pipewire_capture.py      # PipeWire/Portal Wayland capture
+    ├── uc_device.py             # Device sidebar
+    ├── uc_preview.py            # Live preview frame
+    ├── uc_theme_local.py        # Local theme browser
+    ├── uc_theme_web.py          # Cloud theme browser
+    ├── uc_theme_mask.py         # Mask browser
+    ├── uc_theme_setting.py      # Overlay editor / display mode panels
+    ├── uc_image_cut.py          # Image cropper
+    ├── uc_video_cut.py          # Video trimmer
+    ├── uc_system_info.py        # Sensor dashboard
+    ├── uc_sensor_picker.py      # Sensor selection dialog
+    ├── uc_info_module.py        # Live system info display
+    ├── uc_activity_sidebar.py   # Sensor element picker
+    └── uc_about.py              # Settings / about panel
 ```
 
 ### Device Detection Flow
@@ -198,22 +213,16 @@ Process.Start(new ProcessStartInfo {
 
 ### Linux Implementation
 
-The Linux port matches Windows behavior by using ffmpeg via subprocess. This is the **recommended** approach.
-
-**Alternative:** OpenCV (`opencv-python`) can be used as a fallback if ffmpeg is not available.
-
-| Method | Pros | Cons |
-|--------|------|------|
-| ffmpeg (recommended) | Matches Windows, better codec support, lighter | Requires system package |
-| opencv-python | Pure Python, no system deps | Large package (~50MB), fewer codecs |
+The Linux port matches Windows behavior by using FFmpeg via subprocess for frame extraction. All frames are preloaded into memory for smooth playback.
 
 ## Configuration
 
-Settings stored in `~/.config/trcc/settings.json`:
+Settings stored in `~/.config/trcc/config.json`:
 
 ```json
 {
-  "selected_device": "/dev/sg0"
+  "selected_device": "/dev/sg0",
+  "resolution": "320x320"
 }
 ```
 

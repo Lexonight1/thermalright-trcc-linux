@@ -83,6 +83,8 @@ class UCThemeWeb(BaseThemeBrowser):
         self.videos_directory = None
         self._resolution = "320x320"
         self._downloading = False  # Windows isDownLoad guard
+        self._cancel_previews = threading.Event()
+        self._preview_thread = None
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -124,6 +126,7 @@ class UCThemeWeb(BaseThemeBrowser):
 
     def load_themes(self):
         """Load cloud themes: show cached + known non-cached."""
+        self._cancel_preview_downloads()
         self._clear_grid()
 
         if not self.videos_directory:
@@ -160,6 +163,7 @@ class UCThemeWeb(BaseThemeBrowser):
             })
 
         self._populate_grid(themes)
+        self._start_preview_downloads()
 
     def _on_item_clicked(self, item_info: dict):
         """Handle click — play cached themes, download non-cached ones."""
@@ -231,6 +235,53 @@ class UCThemeWeb(BaseThemeBrowser):
                 if item.get('id') == theme_id:
                     self._on_item_clicked(item)
                     break
+
+    def _cancel_preview_downloads(self):
+        """Cancel any ongoing background preview downloads."""
+        self._cancel_previews.set()
+        self._preview_thread = None
+
+    def _start_preview_downloads(self):
+        """Download missing preview PNGs in the background."""
+        if not self.videos_directory or not self.items:
+            return
+
+        # Collect theme IDs that need previews
+        missing = [item['id'] for item in self.items if not item.get('preview')]
+        if not missing:
+            return
+
+        self._cancel_previews = threading.Event()
+        videos_dir = str(self.videos_directory)
+        resolution = self._resolution
+
+        def download_previews():
+            try:
+                from ..cloud_downloader import CloudThemeDownloader
+                downloader = CloudThemeDownloader(
+                    resolution=resolution,
+                    cache_dir=videos_dir
+                )
+                for theme_id in missing:
+                    if self._cancel_previews.is_set():
+                        return
+                    result = downloader.download_preview_png(theme_id)
+                    if result:
+                        QTimer.singleShot(0, lambda tid=theme_id, path=result:
+                                          self._on_preview_downloaded(tid, path))
+            except Exception as e:
+                print(f"[!] Preview download error: {e}")
+
+        self._preview_thread = threading.Thread(target=download_previews, daemon=True)
+        self._preview_thread.start()
+
+    def _on_preview_downloaded(self, theme_id: str, preview_path: str):
+        """Update the thumbnail widget after its preview PNG was downloaded."""
+        for widget in self.item_widgets:
+            if isinstance(widget, CloudThemeThumbnail) and widget.item_info.get('id') == theme_id:
+                widget.item_info['preview'] = preview_path
+                widget._load_thumbnail()
+                break
 
     def get_selected_theme(self):
         return self.selected_item

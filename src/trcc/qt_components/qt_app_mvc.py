@@ -441,6 +441,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Cloud themes — per-resolution videos directory
         videos_dir = self._get_videos_dir(width, height)
+
         self.uc_theme_web.set_videos_directory(videos_dir)
         self.uc_theme_web.set_resolution(f'{width}x{height}')
 
@@ -644,6 +645,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._load_carousel_config(theme_dir)
 
         videos_dir = self._get_videos_dir(w, h)
+
         self.uc_theme_web.set_videos_directory(videos_dir)
         self.uc_theme_web.set_resolution(f'{w}x{h}')
 
@@ -798,15 +800,24 @@ class TRCCMainWindowMVC(QMainWindow):
         )
         self.controller.devices.select_device(device)
 
+    def _select_theme_from_path(self, path: Path):
+        """Load a local/mask theme by directory path.
+
+        Shared by local theme clicks and mask clicks — both have the same
+        structure (01.png, config1.dc, optional 00.png). from_directory()
+        detects mask-only (no 00.png) and load_local_theme() handles it.
+        """
+        if not path.exists():
+            return
+        self._slideshow_timer.stop()
+        self.stop_metrics()
+        theme = ThemeInfo.from_directory(path)
+        self.controller.themes.select_theme(theme)
+        self._load_theme_overlay_config(path)
+
     def _on_local_theme_clicked(self, theme_info: dict):
-        """Forward local theme selection to controller and load overlay config."""
-        self._slideshow_timer.stop()  # Manual select stops slideshow rotation
-        self.stop_metrics()  # Reset metrics from previous theme
-        path = Path(theme_info.get('path', ''))
-        if path.exists():
-            theme = ThemeInfo.from_directory(path)
-            self.controller.themes.select_theme(theme)
-            self._load_theme_overlay_config(path)
+        """Forward local theme selection to controller."""
+        self._select_theme_from_path(Path(theme_info.get('path', '')))
 
     def _on_cloud_theme_clicked(self, theme_info: dict):
         """Forward cloud theme selection to controller.
@@ -822,10 +833,12 @@ class TRCCMainWindowMVC(QMainWindow):
             self.controller.themes.select_theme(theme)
 
     def _on_mask_clicked(self, mask_info: dict):
-        """Forward mask selection to controller."""
+        """Apply mask overlay on top of current content (preserves video)."""
         mask_path = mask_info.get('path')
         if mask_path:
-            self.controller.apply_mask(Path(mask_path))
+            mask_dir = Path(mask_path)
+            self.controller.apply_mask(mask_dir)
+            self._load_theme_overlay_config(mask_dir)
         else:
             self.uc_preview.set_status(f"Mask: {mask_info.get('name', 'Unknown')}")
 
