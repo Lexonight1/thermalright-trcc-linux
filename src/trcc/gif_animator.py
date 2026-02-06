@@ -553,16 +553,18 @@ class VideoPlayer:
 
     def close(self):
         """Release video capture and cleanup temp files"""
-        if self.cap:
-            self.cap.release()
+        cap = getattr(self, 'cap', None)
+        if cap:
+            cap.release()
             self.cap = None
         self.frames = []
 
         # Clean up FFmpeg temp directory
-        if self._temp_dir and os.path.exists(self._temp_dir):
+        temp_dir = getattr(self, '_temp_dir', None)
+        if temp_dir and os.path.exists(temp_dir):
             try:
-                shutil.rmtree(self._temp_dir)
-                print(f"[*] Cleaned up temp dir: {self._temp_dir}")
+                shutil.rmtree(temp_dir)
+                print(f"[*] Cleaned up temp dir: {temp_dir}")
             except Exception as e:
                 print(f"[!] Failed to cleanup temp dir: {e}")
             self._temp_dir = None

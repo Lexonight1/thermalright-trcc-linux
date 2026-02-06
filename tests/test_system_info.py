@@ -1,7 +1,7 @@
 """Tests for system_info – metric reading helpers and format_metric display."""
 
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from trcc.system_info import (
     DATE_FORMATS,
@@ -12,8 +12,17 @@ from trcc.system_info import (
     get_cpu_frequency,
     get_cpu_temperature,
     get_cpu_usage,
+    get_disk_stats,
+    get_disk_temperature,
+    get_fan_speeds,
+    get_gpu_clock,
+    get_gpu_temperature,
+    get_gpu_usage,
     get_memory_available,
+    get_memory_clock,
+    get_memory_temperature,
     get_memory_usage,
+    get_network_stats,
     read_file,
 )
 
@@ -231,6 +240,285 @@ class TestFormatMetric(unittest.TestCase):
     # Fallback
     def test_unknown_metric(self):
         self.assertEqual(format_metric('something', 3.14), '3.1')
+
+    # time_/date_ prefix branch
+    def test_time_hour_prefix(self):
+        self.assertEqual(format_metric('time_hour', 9), '09')
+
+    def test_date_month_prefix(self):
+        self.assertEqual(format_metric('date_month', 2), '02')
+
+    @patch('trcc.system_info.datetime')
+    def test_date_format_1(self, mock_dt):
+        """date_format=1 is identical to 0: yyyy/MM/dd."""
+        from datetime import datetime as real_dt
+        fake_now = real_dt(2026, 2, 6, 14, 30, 0)
+        mock_dt.now.return_value = fake_now
+        result = format_metric('date', 0, date_format=1)
+        self.assertEqual(result, '2026/02/06')
+
+    @patch('trcc.system_info.datetime')
+    def test_time_format_1(self, mock_dt):
+        """time_format=1 uses %-I (no leading zero on hour)."""
+        from datetime import datetime as real_dt
+        fake_now = real_dt(2026, 2, 6, 14, 5, 0)
+        mock_dt.now.return_value = fake_now
+        result = format_metric('time', 0, time_format=1)
+        self.assertEqual(result, '2:05 PM')
+
+
+# ── get_gpu_temperature ──────────────────────────────────────────────────────
+
+class TestGetGpuTemperature(unittest.TestCase):
+
+    @patch('trcc.system_info.read_file', return_value='55000')
+    @patch('trcc.system_info.find_hwmon_by_name', return_value='/sys/class/hwmon/hwmon1')
+    def test_amd_gpu(self, mock_find, mock_read):
+        temp = get_gpu_temperature()
+        self.assertAlmostEqual(temp, 55.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run')
+    def test_nvidia_gpu(self, mock_run, _):
+        mock_run.return_value = type('R', (), {'stdout': '72\n', 'returncode': 0})()
+        temp = get_gpu_temperature()
+        self.assertAlmostEqual(temp, 72.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_no_gpu(self, *_):
+        self.assertIsNone(get_gpu_temperature())
+
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('trcc.system_info.find_hwmon_by_name', return_value='/sys/class/hwmon/hwmon1')
+    @patch('trcc.system_info.subprocess.run')
+    def test_amd_no_temp_falls_through(self, mock_run, mock_find, mock_read):
+        mock_run.return_value = type('R', (), {'stdout': '60\n', 'returncode': 0})()
+        temp = get_gpu_temperature()
+        self.assertAlmostEqual(temp, 60.0)
+
+
+# ── get_gpu_usage ────────────────────────────────────────────────────────────
+
+class TestGetGpuUsage(unittest.TestCase):
+
+    @patch('trcc.system_info.read_file', return_value='85')
+    @patch('trcc.system_info.find_hwmon_by_name', return_value='/sys/class/hwmon/hwmon1')
+    def test_amd_gpu(self, mock_find, mock_read):
+        usage = get_gpu_usage()
+        self.assertAlmostEqual(usage, 85.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run')
+    def test_nvidia_gpu(self, mock_run, _):
+        mock_run.return_value = type('R', (), {'stdout': '45\n', 'returncode': 0})()
+        usage = get_gpu_usage()
+        self.assertAlmostEqual(usage, 45.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_no_gpu(self, *_):
+        self.assertIsNone(get_gpu_usage())
+
+
+# ── get_gpu_clock ────────────────────────────────────────────────────────────
+
+class TestGetGpuClock(unittest.TestCase):
+
+    @patch('trcc.system_info.read_file', return_value='1500000000')
+    @patch('trcc.system_info.find_hwmon_by_name', return_value='/sys/class/hwmon/hwmon1')
+    def test_amd_gpu(self, mock_find, mock_read):
+        clock = get_gpu_clock()
+        self.assertAlmostEqual(clock, 1500.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run')
+    def test_nvidia_gpu(self, mock_run, _):
+        mock_run.return_value = type('R', (), {'stdout': '1800\n', 'returncode': 0})()
+        clock = get_gpu_clock()
+        self.assertAlmostEqual(clock, 1800.0)
+
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_no_gpu(self, *_):
+        self.assertIsNone(get_gpu_clock())
+
+
+# ── get_memory_temperature ───────────────────────────────────────────────────
+
+class TestGetMemoryTemperature(unittest.TestCase):
+
+    @patch('trcc.system_info.read_file')
+    @patch('trcc.system_info.os.path.exists', return_value=True)
+    def test_hwmon_ddr(self, mock_exists, mock_read):
+        def side_effect(path):
+            if 'hwmon0/name' in path:
+                return 'ddr5_thermal'
+            if 'hwmon0/temp1_input' in path:
+                return '42000'
+            return None
+        mock_read.side_effect = side_effect
+        temp = get_memory_temperature()
+        self.assertAlmostEqual(temp, 42.0)
+
+    @patch('trcc.system_info.subprocess.run')
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('trcc.system_info.os.path.exists', return_value=False)
+    def test_returns_none_when_unavailable(self, *_):
+        self.assertIsNone(get_memory_temperature())
+
+
+# ── get_memory_clock ─────────────────────────────────────────────────────────
+
+class TestGetMemoryClock(unittest.TestCase):
+
+    @patch('trcc.system_info.subprocess.run')
+    def test_dmidecode_configured_speed(self, mock_run):
+        mock_run.return_value = type('R', (), {
+            'stdout': 'Memory Device\n  Configured Memory Speed: 3200 MT/s\n',
+            'returncode': 0
+        })()
+        clock = get_memory_clock()
+        self.assertAlmostEqual(clock, 3200.0)
+
+    @patch('trcc.system_info.subprocess.run')
+    def test_dmidecode_speed_fallback(self, mock_run):
+        mock_run.return_value = type('R', (), {
+            'stdout': 'Memory Device\n  Speed: 2400 MHz\n',
+            'returncode': 0
+        })()
+        clock = get_memory_clock()
+        self.assertAlmostEqual(clock, 2400.0)
+
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    def test_returns_none_when_unavailable(self, _):
+        self.assertIsNone(get_memory_clock())
+
+
+# ── get_disk_stats ───────────────────────────────────────────────────────────
+
+class TestGetDiskStats(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    def test_no_psutil(self):
+        self.assertEqual(get_disk_stats(), {})
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_first_call_returns_empty(self, mock_psutil):
+        """First call caches baseline, returns empty."""
+        import trcc.system_info as si
+        si._prev_disk_io = None
+        si._prev_disk_time = None
+        mock_psutil.disk_io_counters.return_value = MagicMock(
+            read_bytes=1000, write_bytes=2000, busy_time=100)
+        result = get_disk_stats()
+        self.assertEqual(result, {})
+
+
+# ── get_disk_temperature ─────────────────────────────────────────────────────
+
+class TestGetDiskTemperature(unittest.TestCase):
+
+    @patch('trcc.system_info.read_file', return_value='38000')
+    @patch('trcc.system_info.find_hwmon_by_name', return_value='/sys/class/hwmon/hwmon3')
+    def test_nvme(self, mock_find, mock_read):
+        temp = get_disk_temperature()
+        self.assertAlmostEqual(temp, 38.0)
+
+    @patch('trcc.system_info.subprocess.run', side_effect=FileNotFoundError)
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('trcc.system_info.find_hwmon_by_name', return_value=None)
+    def test_returns_none(self, *_):
+        self.assertIsNone(get_disk_temperature())
+
+
+# ── get_network_stats ────────────────────────────────────────────────────────
+
+class TestGetNetworkStats(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    def test_no_psutil(self):
+        self.assertEqual(get_network_stats(), {})
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_first_call_has_totals(self, mock_psutil):
+        import trcc.system_info as si
+        si._prev_net_io = None
+        si._prev_net_time = None
+        mock_psutil.net_io_counters.return_value = MagicMock(
+            bytes_sent=1024 * 1024 * 100, bytes_recv=1024 * 1024 * 500)
+        result = get_network_stats()
+        self.assertIn('net_total_up', result)
+        self.assertIn('net_total_down', result)
+
+
+# ── get_fan_speeds ───────────────────────────────────────────────────────────
+
+class TestGetFanSpeeds(unittest.TestCase):
+
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
+    @patch('trcc.system_info.psutil')
+    def test_psutil_fans(self, mock_psutil):
+        mock_psutil.sensors_fans.return_value = {
+            'nct6798': [
+                MagicMock(label='Processor Fan', current=1200),
+                MagicMock(label='System Fan #2', current=800),
+            ]
+        }
+        result = get_fan_speeds()
+        self.assertIn('fan_cpu', result)
+        self.assertEqual(result['fan_cpu'], 1200)
+
+    @patch('trcc.system_info.read_file', return_value=None)
+    @patch('trcc.system_info.os.path.exists', return_value=False)
+    @patch('trcc.system_info.PSUTIL_AVAILABLE', False)
+    def test_no_fans(self, *_):
+        result = get_fan_speeds()
+        self.assertEqual(result, {})
+
+
+# ── get_all_metrics ──────────────────────────────────────────────────────────
+
+class TestGetAllMetrics(unittest.TestCase):
+
+    @patch('trcc.system_info.get_fan_speeds', return_value={})
+    @patch('trcc.system_info.get_network_stats', return_value={})
+    @patch('trcc.system_info.get_disk_stats', return_value={})
+    @patch('trcc.system_info.get_disk_temperature', return_value=None)
+    @patch('trcc.system_info.get_memory_clock', return_value=None)
+    @patch('trcc.system_info.get_memory_temperature', return_value=None)
+    @patch('trcc.system_info.get_memory_available', return_value=8000.0)
+    @patch('trcc.system_info.get_memory_usage', return_value=50.0)
+    @patch('trcc.system_info.get_gpu_clock', return_value=None)
+    @patch('trcc.system_info.get_gpu_usage', return_value=None)
+    @patch('trcc.system_info.get_gpu_temperature', return_value=None)
+    @patch('trcc.system_info.get_cpu_frequency', return_value=3500.0)
+    @patch('trcc.system_info.get_cpu_usage', return_value=25.0)
+    @patch('trcc.system_info.get_cpu_temperature', return_value=55.0)
+    def test_basic_metrics(self, *_):
+        from trcc.system_info import get_all_metrics
+        m = get_all_metrics()
+
+        # Always present: date/time fields
+        self.assertIn('date', m)
+        self.assertIn('time', m)
+        self.assertIn('weekday', m)
+        self.assertIn('day_of_week', m)
+
+        # CPU metrics should be present
+        self.assertIn('cpu_temp', m)
+        self.assertAlmostEqual(m['cpu_temp'], 55.0)
+        self.assertIn('cpu_percent', m)
+        self.assertIn('cpu_freq', m)
+
+        # Memory
+        self.assertIn('mem_percent', m)
+        self.assertIn('mem_available', m)
+
+        # GPU not available — keys should be absent
+        self.assertNotIn('gpu_temp', m)
 
 
 # ── Format dictionaries ─────────────────────────────────────────────────────

@@ -5,10 +5,11 @@ import os
 import struct
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-from trcc.gif_animator import GIFAnimator, GIFThemeLoader, ThemeZtPlayer
+from trcc.gif_animator import GIFAnimator, GIFThemeLoader, ThemeZtPlayer, VideoPlayer
 
 
 def _make_gif(frames=3, size=(4, 4), durations=None):
@@ -249,6 +250,160 @@ class TestThemeZtPlayer(unittest.TestCase):
         player = ThemeZtPlayer(self.path, target_size=(4, 4))
         self.assertEqual(player.frames[0].size, (4, 4))
         player.close()
+
+
+# ── VideoPlayer ──────────────────────────────────────────────────────────────
+
+class TestVideoPlayerPreloaded(unittest.TestCase):
+    """VideoPlayer with preloaded frames (bypasses actual video loading)."""
+
+    def _make_player(self, frame_count=5, fps=16):
+        """Create a VideoPlayer with mocked internals for pure-logic testing."""
+        with patch.object(VideoPlayer, '__init__', lambda self, *a, **kw: None):
+            player = VideoPlayer.__new__(VideoPlayer)
+        # Set up internal state as __init__ would
+        player.video_path = '/fake/video.mp4'
+        player.target_size = (320, 320)
+        player.cap = None
+        player.fps = fps
+        player.current_frame = 0
+        player.playing = False
+        player.loop = True
+        player.speed_multiplier = 1.0
+        player.preload = True
+        player.use_opencv = False
+        player._temp_dir = None
+        player.frames = [Image.new('RGB', (320, 320), (i * 50, 0, 0))
+                         for i in range(frame_count)]
+        player.frame_count = frame_count
+        return player
+
+    def test_get_frame_current(self):
+        p = self._make_player()
+        frame = p.get_frame()
+        self.assertIsNotNone(frame)
+        self.assertEqual(frame.size, (320, 320))
+
+    def test_get_frame_by_index(self):
+        p = self._make_player()
+        frame = p.get_frame(3)
+        self.assertEqual(frame, p.frames[3])
+
+    def test_get_frame_out_of_range(self):
+        p = self._make_player()
+        frame = p.get_frame(999)
+        self.assertEqual(frame, p.frames[0])
+
+    def test_get_frame_empty(self):
+        p = self._make_player(frame_count=0)
+        p.frames = []
+        self.assertIsNone(p.get_frame())
+
+    def test_next_frame_advances(self):
+        p = self._make_player()
+        p.next_frame()
+        self.assertEqual(p.current_frame, 1)
+
+    def test_next_frame_loops(self):
+        p = self._make_player(frame_count=3)
+        for _ in range(3):
+            p.next_frame()
+        self.assertEqual(p.current_frame, 0)
+
+    def test_next_frame_stops_no_loop(self):
+        p = self._make_player(frame_count=3)
+        p.loop = False
+        for _ in range(10):
+            p.next_frame()
+        self.assertEqual(p.current_frame, 2)
+        self.assertFalse(p.playing)
+
+    def test_play_pause_stop(self):
+        p = self._make_player()
+        self.assertFalse(p.is_playing())
+        p.play()
+        self.assertTrue(p.is_playing())
+        p.pause()
+        self.assertFalse(p.is_playing())
+        p.stop()
+        self.assertEqual(p.current_frame, 0)
+        self.assertFalse(p.playing)
+
+    def test_set_speed_clamps(self):
+        p = self._make_player()
+        p.set_speed(0.01)
+        self.assertAlmostEqual(p.speed_multiplier, 0.1)
+        p.set_speed(99)
+        self.assertAlmostEqual(p.speed_multiplier, 10.0)
+
+    def test_get_delay(self):
+        p = self._make_player(fps=16)
+        self.assertEqual(p.get_delay(), 62)  # 1000/16 = 62.5 → int = 62
+
+    def test_get_delay_with_speed(self):
+        p = self._make_player(fps=16)
+        p.speed_multiplier = 2.0
+        self.assertEqual(p.get_delay(), 31)  # 62.5/2 = 31.25 → 31
+
+    def test_seek(self):
+        p = self._make_player(frame_count=10)
+        p.seek(5)
+        self.assertEqual(p.current_frame, 5)
+
+    def test_seek_clamps_low(self):
+        p = self._make_player()
+        p.seek(-10)
+        self.assertEqual(p.current_frame, 0)
+
+    def test_seek_clamps_high(self):
+        p = self._make_player(frame_count=5)
+        p.seek(999)
+        self.assertEqual(p.current_frame, 4)
+
+    def test_seek_percent(self):
+        p = self._make_player(frame_count=100)
+        p.seek_percent(50)
+        self.assertEqual(p.current_frame, 50)
+
+    def test_get_progress(self):
+        p = self._make_player(frame_count=10)
+        self.assertAlmostEqual(p.get_progress(), 0.0)
+        p.current_frame = 5
+        self.assertAlmostEqual(p.get_progress(), 50.0)
+
+    def test_get_progress_zero_frames(self):
+        p = self._make_player(frame_count=0)
+        p.frames = []
+        self.assertEqual(p.get_progress(), 0)
+
+    def test_reset(self):
+        p = self._make_player()
+        p.current_frame = 4
+        p.reset()
+        self.assertEqual(p.current_frame, 0)
+
+    def test_close_clears_frames(self):
+        p = self._make_player()
+        self.assertTrue(len(p.frames) > 0)
+        p.close()
+        self.assertEqual(len(p.frames), 0)
+
+    def test_close_removes_temp_dir(self):
+        p = self._make_player()
+        tmp = tempfile.mkdtemp(prefix='trcc_test_')
+        p._temp_dir = tmp
+        p.close()
+        self.assertFalse(os.path.exists(tmp))
+
+
+class TestVideoPlayerInit(unittest.TestCase):
+    """VideoPlayer __init__ error paths."""
+
+    @patch('trcc.gif_animator.OPENCV_AVAILABLE', False)
+    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', False)
+    def test_raises_without_backends(self):
+        with self.assertRaises(RuntimeError):
+            VideoPlayer('/fake/video.mp4')
 
 
 if __name__ == '__main__':

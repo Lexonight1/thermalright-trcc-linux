@@ -1,5 +1,6 @@
 """
-Tests for paths.py — config persistence, per-device config, path helpers.
+Tests for paths.py — config persistence, per-device config, path helpers,
+archive extraction, image loading, and data directory detection.
 """
 
 import json
@@ -7,12 +8,17 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch, call
 
 from trcc.paths import (
+    _extract_7z,
+    _find_data_dir,
     _has_actual_themes,
     build_search_paths,
     device_config_key,
+    ensure_themes_extracted,
+    ensure_web_extracted,
+    ensure_web_masks_extracted,
     find_resource,
     get_device_config,
     get_saved_resolution,
@@ -21,6 +27,7 @@ from trcc.paths import (
     get_web_dir,
     get_web_masks_dir,
     load_config,
+    load_image,
     save_config,
     save_device_setting,
     save_resolution,
@@ -289,3 +296,195 @@ class TestPerDeviceConfig(unittest.TestCase):
         self.assertIn('devices', raw)
         self.assertIn('0:87cd_70db', raw['devices'])
         self.assertEqual(raw['devices']['0:87cd_70db']['theme_path'], '/some/path')
+
+
+# ── _extract_7z ──────────────────────────────────────────────────────────────
+
+class TestExtract7z(unittest.TestCase):
+    """Test _extract_7z with py7zr and 7z CLI fallbacks."""
+
+    def test_py7zr_success(self):
+        """py7zr available and extraction succeeds."""
+        mock_7z = MagicMock()
+        mock_7z_cls = MagicMock(return_value=mock_7z)
+        mock_7z.__enter__ = MagicMock(return_value=mock_7z)
+        mock_7z.__exit__ = MagicMock(return_value=False)
+
+        with tempfile.TemporaryDirectory() as d:
+            archive = os.path.join(d, 'test.7z')
+            target = os.path.join(d, 'out')
+            Path(archive).touch()
+
+            with patch.dict('sys.modules', {'py7zr': MagicMock(SevenZipFile=mock_7z_cls)}):
+                result = _extract_7z(archive, target)
+
+            self.assertTrue(result)
+            self.assertTrue(os.path.isdir(target))
+
+    def test_py7zr_missing_falls_back_to_cli(self):
+        """py7zr not installed, 7z CLI succeeds."""
+        with tempfile.TemporaryDirectory() as d:
+            archive = os.path.join(d, 'test.7z')
+            target = os.path.join(d, 'out')
+            Path(archive).touch()
+
+            mock_result = type('R', (), {'returncode': 0, 'stderr': b''})()
+            with patch('trcc.paths.subprocess.run', return_value=mock_result) as mock_run:
+                # Force py7zr ImportError by patching import
+                import builtins
+                orig_import = builtins.__import__
+                def fake_import(name, *args, **kwargs):
+                    if name == 'py7zr':
+                        raise ImportError('no py7zr')
+                    return orig_import(name, *args, **kwargs)
+                with patch('builtins.__import__', side_effect=fake_import):
+                    result = _extract_7z(archive, target)
+
+            self.assertTrue(result)
+            mock_run.assert_called_once()
+
+    def test_both_fail_returns_false(self):
+        """Neither py7zr nor 7z CLI works."""
+        with tempfile.TemporaryDirectory() as d:
+            archive = os.path.join(d, 'test.7z')
+            target = os.path.join(d, 'out')
+            Path(archive).touch()
+
+            with patch('trcc.paths.subprocess.run', side_effect=FileNotFoundError):
+                import builtins
+                orig_import = builtins.__import__
+                def fake_import(name, *args, **kwargs):
+                    if name == 'py7zr':
+                        raise ImportError('no py7zr')
+                    return orig_import(name, *args, **kwargs)
+                with patch('builtins.__import__', side_effect=fake_import):
+                    result = _extract_7z(archive, target)
+
+            self.assertFalse(result)
+
+
+# ── ensure_*_extracted ───────────────────────────────────────────────────────
+
+class TestEnsureThemesExtracted(unittest.TestCase):
+    """Test ensure_themes_extracted."""
+
+    def test_already_present(self):
+        """Returns True when themes already exist."""
+        with tempfile.TemporaryDirectory() as d:
+            theme_dir = os.path.join(d, 'Theme320320')
+            os.makedirs(os.path.join(theme_dir, '000a'))
+            with patch('trcc.paths.get_theme_dir', return_value=theme_dir):
+                self.assertTrue(ensure_themes_extracted(320, 320))
+
+    def test_no_archive(self):
+        """Returns False when no archive and no themes."""
+        with tempfile.TemporaryDirectory() as d:
+            theme_dir = os.path.join(d, 'Theme320320')
+            with patch('trcc.paths.get_theme_dir', return_value=theme_dir):
+                self.assertFalse(ensure_themes_extracted(320, 320))
+
+    def test_extracts_from_archive(self):
+        """Calls _extract_7z when archive exists but themes don't."""
+        with tempfile.TemporaryDirectory() as d:
+            theme_dir = os.path.join(d, 'Theme320320')
+            archive = theme_dir + '.7z'
+            Path(archive).touch()
+            with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
+                 patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
+                result = ensure_themes_extracted(320, 320)
+            self.assertTrue(result)
+            mock_ex.assert_called_once_with(archive, theme_dir)
+
+
+class TestEnsureWebExtracted(unittest.TestCase):
+    """Test ensure_web_extracted."""
+
+    def test_already_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            web_dir = os.path.join(d, '320320')
+            os.makedirs(web_dir)
+            Path(web_dir, 'preview.png').touch()
+            with patch('trcc.paths.get_web_dir', return_value=web_dir):
+                self.assertTrue(ensure_web_extracted(320, 320))
+
+    def test_no_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            web_dir = os.path.join(d, '320320')
+            with patch('trcc.paths.get_web_dir', return_value=web_dir):
+                self.assertFalse(ensure_web_extracted(320, 320))
+
+    def test_extracts_from_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            web_dir = os.path.join(d, '320320')
+            archive = web_dir + '.7z'
+            Path(archive).touch()
+            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
+                 patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
+                result = ensure_web_extracted(320, 320)
+            self.assertTrue(result)
+            mock_ex.assert_called_once_with(archive, web_dir)
+
+
+class TestEnsureWebMasksExtracted(unittest.TestCase):
+    """Test ensure_web_masks_extracted."""
+
+    def test_already_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            masks_dir = os.path.join(d, 'zt320320')
+            os.makedirs(os.path.join(masks_dir, '000a'))
+            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir):
+                self.assertTrue(ensure_web_masks_extracted(320, 320))
+
+    def test_no_archive(self):
+        with tempfile.TemporaryDirectory() as d:
+            masks_dir = os.path.join(d, 'zt320320')
+            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir):
+                self.assertFalse(ensure_web_masks_extracted(320, 320))
+
+
+# ── load_image ───────────────────────────────────────────────────────────────
+
+class TestLoadImage(unittest.TestCase):
+    """Test load_image helper."""
+
+    def test_pil_not_available(self):
+        with patch('trcc.paths.PIL_AVAILABLE', False):
+            result = load_image('test.png')
+            self.assertIsNone(result)
+
+    def test_file_not_found(self):
+        with tempfile.TemporaryDirectory() as d:
+            result = load_image('nope.png', search_paths=[d], as_photoimage=False)
+            self.assertIsNone(result)
+
+    def test_loads_pil_image(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as d:
+            img_path = os.path.join(d, 'test.png')
+            Image.new('RGB', (4, 4), (255, 0, 0)).save(img_path)
+            result = load_image('test.png', search_paths=[d], as_photoimage=False)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.size, (4, 4))
+
+    def test_corrupt_image_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            img_path = os.path.join(d, 'bad.png')
+            with open(img_path, 'w') as f:
+                f.write('not an image')
+            result = load_image('bad.png', search_paths=[d], as_photoimage=False)
+            self.assertIsNone(result)
+
+
+# ── _find_data_dir ───────────────────────────────────────────────────────────
+
+class TestFindDataDir(unittest.TestCase):
+    """Test _find_data_dir search logic."""
+
+    def test_returns_src_data_as_fallback(self):
+        """When no valid themes exist, falls back to src/data."""
+        with patch('trcc.paths.SRC_DIR', '/fake/src'), \
+             patch('trcc.paths.PROJECT_ROOT', '/fake'), \
+             patch('trcc.paths.USER_DATA_DIR', '/fake/home/.trcc/data'), \
+             patch('os.path.isdir', return_value=False):
+            result = _find_data_dir()
+            self.assertEqual(result, '/fake/src/data')
