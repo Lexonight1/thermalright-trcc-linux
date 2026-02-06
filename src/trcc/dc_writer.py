@@ -46,6 +46,7 @@ Export Format (.tr files):
 
 import os
 import struct
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -767,7 +768,7 @@ if __name__ == '__main__':
 
     if cmd == 'test':
         # Create a test theme
-        test_path = "/tmp/test_theme"
+        test_path = tempfile.mkdtemp(prefix='trcc_test_theme_')
 
         config = ThemeConfig()
         config.elements = [
