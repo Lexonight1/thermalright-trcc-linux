@@ -48,6 +48,8 @@ Find your distro, copy the block, paste in terminal. After it finishes: **unplug
 
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH. Or run directly: `PYTHONPATH=src python3 -m trcc.cli gui`
 
+> **Add to app menu:** `trcc install-desktop` — creates an application menu entry so you can launch TRCC from your desktop environment.
+
 If your distro doesn't package PyQt6, just drop it from the system install line — `pip install -e .` will pull it from PyPI automatically.
 
 See the **[Install Guide](doc/INSTALL_GUIDE.md)** for troubleshooting, optional deps, immutable distros, and more.

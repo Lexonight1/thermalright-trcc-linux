@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=TRCC Linux
+Comment=Thermalright LCD Control Center
+Exec=trcc gui
+Icon=trcc
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=thermalright;lcd;cooler;aio;cpu;
