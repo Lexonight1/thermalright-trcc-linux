@@ -14,6 +14,7 @@ Windows controls (from UCAbout.cs):
 - Language checkboxes at y=373/403
 """
 
+import shutil
 import webbrowser
 from pathlib import Path
 
@@ -28,14 +29,27 @@ from .constants import Layout, Sizes, Styles
 # Linux autostart desktop file
 _AUTOSTART_DIR = Path.home() / '.config' / 'autostart'
 _AUTOSTART_FILE = _AUTOSTART_DIR / 'trcc.desktop'
-_DESKTOP_ENTRY = """\
+
+
+def _get_trcc_exec() -> str:
+    """Resolve full path to trcc binary for autostart Exec= line."""
+    trcc_path = shutil.which('trcc')
+    return trcc_path if trcc_path else 'trcc'
+
+
+def _make_desktop_entry() -> str:
+    """Build autostart .desktop file with resolved trcc path."""
+    exec_path = _get_trcc_exec()
+    return f"""\
 [Desktop Entry]
 Type=Application
 Name=TRCC Linux
 Comment=Thermalright LCD Control Center
-Exec=trcc gui --qt
+Exec={exec_path} gui
+Icon=trcc
 Terminal=false
-Categories=Utility;
+Categories=Utility;System;
+X-GNOME-Autostart-enabled=true
 """
 
 
@@ -48,7 +62,7 @@ def _set_autostart(enabled: bool):
     """Create or remove autostart desktop file."""
     if enabled:
         _AUTOSTART_DIR.mkdir(parents=True, exist_ok=True)
-        _AUTOSTART_FILE.write_text(_DESKTOP_ENTRY)
+        _AUTOSTART_FILE.write_text(_make_desktop_entry())
     else:
         if _AUTOSTART_FILE.exists():
             _AUTOSTART_FILE.unlink()
