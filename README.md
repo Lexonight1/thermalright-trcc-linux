@@ -157,6 +157,7 @@ trcc download themes-320  # Download cloud themes
 | [Changelog](doc/CHANGELOG.md) | Version history |
 | [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/TECHNICAL_REFERENCE.md) | SCSI protocol and file formats |
+| [HID Testing Guide](https://github.com/Lexonight1/thermalright-trcc-linux/blob/hid-protocol-testing/doc/HID_TESTING.md) | HID device support (testers wanted) |
 
 ## License
 
