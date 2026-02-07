@@ -174,8 +174,8 @@ HID devices need different udev rules than SCSI devices. `trcc setup-udev` on th
 ```bash
 # /etc/udev/rules.d/99-trcc-lcd.rules
 # HID LCD devices — allow non-root access
-SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0666"
-SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0660"
 ```
 
 Then reload and replug:
@@ -375,9 +375,9 @@ Edit `/etc/nixos/configuration.nix`:
   # Allow your user to access SCSI generic devices
   services.udev.extraRules = ''
     # Thermalright LCD displays
-    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
-    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0666"
-    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0666"
+    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0660"
+    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0660"
+    SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0660"
   '';
 }
 ```
@@ -1386,8 +1386,8 @@ sudo trcc setup-udev
 # Unplug and replug USB cable
 
 # If that doesn't work, add the rule manually:
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0666"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0666"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
 sudo udevadm control --reload-rules
 # Unplug and replug USB cable
 ```

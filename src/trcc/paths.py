@@ -116,7 +116,11 @@ def _extract_7z(archive: str, target_dir: str) -> bool:
     try:
         import py7zr
         with py7zr.SevenZipFile(archive, 'r') as z:
-            z.extractall(target_dir)
+            safe_names = [
+                n for n in z.getnames()
+                if not os.path.isabs(n) and '..' not in n.split('/')
+            ]
+            z.extract(target_dir, targets=safe_names)
         log.info("Extracted %s (py7zr)", os.path.basename(archive))
         return True
     except ImportError:

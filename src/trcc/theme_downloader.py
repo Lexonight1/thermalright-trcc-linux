@@ -231,15 +231,28 @@ def verify_checksum(filepath: Path, expected_sha256: Optional[str]) -> bool:
     return True
 
 
+def _is_safe_archive_member(name: str) -> bool:
+    """Check that an archive member path doesn't escape the destination."""
+    return not (os.path.isabs(name) or '..' in name.split('/'))
+
+
 def extract_archive(archive_path: Path, dest_dir: Path) -> bool:
-    """Extract tar.gz or zip archive."""
+    """Extract tar.gz or zip archive with path traversal protection."""
     try:
         if str(archive_path).endswith('.tar.gz') or str(archive_path).endswith('.tgz'):
             with tarfile.open(archive_path, 'r:gz') as tar:
-                tar.extractall(dest_dir)
+                for member in tar.getmembers():
+                    if not _is_safe_archive_member(member.name):
+                        print(f"Skipping unsafe path: {member.name}")
+                        continue
+                    tar.extract(member, dest_dir)
         elif str(archive_path).endswith('.zip'):
             with zipfile.ZipFile(archive_path, 'r') as z:
-                z.extractall(dest_dir)
+                for info in z.infolist():
+                    if not _is_safe_archive_member(info.filename):
+                        print(f"Skipping unsafe path: {info.filename}")
+                        continue
+                    z.extract(info, dest_dir)
         else:
             print(f"Unknown archive format: {archive_path}")
             return False

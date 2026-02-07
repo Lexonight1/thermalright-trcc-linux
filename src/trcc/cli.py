@@ -456,7 +456,7 @@ def setup_udev(dry_run=False):
                 f'SUBSYSTEM=="scsi_generic", '
                 f'ATTRS{{idVendor}}=="{vid:04x}", '
                 f'ATTRS{{idProduct}}=="{pid:04x}", '
-                f'MODE="0666", TAG+="uaccess"'
+                f'MODE="0660", TAG+="uaccess"'
             )
 
         rules_content = "\n\n".join(rules_lines) + "\n"

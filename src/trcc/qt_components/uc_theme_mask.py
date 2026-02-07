@@ -153,6 +153,7 @@ class UCThemeMask(BaseThemeBrowser):
         def download_task():
             try:
                 import io
+                import os
                 import urllib.error
                 import urllib.request
                 import zipfile
@@ -174,7 +175,10 @@ class UCThemeMask(BaseThemeBrowser):
                     try:
                         with zipfile.ZipFile(io.BytesIO(data)) as zf:
                             mask_dir.mkdir(parents=True, exist_ok=True)
-                            zf.extractall(mask_dir)
+                            for info in zf.infolist():
+                                if os.path.isabs(info.filename) or '..' in info.filename.split('/'):
+                                    continue
+                                zf.extract(info, mask_dir)
                             print(f"[+] Extracted mask {mask_id}")
                     except zipfile.BadZipFile:
                         mask_dir.mkdir(parents=True, exist_ok=True)
