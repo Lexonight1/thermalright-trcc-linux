@@ -572,6 +572,35 @@ pip install -e .
 
 > **Distros that enforce this by default:** Fedora 38+, Ubuntu 23.04+, Debian 12+, Arch (with python 3.11+), openSUSE Tumbleweed, Void Linux
 
+### Ensure `~/.local/bin` is in your PATH
+
+When you install with `pip install`, the `trcc` command is placed in `~/.local/bin/`. On many distros this directory is **not** in your `PATH` by default, so the `trcc` command won't be found after a reboot.
+
+Add it to your shell config:
+
+```bash
+# Bash (~/.bashrc)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Zsh (~/.zshrc) — default on Arch, Garuda, some Manjaro
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Fish (~/.config/fish/config.fish)
+fish_add_path ~/.local/bin
+```
+
+| Distro | `~/.local/bin` in PATH by default? |
+|--------|-----------------------------------|
+| Fedora | Yes (usually works without this step) |
+| Ubuntu / Debian | Conditionally — only if the directory exists at login time |
+| Arch / Manjaro / EndeavourOS | No |
+| openSUSE | No |
+| Void / Alpine | No |
+
+> **Tip:** You can verify with `echo $PATH | tr ':' '\n' | grep local`. If you see `~/.local/bin` (or `/home/yourname/.local/bin`), you're good.
+
 ---
 
 ## Step 4 - Set Up Device Permissions
@@ -1185,6 +1214,26 @@ trcc download themes-320   # Download 320x320 themes
 ---
 
 ## Troubleshooting
+
+### "trcc: command not found" after reboot
+
+**Cause:** `pip install` puts the `trcc` script in `~/.local/bin/`, which isn't in your shell's `PATH` on many distros. It may work right after install but disappear after a reboot.
+
+**Fix:** Add `~/.local/bin` to your PATH permanently:
+```bash
+# Bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Zsh (Arch, Garuda, some Manjaro)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Fish
+fish_add_path ~/.local/bin
+```
+
+> **Note:** Fedora typically includes `~/.local/bin` in PATH automatically. Ubuntu/Debian add it conditionally in `~/.profile`, but only if the directory already exists at login time — so the first install may not take effect until a second reboot. Adding it to `~/.bashrc` avoids this race condition.
 
 ### "No compatible TRCC LCD device detected"
 
