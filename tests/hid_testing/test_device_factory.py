@@ -82,9 +82,9 @@ def scsi_device():
 def hid_type2_device():
     return FakeDeviceInfo(
         name="ALi Corp LCD (HID H)",
-        path="hid:0416:530a",
+        path="hid:0416:5302",
         vid=0x0416,
-        pid=0x530A,
+        pid=0x5302,
         protocol="hid",
         device_type=2,
     )
@@ -94,9 +94,9 @@ def hid_type2_device():
 def hid_type3_device():
     return FakeDeviceInfo(
         name="ALi Corp LCD (HID ALi)",
-        path="hid:0416:53e6",
-        vid=0x0416,
-        pid=0x53E6,
+        path="hid:0418:5303",
+        vid=0x0418,
+        pid=0x5303,
         protocol="hid",
         device_type=3,
     )
@@ -118,7 +118,7 @@ class TestDeviceProtocolABC:
         assert isinstance(s, DeviceProtocol)
 
     def test_hid_protocol_is_device_protocol(self):
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         assert isinstance(s, DeviceProtocol)
 
     def test_backward_compat_aliases(self):
@@ -174,7 +174,7 @@ class TestObserverCallbacks:
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
 
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         state_cb = MagicMock()
         s.on_state_changed = state_cb
 
@@ -183,7 +183,7 @@ class TestObserverCallbacks:
         state_cb.assert_called_with("transport_open", True)
 
     def test_hid_state_changed_on_close(self):
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         s._transport = MagicMock()  # Simulate open transport
         state_cb = MagicMock()
         s.on_state_changed = state_cb
@@ -264,15 +264,15 @@ class TestHidProtocol:
     """Test HID protocol creation and send routing."""
 
     def test_create_type2(self):
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         assert s.protocol_name == "hid"
         assert "0416" in repr(s)
-        assert "530a" in repr(s)
+        assert "5302" in repr(s)
         assert "type=2" in repr(s)
 
     def test_create_type3(self):
-        s = HidProtocol(0x0416, 0x53E6, 3)
-        assert "53e6" in repr(s)
+        s = HidProtocol(0x0418, 0x5303, 3)
+        assert "5303" in repr(s)
         assert "type=3" in repr(s)
 
     @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
@@ -283,11 +283,11 @@ class TestHidProtocol:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         result = s.send_image(b'\x00' * 100, 320, 320)
 
         assert result is True
-        MockPyUsb.assert_called_once_with(0x0416, 0x530A)
+        MockPyUsb.assert_called_once_with(0x0416, 0x5302)
         mock_transport.open.assert_called_once()
         mock_send_hid.assert_called_once_with(mock_transport, b'\x00' * 100, 2)
 
@@ -300,11 +300,11 @@ class TestHidProtocol:
         MockHidApi.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidProtocol(0x0416, 0x53E6, 3)
+        s = HidProtocol(0x0418, 0x5303, 3)
         result = s.send_image(b'\xFF' * 50, 320, 320)
 
         assert result is True
-        MockHidApi.assert_called_once_with(0x0416, 0x53E6)
+        MockHidApi.assert_called_once_with(0x0418, 0x5303)
         mock_transport.open.assert_called_once()
         mock_send_hid.assert_called_once_with(mock_transport, b'\xFF' * 50, 3)
 
@@ -312,7 +312,7 @@ class TestHidProtocol:
     @patch("trcc.hid_device.HIDAPI_AVAILABLE", False)
     def test_send_returns_false_when_no_backend(self):
         """No backend → error callback + returns False (not exception to caller)."""
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         error_cb = MagicMock()
         s.on_error = error_cb
 
@@ -329,7 +329,7 @@ class TestHidProtocol:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         s.send_image(b'\x00', 320, 320)
         s.send_image(b'\x01', 320, 320)
 
@@ -339,7 +339,7 @@ class TestHidProtocol:
         assert mock_send_hid.call_count == 2
 
     def test_close_without_transport(self):
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         s.close()  # No transport, should not raise
 
     @patch("trcc.hid_device.PYUSB_AVAILABLE", True)
@@ -350,7 +350,7 @@ class TestHidProtocol:
         MockPyUsb.return_value = mock_transport
         mock_send_hid.return_value = True
 
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         s.send_image(b'\x00', 320, 320)
         s.close()
 
@@ -358,7 +358,7 @@ class TestHidProtocol:
         assert s._transport is None
 
     def test_get_info_returns_protocol_info(self):
-        s = HidProtocol(0x0416, 0x530A, 2)
+        s = HidProtocol(0x0416, 0x5302, 2)
         info = s.get_info()
         assert info.protocol == "hid"
         assert info.device_type == 2
@@ -424,7 +424,7 @@ class TestDeviceProtocolFactory:
 
     def test_hid_device_key_format(self, hid_type2_device):
         key = DeviceProtocolFactory._device_key(hid_type2_device)
-        assert key == "0416_530a_hid:0416:530a"
+        assert key == "0416_5302_hid:0416:5302"
 
     def test_default_protocol_is_scsi(self):
         """Device without protocol attr defaults to SCSI."""
@@ -571,14 +571,14 @@ class TestDeviceDetectorProtocol:
 
     def test_hid_type2_in_known_devices(self):
         from trcc.device_detector import KNOWN_DEVICES
-        info = KNOWN_DEVICES[(0x0416, 0x530A)]
+        info = KNOWN_DEVICES[(0x0416, 0x5302)]
         assert info["protocol"] == "hid"
         assert info["device_type"] == 2
         assert "vendor" in info
 
     def test_hid_type3_in_known_devices(self):
         from trcc.device_detector import KNOWN_DEVICES
-        info = KNOWN_DEVICES[(0x0416, 0x53E6)]
+        info = KNOWN_DEVICES[(0x0418, 0x5303)]
         assert info["protocol"] == "hid"
         assert info["device_type"] == 3
         assert "vendor" in info
@@ -586,7 +586,7 @@ class TestDeviceDetectorProtocol:
     def test_detected_device_has_protocol_field(self):
         from trcc.device_detector import DetectedDevice
         dev = DetectedDevice(
-            vid=0x0416, pid=0x530A,
+            vid=0x0416, pid=0x5302,
             vendor_name="ALi Corp", product_name="LCD (HID)",
             usb_path="1-2", protocol="hid", device_type=2,
         )
@@ -616,7 +616,7 @@ class TestFindLcdDevicesHid:
         from trcc.device_detector import DetectedDevice
         mock_detect.return_value = [
             DetectedDevice(
-                vid=0x0416, pid=0x530A,
+                vid=0x0416, pid=0x5302,
                 vendor_name="ALi Corp", product_name="LCD (HID H)",
                 usb_path="1-3",
                 protocol="hid", device_type=2,
@@ -627,7 +627,7 @@ class TestFindLcdDevicesHid:
         assert len(devices) == 1
         assert devices[0]['protocol'] == 'hid'
         assert devices[0]['device_type'] == 2
-        assert devices[0]['path'] == 'hid:0416:530a'
+        assert devices[0]['path'] == 'hid:0416:5302'
 
     @patch("trcc.device_detector.detect_devices")
     def test_scsi_device_needs_scsi_path(self, mock_detect):
@@ -654,7 +654,7 @@ class TestFindLcdDevicesHid:
                 usb_path="1-1", scsi_device="/dev/sg0",
             ),
             DetectedDevice(
-                vid=0x0416, pid=0x53E6,
+                vid=0x0418, pid=0x5303,
                 vendor_name="ALi Corp", product_name="LCD (HID ALi)",
                 usb_path="1-2",
                 protocol="hid", device_type=3,
@@ -672,7 +672,7 @@ class TestFindLcdDevicesHid:
         hid_dev = next(d for d in devices if d['protocol'] == 'hid')
 
         assert scsi_dev['path'] == '/dev/sg0'
-        assert hid_dev['path'] == 'hid:0416:53e6'
+        assert hid_dev['path'] == 'hid:0418:5303'
         assert hid_dev['device_type'] == 3
 
     @patch("trcc.device_detector.detect_devices")
@@ -685,7 +685,7 @@ class TestFindLcdDevicesHid:
                 usb_path="1-1", scsi_device="/dev/sg0",
             ),
             DetectedDevice(
-                vid=0x0416, pid=0x530A,
+                vid=0x0416, pid=0x5302,
                 vendor_name="ALi Corp", product_name="LCD (HID H)",
                 usb_path="1-2",
                 protocol="hid", device_type=2,
@@ -716,7 +716,7 @@ class TestDeviceInfoProtocol:
     def test_hid_protocol(self):
         from trcc.core.models import DeviceInfo
         dev = DeviceInfo(
-            name="HID LCD", path="hid:0416:530a",
+            name="HID LCD", path="hid:0416:5302",
             protocol="hid", device_type=2,
         )
         assert dev.protocol == "hid"
@@ -731,8 +731,8 @@ class TestDeviceInfoProtocol:
         model = DeviceModel()
         model.devices = [
             DeviceInfo(
-                name="HID ALi", path="hid:0416:53e6",
-                vid=0x0416, pid=0x53E6,
+                name="HID ALi", path="hid:0418:5303",
+                vid=0x0418, pid=0x5303,
                 protocol="hid", device_type=3,
             )
         ]
@@ -875,8 +875,8 @@ class TestDeviceControllerProtocolInfo:
         from trcc.core.models import DeviceInfo
         ctrl = DeviceController()
         ctrl.model.selected_device = DeviceInfo(
-            name="HID LCD", path="hid:0416:530a",
-            vid=0x0416, pid=0x530A,
+            name="HID LCD", path="hid:0416:5302",
+            vid=0x0416, pid=0x5302,
             protocol="hid", device_type=2,
         )
         info = ctrl.get_protocol_info()

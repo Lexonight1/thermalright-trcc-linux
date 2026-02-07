@@ -10,8 +10,6 @@ Supported devices (SCSI — stable):
 
 Supported devices (HID — testing, requires hid-protocol-testing branch):
 - Winbond:      VID=0x0416, PID=0x5302  (Type 2)
-- Winbond:      VID=0x0416, PID=0x530A  (Type 2)
-- Winbond:      VID=0x0416, PID=0x53E6  (Type 3)
 - ALi Corp:     VID=0x0418, PID=0x5303  (Type 3)
 - ALi Corp:     VID=0x0418, PID=0x5304  (Type 3)
 """
@@ -68,27 +66,6 @@ KNOWN_DEVICES = {
         "model": "FROZEN_WARFRAME",
         "button_image": "A1FROZEN_WARFRAME",
         "implementation": "ali_corp_lcd_v1"
-    },
-    # HID devices (from USBLCDNEW.exe — USB bulk transfer protocol)
-    # Type 2: "H" variant — DA/DB/DC/DD magic, 512-byte aligned JPEG frames
-    (0x0416, 0x530A): {
-        "vendor": "Winbond",
-        "product": "LCD Display (HID H)",
-        "model": "CZTV",
-        "button_image": "A1CZTV",
-        "implementation": "hid_type2",
-        "protocol": "hid",
-        "device_type": 2,
-    },
-    # Type 3: "ALi" variant — F5 prefix, fixed 204816-byte frames with ACK
-    (0x0416, 0x53E6): {
-        "vendor": "Winbond",
-        "product": "LCD Display (HID ALi)",
-        "model": "CZTV",
-        "button_image": "A1CZTV",
-        "implementation": "hid_type3",
-        "protocol": "hid",
-        "device_type": 3,
     },
     # HID devices from UCDevice.cs (TRCC 2.0.3 decompiled — decimal PIDs confirmed)
     # device2: UsbHidDevice(1046, 21250) = 0x0416:0x5302, DA/DB/DC/DD handshake, 512-byte chunks

@@ -801,7 +801,7 @@ class TestPyUsbTransport:
         mod.PYUSB_AVAILABLE = False
         try:
             with pytest.raises(ImportError, match="pyusb"):
-                mod.PyUsbTransport(0x0416, 0x530A)
+                mod.PyUsbTransport(0x0416, 0x5302)
         finally:
             mod.PYUSB_AVAILABLE = orig
 
@@ -813,7 +813,7 @@ class TestPyUsbTransport:
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
         with patch("trcc.hid_device.usb.core.find", return_value=mock_dev):
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             t.open()
 
             assert t.is_open
@@ -827,7 +827,7 @@ class TestPyUsbTransport:
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = True
         with patch("trcc.hid_device.usb.core.find", return_value=mock_dev):
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             mock_dev.detach_kernel_driver.assert_called_once_with(USB_INTERFACE)
 
@@ -837,7 +837,7 @@ class TestPyUsbTransport:
         from trcc.hid_device import PyUsbTransport
 
         with patch("trcc.hid_device.usb.core.find", return_value=None):
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             with pytest.raises(RuntimeError, match="not found"):
                 t.open()
 
@@ -852,7 +852,7 @@ class TestPyUsbTransport:
              patch("trcc.hid_device.usb.util.claim_interface"), \
              patch("trcc.hid_device.usb.util.release_interface") as mock_release, \
              patch("trcc.hid_device.usb.util.dispose_resources") as mock_dispose:
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             t.close()
             mock_release.assert_called_once_with(mock_dev, USB_INTERFACE)
@@ -869,7 +869,7 @@ class TestPyUsbTransport:
         mock_dev.write.return_value = 512
         with patch("trcc.hid_device.usb.core.find", return_value=mock_dev), \
              patch("trcc.hid_device.usb.util.claim_interface"):
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             result = t.write(EP_WRITE_02, b'\xFF' * 512, timeout=100)
             mock_dev.write.assert_called_once_with(EP_WRITE_02, b'\xFF' * 512, timeout=100)
@@ -885,7 +885,7 @@ class TestPyUsbTransport:
         mock_dev.read.return_value = bytearray(b'\xDA\xDB\xDC\xDD')
         with patch("trcc.hid_device.usb.core.find", return_value=mock_dev), \
              patch("trcc.hid_device.usb.util.claim_interface"):
-            t = PyUsbTransport(0x0416, 0x530A)
+            t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
             mock_dev.read.assert_called_once_with(EP_READ_01, 512, timeout=100)
@@ -895,7 +895,7 @@ class TestPyUsbTransport:
     def test_write_when_closed_raises(self):
         """write() raises RuntimeError when transport is closed."""
         from trcc.hid_device import PyUsbTransport
-        t = PyUsbTransport(0x0416, 0x530A)
+        t = PyUsbTransport(0x0416, 0x5302)
         with pytest.raises(RuntimeError, match="not open"):
             t.write(EP_WRITE_02, b'\xFF')
 
@@ -910,7 +910,7 @@ class TestPyUsbTransport:
              patch("trcc.hid_device.usb.util.claim_interface"), \
              patch("trcc.hid_device.usb.util.release_interface"), \
              patch("trcc.hid_device.usb.util.dispose_resources"):
-            with PyUsbTransport(0x0416, 0x530A) as t:
+            with PyUsbTransport(0x0416, 0x5302) as t:
                 assert t.is_open
             assert not t.is_open
 
@@ -929,7 +929,7 @@ class TestHidApiTransport:
         mod.HIDAPI_AVAILABLE = False
         try:
             with pytest.raises(ImportError, match="hidapi"):
-                mod.HidApiTransport(0x0416, 0x530A)
+                mod.HidApiTransport(0x0416, 0x5302)
         finally:
             mod.HIDAPI_AVAILABLE = orig
 
@@ -940,9 +940,9 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev) as mock_cls:
-            t = HidApiTransport(0x0416, 0x530A)
+            t = HidApiTransport(0x0416, 0x5302)
             t.open()
-            mock_cls.assert_called_once_with(vid=0x0416, pid=0x530A)
+            mock_cls.assert_called_once_with(vid=0x0416, pid=0x5302)
             assert t.is_open
 
     @pytest.mark.skipif(not HIDAPI_AVAILABLE, reason="hidapi not installed")
@@ -952,7 +952,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
-            t = HidApiTransport(0x0416, 0x530A)
+            t = HidApiTransport(0x0416, 0x5302)
             t.open()
             t.close()
             mock_hid_dev.close.assert_called_once()
@@ -966,7 +966,7 @@ class TestHidApiTransport:
         mock_hid_dev = MagicMock()
         mock_hid_dev.write.return_value = 5
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
-            t = HidApiTransport(0x0416, 0x530A)
+            t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.write(EP_WRITE_02, b'\xFF\xFE\xFD\xFC')
             # Should prepend report ID 0x00
@@ -981,7 +981,7 @@ class TestHidApiTransport:
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = [0xDA, 0xDB, 0xDC, 0xDD]
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
-            t = HidApiTransport(0x0416, 0x530A)
+            t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
             mock_hid_dev.read.assert_called_once_with(512, 100)
@@ -995,7 +995,7 @@ class TestHidApiTransport:
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = None
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
-            t = HidApiTransport(0x0416, 0x530A)
+            t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
             assert result == b''
@@ -1006,7 +1006,7 @@ class TestHidApiTransport:
         from trcc.hid_device import HidApiTransport
         t = HidApiTransport.__new__(HidApiTransport)
         t._vid = 0x0416
-        t._pid = 0x530A
+        t._pid = 0x5302
         t._serial = None
         t._device = None
         t._is_open = False
@@ -1020,7 +1020,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
-            with HidApiTransport(0x0416, 0x530A) as t:
+            with HidApiTransport(0x0416, 0x5302) as t:
                 assert t.is_open
             assert not t.is_open
 
@@ -1089,11 +1089,11 @@ class TestConstants:
 
     def test_type2_vid_pid(self):
         assert TYPE2_VID == 0x0416
-        assert TYPE2_PID == 0x530A
+        assert TYPE2_PID == 0x5302
 
     def test_type3_vid_pid(self):
-        assert TYPE3_VID == 0x0416
-        assert TYPE3_PID == 0x53E6
+        assert TYPE3_VID == 0x0418
+        assert TYPE3_PID == 0x5303
 
     def test_type2_magic(self):
         assert TYPE2_MAGIC == bytes([0xDA, 0xDB, 0xDC, 0xDD])

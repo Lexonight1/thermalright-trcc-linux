@@ -11,8 +11,6 @@ Run `lsusb` and look for your VID:PID:
 | VID:PID | lsusb shows | Protocol |
 |---------|-------------|----------|
 | `0416:5302` | Winbond Electronics Corp. USBDISPLAY | HID Type 2 |
-| `0416:530A` | Winbond Electronics Corp. LCD Display | HID Type 2 |
-| `0416:53E6` | Winbond Electronics Corp. LCD Display | HID Type 3 |
 | `0418:5303` | ALi Corp. LCD Display | HID Type 3 |
 | `0418:5304` | ALi Corp. LCD Display | HID Type 3 |
 
@@ -56,8 +54,8 @@ Even a "it doesn't work" report is helpful — it tells me where the protocol br
 HID devices use a different protocol than SCSI devices:
 
 - **SCSI** (`87CD:70DB`, `0416:5406`, `0402:3922`) — USB Mass Storage, sends raw RGB565 pixels via `sg_raw`
-- **HID Type 2** (`0416:5302`, `0416:530A`) — USB HID, DA/DB/DC/DD handshake, 512-byte aligned JPEG frames
-- **HID Type 3** (`0416:53E6`, `0418:5303`, `0418:5304`) — USB HID, F5 prefix, fixed-size frames with ACK
+- **HID Type 2** (`0416:5302`) — USB HID, DA/DB/DC/DD handshake, 512-byte aligned JPEG frames
+- **HID Type 3** (`0418:5303`, `0418:5304`) — USB HID, F5 prefix, fixed-size frames with ACK
 
 Resolution is auto-detected via the DA/DB/DC/DD handshake — the device reports its screen type, which maps to a resolution (240x240, 320x320, 480x480, etc.).
 

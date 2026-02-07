@@ -89,12 +89,13 @@ Plug in your cooler and run `lsusb`. Find the VID:PID for your device and check 
 | `87cd:70db` | **SCSI** | Thermalright LCD Display | Stable (main branch) |
 | `0416:5406` | **SCSI** | ALi Corp LCD Display | Stable (main branch) |
 | `0402:3922` | **SCSI** | FROZEN WARFRAME | Stable (main branch) |
-| `0416:530a` | **HID** | ALi Corp LCD Display (H) | **Testing — needs testers** |
-| `0416:53e6` | **HID** | ALi Corp LCD Display (ALi) | **Testing — needs testers** |
+| `0416:5302` | **HID** | Winbond Electronics Corp. USBDISPLAY | **Testing — needs testers** |
+| `0418:5303` | **HID** | ALi Corp. LCD Display | **Testing — needs testers** |
+| `0418:5304` | **HID** | ALi Corp. LCD Display | **Testing — needs testers** |
 
 **SCSI devices** (the first three) work on both the `main`/`stable` branch and this testing branch. No extra setup needed — follow the normal install steps below.
 
-**HID devices** (the last two) only work on the `hid-protocol-testing` branch. These use a completely different USB protocol (bulk transfer instead of SCSI commands) and require different system libraries.
+**HID devices** (the last three) only work on the `hid-protocol-testing` branch. These use a completely different USB protocol (bulk transfer instead of SCSI commands) and require different system libraries.
 
 ### Installing for HID devices
 
@@ -161,8 +162,8 @@ HID devices should show as:
 
 ```
 Device 1:
-  Device: ALi Corp LCD Display (HID H)
-  USB VID:PID: 0416:530A
+  Device: Winbond USBDISPLAY (HID)
+  USB VID:PID: 0416:5302
   Protocol: HID (type 2)
   Model: CZTV
 ```
@@ -174,8 +175,9 @@ HID devices need different udev rules than SCSI devices. `trcc setup-udev` on th
 ```bash
 # /etc/udev/rules.d/99-trcc-lcd.rules
 # HID LCD devices — allow non-root access
-SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0660"
-SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", MODE="0660"
 ```
 
 Then reload and replug:
@@ -1402,8 +1404,9 @@ sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
 # Unplug and replug USB cable
 
 # If that doesn't work, add the rule manually:
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="530a", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="53e6", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", MODE="0660"' | sudo tee -a /etc/udev/rules.d/99-trcc-lcd.rules
 sudo udevadm control --reload-rules
 # Unplug and replug USB cable
 ```

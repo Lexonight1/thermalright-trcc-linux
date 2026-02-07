@@ -5,8 +5,8 @@ HID USB protocol layer for Type 2 ("H") and Type 3 ("ALi") LCD devices.
 These devices use USB bulk transfers instead of SCSI.  Protocol details
 reverse-engineered from the decompiled USBLCDNEW.exe (C# / LibUsbDotNet).
 
-Type 2 — VID 0x0416, PID 0x530A  ("H" variant)
-Type 3 — VID 0x0416, PID 0x53E6  ("ALi" variant)
+Type 2 — VID 0x0416, PID 0x5302  ("H" variant, DA/DB/DC/DD handshake)
+Type 3 — VID 0x0418, PID 0x5303/0x5304  ("ALi" variant, F5 prefix)
 
 The ``UsbTransport`` ABC abstracts the raw USB I/O so that:
   • Tests can inject a mock transport (no real hardware needed).
@@ -43,12 +43,12 @@ except ImportError:
 # Constants (from USBLCDNEW.decompiled.cs)
 # =========================================================================
 
-# USB IDs
+# USB IDs (from UCDevice.cs: UsbHidDevice constructor calls)
 TYPE2_VID = 0x0416
-TYPE2_PID = 0x530A
+TYPE2_PID = 0x5302  # device2: UsbHidDevice(1046, 21250)
 
-TYPE3_VID = 0x0416
-TYPE3_PID = 0x53E6
+TYPE3_VID = 0x0418
+TYPE3_PID = 0x5303  # device3: UsbHidDevice(1048, 21251); also 0x5304 = device4
 
 # Endpoint addresses (LibUsbDotNet enum values)
 EP_READ_01 = 0x81   # ReadEndpointID.Ep01
@@ -148,7 +148,7 @@ def _ceil_to_512(n: int) -> int:
 
 
 # =========================================================================
-# Type 2 — "H" variant  (VID 0x0416, PID 0x530A)
+# Type 2 — "H" variant  (VID 0x0416, PID 0x5302)
 # =========================================================================
 
 class HidDeviceType2:
@@ -311,7 +311,7 @@ class HidDeviceType2:
 
 
 # =========================================================================
-# Type 3 — "ALi" variant  (VID 0x0416, PID 0x53E6)
+# Type 3 — "ALi" variant  (VID 0x0418, PID 0x5303/0x5304)
 # =========================================================================
 
 class HidDeviceType3:
