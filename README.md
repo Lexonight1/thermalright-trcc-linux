@@ -44,10 +44,8 @@ Resolutions: 240x240, 320x320, 480x480, 640x480
 | USB ID | Devices |
 |--------|---------|
 | `0416:5302` | AS120 VISION, BA120 VISION, FROZEN WARFRAME, FROZEN WARFRAME SE, FROZEN WARFRAME PRO, ELITE VISION, LC5 |
-| `0416:530A` | LCD Display (HID variant) |
-| `0416:53E6` | LCD Display (HID variant) |
-| `0418:5303` | LCD Display (ALi) |
-| `0418:5304` | LCD Display (ALi) |
+| `0418:5303` | TARAN ARMS |
+| `0418:5304` | TARAN ARMS |
 
 > **HID device?** Install from the testing branch instead:
 > ```bash
