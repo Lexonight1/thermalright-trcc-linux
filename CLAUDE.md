@@ -31,7 +31,9 @@ Semantic versioning: MAJOR.MINOR.PATCH
 
 ## Test Suite
 
-**1209 tests** across 21 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
+**1396 tests** across 23 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
+
+CI runs on `main`, `stable`, and `hid-protocol-testing` branches (Python 3.10, 3.11, 3.12).
 
 Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
 
@@ -61,8 +63,11 @@ Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
 | test_qt_constants | qt_components/constants | 25 | 100% |
 | test_qt_base | qt_components/base | 27 | 83% |
 | test_qt_widgets | qt_components widgets+assets | 44 | varies |
+| test_hid_device | hid_device (HID protocol) | 114 | — |
+| test_device_factory | device_factory (HID routing) | 73 | — |
 
 Qt tests require `QT_QPA_PLATFORM=offscreen` (headless, no display server).
+HID tests (`tests/hid_testing/`) are on the `hid-protocol-testing` branch only.
 
 ### Testing Patterns & Gotchas
 
@@ -358,7 +363,8 @@ Prioritized list of remaining work:
 
 ### 2. ~~CI/CD~~ ✓ Done
 - GitHub Actions workflow in `.github/workflows/tests.yml`
-- pytest + pyright checks
+- pytest + pyright checks on Python 3.10, 3.11, 3.12
+- Runs on `main`, `stable`, and `hid-protocol-testing` branches
 
 ### 3. ~~Type Checking~~ ✓ Done
 - pyright basic mode: 0 errors across full codebase

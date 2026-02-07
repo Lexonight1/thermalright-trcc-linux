@@ -1,6 +1,8 @@
 # HID Device Testing Guide
 
-The HID protocol is implemented but **not tested against real hardware**. I only have a SCSI device (`87CD:70DB`). If you have an HID device, please help test.
+[![Tests](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml/badge.svg?branch=hid-protocol-testing)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
+
+The HID protocol is implemented with **187 automated tests** (CI passing on Python 3.10, 3.11, 3.12) but **not tested against real hardware**. I only have a SCSI device (`87CD:70DB`). If you have an HID device, please help test.
 
 ## Supported HID Devices
 

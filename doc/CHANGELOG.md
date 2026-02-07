@@ -10,11 +10,19 @@
 - Replaced `os.system()` with `subprocess.run()` in cli.py for security/correctness
 - Install guide expanded to cover 25+ Linux distributions
 
+### CI / Testing
+- Added `hid-protocol-testing` branch to GitHub Actions test workflow (Python 3.10, 3.11, 3.12)
+- 187 HID protocol tests (114 device protocol + 73 factory/routing) — total 1396 tests across all branches
+- Fixed Python 3.12 `mock.patch` failure for optional `pynvml` import
+- Added `ruff` to dev dependencies for CI lint step
+
 ### Documentation
 - Added HID device PIDs (`0416:5302`, `0416:530A`, `0416:53E6`, `0418:5303`, `0418:5304`) to supported devices
 - Split README device tables into SCSI (stable) and HID (testing) sections with USB IDs
 - Added `lsusb` example to help users identify their device
 - Created [HID Testing Guide](HID_TESTING.md) with install, switch, and reporting instructions
+- Added CI badge to README
+- Added [CLI Reference](CLI_REFERENCE.md) with all commands, options, and troubleshooting
 - Updated Documentation table on all branches
 
 ### Bug Fixes
