@@ -73,7 +73,7 @@ See the **[Install Guide](doc/INSTALL_GUIDE.md)** for troubleshooting, optional 
 sudo dnf install sg3_utils python3-pyqt6 ffmpeg && git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e . && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
 ```
 
-### Ubuntu / Debian / Mint / Pop!_OS
+### Ubuntu / Debian / Mint / Pop!_OS / Zorin / elementary OS / Xubuntu
 
 ```bash
 sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip && git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e . && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
