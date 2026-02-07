@@ -225,7 +225,9 @@ Remove all TRCC configuration, udev rules, and autostart files.
 
 ```bash
 trcc uninstall             # remove user config files
-sudo trcc uninstall        # also remove udev rules (requires root)
+
+# Also remove udev rules (requires root — run from the repo directory)
+sudo PYTHONPATH=src python3 -m trcc.cli uninstall
 ```
 
 **Removes:**
@@ -243,7 +245,7 @@ To fully uninstall the Python package as well:
 
 ```bash
 trcc uninstall
-sudo trcc uninstall
+sudo PYTHONPATH=src python3 -m trcc.cli uninstall
 pip uninstall trcc-linux
 ```
 

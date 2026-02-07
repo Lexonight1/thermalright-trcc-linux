@@ -1436,23 +1436,26 @@ Everything else (themes, overlays, video playback, device communication) works i
 
 ## Uninstalling
 
-### Remove TRCC
+### Quick uninstall
 
 ```bash
+# Remove config, autostart, desktop files
+trcc uninstall
+
+# Remove udev rules (requires root — run from the repo directory)
+sudo PYTHONPATH=src python3 -m trcc.cli uninstall
+
+# Remove the Python package
 pip uninstall trcc-linux
 ```
 
-### Remove udev rules (optional)
+### Manual removal (if trcc command is unavailable)
 
 ```bash
+pip uninstall trcc-linux
 sudo rm /etc/udev/rules.d/99-trcc-lcd.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo udevadm control --reload-rules
-```
-
-### Remove config files (optional)
-
-```bash
 rm -rf ~/.config/trcc
 ```
 
