@@ -169,6 +169,14 @@ def gui(verbose=0, decorated=False):
         return 1
 
 
+def _format_device(dev):
+    """Format a detected device for display."""
+    vid_pid = f"[{dev.vid:04x}:{dev.pid:04x}]"
+    proto = dev.protocol.upper()
+    path = dev.scsi_device if dev.scsi_device else "No device path found"
+    return f"{path} — {dev.product_name} {vid_pid} ({proto})"
+
+
 def detect(show_all=False):
     """Detect LCD device."""
     try:
@@ -183,15 +191,17 @@ def detect(show_all=False):
             selected = _get_selected_device()
             for i, dev in enumerate(devices, 1):
                 marker = "*" if dev.scsi_device == selected else " "
-                print(f"{marker} [{i}] {dev.scsi_device} ({dev.product_name})")
+                print(f"{marker} [{i}] {_format_device(dev)}")
             if len(devices) > 1:
                 print("\nUse 'trcc select N' to switch devices")
         else:
             selected = _get_selected_device()
-            if selected and any(d.scsi_device == selected for d in devices):
-                print(f"Active: {selected}")
-            else:
-                print(f"Active: {devices[0].scsi_device}")
+            dev = None
+            if selected:
+                dev = next((d for d in devices if d.scsi_device == selected), None)
+            if not dev:
+                dev = devices[0]
+            print(f"Active: {_format_device(dev)}")
         return 0
     except Exception as e:
         print(f"Error: {e}")

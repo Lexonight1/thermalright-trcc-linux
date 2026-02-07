@@ -121,10 +121,13 @@ class TestMainEntryPoint(unittest.TestCase):
 class TestDetect(unittest.TestCase):
     """Test detect() command."""
 
-    def _make_device(self, path='/dev/sg0', name='LCD'):
+    def _make_device(self, path='/dev/sg0', name='LCD', vid=0x87CD, pid=0x70DB, protocol='scsi'):
         dev = MagicMock()
         dev.scsi_device = path
         dev.product_name = name
+        dev.vid = vid
+        dev.pid = pid
+        dev.protocol = protocol
         return dev
 
     @patch('trcc.cli.detect_devices', create=True)
@@ -485,10 +488,13 @@ class TestGuiExtra(unittest.TestCase):
 
 class TestDetectExtra(unittest.TestCase):
 
-    def _make_device(self, path='/dev/sg0', name='LCD'):
+    def _make_device(self, path='/dev/sg0', name='LCD', vid=0x87CD, pid=0x70DB, protocol='scsi'):
         dev = MagicMock()
         dev.scsi_device = path
         dev.product_name = name
+        dev.vid = vid
+        dev.pid = pid
+        dev.protocol = protocol
         return dev
 
     def test_detect_exception(self):
