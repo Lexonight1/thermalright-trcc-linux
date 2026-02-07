@@ -103,6 +103,9 @@ Examples:
     udev_parser = subparsers.add_parser("setup-udev", help="Install udev rules for LCD device access")
     udev_parser.add_argument("--dry-run", action="store_true", help="Print rules without installing")
 
+    # Uninstall command
+    subparsers.add_parser("uninstall", help="Remove all TRCC config, udev rules, and autostart files")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -134,6 +137,8 @@ Examples:
         return reset_device(device=args.device)
     elif args.command == "setup-udev":
         return setup_udev(dry_run=args.dry_run)
+    elif args.command == "uninstall":
+        return uninstall()
     elif args.command == "download":
         return download_themes(pack=args.pack, show_list=args.list,
                               force=args.force, show_info=args.info)
@@ -513,6 +518,68 @@ def setup_udev(dry_run=False):
     except Exception as e:
         print(f"Error: {e}")
         return 1
+
+
+def uninstall():
+    """Remove all TRCC config, udev rules, autostart, and desktop files."""
+    import shutil
+    from pathlib import Path
+
+    home = Path.home()
+
+    # Files that require root to remove
+    root_files = [
+        "/etc/udev/rules.d/99-trcc-lcd.rules",
+        "/etc/modprobe.d/trcc-lcd.conf",
+    ]
+
+    # User files/dirs to remove
+    user_items = [
+        home / ".config" / "trcc",                          # config dir
+        home / ".trcc",                                      # legacy config dir
+        home / ".config" / "autostart" / "trcc.desktop",     # autostart
+        home / ".local" / "share" / "applications" / "trcc.desktop",  # desktop shortcut
+    ]
+
+    removed = []
+    skipped_root = []
+
+    # Handle root files
+    for path_str in root_files:
+        if os.path.exists(path_str):
+            if os.geteuid() == 0:
+                os.remove(path_str)
+                removed.append(path_str)
+            else:
+                skipped_root.append(path_str)
+
+    # Handle user files/dirs
+    for path in user_items:
+        if path.exists():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            removed.append(str(path))
+
+    if removed:
+        print("Removed:")
+        for item in removed:
+            print(f"  {item}")
+    else:
+        print("Nothing to remove — TRCC is already clean.")
+
+    if skipped_root:
+        print("\nSkipped (run with sudo to remove):")
+        for item in skipped_root:
+            print(f"  {item}")
+
+    # Reload udev if we removed rules
+    if any("udev" in r for r in removed):
+        subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
+        subprocess.run(["udevadm", "trigger"], check=False)
+
+    return 0
 
 
 def download_themes(pack=None, show_list=False, force=False, show_info=False):

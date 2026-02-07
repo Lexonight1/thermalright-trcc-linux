@@ -36,6 +36,7 @@ from trcc.cli import (
     send_image,
     setup_udev,
     show_info,
+    uninstall,
 )
 # Alias to avoid pytest collecting it as a test function
 from trcc.cli import test_display as cli_test_display
@@ -779,6 +780,137 @@ class TestDownloadThemesEdge(unittest.TestCase):
     def test_exception_returns_1(self, _):
         result = download_themes(pack='320x320')
         self.assertEqual(result, 1)
+
+
+# ── uninstall ────────────────────────────────────────────────────────────────
+
+class TestUninstall(unittest.TestCase):
+
+    def test_removes_user_files(self):
+        """Removes config dirs, autostart, and desktop shortcut."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config_dir = home / ".config" / "trcc"
+            config_dir.mkdir(parents=True)
+            (config_dir / "config.json").write_text("{}")
+            legacy_dir = home / ".trcc"
+            legacy_dir.mkdir()
+            (legacy_dir / "data").mkdir()
+            autostart = home / ".config" / "autostart" / "trcc.desktop"
+            autostart.parent.mkdir(parents=True, exist_ok=True)
+            autostart.write_text("[Desktop Entry]")
+            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            desktop.parent.mkdir(parents=True, exist_ok=True)
+            desktop.write_text("[Desktop Entry]")
+
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+            # Root files don't exist on disk, so os.path.exists is fine unpatched
+            with patch('pathlib.Path.home', return_value=home), \
+                 patch('os.geteuid', return_value=1000), \
+                 redirect_stdout(buf):
+                result = uninstall()
+
+            self.assertEqual(result, 0)
+            self.assertFalse(config_dir.exists())
+            self.assertFalse(legacy_dir.exists())
+            self.assertFalse(autostart.exists())
+            self.assertFalse(desktop.exists())
+            self.assertIn("Removed:", buf.getvalue())
+
+    def test_nothing_to_remove(self):
+        """Clean system prints nothing-to-remove message."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+            with patch('pathlib.Path.home', return_value=home), \
+                 patch('os.geteuid', return_value=1000), \
+                 patch('os.path.exists', return_value=False), \
+                 redirect_stdout(buf):
+                result = uninstall()
+            self.assertEqual(result, 0)
+            self.assertIn("already clean", buf.getvalue())
+
+    @patch('trcc.cli.subprocess.run')
+    def test_root_removes_system_files(self, mock_subproc):
+        """Root user removes udev rules and modprobe config."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            # Create fake system files inside tmp to simulate /etc paths
+            udev = os.path.join(tmp, "99-trcc-lcd.rules")
+            modprobe = os.path.join(tmp, "trcc-lcd.conf")
+            with open(udev, "w") as f:
+                f.write("rules")
+            with open(modprobe, "w") as f:
+                f.write("options")
+
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+
+            # Intercept os.path.exists and os.remove to redirect /etc paths to tmp
+            real_exists = os.path.exists
+            removed_paths = []
+
+            def fake_exists(p):
+                if p == "/etc/udev/rules.d/99-trcc-lcd.rules":
+                    return real_exists(udev)
+                if p == "/etc/modprobe.d/trcc-lcd.conf":
+                    return real_exists(modprobe)
+                return real_exists(p)
+
+            real_remove = os.remove
+            def fake_remove(p):
+                removed_paths.append(p)
+
+            with patch('pathlib.Path.home', return_value=home), \
+                 patch('os.geteuid', return_value=0), \
+                 patch('os.path.exists', side_effect=fake_exists), \
+                 patch('os.remove', side_effect=fake_remove), \
+                 redirect_stdout(buf):
+                result = uninstall()
+
+            self.assertEqual(result, 0)
+            self.assertIn("/etc/udev/rules.d/99-trcc-lcd.rules", removed_paths)
+            self.assertIn("/etc/modprobe.d/trcc-lcd.conf", removed_paths)
+            # Should reload udev after removing rules
+            mock_subproc.assert_any_call(["udevadm", "control", "--reload-rules"], check=False)
+
+    def test_skipped_root_files_as_user(self):
+        """Non-root skips system files and prints message."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+            # Make os.path.exists return True for root files
+            real_exists = os.path.exists
+            def fake_exists(p):
+                if p in ("/etc/udev/rules.d/99-trcc-lcd.rules", "/etc/modprobe.d/trcc-lcd.conf"):
+                    return True
+                return real_exists(p)
+
+            with patch('pathlib.Path.home', return_value=home), \
+                 patch('os.geteuid', return_value=1000), \
+                 patch('os.path.exists', side_effect=fake_exists), \
+                 redirect_stdout(buf):
+                result = uninstall()
+
+            self.assertEqual(result, 0)
+            output = buf.getvalue()
+            self.assertIn("Skipped", output)
+            self.assertIn("sudo", output)
+
+    def test_dispatch_uninstall(self):
+        """main() dispatches 'uninstall' to uninstall()."""
+        with patch('trcc.cli.uninstall', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'uninstall']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
 
 
 if __name__ == '__main__':
