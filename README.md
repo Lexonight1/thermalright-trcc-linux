@@ -44,7 +44,9 @@ Match it to the tables below.
 
 > **New to Linux?** See the **[Install Guide](doc/INSTALL_GUIDE.md)** — it explains every command and covers 25+ distros step by step.
 
-Find your distro, copy the block, paste in terminal. After it finishes: **unplug and replug the USB cable** (or reboot if it's not easily accessible), then run `trcc gui`.
+Find your distro, copy the block, paste in terminal. After it finishes: **unplug and replug the USB cable** (or reboot if it's not easily accessible), then **open a new terminal** and run `trcc gui`.
+
+> **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH. Or run directly: `PYTHONPATH=src python3 -m trcc.cli gui`
 
 If your distro doesn't package PyQt6, just drop it from the system install line — `pip install -e .` will pull it from PyPI automatically.
 
