@@ -1,10 +1,17 @@
 # TRCC Linux
 
 [![Tests](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/codeql.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/codeql.yml)
+[![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen.svg)](CLAUDE.md#test-suite)
+[![Pyright](https://img.shields.io/badge/pyright-passing-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
 [![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](doc/INSTALL_GUIDE.md)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-41cd52.svg)](https://www.riverbankcomputing.com/software/pyqt/)
+[![Stars](https://img.shields.io/github/stars/Lexonight1/thermalright-trcc-linux)](https://github.com/Lexonight1/thermalright-trcc-linux/stargazers)
+[![Last Commit](https://img.shields.io/github/last-commit/Lexonight1/thermalright-trcc-linux)](https://github.com/Lexonight1/thermalright-trcc-linux/commits)
+[![Issues](https://img.shields.io/github/issues/Lexonight1/thermalright-trcc-linux)](https://github.com/Lexonight1/thermalright-trcc-linux/issues)
 
 Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.0.3). Control and customize the LCD displays on Thermalright CPU coolers, AIO pump heads, and fan hubs — entirely from Linux.
 
