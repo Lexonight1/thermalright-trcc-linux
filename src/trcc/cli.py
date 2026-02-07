@@ -517,7 +517,7 @@ def setup_udev(dry_run=False):
         # Reload udev
         subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
         subprocess.run(["udevadm", "trigger"], check=False)
-        print("\nDone. Replug your LCD USB cable for changes to take effect.")
+        print("\nDone. Unplug and replug the USB cable (or reboot if it's not easily accessible).")
         return 0
 
     except Exception as e:
