@@ -8,8 +8,9 @@ A beginner-friendly guide to getting Thermalright LCD Control Center running on 
 
 1. [What is TRCC?](#what-is-trcc)
 2. [Compatible Coolers](#compatible-coolers)
-3. [Prerequisites](#prerequisites)
-4. [Step 1 - Install System Dependencies](#step-1---install-system-dependencies)
+3. [New to Linux?](#new-to-linux)
+4. [Prerequisites](#prerequisites)
+5. [Step 1 - Install System Dependencies](#step-1---install-system-dependencies)
    - [Fedora / RHEL / CentOS Stream / Rocky / Alma](#fedora--rhel--centos-stream--rocky--alma)
    - [Ubuntu / Debian / Linux Mint / Pop!_OS / Zorin / elementary](#ubuntu--debian--linux-mint--pop_os--zorin--elementary)
    - [Arch Linux / Manjaro / EndeavourOS / CachyOS / Garuda](#arch-linux--manjaro--endeavouros--cachyos--garuda)
@@ -21,25 +22,25 @@ A beginner-friendly guide to getting Thermalright LCD Control Center running on 
    - [Alpine Linux](#alpine-linux)
    - [Solus](#solus)
    - [Clear Linux](#clear-linux)
-5. [Step 2 - Download TRCC](#step-2---download-trcc)
-6. [Step 3 - Install Python Dependencies](#step-3---install-python-dependencies)
-7. [Step 4 - Set Up Device Permissions](#step-4---set-up-device-permissions)
-8. [Step 5 - Connect Your Cooler](#step-5---connect-your-cooler)
-9. [Step 6 - Run TRCC](#step-6---run-trcc)
-10. [Immutable / Atomic Distros](#immutable--atomic-distros)
+6. [Step 2 - Download TRCC](#step-2---download-trcc)
+7. [Step 3 - Install Python Dependencies](#step-3---install-python-dependencies)
+8. [Step 4 - Set Up Device Permissions](#step-4---set-up-device-permissions)
+9. [Step 5 - Connect Your Cooler](#step-5---connect-your-cooler)
+10. [Step 6 - Run TRCC](#step-6---run-trcc)
+11. [Immutable / Atomic Distros](#immutable--atomic-distros)
     - [Bazzite / Fedora Atomic / Aurora / Bluefin](#bazzite--fedora-atomic--aurora--bluefin)
     - [SteamOS (Steam Deck)](#steamos-steam-deck)
     - [Vanilla OS](#vanilla-os)
     - [ChromeOS (Crostini)](#chromeos-crostini)
-11. [Special Hardware](#special-hardware)
+12. [Special Hardware](#special-hardware)
     - [Asahi Linux (Apple Silicon)](#asahi-linux-apple-silicon)
     - [Raspberry Pi / ARM SBCs](#raspberry-pi--arm-sbcs)
     - [WSL2 (Windows Subsystem for Linux)](#wsl2-windows-subsystem-for-linux)
-12. [Using the GUI](#using-the-gui)
-13. [Command Line Usage](#command-line-usage)
-14. [Troubleshooting](#troubleshooting)
-15. [Wayland-Specific Notes](#wayland-specific-notes)
-16. [Uninstalling](#uninstalling)
+13. [Using the GUI](#using-the-gui)
+14. [Command Line Usage](#command-line-usage)
+15. [Troubleshooting](#troubleshooting)
+16. [Wayland-Specific Notes](#wayland-specific-notes)
+17. [Uninstalling](#uninstalling)
 
 ---
 
@@ -72,6 +73,28 @@ TRCC Linux works with these Thermalright products that have a built-in LCD displ
 - 640x480 pixels
 
 > **Note:** If your cooler came with a Windows-only CD or download link for "TRCC" or "CZTV" software, it's compatible.
+
+---
+
+## New to Linux?
+
+If you're coming from Windows or Mac, here's a quick primer on the Linux concepts you'll see in this guide.
+
+**Terminal** — The command-line app where you type commands. Think Command Prompt or PowerShell on Windows, or Terminal.app on Mac. To open it: press `Ctrl+Alt+T`, or search "Terminal" in your app menu.
+
+**sudo** — Runs a command as administrator (like "Run as Administrator" on Windows). It will ask for your password. Example: `sudo dnf install ffmpeg` installs FFmpeg with admin privileges.
+
+**Package manager** — An app store for the command line. Each distro has its own: `dnf` (Fedora), `apt` (Ubuntu/Debian), `pacman` (Arch). When you see `sudo apt install ...`, that's installing software from your distro's repository.
+
+**Distro** — Short for "distribution" — the flavor of Linux you're running (Ubuntu, Fedora, Arch, etc.). If you're not sure which one you have, open a terminal and run:
+```bash
+cat /etc/os-release
+```
+Or check **Settings > About** in your desktop environment.
+
+**git clone** — Downloads a project from the internet. Similar to downloading a ZIP, but smarter — you can update later with `git pull` instead of re-downloading.
+
+**pip** — Python's package installer. When you see `pip install -e .`, it's installing TRCC and its Python dependencies. The `-e` flag means changes to the code take effect immediately without reinstalling.
 
 ---
 
