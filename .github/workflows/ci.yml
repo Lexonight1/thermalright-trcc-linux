@@ -36,21 +36,23 @@ jobs:
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
             ${{ runner.os }}-pip-
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
 
-      - name: Lint with ruff ✅
-        run: |
-          # use the ruff config in pyproject.toml
-          python -m ruff check .
+      - name: Lint with ruff
+        run: python -m ruff check .
 
-      - name: Run tests with pytest ✅
+      - name: Run tests with pytest
         env:
-          PYTHONPATH: src
-        run: |
-          pytest -q --maxfail=1
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q --maxfail=1
 
       - name: Upload test results and coverage
         if: always()
