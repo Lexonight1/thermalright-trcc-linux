@@ -19,7 +19,7 @@ Run `lsusb` and look for your VID:PID:
 Install your distro's dependencies first (same as the stable branch — see [README](../README.md#install)), then clone the testing branch:
 
 ```bash
-git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e . && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e . && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 ## Switch from stable

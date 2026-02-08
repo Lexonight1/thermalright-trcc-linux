@@ -58,8 +58,19 @@ class ThemeInfo:
         anim_path = path / 'Theme.zt'
         config_path = path / 'config1.dc'
 
-        # Determine if animated
-        is_animated = anim_path.exists()
+        # Determine if animated — check Theme.zt first, then .mp4 files
+        if anim_path.exists():
+            is_animated = True
+            animation_path = anim_path
+        else:
+            # Look for MP4 files (saved cloud video themes)
+            mp4_files = list(path.glob('*.mp4'))
+            if mp4_files:
+                is_animated = True
+                animation_path = mp4_files[0]
+            else:
+                is_animated = False
+                animation_path = None
 
         # Determine if mask-only (no background)
         is_mask_only = not bg_path.exists() and mask_path.exists()
@@ -71,7 +82,7 @@ class ThemeInfo:
             background_path=bg_path if bg_path.exists() else None,
             mask_path=mask_path if mask_path.exists() else None,
             thumbnail_path=thumb_path if thumb_path.exists() else (bg_path if bg_path.exists() else None),
-            animation_path=anim_path if anim_path.exists() else None,
+            animation_path=animation_path,
             config_path=config_path if config_path.exists() else None,
             resolution=resolution,
             is_animated=is_animated,

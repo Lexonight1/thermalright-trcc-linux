@@ -104,49 +104,49 @@ Find your distro, copy the one-liner, paste in terminal. After it finishes: **un
 #### Fedora / Nobara
 
 ```bash
-sudo dnf install libusb1-devel python3-pyqt6 ffmpeg && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo dnf install libusb1-devel python3-pyqt6 ffmpeg && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Ubuntu / Debian / Mint / Pop!_OS / Zorin / elementary OS / Xubuntu
 
 ```bash
-sudo apt install libusb-1.0-0-dev python3-pyqt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo apt install libusb-1.0-0-dev python3-pyqt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Arch / Manjaro / EndeavourOS / CachyOS / Garuda
 
 ```bash
-sudo pacman -S libusb python-pyqt6 ffmpeg python-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo pacman -S libusb python-pyqt6 ffmpeg python-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### openSUSE
 
 ```bash
-sudo zypper install libusb-1_0-devel python3-qt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo zypper install libusb-1_0-devel python3-qt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Void Linux
 
 ```bash
-sudo xbps-install libusb-devel python3-PyQt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo xbps-install libusb-devel python3-PyQt6 ffmpeg python3-pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Gentoo
 
 ```bash
-sudo emerge --ask dev-libs/libusb dev-python/PyQt6 media-video/ffmpeg dev-python/pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo emerge --ask dev-libs/libusb dev-python/PyQt6 media-video/ffmpeg dev-python/pip && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Alpine
 
 ```bash
-sudo apk add libusb-dev py3-pyqt6 ffmpeg py3-pip python3 && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+sudo apk add libusb-dev py3-pyqt6 ffmpeg py3-pip python3 && git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && pip install --break-system-packages -e ".[hid]" && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
 ```
 
 #### Bazzite / Fedora Atomic
 
 ```bash
-git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && python3 -m venv ~/trcc-env && source ~/trcc-env/bin/activate && pip install -e ".[hid]" && sudo ~/trcc-env/bin/trcc setup-udev
+git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux && python3 -m venv ~/trcc-env && source ~/trcc-env/bin/activate && pip install -e ".[hid]" && sudo ~/trcc-env/bin/trcc setup-udev && trcc install-desktop
 ```
 Launch: `source ~/trcc-env/bin/activate && trcc gui`
 

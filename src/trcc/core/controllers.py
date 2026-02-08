@@ -641,13 +641,22 @@ class FormCZTVController:
         bg_path = self.working_dir / '00.png'
         zt_path = self.working_dir / 'Theme.zt'
         if theme.is_animated and theme.animation_path:
-            self.video.load(theme.animation_path)
+            # Use working dir copy if available (copied by _copy_theme_to_working_dir)
+            wd_copy = self.working_dir / Path(theme.animation_path).name
+            load_path = wd_copy if wd_copy.exists() else theme.animation_path
+            self.video.load(load_path)
             self.video.play()
         elif zt_path.exists():
             self.video.load(zt_path)
             self.video.play()
         elif bg_path.exists():
-            self._load_static_image(bg_path)
+            # Check for MP4 in working dir (fallback for saved cloud themes)
+            mp4_files = list(self.working_dir.glob('*.mp4'))
+            if mp4_files:
+                self.video.load(mp4_files[0])
+                self.video.play()
+            else:
+                self._load_static_image(bg_path)
         elif theme.is_mask_only:
             self._create_mask_background(theme)
 
