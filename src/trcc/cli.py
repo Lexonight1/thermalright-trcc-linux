@@ -631,13 +631,17 @@ def setup_udev(dry_run=False):
             print(f"# Would write to {modprobe_path}")
             return 0
 
-        # Need root
+        # Need root — re-exec with sudo automatically
         if os.geteuid() != 0:
-            print("Error: root required. Run from the repo directory with:")
-            print("  sudo PYTHONPATH=src python3 -m trcc.cli setup-udev")
-            print("\nOr preview first:")
-            print("  trcc setup-udev --dry-run")
-            return 1
+            # Find where trcc package lives so sudo/root can import it
+            trcc_pkg = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cmd = [
+                "sudo", "env", f"PYTHONPATH={trcc_pkg}",
+                sys.executable, "-m", "trcc.cli", "setup-udev",
+            ]
+            print(f"Root required — requesting sudo...")
+            result = subprocess.run(cmd)
+            return result.returncode
 
         # Write udev rules
         with open(rules_path, "w") as f:

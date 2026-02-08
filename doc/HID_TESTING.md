@@ -22,50 +22,50 @@ Find your distro, copy the block, paste in terminal. These install TRCC + HID de
 ### Fedora / Nobara
 
 ```bash
-sudo dnf install sg3_utils python3-pyqt6 ffmpeg libusb1-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo dnf install sg3_utils python3-pyqt6 ffmpeg libusb1-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### Ubuntu / Debian / Mint / Pop!_OS
 
 ```bash
-sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip libusb-1.0-0-dev && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip libusb-1.0-0-dev && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### Arch / Manjaro / EndeavourOS / CachyOS / Garuda
 
 ```bash
-sudo pacman -S sg3_utils python-pyqt6 ffmpeg python-pip libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo pacman -S sg3_utils python-pyqt6 ffmpeg python-pip libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### openSUSE
 
 ```bash
-sudo zypper install sg3_utils python3-qt6 ffmpeg python3-pip libusb-1_0-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo zypper install sg3_utils python3-qt6 ffmpeg python3-pip libusb-1_0-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### Void Linux
 
 ```bash
-sudo xbps-install sg3_utils python3-PyQt6 ffmpeg python3-pip libusb-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo xbps-install sg3_utils python3-PyQt6 ffmpeg python3-pip libusb-devel && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### Gentoo
 
 ```bash
-sudo emerge --ask sg3_utils dev-python/PyQt6 media-video/ffmpeg dev-python/pip dev-libs/libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo emerge --ask sg3_utils dev-python/PyQt6 media-video/ffmpeg dev-python/pip dev-libs/libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### Alpine
 
 ```bash
-sudo apk add sg3_utils py3-pyqt6 ffmpeg py3-pip python3 libusb-dev && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop
+sudo apk add sg3_utils py3-pyqt6 ffmpeg py3-pip python3 libusb-dev && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop
 ```
 
 ### SteamOS (Steam Deck)
 
 Switch to Desktop Mode, open Konsole:
 ```bash
-sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop && sudo steamos-readonly enable
+sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && trcc setup-udev && trcc install-desktop && sudo steamos-readonly enable
 ```
 
 ### Then run

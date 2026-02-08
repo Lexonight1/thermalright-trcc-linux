@@ -112,8 +112,8 @@ PYTHONPATH=src python3 -m trcc.cli detect --all
 # Send image to LCD
 PYTHONPATH=src python3 -m trcc.cli send image.png
 
-# Setup udev rules + USB quirks (requires root)
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+# Setup udev rules + USB quirks (auto-prompts for sudo)
+PYTHONPATH=src python3 -m trcc.cli setup-udev
 PYTHONPATH=src python3 -m trcc.cli setup-udev --dry-run
 
 # Install desktop entry and icon

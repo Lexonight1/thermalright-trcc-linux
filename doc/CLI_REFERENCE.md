@@ -181,8 +181,8 @@ Install udev rules and USB storage quirks (required once after first install).
 # Preview what will be written
 trcc setup-udev --dry-run
 
-# Install (requires root — run from the repo directory)
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+# Install (auto-prompts for sudo)
+trcc setup-udev
 ```
 
 | Option | Description |
@@ -261,18 +261,10 @@ pip installs to `~/.local/bin/` which may not be on your PATH. Either:
 - Run directly: `PYTHONPATH=src python3 -m trcc.cli gui`
 - Add to PATH permanently: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
 
-### `sudo trcc: command not found`
+### `sudo trcc: command not found` / `No module named 'trcc'` with sudo
 
-sudo resets PATH. Use the full Python invocation from the repo directory:
-
-```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
-```
-
-### `No module named 'trcc'` with sudo
-
-Editable pip installs are only visible to your user's Python. Use `PYTHONPATH=src` from the repo directory:
+This was fixed in v1.2.0 — `trcc setup-udev` now automatically re-invokes itself with sudo and the correct PYTHONPATH. Just run:
 
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```

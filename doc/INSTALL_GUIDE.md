@@ -501,13 +501,13 @@ Linux needs permission rules to let TRCC talk to the LCD without requiring `sudo
 ### Run the setup command
 
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```
 
 Or, if you installed with `pip install -e .`:
 
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```
 
 **What this does:**
@@ -709,13 +709,13 @@ Udev rules live on the host filesystem and work the same as on normal Fedora:
 
 ```bash
 source ~/trcc-env/bin/activate
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```
 
 Or if installed via pip:
 
 ```bash
-sudo ~/trcc-env/bin/trcc setup-udev
+trcc setup-udev
 ```
 
 Then **unplug and replug the USB cable** (or reboot if it's not easily accessible).
@@ -832,7 +832,7 @@ cd thermalright-trcc-linux
 pip install --break-system-packages -e .
 
 # Set up device permissions
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 # Unplug/replug USB cable, or reboot
 
 # Re-enable read-only (optional, recommended)
@@ -923,7 +923,7 @@ pip install --break-system-packages -e .
 > **ChromeOS limitation:** USB device passthrough to the Linux container requires enabling it in ChromeOS settings. Go to Settings > Advanced > Developers > Linux > Manage USB devices, and enable your Thermalright LCD device. You may also need to run `trcc setup-udev` inside the container and replug the USB device.
 
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 trcc gui
 ```
 
@@ -944,7 +944,7 @@ sudo dnf install python3-pip sg3_utils python3-pyqt6 ffmpeg
 [ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e .
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```
 
 > **Apple Silicon note:** USB-A ports on Apple Silicon Macs work through Thunderbolt hubs/docks. Make sure your USB connection to the cooler is going through a compatible hub. Direct USB-C adapters should also work.
@@ -964,7 +964,7 @@ sudo apt install python3-pip python3-venv sg3-utils python3-pyqt6 ffmpeg
 [ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e .
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 ```
 
 > **ARM note:** PyQt6 wheels may not be available for ARM. If `pip install PyQt6` fails, use the system package (`python3-pyqt6`) or build from source. The CLI commands (`trcc send`, `trcc test`, `trcc color`) work without PyQt6 — only the GUI requires it.
@@ -1132,7 +1132,7 @@ fish_add_path ~/.local/bin
 
 **Fix:**
 1. Make sure the USB cable is plugged into both the cooler and your computer
-2. Run the udev setup if you haven't already: `sudo PYTHONPATH=src python3 -m trcc.cli setup-udev`
+2. Run the udev setup if you haven't already: `trcc setup-udev`
 3. Unplug and replug the USB cable (or reboot)
 4. Check if the device appears: `ls /dev/sg*`
 5. Check `dmesg | tail -20` right after plugging in to see kernel messages
@@ -1143,7 +1143,7 @@ fish_add_path ~/.local/bin
 
 **Fix:**
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 # Then unplug/replug USB cable, or reboot
 ```
 
@@ -1301,7 +1301,7 @@ cat /etc/modprobe.d/trcc-lcd.conf
 
 If it's missing, recreate it:
 ```bash
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 # Unplug/replug USB cable, or reboot
 ```
 
@@ -1340,7 +1340,7 @@ sudo pacman -S hidapi                # Arch
 **Fix:**
 ```bash
 # Set up udev rules (covers both SCSI and HID)
-sudo PYTHONPATH=src python3 -m trcc.cli setup-udev
+trcc setup-udev
 # Unplug and replug USB cable
 
 # If that doesn't work, add the rule manually:
