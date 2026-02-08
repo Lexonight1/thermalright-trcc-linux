@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/codeql.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/codeql.yml)
 [![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen.svg)](CLAUDE.md#test-suite)
 [![Pyright](https://img.shields.io/badge/pyright-passing-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](doc/INSTALL_GUIDE.md)
@@ -38,7 +38,7 @@ Match it to the tables below.
 | `0416:5406` | LC1, LC2, LC3, LC5 (AIO pump heads) |
 | `0402:3922` | FROZEN WARFRAME, FROZEN WARFRAME SE |
 
-**HID LCD devices** — experimental (563 tests, needs hardware testers), enable with `trcc --testing-hid gui`:
+**HID LCD devices** — experimental (563 tests, needs hardware testers):
 
 | USB ID | Devices |
 |--------|---------|
@@ -46,13 +46,13 @@ Match it to the tables below.
 | `0418:5303` | TARAN ARMS |
 | `0418:5304` | TARAN ARMS |
 
-**HID LED devices** — RGB LED control, enable with `trcc --testing-hid gui`:
+**HID LED devices** — RGB LED control:
 
 | USB ID | Devices |
 |--------|---------|
 | `0416:8001` | AX120 DIGITAL (LED mode) |
 
-> **HID device?** See the **[HID Testing Guide](doc/HID_TESTING.md)** — install normally, then use `trcc --testing-hid gui`. I don't have one of these devices, so I need testers.
+> **HID device?** HID devices are auto-detected — just run `trcc gui`. See the **[HID Testing Guide](doc/HID_TESTING.md)** for details. I don't have one of these devices, so I need testers.
 
 ## Install
 

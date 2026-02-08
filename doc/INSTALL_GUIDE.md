@@ -80,11 +80,11 @@ TRCC Linux works with these Thermalright products that have a built-in LCD displ
 
 > **WE NEED TESTERS!** HID device support is implemented with 563 automated tests but **not validated with real hardware**. If you have an HID device, please test and report results at https://github.com/Lexonight1/thermalright-trcc-linux/issues
 
-Install TRCC normally using the one-liners above, then run with the `--testing-hid` flag:
+HID devices are auto-detected — no special flags needed. Just install TRCC normally and run:
 
 ```bash
-trcc --testing-hid detect       # Check if your device is found
-trcc --testing-hid gui          # Launch the GUI with HID support
+trcc detect       # Check if your device is found
+trcc gui          # Launch the GUI (HID auto-detected)
 ```
 
 See the **[HID Testing Guide](HID_TESTING.md)** for supported devices and what to report.

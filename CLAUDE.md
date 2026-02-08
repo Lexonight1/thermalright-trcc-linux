@@ -69,7 +69,7 @@ Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
 | test_led_device | led_device (LED protocol) | 245 | — |
 | test_led_controller | led_controller (FormLED) | 131 | — |
 
-**Total: 1817 tests across 25 test files**
+**Total: 1836 tests across 25 test files**
 
 Qt tests require `QT_QPA_PLATFORM=offscreen` (headless, no display server).
 HID and LED tests (`tests/hid_testing/`) are on the `hid-protocol-testing` branch only.
@@ -435,35 +435,25 @@ Prioritized list of remaining work:
 - HTTPS tested on cloud servers — not available (port 443 refused on czhorde.cc/com)
 - Full audit: no shell injection, no eval/exec/pickle, no hardcoded secrets
 
-### 7. Linting / Formatting
-- `ruff` added to dev dependencies in `pyproject.toml`
-- Config in `pyproject.toml`: `line-length = 100`, select E/F/W/I, ignore E501
-- TODO: enforce in CI, run auto-fix pass across codebase
+### 7. ~~Linting / Formatting~~ ✓ Done
+- `ruff` enforced: E/F/W/I rules, 0 violations across codebase
 
-### 8. Type Annotation Hardening
+### 8. ~~Version Bump → 1.2.0~~ ✓ Done
+
+### 9. ~~Packaging~~ ✓ Done
+- Assets/data moved into `trcc` package — `pip install .` produces 188MB wheel
+- All GUI images, fonts, theme archives included
+
+### 10. Type Annotation Hardening
 - Move pyright from basic → strict on key modules
 - Add missing type hints (system_info, sensor_enumerator especially)
 
-### 9. Integration Tests
+### 11. Integration Tests
 - End-to-end device detection → theme loading → LCD write pipeline (mocked hardware)
 
-### 10. Version Bump → 1.2.0
-- Current: 1.1.3
-- Coverage target achieved (96% non-Qt backend)
-- Cross-distro compatibility done
-- Bump when: linting in place
-- Update: `pyproject.toml`, `src/trcc/__version__.py`, `doc/CHANGELOG.md`
-
-### 11. Packaging & Release
-- Build wheel: `python -m build`
-- Verify `pip install .` works cleanly, entry points
+### 12. PyPI Publish
 - Create GitHub Release with .whl artifact
 - Consider PyPI publish
-
-### 12. README Polish
-- Add CI badge (tests passing)
-- Add coverage badge
-- Screenshot/demo GIF
 
 ## See Also
 
