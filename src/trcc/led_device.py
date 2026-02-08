@@ -96,6 +96,10 @@ LED_STYLES = {
     10: LedDeviceStyle(10, 38, 17, 1, "LF11", "DLF11", "D0LF11"),
     11: LedDeviceStyle(11, 93, 72, 2, "LF15", "DLF15", "D0LF15"),
     12: LedDeviceStyle(12, 62, 62, 1, "LF13", "DLF13", "D0rgblf13"),
+    # HR10 2280 Pro Digital — NVMe SSD heatsink with ARGB digital display.
+    # Shares PM=128 and LED config with LC1 (31 LEDs, 14 segments, 1 zone).
+    # Distinguished from LC1 by sub_type=129 in handshake response.
+    13: LedDeviceStyle(13, 31, 14, 1, "HR10_2280_PRO_DIGITAL", "DAX120_DIGITAL", "D0数码屏"),
 }
 
 # pm byte (from firmware handshake receive[6]) → style mapping
@@ -118,6 +122,8 @@ PM_TO_STYLE = {
     144: 11, # LF15 → style 11
     160: 12, # LF13 → style 12
     208: 8,  # CZ1 → style 8
+    # Note: PM=128 is shared by LC1 and HR10_2280_PRO_DIGITAL.
+    # They are distinguished by sub_type (see SUB_TYPE_OVERRIDES below).
 }
 
 # pm byte → model name (for device button images)
@@ -140,6 +146,12 @@ PM_TO_MODEL = {
     208: "CZ1",
 }
 
+# (pm, sub_type) → style override for devices that share a PM byte.
+# HR10 2280 Pro Digital shares PM=128 with LC1 but has sub_type=129.
+SUB_TYPE_OVERRIDES = {
+    (128, 129): (13, "HR10_2280_PRO_DIGITAL"),  # → style 13
+}
+
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers
 # Note: Windows ucColor1Delegate has swapped B,G params (R,B,G order)
 PRESET_COLORS: List[Tuple[int, int, int]] = [
@@ -154,11 +166,19 @@ PRESET_COLORS: List[Tuple[int, int, int]] = [
 ]
 
 
-def get_style_for_pm(pm: int) -> LedDeviceStyle:
-    """Get LED device style from firmware pm byte.
+def get_style_for_pm(pm: int, sub_type: int = 0) -> LedDeviceStyle:
+    """Get LED device style from firmware pm byte (and optional sub_type).
+
+    Some devices share a PM byte (e.g. LC1 and HR10 both use PM=128).
+    The sub_type disambiguates them via SUB_TYPE_OVERRIDES.
 
     Falls back to style 1 (30 LEDs) for unknown pm values.
     """
+    # Check sub_type overrides first (e.g. HR10 vs LC1)
+    override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+    if override:
+        style_id = override[0]
+        return LED_STYLES[style_id]
     style_id = PM_TO_STYLE.get(pm, 1)
     return LED_STYLES[style_id]
 
@@ -413,8 +433,14 @@ class LedHidSender:
 
         pm = resp[6]
         sub_type = resp[5]
-        style = get_style_for_pm(pm)
-        model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
+        style = get_style_for_pm(pm, sub_type)
+
+        # Check sub_type override for model name (e.g. HR10 vs LC1)
+        override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+        if override:
+            model_name = override[1]
+        else:
+            model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
 
         return LedHandshakeInfo(
             pm=pm,
@@ -497,3 +523,101 @@ def send_led_colors(
     )
     sender = LedHidSender(transport)
     return sender.send_led_data(packet)
+
+
+def _led_probe_cache_path() -> 'Path':
+    """Return the path to the LED probe cache file."""
+    from pathlib import Path
+    config_dir = Path.home() / '.config' / 'trcc'
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / 'led_probe_cache.json'
+
+
+def _save_probe_cache(vid: int, pid: int, info: LedHandshakeInfo) -> None:
+    """Cache a successful probe result to disk."""
+    import json
+    try:
+        cache_path = _led_probe_cache_path()
+        cache = {}
+        if cache_path.exists():
+            cache = json.loads(cache_path.read_text())
+        key = f"{vid:04x}_{pid:04x}"
+        cache[key] = {
+            'pm': info.pm,
+            'sub_type': info.sub_type,
+            'model_name': info.model_name,
+            'style_id': info.style.style_id if info.style else 1,
+        }
+        cache_path.write_text(json.dumps(cache))
+    except Exception:
+        pass
+
+
+def _load_probe_cache(vid: int, pid: int) -> Optional[LedHandshakeInfo]:
+    """Load a cached probe result from disk."""
+    import json
+    try:
+        cache_path = _led_probe_cache_path()
+        if not cache_path.exists():
+            return None
+        cache = json.loads(cache_path.read_text())
+        key = f"{vid:04x}_{pid:04x}"
+        entry = cache.get(key)
+        if not entry:
+            return None
+        pm = entry['pm']
+        sub_type = entry['sub_type']
+        style = get_style_for_pm(pm, sub_type)
+        return LedHandshakeInfo(
+            pm=pm,
+            sub_type=sub_type,
+            style=style,
+            model_name=entry['model_name'],
+        )
+    except Exception:
+        return None
+
+
+def probe_led_model(vid: int = LED_VID, pid: int = LED_PID) -> Optional[LedHandshakeInfo]:
+    """Probe an LED device to discover its model via HID handshake.
+
+    Opens a temporary USB transport, performs the DA/DB/DC/DD handshake,
+    extracts the PM byte and sub_type to identify the device model,
+    then closes the transport.
+
+    The firmware only responds to the handshake once per power cycle.
+    Successful probes are cached to disk so subsequent app launches
+    (without USB reset) still identify the correct model.
+
+    Returns:
+        LedHandshakeInfo with pm, sub_type, style, and model_name,
+        or None if the probe fails and no cached result exists.
+    """
+    transport = None
+    try:
+        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        if PYUSB_AVAILABLE:
+            from .hid_device import PyUsbTransport
+            transport = PyUsbTransport(vid, pid)
+        elif HIDAPI_AVAILABLE:
+            from .hid_device import HidApiTransport
+            transport = HidApiTransport(vid, pid)
+        else:
+            return _load_probe_cache(vid, pid)
+
+        transport.open()
+        sender = LedHidSender(transport)
+        info = sender.handshake()
+        if info:
+            _save_probe_cache(vid, pid, info)
+        return info
+    except Exception:
+        # Handshake failed (firmware already responded or device busy).
+        # Fall back to cached result from a previous successful probe.
+        return _load_probe_cache(vid, pid)
+    finally:
+        if transport is not None:
+            try:
+                transport.close()
+            except Exception:
+                pass
