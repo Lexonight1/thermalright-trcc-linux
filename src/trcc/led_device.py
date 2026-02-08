@@ -12,16 +12,15 @@ The ``UsbTransport`` ABC from hid_device.py is reused for transport.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .hid_device import (
+    DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
-    DEFAULT_TIMEOUT_MS,
     UsbTransport,
 )
-
 
 # =========================================================================
 # Constants (from FormLED.cs / UCDevice.cs)

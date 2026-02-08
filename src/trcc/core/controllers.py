@@ -1208,7 +1208,7 @@ class LEDController:
     """
 
     def __init__(self):
-        from .models import LEDModel, LEDMode
+        from .models import LEDModel
         self.model = LEDModel()
 
         # View callbacks
@@ -1362,7 +1362,6 @@ class FormLEDController:
             return
         try:
             from ..paths import save_device_setting
-            from .models import LEDMode
 
             state = self.led.model.state
             config = {
@@ -1394,7 +1393,7 @@ class FormLEDController:
             return
         try:
             from ..paths import get_device_config
-            from .models import LEDMode, LEDZoneState
+            from .models import LEDMode
 
             dev_config = get_device_config(self._device_key)
             led_config = dev_config.get('led_config', {})

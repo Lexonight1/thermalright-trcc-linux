@@ -22,7 +22,7 @@ except ImportError:
         return str(value)
 
 # Use centralized path definitions
-from trcc.paths import FONTS_DIR, FONT_SEARCH_DIRS
+from trcc.paths import FONT_SEARCH_DIRS
 
 
 class OverlayRenderer:
@@ -239,7 +239,7 @@ class OverlayRenderer:
         font_filenames = [
             msyh_name, msyh_lower,                                    # Microsoft YaHei (bundled)
             'NotoSansCJK-VF.ttc', 'NotoSansCJK-Regular.ttc',        # Noto CJK
-            f'NotoSans[wght].ttf', f'NotoSans-{bold_style}.ttf',    # Noto Sans
+            'NotoSans[wght].ttf', f'NotoSans-{bold_style}.ttf',    # Noto Sans
             f'DejaVuSans{bold_suffix}.ttf',                          # DejaVu
         ]
 

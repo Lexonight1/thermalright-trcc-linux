@@ -2,7 +2,7 @@
 
 TRCC Linux is under **active development**. This page tracks what's stable, what's in progress, and what's coming next.
 
-**Current version:** 1.1.3
+**Current version:** 1.2.0
 **Branch:** `stable`
 
 ## What's Stable
@@ -16,7 +16,7 @@ These features are tested and working on the `stable` branch:
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
 - **CLI** — `detect`, `send`, `setup-udev`, `gui`, `resume`, `install-desktop`, `uninstall`
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS
-- **96% test coverage** — 1817 tests across 25 test files
+- **96% test coverage** — 1836 tests across 25 test files
 
 ### Supported Devices (Stable)
 

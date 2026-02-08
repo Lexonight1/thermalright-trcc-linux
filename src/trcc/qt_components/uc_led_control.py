@@ -10,22 +10,27 @@ Full LED control UI matching Windows FormLED layout:
 Layout coordinates from FormLED.cs InitializeComponent / FormLED.resx.
 """
 
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 try:
     from PyQt6.QtCore import Qt, pyqtSignal
-    from PyQt6.QtGui import QBrush, QColor, QPalette, QPixmap
+    from PyQt6.QtGui import QColor, QPalette, QPixmap
     from PyQt6.QtWidgets import (
-        QFrame, QLabel, QPushButton, QSlider, QSpinBox, QWidget,
+        QFrame,
+        QLabel,
+        QPushButton,
+        QSlider,
+        QSpinBox,
+        QWidget,
     )
     PYQT6_AVAILABLE = True
 except ImportError:
     PYQT6_AVAILABLE = False
 
 if PYQT6_AVAILABLE:
-    from .base import set_background_pixmap, create_image_button
-    from .uc_screen_led import UCScreenLED
     from .assets import Assets
+    from .base import set_background_pixmap
+    from .uc_screen_led import UCScreenLED
 
 
 # =========================================================================

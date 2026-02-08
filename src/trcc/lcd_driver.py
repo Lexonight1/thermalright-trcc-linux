@@ -16,8 +16,15 @@ try:
     from .device_implementations import LCDDeviceImplementation, get_implementation
     from .paths import require_sg_raw
 except ImportError:
-    from trcc.device_detector import DetectedDevice, detect_devices, get_default_device  # type: ignore[no-redef]
-    from trcc.device_implementations import LCDDeviceImplementation, get_implementation  # type: ignore[no-redef]
+    from trcc.device_detector import (  # type: ignore[no-redef]
+        DetectedDevice,
+        detect_devices,
+        get_default_device,
+    )
+    from trcc.device_implementations import (  # type: ignore[no-redef]
+        LCDDeviceImplementation,
+        get_implementation,
+    )
     from trcc.paths import require_sg_raw  # type: ignore[no-redef]
 
 

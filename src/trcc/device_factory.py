@@ -22,7 +22,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
-
 # =========================================================================
 # DeviceProtocol ABC — the contract both SCSI and HID implement
 # =========================================================================
@@ -239,7 +238,7 @@ class HidProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         if PYUSB_AVAILABLE:
             from .hid_device import PyUsbTransport
             return PyUsbTransport(self._vid, self._pid)
@@ -387,7 +386,7 @@ class LedProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         if PYUSB_AVAILABLE:
             from .hid_device import PyUsbTransport
             return PyUsbTransport(self._vid, self._pid)
@@ -608,7 +607,7 @@ def _check_sg_raw() -> bool:
 def _get_hid_backends() -> Dict[str, bool]:
     """Check HID backend availability."""
     try:
-        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         return {"pyusb": PYUSB_AVAILABLE, "hidapi": HIDAPI_AVAILABLE}
     except ImportError:
         return {"pyusb": False, "hidapi": False}

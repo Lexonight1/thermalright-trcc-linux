@@ -78,7 +78,7 @@ def _set_autostart(enabled: bool):
     else:
         if _AUTOSTART_FILE.exists():
             _AUTOSTART_FILE.unlink()
-        print(f"[-] Autostart disabled")
+        print("[-] Autostart disabled")
 
 
 def ensure_autostart():

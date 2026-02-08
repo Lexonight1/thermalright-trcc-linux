@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.2.0
+
+### Autostart on Login
+- Auto-enable autostart on first GUI launch (matches Windows `KaijiQidong()` behavior)
+- Creates `~/.config/autostart/trcc.desktop` with `trcc --last-one` on first run
+- `--last-one` launches GUI minimized to system tray and sends last-used theme
+- Settings panel checkbox reflects and toggles the actual autostart state
+- `trcc resume` command for headless theme send (scripting/cron)
+
+### Reference Theme Save
+- Custom saved themes use `config.json` with path references (no file copies)
+- On save: writes `config.json` + `Theme.png` thumbnail to `Custom_{name}/`
+- On load: resolves background/mask/overlay paths from `config.json`
+- Fixes overlay-on-resume: overlay config persisted in theme JSON
+
+### Protocol Reverse Engineering
+- Complete SCSI protocol reference from USBLCD.exe (Ghidra decompilation)
+- Complete USB bulk protocol reference from USBLCDNEW.exe (.NET/ILSpy)
+- Documented all CDB commands, handshake sequences, frame transfer formats
+- New docs: [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md), [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md)
+
+### Code Quality
+- `ruff` linting enforced (E/F/W/I rules) — 0 violations
+- Removed unused imports across 10 files
+- Sorted all import blocks (isort)
+
+### Bug Fixes
+- Fixed resume RGB565 conversion to match GUI (big-endian + masked)
+- Fixed LEDMode int-to-enum conversion crash on config save
+- Fixed device config persistence for autostart theme state
+- Fixed json import ordering in controllers
+
+### Documentation
+- Added [Supported Devices](SUPPORTED_DEVICES.md) page with all USB IDs
+- Added [Development Status](DEVELOPMENT_STATUS.md) tracking page
+- Expanded [Technical Reference](TECHNICAL_REFERENCE.md) with full SCSI command table
+
+### Testing
+- 1836 tests across 25 test files (up from 1777)
+- 96% coverage on non-Qt backend
+
 ## v1.1.3
 
 ### LED RGB Control (`hid-protocol-testing` branch)

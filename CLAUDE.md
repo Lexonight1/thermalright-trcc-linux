@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Repository:** https://github.com/Lexonight1/thermalright-trcc-linux
 
-**Current version: 1.1.3** (see `src/trcc/__version__.py`)
+**Current version: 1.2.0** (see `src/trcc/__version__.py`)
 
 **Status: Feature-complete** — 100% Windows feature parity achieved.
 
@@ -31,7 +31,7 @@ Semantic versioning: MAJOR.MINOR.PATCH
 
 ## Test Suite
 
-**1817 tests** across 25 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
+**1836 tests** across 25 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
 
 CI runs on `main`, `stable`, and `hid-protocol-testing` branches (Python 3.10, 3.11, 3.12).
 CI workflows: `tests.yml` (pytest+pyright), `ci.yml`, `codeql.yml`, `codeql-analysis.yml`, `release.yml`.
@@ -415,7 +415,7 @@ Prioritized list of remaining work:
 - pyright basic mode: 0 errors across full codebase
 
 ### 4. ~~Coverage Push to 95%+~~ ✓ Done
-- 880 tests → **1209 tests** → **1817 tests** (including 563 HID/LED tests)
+- 880 tests → **1209 tests** → **1836 tests** (including 563 HID/LED tests)
 - All 18 non-Qt backend modules now **92-100%** (combined **96%**)
 - Modules pushed: gif_animator (50%→96%), overlay_renderer (71%→92%), sensor_enumerator (74%→96%), dc_parser (77%→92%), cli (86%→95%), cloud_downloader (88%→98%), system_info (88%→94%), device_detector (90%→95%), theme_downloader (90%→95%), device_implementations (92%→99%), models (96%→96%), dc_writer (94%→98%), paths (93%→95%), controllers (46%→99%)
 - Remaining uncovered lines are module-level `except ImportError` fallbacks (impractical)

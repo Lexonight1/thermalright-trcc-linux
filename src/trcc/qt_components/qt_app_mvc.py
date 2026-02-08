@@ -1608,7 +1608,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._connect_led_signals()
 
         # Determine style (default style 1 for AX120_DIGITAL)
-        from ..led_device import PM_TO_STYLE, LED_STYLES
+        from ..led_device import LED_STYLES
         # Try to get style from device model name
         led_style = 1
         model = device.model or ''

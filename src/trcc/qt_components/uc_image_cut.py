@@ -19,9 +19,8 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QWidget
 
-from .base import make_icon_button
-
 from .assets import load_pixmap
+from .base import make_icon_button
 
 try:
     from PIL import Image as PILImage

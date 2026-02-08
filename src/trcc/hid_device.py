@@ -21,7 +21,7 @@ Linux dependencies (install one):
 import struct
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Set
 
 # Optional USB backends — graceful import

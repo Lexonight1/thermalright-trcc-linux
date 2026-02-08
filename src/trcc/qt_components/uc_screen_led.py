@@ -10,7 +10,7 @@ matching Windows UCScreenLED.cs. Background shows the device image
 from typing import List, Optional, Tuple
 
 try:
-    from PyQt6.QtCore import Qt, pyqtSignal, QRectF
+    from PyQt6.QtCore import QRectF, Qt, pyqtSignal
     from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
     from PyQt6.QtWidgets import QWidget
     PYQT6_AVAILABLE = True
