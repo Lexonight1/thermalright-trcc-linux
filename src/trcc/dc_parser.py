@@ -955,6 +955,11 @@ def load_config_json(filepath: str) -> Optional[Tuple[dict, dict]]:
     if 'overlay_enabled' in display:
         display_options['overlay_enabled'] = display['overlay_enabled']
 
+    # Include animation/video info
+    animation = data.get('animation', {})
+    if animation and animation.get('file'):
+        display_options['animation_file'] = animation['file']
+
     # Include mask settings in display_options for downstream compatibility
     mask = data.get('mask', {})
     if mask:

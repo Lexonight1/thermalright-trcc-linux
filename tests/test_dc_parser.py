@@ -1663,6 +1663,36 @@ class TestLoadConfigJson(unittest.TestCase):
             _, display_options = result
             self.assertNotIn('mask_enabled', display_options)
 
+    def test_load_animation_file(self):
+        from trcc.dc_parser import load_config_json
+        import json
+        with TemporaryDirectory() as d:
+            data = {
+                'version': 1, 'display': {},
+                'animation': {'file': 'a001.mp4'},
+                'elements': {},
+            }
+            path = os.path.join(d, 'config.json')
+            with open(path, 'w') as f:
+                json.dump(data, f)
+            result = load_config_json(path)
+            self.assertIsNotNone(result)
+            _, display_options = result
+            self.assertEqual(display_options['animation_file'], 'a001.mp4')
+
+    def test_load_no_animation(self):
+        from trcc.dc_parser import load_config_json
+        import json
+        with TemporaryDirectory() as d:
+            data = {'version': 1, 'display': {}, 'elements': {}}
+            path = os.path.join(d, 'config.json')
+            with open(path, 'w') as f:
+                json.dump(data, f)
+            result = load_config_json(path)
+            self.assertIsNotNone(result)
+            _, display_options = result
+            self.assertNotIn('animation_file', display_options)
+
 
 if __name__ == '__main__':
     unittest.main()

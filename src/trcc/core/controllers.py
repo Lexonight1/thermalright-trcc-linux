@@ -635,12 +635,24 @@ class FormCZTVController:
 
         # Parse DC configuration file from working dir
         dc_path = self.working_dir / 'config1.dc'
-        self._load_dc_config(dc_path)
+        display_opts = self._load_dc_config(dc_path)
 
         # Load background / animation from working dir
+        # JSON config may specify animation file explicitly
+        anim_file = display_opts.get('animation_file')
         bg_path = self.working_dir / '00.png'
         zt_path = self.working_dir / 'Theme.zt'
-        if theme.is_animated and theme.animation_path:
+
+        if anim_file:
+            # JSON config specifies video — use it directly
+            anim_path = self.working_dir / anim_file
+            if anim_path.exists():
+                self.video.load(anim_path)
+                self.video.play()
+            elif theme.is_animated and theme.animation_path:
+                self.video.load(theme.animation_path)
+                self.video.play()
+        elif theme.is_animated and theme.animation_path:
             # Use working dir copy if available (copied by _copy_theme_to_working_dir)
             wd_copy = self.working_dir / Path(theme.animation_path).name
             load_path = wd_copy if wd_copy.exists() else theme.animation_path
@@ -1049,11 +1061,14 @@ class FormCZTVController:
             rotated = self._apply_rotation(adjusted)
             self.on_preview_update(rotated)
 
-    def _load_dc_config(self, dc_path: Path):
+    def _load_dc_config(self, dc_path: Path) -> dict:
         """Load overlay config, preferring config.json over config1.dc.
 
         Shared by load_local_theme() and any path that loads a config.
         Tries config.json first (human-editable), falls back to config1.dc (binary).
+
+        Returns:
+            display_options dict (may contain 'animation_file' from JSON config).
         """
         # Try JSON config first (same directory as dc_path)
         json_path = dc_path.parent / 'config.json' if dc_path else None
@@ -1067,13 +1082,13 @@ class FormCZTVController:
                     self.overlay.set_config_resolution(self.lcd_width, self.lcd_height)
                     # Store as dc_data so save round-trip works
                     self.overlay.model.set_dc_data({'display_options': display_options})
-                    return
+                    return display_options
             except Exception as e:
                 print(f"[!] Failed to load config.json, falling back to DC: {e}")
 
         # Fall back to binary config1.dc
         if not dc_path or not dc_path.exists():
-            return
+            return {}
         try:
             from ..dc_parser import dc_to_overlay_config, parse_dc_file
             dc_data = parse_dc_file(str(dc_path))
@@ -1082,8 +1097,10 @@ class FormCZTVController:
             self.overlay.set_config_resolution(self.lcd_width, self.lcd_height)
             # Preserve raw DC data for lossless save round-trip
             self.overlay.model.set_dc_data(dc_data)
+            return dc_data.get('display_options', {})
         except Exception as e:
             print(f"[!] Failed to parse DC file: {e}")
+            return {}
 
     def _render_and_send(self):
         """Render overlay on current_image, update preview, and send to LCD.

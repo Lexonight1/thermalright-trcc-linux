@@ -472,13 +472,26 @@ def save_theme(theme_path: str,
         mask_settings = {'enabled': True, 'center_x': mask_position[0], 'center_y': mask_position[1]}
     elif mask_image:
         mask_settings = {'enabled': True}
-    write_config_json(theme_path, overlay_config, display_options, mask_settings)
+
+    # Detect video/animation files in theme directory
+    video_file = None
+    theme_dir = Path(theme_path)
+    zt_path = theme_dir / 'Theme.zt'
+    if zt_path.exists():
+        video_file = 'Theme.zt'
+    else:
+        mp4_files = list(theme_dir.glob('*.mp4'))
+        if mp4_files:
+            video_file = mp4_files[0].name
+
+    write_config_json(theme_path, overlay_config, display_options, mask_settings, video_file)
 
 
 def write_config_json(theme_path: str,
                       overlay_config: Optional[dict] = None,
                       display_options: Optional[dict] = None,
-                      mask_settings: Optional[dict] = None) -> None:
+                      mask_settings: Optional[dict] = None,
+                      video_file: Optional[str] = None) -> None:
     """
     Write theme config as human-readable JSON.
 
@@ -490,6 +503,7 @@ def write_config_json(theme_path: str,
         overlay_config: Overlay elements dict (from renderer.config / dc_to_overlay_config)
         display_options: Display settings (rotation, bg_display, etc.)
         mask_settings: Mask settings (enabled, center_x, center_y)
+        video_file: Video/animation filename (e.g., 'Theme.zt' or 'a001.mp4')
     """
     import json
 
@@ -501,6 +515,9 @@ def write_config_json(theme_path: str,
             'screencast_visible': display_options.get('tp_display', False) if display_options else False,
             'overlay_enabled': display_options.get('overlay_enabled', True) if display_options else True,
         },
+        'animation': {
+            'file': video_file,
+        } if video_file else {},
         'mask': mask_settings or {},
         'elements': overlay_config or {},
     }

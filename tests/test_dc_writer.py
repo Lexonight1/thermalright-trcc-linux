@@ -719,6 +719,24 @@ class TestWriteConfigJson(unittest.TestCase):
             self.assertEqual(data['elements'], {})
             self.assertEqual(data['display']['rotation'], 0)
 
+    def test_includes_animation_file(self):
+        """write_config_json with video_file includes animation section."""
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            write_config_json(d, {}, {}, {}, video_file='a001.mp4')
+            with open(os.path.join(d, 'config.json')) as f:
+                data = json.load(f)
+            self.assertEqual(data['animation']['file'], 'a001.mp4')
+
+    def test_no_animation_when_no_video(self):
+        """write_config_json without video_file has empty animation."""
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            write_config_json(d, {})
+            with open(os.path.join(d, 'config.json')) as f:
+                data = json.load(f)
+            self.assertEqual(data['animation'], {})
+
     def test_save_theme_writes_both_formats(self):
         """save_theme() should create both config1.dc and config.json."""
         with tempfile.TemporaryDirectory() as d:
@@ -729,3 +747,16 @@ class TestWriteConfigJson(unittest.TestCase):
             save_theme(d, overlay_config=overlay)
             self.assertTrue(os.path.exists(os.path.join(d, 'config1.dc')))
             self.assertTrue(os.path.exists(os.path.join(d, 'config.json')))
+
+    def test_save_theme_includes_mp4_in_json(self):
+        """save_theme() should detect MP4 and include it in config.json."""
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            # Create a fake MP4 file
+            mp4_path = os.path.join(d, 'a001.mp4')
+            with open(mp4_path, 'wb') as f:
+                f.write(b'\x00' * 100)
+            save_theme(d, overlay_config={})
+            with open(os.path.join(d, 'config.json')) as f:
+                data = json.load(f)
+            self.assertEqual(data['animation']['file'], 'a001.mp4')
