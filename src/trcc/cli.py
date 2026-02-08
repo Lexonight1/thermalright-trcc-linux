@@ -747,14 +747,22 @@ def uninstall():
     removed = []
     skipped_root = []
 
-    # Handle root files
-    for path_str in root_files:
-        if os.path.exists(path_str):
-            if os.geteuid() == 0:
-                os.remove(path_str)
-                removed.append(path_str)
-            else:
-                skipped_root.append(path_str)
+    # Handle root files — auto-elevate with sudo if needed
+    root_exists = [p for p in root_files if os.path.exists(p)]
+    if root_exists and os.geteuid() != 0:
+        # Remove root files via sudo
+        rm_cmd = ["sudo", "rm", "-f"] + root_exists
+        print(f"Root files found — requesting sudo to remove...")
+        result = subprocess.run(rm_cmd)
+        if result.returncode == 0:
+            removed.extend(root_exists)
+            # Reload udev rules via sudo
+            subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], check=False)
+            subprocess.run(["sudo", "udevadm", "trigger"], check=False)
+    else:
+        for path_str in root_exists:
+            os.remove(path_str)
+            removed.append(path_str)
 
     # Handle user files/dirs
     for path in user_items:
@@ -772,13 +780,8 @@ def uninstall():
     else:
         print("Nothing to remove — TRCC is already clean.")
 
-    if skipped_root:
-        print("\nSkipped (run with sudo to remove):")
-        for item in skipped_root:
-            print(f"  {item}")
-
-    # Reload udev if we removed rules
-    if any("udev" in r for r in removed):
+    # Reload udev if we removed rules (and we're root — non-root already did it above)
+    if os.geteuid() == 0 and any("udev" in r for r in removed):
         subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
         subprocess.run(["udevadm", "trigger"], check=False)
 
