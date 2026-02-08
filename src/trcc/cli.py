@@ -45,6 +45,16 @@ def _ensure_extracted(driver):
         pass  # Non-fatal — themes are optional for CLI commands
 
 
+def _get_driver(device=None):
+    """Create an LCDDriver, resolving selected device and extracting archives."""
+    from trcc.lcd_driver import LCDDriver
+    if device is None:
+        device = _get_selected_device()
+    driver = LCDDriver(device_path=device)
+    _ensure_extracted(driver)
+    return driver
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -64,10 +74,11 @@ Examples:
         """
     )
 
+    from trcc.__version__ import __version__
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 1.1.3"
+        version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -327,13 +338,7 @@ def test_display(device=None, loop=False):
     try:
         import time
 
-        from trcc.lcd_driver import LCDDriver
-
-        if device is None:
-            device = _get_selected_device()
-
-        driver = LCDDriver(device_path=device)
-        _ensure_extracted(driver)
+        driver = _get_driver(device)
 
         colors = [
             ((255, 0, 0), "Red"),
@@ -370,17 +375,11 @@ def test_display(device=None, loop=False):
 def send_image(image_path, device=None):
     """Send image to LCD."""
     try:
-        from trcc.lcd_driver import LCDDriver
-
         if not os.path.exists(image_path):
             print(f"Error: File not found: {image_path}")
             return 1
 
-        if device is None:
-            device = _get_selected_device()
-
-        driver = LCDDriver(device_path=device)
-        _ensure_extracted(driver)
+        driver = _get_driver(device)
         frame = driver.load_image(image_path)
         driver.send_frame(frame)
         print(f"Sent {image_path} to {driver.device_path}")
@@ -393,8 +392,6 @@ def send_image(image_path, device=None):
 def send_color(hex_color, device=None):
     """Send solid color to LCD."""
     try:
-        from trcc.lcd_driver import LCDDriver
-
         # Parse hex color
         hex_color = hex_color.lstrip('#')
         if len(hex_color) != 6:
@@ -405,11 +402,7 @@ def send_color(hex_color, device=None):
         g = int(hex_color[2:4], 16)
         b = int(hex_color[4:6], 16)
 
-        if device is None:
-            device = _get_selected_device()
-
-        driver = LCDDriver(device_path=device)
-        _ensure_extracted(driver)
+        driver = _get_driver(device)
         frame = driver.create_solid_color(r, g, b)
         driver.send_frame(frame)
         print(f"Sent color #{hex_color} to {driver.device_path}")
@@ -520,14 +513,8 @@ def resume():
 def reset_device(device=None):
     """Reset/reinitialize the LCD device."""
     try:
-        from trcc.lcd_driver import LCDDriver
-
-        if device is None:
-            device = _get_selected_device()
-
         print("Resetting LCD device...")
-        driver = LCDDriver(device_path=device)
-        _ensure_extracted(driver)
+        driver = _get_driver(device)
         print(f"  Device: {driver.device_path}")
 
         # Send test frame (red) - this will auto-init if needed
@@ -550,29 +537,17 @@ def show_info():
         print("System Information")
         print("=" * 40)
 
-        # CPU
-        print("\nCPU:")
-        for key in ['cpu_temp', 'cpu_percent', 'cpu_freq']:
-            if key in metrics:
-                print(f"  {key}: {format_metric(key, metrics[key])}")
-
-        # GPU
-        print("\nGPU:")
-        for key in ['gpu_temp', 'gpu_usage', 'gpu_clock']:
-            if key in metrics:
-                print(f"  {key}: {format_metric(key, metrics[key])}")
-
-        # Memory
-        print("\nMemory:")
-        for key in ['mem_percent', 'mem_used', 'mem_total']:
-            if key in metrics:
-                print(f"  {key}: {format_metric(key, metrics[key])}")
-
-        # Date/Time
-        print("\nDate/Time:")
-        for key in ['date', 'time', 'weekday']:
-            if key in metrics:
-                print(f"  {key}: {format_metric(key, metrics[key])}")
+        groups = [
+            ("CPU", ['cpu_temp', 'cpu_percent', 'cpu_freq']),
+            ("GPU", ['gpu_temp', 'gpu_usage', 'gpu_clock']),
+            ("Memory", ['mem_percent', 'mem_used', 'mem_total']),
+            ("Date/Time", ['date', 'time', 'weekday']),
+        ]
+        for label, keys in groups:
+            print(f"\n{label}:")
+            for key in keys:
+                if key in metrics:
+                    print(f"  {key}: {format_metric(key, metrics[key])}")
 
         return 0
     except Exception as e:
@@ -754,7 +729,6 @@ def uninstall():
     ]
 
     removed = []
-    skipped_root = []
 
     # Handle root files — auto-elevate with sudo if needed
     root_exists = [p for p in root_files if os.path.exists(p)]

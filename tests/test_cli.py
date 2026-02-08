@@ -1054,8 +1054,8 @@ class TestUninstall(unittest.TestCase):
             # Should reload udev after removing rules
             mock_subproc.assert_any_call(["udevadm", "control", "--reload-rules"], check=False)
 
-    def test_skipped_root_files_as_user(self):
-        """Non-root skips system files and prints message."""
+    def test_root_files_auto_sudo_as_user(self):
+        """Non-root auto-elevates with sudo to remove root files."""
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             import io
@@ -1068,16 +1068,20 @@ class TestUninstall(unittest.TestCase):
                     return True
                 return real_exists(p)
 
+            mock_result = MagicMock(returncode=0)
             with patch('pathlib.Path.home', return_value=home), \
                  patch('os.geteuid', return_value=1000), \
                  patch('os.path.exists', side_effect=fake_exists), \
+                 patch('trcc.cli._sudo_run', return_value=mock_result) as mock_sudo, \
                  redirect_stdout(buf):
                 result = uninstall()
 
             self.assertEqual(result, 0)
             output = buf.getvalue()
-            self.assertIn("Skipped", output)
             self.assertIn("sudo", output)
+            # Verify sudo rm was called with both root files
+            rm_call = mock_sudo.call_args_list[0]
+            self.assertIn("rm", rm_call[0][0])
 
     def test_dispatch_uninstall(self):
         """main() dispatches 'uninstall' to uninstall()."""
