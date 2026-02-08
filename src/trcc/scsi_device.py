@@ -21,6 +21,12 @@ from .paths import require_sg_raw
 # Track which devices have been initialized (poll + init sent)
 _initialized_devices: Set[str] = set()
 
+# NOTE: SCSI devices (0402:3922, 87CD:70DB, 0416:5406) cannot be identified
+# beyond their VID:PID. The firmware reports "USBLCD / USB PRC System" for all
+# variants (SE, PRO, Ultra). Model identification (PM/SUB bytes) only works on
+# HID devices via the DA/DB/DC/DD handshake in hid_device.py.
+# See tools/probe_usb_device.py for the full investigation.
+
 # =========================================================================
 # Low-level SCSI helpers (Mode 3 protocol, from USBLCD.exe 20480-20540)
 # =========================================================================

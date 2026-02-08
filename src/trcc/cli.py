@@ -236,6 +236,7 @@ def detect(show_all=False):
             if not dev:
                 dev = devices[0]
             print(f"Active: {_format_device(dev)}")
+
         return 0
     except Exception as e:
         print(f"Error: {e}")

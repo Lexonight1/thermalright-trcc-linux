@@ -8,7 +8,7 @@ These devices have been tested on real hardware and are confirmed working with T
 
 | Product | Connection | Screen |
 |---------|-----------|--------|
-| Frozen Warframe 寒冰装甲 | SCSI (0402:3922) | 320x320 |
+| Frozen Warframe series (SE, PRO, Ultra) | SCSI (0402:3922) | 320x320 |
 | Thermalright LCD Display | SCSI (87CD:70DB) | 320x320 |
 | Winbond LCD Display | SCSI (0416:5406) | 320x320 |
 
@@ -36,9 +36,6 @@ These have a full pixel LCD (240x240 to 480x480) for custom themes, images, vide
 
 | Product | Chinese Name |
 |---------|-------------|
-| Frozen Warframe SE | 寒冰装甲 SE |
-| Frozen Warframe PRO | 寒冰装甲 PRO |
-| Frozen Warframe Ultra | 寒冰装甲 Ultra |
 | Frozen Vision V2 | 冰封视界 V2 |
 | Core Vision | 核芯视界 |
 | Core Matrix VISION | 矩阵视界 |
@@ -89,7 +86,7 @@ All devices connect through one of these USB VID:PIDs:
 | VID:PID | Protocol | Display | Products |
 |---------|----------|---------|----------|
 | 87CD:70DB | SCSI | Full LCD | Older LCD screens |
-| 0402:3922 | SCSI | Full LCD | Frozen Warframe (early HW) |
+| 0402:3922 | SCSI | Full LCD | Frozen Warframe series (SE/PRO/Ultra) |
 | 0416:5406 | SCSI | Full LCD | Winbond LCD variant |
 | 0416:52E2 | HID | Full LCD | Vision/Warframe (newer HW) |
 | 0418:52E3 | HID | Full LCD | ALi Corp LCD variant |

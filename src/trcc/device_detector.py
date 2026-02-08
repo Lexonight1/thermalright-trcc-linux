@@ -62,7 +62,7 @@ KNOWN_DEVICES = {
         "button_image": "A1CZTV",
         "implementation": "ali_corp_lcd_v1"
     },
-    # USB 0402:3922 - FROZEN WARFRAME series (confirmed by user)
+    # USB 0402:3922 - FROZEN WARFRAME series (SE/PRO/Ultra, confirmed on PRO 360 Black)
     (0x0402, 0x3922): {
         "vendor": "ALi Corp",
         "product": "FROZEN WARFRAME",
