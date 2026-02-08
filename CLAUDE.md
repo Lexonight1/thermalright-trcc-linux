@@ -471,6 +471,8 @@ Prioritized list of remaining work:
 - `doc/ARCHITECTURE.md` - Project layout, MVC design, per-device config
 - `doc/CHANGELOG.md` - Version history and release notes
 - `doc/TECHNICAL_REFERENCE.md` - Protocol details, FBL codes, DC file formats
+- `doc/USBLCD_PROTOCOL.md` - SCSI protocol reverse-engineered from USBLCD.exe (Ghidra)
+- `doc/USBLCDNEW_PROTOCOL.md` - USB bulk protocol reverse-engineered from USBLCDNEW.exe (.NET)
 - `doc/PORTING_GUIDE.md` - How to port .NET/WinForms apps to Linux/PyQt6
 - `doc/CLI_REFERENCE.md` - All CLI commands, options, and troubleshooting
 - `doc/HID_TESTING.md` - HID device testing guide

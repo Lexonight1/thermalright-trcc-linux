@@ -179,6 +179,8 @@ trcc download themes-320  # Download cloud themes
 | [Changelog](doc/CHANGELOG.md) | Version history |
 | [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/TECHNICAL_REFERENCE.md) | SCSI protocol and file formats |
+| [USBLCD Protocol](doc/USBLCD_PROTOCOL.md) | SCSI protocol reverse-engineered from USBLCD.exe |
+| [USBLCDNEW Protocol](doc/USBLCDNEW_PROTOCOL.md) | USB bulk protocol reverse-engineered from USBLCDNEW.exe |
 | [HID Testing Guide](doc/HID_TESTING.md) | HID device support (testers wanted) |
 | [Supported Devices](doc/SUPPORTED_DEVICES.md) | Full device list with USB IDs |
 | [Development Status](doc/DEVELOPMENT_STATUS.md) | What's stable, in progress, and planned |

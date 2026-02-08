@@ -80,30 +80,121 @@ Mask-only themes (in `zt*/` directories) omit `00.png`.
 
 ### SCSI Commands
 
-All communication via `sg_raw` to `/dev/sgX`.
+All communication via `sg_raw` to `/dev/sgX`. Source: reverse-engineered from `USBLCD.exe` (native C++/MFC) via Ghidra decompilation.
 
 **Header format (20 bytes):**
 ```
-cmd(4) + zeros(8) + size(4) + crc32(4)
+bytes[0:3]   = command (LE uint32)
+bytes[4:11]  = zeros
+bytes[12:15] = data size (LE uint32)
+bytes[16:19] = CRC32(bytes[0:15])
 ```
+Only bytes[0:15] are sent as the SCSI CDB (16-byte). The CRC32 is appended but the device firmware ignores it (verified by testing with zeroed CRC — still works).
+
+### CDB Byte-Level Structure
+
+The 4-byte command field encodes a structured protocol:
+
+```
+byte[0] = 0xF5   (always — protocol marker)
+byte[1] = sub-command:
+    0x00 = poll/read
+    0x01 = write/send
+    0x02 = flash erase
+    0x04 = flash info query
+    0x05 = flash status query
+    0x41 = 'A' (API identification, with bytes[2]='P', bytes[3]='I')
+byte[2] = mode (when byte[1]=0x01):
+    0x00 = init (send 0xE100 zeros)
+    0x01 = raw frame chunk (byte[3] = chunk index)
+    0x02 = compressed frame (zlib level 3)
+    0x03 = multi-frame carousel (compressed)
+    0x04 = display clear
+byte[3] = chunk/frame index
+```
+
+### Complete SCSI Command Table
+
+| Command (LE) | CDB Bytes | Direction | Size | Purpose |
+|---|---|---|---|---|
+| `0x000000F5` | F5 00 00 00 | READ | 0xE100 | Poll device status |
+| `0x000001F5` | F5 01 00 00 | WRITE | 0xE100 | Initialize display |
+| `0x000101F5` | F5 01 01 00 | WRITE | 0x10000 | Frame chunk 0 (64 KiB) |
+| `0x010101F5` | F5 01 01 01 | WRITE | 0x10000 | Frame chunk 1 (64 KiB) |
+| `0x020101F5` | F5 01 01 02 | WRITE | 0x10000 | Frame chunk 2 (64 KiB) |
+| `0x030101F5` | F5 01 01 03 | WRITE | varies | Frame chunk 3 (remainder) |
+| `0x000201F5` | F5 01 02 00 | WRITE | varies | Compressed frame (zlib) |
+| `0x000301F5` | F5 01 03 xx | WRITE | varies | Multi-frame carousel |
+| `0x000401F5` | F5 01 04 00 | WRITE | 0xE100 | Display clear |
+| `0x000002F5` | F5 02 00 00 | WRITE | 0x10000 | NOR flash erase (sector) |
+| `0x000004F5` | F5 04 00 00 | READ | 0x10 | NOR flash info |
+| `0x000005F5` | F5 05 00 00 | READ | 4 | Flash status |
+| `0x495041F5` | F5 41 50 49 | READ | 0xC | Device API identification |
+
+**Flash/firmware commands** (0x02, 0x04, 0x05 sub-commands and the byte-level variants F5 00/01/02/04/05) are used by USBLCD.exe's firmware update GUI — not needed for normal display operation.
 
 ### Initialization Sequence
 
 ```
-1. Poll:  0xF5   READ  57,600 bytes (check device ready)
-2. Init:  0x1F5  WRITE 57,600 bytes (initialize display)
+1. Poll:  0xF5   READ  0xE100 bytes → check device ready, detect resolution
+2. Init:  0x1F5  WRITE 0xE100 zeros → initialize display controller
 ```
 
-### Frame Transfer (320x320 = 204,800 bytes)
+### Poll Response
 
-```
-Chunk 1: 0x101F5    WRITE 65,536 bytes
-Chunk 2: 0x10101F5  WRITE 65,536 bytes
-Chunk 3: 0x20101F5  WRITE 65,536 bytes
-Chunk 4: 0x30101F5  WRITE  8,192 bytes
-```
+The 0xE100-byte poll response encodes device state:
+
+| Byte Offset | Value | Meaning |
+|---|---|---|
+| 0 | `'$'` (0x24) | 240×240 display (mode 1) |
+| 0 | `'2'` (0x32) | 320×240 display (mode 2) |
+| 0 | `'3'` (0x33) | 320×240 display (mode 2) |
+| 0 | `'d'` (0x64) | 320×320 display (mode 3) |
+| 0 | `'e'` (0x65) | 320×320 display (mode 3) |
+| 4-7 | `0xA1A2A3A4` | Device still booting (wait 3s, re-poll) |
+
+### Frame Transfer
+
+Frame chunks are 64 KiB each (except the last). Chunk count depends on resolution:
+
+| Resolution | RGB565 Size | Chunks | Chunk Sizes |
+|---|---|---|---|
+| 240×240 | 115,200 (0x1C200) | 2 | 0xE100 + 0xE100 |
+| 320×240 | 153,600 (0x25800) | 3 | 0xE100 + 0xE100 + 0x9600 |
+| 320×320 | 204,800 (0x32000) | 4 | 0x10000 × 3 + 0x2000 |
 
 **Important:** Initialize ONCE, then stream frames without re-init.
+
+### Compressed Frame Transfer
+
+USBLCD.exe supports zlib-compressed frames (not implemented in trcc-linux):
+
+1. **Single frame**: Compress RGB565 data with zlib level 3, send via `0x201F5`. `byte[8]` = frame count from shared memory.
+2. **Multi-frame carousel**: Each frame compressed individually, sent via `0x301F5 | (frame_index << 24)`. Sleep 10ms between frames, 500ms after first compressed send.
+
+### Display Clear
+
+Send `0x401F5` with 0xE100 bytes to clear the LCD to black.
+
+### Device Identification (API Query)
+
+The `0x495041F5` ("F5API") command reads 12 bytes of device signature:
+- CDB: `F5 41 50 49 58 B3 00 00 0C 00 00 00 ...` (with magic bytes 0xB358)
+- Response: 12-byte device signature
+- `response[2:3]` identifies device variant:
+  - `(0x01, 0x39)` and `(0x03, 0x36)` are known variants
+  - `response[5] == 0x10` determines sub-type
+
+This query is sent after standard SCSI INQUIRY (CDB 0x12) during device detection.
+
+### What SCSI Does NOT Control
+
+USBLCD.exe contains **no commands** for:
+- **Brightness** — handled by TRCC.exe via image pre-processing (gamma/level adjustment before RGB565 conversion)
+- **Rotation** — handled by TRCC.exe via image rotation before sending
+- **Display on/off** — only display clear (0x401F5) exists; no standby/wake command
+
+For SCSI devices, brightness and rotation are purely software-side operations.
 
 ### Pixel Format
 
@@ -111,6 +202,22 @@ RGB565 big-endian (2 bytes/pixel):
 ```python
 pixel = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 ```
+
+### Windows IPC (TRCC.exe ↔ USBLCD.exe)
+
+On Windows, TRCC.exe and USBLCD.exe communicate via shared memory (`shareMemory_Image`):
+
+| Offset | Size | Purpose |
+|---|---|---|
+| 0x0000 | 1 | Resolution code from poll (or 0x00 when ready to send) |
+| 0x0001 | 1 | Frame count (1=single, N>1=multi-frame carousel) |
+| 0x0002 | 1 | Send trigger (TRCC sets 1, USBLCD clears to 0 after send) |
+| 0x0003 | 1 | Display clear flag (0x7F = clear) |
+| 0x0004-0x0007 | 4 | Boot signature check (0xA1A2A3A4 = booting) |
+| 0x257FE-0x257FF | 2 | Resolution echo (0xDC, resolution_code) |
+| 0x25800+ | varies | RGB565 image data |
+
+On Linux, this IPC layer is unnecessary — `trcc` talks directly to `/dev/sgX` via `sg_raw`.
 
 ## LED Protocol (HID 64-byte Reports)
 
@@ -380,3 +487,8 @@ sudo modprobe sg
 - Verify resolution matches your LCD (default: 320x320)
 - Check pixel format (RGB565 big-endian)
 - Ensure full frame is sent (204,800 bytes for 320x320)
+
+## See Also
+
+- [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — Full SCSI protocol reverse-engineered from USBLCD.exe (handles `0402:3922`)
+- [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol reverse-engineered from USBLCDNEW.exe (handles `87CD:70DB`, `0416:5302`, `0416:5406`)
