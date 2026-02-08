@@ -1943,6 +1943,7 @@ class TestReferenceThemeSaveLoad(unittest.TestCase):
         mask_img = _make_test_image(color=(0, 0, 255))
         mask_img.save(str(source_dir / '01.png'))
         self.ctrl.current_theme_path = source_dir
+        self.ctrl._mask_source_dir = source_dir
 
         # Set mask on overlay
         with patch.object(self.ctrl.overlay, 'get_theme_mask',
