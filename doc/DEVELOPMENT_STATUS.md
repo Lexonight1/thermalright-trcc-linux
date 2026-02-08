@@ -36,17 +36,13 @@ HID devices use a different USB protocol (DA/DB/DC/DD handshake instead of SCSI)
 
 | VID:PID | Product | Tester Status |
 |---------|---------|---------------|
-| 0416:8001 | Nuvoton HID (Digital series, Vision products) | Tester active — device detected, debugging `Assets.get` crash |
-| 0416:5302 | Winbond USBDISPLAY (Trofeo Vision LCD) | Tester active — device detected, no SCSI path (expected for HID) |
+| 0416:8001 | Nuvoton HID (Digital series, Vision products) | Tester active — GUI launches, LED panel showing, awaiting handshake data |
+| 0416:5302 | Winbond USBDISPLAY (Trofeo Vision LCD) | Tester active — device detected, awaiting GUI test |
 | 0416:52E2 | ALi HID LCD (Vision/Warframe newer HW) | Awaiting tester |
 | 0418:52E3 | ALi Corp LCD variant | Awaiting tester |
 | 0418:52E4 | ALi Corp LCD variant | Awaiting tester |
 
 **LED RGB control** is also on this branch — 7 effect modes (Static, Breathing, Rainbow, Cycle, Wave, Flash, Music) for devices like AX120 DIGITAL.
-
-### Linting & Formatting
-
-`ruff` is configured in `pyproject.toml` but not yet enforced in CI or run across the codebase.
 
 ## Roadmap
 
@@ -58,10 +54,12 @@ HID devices use a different USB protocol (DA/DB/DC/DD handshake instead of SCSI)
 | 4 | Cross-distro compatibility | Done |
 | 5 | Security hardening | Done |
 | 6 | Reference theme save (config.json) | Done |
-| 7 | HID device validation | In progress (needs testers) |
-| 8 | Linting / formatting (ruff) | Next |
-| 9 | Version bump → 1.2.0 | After linting |
-| 10 | Packaging & release (wheel, PyPI) | After version bump |
+| 7 | Linting / formatting (ruff) | Done — 0 violations, E/F/W/I rules |
+| 8 | Version bump → 1.2.0 | Done |
+| 9 | Packaging (wheel with assets) | Done — `pip install .` produces 188MB wheel |
+| 10 | HID device validation | In progress (needs testers) |
+| 11 | PyPI publish | Next |
+| 12 | Type annotation hardening (pyright strict) | Planned |
 
 ## What May Change
 

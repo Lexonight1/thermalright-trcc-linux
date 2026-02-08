@@ -26,16 +26,24 @@
 - Removed unused imports across 10 files
 - Sorted all import blocks (isort)
 
+### Packaging
+- Assets and data moved into `trcc` package (`src/trcc/assets/`, `src/trcc/data/`)
+- `pip install .` now produces a complete 188MB wheel with all GUI images, fonts, and themes
+- HID devices auto-detected — `--testing-hid` flag no longer needed
+
 ### Bug Fixes
 - Fixed resume RGB565 conversion to match GUI (big-endian + masked)
 - Fixed LEDMode int-to-enum conversion crash on config save
 - Fixed device config persistence for autostart theme state
 - Fixed json import ordering in controllers
+- Fixed saved theme overlay not rendering (overlay must enable before background load)
+- Fixed tab 2 mask not persisting in saved themes (mask source directory tracking)
 
 ### Documentation
 - Added [Supported Devices](SUPPORTED_DEVICES.md) page with all USB IDs
 - Added [Development Status](DEVELOPMENT_STATUS.md) tracking page
 - Expanded [Technical Reference](TECHNICAL_REFERENCE.md) with full SCSI command table
+- Removed `--testing-hid` references from all docs (HID is auto-detected)
 
 ### Testing
 - 1836 tests across 25 test files (up from 1777)

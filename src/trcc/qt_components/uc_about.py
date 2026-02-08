@@ -215,7 +215,8 @@ class UCAbout(BasePanel):
             lambda: webbrowser.open('https://www.thermalright.com'))
 
         # Version label
-        self.version_label = QLabel("1.0.0", self)
+        from trcc.__version__ import __version__
+        self.version_label = QLabel(__version__, self)
         self.version_label.setGeometry(*Layout.ABOUT_VERSION)
         self.version_label.setStyleSheet(
             "color: white; font-size: 12px; background: transparent;"

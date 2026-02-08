@@ -17,7 +17,7 @@ Run `lsusb` and look for your VID:PID:
 
 Find your distro, copy the block, paste in terminal. These install TRCC + HID dependencies (libusb, pyusb) in one shot. After it finishes: **unplug and replug the USB cable**, then **open a new terminal**.
 
-> **Already have TRCC installed?** Just run `pip install --break-system-packages pyusb` and then `trcc --testing-hid gui`.
+> **Already have TRCC installed?** Just run `pip install --break-system-packages pyusb` and then `trcc gui` (HID is auto-detected).
 
 ### Fedora / Nobara
 
@@ -68,11 +68,13 @@ Switch to Desktop Mode, open Konsole:
 sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg libusb && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && pip install --break-system-packages pyusb && sudo PYTHONPATH=src python3 -m trcc.cli setup-udev && trcc install-desktop && sudo steamos-readonly enable
 ```
 
-### Then run with `--testing-hid`
+### Then run
+
+HID devices are auto-detected — no special flags needed:
 
 ```bash
-trcc --testing-hid detect       # Check if your device is found
-trcc --testing-hid gui          # Launch the GUI with HID support
+trcc detect       # Check if your device is found
+trcc gui          # Launch the GUI (HID auto-detected)
 ```
 
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH.
@@ -82,7 +84,7 @@ trcc --testing-hid gui          # Launch the GUI with HID support
 Open an [issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with:
 
 1. Your `lsusb` line (VID:PID and device name)
-2. Output of `trcc --testing-hid detect`
+2. Output of `trcc detect --all`
 3. Does the GUI launch and detect the device?
 4. Can you send an image to the LCD? Does it display correctly?
 5. Your distro and kernel version (`uname -r`)

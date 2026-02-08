@@ -22,7 +22,7 @@ These devices have been identified by testers but are still being validated.
 
 | Product | Connection | Tester Status |
 |---------|-----------|---------------|
-| Assassin X 120 R Digital | HID (0416:8001) | Device detected, HID handshake in progress |
+| Assassin X 120 R Digital | HID (0416:8001) | GUI launches, LED panel showing, awaiting handshake data |
 
 ---
 
@@ -99,8 +99,9 @@ The exact product model is identified after a USB handshake. The device responds
 
 If you own any of the planned devices and run Linux:
 
-1. Install TRCC Linux: `pip install .`
-2. Set up udev rules: `sudo trcc setup-udev`
-3. Run detection: `trcc detect --all`
-4. Try the GUI: `trcc gui`
-5. Report what you see at https://github.com/Lexonight1/thermalright-trcc-linux/issues
+1. Clone the repo: `git clone https://github.com/Lexonight1/thermalright-trcc-linux.git && cd thermalright-trcc-linux`
+2. Install: `pip install --force-reinstall --no-deps .`
+3. Set up udev rules: `sudo trcc setup-udev` (then unplug/replug USB cable)
+4. Run detection: `trcc detect --all`
+5. Try the GUI: `trcc gui` (HID devices are auto-detected)
+6. Report what you see at https://github.com/Lexonight1/thermalright-trcc-linux/issues
