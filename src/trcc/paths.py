@@ -116,18 +116,33 @@ def get_theme_dir(width: int, height: int) -> str:
 def get_web_dir(width: int, height: int) -> str:
     """Get cloud theme Web directory for a resolution.
 
-    Matches Windows layout: Data/USBLCD/Web/{W}{H}/
-    Contains bundled preview PNGs + on-demand downloaded MP4s.
+    Checks the package data dir first, then the user data dir (~/.trcc/data/).
+    Returns whichever has content, or the package dir as default.
     """
-    return os.path.join(DATA_DIR, 'Web', f'{width}{height}')
+    res_key = f'{width}{height}'
+    pkg_dir = os.path.join(DATA_DIR, 'Web', res_key)
+    if os.path.isdir(pkg_dir) and os.listdir(pkg_dir):
+        return pkg_dir
+    user_dir = os.path.join(USER_DATA_DIR, 'Web', res_key)
+    if os.path.isdir(user_dir) and os.listdir(user_dir):
+        return user_dir
+    return pkg_dir
 
 
 def get_web_masks_dir(width: int, height: int) -> str:
     """Get cloud masks directory for a resolution.
 
-    Matches Windows layout: Data/USBLCD/Web/zt{W}{H}/
+    Checks the package data dir first, then the user data dir (~/.trcc/data/).
+    Returns whichever has content, or the package dir as default.
     """
-    return os.path.join(DATA_DIR, 'Web', f'zt{width}{height}')
+    res_key = f'zt{width}{height}'
+    pkg_dir = os.path.join(DATA_DIR, 'Web', res_key)
+    if _has_actual_themes(pkg_dir):
+        return pkg_dir
+    user_dir = os.path.join(USER_DATA_DIR, 'Web', res_key)
+    if _has_actual_themes(user_dir):
+        return user_dir
+    return pkg_dir
 
 
 def _extract_7z(archive: str, target_dir: str) -> bool:
@@ -294,19 +309,100 @@ def ensure_themes_extracted(width: int, height: int) -> bool:
     return _extract_7z(archive, target)
 
 
+def _fetch_web_archive(archive_name: str) -> Optional[str]:
+    """Download a Web archive from GitHub if not bundled locally.
+
+    Checks the package Web dir first, then the user data dir.
+    Downloads to user data dir (~/.trcc/data/Web/) if not found.
+
+    Returns the path to the .7z file, or None if unavailable.
+    """
+    pkg_archive = os.path.join(DATA_DIR, 'Web', archive_name)
+    if os.path.isfile(pkg_archive):
+        return pkg_archive
+
+    user_archive = os.path.join(USER_DATA_DIR, 'Web', archive_name)
+    if os.path.isfile(user_archive):
+        return user_archive
+
+    url = GITHUB_THEME_BASE_URL + 'Web/' + archive_name
+    if _download_archive(url, user_archive):
+        return user_archive
+
+    return None
+
+
 def ensure_web_extracted(width: int, height: int) -> bool:
-    """Extract cloud theme previews from .7z archive if not already present."""
+    """Extract cloud theme previews from .7z archive if not already present.
+
+    Checks both package and user data dirs. Downloads from GitHub if needed.
+    """
+    check_fn = lambda d: os.path.isdir(d) and bool(os.listdir(d))
+    res_key = f'{width}{height}'
+
+    # Check package data dir
     web_dir = get_web_dir(width, height)
-    return _ensure_extracted(
-        web_dir, web_dir + '.7z',
-        lambda d: os.path.isdir(d) and bool(os.listdir(d)),
-    )
+    if check_fn(web_dir):
+        return True
+
+    # Check user data dir
+    user_web_dir = os.path.join(USER_DATA_DIR, 'Web', res_key)
+    if check_fn(user_web_dir):
+        return True
+
+    # Find or download archive
+    archive = _fetch_web_archive(f'{res_key}.7z')
+    if archive is None:
+        return False
+
+    # Extract to writable location
+    target = web_dir
+    try:
+        os.makedirs(target, exist_ok=True)
+        test_file = os.path.join(target, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('')
+        os.remove(test_file)
+    except OSError:
+        target = user_web_dir
+
+    return _extract_7z(archive, target)
 
 
 def ensure_web_masks_extracted(width: int, height: int) -> bool:
-    """Extract cloud mask themes from .7z archive if not already present."""
+    """Extract cloud mask themes from .7z archive if not already present.
+
+    Checks both package and user data dirs. Downloads from GitHub if needed.
+    """
+    res_key = f'zt{width}{height}'
+
+    # Check package data dir
     masks_dir = get_web_masks_dir(width, height)
-    return _ensure_extracted(masks_dir, masks_dir + '.7z', _has_actual_themes)
+    if _has_actual_themes(masks_dir):
+        return True
+
+    # Check user data dir
+    user_masks_dir = os.path.join(USER_DATA_DIR, 'Web', res_key)
+    if _has_actual_themes(user_masks_dir):
+        return True
+
+    # Find or download archive
+    archive = _fetch_web_archive(f'{res_key}.7z')
+    if archive is None:
+        return False
+
+    # Extract to writable location
+    target = masks_dir
+    try:
+        os.makedirs(target, exist_ok=True)
+        test_file = os.path.join(target, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('')
+        os.remove(test_file)
+    except OSError:
+        target = user_masks_dir
+
+    return _extract_7z(archive, target)
 
 
 def find_resource(filename: str, search_paths: Optional[list] = None) -> Optional[str]:

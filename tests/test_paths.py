@@ -406,24 +406,33 @@ class TestEnsureWebExtracted(unittest.TestCase):
 
     def test_already_present(self):
         with tempfile.TemporaryDirectory() as d:
-            web_dir = os.path.join(d, '320320')
+            web_dir = os.path.join(d, 'Web', '320320')
             os.makedirs(web_dir)
             Path(web_dir, 'preview.png').touch()
-            with patch('trcc.paths.get_web_dir', return_value=web_dir):
+            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')):
                 self.assertTrue(ensure_web_extracted(320, 320))
 
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            web_dir = os.path.join(d, '320320')
-            with patch('trcc.paths.get_web_dir', return_value=web_dir):
+            web_dir = os.path.join(d, 'Web', '320320')
+            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
+                 patch('trcc.paths._download_archive', return_value=False):
                 self.assertFalse(ensure_web_extracted(320, 320))
 
     def test_extracts_from_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            web_dir = os.path.join(d, '320320')
-            archive = web_dir + '.7z'
+            web_dir = os.path.join(d, 'Web', '320320')
+            archive_dir = os.path.join(d, 'Web')
+            os.makedirs(archive_dir)
+            archive = os.path.join(archive_dir, '320320.7z')
             Path(archive).touch()
             with patch('trcc.paths.get_web_dir', return_value=web_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
                  patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
                 result = ensure_web_extracted(320, 320)
             self.assertTrue(result)
@@ -435,15 +444,20 @@ class TestEnsureWebMasksExtracted(unittest.TestCase):
 
     def test_already_present(self):
         with tempfile.TemporaryDirectory() as d:
-            masks_dir = os.path.join(d, 'zt320320')
+            masks_dir = os.path.join(d, 'Web', 'zt320320')
             os.makedirs(os.path.join(masks_dir, '000a'))
-            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir):
+            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')):
                 self.assertTrue(ensure_web_masks_extracted(320, 320))
 
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            masks_dir = os.path.join(d, 'zt320320')
-            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir):
+            masks_dir = os.path.join(d, 'Web', 'zt320320')
+            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
+                 patch('trcc.paths._download_archive', return_value=False):
                 self.assertFalse(ensure_web_masks_extracted(320, 320))
 
 
