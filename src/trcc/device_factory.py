@@ -187,6 +187,34 @@ class HidProtocol(DeviceProtocol):
         self._pid = pid
         self._device_type = device_type
         self._transport = None
+        self._handshake_info = None
+
+    def handshake(self):
+        """Perform HID LCD handshake and return DeviceInfo.
+
+        Opens transport if needed.  Returns hid_device.DeviceInfo with
+        PM, SUB, FBL, resolution, and raw_response for debugging.
+        """
+        try:
+            if self._transport is None:
+                self._transport = self._create_transport()
+                self._transport.open()
+                self._notify_state_changed("transport_open", True)
+
+            from .hid_device import HidDeviceType2, HidDeviceType3
+            if self._device_type == 2:
+                handler = HidDeviceType2(self._transport)
+            elif self._device_type == 3:
+                handler = HidDeviceType3(self._transport)
+            else:
+                return None
+
+            self._handshake_info = handler.handshake()
+            self._notify_state_changed("handshake_complete", True)
+            return self._handshake_info
+        except Exception as e:
+            self._notify_error(f"HID handshake failed: {e}")
+            return None
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:

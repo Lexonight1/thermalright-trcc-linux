@@ -180,7 +180,7 @@ def find_lcd_devices() -> List[Dict]:
             devices.append({
                 'name': f"{dev.vendor_name} {dev.product_name}",
                 'path': hid_path,
-                'resolution': (320, 320),  # Will be updated after HID handshake
+                'resolution': (0, 0),  # Unknown until HID handshake (PM→FBL→resolution)
                 'vendor': dev.vendor_name,
                 'product': dev.product_name,
                 'model': dev.model,

@@ -26,9 +26,22 @@
 - Removed unused imports across 10 files
 - Sorted all import blocks (isort)
 
+### Multi-Resolution Theme Archives
+- All 15 LCD resolutions now have bundled `.7z` theme archives (was 4)
+- New resolutions: 240x320, 360x360, 800x480, 854x480, 960x540, 1280x480, 1600x720, 1920x462, plus portrait variants
+- On-demand download: if a resolution's archive isn't bundled locally, downloads from GitHub on first use
+- Downloaded archives stored in `~/.trcc/data/` when package dir is read-only (pip install)
+- Cross-distro 7z install help shown when neither `py7zr` nor system `7z` is available
+
+### HID Device Identification
+- PM→FBL→resolution mapping from Windows FormCZTV.cs (all known PM byte values)
+- `pm_to_fbl()` and `fbl_to_resolution()` functions in `hid_device.py`
+- `PM_TO_BUTTON_IMAGE` mapping for dynamic sidebar button updates after handshake
+- New `trcc hid-debug` CLI command — hex dump diagnostic for HID bug reports
+
 ### Packaging
 - Assets and data moved into `trcc` package (`src/trcc/assets/`, `src/trcc/data/`)
-- `pip install .` now produces a complete 188MB wheel with all GUI images, fonts, and themes
+- `pip install .` now produces a complete wheel with all GUI images, fonts, and themes
 - HID devices auto-detected — `--testing-hid` flag no longer needed
 
 ### Bug Fixes

@@ -55,8 +55,9 @@ src/trcc/data/Theme*/Theme.zt
 src/trcc/data/Theme*/Theme[1-5]/
 !src/trcc/data/Theme*.7z
 
-# Non-SCSI resolution theme dirs (USBLCDNEW/HID only — not supported yet)
+# Extracted theme dirs (regenerated from .7z at runtime)
 src/trcc/data/Theme320320/
+# Extracted Web cache dirs (regenerated from .7z at runtime)
 src/trcc/data/Web/320320
 src/trcc/data/Web/zt320320
 src/trcc/data/Web/zt240240

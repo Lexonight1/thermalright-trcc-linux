@@ -25,7 +25,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / 'src' / 'data'
 WEB_DIR = DATA_DIR / 'Web'
 
-RESOLUTIONS = ['240240', '320320', '480480', '640480']
+# All LCD resolutions supported by TRCC devices (from FBL_TO_RESOLUTION in hid_device.py)
+# Landscape orientations + portrait variants where Windows ships theme data
+RESOLUTIONS = [
+    '240240',   # FBL 36/37
+    '240320',   # FBL 50
+    '320320',   # FBL 100/101/102
+    '360360',   # FBL 54
+    '480480',   # FBL 72
+    '640480',   # FBL 64
+    '800480',   # FBL 224 + PM 12
+    '854480',   # FBL 224
+    '960540',   # FBL 224 + PM 10
+    '1280480',  # FBL 128 (Trofeo Vision)
+    '1600720',  # FBL 114
+    '1920462',  # FBL 192
+    # Portrait variants (rotated displays)
+    '480800',
+    '480854',
+    '540960',
+]
 DEFAULT_THEMES = [f'Theme{i}' for i in range(1, 6)]
 
 
@@ -110,11 +129,6 @@ def main():
     resolutions = [a for a in args if not a.startswith('--')]
     if not resolutions:
         resolutions = RESOLUTIONS
-
-    for r in resolutions:
-        if r not in RESOLUTIONS:
-            print(f"Unknown resolution: {r}  (valid: {', '.join(RESOLUTIONS)})")
-            sys.exit(1)
 
     results = {}
     if do_themes:

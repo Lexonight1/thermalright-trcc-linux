@@ -221,11 +221,13 @@ class TestType2DeviceInfo:
         info = HidDeviceType2.parse_device_info(bytes(resp))
         assert info.serial == "000102030405060708090A0B0C0D0E0F"
 
-    def test_fbl_is_none(self):
-        """Type 2 doesn't have FBL."""
+    def test_fbl_from_pm(self):
+        """Type 2 resolves FBL from PM byte via pm_to_fbl()."""
         resp = _make_type2_valid_response()
         info = HidDeviceType2.parse_device_info(resp)
-        assert info.fbl is None
+        # PM=0x02 is not in _PM_TO_FBL_TYPE2, so defaults to FBL=100
+        assert info.fbl == 100
+        assert info.resolution == (320, 320)
 
 
 # =========================================================================

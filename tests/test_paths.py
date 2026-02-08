@@ -380,7 +380,10 @@ class TestEnsureThemesExtracted(unittest.TestCase):
         """Returns False when no archive and no themes."""
         with tempfile.TemporaryDirectory() as d:
             theme_dir = os.path.join(d, 'Theme320320')
-            with patch('trcc.paths.get_theme_dir', return_value=theme_dir):
+            with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
+                 patch('trcc.paths._download_archive', return_value=False):
                 self.assertFalse(ensure_themes_extracted(320, 320))
 
     def test_extracts_from_archive(self):
@@ -390,6 +393,8 @@ class TestEnsureThemesExtracted(unittest.TestCase):
             archive = theme_dir + '.7z'
             Path(archive).touch()
             with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
+                 patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
                  patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
                 result = ensure_themes_extracted(320, 320)
             self.assertTrue(result)

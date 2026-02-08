@@ -67,10 +67,12 @@ TRCC Linux works with these Thermalright products that have a built-in LCD displ
 - LC1 / LC2 / LC3 / LC5 (pump head display)
 
 **Supported LCD Resolutions:**
-- 240x240 pixels
-- 320x320 pixels (most common)
-- 480x480 pixels
-- 640x480 pixels
+- 240x240, 240x320, 320x320 (most common)
+- 360x360, 480x480, 640x480, 800x480
+- 854x480, 960x540, 1280x480 (Trofeo Vision)
+- 1600x720, 1920x462
+
+Theme data for any resolution is automatically downloaded on first use if not bundled.
 
 > **Note:** If your cooler came with a Windows-only CD or download link for "TRCC" or "CZTV" software, it's compatible.
 

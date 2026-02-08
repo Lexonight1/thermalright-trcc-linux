@@ -199,6 +199,41 @@ After running, **unplug and replug the USB cable** (or reboot).
 
 ---
 
+### `trcc hid-debug`
+
+HID handshake diagnostic — prints hex dump and resolved device info for bug reports.
+
+```bash
+trcc hid-debug
+```
+
+**Example output:**
+
+```
+HID Debug — Handshake Diagnostic
+============================================================
+
+Device: ALi Corp LCD Display
+  VID:PID = 0416:52e2
+  Type = 2
+  Implementation = hid_lcd
+
+  Attempting handshake...
+  Handshake OK!
+  PM byte  = 100 (0x64)
+  SUB byte = 0 (0x00)
+  FBL      = 100 (0x64)
+  Serial   = ABCDEF0123456789
+  Resolution = 320x320
+  Button image = A1FROZEN WARFRAME PRO
+  FBL 100 = known resolution
+
+  Raw handshake response (first 64 bytes):
+  0000: da db dc dd 64 00 00 00 ...
+```
+
+---
+
 ### `trcc download`
 
 Download cloud theme packs.

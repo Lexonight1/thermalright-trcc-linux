@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - PyQt6 GUI matching Windows layout exactly (1454x800)
 - MVC architecture: GUI-independent controllers with callback-based views
 - SCSI protocol via sg_raw, RGB565 pixel format
-- Multi-resolution support: 240x240, 320x320, 480x480, 640x480
+- Multi-resolution support: 15 resolutions from 240x240 to 1920x462
 - Modular component architecture mirroring Windows UC* classes
 
 ## Versioning
@@ -112,6 +112,9 @@ PYTHONPATH=src python3 -m trcc.cli detect --all
 # Send image to LCD
 PYTHONPATH=src python3 -m trcc.cli send image.png
 
+# HID debug (handshake hex dump for bug reports)
+PYTHONPATH=src python3 -m trcc.cli hid-debug
+
 # Setup udev rules + USB quirks (auto-prompts for sudo)
 PYTHONPATH=src python3 -m trcc.cli setup-udev
 PYTHONPATH=src python3 -m trcc.cli setup-udev --dry-run
@@ -148,7 +151,8 @@ src/trcc/
 ├── cloud_downloader.py     # Cloud theme HTTP fetch
 ├── theme_downloader.py     # Theme pack download manager
 ├── theme_io.py             # Theme export/import (.tr format)
-├── paths.py                # XDG paths, per-device config, .7z extraction, cross-distro helpers
+├── binary_reader.py        # Binary data reader (DC parsing helper)
+├── paths.py                # XDG paths, per-device config, .7z extraction, on-demand download
 ├── hid_device.py           # HID USB transport (PyUSB/HIDAPI) for LCD and LED devices
 ├── led_device.py           # LED RGB protocol (effects, packet builder, HID sender)
 ├── device_factory.py       # Protocol factory (SCSI/HID/LED routing by PID)
@@ -218,12 +222,29 @@ BottomBar:    y=680                  # Rotation/Brightness/Save/Export/Import
 
 **Theme Data (7z Archives)**:
 
-Default themes and cloud masks ship as `.7z` archives in `src/data/`. On resolution detection, `ensure_themes_extracted()` and `ensure_web_masks_extracted()` in `paths.py` extract the matching archive in-place using `py7zr` (with CLI `7z` fallback). Archives are tracked in git; extracted dirs are gitignored.
+Default themes ship as `.7z` archives for all 15 LCD resolutions. On resolution detection, `ensure_themes_extracted()` in `paths.py`:
+
+1. Checks the package data dir (`src/trcc/data/`) for extracted themes
+2. Checks the user data dir (`~/.trcc/data/`) for previously downloaded themes
+3. If no archive found locally, downloads it from GitHub (`raw.githubusercontent.com`)
+4. Extracts using `py7zr` (with CLI `7z` fallback)
+5. Falls back to `~/.trcc/data/` if the package dir is read-only (pip install)
+
+Archives are tracked in git; extracted dirs are gitignored.
 
 ```
-src/data/
-├── Theme320320.7z     # → extracts to Theme320320/Theme1..Theme5/
-├── Web/zt320320.7z    # → extracts to Web/zt320320/000a..023e/
+src/trcc/data/
+├── Theme240240.7z          # 15 resolution archives (all tracked in git)
+├── Theme320320.7z
+├── Theme480480.7z
+├── Theme640480.7z
+├── Theme800480.7z
+├── Theme854480.7z
+├── Theme960540.7z
+├── Theme1280480.7z         # Trofeo Vision
+├── Theme1600720.7z
+├── Theme1920462.7z
+├── Web/zt320320.7z         # Cloud mask archives
 └── Theme320320/
     └── Theme1/
         ├── 00.png         # Background (sent to LCD)
@@ -247,6 +268,8 @@ To regenerate archives: `python tools/pack_theme_archives.py`
 **Autostart**: On first GUI launch, creates `~/.config/autostart/trcc.desktop` with `trcc --last-one` (matches Windows `KaijiQidong()` behavior). `--last-one` starts the GUI minimized to system tray and sends the last-used theme. Settings panel checkbox reflects and toggles the autostart state. Path refreshes on subsequent launches if install location changed.
 
 **HID Auto-Detection**: HID devices (USB LCD and LED) are now auto-detected without any flags. The `--testing-hid` flag is a no-op (kept for backward compatibility).
+
+**HID PM→FBL→Resolution**: After HID handshake, the PM (product mode) byte maps to FBL via `pm_to_fbl()`, then FBL maps to resolution via `fbl_to_resolution()`. Special cases: FBL 224 is overloaded (PM 10→960x540, PM 12→800x480, else 854x480). PM→button image mapping in `PM_TO_BUTTON_IMAGE` updates the sidebar button after handshake.
 
 ## Critical Rule: Reference Windows C# First
 

@@ -89,6 +89,86 @@ USB_INTERFACE = 0
 
 
 # =========================================================================
+# FBL → Resolution mapping (from FormCZTV.cs lines 811-821)
+# =========================================================================
+# FBL byte determines LCD resolution.  For Type 3, FBL = resp[0]-1.
+# For Type 2, FBL is derived from the PM byte via pm_to_fbl().
+
+FBL_TO_RESOLUTION: dict = {
+    36:  (240, 240),
+    37:  (240, 240),
+    50:  (240, 320),
+    54:  (360, 360),
+    64:  (640, 480),
+    72:  (480, 480),
+    100: (320, 320),
+    101: (320, 320),
+    102: (320, 320),
+    114: (1600, 720),
+    128: (1280, 480),
+    192: (1920, 462),
+    # FBL 224 is overloaded — depends on PM, defaults to 854x480
+    224: (854, 480),
+}
+
+# PM byte → FBL byte for Type 2 / mode-2 devices (FormCZTV.cs lines 682-821)
+# Format: PM value → FBL value
+_PM_TO_FBL_TYPE2: dict = {
+    5:   50,    # 240x320
+    7:   64,    # 640x480
+    9:   224,   # 854x480
+    10:  224,   # 960x540 (special: actual res depends on PM)
+    11:  224,   # 854x480
+    12:  224,   # 800x480 (special)
+    32:  100,   # 320x320
+    64:  114,   # 1600x720
+    65:  192,   # 1920x462
+}
+
+# PM byte → product button image (from UCDevice.cs lines 317-750)
+PM_TO_BUTTON_IMAGE: dict = {
+    # ID=2 (AIO/Vision devices — most HID LCD devices)
+    36:  'A1AS120 VISION',
+    50:  'A1FROZEN WARFRAME',
+    51:  'A1FROZEN WARFRAME',
+    52:  'A1BA120 VISION',
+    53:  'A1BA120 VISION',
+    58:  'A1FROZEN WARFRAME SE',
+    100: 'A1FROZEN WARFRAME PRO',
+    101: 'A1ELITE VISION',
+}
+
+
+def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple:
+    """Map FBL byte to (width, height).
+
+    For FBL 224, the PM byte disambiguates the actual resolution.
+
+    Returns (320, 320) as default if FBL is unknown.
+    """
+    if fbl == 224:
+        if pm == 10:
+            return (960, 540)
+        elif pm == 12:
+            return (800, 480)
+        return (854, 480)
+    return FBL_TO_RESOLUTION.get(fbl, (320, 320))
+
+
+def pm_to_fbl(pm: int, sub: int = 0) -> int:
+    """Map PM byte to FBL byte for Type 2 devices.
+
+    Uses the mode-2 mapping from FormCZTV.cs.
+    Special case: PM=1 + SUB=48 → FBL=114, PM=1 + SUB=49 → FBL=192.
+    """
+    if pm == 1 and sub == 48:
+        return 114
+    if pm == 1 and sub == 49:
+        return 192
+    return _PM_TO_FBL_TYPE2.get(pm, 100)  # Default to FBL=100 (320x320)
+
+
+# =========================================================================
 # Data classes
 # =========================================================================
 
@@ -100,6 +180,8 @@ class DeviceInfo:
     mode_byte_2: int = 0     # Type 2: resp[5], Type 3: 0
     serial: str = ""         # Hex string from response
     fbl: Optional[int] = None  # Type 3 only: resp[0]-1
+    raw_response: Optional[bytes] = None  # Full handshake response for debugging
+    resolution: Optional[tuple] = None  # (width, height) resolved from FBL/PM
 
 
 # =========================================================================
@@ -208,17 +290,27 @@ class HidDeviceType2:
     def parse_device_info(resp: bytes) -> DeviceInfo:
         """Extract device info from a validated handshake response.
 
-        From C#::
+        From USBLCDNEW_PROTOCOL.md::
 
-            mode1 = resp[4], mode2 = resp[5]
+            PM  = resp[4]   (product mode byte)
+            SUB = resp[5]   (sub-variant byte)
             serial = hex string of resp[20:36]
+
+        PM+SUB → FBL → resolution via pm_to_fbl() and fbl_to_resolution().
         """
+        pm = resp[4]
+        sub = resp[5]
         serial = resp[20:36].hex().upper()
+        fbl = pm_to_fbl(pm, sub)
+        resolution = fbl_to_resolution(fbl, pm)
         return DeviceInfo(
             device_type=2,
-            mode_byte_1=resp[4],
-            mode_byte_2=resp[5],
+            mode_byte_1=pm,
+            mode_byte_2=sub,
             serial=serial,
+            fbl=fbl,
+            raw_response=bytes(resp[:64]),
+            resolution=resolution,
         )
 
     # -- Handshake -------------------------------------------------------
@@ -365,18 +457,21 @@ class HidDeviceType3:
     def parse_device_info(resp: bytes) -> DeviceInfo:
         """Extract device info from a validated handshake response.
 
-        From C#::
+        From USBLCDNEW_PROTOCOL.md::
 
-            fbl = resp[0] - 1  (100 or 101)
+            fbl = resp[0] - 1  (0x65→100, 0x66→101)
             serial = hex string of resp[10:14]
         """
         serial = resp[10:14].hex().upper()
         fbl = resp[0] - 1
+        resolution = fbl_to_resolution(fbl)
         return DeviceInfo(
             device_type=3,
             mode_byte_1=fbl,
             serial=serial,
             fbl=fbl,
+            raw_response=bytes(resp[:64]),
+            resolution=resolution,
         )
 
     # -- Handshake -------------------------------------------------------

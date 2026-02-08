@@ -77,9 +77,21 @@ def _get_device_images(device_info):
 
     Returns:
         (normal_image_name, active_image_name) or (None, None)
+
+    For HID devices with the generic default button_image (A1CZTV), returns
+    (None, None) so the text name is shown instead of the misleading default
+    image.  After the HID handshake resolves the actual product, the button
+    image is updated via PM_TO_BUTTON_IMAGE.
     """
-    # Try button_image field first (from DetectedDevice)
     button_image = device_info.get('button_image', '')
+    protocol = device_info.get('protocol', 'scsi')
+
+    # For HID devices, skip the generic A1CZTV default — show text name
+    # until the handshake identifies the actual product.
+    if protocol == 'hid' and button_image == 'A1CZTV':
+        return None, None
+
+    # Try button_image field first (from DetectedDevice)
     if button_image:
         normal = f"{button_image}.png"
         active = f"{button_image}a.png"
@@ -110,8 +122,8 @@ def _get_device_images(device_info):
             if asset_exists(normal):
                 return normal, active
 
-    # Default to CZTV
-    if asset_exists('A1CZTV.png'):
+    # Default to CZTV for non-HID devices
+    if protocol != 'hid' and asset_exists('A1CZTV.png'):
         return 'A1CZTV.png', 'A1CZTVa.png'
 
     return None, None

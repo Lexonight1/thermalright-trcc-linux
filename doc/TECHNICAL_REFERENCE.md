@@ -39,34 +39,70 @@ The Windows app uses FBL values to identify display resolution. FBL mapping:
 | FBL | Resolution | Notes |
 |-----|------------|-------|
 | 36, 37 | 240x240 | Small |
+| 50 | 240x320 | Portrait |
 | 54 | 360x360 | Medium |
 | 64 | 640x480 | VGA |
 | 72 | 480x480 | Large square |
 | 100-102 | 320x320 | Standard (default) |
 | 114 | 1600x720 | Ultrawide |
-| 128 | 1280x480 | Wide |
+| 128 | 1280x480 | Wide (Trofeo Vision) |
 | 192 | 1920x462 | Ultrawide |
-| 224 | 854x480/960x540/800x480 | Depends on pm |
+| 224 | 854x480/960x540/800x480 | Depends on PM byte |
+
+### PM → FBL Mapping (Type 2 HID Devices)
+
+Type 2 HID devices don't report FBL directly. Instead, the PM (product mode) byte from the handshake maps to FBL:
+
+| PM | FBL | Resolution | Notes |
+|----|-----|------------|-------|
+| 5 | 50 | 240x320 | |
+| 7 | 64 | 640x480 | |
+| 9 | 224 | 854x480 | |
+| 10 | 224 | 960x540 | Special: PM overrides FBL 224 default |
+| 11 | 224 | 854x480 | |
+| 12 | 224 | 800x480 | Special: PM overrides FBL 224 default |
+| 32 | 100 | 320x320 | |
+| 64 | 114 | 1600x720 | |
+| 65 | 192 | 1920x462 | |
+| 1+sub=48 | 114 | 1600x720 | PM=1 with SUB byte variant |
+| 1+sub=49 | 192 | 1920x462 | PM=1 with SUB byte variant |
+
+Functions: `pm_to_fbl()` and `fbl_to_resolution()` in `hid_device.py`.
 
 ### Theme Directories & Archives
 
-Themes are shipped as `.7z` archives and extracted on first use when the app detects the LCD resolution:
+Theme archives for all 15 LCD resolutions are tracked in git. On first use, `ensure_themes_extracted()` in `paths.py`:
+
+1. Checks the package dir (`src/trcc/data/`) for extracted themes
+2. Checks the user dir (`~/.trcc/data/`) for previously extracted themes
+3. If no archive found locally, **downloads from GitHub** (`raw.githubusercontent.com`)
+4. Extracts via `py7zr` (Python) or system `7z` CLI
+5. Falls back to `~/.trcc/data/` if the package dir is read-only
 
 ```
-src/data/
-├── Theme240240.7z          # Default themes (Theme1-5), extracted → Theme240240/
+src/trcc/data/
+├── Theme240240.7z          # All 15 resolutions bundled
+├── Theme240320.7z
 ├── Theme320320.7z
+├── Theme360360.7z
 ├── Theme480480.7z
 ├── Theme640480.7z
+├── Theme800480.7z
+├── Theme854480.7z
+├── Theme960540.7z
+├── Theme1280480.7z         # Trofeo Vision
+├── Theme1600720.7z
+├── Theme1920462.7z
+├── Theme480800.7z          # Portrait variants
+├── Theme480854.7z
+├── Theme540960.7z
 └── Web/
     ├── 240240.7z           # Cloud preview PNGs
     ├── 320320.7z
-    ├── zt240240.7z         # Cloud mask themes (000a-023e), extracted → zt240240/
+    ├── zt240240.7z         # Cloud mask themes (000a-023e)
     ├── zt320320.7z
     └── ...
 ```
-
-Extraction uses `py7zr` (Python) with a fallback to the system `7z` CLI command. Logic is in `paths.py:ensure_themes_extracted()` and `ensure_web_masks_extracted()`.
 
 Each theme subdirectory contains:
 - `00.png` - Background image (sent to LCD)
@@ -324,7 +360,8 @@ src/trcc/
 ├── cloud_downloader.py          # Cloud theme HTTP fetch
 ├── theme_downloader.py          # Theme pack download manager
 ├── theme_io.py                  # Theme export/import (.tr format)
-├── paths.py                     # XDG data/config, .7z archive extraction
+├── binary_reader.py             # Binary data reader (DC parsing helper)
+├── paths.py                     # XDG data/config, .7z extraction, on-demand download
 ├── hid_device.py                # HID USB transport (PyUSB/HIDAPI)
 ├── led_device.py                # LED RGB protocol (effects, packets, HID sender)
 ├── device_factory.py            # Protocol factory (SCSI/HID/LED routing)

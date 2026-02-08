@@ -32,7 +32,7 @@ These products are recognized by the Windows TRCC app and should work once HID s
 
 ### Full LCD Screen Products (Vision Series)
 
-These have a full pixel LCD (240x240 to 480x480) for custom themes, images, videos, and sensor overlays.
+These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, videos, and sensor overlays.
 
 | Product | Chinese Name |
 |---------|-------------|

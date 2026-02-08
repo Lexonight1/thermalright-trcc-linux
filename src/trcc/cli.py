@@ -150,6 +150,9 @@ Examples:
     # Uninstall command
     subparsers.add_parser("uninstall", help="Remove all TRCC config, udev rules, and autostart files")
 
+    # HID debug command
+    subparsers.add_parser("hid-debug", help="HID handshake diagnostic (hex dump for bug reports)")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -190,6 +193,8 @@ Examples:
         return resume()
     elif args.command == "uninstall":
         return uninstall()
+    elif args.command == "hid-debug":
+        return hid_debug()
     elif args.command == "download":
         return download_themes(pack=args.pack, show_list=args.list,
                               force=args.force, show_info=args.info)
@@ -540,6 +545,107 @@ def show_info():
         return 0
     except Exception as e:
         print(f"Error getting metrics: {e}")
+        return 1
+
+
+def hid_debug():
+    """HID handshake diagnostic — prints hex dump and resolved device info.
+
+    Users can share this output in bug reports to help debug HID device issues.
+    """
+    try:
+        from trcc.device_detector import detect_devices
+        from trcc.hid_device import (
+            FBL_TO_RESOLUTION, PM_TO_BUTTON_IMAGE,
+            fbl_to_resolution, pm_to_fbl,
+        )
+
+        print("HID Debug — Handshake Diagnostic")
+        print("=" * 60)
+
+        devices = detect_devices()
+        hid_devices = [d for d in devices if d.protocol == 'hid']
+
+        if not hid_devices:
+            print("\nNo HID devices found.")
+            print("Make sure the device is plugged in and try:")
+            print("  trcc setup-udev   (then unplug/replug USB cable)")
+            return 0
+
+        for dev in hid_devices:
+            print(f"\nDevice: {dev.vendor_name} {dev.product_name}")
+            print(f"  VID:PID = {dev.vid:04x}:{dev.pid:04x}")
+            print(f"  Type = {dev.device_type}")
+            print(f"  Implementation = {dev.implementation}")
+
+            # Attempt handshake
+            print(f"\n  Attempting handshake...")
+            try:
+                from trcc.device_factory import HidProtocol
+                protocol = HidProtocol(
+                    vid=dev.vid, pid=dev.pid,
+                    device_type=dev.device_type,
+                )
+                info = protocol.handshake()
+                if info is None:
+                    print("  Handshake returned None (protocol error)")
+                    protocol.close()
+                    continue
+
+                pm = info.mode_byte_1
+                sub = info.mode_byte_2
+                fbl = info.fbl if info.fbl is not None else pm_to_fbl(pm, sub)
+                resolution = info.resolution or fbl_to_resolution(fbl, pm)
+
+                print(f"  Handshake OK!")
+                print(f"  PM byte  = {pm} (0x{pm:02x})")
+                print(f"  SUB byte = {sub} (0x{sub:02x})")
+                print(f"  FBL      = {fbl} (0x{fbl:02x})")
+                print(f"  Serial   = {info.serial}")
+                print(f"  Resolution = {resolution[0]}x{resolution[1]}")
+
+                # Button image from PM
+                button = PM_TO_BUTTON_IMAGE.get(pm)
+                if button:
+                    print(f"  Button image = {button}")
+                else:
+                    print(f"  Button image = unknown PM={pm} (defaulting to CZTV)")
+
+                # Known FBL?
+                if fbl in FBL_TO_RESOLUTION:
+                    print(f"  FBL {fbl} = known resolution")
+                else:
+                    print(f"  FBL {fbl} = UNKNOWN (not in mapping table)")
+
+                # Raw response hex dump
+                if info.raw_response:
+                    print(f"\n  Raw handshake response (first 64 bytes):")
+                    raw = info.raw_response
+                    for row in range(0, min(len(raw), 64), 16):
+                        hex_str = ' '.join(f'{b:02x}' for b in raw[row:row+16])
+                        ascii_str = ''.join(
+                            chr(b) if 32 <= b < 127 else '.'
+                            for b in raw[row:row+16]
+                        )
+                        print(f"  {row:04x}: {hex_str:<48s} {ascii_str}")
+
+                protocol.close()
+
+            except ImportError as e:
+                print(f"  Missing dependency: {e}")
+                print("  Install: pip install pyusb  (or pip install hidapi)")
+            except Exception as e:
+                print(f"  Handshake FAILED: {e}")
+                print(f"  (This error is what causes 'Send failed' in the GUI)")
+
+        print(f"\n{'=' * 60}")
+        print("Copy the output above and paste it in your GitHub issue.")
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 

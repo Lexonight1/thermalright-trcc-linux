@@ -876,7 +876,10 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_send_complete(self, success: bool):
         """Handle LCD send completion."""
-        self.uc_preview.set_status("Sent to LCD" if success else "Send failed")
+        if success:
+            self.uc_preview.set_status("Sent to LCD")
+        else:
+            self.uc_preview.set_status("Send failed — run 'trcc hid-debug' for details")
 
     def _on_video_loaded(self, state):
         """Handle video loaded - show controls."""

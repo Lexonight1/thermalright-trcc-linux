@@ -157,8 +157,8 @@ If this project helped you, consider buying me a coffee:
 - **Media** — Video/GIF playback, video trimmer, image cropper, screen cast (X11 + Wayland)
 - **Editor** — Overlay text/sensors/date/time, font picker, dynamic scaling, eyedropper
 - **Hardware** — 77+ sensors, customizable dashboard, multi-device with per-device config, RGB LED control
-- **Display** — 4 resolutions, 0/90/180/270 rotation, 3 brightness levels
-- **Extras** — 5 starter themes + 120 masks per resolution, 8 languages, system tray, auto-start
+- **Display** — 15 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels
+- **Extras** — 5 starter themes + 120 masks per resolution, on-demand theme download, 8 languages, system tray, auto-start
 
 ## Usage
 
@@ -168,6 +168,7 @@ trcc detect               # Show connected devices
 trcc send image.png       # Send image to LCD
 trcc test                 # Color cycle test
 trcc download themes-320  # Download cloud themes
+trcc hid-debug            # HID handshake diagnostic
 ```
 
 ## Documentation
