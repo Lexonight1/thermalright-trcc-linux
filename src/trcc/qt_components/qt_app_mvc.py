@@ -40,6 +40,7 @@ from ..core import (
     ThemeInfo,
     create_controller,
 )
+from ..core.controllers import FormLEDController
 from ..dc_writer import CarouselConfig, read_carousel_config, write_carousel_config
 from ..paths import (
     device_config_key,
@@ -61,6 +62,7 @@ from .uc_activity_sidebar import UCActivitySidebar
 from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
 from .uc_info_module import UCInfoModule
+from .uc_led_control import UCLedControl
 from .uc_preview import UCPreview
 from .uc_system_info import UCSystemInfo
 from .uc_theme_local import UCThemeLocal
@@ -168,6 +170,14 @@ class TRCCMainWindowMVC(QMainWindow):
         self._slideshow_timer = QTimer(self)
         self._slideshow_timer.timeout.connect(self._on_slideshow_tick)
         self._slideshow_index = 0
+
+        # LED animation timer (30ms for LED effect ticks, matches FormLED timer1)
+        self._led_timer = QTimer(self)
+        self._led_timer.timeout.connect(self._on_led_tick)
+
+        # LED controller (lazy — created on first LED device selection)
+        self._led_controller: FormLEDController | None = None
+        self._led_active = False
 
         # Language for localized backgrounds
         self._lang = detect_language()
@@ -364,6 +374,11 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_system_info.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_system_info.setVisible(False)
 
+        # === LED Control panel (hidden, shown when LED device is selected) ===
+        self.uc_led_control = UCLedControl(central)
+        self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
+        self.uc_led_control.setVisible(False)
+
         # Initialize theme directories
         self._init_theme_directories()
 
@@ -400,19 +415,25 @@ class TRCCMainWindowMVC(QMainWindow):
             btn.setChecked(i == active_btn)
 
     def _show_view(self, view: str):
-        """Switch between the three content views.
+        """Switch between the four content views.
 
         Args:
-            view: 'form' (device/themes), 'about' (control center), or 'sysinfo' (dashboard)
+            view: 'form' (device/themes), 'about' (control center),
+                  'sysinfo' (dashboard), or 'led' (LED control)
         """
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')
+        self.uc_led_control.setVisible(view == 'led')
 
         if view == 'sysinfo':
             self.uc_system_info.start_updates()
         else:
             self.uc_system_info.stop_updates()
+
+        # Stop LED timer when leaving LED view
+        if view != 'led' and self._led_active:
+            self._stop_led_view()
 
     def _show_about(self):
         """Show the About / Control Center panel."""
@@ -651,6 +672,9 @@ class TRCCMainWindowMVC(QMainWindow):
         # Sync about panel
         self.uc_about.set_language(lang)
 
+        # Sync LED panel
+        self.uc_led_control.set_language(lang)
+
     def _init_theme_directories(self):
         """Initialize theme browser directories."""
         w, h = self.controller.lcd_width, self.controller.lcd_height
@@ -881,7 +905,7 @@ class TRCCMainWindowMVC(QMainWindow):
         # Sidebar navigation
         self.uc_device.home_clicked.connect(self._show_system_info)
         self.uc_device.about_clicked.connect(self._show_about)
-        self.uc_device.device_selected.connect(lambda _: self._show_form())
+        # Note: _on_device_widget_clicked handles routing to form vs LED view
         self.uc_about.close_requested.connect(self._show_form)
         self.uc_about.language_changed.connect(self.set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
@@ -889,7 +913,11 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
 
     def _on_device_widget_clicked(self, device_info: dict):
-        """Forward device selection to controller."""
+        """Forward device selection to controller.
+
+        Routes to LED panel for LED devices, LCD form for everything else.
+        """
+        implementation = device_info.get('implementation', 'generic')
         device = DeviceInfo(
             name=device_info.get('name', 'LCD'),
             path=device_info.get('path', ''),
@@ -898,8 +926,19 @@ class TRCCMainWindowMVC(QMainWindow):
             vid=device_info.get('vid', 0),
             pid=device_info.get('pid', 0),
             device_index=device_info.get('device_index', 0),
+            protocol=device_info.get('protocol', 'scsi'),
+            device_type=device_info.get('device_type', 1),
+            implementation=implementation,
         )
-        self.controller.devices.select_device(device)
+
+        if implementation == 'hid_led':
+            self._show_led_view(device)
+        else:
+            # Stop LED mode if switching from LED to LCD device
+            if self._led_active:
+                self._stop_led_view()
+            self._show_view('form')
+            self.controller.devices.select_device(device)
 
     def _select_theme_from_path(self, path: Path):
         """Load a local/mask theme by directory path.
@@ -1507,6 +1546,96 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_preview.set_image(pil_img)
         self.controller._send_frame_to_lcd(pil_img)
 
+    # =========================================================================
+    # LED Device View
+    # =========================================================================
+
+    def _show_led_view(self, device: DeviceInfo):
+        """Show the LED control panel for an LED device.
+
+        Creates FormLEDController if needed, configures for device,
+        wires signals, and starts the 30ms animation timer.
+
+        Matches Windows: Form1 routes device1 to FormLED, not FormCZTV.
+        """
+        # Stop LCD timers
+        self._animation_timer.stop()
+        self._slideshow_timer.stop()
+        self._screencast_timer.stop()
+        self._screencast_active = False
+        self.controller.video.stop()
+
+        # Create controller on first use
+        if self._led_controller is None:
+            self._led_controller = FormLEDController()
+            self._connect_led_signals()
+
+        # Determine style (default style 1 for AX120_DIGITAL)
+        from ..led_device import PM_TO_STYLE, LED_STYLES
+        # Try to get style from device model name
+        led_style = 1
+        model = device.model or ''
+        for style_id, style in LED_STYLES.items():
+            if style.model_name == model:
+                led_style = style_id
+                break
+
+        # Initialize controller for this device
+        self._led_controller.initialize(device, led_style)
+
+        # Configure UI panel
+        style = LED_STYLES.get(led_style)
+        if style:
+            self.uc_led_control.initialize(
+                led_style, style.segment_count, style.zone_count, self._lang
+            )
+
+        # Show LED panel
+        self._show_view('led')
+        self._led_active = True
+
+        # Start LED animation timer (30ms = FormLED timer1 interval)
+        self._led_timer.start(30)
+
+    def _stop_led_view(self):
+        """Stop LED mode — save config, stop timer, release protocol."""
+        self._led_timer.stop()
+        self._led_active = False
+        if self._led_controller:
+            self._led_controller.cleanup()
+
+    def _connect_led_signals(self):
+        """Wire UCLedControl signals to FormLEDController."""
+        if not self._led_controller:
+            return
+
+        ctrl = self._led_controller
+
+        # Mode/color/brightness → controller
+        self.uc_led_control.mode_changed.connect(
+            lambda mode: ctrl.led.set_mode(mode))
+        self.uc_led_control.color_changed.connect(
+            lambda r, g, b: ctrl.led.set_color(r, g, b))
+        self.uc_led_control.brightness_changed.connect(
+            lambda val: ctrl.led.set_brightness(val))
+        self.uc_led_control.global_toggled.connect(
+            lambda on: ctrl.led.toggle_global(on))
+        self.uc_led_control.segment_clicked.connect(
+            lambda idx: ctrl.led.toggle_segment(idx, not ctrl.led.model.state.segment_on[idx]))
+
+        # Controller → view (preview colors)
+        ctrl.led.on_preview_update = self._on_led_colors_update
+        ctrl.on_status_update = lambda text: self.uc_led_control.set_status(text)
+
+    def _on_led_tick(self):
+        """Called every 30ms — advance LED animation and send to device."""
+        if self._led_controller and self._led_active:
+            self._led_controller.led.tick()
+
+    def _on_led_colors_update(self, colors):
+        """Forward computed LED colors to the preview widget."""
+        self.uc_led_control.set_led_colors(colors)
+
     def _on_capture_requested(self):
         """Launch screen capture overlay → feed to image cutter."""
         from .screen_capture import ScreenCaptureOverlay
@@ -1568,7 +1697,7 @@ class TRCCMainWindowMVC(QMainWindow):
     # =========================================================================
 
     def _on_device_poll(self):
-        """Poll for LCD device connections."""
+        """Poll for LCD and LED device connections."""
         try:
             from ..scsi_device import find_lcd_devices
             devices = find_lcd_devices()
@@ -1577,8 +1706,9 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_device.update_devices(devices)
 
             # Auto-select first device if none selected
-            if devices and not self.controller.devices.get_selected():
+            if devices and not self.controller.devices.get_selected() and not self._led_active:
                 d = devices[0]
+                implementation = d.get('implementation', 'generic')
                 device = DeviceInfo(
                     name=d.get('name', 'LCD'),
                     path=d.get('path', ''),
@@ -1589,9 +1719,15 @@ class TRCCMainWindowMVC(QMainWindow):
                     vid=d.get('vid', 0),
                     pid=d.get('pid', 0),
                     device_index=d.get('device_index', 0),
+                    protocol=d.get('protocol', 'scsi'),
+                    device_type=d.get('device_type', 1),
+                    implementation=implementation,
                 )
-                self.controller.devices.select_device(device)
-                self.uc_preview.set_status(f"Device: {device.path}")
+                if implementation == 'hid_led':
+                    self._show_led_view(device)
+                else:
+                    self.controller.devices.select_device(device)
+                    self.uc_preview.set_status(f"Device: {device.path}")
         except (ImportError, Exception):
             pass
 
@@ -1708,6 +1844,9 @@ class TRCCMainWindowMVC(QMainWindow):
         self._stop_pipewire()
         self._metrics_timer.stop()
         self._device_timer.stop()
+        self._led_timer.stop()
+        if self._led_controller:
+            self._led_controller.cleanup()
         self.uc_system_info.stop_updates()
         self.uc_info_module.stop_updates()
         self.uc_activity_sidebar.stop_updates()

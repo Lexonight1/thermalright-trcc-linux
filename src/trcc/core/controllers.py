@@ -188,6 +188,22 @@ class DeviceController:
         if self.on_send_complete:
             self.on_send_complete(success)
 
+    def get_protocol_info(self):
+        """Get protocol/backend info for the selected device.
+
+        Returns a ProtocolInfo dataclass the GUI can read to display
+        what protocol (SCSI or HID) and backend (sg_raw, pyusb, hidapi)
+        the current device is using.
+
+        Returns:
+            ProtocolInfo (from device_factory) or None on import error.
+        """
+        try:
+            from ..device_factory import get_protocol_info
+            return get_protocol_info(self.model.selected_device)
+        except ImportError:
+            return None
+
 
 class VideoController:
     """
@@ -625,13 +641,22 @@ class FormCZTVController:
         bg_path = self.working_dir / '00.png'
         zt_path = self.working_dir / 'Theme.zt'
         if theme.is_animated and theme.animation_path:
-            self.video.load(theme.animation_path)
+            # Use working dir copy if available (copied by _copy_theme_to_working_dir)
+            wd_copy = self.working_dir / Path(theme.animation_path).name
+            load_path = wd_copy if wd_copy.exists() else theme.animation_path
+            self.video.load(load_path)
             self.video.play()
         elif zt_path.exists():
             self.video.load(zt_path)
             self.video.play()
         elif bg_path.exists():
-            self._load_static_image(bg_path)
+            # Check for MP4 in working dir (fallback for saved cloud themes)
+            mp4_files = list(self.working_dir.glob('*.mp4'))
+            if mp4_files:
+                self.video.load(mp4_files[0])
+                self.video.play()
+            else:
+                self._load_static_image(bg_path)
         elif theme.is_mask_only:
             self._create_mask_background(theme)
 
@@ -1079,6 +1104,247 @@ class FormCZTVController:
         print(f"[!] {message}")
         if self.on_error:
             self.on_error(message)
+
+
+# =============================================================================
+# LED Controller (FormLED equivalent)
+# =============================================================================
+
+class LEDController:
+    """Controller for LED state and device communication.
+
+    Owns LEDModel, provides methods views call, emits callbacks.
+    Pattern follows DeviceController/VideoController.
+
+    The controller owns the LED model and manages:
+    - Mode/color/brightness changes (forwarded to model)
+    - Timer ticks (advances animation, sends to device, updates preview)
+    - Protocol communication (via LedProtocol from factory)
+    """
+
+    def __init__(self):
+        from .models import LEDModel, LEDMode
+        self.model = LEDModel()
+
+        # View callbacks
+        self.on_state_changed: Optional[Callable] = None
+        self.on_preview_update: Optional[Callable] = None
+        self.on_send_complete: Optional[Callable[[bool], None]] = None
+
+        # Protocol (injected by FormLEDController)
+        self._protocol = None  # LedProtocol
+
+        # Wire model callbacks
+        self.model.on_state_changed = self._on_model_state_changed
+        self.model.on_colors_updated = self._on_model_colors_updated
+
+    def set_mode(self, mode) -> None:
+        """Set LED effect mode."""
+        self.model.set_mode(mode)
+
+    def set_color(self, r: int, g: int, b: int) -> None:
+        """Set global LED color."""
+        self.model.set_color(r, g, b)
+
+    def set_brightness(self, brightness: int) -> None:
+        """Set global brightness (0-100)."""
+        self.model.set_brightness(brightness)
+
+    def toggle_global(self, on: bool) -> None:
+        """Set global on/off."""
+        self.model.toggle_global(on)
+
+    def toggle_segment(self, index: int, on: bool) -> None:
+        """Toggle a single LED segment."""
+        self.model.toggle_segment(index, on)
+
+    def set_zone_mode(self, zone: int, mode) -> None:
+        """Set mode for a specific zone."""
+        self.model.set_zone_mode(zone, mode)
+
+    def set_zone_color(self, zone: int, r: int, g: int, b: int) -> None:
+        """Set color for a specific zone."""
+        self.model.set_zone_color(zone, r, g, b)
+
+    def update_metrics(self, metrics: Dict) -> None:
+        """Update sensor metrics for temp/load-linked modes."""
+        self.model.update_metrics(metrics)
+
+    def configure_for_style(self, style_id: int) -> None:
+        """Configure the model for a specific LED device style."""
+        self.model.configure_for_style(style_id)
+
+    def set_protocol(self, protocol) -> None:
+        """Inject the LedProtocol for device communication."""
+        self._protocol = protocol
+
+    def tick(self) -> None:
+        """Called by timer. Advances animation and sends to device.
+
+        This is the main loop — called every ~30ms by the GUI timer.
+        Computes new LED colors, sends to hardware, updates preview.
+        """
+        colors = self.model.tick()
+
+        if colors and self._protocol:
+            is_on = self.model.state.segment_on
+            global_on = self.model.state.global_on
+            brightness = self.model.state.brightness
+            try:
+                success = self._protocol.send_led_data(
+                    colors, is_on, global_on, brightness
+                )
+                if self.on_send_complete:
+                    self.on_send_complete(success)
+            except Exception:
+                pass
+
+    def _on_model_state_changed(self, state) -> None:
+        """Forward model state changes to view."""
+        if self.on_state_changed:
+            self.on_state_changed(state)
+
+    def _on_model_colors_updated(self, colors) -> None:
+        """Forward computed colors to view for preview."""
+        if self.on_preview_update:
+            self.on_preview_update(colors)
+
+
+class FormLEDController:
+    """Main LED controller (parallels FormCZTVController for LCD).
+
+    Coordinates LEDController with DeviceController.
+    Created when an LED device is selected; cleaned up when switching away.
+
+    Manages:
+    - LED state initialization from device handshake
+    - Config persistence (save/load LED settings per device)
+    - System info collection for sensor-linked modes
+    """
+
+    def __init__(self):
+        self.led = LEDController()
+
+        # Device info (set during initialize)
+        self._device_info = None
+        self._device_key: Optional[str] = None
+        self._led_style: int = 1
+
+        # View callbacks
+        self.on_status_update: Optional[Callable[[str], None]] = None
+
+    def initialize(self, device_info, led_style: int = 1) -> None:
+        """Initialize for a specific LED device.
+
+        Args:
+            device_info: DeviceInfo from device detection.
+            led_style: LED style (from handshake pm or config).
+        """
+        from ..paths import device_config_key
+
+        self._device_info = device_info
+        self._led_style = led_style
+        self._device_key = device_config_key(
+            getattr(device_info, 'device_index', 0),
+            device_info.vid,
+            device_info.pid,
+        )
+
+        # Configure model for device style
+        self.led.configure_for_style(led_style)
+
+        # Create protocol and inject
+        try:
+            from ..device_factory import DeviceProtocolFactory
+            protocol = DeviceProtocolFactory.get_protocol(device_info)
+            self.led.set_protocol(protocol)
+        except Exception as e:
+            if self.on_status_update:
+                self.on_status_update(f"LED protocol error: {e}")
+
+        # Load saved config
+        self.load_config()
+
+        if self.on_status_update:
+            from ..led_device import LED_STYLES
+            style = LED_STYLES.get(led_style)
+            name = style.model_name if style else f"Style {led_style}"
+            self.on_status_update(f"LED: {name} ({style.led_count} LEDs)")
+
+    def save_config(self) -> None:
+        """Persist LED state to per-device config."""
+        if not self._device_key:
+            return
+        try:
+            from ..paths import save_device_setting
+            from .models import LEDMode
+
+            state = self.led.model.state
+            config = {
+                'mode': state.mode.value,
+                'color': list(state.color),
+                'brightness': state.brightness,
+                'global_on': state.global_on,
+                'segments_on': state.segment_on,
+                'temp_source': state.temp_source,
+                'load_source': state.load_source,
+            }
+            if state.zones:
+                config['zones'] = [
+                    {
+                        'mode': z.mode.value,
+                        'color': list(z.color),
+                        'brightness': z.brightness,
+                        'on': z.on,
+                    }
+                    for z in state.zones
+                ]
+            save_device_setting(self._device_key, 'led_config', config)
+        except Exception as e:
+            print(f"[!] Failed to save LED config: {e}")
+
+    def load_config(self) -> None:
+        """Restore LED state from per-device config."""
+        if not self._device_key:
+            return
+        try:
+            from ..paths import get_device_config
+            from .models import LEDMode, LEDZoneState
+
+            dev_config = get_device_config(self._device_key)
+            led_config = dev_config.get('led_config', {})
+            if not led_config:
+                return
+
+            state = self.led.model.state
+            if 'mode' in led_config:
+                state.mode = LEDMode(led_config['mode'])
+            if 'color' in led_config:
+                state.color = tuple(led_config['color'])
+            if 'brightness' in led_config:
+                state.brightness = led_config['brightness']
+            if 'global_on' in led_config:
+                state.global_on = led_config['global_on']
+            if 'segments_on' in led_config:
+                state.segment_on = led_config['segments_on']
+            if 'temp_source' in led_config:
+                state.temp_source = led_config['temp_source']
+            if 'load_source' in led_config:
+                state.load_source = led_config['load_source']
+            if 'zones' in led_config and state.zones:
+                for i, z_config in enumerate(led_config['zones']):
+                    if i < len(state.zones):
+                        state.zones[i].mode = LEDMode(z_config.get('mode', 0))
+                        state.zones[i].color = tuple(z_config.get('color', (255, 0, 0)))
+                        state.zones[i].brightness = z_config.get('brightness', 100)
+                        state.zones[i].on = z_config.get('on', True)
+        except Exception as e:
+            print(f"[!] Failed to load LED config: {e}")
+
+    def cleanup(self) -> None:
+        """Save config and release resources."""
+        self.save_config()
+        self.led.set_protocol(None)
 
 
 # =============================================================================

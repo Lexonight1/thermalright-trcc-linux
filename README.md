@@ -30,16 +30,13 @@ Bus 001 Device 008: ID 0416:5302 Winbond Electronics Corp. USBDISPLAY
 Match it to the tables below.
 
 **SCSI devices** — fully supported:
-
 | USB ID | Devices |
 |--------|---------|
 | `87CD:70DB` | FROZEN HORIZON PRO, FROZEN MAGIC PRO, FROZEN VISION V2, CORE VISION, ELITE VISION, AK120, AX120, PA120 DIGITAL, Wonder Vision |
 | `0416:5406` | LC1, LC2, LC3, LC5 (AIO pump heads) |
 | `0402:3922` | FROZEN WARFRAME, FROZEN WARFRAME SE |
 
-Resolutions: 240x240, 320x320, 480x480, 640x480
-
-**HID devices** — on [`hid-protocol-testing`](https://github.com/Lexonight1/thermalright-trcc-linux/tree/hid-protocol-testing) branch (187 tests, CI passing), testers wanted:
+**HID LCD devices** — on [`hid-protocol-testing`](https://github.com/Lexonight1/thermalright-trcc-linux/tree/hid-protocol-testing) branch (563 tests, CI passing), testers wanted:
 
 | USB ID | Devices |
 |--------|---------|
@@ -47,11 +44,13 @@ Resolutions: 240x240, 320x320, 480x480, 640x480
 | `0418:5303` | TARAN ARMS |
 | `0418:5304` | TARAN ARMS |
 
-> **HID device?** Install from the testing branch instead:
-> ```bash
-> git clone -b hid-protocol-testing https://github.com/Lexonight1/thermalright-trcc-linux.git
-> ```
-> Already have stable? Switch with: `git fetch origin && git checkout hid-protocol-testing`
+**HID LED devices** — RGB LED control on [`hid-protocol-testing`](https://github.com/Lexonight1/thermalright-trcc-linux/tree/hid-protocol-testing) branch, testers wanted:
+
+| USB ID | Devices |
+|--------|---------|
+| `0416:5302` | AX120 DIGITAL (LED mode) |
+
+> **HID device?** See the **[HID Testing Guide](doc/HID_TESTING.md)** — I don't have one of these devices, so I need testers.
 
 ## Install
 
@@ -155,7 +154,7 @@ If this project helped you, consider buying me a coffee:
 - **Themes** — Local, cloud, masks, carousel mode, export/import as `.tr` files
 - **Media** — Video/GIF playback, video trimmer, image cropper, screen cast (X11 + Wayland)
 - **Editor** — Overlay text/sensors/date/time, font picker, dynamic scaling, eyedropper
-- **Hardware** — 77+ sensors, customizable dashboard, multi-device with per-device config
+- **Hardware** — 77+ sensors, customizable dashboard, multi-device with per-device config, RGB LED control
 - **Display** — 4 resolutions, 0/90/180/270 rotation, 3 brightness levels
 - **Extras** — 5 starter themes + 120 masks per resolution, 8 languages, system tray, auto-start
 
@@ -178,7 +177,7 @@ trcc download themes-320  # Download cloud themes
 | [Changelog](doc/CHANGELOG.md) | Version history |
 | [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/TECHNICAL_REFERENCE.md) | SCSI protocol and file formats |
-| [HID Testing Guide](https://github.com/Lexonight1/thermalright-trcc-linux/blob/hid-protocol-testing/doc/HID_TESTING.md) | HID device support (testers wanted) |
+| [HID Testing Guide](doc/HID_TESTING.md) | HID device support (testers wanted) |
 
 ## License
 

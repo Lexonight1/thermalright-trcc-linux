@@ -20,10 +20,13 @@ src/trcc/
 ├── theme_downloader.py          # Theme pack download manager
 ├── theme_io.py                  # Theme export/import (.tr format)
 ├── paths.py                     # XDG paths, per-device config, .7z extraction, cross-distro helpers
+├── hid_device.py                # HID USB transport (PyUSB/HIDAPI) for LCD and LED devices
+├── led_device.py                # LED RGB protocol (effects, packet builder, HID sender)
+├── device_factory.py            # Protocol factory (SCSI/HID/LED routing by PID)
 ├── __version__.py               # Version info
 ├── core/
 │   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
-│   └── controllers.py           # GUI-independent MVC controllers
+│   └── controllers.py           # FormCZTVController, FormLEDController, MVC controllers
 └── qt_components/
     ├── qt_app_mvc.py            # Main window (1454x800)
     ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
@@ -43,6 +46,7 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
+    ├── uc_led_control.py        # LED RGB control panel
     ├── uc_activity_sidebar.py   # Sensor element picker
     └── uc_about.py              # Settings / about panel
 ```
@@ -75,6 +79,16 @@ All platform-specific helpers are centralized in `paths.py`:
 - **`find_scsi_devices()`** — dynamic sysfs scan of `/sys/class/scsi_generic/`
 - **`FONT_SEARCH_DIRS`** — 20+ font directories covering Fedora, Debian/Ubuntu, Arch, Void, Alpine, openSUSE, NixOS, Guix, and more
 - **`FONTS_DIR`** — bundled fonts fallback in `src/assets/fonts/`
+
+### Device Protocol Routing
+
+The `DeviceProtocolFactory` in `device_factory.py` routes devices to the correct protocol based on PID and implementation type:
+
+- **SCSI devices** → `ScsiProtocol` (sg_raw) — LCD displays
+- **HID LCD devices** → `HidProtocol` (PyUSB/HIDAPI) — LCD displays via HID
+- **HID LED devices** → `LedProtocol` (PyUSB/HIDAPI) — RGB LED controllers
+
+The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `FormLEDController` manages LED effects with a 30ms animation timer, matching Windows FormLED.
 
 ### Theme Archives
 

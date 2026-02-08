@@ -31,7 +31,9 @@ Semantic versioning: MAJOR.MINOR.PATCH
 
 ## Test Suite
 
-**1209 tests** across 21 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
+**1777 tests** across 27 test files — **96% coverage** on non-Qt backend (4696 stmts, 121 miss, 1462 branches, 144 partial)
+
+CI runs on `main`, `stable`, and `hid-protocol-testing` branches (Python 3.10, 3.11, 3.12).
 
 Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
 
@@ -61,8 +63,13 @@ Run per-module: `pytest tests/test_X.py --cov=trcc.X --cov-report=term-missing`
 | test_qt_constants | qt_components/constants | 25 | 100% |
 | test_qt_base | qt_components/base | 27 | 83% |
 | test_qt_widgets | qt_components widgets+assets | 44 | varies |
+| test_hid_device | hid_device (HID protocol) | 114 | — |
+| test_device_factory | device_factory (HID routing) | 73 | — |
+| test_led_device | led_device (LED protocol) | 245 | — |
+| test_led_controller | led_controller (FormLED) | 131 | — |
 
 Qt tests require `QT_QPA_PLATFORM=offscreen` (headless, no display server).
+HID and LED tests (`tests/hid_testing/`) are on the `hid-protocol-testing` branch only.
 
 ### Testing Patterns & Gotchas
 
@@ -127,9 +134,12 @@ src/trcc/
 ├── theme_downloader.py     # Theme pack download manager
 ├── theme_io.py             # Theme export/import (.tr format)
 ├── paths.py                # XDG paths, per-device config, .7z extraction, cross-distro helpers
+├── hid_device.py           # HID USB transport (PyUSB/HIDAPI) for LCD and LED devices
+├── led_device.py           # LED RGB protocol (effects, packet builder, HID sender)
+├── device_factory.py       # Protocol factory (SCSI/HID/LED routing by PID)
 ├── core/
 │   ├── models.py           # ThemeInfo, DeviceInfo, VideoState, OverlayElement
-│   └── controllers.py      # FormCZTVController, ThemeController, DeviceController, etc.
+│   └── controllers.py      # FormCZTVController, FormLEDController, ThemeController, etc.
 └── qt_components/
     ├── qt_app_mvc.py       # Main MVC window (1454x800) - PRIMARY entry point
     ├── base.py             # BasePanel, ImageLabel, pil_to_pixmap, set_background_pixmap
@@ -144,6 +154,7 @@ src/trcc/
     ├── uc_image_cut.py     # Image cropper
     ├── uc_video_cut.py     # Video trimmer
     ├── uc_about.py         # Settings / about panel (auto-start, language, etc.)
+    ├── uc_led_control.py   # LED RGB control panel (mode/color/brightness)
     ├── uc_activity_sidebar.py  # Sensor element picker
     ├── uc_info_module.py   # Live system info display
     ├── uc_system_info.py   # System info dashboard
@@ -207,6 +218,12 @@ To regenerate archives: `python tools/pack_theme_archives.py`
 
 **Tab Buttons**: Button order (0=Local, 1=Mask, 2=Cloud, 3=Settings) differs from panel order (0=Local, 1=Cloud, 2=Mask, 3=Settings). Mapping: `{0:0, 1:2, 2:1, 3:3}`.
 
+**LED Device Routing**: When `UCDevice` detects an HID LED device (e.g. AX120 DIGITAL), `qt_app_mvc.py` routes to the LED view instead of the LCD form. `FormLEDController` manages LED effects via `LedProtocol` (device_factory.py). The LED timer ticks at 30ms (matching Windows FormLED timer1).
+
+**DC Config Round-Trip**: On save, `OverlayModel._dc_data` preserves the original parsed DC data so `save_theme()` can merge edits (position, color, font) onto original values instead of reconstructing from scratch. This preserves font_unit, font_charset, and raw font sizes through save cycles.
+
+**MP4 in Saved Themes**: `ThemeInfo.from_directory()` detects both `Theme.zt` and `.mp4` files. Cloud video themes copy their MP4 to the working dir; on save, the MP4 is included in the custom theme folder and detected on reload.
+
 ## Critical Rule: Reference Windows C# First
 
 **ALWAYS read the decompiled Windows C# code before implementing or debugging.** The Windows code is the source of truth.
@@ -227,6 +244,14 @@ To regenerate archives: `python tools/pack_theme_archives.py`
 | `ThemeMask` | 4374 | Mask delegate (cmd: 16=apply) |
 | `ThemeSetting` | 4422 | Settings panel commands |
 | `buttonBCZT_Click` | 5497 | Save theme (writes config1.dc) |
+
+### Key FormLED.cs Methods
+
+| Method | Purpose |
+|--------|---------|
+| `timer1_Tick` | 30ms animation tick → compute LED colors → send via HID |
+| `initHardware` | Handshake → read PM byte → resolve LED style |
+| `LedPacketBuilder` | Build 64-byte HID report from LED colors/brightness |
 
 ## Common Pitfalls
 
@@ -358,7 +383,8 @@ Prioritized list of remaining work:
 
 ### 2. ~~CI/CD~~ ✓ Done
 - GitHub Actions workflow in `.github/workflows/tests.yml`
-- pytest + pyright checks
+- pytest + pyright checks on Python 3.10, 3.11, 3.12
+- Runs on `main`, `stable`, and `hid-protocol-testing` branches
 
 ### 3. ~~Type Checking~~ ✓ Done
 - pyright basic mode: 0 errors across full codebase

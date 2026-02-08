@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, stable]
+    branches: [main, stable, hid-protocol-testing]
   pull_request:
     branches: [main]
 

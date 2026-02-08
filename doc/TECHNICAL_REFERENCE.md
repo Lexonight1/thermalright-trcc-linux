@@ -12,7 +12,23 @@ Linux port of the Thermalright TRCC application for controlling LCD displays on 
 | 0x0416 | 0x5406 | ALi Corp    | LCD Display       |
 | 0x0402 | 0x3922 | ALi Corp    | USB PRC System    |
 
-Devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
+SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
+
+### HID Devices (Testing Branch)
+
+| VID    | PID    | Protocol | Type | Notes |
+|--------|--------|----------|------|-------|
+| 0x0416 | 0x5302 | HID      | 2 (H)   | LCD display via HID bulk transfer |
+| 0x0418 | 0x5303 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
+| 0x0418 | 0x5304 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
+
+### HID LED Devices (Testing Branch)
+
+| VID    | PID    | Protocol | Type | Notes |
+|--------|--------|----------|------|-------|
+| 0x0416 | 0x5302 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL) |
+
+LED devices are distinguished from LCD HID devices by the `implementation` field (`hid_led`) set during device detection based on the Windows device model registry.
 
 ## Display Resolutions
 
@@ -96,6 +112,40 @@ RGB565 big-endian (2 bytes/pixel):
 pixel = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 ```
 
+## LED Protocol (HID 64-byte Reports)
+
+LED devices communicate via 64-byte HID reports (matching Windows FormLED).
+
+### Handshake
+
+The LED handshake reads a PM (product mode) byte from the device, which maps to an LED style:
+
+| PM | Style | Model | Segments | Zones |
+|----|-------|-------|----------|-------|
+| 1  | 1     | AX120 DIGITAL | 12 | 4 |
+
+### LED Packet Format
+
+```
+Byte 0:     Report ID (0x00)
+Byte 1:     Command (0xA0 = LED data)
+Byte 2:     Global on/off (0x01 = on, 0x00 = off)
+Byte 3:     Brightness (0-100)
+Bytes 4-N:  Per-LED data: [R, G, B, on/off] × segment_count
+```
+
+### LED Effect Modes
+
+| Mode | Name | Description |
+|------|------|-------------|
+| 0 | Static | Solid color on all segments |
+| 1 | Breathing | Fade in/out cycle |
+| 2 | Rainbow | Rotating hue across segments |
+| 3 | Cycle | Cycle through preset colors |
+| 4 | Wave | Color wave propagation |
+| 5 | Flash | Strobe effect |
+| 6 | Music | Reactive to audio input (stub) |
+
 ## Architecture
 
 ### Windows TRCC Architecture (Reference)
@@ -168,10 +218,13 @@ src/trcc/
 ├── theme_downloader.py          # Theme pack download manager
 ├── theme_io.py                  # Theme export/import (.tr format)
 ├── paths.py                     # XDG data/config, .7z archive extraction
+├── hid_device.py                # HID USB transport (PyUSB/HIDAPI)
+├── led_device.py                # LED RGB protocol (effects, packets, HID sender)
+├── device_factory.py            # Protocol factory (SCSI/HID/LED routing)
 ├── __version__.py               # Version info
 ├── core/
 │   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
-│   └── controllers.py           # GUI-independent MVC controllers
+│   └── controllers.py           # FormCZTVController, FormLEDController, MVC controllers
 └── qt_components/
     ├── qt_app_mvc.py            # Main window (1454x800)
     ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
@@ -191,6 +244,7 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
+    ├── uc_led_control.py        # LED RGB control panel
     ├── uc_activity_sidebar.py   # Sensor element picker
     └── uc_about.py              # Settings / about panel
 ```

@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """
-USB LCD Device Detector
-Finds Thermalright LCD devices and maps them to SCSI devices.
+USB LCD/LED Device Detector
+Finds Thermalright LCD and LED devices and maps them to SCSI or HID devices.
 
-Supported devices:
-- Thermalright: VID=0x87CD (34733), PID=0x70DB (28891)
-- ALi Corp:     VID=0x0416 (1046),  PID=0x5406 (21510)
+Supported devices (SCSI — stable):
+- Thermalright: VID=0x87CD, PID=0x70DB
+- Winbond:      VID=0x0416, PID=0x5406
+- ALi Corp:     VID=0x0402, PID=0x3922
+
+Supported devices (HID LCD — testing, requires hid-protocol-testing branch):
+- Winbond:      VID=0x0416, PID=0x5302  (Type 2)
+- ALi Corp:     VID=0x0418, PID=0x5303  (Type 3)
+- ALi Corp:     VID=0x0418, PID=0x5304  (Type 3)
+
+Supported devices (HID LED — RGB controllers, FormLED in Windows):
+- Winbond:      VID=0x0416, PID=0x8001  (64-byte reports)
 """
 
 import os
@@ -29,6 +38,8 @@ class DetectedDevice:
     implementation: str = "generic"  # Device-specific implementation
     model: str = "CZTV"  # Device model for button image lookup
     button_image: str = "A1CZTV"  # Button image prefix (without .png)
+    protocol: str = "scsi"  # "scsi" or "hid"
+    device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
 
 
 # Known LCD devices (SCSI/USB Mass Storage)
@@ -45,7 +56,7 @@ KNOWN_DEVICES = {
         "implementation": "thermalright_lcd_v1"
     },
     (0x0416, 0x5406): {
-        "vendor": "ALi Corp",
+        "vendor": "Winbond",
         "product": "LCD Display (USBLCD)",
         "model": "CZTV",
         "button_image": "A1CZTV",
@@ -59,14 +70,53 @@ KNOWN_DEVICES = {
         "button_image": "A1FROZEN_WARFRAME",
         "implementation": "ali_corp_lcd_v1"
     },
+    # HID devices from UCDevice.cs (TRCC 2.0.3 decompiled — decimal PIDs confirmed)
+    # device2: UsbHidDevice(1046, 21250) = 0x0416:0x5302, DA/DB/DC/DD handshake, 512-byte chunks
+    (0x0416, 0x5302): {
+        "vendor": "Winbond",
+        "product": "USBDISPLAY (HID)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "hid_type2",
+        "protocol": "hid",
+        "device_type": 2,
+    },
+    # device3: UsbHidDevice(1048, 21251) = 0x0418:0x5303, 64-byte packets
+    (0x0418, 0x5303): {
+        "vendor": "ALi Corp",
+        "product": "LCD Display (HID)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "hid_type3",
+        "protocol": "hid",
+        "device_type": 3,
+    },
+    # device4: UsbHidDevice(1048, 21252) = 0x0418:0x5304
+    (0x0418, 0x5304): {
+        "vendor": "ALi Corp",
+        "product": "LCD Display (HID)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "hid_type3",
+        "protocol": "hid",
+        "device_type": 3,
+    },
 }
 
-# USB HID devices (RGB controllers, etc.) - NOT LCD displays
-# These are separate devices that TRCC.exe also supports
-# VID=0x0416, PID=0x8001: RGB fan controllers (device1)
-# VID=0x0416, PID=0x5302: LCD/cooling controllers (device2)
-# VID=0x0418, PID=0x5303: Unknown variant (device3)
-# VID=0x0418, PID=0x5304: Unknown variant (device4)
+# LED HID devices (RGB controllers — FormLED in Windows, not FormCZTV)
+# These use 64-byte HID reports for LED color control, not LCD image display.
+# device1: UsbHidDevice(1046, 32769) = 0x0416:0x8001, 64-byte packets
+KNOWN_LED_DEVICES = {
+    (0x0416, 0x8001): {
+        "vendor": "Winbond",
+        "product": "LED Controller (HID)",
+        "model": "AX120_DIGITAL",
+        "button_image": "A1AX120_DIGITAL",
+        "implementation": "hid_led",
+        "protocol": "hid",
+        "device_type": 1,
+    },
+}
 
 
 def run_command(cmd: List[str]) -> str:
@@ -104,11 +154,12 @@ def find_usb_devices() -> List[DetectedDevice]:
         vid = int(vid_str, 16)
         pid = int(pid_str, 16)
 
-        # Check if this is a known LCD device
-        if (vid, pid) not in KNOWN_DEVICES:
+        # Check if this is a known LCD or LED device
+        all_devices = {**KNOWN_DEVICES, **KNOWN_LED_DEVICES}
+        if (vid, pid) not in all_devices:
             continue
 
-        device_info = KNOWN_DEVICES[(vid, pid)]
+        device_info = all_devices[(vid, pid)]
 
         # Get USB path
         usb_path = f"{int(bus)}-{device}"
@@ -121,7 +172,9 @@ def find_usb_devices() -> List[DetectedDevice]:
             usb_path=usb_path,
             implementation=device_info["implementation"],
             model=device_info.get("model", "CZTV"),
-            button_image=device_info.get("button_image", "A1CZTV")
+            button_image=device_info.get("button_image", "A1CZTV"),
+            protocol=device_info.get("protocol", "scsi"),
+            device_type=device_info.get("device_type", 1),
         ))
 
     return devices
@@ -375,7 +428,9 @@ def print_device_info(device: DetectedDevice):
     print(f"Device: {device.vendor_name} {device.product_name}")
     print(f"  USB VID:PID: {device.vid:04X}:{device.pid:04X}")
     print(f"  USB Path: {device.usb_path}")
-    print(f"  SCSI Device: {device.scsi_device or 'Not found'}")
+    print(f"  Protocol: {device.protocol.upper()} (type {device.device_type})")
+    if device.protocol == "scsi":
+        print(f"  SCSI Device: {device.scsi_device or 'Not found'}")
     print(f"  Model: {device.model}")
     print(f"  Button Image: {device.button_image}")
     print(f"  Implementation: {device.implementation}")

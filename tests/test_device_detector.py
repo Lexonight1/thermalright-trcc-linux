@@ -48,7 +48,7 @@ class TestDetectedDevice(unittest.TestCase):
         expected_fields = {
             'vid', 'pid', 'vendor_name', 'product_name',
             'usb_path', 'scsi_device', 'implementation',
-            'model', 'button_image'
+            'model', 'button_image', 'protocol', 'device_type'
         }
         self.assertEqual(field_names, expected_fields)
 
@@ -95,11 +95,11 @@ class TestKnownDevices(unittest.TestCase):
         self.assertEqual(device_info["vendor"], "Thermalright")
         self.assertEqual(device_info["implementation"], "thermalright_lcd_v1")
 
-    def test_ali_corp_device_in_known(self):
-        """Test ALi Corp device is in KNOWN_DEVICES."""
+    def test_winbond_device_in_known(self):
+        """Test Winbond device (0x0416:0x5406) is in KNOWN_DEVICES."""
         self.assertIn((0x0416, 0x5406), KNOWN_DEVICES)
         device_info = KNOWN_DEVICES[(0x0416, 0x5406)]
-        self.assertEqual(device_info["vendor"], "ALi Corp")
+        self.assertEqual(device_info["vendor"], "Winbond")
 
     def test_frozen_warframe_device_in_known(self):
         """Test FROZEN WARFRAME device is in KNOWN_DEVICES."""
@@ -182,14 +182,14 @@ class TestFindUsbDevices(unittest.TestCase):
         self.assertEqual(devices[0].implementation, "thermalright_lcd_v1")
 
     @patch('trcc.device_detector.run_command')
-    def test_ali_corp_device_found(self, mock_run):
-        """Test finding ALi Corp device via lsusb."""
-        mock_run.return_value = "Bus 001 Device 004: ID 0416:5406 ALi Corp LCD"
+    def test_winbond_device_found(self, mock_run):
+        """Test finding Winbond device (0x0416:0x5406) via lsusb."""
+        mock_run.return_value = "Bus 001 Device 004: ID 0416:5406 Winbond LCD"
         devices = find_usb_devices()
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].vid, 0x0416)
         self.assertEqual(devices[0].pid, 0x5406)
-        self.assertEqual(devices[0].vendor_name, "ALi Corp")
+        self.assertEqual(devices[0].vendor_name, "Winbond")
 
     @patch('trcc.device_detector.run_command')
     def test_frozen_warframe_device_found(self, mock_run):

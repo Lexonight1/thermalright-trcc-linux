@@ -2,6 +2,26 @@
 
 ## v1.1.3
 
+### LED RGB Control (`hid-protocol-testing` branch)
+- RGB LED control panel (FormLED equivalent) for HID LED devices (e.g. AX120 DIGITAL)
+- 7 LED effect modes: Static, Breathing, Rainbow, Cycle, Wave, Flash, Music
+- Per-segment and global on/off toggles, brightness slider, color picker
+- `LedProtocol` in device_factory.py routes LED devices separately from LCD HID
+- `FormLEDController` with tick-based animation loop (30ms, matching Windows timer1)
+- `led_device.py`: LED styles, packet builder, HID sender, effect engine
+- `uc_led_control.py`: PyQt6 LED control panel with segment grid and mode buttons
+- Device routing: sidebar auto-routes HID LED devices to LED view instead of LCD form
+- 376 new LED tests (245 led_device + 131 led_controller)
+
+### Save Custom Theme Fixes
+- Fixed font size DPI corruption on save — sizes no longer inflate each save cycle (36pt → 48pt → 64pt)
+- Fixed font charset lost on save — preserves GB2312 charset (134) instead of defaulting to 0
+- Fixed font style default — Regular (0) instead of Bold (1), matching Windows `new Font()` defaults
+- Lossless DC config round-trip: original parsed DC data preserved in `OverlayModel._dc_data` and merged on save instead of reconstructing from scratch
+- Cloud video themes now copy MP4 to working dir for inclusion in saved custom themes
+- `ThemeInfo.from_directory()` now detects `.mp4` files in theme directories (not just Theme.zt)
+- Saved custom themes with MP4 backgrounds properly reload as video on reopen
+
 ### Cross-Distro Compatibility
 - Centralized all platform-specific helpers in `paths.py` (single source of truth)
 - `require_sg_raw()` with install instructions for 8+ distro families (Fedora, Debian, Arch, openSUSE, Void, Alpine, Gentoo, NixOS)
@@ -12,7 +32,7 @@
 
 ### CI / Testing
 - Added `hid-protocol-testing` branch to GitHub Actions test workflow (Python 3.10, 3.11, 3.12)
-- 187 HID protocol tests (114 device protocol + 73 factory/routing) — total 1396 tests across all branches
+- 563 HID/LED tests (114 device protocol + 73 factory/routing + 245 LED device + 131 LED controller) — total 1777 tests across all branches
 - Fixed Python 3.12 `mock.patch` failure for optional `pynvml` import
 - Added `ruff` to dev dependencies for CI lint step
 
@@ -20,7 +40,7 @@
 - Added HID device PIDs (`0416:5302`, `0418:5303`, `0418:5304`) to supported devices
 - Split README device tables into SCSI (stable) and HID (testing) sections with USB IDs
 - Added `lsusb` example to help users identify their device
-- Created HID Testing Guide with install, switch, and reporting instructions
+- Created [HID Testing Guide](HID_TESTING.md) with install, switch, and reporting instructions
 - Added CI badge to README
 - Added [CLI Reference](CLI_REFERENCE.md) with all commands, options, and troubleshooting
 - Updated Documentation table on all branches

@@ -119,11 +119,11 @@ def _send_frame(dev: str, rgb565_data: bytes, width: int = 320, height: int = 32
 # =========================================================================
 
 def find_lcd_devices() -> List[Dict]:
-    """Detect connected LCD devices.
+    """Detect connected LCD devices (SCSI and HID).
 
     Returns:
         List of dicts with keys: name, path, resolution, vendor, product,
-        model, button_image
+        model, button_image, protocol, device_type, vid, pid
     """
     try:
         from .device_detector import detect_devices
@@ -134,32 +134,59 @@ def find_lcd_devices() -> List[Dict]:
     devices = []
 
     for dev in raw:
-        if not dev.scsi_device:
-            continue
+        protocol = getattr(dev, 'protocol', 'scsi')
+        device_type = getattr(dev, 'device_type', 1)
 
-        # Detect resolution via LCDDriver if possible
-        resolution = (320, 320)
-        try:
-            from .lcd_driver import LCDDriver
-            driver = LCDDriver(device_path=dev.scsi_device, auto_detect_resolution=True)
-            if driver.implementation:
-                resolution = driver.implementation.resolution
-        except Exception:
-            pass
+        if protocol == 'scsi':
+            # SCSI devices need a /dev/sgX path
+            if not dev.scsi_device:
+                continue
 
-        devices.append({
-            'name': f"{dev.vendor_name} {dev.product_name}",
-            'path': dev.scsi_device,
-            'resolution': resolution,
-            'vendor': dev.vendor_name,
-            'product': dev.product_name,
-            'model': dev.model,
-            'button_image': dev.button_image,
-            'vid': dev.vid,
-            'pid': dev.pid,
-        })
+            # Detect resolution via LCDDriver if possible
+            resolution = (320, 320)
+            try:
+                from .lcd_driver import LCDDriver
+                driver = LCDDriver(device_path=dev.scsi_device, auto_detect_resolution=True)
+                if driver.implementation:
+                    resolution = driver.implementation.resolution
+            except Exception:
+                pass
 
-    # Sort by SCSI device path for stable ordinal assignment
+            devices.append({
+                'name': f"{dev.vendor_name} {dev.product_name}",
+                'path': dev.scsi_device,
+                'resolution': resolution,
+                'vendor': dev.vendor_name,
+                'product': dev.product_name,
+                'model': dev.model,
+                'button_image': dev.button_image,
+                'vid': dev.vid,
+                'pid': dev.pid,
+                'protocol': 'scsi',
+                'device_type': 1,
+                'implementation': dev.implementation,
+            })
+        elif protocol == 'hid':
+            # HID devices use USB VID:PID directly (no SCSI path)
+            # Path is a synthetic identifier for the factory
+            hid_path = f"hid:{dev.vid:04x}:{dev.pid:04x}"
+
+            devices.append({
+                'name': f"{dev.vendor_name} {dev.product_name}",
+                'path': hid_path,
+                'resolution': (320, 320),  # Will be updated after HID handshake
+                'vendor': dev.vendor_name,
+                'product': dev.product_name,
+                'model': dev.model,
+                'button_image': dev.button_image,
+                'vid': dev.vid,
+                'pid': dev.pid,
+                'protocol': 'hid',
+                'device_type': device_type,
+                'implementation': dev.implementation,
+            })
+
+    # Sort by path for stable ordinal assignment
     devices.sort(key=lambda d: d['path'])
     for i, d in enumerate(devices):
         d['device_index'] = i
