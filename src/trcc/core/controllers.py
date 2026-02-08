@@ -1235,6 +1235,12 @@ class LEDController:
         # Protocol (injected by FormLEDController)
         self._protocol = None  # LedProtocol
 
+        # HR10 display state (style 13 — 7-segment digit rendering)
+        self._hr10_mode = False
+        self._hr10_display_text = "---"
+        self._hr10_indicators: set = {'deg'}
+        self._hr10_mask: Optional[List[bool]] = None
+
         # Wire model callbacks
         self.model.on_state_changed = self._on_model_state_changed
         self.model.on_colors_updated = self._on_model_colors_updated
@@ -1274,31 +1280,83 @@ class LEDController:
     def configure_for_style(self, style_id: int) -> None:
         """Configure the model for a specific LED device style."""
         self.model.configure_for_style(style_id)
+        self._hr10_mode = (style_id == 13)
+        if self._hr10_mode:
+            self._update_hr10_mask()
 
     def set_protocol(self, protocol) -> None:
         """Inject the LedProtocol for device communication."""
         self._protocol = protocol
+
+    def set_display_value(self, text: str, indicators: Optional[set] = None) -> None:
+        """Set the HR10 7-segment display value.
+
+        Called by the HR10 panel when the displayed metric changes.
+
+        Args:
+            text: Up to 4 characters for digits (e.g. "116", "47").
+            indicators: Set of indicator names: 'mbs', '%', 'deg'.
+        """
+        self._hr10_display_text = text
+        self._hr10_indicators = indicators or set()
+        self._update_hr10_mask()
+
+    def _update_hr10_mask(self) -> None:
+        """Recompute the HR10 digit mask from current display text."""
+        if not self._hr10_mode:
+            return
+        from ..hr10_display import get_digit_mask
+        self._hr10_mask = get_digit_mask(
+            self._hr10_display_text, self._hr10_indicators
+        )
 
     def tick(self) -> None:
         """Called by timer. Advances animation and sends to device.
 
         This is the main loop — called every ~30ms by the GUI timer.
         Computes new LED colors, sends to hardware, updates preview.
+
+        For HR10 (style 13), expands segment colors to 31 LEDs using
+        the digit mask so only active segments are lit.
         """
         colors = self.model.tick()
+        # model.tick() fires on_colors_updated → on_preview_update
+        # with segment colors (used by preview widget for display color).
 
         if colors and self._protocol:
-            is_on = self.model.state.segment_on
-            global_on = self.model.state.global_on
-            brightness = self.model.state.brightness
-            try:
-                success = self._protocol.send_led_data(
-                    colors, is_on, global_on, brightness
-                )
-                if self.on_send_complete:
-                    self.on_send_complete(success)
-            except Exception:
-                pass
+            if self._hr10_mode and self._hr10_mask:
+                # HR10: expand animation color to 31 LEDs via digit mask.
+                # The base color drives all lit segments on the device.
+                from ..hr10_display import LED_COUNT
+                base_color = colors[0] if colors else (0, 0, 0)
+                hr10_colors = [
+                    base_color if self._hr10_mask[i] else (0, 0, 0)
+                    for i in range(LED_COUNT)
+                ]
+                brightness = self.model.state.brightness
+                global_on = self.model.state.global_on
+                try:
+                    success = self._protocol.send_led_data(
+                        hr10_colors, None, global_on, brightness
+                    )
+                    if self.on_send_complete:
+                        self.on_send_complete(success)
+                except Exception:
+                    pass
+                # Don't call on_preview_update here — the model callback
+                # already sent the animation color for the preview widget.
+            else:
+                is_on = self.model.state.segment_on
+                global_on = self.model.state.global_on
+                brightness = self.model.state.brightness
+                try:
+                    success = self._protocol.send_led_data(
+                        colors, is_on, global_on, brightness
+                    )
+                    if self.on_send_complete:
+                        self.on_send_complete(success)
+                except Exception:
+                    pass
 
     def _on_model_state_changed(self, state) -> None:
         """Forward model state changes to view."""
