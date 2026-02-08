@@ -8,12 +8,12 @@ Supported devices (SCSI — stable):
 - Winbond:      VID=0x0416, PID=0x5406
 - ALi Corp:     VID=0x0402, PID=0x3922
 
-Supported devices (HID LCD — experimental, enable with --testing-hid):
+Supported devices (HID LCD — auto-detected when plugged in):
 - Winbond:      VID=0x0416, PID=0x5302  (Type 2)
 - ALi Corp:     VID=0x0418, PID=0x5303  (Type 3)
 - ALi Corp:     VID=0x0418, PID=0x5304  (Type 3)
 
-Supported devices (HID LED — RGB controllers, enable with --testing-hid):
+Supported devices (HID LED — RGB controllers, auto-detected when plugged in):
 - Winbond:      VID=0x0416, PID=0x8001  (64-byte reports)
 """
 
@@ -72,7 +72,7 @@ KNOWN_DEVICES = {
     },
 }
 
-# HID LCD devices — experimental, gated behind --testing-hid flag.
+# HID LCD devices — auto-detected when plugged in.
 # From UCDevice.cs (TRCC 2.0.3 decompiled — decimal PIDs confirmed).
 _HID_LCD_DEVICES = {
     # device2: UsbHidDevice(1046, 21250) = 0x0416:0x5302, DA/DB/DC/DD handshake, 512-byte chunks
@@ -125,22 +125,22 @@ _LED_DEVICES = {
 # Backward-compat alias (tests and setup-udev reference this)
 KNOWN_LED_DEVICES = _LED_DEVICES
 
-# HID testing gate — disabled by default, enabled via `trcc --testing-hid`
+# Legacy flag — kept for backward compat but no longer checked.
+# HID devices are now auto-detected when plugged in.
 _hid_testing_enabled = False
 
 
 def enable_hid_testing():
-    """Enable HID device detection (called by CLI --testing-hid flag)."""
+    """No-op, kept for backward compatibility. HID devices are now auto-detected."""
     global _hid_testing_enabled
     _hid_testing_enabled = True
 
 
 def _get_all_devices():
-    """Return device lookup dict, including HID devices only if enabled."""
+    """Return device lookup dict (SCSI + HID LCD + LED)."""
     all_devices = dict(KNOWN_DEVICES)
-    if _hid_testing_enabled:
-        all_devices.update(_HID_LCD_DEVICES)
-        all_devices.update(_LED_DEVICES)
+    all_devices.update(_HID_LCD_DEVICES)
+    all_devices.update(_LED_DEVICES)
     return all_devices
 
 

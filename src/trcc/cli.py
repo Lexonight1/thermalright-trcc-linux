@@ -61,7 +61,7 @@ Examples:
     parser.add_argument(
         "--testing-hid",
         action="store_true",
-        help="Enable HID device detection (experimental — testers wanted)"
+        help="No-op (HID devices are now auto-detected when plugged in)"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -126,11 +126,6 @@ Examples:
     if args.command is None:
         parser.print_help()
         return 0
-
-    # Enable HID device detection if requested
-    if args.testing_hid:
-        from trcc.device_detector import enable_hid_testing
-        enable_hid_testing()
 
     if args.command == "gui":
         return gui(verbose=args.verbose, decorated=args.decorated)
