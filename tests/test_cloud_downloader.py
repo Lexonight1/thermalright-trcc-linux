@@ -424,7 +424,6 @@ class TestDownloadErrors(unittest.TestCase):
 
     def test_download_file_cancelled(self):
         """_download_file handles cancel during download."""
-        from io import BytesIO
         dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
         dl._cancelled = True
         response = MagicMock()
@@ -463,7 +462,7 @@ class TestDownloadProgress(unittest.TestCase):
                 with patch.object(Path, 'exists', return_value=False):
                     with patch.object(Path, 'rename'):
                         with patch.object(Path, 'mkdir'):
-                            result = dl._download_file(
+                            dl._download_file(
                                 'http://test.com/a.mp4',
                                 Path('/tmp/out.mp4'),
                                 on_progress=on_progress)

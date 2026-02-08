@@ -619,11 +619,12 @@ class TestResolveFontPath(unittest.TestCase):
     def test_fc_match_success(self):
         """fc-match returns valid path."""
         renderer = OverlayRenderer()
-        import tempfile, os
+        import os
+        import tempfile
         fd, tmp = tempfile.mkstemp(suffix='.ttf')
         os.close(fd)
         try:
-            from unittest.mock import patch, MagicMock
+            from unittest.mock import MagicMock, patch
             with patch('subprocess.run') as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout=tmp)
                 result = renderer._resolve_font_path('DejaVu Sans')
@@ -652,7 +653,7 @@ class TestResolveFontPath(unittest.TestCase):
     def test_fc_match_returns_nonexistent_path(self):
         """fc-match returns path that doesn't exist → None."""
         renderer = OverlayRenderer()
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout='/nonexistent/font.ttf')
             result = renderer._resolve_font_path('SomeFont')
@@ -660,9 +661,10 @@ class TestResolveFontPath(unittest.TestCase):
 
     def test_manual_scan_finds_font(self):
         """Manual scan finds font file by name."""
-        import tempfile, os
+        import os
+        import tempfile
         renderer = OverlayRenderer()
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create fake font file
             open(os.path.join(tmpdir, 'DejaVuSans.ttf'), 'w').close()

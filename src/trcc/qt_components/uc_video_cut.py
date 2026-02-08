@@ -15,7 +15,6 @@ import tempfile
 from io import BytesIO
 
 from PIL import Image as PILImage
-
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QBrush,
@@ -23,7 +22,6 @@ from PyQt6.QtGui import (
     QPainter,
     QPalette,
     QPen,
-    QPixmap,
 )
 from PyQt6.QtWidgets import QLabel, QProgressBar, QWidget
 
@@ -32,7 +30,6 @@ from trcc.gif_animator import FFMPEG_AVAILABLE
 
 from .assets import load_pixmap
 from .base import make_icon_button, pil_to_pixmap
-
 
 # ============================================================================
 # Constants

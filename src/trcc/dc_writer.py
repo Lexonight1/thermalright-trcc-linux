@@ -605,9 +605,6 @@ def import_theme(tr_path: str, theme_path: str) -> None:
     read_int32 = reader.read_int32
     read_bool = reader.read_bool
     read_string = reader.read_string
-    read_float = reader.read_float
-    read_byte = reader.read_byte
-
     # Parse config (same format as config1.dc but with magic header)
     system_info = read_bool()
     count = read_int32()

@@ -11,11 +11,11 @@ Architecture mirrors Windows:
 Both implement DeviceProtocol ABC. The GUI fires commands; protocols route.
 """
 
-import pytest
 from dataclasses import dataclass
 from typing import Optional
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # =========================================================================
 # Minimal DeviceInfo stand-in (avoids importing full models.py)
@@ -41,19 +41,18 @@ class FakeDeviceInfo:
 # Import targets (new names + backward-compatible aliases)
 # =========================================================================
 
-from trcc.device_factory import (
+from trcc.device_factory import (  # noqa: E402
     # New names
     DeviceProtocol,
     DeviceProtocolFactory,
-    HidProtocol,
-    ScsiProtocol,
     # Backward-compatible aliases
     DeviceSender,
     DeviceSenderFactory,
+    HidProtocol,
     HidSender,
+    ScsiProtocol,
     ScsiSender,
 )
-
 
 # =========================================================================
 # Fixtures
@@ -838,7 +837,7 @@ class TestProtocolInfo:
         """When a protocol is cached, get_protocol_info delegates to proto.get_info()."""
         from trcc.device_factory import get_protocol_info
         # Create and cache a protocol
-        proto = DeviceProtocolFactory.get_protocol(scsi_device)
+        DeviceProtocolFactory.get_protocol(scsi_device)
         info = get_protocol_info(scsi_device)
         assert info.protocol == "scsi"
         assert info.is_scsi is True

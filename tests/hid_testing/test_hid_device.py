@@ -4,13 +4,11 @@ No real USB hardware required — all USB I/O is mocked via UsbTransport.
 """
 
 import struct
-import sys
-from unittest.mock import MagicMock, PropertyMock, call, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from trcc.hid_device import (
-    DEFAULT_TIMEOUT_MS,
     DELAY_FRAME_TYPE2_S,
     DELAY_POST_INIT_S,
     DELAY_PRE_INIT_S,
@@ -970,7 +968,7 @@ class TestHidApiTransport:
         with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
-            result = t.write(EP_WRITE_02, b'\xFF\xFE\xFD\xFC')
+            t.write(EP_WRITE_02, b'\xFF\xFE\xFD\xFC')
             # Should prepend report ID 0x00
             expected = bytes([0x00, 0xFF, 0xFE, 0xFD, 0xFC])
             mock_hid_dev.write.assert_called_once_with(expected)

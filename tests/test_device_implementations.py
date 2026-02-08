@@ -219,7 +219,7 @@ class TestDetectResolution(unittest.TestCase):
         with patch.dict('sys.modules', {'trcc.fbl_detector': mock_module}):
             with patch('builtins.__import__', side_effect=lambda name, *a, **kw:
                        mock_module if 'fbl_detector' in name else __import__(name, *a, **kw)):
-                result = impl.detect_resolution('/dev/sg0')
+                impl.detect_resolution('/dev/sg0')
 
         # Whether or not import patching worked, defaults should be unchanged
         self.assertEqual(impl.width, original_w)

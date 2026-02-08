@@ -556,8 +556,10 @@ def hid_debug():
     try:
         from trcc.device_detector import detect_devices
         from trcc.hid_device import (
-            FBL_TO_RESOLUTION, PM_TO_BUTTON_IMAGE,
-            fbl_to_resolution, pm_to_fbl,
+            FBL_TO_RESOLUTION,
+            PM_TO_BUTTON_IMAGE,
+            fbl_to_resolution,
+            pm_to_fbl,
         )
 
         print("HID Debug — Handshake Diagnostic")
@@ -579,7 +581,7 @@ def hid_debug():
             print(f"  Implementation = {dev.implementation}")
 
             # Attempt handshake
-            print(f"\n  Attempting handshake...")
+            print("\n  Attempting handshake...")
             try:
                 from trcc.device_factory import HidProtocol
                 protocol = HidProtocol(
@@ -597,7 +599,7 @@ def hid_debug():
                 fbl = info.fbl if info.fbl is not None else pm_to_fbl(pm, sub)
                 resolution = info.resolution or fbl_to_resolution(fbl, pm)
 
-                print(f"  Handshake OK!")
+                print("  Handshake OK!")
                 print(f"  PM byte  = {pm} (0x{pm:02x})")
                 print(f"  SUB byte = {sub} (0x{sub:02x})")
                 print(f"  FBL      = {fbl} (0x{fbl:02x})")
@@ -619,7 +621,7 @@ def hid_debug():
 
                 # Raw response hex dump
                 if info.raw_response:
-                    print(f"\n  Raw handshake response (first 64 bytes):")
+                    print("\n  Raw handshake response (first 64 bytes):")
                     raw = info.raw_response
                     for row in range(0, min(len(raw), 64), 16):
                         hex_str = ' '.join(f'{b:02x}' for b in raw[row:row+16])
@@ -636,7 +638,7 @@ def hid_debug():
                 print("  Install: pip install pyusb  (or pip install hidapi)")
             except Exception as e:
                 print(f"  Handshake FAILED: {e}")
-                print(f"  (This error is what causes 'Send failed' in the GUI)")
+                print("  (This error is what causes 'Send failed' in the GUI)")
 
         print(f"\n{'=' * 60}")
         print("Copy the output above and paste it in your GitHub issue.")

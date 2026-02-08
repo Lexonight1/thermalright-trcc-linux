@@ -26,14 +26,12 @@ from PyQt6.QtWidgets import QApplication
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
-from PIL import Image
-
+from PIL import Image  # noqa: E402
 
 # ============================================================================
 # Assets
 # ============================================================================
-
-from trcc.qt_components.assets import (
+from trcc.qt_components.assets import (  # noqa: E402
     ASSETS_DIR,
     Assets,
     asset_exists,
@@ -105,7 +103,7 @@ class TestAssets(unittest.TestCase):
 # UCPreview
 # ============================================================================
 
-from trcc.qt_components.uc_preview import UCPreview
+from trcc.qt_components.uc_preview import UCPreview  # noqa: E402
 
 
 class TestUCPreview(unittest.TestCase):
@@ -170,7 +168,12 @@ class TestUCPreview(unittest.TestCase):
 # UCDevice
 # ============================================================================
 
-from trcc.qt_components.uc_device import UCDevice, DeviceButton, _get_device_images, DEVICE_IMAGE_MAP
+from trcc.qt_components.uc_device import (  # noqa: E402
+    DEVICE_IMAGE_MAP,
+    DeviceButton,
+    UCDevice,
+    _get_device_images,
+)
 
 
 class TestDeviceImageMap(unittest.TestCase):
@@ -265,7 +268,7 @@ class TestUCDevice(unittest.TestCase):
 # UCThemeLocal
 # ============================================================================
 
-from trcc.qt_components.uc_theme_local import UCThemeLocal
+from trcc.qt_components.uc_theme_local import UCThemeLocal  # noqa: E402
 
 
 class TestUCThemeLocal(unittest.TestCase):
@@ -337,11 +340,12 @@ class TestUCThemeLocal(unittest.TestCase):
 # UCAbout helpers
 # ============================================================================
 
-import tempfile
-from trcc.qt_components.uc_about import (
-    _is_autostart_enabled, _set_autostart, _get_trcc_exec,
-    _make_desktop_entry, ensure_autostart,
-    _AUTOSTART_FILE, _AUTOSTART_DIR
+from trcc.qt_components.uc_about import (  # noqa: E402
+    _get_trcc_exec,
+    _is_autostart_enabled,
+    _make_desktop_entry,
+    _set_autostart,
+    ensure_autostart,
 )
 
 
@@ -537,7 +541,7 @@ class TestAutostart(unittest.TestCase):
 # detect_language
 # ============================================================================
 
-from trcc.qt_components.qt_app_mvc import detect_language, LOCALE_TO_LANG
+from trcc.qt_components.qt_app_mvc import LOCALE_TO_LANG, detect_language  # noqa: E402
 
 
 class TestDetectLanguage(unittest.TestCase):

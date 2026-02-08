@@ -551,7 +551,6 @@ class TestVideoPlayerInitFull(unittest.TestCase):
     @patch('subprocess.run')
     def test_load_video_ffmpeg_success(self, mock_run):
         """Lines 307-373: full _load_video_ffmpeg with mocked subprocess."""
-        from unittest.mock import call
 
         # ffprobe returns video info
         probe_result = MagicMock(returncode=0, stdout='320,320,30/1,150\n')

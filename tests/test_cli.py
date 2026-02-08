@@ -15,7 +15,6 @@ Tests cover:
 
 import json
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,6 +38,7 @@ from trcc.cli import (
     show_info,
     uninstall,
 )
+
 # Alias to avoid pytest collecting it as a test function
 from trcc.cli import test_display as cli_test_display
 
@@ -71,42 +71,42 @@ class TestMainEntryPoint(unittest.TestCase):
         """'detect --all' passes show_all=True."""
         with patch('sys.argv', ['trcc', 'detect', '--all']), \
              patch('trcc.cli.detect', return_value=0) as mock_detect:
-            result = main()
+            main()
             mock_detect.assert_called_once_with(show_all=True)
 
     def test_select_dispatches(self):
         """'select 2' dispatches with number=2."""
         with patch('sys.argv', ['trcc', 'select', '2']), \
              patch('trcc.cli.select_device', return_value=0) as mock_sel:
-            result = main()
+            main()
             mock_sel.assert_called_once_with(2)
 
     def test_color_dispatches(self):
         """'color ff0000' passes hex and device."""
         with patch('sys.argv', ['trcc', 'color', 'ff0000']), \
              patch('trcc.cli.send_color', return_value=0) as mock_color:
-            result = main()
+            main()
             mock_color.assert_called_once_with('ff0000', device=None)
 
     def test_info_dispatches(self):
         """'info' subcommand dispatches to show_info."""
         with patch('sys.argv', ['trcc', 'info']), \
              patch('trcc.cli.show_info', return_value=0) as mock_info:
-            result = main()
+            main()
             mock_info.assert_called_once()
 
     def test_gui_dispatches(self):
         """'gui' subcommand dispatches to gui()."""
         with patch('sys.argv', ['trcc', 'gui']), \
              patch('trcc.cli.gui', return_value=0) as mock_gui:
-            result = main()
+            main()
             mock_gui.assert_called_once()
 
     def test_download_list(self):
         """'download --list' dispatches with show_list=True."""
         with patch('sys.argv', ['trcc', 'download', '--list']), \
              patch('trcc.cli.download_themes', return_value=0) as mock_dl:
-            result = main()
+            main()
             mock_dl.assert_called_once_with(
                 pack=None, show_list=True, force=False, show_info=False
             )
@@ -114,7 +114,7 @@ class TestMainEntryPoint(unittest.TestCase):
     def test_download_pack(self):
         with patch('sys.argv', ['trcc', 'download', 'themes-320', '--force']), \
              patch('trcc.cli.download_themes', return_value=0) as mock_dl:
-            result = main()
+            main()
             mock_dl.assert_called_once_with(
                 pack='themes-320', show_list=False, force=True, show_info=False
             )
@@ -1040,7 +1040,6 @@ class TestUninstall(unittest.TestCase):
                     return real_exists(modprobe)
                 return real_exists(p)
 
-            real_remove = os.remove
             def fake_remove(p):
                 removed_paths.append(p)
 

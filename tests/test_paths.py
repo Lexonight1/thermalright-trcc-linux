@@ -8,7 +8,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from trcc.paths import (
     _extract_7z,
@@ -520,7 +520,7 @@ class TestExtract7zCLI(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0)
         with patch('builtins.__import__', side_effect=ImportError("no py7zr")):
             with tempfile.TemporaryDirectory() as d:
-                result = _extract_7z('/fake/archive.7z', d)
+                _extract_7z('/fake/archive.7z', d)
         # May or may not succeed depending on how __import__ is patched
         # The key is exercising the CLI branch
 

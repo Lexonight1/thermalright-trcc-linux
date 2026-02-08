@@ -1113,8 +1113,9 @@ class TestDiskStatsNoBusyTimeClean(unittest.TestCase):
     @patch('trcc.system_info.PSUTIL_AVAILABLE', True)
     @patch('trcc.system_info.psutil')
     def test_estimate_from_io(self, mock_psutil):
-        import trcc.system_info as si
         import time as real_time
+
+        import trcc.system_info as si
 
         # Plain object — no busy_time attribute
         class FakeIO:

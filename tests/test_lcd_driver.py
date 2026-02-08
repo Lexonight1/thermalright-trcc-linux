@@ -322,7 +322,6 @@ class TestLCDDriverLoadImage(unittest.TestCase):
         impl.rgb_to_bytes.return_value = b'\xFF\x00'
 
         # Create a small test image
-        import io
         from PIL import Image
         img = Image.new('RGB', (10, 10), (255, 0, 0))
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:

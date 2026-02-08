@@ -152,7 +152,7 @@ src/trcc/
 ├── theme_downloader.py     # Theme pack download manager
 ├── theme_io.py             # Theme export/import (.tr format)
 ├── binary_reader.py        # Binary data reader (DC parsing helper)
-├── paths.py                # XDG paths, per-device config, .7z extraction, on-demand download
+├── paths.py                # XDG paths, per-device config, .7z extraction, on-demand download (themes+web)
 ├── hid_device.py           # HID USB transport (PyUSB/HIDAPI) for LCD and LED devices
 ├── led_device.py           # LED RGB protocol (effects, packet builder, HID sender)
 ├── device_factory.py       # Protocol factory (SCSI/HID/LED routing by PID)
@@ -189,11 +189,9 @@ src/trcc/
 | What | Path |
 |------|------|
 | **Windows decompiled C#** | `/home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled/` |
-| **GUI assets** | `src/assets/gui/` (PNG button/background images) |
-| **Theme data** | `src/data/Theme320320/` (default themes; archives extracted at runtime) |
-| **Mask data** | `src/data/Web/` (cloud masks; archives extracted at runtime) |
-| **Cloud theme cache** | `src/data/cloud_themes/` (downloaded cloud themes) |
-| **Web cache** | `src/data/web_cache/` (downloaded mask/web data) |
+| **GUI assets** | `src/trcc/assets/gui/` (PNG button/background images) |
+| **Theme data** | `src/trcc/data/Theme320320/` (default themes; archives extracted at runtime) |
+| **Web data** | `src/trcc/data/Web/` (cloud previews + mask archives; extracted at runtime) |
 
 ## Architecture
 
@@ -222,29 +220,24 @@ BottomBar:    y=680                  # Rotation/Brightness/Save/Export/Import
 
 **Theme Data (7z Archives)**:
 
-Default themes ship as `.7z` archives for all 15 LCD resolutions. On resolution detection, `ensure_themes_extracted()` in `paths.py`:
+Default themes, cloud preview thumbnails, and mask overlays ship as `.7z` archives for all 15 LCD resolutions. On resolution detection, `ensure_themes_extracted()`, `ensure_web_extracted()`, and `ensure_web_masks_extracted()` in `paths.py` each follow the same pattern:
 
-1. Checks the package data dir (`src/trcc/data/`) for extracted themes
-2. Checks the user data dir (`~/.trcc/data/`) for previously downloaded themes
-3. If no archive found locally, downloads it from GitHub (`raw.githubusercontent.com`)
-4. Extracts using `py7zr` (with CLI `7z` fallback)
-5. Falls back to `~/.trcc/data/` if the package dir is read-only (pip install)
+1. Check the package data dir (`src/trcc/data/`) for extracted content
+2. Check the user data dir (`~/.trcc/data/`) for previously downloaded content
+3. If no archive found locally, download from GitHub (`raw.githubusercontent.com`)
+4. Extract using `py7zr` (with CLI `7z` fallback)
+5. Fall back to `~/.trcc/data/` if the package dir is read-only (pip install)
 
 Archives are tracked in git; extracted dirs are gitignored.
 
 ```
 src/trcc/data/
-├── Theme240240.7z          # 15 resolution archives (all tracked in git)
+├── Theme240240.7z          # 15 theme resolution archives
 ├── Theme320320.7z
-├── Theme480480.7z
-├── Theme640480.7z
-├── Theme800480.7z
-├── Theme854480.7z
-├── Theme960540.7z
-├── Theme1280480.7z         # Trofeo Vision
-├── Theme1600720.7z
+├── ...
 ├── Theme1920462.7z
-├── Web/zt320320.7z         # Cloud mask archives
+├── Web/320320.7z           # Cloud preview thumbnail archives (per resolution)
+├── Web/zt320320.7z         # Cloud mask archives (per resolution)
 └── Theme320320/
     └── Theme1/
         ├── 00.png         # Background (sent to LCD)

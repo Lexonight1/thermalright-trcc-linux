@@ -215,8 +215,8 @@ GITHUB_THEME_BASE_URL = (
 
 def _download_archive(url: str, dest_path: str, timeout: int = 60) -> bool:
     """Download a file from URL to dest_path. Returns True on success."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     tmp_path = dest_path + '.tmp'
@@ -337,7 +337,8 @@ def ensure_web_extracted(width: int, height: int) -> bool:
 
     Checks both package and user data dirs. Downloads from GitHub if needed.
     """
-    check_fn = lambda d: os.path.isdir(d) and bool(os.listdir(d))
+    def check_fn(d: str) -> bool:
+        return os.path.isdir(d) and bool(os.listdir(d))
     res_key = f'{width}{height}'
 
     # Check package data dir

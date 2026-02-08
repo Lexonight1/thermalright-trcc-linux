@@ -10,9 +10,9 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from trcc.paths import is_safe_archive_member
-
 from PyQt6.QtCore import QTimer, pyqtSignal
+
+from trcc.paths import is_safe_archive_member
 
 from .base import BaseThemeBrowser, BaseThumbnail
 
@@ -155,7 +155,6 @@ class UCThemeMask(BaseThemeBrowser):
         def download_task():
             try:
                 import io
-                import os
                 import urllib.error
                 import urllib.request
                 import zipfile

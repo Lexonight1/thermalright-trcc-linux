@@ -18,23 +18,10 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from PIL import Image
 
-from trcc.core.models import (
-    DeviceInfo,
-    DeviceModel,
-    OverlayElement,
-    OverlayElementType,
-    OverlayModel,
-    PlaybackState,
-    ThemeInfo,
-    ThemeModel,
-    ThemeType,
-    VideoModel,
-    VideoState,
-)
 from trcc.core.controllers import (
     DeviceController,
     FormCZTVController,
@@ -43,7 +30,16 @@ from trcc.core.controllers import (
     VideoController,
     create_controller,
 )
-
+from trcc.core.models import (
+    DeviceInfo,
+    OverlayElement,
+    OverlayElementType,
+    PlaybackState,
+    ThemeInfo,
+    ThemeModel,
+    ThemeType,
+    VideoState,
+)
 
 # Common patches for FormCZTVController tests (avoids file I/O)
 FORM_PATCHES = [
@@ -472,7 +468,7 @@ class TestFormCZTVController(unittest.TestCase):
             mock.assert_called_once_with(50.0)
 
     def test_is_video_playing(self):
-        with patch.object(self.ctrl.video, 'is_playing', return_value=False) as mock:
+        with patch.object(self.ctrl.video, 'is_playing', return_value=False):
             self.assertFalse(self.ctrl.is_video_playing())
 
     def test_on_device_selected_updates_resolution(self):
@@ -561,7 +557,7 @@ class TestFormCZTVControllerRotation(unittest.TestCase):
         img = MagicMock()
         img.transpose.return_value = MagicMock()
         self.ctrl.rotation = 180
-        result = self.ctrl._apply_rotation(img)
+        self.ctrl._apply_rotation(img)
         img.transpose.assert_called_once()
 
     def test_apply_brightness_full(self):
@@ -788,8 +784,8 @@ class TestOverlayControllerRenderer(unittest.TestCase):
         """render(background) passes background to model."""
         bg = MagicMock()
         with patch.object(self.ctrl.model, 'set_background') as mock_bg, \
-             patch.object(self.ctrl.model, 'render', return_value=bg) as mock_render:
-            result = self.ctrl.render(bg)
+             patch.object(self.ctrl.model, 'render', return_value=bg):
+            self.ctrl.render(bg)
             mock_bg.assert_called_once_with(bg)
 
     def test_on_config_changed_no_callback(self):
@@ -1442,7 +1438,7 @@ class TestFormCZTVCallbacksAndHelpers(unittest.TestCase):
         """render_overlay_and_preview creates black bg when no current_image."""
         self.ctrl.current_image = None
 
-        with patch.object(self.ctrl.overlay, 'render', return_value=_make_test_image()) as mock_r, \
+        with patch.object(self.ctrl.overlay, 'render', return_value=_make_test_image()), \
              patch.object(self.ctrl, '_update_preview'):
             result = self.ctrl.render_overlay_and_preview()
             self.assertIsNotNone(result)
@@ -1528,7 +1524,6 @@ class TestFormCZTVInitialize(unittest.TestCase):
 
     def test_set_resolution_no_persist(self):
         """set_resolution with persist=False doesn't call save_resolution."""
-        save_mock = None
         for p in self.patches:
             # Find the save_resolution mock
             pass

@@ -3,7 +3,7 @@
 import binascii
 import struct
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from trcc.scsi_device import (
     _CHUNK_SIZE,

@@ -26,12 +26,11 @@ from PyQt6.QtWidgets import QApplication
 # Create app once for all tests
 _app = QApplication.instance() or QApplication(sys.argv)
 
-from PIL import Image
-from PyQt6.QtGui import QPixmap
+from PIL import Image  # noqa: E402
+from PyQt6.QtGui import QPixmap  # noqa: E402
 
-from trcc.qt_components.base import (
+from trcc.qt_components.base import (  # noqa: E402
     BasePanel,
-    BaseThemeBrowser,
     BaseThumbnail,
     ClickableFrame,
     ImageLabel,
@@ -40,7 +39,7 @@ from trcc.qt_components.base import (
     pixmap_to_pil,
     set_background_pixmap,
 )
-from trcc.qt_components.constants import Sizes
+from trcc.qt_components.constants import Sizes  # noqa: E402
 
 
 class TestPilToPixmap(unittest.TestCase):
@@ -151,9 +150,8 @@ class TestImageLabel(unittest.TestCase):
         fired = []
         label.clicked.connect(lambda: fired.append(True))
         # Simulate click via mousePressEvent
-        from PyQt6.QtCore import QPointF
+        from PyQt6.QtCore import QEvent, QPointF
         from PyQt6.QtGui import QMouseEvent
-        from PyQt6.QtCore import QEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(50, 50),
@@ -173,7 +171,7 @@ class TestClickableFrame(unittest.TestCase):
         fired = []
         frame.clicked.connect(lambda: fired.append(True))
 
-        from PyQt6.QtCore import QPointF, QEvent
+        from PyQt6.QtCore import QEvent, QPointF
         from PyQt6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
@@ -218,7 +216,7 @@ class TestBaseThumbnail(unittest.TestCase):
         received = []
         thumb.clicked.connect(lambda d: received.append(d))
 
-        from PyQt6.QtCore import QPointF, QEvent
+        from PyQt6.QtCore import QEvent, QPointF
         from PyQt6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
@@ -285,8 +283,7 @@ class TestSetBackgroundPixmap(unittest.TestCase):
 
 
 # Import Qt here for the mouse event helper
-from PyQt6.QtCore import Qt
-
+from PyQt6.QtCore import Qt  # noqa: E402
 
 if __name__ == '__main__':
     unittest.main()

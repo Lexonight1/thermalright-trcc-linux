@@ -631,13 +631,12 @@ class TestOverlayModelRenderer(unittest.TestCase):
         mock_renderer_cls.return_value = MagicMock()
 
         # Create a minimal valid dc file
-        import struct
         import tempfile
         with tempfile.NamedTemporaryFile(suffix='.dc', delete=False) as f:
             dc_path = f.name
 
         model = OverlayModel()
-        with patch('trcc.dc_parser.parse_dc_file') as mock_parse, \
+        with patch('trcc.dc_parser.parse_dc_file'), \
              patch('trcc.dc_parser.dc_to_overlay_config') as mock_convert:
             mock_convert.return_value = {
                 'hw_0': {'enabled': True, 'x': 10, 'y': 20, 'color': (255, 0, 0),

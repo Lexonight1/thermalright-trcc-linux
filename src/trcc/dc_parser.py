@@ -443,9 +443,6 @@ def parse_dd_format(data: bytes) -> dict:
     read_int32 = r.read_int32
     read_bool = r.read_bool
     read_string = r.read_string
-    read_float = r.read_float
-    read_byte = r.read_byte
-
     try:
         # Read system info enabled flag
         myXtxx = read_bool()

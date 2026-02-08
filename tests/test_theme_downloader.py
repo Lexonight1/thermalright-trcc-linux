@@ -17,8 +17,6 @@ Tests cover:
 import hashlib
 import json
 import os
-import struct
-import sys
 import tarfile
 import tempfile
 import unittest
@@ -527,7 +525,7 @@ class TestDownloadPackExtra(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_dir = Path(tmp)
-            archive_path = cache_dir / f"{pack_name}-{info['version']}.tar.gz"
+            cache_dir / f"{pack_name}-{info['version']}.tar.gz"
 
             def fake_dl(url, dest, desc=""):
                 dest.write_bytes(b'bad')

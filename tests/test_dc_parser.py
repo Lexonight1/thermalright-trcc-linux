@@ -1425,9 +1425,9 @@ class TestValidateThemeFull(unittest.TestCase):
             self.assertEqual(result['format'], '0xDD')
 
 
-# ── validate_all_themes ──────────────────────────────────────────────────────
+# ── validate_all_themes (DC header) ──────────────────────────────────────────
 
-class TestValidateAllThemes(unittest.TestCase):
+class TestValidateAllThemesDC(unittest.TestCase):
 
     def _write_dc_file(self, path):
         buf = BytesIO()
@@ -1578,8 +1578,9 @@ class TestLoadConfigJson(unittest.TestCase):
     """Test JSON config loading (load_config_json)."""
 
     def test_load_valid_json(self):
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'version': 1,
@@ -1615,8 +1616,9 @@ class TestLoadConfigJson(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_load_missing_elements_key(self):
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             path = os.path.join(d, 'config.json')
             with open(path, 'w') as f:
@@ -1651,8 +1653,9 @@ class TestLoadConfigJson(unittest.TestCase):
             self.assertTrue(loaded_display['mask_enabled'])
 
     def test_load_no_mask(self):
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {'version': 1, 'display': {}, 'elements': {}}
             path = os.path.join(d, 'config.json')
@@ -1664,8 +1667,9 @@ class TestLoadConfigJson(unittest.TestCase):
             self.assertNotIn('mask_enabled', display_options)
 
     def test_load_animation_file(self):
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'version': 1, 'display': {},
@@ -1681,8 +1685,9 @@ class TestLoadConfigJson(unittest.TestCase):
             self.assertEqual(display_options['animation_file'], 'a001.mp4')
 
     def test_load_no_animation(self):
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {'version': 1, 'display': {}, 'elements': {}}
             path = os.path.join(d, 'config.json')
@@ -1699,8 +1704,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_reference_format_full(self):
         """Reference format with background, mask, dc, and mask_position."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'background': '/path/to/video.mp4',
@@ -1722,8 +1728,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_reference_format_no_mask(self):
         """Reference format with background only, no mask."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'background': '/path/to/image.png',
@@ -1743,8 +1750,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_reference_format_no_background(self):
         """Reference format with mask but no background."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'background': None,
@@ -1764,8 +1772,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_reference_format_no_mask_position(self):
         """Reference format without mask_position key."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'background': '/path/to/bg.png',
@@ -1782,8 +1791,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_reference_format_empty_dc(self):
         """Reference format with empty dc dict means overlay_enabled=False."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {'background': '/bg.png', 'mask': None, 'dc': {}}
             path = os.path.join(d, 'config.json')
@@ -1796,8 +1806,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_legacy_format_still_works(self):
         """Legacy format with 'elements' key still parses correctly."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             data = {
                 'version': 1,
@@ -1815,8 +1826,9 @@ class TestLoadConfigJsonReferenceFormat(unittest.TestCase):
 
     def test_not_a_dict(self):
         """JSON that's not a dict returns None."""
-        from trcc.dc_parser import load_config_json
         import json
+
+        from trcc.dc_parser import load_config_json
         with TemporaryDirectory() as d:
             path = os.path.join(d, 'config.json')
             with open(path, 'w') as f:

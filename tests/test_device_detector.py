@@ -754,7 +754,6 @@ class TestFindScsiUsblcdVidPid(unittest.TestCase):
     @patch('builtins.open', create=True)
     def test_vid_pid_found_in_known_devices(self, mock_open_fn, mock_realpath, mock_exists):
         """sysfs vendor=USBLCD, idVendor/idProduct match KNOWN_DEVICES."""
-        call_count = [0]
         def exists_side(path):
             if 'scsi_generic/sg0/device' in path:
                 return True
@@ -763,10 +762,6 @@ class TestFindScsiUsblcdVidPid(unittest.TestCase):
             return False
         mock_exists.side_effect = exists_side
 
-        file_contents = {
-            'vendor': ' USBLCD  ',
-            'model': 'TRCC ',
-        }
         # Build mock file objects for opens
         def open_side(path, *args, **kwargs):
             m = MagicMock()
@@ -810,7 +805,6 @@ class TestUsbResetUnbindBind(unittest.TestCase):
             return True  # all paths exist
         mock_exists.side_effect = exists_side
 
-        writes = []
         def open_side(path, *args, **kwargs):
             m = MagicMock()
             if 'busnum' in path:
@@ -826,7 +820,7 @@ class TestUsbResetUnbindBind(unittest.TestCase):
             return m
         mock_open_fn.side_effect = open_side
 
-        result = usb_reset_device('1-3')
+        usb_reset_device('1-3')
         # May succeed or fail depending on mock flow; we exercise the code path
 
 

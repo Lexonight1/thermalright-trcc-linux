@@ -12,11 +12,11 @@ Architecture mirrors Windows FormLED.cs:
   - FormLEDController coordinates device init, config persistence, cleanup
 """
 
-import pytest
 from dataclasses import dataclass
 from typing import Optional
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 # =========================================================================
 # Minimal DeviceInfo stand-in (avoids importing full models.py for fixtures)
@@ -42,14 +42,13 @@ class FakeDeviceInfo:
 # Imports under test
 # =========================================================================
 
-from trcc.core.models import (
+from trcc.core.controllers import FormLEDController, LEDController  # noqa: E402
+from trcc.core.models import (  # noqa: E402
     LEDMode,
-    LEDZoneState,
-    LEDState,
     LEDModel,
+    LEDState,
+    LEDZoneState,
 )
-from trcc.core.controllers import LEDController, FormLEDController
-
 
 # =========================================================================
 # Fixtures
@@ -625,7 +624,7 @@ class TestTickTempLinked:
         mock_cfv.return_value = (0, 255, 0)
         led_model.state.temp_source = "cpu"
         led_model._metrics = {"cpu_temp": 45}
-        colors = led_model._tick_temp_linked()
+        led_model._tick_temp_linked()
         mock_cfv.assert_called_once()
         # First positional arg is the temp value
         assert mock_cfv.call_args[0][0] == 45
@@ -635,14 +634,14 @@ class TestTickTempLinked:
         mock_cfv.return_value = (255, 0, 0)
         led_model.state.temp_source = "gpu"
         led_model._metrics = {"gpu_temp": 92}
-        colors = led_model._tick_temp_linked()
+        led_model._tick_temp_linked()
         assert mock_cfv.call_args[0][0] == 92
 
     @patch("trcc.led_device.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
-        colors = led_model._tick_temp_linked()
+        led_model._tick_temp_linked()
         assert mock_cfv.call_args[0][0] == 0
 
     @patch("trcc.led_device.color_for_value")
@@ -666,7 +665,7 @@ class TestTickLoadLinked:
         mock_cfv.return_value = (255, 255, 0)
         led_model.state.load_source = "cpu"
         led_model._metrics = {"cpu_load": 60}
-        colors = led_model._tick_load_linked()
+        led_model._tick_load_linked()
         assert mock_cfv.call_args[0][0] == 60
 
     @patch("trcc.led_device.color_for_value")
@@ -674,14 +673,14 @@ class TestTickLoadLinked:
         mock_cfv.return_value = (255, 110, 0)
         led_model.state.load_source = "gpu"
         led_model._metrics = {"gpu_load": 85}
-        colors = led_model._tick_load_linked()
+        led_model._tick_load_linked()
         assert mock_cfv.call_args[0][0] == 85
 
     @patch("trcc.led_device.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
-        colors = led_model._tick_load_linked()
+        led_model._tick_load_linked()
         assert mock_cfv.call_args[0][0] == 0
 
 
