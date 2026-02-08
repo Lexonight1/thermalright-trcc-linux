@@ -35,6 +35,7 @@ DEVICE_IMAGE_MAP = {
     'FROZEN_MAGIC_PRO': 'A1FROZEN MAGIC PRO',
     'FROZEN_VISION_V2': 'A1FROZEN VISION V2',
     'AX120_DIGITAL': 'A1AX120 DIGITAL',
+    'HR10_2280_PRO_DIGITAL': 'A1HR10 2280 PRO DIGITAL',
     'AK120_DIGITAL': 'A1AK120 Digital',
     'PA120_DIGITAL': 'A1PA120 DIGITAL',
     'RK120_DIGITAL': 'A1RK120 DIGITAL',
@@ -69,6 +70,7 @@ DEVICE_IMAGE_MAP = {
     'LM24': 'A1LM24',
     'LM26': 'A1LM26',
     'LM27': 'A1LM27',
+    # HR10 has no dedicated button image yet — falls through to text label
 }
 
 
@@ -122,7 +124,8 @@ def _get_device_images(device_info):
             if asset_exists(normal):
                 return normal, active
 
-    # Default to CZTV for non-HID devices
+    # Default to CZTV for non-HID devices only.
+    # HID devices show a text label until handshake identifies the product.
     if protocol != 'hid' and asset_exists('A1CZTV.png'):
         return 'A1CZTV.png', 'A1CZTVa.png'
 
@@ -167,13 +170,51 @@ class DeviceButton(QPushButton):
                 self._img_refs = [normal_pix, active_pix]
 
         if not self._has_images:
-            name = device_info.get('name', device_info.get('path', 'Unknown'))
+            # Prefer model name (human-readable) over raw device name
+            model = device_info.get('model', '')
+            if model and model not in ('CZTV',):
+                name = model.replace('_', ' ')
+            else:
+                name = device_info.get('name', device_info.get('path', 'Unknown'))
             if len(name) > 18:
                 name = name[:17] + '…'
             self.setText(name)
             self._apply_text_style(False)
 
         self.clicked.connect(self._on_clicked)
+
+    def update_model(self, model: str, button_image: str = ''):
+        """Update device model after handshake reveals real identity.
+
+        Refreshes the button image/text to match the actual device.
+        """
+        self.device_info = dict(self.device_info, model=model)
+        # Always update button_image (clear old one if new is empty)
+        self.device_info['button_image'] = button_image
+
+        # Reload images
+        normal_name, active_name = _get_device_images(self.device_info)
+        if normal_name:
+            normal_pix = load_pixmap(normal_name, Sizes.DEVICE_BTN_W, Sizes.DEVICE_BTN_H)
+            active_pix = load_pixmap(active_name, Sizes.DEVICE_BTN_W, Sizes.DEVICE_BTN_H)
+            if not normal_pix.isNull():
+                self._has_images = True
+                icon = QIcon(normal_pix)
+                if not active_pix.isNull():
+                    icon.addPixmap(active_pix, QIcon.Mode.Normal, QIcon.State.On)
+                self.setIcon(icon)
+                self.setIconSize(self.size())
+                self._img_refs = [normal_pix, active_pix]
+                self.setText("")
+                return
+
+        # No image — show text
+        self._has_images = False
+        name = model.replace('_', ' ')
+        if len(name) > 18:
+            name = name[:17] + '…'
+        self.setText(name)
+        self._apply_text_style(self.selected)
 
     def _on_clicked(self):
         self.device_clicked.emit(self.device_info)
@@ -416,6 +457,21 @@ class UCDevice(BasePanel):
         if self.selected_device:
             for btn in self.device_buttons:
                 btn.set_selected(btn.device_info == self.selected_device)
+
+    def update_selected_model(self, model: str, button_image: str = ''):
+        """Update the selected device's model after handshake.
+
+        Called by the MVC layer when the LED handshake reveals the
+        actual device identity (e.g. HR10 instead of generic AX120).
+        """
+        if not self.selected_device:
+            return
+        self.selected_device['model'] = model
+        self.selected_device['button_image'] = button_image
+        for btn in self.device_buttons:
+            if btn.device_info.get('path') == self.selected_device.get('path'):
+                btn.update_model(model, button_image)
+                break
 
     def get_selected_device(self):
         return self.selected_device

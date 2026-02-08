@@ -62,6 +62,7 @@ from .uc_activity_sidebar import UCActivitySidebar
 from .uc_device import UCDevice
 from .uc_image_cut import UCImageCut
 from .uc_info_module import UCInfoModule
+from .uc_hr10_control import UCHr10Control
 from .uc_led_control import UCLedControl
 from .uc_preview import UCPreview
 from .uc_system_info import UCSystemInfo
@@ -192,6 +193,11 @@ class TRCCMainWindowMVC(QMainWindow):
         # LED controller (lazy — created on first LED device selection)
         self._led_controller: FormLEDController | None = None
         self._led_active = False
+        self._hr10_active = False  # True when HR10 panel is shown (vs generic LED)
+
+        # Drive metrics timer for HR10 (1-second polling, slower than LED tick)
+        self._drive_metrics_timer = QTimer(self)
+        self._drive_metrics_timer.timeout.connect(self._on_drive_metrics_tick)
 
         # Language for localized backgrounds
         self._lang = detect_language()
@@ -212,6 +218,7 @@ class TRCCMainWindowMVC(QMainWindow):
         saved_unit = get_saved_temp_unit()
         self.controller.overlay.set_temp_unit(saved_unit)
         self.uc_system_info.set_temp_unit(saved_unit)
+        self.uc_hr10_control.set_temp_unit(saved_unit)
         if saved_unit == 1:
             self.uc_about._set_temp('F')
 
@@ -404,6 +411,11 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
 
+        # === HR10 Control panel (hidden, shown when HR10 device is selected) ===
+        self.uc_hr10_control = UCHr10Control(central)
+        self.uc_hr10_control.setGeometry(*Layout.FORM_CONTAINER)
+        self.uc_hr10_control.setVisible(False)
+
         # Initialize theme directories
         self._init_theme_directories()
 
@@ -440,24 +452,31 @@ class TRCCMainWindowMVC(QMainWindow):
             btn.setChecked(i == active_btn)
 
     def _show_view(self, view: str):
-        """Switch between the four content views.
+        """Switch between the five content views.
 
         Args:
             view: 'form' (device/themes), 'about' (control center),
-                  'sysinfo' (dashboard), or 'led' (LED control)
+                  'sysinfo' (dashboard), 'led' (LED control), or 'hr10' (HR10)
         """
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')
         self.uc_led_control.setVisible(view == 'led')
+        self.uc_hr10_control.setVisible(view == 'hr10')
 
         if view == 'sysinfo':
             self.uc_system_info.start_updates()
         else:
             self.uc_system_info.stop_updates()
 
-        # Stop LED timer when leaving LED view
-        if view != 'led' and self._led_active:
+        # Start/stop drive metrics timer for HR10
+        if view == 'hr10':
+            self._drive_metrics_timer.start(1000)
+        else:
+            self._drive_metrics_timer.stop()
+
+        # Stop LED timer when leaving LED/HR10 view
+        if view not in ('led', 'hr10') and self._led_active:
             self._stop_led_view()
 
     def _show_about(self):
@@ -478,6 +497,7 @@ class TRCCMainWindowMVC(QMainWindow):
         temp_int = 1 if unit == 'F' else 0
         self.controller.overlay.set_temp_unit(temp_int)
         self.uc_system_info.set_temp_unit(temp_int)
+        self.uc_hr10_control.set_temp_unit(temp_int)
         save_temp_unit(temp_int)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
@@ -699,6 +719,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Sync LED panel
         self.uc_led_control.set_language(lang)
+        self.uc_hr10_control.set_language(lang)
 
     def _init_theme_directories(self):
         """Initialize theme browser directories."""
@@ -1624,10 +1645,14 @@ class TRCCMainWindowMVC(QMainWindow):
             self._led_controller = FormLEDController()
             self._connect_led_signals()
 
-        # Determine style (default style 1 for AX120_DIGITAL)
         from ..led_device import LED_STYLES
-        # Try to get style from device model name
         led_style = 1
+
+        # Resolve LED style from model name.
+        # The model was already identified by probe_led_model() during
+        # device detection, so we match by model name instead of doing
+        # another handshake (which would timeout since firmware already
+        # responded to the detection probe).
         model = device.model or ''
         for style_id, style in LED_STYLES.items():
             if style.model_name == model:
@@ -1637,15 +1662,27 @@ class TRCCMainWindowMVC(QMainWindow):
         # Initialize controller for this device
         self._led_controller.initialize(device, led_style)
 
-        # Configure UI panel
-        style = LED_STYLES.get(led_style)
-        if style:
-            self.uc_led_control.initialize(
-                led_style, style.segment_count, style.zone_count, self._lang
-            )
+        # HR10 (style 13) gets its own panel; everything else uses generic LED
+        self._hr10_active = (led_style == 13)
 
-        # Show LED panel
-        self._show_view('led')
+        if self._hr10_active:
+            # Configure HR10 panel
+            style = LED_STYLES.get(led_style)
+            if style:
+                self.uc_hr10_control.initialize(
+                    led_style, style.segment_count, style.zone_count, self._lang
+                )
+            self._connect_hr10_signals()
+            self._show_view('hr10')
+        else:
+            # Configure generic LED panel
+            style = LED_STYLES.get(led_style)
+            if style:
+                self.uc_led_control.initialize(
+                    led_style, style.segment_count, style.zone_count, self._lang
+                )
+            self._show_view('led')
+
         self._led_active = True
 
         # Start LED animation timer (30ms = FormLED timer1 interval)
@@ -1654,7 +1691,9 @@ class TRCCMainWindowMVC(QMainWindow):
     def _stop_led_view(self):
         """Stop LED mode — save config, stop timer, release protocol."""
         self._led_timer.stop()
+        self._drive_metrics_timer.stop()
         self._led_active = False
+        self._hr10_active = False
         if self._led_controller:
             self._led_controller.cleanup()
 
@@ -1681,14 +1720,112 @@ class TRCCMainWindowMVC(QMainWindow):
         ctrl.led.on_preview_update = self._on_led_colors_update
         ctrl.on_status_update = lambda text: self.uc_led_control.set_status(text)
 
+    def _connect_hr10_signals(self):
+        """Wire UCHr10Control signals to FormLEDController.
+
+        Safe to call multiple times — disconnects old signals first
+        to prevent accumulation from repeated device clicks.
+        """
+        if not self._led_controller:
+            return
+
+        ctrl = self._led_controller
+        panel = self.uc_hr10_control
+
+        # Disconnect any existing connections to prevent accumulation
+        try:
+            panel.mode_changed.disconnect()
+        except TypeError:
+            pass
+        try:
+            panel.color_changed.disconnect()
+        except TypeError:
+            pass
+        try:
+            panel.brightness_changed.disconnect()
+        except TypeError:
+            pass
+        try:
+            panel.display_metric_changed.disconnect()
+        except TypeError:
+            pass
+
+        # Mode/color/brightness → controller (same interface as generic LED)
+        panel.mode_changed.connect(
+            lambda mode: ctrl.led.set_mode(mode))
+        panel.color_changed.connect(
+            lambda r, g, b: ctrl.led.set_color(r, g, b))
+        panel.brightness_changed.connect(
+            lambda val: ctrl.led.set_brightness(val))
+
+        # Display metric selection → controller display value
+        panel.display_metric_changed.connect(
+            self._on_hr10_metric_changed)
+
+        # Controller → HR10 view (preview colors)
+        ctrl.led.on_preview_update = self._on_led_colors_update
+        ctrl.on_status_update = lambda text: panel.set_status(text)
+
     def _on_led_tick(self):
         """Called every 30ms — advance LED animation and send to device."""
         if self._led_controller and self._led_active:
             self._led_controller.led.tick()
 
     def _on_led_colors_update(self, colors):
-        """Forward computed LED colors to the preview widget."""
-        self.uc_led_control.set_led_colors(colors)
+        """Forward computed LED colors to the active preview widget."""
+        if self._hr10_active:
+            self.uc_hr10_control.set_led_colors(colors)
+        else:
+            self.uc_led_control.set_led_colors(colors)
+
+    def _on_hr10_metric_changed(self, metric_key: str):
+        """Handle display metric selection change from HR10 panel."""
+        self._hr10_push_display_value()
+
+    def _hr10_push_display_value(self):
+        """Push the current display text to the LED controller for rendering.
+
+        The ° LED sits physically between digit 2 and digit 1 (rightmost).
+        For temperature, append C/F so it lands in digit 1 (right of °).
+        Layout: [Digit4][Digit3][Digit2][°][Digit1][MB/s][%]
+        """
+        if not self._led_controller or not self._hr10_active:
+            return
+        panel = self.uc_hr10_control
+        text = panel._display._value_text.strip()
+        unit = panel._display._unit_text
+
+        # Map unit to indicator set + adjust text for physical layout
+        indicators: set = set()
+        if '°' in unit:
+            indicators.add('deg')
+            # Append C or F so it renders in digit 1 (right of ° symbol)
+            if 'C' in unit:
+                text = text + 'C'
+            elif 'F' in unit:
+                text = text + 'F'
+        if '%' in unit:
+            indicators.add('%')
+        if 'MB' in unit or 'mb' in unit:
+            indicators.add('mbs')
+
+        self._led_controller.led.set_display_value(text, indicators)
+
+    def _on_drive_metrics_tick(self):
+        """Called every 1s — poll drive metrics for HR10 display."""
+        if not self._hr10_active:
+            return
+        try:
+            from ..system_info import get_disk_stats, get_disk_temperature
+            metrics = get_disk_stats()
+            temp = get_disk_temperature()
+            if temp is not None:
+                metrics['disk_temp'] = temp
+            self.uc_hr10_control.update_drive_metrics(metrics)
+            # Push updated value to the LED controller for device rendering
+            self._hr10_push_display_value()
+        except Exception:
+            pass
 
     def _on_capture_requested(self):
         """Launch screen capture overlay → feed to image cutter."""
@@ -1922,6 +2059,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self._metrics_timer.stop()
         self._device_timer.stop()
         self._led_timer.stop()
+        self._drive_metrics_timer.stop()
         if self._led_controller:
             self._led_controller.cleanup()
         self.uc_system_info.stop_updates()

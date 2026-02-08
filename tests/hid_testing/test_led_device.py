@@ -104,49 +104,49 @@ def _make_valid_handshake_response(pm: int = 3, sub_type: int = 0) -> bytes:
 class TestLedDeviceStyle:
     """Test LED_STYLES registry completeness and correctness."""
 
-    def test_registry_has_12_styles(self):
-        assert len(LED_STYLES) == 12
+    def test_registry_has_13_styles(self):
+        assert len(LED_STYLES) == 13
 
-    def test_style_ids_are_1_through_12(self):
-        assert set(LED_STYLES.keys()) == set(range(1, 13))
+    def test_style_ids_are_1_through_13(self):
+        assert set(LED_STYLES.keys()) == set(range(1, 14))
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_has_positive_led_count(self, style_id):
         style = LED_STYLES[style_id]
         assert style.led_count > 0
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_has_positive_segment_count(self, style_id):
         style = LED_STYLES[style_id]
         assert style.segment_count > 0
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_segment_count_lte_led_count(self, style_id):
         """Segment count should never exceed LED count."""
         style = LED_STYLES[style_id]
         assert style.segment_count <= style.led_count
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_zone_count_positive(self, style_id):
         style = LED_STYLES[style_id]
         assert style.zone_count >= 1
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_has_model_name(self, style_id):
         style = LED_STYLES[style_id]
         assert style.model_name != ""
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_has_preview_image(self, style_id):
         style = LED_STYLES[style_id]
         assert style.preview_image.startswith("D")
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_has_background_base(self, style_id):
         style = LED_STYLES[style_id]
         assert style.background_base.startswith("D0")
 
-    @pytest.mark.parametrize("style_id", range(1, 13))
+    @pytest.mark.parametrize("style_id", range(1, 14))
     def test_style_id_field_matches_key(self, style_id):
         """The style_id field should match the dictionary key."""
         style = LED_STYLES[style_id]

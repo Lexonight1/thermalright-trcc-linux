@@ -362,9 +362,16 @@ class LedProtocol(DeviceProtocol):
     def handshake(self):
         """Perform LED device handshake and return device info.
 
+        The firmware only responds to the handshake once after power-on.
+        Subsequent calls return the cached result.
+
         Returns:
             LedHandshakeInfo with pm byte and resolved device style.
         """
+        # Return cached result — device firmware ignores re-handshakes
+        if self._handshake_info is not None:
+            return self._handshake_info
+
         try:
             if self._transport is None:
                 self._transport = self._create_transport()
