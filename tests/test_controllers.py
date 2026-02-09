@@ -7,7 +7,7 @@ Tests cover:
 - VideoController: load, play/pause/stop, tick, seek, frame interval
 - OverlayController: enable/disable, add/remove/update elements, render,
   renderer delegation (mask, temp unit, config, scaling)
-- FormCZTVController: initialization, resolution, rotation, brightness,
+- LCDDeviceController: initialization, resolution, rotation, brightness,
   theme loading, working dir lifecycle, cleanup, save/export/import,
   video tick, LCD send pipeline, mask position parsing, overlay preview
 """
@@ -24,7 +24,7 @@ from PIL import Image
 
 from trcc.core.controllers import (
     DeviceController,
-    FormCZTVController,
+    LCDDeviceController,
     OverlayController,
     ThemeController,
     VideoController,
@@ -41,7 +41,7 @@ from trcc.core.models import (
     VideoState,
 )
 
-# Common patches for FormCZTVController tests (avoids file I/O)
+# Common patches for LCDDeviceController tests (avoids file I/O)
 FORM_PATCHES = [
     'trcc.core.controllers.get_saved_resolution',
     'trcc.core.controllers.save_resolution',
@@ -54,7 +54,7 @@ FORM_PATCHES = [
 
 
 def _make_form_controller():
-    """Create a FormCZTVController with all path functions mocked."""
+    """Create a LCDDeviceController with all path functions mocked."""
     patches = []
     for target in FORM_PATCHES:
         if 'get_saved_resolution' in target:
@@ -65,7 +65,7 @@ def _make_form_controller():
             m = patch(target)
         patches.append(m)
         m.start()
-    ctrl = FormCZTVController()
+    ctrl = LCDDeviceController()
     return ctrl, patches
 
 
@@ -371,11 +371,11 @@ class TestOverlayController(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController
+# LCDDeviceController
 # =============================================================================
 
-class TestFormCZTVController(unittest.TestCase):
-    """Test FormCZTVController main application controller."""
+class TestLCDDeviceController(unittest.TestCase):
+    """Test LCDDeviceController main application controller."""
 
     def setUp(self):
         # Patch paths module to avoid file I/O
@@ -391,7 +391,7 @@ class TestFormCZTVController(unittest.TestCase):
         for p in self.patches:
             p.start()
 
-        self.ctrl = FormCZTVController()
+        self.ctrl = LCDDeviceController()
 
     def tearDown(self):
         self.ctrl.cleanup()
@@ -523,7 +523,7 @@ class TestFormCZTVController(unittest.TestCase):
             self.assertTrue((self.ctrl.working_dir / 'config1.dc').exists())
 
 
-class TestFormCZTVControllerRotation(unittest.TestCase):
+class TestLCDDeviceControllerRotation(unittest.TestCase):
     """Test _apply_rotation and _apply_brightness image transforms."""
 
     def setUp(self):
@@ -538,7 +538,7 @@ class TestFormCZTVControllerRotation(unittest.TestCase):
         ]
         for p in self.patches:
             p.start()
-        self.ctrl = FormCZTVController()
+        self.ctrl = LCDDeviceController()
 
     def tearDown(self):
         self.ctrl.cleanup()
@@ -849,11 +849,11 @@ class TestOverlayControllerNoRenderer(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController – theme loading, save, export, import
+# LCDDeviceController – theme loading, save, export, import
 # =============================================================================
 
 class TestFormCZTVThemeOps(unittest.TestCase):
-    """Test FormCZTVController theme loading and file operations."""
+    """Test LCDDeviceController theme loading and file operations."""
 
     def setUp(self):
         self.ctrl, self.patches = _make_form_controller()
@@ -1000,7 +1000,7 @@ class TestFormCZTVThemeOps(unittest.TestCase):
         # Put a bg file in working dir
         self.ctrl.current_image.save(str(self.ctrl.working_dir / '00.png'))
 
-        with patch('trcc.core.controllers.FormCZTVController._ensure_renderer_for_save',
+        with patch('trcc.core.controllers.LCDDeviceController._ensure_renderer_for_save',
                    create=True, return_value=None):
             ok, msg = self.ctrl.save_theme('MyTheme', Path(self.tmp))
 
@@ -1114,7 +1114,7 @@ class TestFormCZTVThemeOps(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController – video tick, LCD send pipeline
+# LCDDeviceController – video tick, LCD send pipeline
 # =============================================================================
 
 class TestFormCZTVVideoAndSend(unittest.TestCase):
@@ -1262,7 +1262,7 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController – mask position parsing
+# LCDDeviceController – mask position parsing
 # =============================================================================
 
 class TestFormCZTVMaskPosition(unittest.TestCase):
@@ -1341,7 +1341,7 @@ class TestFormCZTVMaskPosition(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController – callbacks, initialize, render helpers
+# LCDDeviceController – callbacks, initialize, render helpers
 # =============================================================================
 
 class TestFormCZTVCallbacksAndHelpers(unittest.TestCase):
@@ -1480,7 +1480,7 @@ class TestFormCZTVCallbacksAndHelpers(unittest.TestCase):
 
 
 # =============================================================================
-# FormCZTVController – initialize, set_resolution with _data_dir
+# LCDDeviceController – initialize, set_resolution with _data_dir
 # =============================================================================
 
 class TestFormCZTVInitialize(unittest.TestCase):
@@ -1581,7 +1581,7 @@ class TestVideoControllerFrameSkip(unittest.TestCase):
 
 
 class TestFormCZTVFinalEdgeCases(unittest.TestCase):
-    """Cover remaining uncovered branches in FormCZTVController."""
+    """Cover remaining uncovered branches in LCDDeviceController."""
 
     def setUp(self):
         self.ctrl, self.patches = _make_form_controller()
@@ -1986,7 +1986,7 @@ class TestCreateController(unittest.TestCase):
     def test_create_without_data_dir(self):
         with patch('trcc.core.controllers.get_saved_resolution', return_value=(320, 320)):
             ctrl = create_controller()
-            self.assertIsInstance(ctrl, FormCZTVController)
+            self.assertIsInstance(ctrl, LCDDeviceController)
             ctrl.cleanup()
 
     def test_create_with_data_dir(self):
@@ -2002,5 +2002,5 @@ class TestCreateController(unittest.TestCase):
                  patch('trcc.core.controllers.get_web_dir', return_value=tmp), \
                  patch('trcc.core.controllers.get_web_masks_dir', return_value=tmp):
                 ctrl = create_controller(data_dir)
-                self.assertIsInstance(ctrl, FormCZTVController)
+                self.assertIsInstance(ctrl, LCDDeviceController)
                 ctrl.cleanup()

@@ -14,7 +14,7 @@ Linux port of the Thermalright TRCC application for controlling LCD displays on 
 
 SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
 
-### HID Devices (Testing Branch)
+### HID Devices
 
 | VID    | PID    | Protocol | Type | Notes |
 |--------|--------|----------|------|-------|
@@ -22,7 +22,7 @@ SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
 | 0x0418 | 0x5303 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
 | 0x0418 | 0x5304 | HID      | 3 (ALi) | LCD display via HID bulk transfer |
 
-### HID LED Devices (Testing Branch)
+### HID LED Devices
 
 | VID    | PID    | Protocol | Type | Notes |
 |--------|--------|----------|------|-------|
@@ -266,6 +266,7 @@ The LED handshake reads a PM (product mode) byte from the device, which maps to 
 | PM | Style | Model | Segments | Zones |
 |----|-------|-------|----------|-------|
 | 1  | 1     | AX120 DIGITAL | 12 | 4 |
+| 13 | 13    | HR10 2280 PRO DIGITAL | 31 | 1 |
 
 ### LED Packet Format
 
@@ -365,10 +366,12 @@ src/trcc/
 ├── hid_device.py                # HID USB transport (PyUSB/HIDAPI)
 ├── led_device.py                # LED RGB protocol (effects, packets, HID sender)
 ├── device_factory.py            # Protocol factory (SCSI/HID/LED routing)
+├── hr10_display.py              # HR10 7-segment display renderer (31-LED color array)
+├── hr10_tempd.py                # HR10 NVMe temperature daemon (sysfs → 7-segment)
 ├── __version__.py               # Version info
 ├── core/
 │   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
-│   └── controllers.py           # FormCZTVController, FormLEDController, MVC controllers
+│   └── controllers.py           # LCDDeviceController, LEDDeviceController, MVC controllers
 └── qt_components/
     ├── qt_app_mvc.py            # Main window (1454x800)
     ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
@@ -388,7 +391,10 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
-    ├── uc_led_control.py        # LED RGB control panel
+    ├── uc_led_control.py        # LED RGB control panel (all LED styles 1-13, inc. HR10)
+    ├── uc_screen_led.py         # LED segment visualization (colored circles)
+    ├── uc_color_wheel.py        # HSV color wheel for LED hue selection
+    ├── uc_seven_segment.py      # 7-segment display preview (HR10)
     ├── uc_activity_sidebar.py   # Sensor element picker
     └── uc_about.py              # Settings / about panel
 ```
@@ -490,6 +496,14 @@ trcc send image.png
 # Display solid color
 trcc color ff0000
 
+# LED diagnostics
+trcc led-diag
+trcc led-diag --test
+
+# HR10 NVMe temperature daemon
+trcc hr10-tempd
+trcc hr10-tempd --brightness 50 --drive "Samsung 990" --unit F
+
 # Run GUI
 PYTHONPATH=src python3 -m trcc.cli gui
 # or if installed:
@@ -529,3 +543,4 @@ sudo modprobe sg
 
 - [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — Full SCSI protocol reverse-engineered from USBLCD.exe (handles `0402:3922`)
 - [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol reverse-engineered from USBLCDNEW.exe (handles `87CD:70DB`, `0416:5302`, `0416:5406`)
+- [USBLED_PROTOCOL.md](USBLED_PROTOCOL.md) — HID LED protocol reverse-engineered from FormLED.cs (handles `0416:8001`)

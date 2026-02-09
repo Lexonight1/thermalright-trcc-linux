@@ -3,13 +3,13 @@ Tests for LED controller and model layer.
 
 Covers LEDMode enum, LEDZoneState, LEDState, LEDModel (state mutations,
 tick dispatch, all 6 effect algorithms, callbacks), LEDController (delegation,
-protocol wiring, tick with send), and FormLEDController (initialize, save/load
+protocol wiring, tick with send), and LEDDeviceController (initialize, save/load
 config, cleanup).
 
 Architecture mirrors Windows FormLED.cs:
   - LEDModel holds state + computes per-segment colors each tick
   - LEDController owns model, manages protocol send + view callbacks
-  - FormLEDController coordinates device init, config persistence, cleanup
+  - LEDDeviceController coordinates device init, config persistence, cleanup
 """
 
 from dataclasses import dataclass
@@ -42,7 +42,7 @@ class FakeDeviceInfo:
 # Imports under test
 # =========================================================================
 
-from trcc.core.controllers import FormLEDController, LEDController  # noqa: E402
+from trcc.core.controllers import LEDDeviceController, LEDController  # noqa: E402
 from trcc.core.models import (  # noqa: E402
     LEDMode,
     LEDModel,
@@ -74,8 +74,8 @@ def led_controller():
 
 @pytest.fixture
 def form_controller():
-    """Fresh FormLEDController."""
-    return FormLEDController()
+    """Fresh LEDDeviceController."""
+    return LEDDeviceController()
 
 
 @pytest.fixture
@@ -864,10 +864,10 @@ class TestLEDControllerViewCallbacks:
 
 
 # =========================================================================
-# Tests: FormLEDController — initialize
+# Tests: LEDDeviceController — initialize
 # =========================================================================
 
-class TestFormLEDControllerInitialize:
+class TestLEDDeviceControllerInitialize:
     """Test initialize() — configures model, creates protocol, loads config."""
 
     @patch("trcc.core.controllers.LEDController.configure_for_style")
@@ -949,10 +949,10 @@ class TestFormLEDControllerInitialize:
 
 
 # =========================================================================
-# Tests: FormLEDController — save_config
+# Tests: LEDDeviceController — save_config
 # =========================================================================
 
-class TestFormLEDControllerSaveConfig:
+class TestLEDDeviceControllerSaveConfig:
     """Test save_config() persists state to device config."""
 
     @patch("trcc.paths.save_device_setting")
@@ -1045,10 +1045,10 @@ class TestFormLEDControllerSaveConfig:
 
 
 # =========================================================================
-# Tests: FormLEDController — load_config
+# Tests: LEDDeviceController — load_config
 # =========================================================================
 
-class TestFormLEDControllerLoadConfig:
+class TestLEDDeviceControllerLoadConfig:
     """Test load_config() restores state from device config."""
 
     @patch("trcc.paths.get_device_config")
@@ -1156,10 +1156,10 @@ class TestFormLEDControllerLoadConfig:
 
 
 # =========================================================================
-# Tests: FormLEDController — cleanup
+# Tests: LEDDeviceController — cleanup
 # =========================================================================
 
-class TestFormLEDControllerCleanup:
+class TestLEDDeviceControllerCleanup:
     """Test cleanup() — saves config and clears protocol."""
 
     @patch("trcc.paths.save_device_setting")

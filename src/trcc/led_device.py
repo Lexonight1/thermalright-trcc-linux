@@ -11,9 +11,12 @@ Protocol reverse-engineered from FormLED.cs and UCDevice.cs (TRCC 2.0.3).
 The ``UsbTransport`` ABC from hid_device.py is reused for transport.
 """
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+
+log = logging.getLogger(__name__)
 
 from .hid_device import (
     DEFAULT_TIMEOUT_MS,
@@ -96,6 +99,10 @@ LED_STYLES = {
     10: LedDeviceStyle(10, 38, 17, 1, "LF11", "DLF11", "D0LF11"),
     11: LedDeviceStyle(11, 93, 72, 2, "LF15", "DLF15", "D0LF15"),
     12: LedDeviceStyle(12, 62, 62, 1, "LF13", "DLF13", "D0rgblf13"),
+    # HR10 2280 Pro Digital — NVMe SSD heatsink with ARGB digital display.
+    # Shares PM=128 and LED config with LC1 (31 LEDs, 14 segments, 1 zone).
+    # Distinguished from LC1 by sub_type=129 in handshake response.
+    13: LedDeviceStyle(13, 31, 14, 1, "HR10_2280_PRO_DIGITAL", "DAX120_DIGITAL", "D0数码屏"),
 }
 
 # pm byte (from firmware handshake receive[6]) → style mapping
@@ -113,7 +120,7 @@ PM_TO_STYLE = {
     80: 6,   # LF12 → style 6
     96: 7,   # LF10 → style 7
     112: 9,  # LC2 → style 9
-    128: 4,  # LC1 → style 4
+    128: 4,  # LC1 → style 4 (also HR10, disambiguated by sub_type)
     129: 10, # LF11 → style 10
     144: 11, # LF15 → style 11
     160: 12, # LF13 → style 12
@@ -140,6 +147,12 @@ PM_TO_MODEL = {
     208: "CZ1",
 }
 
+# (pm, sub_type) → style override for devices that share a PM byte.
+# HR10 2280 Pro Digital shares PM=128 with LC1 but has sub_type=129.
+SUB_TYPE_OVERRIDES = {
+    (128, 129): (13, "HR10_2280_PRO_DIGITAL"),  # → style 13
+}
+
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers
 # Note: Windows ucColor1Delegate has swapped B,G params (R,B,G order)
 PRESET_COLORS: List[Tuple[int, int, int]] = [
@@ -154,11 +167,19 @@ PRESET_COLORS: List[Tuple[int, int, int]] = [
 ]
 
 
-def get_style_for_pm(pm: int) -> LedDeviceStyle:
-    """Get LED device style from firmware pm byte.
+def get_style_for_pm(pm: int, sub_type: int = 0) -> LedDeviceStyle:
+    """Get LED device style from firmware pm byte (and optional sub_type).
+
+    Some devices share a PM byte (e.g. LC1 and HR10 both use PM=128).
+    The sub_type disambiguates them via SUB_TYPE_OVERRIDES.
 
     Falls back to style 1 (30 LEDs) for unknown pm values.
     """
+    # Check sub_type overrides first (e.g. HR10 vs LC1)
+    override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+    if override:
+        style_id = override[0]
+        return LED_STYLES[style_id]
     style_id = PM_TO_STYLE.get(pm, 1)
     return LED_STYLES[style_id]
 
@@ -413,8 +434,14 @@ class LedHidSender:
 
         pm = resp[6]
         sub_type = resp[5]
-        style = get_style_for_pm(pm)
-        model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
+        style = get_style_for_pm(pm, sub_type)
+
+        # Check sub_type override for model name (e.g. HR10 vs LC1)
+        override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+        if override:
+            model_name = override[1]
+        else:
+            model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
 
         return LedHandshakeInfo(
             pm=pm,
@@ -497,3 +524,132 @@ def send_led_colors(
     )
     sender = LedHidSender(transport)
     return sender.send_led_data(packet)
+
+
+# =========================================================================
+# LED probe cache — persists handshake results across restarts
+# =========================================================================
+# The firmware only responds to the HID handshake once per power cycle.
+# Caching the result avoids consuming the one-shot handshake during
+# detection, so the actual LedProtocol.handshake() still works.
+
+
+def _led_probe_cache_path() -> 'Path':
+    """Return the path to the LED probe cache file."""
+    from pathlib import Path
+    config_dir = Path.home() / '.config' / 'trcc'
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / 'led_probe_cache.json'
+
+
+def _probe_cache_key(vid: int, pid: int, usb_path: str = '') -> str:
+    """Build a cache key that disambiguates devices sharing VID:PID.
+
+    LC1 and HR10 both use 0416:8001.  When both are connected, the USB
+    bus path (e.g. "2-1.4") distinguishes them.
+    """
+    if usb_path:
+        return f"{vid:04x}_{pid:04x}_{usb_path}"
+    return f"{vid:04x}_{pid:04x}"
+
+
+def _save_probe_cache(vid: int, pid: int, info: LedHandshakeInfo,
+                      usb_path: str = '') -> None:
+    """Cache a successful probe result to disk."""
+    import json
+    try:
+        cache_path = _led_probe_cache_path()
+        cache = {}
+        if cache_path.exists():
+            cache = json.loads(cache_path.read_text())
+        key = _probe_cache_key(vid, pid, usb_path)
+        cache[key] = {
+            'pm': info.pm,
+            'sub_type': info.sub_type,
+            'model_name': info.model_name,
+            'style_id': info.style.style_id if info.style else 1,
+        }
+        cache_path.write_text(json.dumps(cache))
+    except Exception as e:
+        log.debug("Failed to save probe cache: %s", e)
+
+
+def _load_probe_cache(vid: int, pid: int,
+                      usb_path: str = '') -> Optional[LedHandshakeInfo]:
+    """Load a cached probe result from disk."""
+    import json
+    try:
+        cache_path = _led_probe_cache_path()
+        if not cache_path.exists():
+            return None
+        cache = json.loads(cache_path.read_text())
+        # Try bus-path-specific key first, then fall back to VID:PID-only
+        key = _probe_cache_key(vid, pid, usb_path)
+        entry = cache.get(key)
+        if not entry and usb_path:
+            entry = cache.get(_probe_cache_key(vid, pid))
+        if not entry:
+            return None
+        pm = entry['pm']
+        sub_type = entry['sub_type']
+        style = get_style_for_pm(pm, sub_type)
+        return LedHandshakeInfo(
+            pm=pm,
+            sub_type=sub_type,
+            style=style,
+            model_name=entry['model_name'],
+        )
+    except Exception as e:
+        log.debug("Failed to load probe cache: %s", e)
+        return None
+
+
+def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
+                    usb_path: str = '') -> Optional[LedHandshakeInfo]:
+    """Probe an LED device to discover its model via HID handshake.
+
+    Checks the disk cache first (keyed by VID:PID:bus_path).  Only
+    performs a live USB handshake when no cached result exists, since
+    the firmware only responds to the handshake once per power cycle.
+
+    Args:
+        vid: USB vendor ID.
+        pid: USB product ID.
+        usb_path: USB bus path (e.g. "2-1.4") for cache disambiguation.
+
+    Returns:
+        LedHandshakeInfo with pm, sub_type, style, and model_name,
+        or None if the probe fails and no cached result exists.
+    """
+    # Cache-first: avoid consuming the one-shot handshake unnecessarily.
+    cached = _load_probe_cache(vid, pid, usb_path)
+    if cached is not None:
+        return cached
+
+    transport = None
+    try:
+        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        if PYUSB_AVAILABLE:
+            from .hid_device import PyUsbTransport
+            transport = PyUsbTransport(vid, pid)
+        elif HIDAPI_AVAILABLE:
+            from .hid_device import HidApiTransport
+            transport = HidApiTransport(vid, pid)
+        else:
+            return None
+
+        transport.open()
+        sender = LedHidSender(transport)
+        info = sender.handshake()
+        if info:
+            _save_probe_cache(vid, pid, info, usb_path)
+        return info
+    except Exception as e:
+        log.debug("LED probe failed for %04x:%04x: %s", vid, pid, e)
+        return None
+    finally:
+        if transport is not None:
+            try:
+                transport.close()
+            except Exception:
+                pass

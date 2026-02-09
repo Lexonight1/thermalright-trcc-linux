@@ -12,7 +12,7 @@ Architecture:
 
 from .controllers import (
     DeviceController,
-    FormCZTVController,
+    LCDDeviceController,
     OverlayController,
     ThemeController,
     VideoController,
@@ -53,6 +53,6 @@ __all__ = [
     'DeviceController',
     'VideoController',
     'OverlayController',
-    'FormCZTVController',
+    'LCDDeviceController',
     'create_controller',
 ]

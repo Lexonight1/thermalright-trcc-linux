@@ -492,7 +492,7 @@ class OverlayController:
             self.on_config_changed()
 
 
-class FormCZTVController:
+class LCDDeviceController:
     """
     Main controller for LCD management.
 
@@ -1232,8 +1232,14 @@ class LEDController:
         self.on_preview_update: Optional[Callable] = None
         self.on_send_complete: Optional[Callable[[bool], None]] = None
 
-        # Protocol (injected by FormLEDController)
+        # Protocol (injected by LEDDeviceController)
         self._protocol = None  # LedProtocol
+
+        # HR10 display state (style 13 — 7-segment digit rendering)
+        self._hr10_mode = False
+        self._hr10_display_text = "---"
+        self._hr10_indicators: set = {'deg'}
+        self._hr10_mask: Optional[List[bool]] = None
 
         # Wire model callbacks
         self.model.on_state_changed = self._on_model_state_changed
@@ -1274,26 +1280,66 @@ class LEDController:
     def configure_for_style(self, style_id: int) -> None:
         """Configure the model for a specific LED device style."""
         self.model.configure_for_style(style_id)
+        self._hr10_mode = (style_id == 13)
+        if self._hr10_mode:
+            self._update_hr10_mask()
 
     def set_protocol(self, protocol) -> None:
         """Inject the LedProtocol for device communication."""
         self._protocol = protocol
+
+    def set_display_value(self, text: str, indicators: Optional[set] = None) -> None:
+        """Set the HR10 7-segment display value.
+
+        Called by the HR10 panel when the displayed metric changes.
+
+        Args:
+            text: Up to 4 characters for digits (e.g. "116", "47").
+            indicators: Set of indicator names: 'mbs', '%', 'deg'.
+        """
+        self._hr10_display_text = text
+        self._hr10_indicators = indicators or set()
+        self._update_hr10_mask()
+
+    def _update_hr10_mask(self) -> None:
+        """Recompute the HR10 digit mask from current display text."""
+        if not self._hr10_mode:
+            return
+        from ..hr10_display import get_digit_mask
+        self._hr10_mask = get_digit_mask(
+            self._hr10_display_text, self._hr10_indicators
+        )
 
     def tick(self) -> None:
         """Called by timer. Advances animation and sends to device.
 
         This is the main loop — called every ~30ms by the GUI timer.
         Computes new LED colors, sends to hardware, updates preview.
+
+        For HR10 (style 13), expands segment colors to 31 LEDs using
+        the digit mask so only active segments are lit.
         """
         colors = self.model.tick()
 
         if colors and self._protocol:
-            is_on = self.model.state.segment_on
-            global_on = self.model.state.global_on
+            if self._hr10_mode and self._hr10_mask:
+                # HR10: expand animation color to 31 LEDs via digit mask.
+                from ..hr10_display import LED_COUNT
+                base_color = colors[0] if colors else (0, 0, 0)
+                send_colors = [
+                    base_color if self._hr10_mask[i] else (0, 0, 0)
+                    for i in range(LED_COUNT)
+                ]
+                is_on = None
+            else:
+                send_colors = colors
+                is_on = self.model.state.segment_on
+
             brightness = self.model.state.brightness
+            global_on = self.model.state.global_on
             try:
                 success = self._protocol.send_led_data(
-                    colors, is_on, global_on, brightness
+                    send_colors, is_on, global_on, brightness
                 )
                 if self.on_send_complete:
                     self.on_send_complete(success)
@@ -1311,8 +1357,8 @@ class LEDController:
             self.on_preview_update(colors)
 
 
-class FormLEDController:
-    """Main LED controller (parallels FormCZTVController for LCD).
+class LEDDeviceController:
+    """Main LED controller (parallels LCDDeviceController for LCD).
 
     Coordinates LEDController with DeviceController.
     Created when an LED device is selected; cleaned up when switching away.
@@ -1452,7 +1498,7 @@ class FormLEDController:
 # Convenience function for creating main controller
 # =============================================================================
 
-def create_controller(data_dir: Optional[Path] = None) -> FormCZTVController:
+def create_controller(data_dir: Optional[Path] = None) -> LCDDeviceController:
     """
     Create and initialize the main controller.
 
@@ -1460,9 +1506,9 @@ def create_controller(data_dir: Optional[Path] = None) -> FormCZTVController:
         data_dir: Optional data directory path
 
     Returns:
-        Initialized FormCZTVController
+        Initialized LCDDeviceController
     """
-    controller = FormCZTVController()
+    controller = LCDDeviceController()
 
     if data_dir:
         controller.initialize(data_dir)

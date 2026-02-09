@@ -22,7 +22,8 @@ These devices have been identified by testers but are still being validated.
 
 | Product | Connection | Tester Status |
 |---------|-----------|---------------|
-| Assassin X 120 R Digital | HID (0416:8001) | GUI launches, LED panel showing, awaiting handshake data |
+| Assassin X 120 R Digital | HID (0416:8001) | LED RGB control working |
+| HR10 2280 PRO Digital | HID (0416:8001) | 7-segment display, NVMe temp daemon, color wheel |
 
 ---
 
@@ -74,7 +75,7 @@ These have a small digital display showing CPU/GPU temperature plus addressable 
 | Royal Knight 120 Digital |
 | Royal Knight 130 Digital |
 | Phantom Spirit 120 Digital |
-| HR10-2280 PRO Digital |
+| ~~HR10-2280 PRO Digital~~ (supported — see above) |
 | MC-3 DIGITAL |
 
 ---

@@ -234,6 +234,40 @@ Device: ALi Corp LCD Display
 
 ---
 
+### `trcc led-diag`
+
+Diagnose an LED device — performs handshake and reports PM byte, style, and segment count.
+
+```bash
+trcc led-diag             # handshake only
+trcc led-diag --test      # handshake + send test colors
+```
+
+| Option | Description |
+|--------|-------------|
+| `--test` | Send test colors to the device after handshake |
+
+---
+
+### `trcc hr10-tempd`
+
+Display NVMe drive temperature on the HR10 2280 PRO Digital 7-segment display. Runs as a daemon — reads sysfs temperature and sends it to the device continuously with a breathe animation and thermal color gradient.
+
+```bash
+trcc hr10-tempd                          # default: 100% brightness, "9100" drive, Celsius
+trcc hr10-tempd --brightness 50          # 50% brightness
+trcc hr10-tempd --drive "Samsung 990"    # match a specific drive model
+trcc hr10-tempd --unit F                 # Fahrenheit
+```
+
+| Option | Description |
+|--------|-------------|
+| `--brightness` | LED brightness 0-100 (default: 100) |
+| `--drive` | Drive model substring to match (default: "9100") |
+| `--unit` | Temperature unit: C or F (default: C) |
+
+---
+
 ### `trcc download`
 
 Download cloud theme packs.

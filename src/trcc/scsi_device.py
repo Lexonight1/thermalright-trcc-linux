@@ -206,14 +206,30 @@ def find_lcd_devices() -> List[Dict]:
             # Path is a synthetic identifier for the factory
             hid_path = f"hid:{dev.vid:04x}:{dev.pid:04x}"
 
+            model = dev.model
+            button_image = dev.button_image
+
+            # For LED devices sharing a VID:PID (e.g. 0416:8001), probe
+            # the firmware via HID handshake to discover the real model.
+            # Without this, all devices default to AX120_DIGITAL.
+            if dev.implementation == 'hid_led':
+                try:
+                    from .led_device import probe_led_model
+                    info = probe_led_model(dev.vid, dev.pid,
+                                           usb_path=dev.usb_path)
+                    if info and info.model_name:
+                        model = info.model_name
+                except Exception:
+                    pass  # Fall back to registry default
+
             devices.append({
                 'name': f"{dev.vendor_name} {dev.product_name}",
                 'path': hid_path,
                 'resolution': (0, 0),  # Unknown until HID handshake (PM→FBL→resolution)
                 'vendor': dev.vendor_name,
                 'product': dev.product_name,
-                'model': dev.model,
-                'button_image': dev.button_image,
+                'model': model,
+                'button_image': button_image,
                 'vid': dev.vid,
                 'pid': dev.pid,
                 'protocol': 'hid',

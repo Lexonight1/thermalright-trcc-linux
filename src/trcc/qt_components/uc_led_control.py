@@ -3,19 +3,23 @@
 LED control panel (FormLED equivalent).
 
 Full LED control UI matching Windows FormLED layout:
-- Left side: UCScreenLED device preview (536x536)
-- Right side: Mode buttons, RGB controls, presets, brightness
+- Left side: Device preview (UCScreenLED circles or UCSevenSegment for HR10)
+- Right side: Mode buttons, color wheel, RGB controls, presets, brightness
 - Bottom: Zone selection buttons (for multi-zone devices)
+- HR10-specific: Drive metrics panel, display selection, circulate mode
 
 Layout coordinates from FormLED.cs InitializeComponent / FormLED.resx.
+All LED devices (styles 1-13) use this single panel — matching Windows
+FormLED.cs which is one form for all LED device types.
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 try:
-    from PyQt6.QtCore import Qt, pyqtSignal
+    from PyQt6.QtCore import Qt, QTimer, pyqtSignal
     from PyQt6.QtGui import QColor, QPalette, QPixmap
     from PyQt6.QtWidgets import (
+        QCheckBox,
         QFrame,
         QLabel,
         QPushButton,
@@ -30,7 +34,9 @@ except ImportError:
 if PYQT6_AVAILABLE:
     from .assets import Assets
     from .base import set_background_pixmap
+    from .uc_color_wheel import UCColorWheel
     from .uc_screen_led import UCScreenLED
+    from .uc_seven_segment import UCSevenSegment
 
 
 # =========================================================================
@@ -41,9 +47,13 @@ if PYQT6_AVAILABLE:
 PANEL_WIDTH = 1274
 PANEL_HEIGHT = 800
 
-# UCScreenLED preview
+# UCScreenLED preview (standard devices)
 PREVIEW_X, PREVIEW_Y = 16, 80
 PREVIEW_W, PREVIEW_H = 536, 536
+
+# 7-segment preview position (HR10 — shorter, same left area)
+SEG_PREVIEW_X, SEG_PREVIEW_Y = 30, 100
+SEG_PREVIEW_W, SEG_PREVIEW_H = 500, 400
 
 # Mode buttons (6 buttons, arranged horizontally)
 MODE_Y = 227
@@ -51,6 +61,7 @@ MODE_X_START = 590
 MODE_W, MODE_H = 93, 62
 MODE_SPACING = 10
 
+# --- Standard layout (no color wheel) ---
 # RGB sliders
 RGB_X = 590
 RGB_Y_START = 340
@@ -75,6 +86,44 @@ BRIGHT_W = 400
 ONOFF_X = 1050
 ONOFF_Y = 530
 ONOFF_W, ONOFF_H = 80, 30
+
+# --- HR10 layout (with color wheel — controls shift right) ---
+HR10_WHEEL_X, HR10_WHEEL_Y = 565, 295
+HR10_WHEEL_W, HR10_WHEEL_H = 300, 280
+
+HR10_RGB_X = 880
+HR10_RGB_Y_START = 320
+HR10_RGB_SLIDER_W = 300
+
+HR10_PRESET_Y = 470
+HR10_PRESET_X_START = 880
+
+HR10_BRIGHT_X = 590
+HR10_BRIGHT_Y = 600
+HR10_BRIGHT_W = 560
+
+# Temperature color legend (HR10 modes 4-5)
+TEMP_LEGEND_X = 590
+TEMP_LEGEND_Y = 570
+TEMP_LEGEND_W = 560
+TEMP_LEGEND_H = 18
+
+# Drive metrics panel (HR10, bottom left below preview)
+METRICS_X = 30
+METRICS_Y = 540
+METRICS_W = 500
+METRICS_H = 130
+
+# Display selection buttons (HR10, bottom right)
+DISPLAY_SEL_X = 590
+DISPLAY_SEL_Y = 710
+DISPLAY_SEL_W = 120
+DISPLAY_SEL_H = 45
+DISPLAY_SEL_SPACING = 8
+
+# Circulate checkbox (HR10)
+CIRCULATE_X = 590
+CIRCULATE_Y = 670
 
 # Zone buttons (bottom, multi-zone only)
 ZONE_Y = 620
@@ -109,14 +158,28 @@ PRESET_COLORS = [
     (255, 255, 255),  # White
 ]
 
+# Display selection options (HR10)
+DISPLAY_METRICS = [
+    ("Temp\n(\u00b0C/\u00b0F)", "temp"),
+    ("Activity\n(%)", "activity"),
+    ("Read Rate\n(MB/s)", "read"),
+    ("Write Rate\n(MB/s)", "write"),
+]
+
+# Circulate interval range (seconds)
+CIRCULATE_MIN_S = 2
+CIRCULATE_MAX_S = 10
+CIRCULATE_DEFAULT_S = 5
+
 
 if PYQT6_AVAILABLE:
 
     class UCLedControl(QWidget):
         """LED control panel matching Windows FormLED.
 
-        Contains device preview, mode buttons, color picker, brightness,
-        and zone selection. Only shown when an LED device is selected.
+        Contains device preview, mode buttons, color wheel, color picker,
+        brightness, and zone selection. Handles all LED device styles
+        including HR10 (style 13) with 7-segment preview and drive metrics.
         """
 
         # Signals for controller binding
@@ -125,6 +188,9 @@ if PYQT6_AVAILABLE:
         brightness_changed = pyqtSignal(int)         # 0-100
         global_toggled = pyqtSignal(bool)            # on/off
         segment_clicked = pyqtSignal(int)            # segment index
+        # HR10-specific signals
+        display_metric_changed = pyqtSignal(str)     # "temp", "activity", ...
+        circulate_toggled = pyqtSignal(bool)
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -132,6 +198,19 @@ if PYQT6_AVAILABLE:
 
             self._current_mode = 0
             self._zone_count = 1
+            self._style_id = 0
+            self._is_hr10 = False
+            self._lang = 'en'
+
+            # HR10 state
+            self._current_metric = "temp"
+            self._metrics: Dict[str, float] = {}
+            self._temp_unit = "\u00b0C"
+
+            # Circulate timer (HR10)
+            self._circulate_timer = QTimer(self)
+            self._circulate_timer.timeout.connect(self._on_circulate_tick)
+            self._circulate_index = 0
 
             self._setup_ui()
 
@@ -143,10 +222,16 @@ if PYQT6_AVAILABLE:
             palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 30))
             self.setPalette(palette)
 
-            # -- LED Preview --
+            # -- LED Preview (standard: circles) --
             self._preview = UCScreenLED(self)
             self._preview.move(PREVIEW_X, PREVIEW_Y)
             self._preview.segment_clicked.connect(self.segment_clicked.emit)
+
+            # -- 7-Segment Preview (HR10 — hidden by default) --
+            self._seg_display = UCSevenSegment(self)
+            self._seg_display.move(SEG_PREVIEW_X, SEG_PREVIEW_Y)
+            self._seg_display.set_value("---", "\u00b0C")
+            self._seg_display.setVisible(False)
 
             # -- Title label --
             self._title = QLabel("RGB LED Control", self)
@@ -167,8 +252,8 @@ if PYQT6_AVAILABLE:
                 btn.clicked.connect(lambda checked, idx=i: self._on_mode_clicked(idx))
 
                 # Try to load mode button image
-                normal_name = f"D2灯光{i + 1}"
-                active_name = f"D2灯光{i + 1}a"
+                normal_name = f"D2\u706f\u51491{i + 1}"
+                active_name = f"D2\u706f\u51491{i + 1}a"
                 normal_path = Assets.get(normal_name)
                 active_path = Assets.get(active_name)
                 if normal_path and active_path:
@@ -187,13 +272,21 @@ if PYQT6_AVAILABLE:
             if self._mode_buttons:
                 self._mode_buttons[0].setChecked(True)
 
+            # -- Color Wheel (shown for HR10, hidden for others) --
+            self._color_wheel = UCColorWheel(self)
+            self._color_wheel.setGeometry(HR10_WHEEL_X, HR10_WHEEL_Y,
+                                          HR10_WHEEL_W, HR10_WHEEL_H)
+            self._color_wheel.hue_changed.connect(self._on_hue_changed)
+            self._color_wheel.setVisible(False)
+
             # -- RGB Controls --
             self._rgb_sliders: List[QSlider] = []
             self._rgb_spinboxes: List[QSpinBox] = []
-            rgb_labels = ["R", "G", "B"]
+            self._rgb_labels: List[QLabel] = []
+            rgb_label_texts = ["R", "G", "B"]
             rgb_colors = ["#ff4444", "#44ff44", "#4444ff"]
 
-            for i, (lbl, color) in enumerate(zip(rgb_labels, rgb_colors)):
+            for i, (lbl, color) in enumerate(zip(rgb_label_texts, rgb_colors)):
                 y = RGB_Y_START + i * RGB_SPACING
 
                 # Label
@@ -201,11 +294,14 @@ if PYQT6_AVAILABLE:
                 label.setGeometry(RGB_X, y, RGB_LABEL_W, RGB_SLIDER_H)
                 label.setStyleSheet(f"color: {color}; font-size: 14px; font-weight: bold;")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._rgb_labels.append(label)
 
                 # Slider
                 slider = QSlider(Qt.Orientation.Horizontal, self)
                 slider.setGeometry(
-                    RGB_X + RGB_LABEL_W + 5, y, RGB_SLIDER_W - RGB_LABEL_W - RGB_SPINBOX_W - 15, RGB_SLIDER_H
+                    RGB_X + RGB_LABEL_W + 5, y,
+                    RGB_SLIDER_W - RGB_LABEL_W - RGB_SPINBOX_W - 15,
+                    RGB_SLIDER_H
                 )
                 slider.setRange(0, 255)
                 slider.setValue(255 if i == 0 else 0)
@@ -221,7 +317,8 @@ if PYQT6_AVAILABLE:
                 # Spinbox
                 spinbox = QSpinBox(self)
                 spinbox.setGeometry(
-                    RGB_X + RGB_SLIDER_W - RGB_SPINBOX_W, y, RGB_SPINBOX_W, RGB_SLIDER_H
+                    RGB_X + RGB_SLIDER_W - RGB_SPINBOX_W, y,
+                    RGB_SPINBOX_W, RGB_SLIDER_H
                 )
                 spinbox.setRange(0, 255)
                 spinbox.setValue(255 if i == 0 else 0)
@@ -236,10 +333,14 @@ if PYQT6_AVAILABLE:
 
             # -- Color preview swatch --
             self._color_swatch = QFrame(self)
-            self._color_swatch.setGeometry(RGB_X + RGB_SLIDER_W + 15, RGB_Y_START, 40, RGB_SPACING * 3 - 10)
+            self._color_swatch.setGeometry(
+                RGB_X + RGB_SLIDER_W + 15, RGB_Y_START,
+                40, RGB_SPACING * 3 - 10
+            )
             self._update_color_swatch()
 
             # -- Preset color buttons --
+            self._preset_buttons: List[QPushButton] = []
             for i, (r, g, b) in enumerate(PRESET_COLORS):
                 btn = QPushButton(self)
                 x = PRESET_X_START + i * (PRESET_SIZE + PRESET_SPACING)
@@ -253,11 +354,37 @@ if PYQT6_AVAILABLE:
                 btn.clicked.connect(
                     lambda checked, cr=r, cg=g, cb=b: self._set_color(cr, cg, cb)
                 )
+                self._preset_buttons.append(btn)
+
+            # -- Temperature color legend (HR10 modes 4-5, hidden by default) --
+            self._temp_legend = QLabel(self)
+            self._temp_legend.setGeometry(
+                TEMP_LEGEND_X, TEMP_LEGEND_Y, TEMP_LEGEND_W, TEMP_LEGEND_H
+            )
+            self._temp_legend.setStyleSheet(
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                "stop:0 #00CCFF, stop:0.33 #00FF00, stop:0.55 #FFFF00, "
+                "stop:0.78 #FF8800, stop:1 #FF0000); "
+                "border-radius: 3px;"
+            )
+            self._temp_legend.setVisible(False)
+
+            self._temp_legend_labels = QLabel(
+                "<30\u00b0         <50\u00b0         <70\u00b0         <90\u00b0         >90\u00b0", self
+            )
+            self._temp_legend_labels.setGeometry(
+                TEMP_LEGEND_X, TEMP_LEGEND_Y + TEMP_LEGEND_H + 2,
+                TEMP_LEGEND_W, 14
+            )
+            self._temp_legend_labels.setStyleSheet(
+                "color: #aaa; font-size: 10px; background: transparent;"
+            )
+            self._temp_legend_labels.setVisible(False)
 
             # -- Brightness --
-            bright_label = QLabel("Brightness", self)
-            bright_label.setGeometry(BRIGHT_X, BRIGHT_Y - 20, 100, 18)
-            bright_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._bright_label = QLabel("Brightness", self)
+            self._bright_label.setGeometry(BRIGHT_X, BRIGHT_Y - 20, 100, 18)
+            self._bright_label.setStyleSheet("color: #aaa; font-size: 12px;")
 
             self._brightness_slider = QSlider(Qt.Orientation.Horizontal, self)
             self._brightness_slider.setGeometry(BRIGHT_X, BRIGHT_Y, BRIGHT_W, 24)
@@ -306,31 +433,141 @@ if PYQT6_AVAILABLE:
                 btn.setVisible(False)
                 self._zone_buttons.append(btn)
 
+            # ============================================================
+            # HR10-specific widgets (hidden by default)
+            # ============================================================
+
+            # -- Drive Metrics Panel (bottom left, below preview) --
+            self._metrics_bg = QFrame(self)
+            self._metrics_bg.setGeometry(METRICS_X, METRICS_Y, METRICS_W, METRICS_H)
+            self._metrics_bg.setStyleSheet(
+                "background-color: rgba(20, 20, 20, 200); "
+                "border: 1px solid #444; border-radius: 6px;"
+            )
+            self._metrics_bg.setVisible(False)
+
+            self._metric_labels: Dict[str, QLabel] = {}
+            self._metric_name_labels: List[QLabel] = []
+            metric_defs = [
+                ("Drive Temp:", "disk_temp", "-- \u00b0C"),
+                ("Total Activity:", "disk_activity", "-- %"),
+                ("Read Rate:", "disk_read", "-- MB/s"),
+                ("Write Rate:", "disk_write", "-- MB/s"),
+            ]
+            for i, (label_text, key, default) in enumerate(metric_defs):
+                y = METRICS_Y + 12 + i * 28
+
+                name_label = QLabel(label_text, self)
+                name_label.setGeometry(METRICS_X + 15, y, 140, 24)
+                name_label.setStyleSheet("color: #aaa; font-size: 13px;")
+                name_label.setVisible(False)
+                self._metric_name_labels.append(name_label)
+
+                value_label = QLabel(default, self)
+                value_label.setGeometry(METRICS_X + 160, y, 120, 24)
+                value_label.setStyleSheet(
+                    "color: white; font-size: 13px; font-weight: bold;"
+                )
+                value_label.setVisible(False)
+                self._metric_labels[key] = value_label
+
+            # NVMe device label
+            self._nvme_label = QLabel("", self)
+            self._nvme_label.setGeometry(METRICS_X + 200, METRICS_Y + 10, 280, 20)
+            self._nvme_label.setStyleSheet("color: #666; font-size: 11px;")
+            self._nvme_label.setVisible(False)
+
+            # -- Display Selection section --
+            self._ds_label = QLabel("Display selection", self)
+            self._ds_label.setGeometry(DISPLAY_SEL_X, DISPLAY_SEL_Y - 30, 200, 20)
+            self._ds_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._ds_label.setVisible(False)
+
+            # Circulate checkbox
+            self._circulate_cb = QCheckBox("Circulate", self)
+            self._circulate_cb.setGeometry(CIRCULATE_X, CIRCULATE_Y, 100, 20)
+            self._circulate_cb.setStyleSheet(
+                "QCheckBox { color: #aaa; font-size: 12px; }"
+                "QCheckBox::indicator { width: 14px; height: 14px; }"
+                "QCheckBox::indicator:unchecked { border: 1px solid #666; background: #333; }"
+                "QCheckBox::indicator:checked { border: 1px solid #4CAF50; background: #4CAF50; }"
+            )
+            self._circulate_cb.toggled.connect(self._on_circulate_toggled)
+            self._circulate_cb.setVisible(False)
+
+            # Circulate interval spinbox
+            self._circulate_interval_label = QLabel("Interval:", self)
+            self._circulate_interval_label.setGeometry(CIRCULATE_X + 110, CIRCULATE_Y, 55, 20)
+            self._circulate_interval_label.setStyleSheet("color: #888; font-size: 11px;")
+            self._circulate_interval_label.setVisible(False)
+
+            self._circulate_interval = QSpinBox(self)
+            self._circulate_interval.setGeometry(CIRCULATE_X + 170, CIRCULATE_Y - 2, 45, 22)
+            self._circulate_interval.setRange(CIRCULATE_MIN_S, CIRCULATE_MAX_S)
+            self._circulate_interval.setValue(CIRCULATE_DEFAULT_S)
+            self._circulate_interval.setSuffix("s")
+            self._circulate_interval.setStyleSheet(
+                "color: white; background: #333; border: 1px solid #555; "
+                "border-radius: 3px; font-size: 11px;"
+            )
+            self._circulate_interval.valueChanged.connect(
+                self._on_circulate_interval_changed
+            )
+            self._circulate_interval.setVisible(False)
+
+            # Display selection buttons
+            self._display_buttons: List[QPushButton] = []
+            for i, (label, metric_key) in enumerate(DISPLAY_METRICS):
+                btn = QPushButton(label, self)
+                x = DISPLAY_SEL_X + i * (DISPLAY_SEL_W + DISPLAY_SEL_SPACING)
+                btn.setGeometry(x, DISPLAY_SEL_Y, DISPLAY_SEL_W, DISPLAY_SEL_H)
+                btn.setCheckable(True)
+                btn.setStyleSheet(self._display_button_style())
+                btn.clicked.connect(
+                    lambda checked, key=metric_key, idx=i: self._on_display_selected(key, idx)
+                )
+                btn.setVisible(False)
+                self._display_buttons.append(btn)
+
             # -- Status label --
             self._status = QLabel("", self)
             self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
             self._status.setStyleSheet("color: #aaa; font-size: 12px;")
+
+        # ================================================================
+        # Public API
+        # ================================================================
 
         def initialize(self, style_id: int, segment_count: int,
                        zone_count: int = 1, lang: str = 'en') -> None:
             """Configure for a specific LED device style.
 
             Args:
-                style_id: LED device style (1-12).
+                style_id: LED device style (1-13).
                 segment_count: Number of LED segments.
                 zone_count: Number of independent zones.
                 lang: Language code for localized background.
             """
+            self._style_id = style_id
             self._zone_count = zone_count
-            self._preview.set_style(style_id, segment_count)
+            self._lang = lang
+            self._is_hr10 = (style_id == 13)
 
-            # Load device preview background
+            # Toggle preview widgets
+            self._preview.setVisible(not self._is_hr10)
+            self._seg_display.setVisible(self._is_hr10)
+
+            if not self._is_hr10:
+                self._preview.set_style(style_id, segment_count)
+
+            # Load device preview background (standard preview)
             from ..led_device import LED_STYLES
             style = LED_STYLES.get(style_id)
             if style:
-                preview_pixmap = Assets.get(style.preview_image)
-                if preview_pixmap:
-                    self._preview.set_background(QPixmap(preview_pixmap))
+                if not self._is_hr10:
+                    preview_pixmap = Assets.get(style.preview_image)
+                    if preview_pixmap:
+                        self._preview.set_background(QPixmap(preview_pixmap))
 
                 # Set panel background
                 bg_base = style.background_base
@@ -339,7 +576,13 @@ if PYQT6_AVAILABLE:
                 if bg_path:
                     set_background_pixmap(self, bg_name)
 
-                self._title.setText(f"RGB LED Control — {style.model_name}")
+                self._title.setText(f"RGB LED Control \u2014 {style.model_name}")
+
+            # Layout shift for HR10 (color wheel takes space)
+            self._apply_layout()
+
+            # Show/hide HR10-specific controls
+            self._set_hr10_visibility(self._is_hr10)
 
             # Show/hide zone buttons
             for i, btn in enumerate(self._zone_buttons):
@@ -347,9 +590,24 @@ if PYQT6_AVAILABLE:
             if zone_count > 1 and self._zone_buttons:
                 self._zone_buttons[0].setChecked(True)
 
+            # Initialize HR10 display
+            if self._is_hr10:
+                r = self._rgb_sliders[0].value()
+                g = self._rgb_sliders[1].value()
+                b = self._rgb_sliders[2].value()
+                self._seg_display.set_color(r, g, b)
+                if self._display_buttons:
+                    self._display_buttons[0].setChecked(True)
+
         def set_led_colors(self, colors: List[Tuple[int, int, int]]) -> None:
             """Update LED preview from controller tick."""
-            self._preview.set_colors(colors)
+            if self._is_hr10:
+                # Use the first LED color to tint the 7-segment display
+                if colors:
+                    r, g, b = colors[0]
+                    self._seg_display.set_color(r, g, b)
+            else:
+                self._preview.set_colors(colors)
 
         def set_status(self, text: str) -> None:
             """Update status text."""
@@ -357,8 +615,9 @@ if PYQT6_AVAILABLE:
 
         def set_language(self, lang: str) -> None:
             """Apply localized background."""
+            self._lang = lang
             from ..led_device import LED_STYLES
-            style = LED_STYLES.get(self._preview._style_id)
+            style = LED_STYLES.get(self._style_id)
             if style:
                 bg_base = style.background_base
                 bg_name = f"{bg_base}{lang}" if lang else bg_base
@@ -366,14 +625,180 @@ if PYQT6_AVAILABLE:
                 if bg_path:
                     set_background_pixmap(self, bg_name)
 
-        # -- Internal handlers --
+        def set_temp_unit(self, unit_int: int) -> None:
+            """Set temperature unit from app settings.
+
+            Args:
+                unit_int: 0 = °C, 1 = °F (matches app config).
+            """
+            self._temp_unit = "\u00b0F" if unit_int == 1 else "\u00b0C"
+            if self._is_hr10:
+                self._update_display_value()
+
+        def update_drive_metrics(self, metrics: Dict[str, float]) -> None:
+            """Update live drive metrics from system_info polling (HR10).
+
+            Expected keys: disk_temp, disk_activity, disk_read, disk_write.
+            """
+            self._metrics = metrics
+
+            if 'disk_temp' in metrics:
+                temp = metrics['disk_temp']
+                if self._temp_unit == "\u00b0F":
+                    temp = temp * 9 / 5 + 32
+                self._metric_labels['disk_temp'].setText(
+                    f"{temp:.0f} {self._temp_unit}"
+                )
+            if 'disk_activity' in metrics:
+                self._metric_labels['disk_activity'].setText(
+                    f"{metrics['disk_activity']:.0f}%"
+                )
+            if 'disk_read' in metrics:
+                self._metric_labels['disk_read'].setText(
+                    f"{metrics['disk_read']:.1f} MB/s"
+                )
+            if 'disk_write' in metrics:
+                self._metric_labels['disk_write'].setText(
+                    f"{metrics['disk_write']:.1f} MB/s"
+                )
+
+            self._update_display_value()
+
+        def get_display_value(self) -> Tuple[str, str]:
+            """Return (value_text, unit_text) for the current 7-segment display.
+
+            Used by the controller to push the display text to the LED
+            hardware without reaching into private widget attributes.
+            """
+            return self._seg_display.get_display_text()
+
+        @property
+        def is_hr10(self) -> bool:
+            """Whether the panel is currently showing an HR10 device."""
+            return self._is_hr10
+
+        # ================================================================
+        # Layout management
+        # ================================================================
+
+        def _apply_layout(self):
+            """Reposition RGB/preset/brightness controls based on style."""
+            if self._is_hr10:
+                # Color wheel visible — shift controls right
+                rgb_x = HR10_RGB_X
+                slider_w = HR10_RGB_SLIDER_W
+                preset_x = HR10_PRESET_X_START
+                bright_x = HR10_BRIGHT_X
+                bright_y = HR10_BRIGHT_Y
+                bright_w = HR10_BRIGHT_W
+                status_y = 760
+            else:
+                rgb_x = RGB_X
+                slider_w = RGB_SLIDER_W
+                preset_x = PRESET_X_START
+                bright_x = BRIGHT_X
+                bright_y = BRIGHT_Y
+                bright_w = BRIGHT_W
+                status_y = STATUS_Y
+
+            rgb_y = HR10_RGB_Y_START if self._is_hr10 else RGB_Y_START
+
+            for i in range(3):
+                y = rgb_y + i * RGB_SPACING
+                self._rgb_labels[i].setGeometry(rgb_x, y, RGB_LABEL_W, RGB_SLIDER_H)
+                self._rgb_sliders[i].setGeometry(
+                    rgb_x + RGB_LABEL_W + 5, y,
+                    slider_w - RGB_LABEL_W - RGB_SPINBOX_W - 15,
+                    RGB_SLIDER_H
+                )
+                self._rgb_spinboxes[i].setGeometry(
+                    rgb_x + slider_w - RGB_SPINBOX_W, y,
+                    RGB_SPINBOX_W, RGB_SLIDER_H
+                )
+
+            self._color_swatch.setGeometry(
+                rgb_x + slider_w + 15, rgb_y, 40, RGB_SPACING * 3 - 10
+            )
+
+            for i, btn in enumerate(self._preset_buttons):
+                x = preset_x + i * (PRESET_SIZE + PRESET_SPACING)
+                preset_y = HR10_PRESET_Y if self._is_hr10 else PRESET_Y
+                btn.setGeometry(x, preset_y, PRESET_SIZE, PRESET_SIZE)
+
+            self._bright_label.setGeometry(bright_x, bright_y - 20, 100, 18)
+            self._brightness_slider.setGeometry(bright_x, bright_y, bright_w, 24)
+            self._brightness_label.setGeometry(
+                bright_x + bright_w + 10, bright_y, 50, 24
+            )
+
+            if not self._is_hr10:
+                self._onoff_btn.setGeometry(ONOFF_X, ONOFF_Y, ONOFF_W, ONOFF_H)
+                self._onoff_btn.setVisible(True)
+            else:
+                self._onoff_btn.setVisible(False)
+
+            self._status.setGeometry(STATUS_X, status_y, STATUS_W, 24)
+
+        def _set_hr10_visibility(self, visible: bool):
+            """Show/hide all HR10-specific widgets."""
+            self._color_wheel.setVisible(visible)
+            self._seg_display.setVisible(visible)
+            self._metrics_bg.setVisible(visible)
+            self._nvme_label.setVisible(visible)
+            self._ds_label.setVisible(visible)
+            self._circulate_cb.setVisible(visible)
+            self._circulate_interval_label.setVisible(visible)
+            self._circulate_interval.setVisible(visible)
+
+            for lbl in self._metric_name_labels:
+                lbl.setVisible(visible)
+            for lbl in self._metric_labels.values():
+                lbl.setVisible(visible)
+            for btn in self._display_buttons:
+                btn.setVisible(visible)
+
+            if not visible:
+                self._circulate_timer.stop()
+                self._temp_legend.setVisible(False)
+                self._temp_legend_labels.setVisible(False)
+
+        # ================================================================
+        # Internal handlers
+        # ================================================================
 
         def _on_mode_clicked(self, index: int):
             """Handle mode button click."""
             self._current_mode = index
             for i, btn in enumerate(self._mode_buttons):
                 btn.setChecked(i == index)
+            if self._is_hr10:
+                self._update_mode_visibility()
             self.mode_changed.emit(index)
+
+        def _update_mode_visibility(self):
+            """Toggle control visibility based on selected mode (HR10)."""
+            mode = self._current_mode
+            show_color = mode in (0, 1)
+            show_temp_legend = mode in (4, 5)
+
+            self._color_wheel.setVisible(show_color)
+            self._color_swatch.setVisible(show_color)
+            self._temp_legend.setVisible(show_temp_legend)
+            self._temp_legend_labels.setVisible(show_temp_legend)
+
+            for slider in self._rgb_sliders:
+                slider.setVisible(show_color)
+            for spinbox in self._rgb_spinboxes:
+                spinbox.setVisible(show_color)
+            for lbl in self._rgb_labels:
+                lbl.setVisible(show_color)
+            for btn in self._preset_buttons:
+                btn.setVisible(show_color)
+
+        def _on_hue_changed(self, hue: int):
+            """Handle color wheel hue selection -> update RGB sliders."""
+            color = QColor.fromHsv(hue, 255, 255)
+            self._set_color(color.red(), color.green(), color.blue())
 
         def _on_rgb_changed(self):
             """Handle RGB slider change."""
@@ -386,6 +811,9 @@ if PYQT6_AVAILABLE:
                 self._rgb_spinboxes[i].setValue(val)
                 self._rgb_spinboxes[i].blockSignals(False)
             self._update_color_swatch()
+            if self._is_hr10:
+                self._sync_wheel_from_rgb(r, g, b)
+                self._seg_display.set_color(r, g, b)
             self.color_changed.emit(r, g, b)
 
         def _on_spinbox_changed(self, index: int, value: int):
@@ -397,10 +825,13 @@ if PYQT6_AVAILABLE:
             g = self._rgb_spinboxes[1].value()
             b = self._rgb_spinboxes[2].value()
             self._update_color_swatch()
+            if self._is_hr10:
+                self._sync_wheel_from_rgb(r, g, b)
+                self._seg_display.set_color(r, g, b)
             self.color_changed.emit(r, g, b)
 
         def _set_color(self, r: int, g: int, b: int):
-            """Set color from preset button."""
+            """Set color from preset button or color wheel."""
             for i, val in enumerate([r, g, b]):
                 self._rgb_sliders[i].blockSignals(True)
                 self._rgb_sliders[i].setValue(val)
@@ -409,7 +840,19 @@ if PYQT6_AVAILABLE:
                 self._rgb_spinboxes[i].setValue(val)
                 self._rgb_spinboxes[i].blockSignals(False)
             self._update_color_swatch()
+            if self._is_hr10:
+                self._sync_wheel_from_rgb(r, g, b)
+                self._seg_display.set_color(r, g, b)
             self.color_changed.emit(r, g, b)
+
+        def _sync_wheel_from_rgb(self, r: int, g: int, b: int):
+            """Update wheel indicator from RGB values without triggering loop."""
+            hue = QColor(r, g, b).hsvHue()
+            if hue < 0:
+                hue = 0  # achromatic
+            self._color_wheel.blockSignals(True)
+            self._color_wheel.set_hue(hue)
+            self._color_wheel.blockSignals(False)
 
         def _on_toggle_clicked(self):
             """Handle on/off toggle."""
@@ -427,9 +870,75 @@ if PYQT6_AVAILABLE:
                 f"border-radius: 5px;"
             )
 
+        # -- HR10 display selection --
+
+        def _on_display_selected(self, metric_key: str, button_index: int):
+            """Handle display selection button click (HR10)."""
+            self._current_metric = metric_key
+            for i, btn in enumerate(self._display_buttons):
+                btn.setChecked(i == button_index)
+            self._update_display_value()
+            self.display_metric_changed.emit(metric_key)
+
+        def _update_display_value(self):
+            """Update the 7-segment display with the current metric value (HR10)."""
+            if not self._is_hr10:
+                return
+
+            metric = self._current_metric
+            if metric == "temp":
+                val = self._metrics.get('disk_temp')
+                if val is not None:
+                    if self._temp_unit == "\u00b0F":
+                        val = val * 9 / 5 + 32
+                    self._seg_display.set_value(f"{val:.0f}", self._temp_unit)
+                else:
+                    self._seg_display.set_value("---", self._temp_unit)
+            elif metric == "activity":
+                val = self._metrics.get('disk_activity')
+                if val is not None:
+                    self._seg_display.set_value(f"{val:.0f}", "%")
+                else:
+                    self._seg_display.set_value("---", "%")
+            elif metric == "read":
+                val = self._metrics.get('disk_read')
+                if val is not None:
+                    self._seg_display.set_value(f"{val:.0f}", "MB/s")
+                else:
+                    self._seg_display.set_value("---", "MB/s")
+            elif metric == "write":
+                val = self._metrics.get('disk_write')
+                if val is not None:
+                    self._seg_display.set_value(f"{val:.0f}", "MB/s")
+                else:
+                    self._seg_display.set_value("---", "MB/s")
+
+        # -- HR10 circulate --
+
+        def _on_circulate_toggled(self, enabled: bool):
+            if enabled:
+                interval_ms = self._circulate_interval.value() * 1000
+                self._circulate_timer.start(interval_ms)
+                self._circulate_index = 0
+            else:
+                self._circulate_timer.stop()
+            self.circulate_toggled.emit(enabled)
+
+        def _on_circulate_interval_changed(self, value: int):
+            if self._circulate_timer.isActive():
+                self._circulate_timer.start(value * 1000)
+
+        def _on_circulate_tick(self):
+            self._circulate_index = (self._circulate_index + 1) % len(DISPLAY_METRICS)
+            _label, key = DISPLAY_METRICS[self._circulate_index]
+            self._on_display_selected(key, self._circulate_index)
+
+        # ================================================================
+        # Styles
+        # ================================================================
+
         @staticmethod
         def _mode_button_style(active: bool) -> str:
-            """Get stylesheet for mode buttons."""
             if active:
                 return (
                     "QPushButton { background: #2196F3; color: white; "
@@ -443,4 +952,15 @@ if PYQT6_AVAILABLE:
                 "QPushButton:checked { background: #2196F3; "
                 "border: 2px solid #42A5F5; font-weight: bold; }"
                 "QPushButton:hover { background: #555; }"
+            )
+
+        @staticmethod
+        def _display_button_style() -> str:
+            return (
+                "QPushButton { background: #3a3a3a; color: #ccc; "
+                "border: 1px solid #555; border-radius: 6px; "
+                "font-size: 11px; padding: 6px; }"
+                "QPushButton:checked { background: #2a2a2a; color: #ff6b6b; "
+                "border: 2px solid #ff6b6b; font-weight: bold; }"
+                "QPushButton:hover { background: #4a4a4a; }"
             )

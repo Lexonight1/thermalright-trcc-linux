@@ -153,6 +153,23 @@ Examples:
     # HID debug command
     subparsers.add_parser("hid-debug", help="HID handshake diagnostic (hex dump for bug reports)")
 
+    # LED diagnostic command
+    led_diag_parser = subparsers.add_parser("led-diag", help="Diagnose LED device (handshake, PM byte)")
+    led_diag_parser.add_argument("--test", action="store_true", help="Send test colors after handshake")
+
+    # HR10 temperature daemon
+    tempd_parser = subparsers.add_parser(
+        "hr10-tempd", help="Display NVMe temperature on HR10 (daemon)")
+    tempd_parser.add_argument(
+        "--brightness", type=int, default=100,
+        help="LED brightness 0-100 (default: 100)")
+    tempd_parser.add_argument(
+        "--drive", default="9100",
+        help="NVMe model substring to match (default: 9100)")
+    tempd_parser.add_argument(
+        "--unit", choices=["C", "F"], default="C",
+        help="Temperature unit: C or F (default: C)")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -195,6 +212,12 @@ Examples:
         return uninstall()
     elif args.command == "hid-debug":
         return hid_debug()
+    elif args.command == "led-diag":
+        return led_diag(test=args.test)
+    elif args.command == "hr10-tempd":
+        return hr10_tempd(brightness=args.brightness,
+                          drive=args.drive, unit=args.unit,
+                          verbose=args.verbose)
     elif args.command == "download":
         return download_themes(pack=args.pack, show_list=args.list,
                               force=args.force, show_info=args.info)
@@ -646,6 +669,114 @@ def hid_debug():
         print("Copy the output above and paste it in your GitHub issue.")
         return 0
 
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def led_diag(test=False):
+    """Diagnose LED device — handshake, PM byte discovery, optional test colors."""
+    try:
+        import time
+
+        from trcc.hid_device import (
+            HIDAPI_AVAILABLE,
+            PYUSB_AVAILABLE,
+        )
+        from trcc.led_device import (
+            LED_STYLES,
+            PM_TO_MODEL,
+            PM_TO_STYLE,
+            LedHidSender,
+            LedPacketBuilder,
+            get_style_for_pm,
+        )
+
+        LED_VID, LED_PID = 0x0416, 0x8001
+
+        if not PYUSB_AVAILABLE and not HIDAPI_AVAILABLE:
+            print("Error: No USB backend. Install pyusb or hidapi:")
+            print("  pip install pyusb   (+ apt install libusb-1.0-0)")
+            print("  pip install hidapi  (+ apt install libhidapi-dev)")
+            return 1
+
+        print("LED Device Diagnostic")
+        print("=" * 50)
+        print(f"  Target: VID=0x{LED_VID:04x} PID=0x{LED_PID:04x}")
+        backend = "pyusb" if PYUSB_AVAILABLE else "hidapi"
+        print(f"  Backend: {backend}")
+
+        if PYUSB_AVAILABLE:
+            from trcc.hid_device import PyUsbTransport
+            transport = PyUsbTransport(LED_VID, LED_PID)
+        else:
+            from trcc.hid_device import HidApiTransport
+            transport = HidApiTransport(LED_VID, LED_PID)
+
+        transport.open()
+        print("  Transport: opened")
+
+        sender = LedHidSender(transport)
+        try:
+            info = sender.handshake()
+        except RuntimeError as e:
+            print(f"\nHandshake failed: {e}")
+            transport.close()
+            return 1
+
+        print(f"\n  PM byte:    {info.pm}")
+        print(f"  Sub-type:   {info.sub_type}")
+        print(f"  Model:      {info.model_name}")
+        print(f"  Style ID:   {info.style.style_id}")
+        print(f"  LED count:  {info.style.led_count}")
+        print(f"  Segments:   {info.style.segment_count}")
+        print(f"  Zones:      {info.style.zone_count}")
+
+        if info.pm in PM_TO_STYLE:
+            print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
+        else:
+            print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
+            print("  This device falls back to AX120 defaults.")
+            print(f"  Add PM {info.pm} to led_device.py PM_TO_STYLE/PM_TO_MODEL.")
+
+        if test:
+            print("\n  Sending test colors...")
+            led_count = info.style.led_count
+            for name, color in [("RED", (255, 0, 0)), ("GREEN", (0, 255, 0)),
+                                ("BLUE", (0, 0, 255)), ("WHITE", (255, 255, 255))]:
+                led_colors = [color] * led_count
+                packet = LedPacketBuilder.build_led_packet(led_colors, brightness=100)
+                sender.send_led_data(packet)
+                print(f"    {name}")
+                time.sleep(1.5)
+            packet = LedPacketBuilder.build_led_packet(
+                [(0, 0, 0)] * led_count, brightness=0)
+            sender.send_led_data(packet)
+            print("    OFF")
+
+        transport.close()
+        print("\nDone.")
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def hr10_tempd(brightness=100, drive="9100", unit="C", verbose=0):
+    """Run the HR10 NVMe temperature display daemon."""
+    try:
+        from trcc.hr10_tempd import run_daemon
+        return run_daemon(
+            brightness=brightness,
+            model_substr=drive,
+            unit=unit,
+            verbose=verbose > 0,
+        )
     except Exception as e:
         print(f"Error: {e}")
         import traceback
