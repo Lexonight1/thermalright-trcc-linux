@@ -154,6 +154,19 @@ Examples:
     led_diag_parser = subparsers.add_parser("led-diag", help="Diagnose LED device (handshake, PM byte)")
     led_diag_parser.add_argument("--test", action="store_true", help="Send test colors after handshake")
 
+    # HR10 temperature daemon
+    tempd_parser = subparsers.add_parser(
+        "hr10-tempd", help="Display NVMe temperature on HR10 (daemon)")
+    tempd_parser.add_argument(
+        "--color", default="ffffff",
+        help="Hex color for static mode (default: ffffff white)")
+    tempd_parser.add_argument(
+        "--brightness", type=int, default=100,
+        help="LED brightness 0-100 (default: 100)")
+    tempd_parser.add_argument(
+        "--drive", default="9100",
+        help="NVMe model substring to match (default: 9100)")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -196,6 +209,9 @@ Examples:
         return uninstall()
     elif args.command == "led-diag":
         return led_diag(test=args.test)
+    elif args.command == "hr10-tempd":
+        return hr10_tempd(color=args.color, brightness=args.brightness,
+                          drive=args.drive, verbose=args.verbose)
     elif args.command == "download":
         return download_themes(pack=args.pack, show_list=args.list,
                               force=args.force, show_info=args.info)
@@ -624,6 +640,31 @@ def led_diag(test=False):
         print("\nDone.")
         return 0
 
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def hr10_tempd(color="ffffff", brightness=100, drive="9100", verbose=0):
+    """Run the HR10 NVMe temperature display daemon."""
+    try:
+        hex_color = color.lstrip('#')
+        if len(hex_color) != 6:
+            print("Error: Invalid hex color. Use format: ff0000")
+            return 1
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+
+        from trcc.hr10_tempd import run_daemon
+        return run_daemon(
+            color=(r, g, b),
+            brightness=brightness,
+            model_substr=drive,
+            verbose=verbose > 0,
+        )
     except Exception as e:
         print(f"Error: {e}")
         import traceback
