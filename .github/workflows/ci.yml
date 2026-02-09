@@ -20,7 +20,7 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -70,7 +70,7 @@ jobs:
     needs: test-and-lint
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -116,7 +116,7 @@ jobs:
     if: needs.security-scans.result == 'success'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: .github/scripts
 
@@ -156,7 +156,7 @@ jobs:
     if: github.event_name != 'pull_request' # only build on push or manual
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
