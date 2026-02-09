@@ -9,11 +9,11 @@ The digit color follows the current LED color setting.
 Original implementation by Lcstyle (GitHub PR #9).
 """
 
-from typing import List, Optional, Tuple
+from typing import Tuple
 
 try:
     from PyQt6.QtCore import QPointF, Qt
-    from PyQt6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
+    from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
     from PyQt6.QtWidgets import QWidget
     PYQT6_AVAILABLE = True
 except ImportError:

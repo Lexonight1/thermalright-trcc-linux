@@ -19,8 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-log = logging.getLogger(__name__)
-
 from .hid_device import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
@@ -28,6 +26,8 @@ from .hid_device import (
     TYPE2_MAGIC,
     UsbTransport,
 )
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # Constants (from FormLED.cs / UCDevice.cs)
@@ -631,7 +631,7 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
 
     transport = None
     try:
-        from .hid_device import PYUSB_AVAILABLE, HIDAPI_AVAILABLE
+        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         if PYUSB_AVAILABLE:
             from .hid_device import PyUsbTransport
             transport = PyUsbTransport(vid, pid)

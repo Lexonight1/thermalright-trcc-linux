@@ -9,11 +9,9 @@ import os
 import struct
 import tempfile
 import unittest
-from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 from trcc.device_detector import DetectedDevice
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -453,9 +451,9 @@ class TestThemeLoadRender(unittest.TestCase):
 
     def test_theme_dir_to_rgb565(self):
         """Load 00.png from theme dir, convert to RGB565, verify size."""
-        from trcc.core.controllers import image_to_rgb565
-
         from PIL import Image
+
+        from trcc.core.controllers import image_to_rgb565
 
         with tempfile.TemporaryDirectory() as td:
             bg_path = os.path.join(td, "00.png")
@@ -469,9 +467,9 @@ class TestThemeLoadRender(unittest.TestCase):
 
     def test_theme_with_mask_overlay(self):
         """Load background + mask → composite → convert to RGB565."""
-        from trcc.core.controllers import image_to_rgb565
-
         from PIL import Image
+
+        from trcc.core.controllers import image_to_rgb565
 
         with tempfile.TemporaryDirectory() as td:
             # Create background
@@ -494,9 +492,9 @@ class TestThemeLoadRender(unittest.TestCase):
 
     def test_image_resize_and_convert(self):
         """Oversized image gets resized to device resolution before RGB565."""
-        from trcc.core.controllers import image_to_rgb565
-
         from PIL import Image
+
+        from trcc.core.controllers import image_to_rgb565
 
         # Create 800x600 image
         big = Image.new("RGB", (800, 600), (0, 128, 255))
@@ -512,9 +510,9 @@ class TestBrightnessRotation(unittest.TestCase):
 
     def test_apply_rotation_90(self):
         """90° rotation swaps dimensions correctly."""
-        from trcc.core.controllers import apply_rotation
-
         from PIL import Image
+
+        from trcc.core.controllers import apply_rotation
 
         img = Image.new("RGB", (320, 320), (255, 0, 0))
         # Draw a marker at (0,0) so rotation is verifiable
@@ -529,9 +527,9 @@ class TestBrightnessRotation(unittest.TestCase):
 
     def test_apply_rotation_0_noop(self):
         """0° rotation returns identical image."""
-        from trcc.core.controllers import apply_rotation
-
         from PIL import Image
+
+        from trcc.core.controllers import apply_rotation
 
         img = Image.new("RGB", (320, 320), (255, 0, 0))
         img.putpixel((5, 5), (0, 255, 0))

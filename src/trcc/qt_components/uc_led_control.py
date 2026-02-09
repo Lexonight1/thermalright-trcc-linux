@@ -13,7 +13,7 @@ All LED devices (styles 1-13) use this single panel — matching Windows
 FormLED.cs which is one form for all LED device types.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 try:
     from PyQt6.QtCore import QRect, Qt, QTimer, pyqtSignal
