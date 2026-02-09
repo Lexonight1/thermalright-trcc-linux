@@ -1,0 +1,27 @@
+# HR10 NVMe Temperature Display Daemon
+#
+# Displays NVMe drive temperature on the HR10 2280 Pro Digital
+# 7-segment display with thermal-aware color gradient and breathe effect.
+#
+# Install as a user service:
+#   cp trcc-hr10-tempd.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now trcc-hr10-tempd.service
+#
+# Customize the ExecStart line to target a different drive:
+#   --drive "980"       Target Samsung 980 instead of 9100
+#   --brightness 50     Lower peak brightness
+#   -v                  Verbose logging (visible via journalctl --user -u trcc-hr10-tempd)
+
+[Unit]
+Description=HR10 NVMe Temperature Display
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=trcc hr10-tempd --drive "9100"
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
