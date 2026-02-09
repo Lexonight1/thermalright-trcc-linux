@@ -780,7 +780,11 @@ class HidApiTransport(UsbTransport):
         kwargs: dict[str, Any] = {'vid': self._vid, 'pid': self._pid}
         if self._serial:
             kwargs['serial'] = self._serial
-        self._device = hidapi.Device(**kwargs)
+        # hidapi 0.14 uses Device (uppercase), 0.15+ uses device (lowercase)
+        DeviceClass = getattr(hidapi, 'device', None) or getattr(hidapi, 'Device', None)
+        if DeviceClass is None:
+            raise ImportError("hidapi module has neither 'device' nor 'Device' class")
+        self._device = DeviceClass(**kwargs)
         self._device.nonblocking = 0  # blocking reads
         self._is_open = True
 

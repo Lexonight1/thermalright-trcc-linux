@@ -15,13 +15,22 @@ from typing import TYPE_CHECKING, List, Optional
 log = logging.getLogger(__name__)
 
 # PIL import (done once, shared by all components)
+# Split so load_image(as_photoimage=False) works without tkinter
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
     if TYPE_CHECKING:
-        from PIL import Image, ImageTk
+        from PIL import Image
+
+try:
+    from PIL import ImageTk
+    IMAGETK_AVAILABLE = True
+except ImportError:
+    IMAGETK_AVAILABLE = False
+    if TYPE_CHECKING:
+        from PIL import ImageTk
 
 # Base directories (calculated once at import time)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  # src/trcc/
@@ -447,6 +456,8 @@ def load_image(filename: str, search_paths: Optional[list] = None, as_photoimage
     try:
         img = Image.open(path)
         if as_photoimage:
+            if not IMAGETK_AVAILABLE:
+                return None
             return ImageTk.PhotoImage(img)
         return img
     except Exception:

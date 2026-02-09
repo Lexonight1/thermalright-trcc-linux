@@ -553,6 +553,7 @@ class TestFindResourceDefault(unittest.TestCase):
 class TestLoadImageSuccess(unittest.TestCase):
     """Cover successful Image.open path (line 222)."""
 
+    @patch('trcc.paths.PIL_AVAILABLE', True)
     @patch('trcc.paths.Image')
     def test_load_pil_image(self, mock_image_mod):
         mock_img = MagicMock()

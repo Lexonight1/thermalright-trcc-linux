@@ -5,6 +5,11 @@
 #   sudo ./install.sh              # install
 #   sudo ./install.sh --uninstall  # uninstall
 #   ./install.sh --help
+
+# Re-exec under bash if invoked via 'sh install.sh' (dash doesn't support pipefail)
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

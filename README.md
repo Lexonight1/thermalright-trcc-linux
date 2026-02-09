@@ -46,6 +46,20 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 
 ## Install
 
+### Automatic (recommended)
+
+```bash
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
+cd thermalright-trcc-linux
+sudo ./install.sh
+```
+
+Detects your distro, installs system packages, Python deps, udev rules, and desktop shortcut. On PEP 668 distros (Ubuntu 24.04+, Fedora 41+) it auto-falls back to a virtual environment if `pip` refuses direct install.
+
+After it finishes: **unplug and replug the USB cable**, then run `trcc gui`.
+
+### Manual one-liners
+
 Find your distro, copy the block, paste in terminal. After it finishes: **unplug and replug the USB cable**, then **open a new terminal** and run `trcc gui`.
 
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH.
@@ -61,7 +75,7 @@ sudo dnf install sg3_utils python3-pyqt6 ffmpeg && ([ -d thermalright-trcc-linux
 ### Ubuntu / Debian / Mint / Pop!_OS / Zorin / elementary OS
 
 ```bash
-sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip python3-venv && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
 ```
 
 ### Arch / Manjaro / EndeavourOS / CachyOS / Garuda

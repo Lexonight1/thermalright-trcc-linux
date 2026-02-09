@@ -97,6 +97,26 @@ See the **[HID Testing Guide](HID_TESTING.md)** for supported devices and what t
 
 ---
 
+## Quick Install (Recommended)
+
+The install script auto-detects your distro, installs system packages, Python deps, udev rules, and desktop shortcut:
+
+```bash
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
+cd thermalright-trcc-linux
+sudo ./install.sh
+```
+
+On PEP 668 distros (Ubuntu 24.04+, Fedora 41+) it auto-falls back to a virtual environment at `~/trcc-env` if `pip` refuses direct install.
+
+After it finishes: unplug and replug the USB cable, then run `trcc gui`.
+
+To uninstall: `sudo ./install.sh --uninstall`
+
+If you prefer manual steps, continue below.
+
+---
+
 ## Prerequisites
 
 Before starting, make sure you have:
