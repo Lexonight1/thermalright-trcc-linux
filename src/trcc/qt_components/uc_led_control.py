@@ -191,6 +191,12 @@ if PYQT6_AVAILABLE:
         # HR10-specific signals
         display_metric_changed = pyqtSignal(str)     # "temp", "activity", ...
         circulate_toggled = pyqtSignal(bool)
+        # Zone signals
+        zone_selected = pyqtSignal(int)              # zone index (0-based)
+        sync_all_changed = pyqtSignal(bool)          # sync mode toggled
+        # LC2 clock signals (style 9)
+        clock_format_changed = pyqtSignal(bool)      # True = 24h
+        week_start_changed = pyqtSignal(bool)        # True = Sunday
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -202,10 +208,18 @@ if PYQT6_AVAILABLE:
             self._is_hr10 = False
             self._lang = 'en'
 
+            # Zone state
+            self._selected_zone = 0
+            self._sync_all = False
+
             # HR10 state
             self._current_metric = "temp"
             self._metrics: Dict[str, float] = {}
             self._temp_unit = "\u00b0C"
+
+            # LC2 clock state (style 9)
+            self._is_timer_24h = True
+            self._is_week_sunday = False
 
             # Circulate timer (HR10)
             self._circulate_timer = QTimer(self)
@@ -430,8 +444,28 @@ if PYQT6_AVAILABLE:
                     "border-radius: 4px; }"
                     "QPushButton:checked { background: #2196F3; border: 1px solid #42A5F5; }"
                 )
+                btn.clicked.connect(
+                    lambda checked, idx=i: self._on_zone_clicked(idx)
+                )
                 btn.setVisible(False)
                 self._zone_buttons.append(btn)
+
+            # Sync All checkbox (Windows "buttonLB" = LunBo mode)
+            self._sync_cb = QCheckBox("Sync All", self)
+            self._sync_cb.setGeometry(
+                ZONE_X_START + 4 * (ZONE_W + ZONE_SPACING), ZONE_Y + 5,
+                100, 30
+            )
+            self._sync_cb.setStyleSheet(
+                "QCheckBox { color: #aaa; font-size: 12px; }"
+                "QCheckBox::indicator { width: 14px; height: 14px; }"
+                "QCheckBox::indicator:unchecked { border: 1px solid #666; "
+                "background: #333; }"
+                "QCheckBox::indicator:checked { border: 1px solid #4CAF50; "
+                "background: #4CAF50; }"
+            )
+            self._sync_cb.toggled.connect(self._on_sync_toggled)
+            self._sync_cb.setVisible(False)
 
             # ============================================================
             # HR10-specific widgets (hidden by default)
@@ -529,6 +563,166 @@ if PYQT6_AVAILABLE:
                 btn.setVisible(False)
                 self._display_buttons.append(btn)
 
+            # ============================================================
+            # LC2 clock widgets (style 9 — hidden by default)
+            # ============================================================
+
+            self._lc2_label = QLabel("Clock Format:", self)
+            self._lc2_label.setGeometry(590, 620, 100, 20)
+            self._lc2_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._lc2_label.setVisible(False)
+
+            self._btn_24h = QPushButton("24H", self)
+            self._btn_24h.setGeometry(700, 618, 55, 26)
+            self._btn_24h.setCheckable(True)
+            self._btn_24h.setChecked(True)
+            self._btn_24h.setStyleSheet(self._mode_button_style(False))
+            self._btn_24h.clicked.connect(lambda: self._set_clock_format(True))
+            self._btn_24h.setVisible(False)
+
+            self._btn_12h = QPushButton("12H", self)
+            self._btn_12h.setGeometry(760, 618, 55, 26)
+            self._btn_12h.setCheckable(True)
+            self._btn_12h.setStyleSheet(self._mode_button_style(False))
+            self._btn_12h.clicked.connect(lambda: self._set_clock_format(False))
+            self._btn_12h.setVisible(False)
+
+            self._week_label = QLabel("Week Start:", self)
+            self._week_label.setGeometry(840, 620, 80, 20)
+            self._week_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._week_label.setVisible(False)
+
+            self._btn_sun = QPushButton("Sun", self)
+            self._btn_sun.setGeometry(930, 618, 55, 26)
+            self._btn_sun.setCheckable(True)
+            self._btn_sun.setStyleSheet(self._mode_button_style(False))
+            self._btn_sun.clicked.connect(lambda: self._set_week_start(True))
+            self._btn_sun.setVisible(False)
+
+            self._btn_mon = QPushButton("Mon", self)
+            self._btn_mon.setGeometry(990, 618, 55, 26)
+            self._btn_mon.setCheckable(True)
+            self._btn_mon.setChecked(True)
+            self._btn_mon.setStyleSheet(self._mode_button_style(False))
+            self._btn_mon.clicked.connect(lambda: self._set_week_start(False))
+            self._btn_mon.setVisible(False)
+
+            # ============================================================
+            # Sensor info panel (styles 1-3, 5-8, 11 — hidden by default)
+            # ============================================================
+
+            self._sensor_bg = QFrame(self)
+            self._sensor_bg.setGeometry(30, 640, 500, 80)
+            self._sensor_bg.setStyleSheet(
+                "background-color: rgba(20, 20, 20, 200); "
+                "border: 1px solid #444; border-radius: 6px;"
+            )
+            self._sensor_bg.setVisible(False)
+
+            self._sensor_labels: Dict[str, QLabel] = {}
+            self._sensor_name_labels: List[QLabel] = []
+            sensor_defs = [
+                ("CPU Temp:", "cpu_temp", "-- \u00b0C"),
+                ("CPU Load:", "cpu_load", "-- %"),
+                ("CPU Fan:", "cpu_fan", "-- RPM"),
+                ("GPU Temp:", "gpu_temp", "-- \u00b0C"),
+                ("GPU Load:", "gpu_load", "-- %"),
+                ("GPU Fan:", "gpu_fan", "-- RPM"),
+            ]
+            for i, (label_text, key, default) in enumerate(sensor_defs):
+                col = i // 3
+                row = i % 3
+                x = 45 + col * 250
+                y = 648 + row * 24
+
+                name_label = QLabel(label_text, self)
+                name_label.setGeometry(x, y, 80, 20)
+                name_label.setStyleSheet("color: #aaa; font-size: 11px;")
+                name_label.setVisible(False)
+                self._sensor_name_labels.append(name_label)
+
+                value_label = QLabel(default, self)
+                value_label.setGeometry(x + 85, y, 100, 20)
+                value_label.setStyleSheet(
+                    "color: white; font-size: 11px; font-weight: bold;"
+                )
+                value_label.setVisible(False)
+                self._sensor_labels[key] = value_label
+
+            # ============================================================
+            # LC1 memory info panel (style 4 — hidden by default)
+            # ============================================================
+
+            self._mem_bg = QFrame(self)
+            self._mem_bg.setGeometry(30, 640, 500, 80)
+            self._mem_bg.setStyleSheet(
+                "background-color: rgba(20, 20, 20, 200); "
+                "border: 1px solid #444; border-radius: 6px;"
+            )
+            self._mem_bg.setVisible(False)
+
+            self._mem_labels: Dict[str, QLabel] = {}
+            self._mem_name_labels: List[QLabel] = []
+            mem_defs = [
+                ("Mem Temp:", "mem_temp", "-- \u00b0C"),
+                ("Mem Clock:", "mem_clock", "-- MHz"),
+                ("Mem Used:", "mem_used", "-- %"),
+            ]
+            for i, (label_text, key, default) in enumerate(mem_defs):
+                y = 648 + i * 24
+                name_lbl = QLabel(label_text, self)
+                name_lbl.setGeometry(45, y, 100, 20)
+                name_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+                name_lbl.setVisible(False)
+                self._mem_name_labels.append(name_lbl)
+
+                val_lbl = QLabel(default, self)
+                val_lbl.setGeometry(150, y, 120, 20)
+                val_lbl.setStyleSheet(
+                    "color: white; font-size: 11px; font-weight: bold;"
+                )
+                val_lbl.setVisible(False)
+                self._mem_labels[key] = val_lbl
+
+            # ============================================================
+            # LF11 disk info panel (style 10 — hidden by default)
+            # ============================================================
+
+            self._disk_bg = QFrame(self)
+            self._disk_bg.setGeometry(30, 640, 500, 80)
+            self._disk_bg.setStyleSheet(
+                "background-color: rgba(20, 20, 20, 200); "
+                "border: 1px solid #444; border-radius: 6px;"
+            )
+            self._disk_bg.setVisible(False)
+
+            self._disk_labels: Dict[str, QLabel] = {}
+            self._disk_name_labels: List[QLabel] = []
+            disk_defs = [
+                ("Disk Temp:", "lf11_disk_temp", "-- \u00b0C"),
+                ("Disk Usage:", "lf11_disk_usage", "-- %"),
+                ("Read Rate:", "lf11_disk_read", "-- MB/s"),
+                ("Write Rate:", "lf11_disk_write", "-- MB/s"),
+            ]
+            for i, (label_text, key, default) in enumerate(disk_defs):
+                col = i // 2
+                row = i % 2
+                x = 45 + col * 250
+                y = 652 + row * 28
+                name_lbl = QLabel(label_text, self)
+                name_lbl.setGeometry(x, y, 100, 20)
+                name_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+                name_lbl.setVisible(False)
+                self._disk_name_labels.append(name_lbl)
+
+                val_lbl = QLabel(default, self)
+                val_lbl.setGeometry(x + 105, y, 120, 20)
+                val_lbl.setStyleSheet(
+                    "color: white; font-size: 11px; font-weight: bold;"
+                )
+                val_lbl.setVisible(False)
+                self._disk_labels[key] = val_lbl
+
             # -- Status label --
             self._status = QLabel("", self)
             self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
@@ -584,11 +778,26 @@ if PYQT6_AVAILABLE:
             # Show/hide HR10-specific controls
             self._set_hr10_visibility(self._is_hr10)
 
-            # Show/hide zone buttons
+            # Show/hide zone buttons + sync checkbox
             for i, btn in enumerate(self._zone_buttons):
                 btn.setVisible(i < zone_count and zone_count > 1)
+            self._sync_cb.setVisible(zone_count > 1)
+            self._selected_zone = 0
+            self._sync_all = False
+            self._sync_cb.setChecked(False)
             if zone_count > 1 and self._zone_buttons:
                 self._zone_buttons[0].setChecked(True)
+
+            # Show/hide device-specific info panels (mutually exclusive)
+            is_lc2 = (style_id == 9)
+            is_lc1 = (style_id == 4)
+            is_lf11 = (style_id == 10)
+            show_sensors = style_id in (1, 2, 3, 5, 6, 7, 8, 11)
+
+            self._set_lc2_visibility(is_lc2)
+            self._set_sensor_visibility(show_sensors)
+            self._set_mem_visibility(is_lc1)
+            self._set_disk_visibility(is_lf11)
 
             # Initialize HR10 display
             if self._is_hr10:
@@ -932,6 +1141,166 @@ if PYQT6_AVAILABLE:
             self._circulate_index = (self._circulate_index + 1) % len(DISPLAY_METRICS)
             _label, key = DISPLAY_METRICS[self._circulate_index]
             self._on_display_selected(key, self._circulate_index)
+
+        # -- Zone selection --
+
+        def _on_zone_clicked(self, zone_index: int):
+            """Handle zone button click."""
+            if self._sync_all:
+                return
+            self._selected_zone = zone_index
+            for i, btn in enumerate(self._zone_buttons):
+                btn.setChecked(i == zone_index)
+            self.zone_selected.emit(zone_index)
+
+        def _on_sync_toggled(self, sync: bool):
+            """Handle sync all checkbox toggle."""
+            self._sync_all = sync
+            if sync:
+                for i in range(self._zone_count):
+                    if i < len(self._zone_buttons):
+                        self._zone_buttons[i].setChecked(True)
+            else:
+                for i, btn in enumerate(self._zone_buttons):
+                    btn.setChecked(i == self._selected_zone)
+            self.sync_all_changed.emit(sync)
+
+        def load_zone_state(self, zone_index: int, mode: int,
+                            color: tuple, brightness: int):
+            """Load a zone's state into the UI controls."""
+            for slider in self._rgb_sliders:
+                slider.blockSignals(True)
+            for spinbox in self._rgb_spinboxes:
+                spinbox.blockSignals(True)
+            self._brightness_slider.blockSignals(True)
+
+            r, g, b = color
+            self._rgb_sliders[0].setValue(r)
+            self._rgb_sliders[1].setValue(g)
+            self._rgb_sliders[2].setValue(b)
+            for i, val in enumerate([r, g, b]):
+                self._rgb_spinboxes[i].setValue(val)
+
+            self._brightness_slider.setValue(brightness)
+            self._brightness_label.setText(f"{brightness}%")
+
+            for i, btn in enumerate(self._mode_buttons):
+                btn.setChecked(i == mode)
+            self._current_mode = mode
+
+            for slider in self._rgb_sliders:
+                slider.blockSignals(False)
+            for spinbox in self._rgb_spinboxes:
+                spinbox.blockSignals(False)
+            self._brightness_slider.blockSignals(False)
+
+            self._update_color_swatch()
+
+        @property
+        def selected_zone(self) -> int:
+            return self._selected_zone
+
+        @property
+        def sync_all(self) -> bool:
+            return self._sync_all
+
+        # -- LC2 clock handlers --
+
+        def _set_clock_format(self, is_24h: bool):
+            self._is_timer_24h = is_24h
+            self._btn_24h.setChecked(is_24h)
+            self._btn_12h.setChecked(not is_24h)
+            self.clock_format_changed.emit(is_24h)
+
+        def _set_week_start(self, is_sunday: bool):
+            self._is_week_sunday = is_sunday
+            self._btn_sun.setChecked(is_sunday)
+            self._btn_mon.setChecked(not is_sunday)
+            self.week_start_changed.emit(is_sunday)
+
+        # -- Visibility helpers --
+
+        def _set_lc2_visibility(self, visible: bool):
+            """Show/hide LC2 clock widgets."""
+            self._lc2_label.setVisible(visible)
+            self._btn_24h.setVisible(visible)
+            self._btn_12h.setVisible(visible)
+            self._week_label.setVisible(visible)
+            self._btn_sun.setVisible(visible)
+            self._btn_mon.setVisible(visible)
+
+        def _set_sensor_visibility(self, visible: bool):
+            """Show/hide sensor info labels."""
+            self._sensor_bg.setVisible(visible)
+            for lbl in self._sensor_name_labels:
+                lbl.setVisible(visible)
+            for lbl in self._sensor_labels.values():
+                lbl.setVisible(visible)
+
+        def _set_mem_visibility(self, visible: bool):
+            """Show/hide LC1 memory info labels."""
+            self._mem_bg.setVisible(visible)
+            for lbl in self._mem_name_labels:
+                lbl.setVisible(visible)
+            for lbl in self._mem_labels.values():
+                lbl.setVisible(visible)
+
+        def _set_disk_visibility(self, visible: bool):
+            """Show/hide LF11 disk info labels."""
+            self._disk_bg.setVisible(visible)
+            for lbl in self._disk_name_labels:
+                lbl.setVisible(visible)
+            for lbl in self._disk_labels.values():
+                lbl.setVisible(visible)
+
+        # -- Sensor/memory/disk update methods --
+
+        def update_sensor_metrics(self, metrics: Dict[str, float]):
+            """Update live sensor values (for non-HR10 styles)."""
+            unit = self._temp_unit
+            if 'cpu_temp' in metrics:
+                t = metrics['cpu_temp']
+                if unit == "\u00b0F":
+                    t = t * 9 / 5 + 32
+                self._sensor_labels['cpu_temp'].setText(f"{t:.0f} {unit}")
+            if 'cpu_percent' in metrics:
+                self._sensor_labels['cpu_load'].setText(
+                    f"{metrics['cpu_percent']:.0f}%")
+            if 'gpu_temp' in metrics:
+                t = metrics['gpu_temp']
+                if unit == "\u00b0F":
+                    t = t * 9 / 5 + 32
+                self._sensor_labels['gpu_temp'].setText(f"{t:.0f} {unit}")
+            if 'gpu_usage' in metrics:
+                self._sensor_labels['gpu_load'].setText(
+                    f"{metrics['gpu_usage']:.0f}%")
+
+        def update_memory_metrics(self, metrics: Dict[str, float]):
+            """Update memory info labels (LC1 style 4)."""
+            if 'mem_temp' in metrics:
+                self._mem_labels['mem_temp'].setText(
+                    f"{metrics['mem_temp']:.0f} \u00b0C")
+            if 'mem_clock' in metrics:
+                self._mem_labels['mem_clock'].setText(
+                    f"{metrics['mem_clock']:.0f} MHz")
+            if 'mem_percent' in metrics:
+                self._mem_labels['mem_used'].setText(
+                    f"{metrics['mem_percent']:.1f}%")
+
+        def update_lf11_disk_metrics(self, metrics: Dict[str, float]):
+            """Update disk info labels (LF11 style 10)."""
+            if 'disk_temp' in metrics:
+                self._disk_labels['lf11_disk_temp'].setText(
+                    f"{metrics['disk_temp']:.0f} \u00b0C")
+            if 'disk_activity' in metrics:
+                self._disk_labels['lf11_disk_usage'].setText(
+                    f"{metrics['disk_activity']:.0f}%")
+            if 'disk_read' in metrics:
+                self._disk_labels['lf11_disk_read'].setText(
+                    f"{metrics['disk_read']:.1f} MB/s")
+            if 'disk_write' in metrics:
+                self._disk_labels['lf11_disk_write'].setText(
+                    f"{metrics['disk_write']:.1f} MB/s")
 
         # ================================================================
         # Styles

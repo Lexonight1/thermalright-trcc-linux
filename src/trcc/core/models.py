@@ -797,6 +797,10 @@ class LEDState:
     temp_source: str = "cpu"    # "cpu" or "gpu"
     load_source: str = "cpu"    # "cpu" or "gpu"
 
+    # LC2 clock settings (style 9)
+    is_timer_24h: bool = True
+    is_week_sunday: bool = False
+
     def __post_init__(self):
         if not self.segment_on:
             self.segment_on = [True] * self.segment_count
@@ -892,43 +896,100 @@ class LEDModel:
         """Advance animation one tick and return computed per-segment colors.
 
         Dispatches to the mode-specific algorithm based on state.mode.
+        For multi-zone devices, divides segments among zones and computes
+        per-zone colors independently.
         Called by the controller on a ~30ms timer.
 
         Returns:
             List of (R, G, B) tuples, one per segment.
         """
-        mode = self.state.mode
-        if mode == LEDMode.STATIC:
-            colors = self._tick_static()
-        elif mode == LEDMode.BREATHING:
-            colors = self._tick_breathing()
-        elif mode == LEDMode.COLORFUL:
-            colors = self._tick_colorful()
-        elif mode == LEDMode.RAINBOW:
-            colors = self._tick_rainbow()
-        elif mode == LEDMode.TEMP_LINKED:
-            colors = self._tick_temp_linked()
-        elif mode == LEDMode.LOAD_LINKED:
-            colors = self._tick_load_linked()
+        if self.state.zone_count > 1 and self.state.zones:
+            colors = self._tick_multi_zone()
         else:
-            colors = [(0, 0, 0)] * self.state.segment_count
+            colors = self._tick_single_mode(self.state.mode, self.state.color,
+                                            self.state.segment_count)
 
         if self.on_colors_updated:
             self.on_colors_updated(colors)
 
         return colors
 
+    def _tick_single_mode(self, mode: LEDMode, color: Tuple[int, int, int],
+                          seg_count: int) -> List[Tuple[int, int, int]]:
+        """Compute colors for a single mode across seg_count segments."""
+        if mode == LEDMode.STATIC:
+            return [color] * seg_count
+        elif mode == LEDMode.BREATHING:
+            return self._tick_breathing_for(color, seg_count)
+        elif mode == LEDMode.COLORFUL:
+            return self._tick_colorful_for(seg_count)
+        elif mode == LEDMode.RAINBOW:
+            return self._tick_rainbow_for(seg_count)
+        elif mode == LEDMode.TEMP_LINKED:
+            return self._tick_temp_linked_for(seg_count)
+        elif mode == LEDMode.LOAD_LINKED:
+            return self._tick_load_linked_for(seg_count)
+        return [(0, 0, 0)] * seg_count
+
+    def _tick_multi_zone(self) -> List[Tuple[int, int, int]]:
+        """Compute per-zone colors for multi-zone devices.
+
+        Divides segments evenly among zones. Each zone computes its own
+        colors using its mode/color settings.
+        From FormLED.cs: zones split segment_count evenly.
+        """
+        total = self.state.segment_count
+        zone_count = len(self.state.zones)
+        colors: List[Tuple[int, int, int]] = []
+
+        for zi, zone in enumerate(self.state.zones):
+            # Divide segments evenly; last zone gets remainder
+            base = total // zone_count
+            n_segs = base + (1 if zi < total % zone_count else 0)
+
+            if not zone.on:
+                colors.extend([(0, 0, 0)] * n_segs)
+            else:
+                zone_colors = self._tick_single_mode(zone.mode, zone.color, n_segs)
+                # Apply zone brightness scaling
+                if zone.brightness < 100:
+                    scale = zone.brightness / 100.0
+                    zone_colors = [
+                        (int(r * scale), int(g * scale), int(b * scale))
+                        for r, g, b in zone_colors
+                    ]
+                colors.extend(zone_colors)
+
+        # Advance rgb_timer once (shared across zones for animation sync)
+        # Timer is advanced by individual _tick_*_for methods, so no extra advance here
+
+        return colors
+
     # -- Effect algorithms (ported from FormLED.cs) --
+    # Each algorithm has a _for variant that accepts parameters so it can be
+    # used by both single-zone (global state) and multi-zone (per-zone state).
+    # Legacy names delegate to _for variants for backward compatibility.
 
     def _tick_static(self) -> List[Tuple[int, int, int]]:
-        """DSCL_Timer: all segments = user color.
-
-        From FormLED.cs line 7619.
-        """
-        r, g, b = self.state.color
-        return [(r, g, b)] * self.state.segment_count
+        return [self.state.color] * self.state.segment_count
 
     def _tick_breathing(self) -> List[Tuple[int, int, int]]:
+        return self._tick_breathing_for(self.state.color, self.state.segment_count)
+
+    def _tick_colorful(self) -> List[Tuple[int, int, int]]:
+        return self._tick_colorful_for(self.state.segment_count)
+
+    def _tick_rainbow(self) -> List[Tuple[int, int, int]]:
+        return self._tick_rainbow_for(self.state.segment_count)
+
+    def _tick_temp_linked(self) -> List[Tuple[int, int, int]]:
+        return self._tick_temp_linked_for(self.state.segment_count)
+
+    def _tick_load_linked(self) -> List[Tuple[int, int, int]]:
+        return self._tick_load_linked_for(self.state.segment_count)
+
+    def _tick_breathing_for(self, color: Tuple[int, int, int],
+                            seg_count: int) -> List[Tuple[int, int, int]]:
         """DSHX_Timer: pulse brightness, period=66 ticks.
 
         From FormLED.cs line 7709:
@@ -945,17 +1006,16 @@ class LEDModel:
         else:
             factor = (period - 1 - timer) / half
 
-        # Blend: 80% animated + 20% base (from C#)
-        r, g, b = self.state.color
+        r, g, b = color
         anim_r = int(r * factor * 0.8 + r * 0.2)
         anim_g = int(g * factor * 0.8 + g * 0.2)
         anim_b = int(b * factor * 0.8 + b * 0.2)
 
         self.state.rgb_timer = (timer + 1) % period
 
-        return [(anim_r, anim_g, anim_b)] * self.state.segment_count
+        return [(anim_r, anim_g, anim_b)] * seg_count
 
-    def _tick_colorful(self) -> List[Tuple[int, int, int]]:
+    def _tick_colorful_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """QCJB_Timer: 6-phase color gradient cycle, period=168 ticks.
 
         From FormLED.cs line 8005:
@@ -989,9 +1049,9 @@ class LEDModel:
 
         self.state.rgb_timer = (timer + 1) % period
 
-        return [(r, g, b)] * self.state.segment_count
+        return [(r, g, b)] * seg_count
 
-    def _tick_rainbow(self) -> List[Tuple[int, int, int]]:
+    def _tick_rainbow_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """CHMS_Timer: 768-entry RGB table with per-segment offset.
 
         From FormLED.cs line 9212:
@@ -1001,21 +1061,18 @@ class LEDModel:
         from ..led_device import get_rgb_table
         table = get_rgb_table()
         timer = self.state.rgb_timer
-        seg_count = self.state.segment_count
         table_len = len(table)  # 768
 
         colors = []
         for i in range(seg_count):
-            # Each segment offset by position in table
             idx = (timer + i * table_len // max(seg_count, 1)) % table_len
             colors.append(table[idx])
 
-        # Advance by 4 per tick (from C#: rgbTimer = (rgbTimer + 4) % 768)
         self.state.rgb_timer = (timer + 4) % table_len
 
         return colors
 
-    def _tick_temp_linked(self) -> List[Tuple[int, int, int]]:
+    def _tick_temp_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """WDLD_Timer: color from temperature thresholds.
 
         From FormLED.cs line 9377:
@@ -1026,9 +1083,9 @@ class LEDModel:
         source = self.state.temp_source
         temp = self._metrics.get(f"{source}_temp", 0)
         color = color_for_value(temp, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH)
-        return [color] * self.state.segment_count
+        return [color] * seg_count
 
-    def _tick_load_linked(self) -> List[Tuple[int, int, int]]:
+    def _tick_load_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """FZLD_Timer: color from CPU/GPU load thresholds.
 
         From FormLED.cs line 9824:
@@ -1039,7 +1096,7 @@ class LEDModel:
         source = self.state.load_source
         load = self._metrics.get(f"{source}_load", 0)
         color = color_for_value(load, LOAD_COLOR_THRESHOLDS, LOAD_COLOR_HIGH)
-        return [color] * self.state.segment_count
+        return [color] * seg_count
 
     def _notify_state_changed(self) -> None:
         """Notify observers of state change."""

@@ -1273,6 +1273,18 @@ class LEDController:
         """Set color for a specific zone."""
         self.model.set_zone_color(zone, r, g, b)
 
+    def set_zone_brightness(self, zone: int, brightness: int) -> None:
+        """Set brightness for a specific zone."""
+        self.model.set_zone_brightness(zone, brightness)
+
+    def set_clock_format(self, is_24h: bool) -> None:
+        """Set LC2 clock format (24h vs 12h)."""
+        self.model.state.is_timer_24h = is_24h
+
+    def set_week_start(self, is_sunday: bool) -> None:
+        """Set LC2 week start (Sunday vs Monday)."""
+        self.model.state.is_week_sunday = is_sunday
+
     def update_metrics(self, metrics: Dict) -> None:
         """Update sensor metrics for temp/load-linked modes."""
         self.model.update_metrics(metrics)
@@ -1446,6 +1458,9 @@ class LEDDeviceController:
                     }
                     for z in state.zones
                 ]
+            # LC2 clock settings (style 9)
+            config['is_timer_24h'] = state.is_timer_24h
+            config['is_week_sunday'] = state.is_week_sunday
             save_device_setting(self._device_key, 'led_config', config)
         except Exception as e:
             print(f"[!] Failed to save LED config: {e}")
@@ -1485,6 +1500,11 @@ class LEDDeviceController:
                         state.zones[i].color = tuple(z_config.get('color', (255, 0, 0)))
                         state.zones[i].brightness = z_config.get('brightness', 100)
                         state.zones[i].on = z_config.get('on', True)
+            # LC2 clock settings (style 9)
+            if 'is_timer_24h' in led_config:
+                state.is_timer_24h = led_config['is_timer_24h']
+            if 'is_week_sunday' in led_config:
+                state.is_week_sunday = led_config['is_week_sunday']
         except Exception as e:
             print(f"[!] Failed to load LED config: {e}")
 

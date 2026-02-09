@@ -185,6 +185,23 @@ if PYQT6_AVAILABLE:
 
             painter.end()
 
+        def set_timer(self, month: int, day: int, hour: int, minute: int,
+                      day_of_week: int) -> None:
+            """Set LC2 clock display data for preview overlay.
+
+            From FormLED.cs SetMyTimer(): paints date/time text on the
+            LC2 device preview image.
+
+            Args:
+                month: 1-12
+                day: 1-31
+                hour: 0-23
+                minute: 0-59
+                day_of_week: 0=Mon..6=Sun (or 0=Sun if week starts Sunday)
+            """
+            self._timer_data = (month, day, hour, minute, day_of_week)
+            self.update()
+
         def mousePressEvent(self, event):
             """Handle click to toggle segments."""
             if event.button() != Qt.MouseButton.LeftButton:
