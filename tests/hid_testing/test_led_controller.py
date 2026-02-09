@@ -42,7 +42,7 @@ class FakeDeviceInfo:
 # Imports under test
 # =========================================================================
 
-from trcc.core.controllers import LEDDeviceController, LEDController  # noqa: E402
+from trcc.core.controllers import LEDController, LEDDeviceController  # noqa: E402
 from trcc.core.models import (  # noqa: E402
     LEDMode,
     LEDModel,

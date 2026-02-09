@@ -686,12 +686,9 @@ def led_diag(test=False):
             PYUSB_AVAILABLE,
         )
         from trcc.led_device import (
-            LED_STYLES,
-            PM_TO_MODEL,
             PM_TO_STYLE,
             LedHidSender,
             LedPacketBuilder,
-            get_style_for_pm,
         )
 
         LED_VID, LED_PID = 0x0416, 0x8001
