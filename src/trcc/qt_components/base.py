@@ -546,12 +546,16 @@ class BaseThemeBrowser(BasePanel):
         self.grid_layout.addWidget(label, 0, 0, 1, Sizes.GRID_COLS)
         self.item_widgets.append(label)
 
-    def _on_item_clicked(self, item_info: dict):
-        """Handle thumbnail click — select and notify."""
+    def _select_item(self, item_info: dict):
+        """Update selection state and visuals (no signals emitted)."""
         self.selected_item = item_info
         for widget in self.item_widgets:
             if isinstance(widget, BaseThumbnail):
                 widget.set_selected(widget.item_info == item_info)
+
+    def _on_item_clicked(self, item_info: dict):
+        """Handle thumbnail click — select and notify."""
+        self._select_item(item_info)
         self.theme_selected.emit(item_info)
 
     def get_selected(self):

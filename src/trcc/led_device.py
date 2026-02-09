@@ -22,6 +22,7 @@ from .hid_device import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
+    TYPE2_MAGIC,
     UsbTransport,
 )
 
@@ -33,8 +34,8 @@ from .hid_device import (
 LED_VID = 0x0416
 LED_PID = 0x8001  # UsbHidDevice(1046, 32769, hidNameList1, 64)
 
-# Handshake magic (same as HID Type 2)
-LED_MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
+# Handshake magic (same as HID Type 2, imported from hid_device)
+LED_MAGIC = TYPE2_MAGIC
 
 # Packet structure
 LED_HEADER_SIZE = 20

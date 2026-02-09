@@ -48,6 +48,11 @@
 - Removed unused imports across 10 files
 - Sorted all import blocks (isort)
 - Removed redundant `requirements.txt` (`pyproject.toml` is single source of truth)
+- Deduplicated magic bytes: `led_device.LED_MAGIC` now imports `TYPE2_MAGIC` from `hid_device` (was copy-pasted)
+- Extracted `_select_item()` into `BaseThemeBrowser` — shared visual selection logic for local, cloud, and mask browsers
+- Centralized `pil_to_pixmap()` usage in `UCImageCut` (was inline 5-line conversion)
+- Added `_create_info_panel()` factory in `UCLedControl` — eliminates duplicate QFrame+label creation for mem/disk panels
+- Consolidated 5 repeated stylesheet strings into module-level constants (`_STYLE_INFO_BG`, `_STYLE_INFO_NAME`, etc.)
 
 ### On-Demand Download
 - All 15 LCD resolutions now have bundled `.7z` theme archives (was 4)
@@ -86,7 +91,7 @@
 - Removed `--testing-hid` references from all docs (HID is auto-detected)
 
 ### Testing
-- 1880 tests across 26 test files (up from 1777)
+- 1988 tests across 26 test files (up from 1777)
 - 96% coverage on non-Qt backend
 
 ## v1.1.3

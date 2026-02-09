@@ -11,18 +11,16 @@ from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import (
     QBrush,
     QColor,
-    QImage,
     QPainter,
     QPalette,
     QPen,
-    QPixmap,
 )
 from PyQt6.QtWidgets import QWidget
 
 from trcc.core.controllers import apply_rotation
 
 from .assets import load_pixmap
-from .base import make_icon_button
+from .base import make_icon_button, pil_to_pixmap
 
 try:
     from PIL import Image as PILImage
@@ -260,12 +258,7 @@ class UCImageCut(QWidget):
         disp_w, disp_h = int(pw * scale), int(ph * scale)
         display = output.resize((disp_w, disp_h), PILImage.Resampling.LANCZOS)
 
-        # Convert PIL → QPixmap
-        if display.mode != 'RGB':
-            display = display.convert('RGB')
-        data = display.tobytes('raw', 'RGB')
-        qimg = QImage(data, disp_w, disp_h, disp_w * 3, QImage.Format.Format_RGB888)
-        self._display_pixmap = QPixmap.fromImage(qimg)
+        self._display_pixmap = pil_to_pixmap(display)
         self.update()
 
     # =========================================================================

@@ -222,10 +222,7 @@ class UCThemeWeb(BaseThemeBrowser):
         if self._downloading:
             return
 
-        self.selected_item = item_info
-        for widget in self.item_widgets:
-            if isinstance(widget, BaseThumbnail):
-                widget.set_selected(widget.item_info == item_info)
+        self._select_item(item_info)
 
         if item_info.get('is_local', True):
             self.theme_selected.emit(item_info)

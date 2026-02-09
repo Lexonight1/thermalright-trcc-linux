@@ -31,7 +31,7 @@ src/trcc/
 │   └── controllers.py           # LCDDeviceController, LEDDeviceController, MVC controllers
 └── qt_components/
     ├── qt_app_mvc.py            # Main window (1454x800)
-    ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
+    ├── base.py                  # BasePanel, BaseThemeBrowser, pil_to_pixmap, make_icon_button
     ├── constants.py             # Layout coords, sizes, colors, styles
     ├── assets.py                # Asset loader with lru_cache
     ├── eyedropper.py            # Fullscreen color picker
@@ -94,6 +94,12 @@ The `DeviceProtocolFactory` in `device_factory.py` routes devices to the correct
 - **HID LED devices** → `LedProtocol` (PyUSB/HIDAPI) — RGB LED controllers
 
 The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `LEDDeviceController` manages LED effects with a 30ms animation timer, matching Windows FormLED. The unified LED panel handles all device styles (1-13), including the HR10 2280 PRO Digital which shows a 7-segment preview, color wheel, and drive metrics instead of the standard LED segment circles.
+
+### Shared UI Base Classes
+
+`base.py` provides `BaseThemeBrowser` — the common superclass for local, cloud, and mask theme browsers. It handles grid layout, thumbnail creation, selection state (`_select_item()`), filter buttons, and scrolling. Subclasses override `_on_item_clicked()` for download-vs-select behavior while reusing the visual selection logic.
+
+`UCLedControl` uses a `_create_info_panel()` factory for building labeled metric displays (memory, disk), and module-level stylesheet constants (`_STYLE_INFO_BG`, `_STYLE_INFO_NAME`, etc.) shared across all info panels and buttons.
 
 ### Theme Archives
 

@@ -171,6 +171,21 @@ CIRCULATE_MIN_S = 2
 CIRCULATE_MAX_S = 10
 CIRCULATE_DEFAULT_S = 5
 
+# Shared stylesheet fragments (used by multiple widgets in this module)
+_STYLE_INFO_BG = (
+    "background-color: rgba(20, 20, 20, 200); "
+    "border: 1px solid #444; border-radius: 6px;"
+)
+_STYLE_INFO_NAME = "color: #aaa; font-size: 11px;"
+_STYLE_INFO_VALUE = "color: white; font-size: 11px; font-weight: bold;"
+_STYLE_MUTED_LABEL = "color: #aaa; font-size: 12px;"
+_STYLE_CHECKABLE_BTN = (
+    "QPushButton { background: #444; color: #aaa; border: 1px solid #666; "
+    "border-radius: 4px; font-size: 11px; }"
+    "QPushButton:checked { background: #2196F3; color: white; "
+    "border: 1px solid #42A5F5; }"
+)
+
 
 if PYQT6_AVAILABLE:
 
@@ -515,9 +530,10 @@ if PYQT6_AVAILABLE:
                 btn.setGeometry(x, ZONE_Y, ZONE_W, ZONE_H)
                 btn.setCheckable(True)
                 btn.setStyleSheet(
-                    "QPushButton { background: #444; color: white; border: 1px solid #666; "
-                    "border-radius: 4px; }"
-                    "QPushButton:checked { background: #2196F3; border: 1px solid #42A5F5; }"
+                    "QPushButton { background: #444; color: white; "
+                    "border: 1px solid #666; border-radius: 4px; }"
+                    "QPushButton:checked { background: #2196F3; "
+                    "border: 1px solid #42A5F5; }"
                 )
                 btn.clicked.connect(
                     lambda checked, idx=i: self._on_zone_clicked(idx)
@@ -644,7 +660,7 @@ if PYQT6_AVAILABLE:
 
             self._lc2_label = QLabel("Clock Format:", self)
             self._lc2_label.setGeometry(590, 620, 100, 20)
-            self._lc2_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._lc2_label.setStyleSheet(_STYLE_MUTED_LABEL)
             self._lc2_label.setVisible(False)
 
             self._btn_24h = QPushButton("24H", self)
@@ -664,7 +680,7 @@ if PYQT6_AVAILABLE:
 
             self._week_label = QLabel("Week Start:", self)
             self._week_label.setGeometry(840, 620, 80, 20)
-            self._week_label.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._week_label.setStyleSheet(_STYLE_MUTED_LABEL)
             self._week_label.setVisible(False)
 
             self._btn_sun = QPushButton("Sun", self)
@@ -714,24 +730,14 @@ if PYQT6_AVAILABLE:
             self._btn_celsius.setGeometry(16, 770, 40, 24)
             self._btn_celsius.setCheckable(True)
             self._btn_celsius.setChecked(True)
-            self._btn_celsius.setStyleSheet(
-                "QPushButton { background: #444; color: #aaa; border: 1px solid #666; "
-                "border-radius: 4px; font-size: 11px; }"
-                "QPushButton:checked { background: #2196F3; color: white; "
-                "border: 1px solid #42A5F5; }"
-            )
+            self._btn_celsius.setStyleSheet(_STYLE_CHECKABLE_BTN)
             self._btn_celsius.clicked.connect(lambda: self._set_temp_unit_btn(False))
             self._btn_celsius.setVisible(False)
 
             self._btn_fahrenheit = QPushButton("\u00b0F", self)
             self._btn_fahrenheit.setGeometry(60, 770, 40, 24)
             self._btn_fahrenheit.setCheckable(True)
-            self._btn_fahrenheit.setStyleSheet(
-                "QPushButton { background: #444; color: #aaa; border: 1px solid #666; "
-                "border-radius: 4px; font-size: 11px; }"
-                "QPushButton:checked { background: #2196F3; color: white; "
-                "border: 1px solid #42A5F5; }"
-            )
+            self._btn_fahrenheit.setStyleSheet(_STYLE_CHECKABLE_BTN)
             self._btn_fahrenheit.clicked.connect(lambda: self._set_temp_unit_btn(True))
             self._btn_fahrenheit.setVisible(False)
 
@@ -739,80 +745,42 @@ if PYQT6_AVAILABLE:
             # LC1 memory info panel (style 4 — hidden by default)
             # ============================================================
 
-            self._mem_bg = QFrame(self)
-            self._mem_bg.setGeometry(30, 640, 500, 80)
-            self._mem_bg.setStyleSheet(
-                "background-color: rgba(20, 20, 20, 200); "
-                "border: 1px solid #444; border-radius: 6px;"
-            )
-            self._mem_bg.setVisible(False)
-
-            self._mem_labels: Dict[str, QLabel] = {}
-            self._mem_name_labels: List[QLabel] = []
             mem_defs = [
                 ("Mem Temp:", "mem_temp", "-- \u00b0C"),
                 ("Mem Clock:", "mem_clock", "-- MHz"),
                 ("Mem Used:", "mem_used", "-- %"),
             ]
-            for i, (label_text, key, default) in enumerate(mem_defs):
-                y = 648 + i * 24
-                name_lbl = QLabel(label_text, self)
-                name_lbl.setGeometry(45, y, 100, 20)
-                name_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
-                name_lbl.setVisible(False)
-                self._mem_name_labels.append(name_lbl)
-
-                val_lbl = QLabel(default, self)
-                val_lbl.setGeometry(150, y, 120, 20)
-                val_lbl.setStyleSheet(
-                    "color: white; font-size: 11px; font-weight: bold;"
+            self._mem_bg, self._mem_labels, self._mem_name_labels = (
+                self._create_info_panel(
+                    (30, 640, 500, 80), mem_defs,
+                    lambda i, _: (45, 648 + i * 24, 150, 648 + i * 24),
                 )
-                val_lbl.setVisible(False)
-                self._mem_labels[key] = val_lbl
+            )
 
             # ============================================================
             # LF11 disk info panel (style 10 — hidden by default)
             # ============================================================
 
-            self._disk_bg = QFrame(self)
-            self._disk_bg.setGeometry(30, 640, 500, 80)
-            self._disk_bg.setStyleSheet(
-                "background-color: rgba(20, 20, 20, 200); "
-                "border: 1px solid #444; border-radius: 6px;"
-            )
-            self._disk_bg.setVisible(False)
-
-            self._disk_labels: Dict[str, QLabel] = {}
-            self._disk_name_labels: List[QLabel] = []
             disk_defs = [
                 ("Disk Temp:", "lf11_disk_temp", "-- \u00b0C"),
                 ("Disk Usage:", "lf11_disk_usage", "-- %"),
                 ("Read Rate:", "lf11_disk_read", "-- MB/s"),
                 ("Write Rate:", "lf11_disk_write", "-- MB/s"),
             ]
-            for i, (label_text, key, default) in enumerate(disk_defs):
-                col = i // 2
-                row = i % 2
-                x = 45 + col * 250
-                y = 652 + row * 28
-                name_lbl = QLabel(label_text, self)
-                name_lbl.setGeometry(x, y, 100, 20)
-                name_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
-                name_lbl.setVisible(False)
-                self._disk_name_labels.append(name_lbl)
-
-                val_lbl = QLabel(default, self)
-                val_lbl.setGeometry(x + 105, y, 120, 20)
-                val_lbl.setStyleSheet(
-                    "color: white; font-size: 11px; font-weight: bold;"
+            self._disk_bg, self._disk_labels, self._disk_name_labels = (
+                self._create_info_panel(
+                    (30, 640, 500, 80), disk_defs,
+                    lambda i, _: (
+                        45 + (i // 2) * 250, 652 + (i % 2) * 28,
+                        45 + (i // 2) * 250 + 105, 652 + (i % 2) * 28,
+                    ),
                 )
-                val_lbl.setVisible(False)
-                self._disk_labels[key] = val_lbl
+            )
 
             # -- Status label --
             self._status = QLabel("", self)
             self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
-            self._status.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._status.setStyleSheet(_STYLE_MUTED_LABEL)
 
         # ================================================================
         # Public API
@@ -1314,6 +1282,43 @@ if PYQT6_AVAILABLE:
             self._temp_unit = "\u00b0F" if is_fahrenheit else "\u00b0C"
             self.temp_unit_changed.emit("F" if is_fahrenheit else "C")
 
+        # -- Info panel factory --
+
+        def _create_info_panel(self, bg_rect, defs, layout_fn):
+            """Create a labeled info panel (used for mem/disk panels).
+
+            Args:
+                bg_rect: (x, y, w, h) for background QFrame.
+                defs: List of (label_text, key, default_value) tuples.
+                layout_fn: (index, total) -> (name_x, name_y, val_x, val_y)
+
+            Returns:
+                (bg_frame, value_labels_dict, name_labels_list)
+            """
+            bg = QFrame(self)
+            bg.setGeometry(*bg_rect)
+            bg.setStyleSheet(_STYLE_INFO_BG)
+            bg.setVisible(False)
+
+            val_labels: Dict[str, QLabel] = {}
+            name_labels: List[QLabel] = []
+            for i, (label_text, key, default) in enumerate(defs):
+                name_x, name_y, val_x, val_y = layout_fn(i, len(defs))
+
+                name_lbl = QLabel(label_text, self)
+                name_lbl.setGeometry(name_x, name_y, 100, 20)
+                name_lbl.setStyleSheet(_STYLE_INFO_NAME)
+                name_lbl.setVisible(False)
+                name_labels.append(name_lbl)
+
+                val_lbl = QLabel(default, self)
+                val_lbl.setGeometry(val_x, val_y, 120, 20)
+                val_lbl.setStyleSheet(_STYLE_INFO_VALUE)
+                val_lbl.setVisible(False)
+                val_labels[key] = val_lbl
+
+            return bg, val_labels, name_labels
+
         # -- Visibility helpers --
 
         def _set_lc2_visibility(self, visible: bool):
@@ -1332,21 +1337,25 @@ if PYQT6_AVAILABLE:
             self._btn_celsius.setVisible(visible)
             self._btn_fahrenheit.setVisible(visible)
 
+        def _set_info_panel_visibility(self, bg, val_labels, name_labels,
+                                       visible: bool):
+            """Show/hide a labeled info panel created by _create_info_panel."""
+            bg.setVisible(visible)
+            for lbl in name_labels:
+                lbl.setVisible(visible)
+            for lbl in val_labels.values():
+                lbl.setVisible(visible)
+
         def _set_mem_visibility(self, visible: bool):
             """Show/hide LC1 memory info labels."""
-            self._mem_bg.setVisible(visible)
-            for lbl in self._mem_name_labels:
-                lbl.setVisible(visible)
-            for lbl in self._mem_labels.values():
-                lbl.setVisible(visible)
+            self._set_info_panel_visibility(
+                self._mem_bg, self._mem_labels, self._mem_name_labels, visible)
 
         def _set_disk_visibility(self, visible: bool):
             """Show/hide LF11 disk info labels."""
-            self._disk_bg.setVisible(visible)
-            for lbl in self._disk_name_labels:
-                lbl.setVisible(visible)
-            for lbl in self._disk_labels.values():
-                lbl.setVisible(visible)
+            self._set_info_panel_visibility(
+                self._disk_bg, self._disk_labels, self._disk_name_labels,
+                visible)
 
         # -- Sensor/memory/disk update methods --
 
