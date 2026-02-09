@@ -684,7 +684,7 @@ class HidApiTransport(UsbTransport):
         kwargs = {'vid': self._vid, 'pid': self._pid}
         if self._serial:
             kwargs['serial'] = self._serial
-        self._device = hidapi.Device(**kwargs)
+        self._device = hidapi.device(**kwargs)
         self._device.nonblocking = 0  # blocking reads
         self._is_open = True
 

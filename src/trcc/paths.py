@@ -15,11 +15,19 @@ from typing import TYPE_CHECKING, List, Optional
 log = logging.getLogger(__name__)
 
 # PIL import (done once, shared by all components)
+# Image and ImageTk are imported separately so load_image(as_photoimage=False)
+# works even without tkinter (which ImageTk requires).
+PIL_AVAILABLE = False
+IMAGETK_AVAILABLE = False
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image
     PIL_AVAILABLE = True
+    try:
+        from PIL import ImageTk
+        IMAGETK_AVAILABLE = True
+    except ImportError:
+        pass
 except ImportError:
-    PIL_AVAILABLE = False
     if TYPE_CHECKING:
         from PIL import Image, ImageTk
 
@@ -215,6 +223,8 @@ def load_image(filename: str, search_paths: Optional[list] = None, as_photoimage
         PhotoImage/Image if found and loaded, None otherwise
     """
     if not PIL_AVAILABLE:
+        return None
+    if as_photoimage and not IMAGETK_AVAILABLE:
         return None
 
     path = find_resource(filename, search_paths)

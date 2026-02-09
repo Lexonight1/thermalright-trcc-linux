@@ -429,15 +429,19 @@ class TestSetupUdev(unittest.TestCase):
         self.assertEqual(result, 0)
 
     def test_not_root(self):
-        """Non-root without dry_run → returns 1."""
+        """Non-root without dry_run → re-execs with sudo."""
         mock_mod = MagicMock()
         mock_mod.KNOWN_DEVICES = {
             (0x87CD, 0x70DB): {'vendor': 'Thermalright', 'product': 'LCD'},
         }
+        mock_mod._HID_LCD_DEVICES = {}
+        mock_mod._LED_DEVICES = {}
         with patch.dict('sys.modules', {'trcc.device_detector': mock_mod}), \
-             patch('os.geteuid', return_value=1000):
+             patch('os.geteuid', return_value=1000), \
+             patch('trcc.cli._sudo_reexec', return_value=42) as mock_sudo:
             result = setup_udev(dry_run=False)
-        self.assertEqual(result, 1)
+        mock_sudo.assert_called_once_with("setup-udev")
+        self.assertEqual(result, 42)
 
 
 # ── _ensure_extracted() ──────────────────────────────────────────────────────
@@ -746,10 +750,12 @@ class TestSetupUdevNonDry(unittest.TestCase):
         mock_subproc.assert_any_call(["udevadm", "control", "--reload-rules"], check=False)
         mock_subproc.assert_any_call(["udevadm", "trigger"], check=False)
 
+    @patch('trcc.cli._sudo_reexec', return_value=42)
     @patch('os.geteuid', return_value=1000)
-    def test_non_root_returns_1(self, _):
+    def test_non_root_reexecs_sudo(self, _, mock_sudo):
         result = setup_udev(dry_run=False)
-        self.assertEqual(result, 1)
+        mock_sudo.assert_called_once_with("setup-udev")
+        self.assertEqual(result, 42)
 
     @patch('trcc.cli.subprocess.run')
     @patch('os.path.exists', return_value=False)

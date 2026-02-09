@@ -939,7 +939,7 @@ class TestHidApiTransport:
         from trcc.hid_device import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev) as mock_cls:
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev) as mock_cls:
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             mock_cls.assert_called_once_with(vid=0x0416, pid=0x5302)
@@ -951,7 +951,7 @@ class TestHidApiTransport:
         from trcc.hid_device import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             t.close()
@@ -965,7 +965,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.write.return_value = 5
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.write(EP_WRITE_02, b'\xFF\xFE\xFD\xFC')
@@ -980,7 +980,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = [0xDA, 0xDB, 0xDC, 0xDD]
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
@@ -994,7 +994,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = None
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
@@ -1019,7 +1019,7 @@ class TestHidApiTransport:
         from trcc.hid_device import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.hid_device.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.hid_device.hidapi.device", return_value=mock_hid_dev):
             with HidApiTransport(0x0416, 0x5302) as t:
                 assert t.is_open
             assert not t.is_open
