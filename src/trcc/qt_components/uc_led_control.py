@@ -32,7 +32,7 @@ except ImportError:
     PYQT6_AVAILABLE = False
 
 if PYQT6_AVAILABLE:
-    from .assets import Assets
+    from .assets import Assets, load_pixmap
     from .base import set_background_pixmap
     from .uc_color_wheel import UCColorWheel
     from .uc_screen_led import UCScreenLED
@@ -210,8 +210,8 @@ if PYQT6_AVAILABLE:
             self._mode = 1  # 1=temp/percent, 2=MHz/RPM
 
             # Load assets
-            self._bg_pixmap = Assets.pixmap(f"P0M{index}.png")
-            self._bar_pixmap = Assets.pixmap(f"P环H{index}.png")
+            self._bg_pixmap = load_pixmap(f"P0M{index}.png")
+            self._bar_pixmap = load_pixmap(f"P环H{index}.png")
 
         def set_value(self, value: float, text: str, unit: str = "") -> None:
             """Update displayed value.

@@ -729,10 +729,15 @@ def led_diag(test=False):
         print(f"\n  PM byte:    {info.pm}")
         print(f"  Sub-type:   {info.sub_type}")
         print(f"  Model:      {info.model_name}")
-        print(f"  Style ID:   {info.style.style_id}")
-        print(f"  LED count:  {info.style.led_count}")
-        print(f"  Segments:   {info.style.segment_count}")
-        print(f"  Zones:      {info.style.zone_count}")
+        style = info.style
+        if style is None:
+            print("  Style:      (unknown — handshake returned no style)")
+            transport.close()
+            return 1
+        print(f"  Style ID:   {style.style_id}")
+        print(f"  LED count:  {style.led_count}")
+        print(f"  Segments:   {style.segment_count}")
+        print(f"  Zones:      {style.zone_count}")
 
         if info.pm in PM_TO_STYLE:
             print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
@@ -743,7 +748,7 @@ def led_diag(test=False):
 
         if test:
             print("\n  Sending test colors...")
-            led_count = info.style.led_count
+            led_count = style.led_count
             for name, color in [("RED", (255, 0, 0)), ("GREEN", (0, 255, 0)),
                                 ("BLUE", (0, 0, 255)), ("WHITE", (255, 255, 255))]:
                 led_colors = [color] * led_count

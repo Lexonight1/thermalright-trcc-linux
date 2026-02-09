@@ -293,7 +293,8 @@ def run_daemon(
     sender = LedHidSender(transport)
     try:
         info = sender.handshake()
-        print(f"HR10 connected: {info.model_name} (PM={info.pm}, style={info.style.style_id})")
+        style_id = info.style.style_id if info.style else "?"
+        print(f"HR10 connected: {info.model_name} (PM={info.pm}, style={style_id})")
     except RuntimeError as e:
         print(f"Error: HR10 handshake failed: {e}")
         print("Try: sudo usbreset 0416:8001 && sleep 2")

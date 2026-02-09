@@ -11,9 +11,12 @@ Protocol reverse-engineered from FormLED.cs and UCDevice.cs (TRCC 2.0.3).
 The ``UsbTransport`` ABC from hid_device.py is reused for transport.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 log = logging.getLogger(__name__)
@@ -535,9 +538,8 @@ def send_led_colors(
 # detection, so the actual LedProtocol.handshake() still works.
 
 
-def _led_probe_cache_path() -> 'Path':
+def _led_probe_cache_path() -> Path:
     """Return the path to the LED probe cache file."""
-    from pathlib import Path
     config_dir = Path.home() / '.config' / 'trcc'
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir / 'led_probe_cache.json'
