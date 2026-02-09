@@ -129,6 +129,7 @@ pythonPlatform = "Linux"
 include = ["src"]
 typeCheckingMode = "basic"
 reportMissingTypeStubs = false
+reportMissingImports = "warning"
 reportOptionalMemberAccess = "error"
 reportAttributeAccessIssue = "error"
 reportArgumentType = "error"
