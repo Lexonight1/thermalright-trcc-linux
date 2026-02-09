@@ -199,6 +199,32 @@ After running, **unplug and replug the USB cable** (or reboot).
 
 ---
 
+### `trcc install-desktop`
+
+Install the application menu entry (`.desktop` file) and icon so TRCC appears in your app launcher.
+
+```bash
+trcc install-desktop
+```
+
+Creates:
+- `~/.local/share/applications/trcc.desktop`
+- Copies the TRCC icon to the appropriate location
+
+---
+
+### `trcc resume`
+
+Send the last-used theme to each detected device, then exit. Designed for headless use (autostart, cron, scripts).
+
+```bash
+trcc resume
+```
+
+This is what `~/.config/autostart/trcc.desktop` calls on login with `trcc --last-one` (which launches the GUI minimized to tray and sends the last theme).
+
+---
+
 ### `trcc hid-debug`
 
 HID handshake diagnostic — prints hex dump and resolved device info for bug reports.

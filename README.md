@@ -154,10 +154,16 @@ trcc gui                  # Launch GUI
 trcc detect               # Show connected devices
 trcc send image.png       # Send image to LCD
 trcc test                 # Color cycle test
+trcc color ff0000         # Display solid color
+trcc info                 # Show system metrics
 trcc download themes-320  # Download cloud themes
+trcc setup-udev           # Install udev rules
+trcc install-desktop      # Install app menu entry and icon
+trcc resume               # Send last-used theme (headless)
 trcc hid-debug            # HID handshake diagnostic
 trcc led-diag             # LED device diagnostic
 trcc hr10-tempd           # HR10 NVMe temperature daemon
+trcc uninstall            # Remove config, udev rules, autostart
 ```
 
 ## Documentation
