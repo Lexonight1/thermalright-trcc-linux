@@ -1370,7 +1370,8 @@ class FormLEDController:
             from ..led_device import LED_STYLES
             style = LED_STYLES.get(led_style)
             name = style.model_name if style else f"Style {led_style}"
-            self.on_status_update(f"LED: {name} ({style.led_count} LEDs)")
+            led_count = style.led_count if style else 0
+            self.on_status_update(f"LED: {name} ({led_count} LEDs)")
 
     def save_config(self) -> None:
         """Persist LED state to per-device config."""

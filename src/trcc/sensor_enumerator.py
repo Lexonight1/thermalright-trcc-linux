@@ -211,7 +211,7 @@ class SensorEnumerator:
 
     def _discover_nvidia(self):
         """Discover NVIDIA GPU sensors via pynvml."""
-        if not NVML_AVAILABLE:
+        if not NVML_AVAILABLE or pynvml is None:
             return
 
         try:
@@ -316,7 +316,7 @@ class SensorEnumerator:
 
     def _read_nvidia(self, readings: dict[str, float]):
         """Read all NVIDIA GPU sensors."""
-        if not NVML_AVAILABLE:
+        if not NVML_AVAILABLE or pynvml is None:
             return
 
         for i, handle in self._nvidia_handles.items():

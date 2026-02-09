@@ -469,6 +469,8 @@ def resume():
                 from PIL import Image, ImageEnhance
 
                 driver = LCDDriver(device_path=dev.scsi_device)
+                if not driver.implementation:
+                    continue
                 w, h = driver.implementation.resolution
 
                 img = Image.open(image_path).convert("RGB").resize((w, h))

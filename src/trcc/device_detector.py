@@ -199,7 +199,7 @@ def find_usb_devices() -> List[DetectedDevice]:
             model=device_info.get("model", "CZTV"),
             button_image=device_info.get("button_image", "A1CZTV"),
             protocol=device_info.get("protocol", "scsi"),
-            device_type=device_info.get("device_type", 1),
+            device_type=int(device_info.get("device_type", 1)),
         ))
 
     return devices

@@ -435,9 +435,9 @@ def save_theme(theme_path: str,
     if dc_data:
         opts = dc_data.get('display_options', {})
         if 'bg_display' in opts:
-            theme.bg_display = opts['bg_display']
+            theme.background_display = opts['bg_display']
         if 'tp_display' in opts:
-            theme.tp_display = opts['tp_display']
+            theme.transparent_display = opts['tp_display']
         if 'rotation' in opts:
             theme.rotation = opts['rotation']
         if 'ui_mode' in opts:

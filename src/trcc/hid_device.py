@@ -22,7 +22,7 @@ import struct
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Set
+from typing import Any, Optional, Set
 
 # Optional USB backends — graceful import
 try:
@@ -30,6 +30,7 @@ try:
     import usb.util
     PYUSB_AVAILABLE = True
 except ImportError:
+    usb = None  # type: ignore[assignment]
     PYUSB_AVAILABLE = False
 
 try:
@@ -664,23 +665,23 @@ class PyUsbTransport(UsbTransport):
             usbDevice.SetConfiguration(1);
             usbDevice.ClaimInterface(0);
         """
-        kwargs = {'idVendor': self._vid, 'idProduct': self._pid}
+        kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
         if self._serial:
             kwargs['serial_number'] = self._serial
 
-        self._device = usb.core.find(**kwargs)
+        self._device = usb.core.find(**kwargs)  # type: ignore[union-attr]
         if self._device is None:
             raise RuntimeError(
                 f"USB device not found: VID={self._vid:#06x} PID={self._pid:#06x}"
             )
 
         # Detach kernel driver if active (Linux-specific, matches C# ClaimInterface)
-        if self._device.is_kernel_driver_active(USB_INTERFACE):
-            self._device.detach_kernel_driver(USB_INTERFACE)
+        if self._device.is_kernel_driver_active(USB_INTERFACE):  # type: ignore[union-attr]
+            self._device.detach_kernel_driver(USB_INTERFACE)  # type: ignore[union-attr]
 
         # C#: SetConfiguration(1), ClaimInterface(0)
-        self._device.set_configuration(USB_CONFIGURATION)
-        usb.util.claim_interface(self._device, USB_INTERFACE)
+        self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
+        usb.util.claim_interface(self._device, USB_INTERFACE)  # type: ignore[union-attr]
         self._is_open = True
 
     def close(self) -> None:
@@ -694,11 +695,11 @@ class PyUsbTransport(UsbTransport):
         """
         if self._device is not None:
             try:
-                usb.util.release_interface(self._device, USB_INTERFACE)
+                usb.util.release_interface(self._device, USB_INTERFACE)  # type: ignore[union-attr]
             except Exception:
                 pass
             try:
-                usb.util.dispose_resources(self._device)
+                usb.util.dispose_resources(self._device)  # type: ignore[union-attr]
             except Exception:
                 pass
             self._device = None
@@ -713,7 +714,7 @@ class PyUsbTransport(UsbTransport):
         """
         if not self._is_open or self._device is None:
             raise RuntimeError("Transport not open")
-        return self._device.write(endpoint, data, timeout=timeout)
+        return self._device.write(endpoint, data, timeout=timeout)  # type: ignore[union-attr]
 
     def read(self, endpoint: int, length: int, timeout: int = DEFAULT_TIMEOUT_MS) -> bytes:
         """Bulk read.
@@ -724,7 +725,7 @@ class PyUsbTransport(UsbTransport):
         """
         if not self._is_open or self._device is None:
             raise RuntimeError("Transport not open")
-        data = self._device.read(endpoint, length, timeout=timeout)
+        data = self._device.read(endpoint, length, timeout=timeout)  # type: ignore[union-attr]
         return bytes(data)
 
     @property
@@ -776,7 +777,7 @@ class HidApiTransport(UsbTransport):
 
     def open(self) -> None:
         """Open HID device by VID/PID."""
-        kwargs = {'vid': self._vid, 'pid': self._pid}
+        kwargs: dict[str, Any] = {'vid': self._vid, 'pid': self._pid}
         if self._serial:
             kwargs['serial'] = self._serial
         self._device = hidapi.Device(**kwargs)
@@ -852,8 +853,10 @@ def find_hid_devices() -> list:
 
     if PYUSB_AVAILABLE:
         for vid, pid, dtype in known:
-            for dev in usb.core.find(find_all=True, idVendor=vid, idProduct=pid):
-                serial = usb.util.get_string(dev, dev.iSerialNumber) if dev.iSerialNumber else ""
+            found = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)  # type: ignore[union-attr]
+            for dev in found or []:
+                serial_idx = getattr(dev, 'iSerialNumber', 0)
+                serial = usb.util.get_string(dev, serial_idx) if serial_idx else ""  # type: ignore[union-attr]
                 devices.append({
                     'vid': vid,
                     'pid': pid,
