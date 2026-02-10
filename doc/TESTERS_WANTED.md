@@ -6,9 +6,12 @@ If you have a device listed below, testing takes about 2 minutes. Your help dire
 
 ## How to Test
 
-1. Install TRCC Linux (see [README](../README.md#install))
+1. Install TRCC Linux:
+```bash
+pip install trcc-linux
+sudo trcc setup-udev
+```
 2. Run this one command and copy the output:
-
 ```bash
 trcc report
 ```

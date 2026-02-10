@@ -72,9 +72,6 @@ trcc-test = "trcc.cli:test_display"
 [project.gui-scripts]
 trcc-lcd = "trcc.cli:gui"
 
-[tool.hatch.build]
-sources = ["src"]
-
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
@@ -82,15 +79,22 @@ include = [
     "/README.md",
     "/LICENSE",
 ]
+exclude = [
+    "**/*.7z",
+    "**/web_cache/**",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/trcc"]
-exclude = ["*.7z"]
+exclude = ["**/*.7z", "**/web_cache/**"]
 artifacts = [
-    "*.png",
-    "*.ttf",
-    "*.otf",
-    "*.TTC",
+    "**/*.png",
+    "**/*.gif",
+    "**/*.ttf",
+    "**/*.otf",
+    "**/*.TTC",
+    "**/*.desktop",
+    "**/*.svg",
 ]
 
 [tool.pytest.ini_options]

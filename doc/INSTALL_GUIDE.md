@@ -97,7 +97,18 @@ See the **[HID Testing Guide](HID_TESTING.md)** for supported devices and what t
 
 ---
 
-## Quick Install (Recommended)
+## Quick Install from PyPI
+
+```bash
+pip install trcc-linux
+sudo trcc setup-udev
+```
+
+Then unplug and replug the USB cable and run `trcc gui`.
+
+> **Note:** Some distros need system packages for Qt6 (`python3-pyqt6`) and SCSI (`sg3_utils`). If the GUI won't launch or your device isn't detected, use the full install below.
+
+## Full Install (Recommended)
 
 The install script auto-detects your distro, installs system packages, Python deps, udev rules, and desktop shortcut:
 

@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/tag/v1.2.0)
+[![PyPI](https://img.shields.io/pypi/v/trcc-linux)](https://pypi.org/project/trcc-linux/)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
@@ -54,7 +54,16 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 
 ## Install
 
-### Automatic (recommended)
+### Quick install (PyPI)
+
+```bash
+pip install trcc-linux
+sudo trcc setup-udev
+```
+
+Then **unplug and replug the USB cable** and run `trcc gui`.
+
+### Automatic (recommended for full setup)
 
 ```bash
 git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
