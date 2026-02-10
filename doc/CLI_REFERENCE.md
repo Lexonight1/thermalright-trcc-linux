@@ -225,6 +225,16 @@ This is what `~/.config/autostart/trcc.desktop` calls on login with `trcc --last
 
 ---
 
+### `trcc report`
+
+Generate a full diagnostic report for bug reports. Runs `lsusb`, `detect --all`, and `hid-debug` in one command — users can copy-paste the entire output into a GitHub issue.
+
+```bash
+trcc report
+```
+
+---
+
 ### `trcc hid-debug`
 
 HID handshake diagnostic — prints hex dump and resolved device info for bug reports.

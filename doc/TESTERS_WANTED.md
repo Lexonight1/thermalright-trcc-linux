@@ -7,12 +7,10 @@ If you have a device listed below, testing takes about 2 minutes. Your help dire
 ## How to Test
 
 1. Install TRCC Linux (see [README](../README.md#install))
-2. Run these commands and copy the output:
+2. Run this one command and copy the output:
 
 ```bash
-lsusb | grep -i "0416\|0418\|87cd\|0402"
-trcc detect --all
-trcc hid-debug
+trcc report
 ```
 
 3. [Open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) and paste the output
@@ -98,6 +96,41 @@ These devices also connect via `0416:8001` but use different PM byte mappings th
 | LM27 | 1 (sub=49) | Not yet mapped |
 
 > If you have any of these Vision-series devices, a `trcc hid-debug` dump would be extremely valuable — it will help us figure out how Windows distinguishes these from the standard LED devices.
+
+## All TRCC-Compatible Models (from Thermalright's download page)
+
+The following models are listed on [Thermalright's official download page](https://www.thermalright.com/support/download/) as compatible with TRCC software. They all use the same USB controllers we already support — we just need testers to confirm which USB ID and protocol each one uses.
+
+**Models not yet tested on Linux (USB ID unknown — need `lsusb` output):**
+
+| Device | Likely Protocol | Status |
+|--------|----------------|--------|
+| Assassin Spirit 120 Vision | HID LCD or LED | Need tester |
+| Burst Assassin 120 Vision | HID LCD or LED | Need tester |
+| Core Matrix VISION | HID LCD or LED | Need tester |
+| Core Vision | HID LCD or LED | Need tester |
+| Hyper Vision | HID LCD or LED | Need tester |
+| Levita Vision | HID LCD or LED | Need tester |
+| Magic Qube | HID LCD or LED | Need tester |
+| MC-3 DIGITAL | HID LCD or LED | Need tester |
+| Peerless Assassin 140 Digital | HID LCD or LED | Need tester |
+| Peerless Vision | HID LCD or LED | Need tester |
+| Phantom Spirit 120 Digital/Vision | HID LCD or LED | Need tester |
+| Rainbow Vision | HID LCD or LED | Need tester |
+| Royal Knight 130 Digital/Vision | HID LCD or LED | Need tester |
+| Royal Lord 120 Vision | HID LCD or LED | Need tester |
+| TL-M10 VISION | HID LCD or LED | Need tester |
+| TR-A70 Vision | HID LCD or LED | Need tester |
+| Wonder Vision | HID LCD or LED | Need tester |
+
+**Separate software (TR-VISION HOME):**
+
+| Device | Status |
+|--------|--------|
+| Frozen Vision (original) | Different software — may use different protocol |
+| Frozen Guardian | Different software — may use different protocol |
+
+> A single `lsusb` line from any of these devices tells us exactly which protocol it uses and whether it should work out of the box.
 
 ## Not Sure If Your Device Is Listed?
 

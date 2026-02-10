@@ -71,6 +71,7 @@ Examples:
     trcc send image.png   Send image to LCD
     trcc color ff0000     Display solid red color
     trcc info             Show system metrics
+    trcc report           Generate diagnostic report for bug reports
         """
     )
 
@@ -170,6 +171,9 @@ Examples:
         "--unit", choices=["C", "F"], default="C",
         help="Temperature unit: C or F (default: C)")
 
+    # Report command (one-liner diagnostic for bug reports)
+    subparsers.add_parser("report", help="Generate full diagnostic report for bug reports")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -218,6 +222,8 @@ Examples:
         return hr10_tempd(brightness=args.brightness,
                           drive=args.drive, unit=args.unit,
                           verbose=args.verbose)
+    elif args.command == "report":
+        return report()
     elif args.command == "download":
         return download_themes(pack=args.pack, show_list=args.list,
                               force=args.force, show_info=args.info)
@@ -1061,6 +1067,60 @@ def uninstall():
         subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
         subprocess.run(["udevadm", "trigger"], check=False)
 
+    return 0
+
+
+def report():
+    """Generate a full diagnostic report for bug reports.
+
+    Runs lsusb, detect --all, and hid-debug in one command so users can
+    copy-paste the entire output into a GitHub issue.
+    """
+    import platform
+
+    from trcc.__version__ import __version__
+
+    print("TRCC Linux Diagnostic Report")
+    print("=" * 60)
+    print(f"  Version:  {__version__}")
+    print(f"  Python:   {platform.python_version()}")
+    print(f"  OS:       {platform.platform()}")
+
+    # lsusb — filter for known Thermalright vendor IDs
+    print(f"\n{'─' * 60}")
+    print("lsusb (filtered)")
+    print(f"{'─' * 60}")
+    try:
+        result = subprocess.run(
+            ["lsusb"], capture_output=True, text=True, timeout=5,
+        )
+        matches = [
+            line for line in result.stdout.splitlines()
+            if any(vid in line.lower() for vid in ("0416", "0418", "87cd", "0402"))
+        ]
+        if matches:
+            for line in matches:
+                print(f"  {line}")
+        else:
+            print("  (no Thermalright devices found in lsusb)")
+    except Exception as e:
+        print(f"  lsusb failed: {e}")
+
+    # detect --all
+    print(f"\n{'─' * 60}")
+    print("trcc detect --all")
+    print(f"{'─' * 60}")
+    detect(show_all=True)
+
+    # hid-debug
+    print(f"\n{'─' * 60}")
+    print("trcc hid-debug")
+    print(f"{'─' * 60}")
+    hid_debug()
+
+    print(f"\n{'=' * 60}")
+    print("Copy everything above and paste it into your GitHub issue:")
+    print("  https://github.com/Lexonight1/thermalright-trcc-linux/issues/new")
     return 0
 
 

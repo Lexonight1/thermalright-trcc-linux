@@ -14,7 +14,7 @@ Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.0.3). C
 
 ### Testers Wanted
 
-I don't own every Thermalright device — ~31 models need real hardware validation. Testing takes 2 minutes. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**, or just [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with your `lsusb` and `trcc hid-debug` output.
+I don't own every Thermalright device — ~31 models need real hardware validation. Testing takes 30 seconds: run `trcc report` and [paste the output in an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new). See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**.
 
 ![TRCC Linux GUI](doc/screenshots/screenshot.png)
 
@@ -159,11 +159,12 @@ Then:
 trcc gui                  # Launch GUI
 trcc detect               # Show connected devices
 trcc send image.png       # Send image to LCD
+trcc report               # Generate diagnostic report for bug reports
 trcc setup-udev           # Install udev rules
 trcc install-desktop      # Install app menu entry and icon
 ```
 
-See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 14 commands, options, and troubleshooting.
+See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 15 commands, options, and troubleshooting.
 
 ## Documentation
 

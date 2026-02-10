@@ -15,6 +15,7 @@ Tests cover:
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,7 @@ from trcc.cli import (
     install_desktop,
     led_diag,
     main,
+    report,
     reset_device,
     resume,
     select_device,
@@ -1411,6 +1413,64 @@ class TestInstallDesktop(unittest.TestCase):
         """main() dispatches 'install-desktop' to install_desktop()."""
         with patch('trcc.cli.install_desktop', return_value=0) as mock_fn, \
              patch('sys.argv', ['trcc', 'install-desktop']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# report
+# ---------------------------------------------------------------------------
+
+class TestReport(unittest.TestCase):
+    """Tests for report() command."""
+
+    @patch('trcc.cli.hid_debug', return_value=0)
+    @patch('trcc.cli.detect', return_value=0)
+    @patch('trcc.cli.subprocess.run')
+    def test_report_with_devices(self, mock_subproc, mock_detect, mock_hid):
+        """Report runs lsusb, detect, and hid_debug."""
+        mock_subproc.return_value = MagicMock(
+            stdout="Bus 001 Device 002: ID 0416:8001 Winbond\n",
+            returncode=0,
+        )
+        result = report()
+        self.assertEqual(result, 0)
+        mock_subproc.assert_called_once()
+        mock_detect.assert_called_once_with(show_all=True)
+        mock_hid.assert_called_once()
+
+    @patch('trcc.cli.hid_debug', return_value=0)
+    @patch('trcc.cli.detect', return_value=1)
+    @patch('trcc.cli.subprocess.run')
+    def test_report_no_lsusb_matches(self, mock_subproc, mock_detect, mock_hid):
+        """Report with no matching lsusb lines still returns 0."""
+        mock_subproc.return_value = MagicMock(
+            stdout="Bus 001 Device 001: ID 1d6b:0002 Linux Foundation\n",
+            returncode=0,
+        )
+        result = report()
+        self.assertEqual(result, 0)
+
+    @patch('trcc.cli.hid_debug', return_value=0)
+    @patch('trcc.cli.detect', return_value=0)
+    def test_report_lsusb_fails(self, mock_detect, mock_hid):
+        """Report handles lsusb failure gracefully."""
+        real_run = subprocess.run
+
+        def selective_mock(cmd, *args, **kwargs):
+            if cmd == ["lsusb"]:
+                raise FileNotFoundError("lsusb not found")
+            return real_run(cmd, *args, **kwargs)
+
+        with patch('trcc.cli.subprocess.run', side_effect=selective_mock):
+            result = report()
+        self.assertEqual(result, 0)
+
+    def test_dispatch_report(self):
+        """main() dispatches 'report' to report()."""
+        with patch('trcc.cli.report', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'report']):
             result = main()
         self.assertEqual(result, 0)
         mock_fn.assert_called_once()
