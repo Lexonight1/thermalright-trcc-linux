@@ -50,7 +50,7 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 |--------|---------|
 | `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, HR10 2280 PRO DIGITAL, and others (model auto-detected via handshake) |
 
-> HID devices are auto-detected. See the [HID Testing Guide](doc/HID_TESTING.md) if you have one — I need testers.
+> HID devices are auto-detected. See the [Device Testing Guide](doc/DEVICE_TESTING.md) if you have one — I need testers.
 
 ## Install
 
@@ -86,43 +86,43 @@ Find your distro, copy the block, paste in terminal. After it finishes: **unplug
 ### Fedora / Nobara
 
 ```bash
-sudo dnf install sg3_utils python3-pyqt6 ffmpeg && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo dnf install sg3_utils python3-pyqt6 ffmpeg && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Ubuntu / Debian / Mint / Pop!_OS / Zorin / elementary OS
 
 ```bash
-sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip python3-venv && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Arch / Manjaro / EndeavourOS / CachyOS / Garuda
 
 ```bash
-sudo pacman -S sg3_utils python-pyqt6 ffmpeg python-pip && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo pacman -S sg3_utils python-pyqt6 ffmpeg python-pip && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### openSUSE
 
 ```bash
-sudo zypper install sg3_utils python3-qt6 ffmpeg python3-pip && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo zypper install sg3_utils python3-qt6 ffmpeg python3-pip && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Void Linux
 
 ```bash
-sudo xbps-install sg3_utils python3-PyQt6 ffmpeg python3-pip && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo xbps-install sg3_utils python3-PyQt6 ffmpeg python3-pip && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Gentoo
 
 ```bash
-sudo emerge --ask sg3_utils dev-python/PyQt6 media-video/ffmpeg dev-python/pip && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo emerge --ask sg3_utils dev-python/PyQt6 media-video/ffmpeg dev-python/pip && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Alpine
 
 ```bash
-sudo apk add sg3_utils py3-pyqt6 ffmpeg py3-pip python3 && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop
+sudo apk add sg3_utils py3-pyqt6 ffmpeg py3-pip python3 && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 
 ### Bazzite / Fedora Atomic / Aurora / Bluefin
@@ -132,7 +132,7 @@ rpm-ostree install sg3_utils && echo "Reboot now, then run the next block" && sy
 ```
 After reboot:
 ```bash
-([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && python3 -m venv ~/trcc-env && source ~/trcc-env/bin/activate && pip install -e . && trcc setup-udev && trcc install-desktop
+python3 -m venv ~/trcc-env && source ~/trcc-env/bin/activate && pip install trcc-linux && sudo trcc setup-udev && trcc install-desktop
 ```
 Launch: `source ~/trcc-env/bin/activate && trcc gui`
 
@@ -140,7 +140,7 @@ Launch: `source ~/trcc-env/bin/activate && trcc gui`
 
 Switch to Desktop Mode, open Konsole:
 ```bash
-sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg && ([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc setup-udev && trcc install-desktop && sudo steamos-readonly enable
+sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg && pip install --break-system-packages trcc-linux && sudo trcc setup-udev && trcc install-desktop && sudo steamos-readonly enable
 ```
 
 ### NixOS
@@ -159,7 +159,7 @@ services.udev.extraRules = ''
 ```
 Then:
 ```bash
-([ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git) && cd thermalright-trcc-linux && pip install --break-system-packages -e . && trcc install-desktop
+pip install --break-system-packages trcc-linux && trcc install-desktop
 ```
 
 ## Usage
@@ -188,7 +188,7 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 15 commands, options, 
 | [USBLCDNEW Protocol](doc/USBLCDNEW_PROTOCOL.md) | USB bulk protocol reverse-engineered from USBLCDNEW.exe |
 | [USBLED Protocol](doc/USBLED_PROTOCOL.md) | HID LED protocol reverse-engineered from FormLED.cs |
 | [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
-| [HID Testing Guide](doc/HID_TESTING.md) | HID device support and troubleshooting |
+| [Device Testing Guide](doc/DEVICE_TESTING.md) | Device support and troubleshooting |
 | [Supported Devices](doc/SUPPORTED_DEVICES.md) | Full device list with USB IDs |
 
 ## Contributors

@@ -79,7 +79,7 @@ If something breaks:
 
 - [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) — full device list with USB IDs
 - [CHANGELOG.md](CHANGELOG.md) — version history
-- [HID_TESTING.md](HID_TESTING.md) — how to help test HID devices
+- [DEVICE_TESTING.md](DEVICE_TESTING.md) — how to help test devices
 - [INSTALL_GUIDE.md](INSTALL_GUIDE.md) — installation for all distros
 - [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — SCSI protocol (from USBLCD.exe reverse engineering)
 - [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol (from USBLCDNEW.exe reverse engineering)

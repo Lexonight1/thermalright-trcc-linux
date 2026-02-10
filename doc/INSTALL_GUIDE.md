@@ -89,7 +89,7 @@ trcc detect       # Check if your device is found
 trcc gui          # Launch the GUI (HID auto-detected)
 ```
 
-See the **[HID Testing Guide](HID_TESTING.md)** for supported devices and what to report.
+See the **[Device Testing Guide](DEVICE_TESTING.md)** for supported devices and what to report.
 
 ---
 
@@ -447,54 +447,36 @@ sudo swupd bundle-add sysadmin-basic devpkg-pipewire
 
 ---
 
-## Step 2 - Download TRCC
+## Step 2 - Install TRCC
 
-### Option A: Clone with Git (recommended)
-
-If you have `git` installed (most distros include it):
+### Option A: Install from PyPI (recommended)
 
 ```bash
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
+pip install trcc-linux
 ```
 
-### Option B: Download ZIP
-
-1. Go to the project page
-2. Click the green "Code" button, then "Download ZIP"
-3. Extract the ZIP file
-4. Open a terminal and navigate to the extracted folder:
-
-```bash
-cd ~/Downloads/thermalright-trcc-linux-main
-```
-
----
-
-## Step 3 - Install Python Dependencies
-
-From inside the `thermalright-trcc-linux` folder, install the Python packages:
-
-```bash
-pip install -e .
-```
-
-**What this does:** Installs TRCC and its Python dependencies (Pillow for image processing, psutil for system sensors, py7zr for extracting bundled theme archives). The `-e` flag means "editable" - if you update the code later (with `git pull`), you don't need to reinstall.
-
-> **Note:** Some distributions require using a virtual environment. If the `pip install` command shows an "externally-managed-environment" error, use one of these approaches:
->
+> **Note:** Some distributions require `--break-system-packages`:
 > ```bash
-> # Option 1: Use --break-system-packages (simpler)
-> pip install --break-system-packages -e .
+> pip install --break-system-packages trcc-linux
+> ```
 >
-> # Option 2: Use a virtual environment (cleaner)
-> python3 -m venv venv
-> source venv/bin/activate
-> pip install -e .
-> # You'll need to run 'source venv/bin/activate' each time you open a new terminal
+> Or use a virtual environment:
+> ```bash
+> python3 -m venv ~/trcc-env
+> source ~/trcc-env/bin/activate
+> pip install trcc-linux
+> # You'll need to run 'source ~/trcc-env/bin/activate' each time you open a new terminal
 > ```
 
 > **Distros that enforce this by default:** Fedora 38+, Ubuntu 23.04+, Debian 12+, Arch (with python 3.11+), openSUSE Tumbleweed, Void Linux
+
+### Option B: Clone with Git (for development)
+
+```bash
+git clone -b stable https://github.com/Lexonight1/thermalright-trcc-linux.git
+cd thermalright-trcc-linux
+pip install -e .
+```
 
 ### Ensure `~/.local/bin` is in your PATH
 
@@ -693,29 +675,15 @@ which sg_raw
 
 > **Note:** If you want to avoid layering and rebooting, you can also use `brew install sg3_utils` on Bazzite (Homebrew is pre-installed). However, the `rpm-ostree` approach is more reliable for system-level hardware tools.
 
-#### Step 2 — Clone TRCC
-
-```bash
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-```
-
-#### Step 3 — Create a Python virtual environment
+#### Step 2 — Install TRCC in a virtual environment
 
 Bazzite's system Python is read-only, so a venv is **required** (not optional like on normal Fedora):
 
 ```bash
 python3 -m venv ~/trcc-env
 source ~/trcc-env/bin/activate
+pip install trcc-linux
 ```
-
-Install TRCC and its dependencies inside the venv:
-
-```bash
-pip install -e .
-```
-
-This pulls in PyQt6, Pillow, psutil, py7zr, and everything else TRCC needs.
 
 > **Tip:** Add the activation to your shell profile so it's automatic:
 > ```bash
@@ -800,9 +768,7 @@ distrobox enter trcc
 
 # Inside the container — normal Fedora commands work
 sudo dnf install python3-pip sg3_utils python3-pyqt6 ffmpeg
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install -e .
+pip install trcc-linux
 
 # Set up device permissions (must run on the host)
 exit
@@ -859,13 +825,11 @@ passwd
 # Install system deps
 sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg
 
-# Clone and install
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install --break-system-packages -e .
+# Install TRCC
+pip install --break-system-packages trcc-linux
 
 # Set up device permissions
-trcc setup-udev
+sudo trcc setup-udev
 # Unplug/replug USB cable, or reboot
 
 # Re-enable read-only (optional, recommended)
@@ -886,9 +850,7 @@ distrobox enter trcc
 
 # Inside the container
 sudo pacman -S python-pip sg3_utils python-pyqt6 ffmpeg
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install -e .
+pip install trcc-linux
 exit
 
 # Set up udev on the HOST (requires steamos-readonly disable temporarily)
@@ -916,13 +878,9 @@ apx subsystems create --name trcc-system --stack fedora
 # Install dependencies inside the subsystem
 apx trcc-system install python3-pip sg3_utils python3-pyqt6 ffmpeg
 
-# Clone and install
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-
 # Enter the subsystem and install
 apx trcc-system enter
-pip install -e .
+pip install trcc-linux
 exit
 
 # Udev rules must be applied on the host
@@ -947,10 +905,7 @@ Covers: ChromeOS with Linux development environment enabled (Crostini / Debian c
 ```bash
 sudo apt update
 sudo apt install python3-pip python3-venv sg3-utils python3-pyqt6 ffmpeg
-
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install --break-system-packages -e .
+pip install --break-system-packages trcc-linux
 ```
 
 > **ChromeOS limitation:** USB device passthrough to the Linux container requires enabling it in ChromeOS settings. Go to Settings > Advanced > Developers > Linux > Manage USB devices, and enable your Thermalright LCD device. You may also need to run `trcc setup-udev` inside the container and replug the USB device.
@@ -974,10 +929,8 @@ Asahi Linux uses the Fedora Asahi Remix. Follow the standard [Fedora instruction
 
 ```bash
 sudo dnf install python3-pip sg3_utils python3-pyqt6 ffmpeg
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install -e .
-trcc setup-udev
+pip install trcc-linux
+sudo trcc setup-udev
 ```
 
 > **Apple Silicon note:** USB-A ports on Apple Silicon Macs work through Thunderbolt hubs/docks. Make sure your USB connection to the cooler is going through a compatible hub. Direct USB-C adapters should also work.
@@ -993,11 +946,8 @@ TRCC works on ARM64 (aarch64) systems. The SCSI protocol and LCD communication a
 ```bash
 # Raspberry Pi OS / Armbian (Debian-based)
 sudo apt install python3-pip python3-venv sg3-utils python3-pyqt6 ffmpeg
-
-[ -d thermalright-trcc-linux ] && git -C thermalright-trcc-linux pull || git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
-cd thermalright-trcc-linux
-pip install -e .
-trcc setup-udev
+pip install --break-system-packages trcc-linux
+sudo trcc setup-udev
 ```
 
 > **ARM note:** PyQt6 wheels may not be available for ARM. If `pip install PyQt6` fails, use the system package (`python3-pyqt6`) or build from source. The CLI commands (`trcc send`, `trcc test`, `trcc color`) work without PyQt6 — only the GUI requires it.
