@@ -22,12 +22,18 @@ from unittest.mock import MagicMock, patch
 
 from trcc.cli import (
     _ensure_extracted,
+    _format_device,
     _get_selected_device,
     _get_settings_path,
+    _probe_device,
     _set_selected_device,
     detect,
     download_themes,
     gui,
+    hid_debug,
+    hr10_tempd,
+    install_desktop,
+    led_diag,
     main,
     reset_device,
     resume,
@@ -1085,6 +1091,326 @@ class TestUninstall(unittest.TestCase):
         """main() dispatches 'uninstall' to uninstall()."""
         with patch('trcc.cli.uninstall', return_value=0) as mock_fn, \
              patch('sys.argv', ['trcc', 'uninstall']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _probe_device / _format_device
+# ---------------------------------------------------------------------------
+
+class TestProbeDevice(unittest.TestCase):
+    """Tests for _probe_device() helper."""
+
+    def _make_dev(self, **overrides):
+        from trcc.device_detector import DetectedDevice
+        defaults = dict(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond",
+            product_name="LED Controller (HID)", usb_path="1-2",
+            implementation="hid_led", model="LED_DIGITAL",
+            button_image="A1CZTV", protocol="hid", device_type=1,
+        )
+        defaults.update(overrides)
+        return DetectedDevice(**defaults)
+
+    def test_returns_empty_for_scsi(self):
+        dev = self._make_dev(implementation="thermalright_lcd_v1", protocol="scsi")
+        self.assertEqual(_probe_device(dev), {})
+
+    @patch('trcc.cli.probe_led_model', create=True)
+    def test_led_probe_success(self, mock_probe):
+        mock_info = MagicMock()
+        mock_info.model_name = "AX120_DIGITAL"
+        mock_info.pm = 3
+        mock_info.style = MagicMock(style_id=1)
+        with patch('trcc.led_device.probe_led_model', mock_info, create=True):
+            # Import fresh to get the patched version
+            pass
+        # Use direct mock via patch on the import path
+        with patch('trcc.led_device.probe_led_model', return_value=mock_info):
+            result = _probe_device(self._make_dev())
+        self.assertEqual(result['model'], 'AX120_DIGITAL')
+        self.assertEqual(result['pm'], 3)
+
+    def test_led_probe_exception(self):
+        """Probe returns empty dict when LED probe raises."""
+        with patch('trcc.led_device.probe_led_model', side_effect=Exception("usb")):
+            result = _probe_device(self._make_dev())
+        self.assertEqual(result, {})
+
+    def test_hid_lcd_probe_success(self):
+        """Probe resolves HID LCD device info via handshake."""
+        from trcc.hid_device import DeviceInfo
+        mock_info = DeviceInfo(
+            device_type=2, mode_byte_1=100, mode_byte_2=0,
+            serial="ABCDEF0123456789", resolution=(320, 320),
+        )
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = mock_info
+        dev = self._make_dev(
+            implementation="hid_type2", pid=0x5302, device_type=2,
+        )
+        with patch('trcc.device_factory.DeviceProtocolFactory.get_protocol',
+                    return_value=mock_protocol):
+            result = _probe_device(dev)
+        self.assertEqual(result['pm'], 100)
+        self.assertEqual(result['resolution'], (320, 320))
+        self.assertEqual(result['serial'], "ABCDEF0123456789")
+
+    def test_hid_lcd_probe_exception(self):
+        dev = self._make_dev(implementation="hid_type2", pid=0x5302, device_type=2)
+        with patch('trcc.device_factory.DeviceProtocolFactory.get_protocol',
+                    side_effect=Exception("no device")):
+            result = _probe_device(dev)
+        self.assertEqual(result, {})
+
+
+class TestFormatDevice(unittest.TestCase):
+    """Tests for _format_device() helper."""
+
+    def _make_dev(self, **overrides):
+        from trcc.device_detector import DetectedDevice
+        defaults = dict(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond",
+            product_name="LED Controller (HID)", usb_path="1-2",
+            implementation="hid_led", model="LED_DIGITAL",
+            button_image="A1CZTV", protocol="hid", device_type=1,
+        )
+        defaults.update(overrides)
+        return DetectedDevice(**defaults)
+
+    def test_no_probe(self):
+        dev = self._make_dev(scsi_device=None)
+        result = _format_device(dev, probe=False)
+        self.assertIn("No device path found", result)
+        self.assertIn("LED Controller (HID)", result)
+        self.assertIn("[0416:8001]", result)
+        self.assertIn("(HID)", result)
+
+    def test_with_scsi_device(self):
+        dev = self._make_dev(
+            scsi_device="/dev/sg0", protocol="scsi",
+            implementation="thermalright_lcd_v1",
+        )
+        result = _format_device(dev, probe=False)
+        self.assertIn("/dev/sg0", result)
+
+    def test_probe_adds_model(self):
+        dev = self._make_dev()
+        mock_info = MagicMock()
+        mock_info.model_name = "PA120_DIGITAL"
+        mock_info.pm = 16
+        mock_info.style = MagicMock()
+        with patch('trcc.led_device.probe_led_model', return_value=mock_info):
+            result = _format_device(dev, probe=True)
+        self.assertIn("model: PA120_DIGITAL", result)
+        self.assertIn("PM=16", result)
+
+    def test_probe_empty_no_extra(self):
+        """No extra info appended when probe returns nothing."""
+        dev = self._make_dev()
+        with patch('trcc.led_device.probe_led_model', return_value=None):
+            result = _format_device(dev, probe=True)
+        self.assertNotIn("model:", result)
+
+
+# ---------------------------------------------------------------------------
+# hid_debug
+# ---------------------------------------------------------------------------
+
+class TestHidDebug(unittest.TestCase):
+    """Tests for hid_debug() command."""
+
+    @patch('trcc.device_detector.detect_devices', return_value=[])
+    def test_no_hid_devices(self, _):
+        result = hid_debug()
+        self.assertEqual(result, 0)
+
+    def test_exception_returns_1(self):
+        with patch('trcc.device_detector.detect_devices', side_effect=Exception("fail")):
+            result = hid_debug()
+        self.assertEqual(result, 1)
+
+    def test_hid_device_handshake_none(self):
+        """Device found but handshake returns None."""
+        from trcc.device_detector import DetectedDevice
+        dev = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond",
+            product_name="LED Controller", usb_path="1-2",
+            implementation="hid_led", protocol="hid", device_type=1,
+        )
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = None
+        with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
+             patch('trcc.device_factory.HidProtocol', return_value=mock_protocol):
+            result = hid_debug()
+        self.assertEqual(result, 0)
+        mock_protocol.close.assert_called_once()
+
+    def test_hid_device_handshake_success(self):
+        """Device found and handshake succeeds."""
+        from trcc.device_detector import DetectedDevice
+        from trcc.hid_device import DeviceInfo
+        dev = DetectedDevice(
+            vid=0x0416, pid=0x5302, vendor_name="Winbond",
+            product_name="USBDISPLAY (HID)", usb_path="1-2",
+            implementation="hid_type2", protocol="hid", device_type=2,
+        )
+        info = DeviceInfo(
+            device_type=2, mode_byte_1=100, mode_byte_2=0,
+            serial="ABCDEF0123456789", fbl=100,
+            resolution=(320, 320), raw_response=bytes(64),
+        )
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = info
+        with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
+             patch('trcc.device_factory.HidProtocol', return_value=mock_protocol):
+            result = hid_debug()
+        self.assertEqual(result, 0)
+
+    def test_hid_device_import_error(self):
+        """Import error for pyusb/hidapi shows helpful message."""
+        from trcc.device_detector import DetectedDevice
+        dev = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond",
+            product_name="LED Controller", usb_path="1-2",
+            implementation="hid_led", protocol="hid", device_type=1,
+        )
+        with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
+             patch('trcc.device_factory.HidProtocol',
+                   side_effect=ImportError("No module named 'usb'")):
+            result = hid_debug()
+        self.assertEqual(result, 0)
+
+    def test_dispatch_hid_debug(self):
+        """main() dispatches 'hid-debug' to hid_debug()."""
+        with patch('trcc.cli.hid_debug', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'hid-debug']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# led_diag
+# ---------------------------------------------------------------------------
+
+class TestLedDiag(unittest.TestCase):
+    """Tests for led_diag() command."""
+
+    @patch('trcc.hid_device.PYUSB_AVAILABLE', False)
+    @patch('trcc.hid_device.HIDAPI_AVAILABLE', False)
+    def test_no_backend(self):
+        result = led_diag()
+        self.assertEqual(result, 1)
+
+    def test_exception_returns_1(self):
+        with patch('trcc.hid_device.PYUSB_AVAILABLE', side_effect=Exception("fail")):
+            result = led_diag()
+        self.assertEqual(result, 1)
+
+    def test_handshake_success(self):
+        """Successful LED handshake prints device info."""
+        mock_transport = MagicMock()
+        mock_info = MagicMock()
+        mock_info.pm = 3
+        mock_info.sub_type = 0
+        mock_info.model_name = "AX120_DIGITAL"
+        mock_info.style = MagicMock(style_id=1, led_count=30, segment_count=10, zone_count=1)
+        mock_sender = MagicMock()
+        mock_sender.handshake.return_value = mock_info
+        with patch('trcc.hid_device.PYUSB_AVAILABLE', True), \
+             patch('trcc.hid_device.HIDAPI_AVAILABLE', False), \
+             patch('trcc.hid_device.PyUsbTransport', return_value=mock_transport), \
+             patch('trcc.led_device.LedHidSender', return_value=mock_sender):
+            result = led_diag(test=False)
+        self.assertEqual(result, 0)
+        mock_transport.open.assert_called_once()
+        mock_transport.close.assert_called_once()
+
+    def test_handshake_runtime_error(self):
+        mock_transport = MagicMock()
+        mock_sender = MagicMock()
+        mock_sender.handshake.side_effect = RuntimeError("timeout")
+        with patch('trcc.hid_device.PYUSB_AVAILABLE', True), \
+             patch('trcc.hid_device.HIDAPI_AVAILABLE', False), \
+             patch('trcc.hid_device.PyUsbTransport', return_value=mock_transport), \
+             patch('trcc.led_device.LedHidSender', return_value=mock_sender):
+            result = led_diag(test=False)
+        self.assertEqual(result, 1)
+
+    def test_dispatch_led_diag(self):
+        """main() dispatches 'led-diag' to led_diag()."""
+        with patch('trcc.cli.led_diag', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'led-diag']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# hr10_tempd
+# ---------------------------------------------------------------------------
+
+class TestHr10Tempd(unittest.TestCase):
+    """Tests for hr10_tempd() command."""
+
+    @patch('trcc.hr10_tempd.run_daemon', return_value=0)
+    def test_success(self, mock_daemon):
+        result = hr10_tempd(brightness=50, drive="980", unit="F", verbose=1)
+        self.assertEqual(result, 0)
+        mock_daemon.assert_called_once_with(
+            brightness=50, model_substr="980", unit="F", verbose=True,
+        )
+
+    @patch('trcc.hr10_tempd.run_daemon', side_effect=Exception("no device"))
+    def test_exception_returns_1(self, _):
+        result = hr10_tempd()
+        self.assertEqual(result, 1)
+
+    def test_dispatch_hr10_tempd(self):
+        """main() dispatches 'hr10-tempd' to hr10_tempd()."""
+        with patch('trcc.cli.hr10_tempd', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'hr10-tempd']):
+            result = main()
+        self.assertEqual(result, 0)
+        mock_fn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# install_desktop
+# ---------------------------------------------------------------------------
+
+class TestInstallDesktop(unittest.TestCase):
+    """Tests for install_desktop() command."""
+
+    def test_missing_desktop_file(self):
+        """Returns 1 when trcc.desktop not found at expected path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Point __file__ to a fake path where trcc.desktop won't exist
+            fake_file = os.path.join(tmpdir, "src", "trcc", "cli.py")
+            os.makedirs(os.path.dirname(fake_file), exist_ok=True)
+            Path(fake_file).touch()
+            with patch('trcc.cli.__file__', fake_file):
+                result = install_desktop()
+        self.assertEqual(result, 1)
+
+    def test_installs_files(self):
+        """install_desktop() copies .desktop and icon files to home dir."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            with patch('pathlib.Path.home', return_value=home):
+                result = install_desktop()
+            # Running from repo, should find trcc.desktop
+            if result == 0:
+                desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+                self.assertTrue(desktop.exists())
+
+    def test_dispatch_install_desktop(self):
+        """main() dispatches 'install-desktop' to install_desktop()."""
+        with patch('trcc.cli.install_desktop', return_value=0) as mock_fn, \
+             patch('sys.argv', ['trcc', 'install-desktop']):
             result = main()
         self.assertEqual(result, 0)
         mock_fn.assert_called_once()
