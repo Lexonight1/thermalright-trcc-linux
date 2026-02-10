@@ -213,7 +213,7 @@ def find_lcd_devices() -> List[Dict]:
             # to discover the real model (AX120, PA120, LC1, etc.).
             if dev.implementation == 'hid_led':
                 try:
-                    from .led_device import probe_led_model, LED_PM_TO_BUTTON_IMAGE
+                    from .led_device import LED_PM_TO_BUTTON_IMAGE, probe_led_model
                     info = probe_led_model(dev.vid, dev.pid,
                                            usb_path=dev.usb_path)
                     if info and info.model_name:

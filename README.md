@@ -14,11 +14,7 @@ Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.0.3). C
 
 ### Testers Wanted
 
-I don't own every Thermalright device — if you have one that isn't fully supported yet, I need your help. Testing takes about 2 minutes: just run `lsusb` and `trcc detect --all`, then [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output. Devices I'm especially looking for:
-
-- **Mjolnir VISION / VISION PRO** — LCD + LED, untested on Linux
-- **GRAND VISION, Stream Vision, FROZEN WARFRAME Ultra** — newer Vision-series AIOs
-- **Any HID LCD device** (`0416:5302`, `0418:5303`, `0418:5304`) — working but needs real-world confirmation
+I don't own every Thermalright device — ~31 models need real hardware validation. Testing takes 2 minutes. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**, or just [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with your `lsusb` and `trcc hid-debug` output.
 
 ![TRCC Linux GUI](doc/screenshots/screenshot.png)
 
@@ -181,7 +177,8 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 14 commands, options, 
 | [USBLCD Protocol](doc/USBLCD_PROTOCOL.md) | SCSI protocol reverse-engineered from USBLCD.exe |
 | [USBLCDNEW Protocol](doc/USBLCDNEW_PROTOCOL.md) | USB bulk protocol reverse-engineered from USBLCDNEW.exe |
 | [USBLED Protocol](doc/USBLED_PROTOCOL.md) | HID LED protocol reverse-engineered from FormLED.cs |
-| [HID Testing Guide](doc/HID_TESTING.md) | HID device support (testers wanted) |
+| [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
+| [HID Testing Guide](doc/HID_TESTING.md) | HID device support and troubleshooting |
 | [Supported Devices](doc/SUPPORTED_DEVICES.md) | Full device list with USB IDs |
 
 ## Contributors
