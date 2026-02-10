@@ -576,23 +576,25 @@ class LCDDeviceController:
         self.overlay.set_target_size(self.lcd_width, self.lcd_height)
 
         # Extract all .7z archives for this resolution if needed
-        ensure_themes_extracted(self.lcd_width, self.lcd_height)
-        ensure_web_extracted(self.lcd_width, self.lcd_height)
-        ensure_web_masks_extracted(self.lcd_width, self.lcd_height)
+        # Skip for LED-only devices (no LCD, resolution is 0×0)
+        if self.lcd_width and self.lcd_height:
+            ensure_themes_extracted(self.lcd_width, self.lcd_height)
+            ensure_web_extracted(self.lcd_width, self.lcd_height)
+            ensure_web_masks_extracted(self.lcd_width, self.lcd_height)
 
-        # Set theme directories (use get_theme_dir which checks both pkg and user dirs)
-        theme_dir = Path(get_theme_dir(self.lcd_width, self.lcd_height))
-        web_dir = Path(get_web_dir(self.lcd_width, self.lcd_height))
-        masks_dir = Path(get_web_masks_dir(self.lcd_width, self.lcd_height))
+            # Set theme directories (use get_theme_dir which checks both pkg and user dirs)
+            theme_dir = Path(get_theme_dir(self.lcd_width, self.lcd_height))
+            web_dir = Path(get_web_dir(self.lcd_width, self.lcd_height))
+            masks_dir = Path(get_web_masks_dir(self.lcd_width, self.lcd_height))
 
-        self.themes.set_directories(
-            local_dir=theme_dir if theme_dir.exists() else None,
-            web_dir=web_dir if web_dir.exists() else None,
-            masks_dir=masks_dir,
-        )
+            self.themes.set_directories(
+                local_dir=theme_dir if theme_dir.exists() else None,
+                web_dir=web_dir if web_dir.exists() else None,
+                masks_dir=masks_dir,
+            )
 
-        # Load initial themes
-        self.themes.load_local_themes((self.lcd_width, self.lcd_height))
+            # Load initial themes
+            self.themes.load_local_themes((self.lcd_width, self.lcd_height))
 
         # Detect devices
         self.devices.detect_devices()
@@ -610,20 +612,22 @@ class LCDDeviceController:
             save_resolution(width, height)
 
         # Extract all .7z archives for this resolution if needed
-        ensure_themes_extracted(width, height)
-        ensure_web_extracted(width, height)
-        ensure_web_masks_extracted(width, height)
+        # Skip for LED-only devices (no LCD, resolution is 0×0)
+        if width and height:
+            ensure_themes_extracted(width, height)
+            ensure_web_extracted(width, height)
+            ensure_web_masks_extracted(width, height)
 
-        # Reload theme directories for new resolution
-        theme_dir = Path(get_theme_dir(width, height))
-        web_dir = Path(get_web_dir(width, height))
-        masks_dir = Path(get_web_masks_dir(width, height))
-        self.themes.set_directories(
-            local_dir=theme_dir if theme_dir.exists() else None,
-            web_dir=web_dir if web_dir.exists() else None,
-            masks_dir=masks_dir,
-        )
-        self.themes.load_local_themes((width, height))
+            # Reload theme directories for new resolution
+            theme_dir = Path(get_theme_dir(width, height))
+            web_dir = Path(get_web_dir(width, height))
+            masks_dir = Path(get_web_masks_dir(width, height))
+            self.themes.set_directories(
+                local_dir=theme_dir if theme_dir.exists() else None,
+                web_dir=web_dir if web_dir.exists() else None,
+                masks_dir=masks_dir,
+            )
+            self.themes.load_local_themes((width, height))
 
         if self.on_resolution_changed:
             self.on_resolution_changed(width, height)
