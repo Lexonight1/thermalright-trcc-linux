@@ -179,6 +179,7 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 14 commands, options, 
 A big thanks to everyone who has contributed to this project:
 
 - **[Lcstyle](https://github.com/Lcstyle)** — HR10 2280 PRO Digital support (7-segment display, color wheel, NVMe temperature daemon)
+- **[shadowepaxeor-glitch](https://github.com/shadowepaxeor-glitch)** — AX120 Digital hardware testing & USB descriptor dumps
 
 ## Support
 
