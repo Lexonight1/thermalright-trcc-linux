@@ -22,22 +22,32 @@ What you expected to happen.
 
 **Actual behavior**
 
-What actually happened. Include any error messages or tracebacks.
+What actually happened.
 
-**Device info**
+**Diagnostic report**
 
-- Device model: (e.g. Frozen Horizon Pro)
-- USB ID: (run `trcc detect` or `lsusb | grep -i thermalright`)
-- Connection type: SCSI / HID / LED
+Run `trcc report` and paste the output:
 
-**Environment**
-
-- OS/Distro: (e.g. Fedora 43, Ubuntu 24.04)
-- Python version: (`python3 --version`)
-- trcc-linux version: (`trcc --version`)
-
-**Logs**
+<details>
+<summary>trcc report output</summary>
 
 ```
-Paste any relevant terminal output here
+Paste trcc report output here
 ```
+
+</details>
+
+**Logs / tracebacks**
+
+<details>
+<summary>Terminal output</summary>
+
+```
+Paste any error messages or tracebacks here
+```
+
+</details>
+
+**Screenshots**
+
+If applicable, add screenshots to help explain the problem.

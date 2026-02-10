@@ -10,27 +10,25 @@ assignees: ''
 
 Full product name (e.g. Thermalright AX120 Digital).
 
-**USB ID**
+**Diagnostic report**
 
-Run `lsusb` and paste the line for your Thermalright device:
+Run `trcc report` and paste the output:
 
-```
-Bus 001 Device 005: ID 0416:XXXX ...
-```
-
-**Detection output**
-
-Run `trcc detect` and paste the output:
+<details>
+<summary>trcc report output</summary>
 
 ```
-Paste output here
+Paste trcc report output here
 ```
+
+</details>
 
 **Device capabilities**
 
 - [ ] LCD screen (displays images/themes)
 - [ ] LED RGB lighting
 - [ ] Both
+- [ ] Not sure
 
 **Additional context**
 
