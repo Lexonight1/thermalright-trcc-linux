@@ -151,6 +151,27 @@ PM_TO_MODEL = {
     208: "CZ1",
 }
 
+# pm byte → button image asset name (from UCDevice.cs ADDUserButton, case 1)
+# Used to resolve the device sidebar button after HID handshake.
+LED_PM_TO_BUTTON_IMAGE = {
+    1: "A1FROZEN HORIZON PRO",
+    2: "A1FROZEN MAGIC PRO",
+    3: "A1AX120 DIGITAL",
+    16: "A1PA120 DIGITAL",
+    23: "A1RK120 DIGITAL",
+    32: "A1AK120 Digital",
+    48: "A1LF8",
+    49: "A1LF10",
+    80: "A1LF12",
+    96: "A1LF10",
+    112: "A1LC2",
+    128: "A1LC1",
+    129: "A1LF11",
+    144: "A1LF15",
+    160: "A1LF13",
+    208: "A1CZ1",
+}
+
 # (pm, sub_type) → style override for devices that share a PM byte.
 # HR10 2280 Pro Digital shares PM=128 with LC1 but has sub_type=129.
 SUB_TYPE_OVERRIDES = {

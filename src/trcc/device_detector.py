@@ -110,12 +110,15 @@ _HID_LCD_DEVICES = {
 # LED HID devices (RGB controllers — FormLED in Windows, not FormCZTV)
 # These use 64-byte HID reports for LED color control, not LCD image display.
 # device1: UsbHidDevice(1046, 32769) = 0x0416:0x8001, 64-byte packets
+# NOTE: All LED devices share PID 0x8001 — AX120 Digital, PA120 Digital,
+# Peerless Assassin 120 Digital, etc.  The actual model is resolved at runtime
+# via the PM byte from the HID handshake (see led_device.PM_TO_MODEL).
 _LED_DEVICES = {
     (0x0416, 0x8001): {
         "vendor": "Winbond",
         "product": "LED Controller (HID)",
-        "model": "AX120_DIGITAL",
-        "button_image": "A1AX120_DIGITAL",
+        "model": "LED_DIGITAL",
+        "button_image": "A1CZTV",
         "implementation": "hid_led",
         "protocol": "hid",
         "device_type": 1,
