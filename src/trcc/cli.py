@@ -259,12 +259,77 @@ def gui(verbose=0, decorated=False, start_hidden=False):
         return 1
 
 
-def _format_device(dev):
+def _probe_device(dev):
+    """Try to resolve device details via HID handshake/cache.
+
+    Returns a dict with resolved fields, or empty dict if no probe available.
+    """
+    result = {}
+
+    # LED devices: probe via led_device cache/handshake
+    if dev.implementation == 'hid_led':
+        try:
+            from trcc.led_device import probe_led_model
+            info = probe_led_model(dev.vid, dev.pid, usb_path=dev.usb_path)
+            if info and info.model_name:
+                result['model'] = info.model_name
+                result['pm'] = info.pm
+                result['style'] = info.style
+        except Exception:
+            pass
+
+    # HID LCD devices: probe via hid_device handshake
+    elif dev.implementation in ('hid_type2', 'hid_type3'):
+        try:
+            from trcc.device_factory import DeviceProtocolFactory
+            from trcc.hid_device import DeviceInfo as HidDeviceInfo
+            device_info = {
+                'vid': dev.vid, 'pid': dev.pid,
+                'protocol': dev.protocol, 'device_type': dev.device_type,
+                'implementation': dev.implementation,
+                'path': f"hid:{dev.vid:04x}:{dev.pid:04x}",
+            }
+            protocol = DeviceProtocolFactory.get_protocol(device_info)
+            raw_info = protocol.handshake()
+            if isinstance(raw_info, HidDeviceInfo):
+                result['pm'] = raw_info.mode_byte_1
+                result['resolution'] = raw_info.resolution
+                if raw_info.serial:
+                    result['serial'] = raw_info.serial
+        except Exception:
+            pass
+
+    return result
+
+
+def _format_device(dev, probe=False):
     """Format a detected device for display."""
     vid_pid = f"[{dev.vid:04x}:{dev.pid:04x}]"
     proto = dev.protocol.upper()
     path = dev.scsi_device if dev.scsi_device else "No device path found"
-    return f"{path} — {dev.product_name} {vid_pid} ({proto})"
+    line = f"{path} — {dev.product_name} {vid_pid} ({proto})"
+
+    if not probe:
+        return line
+
+    info = _probe_device(dev)
+    if not info:
+        return line
+
+    details = []
+    if 'model' in info:
+        details.append(f"model: {info['model']}")
+    if 'resolution' in info:
+        w, h = info['resolution']
+        details.append(f"resolution: {w}x{h}")
+    if 'pm' in info:
+        details.append(f"PM={info['pm']}")
+    if 'serial' in info:
+        details.append(f"serial: {info['serial'][:16]}")
+
+    if details:
+        line += f" ({', '.join(details)})"
+    return line
 
 
 def detect(show_all=False):
@@ -281,7 +346,7 @@ def detect(show_all=False):
             selected = _get_selected_device()
             for i, dev in enumerate(devices, 1):
                 marker = "*" if dev.scsi_device == selected else " "
-                print(f"{marker} [{i}] {_format_device(dev)}")
+                print(f"{marker} [{i}] {_format_device(dev, probe=True)}")
             if len(devices) > 1:
                 print("\nUse 'trcc select N' to switch devices")
         else:
@@ -291,7 +356,7 @@ def detect(show_all=False):
                 dev = next((d for d in devices if d.scsi_device == selected), None)
             if not dev:
                 dev = devices[0]
-            print(f"Active: {_format_device(dev)}")
+            print(f"Active: {_format_device(dev, probe=True)}")
 
         return 0
     except Exception as e:
