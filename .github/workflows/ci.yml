@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   issues: write
+  id-token: write
 
 jobs:
   test-and-lint:
@@ -62,7 +63,7 @@ jobs:
           path: |
             .pytest_cache
             htmlcov
-            pytest-report.xml || true
+            pytest-report.xml
 
   security-scans:
     name: Security scans (pip-audit, bandit, safety) — non-blocking
