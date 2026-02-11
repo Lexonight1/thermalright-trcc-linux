@@ -18,9 +18,12 @@ Usage::
     protocol.send_led_data(colors, is_on, True, 100)     # LED devices
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # DeviceProtocol ABC — the contract both SCSI and HID implement
@@ -134,6 +137,7 @@ class ScsiProtocol(DeviceProtocol):
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:
             from .scsi_device import send_image_to_device
+            log.debug("SCSI send: %d bytes to %s (%dx%d)", len(image_data), self._path, width, height)
             success = send_image_to_device(self._path, image_data, width, height)
             self._notify_send_complete(success)
             return success
@@ -197,6 +201,7 @@ class HidProtocol(DeviceProtocol):
         """
         try:
             if self._transport is None:
+                log.debug("Opening HID transport: %04X:%04X (type %d)", self._vid, self._pid, self._device_type)
                 self._transport = self._create_transport()
                 self._transport.open()
                 self._notify_state_changed("transport_open", True)
@@ -207,9 +212,16 @@ class HidProtocol(DeviceProtocol):
             elif self._device_type == 3:
                 handler = HidDeviceType3(self._transport)
             else:
+                log.warning("Unknown HID device type: %d", self._device_type)
                 return None
 
             self._handshake_info = handler.handshake()
+            if self._handshake_info:
+                log.info("HID handshake OK: PM=%s, FBL=%s, resolution=%s",
+                         self._handshake_info.mode_byte_1, self._handshake_info.fbl,
+                         self._handshake_info.resolution)
+            else:
+                log.warning("HID handshake returned None")
             self._notify_state_changed("handshake_complete", True)
             return self._handshake_info
         except Exception as e:
@@ -518,14 +530,18 @@ class DeviceProtocolFactory:
         implementation = getattr(device_info, 'implementation', '')
 
         if protocol == 'scsi':
+            log.info("Creating ScsiProtocol for %s", device_info.path)
             return ScsiProtocol(device_info.path)
         elif protocol == 'hid':
             # LED devices use a different protocol than LCD HID devices
             if implementation == 'hid_led':
+                log.info("Creating LedProtocol for %04X:%04X", device_info.vid, device_info.pid)
                 return LedProtocol(
                     vid=device_info.vid,
                     pid=device_info.pid,
                 )
+            log.info("Creating HidProtocol for %04X:%04X (type %d)",
+                     device_info.vid, device_info.pid, getattr(device_info, 'device_type', 2))
             return HidProtocol(
                 vid=device_info.vid,
                 pid=device_info.pid,

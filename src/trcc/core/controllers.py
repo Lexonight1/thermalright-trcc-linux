@@ -9,6 +9,7 @@ Controllers are GUI-framework independent. They:
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import tempfile
 import threading
@@ -39,6 +40,8 @@ from .models import (
     VideoModel,
     VideoState,
 )
+
+log = logging.getLogger(__name__)
 
 
 def image_to_rgb565(img: Any, byte_order: str = '>') -> bytes:
@@ -397,6 +400,7 @@ class OverlayController:
 
     def enable(self, enabled: bool = True):
         """Enable or disable overlay rendering."""
+        log.debug("Overlay %s", "enabled" if enabled else "disabled")
         self.model.enabled = enabled
 
     def is_enabled(self) -> bool:
@@ -576,9 +580,11 @@ class LCDDeviceController:
 
         Sets up theme directories and detects devices.
         """
+        log.debug("Initializing controller, data_dir=%s", data_dir)
         self._data_dir = data_dir
 
         # Set LCD target size for video and overlay
+        log.debug("LCD target: %dx%d", self.lcd_width, self.lcd_height)
         self.video.set_target_size(self.lcd_width, self.lcd_height)
         self.overlay.set_target_size(self.lcd_width, self.lcd_height)
 
@@ -610,6 +616,7 @@ class LCDDeviceController:
         """Set LCD resolution, update sub-controllers, and optionally persist to config."""
         if width == self.lcd_width and height == self.lcd_height:
             return
+        log.info("Resolution changed: %dx%d → %dx%d", self.lcd_width, self.lcd_height, width, height)
         self.lcd_width = width
         self.lcd_height = height
         self.video.set_target_size(width, height)
@@ -665,6 +672,7 @@ class LCDDeviceController:
         loads resources by reference — no file copying. Otherwise falls back
         to the original copy-to-working-dir approach.
         """
+        log.info("Loading local theme: %s", theme.path)
         # Stop any running video/animation first
         self.video.stop()
 
@@ -1090,13 +1098,16 @@ class LCDDeviceController:
 
     def _send_frame_to_lcd(self, image: Any):
         """Send PIL Image to LCD device (with rotation and brightness applied)."""
-        if not self.devices.get_selected():
+        device = self.devices.get_selected()
+        if not device:
+            log.debug("Send skipped — no device selected")
             return
 
         try:
             adjusted = self._apply_brightness(image)
             rotated = self._apply_rotation(adjusted)
             rgb565_data = self._image_to_rgb565(rotated)
+            log.debug("Sending %d bytes to %s (%dx%d)", len(rgb565_data), device.path, self.lcd_width, self.lcd_height)
             self.devices.send_image_async(rgb565_data, self.lcd_width, self.lcd_height)
         except Exception as e:
             self._handle_error(f"LCD send error: {e}")

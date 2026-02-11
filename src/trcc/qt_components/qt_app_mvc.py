@@ -13,6 +13,7 @@ Visual polish matches Windows TRCC exactly:
 from __future__ import annotations
 
 import locale
+import logging
 import os
 import sys
 from pathlib import Path
@@ -71,6 +72,8 @@ from .uc_theme_mask import UCThemeMask
 from .uc_theme_setting import UCThemeSetting
 from .uc_theme_web import UCThemeWeb
 from .uc_video_cut import UCVideoCut
+
+log = logging.getLogger(__name__)
 
 # Language code mapping: system locale -> Windows asset suffix
 LOCALE_TO_LANG = {
@@ -793,6 +796,8 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_device_selected(self, device: DeviceInfo):
         """Handle device selection — restore per-device config."""
+        log.info("Device selected: %s [%04X:%04X] %s %s",
+                 device.path, device.vid, device.pid, device.protocol, device.resolution)
         self._active_device_key = device_config_key(
             device.device_index, device.vid, device.pid)
         self.uc_preview.set_status(f"Device: {device.path}")
@@ -800,6 +805,7 @@ class TRCCMainWindowMVC(QMainWindow):
         # Update resolution if changed (skip (0,0) — HID handshake failed)
         w, h = device.resolution
         if (w, h) == (0, 0):
+            log.warning("Device resolution (0,0) — HID handshake failed")
             self.uc_preview.set_status("Handshake failed — replug device and restart")
             return
         if (w, h) != (self.controller.lcd_width, self.controller.lcd_height):
@@ -874,6 +880,7 @@ class TRCCMainWindowMVC(QMainWindow):
         if overlay and isinstance(overlay, dict):
             enabled = overlay.get('enabled', False)
             config = overlay.get('config', {})
+            log.debug("Restoring overlay: enabled=%s, %d elements", enabled, len(config))
             if config:
                 self.uc_theme_setting.load_from_overlay_config(config)
                 self.controller.overlay.set_config(config)
@@ -888,6 +895,7 @@ class TRCCMainWindowMVC(QMainWindow):
                 self.uc_info_module.stop_updates()
                 self.stop_metrics()
         else:
+            log.debug("No overlay config for device")
             # No overlay config — disable overlay
             self.uc_theme_setting.set_overlay_enabled(False)
             self.controller.overlay.enable(False)
@@ -2057,11 +2065,13 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def start_metrics(self):
         """Start live metrics collection for overlay display."""
+        log.info("Metrics timer started (1s interval)")
         self.controller.overlay.enable(True)
         self._metrics_timer.start(1000)
 
     def stop_metrics(self):
         """Stop live metrics collection."""
+        log.info("Metrics timer stopped")
         self.controller.overlay.enable(False)
         self._metrics_timer.stop()
 

@@ -4,10 +4,13 @@ TRCC Models - Pure data classes with no GUI dependencies.
 These models can be used by any GUI framework (Tkinter, PyQt6, etc.)
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+log = logging.getLogger(__name__)
 
 # =============================================================================
 # Theme Model
@@ -271,6 +274,7 @@ class DeviceModel:
 
     def detect_devices(self) -> List[DeviceInfo]:
         """Detect connected LCD devices."""
+        log.debug("DeviceModel: scanning for devices...")
         try:
             from ..scsi_device import find_lcd_devices
             raw_devices = find_lcd_devices()
@@ -295,6 +299,10 @@ class DeviceModel:
             ]
         except ImportError:
             self.devices = []
+
+        log.info("DeviceModel: found %d device(s)", len(self.devices))
+        for d in self.devices:
+            log.debug("  %s [%04X:%04X] %s res=%s", d.name, d.vid, d.pid, d.protocol, d.resolution)
 
         if self.on_devices_changed:
             self.on_devices_changed()

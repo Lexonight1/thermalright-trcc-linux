@@ -17,6 +17,7 @@ Supported devices (HID LED — RGB controllers, auto-detected when plugged in):
 - Winbond:      VID=0x0416, PID=0x8001  (64-byte reports)
 """
 
+import logging
 import os
 import re
 import subprocess
@@ -24,6 +25,8 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .paths import find_scsi_devices as _find_sg_entries
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -164,9 +167,11 @@ def run_command(cmd: List[str]) -> str:
 def find_usb_devices() -> List[DetectedDevice]:
     """Find all USB LCD devices using lsusb"""
     devices = []
+    log.debug("Scanning USB devices via lsusb...")
     output = run_command(['lsusb'])
 
     if not output:
+        log.debug("lsusb returned no output")
         return devices
 
     # Parse lsusb output
@@ -192,6 +197,8 @@ def find_usb_devices() -> List[DetectedDevice]:
         # Get USB path
         usb_path = f"{int(bus)}-{device}"
 
+        log.debug("Found known device: %04X:%04X %s (%s)",
+                  vid, pid, device_info["vendor"], device_info.get("protocol", "scsi"))
         devices.append(DetectedDevice(
             vid=vid,
             pid=pid,
@@ -205,6 +212,7 @@ def find_usb_devices() -> List[DetectedDevice]:
             device_type=int(device_info.get("device_type", 1)),
         ))
 
+    log.debug("USB scan found %d known device(s)", len(devices))
     return devices
 
 
@@ -322,23 +330,29 @@ def find_scsi_usblcd_devices() -> List[DetectedDevice]:
 
 def detect_devices() -> List[DetectedDevice]:
     """Detect all USB LCD devices and their SCSI mappings"""
+    log.debug("Starting device detection...")
     devices = find_usb_devices()
 
     for device in devices:
         scsi_dev = find_scsi_device_by_usb_path(device.usb_path)
         device.scsi_device = scsi_dev
+        if scsi_dev:
+            log.debug("Mapped %04X:%04X → %s", device.vid, device.pid, scsi_dev)
 
     # If we found USB devices but none have SCSI mappings, try sysfs fallback
     if devices and not any(d.scsi_device for d in devices):
-        # Try to find sg device via sysfs and assign to first device
+        log.debug("No SCSI mappings found, trying sysfs fallback...")
         scsi_devices = find_scsi_usblcd_devices()
         if scsi_devices and scsi_devices[0].scsi_device:
             devices[0].scsi_device = scsi_devices[0].scsi_device
 
     # Fallback: scan SCSI devices directly for USBLCD if no USB devices found
     if not devices:
+        log.debug("No USB devices found, scanning SCSI directly...")
         devices = find_scsi_usblcd_devices()
 
+    log.info("Detected %d device(s): %s", len(devices),
+             ", ".join(f"{d.vendor_name} {d.product_name} [{d.protocol}]" for d in devices) or "none")
     return devices
 
 

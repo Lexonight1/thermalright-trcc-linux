@@ -5,11 +5,14 @@ Combines device detection with implementation-specific protocols.
 """
 
 import binascii
+import logging
 import os
 import struct
 import subprocess
 import tempfile
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 try:
     from .device_detector import DetectedDevice, detect_devices, get_default_device
@@ -149,18 +152,23 @@ class LCDDriver:
         if self.initialized:
             return
         assert self.implementation is not None
+        log.debug("Initializing LCD device at %s", self.device_path)
 
         # Step 1: Poll device
         poll_cmd, poll_size = self.implementation.get_poll_command()
         poll_header = self._build_header(poll_cmd, poll_size)
+        log.debug("Poll: cmd=0x%X, size=0x%X", poll_cmd, poll_size)
         self._scsi_read(poll_header[:16], poll_size)
 
         # Step 2: Init
         init_cmd, init_size = self.implementation.get_init_command()
         init_header = self._build_header(init_cmd, init_size)
+        log.debug("Init: cmd=0x%X, size=0x%X", init_cmd, init_size)
         self._scsi_write(init_header, b'\x00' * init_size)
 
         self.initialized = True
+        log.info("LCD device initialized: %s (%s)", self.device_path,
+                 self.implementation.name if self.implementation else "unknown")
 
     def send_frame(self, image_data: bytes, force_init: bool = False):
         """
@@ -186,6 +194,7 @@ class LCDDriver:
             image_data += b'\x00' * (total_size - len(image_data))
 
         # Send chunks
+        log.debug("Sending frame: %d bytes in %d chunks", total_size, len(chunks))
         offset = 0
         for cmd, size in chunks:
             header = self._build_header(cmd, size)
