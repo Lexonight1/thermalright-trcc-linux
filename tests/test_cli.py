@@ -1387,27 +1387,31 @@ class TestHr10Tempd(unittest.TestCase):
 class TestInstallDesktop(unittest.TestCase):
     """Tests for install_desktop() command."""
 
-    def test_missing_desktop_file(self):
-        """Returns 1 when trcc.desktop not found at expected path."""
+    def test_installs_without_repo_root(self):
+        """Succeeds even when __file__ points outside repo (pip install)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Point __file__ to a fake path where trcc.desktop won't exist
-            fake_file = os.path.join(tmpdir, "src", "trcc", "cli.py")
+            home = Path(tmpdir) / "fakehome"
+            # Fake __file__ with no icons dir — should still create .desktop
+            fake_file = os.path.join(tmpdir, "site-packages", "trcc", "cli.py")
             os.makedirs(os.path.dirname(fake_file), exist_ok=True)
             Path(fake_file).touch()
-            with patch('trcc.cli.__file__', fake_file):
+            with patch('trcc.cli.__file__', fake_file), \
+                 patch('pathlib.Path.home', return_value=home):
                 result = install_desktop()
-        self.assertEqual(result, 1)
+            self.assertEqual(result, 0)
+            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            self.assertTrue(desktop.exists())
+            self.assertIn("Exec=trcc gui", desktop.read_text())
 
     def test_installs_files(self):
-        """install_desktop() copies .desktop and icon files to home dir."""
+        """install_desktop() creates .desktop and copies icons to home dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             with patch('pathlib.Path.home', return_value=home):
                 result = install_desktop()
-            # Running from repo, should find trcc.desktop
-            if result == 0:
-                desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
-                self.assertTrue(desktop.exists())
+            self.assertEqual(result, 0)
+            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            self.assertTrue(desktop.exists())
 
     def test_dispatch_install_desktop(self):
         """main() dispatches 'install-desktop' to install_desktop()."""

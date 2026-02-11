@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -21,3 +21,5 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #         on-demand download), bump for PyPI
 # 1.2.3 - Refactor: print→logging across 12 modules, thread-safe device send,
 #         extract _setup_theme_dirs helper, pyusb deprecation warning filter
+# 1.2.4 - Fix pip upgrade wiping themes: extract to ~/.trcc/data/ not site-packages,
+#         fix install-desktop for pip installs (generate .desktop inline)

@@ -262,20 +262,6 @@ def _download_archive(url: str, dest_path: str, timeout: int = 60) -> bool:
 
 
 
-def _writable_target(preferred: str, fallback: str) -> str:
-    """Return preferred dir if writable, else fallback to user dir."""
-    try:
-        os.makedirs(preferred, exist_ok=True)
-        probe = os.path.join(preferred, '.write_test')
-        with open(probe, 'w') as f:
-            f.write('')
-        os.remove(probe)
-        return preferred
-    except OSError:
-        log.debug("Not writable: %s — using %s", preferred, fallback)
-        return fallback
-
-
 def _fetch_and_extract(
     label: str,
     pkg_dir: str,
@@ -286,9 +272,9 @@ def _fetch_and_extract(
 ) -> bool:
     """Unified fetch-and-extract for themes, web previews, and masks.
 
-    1. Check pkg_dir and user_dir for existing content via check_fn.
+    1. Check pkg_dir (dev mode) and user_dir for existing content via check_fn.
     2. If neither has content, locate or download the .7z via fetch_fn.
-    3. Extract to the first writable directory.
+    3. Always extract to user_dir (~/.trcc/data/) so data survives pip upgrades.
 
     Returns True if content is available after this call.
     """
@@ -306,10 +292,12 @@ def _fetch_and_extract(
         log.warning("%s: could not obtain %s (no local copy, download failed)", label, archive_name)
         return False
 
-    target = _writable_target(pkg_dir, user_dir)
-    ok = _extract_7z(archive, target)
+    # Always extract to user_dir (~/.trcc/data/) — survives pip upgrades.
+    # site-packages gets wiped on `pip install --upgrade`.
+    os.makedirs(user_dir, exist_ok=True)
+    ok = _extract_7z(archive, user_dir)
     if ok:
-        log.info("%s ready at %s", label, target)
+        log.info("%s ready at %s", label, user_dir)
     else:
         log.warning("%s: extraction of %s failed", label, archive_name)
     return ok

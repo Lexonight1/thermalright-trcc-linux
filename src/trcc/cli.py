@@ -958,51 +958,57 @@ def setup_udev(dry_run=False):
 
 
 def install_desktop():
-    """Install .desktop menu entry and icon for app launchers."""
+    """Install .desktop menu entry and icon for app launchers.
+
+    Works from both pip install and git clone — generates .desktop inline
+    and resolves icons from the package tree (src/trcc/assets/icons/).
+    """
     import shutil
     from pathlib import Path
 
     home = Path.home()
     app_dir = home / ".local" / "share" / "applications"
-    icon_dir = home / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps"
 
-    # Find repo root (where trcc.desktop lives)
-    repo_root = Path(__file__).parent.parent.parent
-    desktop_src = repo_root / "trcc.desktop"
-    icon_src = repo_root / "src" / "trcc" / "assets" / "icons" / "trcc_256x256.png"
+    # Icons live inside the package (works for both pip install and git clone)
+    icon_pkg_dir = Path(__file__).parent / "assets" / "icons"
 
-    if not desktop_src.exists():
-        print(f"Error: {desktop_src} not found. Run from the repo directory.")
-        return 1
+    # Generate .desktop content inline (no dependency on repo root)
+    desktop_content = """\
+[Desktop Entry]
+Name=TRCC Linux
+Comment=Thermalright LCD Control Center
+Exec=trcc gui
+Icon=trcc
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=thermalright;lcd;cooler;aio;cpu;
+"""
 
     # Install .desktop file
     app_dir.mkdir(parents=True, exist_ok=True)
     desktop_dst = app_dir / "trcc.desktop"
-    shutil.copy2(desktop_src, desktop_dst)
+    desktop_dst.write_text(desktop_content)
     print(f"Installed {desktop_dst}")
 
-    # Install icon
-    if icon_src.exists():
-        icon_dir.mkdir(parents=True, exist_ok=True)
-        icon_dst = icon_dir / "trcc.png"
-        shutil.copy2(icon_src, icon_dst)
-        print(f"Installed {icon_dst}")
+    # Install icons to XDG hicolor theme
+    installed_icon = False
+    for size in [256, 128, 64, 48]:
+        icon_src = icon_pkg_dir / f"trcc_{size}x{size}.png"
+        if icon_src.exists():
+            icon_dir = home / ".local" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps"
+            icon_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(icon_src, icon_dir / "trcc.png")
+            installed_icon = True
 
-        # Also install smaller sizes
-        for size in [48, 64, 128]:
-            small_src = icon_src.parent / f"trcc_{size}x{size}.png"
-            if small_src.exists():
-                small_dir = home / ".local" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps"
-                small_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(small_src, small_dir / "trcc.png")
+    if installed_icon:
+        # Update icon cache
+        subprocess.run(
+            ["gtk-update-icon-cache", str(home / ".local" / "share" / "icons" / "hicolor")],
+            check=False, capture_output=True
+        )
     else:
-        print("Warning: icon not found, menu entry will use a generic icon")
-
-    # Update icon cache
-    subprocess.run(
-        ["gtk-update-icon-cache", str(home / ".local" / "share" / "icons" / "hicolor")],
-        check=False, capture_output=True
-    )
+        print("Warning: icons not found, menu entry will use a generic icon")
 
     print("\nTRCC should now appear in your application menu.")
     print("If it doesn't show up immediately, log out and back in.")

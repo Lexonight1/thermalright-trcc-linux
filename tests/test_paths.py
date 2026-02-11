@@ -390,6 +390,7 @@ class TestEnsureThemesExtracted(unittest.TestCase):
         """Calls _extract_7z when archive exists but themes don't."""
         with tempfile.TemporaryDirectory() as d:
             theme_dir = os.path.join(d, 'Theme320320')
+            user_theme_dir = os.path.join(d, 'user', 'Theme320320')
             archive = theme_dir + '.7z'
             Path(archive).touch()
             with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
@@ -398,7 +399,8 @@ class TestEnsureThemesExtracted(unittest.TestCase):
                  patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
                 result = ensure_themes_extracted(320, 320)
             self.assertTrue(result)
-            mock_ex.assert_called_once_with(archive, theme_dir)
+            # Extracts to user_dir (~/.trcc/data/) so data survives pip upgrades
+            mock_ex.assert_called_once_with(archive, user_theme_dir)
 
 
 class TestEnsureWebExtracted(unittest.TestCase):
@@ -426,6 +428,7 @@ class TestEnsureWebExtracted(unittest.TestCase):
     def test_extracts_from_archive(self):
         with tempfile.TemporaryDirectory() as d:
             web_dir = os.path.join(d, 'Web', '320320')
+            user_web_dir = os.path.join(d, 'user', 'Web', '320320')
             archive_dir = os.path.join(d, 'Web')
             os.makedirs(archive_dir)
             archive = os.path.join(archive_dir, '320320.7z')
@@ -436,7 +439,7 @@ class TestEnsureWebExtracted(unittest.TestCase):
                  patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
                 result = ensure_web_extracted(320, 320)
             self.assertTrue(result)
-            mock_ex.assert_called_once_with(archive, web_dir)
+            mock_ex.assert_called_once_with(archive, user_web_dir)
 
 
 class TestEnsureWebMasksExtracted(unittest.TestCase):
