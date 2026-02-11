@@ -207,9 +207,15 @@ class TestResolutionInstalled(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
+        self.user_data = os.path.join(self.tmp, 'user_data')
+        os.makedirs(self.user_data)
+        self.pkg_data = os.path.join(self.tmp, 'pkg_data')
+        os.makedirs(self.pkg_data)
         self.patches = [
             patch('trcc.paths.CONFIG_PATH', self.config_path),
             patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.paths.USER_DATA_DIR', self.user_data),
+            patch('trcc.paths.DATA_DIR', self.pkg_data),
         ]
         for p in self.patches:
             p.start()
@@ -220,10 +226,16 @@ class TestResolutionInstalled(unittest.TestCase):
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def _create_theme_dir(self, width, height):
+        """Create a fake theme directory with a subfolder so _has_actual_themes passes."""
+        theme_dir = os.path.join(self.user_data, f'Theme{width}{height}', 'DefaultTheme')
+        os.makedirs(theme_dir, exist_ok=True)
+
     def test_not_installed_by_default(self):
         self.assertFalse(is_resolution_installed(320, 320))
 
     def test_mark_and_check(self):
+        self._create_theme_dir(320, 320)
         mark_resolution_installed(320, 320)
         self.assertTrue(is_resolution_installed(320, 320))
         self.assertFalse(is_resolution_installed(480, 480))
@@ -235,6 +247,8 @@ class TestResolutionInstalled(unittest.TestCase):
         self.assertEqual(config["installed_resolutions"].count("320x320"), 1)
 
     def test_multiple_resolutions(self):
+        self._create_theme_dir(320, 320)
+        self._create_theme_dir(480, 480)
         mark_resolution_installed(320, 320)
         mark_resolution_installed(480, 480)
         self.assertTrue(is_resolution_installed(320, 320))
@@ -250,6 +264,12 @@ class TestResolutionInstalled(unittest.TestCase):
     def test_clear_on_empty_config(self):
         # Should not raise
         clear_installed_resolutions()
+        self.assertFalse(is_resolution_installed(320, 320))
+
+    def test_marker_without_data_returns_false(self):
+        """Config says installed but data was wiped — should return False."""
+        mark_resolution_installed(320, 320)
+        # No theme dir created — simulates pip uninstall wiping data
         self.assertFalse(is_resolution_installed(320, 320))
 
 

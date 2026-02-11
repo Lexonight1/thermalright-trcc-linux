@@ -502,9 +502,19 @@ def save_temp_unit(unit: int):
 
 
 def is_resolution_installed(width: int, height: int) -> bool:
-    """Check if theme data for this resolution has already been downloaded."""
+    """Check if theme data for this resolution has already been downloaded.
+
+    Verifies both the config marker AND that theme files physically exist
+    (in either the package data dir or ~/.trcc/data/). This handles the case
+    where pip uninstall/reinstall wipes data but config.json survives.
+    """
     key = f"{width}x{height}"
-    return key in load_config().get("installed_resolutions", [])
+    if key not in load_config().get("installed_resolutions", []):
+        return False
+    # Config says installed — verify data actually exists on disk
+    name = f"Theme{width}{height}"
+    return _has_actual_themes(os.path.join(DATA_DIR, name)) or \
+        _has_actual_themes(os.path.join(USER_DATA_DIR, name))
 
 
 def mark_resolution_installed(width: int, height: int):
