@@ -979,27 +979,8 @@ class LEDModel:
         return colors
 
     # -- Effect algorithms (ported from FormLED.cs) --
-    # Each algorithm has a _for variant that accepts parameters so it can be
-    # used by both single-zone (global state) and multi-zone (per-zone state).
-    # Legacy names delegate to _for variants for backward compatibility.
-
-    def _tick_static(self) -> List[Tuple[int, int, int]]:
-        return [self.state.color] * self.state.segment_count
-
-    def _tick_breathing(self) -> List[Tuple[int, int, int]]:
-        return self._tick_breathing_for(self.state.color, self.state.segment_count)
-
-    def _tick_colorful(self) -> List[Tuple[int, int, int]]:
-        return self._tick_colorful_for(self.state.segment_count)
-
-    def _tick_rainbow(self) -> List[Tuple[int, int, int]]:
-        return self._tick_rainbow_for(self.state.segment_count)
-
-    def _tick_temp_linked(self) -> List[Tuple[int, int, int]]:
-        return self._tick_temp_linked_for(self.state.segment_count)
-
-    def _tick_load_linked(self) -> List[Tuple[int, int, int]]:
-        return self._tick_load_linked_for(self.state.segment_count)
+    # Each algorithm accepts parameters so it can be used by both
+    # single-zone (global state) and multi-zone (per-zone state).
 
     def _tick_breathing_for(self, color: Tuple[int, int, int],
                             seg_count: int) -> List[Tuple[int, int, int]]:

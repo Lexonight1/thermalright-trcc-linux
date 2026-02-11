@@ -1436,52 +1436,37 @@ class UCThemeSetting(BasePanel):
         config = self.overlay_grid.to_overlay_config()
         self.invoke_delegate(self.CMD_OVERLAY_CHANGED, config)
 
-    def _on_color_changed(self, r, g, b):
-        """Color picker changed — update selected element."""
+    def _update_selected(self, require_mode: int | None = None, **fields):
+        """Update selected overlay element config fields and propagate.
+
+        Single entry point for all element property changes (color, position,
+        font, format, text). Guards on require_mode when the update only
+        applies to a specific element type.
+        """
         idx = self.overlay_grid.get_selected_index()
         cfg = self.overlay_grid.get_selected_config()
-        if cfg is not None:
-            cfg['color'] = f'#{r:02x}{g:02x}{b:02x}'
-            self.overlay_grid.update_element(idx, cfg)
-            self._on_elements_changed()
+        if cfg is None:
+            return
+        if require_mode is not None and cfg.get('mode') != require_mode:
+            return
+        cfg.update(fields)
+        self.overlay_grid.update_element(idx, cfg)
+        self._on_elements_changed()
+
+    def _on_color_changed(self, r, g, b):
+        self._update_selected(color=f'#{r:02x}{g:02x}{b:02x}')
 
     def _on_position_changed(self, x, y):
-        """Position changed — update selected element."""
-        idx = self.overlay_grid.get_selected_index()
-        cfg = self.overlay_grid.get_selected_config()
-        if cfg is not None:
-            cfg['x'] = x
-            cfg['y'] = y
-            self.overlay_grid.update_element(idx, cfg)
-            self._on_elements_changed()
+        self._update_selected(x=x, y=y)
 
     def _on_font_changed(self, font_name, font_size):
-        """Font picker changed — update selected element (Windows mode=4)."""
-        idx = self.overlay_grid.get_selected_index()
-        cfg = self.overlay_grid.get_selected_config()
-        if cfg is not None:
-            cfg['font_name'] = font_name
-            cfg['font_size'] = font_size
-            self.overlay_grid.update_element(idx, cfg)
-            self._on_elements_changed()
+        self._update_selected(font_name=font_name, font_size=font_size)
 
     def _on_format_changed(self, mode, mode_sub):
-        """Data table format combo changed."""
-        idx = self.overlay_grid.get_selected_index()
-        cfg = self.overlay_grid.get_selected_config()
-        if cfg is not None and cfg.get('mode') == mode:
-            cfg['mode_sub'] = mode_sub
-            self.overlay_grid.update_element(idx, cfg)
-            self._on_elements_changed()
+        self._update_selected(require_mode=mode, mode_sub=mode_sub)
 
     def _on_text_changed(self, text):
-        """Custom text changed."""
-        idx = self.overlay_grid.get_selected_index()
-        cfg = self.overlay_grid.get_selected_config()
-        if cfg is not None and cfg.get('mode') == MODE_CUSTOM:
-            cfg['text'] = text
-            self.overlay_grid.update_element(idx, cfg)
-            self._on_elements_changed()
+        self._update_selected(require_mode=MODE_CUSTOM, text=text)
 
     # --- Display mode panels ---
 

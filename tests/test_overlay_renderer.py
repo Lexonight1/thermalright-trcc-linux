@@ -77,21 +77,13 @@ class TestSetResolution(unittest.TestCase):
 class TestFormatOptions(unittest.TestCase):
     """Test format options methods."""
 
-    def test_set_format_options_all(self):
-        """Test setting all format options."""
+    def test_set_temp_unit_updates_attribute(self):
+        """Test setting temp unit via set_temp_unit."""
         renderer = OverlayRenderer()
-        renderer.set_format_options(time_format=1, date_format=2, temp_unit=1)
-        self.assertEqual(renderer.time_format, 1)
-        self.assertEqual(renderer.date_format, 2)
+        renderer.set_temp_unit(1)
         self.assertEqual(renderer.temp_unit, 1)
-
-    def test_set_format_options_partial(self):
-        """Test setting partial format options."""
-        renderer = OverlayRenderer()
-        renderer.set_format_options(time_format=1)
-        self.assertEqual(renderer.time_format, 1)
-        self.assertEqual(renderer.date_format, 0)  # Default
-        self.assertEqual(renderer.temp_unit, 0)    # Default
+        self.assertEqual(renderer.time_format, 0)  # Default unchanged
+        self.assertEqual(renderer.date_format, 0)  # Default unchanged
 
     def test_set_temp_unit(self):
         """Test set_temp_unit method."""
@@ -342,7 +334,9 @@ class TestRender(unittest.TestCase):
     def test_render_with_format_options(self):
         """Test rendering respects format options."""
         renderer = OverlayRenderer()
-        renderer.set_format_options(time_format=1, date_format=2, temp_unit=1)
+        renderer.time_format = 1
+        renderer.date_format = 2
+        renderer.temp_unit = 1
         renderer.set_config({
             'time': {
                 'x': 160, 'y': 160,
@@ -414,7 +408,9 @@ class TestClear(unittest.TestCase):
     def test_clear_preserves_format_options(self):
         """Test that clear preserves format options."""
         renderer = OverlayRenderer()
-        renderer.set_format_options(time_format=1, date_format=2, temp_unit=1)
+        renderer.time_format = 1
+        renderer.date_format = 2
+        renderer.temp_unit = 1
         renderer.clear()
         # Format options are NOT cleared
         self.assertEqual(renderer.time_format, 1)
@@ -462,8 +458,7 @@ class TestRenderIntegration(unittest.TestCase):
             }
         })
 
-        # Set format options
-        renderer.set_format_options(time_format=0, date_format=0, temp_unit=0)
+        # Format options default to 0, no need to set
 
         # Render with metrics
         metrics = {

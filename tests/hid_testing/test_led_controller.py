@@ -463,11 +463,13 @@ class TestTickStatic:
 
     def test_all_segments_same_color(self, led_model):
         led_model.set_color(100, 200, 50)
-        colors = led_model._tick_static()
+        colors = led_model._tick_single_mode(
+            LEDMode.STATIC, led_model.state.color, led_model.state.segment_count)
         assert all(c == (100, 200, 50) for c in colors)
 
     def test_segment_count_matches(self, led_model):
-        colors = led_model._tick_static()
+        colors = led_model._tick_single_mode(
+            LEDMode.STATIC, led_model.state.color, led_model.state.segment_count)
         assert len(colors) == led_model.state.segment_count
 
 
@@ -481,19 +483,19 @@ class TestTickBreathing:
     def test_advances_timer(self, led_model):
         led_model.state.mode = LEDMode.BREATHING
         led_model.state.rgb_timer = 0
-        led_model._tick_breathing()
+        led_model._tick_breathing_for(led_model.state.color, led_model.state.segment_count)
         assert led_model.state.rgb_timer == 1
 
     def test_timer_wraps_at_66(self, led_model):
         led_model.state.rgb_timer = 65
-        led_model._tick_breathing()
+        led_model._tick_breathing_for(led_model.state.color, led_model.state.segment_count)
         assert led_model.state.rgb_timer == 0
 
     def test_at_zero_brightness_is_20_percent_base(self, led_model):
         """At timer=0, factor=0 so anim is 0; output = 20% of color."""
         led_model.set_color(255, 0, 0)
         led_model.state.rgb_timer = 0
-        colors = led_model._tick_breathing()
+        colors = led_model._tick_breathing_for(led_model.state.color, led_model.state.segment_count)
         r, g, b = colors[0]
         # int(255 * 0 * 0.8 + 255 * 0.2) = int(51.0) = 51
         assert r == 51
@@ -502,7 +504,7 @@ class TestTickBreathing:
         """At timer=33 (half), factor= (66-1-33)/33 ≈ 0.9697 → near full."""
         led_model.set_color(255, 0, 0)
         led_model.state.rgb_timer = 32  # factor = 32/33 ≈ 0.97
-        colors = led_model._tick_breathing()
+        colors = led_model._tick_breathing_for(led_model.state.color, led_model.state.segment_count)
         r, g, b = colors[0]
         # 80% animated + 20% base → near 255
         assert r > 200
@@ -511,7 +513,7 @@ class TestTickBreathing:
         """All segments get the same breathing color."""
         led_model.set_color(100, 100, 100)
         led_model.state.rgb_timer = 10
-        colors = led_model._tick_breathing()
+        colors = led_model._tick_breathing_for(led_model.state.color, led_model.state.segment_count)
         assert len(set(colors)) == 1  # All identical
 
 
@@ -524,24 +526,24 @@ class TestTickColorful:
 
     def test_advances_timer(self, led_model):
         led_model.state.rgb_timer = 0
-        led_model._tick_colorful()
+        led_model._tick_colorful_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 1
 
     def test_timer_wraps_at_168(self, led_model):
         led_model.state.rgb_timer = 167
-        led_model._tick_colorful()
+        led_model._tick_colorful_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 0
 
     def test_phase_0_starts_red(self, led_model):
         """Phase 0 offset 0 → (255, 0, 0) = pure red."""
         led_model.state.rgb_timer = 0
-        colors = led_model._tick_colorful()
+        colors = led_model._tick_colorful_for(led_model.state.segment_count)
         assert colors[0] == (255, 0, 0)
 
     def test_phase_1_yellow_to_green(self, led_model):
         """Phase 1 offset 0 → (255, 255, 0) → R starts decreasing."""
         led_model.state.rgb_timer = 28  # Phase 1 start
-        colors = led_model._tick_colorful()
+        colors = led_model._tick_colorful_for(led_model.state.segment_count)
         r, g, b = colors[0]
         assert g == 255
         assert b == 0
@@ -549,7 +551,7 @@ class TestTickColorful:
     def test_phase_2_green_to_cyan(self, led_model):
         """Phase 2 starts at timer=56."""
         led_model.state.rgb_timer = 56
-        colors = led_model._tick_colorful()
+        colors = led_model._tick_colorful_for(led_model.state.segment_count)
         r, g, b = colors[0]
         assert r == 0
         assert g == 255
@@ -558,13 +560,13 @@ class TestTickColorful:
         """After 168 ticks, we're back at phase 0 offset 0."""
         led_model.state.rgb_timer = 0
         for _ in range(168):
-            led_model._tick_colorful()
+            led_model._tick_colorful_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 0
 
     def test_uniform_across_segments(self, led_model):
         """All segments get the same colorful color."""
         led_model.state.rgb_timer = 42
-        colors = led_model._tick_colorful()
+        colors = led_model._tick_colorful_for(led_model.state.segment_count)
         assert len(set(colors)) == 1
 
 
@@ -580,7 +582,7 @@ class TestTickRainbow:
         table = [(i, 0, 0) for i in range(768)]
         mock_table.return_value = table
         led_model.state.rgb_timer = 0
-        colors = led_model._tick_rainbow()
+        colors = led_model._tick_rainbow_for(led_model.state.segment_count)
         # Each segment gets a different offset
         assert len(colors) == led_model.state.segment_count
         mock_table.assert_called()
@@ -589,14 +591,14 @@ class TestTickRainbow:
     def test_advances_by_4(self, mock_table, led_model):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_model.state.rgb_timer = 0
-        led_model._tick_rainbow()
+        led_model._tick_rainbow_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 4
 
     @patch("trcc.led_device.get_rgb_table")
     def test_timer_wraps(self, mock_table, led_model):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_model.state.rgb_timer = 764
-        led_model._tick_rainbow()
+        led_model._tick_rainbow_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 0  # (764 + 4) % 768 = 0
 
     @patch("trcc.led_device.get_rgb_table")
@@ -607,7 +609,7 @@ class TestTickRainbow:
         led_model.state.rgb_timer = 0
         led_model.state.segment_count = 4
         led_model.state.segment_on = [True] * 4
-        colors = led_model._tick_rainbow()
+        colors = led_model._tick_rainbow_for(led_model.state.segment_count)
         # With 4 segments, offsets should be 0, 192, 384, 576
         assert len(set(colors)) > 1  # Not all the same
 
@@ -624,7 +626,7 @@ class TestTickTempLinked:
         mock_cfv.return_value = (0, 255, 0)
         led_model.state.temp_source = "cpu"
         led_model._metrics = {"cpu_temp": 45}
-        led_model._tick_temp_linked()
+        led_model._tick_temp_linked_for(led_model.state.segment_count)
         mock_cfv.assert_called_once()
         # First positional arg is the temp value
         assert mock_cfv.call_args[0][0] == 45
@@ -634,21 +636,21 @@ class TestTickTempLinked:
         mock_cfv.return_value = (255, 0, 0)
         led_model.state.temp_source = "gpu"
         led_model._metrics = {"gpu_temp": 92}
-        led_model._tick_temp_linked()
+        led_model._tick_temp_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
     @patch("trcc.led_device.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
-        led_model._tick_temp_linked()
+        led_model._tick_temp_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
     @patch("trcc.led_device.color_for_value")
     def test_uniform_color(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 0)
         led_model._metrics = {"cpu_temp": 40}
-        colors = led_model._tick_temp_linked()
+        colors = led_model._tick_temp_linked_for(led_model.state.segment_count)
         assert all(c == (0, 255, 0) for c in colors)
         assert len(colors) == led_model.state.segment_count
 
@@ -665,7 +667,7 @@ class TestTickLoadLinked:
         mock_cfv.return_value = (255, 255, 0)
         led_model.state.load_source = "cpu"
         led_model._metrics = {"cpu_load": 60}
-        led_model._tick_load_linked()
+        led_model._tick_load_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
     @patch("trcc.led_device.color_for_value")
@@ -673,14 +675,14 @@ class TestTickLoadLinked:
         mock_cfv.return_value = (255, 110, 0)
         led_model.state.load_source = "gpu"
         led_model._metrics = {"gpu_load": 85}
-        led_model._tick_load_linked()
+        led_model._tick_load_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
     @patch("trcc.led_device.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
-        led_model._tick_load_linked()
+        led_model._tick_load_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
 

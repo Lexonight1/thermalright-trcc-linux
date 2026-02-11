@@ -120,19 +120,6 @@ class OverlayRenderer:
 
         return disp_size / cfg_size
 
-    def set_format_options(self, time_format=0, date_format=0, temp_unit=0):
-        """
-        Set time, date, and temperature format options.
-
-        Args:
-            time_format: 0=HH:mm (24h), 1=hh:mm AM/PM (12h), 2=HH:mm
-            date_format: 0=yyyy/MM/dd, 1=yyyy/MM/dd, 2=dd/MM/yyyy, 3=MM/dd, 4=dd/MM
-            temp_unit: 0=Celsius (°C), 1=Fahrenheit (°F)
-        """
-        self.time_format = time_format
-        self.date_format = date_format
-        self.temp_unit = temp_unit
-
     def set_temp_unit(self, unit: int):
         """
         Set temperature unit (Windows UCXiTongXianShiTable button0 toggle).

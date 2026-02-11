@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.7"
+__version__ = "1.2.8"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -29,3 +29,5 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #         theme setup, tab switches, directory verification
 # 1.2.7 - Strip all theme data from wheel (download on first run only), fix
 #         _has_actual_themes to require PNGs (ignore leftover .dc files)
+# 1.2.8 - KISS refactor: consolidate 5 duplicate settings handlers into
+#         _update_selected(), remove dead code (set_format_options, LED stubs)
