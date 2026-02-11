@@ -510,11 +510,20 @@ def is_resolution_installed(width: int, height: int) -> bool:
     """
     key = f"{width}x{height}"
     if key not in load_config().get("installed_resolutions", []):
+        log.debug("Resolution %s: not in installed_resolutions", key)
         return False
     # Config says installed — verify data actually exists on disk
     name = f"Theme{width}{height}"
-    return _has_actual_themes(os.path.join(DATA_DIR, name)) or \
-        _has_actual_themes(os.path.join(USER_DATA_DIR, name))
+    pkg = os.path.join(DATA_DIR, name)
+    user = os.path.join(USER_DATA_DIR, name)
+    if _has_actual_themes(pkg):
+        log.debug("Resolution %s: verified at %s", key, pkg)
+        return True
+    if _has_actual_themes(user):
+        log.debug("Resolution %s: verified at %s", key, user)
+        return True
+    log.warning("Resolution %s: config says installed but no data at %s or %s", key, pkg, user)
+    return False
 
 
 def mark_resolution_installed(width: int, height: int):

@@ -446,6 +446,8 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _show_panel(self, index):
         """Show panel at index and update button states."""
+        panel_names = {0: "Local", 1: "Cloud", 2: "Mask", 3: "Settings"}
+        log.debug("Tab switched: %s (panel %d)", panel_names.get(index, "?"), index)
         self.panel_stack.setCurrentIndex(index)
         panel_to_button = {0: 0, 1: 2, 2: 1, 3: 3}
         active_btn = panel_to_button.get(index, 0)

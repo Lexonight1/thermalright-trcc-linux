@@ -549,14 +549,20 @@ class LCDDeviceController:
     def _setup_theme_dirs(self, width: int, height: int):
         """Extract, locate, and wire theme/web/mask directories for a resolution."""
         if not is_resolution_installed(width, height):
+            log.info("Setting up theme data for %dx%d (first time)...", width, height)
             ensure_themes_extracted(width, height)
             ensure_web_extracted(width, height)
             ensure_web_masks_extracted(width, height)
             mark_resolution_installed(width, height)
+        else:
+            log.debug("Theme data for %dx%d already installed, skipping download", width, height)
 
         theme_dir = Path(get_theme_dir(width, height))
         web_dir = Path(get_web_dir(width, height))
         masks_dir = Path(get_web_masks_dir(width, height))
+        log.debug("Dirs: themes=%s (exists=%s), web=%s (exists=%s), masks=%s (exists=%s)",
+                  theme_dir, theme_dir.exists(), web_dir, web_dir.exists(),
+                  masks_dir, masks_dir.exists())
         self.themes.set_directories(
             local_dir=theme_dir if theme_dir.exists() else None,
             web_dir=web_dir if web_dir.exists() else None,
