@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -25,3 +25,5 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #         fix install-desktop for pip installs (generate .desktop inline)
 # 1.2.5 - One-time data setup: download themes/previews/masks once per resolution,
 #         track in config, custom themes saved to ~/.trcc/data/ (survives upgrades)
+# 1.2.6 - Fix stale config marker (verify data on disk), add debug logging for
+#         theme setup, tab switches, directory verification
