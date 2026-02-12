@@ -572,8 +572,9 @@ class LCDDeviceController:
         """Extract, locate, and wire theme/web/mask directories for a resolution."""
         ensure_all_data(width, height)
 
-        # Re-resolve paths after extraction (settings caches stale paths)
-        settings.set_resolution(width, height, persist=False)
+        # Force re-resolve paths after extraction — settings singleton
+        # resolved at import time (before data existed on disk).
+        settings._resolve_paths()
         td = settings.theme_dir
         web_dir = settings.web_dir
         masks_dir = settings.masks_dir
