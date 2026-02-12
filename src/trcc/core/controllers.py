@@ -844,7 +844,7 @@ class LCDDeviceController:
 
     def _load_and_play_video(self, path: Path | str):
         """Load video, show first frame on preview+LCD, and start playback."""
-        self.video.load(path)
+        self.video.load(Path(path))
         first_frame = self.video.model.get_frame(0)
         if first_frame:
             self.current_image = first_frame
