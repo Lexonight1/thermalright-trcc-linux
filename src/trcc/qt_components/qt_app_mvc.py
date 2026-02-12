@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QRegularExpression as QRE
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QIcon, QPalette, QRegularExpressionValidator
 from PyQt6.QtWidgets import (
     QApplication,
@@ -118,6 +118,9 @@ class TRCCMainWindowMVC(QMainWindow):
     - Subscribes to controller callbacks for updates
     """
 
+    # Signal emitted from background handshake thread → main thread
+    _handshake_done = pyqtSignal(object, object)  # (DeviceInfo, resolution tuple or None)
+
     _instance: 'TRCCMainWindowMVC | None' = None
 
     def __new__(cls, *args, **kwargs):
@@ -162,6 +165,9 @@ class TRCCMainWindowMVC(QMainWindow):
         # Device hot-plug poll timer (5s interval)
         self._device_timer = QTimer(self)
         self._device_timer.timeout.connect(self._on_device_poll)
+
+        # Handshake result signal (background thread → main thread)
+        self._handshake_done.connect(self._on_handshake_done)
 
         # Screencast timer (~6.67 FPS, matches Windows TPXSCount >= 3 at 50ms)
         self._screencast_timer = QTimer(self)
@@ -798,12 +804,52 @@ class TRCCMainWindowMVC(QMainWindow):
             device.device_index, device.vid, device.pid)
         self.uc_preview.set_status(f"Device: {device.path}")
 
-        # Update resolution if changed (skip (0,0) — HID handshake failed)
+        # HID/Bulk devices start with resolution (0,0) — need handshake to discover it.
+        # Detection only scans USB; the handshake requires opening the transport.
         w, h = device.resolution
+        if (w, h) == (0, 0) and device.protocol in ('hid', 'bulk'):
+            self.uc_preview.set_status("Connecting to device...")
+            self._start_handshake(device)
+            return
+
         if (w, h) == (0, 0):
-            log.warning("Device resolution (0,0) — HID handshake failed")
+            log.warning("Device resolution (0,0) — handshake not supported for protocol %s",
+                        device.protocol)
             self.uc_preview.set_status("Handshake failed — replug device and restart")
             return
+
+        self._apply_device_config(device, w, h)
+
+    def _start_handshake(self, device: DeviceInfo):
+        """Launch background thread to perform HID/Bulk handshake."""
+        import threading
+
+        def worker():
+            try:
+                from ..device_factory import DeviceProtocolFactory
+                protocol = DeviceProtocolFactory.get_protocol(device)
+                result = protocol.handshake()
+                resolution = getattr(result, 'resolution', None) if result else None
+                self._handshake_done.emit(device, resolution)
+            except Exception as e:
+                log.warning("Background handshake failed: %s", e)
+                self._handshake_done.emit(device, None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_handshake_done(self, device: DeviceInfo, resolution: tuple | None):
+        """Handle handshake result on the main thread."""
+        if not resolution or resolution == (0, 0):
+            log.warning("Handshake failed for %s — no resolution", device.path)
+            self.uc_preview.set_status("Handshake failed — replug device and restart")
+            return
+
+        log.info("Handshake OK: %s → %s", device.path, resolution)
+        device.resolution = resolution
+        self._apply_device_config(device, *resolution)
+
+    def _apply_device_config(self, device: DeviceInfo, w: int, h: int):
+        """Apply device resolution, theme, overlay, and carousel config."""
         if (w, h) != (self.controller.lcd_width, self.controller.lcd_height):
             self._on_resolution_changed(w, h)
 

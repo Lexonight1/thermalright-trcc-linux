@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.19"
+__version__ = "1.2.20"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -55,3 +55,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 # 1.2.19 - Raw USB bulk protocol for GrandVision/Mjolnir Vision (87AD:70DB):
 #          BulkDevice handler (handshake + RGB565 frame send via pyusb),
 #          BulkProtocol in device factory, bulk udev rules, CLI detect/probe
+# 1.2.20 - Fix GUI not performing handshake for HID/Bulk devices: resolution
+#          stayed (0,0) so themes never loaded. Now runs handshake async on
+#          device selection. OOP refactor: DeviceEntry dataclass, PmEntry
+#          NamedTuple, _LedProbeCache class, _resolve_pm() DRY helper
