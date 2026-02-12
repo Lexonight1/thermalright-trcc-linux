@@ -954,11 +954,11 @@ def setup_udev(dry_run=False):
                     f'SUBSYSTEM=="hidraw", '
                     f'ATTRS{{idVendor}}=="{vid:04x}", '
                     f'ATTRS{{idProduct}}=="{pid:04x}", '
-                    f'MODE="0660", TAG+="uaccess"\n'
+                    f'MODE="0666"\n'
                     f'SUBSYSTEM=="usb", '
                     f'ATTR{{idVendor}}=="{vid:04x}", '
                     f'ATTR{{idProduct}}=="{pid:04x}", '
-                    f'MODE="0660", TAG+="uaccess"'
+                    f'MODE="0666"'
                 )
             else:
                 rules_lines.append(
@@ -966,7 +966,7 @@ def setup_udev(dry_run=False):
                     f'SUBSYSTEM=="scsi_generic", '
                     f'ATTRS{{idVendor}}=="{vid:04x}", '
                     f'ATTRS{{idProduct}}=="{pid:04x}", '
-                    f'MODE="0660", TAG+="uaccess"'
+                    f'MODE="0666"'
                 )
 
         rules_content = "\n\n".join(rules_lines) + "\n"
