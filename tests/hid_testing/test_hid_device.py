@@ -33,9 +33,9 @@ from trcc.hid_device import (
     USB_BULK_ALIGNMENT,
     USB_CONFIGURATION,
     USB_INTERFACE,
-    DeviceInfo,
     HidDeviceType2,
     HidDeviceType3,
+    HidHandshakeInfo,
     UsbTransport,
     _ceil_to_512,
     find_hid_devices,
@@ -186,10 +186,11 @@ class TestType2ResponseValidation:
         resp[12] = 0x00  # must be 1
         assert HidDeviceType2.validate_response(bytes(resp)) is False
 
-    def test_wrong_type_byte(self):
+    def test_type_byte_not_checked(self):
+        """resp[16] is NOT part of validation (only used for serial extraction)."""
         resp = bytearray(_make_type2_valid_response())
-        resp[16] = 0x00  # must be 0x10
-        assert HidDeviceType2.validate_response(bytes(resp)) is False
+        resp[16] = 0x00  # was 0x10, but validation doesn't check it
+        assert HidDeviceType2.validate_response(bytes(resp)) is True
 
     def test_short_response(self):
         assert HidDeviceType2.validate_response(b'\xDA\xDB\xDC\xDD') is False
@@ -209,21 +210,32 @@ class TestType2DeviceInfo:
         resp = _make_type2_valid_response()
         info = HidDeviceType2.parse_device_info(resp)
         assert info.device_type == 2
-        assert info.mode_byte_1 == 0x02
-        assert info.mode_byte_2 == 0x03
+        # PM = resp[5] = 0x03, SUB = resp[4] = 0x02
+        assert info.mode_byte_1 == 0x03
+        assert info.mode_byte_2 == 0x02
 
     def test_serial_extraction(self):
         resp = bytearray(TYPE2_RESPONSE_SIZE)
         resp[0:4] = TYPE2_MAGIC
+        resp[16] = 0x10  # Serial marker byte (must be 0x10 for serial extraction)
         resp[20:36] = bytes(range(16))  # 0x00..0x0F
         info = HidDeviceType2.parse_device_info(bytes(resp))
         assert info.serial == "000102030405060708090A0B0C0D0E0F"
+
+    def test_serial_absent_without_marker(self):
+        """Serial is empty when resp[16] != 0x10."""
+        resp = bytearray(TYPE2_RESPONSE_SIZE)
+        resp[0:4] = TYPE2_MAGIC
+        resp[16] = 0x00  # No serial marker
+        resp[20:36] = bytes(range(16))
+        info = HidDeviceType2.parse_device_info(bytes(resp))
+        assert info.serial == ""
 
     def test_fbl_from_pm(self):
         """Type 2 resolves FBL from PM byte via pm_to_fbl()."""
         resp = _make_type2_valid_response()
         info = HidDeviceType2.parse_device_info(resp)
-        # PM=0x02 is not in _PM_TO_FBL_TYPE2, so defaults to FBL=100
+        # PM=resp[5]=0x03 is not in _PM_TO_FBL_TYPE2, so defaults to FBL=100
         assert info.fbl == 100
         assert info.resolution == (320, 320)
 
@@ -285,8 +297,8 @@ class TestType2Handshake:
     def test_handshake_stores_device_info(self):
         transport = _make_mock_transport()
         resp = bytearray(_make_type2_valid_response())
-        resp[4] = 0x42
-        resp[5] = 0x99
+        resp[4] = 0x42  # SUB byte
+        resp[5] = 0x99  # PM byte
         transport.read.return_value = bytes(resp)
         transport.write.return_value = TYPE2_INIT_SIZE
 
@@ -294,8 +306,9 @@ class TestType2Handshake:
         info = dev.handshake()
 
         assert dev.device_info is info
-        assert info.mode_byte_1 == 0x42
-        assert info.mode_byte_2 == 0x99
+        # PM = resp[5], SUB = resp[4]
+        assert info.mode_byte_1 == 0x99
+        assert info.mode_byte_2 == 0x42
 
     def test_handshake_timing(self):
         """Verify C# Sleep(50) + Sleep(200) timing is called."""
@@ -768,10 +781,12 @@ class TestSendImageToHidDevice:
         bad_resp = b'\x00' * TYPE2_RESPONSE_SIZE
         good_resp = _make_type2_valid_response()
 
-        transport.read.side_effect = [bad_resp, good_resp]
+        # Need 3 bad responses to exhaust all retry attempts, then
+        # good response + frame write for the successful second call
+        transport.read.side_effect = [bad_resp, bad_resp, bad_resp, good_resp]
         transport.write.return_value = 512
 
-        # First call fails
+        # First call fails (all 3 retries get bad response)
         result1 = send_image_to_hid_device(transport, b'\xFF', device_type=2)
         assert result1 is False
 
@@ -1060,14 +1075,14 @@ class TestFindHidDevices:
 
 
 # =========================================================================
-# DeviceInfo dataclass
+# HidHandshakeInfo dataclass
 # =========================================================================
 
 class TestDeviceInfo:
-    """Test DeviceInfo dataclass fields and defaults."""
+    """Test HidHandshakeInfo dataclass fields and defaults."""
 
     def test_defaults(self):
-        info = DeviceInfo(device_type=2)
+        info = HidHandshakeInfo(device_type=2)
         assert info.device_type == 2
         assert info.mode_byte_1 == 0
         assert info.mode_byte_2 == 0
@@ -1075,7 +1090,7 @@ class TestDeviceInfo:
         assert info.fbl is None
 
     def test_type3_with_fbl(self):
-        info = DeviceInfo(device_type=3, fbl=100, serial="DEADBEEF")
+        info = HidHandshakeInfo(device_type=3, fbl=100, serial="DEADBEEF")
         assert info.fbl == 100
         assert info.serial == "DEADBEEF"
 

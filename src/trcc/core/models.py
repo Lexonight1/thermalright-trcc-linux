@@ -11,7 +11,45 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..paths import ThemeDir
+
 log = logging.getLogger(__name__)
+
+# =============================================================================
+# Browser Item Dataclasses (replace raw dicts in theme/mask panels)
+# =============================================================================
+
+
+@dataclass
+class ThemeItem:
+    """Base for all theme browser items."""
+    name: str
+    is_local: bool = True
+
+
+@dataclass
+class LocalThemeItem(ThemeItem):
+    """Item in the local themes browser (UCThemeLocal)."""
+    path: str = ""
+    thumbnail: str = ""
+    is_user: bool = False
+    index: int = 0  # position in unfiltered list
+
+
+@dataclass
+class CloudThemeItem(ThemeItem):
+    """Item in the cloud themes browser (UCThemeWeb)."""
+    id: str = ""
+    video: Optional[str] = None
+    preview: Optional[str] = None
+
+
+@dataclass
+class MaskItem(ThemeItem):
+    """Item in the cloud masks browser (UCThemeMask)."""
+    path: Optional[str] = None
+    preview: Optional[str] = None
+
 
 # =============================================================================
 # Theme Model
@@ -56,18 +94,13 @@ class ThemeInfo:
     @classmethod
     def from_directory(cls, path: Path, resolution: Tuple[int, int] = (320, 320)) -> 'ThemeInfo':
         """Create ThemeInfo from a theme directory."""
-        bg_path = path / '00.png'
-        mask_path = path / '01.png'
-        thumb_path = path / 'Theme.png'
-        anim_path = path / 'Theme.zt'
-        config_path = path / 'config1.dc'
+        td = ThemeDir(path)
 
         # Determine if animated — check Theme.zt first, then .mp4 files
-        if anim_path.exists():
+        if td.zt.exists():
             is_animated = True
-            animation_path = anim_path
+            animation_path = td.zt
         else:
-            # Look for MP4 files (saved cloud video themes)
             mp4_files = list(path.glob('*.mp4'))
             if mp4_files:
                 is_animated = True
@@ -76,21 +109,18 @@ class ThemeInfo:
                 is_animated = False
                 animation_path = None
 
-        # Determine if mask-only (no background)
-        is_mask_only = not bg_path.exists() and mask_path.exists()
-
         return cls(
             name=path.name,
             path=path,
             theme_type=ThemeType.LOCAL,
-            background_path=bg_path if bg_path.exists() else None,
-            mask_path=mask_path if mask_path.exists() else None,
-            thumbnail_path=thumb_path if thumb_path.exists() else (bg_path if bg_path.exists() else None),
+            background_path=td.bg if td.bg.exists() else None,
+            mask_path=td.mask if td.mask.exists() else None,
+            thumbnail_path=td.preview if td.preview.exists() else (td.bg if td.bg.exists() else None),
             animation_path=animation_path,
-            config_path=config_path if config_path.exists() else None,
+            config_path=td.dc if td.dc.exists() else None,
             resolution=resolution,
             is_animated=is_animated,
-            is_mask_only=is_mask_only,
+            is_mask_only=not td.bg.exists() and td.mask.exists(),
         )
 
     @classmethod
@@ -150,11 +180,7 @@ class ThemeModel:
         for item in sorted(self.local_theme_dir.iterdir()):
             if item.is_dir():
                 # Check for theme files
-                has_bg = (item / '00.png').exists()
-                has_thumb = (item / 'Theme.png').exists()
-                has_mask = (item / '01.png').exists()
-
-                if has_bg or has_thumb or has_mask:
+                if ThemeDir(item).is_valid():
                     theme = ThemeInfo.from_directory(item, resolution)
 
                     # Apply filter
@@ -720,10 +746,10 @@ class OverlayModel:
             True if loaded successfully
         """
         try:
-            from ..dc_parser import dc_to_overlay_config, parse_dc_file
+            from ..dc_config import DcConfig
 
-            dc_data = parse_dc_file(str(dc_path))
-            config = dc_to_overlay_config(dc_data)
+            dc = DcConfig(dc_path)
+            config = dc.to_overlay_config()
 
             # Convert config to elements
             self.elements.clear()

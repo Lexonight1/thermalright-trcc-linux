@@ -839,8 +839,11 @@ class TestLedHidSenderHandshake:
 
         assert "Unknown" in info.model_name or "200" in info.model_name
 
-    def test_handshake_bad_magic_raises(self):
-        """Response with wrong magic bytes should raise RuntimeError."""
+    def test_handshake_bad_magic_warns(self):
+        """Response with wrong magic bytes should warn but still succeed.
+
+        Windows DeviceDataReceived1 doesn't validate magic — we match that.
+        """
         transport = _make_mock_transport()
         resp = bytearray(LED_RESPONSE_SIZE)
         resp[0:4] = b'\xFF\xFF\xFF\xFF'  # bad magic
@@ -848,11 +851,14 @@ class TestLedHidSenderHandshake:
         transport.read.return_value = bytes(resp)
 
         sender = LedHidSender(transport)
-        with pytest.raises(RuntimeError, match="bad magic"):
-            sender.handshake()
+        info = sender.handshake()
+        assert info is not None
 
-    def test_handshake_bad_cmd_byte_raises(self):
-        """Response with cmd != 1 should raise RuntimeError."""
+    def test_handshake_bad_cmd_byte_warns(self):
+        """Response with cmd != 1 should warn but still succeed.
+
+        Windows DeviceDataReceived1 doesn't validate cmd byte either.
+        """
         transport = _make_mock_transport()
         resp = bytearray(LED_RESPONSE_SIZE)
         resp[0:4] = LED_MAGIC
@@ -860,13 +866,13 @@ class TestLedHidSenderHandshake:
         transport.read.return_value = bytes(resp)
 
         sender = LedHidSender(transport)
-        with pytest.raises(RuntimeError, match="bad cmd byte"):
-            sender.handshake()
+        info = sender.handshake()
+        assert info is not None
 
     def test_handshake_short_response_raises(self):
-        """Response shorter than 20 bytes should raise RuntimeError."""
+        """Response shorter than 7 bytes should raise RuntimeError after retries."""
         transport = _make_mock_transport()
-        transport.read.return_value = b'\xDA\xDB\xDC\xDD' + b'\x00' * 10  # 14 bytes
+        transport.read.return_value = b'\xDA\xDB\xDC\xDD\x00\x00'  # 6 bytes (< 7)
 
         sender = LedHidSender(transport)
         with pytest.raises(RuntimeError, match="too short"):

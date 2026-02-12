@@ -310,7 +310,7 @@ class TestUCThemeLocal(unittest.TestCase):
             panel.set_theme_directory(tmp)
             # Switch to user filter
             panel._set_filter(UCThemeLocal.MODE_USER)
-            user_names = [w.item_info['name'] for w in panel.item_widgets
+            user_names = [w.item_info.name for w in panel.item_widgets
                           if hasattr(w, 'item_info')]
             self.assertEqual(user_names, ['Custom_Mine'])
 
@@ -454,8 +454,8 @@ class TestAutostart(unittest.TestCase):
 
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
     @patch('trcc.qt_components.uc_about._AUTOSTART_DIR')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={})
     def test_ensure_autostart_first_launch(self, mock_load, mock_save,
                                             mock_dir, mock_file):
         """First launch auto-enables autostart and marks configured."""
@@ -470,8 +470,8 @@ class TestAutostart(unittest.TestCase):
 
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
     @patch('trcc.qt_components.uc_about._AUTOSTART_DIR')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={'other_key': 'val'})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={'other_key': 'val'})
     def test_ensure_autostart_first_launch_preserves_config(self, mock_load,
                                                              mock_save,
                                                              mock_dir, mock_file):
@@ -485,8 +485,8 @@ class TestAutostart(unittest.TestCase):
     # --- ensure_autostart (subsequent launch) ---
 
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_subsequent_enabled(self, mock_load, mock_save,
                                                   mock_file):
         """Subsequent launch returns True when .desktop exists."""
@@ -497,8 +497,8 @@ class TestAutostart(unittest.TestCase):
         mock_save.assert_not_called()
 
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_subsequent_disabled(self, mock_load, mock_save,
                                                    mock_file):
         """Returns False when user removed .desktop file."""
@@ -511,8 +511,8 @@ class TestAutostart(unittest.TestCase):
     @patch('trcc.qt_components.uc_about._make_desktop_entry',
            return_value='[Desktop Entry]\nExec=/new/path\n')
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_refreshes_stale_path(self, mock_load, mock_save,
                                                     mock_file, mock_make):
         """Refreshes .desktop when Exec path changed (like Windows path check)."""
@@ -526,8 +526,8 @@ class TestAutostart(unittest.TestCase):
     @patch('trcc.qt_components.uc_about._make_desktop_entry',
            return_value='[Desktop Entry]\nExec=/same/path\n')
     @patch('trcc.qt_components.uc_about._AUTOSTART_FILE')
-    @patch('trcc.paths.save_config')
-    @patch('trcc.paths.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.conf.save_config')
+    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_no_refresh_when_same(self, mock_load, mock_save,
                                                     mock_file, mock_make):
         """Does not rewrite .desktop when content matches."""

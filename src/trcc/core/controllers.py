@@ -18,17 +18,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..conf import settings
 from ..paths import (
-    ensure_themes_extracted,
-    ensure_web_extracted,
-    ensure_web_masks_extracted,
-    get_saved_resolution,
-    get_theme_dir,
-    get_web_dir,
-    get_web_masks_dir,
-    is_resolution_installed,
-    mark_resolution_installed,
-    save_resolution,
+    ThemeDir,
+    ensure_all_data,
 )
 from .models import (
     DeviceInfo,
@@ -205,7 +198,7 @@ class DeviceController:
 
     def send_image_async(self, rgb565_data: bytes, width: int, height: int):
         """
-        Send image to device in background thread.
+        Send pre-converted RGB565 bytes to device in background thread.
 
         Non-blocking - emits on_send_complete when done.
         """
@@ -216,6 +209,25 @@ class DeviceController:
             self.on_send_started()
 
         def send_worker():
+            self.model.send_image(rgb565_data, width, height)
+
+        thread = threading.Thread(target=send_worker, daemon=True)
+        thread.start()
+
+    def send_pil_async(self, image: Any, width: int, height: int,
+                       byte_order: str = '>'):
+        """Send PIL Image to device — RGB565 conversion runs off main thread.
+
+        Use this for video playback to keep numpy work off the GUI thread.
+        """
+        if self.model.is_busy:
+            return
+
+        if self.on_send_started:
+            self.on_send_started()
+
+        def send_worker():
+            rgb565_data = image_to_rgb565(image, byte_order)
             self.model.send_image(rgb565_data, width, height)
 
         thread = threading.Thread(target=send_worker, daemon=True)
@@ -280,6 +292,7 @@ class VideoController:
         # Animation state
         self._timer_callback: Optional[Callable[[], None]] = None
         self._frame_counter = 0
+        self._progress_counter = 0
 
         # Wire up model callbacks
         self.model.on_state_changed = self._on_model_state_changed
@@ -336,14 +349,18 @@ class VideoController:
         frame = self.model.advance_frame()
 
         if frame:
-            # Update progress
-            if self.on_progress_update:
-                state = self.model.state
-                self.on_progress_update(
-                    state.progress,
-                    state.current_time_str,
-                    state.total_time_str
-                )
+            # Update progress bar at ~2fps (every 8th frame) to avoid
+            # hammering Qt widgets on every tick.
+            self._progress_counter += 1
+            if self._progress_counter >= 8:
+                self._progress_counter = 0
+                if self.on_progress_update:
+                    state = self.model.state
+                    self.on_progress_update(
+                        state.progress,
+                        state.current_time_str,
+                        state.total_time_str
+                    )
 
             # Send to LCD with frame skipping
             self._frame_counter += 1
@@ -526,10 +543,7 @@ class LCDDeviceController:
         # Working directory (Windows GifDirectory pattern)
         self.working_dir = Path(tempfile.mkdtemp(prefix='trcc_work_'))
 
-        # Current state — read saved resolution (default 320x320)
-        saved_w, saved_h = get_saved_resolution()
-        self.lcd_width = saved_w
-        self.lcd_height = saved_h
+        # Current state — resolution lives in settings singleton
         self.current_image: Optional[Any] = None  # PIL Image
         self.current_theme_path: Optional[Path] = None
         self._mask_source_dir: Optional[Path] = None  # where the mask came from
@@ -546,25 +560,31 @@ class LCDDeviceController:
         # Wire up sub-controller callbacks
         self._setup_callbacks()
 
+    @property
+    def lcd_width(self) -> int:
+        return settings.width
+
+    @property
+    def lcd_height(self) -> int:
+        return settings.height
+
     def _setup_theme_dirs(self, width: int, height: int):
         """Extract, locate, and wire theme/web/mask directories for a resolution."""
-        if not is_resolution_installed(width, height):
-            log.info("Setting up theme data for %dx%d (first time)...", width, height)
-            ensure_themes_extracted(width, height)
-            ensure_web_extracted(width, height)
-            ensure_web_masks_extracted(width, height)
-            mark_resolution_installed(width, height)
-        else:
-            log.debug("Theme data for %dx%d already installed, skipping download", width, height)
+        ensure_all_data(width, height)
 
-        theme_dir = Path(get_theme_dir(width, height))
-        web_dir = Path(get_web_dir(width, height))
-        masks_dir = Path(get_web_masks_dir(width, height))
+        # Re-resolve paths after extraction (settings caches stale paths)
+        settings.set_resolution(width, height, persist=False)
+        td = settings.theme_dir
+        web_dir = settings.web_dir
+        masks_dir = settings.masks_dir
+        assert td is not None
+        assert web_dir is not None
+        assert masks_dir is not None
         log.debug("Dirs: themes=%s (exists=%s), web=%s (exists=%s), masks=%s (exists=%s)",
-                  theme_dir, theme_dir.exists(), web_dir, web_dir.exists(),
+                  td.path, td.exists(), web_dir, web_dir.exists(),
                   masks_dir, masks_dir.exists())
         self.themes.set_directories(
-            local_dir=theme_dir if theme_dir.exists() else None,
+            local_dir=td.path if td.exists() else None,
             web_dir=web_dir if web_dir.exists() else None,
             masks_dir=masks_dir,
         )
@@ -574,9 +594,8 @@ class LCDDeviceController:
         # Theme selection -> load and preview
         self.themes.on_theme_selected = self._on_theme_selected
 
-        # Video frame -> preview and send (overlay applied before LCD send)
+        # Video frame -> preview (LCD send is handled in video_tick directly)
         self.video.on_frame_ready = self._on_video_frame
-        self.video.on_send_frame = self._on_video_send_frame
 
         # Device selection -> update resolution
         self.devices.on_device_selected = self._on_device_selected
@@ -627,13 +646,9 @@ class LCDDeviceController:
         if width == self.lcd_width and height == self.lcd_height:
             return
         log.info("Resolution changed: %dx%d → %dx%d", self.lcd_width, self.lcd_height, width, height)
-        self.lcd_width = width
-        self.lcd_height = height
+        settings.set_resolution(width, height, persist=persist)
         self.video.set_target_size(width, height)
         self.overlay.set_target_size(width, height)
-
-        if persist:
-            save_resolution(width, height)
 
         # Extract all .7z archives for this resolution if needed
         # Skip for LED-only devices (no LCD, resolution is 0×0)
@@ -686,12 +701,11 @@ class LCDDeviceController:
         assert theme.path is not None
 
         # Check for reference config.json first
-        json_path = theme.path / 'config.json'
-        dc_path = theme.path / 'config1.dc'
+        td = ThemeDir(theme.path)
         display_opts = {}
 
-        if json_path.exists():
-            display_opts = self._load_dc_config(dc_path)  # prefers config.json
+        if td.json.exists():
+            display_opts = self._load_dc_config(td.dc)  # prefers config.json
 
             # Enable overlay BEFORE loading background (so _render_and_send uses it)
             if display_opts.get('overlay_enabled'):
@@ -700,10 +714,10 @@ class LCDDeviceController:
             # Load mask by reference path (before background so it's ready for render)
             mask_ref = display_opts.get('mask_path')
             if mask_ref:
-                mask_dir = Path(mask_ref)
-                mask_file = mask_dir / '01.png'
+                mask_td = ThemeDir(mask_ref)
+                mask_file = mask_td.mask
                 if mask_file.exists():
-                    self._mask_source_dir = mask_dir
+                    self._mask_source_dir = mask_td.path
                     mask_pos = display_opts.get('mask_position')
                     self._load_theme_mask(mask_file, None)
                     if mask_pos:
@@ -735,14 +749,11 @@ class LCDDeviceController:
         self._copy_theme_to_working_dir(theme.path)
 
         # Parse DC configuration file from working dir
-        wd_dc_path = self.working_dir / 'config1.dc'
-        display_opts = self._load_dc_config(wd_dc_path)
+        wd = ThemeDir(self.working_dir)
+        display_opts = self._load_dc_config(wd.dc)
 
         # Load background / animation from working dir
         anim_file = display_opts.get('animation_file')
-        bg_path = self.working_dir / '00.png'
-        zt_path = self.working_dir / 'Theme.zt'
-
         if anim_file:
             anim_path = self.working_dir / anim_file
             if anim_path.exists():
@@ -756,24 +767,23 @@ class LCDDeviceController:
             load_path = wd_copy if wd_copy.exists() else theme.animation_path
             self.video.load(load_path)
             self.video.play()
-        elif zt_path.exists():
-            self.video.load(zt_path)
+        elif wd.zt.exists():
+            self.video.load(wd.zt)
             self.video.play()
-        elif bg_path.exists():
+        elif wd.bg.exists():
             mp4_files = list(self.working_dir.glob('*.mp4'))
             if mp4_files:
                 self.video.load(mp4_files[0])
                 self.video.play()
             else:
-                self._load_static_image(bg_path)
+                self._load_static_image(wd.bg)
         elif theme.is_mask_only:
             self._create_mask_background(theme)
 
-        # Load mask (01.png) from working dir with position from DC config
-        mask_path = self.working_dir / '01.png'
-        if mask_path.exists():
+        # Load mask from working dir with position from DC config
+        if wd.mask.exists():
             self._mask_source_dir = theme.path
-            self._load_theme_mask(mask_path, wd_dc_path if wd_dc_path.exists() else None)
+            self._load_theme_mask(wd.mask, wd.dc if wd.dc.exists() else None)
 
         self._update_status(f"Theme: {theme.name}")
 
@@ -824,14 +834,12 @@ class LCDDeviceController:
             if f.is_file():
                 shutil.copy2(str(f), str(self.working_dir / f.name))
 
-        # Load DC config
-        dc_path = self.working_dir / 'config1.dc'
-        self._load_dc_config(dc_path)
+        # Load DC config and mask from working dir
+        wd = ThemeDir(self.working_dir)
+        self._load_dc_config(wd.dc)
 
-        # Load mask image
-        mask_path = self.working_dir / '01.png'
-        if mask_path.exists():
-            self._load_theme_mask(mask_path, dc_path if dc_path.exists() else None)
+        if wd.mask.exists():
+            self._load_theme_mask(wd.mask, wd.dc if wd.dc.exists() else None)
 
         # Enable overlay so mask + metrics render
         self.overlay.enable(True)
@@ -884,11 +892,10 @@ class LCDDeviceController:
             return None
 
         try:
-            from ..dc_parser import parse_dc_file
-            dc_data = parse_dc_file(str(dc_path))
-            mask_settings = dc_data.get('mask_settings', {})
-            if mask_settings.get('mask_enabled'):
-                center_pos = mask_settings.get('mask_position')
+            from ..dc_config import DcConfig
+            dc = DcConfig(dc_path)
+            if dc.mask_enabled:
+                center_pos = dc.mask_settings.get('mask_position')
                 if center_pos:
                     return (
                         center_pos[0] - mask_img.width // 2,
@@ -936,10 +943,11 @@ class LCDDeviceController:
             rendered = self.overlay.render(self.current_image)
             thumb = rendered.copy()
             thumb.thumbnail((120, 120))
-            thumb.save(str(theme_path / 'Theme.png'))
+            td = ThemeDir(theme_path)
+            thumb.save(str(td.preview))
 
             # Save current frame as 00.png for static preview/fallback
-            self.current_image.save(str(theme_path / '00.png'))
+            self.current_image.save(str(td.bg))
 
             # Build config.json with path references (no file copies)
             renderer = self.overlay._ensure_renderer()
@@ -952,14 +960,14 @@ class LCDDeviceController:
                 background_path = str(self.video.model.source_path)
             elif self.current_theme_path:
                 # Static image — reference original 00.png
-                orig_bg = self.current_theme_path / '00.png'
+                orig_bg = ThemeDir(self.current_theme_path).bg
                 if orig_bg.exists():
                     background_path = str(orig_bg)
 
             # Determine mask source path (from apply_mask or load_local_theme)
             mask_path = None
             if mask_img and self._mask_source_dir:
-                mask_file = self._mask_source_dir / '01.png'
+                mask_file = ThemeDir(self._mask_source_dir).mask
                 if mask_file.exists():
                     mask_path = str(self._mask_source_dir)
 
@@ -971,7 +979,7 @@ class LCDDeviceController:
             if mask_path and mask_pos:
                 config_json['mask_position'] = list(mask_pos)
 
-            with open(str(theme_path / 'config.json'), 'w') as f:
+            with open(str(td.json), 'w') as f:
                 json.dump(config_json, f, indent=2)
 
             self.current_theme_path = theme_path
@@ -1043,14 +1051,42 @@ class LCDDeviceController:
         self.video.seek(percent)
 
     def video_tick(self):
-        """Called by GUI timer to advance video frame."""
+        """Called by GUI timer to advance video frame.
+
+        Process each frame once: overlay → brightness → rotation, then send
+        the same processed result to both preview and LCD.  The old path ran
+        overlay + brightness + rotation twice (once for preview, once for LCD
+        via on_send_frame) which caused visible stutter.
+        """
         frame = self.video.tick()
-        if frame:
-            self.current_image = frame
-            # Apply overlay
-            if self.overlay.is_enabled():
-                frame = self.overlay.render(frame)
-            self._update_preview(frame)
+        if not frame:
+            return
+
+        self.current_image = frame
+
+        # Apply overlay once
+        if self.overlay.is_enabled():
+            frame = self.overlay.render(frame)
+
+        # Apply brightness + rotation once
+        adjusted = self._apply_brightness(frame)
+        rotated = self._apply_rotation(adjusted)
+
+        # Send processed frame to preview (bypass _update_preview to avoid
+        # re-applying brightness/rotation)
+        if self.on_preview_update:
+            self.on_preview_update(rotated)
+
+        # Send same processed frame to LCD — RGB565 conversion runs off
+        # main thread via send_pil_async to avoid blocking the GUI.
+        if self.auto_send:
+            device = self.devices.get_selected()
+            if device:
+                byte_order = '>'
+                if device.protocol == 'scsi' and device.resolution != (320, 320):
+                    byte_order = '<'
+                self.devices.send_pil_async(
+                    rotated, self.lcd_width, self.lcd_height, byte_order)
 
     def get_video_interval(self) -> int:
         """Get video frame interval for timer setup."""
@@ -1063,16 +1099,6 @@ class LCDDeviceController:
     # =========================================================================
     # Device Operations
     # =========================================================================
-
-    def _on_video_send_frame(self, frame: Any):
-        """Send video frame to LCD with overlay applied.
-
-        Matches Tkinter _animate_video(): render overlay on frame, then send.
-        Called every LCD_SEND_INTERVAL frames by VideoController.tick().
-        """
-        if self.overlay.is_enabled():
-            frame = self.overlay.render(frame)
-        self._send_frame_to_lcd(frame)
 
     def send_current_image(self):
         """Send current image to LCD."""
@@ -1165,7 +1191,7 @@ class LCDDeviceController:
             display_options dict (may contain 'animation_file' from JSON config).
         """
         # Try JSON config first (same directory as dc_path)
-        json_path = dc_path.parent / 'config.json' if dc_path else None
+        json_path = ThemeDir(dc_path.parent).json if dc_path else None
         if json_path and json_path.exists():
             try:
                 from ..dc_parser import load_config_json
@@ -1184,14 +1210,14 @@ class LCDDeviceController:
         if not dc_path or not dc_path.exists():
             return {}
         try:
-            from ..dc_parser import dc_to_overlay_config, parse_dc_file
-            dc_data = parse_dc_file(str(dc_path))
-            overlay_config = dc_to_overlay_config(dc_data)
+            from ..dc_config import DcConfig
+            dc = DcConfig(dc_path)
+            overlay_config = dc.to_overlay_config()
             self.overlay.set_config(overlay_config)
             self.overlay.set_config_resolution(self.lcd_width, self.lcd_height)
             # Preserve raw DC data for lossless save round-trip
-            self.overlay.model.set_dc_data(dc_data)
-            return dc_data.get('display_options', {})
+            self.overlay.model.set_dc_data(dc.to_dict())
+            return dc.display_options
         except Exception as e:
             log.error("Failed to parse DC file: %s", e)
             return {}
@@ -1427,7 +1453,7 @@ class LEDDeviceController:
             device_info: DeviceInfo from device detection.
             led_style: LED style (from handshake pm or config).
         """
-        from ..paths import device_config_key
+        from ..conf import device_config_key
 
         self._device_info = device_info
         self._led_style = led_style
@@ -1464,7 +1490,7 @@ class LEDDeviceController:
         if not self._device_key:
             return
         try:
-            from ..paths import save_device_setting
+            from ..conf import save_device_setting
 
             state = self.led.model.state
             config = {
@@ -1498,7 +1524,7 @@ class LEDDeviceController:
         if not self._device_key:
             return
         try:
-            from ..paths import get_device_config
+            from ..conf import get_device_config
             from .models import LEDMode
 
             dev_config = get_device_config(self._device_key)

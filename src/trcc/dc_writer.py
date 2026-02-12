@@ -94,61 +94,12 @@ def write_dc_file(config: ThemeConfig, filepath: str) -> None:
         filepath: Path to write config1.dc
     """
     with open(filepath, 'wb') as f:
-        # Magic byte: 0xDD for user/cloud themes
         f.write(struct.pack('B', 0xDD))
-
-        # System info enabled flag
         f.write(struct.pack('?', config.system_info_enabled))
-
-        # Element count
         f.write(struct.pack('<i', len(config.elements)))
-
-        # Write each element
         for elem in config.elements:
-            # 6 int32s: mode, modeSub, x, y, mainCount, subCount
-            f.write(struct.pack('<i', elem.mode))
-            f.write(struct.pack('<i', elem.mode_sub))
-            f.write(struct.pack('<i', elem.x))
-            f.write(struct.pack('<i', elem.y))
-            f.write(struct.pack('<i', elem.main_count))
-            f.write(struct.pack('<i', elem.sub_count))
-
-            # Font name (length-prefixed string)
-            _write_string(f, elem.font_name)
-
-            # Font size (float)
-            f.write(struct.pack('<f', elem.font_size))
-
-            # Font style, unit, charset (3 bytes)
-            f.write(struct.pack('B', elem.font_style))
-            f.write(struct.pack('B', elem.font_unit))
-            f.write(struct.pack('B', elem.font_charset))
-
-            # Color ARGB (4 bytes)
-            a, r, g, b = elem.color_argb
-            f.write(struct.pack('BBBB', a, r, g, b))
-
-            # Text content (length-prefixed string)
-            _write_string(f, elem.text)
-
-        # Display options
-        f.write(struct.pack('?', config.background_display))   # myBjxs
-        f.write(struct.pack('?', config.transparent_display))  # myTpxs
-        f.write(struct.pack('<i', config.rotation))            # directionB
-        f.write(struct.pack('<i', config.ui_mode))             # myUIMode
-        f.write(struct.pack('<i', config.display_mode))        # myMode
-
-        # Overlay settings
-        f.write(struct.pack('?', config.overlay_enabled))      # myYcbk
-        f.write(struct.pack('<i', config.overlay_x))           # JpX
-        f.write(struct.pack('<i', config.overlay_y))           # JpY
-        f.write(struct.pack('<i', config.overlay_w))           # JpW
-        f.write(struct.pack('<i', config.overlay_h))           # JpH
-
-        # Mask settings
-        f.write(struct.pack('?', config.mask_enabled))         # myMbxs
-        f.write(struct.pack('<i', config.mask_x))              # XvalMB
-        f.write(struct.pack('<i', config.mask_y))              # YvalMB
+            _write_element(f, elem)
+        _write_display_options(f, config)
 
 
 def write_tr_export(config: ThemeConfig, theme_path: str, export_path: str) -> None:
@@ -167,43 +118,11 @@ def write_tr_export(config: ThemeConfig, theme_path: str, export_path: str) -> N
         # Magic header for .tr export
         f.write(struct.pack('BBBB', 0xDD, 0xDC, 0xDD, 0xDC))
 
-        # System info enabled flag
         f.write(struct.pack('?', config.system_info_enabled))
-
-        # Element count
         f.write(struct.pack('<i', len(config.elements)))
-
-        # Write each element (same as config1.dc)
         for elem in config.elements:
-            f.write(struct.pack('<i', elem.mode))
-            f.write(struct.pack('<i', elem.mode_sub))
-            f.write(struct.pack('<i', elem.x))
-            f.write(struct.pack('<i', elem.y))
-            f.write(struct.pack('<i', elem.main_count))
-            f.write(struct.pack('<i', elem.sub_count))
-            _write_string(f, elem.font_name)
-            f.write(struct.pack('<f', elem.font_size))
-            f.write(struct.pack('B', elem.font_style))
-            f.write(struct.pack('B', elem.font_unit))
-            f.write(struct.pack('B', elem.font_charset))
-            a, r, g, b = elem.color_argb
-            f.write(struct.pack('BBBB', a, r, g, b))
-            _write_string(f, elem.text)
-
-        # Display options
-        f.write(struct.pack('?', config.background_display))
-        f.write(struct.pack('?', config.transparent_display))
-        f.write(struct.pack('<i', config.rotation))
-        f.write(struct.pack('<i', config.ui_mode))
-        f.write(struct.pack('<i', config.display_mode))
-        f.write(struct.pack('?', config.overlay_enabled))
-        f.write(struct.pack('<i', config.overlay_x))
-        f.write(struct.pack('<i', config.overlay_y))
-        f.write(struct.pack('<i', config.overlay_w))
-        f.write(struct.pack('<i', config.overlay_h))
-        f.write(struct.pack('?', config.mask_enabled))
-        f.write(struct.pack('<i', config.mask_x))
-        f.write(struct.pack('<i', config.mask_y))
+            _write_element(f, elem)
+        _write_display_options(f, config)
 
         # Padding (10240 bytes of 0xDC) - Windows pattern
         f.write(bytes([0xDC] * 10240))
@@ -272,6 +191,41 @@ def _write_string(f, s: str) -> None:
         f.write(struct.pack('B', length >> 7))
 
     f.write(encoded)
+
+
+def _write_element(f, elem: "DisplayElement") -> None:
+    """Write a single UCXiTongXianShiSub element to a binary stream."""
+    f.write(struct.pack('<i', elem.mode))
+    f.write(struct.pack('<i', elem.mode_sub))
+    f.write(struct.pack('<i', elem.x))
+    f.write(struct.pack('<i', elem.y))
+    f.write(struct.pack('<i', elem.main_count))
+    f.write(struct.pack('<i', elem.sub_count))
+    _write_string(f, elem.font_name)
+    f.write(struct.pack('<f', elem.font_size))
+    f.write(struct.pack('B', elem.font_style))
+    f.write(struct.pack('B', elem.font_unit))
+    f.write(struct.pack('B', elem.font_charset))
+    a, r, g, b = elem.color_argb
+    f.write(struct.pack('BBBB', a, r, g, b))
+    _write_string(f, elem.text)
+
+
+def _write_display_options(f, config: ThemeConfig) -> None:
+    """Write display options + overlay + mask settings to a binary stream."""
+    f.write(struct.pack('?', config.background_display))
+    f.write(struct.pack('?', config.transparent_display))
+    f.write(struct.pack('<i', config.rotation))
+    f.write(struct.pack('<i', config.ui_mode))
+    f.write(struct.pack('<i', config.display_mode))
+    f.write(struct.pack('?', config.overlay_enabled))
+    f.write(struct.pack('<i', config.overlay_x))
+    f.write(struct.pack('<i', config.overlay_y))
+    f.write(struct.pack('<i', config.overlay_w))
+    f.write(struct.pack('<i', config.overlay_h))
+    f.write(struct.pack('?', config.mask_enabled))
+    f.write(struct.pack('<i', config.mask_x))
+    f.write(struct.pack('<i', config.mask_y))
 
 
 def overlay_config_to_theme(overlay_config: dict,

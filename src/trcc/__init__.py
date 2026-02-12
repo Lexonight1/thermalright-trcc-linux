@@ -27,6 +27,7 @@ __version__ = "1.0.0"
 __author__ = "TRCC Linux Contributors"
 
 # Core exports
+from trcc.dc_config import DcConfig
 from trcc.dc_parser import dc_to_overlay_config, parse_dc_file
 from trcc.device_detector import detect_devices, get_device_path
 
@@ -52,6 +53,7 @@ __all__ = [
     "get_all_metrics",
     "format_metric",
     # Theme parsing
+    "DcConfig",
     "parse_dc_file",
     "dc_to_overlay_config",
     # Animation

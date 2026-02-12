@@ -846,9 +846,9 @@ class TestResume(unittest.TestCase):
             dev = self._make_device()
             mock_det = MagicMock()
             mock_det.detect_devices.return_value = [dev]
-            mock_paths = MagicMock()
-            mock_paths.device_config_key.return_value = '0:87cd_70db'
-            mock_paths.get_device_config.return_value = {
+            mock_conf = MagicMock()
+            mock_conf.device_config_key.return_value = '0:87cd_70db'
+            mock_conf.get_device_config.return_value = {
                 'theme_path': theme_dir,
                 'brightness_level': 3,
                 'rotation': 0,
@@ -862,7 +862,8 @@ class TestResume(unittest.TestCase):
             with patch.dict('sys.modules', {
                 'trcc.device_detector': mock_det,
                 'trcc.lcd_driver': mock_lcd,
-                'trcc.paths': mock_paths,
+                'trcc.paths': MagicMock(),
+                'trcc.conf': mock_conf,
             }):
                 result = resume()
             self.assertEqual(result, 0)
@@ -881,22 +882,25 @@ class TestResume(unittest.TestCase):
             mock_det = MagicMock()
             mock_det.detect_devices.return_value = [dev]
             mock_paths = MagicMock()
-            mock_paths.device_config_key.return_value = '0:87cd_70db'
-            mock_paths.get_device_config.return_value = {
-                'theme_path': theme_dir,
-                'brightness_level': 1,
-                'rotation': 90,
-            }
 
             mock_driver = MagicMock()
             mock_driver.implementation.resolution = (320, 320)
             mock_lcd = MagicMock()
             mock_lcd.LCDDriver.return_value = mock_driver
 
+            mock_conf = MagicMock()
+            mock_conf.device_config_key.return_value = '0:87cd_70db'
+            mock_conf.get_device_config.return_value = {
+                'theme_path': theme_dir,
+                'brightness_level': 1,
+                'rotation': 90,
+            }
+
             with patch.dict('sys.modules', {
                 'trcc.device_detector': mock_det,
                 'trcc.lcd_driver': mock_lcd,
                 'trcc.paths': mock_paths,
+                'trcc.conf': mock_conf,
             }):
                 result = resume()
             self.assertEqual(result, 0)
@@ -906,12 +910,13 @@ class TestResume(unittest.TestCase):
         hid_dev = self._make_device('/dev/hidraw0', 'LED', protocol='hid')
         mock_det = MagicMock()
         mock_det.detect_devices.return_value = [hid_dev]
-        mock_paths = MagicMock()
+        mock_conf = MagicMock()
 
         with patch.dict('sys.modules', {
             'trcc.device_detector': mock_det,
             'trcc.lcd_driver': MagicMock(),
-            'trcc.paths': mock_paths,
+            'trcc.paths': MagicMock(),
+            'trcc.conf': mock_conf,
         }):
             result = resume()
         self.assertEqual(result, 1)
@@ -921,16 +926,17 @@ class TestResume(unittest.TestCase):
         dev = self._make_device()
         mock_det = MagicMock()
         mock_det.detect_devices.return_value = [dev]
-        mock_paths = MagicMock()
-        mock_paths.device_config_key.return_value = '0:87cd_70db'
-        mock_paths.get_device_config.return_value = {
+        mock_conf = MagicMock()
+        mock_conf.device_config_key.return_value = '0:87cd_70db'
+        mock_conf.get_device_config.return_value = {
             'theme_path': '/nonexistent/theme/dir',
         }
 
         with patch.dict('sys.modules', {
             'trcc.device_detector': mock_det,
             'trcc.lcd_driver': MagicMock(),
-            'trcc.paths': mock_paths,
+            'trcc.paths': MagicMock(),
+            'trcc.conf': mock_conf,
         }):
             result = resume()
         self.assertEqual(result, 1)
@@ -943,6 +949,7 @@ class TestResume(unittest.TestCase):
             'trcc.device_detector': mock_det,
             'trcc.lcd_driver': MagicMock(),
             'trcc.paths': MagicMock(),
+            'trcc.conf': MagicMock(),
         }):
             result = resume()
         self.assertEqual(result, 1)
@@ -1143,8 +1150,8 @@ class TestProbeDevice(unittest.TestCase):
 
     def test_hid_lcd_probe_success(self):
         """Probe resolves HID LCD device info via handshake."""
-        from trcc.hid_device import DeviceInfo
-        mock_info = DeviceInfo(
+        from trcc.hid_device import HidHandshakeInfo
+        mock_info = HidHandshakeInfo(
             device_type=2, mode_byte_1=100, mode_byte_2=0,
             serial="ABCDEF0123456789", resolution=(320, 320),
         )
@@ -1235,7 +1242,7 @@ class TestHidDebug(unittest.TestCase):
         self.assertEqual(result, 1)
 
     def test_hid_device_handshake_none(self):
-        """Device found but handshake returns None."""
+        """LED device found but handshake returns None."""
         from trcc.device_detector import DetectedDevice
         dev = DetectedDevice(
             vid=0x0416, pid=0x8001, vendor_name="Winbond",
@@ -1244,22 +1251,23 @@ class TestHidDebug(unittest.TestCase):
         )
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = None
+        mock_protocol.last_error = None
         with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
-             patch('trcc.device_factory.HidProtocol', return_value=mock_protocol):
+             patch('trcc.device_factory.LedProtocol', return_value=mock_protocol):
             result = hid_debug()
         self.assertEqual(result, 0)
         mock_protocol.close.assert_called_once()
 
     def test_hid_device_handshake_success(self):
-        """Device found and handshake succeeds."""
+        """LCD device found and handshake succeeds."""
         from trcc.device_detector import DetectedDevice
-        from trcc.hid_device import DeviceInfo
+        from trcc.hid_device import HidHandshakeInfo
         dev = DetectedDevice(
             vid=0x0416, pid=0x5302, vendor_name="Winbond",
             product_name="USBDISPLAY (HID)", usb_path="1-2",
             implementation="hid_type2", protocol="hid", device_type=2,
         )
-        info = DeviceInfo(
+        info = HidHandshakeInfo(
             device_type=2, mode_byte_1=100, mode_byte_2=0,
             serial="ABCDEF0123456789", fbl=100,
             resolution=(320, 320), raw_response=bytes(64),
@@ -1268,6 +1276,27 @@ class TestHidDebug(unittest.TestCase):
         mock_protocol.handshake.return_value = info
         with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
              patch('trcc.device_factory.HidProtocol', return_value=mock_protocol):
+            result = hid_debug()
+        self.assertEqual(result, 0)
+
+    def test_led_device_handshake_success(self):
+        """LED device found and handshake succeeds."""
+        from trcc.device_detector import DetectedDevice
+        from trcc.led_device import LedDeviceStyle, LedHandshakeInfo
+        dev = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond",
+            product_name="LED Controller", usb_path="1-2",
+            implementation="hid_led", protocol="hid", device_type=1,
+        )
+        style = LedDeviceStyle(1, 30, 10, 1, "AX120_DIGITAL")
+        info = LedHandshakeInfo(
+            pm=3, sub_type=0, style=style,
+            model_name="AX120_DIGITAL", raw_response=bytes(64),
+        )
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = info
+        with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
+             patch('trcc.device_factory.LedProtocol', return_value=mock_protocol):
             result = hid_debug()
         self.assertEqual(result, 0)
 
@@ -1280,7 +1309,7 @@ class TestHidDebug(unittest.TestCase):
             implementation="hid_led", protocol="hid", device_type=1,
         )
         with patch('trcc.device_detector.detect_devices', return_value=[dev]), \
-             patch('trcc.device_factory.HidProtocol',
+             patch('trcc.device_factory.LedProtocol',
                    side_effect=ImportError("No module named 'usb'")):
             result = hid_debug()
         self.assertEqual(result, 0)

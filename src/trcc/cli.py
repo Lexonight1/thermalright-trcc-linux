@@ -33,18 +33,8 @@ def _ensure_extracted(driver):
     try:
         if driver.implementation:
             w, h = driver.implementation.resolution
-            from trcc.paths import (
-                ensure_themes_extracted,
-                ensure_web_extracted,
-                ensure_web_masks_extracted,
-                is_resolution_installed,
-                mark_resolution_installed,
-            )
-            if not is_resolution_installed(w, h):
-                ensure_themes_extracted(w, h)
-                ensure_web_extracted(w, h)
-                ensure_web_masks_extracted(w, h)
-                mark_resolution_installed(w, h)
+            from trcc.paths import ensure_all_data
+            ensure_all_data(w, h)
     except Exception:
         pass  # Non-fatal — themes are optional for CLI commands
 
@@ -292,7 +282,7 @@ def _probe_device(dev):
     elif dev.implementation in ('hid_type2', 'hid_type3'):
         try:
             from trcc.device_factory import DeviceProtocolFactory
-            from trcc.hid_device import DeviceInfo as HidDeviceInfo
+            from trcc.hid_device import HidHandshakeInfo
             device_info = {
                 'vid': dev.vid, 'pid': dev.pid,
                 'protocol': dev.protocol, 'device_type': dev.device_type,
@@ -301,7 +291,7 @@ def _probe_device(dev):
             }
             protocol = DeviceProtocolFactory.get_protocol(device_info)
             raw_info = protocol.handshake()
-            if isinstance(raw_info, HidDeviceInfo):
+            if isinstance(raw_info, HidHandshakeInfo):
                 result['pm'] = raw_info.mode_byte_1
                 result['resolution'] = raw_info.resolution
                 if raw_info.serial:
@@ -520,9 +510,9 @@ def resume():
     try:
         import time
 
+        from trcc.conf import device_config_key, get_device_config
         from trcc.device_detector import detect_devices
         from trcc.lcd_driver import LCDDriver
-        from trcc.paths import device_config_key, get_device_config
 
         # Wait for USB devices to appear (they may not be ready at boot)
         devices = []
@@ -648,19 +638,127 @@ def show_info():
         return 1
 
 
+def _hex_dump(data: bytes, max_bytes: int = 64) -> None:
+    """Print a hex dump of data (for hid-debug diagnostics)."""
+    for row in range(0, min(len(data), max_bytes), 16):
+        hex_str = ' '.join(f'{b:02x}' for b in data[row:row + 16])
+        ascii_str = ''.join(
+            chr(b) if 32 <= b < 127 else '.'
+            for b in data[row:row + 16]
+        )
+        print(f"  {row:04x}: {hex_str:<48s} {ascii_str}")
+
+
+def _hid_debug_lcd(dev) -> None:
+    """HID handshake diagnostic for LCD devices (Type 2/3)."""
+    from trcc.device_factory import HidProtocol
+    from trcc.hid_device import (
+        FBL_TO_RESOLUTION,
+        PM_TO_BUTTON_IMAGE,
+        fbl_to_resolution,
+        pm_to_fbl,
+    )
+
+    protocol = HidProtocol(
+        vid=dev.vid, pid=dev.pid,
+        device_type=dev.device_type,
+    )
+    info = protocol.handshake()
+
+    if info is None:
+        error = protocol.last_error
+        if error:
+            print(f"  Handshake FAILED: {error}")
+        else:
+            print("  Handshake returned None (no response from device)")
+        protocol.close()
+        return
+
+    pm = info.mode_byte_1
+    sub = info.mode_byte_2
+    fbl = info.fbl if info.fbl is not None else pm_to_fbl(pm, sub)
+    resolution = info.resolution or fbl_to_resolution(fbl, pm)
+
+    print("  Handshake OK!")
+    print(f"  PM byte  = {pm} (0x{pm:02x})")
+    print(f"  SUB byte = {sub} (0x{sub:02x})")
+    print(f"  FBL      = {fbl} (0x{fbl:02x})")
+    print(f"  Serial   = {info.serial}")
+    print(f"  Resolution = {resolution[0]}x{resolution[1]}")
+
+    # Button image from PM
+    button = PM_TO_BUTTON_IMAGE.get(pm)
+    if button:
+        print(f"  Button image = {button}")
+    else:
+        print(f"  Button image = unknown PM={pm} (defaulting to CZTV)")
+
+    # Known FBL?
+    if fbl in FBL_TO_RESOLUTION:
+        print(f"  FBL {fbl} = known resolution")
+    else:
+        print(f"  FBL {fbl} = UNKNOWN (not in mapping table)")
+
+    # Raw response hex dump
+    if info.raw_response:
+        print("\n  Raw handshake response (first 64 bytes):")
+        _hex_dump(info.raw_response)
+
+    protocol.close()
+
+
+def _hid_debug_led(dev) -> None:
+    """HID handshake diagnostic for LED devices (Type 1)."""
+    from trcc.device_factory import LedProtocol
+    from trcc.led_device import PM_TO_STYLE
+
+    protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
+    info = protocol.handshake()
+
+    if info is None:
+        error = protocol.last_error
+        if error:
+            print(f"  Handshake FAILED: {error}")
+        else:
+            print("  Handshake returned None (no response from device)")
+        protocol.close()
+        return
+
+    print("  Handshake OK!")
+    print(f"  PM byte    = {info.pm} (0x{info.pm:02x})")
+    print(f"  Sub-type   = {info.sub_type} (0x{info.sub_type:02x})")
+    print(f"  Model      = {info.model_name}")
+
+    style = info.style
+    if style:
+        print(f"  Style ID   = {style.style_id}")
+        print(f"  LED count  = {style.led_count}")
+        print(f"  Segments   = {style.segment_count}")
+        print(f"  Zones      = {style.zone_count}")
+
+    if info.pm in PM_TO_STYLE:
+        print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
+    else:
+        print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
+        print("  This device falls back to AX120 defaults.")
+        print(f"  Please report PM {info.pm} in your GitHub issue.")
+
+    # Raw response hex dump
+    if info.raw_response:
+        print("\n  Raw handshake response (first 64 bytes):")
+        _hex_dump(info.raw_response)
+
+    protocol.close()
+
+
 def hid_debug():
     """HID handshake diagnostic — prints hex dump and resolved device info.
 
     Users can share this output in bug reports to help debug HID device issues.
+    Routes LED devices (Type 1) through LedProtocol, LCD devices through HidProtocol.
     """
     try:
         from trcc.device_detector import detect_devices
-        from trcc.hid_device import (
-            FBL_TO_RESOLUTION,
-            PM_TO_BUTTON_IMAGE,
-            fbl_to_resolution,
-            pm_to_fbl,
-        )
 
         print("HID Debug — Handshake Diagnostic")
         print("=" * 60)
@@ -675,70 +773,27 @@ def hid_debug():
             return 0
 
         for dev in hid_devices:
+            is_led = dev.implementation == 'hid_led'
+            dev_kind = "LED" if is_led else f"LCD (Type {dev.device_type})"
+
             print(f"\nDevice: {dev.vendor_name} {dev.product_name}")
             print(f"  VID:PID = {dev.vid:04x}:{dev.pid:04x}")
-            print(f"  Type = {dev.device_type}")
+            print(f"  Kind = {dev_kind}")
             print(f"  Implementation = {dev.implementation}")
 
-            # Attempt handshake
             print("\n  Attempting handshake...")
             try:
-                from trcc.device_factory import HidProtocol
-                protocol = HidProtocol(
-                    vid=dev.vid, pid=dev.pid,
-                    device_type=dev.device_type,
-                )
-                info = protocol.handshake()
-                if info is None:
-                    print("  Handshake returned None (protocol error)")
-                    protocol.close()
-                    continue
-
-                pm = info.mode_byte_1
-                sub = info.mode_byte_2
-                fbl = info.fbl if info.fbl is not None else pm_to_fbl(pm, sub)
-                resolution = info.resolution or fbl_to_resolution(fbl, pm)
-
-                print("  Handshake OK!")
-                print(f"  PM byte  = {pm} (0x{pm:02x})")
-                print(f"  SUB byte = {sub} (0x{sub:02x})")
-                print(f"  FBL      = {fbl} (0x{fbl:02x})")
-                print(f"  Serial   = {info.serial}")
-                print(f"  Resolution = {resolution[0]}x{resolution[1]}")
-
-                # Button image from PM
-                button = PM_TO_BUTTON_IMAGE.get(pm)
-                if button:
-                    print(f"  Button image = {button}")
+                if is_led:
+                    _hid_debug_led(dev)
                 else:
-                    print(f"  Button image = unknown PM={pm} (defaulting to CZTV)")
-
-                # Known FBL?
-                if fbl in FBL_TO_RESOLUTION:
-                    print(f"  FBL {fbl} = known resolution")
-                else:
-                    print(f"  FBL {fbl} = UNKNOWN (not in mapping table)")
-
-                # Raw response hex dump
-                if info.raw_response:
-                    print("\n  Raw handshake response (first 64 bytes):")
-                    raw = info.raw_response
-                    for row in range(0, min(len(raw), 64), 16):
-                        hex_str = ' '.join(f'{b:02x}' for b in raw[row:row+16])
-                        ascii_str = ''.join(
-                            chr(b) if 32 <= b < 127 else '.'
-                            for b in raw[row:row+16]
-                        )
-                        print(f"  {row:04x}: {hex_str:<48s} {ascii_str}")
-
-                protocol.close()
-
+                    _hid_debug_lcd(dev)
             except ImportError as e:
                 print(f"  Missing dependency: {e}")
                 print("  Install: pip install pyusb  (or pip install hidapi)")
             except Exception as e:
                 print(f"  Handshake FAILED: {e}")
-                print("  (This error is what causes 'Send failed' in the GUI)")
+                import traceback
+                traceback.print_exc()
 
         print(f"\n{'=' * 60}")
         print("Copy the output above and paste it in your GitHub issue.")
@@ -1024,7 +1079,7 @@ def uninstall():
     import shutil
     from pathlib import Path
 
-    from trcc.paths import clear_installed_resolutions
+    from trcc.conf import clear_installed_resolutions
 
     # Clear resolution markers before wiping config dir
     clear_installed_resolutions()
@@ -1154,7 +1209,7 @@ def download_themes(pack=None, show_list=False, force=False, show_info=False):
             return 0
 
         if force:
-            from trcc.paths import clear_installed_resolutions
+            from trcc.conf import clear_installed_resolutions
             clear_installed_resolutions()
 
         return download_pack(pack, force=force)

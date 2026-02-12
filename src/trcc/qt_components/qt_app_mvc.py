@@ -34,6 +34,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..conf import (
+    device_config_key,
+    get_device_config,
+    save_device_setting,
+    settings,
+)
+
 # Import MVC core
 from ..core import (
     DeviceInfo,
@@ -43,16 +50,6 @@ from ..core import (
 )
 from ..core.controllers import LEDDeviceController
 from ..dc_writer import CarouselConfig, read_carousel_config, write_carousel_config
-from ..paths import (
-    device_config_key,
-    get_device_config,
-    get_saved_temp_unit,
-    get_theme_dir,
-    get_web_dir,
-    get_web_masks_dir,
-    save_device_setting,
-    save_temp_unit,
-)
 from ..sensor_enumerator import SensorEnumerator
 
 # Import view components
@@ -219,7 +216,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self._connect_view_signals()
 
         # Restore saved temperature unit preference
-        saved_unit = get_saved_temp_unit()
+        saved_unit = settings.temp_unit
         self.controller.overlay.set_temp_unit(saved_unit)
         self.uc_system_info.set_temp_unit(saved_unit)
         self.uc_led_control.set_temp_unit(saved_unit)
@@ -500,7 +497,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.overlay.set_temp_unit(temp_int)
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
-        save_temp_unit(temp_int)
+        settings.set_temp_unit(temp_int)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, enabled: bool):
@@ -537,21 +534,19 @@ class TRCCMainWindowMVC(QMainWindow):
         # Update settings panel (screencast aspect ratio)
         self.uc_theme_setting.set_resolution(width, height)
 
-        # Reload theme directories for new resolution
-        theme_dir = Path(get_theme_dir(width, height))
-        if theme_dir.exists():
-            self.uc_theme_local.set_theme_directory(theme_dir)
-            # Load carousel config for new resolution
-            self._load_carousel_config(theme_dir)
+        # Reload theme directories for new resolution (paths auto-resolved in settings)
+        td = settings.theme_dir
+        if td and td.exists():
+            self.uc_theme_local.set_theme_directory(td.path)
+            self._load_carousel_config(td.path)
 
         # Cloud themes — per-resolution Web directory (matches Windows Web/{W}{H}/)
-        web_dir = Path(get_web_dir(width, height))
-
-        self.uc_theme_web.set_web_directory(web_dir)
+        if settings.web_dir:
+            self.uc_theme_web.set_web_directory(settings.web_dir)
         self.uc_theme_web.set_resolution(f'{width}x{height}')
 
-        masks_dir = Path(get_web_masks_dir(width, height))
-        self.uc_theme_mask.set_mask_directory(masks_dir)
+        if settings.masks_dir:
+            self.uc_theme_mask.set_mask_directory(settings.masks_dir)
         self.uc_theme_mask.set_resolution(f'{width}x{height}')
 
         self.uc_preview.set_status(f"Resolution: {width}×{height}")
@@ -725,21 +720,20 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _init_theme_directories(self):
         """Initialize theme browser directories."""
-        w, h = self.controller.lcd_width, self.controller.lcd_height
+        w, h = settings.width, settings.height
+        td = settings.theme_dir
 
-        theme_dir = Path(get_theme_dir(w, h))
-        self.uc_theme_local.set_theme_directory(theme_dir)
-        if theme_dir.exists():
-            # Load carousel config (Theme.dc) after themes are loaded
-            self._load_carousel_config(theme_dir)
+        if td:
+            self.uc_theme_local.set_theme_directory(td.path)
+            if td.exists():
+                self._load_carousel_config(td.path)
 
-        web_dir = Path(get_web_dir(w, h))
-
-        self.uc_theme_web.set_web_directory(web_dir)
+        if settings.web_dir:
+            self.uc_theme_web.set_web_directory(settings.web_dir)
         self.uc_theme_web.set_resolution(f'{w}x{h}')
 
-        masks_dir = Path(get_web_masks_dir(w, h))
-        self.uc_theme_mask.set_mask_directory(masks_dir)
+        if settings.masks_dir:
+            self.uc_theme_mask.set_mask_directory(settings.masks_dir)
         self.uc_theme_mask.set_resolution(f'{w}x{h}')
 
     # =========================================================================
@@ -767,7 +761,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_controller_preview_update(self, image):
         """Handle preview image update from controller."""
-        self.uc_preview.set_image(image)
+        self.uc_preview.set_image(image, fast=self.controller.is_video_playing())
 
     def _on_controller_status_update(self, text):
         """Handle status update from controller."""
@@ -846,10 +840,9 @@ class TRCCMainWindowMVC(QMainWindow):
         if not theme_loaded:
             # Auto-load first local theme so config is always populated
             # (ensures --last-one works after first GUI session)
-            w, h = device.resolution
-            theme_base = Path(get_theme_dir(w, h))
-            if theme_base.exists():
-                for item in sorted(theme_base.iterdir()):
+            theme_base = settings.theme_dir
+            if theme_base and theme_base.exists():
+                for item in sorted(theme_base.path.iterdir()):
                     if item.is_dir() and (item / '00.png').exists():
                         self._select_theme_from_path(item)
                         break
@@ -1034,24 +1027,23 @@ class TRCCMainWindowMVC(QMainWindow):
         if self._active_device_key:
             save_device_setting(self._active_device_key, 'theme_path', str(path))
 
-    def _on_local_theme_clicked(self, theme_info: dict):
+    def _on_local_theme_clicked(self, theme_info):
         """Forward local theme selection to controller."""
-        self._select_theme_from_path(Path(theme_info.get('path', '')))
+        self._select_theme_from_path(Path(theme_info.path))
         # Update name input so re-saving overwrites the same theme
-        name = theme_info.get('name', '')
+        name = theme_info.name
         if name.startswith('Custom_'):
             name = name[len('Custom_'):]
         self.theme_name_input.setText(name)
 
-    def _on_cloud_theme_clicked(self, theme_info: dict):
+    def _on_cloud_theme_clicked(self, theme_info):
         """Forward cloud theme selection to controller.
 
         Cloud videos are backgrounds — overlay (mask + metrics) persists.
         Don't stop metrics; they keep rendering on top of video frames.
         """
-        video_path = theme_info.get('video')
-        if video_path:
-            video_path = Path(video_path)
+        if theme_info.video:
+            video_path = Path(theme_info.video)
             preview_path = video_path.parent / f"{video_path.stem}.png"
             theme = ThemeInfo.from_video(video_path, preview_path if preview_path.exists() else None)
             self.controller.themes.select_theme(theme)
@@ -1059,15 +1051,14 @@ class TRCCMainWindowMVC(QMainWindow):
                 save_device_setting(self._active_device_key, 'theme_path',
                                     str(video_path))
 
-    def _on_mask_clicked(self, mask_info: dict):
+    def _on_mask_clicked(self, mask_info):
         """Apply mask overlay on top of current content (preserves video)."""
-        mask_path = mask_info.get('path')
-        if mask_path:
-            mask_dir = Path(mask_path)
+        if mask_info.path:
+            mask_dir = Path(mask_info.path)
             self.controller.apply_mask(mask_dir)
             self._load_theme_overlay_config(mask_dir)
         else:
-            self.uc_preview.set_status(f"Mask: {mask_info.get('name', 'Unknown')}")
+            self.uc_preview.set_status(f"Mask: {mask_info.name}")
 
     def _on_overlay_changed(self, element_data: dict):
         """Forward overlay change to controller for live preview."""
@@ -1205,8 +1196,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_load_video_clicked(self):
         """Handle load video → open file dialog → show video cutter."""
-        w, h = self.controller.lcd_width, self.controller.lcd_height
-        web_dir = get_web_dir(w, h)
+        web_dir = str(settings.web_dir) if settings.web_dir else ""
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Video", web_dir,
             "Video Files (*.mp4 *.avi *.mov *.gif);;All Files (*)"
@@ -1239,13 +1229,12 @@ class TRCCMainWindowMVC(QMainWindow):
         if not name:
             self.uc_preview.set_status("Enter a theme name first")
             return
-        from trcc.paths import USER_DATA_DIR
-        success, msg = self.controller.save_theme(name, Path(USER_DATA_DIR))
+        success, msg = self.controller.save_theme(name, settings.user_data_dir)
         self.uc_preview.set_status(msg)
         if success:
-            w, h = self.controller.lcd_width, self.controller.lcd_height
-            theme_dir = Path(get_theme_dir(w, h))
-            self.uc_theme_local.set_theme_directory(theme_dir)
+            td = settings.theme_dir
+            if td:
+                self.uc_theme_local.set_theme_directory(td.path)
             self.uc_theme_local.load_themes()
             # Persist saved theme path for --last-one resume
             if self._active_device_key and self.controller.current_theme_path:
@@ -1272,9 +1261,9 @@ class TRCCMainWindowMVC(QMainWindow):
             success, msg = self.controller.import_config(Path(path), self._data_dir)
             self.uc_preview.set_status(msg)
             if success:
-                w, h = self.controller.lcd_width, self.controller.lcd_height
-                theme_dir = Path(get_theme_dir(w, h))
-                self.uc_theme_local.set_theme_directory(theme_dir)
+                td = settings.theme_dir
+                if td:
+                    self.uc_theme_local.set_theme_directory(td.path)
                 self.uc_theme_local.load_themes()
 
     def _on_send_clicked(self):
@@ -1410,10 +1399,10 @@ class TRCCMainWindowMVC(QMainWindow):
     # Delete Theme (Windows cmd=32)
     # =========================================================================
 
-    def _on_delete_theme(self, theme_info: dict):
+    def _on_delete_theme(self, theme_info):
         """Handle theme delete request — show confirmation, delete directory."""
         from PyQt6.QtWidgets import QMessageBox
-        name = theme_info.get('name', 'Unknown')
+        name = theme_info.name
         reply = QMessageBox.question(
             self, "Delete Theme",
             f"Delete theme '{name}'?",
@@ -1424,7 +1413,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_theme_local.delete_theme(theme_info)
             # If deleted theme was the current one, clear preview
             if (self.controller.current_theme_path and
-                    str(self.controller.current_theme_path) == theme_info.get('path')):
+                    str(self.controller.current_theme_path) == theme_info.path):
                 self.controller.current_image = None
                 self.uc_preview.set_image(None)
             self.uc_preview.set_status(f"Deleted: {name}")
@@ -1457,13 +1446,13 @@ class TRCCMainWindowMVC(QMainWindow):
             save_device_setting(self._active_device_key, 'carousel', {
                 'enabled': self.uc_theme_local.is_slideshow(),
                 'interval': self.uc_theme_local.get_slideshow_interval(),
-                'themes': [t.get('name', '') for t in themes],
+                'themes': [t.name for t in themes],
             })
 
     def _get_theme_dir(self) -> Path:
         """Get current theme directory for this resolution."""
-        w, h = self.controller.lcd_width, self.controller.lcd_height
-        return Path(get_theme_dir(w, h))
+        td = settings.theme_dir
+        return td.path if td else Path(".")
 
     def _save_carousel_config(self):
         """Save carousel/slideshow config to Theme.dc (Windows cmd=48)."""
@@ -1476,9 +1465,8 @@ class TRCCMainWindowMVC(QMainWindow):
         slideshow_themes = self.uc_theme_local.get_slideshow_themes()
         theme_indices = []
         for t in slideshow_themes:
-            name = t.get('name', '')
             for i, at in enumerate(all_themes):
-                if at.get('name') == name:
+                if at.name == t.name:
                     theme_indices.append(i)
                     break
 
@@ -1490,9 +1478,8 @@ class TRCCMainWindowMVC(QMainWindow):
         selected = self.uc_theme_local.get_selected_theme()
         current_idx = 0
         if selected:
-            name = selected.get('name', '')
             for i, at in enumerate(all_themes):
-                if at.get('name') == name:
+                if at.name == selected.name:
                     current_idx = i
                     break
 
@@ -1526,7 +1513,7 @@ class TRCCMainWindowMVC(QMainWindow):
         slideshow_names = []
         for idx in config.theme_indices:
             if 0 <= idx < len(all_themes):
-                slideshow_names.append(all_themes[idx].get('name', ''))
+                slideshow_names.append(all_themes[idx].name)
         self.uc_theme_local._lunbo_array = slideshow_names
         self.uc_theme_local._slideshow = config.enabled
         self.uc_theme_local._slideshow_interval = config.interval_seconds
@@ -1561,7 +1548,7 @@ class TRCCMainWindowMVC(QMainWindow):
         theme_info = themes[self._slideshow_index]
 
         # Load theme without resetting slideshow state
-        path = Path(theme_info.get('path', ''))
+        path = Path(theme_info.path)
         if path.exists():
             theme = ThemeInfo.from_directory(path)
             self.controller.themes.select_theme(theme)
@@ -1951,9 +1938,9 @@ class TRCCMainWindowMVC(QMainWindow):
             if not dc_path.exists():
                 return
             try:
-                from ..dc_parser import dc_to_overlay_config, parse_dc_file
-                dc_data = parse_dc_file(str(dc_path))
-                overlay_config = dc_to_overlay_config(dc_data)
+                from ..dc_config import DcConfig
+                dc = DcConfig(dc_path)
+                overlay_config = dc.to_overlay_config()
             except Exception:
                 return
 

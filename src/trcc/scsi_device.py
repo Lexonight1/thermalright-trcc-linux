@@ -18,6 +18,7 @@ import tempfile
 import time
 from typing import Dict, List, Set
 
+from .device_base import DeviceHandler, HandshakeResult
 from .paths import require_sg_raw
 
 log = logging.getLogger(__name__)
@@ -147,6 +148,45 @@ def _send_frame(dev: str, rgb565_data: bytes, width: int = 320, height: int = 32
         header = _build_header(cmd, size)
         _scsi_write(dev, header, rgb565_data[offset:offset + size])
         offset += size
+
+
+# =========================================================================
+# SCSI device class (DeviceHandler implementation)
+# =========================================================================
+
+
+class ScsiDevice(DeviceHandler):
+    """SCSI LCD device handler wrapping sg_raw subprocess calls.
+
+    Provides the same handshake()/close() interface as HidDevice and
+    LedHidSender so all protocols share a uniform DeviceHandler contract.
+    """
+
+    def __init__(self, device_path: str, width: int = 320, height: int = 320):
+        self.device_path = device_path
+        self.width = width
+        self.height = height
+        self._initialized = False
+
+    def handshake(self) -> HandshakeResult:
+        """Poll + init the SCSI device (same as _init_device)."""
+        _init_device(self.device_path)
+        self._initialized = True
+        return HandshakeResult(
+            resolution=(self.width, self.height),
+        )
+
+    def send_frame(self, rgb565_data: bytes) -> bool:
+        """Send one RGB565 frame."""
+        if not self._initialized:
+            self.handshake()
+        _send_frame(self.device_path, rgb565_data, self.width, self.height)
+        return True
+
+    def close(self) -> None:
+        """Mark as uninitialized (no persistent resources to release)."""
+        self._initialized = False
+        _initialized_devices.discard(self.device_path)
 
 
 # =========================================================================

@@ -146,9 +146,9 @@ class UCPreview(BasePanel):
     def _on_seek(self, value):
         self.invoke_delegate(self.CMD_VIDEO_SEEK, value)
 
-    def set_image(self, pil_image):
+    def set_image(self, pil_image, fast: bool = False):
         """Set preview from PIL Image."""
-        self.preview_label.set_pil_image(pil_image)
+        self.preview_label.set_pil_image(pil_image, fast=fast)
 
     def set_status(self, text):
         self.status_label.setText(text)

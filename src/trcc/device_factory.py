@@ -192,11 +192,12 @@ class HidProtocol(DeviceProtocol):
         self._device_type = device_type
         self._transport = None
         self._handshake_info = None
+        self._last_error: Optional[Exception] = None
 
     def handshake(self):
-        """Perform HID LCD handshake and return DeviceInfo.
+        """Perform HID LCD handshake and return HidHandshakeInfo.
 
-        Opens transport if needed.  Returns hid_device.DeviceInfo with
+        Opens transport if needed.  Returns hid_device.HidHandshakeInfo with
         PM, SUB, FBL, resolution, and raw_response for debugging.
         """
         try:
@@ -225,8 +226,16 @@ class HidProtocol(DeviceProtocol):
             self._notify_state_changed("handshake_complete", True)
             return self._handshake_info
         except Exception as e:
+            log.exception("HID handshake failed for %04X:%04X type %d",
+                          self._vid, self._pid, self._device_type)
+            self._last_error = e
             self._notify_error(f"HID handshake failed: {e}")
             return None
+
+    @property
+    def last_error(self) -> Optional[Exception]:
+        """Last exception from handshake (None if no error or not yet attempted)."""
+        return self._last_error
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:
@@ -326,6 +335,7 @@ class LedProtocol(DeviceProtocol):
         self._transport = None
         self._sender = None
         self._handshake_info = None
+        self._last_error: Optional[Exception] = None
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         """No-op — LED devices don't display images."""
@@ -398,8 +408,16 @@ class LedProtocol(DeviceProtocol):
             self._notify_state_changed("handshake_complete", True)
             return self._handshake_info
         except Exception as e:
+            log.exception("LED handshake failed for %04X:%04X",
+                          self._vid, self._pid)
+            self._last_error = e
             self._notify_error(f"LED handshake failed: {e}")
             return None
+
+    @property
+    def last_error(self) -> Optional[Exception]:
+        """Last exception from handshake (None if no error or not yet attempted)."""
+        return self._last_error
 
     def close(self) -> None:
         if self._transport is not None:

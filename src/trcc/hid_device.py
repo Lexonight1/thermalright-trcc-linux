@@ -18,11 +18,16 @@ Linux dependencies (install one):
   • hidapi: ``pip install hidapi`` (needs libhidapi — ``apt install libhidapi-dev``)
 """
 
+import logging
 import struct
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional, Set
+
+from .device_base import DeviceHandler, HandshakeResult
+
+log = logging.getLogger(__name__)
 
 # Optional USB backends — graceful import
 try:
@@ -75,8 +80,17 @@ TYPE3_ACK_SIZE = 16
 # Alignment
 USB_BULK_ALIGNMENT = 512
 
-# Default timeout (ms)
+# Default timeout (ms) — for frame send / normal I/O
 DEFAULT_TIMEOUT_MS = 100
+
+# Handshake timeout (ms) — much longer than frame-send.
+# Windows uses async HID API with no explicit timeout; our synchronous read
+# needs a generous window.  UCDevice.cs retries at 200ms then 3s intervals.
+HANDSHAKE_TIMEOUT_MS = 5000
+
+# Handshake retry settings (UCDevice.cs Timer_event: 3 scans with increasing delay)
+HANDSHAKE_MAX_RETRIES = 3
+HANDSHAKE_RETRY_DELAY_S = 0.500
 
 # Timing delays from C# (Thread.Sleep calls in USBLCDNEW.exe)
 DELAY_PRE_INIT_S = 0.050    # Sleep(50)  — before sending init packet
@@ -174,15 +188,12 @@ def pm_to_fbl(pm: int, sub: int = 0) -> int:
 # =========================================================================
 
 @dataclass
-class DeviceInfo:
-    """Information extracted from a device handshake response."""
-    device_type: int          # 2 or 3
-    mode_byte_1: int = 0     # Type 2: resp[4], Type 3: resp[0]-1
-    mode_byte_2: int = 0     # Type 2: resp[5], Type 3: 0
-    serial: str = ""         # Hex string from response
-    fbl: Optional[int] = None  # Type 3 only: resp[0]-1
-    raw_response: Optional[bytes] = None  # Full handshake response for debugging
-    resolution: Optional[tuple] = None  # (width, height) resolved from FBL/PM
+class HidHandshakeInfo(HandshakeResult):
+    """HID-specific handshake info (extends HandshakeResult)."""
+    device_type: int = 0      # 2 or 3
+    mode_byte_1: int = 0     # Type 2: resp[5] (PM), Type 3: resp[0]-1
+    mode_byte_2: int = 0     # Type 2: resp[4] (SUB), Type 3: 0
+    fbl: Optional[int] = None  # FBL code resolved from PM/SUB
 
 
 # =========================================================================
@@ -231,20 +242,112 @@ def _ceil_to_512(n: int) -> int:
 
 
 # =========================================================================
-# Type 2 — "H" variant  (VID 0x0416, PID 0x5302)
+# HID device base class
 # =========================================================================
 
-class HidDeviceType2:
-    """Protocol handler for Type 2 HID LCD devices.
+class HidDevice(DeviceHandler):
+    """Base for HID LCD device handlers (Type 2 and Type 3).
 
-    Uses Ep01 for reads, Ep02 for writes.
-    Image data is sent with a 20-byte header, 512-byte aligned.
+    Provides shared init state and the handshake template:
+    build_init_packet → delay → write → delay → read → validate → parse.
+    Subclasses override the static packet/parse methods for their protocol.
     """
 
     def __init__(self, transport: UsbTransport):
         self.transport = transport
         self._initialized = False
-        self.device_info: Optional[DeviceInfo] = None
+        self.device_info: Optional[HidHandshakeInfo] = None
+
+    @staticmethod
+    @abstractmethod
+    def build_init_packet() -> bytes: ...
+
+    @staticmethod
+    @abstractmethod
+    def validate_response(resp: bytes) -> bool: ...
+
+    @staticmethod
+    @abstractmethod
+    def parse_device_info(resp: bytes) -> HidHandshakeInfo: ...
+
+    @abstractmethod
+    def _response_size(self) -> int:
+        """Expected response size for this device type."""
+        ...
+
+    def handshake(self) -> HidHandshakeInfo:
+        """Perform the init handshake with retry (template method).
+
+        Subclasses provide the packet format via build_init_packet(),
+        validate_response(), parse_device_info(), and _response_size().
+
+        Retries up to HANDSHAKE_MAX_RETRIES times (UCDevice.cs Timer_event
+        retries at 200ms → 3s intervals).
+        """
+        init_pkt = self.build_init_packet()
+        last_err: Optional[Exception] = None
+
+        for attempt in range(1, HANDSHAKE_MAX_RETRIES + 1):
+            try:
+                time.sleep(DELAY_PRE_INIT_S)
+                self.transport.write(EP_WRITE_02, init_pkt, HANDSHAKE_TIMEOUT_MS)
+                time.sleep(DELAY_POST_INIT_S)
+
+                resp = self.transport.read(
+                    EP_READ_01, self._response_size(), HANDSHAKE_TIMEOUT_MS,
+                )
+
+                if not self.validate_response(resp):
+                    log.warning(
+                        "%s handshake attempt %d/%d: invalid response "
+                        "(len=%d, first 16 bytes: %s)",
+                        type(self).__name__, attempt, HANDSHAKE_MAX_RETRIES,
+                        len(resp), resp[:16].hex() if resp else "empty",
+                    )
+                    last_err = RuntimeError(
+                        f"{type(self).__name__} handshake failed: invalid response"
+                    )
+                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+                    continue
+
+                self.device_info = self.parse_device_info(resp)
+                self._initialized = True
+                return self.device_info
+
+            except Exception as e:
+                log.warning(
+                    "%s handshake attempt %d/%d failed: %s",
+                    type(self).__name__, attempt, HANDSHAKE_MAX_RETRIES, e,
+                )
+                last_err = e
+                if attempt < HANDSHAKE_MAX_RETRIES:
+                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+
+        raise last_err or RuntimeError(
+            f"{type(self).__name__} handshake failed after {HANDSHAKE_MAX_RETRIES} attempts"
+        )
+
+    @abstractmethod
+    def send_frame(self, image_data: bytes) -> bool:
+        """Send one image frame to the device."""
+        ...
+
+    def close(self) -> None:
+        """Release resources (transport is managed externally)."""
+        self._initialized = False
+        self.device_info = None
+
+
+# =========================================================================
+# Type 2 — "H" variant  (VID 0x0416, PID 0x5302)
+# =========================================================================
+
+class HidDeviceType2(HidDevice):
+    """Protocol handler for Type 2 HID LCD devices.
+
+    Uses Ep01 for reads, Ep02 for writes.
+    Image data is sent with a 20-byte header, 512-byte aligned.
+    """
 
     # -- Init packet ---------------------------------------------------
 
@@ -274,82 +377,57 @@ class HidDeviceType2:
     def validate_response(resp: bytes) -> bool:
         """Check the handshake response matches expected pattern.
 
-        Conditions (from C#)::
+        Conditions (from UCDevice.cs DeviceDataReceived2)::
 
-            resp[0]==0xDA && resp[1]==0xDB && resp[2]==0xDC && resp[3]==0xDD
-            && resp[12]==1 && resp[16]==0x10
+            data[1]==0xDA && data[2]==0xDB && data[3]==0xDC && data[4]==0xDD
+            && data[13]==1
+
+        Windows offsets are +1 due to HID Report ID prefix at data[0].
+        Raw USB (PyUSB) equivalents: resp[0:4]==magic && resp[12]==1.
+
+        Note: Windows does NOT require data[17]==0x10 for validation —
+        that byte is only used for serial extraction (falls back to
+        device path if absent).
         """
-        if len(resp) < TYPE2_RESPONSE_SIZE:
+        if len(resp) < 20:
             return False
         return (
             resp[0:4] == TYPE2_MAGIC
             and resp[12] == 0x01
-            and resp[16] == 0x10
         )
 
     @staticmethod
-    def parse_device_info(resp: bytes) -> DeviceInfo:
+    def parse_device_info(resp: bytes) -> HidHandshakeInfo:
         """Extract device info from a validated handshake response.
 
-        From USBLCDNEW_PROTOCOL.md::
+        From UCDevice.cs AddhidDeviceList (accounting for Report ID offset)::
 
-            PM  = resp[4]   (product mode byte)
-            SUB = resp[5]   (sub-variant byte)
-            serial = hex string of resp[20:36]
+            PM  = data[6]  → raw resp[5]   (product mode byte)
+            SUB = data[5]  → raw resp[4]   (sub-variant byte)
+
+        Serial is at data[21:37] → raw resp[20:36] when data[17]==0x10.
 
         PM+SUB → FBL → resolution via pm_to_fbl() and fbl_to_resolution().
         """
-        pm = resp[4]
-        sub = resp[5]
-        serial = resp[20:36].hex().upper()
+        pm = resp[5]
+        sub = resp[4]
+        has_serial = len(resp) > 36 and resp[16] == 0x10
+        serial = resp[20:36].hex().upper() if has_serial else ""
         fbl = pm_to_fbl(pm, sub)
         resolution = fbl_to_resolution(fbl, pm)
-        return DeviceInfo(
+        return HidHandshakeInfo(
+            resolution=resolution,
+            model_id=pm,
+            serial=serial,
+            raw_response=bytes(resp[:64]),
             device_type=2,
             mode_byte_1=pm,
             mode_byte_2=sub,
-            serial=serial,
             fbl=fbl,
-            raw_response=bytes(resp[:64]),
-            resolution=resolution,
         )
 
-    # -- Handshake -------------------------------------------------------
-
-    def handshake(self) -> DeviceInfo:
-        """Perform the init handshake.
-
-        Matches C# ThreadSendDeviceDataH flow::
-
-            Thread.Sleep(50);
-            SubmitAsyncTransfer(write, Ep02);
-            SubmitAsyncTransfer(read,  Ep01);
-            Thread.Sleep(200);
-            Wait(write); Wait(read);
-
-        Python does sequential write→read (equivalent for non-overlapping I/O).
-
-        Raises:
-            RuntimeError: If the handshake fails.
-        """
-        init_pkt = self.build_init_packet()
-
-        # C#: Thread.Sleep(50) before init
-        time.sleep(DELAY_PRE_INIT_S)
-
-        self.transport.write(EP_WRITE_02, init_pkt, DEFAULT_TIMEOUT_MS)
-
-        # C#: Thread.Sleep(200) after submitting both transfers
-        time.sleep(DELAY_POST_INIT_S)
-
-        resp = self.transport.read(EP_READ_01, TYPE2_RESPONSE_SIZE, DEFAULT_TIMEOUT_MS)
-
-        if not self.validate_response(resp):
-            raise RuntimeError("Type 2 handshake failed: invalid response")
-
-        self.device_info = self.parse_device_info(resp)
-        self._initialized = True
-        return self.device_info
+    def _response_size(self) -> int:
+        return TYPE2_RESPONSE_SIZE
 
     # -- Frame send -------------------------------------------------------
 
@@ -407,17 +485,12 @@ class HidDeviceType2:
 # Type 3 — "ALi" variant  (VID 0x0418, PID 0x5303/0x5304)
 # =========================================================================
 
-class HidDeviceType3:
+class HidDeviceType3(HidDevice):
     """Protocol handler for Type 3 HID LCD devices.
 
     Uses Ep01 for reads, Ep02 for writes.
     Fixed-size 204816-byte frame writes with 16-byte ACK read.
     """
-
-    def __init__(self, transport: UsbTransport):
-        self.transport = transport
-        self._initialized = False
-        self.device_info: Optional[DeviceInfo] = None
 
     # -- Init packet ---------------------------------------------------
 
@@ -455,7 +528,7 @@ class HidDeviceType3:
         return resp[0] in (0x65, 0x66)
 
     @staticmethod
-    def parse_device_info(resp: bytes) -> DeviceInfo:
+    def parse_device_info(resp: bytes) -> HidHandshakeInfo:
         """Extract device info from a validated handshake response.
 
         From USBLCDNEW_PROTOCOL.md::
@@ -466,49 +539,18 @@ class HidDeviceType3:
         serial = resp[10:14].hex().upper()
         fbl = resp[0] - 1
         resolution = fbl_to_resolution(fbl)
-        return DeviceInfo(
+        return HidHandshakeInfo(
+            resolution=resolution,
+            model_id=fbl,
+            serial=serial,
+            raw_response=bytes(resp[:64]),
             device_type=3,
             mode_byte_1=fbl,
-            serial=serial,
             fbl=fbl,
-            raw_response=bytes(resp[:64]),
-            resolution=resolution,
         )
 
-    # -- Handshake -------------------------------------------------------
-
-    def handshake(self) -> DeviceInfo:
-        """Perform the init handshake.
-
-        Matches C# ThreadSendDeviceDataALi flow::
-
-            Thread.Sleep(50);
-            SubmitAsyncTransfer(write, Ep02);
-            SubmitAsyncTransfer(read,  Ep01);
-            Thread.Sleep(200);
-            Wait(write); Wait(read);
-
-        Raises:
-            RuntimeError: If the handshake fails.
-        """
-        init_pkt = self.build_init_packet()
-
-        # C#: Thread.Sleep(50) before init
-        time.sleep(DELAY_PRE_INIT_S)
-
-        self.transport.write(EP_WRITE_02, init_pkt, DEFAULT_TIMEOUT_MS)
-
-        # C#: Thread.Sleep(200) after submitting both transfers
-        time.sleep(DELAY_POST_INIT_S)
-
-        resp = self.transport.read(EP_READ_01, TYPE3_RESPONSE_SIZE, DEFAULT_TIMEOUT_MS)
-
-        if not self.validate_response(resp):
-            raise RuntimeError("Type 3 handshake failed: invalid response")
-
-        self.device_info = self.parse_device_info(resp)
-        self._initialized = True
-        return self.device_info
+    def _response_size(self) -> int:
+        return TYPE3_RESPONSE_SIZE
 
     # -- Frame send -------------------------------------------------------
 
@@ -654,9 +696,12 @@ class PyUsbTransport(UsbTransport):
         self._serial = serial
         self._device = None
         self._is_open = False
+        # Auto-detected endpoints (populated on open)
+        self._ep_out: Optional[int] = None
+        self._ep_in: Optional[int] = None
 
     def open(self) -> None:
-        """Find USB device and claim interface.
+        """Find USB device, claim interface, and auto-detect endpoints.
 
         C# equivalent::
 
@@ -676,13 +721,20 @@ class PyUsbTransport(UsbTransport):
             )
 
         # Detach kernel driver if active (Linux-specific, matches C# ClaimInterface)
-        if self._device.is_kernel_driver_active(USB_INTERFACE):  # type: ignore[union-attr]
-            self._device.detach_kernel_driver(USB_INTERFACE)  # type: ignore[union-attr]
+        try:
+            if self._device.is_kernel_driver_active(USB_INTERFACE):  # type: ignore[union-attr]
+                self._device.detach_kernel_driver(USB_INTERFACE)  # type: ignore[union-attr]
+                log.debug("Detached kernel driver from interface %d", USB_INTERFACE)
+        except Exception as e:
+            log.debug("Kernel driver detach: %s", e)
 
         # C#: SetConfiguration(1), ClaimInterface(0)
         self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
         usb.util.claim_interface(self._device, USB_INTERFACE)  # type: ignore[union-attr]
         self._is_open = True
+
+        # Auto-detect endpoints from device descriptor
+        self._detect_endpoints()
 
     def close(self) -> None:
         """Release interface and close.
@@ -705,8 +757,30 @@ class PyUsbTransport(UsbTransport):
             self._device = None
         self._is_open = False
 
+    def _detect_endpoints(self) -> None:
+        """Auto-detect IN/OUT endpoint addresses from the device descriptor.
+
+        Some HID devices have EP 0x01 OUT instead of the expected EP 0x02 OUT.
+        We enumerate the actual endpoints so writes go to the right address.
+        """
+        try:
+            cfg = self._device.get_active_configuration()  # type: ignore[union-attr]
+            intf = cfg[(USB_INTERFACE, 0)]  # type: ignore[index]
+            for ep in intf:
+                direction = usb.util.endpoint_direction(ep.bEndpointAddress)  # type: ignore[union-attr]
+                if direction == usb.util.ENDPOINT_OUT and self._ep_out is None:  # type: ignore[union-attr]
+                    self._ep_out = ep.bEndpointAddress
+                elif direction == usb.util.ENDPOINT_IN and self._ep_in is None:  # type: ignore[union-attr]
+                    self._ep_in = ep.bEndpointAddress
+            log.debug(
+                "Auto-detected endpoints: OUT=0x%02x IN=0x%02x",
+                self._ep_out or 0, self._ep_in or 0,
+            )
+        except Exception as e:
+            log.debug("Endpoint auto-detection failed: %s", e)
+
     def write(self, endpoint: int, data: bytes, timeout: int = DEFAULT_TIMEOUT_MS) -> int:
-        """Bulk write.
+        """Bulk write — uses auto-detected OUT endpoint when available.
 
         C# equivalent::
 
@@ -714,10 +788,12 @@ class PyUsbTransport(UsbTransport):
         """
         if not self._is_open or self._device is None:
             raise RuntimeError("Transport not open")
-        return self._device.write(endpoint, data, timeout=timeout)  # type: ignore[union-attr]
+        # Use auto-detected OUT endpoint, fall back to caller's hint
+        ep = self._ep_out if self._ep_out is not None else endpoint
+        return self._device.write(ep, data, timeout=timeout)  # type: ignore[union-attr]
 
     def read(self, endpoint: int, length: int, timeout: int = DEFAULT_TIMEOUT_MS) -> bytes:
-        """Bulk read.
+        """Bulk read — uses auto-detected IN endpoint when available.
 
         C# equivalent::
 
@@ -725,12 +801,29 @@ class PyUsbTransport(UsbTransport):
         """
         if not self._is_open or self._device is None:
             raise RuntimeError("Transport not open")
-        data = self._device.read(endpoint, length, timeout=timeout)  # type: ignore[union-attr]
+        # Use auto-detected IN endpoint, fall back to caller's hint
+        ep = self._ep_in if self._ep_in is not None else endpoint
+        data = self._device.read(ep, length, timeout=timeout)  # type: ignore[union-attr]
         return bytes(data)
 
     @property
     def is_open(self) -> bool:
         return self._is_open
+
+    @property
+    def ep_out(self) -> Optional[int]:
+        """Auto-detected OUT endpoint address, or None."""
+        return self._ep_out
+
+    @property
+    def ep_in(self) -> Optional[int]:
+        """Auto-detected IN endpoint address, or None."""
+        return self._ep_in
+
+    @property
+    def device(self) -> Any:
+        """Raw pyusb device handle (for diagnostics)."""
+        return self._device
 
     def __enter__(self):
         self.open()

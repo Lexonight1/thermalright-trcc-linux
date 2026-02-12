@@ -1,6 +1,5 @@
 """
-Tests for paths.py — config persistence, per-device config, path helpers,
-archive extraction, image loading, and data directory detection.
+Tests for paths.py (directory/extraction helpers) and conf.py (config persistence).
 """
 
 import json
@@ -10,31 +9,32 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from trcc.conf import (
+    clear_installed_resolutions,
+    device_config_key,
+    get_device_config,
+    get_saved_resolution,
+    get_saved_temp_unit,
+    load_config,
+    save_config,
+    save_device_setting,
+    save_resolution,
+    save_temp_unit,
+)
 from trcc.paths import (
     _extract_7z,
     _find_data_dir,
     _has_actual_themes,
     build_search_paths,
-    clear_installed_resolutions,
-    device_config_key,
     ensure_themes_extracted,
     ensure_web_extracted,
     ensure_web_masks_extracted,
     find_resource,
-    get_device_config,
-    get_saved_resolution,
-    get_saved_temp_unit,
     get_theme_dir,
     get_web_dir,
     get_web_masks_dir,
     is_resolution_installed,
-    load_config,
-    load_image,
     mark_resolution_installed,
-    save_config,
-    save_device_setting,
-    save_resolution,
-    save_temp_unit,
 )
 
 
@@ -120,8 +120,8 @@ class TestConfigPersistence(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.paths.CONFIG_PATH', self.config_path),
-            patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -160,8 +160,8 @@ class TestResolutionConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.paths.CONFIG_PATH', self.config_path),
-            patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -191,8 +191,8 @@ class TestTempUnitConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.paths.CONFIG_PATH', self.config_path),
-            patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -222,8 +222,8 @@ class TestResolutionInstalled(unittest.TestCase):
         self.pkg_data = os.path.join(self.tmp, 'pkg_data')
         os.makedirs(self.pkg_data)
         self.patches = [
-            patch('trcc.paths.CONFIG_PATH', self.config_path),
-            patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.conf.CONFIG_DIR', self.tmp),
             patch('trcc.paths.USER_DATA_DIR', self.user_data),
             patch('trcc.paths.DATA_DIR', self.pkg_data),
         ]
@@ -307,8 +307,8 @@ class TestPerDeviceConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.paths.CONFIG_PATH', self.config_path),
-            patch('trcc.paths.CONFIG_DIR', self.tmp),
+            patch('trcc.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -550,39 +550,6 @@ class TestEnsureWebMasksExtracted(unittest.TestCase):
                 self.assertFalse(ensure_web_masks_extracted(320, 320))
 
 
-# ── load_image ───────────────────────────────────────────────────────────────
-
-class TestLoadImage(unittest.TestCase):
-    """Test load_image helper."""
-
-    def test_pil_not_available(self):
-        with patch('trcc.paths.PIL_AVAILABLE', False):
-            result = load_image('test.png')
-            self.assertIsNone(result)
-
-    def test_file_not_found(self):
-        with tempfile.TemporaryDirectory() as d:
-            result = load_image('nope.png', search_paths=[d], as_photoimage=False)
-            self.assertIsNone(result)
-
-    def test_loads_pil_image(self):
-        from PIL import Image
-        with tempfile.TemporaryDirectory() as d:
-            img_path = os.path.join(d, 'test.png')
-            Image.new('RGB', (4, 4), (255, 0, 0)).save(img_path)
-            result = load_image('test.png', search_paths=[d], as_photoimage=False)
-            self.assertIsNotNone(result)
-            self.assertEqual(result.size, (4, 4))
-
-    def test_corrupt_image_returns_none(self):
-        with tempfile.TemporaryDirectory() as d:
-            img_path = os.path.join(d, 'bad.png')
-            with open(img_path, 'w') as f:
-                f.write('not an image')
-            result = load_image('bad.png', search_paths=[d], as_photoimage=False)
-            self.assertIsNone(result)
-
-
 # ── _find_data_dir ───────────────────────────────────────────────────────────
 
 class TestFindDataDir(unittest.TestCase):
@@ -598,10 +565,10 @@ class TestFindDataDir(unittest.TestCase):
             self.assertEqual(result, '/fake/src/trcc/data')
 
 
-# ── Targeted coverage: extraction fallbacks and image loading ────────────────
+# ── Targeted coverage: extraction fallbacks ──────────────────────────────────
 
 class TestExtract7zCLI(unittest.TestCase):
-    """Cover 7z CLI fallback paths (lines 123-124, 134, 137-138)."""
+    """Cover 7z CLI fallback paths."""
 
     @patch('trcc.paths.subprocess.run')
     def test_7z_cli_success(self, mock_run):
@@ -631,22 +598,9 @@ class TestExtract7zCLI(unittest.TestCase):
 
 
 class TestFindResourceDefault(unittest.TestCase):
-    """Cover find_resource with default search_paths=None (line 192)."""
+    """Cover find_resource with default search_paths=None."""
 
     def test_default_paths(self):
         with patch('os.path.exists', return_value=False):
             result = find_resource('nonexistent.file')
             self.assertIsNone(result)
-
-
-class TestLoadImageSuccess(unittest.TestCase):
-    """Cover successful Image.open path (line 222)."""
-
-    @patch('trcc.paths.PIL_AVAILABLE', True)
-    @patch('trcc.paths.Image')
-    def test_load_pil_image(self, mock_image_mod):
-        mock_img = MagicMock()
-        mock_image_mod.open.return_value = mock_img
-        with patch('os.path.exists', return_value=True):
-            result = load_image('/fake/img.png', as_photoimage=False)
-        self.assertEqual(result, mock_img)

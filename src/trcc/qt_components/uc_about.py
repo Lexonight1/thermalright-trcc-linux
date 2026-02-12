@@ -91,7 +91,7 @@ def ensure_autostart():
     On subsequent launches: refreshes .desktop if Exec path changed.
     Returns the current autostart state (bool).
     """
-    from ..paths import load_config, save_config
+    from ..conf import load_config, save_config
 
     config = load_config()
 

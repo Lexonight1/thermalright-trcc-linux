@@ -103,16 +103,21 @@ class ImageLabel(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: black;")
 
-    def set_pil_image(self, pil_image):
-        """Set image from PIL Image - fast conversion path."""
+    def set_pil_image(self, pil_image, fast: bool = False):
+        """Set image from PIL Image.
+
+        Args:
+            pil_image: PIL Image to display.
+            fast: Use BILINEAR instead of LANCZOS for resize (video frames).
+        """
         if pil_image is None:
             self.clear()
             return
 
         if pil_image.size != (self._width, self._height):
+            resampling = Image.Resampling.BILINEAR if fast else Image.Resampling.LANCZOS
             pil_image = pil_image.resize(
-                (self._width, self._height),
-                Image.Resampling.LANCZOS
+                (self._width, self._height), resampling
             )
 
         self.setPixmap(pil_to_pixmap(pil_image))
@@ -326,12 +331,12 @@ class BaseThumbnail(ClickableFrame):
     - _show_placeholder()
     """
 
-    clicked = pyqtSignal(dict)
+    clicked = pyqtSignal(object)
 
-    def __init__(self, item_info: dict, parent=None):
+    def __init__(self, item_info, parent=None):
         super().__init__(parent)
         self.item_info = item_info
-        self.is_local: bool = item_info.get('is_local', True)
+        self.is_local: bool = getattr(item_info, 'is_local', True)
         self.selected = False
 
         self.setFixedSize(Sizes.THUMB_W, Sizes.THUMB_H)
@@ -361,13 +366,13 @@ class BaseThumbnail(ClickableFrame):
 
         self._load_thumbnail()
 
-    def _get_display_name(self, info: dict) -> str:
-        """Extract display name from info dict. Override for custom key."""
-        return info.get('name', 'Unknown')
+    def _get_display_name(self, info) -> str:
+        """Extract display name from item. Override for custom field."""
+        return getattr(info, 'name', 'Unknown')
 
-    def _get_image_path(self, info: dict) -> str | None:
-        """Extract image path from info dict. Override for custom key."""
-        return info.get('thumbnail')
+    def _get_image_path(self, info) -> str | None:
+        """Extract image path from item. Override for custom field."""
+        return getattr(info, 'thumbnail', None)
 
     def _get_extra_style(self) -> str | None:
         """Return dashed-border style for non-local (downloadable) items."""
@@ -443,19 +448,23 @@ class BaseThemeBrowser(BasePanel):
 
     Provides: scroll area, grid layout, thumbnail management, selection.
 
+    For browsers that download content on-demand, use DownloadableThemeBrowser
+    instead — it adds download_started/download_finished signals and a
+    _start_download() template method.
+
     Subclasses override:
     - _create_filter_buttons(): Create filter/category buttons above grid
     - _create_thumbnail(item_info) -> BaseThumbnail: Factory method
     - _no_items_message() -> str: Empty state message
     """
 
-    theme_selected = pyqtSignal(dict)
+    theme_selected = pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.PANEL_W, height=Sizes.PANEL_H)
 
-        self.items = []
-        self.item_widgets = []
+        self.items: list = []
+        self.item_widgets: list = []
         self.selected_item = None
 
         self._setup_base_ui()
@@ -549,17 +558,67 @@ class BaseThemeBrowser(BasePanel):
         self.grid_layout.addWidget(label, 0, 0, 1, Sizes.GRID_COLS)
         self.item_widgets.append(label)
 
-    def _select_item(self, item_info: dict):
+    def _select_item(self, item_info):
         """Update selection state and visuals (no signals emitted)."""
         self.selected_item = item_info
         for widget in self.item_widgets:
             if isinstance(widget, BaseThumbnail):
                 widget.set_selected(widget.item_info == item_info)
 
-    def _on_item_clicked(self, item_info: dict):
+    def _on_item_clicked(self, item_info):
         """Handle thumbnail click — select and notify."""
         self._select_item(item_info)
         self.theme_selected.emit(item_info)
 
     def get_selected(self):
         return self.selected_item
+
+
+# ============================================================================
+# Downloadable Theme Browser
+# ============================================================================
+
+class DownloadableThemeBrowser(BaseThemeBrowser):
+    """Base for theme browsers that download content on-demand.
+
+    Adds shared download infrastructure:
+    - download_started/download_finished signals
+    - _downloading guard flag
+    - _start_download() runs a callable in a background thread
+
+    Subclasses override _on_download_complete() to refresh their grid.
+    """
+
+    import threading as _threading
+
+    download_started = pyqtSignal(str)        # item_id
+    download_finished = pyqtSignal(str, bool)  # item_id, success
+
+    def __init__(self, parent=None):
+        self._downloading = False
+        super().__init__(parent)
+        self.download_finished.connect(self._on_download_complete)
+
+    def _start_download(self, item_id: str, download_fn):
+        """Run download_fn() in a background thread, emit signals.
+
+        Args:
+            item_id: Identifier for the item being downloaded.
+            download_fn: Callable that returns True on success, False on failure.
+        """
+        self._downloading = True
+        self.download_started.emit(item_id)
+
+        def task():
+            try:
+                ok = download_fn()
+                self.download_finished.emit(item_id, ok)
+            except Exception as e:
+                log.error("Download failed for %s: %s", item_id, e)
+                self.download_finished.emit(item_id, False)
+
+        self._threading.Thread(target=task, daemon=True).start()
+
+    def _on_download_complete(self, item_id: str, success: bool):
+        """Handle download completion. Override to refresh + auto-select."""
+        self._downloading = False

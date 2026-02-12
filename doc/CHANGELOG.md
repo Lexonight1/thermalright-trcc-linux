@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.2.9
+
+### HID Handshake Protocol Fix
+- **LED routing fixed**: `hid-debug` now routes LED devices (Type 1) through `LedProtocol` instead of `HidProtocol` — was returning None immediately for all LED devices
+- **Retry logic**: 3-attempt handshake with 500ms delay between retries (matching Windows UCDevice.cs `Timer_event`)
+- **Timeout increased**: Handshake uses 5000ms timeout (was 100ms) — frame I/O stays at 100ms
+- **Relaxed Type 2 validation**: Removed strict `resp[16] == 0x10` check (Windows doesn't require it)
+- **Relaxed LED validation**: Bad magic/cmd bytes now warn instead of reject (matching Windows `DeviceDataReceived1`)
+- **PM/SUB offset fix**: Type 2 LCD now reads `pm=resp[5], sub=resp[4]` (matching Windows Report ID offset)
+- **Endpoint auto-detection**: `PyUsbTransport` enumerates actual device endpoints instead of hardcoding EP 0x02
+- **Error visibility**: Actual USB exceptions logged and exposed via `protocol.last_error` instead of generic "None"
+- **Hex dump in diagnostics**: `hid-debug` now shows raw handshake response bytes for bug reports
+
+### OOP Refactor
+- **DcConfig**: Merged `dc_parser.py` + `dc_writer.py` into single `DcConfig` class in `dc_config.py`
+- **conf.py**: Moved all config persistence from `paths.py` into dedicated `conf.py` module
+- **device_base.py**: Added `DeviceHandler` ABC and `HandshakeResult` base dataclass
+- **Dataclasses**: `ThemeItem`/`LocalThemeItem`/`CloudThemeItem`/`MaskItem` replace raw dicts in theme browsers
+- **DownloadableThemeBrowser**: Template method base class in `base.py` for cloud/mask/web browsers
+- **gif_animator.py**: Simplified with cleaner class structure, removed dead code
+- **paths.py**: Facade pattern with `ensure_all_data()`, cleaner on-demand download
+
 ## v1.2.8
 
 ### KISS Refactor

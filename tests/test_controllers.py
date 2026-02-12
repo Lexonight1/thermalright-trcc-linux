@@ -41,31 +41,24 @@ from trcc.core.models import (
     VideoState,
 )
 
-# Common patches for LCDDeviceController tests (avoids file I/O)
+# Common patches for LCDDeviceController tests (avoids file I/O and downloads)
+# Resolution lives in trcc.conf.settings singleton; extract/install guards on controllers.
 FORM_PATCHES = [
-    'trcc.core.controllers.get_saved_resolution',
-    'trcc.core.controllers.save_resolution',
-    'trcc.core.controllers.ensure_themes_extracted',
-    'trcc.core.controllers.ensure_web_extracted',
-    'trcc.core.controllers.ensure_web_masks_extracted',
-    'trcc.core.controllers.get_theme_dir',
-    'trcc.core.controllers.get_web_dir',
-    'trcc.core.controllers.get_web_masks_dir',
+    ('trcc.core.controllers.ensure_all_data', None),
+    ('trcc.conf.save_resolution', None),
 ]
 
 
 def _make_form_controller():
     """Create a LCDDeviceController with all path functions mocked."""
+    # Reset settings singleton to default resolution
+    from trcc.conf import settings as _settings
+    _settings._width = 320
+    _settings._height = 320
+
     patches = []
-    for target in FORM_PATCHES:
-        if 'get_saved_resolution' in target:
-            m = patch(target, return_value=(320, 320))
-        elif 'get_theme_dir' in target:
-            m = patch(target, return_value='/tmp/themes')
-        elif 'get_web_dir' in target or 'get_web_masks_dir' in target:
-            m = patch(target, return_value='/tmp/web')
-        else:
-            m = patch(target)
+    for target, return_val in FORM_PATCHES:
+        m = patch(target, return_value=return_val)
         patches.append(m)
         m.start()
     ctrl = LCDDeviceController()
@@ -381,16 +374,15 @@ class TestLCDDeviceController(unittest.TestCase):
     """Test LCDDeviceController main application controller."""
 
     def setUp(self):
-        # Patch paths module to avoid file I/O
+        # Reset settings singleton to default resolution before each test
+        from trcc.conf import settings as _settings
+        _settings._width = 320
+        _settings._height = 320
+
+        # Patch extraction/install guards to avoid downloads
         self.patches = [
-            patch('trcc.core.controllers.get_saved_resolution', return_value=(320, 320)),
-            patch('trcc.core.controllers.save_resolution'),
-            patch('trcc.core.controllers.ensure_themes_extracted'),
-            patch('trcc.core.controllers.ensure_web_extracted'),
-            patch('trcc.core.controllers.ensure_web_masks_extracted'),
-            patch('trcc.core.controllers.get_theme_dir', return_value='/tmp/themes'),
-            patch('trcc.core.controllers.get_web_dir', return_value='/tmp/web'),
-            patch('trcc.core.controllers.get_web_masks_dir', return_value='/tmp/masks'),
+            patch('trcc.core.controllers.ensure_all_data'),
+            patch('trcc.conf.save_resolution'),
         ]
         for p in self.patches:
             p.start()
@@ -531,15 +523,13 @@ class TestLCDDeviceControllerRotation(unittest.TestCase):
     """Test _apply_rotation and _apply_brightness image transforms."""
 
     def setUp(self):
+        from trcc.conf import settings as _settings
+        _settings._width = 320
+        _settings._height = 320
+
         self.patches = [
-            patch('trcc.core.controllers.get_saved_resolution', return_value=(320, 320)),
-            patch('trcc.core.controllers.save_resolution'),
-            patch('trcc.core.controllers.ensure_themes_extracted'),
-            patch('trcc.core.controllers.ensure_web_extracted'),
-            patch('trcc.core.controllers.ensure_web_masks_extracted'),
-            patch('trcc.core.controllers.get_theme_dir', return_value='/tmp/themes'),
-            patch('trcc.core.controllers.get_web_dir', return_value='/tmp/web'),
-            patch('trcc.core.controllers.get_web_masks_dir', return_value='/tmp/masks'),
+            patch('trcc.core.controllers.ensure_all_data'),
+            patch('trcc.conf.save_resolution'),
         ]
         for p in self.patches:
             p.start()
@@ -704,17 +694,19 @@ class TestVideoControllerEdgeCases(unittest.TestCase):
         self.ctrl._on_model_frame_ready('frame_data')
 
     def test_tick_with_progress_callback(self):
-        """tick fires on_progress_update."""
+        """tick fires on_progress_update (throttled to every 8th frame)."""
         progress_fired = []
         self.ctrl.on_progress_update = lambda p, c, t: progress_fired.append((p, c, t))
 
         fake_frame = MagicMock()
-        self.ctrl.model.frames = [fake_frame, fake_frame]
-        self.ctrl.model.state.total_frames = 2
+        self.ctrl.model.frames = [fake_frame] * 16
+        self.ctrl.model.state.total_frames = 16
         self.ctrl.model.state.state = PlaybackState.PLAYING
         self.ctrl.model.state.current_frame = 0
 
-        self.ctrl.tick()
+        # Progress fires every 8th tick
+        for _ in range(8):
+            self.ctrl.tick()
         self.assertEqual(len(progress_fired), 1)
 
     def test_tick_no_frame_returned(self):
@@ -1169,23 +1161,20 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
         self.assertIsInstance(ms, int)
         self.assertGreater(ms, 0)
 
-    def test_on_video_send_frame_no_overlay(self):
-        """_on_video_send_frame sends frame without overlay when disabled."""
+    def test_video_tick_sends_to_lcd(self):
+        """video_tick sends processed frame to LCD via send_pil_async."""
         frame = _make_test_image()
-        with patch.object(self.ctrl, '_send_frame_to_lcd') as mock_send:
-            self.ctrl._on_video_send_frame(frame)
-            mock_send.assert_called_once_with(frame)
+        self.ctrl.video.model.frames = [frame, frame]
+        self.ctrl.video.model.state.total_frames = 2
+        self.ctrl.video.model.state.state = PlaybackState.PLAYING
+        self.ctrl.video.model.state.current_frame = 0
+        self.ctrl.auto_send = True
 
-    def test_on_video_send_frame_with_overlay(self):
-        """_on_video_send_frame applies overlay before sending."""
-        frame = _make_test_image()
-        rendered = _make_test_image(color=(0, 255, 0))
-        self.ctrl.overlay.enable(True)
-
-        with patch.object(self.ctrl.overlay, 'render', return_value=rendered), \
-             patch.object(self.ctrl, '_send_frame_to_lcd') as mock_send:
-            self.ctrl._on_video_send_frame(frame)
-            mock_send.assert_called_once_with(rendered)
+        with patch.object(self.ctrl.devices, 'get_selected', return_value=MagicMock(
+                protocol='scsi', resolution=(320, 320))), \
+             patch.object(self.ctrl.devices, 'send_pil_async') as mock_send:
+            self.ctrl.video_tick()
+            mock_send.assert_called_once()
 
     def test_send_current_image(self):
         """send_current_image sends image and updates status."""
@@ -1989,24 +1978,17 @@ class TestCreateController(unittest.TestCase):
     """Test create_controller factory function."""
 
     def test_create_without_data_dir(self):
-        with patch('trcc.core.controllers.get_saved_resolution', return_value=(320, 320)):
-            ctrl = create_controller()
-            self.assertIsInstance(ctrl, LCDDeviceController)
-            ctrl.cleanup()
+        ctrl = create_controller()
+        self.assertIsInstance(ctrl, LCDDeviceController)
+        ctrl.cleanup()
 
     def test_create_with_data_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp)
             (data_dir / 'Theme320320').mkdir()
 
-            with patch('trcc.core.controllers.get_saved_resolution', return_value=(320, 320)), \
-                 patch('trcc.core.controllers.save_resolution'), \
-                 patch('trcc.core.controllers.ensure_themes_extracted'), \
-                 patch('trcc.core.controllers.ensure_web_extracted'), \
-                 patch('trcc.core.controllers.ensure_web_masks_extracted'), \
-                 patch('trcc.core.controllers.get_theme_dir', return_value=tmp), \
-                 patch('trcc.core.controllers.get_web_dir', return_value=tmp), \
-                 patch('trcc.core.controllers.get_web_masks_dir', return_value=tmp):
+            with patch('trcc.core.controllers.ensure_all_data'), \
+                 patch('trcc.conf.save_resolution'):
                 ctrl = create_controller(data_dir)
                 self.assertIsInstance(ctrl, LCDDeviceController)
                 ctrl.cleanup()

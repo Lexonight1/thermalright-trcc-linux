@@ -8,9 +8,7 @@ Handles GIF theme playback and video frame extraction using FFmpeg.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-import tempfile
 from abc import ABC, abstractmethod
 
 from PIL import Image
@@ -265,21 +263,13 @@ class GIFThemeLoader:
 
 
 class VideoPlayer(AbstractMediaPlayer):
-    """
-    Video player using FFmpeg for frame extraction.
-    Supports MP4, AVI, MKV, MOV, and other common formats.
+    """Video player using FFmpeg pipe for frame decoding.
 
-    Uses FFmpeg subprocess matching Windows TRCC behavior.
+    Decodes all frames via FFmpeg pipe to memory (no temp BMP files).
+    FFmpeg exits after loading — zero CPU during playback.
     """
 
     def __init__(self, video_path, target_size=(320, 320)):
-        """
-        Initialize video player
-
-        Args:
-            video_path: Path to video file
-            target_size: Target frame size (width, height)
-        """
         if not FFMPEG_AVAILABLE:
             raise RuntimeError("FFmpeg not available. Install it:\n"
                              "  sudo dnf install ffmpeg / sudo apt install ffmpeg")
@@ -287,173 +277,53 @@ class VideoPlayer(AbstractMediaPlayer):
         super().__init__()
         self.video_path = video_path
         self.target_size = target_size
-        self.fps = 30
-        self.speed_multiplier = 1.0
-        self.preload = True  # Preload frames for smooth playback (matches Windows Theme.zt pattern)
-        self._temp_dir: str | None = None  # For FFmpeg temp files
+        self.fps = 16  # Windows: originalImageHz = 16
 
-        # Load video
-        self._load_video()
+        self._load_via_pipe()
 
-    def _load_video(self):
-        """Load video file and extract metadata using FFmpeg."""
-        self._load_video_ffmpeg()
-
-    def _load_video_ffmpeg(self):
-        """
-        Load video using FFmpeg (matching Windows TRCC behavior).
-        Extracts frames to BMP files, then loads them.
-        """
-        print(f"[*] Loading video with FFmpeg: {self.video_path}")
-
-        # Get video info with ffprobe
-        try:
-            probe_cmd = [
-                'ffprobe', '-v', 'error',
-                '-select_streams', 'v:0',
-                '-show_entries', 'stream=nb_frames,r_frame_rate,width,height',
-                '-of', 'csv=p=0',
-                self.video_path
-            ]
-            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                parts = result.stdout.strip().split(',')
-                if len(parts) >= 4:
-                    self.width = int(parts[0])
-                    self.height = int(parts[1])
-                    # Parse frame rate (e.g., "30/1" or "30000/1001")
-                    fps_parts = parts[2].split('/')
-                    if len(fps_parts) == 2 and int(fps_parts[1]) > 0:
-                        self.fps = float(fps_parts[0]) / float(fps_parts[1])
-                    else:
-                        self.fps = float(fps_parts[0]) if fps_parts[0] else 30
-                    # Frame count might be 'N/A'
-                    try:
-                        self.frame_count = int(parts[3])
-                    except (ValueError, IndexError):
-                        self.frame_count = 0  # Will count during extraction
-        except Exception as e:
-            print(f"[!] ffprobe failed: {e}")
-            self.fps = 30
-            self.width = self.target_size[0]
-            self.height = self.target_size[1]
-
-        # Create temp directory for BMP frames (matching Windows TRCC)
-        self._temp_dir = tempfile.mkdtemp(prefix='trcc_video_')
-        assert self._temp_dir is not None
-
-        # Extract frames with FFmpeg (matching Windows command)
-        # Windows: ffmpeg -i "{VIDEO}" -y -r 16 -s {W}x{H} -f image2 "{OUTPUT}%04d.bmp"
-        # originalImageHz = 16 in UCBoFangQiKongZhi.cs
+    def _load_via_pipe(self):
+        """Decode all frames through FFmpeg pipe — no temp files."""
         w, h = self.target_size
-        ffmpeg_cmd = [
+        result = subprocess.run([
             'ffmpeg',
             '-i', self.video_path,
-            '-y',  # Overwrite
-            '-r', '16',  # Windows: originalImageHz = 16
+            '-r', str(self.fps),
             '-vf', f'scale={w}:{h}',
-            '-f', 'image2',
-            os.path.join(self._temp_dir, '%04d.bmp')
-        ]
+            '-f', 'rawvideo',
+            '-pix_fmt', 'rgb24',
+            '-loglevel', 'error',
+            'pipe:1'
+        ], capture_output=True, timeout=300)
 
-        print(f"[*] Extracting frames at 16 FPS to {self._temp_dir}...")
-        try:
-            result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=300)
-            if result.returncode != 0:
-                raise RuntimeError(f"FFmpeg failed: {result.stderr.decode()[:200]}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("FFmpeg timed out (video too long?)")
+        if result.returncode != 0:
+            raise RuntimeError(f"FFmpeg failed: {result.stderr.decode()[:200]}")
 
-        # Windows plays at 16fps (62.5ms per frame)
-        self.fps = 16
-
-        # Load extracted BMP frames
-        self._preload_frames_ffmpeg()
-
-        print(f"[+] Video (FFmpeg): {self.frame_count} frames @ {self.fps:.1f} FPS")
-
-    def _preload_frames_ffmpeg(self):
-        """Load extracted BMP frames from temp directory"""
+        raw = result.stdout
+        frame_size = w * h * 3
         self.frames = []
-
-        # Get sorted list of BMP files
-        assert self._temp_dir is not None
-        bmp_files = sorted([f for f in os.listdir(self._temp_dir) if f.endswith('.bmp')])
-
-        print(f"[*] Loading {len(bmp_files)} BMP frames...")
-        for bmp_file in bmp_files:
-            bmp_path = os.path.join(self._temp_dir, bmp_file)
-            try:
-                frame = Image.open(bmp_path).convert('RGB')
-                if frame.size != self.target_size:
-                    frame = frame.resize(self.target_size, Image.Resampling.LANCZOS)
-                self.frames.append(frame)
-            except Exception as e:
-                print(f"[!] Failed to load {bmp_file}: {e}")
+        for i in range(0, len(raw), frame_size):
+            chunk = raw[i:i + frame_size]
+            if len(chunk) < frame_size:
+                break
+            self.frames.append(Image.frombytes('RGB', (w, h), chunk))
 
         self.frame_count = len(self.frames)
-        print(f"[+] Loaded {self.frame_count} frames")
-
-    def get_frame(self, frame_index=None):
-        """
-        Get a specific frame as PIL Image
-
-        Args:
-            frame_index: Frame index (None = current frame)
-
-        Returns:
-            PIL Image
-        """
-        if frame_index is None:
-            frame_index = self.current_frame
-
-        if 0 <= frame_index < len(self.frames):
-            return self.frames[frame_index]
-        return self.frames[0] if self.frames else None
 
     def get_current_frame(self):
-        """Get current frame as PIL Image"""
-        return self.get_frame()
+        """Get current frame as PIL Image."""
+        if 0 <= self.current_frame < len(self.frames):
+            return self.frames[self.current_frame]
+        return self.frames[0] if self.frames else None
 
     def get_delay(self):
-        """Get delay between frames in milliseconds"""
-        return int((1000 / self.fps) / self.speed_multiplier)
-
-    def set_speed(self, multiplier):
-        """Set playback speed (0.5 = half, 2.0 = double)"""
-        self.speed_multiplier = max(0.1, min(10.0, multiplier))
-
-    def seek(self, frame_index):
-        """Seek to specific frame"""
-        self.current_frame = max(0, min(frame_index, self.frame_count - 1))
-
-    def seek_percent(self, percent):
-        """Seek to percentage of video (0-100)"""
-        frame = int((percent / 100) * self.frame_count)
-        self.seek(frame)
-
-    def get_progress(self):
-        """Get playback progress (0-100)"""
-        if self.frame_count == 0:
-            return 0
-        return (self.current_frame / self.frame_count) * 100
+        """Get delay between frames in milliseconds."""
+        return int(1000 / self.fps)
 
     def close(self):
-        """Release resources and cleanup temp files."""
+        """Release resources."""
         self.frames = []
 
-        # Clean up FFmpeg temp directory
-        temp_dir = getattr(self, '_temp_dir', None)
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir)
-                print(f"[*] Cleaned up temp dir: {temp_dir}")
-            except Exception as e:
-                print(f"[!] Failed to cleanup temp dir: {e}")
-            self._temp_dir = None
-
     def __del__(self):
-        """Cleanup on deletion"""
         self.close()
 
     @staticmethod

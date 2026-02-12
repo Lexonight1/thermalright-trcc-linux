@@ -1,36 +1,18 @@
 """
-Central path constants and utilities for TRCC.
+Central path constants and directory utilities for TRCC.
 
 All path calculations happen once here. Components import what they need.
+Config persistence lives in conf.py; device utilities live in their respective modules.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 log = logging.getLogger(__name__)
-
-# PIL import (done once, shared by all components)
-# Split so load_image(as_photoimage=False) works without tkinter
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-    if TYPE_CHECKING:
-        from PIL import Image
-
-try:
-    from PIL import ImageTk
-    IMAGETK_AVAILABLE = True
-except ImportError:
-    IMAGETK_AVAILABLE = False
-    if TYPE_CHECKING:
-        from PIL import ImageTk
 
 # Base directories (calculated once at import time)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))  # src/trcc/
@@ -45,19 +27,96 @@ RESOURCES_DIR = os.path.join(ASSETS_DIR, 'gui')
 USER_CONFIG_DIR = os.path.expanduser('~/.trcc')
 USER_DATA_DIR = os.path.join(USER_CONFIG_DIR, 'data')
 
+# Theme file conventions (used across models, controllers, theme_downloader, etc.)
+THEME_BG = '00.png'          # Background image
+THEME_MASK = '01.png'        # Mask overlay image
+THEME_PREVIEW = 'Theme.png'  # Thumbnail preview
+THEME_DC = 'config1.dc'      # Binary overlay config
+THEME_JSON = 'config.json'   # JSON config (custom themes)
+
+
+class ThemeDir:
+    """Standard theme directory layout.
+
+    Encapsulates theme file paths, validation, and resolution-based lookup.
+
+    Usage:
+        td = ThemeDir(some_path)       # wrap an existing directory
+        td = ThemeDir.for_resolution(320, 320)  # resolve best dir for resolution
+        td.bg.exists()                 # check if 00.png exists
+    """
+
+    __slots__ = ('path',)
+
+    def __init__(self, path: str | os.PathLike):
+        from pathlib import Path as _Path
+        self.path = _Path(path)
+
+    @classmethod
+    def for_resolution(cls, width: int, height: int) -> 'ThemeDir':
+        """Resolve the best theme directory for a resolution.
+
+        Checks package data dir first, then user data dir (~/.trcc/data/).
+        Returns whichever has actual theme content.
+        """
+        name = f'Theme{width}{height}'
+        pkg_dir = os.path.join(DATA_DIR, name)
+        if _has_actual_themes(pkg_dir):
+            return cls(pkg_dir)
+        user_dir = os.path.join(USER_DATA_DIR, name)
+        if _has_actual_themes(user_dir):
+            return cls(user_dir)
+        return cls(pkg_dir)
+
+    @property
+    def bg(self):
+        """Background image (00.png)."""
+        return self.path / THEME_BG
+
+    @property
+    def mask(self):
+        """Mask overlay image (01.png)."""
+        return self.path / THEME_MASK
+
+    @property
+    def preview(self):
+        """Thumbnail preview (Theme.png)."""
+        return self.path / THEME_PREVIEW
+
+    @property
+    def dc(self):
+        """Binary overlay config (config1.dc)."""
+        return self.path / THEME_DC
+
+    @property
+    def json(self):
+        """JSON config for custom themes (config.json)."""
+        return self.path / THEME_JSON
+
+    @property
+    def zt(self):
+        """Theme.zt animation file."""
+        return self.path / 'Theme.zt'
+
+    def is_valid(self) -> bool:
+        """Check if directory contains valid theme files."""
+        return self.preview.exists() or self.dc.exists() or self.bg.exists()
+
+    def exists(self) -> bool:
+        """Check if directory exists."""
+        return self.path.exists()
+
+    def __truediv__(self, other):
+        """Allow ThemeDir / 'subpath' to return a Path."""
+        return self.path / other
+
+    def __str__(self):
+        return str(self.path)
+
 
 def is_safe_archive_member(name: str) -> bool:
     """Check that an archive member path doesn't escape the destination (zip slip protection)."""
     return not (os.path.isabs(name) or '..' in name.split('/'))
-
-
-def read_sysfs(path: str) -> Optional[str]:
-    """Safely read a sysfs/proc file, return stripped content or None."""
-    try:
-        with open(path, 'r') as f:
-            return f.read().strip()
-    except Exception:
-        return None
 
 
 def _has_actual_themes(theme_dir: str) -> bool:
@@ -120,16 +179,10 @@ RESOURCE_SEARCH_PATHS = [RESOURCES_DIR]
 def get_theme_dir(width: int, height: int) -> str:
     """Get theme directory for a specific resolution.
 
-    Checks the package data dir first, then the user data dir (~/.trcc/data/).
-    Returns whichever has actual theme content, or the package dir as default.
+    Thin wrapper around ThemeDir.for_resolution() for backward compatibility.
+    Prefer ``ThemeDir.for_resolution(w, h)`` in new code.
     """
-    pkg_dir = os.path.join(DATA_DIR, f'Theme{width}{height}')
-    if _has_actual_themes(pkg_dir):
-        return pkg_dir
-    user_dir = os.path.join(USER_DATA_DIR, f'Theme{width}{height}')
-    if _has_actual_themes(user_dir):
-        return user_dir
-    return pkg_dir
+    return str(ThemeDir.for_resolution(width, height))
 
 
 def get_web_dir(width: int, height: int) -> str:
@@ -162,6 +215,25 @@ def get_web_masks_dir(width: int, height: int) -> str:
     if _has_actual_themes(user_dir):
         return user_dir
     return pkg_dir
+
+
+# =========================================================================
+# Archive extraction and on-demand download
+# =========================================================================
+
+_7Z_INSTALL_HELP = (
+    "7z not found and py7zr not installed. Install one:\n"
+    "  pip install py7zr          (recommended, pure Python)\n"
+    "  ---\n"
+    "  Fedora/RHEL:    sudo dnf install p7zip p7zip-plugins\n"
+    "  Ubuntu/Debian:  sudo apt install p7zip-full\n"
+    "  Arch:           sudo pacman -S p7zip\n"
+    "  openSUSE:       sudo zypper install p7zip-full\n"
+    "  Void:           sudo xbps-install p7zip\n"
+    "  Alpine:         sudo apk add 7zip\n"
+    "  Gentoo:         sudo emerge p7zip\n"
+    "  NixOS:          add p7zip to environment.systemPackages"
+)
 
 
 def _extract_7z(archive: str, target_dir: str) -> bool:
@@ -219,10 +291,6 @@ def _ensure_extracted(target_dir: str, archive: str, check_fn) -> bool:
         return False
     return _extract_7z(archive, target_dir)
 
-
-# =========================================================================
-# On-demand theme archive download from GitHub
-# =========================================================================
 
 # Base URL for downloading theme archives from the GitHub repo.
 # Archives are stored in git and served via raw.githubusercontent.com.
@@ -378,130 +446,11 @@ def ensure_web_masks_extracted(width: int, height: int) -> bool:
     )
 
 
-def find_resource(filename: str, search_paths: Optional[list] = None) -> Optional[str]:
-    """Find a resource file in search paths.
-
-    Args:
-        filename: Resource filename (e.g., 'P0播放.png')
-        search_paths: List of directories to search (defaults to RESOURCE_SEARCH_PATHS)
-
-    Returns:
-        Full path if found, None otherwise
-    """
-    if search_paths is None:
-        search_paths = RESOURCE_SEARCH_PATHS
-
-    for path in search_paths:
-        full_path = os.path.join(path, filename)
-        if os.path.exists(full_path):
-            return full_path
-    return None
-
-
-def load_image(filename: str, search_paths: Optional[list] = None, as_photoimage: bool = True):
-    """Load an image from resource paths.
-
-    Args:
-        filename: Resource filename (e.g., 'P0播放.png')
-        search_paths: List of directories to search (defaults to RESOURCE_SEARCH_PATHS)
-        as_photoimage: If True, return ImageTk.PhotoImage; else return PIL.Image
-
-    Returns:
-        PhotoImage/Image if found and loaded, None otherwise
-    """
-    if not PIL_AVAILABLE:
-        return None
-
-    path = find_resource(filename, search_paths)
-    if not path:
-        return None
-
-    try:
-        img = Image.open(path)
-        if as_photoimage:
-            if not IMAGETK_AVAILABLE:
-                return None
-            return ImageTk.PhotoImage(img)
-        return img
-    except Exception:
-        return None
-
-
-def build_search_paths(resource_dir: Optional[str] = None) -> list:
-    """Build search paths list with optional custom directory first.
-
-    Args:
-        resource_dir: Optional custom directory to search first
-
-    Returns:
-        List of directories to search for resources
-    """
-    paths = []
-    if resource_dir:
-        paths.append(resource_dir)
-    paths.extend(RESOURCE_SEARCH_PATHS)
-    return paths
-
-
 # =========================================================================
-# User configuration (persisted to ~/.config/trcc/config.json)
+# Resolution installation tracking
 # =========================================================================
-
-_XDG_CONFIG = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
-CONFIG_DIR = os.path.join(_XDG_CONFIG, 'trcc')
-CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
-
-# USBLCD (SCSI/RGB565) supported resolutions
-SUPPORTED_RESOLUTIONS = [
-    (240, 240),
-    (320, 320),
-    (480, 480),
-    (640, 480),
-]
-
-
-def load_config() -> dict:
-    """Load user config from disk. Returns empty dict on missing/corrupt file."""
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
-
-
-def save_config(config: dict):
-    """Save user config to disk."""
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config, f, indent=2)
-
-
-def get_saved_resolution() -> tuple:
-    """Get saved LCD resolution, defaulting to (320, 320)."""
-    config = load_config()
-    res = config.get('resolution', [320, 320])
-    if isinstance(res, list) and len(res) == 2:
-        return tuple(res)
-    return (320, 320)
-
-
-def save_resolution(width: int, height: int):
-    """Persist LCD resolution to config."""
-    config = load_config()
-    config['resolution'] = [width, height]
-    save_config(config)
-
-
-def get_saved_temp_unit() -> int:
-    """Get saved temperature unit. 0=Celsius, 1=Fahrenheit. Defaults to 0."""
-    return load_config().get('temp_unit', 0)
-
-
-def save_temp_unit(unit: int):
-    """Persist temperature unit to config. 0=Celsius, 1=Fahrenheit."""
-    config = load_config()
-    config['temp_unit'] = unit
-    save_config(config)
+# Config persistence lives in conf.py; these functions straddle both
+# config and filesystem verification, so they stay here.
 
 
 def is_resolution_installed(width: int, height: int) -> bool:
@@ -511,6 +460,8 @@ def is_resolution_installed(width: int, height: int) -> bool:
     (in either the package data dir or ~/.trcc/data/). This handles the case
     where pip uninstall/reinstall wipes data but config.json survives.
     """
+    from .conf import load_config
+
     key = f"{width}x{height}"
     if key not in load_config().get("installed_resolutions", []):
         log.debug("Resolution %s: not in installed_resolutions", key)
@@ -531,6 +482,8 @@ def is_resolution_installed(width: int, height: int) -> bool:
 
 def mark_resolution_installed(width: int, height: int):
     """Record that theme data for this resolution is ready."""
+    from .conf import load_config, save_config
+
     config = load_config()
     installed: list = config.get("installed_resolutions", [])
     key = f"{width}x{height}"
@@ -540,34 +493,39 @@ def mark_resolution_installed(width: int, height: int):
         save_config(config)
 
 
-def clear_installed_resolutions():
-    """Remove all resolution-installed markers (used by uninstall)."""
-    config = load_config()
-    config.pop("installed_resolutions", None)
-    save_config(config)
+def ensure_all_data(width: int, height: int) -> None:
+    """Download + extract all archives for a resolution (skips if already done)."""
+    if is_resolution_installed(width, height):
+        return
+    ensure_themes_extracted(width, height)
+    ensure_web_extracted(width, height)
+    ensure_web_masks_extracted(width, height)
+    mark_resolution_installed(width, height)
 
 
 # =========================================================================
-# Per-device configuration
+# Resource search
 # =========================================================================
 
-def device_config_key(index: int, vid: int, pid: int) -> str:
-    """Build per-device config key, e.g. '0:87cd_70db'."""
-    return f"{index}:{vid:04x}_{pid:04x}"
+def find_resource(filename: str, search_paths: Optional[list] = None) -> Optional[str]:
+    """Find a resource file in search paths."""
+    if search_paths is None:
+        search_paths = RESOURCE_SEARCH_PATHS
+
+    for path in search_paths:
+        full_path = os.path.join(path, filename)
+        if os.path.exists(full_path):
+            return full_path
+    return None
 
 
-def get_device_config(key: str) -> dict:
-    """Get per-device config dict. Returns empty dict if not found."""
-    return load_config().get('devices', {}).get(key, {})
-
-
-def save_device_setting(key: str, setting: str, value):
-    """Save a single setting for a device."""
-    config = load_config()
-    devices = config.setdefault('devices', {})
-    dev_cfg = devices.setdefault(key, {})
-    dev_cfg[setting] = value
-    save_config(config)
+def build_search_paths(resource_dir: Optional[str] = None) -> list:
+    """Build search paths list with optional custom directory first."""
+    paths = []
+    if resource_dir:
+        paths.append(resource_dir)
+    paths.extend(RESOURCE_SEARCH_PATHS)
+    return paths
 
 
 # =========================================================================
@@ -584,20 +542,6 @@ _SG_RAW_INSTALL_HELP = (
     "  Alpine:         sudo apk add sg3_utils\n"
     "  Gentoo:         sudo emerge sg3_utils\n"
     "  NixOS:          add sg3_utils to environment.systemPackages"
-)
-
-_7Z_INSTALL_HELP = (
-    "7z not found and py7zr not installed. Install one:\n"
-    "  pip install py7zr          (recommended, pure Python)\n"
-    "  ---\n"
-    "  Fedora/RHEL:    sudo dnf install p7zip p7zip-plugins\n"
-    "  Ubuntu/Debian:  sudo apt install p7zip-full\n"
-    "  Arch:           sudo pacman -S p7zip\n"
-    "  openSUSE:       sudo zypper install p7zip-full\n"
-    "  Void:           sudo xbps-install p7zip\n"
-    "  Alpine:         sudo apk add 7zip\n"
-    "  Gentoo:         sudo emerge p7zip\n"
-    "  NixOS:          add p7zip to environment.systemPackages"
 )
 
 
@@ -632,6 +576,15 @@ def find_scsi_devices() -> List[str]:
         if entry.startswith('sg'):
             devices.append(entry)
     return devices
+
+
+def read_sysfs(path: str) -> Optional[str]:
+    """Safely read a sysfs/proc file, return stripped content or None."""
+    try:
+        with open(path, 'r') as f:
+            return f.read().strip()
+    except Exception:
+        return None
 
 
 # Font search directories across distros.

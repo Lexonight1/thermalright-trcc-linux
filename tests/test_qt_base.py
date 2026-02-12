@@ -29,6 +29,7 @@ _app = QApplication.instance() or QApplication(sys.argv)
 from PIL import Image  # noqa: E402
 from PyQt6.QtGui import QPixmap  # noqa: E402
 
+from trcc.core.models import ThemeItem  # noqa: E402
 from trcc.qt_components.base import (  # noqa: E402
     BasePanel,
     BaseThumbnail,
@@ -188,30 +189,30 @@ class TestBaseThumbnail(unittest.TestCase):
     """Test BaseThumbnail widget."""
 
     def test_init(self):
-        thumb = BaseThumbnail({'name': 'TestTheme', 'thumbnail': None})
+        thumb = BaseThumbnail(ThemeItem(name='TestTheme'))
         self.assertEqual(thumb.width(), Sizes.THUMB_W)
         self.assertEqual(thumb.height(), Sizes.THUMB_H)
         self.assertFalse(thumb.selected)
 
     def test_display_name(self):
-        thumb = BaseThumbnail({'name': 'MyTheme'})
+        thumb = BaseThumbnail(ThemeItem(name='MyTheme'))
         self.assertEqual(thumb.name_label.text(), 'MyTheme')
 
     def test_long_name_truncated(self):
         """Names > 15 chars are truncated to 12 + '...'."""
-        thumb = BaseThumbnail({'name': 'VeryLongThemeNameHere'})
+        thumb = BaseThumbnail(ThemeItem(name='VeryLongThemeNameHere'))
         self.assertTrue(thumb.name_label.text().endswith('...'))
         self.assertLessEqual(len(thumb.name_label.text()), Sizes.THUMB_NAME_MAX)
 
     def test_set_selected(self):
-        thumb = BaseThumbnail({'name': 'T'})
+        thumb = BaseThumbnail(ThemeItem(name='T'))
         thumb.set_selected(True)
         self.assertTrue(thumb.selected)
         thumb.set_selected(False)
         self.assertFalse(thumb.selected)
 
     def test_clicked_signal(self):
-        info = {'name': 'Clicked'}
+        info = ThemeItem(name='Clicked')
         thumb = BaseThumbnail(info)
         received = []
         thumb.clicked.connect(lambda d: received.append(d))
@@ -227,7 +228,7 @@ class TestBaseThumbnail(unittest.TestCase):
         )
         thumb.mousePressEvent(event)
         self.assertEqual(len(received), 1)
-        self.assertEqual(received[0]['name'], 'Clicked')
+        self.assertEqual(received[0].name, 'Clicked')
 
 
 class TestCreateImageButton(unittest.TestCase):

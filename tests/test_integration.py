@@ -185,8 +185,8 @@ class TestCLIResumePipeline(unittest.TestCase):
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     @patch("trcc.device_detector.detect_devices")
-    @patch("trcc.paths.get_device_config")
-    @patch("trcc.paths.device_config_key")
+    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.device_config_key")
     def test_resume_with_saved_theme(self, mock_key, mock_cfg, mock_cli_detect,
                                      mock_get_impl, mock_drv_detect, mock_run, mock_sg):
         """resume() sends last theme with brightness and rotation applied."""
@@ -229,8 +229,8 @@ class TestCLIResumePipeline(unittest.TestCase):
         self.assertEqual(result, 1)
 
     @patch("trcc.device_detector.detect_devices")
-    @patch("trcc.paths.get_device_config")
-    @patch("trcc.paths.device_config_key")
+    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.device_config_key")
     def test_resume_no_saved_theme(self, mock_key, mock_cfg, mock_detect):
         """resume() with no saved theme returns 1."""
         from trcc.cli import resume

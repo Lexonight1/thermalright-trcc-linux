@@ -261,42 +261,33 @@ class TestVideoPlayerPreloaded(unittest.TestCase):
         """Create a VideoPlayer with mocked internals for pure-logic testing."""
         with patch.object(VideoPlayer, '__init__', lambda self, *a, **kw: None):
             player = VideoPlayer.__new__(VideoPlayer)
-        # Set up internal state as __init__ would
         player.video_path = '/fake/video.mp4'
         player.target_size = (320, 320)
-        player.cap = None
         player.fps = fps
         player.current_frame = 0
         player.playing = False
         player.loop = True
-        player.speed_multiplier = 1.0
-        player.preload = True
-        player._temp_dir = None
         player.frames = [Image.new('RGB', (320, 320), (i * 50, 0, 0))
                          for i in range(frame_count)]
         player.frame_count = frame_count
         return player
 
-    def test_get_frame_current(self):
+    def test_get_current_frame(self):
         p = self._make_player()
-        frame = p.get_frame()
+        frame = p.get_current_frame()
         self.assertIsNotNone(frame)
         self.assertEqual(frame.size, (320, 320))
 
-    def test_get_frame_by_index(self):
+    def test_get_current_frame_out_of_range(self):
         p = self._make_player()
-        frame = p.get_frame(3)
-        self.assertEqual(frame, p.frames[3])
-
-    def test_get_frame_out_of_range(self):
-        p = self._make_player()
-        frame = p.get_frame(999)
+        p.current_frame = 999
+        frame = p.get_current_frame()
         self.assertEqual(frame, p.frames[0])
 
-    def test_get_frame_empty(self):
+    def test_get_current_frame_empty(self):
         p = self._make_player(frame_count=0)
         p.frames = []
-        self.assertIsNone(p.get_frame())
+        self.assertIsNone(p.get_current_frame())
 
     def test_next_frame_advances(self):
         p = self._make_player()
@@ -328,52 +319,9 @@ class TestVideoPlayerPreloaded(unittest.TestCase):
         self.assertEqual(p.current_frame, 0)
         self.assertFalse(p.playing)
 
-    def test_set_speed_clamps(self):
-        p = self._make_player()
-        p.set_speed(0.01)
-        self.assertAlmostEqual(p.speed_multiplier, 0.1)
-        p.set_speed(99)
-        self.assertAlmostEqual(p.speed_multiplier, 10.0)
-
     def test_get_delay(self):
         p = self._make_player(fps=16)
         self.assertEqual(p.get_delay(), 62)  # 1000/16 = 62.5 → int = 62
-
-    def test_get_delay_with_speed(self):
-        p = self._make_player(fps=16)
-        p.speed_multiplier = 2.0
-        self.assertEqual(p.get_delay(), 31)  # 62.5/2 = 31.25 → 31
-
-    def test_seek(self):
-        p = self._make_player(frame_count=10)
-        p.seek(5)
-        self.assertEqual(p.current_frame, 5)
-
-    def test_seek_clamps_low(self):
-        p = self._make_player()
-        p.seek(-10)
-        self.assertEqual(p.current_frame, 0)
-
-    def test_seek_clamps_high(self):
-        p = self._make_player(frame_count=5)
-        p.seek(999)
-        self.assertEqual(p.current_frame, 4)
-
-    def test_seek_percent(self):
-        p = self._make_player(frame_count=100)
-        p.seek_percent(50)
-        self.assertEqual(p.current_frame, 50)
-
-    def test_get_progress(self):
-        p = self._make_player(frame_count=10)
-        self.assertAlmostEqual(p.get_progress(), 0.0)
-        p.current_frame = 5
-        self.assertAlmostEqual(p.get_progress(), 50.0)
-
-    def test_get_progress_zero_frames(self):
-        p = self._make_player(frame_count=0)
-        p.frames = []
-        self.assertEqual(p.get_progress(), 0)
 
     def test_reset(self):
         p = self._make_player()
@@ -386,13 +334,6 @@ class TestVideoPlayerPreloaded(unittest.TestCase):
         self.assertTrue(len(p.frames) > 0)
         p.close()
         self.assertEqual(len(p.frames), 0)
-
-    def test_close_removes_temp_dir(self):
-        p = self._make_player()
-        tmp = tempfile.mkdtemp(prefix='trcc_test_')
-        p._temp_dir = tmp
-        p.close()
-        self.assertFalse(os.path.exists(tmp))
 
 
 class TestVideoPlayerInit(unittest.TestCase):
@@ -449,30 +390,6 @@ class TestExtractFramesDispatch(unittest.TestCase):
         result = VideoPlayer.extract_frames('/fake.mp4', '/tmp/out')
         self.assertEqual(result, 5)
         mock_extract.assert_called_once()
-
-
-# ── VideoPlayer._preload_frames_ffmpeg ───────────────────────────────────────
-
-class TestPreloadFramesFfmpeg(unittest.TestCase):
-
-    def test_loads_bmp_files(self):
-        """Create temp dir with BMP files, verify frames loaded."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create 3 small BMPs
-            for i in range(3):
-                img = Image.new('RGB', (8, 8), (i * 80, 0, 0))
-                img.save(os.path.join(tmpdir, f'frame_{i:04d}.bmp'))
-
-            player = VideoPlayer.__new__(VideoPlayer)
-            player.frames = []
-            player.frame_count = 0
-            player.target_size = (8, 8)
-            player._temp_dir = tmpdir
-
-            player._preload_frames_ffmpeg()
-            self.assertEqual(player.frame_count, 3)
-            self.assertEqual(len(player.frames), 3)
-
 
 
 # ── FFMPEG_AVAILABLE=False warning lines 32-33 ──────────────────────────────
@@ -542,132 +459,70 @@ class TestGIFAnimatorDel(unittest.TestCase):
             os.unlink(gif_path)
 
 
-# ── VideoPlayer.__init__ full path (mocked ffmpeg) ──────────────────────────
+# ── VideoPlayer._load_via_pipe ───────────────────────────────────────────────
 
-class TestVideoPlayerInitFull(unittest.TestCase):
-    """Cover VideoPlayer.__init__ → _load_video → _load_video_ffmpeg."""
-
-    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
-    @patch('subprocess.run')
-    def test_load_video_ffmpeg_success(self, mock_run):
-        """Lines 307-373: full _load_video_ffmpeg with mocked subprocess."""
-
-        # ffprobe returns video info
-        probe_result = MagicMock(returncode=0, stdout='320,320,30/1,150\n')
-        # ffmpeg extract returns success
-        ffmpeg_result = MagicMock(returncode=0)
-        mock_run.side_effect = [probe_result, ffmpeg_result]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create fake BMP files in what would be the temp dir
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                for i in range(3):
-                    img = Image.new('RGB', (320, 320), (i * 50, 0, 0))
-                    img.save(os.path.join(tmpdir, f'{i+1:04d}.bmp'))
-
-                player = VideoPlayer('/fake/video.mp4', target_size=(320, 320))
-                self.assertEqual(player.frame_count, 3)
-                self.assertEqual(player.fps, 16)
-                player.close()
+class TestVideoPlayerLoadViaPipe(unittest.TestCase):
+    """Cover VideoPlayer.__init__ → _load_via_pipe with mocked subprocess."""
 
     @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
     @patch('subprocess.run')
-    def test_load_video_ffprobe_fails(self, mock_run):
-        """Lines 340-343: ffprobe exception → fallback to defaults."""
-        # ffprobe raises exception
-        mock_run.side_effect = [Exception("no ffprobe"), MagicMock(returncode=0)]
+    def test_load_success(self, mock_run):
+        """FFmpeg pipe returns raw RGB frames → frames loaded."""
+        w, h = 8, 8
+        frame_size = w * h * 3
+        # 3 frames of raw RGB data
+        raw_data = bytes(range(256))[:frame_size] * 3
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                player = VideoPlayer('/fake/vid.mp4', target_size=(320, 320))
-                self.assertEqual(player.frame_count, 0)
-                player.close()
+        mock_run.return_value = MagicMock(returncode=0, stdout=raw_data)
 
-    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
-    @patch('subprocess.run')
-    def test_load_video_ffmpeg_nonzero_exit(self, mock_run):
-        """Line 368: ffmpeg returns non-zero → RuntimeError."""
-        probe_result = MagicMock(returncode=1, stdout='')
-        ffmpeg_result = MagicMock(returncode=1, stderr=b'error msg')
-        mock_run.side_effect = [probe_result, ffmpeg_result]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                with self.assertRaises(RuntimeError):
-                    VideoPlayer('/fake/vid.mp4')
+        player = VideoPlayer('/fake/video.mp4', target_size=(w, h))
+        self.assertEqual(player.frame_count, 3)
+        self.assertEqual(len(player.frames), 3)
+        self.assertEqual(player.frames[0].size, (w, h))
+        self.assertEqual(player.fps, 16)
+        player.close()
 
     @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
     @patch('subprocess.run')
-    def test_load_video_ffmpeg_timeout(self, mock_run):
-        """Line 370: ffmpeg times out → RuntimeError."""
+    def test_load_partial_frame_ignored(self, mock_run):
+        """Incomplete trailing frame data is dropped."""
+        w, h = 4, 4
+        frame_size = w * h * 3
+        # 1 full frame + partial
+        raw_data = b'\x00' * frame_size + b'\xFF' * 10
+
+        mock_run.return_value = MagicMock(returncode=0, stdout=raw_data)
+
+        player = VideoPlayer('/fake/vid.mp4', target_size=(w, h))
+        self.assertEqual(player.frame_count, 1)
+        player.close()
+
+    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
+    @patch('subprocess.run')
+    def test_load_ffmpeg_failure(self, mock_run):
+        """FFmpeg returns non-zero → RuntimeError."""
+        mock_run.return_value = MagicMock(returncode=1, stderr=b'error msg', stdout=b'')
+        with self.assertRaises(RuntimeError):
+            VideoPlayer('/fake/vid.mp4')
+
+    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
+    @patch('subprocess.run')
+    def test_load_ffmpeg_timeout(self, mock_run):
+        """FFmpeg times out → propagates TimeoutExpired."""
         import subprocess as sp
-        probe_result = MagicMock(returncode=1, stdout='')
-        mock_run.side_effect = [probe_result, sp.TimeoutExpired('ffmpeg', 300)]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                with self.assertRaises(RuntimeError):
-                    VideoPlayer('/fake/vid.mp4')
+        mock_run.side_effect = sp.TimeoutExpired('ffmpeg', 300)
+        with self.assertRaises(sp.TimeoutExpired):
+            VideoPlayer('/fake/vid.mp4')
 
     @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
     @patch('subprocess.run')
-    def test_probe_fps_single_part(self, mock_run):
-        """Line 332: fps_parts has single part (no /)."""
-        probe_result = MagicMock(returncode=0, stdout='320,320,30,100\n')
-        ffmpeg_result = MagicMock(returncode=0)
-        mock_run.side_effect = [probe_result, ffmpeg_result]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                player = VideoPlayer('/fake/vid.mp4', target_size=(320, 320))
-                player.close()
-
-    @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
-    @patch('subprocess.run')
-    def test_probe_frame_count_na(self, mock_run):
-        """Line 336: frame count is N/A → frame_count=0."""
-        probe_result = MagicMock(returncode=0, stdout='320,320,30/1,N/A\n')
-        ffmpeg_result = MagicMock(returncode=0)
-        mock_run.side_effect = [probe_result, ffmpeg_result]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                player = VideoPlayer('/fake/vid.mp4', target_size=(320, 320))
-                player.close()
-
-
-# ── _preload_frames_ffmpeg error path ────────────────────────────────────────
-
-class TestPreloadFramesError(unittest.TestCase):
-
-    def test_corrupt_bmp_skipped(self):
-        """Lines 389-392: corrupt BMP file is skipped."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create 1 good BMP and 1 corrupt BMP
-            Image.new('RGB', (8, 8)).save(os.path.join(tmpdir, '0001.bmp'))
-            with open(os.path.join(tmpdir, '0002.bmp'), 'wb') as f:
-                f.write(b'NOT_A_BMP')
-
-            player = VideoPlayer.__new__(VideoPlayer)
-            player.frames = []
-            player.frame_count = 0
-            player.target_size = (8, 8)
-            player._temp_dir = tmpdir
-            player._preload_frames_ffmpeg()
-            self.assertEqual(player.frame_count, 1)
-
-    def test_preload_resizes_mismatched_frames(self):
-        """Line 388: frame.size != target_size → resize."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            Image.new('RGB', (16, 16)).save(os.path.join(tmpdir, '0001.bmp'))
-
-            player = VideoPlayer.__new__(VideoPlayer)
-            player.frames = []
-            player.frame_count = 0
-            player.target_size = (8, 8)
-            player._temp_dir = tmpdir
-            player._preload_frames_ffmpeg()
-            self.assertEqual(player.frames[0].size, (8, 8))
+    def test_load_empty_output(self, mock_run):
+        """FFmpeg returns success but no output → 0 frames."""
+        mock_run.return_value = MagicMock(returncode=0, stdout=b'')
+        player = VideoPlayer('/fake/vid.mp4', target_size=(8, 8))
+        self.assertEqual(player.frame_count, 0)
+        self.assertEqual(len(player.frames), 0)
+        player.close()
 
 
 # ── VideoPlayer.__del__ ─────────────────────────────────────────────────────
@@ -675,11 +530,9 @@ class TestPreloadFramesError(unittest.TestCase):
 class TestVideoPlayerDel(unittest.TestCase):
 
     def test_del_calls_close(self):
-        """Line 451-452: __del__ calls close."""
         with patch.object(VideoPlayer, '__init__', lambda s, *a, **kw: None):
             player = VideoPlayer.__new__(VideoPlayer)
         player.frames = [Image.new('RGB', (4, 4))]
-        player._temp_dir = None
         player.__del__()
         self.assertEqual(player.frames, [])
 
@@ -893,19 +746,12 @@ class TestVideoPlayerCLI(unittest.TestCase):
     @patch('trcc.gif_animator.FFMPEG_AVAILABLE', True)
     @patch('subprocess.run')
     def test_video_file_with_ffmpeg(self, mock_run):
-        """Lines 678-682: video file with ffmpeg available."""
+        """Video file with ffmpeg available — pipe returns empty frames."""
         from trcc.gif_animator import test_video_player
 
-        # mock ffprobe + ffmpeg
-        mock_run.side_effect = [
-            MagicMock(returncode=1, stdout=''),
-            MagicMock(returncode=0),
-        ]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('tempfile.mkdtemp', return_value=tmpdir):
-                with patch('sys.argv', ['gif_animator.py', '/fake/vid.mp4']):
-                    test_video_player()
+        mock_run.return_value = MagicMock(returncode=0, stdout=b'')
+        with patch('sys.argv', ['gif_animator.py', '/fake/vid.mp4']):
+            test_video_player()
 
     def test_extract_gif(self):
         """Lines 647-651: --extract with .gif."""

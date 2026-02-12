@@ -320,43 +320,20 @@ def parse_dc_file(filepath: str) -> dict:
             time_x = read_int32()
             time_y = read_int32()
 
-            # Read date font config
-            date_font_name = read_string()
-            date_font_size = read_float()
-            date_font_style = read_byte()
-            read_byte()  # unit
-            read_byte()  # charset
-            date_alpha = read_byte()
-            date_red = read_byte()
-            date_green = read_byte()
-            date_blue = read_byte()
+            # Read date/time/weekday font configs (same binary layout)
+            date_font_name, date_font_size, date_font_style, _, _, \
+                date_alpha, date_red, date_green, date_blue = r.read_font_color()
 
-            # Read time font config
-            time_font_name = read_string()
-            time_font_size = read_float()
-            time_font_style = read_byte()
-            read_byte()  # unit
-            read_byte()  # charset
-            time_alpha = read_byte()
-            time_red = read_byte()
-            time_green = read_byte()
-            time_blue = read_byte()
+            time_font_name, time_font_size, time_font_style, _, _, \
+                time_alpha, time_red, time_green, time_blue = r.read_font_color()
 
             # Read weekday flag and settings
             flag13 = read_bool()  # Weekday enabled
             weekday_x = read_int32()
             weekday_y = read_int32()
 
-            # Read weekday font config
-            weekday_font_name = read_string()
-            weekday_font_size = read_float()
-            weekday_font_style = read_byte()
-            read_byte()  # unit
-            read_byte()  # charset
-            weekday_alpha = read_byte()
-            weekday_red = read_byte()
-            weekday_green = read_byte()
-            weekday_blue = read_byte()
+            weekday_font_name, weekday_font_size, weekday_font_style, _, _, \
+                weekday_alpha, weekday_red, weekday_green, weekday_blue = r.read_font_color()
 
             # Add display elements if enabled
             display_elements = []

@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import threading
 from pathlib import Path
 
-from PyQt6.QtCore import QSize, pyqtSignal
+from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QMovie
 
-from .base import BaseThemeBrowser, BaseThumbnail
+from ..core.models import CloudThemeItem
+from .base import BaseThumbnail, DownloadableThemeBrowser
 from .constants import Layout, Sizes
 
 log = logging.getLogger(__name__)
@@ -57,22 +57,21 @@ class CloudThemeThumbnail(BaseThumbnail):
     Non-downloaded themes show static preview PNG with download indicator.
     """
 
-    def __init__(self, item_info: dict, parent=None):
+    def __init__(self, item_info: CloudThemeItem, parent=None):
         self._movie = None  # QMovie for animated GIF playback
         super().__init__(item_info, parent)
 
-    def _get_display_name(self, info: dict) -> str:
-        return info.get('id', info.get('name', 'Unknown'))
+    def _get_display_name(self, info: CloudThemeItem) -> str:
+        return info.id or info.name
 
-    def _get_image_path(self, info: dict) -> str | None:
-        video = info.get('video')
-        if video and Path(video).exists():
+    def _get_image_path(self, info: CloudThemeItem) -> str | None:
+        if info.video and Path(info.video).exists():
             return None  # handled by _load_thumbnail via QMovie
-        return info.get('preview')
+        return info.preview
 
     def _load_thumbnail(self):
         """Load thumbnail — animated GIF from MP4 or static PNG."""
-        video = self.item_info.get('video')
+        video = self.item_info.video
         if video and Path(video).exists():
             gif_path = _ensure_thumb_gif(video)
             if gif_path:
@@ -87,7 +86,7 @@ class CloudThemeThumbnail(BaseThumbnail):
 
 
 
-class UCThemeWeb(BaseThemeBrowser):
+class UCThemeWeb(DownloadableThemeBrowser):
     """
     Cloud themes browser panel.
 
@@ -98,16 +97,11 @@ class UCThemeWeb(BaseThemeBrowser):
     CMD_THEME_SELECTED = 16
     CMD_CATEGORY_CHANGED = 4
 
-    download_started = pyqtSignal(str)       # theme_id
-    download_finished = pyqtSignal(str, bool)  # theme_id, success
-
     def __init__(self, parent=None):
         self.current_category = 'all'
         self.web_directory = None
         self._resolution = "320x320"
-        self._downloading = False  # Windows isDownLoad guard
         super().__init__(parent)
-        self.download_finished.connect(self._on_download_complete)
 
     def _create_filter_buttons(self):
         """Seven category buttons matching Windows positions."""
@@ -122,7 +116,7 @@ class UCThemeWeb(BaseThemeBrowser):
 
         self.cat_buttons['all'].setChecked(True)
 
-    def _create_thumbnail(self, item_info: dict) -> CloudThemeThumbnail:
+    def _create_thumbnail(self, item_info: CloudThemeItem) -> CloudThemeThumbnail:
         return CloudThemeThumbnail(item_info)
 
     def _no_items_message(self) -> str:
@@ -211,60 +205,47 @@ class UCThemeWeb(BaseThemeBrowser):
             is_local = theme_id in cached
             preview_path = self.web_directory / f"{theme_id}.png"
 
-            themes.append({
-                'id': theme_id,
-                'name': theme_id,
-                'video': str(self.web_directory / f"{theme_id}.mp4") if is_local else None,
-                'preview': str(preview_path) if preview_path.exists() else None,
-                'is_local': is_local,
-            })
+            themes.append(CloudThemeItem(
+                name=theme_id,
+                id=theme_id,
+                video=str(self.web_directory / f"{theme_id}.mp4") if is_local else None,
+                preview=str(preview_path) if preview_path.exists() else None,
+                is_local=is_local,
+            ))
 
         log.debug("load_themes: %d themes (%d cached), dir=%s",
                    len(themes), len(cached), self.web_directory)
         self._populate_grid(themes)
 
-    def _on_item_clicked(self, item_info: dict):
+    def _on_item_clicked(self, item_info: CloudThemeItem):
         """Handle click — play cached themes, download non-cached ones."""
         if self._downloading:
             return
 
         self._select_item(item_info)
 
-        if item_info.get('is_local', True):
+        if item_info.is_local:
             self.theme_selected.emit(item_info)
             self.invoke_delegate(self.CMD_THEME_SELECTED, item_info)
         else:
-            self._download_cloud_theme(item_info['id'])
+            self._download_cloud_theme(item_info.id)
 
     def _download_cloud_theme(self, theme_id: str):
         """Download a cloud theme MP4 (Windows DownLoadFile pattern)."""
         if not self.web_directory:
             return
 
-        self._downloading = True
-        self.download_started.emit(theme_id)
+        def download_fn():
+            from ..cloud_downloader import CloudThemeDownloader
+            downloader = CloudThemeDownloader(
+                resolution=self._resolution,
+                cache_dir=str(self.web_directory))
+            result = downloader.download_theme(theme_id)
+            if result:
+                self._extract_preview(theme_id)
+            return bool(result)
 
-        def download_task():
-            try:
-                from ..cloud_downloader import CloudThemeDownloader
-
-                downloader = CloudThemeDownloader(
-                    resolution=self._resolution,
-                    cache_dir=str(self.web_directory)
-                )
-                result = downloader.download_theme(theme_id)
-
-                if result:
-                    self._extract_preview(theme_id)
-                    self.download_finished.emit(theme_id, True)
-                else:
-                    self.download_finished.emit(theme_id, False)
-            except Exception as e:
-                log.error("Cloud theme download failed: %s", e)
-                self.download_finished.emit(theme_id, False)
-
-        thread = threading.Thread(target=download_task, daemon=True)
-        thread.start()
+        self._start_download(theme_id, download_fn)
 
     def _extract_preview(self, theme_id: str):
         """Extract first frame from MP4 as PNG preview via FFmpeg."""
@@ -283,12 +264,12 @@ class UCThemeWeb(BaseThemeBrowser):
 
     def _on_download_complete(self, theme_id: str, success: bool):
         """Handle download completion — refresh and auto-select."""
-        self._downloading = False
+        super()._on_download_complete(theme_id, success)
         if success:
             self.load_themes()
             # Auto-select the newly downloaded theme
             for item in self.items:
-                if item.get('id') == theme_id:
+                if item.id == theme_id:
                     self._on_item_clicked(item)
                     break
 

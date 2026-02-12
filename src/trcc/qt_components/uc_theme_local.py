@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
 
+from ..core.models import LocalThemeItem
 from .assets import load_pixmap
 from .base import BaseThemeBrowser, BaseThumbnail
 from .constants import Layout, Styles
@@ -27,10 +28,10 @@ from .constants import Layout, Styles
 class ThemeThumbnail(BaseThumbnail):
     """Local theme thumbnail with optional delete button and slideshow badge."""
 
-    delete_clicked = pyqtSignal(dict)
-    slideshow_toggled = pyqtSignal(dict)
+    delete_clicked = pyqtSignal(object)
+    slideshow_toggled = pyqtSignal(object)
 
-    def __init__(self, item_info: dict, parent=None):
+    def __init__(self, item_info: LocalThemeItem, parent=None):
         self._slideshow_mode = False
         super().__init__(item_info, parent)
         self._delete_btn = None
@@ -116,7 +117,7 @@ class UCThemeLocal(BaseThemeBrowser):
     CMD_DELETE = 32
 
     slideshow_changed = pyqtSignal(bool, int, list)  # enabled, interval, theme_indices
-    delete_requested = pyqtSignal(dict)  # theme_info dict
+    delete_requested = pyqtSignal(object)  # LocalThemeItem
 
     def __init__(self, parent=None):
         self.filter_mode = self.MODE_ALL
@@ -182,7 +183,7 @@ class UCThemeLocal(BaseThemeBrowser):
             self.export_btn.setIconSize(self.export_btn.size())
             self.export_btn._img_ref = export_px  # type: ignore[attr-defined]
 
-    def _create_thumbnail(self, item_info: dict) -> ThemeThumbnail:
+    def _create_thumbnail(self, item_info: LocalThemeItem) -> ThemeThumbnail:
         return ThemeThumbnail(item_info)
 
     def _no_items_message(self) -> str:
@@ -206,40 +207,55 @@ class UCThemeLocal(BaseThemeBrowser):
             self._show_empty_message()
             return
 
-        # Load ALL themes (unfiltered) for index tracking and slideshow
-        # Sort: default themes first, then custom/user themes (alphabetical within each group)
-        all_dirs = []
+        # Scan primary dir + user data dir (merge, dedup by name).
+        # This ensures Custom_ themes saved to ~/.trcc/data/ are visible
+        # even when the primary dir is the package data dir.
+        from ..paths import USER_DATA_DIR
+        dirs_to_scan = [self.theme_directory]
+        user_theme_dir = Path(USER_DATA_DIR) / self.theme_directory.name
+        if user_theme_dir != self.theme_directory and user_theme_dir.exists():
+            dirs_to_scan.append(user_theme_dir)
+
+        all_items: list[LocalThemeItem] = []
+        seen_names: set[str] = set()
+
         def _sort_key(p):
             is_user = p.name.startswith('User') or p.name.startswith('Custom')
             return (is_user, p.name)
-        for item in sorted(self.theme_directory.iterdir(), key=_sort_key):
-            if item.is_dir():
-                thumb = item / 'Theme.png'
-                bg = item / '00.png'
-                if thumb.exists() or bg.exists():
-                    all_dirs.append({
-                        'name': item.name,
-                        'path': str(item),
-                        'thumbnail': str(thumb if thumb.exists() else bg),
-                        'is_user': item.name.startswith('User') or item.name.startswith('Custom'),
-                    })
 
-        self._all_themes = all_dirs
+        for scan_dir in dirs_to_scan:
+            for item in sorted(scan_dir.iterdir(), key=_sort_key):
+                if item.is_dir() and item.name not in seen_names:
+                    thumb = item / 'Theme.png'
+                    bg = item / '00.png'
+                    if thumb.exists() or bg.exists():
+                        seen_names.add(item.name)
+                        all_items.append(LocalThemeItem(
+                            name=item.name,
+                            path=str(item),
+                            thumbnail=str(thumb if thumb.exists() else bg),
+                            is_user=item.name.startswith('User') or item.name.startswith('Custom'),
+                        ))
+
+        # Re-sort merged list
+        all_items.sort(key=lambda t: (t.is_user, t.name))
+
+        self._all_themes = all_items
 
         # Filter for display
         if self.filter_mode == self.MODE_DEFAULT:
-            theme_dirs = [t for t in all_dirs if not t.get('is_user')]
+            theme_dirs = [t for t in all_items if not t.is_user]
         elif self.filter_mode == self.MODE_USER:
-            theme_dirs = [t for t in all_dirs if t.get('is_user')]
+            theme_dirs = [t for t in all_items if t.is_user]
         else:
-            theme_dirs = list(all_dirs)
+            theme_dirs = list(all_items)
 
         # Tag each with its global index in the unfiltered list
         for t in theme_dirs:
             try:
-                t['_index'] = self._all_themes.index(t)
+                t.index = self._all_themes.index(t)
             except ValueError:
-                t['_index'] = 0
+                t.index = 0
 
         self._populate_grid(theme_dirs)
         self._apply_decorations()
@@ -259,7 +275,7 @@ class UCThemeLocal(BaseThemeBrowser):
                 continue
 
             info = widget.item_info
-            idx = info.get('_index', 0)
+            idx = info.index
 
             # Delete buttons: not shown in slideshow mode (Windows behavior)
             if not self._slideshow:
@@ -277,7 +293,7 @@ class UCThemeLocal(BaseThemeBrowser):
             # Slideshow badges
             widget.set_slideshow_mode(self._slideshow)
             if self._slideshow:
-                name = info.get('name', '')
+                name = info.name
                 if name in self._lunbo_array:
                     pos = self._lunbo_array.index(name) + 1
                     widget.set_slideshow_badge(pos)
@@ -290,9 +306,9 @@ class UCThemeLocal(BaseThemeBrowser):
         """Forward delete request to parent (confirmation handled there)."""
         self.delete_requested.emit(item_info)
 
-    def _on_slideshow_toggled(self, item_info: dict):
+    def _on_slideshow_toggled(self, item_info: LocalThemeItem):
         """Toggle theme in/out of slideshow array (Windows lunBoArray)."""
-        name = item_info.get('name', '')
+        name = item_info.name
         if name in self._lunbo_array:
             self._lunbo_array.remove(name)
         elif len(self._lunbo_array) < self.MAX_SLIDESHOW:
@@ -334,12 +350,12 @@ class UCThemeLocal(BaseThemeBrowser):
     def get_slideshow_interval(self):
         return self._slideshow_interval
 
-    def get_slideshow_themes(self):
-        """Get list of theme info dicts in slideshow order."""
+    def get_slideshow_themes(self) -> list[LocalThemeItem]:
+        """Get list of theme items in slideshow order."""
         result = []
         for name in self._lunbo_array:
             for t in self._all_themes:
-                if t['name'] == name:
+                if t.name == name:
                     result.append(t)
                     break
         return result
@@ -347,14 +363,14 @@ class UCThemeLocal(BaseThemeBrowser):
     def get_selected_theme(self):
         return self.selected_item
 
-    def delete_theme(self, theme_info: dict):
+    def delete_theme(self, theme_info: LocalThemeItem):
         """Delete a theme directory and refresh the list."""
-        path = Path(theme_info.get('path', ''))
+        path = Path(theme_info.path)
         if path.exists() and path.is_dir():
             shutil.rmtree(path)
 
         # Remove from slideshow if present
-        name = theme_info.get('name', '')
+        name = theme_info.name
         if name in self._lunbo_array:
             self._lunbo_array.remove(name)
 

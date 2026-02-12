@@ -26,7 +26,12 @@ from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from trcc.paths import is_safe_archive_member
+from .paths import THEME_BG, THEME_DC, THEME_PREVIEW, is_safe_archive_member
+
+
+def _is_theme_subdir(d: Path) -> bool:
+    """Check if a directory contains valid theme files."""
+    return (d / THEME_PREVIEW).exists() or (d / THEME_DC).exists() or (d / THEME_BG).exists()
 
 # Theme pack registry - maps pack names to download info
 # In production, this would be fetched from a remote registry
@@ -326,11 +331,7 @@ def download_pack(pack_name: str, force: bool = False) -> int:
             if item.is_dir():
                 # Check if it contains themes (has subdirs with Theme.png or config1.dc)
                 theme_count = sum(1 for d in item.iterdir()
-                                if d.is_dir() and (
-                                    (d / "Theme.png").exists() or
-                                    (d / "config1.dc").exists() or
-                                    (d / "00.png").exists()
-                                ))
+                                if d.is_dir() and _is_theme_subdir(d))
                 if theme_count > 0:
                     extracted_themes = item
                     break
@@ -338,11 +339,7 @@ def download_pack(pack_name: str, force: bool = False) -> int:
         if not extracted_themes:
             # Maybe themes are directly in temp_path
             theme_count = sum(1 for d in temp_path.iterdir()
-                            if d.is_dir() and (
-                                (d / "Theme.png").exists() or
-                                (d / "config1.dc").exists() or
-                                (d / "00.png").exists()
-                            ))
+                            if d.is_dir() and _is_theme_subdir(d))
             if theme_count > 0:
                 extracted_themes = temp_path
 
@@ -423,10 +420,7 @@ def create_local_pack(source_dir: str, pack_name: str, resolution: str) -> int:
 
     # Count themes
     theme_count = sum(1 for d in source.iterdir()
-                     if d.is_dir() and (
-                         (d / "Theme.png").exists() or
-                         (d / "config1.dc").exists()
-                     ))
+                     if d.is_dir() and _is_theme_subdir(d))
 
     if theme_count == 0:
         print("No valid themes found in source directory")

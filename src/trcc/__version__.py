@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.8"
+__version__ = "1.2.9"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -31,3 +31,5 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #         _has_actual_themes to require PNGs (ignore leftover .dc files)
 # 1.2.8 - KISS refactor: consolidate 5 duplicate settings handlers into
 #         _update_selected(), remove dead code (set_format_options, LED stubs)
+# 1.2.9 - Fix HID handshake protocol (retry, timeout, endpoint auto-detect,
+#         relaxed validation), OOP refactor (DcConfig, conf.py, dataclasses)

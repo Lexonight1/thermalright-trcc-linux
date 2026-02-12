@@ -19,10 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .device_base import DeviceHandler, HandshakeResult
 from .hid_device import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
+    HANDSHAKE_MAX_RETRIES,
+    HANDSHAKE_RETRY_DELAY_S,
+    HANDSHAKE_TIMEOUT_MS,
     TYPE2_MAGIC,
     UsbTransport,
 )
@@ -109,7 +113,7 @@ LED_STYLES = {
     13: LedDeviceStyle(13, 31, 14, 1, "HR10_2280_PRO_DIGITAL", "DAX120_DIGITAL", "D0数码屏"),
 }
 
-# pm byte (from firmware handshake receive[6]) → style mapping
+# pm byte (UCDevice.cs data[6] → raw resp[5]) → style mapping
 # From FormLEDInit: if (NO == 1) nowLedStyle = 1, if (NO == 16) nowLedStyle = 2, etc.
 PM_TO_STYLE = {
     1: 1,    # FROZEN_HORIZON_PRO → style 1
@@ -298,16 +302,16 @@ def color_for_value(value: float, thresholds: list, high_color: tuple) -> Tuple[
 # =========================================================================
 
 @dataclass
-class LedHandshakeInfo:
-    """Information extracted from LED device handshake response.
+class LedHandshakeInfo(HandshakeResult):
+    """LED-specific handshake info (extends HandshakeResult).
 
     Attributes:
-        pm: Product model byte (receive[6]) — identifies device type.
-        sub_type: Sub-type byte (receive[5]).
+        pm: Product model byte (raw resp[5], Windows data[6]) — identifies device type.
+        sub_type: Sub-type byte (raw resp[4], Windows data[5]).
         style: Resolved LedDeviceStyle for this device.
         model_name: Human-readable model name.
     """
-    pm: int
+    pm: int = 0
     sub_type: int = 0
     style: Optional[LedDeviceStyle] = None
     model_name: str = ""
@@ -412,7 +416,7 @@ class LedPacketBuilder:
 # LED HID sender (from UCDevice.cs ThreadSendDeviceData1)
 # =========================================================================
 
-class LedHidSender:
+class LedHidSender(DeviceHandler):
     """Sends LED packets via UsbTransport with 64-byte report chunking.
 
     Matches UCDevice.cs ThreadSendDeviceData1 (lines 983-1026):
@@ -426,53 +430,93 @@ class LedHidSender:
         self._sending = False
 
     def handshake(self) -> LedHandshakeInfo:
-        """Perform LED device handshake.
+        """Perform LED device handshake with retry.
 
         Sends init packet (cmd=1), reads response, extracts pm byte.
+        Retries up to HANDSHAKE_MAX_RETRIES times.
+
+        Windows DeviceDataReceived1() does NOT validate magic or command
+        bytes in the response — it accepts any non-empty response. We
+        warn but still accept responses with unexpected magic/command.
 
         Returns:
             LedHandshakeInfo with pm, sub_type, and resolved style.
 
         Raises:
-            RuntimeError: If handshake fails.
+            RuntimeError: If handshake fails after all retries.
         """
         init_pkt = LedPacketBuilder.build_init_packet()
+        last_err: Optional[Exception] = None
 
-        time.sleep(DELAY_PRE_INIT_S)
-        self._transport.write(EP_WRITE_02, init_pkt, DEFAULT_TIMEOUT_MS)
-        time.sleep(DELAY_POST_INIT_S)
+        for attempt in range(1, HANDSHAKE_MAX_RETRIES + 1):
+            try:
+                time.sleep(DELAY_PRE_INIT_S)
+                self._transport.write(EP_WRITE_02, init_pkt, HANDSHAKE_TIMEOUT_MS)
+                time.sleep(DELAY_POST_INIT_S)
 
-        resp = self._transport.read(EP_READ_01, LED_RESPONSE_SIZE, DEFAULT_TIMEOUT_MS)
+                resp = self._transport.read(
+                    EP_READ_01, LED_RESPONSE_SIZE, HANDSHAKE_TIMEOUT_MS,
+                )
 
-        if len(resp) < 20:
-            raise RuntimeError(f"LED handshake failed: response too short ({len(resp)} bytes)")
+                if len(resp) < 7:
+                    log.warning(
+                        "LED handshake attempt %d/%d: response too short (%d bytes)",
+                        attempt, HANDSHAKE_MAX_RETRIES, len(resp),
+                    )
+                    last_err = RuntimeError(
+                        f"LED handshake failed: response too short ({len(resp)} bytes)"
+                    )
+                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+                    continue
 
-        # Validate magic echo (same as HID Type 2)
-        if resp[0:4] != LED_MAGIC:
-            raise RuntimeError(
-                f"LED handshake failed: bad magic "
-                f"(got {resp[0:4].hex()}, expected {LED_MAGIC.hex()})"
-            )
+                # Warn but don't reject if magic doesn't match
+                # (Windows DeviceDataReceived1 doesn't validate magic)
+                if resp[0:4] != LED_MAGIC:
+                    log.warning(
+                        "LED handshake: unexpected magic (got %s, expected %s)",
+                        resp[0:4].hex(), LED_MAGIC.hex(),
+                    )
+                if len(resp) > 12 and resp[12] != 1:
+                    log.warning(
+                        "LED handshake: unexpected cmd byte (got %d, expected 1)",
+                        resp[12],
+                    )
 
-        if resp[12] != 1:
-            raise RuntimeError(f"LED handshake failed: bad cmd byte (got {resp[12]}, expected 1)")
+                # PM and SUB extraction — matches existing working behavior.
+                # UCDevice.cs uses data[6]/data[5] (with Report ID at [0]),
+                # but LED handshake already worked with these offsets in the
+                # field (shadowepaxeor-glitch got PM=0 cached from a live
+                # handshake). Keep resp[6]/resp[5] until we can verify with
+                # hex dumps from successful handshakes.
+                pm = resp[6]
+                sub_type = resp[5]
+                style = get_style_for_pm(pm, sub_type)
 
-        pm = resp[6]
-        sub_type = resp[5]
-        style = get_style_for_pm(pm, sub_type)
+                override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+                if override:
+                    model_name = override[1]
+                else:
+                    model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
 
-        # Check sub_type override for model name (e.g. HR10 vs LC1)
-        override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
-        if override:
-            model_name = override[1]
-        else:
-            model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
+                return LedHandshakeInfo(
+                    model_id=pm,
+                    pm=pm,
+                    sub_type=sub_type,
+                    style=style,
+                    model_name=model_name,
+                )
 
-        return LedHandshakeInfo(
-            pm=pm,
-            sub_type=sub_type,
-            style=style,
-            model_name=model_name,
+            except Exception as e:
+                log.warning(
+                    "LED handshake attempt %d/%d failed: %s",
+                    attempt, HANDSHAKE_MAX_RETRIES, e,
+                )
+                last_err = e
+                if attempt < HANDSHAKE_MAX_RETRIES:
+                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+
+        raise last_err or RuntimeError(
+            f"LED handshake failed after {HANDSHAKE_MAX_RETRIES} attempts"
         )
 
     def send_led_data(self, packet: bytes) -> bool:
@@ -517,6 +561,10 @@ class LedHidSender:
     def is_sending(self) -> bool:
         """Whether a send is currently in progress."""
         return self._sending
+
+    def close(self) -> None:
+        """Release resources (transport is managed externally)."""
+        self._sending = False
 
 
 # =========================================================================
