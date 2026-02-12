@@ -15,7 +15,9 @@ Supported devices (HID LCD — auto-detected when plugged in):
 
 Supported devices (HID LED — RGB controllers, auto-detected when plugged in):
 - Winbond:      VID=0x0416, PID=0x8001  (64-byte reports)
-- ChiZhu Tech:  VID=0x87AD, PID=0x70DB  (GrandVision series, case 257)
+
+Supported devices (Raw USB bulk — bInterfaceClass=255, Vendor Specific):
+- ChiZhu Tech:  VID=0x87AD, PID=0x70DB  (GrandVision/Mjolnir Vision, USBLCDNew protocol)
 """
 
 import logging
@@ -59,14 +61,7 @@ KNOWN_DEVICES = {
         "button_image": "A1CZTV",
         "implementation": "thermalright_lcd_v1"
     },
-    # USB 87AD:70DB - GrandVision 360 AIO (ChiZhu Tech, case 257 LCD+LED combo)
-    (0x87AD, 0x70DB): {
-        "vendor": "ChiZhu Tech",
-        "product": "GrandVision 360 AIO (USBLCD)",
-        "model": "GRAND_VISION",
-        "button_image": "A1CZTV",
-        "implementation": "thermalright_lcd_v1"
-    },
+    # NOTE: 87AD:70DB (GrandVision) moved to _BULK_DEVICES — it's raw USB bulk, not SCSI.
     (0x0416, 0x5406): {
         "vendor": "Winbond",
         "product": "LCD Display (USBLCD)",
@@ -136,13 +131,30 @@ _LED_DEVICES = {
         "protocol": "hid",
         "device_type": 1,
     },
-    # NOTE: 87AD:70DB (GrandVision) is NOT HID — bInterfaceClass=255 (Vendor Specific).
-    # Uses USBLCDNew raw bulk protocol (ThreadSendDeviceData), not HID handshake.
-    # Removed from _LED_DEVICES to prevent timeout loops. Needs raw bulk implementation.
+}
+
+# Raw USB bulk devices (bInterfaceClass=255, Vendor Specific).
+# These use the USBLCDNew protocol (ThreadSendDeviceData) — not SCSI, not HID.
+# Requires pyusb for raw bulk endpoint I/O.
+_BULK_DEVICES = {
+    # 87AD:70DB — GrandVision 360 AIO / Mjolnir Vision 360
+    # USBLCDNew ThreadSendDeviceData: 64-byte handshake → 1024-byte response → RGB565 frames
+    (0x87AD, 0x70DB): {
+        "vendor": "ChiZhu Tech",
+        "product": "GrandVision 360 AIO (Bulk USB)",
+        "model": "GRAND_VISION",
+        "button_image": "A1CZTV",
+        "implementation": "bulk_usblcdnew",
+        "protocol": "bulk",
+        "device_type": 4,  # 4 = raw USB bulk
+    },
 }
 
 # Backward-compat alias (tests and setup-udev reference this)
 KNOWN_LED_DEVICES = _LED_DEVICES
+
+# Public alias for bulk devices (setup-udev needs VID:PIDs)
+KNOWN_BULK_DEVICES = _BULK_DEVICES
 
 # Legacy flag — kept for backward compat but no longer checked.
 # HID devices are now auto-detected when plugged in.
@@ -156,10 +168,11 @@ def enable_hid_testing():
 
 
 def _get_all_devices():
-    """Return device lookup dict (SCSI + HID LCD + LED)."""
+    """Return device lookup dict (SCSI + HID LCD + LED + Bulk)."""
     all_devices = dict(KNOWN_DEVICES)
     all_devices.update(_HID_LCD_DEVICES)
     all_devices.update(_LED_DEVICES)
+    all_devices.update(_BULK_DEVICES)
     return all_devices
 
 

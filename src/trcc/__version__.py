@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.18"
+__version__ = "1.2.19"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -52,3 +52,6 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 # 1.2.18 - Fix GrandVision 360 AIO (87AD:70DB) causing GUI hang: device is vendor-
 #          specific USB (class 255), not HID — removed from LED device list to stop
 #          timeout loop on startup
+# 1.2.19 - Raw USB bulk protocol for GrandVision/Mjolnir Vision (87AD:70DB):
+#          BulkDevice handler (handshake + RGB565 frame send via pyusb),
+#          BulkProtocol in device factory, bulk udev rules, CLI detect/probe

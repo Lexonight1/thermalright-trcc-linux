@@ -1192,7 +1192,8 @@ class TestFormatDevice(unittest.TestCase):
     def test_no_probe(self):
         dev = self._make_dev(scsi_device=None)
         result = _format_device(dev, probe=False)
-        self.assertIn("No device path found", result)
+        # HID devices show VID:PID as path (no SCSI device)
+        self.assertIn("0416:8001", result)
         self.assertIn("LED Controller (HID)", result)
         self.assertIn("[0416:8001]", result)
         self.assertIn("(HID)", result)

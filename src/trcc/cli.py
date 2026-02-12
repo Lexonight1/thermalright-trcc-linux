@@ -299,6 +299,19 @@ def _probe_device(dev):
         except Exception:
             pass
 
+    # Bulk USB devices: probe via bulk_device handshake
+    elif dev.implementation == 'bulk_usblcdnew':
+        try:
+            from trcc.bulk_device import BulkDevice
+            bd = BulkDevice(dev.vid, dev.pid)
+            hs = bd.handshake()
+            if hs.resolution:
+                result['resolution'] = hs.resolution
+                result['pm'] = hs.model_id
+            bd.close()
+        except Exception:
+            pass
+
     return result
 
 
@@ -306,7 +319,12 @@ def _format_device(dev, probe=False):
     """Format a detected device for display."""
     vid_pid = f"[{dev.vid:04x}:{dev.pid:04x}]"
     proto = dev.protocol.upper()
-    path = dev.scsi_device if dev.scsi_device else "No device path found"
+    if dev.scsi_device:
+        path = dev.scsi_device
+    elif dev.protocol in ("hid", "bulk"):
+        path = f"{dev.vid:04x}:{dev.pid:04x}"
+    else:
+        path = "No device path found"
     line = f"{path} — {dev.product_name} {vid_pid} ({proto})"
 
     if not probe:
@@ -933,11 +951,16 @@ def setup_udev(dry_run=False):
     (no /dev/sgX created). The :u quirk forces usb-storage bulk-only transport.
     """
     try:
-        from trcc.device_detector import _HID_LCD_DEVICES, _LED_DEVICES, KNOWN_DEVICES
+        from trcc.device_detector import (
+            _BULK_DEVICES,
+            _HID_LCD_DEVICES,
+            _LED_DEVICES,
+            KNOWN_DEVICES,
+        )
 
         # Always include ALL devices in udev rules (so hardware is ready
-        # when users plug in HID devices, even without --testing-hid)
-        all_devices = {**KNOWN_DEVICES, **_HID_LCD_DEVICES, **_LED_DEVICES}
+        # when users plug in HID/bulk devices, even without --testing-hid)
+        all_devices = {**KNOWN_DEVICES, **_HID_LCD_DEVICES, **_LED_DEVICES, **_BULK_DEVICES}
 
         # --- 1. udev rules (permissions) ---
         rules_path = "/etc/udev/rules.d/99-trcc-lcd.rules"
@@ -955,6 +978,15 @@ def setup_udev(dry_run=False):
                     f'ATTRS{{idVendor}}=="{vid:04x}", '
                     f'ATTRS{{idProduct}}=="{pid:04x}", '
                     f'MODE="0666"\n'
+                    f'SUBSYSTEM=="usb", '
+                    f'ATTR{{idVendor}}=="{vid:04x}", '
+                    f'ATTR{{idProduct}}=="{pid:04x}", '
+                    f'MODE="0666"'
+                )
+            elif protocol == "bulk":
+                # Raw USB bulk devices need usb subsystem rules (pyusb access)
+                rules_lines.append(
+                    f'# {vendor} {product}\n'
                     f'SUBSYSTEM=="usb", '
                     f'ATTR{{idVendor}}=="{vid:04x}", '
                     f'ATTR{{idProduct}}=="{pid:04x}", '

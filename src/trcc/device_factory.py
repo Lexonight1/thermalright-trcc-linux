@@ -21,7 +21,7 @@ Usage::
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -464,6 +464,102 @@ class LedProtocol(DeviceProtocol):
 
 
 # =========================================================================
+# BulkProtocol — raw USB bulk (USBLCDNew) implementation
+# =========================================================================
+
+class BulkProtocol(DeviceProtocol):
+    """LCD communication via raw USB bulk (bInterfaceClass=255).
+
+    Wraps bulk_device.BulkDevice.  Used for GrandVision / Mjolnir Vision
+    devices (87AD:70DB) that use the USBLCDNew ThreadSendDeviceData protocol.
+    """
+
+    def __init__(self, vid: int, pid: int):
+        super().__init__()
+        self._vid = vid
+        self._pid = pid
+        self._device: Optional[Any] = None  # BulkDevice (lazy import)
+        self._last_error: Optional[Exception] = None
+
+    def _ensure_device(self):
+        """Lazily create and handshake the bulk device."""
+        if self._device is None:
+            from .bulk_device import BulkDevice
+            self._device = BulkDevice(self._vid, self._pid)
+            result = self._device.handshake()
+            if result.resolution:
+                self._notify_state_changed("handshake_complete", True)
+                log.info("Bulk handshake OK: PM=%d, resolution=%s",
+                         result.model_id, result.resolution)
+            else:
+                log.warning("Bulk handshake: no resolution detected")
+
+    def handshake(self):
+        """Perform bulk device handshake."""
+        try:
+            self._ensure_device()
+            assert self._device is not None
+            return self._device._raw_handshake
+        except Exception as e:
+            log.exception("Bulk handshake failed for %04X:%04X",
+                          self._vid, self._pid)
+            self._last_error = e
+            self._notify_error(f"Bulk handshake failed: {e}")
+            return None
+
+    @property
+    def last_error(self) -> Optional[Exception]:
+        """Last exception from handshake."""
+        return self._last_error
+
+    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+        try:
+            self._ensure_device()
+            assert self._device is not None
+            success = self._device.send_frame(image_data)
+            self._notify_send_complete(success)
+            return success
+        except Exception as e:
+            self._notify_error(f"Bulk send failed: {e}")
+            self._notify_send_complete(False)
+            return False
+
+    def close(self) -> None:
+        if self._device is not None:
+            try:
+                self._device.close()
+            except Exception:
+                pass
+            self._device = None
+
+    def get_info(self) -> 'ProtocolInfo':
+        backends = _get_hid_backends()
+        active = "pyusb" if backends["pyusb"] else "none"
+        backends["sg_raw"] = False
+        return ProtocolInfo(
+            protocol="bulk",
+            device_type=4,
+            protocol_display="USB Bulk (USBLCDNew)",
+            device_type_display="Raw USB Bulk LCD",
+            active_backend=active,
+            backends=backends,
+            transport_open=self._device is not None,
+        )
+
+    @property
+    def protocol_name(self) -> str:
+        return "bulk"
+
+    @property
+    def is_available(self) -> bool:
+        backends = _get_hid_backends()
+        return backends["pyusb"]
+
+    def __repr__(self) -> str:
+        return f"BulkProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
+
+
+# =========================================================================
 # Backward-compatible aliases (old names still work)
 # =========================================================================
 
@@ -526,6 +622,13 @@ class DeviceProtocolFactory:
         if protocol == 'scsi':
             log.info("Creating ScsiProtocol for %s", device_info.path)
             return ScsiProtocol(device_info.path)
+        elif protocol == 'bulk':
+            log.info("Creating BulkProtocol for %04X:%04X",
+                     device_info.vid, device_info.pid)
+            return BulkProtocol(
+                vid=device_info.vid,
+                pid=device_info.pid,
+            )
         elif protocol == 'hid':
             # LED devices use a different protocol than LCD HID devices
             if implementation == 'hid_led':
@@ -595,12 +698,14 @@ PROTOCOL_NAMES = {
     "scsi": "SCSI (sg_raw)",
     "hid": "HID (USB bulk)",
     "led": "LED (HID 64-byte)",
+    "bulk": "USB Bulk (USBLCDNew)",
 }
 
 DEVICE_TYPE_NAMES = {
     1: "SCSI RGB565",
     2: "HID Type 2 (H)",
     3: "HID Type 3 (ALi)",
+    4: "Raw USB Bulk LCD",
 }
 
 LED_DEVICE_TYPE_NAME = "RGB LED Controller"
@@ -726,6 +831,8 @@ def get_protocol_info(device_info=None) -> ProtocolInfo:
 
     if protocol == "scsi":
         active = "sg_raw" if backends["sg_raw"] else "none"
+    elif protocol == "bulk":
+        active = "pyusb" if backends["pyusb"] else "none"
     elif protocol == "hid":
         if backends["pyusb"]:
             active = "pyusb"

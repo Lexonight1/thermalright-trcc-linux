@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trcc-linux"
-version = "1.2.18"
+version = "1.2.19"
 description = "Linux implementation of Thermalright LCD Control Center"
 readme = "README.md"
 license = "GPL-3.0-or-later"
