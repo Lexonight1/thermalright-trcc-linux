@@ -4,12 +4,7 @@ Unified LCD Driver
 Combines device detection with implementation-specific protocols.
 """
 
-import binascii
 import logging
-import os
-import struct
-import subprocess
-import tempfile
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -17,7 +12,7 @@ log = logging.getLogger(__name__)
 try:
     from .device_detector import DetectedDevice, detect_devices, get_default_device
     from .device_implementations import LCDDeviceImplementation, get_implementation
-    from .paths import require_sg_raw
+    from .scsi_device import _build_header, _scsi_read, _scsi_write
 except ImportError:
     from trcc.device_detector import (  # type: ignore[no-redef]
         DetectedDevice,
@@ -28,7 +23,7 @@ except ImportError:
         LCDDeviceImplementation,
         get_implementation,
     )
-    from trcc.paths import require_sg_raw  # type: ignore[no-redef]
+    from trcc.scsi_device import _build_header, _scsi_read, _scsi_write  # type: ignore[no-redef]
 
 
 class LCDDriver:
@@ -99,54 +94,6 @@ class LCDDriver:
         self.device_path = device.scsi_device
         self.implementation = get_implementation(device.implementation)
 
-    def _crc32(self, data: bytes) -> int:
-        """Calculate CRC32"""
-        return binascii.crc32(data) & 0xFFFFFFFF
-
-    def _build_header(self, cmd: int, size: int) -> bytes:
-        """Build 20-byte SCSI command header"""
-        header_16 = struct.pack('<I', cmd) + b'\x00' * 8 + struct.pack('<I', size)
-        crc = self._crc32(header_16)
-        return header_16 + struct.pack('<I', crc)
-
-    @staticmethod
-    def _check_sg_raw():
-        """Verify sg_raw is available, raise helpful error if not."""
-        require_sg_raw()
-
-    def _scsi_read(self, cdb: bytes, length: int) -> bytes:
-        """Execute SCSI READ command"""
-        if not self.device_path:
-            raise RuntimeError("No device path available")
-        self._check_sg_raw()
-
-        cdb_hex = ' '.join(f'{b:02x}' for b in cdb)
-        cmd = ['sg_raw', '-r', str(length), self.device_path] + cdb_hex.split()
-
-        result = subprocess.run(cmd, capture_output=True, timeout=10)
-        return result.stdout if result.returncode == 0 else b''
-
-    def _scsi_write(self, header: bytes, data: bytes) -> bool:
-        """Execute SCSI WRITE command"""
-        if not self.device_path:
-            raise RuntimeError("No device path available")
-        self._check_sg_raw()
-
-        cdb = list(header[:16])
-        cdb_hex = ' '.join(f'{b:02x}' for b in cdb)
-
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(data)
-            tmp_path = f.name
-
-        cmd = ['sg_raw', '-s', str(len(data)), '-i', tmp_path, self.device_path] + cdb_hex.split()
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            return result.returncode == 0
-        finally:
-            os.unlink(tmp_path)
-
     def init_device(self):
         """Initialize device (call once at startup)"""
         if self.initialized:
@@ -154,17 +101,19 @@ class LCDDriver:
         assert self.implementation is not None
         log.debug("Initializing LCD device at %s", self.device_path)
 
+        assert self.device_path is not None
+
         # Step 1: Poll device
         poll_cmd, poll_size = self.implementation.get_poll_command()
-        poll_header = self._build_header(poll_cmd, poll_size)
+        poll_header = _build_header(poll_cmd, poll_size)
         log.debug("Poll: cmd=0x%X, size=0x%X", poll_cmd, poll_size)
-        self._scsi_read(poll_header[:16], poll_size)
+        _scsi_read(self.device_path, poll_header[:16], poll_size)
 
         # Step 2: Init
         init_cmd, init_size = self.implementation.get_init_command()
-        init_header = self._build_header(init_cmd, init_size)
+        init_header = _build_header(init_cmd, init_size)
         log.debug("Init: cmd=0x%X, size=0x%X", init_cmd, init_size)
-        self._scsi_write(init_header, b'\x00' * init_size)
+        _scsi_write(self.device_path, init_header, b'\x00' * init_size)
 
         self.initialized = True
         log.info("LCD device initialized: %s (%s)", self.device_path,
@@ -194,11 +143,12 @@ class LCDDriver:
             image_data += b'\x00' * (total_size - len(image_data))
 
         # Send chunks
+        assert self.device_path is not None
         log.debug("Sending frame: %d bytes in %d chunks", total_size, len(chunks))
         offset = 0
         for cmd, size in chunks:
-            header = self._build_header(cmd, size)
-            self._scsi_write(header, image_data[offset:offset + size])
+            header = _build_header(cmd, size)
+            _scsi_write(self.device_path, header, image_data[offset:offset + size])
             offset += size
 
     def create_solid_color(self, r: int, g: int, b: int) -> bytes:

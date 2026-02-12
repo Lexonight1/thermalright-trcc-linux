@@ -287,19 +287,7 @@ class HidProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
-        if PYUSB_AVAILABLE:
-            from .hid_device import PyUsbTransport
-            return PyUsbTransport(self._vid, self._pid)
-        elif HIDAPI_AVAILABLE:
-            from .hid_device import HidApiTransport
-            return HidApiTransport(self._vid, self._pid)
-        else:
-            raise ImportError(
-                "No USB backend available. Install pyusb or hidapi:\n"
-                "  pip install pyusb   (+ apt install libusb-1.0-0)\n"
-                "  pip install hidapi  (+ apt install libhidapi-dev)"
-            )
+        return _create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -451,19 +439,7 @@ class LedProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
-        if PYUSB_AVAILABLE:
-            from .hid_device import PyUsbTransport
-            return PyUsbTransport(self._vid, self._pid)
-        elif HIDAPI_AVAILABLE:
-            from .hid_device import HidApiTransport
-            return HidApiTransport(self._vid, self._pid)
-        else:
-            raise ImportError(
-                "No USB backend available. Install pyusb or hidapi:\n"
-                "  pip install pyusb   (+ apt install libusb-1.0-0)\n"
-                "  pip install hidapi  (+ apt install libhidapi-dev)"
-            )
+        return _create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -671,6 +647,23 @@ def _check_sg_raw() -> bool:
     """Check if sg_raw is available on the system."""
     import shutil
     return shutil.which("sg_raw") is not None
+
+
+def _create_usb_transport(vid: int, pid: int):
+    """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
+    from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+    if PYUSB_AVAILABLE:
+        from .hid_device import PyUsbTransport
+        return PyUsbTransport(vid, pid)
+    elif HIDAPI_AVAILABLE:
+        from .hid_device import HidApiTransport
+        return HidApiTransport(vid, pid)
+    else:
+        raise ImportError(
+            "No USB backend available. Install pyusb or hidapi:\n"
+            "  pip install pyusb   (+ apt install libusb-1.0-0)\n"
+            "  pip install hidapi  (+ apt install libhidapi-dev)"
+        )
 
 
 def _get_hid_backends() -> Dict[str, bool]:

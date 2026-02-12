@@ -482,14 +482,14 @@ class LedHidSender(DeviceHandler):
                         resp[12],
                     )
 
-                # PM and SUB extraction — matches existing working behavior.
-                # UCDevice.cs uses data[6]/data[5] (with Report ID at [0]),
-                # but LED handshake already worked with these offsets in the
-                # field (shadowepaxeor-glitch got PM=0 cached from a live
-                # handshake). Keep resp[6]/resp[5] until we can verify with
-                # hex dumps from successful handshakes.
-                pm = resp[6]
-                sub_type = resp[5]
+                # PM and SUB extraction — matches Windows UCDevice.cs offsets.
+                # Windows HID API prepends Report ID at data[0], so:
+                #   data[6] = raw resp[5] = PM (product model byte)
+                #   data[5] = raw resp[4] = SUB (sub-variant byte)
+                # Previous code used resp[6]/resp[5] (off by one) which read
+                # zeros on AX120 devices (shadowepaxeor-glitch PM=0 was wrong).
+                pm = resp[5]
+                sub_type = resp[4]
                 style = get_style_for_pm(pm, sub_type)
 
                 override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
@@ -504,6 +504,7 @@ class LedHidSender(DeviceHandler):
                     sub_type=sub_type,
                     style=style,
                     model_name=model_name,
+                    raw_response=bytes(resp[:64]),
                 )
 
             except Exception as e:

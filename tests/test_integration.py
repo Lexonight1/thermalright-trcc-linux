@@ -39,8 +39,8 @@ def _make_png(path, w=320, h=320):
 class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     def test_detect_init_send(self, mock_get_impl, mock_detect, mock_run, mock_sg):
@@ -78,8 +78,8 @@ class TestDetectToSend(unittest.TestCase):
         expected_calls = 1 + 1 + len(chunks)  # poll + init + chunks
         self.assertEqual(mock_run.call_count, expected_calls)
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     def test_send_image_pipeline(self, mock_get_impl, mock_detect, mock_run, mock_sg):
@@ -114,8 +114,8 @@ class TestDetectToSend(unittest.TestCase):
 class TestCLISendPipeline(unittest.TestCase):
     """CLI send_image() → LCDDriver → sg_raw."""
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     @patch("trcc.cli._get_selected_device", return_value="/dev/sg0")
@@ -147,8 +147,8 @@ class TestCLISendPipeline(unittest.TestCase):
         result = send_image("/nonexistent/image.png")
         self.assertEqual(result, 1)
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     def test_cli_send_color(self, mock_get_impl, mock_detect, mock_run, mock_sg):
@@ -180,8 +180,8 @@ class TestCLISendPipeline(unittest.TestCase):
 class TestCLIResumePipeline(unittest.TestCase):
     """CLI resume() — detect → load theme config → apply brightness/rotation → send."""
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     @patch("trcc.device_detector.detect_devices")
@@ -332,8 +332,8 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
 class TestMultiResolution(unittest.TestCase):
     """Verify frame sizing and chunk counts for different resolutions."""
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     def test_480x480_frame_size(self, mock_get_impl, mock_detect, mock_run, mock_sg):
@@ -362,8 +362,8 @@ class TestMultiResolution(unittest.TestCase):
         # 480*480*2 = 460800, ceil(460800/65536) = 8 chunks
         self.assertEqual(len(chunks), 8)
 
-    @patch("trcc.lcd_driver.require_sg_raw")
-    @patch("trcc.lcd_driver.subprocess.run")
+    @patch("trcc.scsi_device.require_sg_raw")
+    @patch("trcc.scsi_device.subprocess.run")
     @patch("trcc.lcd_driver.detect_devices")
     @patch("trcc.lcd_driver.get_implementation")
     def test_240x240_frame_size(self, mock_get_impl, mock_detect, mock_run, mock_sg):
@@ -566,15 +566,9 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
         """_build_header produces 20-byte header with valid CRC32."""
         import binascii
 
-        from trcc.lcd_driver import LCDDriver
+        from trcc.scsi_device import _build_header
 
-        driver = LCDDriver.__new__(LCDDriver)
-        driver.device_info = None
-        driver.device_path = "/dev/sg0"
-        driver.implementation = None
-        driver.initialized = False
-
-        header = driver._build_header(0xF5, 0xE100)
+        header = _build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)
 
         # First 4 bytes = cmd (little-endian)

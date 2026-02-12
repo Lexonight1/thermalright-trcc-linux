@@ -85,14 +85,14 @@ def _make_mock_transport() -> MagicMock:
 def _make_valid_handshake_response(pm: int = 3, sub_type: int = 0) -> bytes:
     """Build a valid LED handshake response (64 bytes).
 
-    Args:
-        pm: Product model byte at resp[6].
-        sub_type: Sub-type byte at resp[5].
+    Offsets match Windows UCDevice.cs with Report ID removed:
+        PM  = data[6] → raw resp[5]
+        SUB = data[5] → raw resp[4]
     """
     resp = bytearray(LED_RESPONSE_SIZE)
     resp[0:4] = LED_MAGIC  # magic echo
-    resp[5] = sub_type
-    resp[6] = pm
+    resp[4] = sub_type     # SUB at raw[4] (Windows data[5])
+    resp[5] = pm           # PM at raw[5] (Windows data[6])
     resp[12] = LED_CMD_INIT  # cmd echo = 1
     return bytes(resp)
 
@@ -789,7 +789,7 @@ class TestLedHidSenderHandshake:
         assert read_args[0][1] == LED_RESPONSE_SIZE
 
     def test_handshake_extracts_pm(self):
-        """pm byte at response[6] should be extracted."""
+        """pm byte at response[5] (Windows data[6]) should be extracted."""
         transport = _make_mock_transport()
         transport.read.return_value = _make_valid_handshake_response(pm=48)
 
@@ -799,7 +799,7 @@ class TestLedHidSenderHandshake:
         assert info.pm == 48
 
     def test_handshake_extracts_sub_type(self):
-        """sub_type byte at response[5] should be extracted."""
+        """sub_type byte at response[4] (Windows data[5]) should be extracted."""
         transport = _make_mock_transport()
         transport.read.return_value = _make_valid_handshake_response(pm=1, sub_type=7)
 
@@ -890,6 +890,54 @@ class TestLedHidSenderHandshake:
             assert len(calls) == 2
             assert calls[0] == call(DELAY_PRE_INIT_S)
             assert calls[1] == call(DELAY_POST_INIT_S)
+
+    def test_handshake_pm_sub_offset_matches_windows(self):
+        """PM at raw[5] and SUB at raw[4] — matches Windows Report ID offset.
+
+        Windows HID API prepends Report ID at data[0], so:
+            data[6] = raw resp[5] = PM
+            data[5] = raw resp[4] = SUB
+        """
+        transport = _make_mock_transport()
+        resp = bytearray(LED_RESPONSE_SIZE)
+        resp[0:4] = LED_MAGIC
+        resp[4] = 0x42   # SUB at raw[4]
+        resp[5] = 0x80   # PM at raw[5] (128 = LC1)
+        resp[6] = 0xFF   # noise — should NOT be read as PM
+        resp[12] = 1
+        transport.read.return_value = bytes(resp)
+
+        sender = LedHidSender(transport)
+        info = sender.handshake()
+
+        assert info.pm == 0x80
+        assert info.sub_type == 0x42
+
+    def test_handshake_stores_raw_response(self):
+        """Handshake should store first 64 bytes of response for diagnostics."""
+        transport = _make_mock_transport()
+        transport.read.return_value = _make_valid_handshake_response(pm=3)
+
+        sender = LedHidSender(transport)
+        info = sender.handshake()
+
+        assert len(info.raw_response) == 64
+        assert info.raw_response[0:4] == LED_MAGIC
+
+    def test_handshake_hr10_via_sub_type(self):
+        """HR10 device (PM=128, SUB=129) resolved via SUB_TYPE_OVERRIDES."""
+        transport = _make_mock_transport()
+        transport.read.return_value = _make_valid_handshake_response(
+            pm=128, sub_type=129
+        )
+
+        sender = LedHidSender(transport)
+        info = sender.handshake()
+
+        assert info.pm == 128
+        assert info.sub_type == 129
+        assert info.style.style_id == 13
+        assert info.model_name == "HR10_2280_PRO_DIGITAL"
 
 
 class TestLedHidSenderSendLedData:
