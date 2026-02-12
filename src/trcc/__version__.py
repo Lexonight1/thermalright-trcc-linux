@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.13"
+__version__ = "1.2.14"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -40,3 +40,4 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          now bypasses model.enabled check, auto-enable overlay on element edit
 # 1.2.13 - Fix format buttons not updating preview on fresh install: set overlay_enabled
 #          on theme load, persist format prefs (time/date/temp) across theme changes
+# 1.2.14 - Add GrandVision 360 AIO support (VID 87AD:70DB), fix sysfs VID readback

@@ -5,6 +5,7 @@ Finds Thermalright LCD and LED devices and maps them to SCSI or HID devices.
 
 Supported devices (SCSI — stable):
 - Thermalright: VID=0x87CD, PID=0x70DB
+- Thermalright: VID=0x87AD, PID=0x70DB  (GrandVision series)
 - Winbond:      VID=0x0416, PID=0x5406
 - ALi Corp:     VID=0x0402, PID=0x3922
 
@@ -52,6 +53,14 @@ class DetectedDevice:
 # Users can override model via config if needed.
 KNOWN_DEVICES = {
     (0x87CD, 0x70DB): {
+        "vendor": "Thermalright",
+        "product": "LCD Display (USBLCD)",
+        "model": "CZTV",
+        "button_image": "A1CZTV",
+        "implementation": "thermalright_lcd_v1"
+    },
+    # Same chip (ChiZhu Tech USBDISPLAY), different VID — GrandVision 360 AIO etc.
+    (0x87AD, 0x70DB): {
         "vendor": "Thermalright",
         "product": "LCD Display (USBLCD)",
         "model": "CZTV",
@@ -285,6 +294,8 @@ def find_scsi_usblcd_devices() -> List[DetectedDevice]:
 
             if 'USBLCD' in vendor:
                 # Try to get VID:PID from USB sysfs to look up specific model
+                dev_vid = 0x87CD  # Fallback if sysfs traversal fails
+                dev_pid = 0x70DB
                 dev_model = "CZTV"
                 dev_button = "A1CZTV"
 
@@ -299,12 +310,12 @@ def find_scsi_usblcd_devices() -> List[DetectedDevice]:
                         pid_path = os.path.join(device_path, "idProduct")
                         if os.path.exists(vid_path) and os.path.exists(pid_path):
                             with open(vid_path) as vf:
-                                usb_vid = int(vf.read().strip(), 16)
+                                dev_vid = int(vf.read().strip(), 16)
                             with open(pid_path) as pf:
-                                usb_pid = int(pf.read().strip(), 16)
+                                dev_pid = int(pf.read().strip(), 16)
                             # Look up in KNOWN_DEVICES
-                            if (usb_vid, usb_pid) in KNOWN_DEVICES:
-                                dev_info = KNOWN_DEVICES[(usb_vid, usb_pid)]
+                            if (dev_vid, dev_pid) in KNOWN_DEVICES:
+                                dev_info = KNOWN_DEVICES[(dev_vid, dev_pid)]
                                 dev_model = dev_info.get("model", "CZTV")
                                 dev_button = dev_info.get("button_image", "A1CZTV")
                             break
@@ -312,8 +323,8 @@ def find_scsi_usblcd_devices() -> List[DetectedDevice]:
                     pass
 
                 devices.append(DetectedDevice(
-                    vid=0x87CD,  # Assume Thermalright (will be overridden if USB info found)
-                    pid=0x70DB,
+                    vid=dev_vid,
+                    pid=dev_pid,
                     vendor_name="Thermalright",
                     product_name=f"LCD Display ({model})",
                     usb_path="unknown",
@@ -365,7 +376,7 @@ def get_default_device() -> Optional[DetectedDevice]:
 
     # Prefer Thermalright device, then any other
     for device in devices:
-        if device.vid == 0x87CD:
+        if device.vid in (0x87CD, 0x87AD):
             return device
 
     return devices[0]
