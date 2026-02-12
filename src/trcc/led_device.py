@@ -212,6 +212,118 @@ PRESET_COLORS: List[Tuple[int, int, int]] = [
 ]
 
 
+# =========================================================================
+# LED index remapping tables (from FormLED.cs SendHidVal)
+# =========================================================================
+# Each style has a hardware-specific mapping from logical LED indices to
+# physical wire positions.  Windows builds colors in logical order, then
+# remaps before sending.  Without this step, colors land on wrong LEDs.
+#
+# Table format: tuple of logical LED indices, one per physical position.
+# Physical position i on the device wire gets colors from logical LED table[i].
+
+# Style 2: PA120_DIGITAL (84 LEDs, 4 zones)
+_REMAP_STYLE_2: tuple[int, ...] = (
+    # Cpu2 Cpu1 | Zone 1: F A B G E D C
+    3, 2, 14, 9, 10, 15, 13, 12, 11,
+    # Zone 2: F A B G E D C
+    21, 16, 17, 22, 20, 19, 18,
+    # Zone 3: F A B G E D C
+    28, 23, 24, 29, 27, 26, 25,
+    # SSD HSD C11 B11
+    6, 7, 81, 80,
+    # Zone 4: F A B G E D C
+    36, 31, 32, 37, 35, 34, 33,
+    # Zone 5: F A B G E D C
+    43, 38, 39, 44, 42, 41, 40,
+    # BFB BFB1
+    8, 8,
+    # Zone 10 (reversed): C D E G B A F
+    75, 76, 77, 79, 74, 73, 78,
+    # Zone 9 (reversed): C D E G B A F
+    68, 69, 70, 72, 67, 66, 71,
+    # B12 C12 SSD1 HSD1
+    82, 83, 6, 7,
+    # Zone 8 (reversed): C D E G B A F
+    61, 62, 63, 65, 60, 59, 64,
+    # Zone 7 (reversed): C D E G B A F
+    54, 55, 56, 58, 53, 52, 57,
+    # Zone 6 (reversed): C D E G B A F
+    47, 48, 49, 51, 46, 45, 50,
+    # Gpu1 Gpu2
+    4, 5,
+)
+
+# Style 3: AK120_DIGITAL (64 LEDs, 2 zones)
+_REMAP_STYLE_3: tuple[int, ...] = (
+    # WATT | Zone 3: C D E G B A F
+    1, 25, 26, 27, 29, 24, 23, 28,
+    # B2 Cpu1 | Zone 2: A F G C D E
+    17, 2, 16, 21, 22, 18, 19, 20,
+    # Zone 1: B A F G C D E
+    10, 9, 14, 15, 11, 12, 13,
+    # Zone 4: F A B G E D C
+    36, 31, 32, 37, 35, 34, 33,
+    # Zone 5: F A B G E D C
+    43, 38, 39, 44, 42, 41, 40,
+    # Zone 6: F A B G E D C
+    50, 45, 46, 51, 49, 48, 47,
+    # SSD HSD BFB
+    6, 7, 8,
+    # Zone 8: C D E G B A F
+    61, 62, 63, 65, 60, 59, 64,
+    # C7 Gpu1 | Zone 7: D E G B A F
+    54, 4, 55, 56, 58, 53, 52, 57,
+    # B9 C9
+    67, 68,
+)
+
+# Style 4: LC1 (31 LEDs, 1 zone) — also base for HR10 (style 13)
+_REMAP_STYLE_4: tuple[int, ...] = (
+    # GNo MTNo | Zone 4: C D E G B A | SSD
+    2, 1, 33, 34, 35, 37, 32, 31, 6,
+    # F4 | Zone 3: C D E G B A F
+    36, 25, 26, 27, 29, 24, 23, 28,
+    # Zone 2: C D E G B A F
+    18, 19, 20, 22, 17, 16, 21,
+    # Zone 1: C D E G B A F
+    11, 12, 13, 15, 10, 9, 14,
+)
+
+# Style → remap table.  Styles not listed use identity mapping (no remap).
+LED_REMAP_TABLES: dict[int, tuple[int, ...]] = {
+    2: _REMAP_STYLE_2,   # PA120_DIGITAL (84 LEDs)
+    3: _REMAP_STYLE_3,   # AK120_DIGITAL (64 LEDs)
+    4: _REMAP_STYLE_4,   # LC1 (31 LEDs)
+    13: _REMAP_STYLE_4,  # HR10 shares LC1 layout
+}
+
+
+def remap_led_colors(
+    colors: List[Tuple[int, int, int]],
+    style_id: int,
+) -> List[Tuple[int, int, int]]:
+    """Remap LED colors from logical to physical wire order.
+
+    Each LED device style has a hardware-specific mapping from logical LED
+    indices (used by the GUI) to physical wire positions (sent to device).
+    Windows applies this remap in FormLED.cs SendHidVal before sending.
+
+    Args:
+        colors: LED colors in logical order (index = logical LED number).
+        style_id: Device style ID (from LedDeviceStyle.style_id).
+
+    Returns:
+        Colors reordered for the physical device wire.  If no remap table
+        exists for this style, returns the input unchanged.
+    """
+    table = LED_REMAP_TABLES.get(style_id)
+    if table is None:
+        return colors
+    black = (0, 0, 0)
+    return [colors[idx] if idx < len(colors) else black for idx in table]
+
+
 def get_style_for_pm(pm: int, sub_type: int = 0) -> LedDeviceStyle:
     """Get LED device style from firmware pm byte (and optional sub_type).
 

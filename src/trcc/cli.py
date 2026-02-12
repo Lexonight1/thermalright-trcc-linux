@@ -902,17 +902,21 @@ def led_diag(test=False):
             print(f"  Add PM {info.pm} to led_device.py PM_TO_STYLE/PM_TO_MODEL.")
 
         if test:
+            from .led_device import remap_led_colors
+
             print("\n  Sending test colors...")
             led_count = style.led_count
             for name, color in [("RED", (255, 0, 0)), ("GREEN", (0, 255, 0)),
                                 ("BLUE", (0, 0, 255)), ("WHITE", (255, 255, 255))]:
-                led_colors = [color] * led_count
+                led_colors = remap_led_colors(
+                    [color] * led_count, style.style_id)
                 packet = LedPacketBuilder.build_led_packet(led_colors, brightness=100)
                 sender.send_led_data(packet)
                 print(f"    {name}")
                 time.sleep(1.5)
-            packet = LedPacketBuilder.build_led_packet(
-                [(0, 0, 0)] * led_count, brightness=0)
+            led_colors = remap_led_colors(
+                [(0, 0, 0)] * led_count, style.style_id)
+            packet = LedPacketBuilder.build_led_packet(led_colors, brightness=0)
             sender.send_led_data(packet)
             print("    OFF")
 

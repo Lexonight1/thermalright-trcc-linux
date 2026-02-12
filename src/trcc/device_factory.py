@@ -357,7 +357,14 @@ class LedProtocol(DeviceProtocol):
                 from .led_device import LedHidSender
                 self._sender = LedHidSender(self._transport)
 
-            from .led_device import LedPacketBuilder
+            from .led_device import LedPacketBuilder, remap_led_colors
+
+            # Remap logical LED order → physical wire order (per-style).
+            if self._handshake_info and self._handshake_info.style:
+                led_colors = remap_led_colors(
+                    led_colors, self._handshake_info.style.style_id,
+                )
+
             packet = LedPacketBuilder.build_led_packet(
                 led_colors, is_on, global_on, brightness
             )

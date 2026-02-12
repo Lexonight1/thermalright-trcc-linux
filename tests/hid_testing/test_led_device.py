@@ -27,6 +27,7 @@ from trcc.led_device import (
     LED_INIT_SIZE,
     LED_MAGIC,
     LED_PID,
+    LED_REMAP_TABLES,
     LED_RESPONSE_SIZE,
     LED_STYLES,
     LED_VID,
@@ -46,6 +47,7 @@ from trcc.led_device import (
     generate_rgb_table,
     get_rgb_table,
     get_style_for_pm,
+    remap_led_colors,
     send_led_colors,
 )
 
@@ -1281,3 +1283,108 @@ class TestLedConstants:
         """Threshold values should be in ascending order."""
         values = [t[0] for t in TEMP_COLOR_THRESHOLDS]
         assert values == sorted(values)
+
+
+# =========================================================================
+# TestRemapLedColors — LED index remapping
+# =========================================================================
+
+class TestRemapLedColors:
+    """Test LED color remapping from logical to physical wire order."""
+
+    def test_unknown_style_returns_identity(self):
+        """Styles without a remap table return colors unchanged."""
+        colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        assert remap_led_colors(colors, style_id=1) is colors
+
+    def test_style_2_table_length(self):
+        """Style 2 (PA120_DIGITAL) remap table has exactly 84 entries."""
+        assert len(LED_REMAP_TABLES[2]) == 84
+
+    def test_style_3_table_length(self):
+        """Style 3 (AK120_DIGITAL) remap table has exactly 64 entries."""
+        assert len(LED_REMAP_TABLES[3]) == 64
+
+    def test_style_4_table_length(self):
+        """Style 4 (LC1) remap table has exactly 31 entries."""
+        assert len(LED_REMAP_TABLES[4]) == 31
+
+    def test_style_13_shares_style_4(self):
+        """Style 13 (HR10) shares the same remap as style 4 (LC1)."""
+        assert LED_REMAP_TABLES[13] is LED_REMAP_TABLES[4]
+
+    def test_style_2_remaps_correctly(self):
+        """Style 2 first physical positions get Cpu2 then Cpu1 colors."""
+        # Logical indices: Cpu2=3, Cpu1=2
+        colors = [(0, 0, 0)] * 84
+        colors[2] = (10, 20, 30)   # Cpu1 at logical 2
+        colors[3] = (40, 50, 60)   # Cpu2 at logical 3
+        remapped = remap_led_colors(colors, style_id=2)
+        assert remapped[0] == (40, 50, 60)  # Physical 0 = Cpu2
+        assert remapped[1] == (10, 20, 30)  # Physical 1 = Cpu1
+
+    def test_style_2_gpu_at_end(self):
+        """Style 2 last two physical positions are Gpu1 and Gpu2."""
+        colors = [(0, 0, 0)] * 84
+        colors[4] = (100, 0, 0)    # Gpu1 at logical 4
+        colors[5] = (0, 100, 0)    # Gpu2 at logical 5
+        remapped = remap_led_colors(colors, style_id=2)
+        assert remapped[82] == (100, 0, 0)  # Physical 82 = Gpu1
+        assert remapped[83] == (0, 100, 0)  # Physical 83 = Gpu2
+
+    def test_style_2_uniform_color_unchanged_count(self):
+        """Uniform color (all same) remaps to same colors in different order."""
+        color = (255, 0, 0)
+        colors = [color] * 84
+        remapped = remap_led_colors(colors, style_id=2)
+        assert len(remapped) == 84
+        assert all(c == color for c in remapped)
+
+    def test_style_4_first_positions(self):
+        """Style 4 (LC1) first physical positions: GNo=2, MTNo=1."""
+        colors = [(0, 0, 0)] * 34  # Need up to index 37
+        colors[1] = (10, 10, 10)   # MTNo at logical 1
+        colors[2] = (20, 20, 20)   # GNo at logical 2
+        remapped = remap_led_colors(colors, style_id=4)
+        assert remapped[0] == (20, 20, 20)  # Physical 0 = GNo
+        assert remapped[1] == (10, 10, 10)  # Physical 1 = MTNo
+
+    def test_out_of_range_index_returns_black(self):
+        """If remap table references an index beyond colors list, return black."""
+        # Style 2 references index 81 (LEDC11), but we only provide 10 colors
+        colors = [(255, 0, 0)] * 10
+        remapped = remap_led_colors(colors, style_id=2)
+        # Most entries will be black since indices > 9 aren't in colors
+        assert len(remapped) == 84
+        # Index 3 (Cpu2) → physical 0 should still have the color
+        assert remapped[0] == (255, 0, 0)
+        # Index 81 (LEDC11) → physical 25 should be black
+        assert remapped[25] == (0, 0, 0)
+
+    def test_remap_preserves_per_led_colors(self):
+        """Each LED's color is placed at the correct physical position."""
+        # Give each logical LED a unique color
+        colors = [(i, i, i) for i in range(84)]
+        remapped = remap_led_colors(colors, style_id=2)
+        # Physical 0 should have logical 3's color (Cpu2)
+        assert remapped[0] == (3, 3, 3)
+        # Physical 2 should have logical 14's color (LEDF1)
+        assert remapped[2] == (14, 14, 14)
+
+    def test_all_remap_tables_match_led_count(self):
+        """Each remap table length matches its style's led_count."""
+        for style_id, table in LED_REMAP_TABLES.items():
+            style = LED_STYLES[style_id]
+            assert len(table) == style.led_count, (
+                f"Style {style_id} ({style.model_name}): "
+                f"remap has {len(table)} entries but led_count={style.led_count}"
+            )
+
+    def test_all_remap_indices_in_range(self):
+        """All remap table indices are valid logical LED indices."""
+        for style_id, table in LED_REMAP_TABLES.items():
+            for i, idx in enumerate(table):
+                assert 0 <= idx < 100, (
+                    f"Style {style_id} position {i}: "
+                    f"index {idx} out of range"
+                )
