@@ -450,18 +450,24 @@ class OverlayController:
         """Update system metrics for hardware overlay elements."""
         self._metrics = metrics
 
-    def render(self, background: Optional[Any] = None) -> Any:
-        """
-        Render overlay onto background.
+    def render(self, background: Optional[Any] = None, *, force: bool = False) -> Any:
+        """Render overlay onto background.
 
         Args:
-            background: Optional PIL Image to use as background
+            background: Optional PIL Image to use as background.
+            force: If True, render even when model.enabled is False.
+                   Used by render_overlay_and_preview() for live editing.
 
         Returns:
-            PIL Image with overlay rendered
+            PIL Image with overlay rendered.
         """
         if background:
             self.model.set_background(background)
+        if force:
+            renderer = self._ensure_renderer()
+            if renderer:
+                return renderer.render(self._metrics or {})
+            return self.model.background
         return self.model.render(self._metrics)
 
     def _ensure_renderer(self):
@@ -1235,13 +1241,15 @@ class LCDDeviceController:
     def render_overlay_and_preview(self):
         """Re-render overlay on current_image and update preview.
 
+        Always renders overlay (mask + config) regardless of model.enabled,
+        because this is the preview path — the user wants to see edits
+        immediately. The model.enabled flag only controls live metrics timer.
+
         Returns the rendered image (with overlay applied), or None.
-        Windows: GenerateImage() always starts with a black-filled bitmap,
-        so mask-only themes render on black even without 00.png.
         """
         if not self.current_image:
             self._create_mask_background(None)
-        img = self.overlay.render(self.current_image)
+        img = self.overlay.render(self.current_image, force=True)
         self._update_preview(img)
         return img
 

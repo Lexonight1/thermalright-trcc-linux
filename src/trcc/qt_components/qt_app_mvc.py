@@ -1064,6 +1064,12 @@ class TRCCMainWindowMVC(QMainWindow):
         """Forward overlay change to controller for live preview + LCD."""
         if not element_data:
             return
+        # Ensure overlay is enabled when user is actively editing elements
+        # (grid toggle is ON — to_overlay_config() returns {} when OFF,
+        #  caught by the empty check above)
+        if not self.controller.overlay.is_enabled():
+            self.controller.overlay.enable(True)
+            self.start_metrics()
         self.controller.overlay.set_config(element_data)
         img = self.controller.render_overlay_and_preview()
         if img and self.controller.auto_send and not self.controller.video.is_playing():

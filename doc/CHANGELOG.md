@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.12
+
+### Fresh Install Overlay Fix
+- **Fixed**: Overlay/mask changes not updating preview or LCD on fresh install (no saved device config)
+- Root cause: `OverlayModel.enabled` defaults to `False` and was only set `True` by `start_metrics()`. On fresh install, no saved config → overlay disabled → `render_overlay_and_preview()` returned raw background unchanged
+- `render_overlay_and_preview()` now uses `force=True` to always render through the renderer, bypassing the `enabled` check (preview path should always show edits)
+- `_on_overlay_changed()` auto-enables overlay and starts metrics timer when user is actively editing elements
+
 ## v1.2.11
 
 ### LCD Send Pipeline Fix
