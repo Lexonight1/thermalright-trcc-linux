@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.10
+
+### First-Launch Preview Fix
+- **Fixed**: Theme previews not showing on first GUI launch after `pip install` or upgrade
+- Root cause: `Settings` singleton resolved paths at import time (before data existed), and `set_resolution()` short-circuited when resolution was unchanged — paths were never refreshed after `ensure_all_data()` downloaded archives
+
 ## v1.2.9
 
 ### HID Handshake Protocol Fix

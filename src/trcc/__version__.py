@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.9"
+__version__ = "1.2.10"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -33,3 +33,4 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #         _update_selected(), remove dead code (set_format_options, LED stubs)
 # 1.2.9 - Fix HID handshake protocol (retry, timeout, endpoint auto-detect,
 #         relaxed validation), OOP refactor (DcConfig, conf.py, dataclasses)
+# 1.2.10 - Fix first-launch preview bug (paths not re-resolved after download)
