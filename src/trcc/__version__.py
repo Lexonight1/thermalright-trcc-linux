@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.17"
+__version__ = "1.2.18"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -49,3 +49,6 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          USBLCD.exe protocol), KVM LED backend, sensor-driven LED fix (cpu_percent/
 #          gpu_usage metric keys), unified DEVICE_BUTTON_IMAGE dict for all protocols,
 #          LED button image resolver, sensor source CPU/GPU toggle in LED control UI
+# 1.2.18 - Fix GrandVision 360 AIO (87AD:70DB) causing GUI hang: device is vendor-
+#          specific USB (class 255), not HID — removed from LED device list to stop
+#          timeout loop on startup

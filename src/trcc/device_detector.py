@@ -136,17 +136,9 @@ _LED_DEVICES = {
         "protocol": "hid",
         "device_type": 1,
     },
-    # Case 257 — LCD+LED combo (GrandVision, Core Vision, Hyper Vision, etc.)
-    # ChiZhu Tech USBDISPLAY — same 64-byte HID protocol as device1
-    (0x87AD, 0x70DB): {
-        "vendor": "ChiZhu Tech",
-        "product": "LCD+LED Display (HID)",
-        "model": "GRAND_VISION",
-        "button_image": "A1GRAND_VISION",
-        "implementation": "hid_led",
-        "protocol": "hid",
-        "device_type": 1,
-    },
+    # NOTE: 87AD:70DB (GrandVision) is NOT HID — bInterfaceClass=255 (Vendor Specific).
+    # Uses USBLCDNew raw bulk protocol (ThreadSendDeviceData), not HID handshake.
+    # Removed from _LED_DEVICES to prevent timeout loops. Needs raw bulk implementation.
 }
 
 # Backward-compat alias (tests and setup-udev reference this)
