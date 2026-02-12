@@ -113,84 +113,58 @@ LED_STYLES = {
     13: LedDeviceStyle(13, 31, 14, 1, "HR10_2280_PRO_DIGITAL", "DAX120_DIGITAL", "D0数码屏"),
 }
 
-# pm byte (UCDevice.cs data[6] → raw resp[5]) → style mapping
-# From FormLEDInit: if (NO == 1) nowLedStyle = 1, if (NO == 16) nowLedStyle = 2, etc.
-PM_TO_STYLE = {
-    1: 1,    # FROZEN_HORIZON_PRO → style 1
-    2: 1,    # FROZEN_MAGIC_PRO → style 1
-    3: 1,    # AX120_DIGITAL → style 1
-    16: 2,   # PA120_DIGITAL → style 2
-    17: 2, 18: 2, 19: 2, 20: 2, 21: 2, 22: 2, 23: 2,  # PA120 variants
-    24: 2, 25: 2, 26: 2, 27: 2, 28: 2, 29: 2, 30: 2, 31: 2,
-    32: 3,   # AK120_DIGITAL → style 3
-    48: 5,   # LF8 → style 5
-    49: 5,   # LF8 variant → style 5
-    80: 6,   # LF12 → style 6
-    96: 7,   # LF10 → style 7
-    112: 9,  # LC2 → style 9
-    128: 4,  # LC1 → style 4 (also HR10, disambiguated by sub_type)
-    129: 10, # LF11 → style 10
-    144: 11, # LF15 → style 11
-    160: 12, # LF13 → style 12
-    208: 8,  # CZ1 → style 8
+# -------------------------------------------------------------------------
+# PM registry — single source of truth for PM → (style, model, button image)
+# -------------------------------------------------------------------------
+# Replaces the former PM_TO_STYLE, PM_TO_MODEL, LED_PM_TO_BUTTON_IMAGE dicts.
+# Each entry: (style_id, model_name, button_image)
+_PM_REGISTRY: dict[int, tuple[int, str, str]] = {
+    1:   (1, "FROZEN_HORIZON_PRO", "A1FROZEN HORIZON PRO"),
+    2:   (1, "FROZEN_MAGIC_PRO", "A1FROZEN MAGIC PRO"),
+    3:   (1, "AX120_DIGITAL", "A1AX120 DIGITAL"),
+    16:  (2, "PA120_DIGITAL", "A1PA120 DIGITAL"),
+    23:  (2, "RK120_DIGITAL", "A1RK120 DIGITAL"),
+    32:  (3, "AK120_DIGITAL", "A1AK120 Digital"),
+    48:  (5, "LF8", "A1LF8"),
+    49:  (5, "LF10", "A1LF10"),
+    80:  (6, "LF12", "A1LF12"),
+    96:  (7, "LF10", "A1LF10"),
+    112: (9, "LC2", "A1LC2"),
+    128: (4, "LC1", "A1LC1"),
+    129: (10, "LF11", "A1LF11"),
+    144: (11, "LF15", "A1LF15"),
+    160: (12, "LF13", "A1LF13"),
+    208: (8, "CZ1", "A1CZ1"),
 }
+# PA120 variants (PMs 17-22, 24-31) all map to style 2.
+for _pm in range(17, 32):
+    if _pm not in _PM_REGISTRY:
+        _PM_REGISTRY[_pm] = (2, "PA120_DIGITAL", "A1PA120 DIGITAL")
 
-# pm byte → model name (for device button images)
-PM_TO_MODEL = {
-    1: "FROZEN_HORIZON_PRO",
-    2: "FROZEN_MAGIC_PRO",
-    3: "AX120_DIGITAL",
-    16: "PA120_DIGITAL",
-    23: "RK120_DIGITAL",
-    32: "AK120_DIGITAL",
-    48: "LF8",
-    49: "LF10",  # LF10 variant via LF8 group
-    80: "LF12",
-    96: "LF10",
-    112: "LC2",
-    128: "LC1",
-    129: "LF11",
-    144: "LF15",
-    160: "LF13",
-    208: "CZ1",
-}
-
-# PM byte → {sub → button image} (from UCDevice.cs ADDUserButton, case 1)
-# LED devices don't use SUB for button images in Windows, so all entries
-# use None (default) key. The lookup function still accepts sub for
-# forward-compat if future firmware adds sub-based disambiguation.
-LED_PM_TO_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
-    1:   {None: "A1FROZEN HORIZON PRO"},
-    2:   {None: "A1FROZEN MAGIC PRO"},
-    3:   {None: "A1AX120 DIGITAL"},
-    16:  {None: "A1PA120 DIGITAL"},
-    23:  {None: "A1RK120 DIGITAL"},
-    32:  {None: "A1AK120 Digital"},
-    48:  {None: "A1LF8"},
-    49:  {None: "A1LF10"},
-    80:  {None: "A1LF12"},
-    96:  {None: "A1LF10"},
-    112: {None: "A1LC2"},
-    128: {None: "A1LC1"},
-    129: {None: "A1LF11"},
-    144: {None: "A1LF15"},
-    160: {None: "A1LF13"},
-    208: {None: "A1CZ1"},
-}
+# Backward-compat: PM → style_id (used by cli.py, tests)
+PM_TO_STYLE: dict[int, int] = {pm: entry[0] for pm, entry in _PM_REGISTRY.items()}
 
 
 def get_led_button_image(pm: int, sub: int = 0) -> Optional[str]:
-    """Resolve LED device button image from PM + SUB bytes.
+    """Resolve LED device button image from PM byte.
 
-    Tries exact (pm, sub) match first, falls back to None default for that PM.
     Returns None if PM is unknown.
     """
-    sub_map = LED_PM_TO_BUTTON_IMAGE.get(pm)
-    if sub_map is None:
-        return None
-    if sub in sub_map:
-        return sub_map[sub]
-    return sub_map.get(None)
+    entry = _PM_REGISTRY.get(pm)
+    return entry[2] if entry else None
+
+
+def get_model_for_pm(pm: int, sub_type: int = 0) -> str:
+    """Get human-readable model name for a PM + SUB byte combo.
+
+    Checks SUB_TYPE_OVERRIDES first (e.g. HR10 vs LC1), then _PM_REGISTRY.
+    Falls back to "Unknown (pm=N)" for unrecognized PMs.
+    """
+    override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
+    if override:
+        return override[1]
+    entry = _PM_REGISTRY.get(pm)
+    return entry[1] if entry else f"Unknown (pm={pm})"
 
 # (pm, sub_type) → style override for devices that share a PM byte.
 # HR10 2280 Pro Digital shares PM=128 with LC1 but has sub_type=129.
@@ -332,13 +306,11 @@ def get_style_for_pm(pm: int, sub_type: int = 0) -> LedDeviceStyle:
 
     Falls back to style 1 (30 LEDs) for unknown pm values.
     """
-    # Check sub_type overrides first (e.g. HR10 vs LC1)
     override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
     if override:
-        style_id = override[0]
-        return LED_STYLES[style_id]
-    style_id = PM_TO_STYLE.get(pm, 1)
-    return LED_STYLES[style_id]
+        return LED_STYLES[override[0]]
+    entry = _PM_REGISTRY.get(pm)
+    return LED_STYLES[entry[0] if entry else 1]
 
 
 # =========================================================================
@@ -619,12 +591,7 @@ class LedHidSender(DeviceHandler):
                 pm = resp[5]
                 sub_type = resp[4]
                 style = get_style_for_pm(pm, sub_type)
-
-                override = SUB_TYPE_OVERRIDES.get((pm, sub_type))
-                if override:
-                    model_name = override[1]
-                else:
-                    model_name = PM_TO_MODEL.get(pm, f"Unknown (pm={pm})")
+                model_name = get_model_for_pm(pm, sub_type)
 
                 return LedHandshakeInfo(
                     model_id=pm,

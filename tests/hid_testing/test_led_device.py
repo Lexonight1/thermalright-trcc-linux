@@ -17,6 +17,7 @@ from trcc.hid_device import (
     UsbTransport,
 )
 from trcc.led_device import (
+    _PM_REGISTRY,
     DELAY_POST_INIT_S,
     DELAY_PRE_INIT_S,
     HID_REPORT_SIZE,
@@ -33,7 +34,6 @@ from trcc.led_device import (
     LED_VID,
     LOAD_COLOR_HIGH,
     LOAD_COLOR_THRESHOLDS,
-    PM_TO_MODEL,
     PM_TO_STYLE,
     PRESET_COLORS,
     SEND_COOLDOWN_S,
@@ -45,6 +45,7 @@ from trcc.led_device import (
     LedPacketBuilder,
     color_for_value,
     generate_rgb_table,
+    get_model_for_pm,
     get_rgb_table,
     get_style_for_pm,
     remap_led_colors,
@@ -194,7 +195,7 @@ class TestLedDeviceStyle:
 
 
 # =========================================================================
-# TestPmMapping — PM_TO_STYLE and PM_TO_MODEL
+# TestPmMapping — _PM_REGISTRY, PM_TO_STYLE, get_model_for_pm
 # =========================================================================
 
 class TestPmMapping:
@@ -223,17 +224,31 @@ class TestPmMapping:
             assert PM_TO_STYLE[pm] == 2
 
     def test_pm_to_model_known_mappings(self):
-        """Verify specific PM→model name mappings."""
-        assert PM_TO_MODEL[1] == "FROZEN_HORIZON_PRO"
-        assert PM_TO_MODEL[2] == "FROZEN_MAGIC_PRO"
-        assert PM_TO_MODEL[3] == "AX120_DIGITAL"
-        assert PM_TO_MODEL[16] == "PA120_DIGITAL"
-        assert PM_TO_MODEL[32] == "AK120_DIGITAL"
-        assert PM_TO_MODEL[208] == "CZ1"
+        """Verify specific PM→model name via get_model_for_pm()."""
+        assert get_model_for_pm(1) == "FROZEN_HORIZON_PRO"
+        assert get_model_for_pm(2) == "FROZEN_MAGIC_PRO"
+        assert get_model_for_pm(3) == "AX120_DIGITAL"
+        assert get_model_for_pm(16) == "PA120_DIGITAL"
+        assert get_model_for_pm(32) == "AK120_DIGITAL"
+        assert get_model_for_pm(208) == "CZ1"
 
-    def test_pm_to_model_has_entries(self):
-        """PM_TO_MODEL should have at least as many entries as distinct pm values."""
-        assert len(PM_TO_MODEL) >= 14
+    def test_pm_registry_has_entries(self):
+        """_PM_REGISTRY should cover all known PM values."""
+        assert len(_PM_REGISTRY) >= 30  # 16 primary + 14 PA120 variants
+
+    def test_pm_registry_pa120_variants_have_model(self):
+        """PA120 variant PMs (17-22, 24-31) should have model names."""
+        for pm in (17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31):
+            assert get_model_for_pm(pm) == "PA120_DIGITAL"
+
+    def test_get_model_for_pm_unknown(self):
+        """Unknown PM falls back to 'Unknown (pm=N)'."""
+        assert get_model_for_pm(255) == "Unknown (pm=255)"
+
+    def test_get_model_for_pm_hr10_override(self):
+        """HR10 (pm=128, sub=129) overrides LC1 model name."""
+        assert get_model_for_pm(128) == "LC1"
+        assert get_model_for_pm(128, 129) == "HR10_2280_PRO_DIGITAL"
 
     def test_get_style_for_pm_known(self):
         """get_style_for_pm returns correct style for known PM."""

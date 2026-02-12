@@ -899,7 +899,7 @@ def led_diag(test=False):
         else:
             print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
             print("  This device falls back to AX120 defaults.")
-            print(f"  Add PM {info.pm} to led_device.py PM_TO_STYLE/PM_TO_MODEL.")
+            print(f"  Add PM {info.pm} to led_device.py _PM_REGISTRY.")
 
         if test:
             from .led_device import remap_led_colors
