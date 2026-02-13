@@ -655,15 +655,9 @@ class TRCCMainWindowMVC(QMainWindow):
         close_btn.clicked.connect(self.close)
 
     def _on_help_clicked(self):
-        """Open User Guide PDF. Windows opens LCDHelp.pdf; we open Thermalright User Guide."""
+        """Open project README on GitHub."""
         import webbrowser
-        from pathlib import Path
-
-        doc = Path(__file__).resolve().parents[3] / 'doc' / 'User Guide.pdf'
-        if doc.exists():
-            webbrowser.open(doc.as_uri())
-        else:
-            webbrowser.open('https://github.com/thermalright/trcc-linux#readme')
+        webbrowser.open('https://github.com/Lexonight1/thermalright-trcc-linux#readme')
 
     def _apply_settings_backgrounds(self):
         """Apply localized P01 backgrounds to display mode panels in UCThemeSetting.
