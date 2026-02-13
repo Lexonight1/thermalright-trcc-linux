@@ -1380,7 +1380,7 @@ class LEDController:
         """Recompute the HR10 digit mask from current display text."""
         if not self._hr10_mode:
             return
-        from ..hr10_display import get_digit_mask
+        from ..device_led_hr10 import get_digit_mask
         self._hr10_mask = get_digit_mask(
             self._hr10_display_text, self._hr10_indicators
         )
@@ -1399,7 +1399,7 @@ class LEDController:
         if colors and self._protocol:
             if self._hr10_mode and self._hr10_mask:
                 # HR10: expand animation color to 31 LEDs via digit mask.
-                from ..hr10_display import LED_COUNT
+                from ..device_led_hr10 import LED_COUNT
                 base_color = colors[0] if colors else (0, 0, 0)
                 send_colors = [
                     base_color if self._hr10_mask[i] else (0, 0, 0)
@@ -1488,7 +1488,7 @@ class LEDDeviceController:
         self.load_config()
 
         if self.on_status_update:
-            from ..led_device import LED_STYLES
+            from ..device_led import LED_STYLES
             style = LED_STYLES.get(led_style)
             name = style.model_name if style else f"Style {led_style}"
             led_count = style.led_count if style else 0

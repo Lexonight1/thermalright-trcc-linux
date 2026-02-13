@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from PIL import Image
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QIcon, QImage, QPalette, QPixmap
 from PyQt6.QtWidgets import (
@@ -28,12 +29,6 @@ from PyQt6.QtWidgets import (
 )
 
 from .constants import Colors, Layout, Sizes, Styles
-
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
 
 log = logging.getLogger(__name__)
 
@@ -382,8 +377,6 @@ class BaseThumbnail(ClickableFrame):
 
     def _load_thumbnail(self):
         """Load thumbnail image into thumb_label."""
-        if not PIL_AVAILABLE:
-            return
         path = self._get_image_path(self.item_info)
         if path and Path(path).exists():
             try:
@@ -403,8 +396,6 @@ class BaseThumbnail(ClickableFrame):
 
     def _show_placeholder(self):
         """Show a labeled placeholder when thumbnail image is missing."""
-        if not PIL_AVAILABLE:
-            return
         try:
             from PIL import ImageDraw
             size = (Sizes.THUMB_IMAGE, Sizes.THUMB_IMAGE)

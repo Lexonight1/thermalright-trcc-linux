@@ -39,14 +39,14 @@ def _make_png(path, w=320, h=320):
 class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     def test_detect_init_send(self, mock_get_impl, mock_detect, mock_run, mock_sg):
         """detect_devices → LCDDriver(path) → send_frame goes through all layers."""
         from trcc.device_implementations import get_implementation as real_get_impl
-        from trcc.lcd_driver import LCDDriver
+        from trcc.driver_lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -78,14 +78,14 @@ class TestDetectToSend(unittest.TestCase):
         expected_calls = 1 + 1 + len(chunks)  # poll + init + chunks
         self.assertEqual(mock_run.call_count, expected_calls)
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     def test_send_image_pipeline(self, mock_get_impl, mock_detect, mock_run, mock_sg):
         """LCDDriver.load_image → send_frame end-to-end."""
         from trcc.device_implementations import get_implementation as real_get_impl
-        from trcc.lcd_driver import LCDDriver
+        from trcc.driver_lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -114,10 +114,10 @@ class TestDetectToSend(unittest.TestCase):
 class TestCLISendPipeline(unittest.TestCase):
     """CLI send_image() → LCDDriver → sg_raw."""
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     @patch("trcc.cli._get_selected_device", return_value="/dev/sg0")
     def test_cli_send_image(self, mock_sel, mock_get_impl, mock_detect, mock_run, mock_sg):
         """trcc send image.png end-to-end."""
@@ -147,10 +147,10 @@ class TestCLISendPipeline(unittest.TestCase):
         result = send_image("/nonexistent/image.png")
         self.assertEqual(result, 1)
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     def test_cli_send_color(self, mock_get_impl, mock_detect, mock_run, mock_sg):
         """trcc color ff0000 end-to-end."""
         from trcc.cli import send_color
@@ -180,10 +180,10 @@ class TestCLISendPipeline(unittest.TestCase):
 class TestCLIResumePipeline(unittest.TestCase):
     """CLI resume() — detect → load theme config → apply brightness/rotation → send."""
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     @patch("trcc.device_detector.detect_devices")
     @patch("trcc.conf.get_device_config")
     @patch("trcc.conf.device_config_key")
@@ -291,8 +291,8 @@ class TestCLIDetectPipeline(unittest.TestCase):
 class TestDeviceDetectorRoundTrip(unittest.TestCase):
     """Verify find_usb_devices → detect_devices → get_default_device chain."""
 
-    @patch("trcc.device_detector.find_scsi_device_by_usb_path")
-    @patch("trcc.device_detector.find_usb_devices")
+    @patch("trcc.device_detector.DeviceDetector.find_scsi_device_by_usb_path")
+    @patch("trcc.device_detector.DeviceDetector.find_usb_devices")
     def test_usb_to_scsi_mapping(self, mock_find_usb, mock_find_scsi):
         """USB device found → SCSI path assigned → returned in detect_devices."""
         from trcc.device_detector import detect_devices
@@ -305,8 +305,8 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].scsi_device, "/dev/sg0")
 
-    @patch("trcc.device_detector.find_scsi_device_by_usb_path")
-    @patch("trcc.device_detector.find_usb_devices")
+    @patch("trcc.device_detector.DeviceDetector.find_scsi_device_by_usb_path")
+    @patch("trcc.device_detector.DeviceDetector.find_usb_devices")
     def test_get_default_prefers_thermalright(self, mock_find_usb, mock_find_scsi):
         """get_default_device prefers Thermalright (VID 0x87CD)."""
         from trcc.device_detector import get_default_device
@@ -332,14 +332,14 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
 class TestMultiResolution(unittest.TestCase):
     """Verify frame sizing and chunk counts for different resolutions."""
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     def test_480x480_frame_size(self, mock_get_impl, mock_detect, mock_run, mock_sg):
         """480x480 produces correct frame size and chunk count."""
         from trcc.device_implementations import get_implementation as real_get_impl
-        from trcc.lcd_driver import LCDDriver
+        from trcc.driver_lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -362,14 +362,14 @@ class TestMultiResolution(unittest.TestCase):
         # 480*480*2 = 460800, ceil(460800/65536) = 8 chunks
         self.assertEqual(len(chunks), 8)
 
-    @patch("trcc.scsi_device.require_sg_raw")
-    @patch("trcc.scsi_device.subprocess.run")
-    @patch("trcc.lcd_driver.detect_devices")
-    @patch("trcc.lcd_driver.get_implementation")
+    @patch("trcc.device_scsi.require_sg_raw")
+    @patch("trcc.device_scsi.subprocess.run")
+    @patch("trcc.driver_lcd.detect_devices")
+    @patch("trcc.driver_lcd.get_implementation")
     def test_240x240_frame_size(self, mock_get_impl, mock_detect, mock_run, mock_sg):
         """240x240 produces correct frame size and chunk count."""
         from trcc.device_implementations import get_implementation as real_get_impl
-        from trcc.lcd_driver import LCDDriver
+        from trcc.driver_lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -566,7 +566,7 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
         """_build_header produces 20-byte header with valid CRC32."""
         import binascii
 
-        from trcc.scsi_device import _build_header
+        from trcc.device_scsi import _build_header
 
         header = _build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)

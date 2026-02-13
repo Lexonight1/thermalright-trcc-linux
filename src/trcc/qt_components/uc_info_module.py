@@ -9,15 +9,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-# Import system info (GUI-independent data layer)
-try:
-    from ..system_info import get_all_metrics
-    SYSINFO_AVAILABLE = True
-except ImportError:
-    SYSINFO_AVAILABLE = False
-    def get_all_metrics():
-        return {}
-
+from ..system_info import get_all_metrics
 
 # Default sensors: (metric_key, label, color)
 DEFAULT_SENSORS = [
@@ -109,8 +101,6 @@ class UCInfoModule(QWidget):
 
     def _update_values(self):
         """Update all sensor values from system_info."""
-        if not SYSINFO_AVAILABLE:
-            return
         try:
             metrics = get_all_metrics()
             for key, box in self._sensor_boxes.items():

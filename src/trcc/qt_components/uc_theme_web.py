@@ -151,21 +151,13 @@ class UCThemeWeb(DownloadableThemeBrowser):
         archive = self.web_directory.parent / f"{self.web_directory.name}.7z"
         if not archive.exists():
             return
+        import py7zr
+
         try:
-            import py7zr
             with py7zr.SevenZipFile(str(archive), 'r') as z:
                 z.extractall(str(self.web_directory))
-        except ImportError:
-            # Fallback to 7z command
-            try:
-                subprocess.run(
-                    ['7z', 'x', str(archive), f'-o{self.web_directory}', '-y'],
-                    capture_output=True, timeout=30
-                )
-            except Exception:
-                pass
         except Exception:
-            pass
+            log.warning("Failed to extract %s", archive)
 
     def load_themes(self):
         """Load cloud themes from preview PNGs in Web directory.

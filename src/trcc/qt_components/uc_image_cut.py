@@ -7,6 +7,7 @@ images to LCD target resolution.
 """
 from __future__ import annotations
 
+from PIL import Image as PILImage
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import (
     QBrush,
@@ -21,13 +22,6 @@ from trcc.core.controllers import apply_rotation
 
 from .assets import load_pixmap
 from .base import make_icon_button, pil_to_pixmap
-
-try:
-    from PIL import Image as PILImage
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-
 
 # ============================================================================
 # Constants
@@ -131,7 +125,7 @@ class UCImageCut(QWidget):
             target_w: Target width for LCD
             target_h: Target height for LCD
         """
-        if not PIL_AVAILABLE or pil_image is None:
+        if pil_image is None:
             return
 
         self._source_image = pil_image.copy()

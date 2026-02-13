@@ -7,7 +7,7 @@ Tests cover:
 - Resolution mapping from PM byte
 - Frame send (header + RGB565 data + ZLP logic)
 - Close / resource cleanup
-- DeviceHandler ABC compliance
+- HandshakeResult usage
 - Integration with device_factory.BulkProtocol
 """
 
@@ -19,13 +19,13 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from trcc.bulk_device import (
+from trcc.device_base import HandshakeResult
+from trcc.device_bulk import (
     _HANDSHAKE_PAYLOAD,
     _HANDSHAKE_READ_SIZE,
     _HANDSHAKE_TIMEOUT_MS,
     BulkDevice,
 )
-from trcc.device_base import DeviceHandler, HandshakeResult
 
 
 def _make_handshake_response(pm: int = 100, sub: int = 0, length: int = 1024) -> bytes:
@@ -79,10 +79,10 @@ class TestBulkDeviceInit(unittest.TestCase):
         bd = BulkDevice(0x87AD, 0x70DB, usb_path="2-1.4")
         self.assertEqual(bd.usb_path, "2-1.4")
 
-    def test_is_device_handler(self):
-        """BulkDevice must implement DeviceHandler ABC."""
+    def test_has_handshake_method(self):
+        """BulkDevice must have a handshake() method."""
         bd = BulkDevice(0x87AD, 0x70DB)
-        self.assertIsInstance(bd, DeviceHandler)
+        self.assertTrue(callable(getattr(bd, 'handshake', None)))
 
 
 class TestBulkDeviceOpen(unittest.TestCase):
@@ -463,7 +463,7 @@ class TestBulkDeviceDetection(unittest.TestCase):
         )
 
         with patch("trcc.device_detector.detect_devices", return_value=[fake_dev]):
-            from trcc.scsi_device import find_lcd_devices
+            from trcc.device_scsi import find_lcd_devices
             devices = find_lcd_devices()
 
         self.assertEqual(len(devices), 1)

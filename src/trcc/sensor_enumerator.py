@@ -20,13 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from trcc.paths import read_sysfs
+import psutil
 
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
+from trcc.paths import read_sysfs
 
 try:
     import pynvml
@@ -251,8 +247,6 @@ class SensorEnumerator:
 
     def _discover_psutil(self):
         """Discover psutil-based sensors."""
-        if not PSUTIL_AVAILABLE:
-            return
 
         psutil_sensors = [
             ('psutil:cpu_percent', 'CPU / Total Usage', 'usage', '%'),
@@ -293,8 +287,6 @@ class SensorEnumerator:
 
     def _discover_computed(self):
         """Register computed I/O rate sensors (disk, network)."""
-        if not PSUTIL_AVAILABLE:
-            return
 
         computed = [
             ('computed:disk_read', 'Disk / Read Rate', 'other', 'MB/s'),
@@ -359,8 +351,6 @@ class SensorEnumerator:
 
     def _read_psutil(self, readings: dict[str, float]):
         """Read psutil-based sensors."""
-        if not PSUTIL_AVAILABLE:
-            return
 
         try:
             readings['psutil:cpu_percent'] = psutil.cpu_percent(interval=None)
@@ -405,8 +395,6 @@ class SensorEnumerator:
 
     def _read_computed(self, readings: dict[str, float]):
         """Read computed I/O rate sensors (disk, network)."""
-        if not PSUTIL_AVAILABLE:
-            return
 
         now = time.monotonic()
 
@@ -448,86 +436,89 @@ class SensorEnumerator:
         except Exception:
             pass
 
+    # =========================================================================
+    # Default sensor mapping (legacy compat)
+    # =========================================================================
 
-# =============================================================================
-# Default sensor mapping: maps old get_all_metrics() keys to sensor IDs
-# =============================================================================
+    _default_map: Optional[dict[str, str]] = None
 
-# Built lazily on first call to map_defaults()
-_DEFAULT_MAP: Optional[dict[str, str]] = None
+    def map_defaults(self) -> dict[str, str]:
+        """Build a mapping from legacy metric keys to sensor IDs.
+
+        Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
+        Used for backward compatibility with overlay renderer.
+        Cached after first call.
+        """
+        if SensorEnumerator._default_map is not None:
+            return SensorEnumerator._default_map
+
+        sensors = self.get_sensors()
+        mapping: dict[str, str] = {}
+
+        def _find_first(source: str = '', name_contains: str = '',
+                        category: str = '') -> Optional[str]:
+            for s in sensors:
+                if source and s.source != source:
+                    continue
+                if category and s.category != category:
+                    continue
+                if name_contains and name_contains.lower() not in s.name.lower():
+                    continue
+                return s.id
+            return None
+
+        # CPU
+        mapping['cpu_temp'] = (
+            _find_first(source='hwmon', name_contains='Package') or
+            _find_first(source='hwmon', name_contains='Tctl') or
+            _find_first(source='hwmon', name_contains='coretemp') or
+            _find_first(source='hwmon', name_contains='k10temp') or
+            ''
+        )
+        mapping['cpu_percent'] = 'psutil:cpu_percent'
+        mapping['cpu_freq'] = 'psutil:cpu_freq'
+        mapping['cpu_power'] = _find_first(source='rapl') or ''
+
+        # GPU
+        mapping['gpu_temp'] = _find_first(source='nvidia', name_contains='Temperature') or ''
+        mapping['gpu_usage'] = _find_first(source='nvidia', name_contains='GPU Utilization') or ''
+        mapping['gpu_clock'] = _find_first(source='nvidia', name_contains='Graphics Clock') or ''
+        mapping['gpu_power'] = _find_first(source='nvidia', name_contains='Power Draw') or ''
+
+        # Memory
+        mapping['mem_temp'] = _find_first(source='hwmon', name_contains='spd') or ''
+        mapping['mem_percent'] = 'psutil:mem_percent'
+        mapping['mem_available'] = 'psutil:mem_available'
+        mapping['mem_clock'] = ''  # No reliable Linux source
+
+        # Disk
+        mapping['disk_temp'] = (
+            _find_first(source='hwmon', name_contains='nvme') or
+            _find_first(source='hwmon', name_contains='drivetemp') or
+            ''
+        )
+        mapping['disk_read'] = 'computed:disk_read'
+        mapping['disk_write'] = 'computed:disk_write'
+        mapping['disk_activity'] = 'computed:disk_activity'
+
+        # Network
+        mapping['net_up'] = 'computed:net_up'
+        mapping['net_down'] = 'computed:net_down'
+        mapping['net_total_up'] = 'computed:net_total_up'
+        mapping['net_total_down'] = 'computed:net_total_down'
+
+        # Fans — assign first N fans found
+        fan_sensors = [s for s in sensors if s.category == 'fan' and s.source == 'hwmon']
+        fan_keys = ['fan_cpu', 'fan_gpu', 'fan_ssd', 'fan_sys2']
+        for i, key in enumerate(fan_keys):
+            mapping[key] = fan_sensors[i].id if i < len(fan_sensors) else ''
+
+        # Remove empty mappings and cache
+        SensorEnumerator._default_map = {k: v for k, v in mapping.items() if v}
+        return SensorEnumerator._default_map
 
 
+# Backward-compat alias
 def map_defaults(enumerator: SensorEnumerator) -> dict[str, str]:
-    """Build a mapping from legacy metric keys to sensor IDs.
-
-    Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
-    Used for backward compatibility with overlay renderer.
-    """
-    global _DEFAULT_MAP
-    if _DEFAULT_MAP is not None:
-        return _DEFAULT_MAP
-
-    sensors = enumerator.get_sensors()
-    mapping: dict[str, str] = {}
-
-    def _find_first(source: str = '', name_contains: str = '',
-                    category: str = '') -> Optional[str]:
-        for s in sensors:
-            if source and s.source != source:
-                continue
-            if category and s.category != category:
-                continue
-            if name_contains and name_contains.lower() not in s.name.lower():
-                continue
-            return s.id
-        return None
-
-    # CPU
-    mapping['cpu_temp'] = (
-        _find_first(source='hwmon', name_contains='Package') or
-        _find_first(source='hwmon', name_contains='Tctl') or
-        _find_first(source='hwmon', name_contains='coretemp') or
-        _find_first(source='hwmon', name_contains='k10temp') or
-        ''
-    )
-    mapping['cpu_percent'] = 'psutil:cpu_percent'
-    mapping['cpu_freq'] = 'psutil:cpu_freq'
-    mapping['cpu_power'] = _find_first(source='rapl') or ''
-
-    # GPU
-    mapping['gpu_temp'] = _find_first(source='nvidia', name_contains='Temperature') or ''
-    mapping['gpu_usage'] = _find_first(source='nvidia', name_contains='GPU Utilization') or ''
-    mapping['gpu_clock'] = _find_first(source='nvidia', name_contains='Graphics Clock') or ''
-    mapping['gpu_power'] = _find_first(source='nvidia', name_contains='Power Draw') or ''
-
-    # Memory
-    mapping['mem_temp'] = _find_first(source='hwmon', name_contains='spd') or ''
-    mapping['mem_percent'] = 'psutil:mem_percent'
-    mapping['mem_available'] = 'psutil:mem_available'
-    mapping['mem_clock'] = ''  # No reliable Linux source
-
-    # Disk
-    mapping['disk_temp'] = (
-        _find_first(source='hwmon', name_contains='nvme') or
-        _find_first(source='hwmon', name_contains='drivetemp') or
-        ''
-    )
-    mapping['disk_read'] = 'computed:disk_read'
-    mapping['disk_write'] = 'computed:disk_write'
-    mapping['disk_activity'] = 'computed:disk_activity'
-
-    # Network
-    mapping['net_up'] = 'computed:net_up'
-    mapping['net_down'] = 'computed:net_down'
-    mapping['net_total_up'] = 'computed:net_total_up'
-    mapping['net_total_down'] = 'computed:net_total_down'
-
-    # Fans — assign first N fans found
-    fan_sensors = [s for s in sensors if s.category == 'fan' and s.source == 'hwmon']
-    fan_keys = ['fan_cpu', 'fan_gpu', 'fan_ssd', 'fan_sys2']
-    for i, key in enumerate(fan_keys):
-        mapping[key] = fan_sensors[i].id if i < len(fan_sensors) else ''
-
-    # Remove empty mappings
-    _DEFAULT_MAP = {k: v for k, v in mapping.items() if v}
-    return _DEFAULT_MAP
+    """Legacy wrapper — delegates to enumerator.map_defaults()."""
+    return enumerator.map_defaults()

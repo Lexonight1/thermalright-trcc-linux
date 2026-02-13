@@ -10,13 +10,13 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from trcc.hid_device import (
+from trcc.device_hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
     UsbTransport,
 )
-from trcc.led_device import (
+from trcc.device_led import (
     _PM_REGISTRY,
     DELAY_POST_INIT_S,
     DELAY_PRE_INIT_S,
@@ -60,14 +60,14 @@ pytestmark = pytest.mark.usefixtures("_patch_sleep")
 @pytest.fixture(autouse=True)
 def _patch_sleep():
     """Disable time.sleep in led_device for fast tests."""
-    with patch("trcc.led_device.time.sleep"):
+    with patch("trcc.device_led.time.sleep"):
         yield
 
 
 @pytest.fixture(autouse=True)
 def _clear_rgb_table_cache():
     """Reset the module-level _RGB_TABLE cache between tests."""
-    import trcc.led_device as mod
+    import trcc.device_led as mod
     original = mod._RGB_TABLE
     mod._RGB_TABLE = None
     yield
@@ -293,7 +293,7 @@ class TestPmMapping:
 
     def test_sub_type_override_takes_precedence(self):
         """SUB_TYPE_OVERRIDES should override PM_TO_STYLE."""
-        from trcc.led_device import SUB_TYPE_OVERRIDES
+        from trcc.device_led import SUB_TYPE_OVERRIDES
         # HR10 entry exists
         assert (128, 129) in SUB_TYPE_OVERRIDES
         # Without sub_type, PM=128 → style 4 (LC1)
@@ -429,28 +429,33 @@ class TestColorThresholds:
     def test_temp_29_cyan(self):
         assert color_for_value(29, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
 
-    def test_temp_30_green(self):
-        """30 is NOT less than 30, so falls through to next threshold (50)."""
-        assert color_for_value(30, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 0)
+    def test_temp_30_cyan(self):
+        """30 is the first gradient stop — clamps to cyan."""
+        assert color_for_value(30, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
 
-    def test_temp_49_green(self):
-        assert color_for_value(49, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 0)
+    def test_temp_49_interpolated_near_green(self):
+        """49 is near the (50, green) stop — interpolated cyan→green, mostly green."""
+        assert color_for_value(49, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 12)
 
-    def test_temp_50_yellow(self):
-        assert color_for_value(50, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 255, 0)
+    def test_temp_50_green(self):
+        """50 is the second gradient stop — exactly green."""
+        assert color_for_value(50, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 0)
 
-    def test_temp_69_yellow(self):
-        assert color_for_value(69, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 255, 0)
+    def test_temp_69_interpolated_near_yellow(self):
+        """69 is near the (70, yellow) stop — interpolated green→yellow."""
+        assert color_for_value(69, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (242, 255, 0)
 
-    def test_temp_70_orange(self):
-        assert color_for_value(70, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 110, 0)
+    def test_temp_70_yellow(self):
+        """70 is the third gradient stop — exactly yellow."""
+        assert color_for_value(70, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 255, 0)
 
-    def test_temp_89_orange(self):
-        assert color_for_value(89, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 110, 0)
+    def test_temp_89_interpolated_near_orange(self):
+        """89 is near the (90, orange) stop — interpolated yellow→orange."""
+        assert color_for_value(89, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 117, 0)
 
-    def test_temp_90_red(self):
-        """90 is NOT less than 90, so falls through to high_color."""
-        assert color_for_value(90, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 0, 0)
+    def test_temp_90_orange(self):
+        """90 is the fourth gradient stop — exactly orange."""
+        assert color_for_value(90, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 110, 0)
 
     def test_temp_100_red(self):
         assert color_for_value(100, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 0, 0)
@@ -483,8 +488,8 @@ class TestColorThresholds:
         assert color_for_value(29.999, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
 
     def test_float_just_at_30(self):
-        """30.0 is NOT less than 30, so green."""
-        assert color_for_value(30.0, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 0)
+        """30.0 is the first gradient stop — clamps to cyan."""
+        assert color_for_value(30.0, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
 
 
 # =========================================================================
@@ -901,7 +906,7 @@ class TestLedHidSenderHandshake:
         transport.read.return_value = _make_valid_handshake_response()
 
         sender = LedHidSender(transport)
-        with patch("trcc.led_device.time.sleep") as mock_sleep:
+        with patch("trcc.device_led.time.sleep") as mock_sleep:
             sender.handshake()
             calls = mock_sleep.call_args_list
             assert len(calls) == 2
@@ -1059,7 +1064,7 @@ class TestLedHidSenderSendLedData:
         transport = _make_mock_transport()
         sender = LedHidSender(transport)
 
-        with patch("trcc.led_device.time.sleep") as mock_sleep:
+        with patch("trcc.device_led.time.sleep") as mock_sleep:
             sender.send_led_data(b'\xAA' * 20)
             mock_sleep.assert_called_once_with(SEND_COOLDOWN_S)
 
@@ -1292,7 +1297,7 @@ class TestLedConstants:
         assert TEMP_COLOR_HIGH == (255, 0, 0)
 
     def test_temp_thresholds_length(self):
-        assert len(TEMP_COLOR_THRESHOLDS) == 4
+        assert len(TEMP_COLOR_THRESHOLDS) == 5
 
     def test_temp_thresholds_ascending(self):
         """Threshold values should be in ascending order."""

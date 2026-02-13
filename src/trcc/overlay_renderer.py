@@ -9,20 +9,8 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-# Try to import format_metric for system info display
-try:
-    from trcc.system_info import format_metric
-except ImportError:
-    def format_metric(metric, value, time_format=0, date_format=0, temp_unit=0):
-        """Fallback format_metric when system_info not available."""
-        if 'temp' in metric:
-            if temp_unit == 1:  # Fahrenheit
-                return f"{value * 9/5 + 32:.0f}°F"
-            return f"{value:.0f}°C"
-        return str(value)
-
-# Use centralized path definitions
 from trcc.paths import FONT_SEARCH_DIRS
+from trcc.system_info import format_metric
 
 
 class OverlayRenderer:

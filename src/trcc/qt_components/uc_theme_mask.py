@@ -19,12 +19,6 @@ from .base import BaseThumbnail, DownloadableThemeBrowser
 
 log = logging.getLogger(__name__)
 
-try:
-    import PIL  # noqa: F401 — PIL_AVAILABLE guard
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-
 
 class MaskThumbnail(BaseThumbnail):
     """Cloud mask thumbnail with non-local (dashed border) state."""
@@ -88,11 +82,6 @@ class UCThemeMask(DownloadableThemeBrowser):
         """Reload masks from disk and show cloud masks available for download."""
         self._clear_grid()
         self._local_masks.clear()
-
-        if not PIL_AVAILABLE:
-            log.warning("refresh_masks: PIL not available")
-            self._show_empty_message()
-            return
 
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)

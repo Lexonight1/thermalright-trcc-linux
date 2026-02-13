@@ -81,55 +81,41 @@ RESOLUTION_URLS = {
 }
 
 
-def get_known_themes() -> List[str]:
-    """Get list of known cloud theme IDs.
-
-    Returns theme IDs based on Windows category patterns:
-    - a001-a020 (Gallery)
-    - b001-b015 (Tech)
-    - c001-c010 (HUD)
-    - d001-d010 (Light)
-    - e001-e010 (Nature)
-    - y001-y005 (Aesthetic)
-    """
-    themes = []
-    for prefix, _, count in CATEGORIES[1:]:  # Skip 'all'
-        for i in range(1, count + 1):
-            themes.append(f"{prefix}{i:03d}")
-    return themes
-
-
-def get_themes_by_category(category: str) -> List[str]:
-    """Get theme IDs for a specific category.
-
-    Args:
-        category: Category prefix ('a', 'b', 'c', 'd', 'e', 'y') or 'all'
-
-    Returns:
-        List of theme IDs in that category
-    """
-    if category == 'all':
-        return get_known_themes()
-
-    for prefix, _, count in CATEGORIES[1:]:
-        if prefix == category:
-            return [f"{prefix}{i:03d}" for i in range(1, count + 1)]
-
-    return []
-
-
 class CloudThemeDownloader:
-    """
-    Downloads cloud themes from Thermalright servers.
+    """Downloads cloud themes from Thermalright servers.
 
-    Provides methods for:
-    - Downloading single themes
-    - Downloading preview images
-    - Downloading by category
-    - Progress callbacks
-
+    Provides methods for downloading single themes, previews, and categories.
     Thread-safe for use in GUI applications.
     """
+
+    # ------------------------------------------------------------------
+    # Static catalog helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_known_themes() -> List[str]:
+        """Get list of all known cloud theme IDs."""
+        themes = []
+        for prefix, _, count in CATEGORIES[1:]:  # Skip 'all'
+            for i in range(1, count + 1):
+                themes.append(f"{prefix}{i:03d}")
+        return themes
+
+    @staticmethod
+    def get_themes_by_category(category: str) -> List[str]:
+        """Get theme IDs for a specific category prefix ('a'..'y') or 'all'."""
+        if category == 'all':
+            return CloudThemeDownloader.get_known_themes()
+
+        for prefix, _, count in CATEGORIES[1:]:
+            if prefix == category:
+                return [f"{prefix}{i:03d}" for i in range(1, count + 1)]
+
+        return []
+
+    # ------------------------------------------------------------------
+    # Instance API
+    # ------------------------------------------------------------------
 
     def __init__(
         self,
@@ -328,7 +314,7 @@ class CloudThemeDownloader:
         Returns:
             Dict mapping theme_id to downloaded path (or None on failure)
         """
-        themes = get_themes_by_category(category)
+        themes = CloudThemeDownloader.get_themes_by_category(category)
         if max_themes > 0:
             themes = themes[:max_themes]
 
@@ -443,7 +429,7 @@ class CloudThemeDownloader:
 
     def get_all_theme_ids(self) -> List[str]:
         """Get all known theme IDs."""
-        return get_known_themes()
+        return CloudThemeDownloader.get_known_themes()
 
     def get_cached_themes(self) -> List[str]:
         """Get list of cached theme IDs."""
@@ -454,47 +440,26 @@ class CloudThemeDownloader:
         return sorted(cached)
 
 
-# Convenience function for quick downloads
+# Backward-compat aliases
+get_known_themes = CloudThemeDownloader.get_known_themes
+get_themes_by_category = CloudThemeDownloader.get_themes_by_category
+
+
 def download_theme(
     theme_id: str,
     resolution: str = "320x320",
-    cache_dir: Optional[str] = None
+    cache_dir: Optional[str] = None,
 ) -> Optional[str]:
-    """
-    Quick download of a single theme.
-
-    Args:
-        theme_id: Theme ID (e.g., 'a001')
-        resolution: LCD resolution
-        cache_dir: Cache directory
-
-    Returns:
-        Path to downloaded file, or None on failure
-    """
-    downloader = CloudThemeDownloader(resolution=resolution, cache_dir=cache_dir)
-    return downloader.download_theme(theme_id)
+    """Quick download of a single theme (convenience wrapper)."""
+    return CloudThemeDownloader(resolution=resolution, cache_dir=cache_dir).download_theme(theme_id)
 
 
 if __name__ == "__main__":
-    # Test download
     import sys
 
-    if len(sys.argv) > 1:
-        theme_id = sys.argv[1]
-    else:
-        theme_id = "a001"
+    tid = sys.argv[1] if len(sys.argv) > 1 else "a001"
+    res = sys.argv[2] if len(sys.argv) > 2 else "320x320"
 
-    resolution = sys.argv[2] if len(sys.argv) > 2 else "320x320"
-
-    print(f"Downloading {theme_id} ({resolution})...")
-
-    def progress(done, total, pct):
-        print(f"\r  {done}/{total} bytes ({pct}%)", end="", flush=True)
-
-    result = download_theme(theme_id, resolution)
-    print()
-
-    if result:
-        print(f"[OK] Downloaded to: {result}")
-    else:
-        print("[FAIL] Download failed")
+    print(f"Downloading {tid} ({res})...")
+    result = download_theme(tid, res)
+    print(f"\n[OK] {result}" if result else "\n[FAIL] Download failed")

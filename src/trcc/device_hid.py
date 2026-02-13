@@ -25,24 +25,22 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional, Set
 
-from .device_base import DeviceHandler, HandshakeResult
+import usb.core
+import usb.util
 
-log = logging.getLogger(__name__)
+from .device_base import HandshakeResult
 
-# Optional USB backends — graceful import
-try:
-    import usb.core
-    import usb.util
-    PYUSB_AVAILABLE = True
-except ImportError:
-    usb = None  # type: ignore[assignment]
-    PYUSB_AVAILABLE = False
-
+# hidapi is optional ([hid] extra)
 try:
     import hid as hidapi
     HIDAPI_AVAILABLE = True
 except ImportError:
     HIDAPI_AVAILABLE = False
+
+log = logging.getLogger(__name__)
+
+# pyusb is a hard dep — always True, exported for device_factory.transport_info()
+PYUSB_AVAILABLE = True
 
 
 # =========================================================================
@@ -291,7 +289,7 @@ def _ceil_to_512(n: int) -> int:
 # HID device base class
 # =========================================================================
 
-class HidDevice(DeviceHandler):
+class HidDevice:
     """Base for HID LCD device handlers (Type 2 and Type 3).
 
     Provides shared init state and the handshake template:
@@ -731,12 +729,6 @@ class PyUsbTransport(UsbTransport):
     """
 
     def __init__(self, vid: int, pid: int, serial: Optional[str] = None):
-        if not PYUSB_AVAILABLE:
-            raise ImportError(
-                "pyusb is not installed. Install with: pip install pyusb\n"
-                "Also need libusb: apt install libusb-1.0-0 (Debian/Ubuntu) "
-                "or dnf install libusb1 (Fedora)"
-            )
         self._vid = vid
         self._pid = pid
         self._serial = serial
@@ -994,28 +986,17 @@ def find_hid_devices() -> list:
         (TYPE3_VID, TYPE3_PID, 3),
     ]
 
-    if PYUSB_AVAILABLE:
-        for vid, pid, dtype in known:
-            found = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)  # type: ignore[union-attr]
-            for dev in found or []:
-                serial_idx = getattr(dev, 'iSerialNumber', 0)
-                serial = usb.util.get_string(dev, serial_idx) if serial_idx else ""  # type: ignore[union-attr]
-                devices.append({
-                    'vid': vid,
-                    'pid': pid,
-                    'device_type': dtype,
-                    'serial': serial or "",
-                    'backend': 'pyusb',
-                })
-    elif HIDAPI_AVAILABLE:
-        for vid, pid, dtype in known:
-            for info in hidapi.enumerate(vid, pid):
-                devices.append({
-                    'vid': vid,
-                    'pid': pid,
-                    'device_type': dtype,
-                    'serial': info.get('serial_number', '') or "",
-                    'backend': 'hidapi',
-                })
+    for vid, pid, dtype in known:
+        found = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)
+        for dev in found or []:
+            serial_idx = getattr(dev, 'iSerialNumber', 0)
+            serial = usb.util.get_string(dev, serial_idx) if serial_idx else ""
+            devices.append({
+                'vid': vid,
+                'pid': pid,
+                'device_type': dtype,
+                'serial': serial or "",
+                'backend': 'pyusb',
+            })
 
     return devices

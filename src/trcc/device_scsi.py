@@ -1,7 +1,7 @@
 """
 SCSI Device Bridge — connects MVC models to lcd_driver/device_detector.
 
-models.py imports `from ..scsi_device import find_lcd_devices, send_image_to_device`
+models.py imports `from ..device_scsi import find_lcd_devices, send_image_to_device`
 This module provides those two functions.
 
 SCSI send protocol is inlined here (from trcc_handshake_v2) so everything
@@ -18,7 +18,7 @@ import tempfile
 import time
 from typing import Dict, List, Set
 
-from .device_base import DeviceHandler, HandshakeResult
+from .device_base import HandshakeResult
 from .paths import require_sg_raw
 
 log = logging.getLogger(__name__)
@@ -160,16 +160,12 @@ def _send_frame(dev: str, rgb565_data: bytes, width: int = 320, height: int = 32
 
 
 # =========================================================================
-# SCSI device class (DeviceHandler implementation)
+# SCSI device class
 # =========================================================================
 
 
-class ScsiDevice(DeviceHandler):
-    """SCSI LCD device handler wrapping sg_raw subprocess calls.
-
-    Provides the same handshake()/close() interface as HidDevice and
-    LedHidSender so all protocols share a uniform DeviceHandler contract.
-    """
+class ScsiDevice:
+    """SCSI LCD device handler wrapping sg_raw subprocess calls."""
 
     def __init__(self, device_path: str, width: int = 320, height: int = 320):
         self.device_path = device_path
@@ -229,7 +225,7 @@ def find_lcd_devices() -> List[Dict]:
             # Detect resolution via LCDDriver if possible
             resolution = (320, 320)
             try:
-                from .lcd_driver import LCDDriver
+                from .driver_lcd import LCDDriver
                 driver = LCDDriver(device_path=dev.scsi_device, auto_detect_resolution=True)
                 if driver.implementation:
                     resolution = driver.implementation.resolution
@@ -241,7 +237,7 @@ def find_lcd_devices() -> List[Dict]:
             button_image = dev.button_image
             scsi_pm = _RESOLUTION_TO_PM.get(resolution)
             if scsi_pm is not None:
-                from .hid_device import get_button_image
+                from .device_hid import get_button_image
                 resolved = get_button_image(scsi_pm, 0)
                 if resolved:
                     button_image = resolved
@@ -272,7 +268,7 @@ def find_lcd_devices() -> List[Dict]:
             # to discover the real model (AX120, PA120, LC1, etc.).
             if dev.implementation == 'hid_led':
                 try:
-                    from .led_device import get_led_button_image, probe_led_model
+                    from .device_led import get_led_button_image, probe_led_model
                     info = probe_led_model(dev.vid, dev.pid,
                                            usb_path=dev.usb_path)
                     if info and info.model_name:

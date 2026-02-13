@@ -14,12 +14,6 @@ from .assets import Assets, load_pixmap
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
 
-try:
-    from PIL import Image  # noqa: F401
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-
 
 class UCPreview(BasePanel):
     """

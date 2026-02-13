@@ -7,23 +7,11 @@ Combines device detection with implementation-specific protocols.
 import logging
 from typing import Optional
 
-log = logging.getLogger(__name__)
+from .device_detector import DetectedDevice, detect_devices, get_default_device
+from .device_implementations import LCDDeviceImplementation, get_implementation
+from .device_scsi import _build_header, _scsi_read, _scsi_write
 
-try:
-    from .device_detector import DetectedDevice, detect_devices, get_default_device
-    from .device_implementations import LCDDeviceImplementation, get_implementation
-    from .scsi_device import _build_header, _scsi_read, _scsi_write
-except ImportError:
-    from trcc.device_detector import (  # type: ignore[no-redef]
-        DetectedDevice,
-        detect_devices,
-        get_default_device,
-    )
-    from trcc.device_implementations import (  # type: ignore[no-redef]
-        LCDDeviceImplementation,
-        get_implementation,
-    )
-    from trcc.scsi_device import _build_header, _scsi_read, _scsi_write  # type: ignore[no-redef]
+log = logging.getLogger(__name__)
 
 
 class LCDDriver:

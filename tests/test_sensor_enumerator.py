@@ -59,7 +59,6 @@ class TestSensorEnumeratorDiscover(unittest.TestCase):
     def _make_enumerator(self):
         return SensorEnumerator()
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', False)
     @patch('trcc.sensor_enumerator.NVML_AVAILABLE', False)
     @patch('trcc.sensor_enumerator.Path')
     def test_discover_hwmon_basic(self, mock_path_cls):
@@ -95,12 +94,9 @@ class TestSensorEnumeratorDiscover(unittest.TestCase):
         enum = self._make_enumerator()
         self.assertEqual(enum.get_sensors(), [])
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
-    @patch('trcc.sensor_enumerator.NVML_AVAILABLE', False)
     def test_discover_psutil(self):
-        """psutil sensors are always added when available."""
+        """psutil sensors are always added (psutil is a hard dependency)."""
         enum = self._make_enumerator()
-        # Manually call psutil discovery
         enum._discover_psutil()
         ids = [s.id for s in enum.get_sensors()]
         self.assertIn('psutil:cpu_percent', ids)
@@ -108,15 +104,6 @@ class TestSensorEnumeratorDiscover(unittest.TestCase):
         self.assertIn('psutil:mem_percent', ids)
         self.assertIn('psutil:mem_available', ids)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', False)
-    @patch('trcc.sensor_enumerator.NVML_AVAILABLE', False)
-    def test_discover_psutil_unavailable(self):
-        enum = self._make_enumerator()
-        enum._discover_psutil()
-        self.assertEqual(enum.get_sensors(), [])
-
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
-    @patch('trcc.sensor_enumerator.NVML_AVAILABLE', False)
     def test_discover_computed(self):
         enum = self._make_enumerator()
         enum._discover_computed()
@@ -124,13 +111,6 @@ class TestSensorEnumeratorDiscover(unittest.TestCase):
         self.assertIn('computed:disk_read', ids)
         self.assertIn('computed:net_up', ids)
         self.assertIn('computed:net_down', ids)
-
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', False)
-    @patch('trcc.sensor_enumerator.NVML_AVAILABLE', False)
-    def test_discover_computed_no_psutil(self):
-        enum = self._make_enumerator()
-        enum._discover_computed()
-        self.assertEqual(enum.get_sensors(), [])
 
 
 class TestSensorEnumeratorGetters(unittest.TestCase):
@@ -229,7 +209,6 @@ class TestSensorEnumeratorReadRapl(unittest.TestCase):
 
 class TestSensorEnumeratorReadPsutil(unittest.TestCase):
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     def test_reads_cpu_and_memory(self, mock_psutil):
         mock_psutil.cpu_percent.return_value = 42.0
@@ -246,23 +225,15 @@ class TestSensorEnumeratorReadPsutil(unittest.TestCase):
         self.assertAlmostEqual(readings['psutil:cpu_freq'], 3600.0)
         self.assertAlmostEqual(readings['psutil:mem_percent'], 55.0)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', False)
-    def test_noop_without_psutil(self):
-        enum = SensorEnumerator()
-        readings = {}
-        enum._read_psutil(readings)
-        self.assertEqual(readings, {})
-
 
 # ── map_defaults ─────────────────────────────────────────────────────────────
 
 class TestMapDefaults(unittest.TestCase):
 
     def test_returns_dict(self):
-        # Reset global cache for clean test
-        import trcc.sensor_enumerator as mod
+        # Reset class-level cache for clean test
         from trcc.sensor_enumerator import map_defaults
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
 
         enum = SensorEnumerator()
         # Add some psutil sensors
@@ -279,8 +250,8 @@ class TestMapDefaults(unittest.TestCase):
         self.assertEqual(mapping.get('cpu_percent'), 'psutil:cpu_percent')
         self.assertEqual(mapping.get('disk_read'), 'computed:disk_read')
 
-        # Clean up global
-        mod._DEFAULT_MAP = None
+        # Clean up class-level cache
+        SensorEnumerator._default_map = None
 
 
 # ── discover() end-to-end ────────────────────────────────────────────────────
@@ -455,7 +426,6 @@ class TestReadOneEdgeCases(unittest.TestCase):
 
 class TestReadComputed(unittest.TestCase):
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_disk_delta(self, mock_time, mock_psutil):
@@ -478,7 +448,6 @@ class TestReadComputed(unittest.TestCase):
         self.assertAlmostEqual(readings['computed:disk_read'], 10.0, delta=0.1)
         self.assertIn('computed:disk_activity', readings)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_network_delta(self, mock_time, mock_psutil):
@@ -496,22 +465,14 @@ class TestReadComputed(unittest.TestCase):
         self.assertIn('computed:net_up', readings)
         self.assertAlmostEqual(readings['computed:net_up'], 100.0, delta=1.0)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', False)
-    def test_no_psutil_returns_nothing(self):
-        enum = SensorEnumerator()
-        readings = {}
-        enum._read_computed(readings)
-        self.assertEqual(readings, {})
-
 
 # ── map_defaults with fans and GPU ───────────────────────────────────────────
 
 class TestMapDefaultsFull(unittest.TestCase):
 
     def test_fan_sensor_mapping(self):
-        import trcc.sensor_enumerator as mod
         from trcc.sensor_enumerator import map_defaults
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
 
         enum = SensorEnumerator()
         enum._sensors = [
@@ -521,19 +482,18 @@ class TestMapDefaultsFull(unittest.TestCase):
         mapping = map_defaults(enum)
         self.assertEqual(mapping.get('fan_cpu'), 'hwmon:nct:fan1')
         self.assertEqual(mapping.get('fan_gpu'), 'hwmon:nct:fan2')
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
 
     def test_cached_second_call(self):
-        import trcc.sensor_enumerator as mod
         from trcc.sensor_enumerator import map_defaults
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
 
         enum = SensorEnumerator()
         enum._sensors = []
         first = map_defaults(enum)
         second = map_defaults(enum)
         self.assertIs(first, second)
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
 
 
 # ── _discover_nvidia ──────────────────────────────────────────────────────────
@@ -719,7 +679,6 @@ class TestReadRaplEdge(unittest.TestCase):
 
 class TestReadPsutilEdge(unittest.TestCase):
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     def test_cpu_percent_exception(self, mock_psutil):
         mock_psutil.cpu_percent.side_effect = RuntimeError
@@ -733,7 +692,6 @@ class TestReadPsutilEdge(unittest.TestCase):
         self.assertNotIn('psutil:cpu_percent', readings)
         self.assertIn('psutil:cpu_freq', readings)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     def test_cpu_freq_none(self, mock_psutil):
         mock_psutil.cpu_percent.return_value = 10.0
@@ -747,7 +705,6 @@ class TestReadPsutilEdge(unittest.TestCase):
         self.assertNotIn('psutil:cpu_freq', readings)
         self.assertIn('psutil:cpu_percent', readings)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     def test_virtual_memory_exception(self, mock_psutil):
         mock_psutil.cpu_percent.return_value = 10.0
@@ -765,7 +722,6 @@ class TestReadPsutilEdge(unittest.TestCase):
 
 class TestReadComputedEdge(unittest.TestCase):
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_disk_without_busy_time(self, mock_time, mock_psutil):
@@ -787,7 +743,6 @@ class TestReadComputedEdge(unittest.TestCase):
         self.assertIn('computed:disk_read', readings)
         self.assertNotIn('computed:disk_activity', readings)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_disk_no_prev(self, mock_time, mock_psutil):
@@ -804,7 +759,6 @@ class TestReadComputedEdge(unittest.TestCase):
         self.assertNotIn('computed:disk_read', readings)
         self.assertIsNotNone(enum._disk_prev)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_net_no_prev(self, mock_time, mock_psutil):
@@ -822,7 +776,6 @@ class TestReadComputedEdge(unittest.TestCase):
         self.assertNotIn('computed:net_up', readings)
         self.assertIsNotNone(enum._net_prev)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_disk_exception(self, mock_time, mock_psutil):
@@ -834,7 +787,6 @@ class TestReadComputedEdge(unittest.TestCase):
         enum._read_computed(readings)
         self.assertNotIn('computed:disk_read', readings)
 
-    @patch('trcc.sensor_enumerator.PSUTIL_AVAILABLE', True)
     @patch('trcc.sensor_enumerator.psutil')
     @patch('trcc.sensor_enumerator.time')
     def test_net_exception(self, mock_time, mock_psutil):
@@ -977,13 +929,12 @@ class TestDiscoverRaplEdge(unittest.TestCase):
 class TestMapDefaultsGpuAndTemp(unittest.TestCase):
 
     def _run(self, sensors):
-        import trcc.sensor_enumerator as mod
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
         enum = SensorEnumerator()
         enum._sensors = sensors
         from trcc.sensor_enumerator import map_defaults
         result = map_defaults(enum)
-        mod._DEFAULT_MAP = None
+        SensorEnumerator._default_map = None
         return result
 
     def test_nvidia_gpu_mapping(self):
@@ -1062,10 +1013,6 @@ class TestNvmlImport(unittest.TestCase):
         """Module-level NVML_AVAILABLE flag is a boolean."""
         from trcc.sensor_enumerator import NVML_AVAILABLE
         self.assertIsInstance(NVML_AVAILABLE, bool)
-
-    def test_psutil_available_flag_exists(self):
-        from trcc.sensor_enumerator import PSUTIL_AVAILABLE
-        self.assertIsInstance(PSUTIL_AVAILABLE, bool)
 
 
 # ── hwmon read_one divisor path ──────────────────────────────────────────────

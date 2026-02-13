@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, NamedTuple, Optional, Tuple
 
-from .device_base import DeviceHandler, HandshakeResult
-from .hid_device import (
+from .device_base import HandshakeResult
+from .device_hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
@@ -377,31 +377,67 @@ def get_rgb_table() -> List[Tuple[int, int, int]]:
 
 
 # =========================================================================
-# Temperature/Load → Color thresholds (FormLED.cs WDLD_Timer / FZLD_Timer)
+# Temperature/Load → Color gradient (FormLED.cs WDLD_Timer, enhanced with interpolation)
 # =========================================================================
 
-# Thresholds: (max_value, (R, G, B))
-TEMP_COLOR_THRESHOLDS = [
-    (30, (0, 255, 255)),    # < 30°C → Cyan
-    (50, (0, 255, 0)),      # 30-49°C → Green
-    (70, (255, 255, 0)),    # 50-69°C → Yellow
-    (90, (255, 110, 0)),    # 70-89°C → Orange
+# Gradient stops: (value, (R, G, B)) — linearly interpolated between stops.
+TEMP_COLOR_GRADIENT: List[Tuple[float, Tuple[int, int, int]]] = [
+    (30, (0, 255, 255)),    # Cyan
+    (50, (0, 255, 0)),      # Green
+    (70, (255, 255, 0)),    # Yellow
+    (90, (255, 110, 0)),    # Orange
+    (100, (255, 0, 0)),     # Red
 ]
-TEMP_COLOR_HIGH = (255, 0, 0)  # ≥ 90°C → Red
 
-LOAD_COLOR_THRESHOLDS = TEMP_COLOR_THRESHOLDS  # Same thresholds (0-100%)
-LOAD_COLOR_HIGH = TEMP_COLOR_HIGH
+LOAD_COLOR_GRADIENT = TEMP_COLOR_GRADIENT  # Same gradient (0-100%)
+
+# Backward-compat aliases
+TEMP_COLOR_THRESHOLDS = TEMP_COLOR_GRADIENT
+TEMP_COLOR_HIGH = (255, 0, 0)
+LOAD_COLOR_THRESHOLDS = TEMP_COLOR_GRADIENT
+LOAD_COLOR_HIGH = (255, 0, 0)
 
 
-def color_for_value(value: float, thresholds: list, high_color: tuple) -> Tuple[int, int, int]:
-    """Map a sensor value to an RGB color using thresholds.
+def _lerp_color(
+    c1: Tuple[int, int, int], c2: Tuple[int, int, int], t: float
+) -> Tuple[int, int, int]:
+    """Linearly interpolate between two RGB colors (t=0→c1, t=1→c2)."""
+    t = max(0.0, min(1.0, t))
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t),
+    )
 
-    Used by both temperature-linked and load-linked modes.
+
+def color_for_value(
+    value: float,
+    gradient: List[Tuple[float, Tuple[int, int, int]]],
+    high_color: Optional[Tuple[int, int, int]] = None,
+) -> Tuple[int, int, int]:
+    """Map a sensor value to an RGB color with smooth gradient interpolation.
+
+    Linearly interpolates between adjacent gradient stops.
+    Clamps to first/last color outside the gradient range.
+
+    Args:
+        value: Sensor reading (temperature °C, load %, etc.).
+        gradient: List of (threshold, (R, G, B)) stops.
+        high_color: Ignored (backward compat). Last gradient stop used instead.
     """
-    for threshold, color in thresholds:
-        if value < threshold:
-            return color
-    return high_color
+    if value <= gradient[0][0]:
+        return gradient[0][1]
+    if value >= gradient[-1][0]:
+        return gradient[-1][1]
+
+    for i in range(len(gradient) - 1):
+        lo_val, lo_color = gradient[i]
+        hi_val, hi_color = gradient[i + 1]
+        if lo_val <= value <= hi_val:
+            t = (value - lo_val) / (hi_val - lo_val)
+            return _lerp_color(lo_color, hi_color, t)
+
+    return gradient[-1][1]
 
 
 # =========================================================================
@@ -523,7 +559,7 @@ class LedPacketBuilder:
 # LED HID sender (from UCDevice.cs ThreadSendDeviceData1)
 # =========================================================================
 
-class LedHidSender(DeviceHandler):
+class LedHidSender:
     """Sends LED packets via UsbTransport with 64-byte report chunking.
 
     Matches UCDevice.cs ThreadSendDeviceData1 (lines 983-1026):
@@ -800,16 +836,8 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
 
     transport = None
     try:
-        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
-        if PYUSB_AVAILABLE:
-            from .hid_device import PyUsbTransport
-            transport = PyUsbTransport(vid, pid)
-        elif HIDAPI_AVAILABLE:
-            from .hid_device import HidApiTransport
-            transport = HidApiTransport(vid, pid)
-        else:
-            return None
-
+        from .device_factory import create_usb_transport
+        transport = create_usb_transport(vid, pid)
         transport.open()
         sender = LedHidSender(transport)
         info = sender.handshake()

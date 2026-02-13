@@ -108,6 +108,22 @@ def save_temp_unit(unit: int):
 
 
 # =========================================================================
+# Selected device persistence (CLI device selection)
+# =========================================================================
+
+def get_selected_device() -> Optional[str]:
+    """Get CLI-selected device path (e.g. '/dev/sg0'). Returns None if unset."""
+    return load_config().get('selected_device')
+
+
+def save_selected_device(device_path: str):
+    """Persist CLI-selected device path."""
+    config = load_config()
+    config['selected_device'] = device_path
+    save_config(config)
+
+
+# =========================================================================
 # Per-device configuration
 # =========================================================================
 

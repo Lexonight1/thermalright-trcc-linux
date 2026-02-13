@@ -124,8 +124,8 @@ class TestRegistry(unittest.TestCase):
         self.assertIsInstance(impl, GenericLCD)
 
     def test_all_implementations_are_lcd(self):
-        for name, cls in IMPLEMENTATIONS.items():
-            inst = cls()
+        for name in IMPLEMENTATIONS:
+            inst = get_implementation(name)
             self.assertIsInstance(inst, LCDDeviceImplementation)
 
     def test_list_implementations(self):
@@ -139,17 +139,17 @@ class TestConcreteDevices(unittest.TestCase):
     """Concrete device names and inheritance."""
 
     def test_thermalright_name(self):
-        self.assertIn('Thermalright', ThermalrightLCDV1().name)
+        self.assertIn('Thermalright', get_implementation('thermalright_lcd_v1').name)
 
     def test_ali_corp_name(self):
-        self.assertIn('ALi Corp', AliCorpLCDV1().name)
+        self.assertIn('ALi Corp', get_implementation('ali_corp_lcd_v1').name)
 
     def test_generic_name(self):
-        self.assertEqual(GenericLCD().name, 'Generic LCD')
+        self.assertEqual(get_implementation('generic').name, 'Generic LCD')
 
     def test_pixel_format(self):
-        for cls in [ThermalrightLCDV1, AliCorpLCDV1, GenericLCD]:
-            self.assertEqual(cls().pixel_format, 'RGB565')
+        for key in IMPLEMENTATIONS:
+            self.assertEqual(get_implementation(key).pixel_format, 'RGB565')
 
 
 class TestDetectResolution(unittest.TestCase):

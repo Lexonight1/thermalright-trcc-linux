@@ -382,7 +382,7 @@ class TestThemeModelFilter(unittest.TestCase):
 
 class TestDeviceModelDetect(unittest.TestCase):
 
-    @patch('trcc.scsi_device.find_lcd_devices')
+    @patch('trcc.device_scsi.find_lcd_devices')
     def test_detect_devices(self, mock_find):
         mock_find.return_value = [
             {'name': 'LCD1', 'path': '/dev/sg0', 'resolution': (320, 320),
@@ -396,13 +396,13 @@ class TestDeviceModelDetect(unittest.TestCase):
         # Should auto-select first
         self.assertIsNotNone(model.selected_device)
 
-    @patch('trcc.scsi_device.find_lcd_devices', side_effect=ImportError)
+    @patch('trcc.device_scsi.find_lcd_devices', side_effect=ImportError)
     def test_detect_import_error(self, _):
         model = DeviceModel()
         devices = model.detect_devices()
         self.assertEqual(len(devices), 0)
 
-    @patch('trcc.scsi_device.find_lcd_devices')
+    @patch('trcc.device_scsi.find_lcd_devices')
     def test_detect_fires_callback(self, mock_find):
         mock_find.return_value = []
         model = DeviceModel()
@@ -414,7 +414,7 @@ class TestDeviceModelDetect(unittest.TestCase):
 
 class TestDeviceModelSend(unittest.TestCase):
 
-    @patch('trcc.scsi_device.send_image_to_device', return_value=True)
+    @patch('trcc.device_scsi.send_image_to_device', return_value=True)
     def test_send_success(self, mock_send):
         model = DeviceModel()
         model.selected_device = DeviceInfo(name='LCD', path='/dev/sg0')
@@ -427,14 +427,14 @@ class TestDeviceModelSend(unittest.TestCase):
         model.selected_device = None
         self.assertFalse(model.send_image(b'\x00', 320, 320))
 
-    @patch('trcc.scsi_device.send_image_to_device', return_value=True)
+    @patch('trcc.device_scsi.send_image_to_device', return_value=True)
     def test_send_busy_returns_false(self, _):
         model = DeviceModel()
         model.selected_device = DeviceInfo(name='LCD', path='/dev/sg0')
         model._send_busy = True
         self.assertFalse(model.send_image(b'\x00', 320, 320))
 
-    @patch('trcc.scsi_device.send_image_to_device', side_effect=Exception('fail'))
+    @patch('trcc.device_scsi.send_image_to_device', side_effect=Exception('fail'))
     def test_send_exception_returns_false(self, _):
         model = DeviceModel()
         model.selected_device = DeviceInfo(name='LCD', path='/dev/sg0')
@@ -442,7 +442,7 @@ class TestDeviceModelSend(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(model._send_busy)
 
-    @patch('trcc.scsi_device.send_image_to_device', return_value=True)
+    @patch('trcc.device_scsi.send_image_to_device', return_value=True)
     def test_send_fires_callback(self, _):
         model = DeviceModel()
         model.selected_device = DeviceInfo(name='LCD', path='/dev/sg0')
@@ -465,7 +465,7 @@ class TestVideoModel(unittest.TestCase):
         mock_player.fps = 16
         mock_player.frames = []
 
-        with patch('trcc.gif_animator.VideoPlayer', return_value=mock_player):
+        with patch('trcc.media_player.VideoPlayer', return_value=mock_player):
             result = model.load(Path('/tmp/test.mp4'))
 
         self.assertTrue(result)
@@ -478,7 +478,7 @@ class TestVideoModel(unittest.TestCase):
         mock_player.frame_count = 50
         mock_player.fps = 0
 
-        with patch('trcc.gif_animator.ThemeZtPlayer', return_value=mock_player):
+        with patch('trcc.media_player.ThemeZtPlayer', return_value=mock_player):
             result = model.load(Path('/tmp/test.zt'))
 
         self.assertTrue(result)
@@ -486,7 +486,7 @@ class TestVideoModel(unittest.TestCase):
 
     def test_load_failure(self):
         model = VideoModel()
-        with patch('trcc.gif_animator.VideoPlayer', side_effect=Exception('bad')):
+        with patch('trcc.media_player.VideoPlayer', side_effect=Exception('bad')):
             result = model.load(Path('/tmp/corrupt.mp4'))
         self.assertFalse(result)
 
@@ -630,22 +630,17 @@ class TestOverlayModelRenderer(unittest.TestCase):
     def test_load_from_dc(self, mock_renderer_cls):
         mock_renderer_cls.return_value = MagicMock()
 
-        # Create a minimal valid dc file
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.dc', delete=False) as f:
-            dc_path = f.name
+        overlay_config = {
+            'hw_0': {'enabled': True, 'x': 10, 'y': 20, 'color': (255, 0, 0),
+                     'font_size': 16, 'metric': 'cpu_temp', 'format': '{value}°C'},
+        }
+        mock_dc = MagicMock()
+        mock_dc.to_overlay_config.return_value = overlay_config
 
         model = OverlayModel()
-        with patch('trcc.dc_parser.parse_dc_file'), \
-             patch('trcc.dc_parser.dc_to_overlay_config') as mock_convert:
-            mock_convert.return_value = {
-                'hw_0': {'enabled': True, 'x': 10, 'y': 20, 'color': (255, 0, 0),
-                         'font_size': 16, 'metric': 'cpu_temp', 'format': '{value}°C'},
-            }
-            result = model.load_from_dc(Path(dc_path))
+        with patch('trcc.dc_config.DcConfig', return_value=mock_dc):
+            result = model.load_from_dc(Path('/fake/config1.dc'))
 
-        import os
-        os.unlink(dc_path)
         self.assertTrue(result)
         self.assertEqual(len(model.elements), 1)
         self.assertEqual(model.elements[0].x, 10)
@@ -688,7 +683,7 @@ class TestVideoModelCallbacks(unittest.TestCase):
         with patch('trcc.core.models.VideoPlayer', return_value=player, create=True), \
              patch('trcc.core.models.ThemeZtPlayer', create=True):
             # VideoPlayer is a lazy import, patch at gif_animator level
-            with patch('trcc.gif_animator.VideoPlayer', return_value=player, create=True):
+            with patch('trcc.media_player.VideoPlayer', return_value=player, create=True):
                 result = vm.load(Path('/fake.mp4'), preload=True)
         if result:
             callback.assert_called()
@@ -765,8 +760,9 @@ class TestOverlayModelMutations(unittest.TestCase):
         fake_config = {
             'cpu_temp': {'enabled': True, 'x': 100, 'y': 200, 'metric': 'cpu_temp'},
         }
-        with patch('trcc.dc_parser.parse_dc_file', return_value={}), \
-             patch('trcc.dc_parser.dc_to_overlay_config', return_value=fake_config):
+        mock_dc = MagicMock()
+        mock_dc.to_overlay_config.return_value = fake_config
+        with patch('trcc.dc_config.DcConfig', return_value=mock_dc):
             result = model.load_from_dc(Path('/fake/config1.dc'))
         self.assertTrue(result)
         self.assertEqual(len(model.elements), 1)

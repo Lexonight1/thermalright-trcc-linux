@@ -50,7 +50,9 @@ from ..core import (
 )
 from ..core.controllers import LEDDeviceController
 from ..dc_writer import CarouselConfig, read_carousel_config, write_carousel_config
+from ..device_scsi import find_lcd_devices
 from ..sensor_enumerator import SensorEnumerator
+from ..system_info import get_all_metrics
 
 # Import view components
 from .assets import Assets, load_pixmap
@@ -1704,7 +1706,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._led_controller = LEDDeviceController()
             self._connect_led_signals()
 
-        from ..led_device import LED_STYLES
+        from ..device_led import LED_STYLES
         led_style = 1
 
         # Resolve LED style from model name.
@@ -2037,7 +2039,6 @@ class TRCCMainWindowMVC(QMainWindow):
     def _on_device_poll(self):
         """Poll for LCD and LED device connections."""
         try:
-            from ..scsi_device import find_lcd_devices
             devices = find_lcd_devices()
 
             # Update sidebar (handles both connect and disconnect)
@@ -2066,8 +2067,6 @@ class TRCCMainWindowMVC(QMainWindow):
                 else:
                     self.controller.devices.select_device(device)
                     self.uc_preview.set_status(f"Device: {device.path}")
-        except ImportError:
-            pass
         except Exception as e:
             log.error("Device poll error: %s", e)
 
@@ -2116,15 +2115,14 @@ class TRCCMainWindowMVC(QMainWindow):
     def _on_metrics_tick(self):
         """Collect system metrics and re-render overlay, send to LCD."""
         try:
-            from ..system_info import get_all_metrics
             metrics = get_all_metrics()
-            self.controller.overlay.update_metrics(metrics)
-            if self.controller.current_image and self.controller.overlay.is_enabled():
-                img = self.controller.render_overlay_and_preview()
-                if img and self.controller.auto_send and not self.controller.video.is_playing():
-                    self.controller._send_frame_to_lcd(img)
-        except ImportError:
-            pass
+        except Exception:
+            return
+        self.controller.overlay.update_metrics(metrics)
+        if self.controller.current_image and self.controller.overlay.is_enabled():
+            img = self.controller.render_overlay_and_preview()
+            if img and self.controller.auto_send and not self.controller.video.is_playing():
+                self.controller._send_frame_to_lcd(img)
 
     def start_metrics(self):
         """Start live metrics collection for overlay display."""

@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "1.2.20"
+__version__ = "2.0.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -59,3 +59,6 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          stayed (0,0) so themes never loaded. Now runs handshake async on
 #          device selection. OOP refactor: DeviceEntry dataclass, PmEntry
 #          NamedTuple, _LedProbeCache class, _resolve_pm() DRY helper
+# 2.0.0  - Major refactor: rename modules to consistent device_* / driver_*
+#          naming, extract constants.py, add debug_report.py diagnostic tool,
+#          HR10 LED backend (device_led_hr10.py), gif_animator→media_player rename

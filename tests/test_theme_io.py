@@ -8,12 +8,7 @@ import unittest
 
 from PIL import Image
 
-from trcc.theme_io import (
-    _read_csharp_string,
-    _write_csharp_string,
-    export_theme,
-    import_theme,
-)
+from trcc.theme_io import ThemeIO, export_theme, import_theme
 
 
 class TestCSharpString(unittest.TestCase):
@@ -21,9 +16,9 @@ class TestCSharpString(unittest.TestCase):
 
     def _roundtrip(self, text: str) -> str:
         buf = io.BytesIO()
-        _write_csharp_string(buf, text)
+        ThemeIO._write_csharp_string(buf, text)
         buf.seek(0)
-        return _read_csharp_string(buf)
+        return ThemeIO._read_csharp_string(buf)
 
     def test_empty(self):
         self.assertEqual(self._roundtrip(''), '')
@@ -46,7 +41,7 @@ class TestCSharpString(unittest.TestCase):
     def test_length_encoding_single_byte(self):
         """Length < 128 → single byte."""
         buf = io.BytesIO()
-        _write_csharp_string(buf, 'AB')
+        ThemeIO._write_csharp_string(buf, 'AB')
         buf.seek(0)
         length_byte = struct.unpack('B', buf.read(1))[0]
         self.assertEqual(length_byte, 2)
@@ -54,7 +49,7 @@ class TestCSharpString(unittest.TestCase):
     def test_length_encoding_multi_byte(self):
         """Length >= 128 → first byte has high bit set."""
         buf = io.BytesIO()
-        _write_csharp_string(buf, 'A' * 200)
+        ThemeIO._write_csharp_string(buf, 'A' * 200)
         buf.seek(0)
         first = struct.unpack('B', buf.read(1))[0]
         self.assertTrue(first & 0x80)  # continuation bit set

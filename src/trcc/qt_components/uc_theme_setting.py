@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..system_info import format_metric
 from .assets import load_pixmap
 from .base import BasePanel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -178,21 +179,17 @@ class OverlayElementWidget(QWidget):
             return
         raw = metrics[metric_key]
         # Split formatted value into number + unit (Windows regex pattern)
-        try:
-            from trcc.system_info import format_metric
-            formatted = format_metric(metric_key, raw,
-                                      temp_unit=self.config.get('mode_sub', 0))
-            # Separate number from unit: "52°C" → "52" + "°C"
-            import re
-            m = re.match(r'([\d.]+)(.*)', formatted)
-            if m:
-                self._live_value = m.group(1)
-                self._live_unit = m.group(2).strip()
-            else:
-                self._live_value = formatted
-                self._live_unit = ''
-        except ImportError:
-            self._live_value = str(int(raw)) if isinstance(raw, (int, float)) else str(raw)
+        import re
+
+        formatted = format_metric(metric_key, raw,
+                                  temp_unit=self.config.get('mode_sub', 0))
+        # Separate number from unit: "52°C" → "52" + "°C"
+        m = re.match(r'([\d.]+)(.*)', formatted)
+        if m:
+            self._live_value = m.group(1)
+            self._live_unit = m.group(2).strip()
+        else:
+            self._live_value = formatted
             self._live_unit = ''
         self.update()
 

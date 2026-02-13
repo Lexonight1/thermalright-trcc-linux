@@ -23,6 +23,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .device_base import HandshakeResult
+
 log = logging.getLogger(__name__)
 
 # =========================================================================
@@ -92,12 +94,13 @@ class DeviceProtocol(ABC):
         """
         return False
 
-    def handshake(self) -> Optional[object]:
-        """Perform device handshake (HID devices only).
+    @abstractmethod
+    def handshake(self) -> Optional[HandshakeResult]:
+        """Perform device handshake and return capabilities.
 
-        Returns handshake info or None for protocols that don't handshake.
+        Returns HandshakeResult (or subclass) with resolution, model_id, etc.
+        Returns None for protocols that don't handshake (e.g. SCSI).
         """
-        return None
 
     @property
     def is_led(self) -> bool:
@@ -134,9 +137,13 @@ class ScsiProtocol(DeviceProtocol):
         super().__init__()
         self._path = device_path
 
+    def handshake(self) -> Optional[HandshakeResult]:
+        """SCSI devices don't handshake — resolution is known at detection time."""
+        return None
+
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:
-            from .scsi_device import send_image_to_device
+            from .device_scsi import send_image_to_device
             log.debug("SCSI send: %d bytes to %s (%dx%d)", len(image_data), self._path, width, height)
             success = send_image_to_device(self._path, image_data, width, height)
             self._notify_send_complete(success)
@@ -194,7 +201,7 @@ class HidProtocol(DeviceProtocol):
         self._handshake_info = None
         self._last_error: Optional[Exception] = None
 
-    def handshake(self):
+    def handshake(self) -> Optional[HandshakeResult]:
         """Perform HID LCD handshake and return HidHandshakeInfo.
 
         Opens transport if needed.  Returns hid_device.HidHandshakeInfo with
@@ -207,7 +214,7 @@ class HidProtocol(DeviceProtocol):
                 self._transport.open()
                 self._notify_state_changed("transport_open", True)
 
-            from .hid_device import HidDeviceType2, HidDeviceType3
+            from .device_hid import HidDeviceType2, HidDeviceType3
             if self._device_type == 2:
                 handler = HidDeviceType2(self._transport)
             elif self._device_type == 3:
@@ -239,7 +246,7 @@ class HidProtocol(DeviceProtocol):
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:
-            from .hid_device import send_image_to_hid_device
+            from .device_hid import send_image_to_hid_device
             if self._transport is None:
                 self._transport = self._create_transport()
                 self._transport.open()
@@ -287,7 +294,7 @@ class HidProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        return _create_usb_transport(self._vid, self._pid)
+        return create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -354,10 +361,10 @@ class LedProtocol(DeviceProtocol):
                 self._notify_state_changed("transport_open", True)
 
             if self._sender is None:
-                from .led_device import LedHidSender
+                from .device_led import LedHidSender
                 self._sender = LedHidSender(self._transport)
 
-            from .led_device import LedPacketBuilder, remap_led_colors
+            from .device_led import LedPacketBuilder, remap_led_colors
 
             # Remap logical LED order → physical wire order (per-style).
             if self._handshake_info and self._handshake_info.style:
@@ -376,7 +383,7 @@ class LedProtocol(DeviceProtocol):
             self._notify_send_complete(False)
             return False
 
-    def handshake(self):
+    def handshake(self) -> Optional[HandshakeResult]:
         """Perform LED device handshake and return device info.
 
         The firmware only responds to the handshake once after power-on.
@@ -396,7 +403,7 @@ class LedProtocol(DeviceProtocol):
                 self._notify_state_changed("transport_open", True)
 
             if self._sender is None:
-                from .led_device import LedHidSender
+                from .device_led import LedHidSender
                 self._sender = LedHidSender(self._transport)
 
             self._handshake_info = self._sender.handshake()
@@ -446,7 +453,7 @@ class LedProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        return _create_usb_transport(self._vid, self._pid)
+        return create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -486,14 +493,16 @@ class BulkProtocol(DeviceProtocol):
         self._vid = vid
         self._pid = pid
         self._device: Optional[Any] = None  # BulkDevice (lazy import)
+        self._handshake_result: Optional[HandshakeResult] = None
         self._last_error: Optional[Exception] = None
 
     def _ensure_device(self):
         """Lazily create and handshake the bulk device."""
         if self._device is None:
-            from .bulk_device import BulkDevice
+            from .device_bulk import BulkDevice
             self._device = BulkDevice(self._vid, self._pid)
             result = self._device.handshake()
+            self._handshake_result = result
             if result.resolution:
                 self._notify_state_changed("handshake_complete", True)
                 log.info("Bulk handshake OK: PM=%d, resolution=%s",
@@ -501,12 +510,11 @@ class BulkProtocol(DeviceProtocol):
             else:
                 log.warning("Bulk handshake: no resolution detected")
 
-    def handshake(self):
+    def handshake(self) -> Optional[HandshakeResult]:
         """Perform bulk device handshake."""
         try:
             self._ensure_device()
-            assert self._device is not None
-            return self._device._raw_handshake
+            return self._handshake_result
         except Exception as e:
             log.exception("Bulk handshake failed for %04X:%04X",
                           self._vid, self._pid)
@@ -761,14 +769,14 @@ def _check_sg_raw() -> bool:
     return shutil.which("sg_raw") is not None
 
 
-def _create_usb_transport(vid: int, pid: int):
+def create_usb_transport(vid: int, pid: int):
     """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
-    from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+    from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
     if PYUSB_AVAILABLE:
-        from .hid_device import PyUsbTransport
+        from .device_hid import PyUsbTransport
         return PyUsbTransport(vid, pid)
     elif HIDAPI_AVAILABLE:
-        from .hid_device import HidApiTransport
+        from .device_hid import HidApiTransport
         return HidApiTransport(vid, pid)
     else:
         raise ImportError(
@@ -781,7 +789,7 @@ def _create_usb_transport(vid: int, pid: int):
 def _get_hid_backends() -> Dict[str, bool]:
     """Check HID backend availability."""
     try:
-        from .hid_device import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+        from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         return {"pyusb": PYUSB_AVAILABLE, "hidapi": HIDAPI_AVAILABLE}
     except ImportError:
         return {"pyusb": False, "hidapi": False}

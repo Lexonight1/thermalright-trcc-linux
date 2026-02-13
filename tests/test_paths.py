@@ -22,6 +22,7 @@ from trcc.conf import (
     save_temp_unit,
 )
 from trcc.paths import (
+    DataManager,
     _extract_7z,
     _find_data_dir,
     _has_actual_themes,
@@ -458,31 +459,31 @@ class TestEnsureThemesExtracted(unittest.TestCase):
         """Returns True when themes already exist."""
         with tempfile.TemporaryDirectory() as d:
             theme_dir = os.path.join(d, 'Theme320320')
-            os.makedirs(os.path.join(theme_dir, '000a'))
-            with patch('trcc.paths.get_theme_dir', return_value=theme_dir):
+            sub = os.path.join(theme_dir, '000a')
+            os.makedirs(sub)
+            Path(sub, '00.png').touch()
+            with patch('trcc.paths.DATA_DIR', d), \
+                 patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')):
                 self.assertTrue(ensure_themes_extracted(320, 320))
 
     def test_no_archive(self):
         """Returns False when no archive and no themes."""
         with tempfile.TemporaryDirectory() as d:
-            theme_dir = os.path.join(d, 'Theme320320')
-            with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
-                 patch('trcc.paths._download_archive', return_value=False):
+                 patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(ensure_themes_extracted(320, 320))
 
     def test_extracts_from_archive(self):
-        """Calls _extract_7z when archive exists but themes don't."""
+        """Calls extract_7z when archive exists but themes don't."""
         with tempfile.TemporaryDirectory() as d:
-            theme_dir = os.path.join(d, 'Theme320320')
             user_theme_dir = os.path.join(d, 'user', 'Theme320320')
-            archive = theme_dir + '.7z'
+            # Place archive in pkg DATA_DIR
+            archive = os.path.join(d, 'Theme320320.7z')
             Path(archive).touch()
-            with patch('trcc.paths.get_theme_dir', return_value=theme_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
-                 patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
+                 patch.object(DataManager, 'extract_7z', return_value=True) as mock_ex:
                 result = ensure_themes_extracted(320, 320)
             self.assertTrue(result)
             # Extracts to user_dir (~/.trcc/data/) so data survives pip upgrades
@@ -497,32 +498,27 @@ class TestEnsureWebExtracted(unittest.TestCase):
             web_dir = os.path.join(d, 'Web', '320320')
             os.makedirs(web_dir)
             Path(web_dir, 'preview.png').touch()
-            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')):
                 self.assertTrue(ensure_web_extracted(320, 320))
 
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            web_dir = os.path.join(d, 'Web', '320320')
-            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
-                 patch('trcc.paths._download_archive', return_value=False):
+                 patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(ensure_web_extracted(320, 320))
 
     def test_extracts_from_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            web_dir = os.path.join(d, 'Web', '320320')
             user_web_dir = os.path.join(d, 'user', 'Web', '320320')
             archive_dir = os.path.join(d, 'Web')
             os.makedirs(archive_dir)
             archive = os.path.join(archive_dir, '320320.7z')
             Path(archive).touch()
-            with patch('trcc.paths.get_web_dir', return_value=web_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
-                 patch('trcc.paths._extract_7z', return_value=True) as mock_ex:
+                 patch.object(DataManager, 'extract_7z', return_value=True) as mock_ex:
                 result = ensure_web_extracted(320, 320)
             self.assertTrue(result)
             mock_ex.assert_called_once_with(archive, user_web_dir)
@@ -534,19 +530,18 @@ class TestEnsureWebMasksExtracted(unittest.TestCase):
     def test_already_present(self):
         with tempfile.TemporaryDirectory() as d:
             masks_dir = os.path.join(d, 'Web', 'zt320320')
-            os.makedirs(os.path.join(masks_dir, '000a'))
-            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            sub = os.path.join(masks_dir, '000a')
+            os.makedirs(sub)
+            Path(sub, '00.png').touch()  # has_themes needs a .png
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')):
                 self.assertTrue(ensure_web_masks_extracted(320, 320))
 
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
-            masks_dir = os.path.join(d, 'Web', 'zt320320')
-            with patch('trcc.paths.get_web_masks_dir', return_value=masks_dir), \
-                 patch('trcc.paths.DATA_DIR', d), \
+            with patch('trcc.paths.DATA_DIR', d), \
                  patch('trcc.paths.USER_DATA_DIR', os.path.join(d, 'user')), \
-                 patch('trcc.paths._download_archive', return_value=False):
+                 patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(ensure_web_masks_extracted(320, 320))
 
 

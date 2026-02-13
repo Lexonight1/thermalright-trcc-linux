@@ -30,17 +30,11 @@ __author__ = "TRCC Linux Contributors"
 from trcc.dc_config import DcConfig
 from trcc.dc_parser import dc_to_overlay_config, parse_dc_file
 from trcc.device_detector import detect_devices, get_device_path
+from trcc.driver_lcd import LCDDriver
 
 # Animation
-from trcc.gif_animator import GIFAnimator, GIFThemeLoader
-from trcc.lcd_driver import LCDDriver
+from trcc.media_player import GIFAnimator, GIFThemeLoader, VideoPlayer
 from trcc.system_info import format_metric, get_all_metrics
-
-# Optional video support
-try:
-    from trcc.gif_animator import VideoPlayer
-except ImportError:
-    VideoPlayer = None
 
 __all__ = [
     # Version

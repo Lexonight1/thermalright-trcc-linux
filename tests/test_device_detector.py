@@ -25,18 +25,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from trcc.device_detector import (
     KNOWN_DEVICES,
     DetectedDevice,
-    check_device_health,
-    detect_devices,
-    find_scsi_device_by_usb_path,
-    find_scsi_usblcd_devices,
-    find_usb_devices,
-    get_default_device,
-    get_device_path,
+    DeviceDetector,
     main,
-    print_device_info,
-    run_command,
-    usb_reset_device,
 )
+
+# Use class methods directly (aliases are for backward compat only)
+run_command = DeviceDetector.run_command
+find_usb_devices = DeviceDetector.find_usb_devices
+find_scsi_device_by_usb_path = DeviceDetector.find_scsi_device_by_usb_path
+find_scsi_usblcd_devices = DeviceDetector.find_scsi_usblcd_devices
+detect_devices = DeviceDetector.detect
+get_default_device = DeviceDetector.get_default
+get_device_path = DeviceDetector.get_device_path
+check_device_health = DeviceDetector.check_health
+usb_reset_device = DeviceDetector.usb_reset
+print_device_info = DeviceDetector.print_info
 
 
 class TestDetectedDevice(unittest.TestCase):
@@ -158,17 +161,20 @@ class TestRunCommand(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+_CLS = 'trcc.device_detector.DeviceDetector'
+
+
 class TestFindUsbDevices(unittest.TestCase):
     """Test find_usb_devices function."""
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_no_devices_found(self, mock_run):
         """Test when no USB devices are found."""
         mock_run.return_value = ""
         devices = find_usb_devices()
         self.assertEqual(devices, [])
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_thermalright_device_found(self, mock_run):
         """Test finding Thermalright device via lsusb."""
         mock_run.return_value = (
@@ -183,7 +189,7 @@ class TestFindUsbDevices(unittest.TestCase):
         self.assertEqual(devices[0].vendor_name, "Thermalright")
         self.assertEqual(devices[0].implementation, "thermalright_lcd_v1")
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_winbond_device_found(self, mock_run):
         """Test finding Winbond device (0x0416:0x5406) via lsusb."""
         mock_run.return_value = "Bus 001 Device 004: ID 0416:5406 Winbond LCD"
@@ -193,7 +199,7 @@ class TestFindUsbDevices(unittest.TestCase):
         self.assertEqual(devices[0].pid, 0x5406)
         self.assertEqual(devices[0].vendor_name, "Winbond")
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_frozen_warframe_device_found(self, mock_run):
         """Test finding FROZEN WARFRAME device via lsusb."""
         mock_run.return_value = "Bus 002 Device 002: ID 0402:3922 Unknown Device"
@@ -204,7 +210,7 @@ class TestFindUsbDevices(unittest.TestCase):
         self.assertEqual(devices[0].model, "FROZEN_WARFRAME")
         self.assertEqual(devices[0].button_image, "A1FROZEN_WARFRAME")
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_multiple_devices_found(self, mock_run):
         """Test finding multiple LCD devices."""
         mock_run.return_value = (
@@ -216,7 +222,7 @@ class TestFindUsbDevices(unittest.TestCase):
         vids = {d.vid for d in devices}
         self.assertEqual(vids, {0x87CD, 0x0416})
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_unknown_device_ignored(self, mock_run):
         """Test that unknown USB devices are ignored."""
         mock_run.return_value = (
@@ -241,7 +247,7 @@ class TestFindScsiDeviceByUsbPath(unittest.TestCase):
         self.assertEqual(result, "/dev/sg0")
 
     @patch('os.path.exists')
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_find_via_lsscsi_g(self, mock_run, mock_exists):
         """Test finding SCSI device via lsscsi -g."""
         mock_exists.return_value = False
@@ -255,7 +261,7 @@ class TestFindScsiDeviceByUsbPath(unittest.TestCase):
         self.assertEqual(result, "/dev/sg0")
 
     @patch('os.path.exists')
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     def test_no_device_found(self, mock_run, mock_exists):
         """Test when no SCSI device is found."""
         mock_exists.return_value = False
@@ -314,9 +320,9 @@ class TestFindScsiUsblcdDevices(unittest.TestCase):
 class TestDetectDevices(unittest.TestCase):
     """Test detect_devices integration function."""
 
-    @patch('trcc.device_detector.find_scsi_usblcd_devices')
-    @patch('trcc.device_detector.find_scsi_device_by_usb_path')
-    @patch('trcc.device_detector.find_usb_devices')
+    @patch(f'{_CLS}.find_scsi_usblcd_devices')
+    @patch(f'{_CLS}.find_scsi_device_by_usb_path')
+    @patch(f'{_CLS}.find_usb_devices')
     def test_usb_device_with_scsi(self, mock_usb, mock_scsi_path, mock_scsi_direct):
         """Test detection of USB device with SCSI mapping."""
         mock_usb.return_value = [
@@ -333,9 +339,9 @@ class TestDetectDevices(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].scsi_device, "/dev/sg0")
 
-    @patch('trcc.device_detector.find_scsi_usblcd_devices')
-    @patch('trcc.device_detector.find_scsi_device_by_usb_path')
-    @patch('trcc.device_detector.find_usb_devices')
+    @patch(f'{_CLS}.find_scsi_usblcd_devices')
+    @patch(f'{_CLS}.find_scsi_device_by_usb_path')
+    @patch(f'{_CLS}.find_usb_devices')
     def test_fallback_to_scsi_direct(self, mock_usb, mock_scsi_path, mock_scsi_direct):
         """Test fallback to direct SCSI detection when no USB devices found."""
         mock_usb.return_value = []
@@ -353,9 +359,9 @@ class TestDetectDevices(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].scsi_device, "/dev/sg0")
 
-    @patch('trcc.device_detector.find_scsi_usblcd_devices')
-    @patch('trcc.device_detector.find_scsi_device_by_usb_path')
-    @patch('trcc.device_detector.find_usb_devices')
+    @patch(f'{_CLS}.find_scsi_usblcd_devices')
+    @patch(f'{_CLS}.find_scsi_device_by_usb_path')
+    @patch(f'{_CLS}.find_usb_devices')
     def test_usb_without_scsi_uses_fallback(self, mock_usb, mock_scsi_path, mock_scsi_direct):
         """Test USB device without SCSI uses sysfs fallback."""
         mock_usb.return_value = [
@@ -380,9 +386,9 @@ class TestDetectDevices(unittest.TestCase):
         # Should have SCSI device from fallback
         self.assertEqual(devices[0].scsi_device, "/dev/sg1")
 
-    @patch('trcc.device_detector.find_scsi_usblcd_devices')
-    @patch('trcc.device_detector.find_scsi_device_by_usb_path')
-    @patch('trcc.device_detector.find_usb_devices')
+    @patch(f'{_CLS}.find_scsi_usblcd_devices')
+    @patch(f'{_CLS}.find_scsi_device_by_usb_path')
+    @patch(f'{_CLS}.find_usb_devices')
     def test_no_devices_found(self, mock_usb, mock_scsi_path, mock_scsi_direct):
         """Test when no devices are found anywhere."""
         mock_usb.return_value = []
@@ -396,14 +402,14 @@ class TestDetectDevices(unittest.TestCase):
 class TestGetDefaultDevice(unittest.TestCase):
     """Test get_default_device function."""
 
-    @patch('trcc.device_detector.detect_devices')
+    @patch(f'{_CLS}.detect')
     def test_no_devices(self, mock_detect):
         """Test when no devices available."""
         mock_detect.return_value = []
         device = get_default_device()
         self.assertIsNone(device)
 
-    @patch('trcc.device_detector.detect_devices')
+    @patch(f'{_CLS}.detect')
     def test_single_device(self, mock_detect):
         """Test with single device."""
         mock_detect.return_value = [
@@ -418,7 +424,7 @@ class TestGetDefaultDevice(unittest.TestCase):
         self.assertIsNotNone(device)
         self.assertEqual(device.vid, 0x0416)
 
-    @patch('trcc.device_detector.detect_devices')
+    @patch(f'{_CLS}.detect')
     def test_prefers_thermalright(self, mock_detect):
         """Test that Thermalright device is preferred."""
         mock_detect.return_value = [
@@ -441,14 +447,14 @@ class TestGetDefaultDevice(unittest.TestCase):
 class TestGetDevicePath(unittest.TestCase):
     """Test get_device_path convenience function."""
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_no_device(self, mock_get):
         """Test when no device available."""
         mock_get.return_value = None
         path = get_device_path()
         self.assertIsNone(path)
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_device_with_path(self, mock_get):
         """Test with device that has SCSI path."""
         mock_get.return_value = DetectedDevice(
@@ -460,7 +466,7 @@ class TestGetDevicePath(unittest.TestCase):
         path = get_device_path()
         self.assertEqual(path, "/dev/sg0")
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_device_without_path(self, mock_get):
         """Test with device that has no SCSI path."""
         mock_get.return_value = DetectedDevice(
@@ -569,27 +575,27 @@ class TestDeviceModelMapping(unittest.TestCase):
 class TestScsiMethodFallbacks(unittest.TestCase):
 
     @patch('trcc.device_detector._find_sg_entries', return_value=['sg0'])
-    @patch('trcc.device_detector.run_command', return_value=None)
+    @patch(f'{_CLS}.run_command', return_value=None)
     @patch('os.path.exists')
     @patch('builtins.open')
     def test_sysfs_non_usblcd_skipped(self, mock_open_fn, mock_exists, _, __):
-        """sg0 exists but vendor is NOT USBLCD → continues to next."""
+        """sg0 exists but vendor is NOT USBLCD -> continues to next."""
         mock_exists.side_effect = lambda p: 'sg0' in p
         mock_open_fn.return_value.__enter__.return_value.read.return_value = 'SomeOther\n'
         result = find_scsi_device_by_usb_path('1-2')
         self.assertIsNone(result)
 
     @patch('trcc.device_detector._find_sg_entries', return_value=['sg0'])
-    @patch('trcc.device_detector.run_command', return_value=None)
+    @patch(f'{_CLS}.run_command', return_value=None)
     @patch('os.path.exists', return_value=True)
     @patch('builtins.open', side_effect=IOError("permission"))
     def test_sysfs_ioerror(self, *_):
-        """IOError reading vendor file → continues."""
+        """IOError reading vendor file -> continues."""
         result = find_scsi_device_by_usb_path('1-2')
         self.assertIsNone(result)
 
     @patch('trcc.device_detector._find_sg_entries', return_value=[])
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     @patch('os.path.exists', return_value=False)
     def test_method3_lsscsi_t(self, _, mock_run, __):
         """Methods 1 & 2 fail, Method 3 (lsscsi -t) finds device."""
@@ -600,7 +606,7 @@ class TestScsiMethodFallbacks(unittest.TestCase):
         result = find_scsi_device_by_usb_path('1-2')
         self.assertEqual(result, '/dev/sg0')
 
-    @patch('trcc.device_detector.run_command')
+    @patch(f'{_CLS}.run_command')
     @patch('os.path.exists', return_value=False)
     def test_method4_plain_lsscsi(self, _, mock_run):
         """Methods 1-3 fail, Method 4 (plain lsscsi) finds USBLCD."""
@@ -700,14 +706,14 @@ class TestPrintDeviceInfo(unittest.TestCase):
 
 class TestMainCLI(unittest.TestCase):
 
-    @patch('trcc.device_detector.detect_devices')
+    @patch(f'{_CLS}.detect')
     def test_all_flag_no_devices(self, mock_detect):
         mock_detect.return_value = []
         with patch('sys.argv', ['prog', '--all']):
             result = main()
         self.assertEqual(result, 1)
 
-    @patch('trcc.device_detector.detect_devices')
+    @patch(f'{_CLS}.detect')
     def test_all_flag_with_devices(self, mock_detect):
         mock_detect.return_value = [
             DetectedDevice(vid=0x87CD, pid=0x70DB,
@@ -719,7 +725,7 @@ class TestMainCLI(unittest.TestCase):
             result = main()
         self.assertEqual(result, 0)
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_path_only_with_device(self, mock_get):
         mock_get.return_value = DetectedDevice(
             vid=0x87CD, pid=0x70DB,
@@ -729,13 +735,13 @@ class TestMainCLI(unittest.TestCase):
             result = main()
         self.assertEqual(result, 0)
 
-    @patch('trcc.device_detector.get_default_device', return_value=None)
+    @patch(f'{_CLS}.get_default', return_value=None)
     def test_path_only_no_device(self, _):
         with patch('sys.argv', ['prog', '--path-only']):
             result = main()
         self.assertEqual(result, 1)
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_default_prints_info(self, mock_get):
         mock_get.return_value = DetectedDevice(
             vid=0x87CD, pid=0x70DB,
@@ -745,7 +751,7 @@ class TestMainCLI(unittest.TestCase):
             result = main()
         self.assertEqual(result, 0)
 
-    @patch('trcc.device_detector.get_default_device', return_value=None)
+    @patch(f'{_CLS}.get_default', return_value=None)
     def test_default_no_device(self, _):
         with patch('sys.argv', ['prog']):
             result = main()
@@ -837,7 +843,7 @@ class TestUsbResetUnbindBind(unittest.TestCase):
 class TestMainPathOnlyNoScsi(unittest.TestCase):
     """Cover main() --path-only when device has no scsi_device (line 427)."""
 
-    @patch('trcc.device_detector.get_default_device')
+    @patch(f'{_CLS}.get_default')
     def test_path_only_no_scsi(self, mock_get):
         device = DetectedDevice(
             vid=0x87CD, pid=0x70DB, vendor_name='TR', product_name='LCD',

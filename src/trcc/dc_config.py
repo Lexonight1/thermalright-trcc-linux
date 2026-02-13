@@ -15,29 +15,15 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import dc_parser
-from .dc_parser import DisplayElement, FontConfig
+from .dc_parser import (
+    HARDWARE_METRICS,
+    METRIC_TO_IDS,
+    DcParser,
+    DisplayElement,
+    FontConfig,
+)
 
 log = logging.getLogger(__name__)
-
-# Single source of truth for hardware sensor ↔ metric name mapping.
-# dc_parser.get_hardware_metric_name() and dc_writer._metric_to_hardware_ids()
-# both duplicate this data — prefer importing from here.
-HARDWARE_METRICS: dict[tuple[int, int], str] = {
-    (0, 1): 'cpu_temp',
-    (0, 2): 'cpu_percent',
-    (0, 3): 'cpu_freq',
-    (0, 4): 'cpu_power',
-    (1, 1): 'gpu_temp',
-    (1, 2): 'gpu_usage',
-    (1, 3): 'gpu_clock',
-    (1, 4): 'gpu_power',
-    (2, 1): 'mem_percent',
-    (2, 2): 'mem_clock',
-    (3, 1): 'disk_activity',
-}
-
-_METRIC_TO_IDS: dict[str, tuple[int, int]] = {v: k for k, v in HARDWARE_METRICS.items()}
 
 
 def get_hardware_metric_name(main_count: int, sub_count: int) -> str:
@@ -47,7 +33,7 @@ def get_hardware_metric_name(main_count: int, sub_count: int) -> str:
 
 def metric_to_hardware_ids(metric: str) -> tuple[int, int]:
     """Map metric name to hardware (main_count, sub_count) IDs."""
-    return _METRIC_TO_IDS.get(metric, (0, 0))
+    return METRIC_TO_IDS.get(metric, (0, 0))
 
 
 class DcConfig:
@@ -99,7 +85,7 @@ class DcConfig:
 
     def _load(self, filepath: str) -> None:
         """Parse a config1.dc file and populate all fields."""
-        parsed = dc_parser.parse_dc_file(filepath)
+        parsed = DcParser.parse(filepath)
 
         # Raw parsed dict fields
         self.version = parsed.get('version', 0)
@@ -136,9 +122,9 @@ class DcConfig:
 
     def save(self, filepath: str | Path) -> None:
         """Write config1.dc in 0xDD binary format."""
-        from .dc_writer import write_dc_file
+        from .dc_writer import DcWriter
 
-        write_dc_file(self._to_theme_config(), str(filepath))
+        DcWriter.write(self._to_theme_config(), str(filepath))
 
     def _to_theme_config(self):
         """Convert to dc_writer.ThemeConfig for write_dc_file()."""
@@ -172,15 +158,15 @@ class DcConfig:
             'custom_text': self.custom_text,
             'flags': self.flags,
         }
-        return dc_parser.dc_to_overlay_config(parsed, width, height)
+        return DcParser.to_overlay_config(parsed, width, height)
 
     @classmethod
     def from_overlay_config(cls, overlay_config: dict,
                             width: int = 320, height: int = 320) -> DcConfig:
         """Create DcConfig from an overlay renderer config dict."""
-        from .dc_writer import overlay_config_to_theme
+        from .dc_writer import DcWriter
 
-        tc = overlay_config_to_theme(overlay_config, width, height)
+        tc = DcWriter.overlay_to_theme(overlay_config, width, height)
         dc = cls()
         dc.elements = tc.elements
         dc.overlay_w = tc.overlay_w

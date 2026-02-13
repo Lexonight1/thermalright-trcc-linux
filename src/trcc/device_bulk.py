@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import struct
 
-from .device_base import DeviceHandler, HandshakeResult
+from .device_base import HandshakeResult
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ _WRITE_TIMEOUT_MS = 1000
 _FRAME_HEADER_SIZE = 64
 
 
-class BulkDevice(DeviceHandler):
+class BulkDevice:
     """USB bulk device handler for USBLCDNew-type LCDs (87AD:70DB etc.).
 
     Uses pyusb for raw bulk endpoint I/O.  The kernel must not have

@@ -363,7 +363,7 @@ class TestLEDModelCallbacks:
 class TestLEDModelConfigureForStyle:
     """Test configure_for_style() sets LED/segment counts from registry."""
 
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10, zone_count=1),
         2: MagicMock(style_id=2, led_count=84, segment_count=18, zone_count=4),
     })
@@ -376,7 +376,7 @@ class TestLEDModelConfigureForStyle:
         assert len(led_model.state.segment_on) == 10
         assert led_model.state.zones == []
 
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         2: MagicMock(style_id=2, led_count=84, segment_count=18, zone_count=4),
     })
     def test_configure_multi_zone_style(self, led_model):
@@ -384,14 +384,14 @@ class TestLEDModelConfigureForStyle:
         assert led_model.state.zone_count == 4
         assert len(led_model.state.zones) == 4
 
-    @patch("trcc.led_device.LED_STYLES", {})
+    @patch("trcc.device_led.LED_STYLES", {})
     def test_configure_unknown_style(self, led_model):
         """Unknown style_id does nothing (LED_STYLES.get returns None)."""
         original_count = led_model.state.segment_count
         led_model.configure_for_style(999)
         assert led_model.state.segment_count == original_count
 
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10, zone_count=1),
     })
     def test_configure_fires_callback(self, led_model):
@@ -424,7 +424,7 @@ class TestLEDModelTickDispatch:
         colors = led_model.tick()
         assert len(colors) == led_model.state.segment_count
 
-    @patch("trcc.led_device.get_rgb_table")
+    @patch("trcc.device_led.get_rgb_table")
     def test_tick_rainbow(self, mock_table, led_model):
         # Provide a minimal table
         mock_table.return_value = [(i, i, i) for i in range(768)]
@@ -432,14 +432,14 @@ class TestLEDModelTickDispatch:
         colors = led_model.tick()
         assert len(colors) == led_model.state.segment_count
 
-    @patch("trcc.led_device.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.device_led.color_for_value", return_value=(0, 255, 255))
     def test_tick_temp_linked(self, mock_cfv, led_model):
         led_model.set_mode(LEDMode.TEMP_LINKED)
         led_model.update_metrics({"cpu_temp": 25})
         colors = led_model.tick()
         assert len(colors) == led_model.state.segment_count
 
-    @patch("trcc.led_device.color_for_value", return_value=(255, 255, 0))
+    @patch("trcc.device_led.color_for_value", return_value=(255, 255, 0))
     def test_tick_load_linked(self, mock_cfv, led_model):
         led_model.set_mode(LEDMode.LOAD_LINKED)
         led_model.update_metrics({"cpu_load": 60})
@@ -577,7 +577,7 @@ class TestTickColorful:
 class TestTickRainbow:
     """CHMS_Timer: 768-entry table, offset per segment."""
 
-    @patch("trcc.led_device.get_rgb_table")
+    @patch("trcc.device_led.get_rgb_table")
     def test_uses_rgb_table(self, mock_table, led_model):
         table = [(i, 0, 0) for i in range(768)]
         mock_table.return_value = table
@@ -587,21 +587,21 @@ class TestTickRainbow:
         assert len(colors) == led_model.state.segment_count
         mock_table.assert_called()
 
-    @patch("trcc.led_device.get_rgb_table")
+    @patch("trcc.device_led.get_rgb_table")
     def test_advances_by_4(self, mock_table, led_model):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_model.state.rgb_timer = 0
         led_model._tick_rainbow_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 4
 
-    @patch("trcc.led_device.get_rgb_table")
+    @patch("trcc.device_led.get_rgb_table")
     def test_timer_wraps(self, mock_table, led_model):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_model.state.rgb_timer = 764
         led_model._tick_rainbow_for(led_model.state.segment_count)
         assert led_model.state.rgb_timer == 0  # (764 + 4) % 768 = 0
 
-    @patch("trcc.led_device.get_rgb_table")
+    @patch("trcc.device_led.get_rgb_table")
     def test_segments_get_different_offsets(self, mock_table, led_model):
         """Different segments get different colors from the table."""
         table = [(i, i, i) for i in range(768)]
@@ -621,7 +621,7 @@ class TestTickRainbow:
 class TestTickTempLinked:
     """WDLD_Timer: color from CPU/GPU temperature thresholds."""
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 0)
         led_model.state.temp_source = "cpu"
@@ -631,7 +631,7 @@ class TestTickTempLinked:
         # First positional arg is the temp value
         assert mock_cfv.call_args[0][0] == 45
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_uses_gpu_temp(self, mock_cfv, led_model):
         mock_cfv.return_value = (255, 0, 0)
         led_model.state.temp_source = "gpu"
@@ -639,14 +639,14 @@ class TestTickTempLinked:
         led_model._tick_temp_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
         led_model._tick_temp_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_uniform_color(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 0)
         led_model._metrics = {"cpu_temp": 40}
@@ -662,7 +662,7 @@ class TestTickTempLinked:
 class TestTickLoadLinked:
     """FZLD_Timer: color from CPU/GPU load thresholds."""
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_uses_cpu_load_by_default(self, mock_cfv, led_model):
         mock_cfv.return_value = (255, 255, 0)
         led_model.state.load_source = "cpu"
@@ -670,7 +670,7 @@ class TestTickLoadLinked:
         led_model._tick_load_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_uses_gpu_load(self, mock_cfv, led_model):
         mock_cfv.return_value = (255, 110, 0)
         led_model.state.load_source = "gpu"
@@ -678,7 +678,7 @@ class TestTickLoadLinked:
         led_model._tick_load_linked_for(led_model.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
-    @patch("trcc.led_device.color_for_value")
+    @patch("trcc.device_led.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_model):
         mock_cfv.return_value = (0, 255, 255)
         led_model._metrics = {}
@@ -728,7 +728,7 @@ class TestLEDControllerDelegation:
         led_controller.update_metrics(metrics)
         assert led_controller.model._metrics == metrics
 
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10, zone_count=1),
     })
     def test_configure_for_style_delegates(self, led_controller):
@@ -876,7 +876,7 @@ class TestLEDDeviceControllerInitialize:
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
     @patch("trcc.conf.get_device_config", return_value={})
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
     })
@@ -889,7 +889,7 @@ class TestLEDDeviceControllerInitialize:
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
     @patch("trcc.conf.get_device_config", return_value={})
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
     })
@@ -905,7 +905,7 @@ class TestLEDDeviceControllerInitialize:
            side_effect=Exception("No backend"))
     @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
     @patch("trcc.conf.get_device_config", return_value={})
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
     })
@@ -922,7 +922,7 @@ class TestLEDDeviceControllerInitialize:
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
     @patch("trcc.conf.get_device_config", return_value={})
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
     })
@@ -935,7 +935,7 @@ class TestLEDDeviceControllerInitialize:
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
     @patch("trcc.conf.get_device_config", return_value={})
-    @patch("trcc.led_device.LED_STYLES", {
+    @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
     })
@@ -1434,20 +1434,20 @@ class TestTickSingleMode:
             LEDMode.COLORFUL, (0, 0, 0), 4)
         assert len(colors) == 4
 
-    @patch("trcc.led_device.get_rgb_table",
+    @patch("trcc.device_led.get_rgb_table",
            return_value=[(i, i, i) for i in range(768)])
     def test_rainbow(self, mock_table, led_model):
         colors = led_model._tick_single_mode(
             LEDMode.RAINBOW, (0, 0, 0), 6)
         assert len(colors) == 6
 
-    @patch("trcc.led_device.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.device_led.color_for_value", return_value=(0, 255, 255))
     def test_temp_linked(self, mock_cfv, led_model):
         colors = led_model._tick_single_mode(
             LEDMode.TEMP_LINKED, (0, 0, 0), 3)
         assert len(colors) == 3
 
-    @patch("trcc.led_device.color_for_value", return_value=(255, 0, 0))
+    @patch("trcc.device_led.color_for_value", return_value=(255, 0, 0))
     def test_load_linked(self, mock_cfv, led_model):
         colors = led_model._tick_single_mode(
             LEDMode.LOAD_LINKED, (0, 0, 0), 3)

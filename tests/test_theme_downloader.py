@@ -88,7 +88,7 @@ class TestGetInstalledPacks(unittest.TestCase):
 
     def test_empty_when_no_dir(self):
         """Returns empty dict when themes dir doesn't exist."""
-        with patch('trcc.theme_downloader.get_user_themes_dir') as mock_dir:
+        with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir') as mock_dir:
             mock_dir.return_value = Path('/nonexistent/themes')
             self.assertEqual(get_installed_packs(), {})
 
@@ -102,7 +102,7 @@ class TestGetInstalledPacks(unittest.TestCase):
             meta = {'pack_name': 'themes-320', 'version': '1.0.0', 'theme_count': 5}
             (res_dir / '.trcc-meta.json').write_text(json.dumps(meta))
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
 
             self.assertIn('themes-320', installed)
@@ -118,7 +118,7 @@ class TestGetInstalledPacks(unittest.TestCase):
             (res_dir / 'Theme1').mkdir()
             (res_dir / 'Theme2').mkdir()
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
 
             # Pack name derived from dir name
@@ -130,12 +130,12 @@ class TestListAndInfo(unittest.TestCase):
 
     def test_list_available_runs(self):
         """list_available() should print without error."""
-        with patch('trcc.theme_downloader.get_installed_packs', return_value={}):
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}):
             list_available()  # Smoke test — no crash
 
     def test_show_info_known_pack(self):
         """show_info() handles a known pack."""
-        with patch('trcc.theme_downloader.get_installed_packs', return_value={}):
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}):
             show_info('themes-320')  # Should not raise
 
     def test_show_info_unknown_pack(self, ):
@@ -262,11 +262,11 @@ class TestDownloadPack(unittest.TestCase):
     def test_already_installed_same_version(self):
         """Already installed + same version returns 0 without downloading."""
         installed = {'themes-320': {'version': THEME_REGISTRY['themes-320']['version']}}
-        with patch('trcc.theme_downloader.get_installed_packs', return_value=installed):
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed):
             self.assertEqual(download_pack('themes-320'), 0)
 
-    @patch('trcc.theme_downloader.download_with_progress', return_value=False)
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.download_with_progress', return_value=False)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
     def test_download_failure(self, mock_installed, mock_download):
         """Download failure returns 1."""
         self.assertEqual(download_pack('themes-320'), 1)
@@ -277,7 +277,7 @@ class TestRemovePack(unittest.TestCase):
 
     def test_remove_not_installed(self):
         """Removing non-installed pack returns 1."""
-        with patch('trcc.theme_downloader.get_installed_packs', return_value={}):
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}):
             self.assertEqual(remove_pack('themes-320'), 1)
 
     def test_remove_installed(self):
@@ -290,8 +290,8 @@ class TestRemovePack(unittest.TestCase):
 
             installed = {'themes-320': {'resolution': '320x320'}}
 
-            with patch('trcc.theme_downloader.get_installed_packs', return_value=installed), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 result = remove_pack('themes-320')
 
             self.assertEqual(result, 0)
@@ -300,7 +300,7 @@ class TestRemovePack(unittest.TestCase):
     def test_remove_missing_resolution(self):
         """Pack with empty resolution returns 1."""
         installed = {'themes-320': {'resolution': ''}}
-        with patch('trcc.theme_downloader.get_installed_packs', return_value=installed):
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed):
             self.assertEqual(remove_pack('themes-320'), 1)
 
 
@@ -349,7 +349,7 @@ class TestInstalledPacksCorruptMeta(unittest.TestCase):
             (res_dir / '.trcc-meta.json').write_text('{bad json')
             (res_dir / 'Theme1').mkdir()
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
             # Corrupt meta → silently skipped (pass), no entry added
             self.assertEqual(installed, {})
@@ -369,7 +369,7 @@ class TestListAvailableInstalled(unittest.TestCase):
         installed = {pack_name: {'version': version}}
 
         buf = io.StringIO()
-        with patch('trcc.theme_downloader.get_installed_packs', return_value=installed), \
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed), \
              redirect_stdout(buf):
             list_available()
         self.assertIn('[installed]', buf.getvalue())
@@ -383,7 +383,7 @@ class TestListAvailableInstalled(unittest.TestCase):
         installed = {pack_name: {'version': '0.0.1'}}
 
         buf = io.StringIO()
-        with patch('trcc.theme_downloader.get_installed_packs', return_value=installed), \
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed), \
              redirect_stdout(buf):
             list_available()
         self.assertIn('update available', buf.getvalue())
@@ -401,7 +401,7 @@ class TestShowInfoInstalled(unittest.TestCase):
         installed = {pack_name: {'version': '1.0', 'theme_count': 5}}
 
         buf = io.StringIO()
-        with patch('trcc.theme_downloader.get_installed_packs', return_value=installed), \
+        with patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value=installed), \
              redirect_stdout(buf):
             show_info(pack_name)
         self.assertIn('Installed:   Yes', buf.getvalue())
@@ -446,9 +446,9 @@ class TestDownloadEdgeCases(unittest.TestCase):
 
 class TestDownloadPackExtra(unittest.TestCase):
 
-    @patch('trcc.theme_downloader.download_with_progress', return_value=True)
-    @patch('trcc.theme_downloader.verify_checksum', return_value=True)
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.download_with_progress', return_value=True)
+    @patch('trcc.theme_downloader.ThemeDownloader.verify_checksum', return_value=True)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
     def test_full_success_flow(self, mock_installed, mock_checksum, mock_download):
         """Full install: download → extract → install themes → metadata."""
         pack_name = list(THEME_REGISTRY.keys())[0]
@@ -477,8 +477,8 @@ class TestDownloadPackExtra(unittest.TestCase):
                 return True
             mock_download.side_effect = fake_download
 
-            with patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 result = download_pack(pack_name)
 
             self.assertEqual(result, 0)
@@ -489,8 +489,8 @@ class TestDownloadPackExtra(unittest.TestCase):
             theme_dirs = [d for d in dest.iterdir() if d.is_dir()]
             self.assertGreater(len(theme_dirs), 0)
 
-    @patch('trcc.theme_downloader.verify_checksum', return_value=True)
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.verify_checksum', return_value=True)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
     def test_cached_archive_skips_download(self, mock_installed, mock_checksum):
         """Existing valid archive in cache skips download."""
         pack_name = list(THEME_REGISTRY.keys())[0]
@@ -507,17 +507,17 @@ class TestDownloadPackExtra(unittest.TestCase):
                 tar.add(str(theme), arcname='wrapper/T1')
 
             themes_dir = Path(tmp) / 'themes'
-            with patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir), \
-                 patch('trcc.theme_downloader.download_with_progress') as mock_dl:
+            with patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.download_with_progress') as mock_dl:
                 result = download_pack(pack_name)
             # Download should NOT have been called
             mock_dl.assert_not_called()
             self.assertEqual(result, 0)
 
-    @patch('trcc.theme_downloader.download_with_progress', return_value=True)
-    @patch('trcc.theme_downloader.verify_checksum', return_value=False)
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.download_with_progress', return_value=True)
+    @patch('trcc.theme_downloader.ThemeDownloader.verify_checksum', return_value=False)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
     def test_checksum_fail_deletes_archive(self, mock_inst, mock_check, mock_dl):
         """Checksum mismatch → archive deleted, returns 1."""
         pack_name = list(THEME_REGISTRY.keys())[0]
@@ -535,13 +535,13 @@ class TestDownloadPackExtra(unittest.TestCase):
             # Make verify_checksum return False only the second time (post-download)
             mock_check.side_effect = [False, False]
 
-            with patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir):
                 result = download_pack(pack_name)
             self.assertEqual(result, 1)
 
-    @patch('trcc.theme_downloader.extract_archive', return_value=False)
-    @patch('trcc.theme_downloader.verify_checksum', return_value=True)
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.extract_archive', return_value=False)
+    @patch('trcc.theme_downloader.ThemeDownloader.verify_checksum', return_value=True)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
     def test_extraction_failure(self, mock_inst, mock_check, mock_extract):
         """Extract failure → returns 1."""
         pack_name = list(THEME_REGISTRY.keys())[0]
@@ -551,19 +551,19 @@ class TestDownloadPackExtra(unittest.TestCase):
             cache_dir = Path(tmp)
             (cache_dir / f"{pack_name}-{info['version']}.tar.gz").write_bytes(b'x')
 
-            with patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir):
                 result = download_pack(pack_name)
             self.assertEqual(result, 1)
 
-    @patch('trcc.theme_downloader.get_installed_packs')
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs')
     def test_force_reinstall(self, mock_installed):
         """force=True bypasses already-installed check."""
         pack_name = list(THEME_REGISTRY.keys())[0]
         info = THEME_REGISTRY[pack_name]
         mock_installed.return_value = {pack_name: {'version': info['version']}}
 
-        with patch('trcc.theme_downloader.download_with_progress', return_value=False), \
-             patch('trcc.theme_downloader.get_cache_dir', return_value=Path('/tmp')):
+        with patch('trcc.theme_downloader.ThemeDownloader.download_with_progress', return_value=False), \
+             patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=Path('/tmp')):
             result = download_pack(pack_name, force=True)
         # Should proceed past the "already installed" check (fails on download)
         self.assertEqual(result, 1)
@@ -584,7 +584,7 @@ class TestGetInstalledPacksMeta(unittest.TestCase):
             with open(res_dir / '.trcc-meta.json', 'w') as f:
                 json.dump(meta, f)
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
             self.assertIn('themes-320320', installed)
             self.assertEqual(installed['themes-320320']['version'], '1.0')
@@ -597,7 +597,7 @@ class TestGetInstalledPacksMeta(unittest.TestCase):
             (res_dir / 'Theme1').mkdir()
             (res_dir / 'Theme2').mkdir()
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
             # Should create pack name from dir name
             self.assertTrue(len(installed) > 0)
@@ -609,7 +609,7 @@ class TestGetInstalledPacksMeta(unittest.TestCase):
             res_dir.mkdir(parents=True)
             (res_dir / '.trcc-meta.json').write_text('not json')
 
-            with patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+            with patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 installed = get_installed_packs()
             # Corrupt meta should be silently ignored
             self.assertIsInstance(installed, dict)
@@ -629,7 +629,7 @@ class TestExtractArchiveError(unittest.TestCase):
 class TestDownloadPackAlreadyInstalled(unittest.TestCase):
     """Cover already-installed version check (lines 271-276)."""
 
-    @patch('trcc.theme_downloader.get_installed_packs')
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs')
     @patch('trcc.theme_downloader.THEME_REGISTRY', {
         'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
                       'url': 'http://x', 'sha256': 'abc'}
@@ -645,9 +645,9 @@ class TestDownloadPackAlreadyInstalled(unittest.TestCase):
 class TestDownloadPackPrimaryFails(unittest.TestCase):
     """Cover download failure without mirror (lines 292-294)."""
 
-    @patch('trcc.theme_downloader.get_installed_packs', return_value={})
-    @patch('trcc.theme_downloader.download_with_progress', return_value=False)
-    @patch('trcc.theme_downloader.get_cache_dir')
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={})
+    @patch('trcc.theme_downloader.ThemeDownloader.download_with_progress', return_value=False)
+    @patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir')
     @patch('trcc.theme_downloader.MIRROR_URLS', {})
     @patch('trcc.theme_downloader.THEME_REGISTRY', {
         'test-pack': {'name': 'Test', 'version': '2.0', 'resolution': '320x320',
@@ -690,9 +690,9 @@ class TestDownloadPackFullInstall(unittest.TestCase):
                 'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
                               'url': 'http://x', 'sha256': sha, 'size_mb': 1}
             }), \
-                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
-                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                 patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 result = download_pack('test-pack')
 
             self.assertEqual(result, 0)
@@ -725,9 +725,9 @@ class TestDownloadPackFullInstall(unittest.TestCase):
                 'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
                               'url': 'http://x', 'sha256': sha, 'size_mb': 1}
             }), \
-                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
-                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                 patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 result = download_pack('test-pack')
 
             self.assertEqual(result, 0)
@@ -756,9 +756,9 @@ class TestDownloadPackFullInstall(unittest.TestCase):
                 'test-pack': {'name': 'Test', 'version': '1.0', 'resolution': '320x320',
                               'url': 'http://x', 'sha256': sha, 'size_mb': 1}
             }), \
-                 patch('trcc.theme_downloader.get_installed_packs', return_value={}), \
-                 patch('trcc.theme_downloader.get_cache_dir', return_value=cache_dir), \
-                 patch('trcc.theme_downloader.get_user_themes_dir', return_value=themes_dir):
+                 patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs', return_value={}), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_cache_dir', return_value=cache_dir), \
+                 patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir', return_value=themes_dir):
                 result = download_pack('test-pack')
 
             self.assertEqual(result, 1)
@@ -767,8 +767,8 @@ class TestDownloadPackFullInstall(unittest.TestCase):
 class TestRemovePackNotFound(unittest.TestCase):
     """Cover remove_pack directory-not-found (lines 393-394)."""
 
-    @patch('trcc.theme_downloader.get_user_themes_dir')
-    @patch('trcc.theme_downloader.get_installed_packs')
+    @patch('trcc.theme_downloader.ThemeDownloader.get_user_themes_dir')
+    @patch('trcc.theme_downloader.ThemeDownloader.get_installed_packs')
     def test_dir_not_exists(self, mock_installed, mock_dir):
         mock_installed.return_value = {
             'test-pack': {'resolution': '320x320', 'version': '1.0'}

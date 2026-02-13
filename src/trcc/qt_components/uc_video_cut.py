@@ -26,7 +26,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QLabel, QProgressBar, QWidget
 
 from trcc.core.controllers import apply_rotation
-from trcc.gif_animator import FFMPEG_AVAILABLE
+from trcc.media_player import FFMPEG_AVAILABLE
 
 from .assets import load_pixmap
 from .base import make_icon_button, pil_to_pixmap

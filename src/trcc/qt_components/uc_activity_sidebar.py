@@ -11,14 +11,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-# Import system info (GUI-independent data layer)
-try:
-    from ..system_info import get_all_metrics
-    SYSINFO_AVAILABLE = True
-except ImportError:
-    SYSINFO_AVAILABLE = False
-    def get_all_metrics():
-        return {}
+from ..system_info import get_all_metrics
 
 log = logging.getLogger(__name__)
 
@@ -257,8 +250,6 @@ class UCActivitySidebar(QWidget):
 
     def _update_values(self):
         """Update all sensor values from system_info."""
-        if not SYSINFO_AVAILABLE:
-            return
         try:
             metrics = get_all_metrics()
             for item in self._sensor_items:

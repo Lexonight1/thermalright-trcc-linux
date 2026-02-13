@@ -304,7 +304,7 @@ class DeviceModel:
         """Detect connected LCD devices."""
         log.debug("DeviceModel: scanning for devices...")
         try:
-            from ..scsi_device import find_lcd_devices
+            from ..device_scsi import find_lcd_devices
             raw_devices = find_lcd_devices()
 
             self.devices = [
@@ -482,7 +482,7 @@ class VideoModel:
         self.frames.clear()
 
         try:
-            from ..gif_animator import ThemeZtPlayer, VideoPlayer
+            from ..media_player import ThemeZtPlayer, VideoPlayer
 
             suffix = path.suffix.lower()
 
@@ -917,7 +917,7 @@ class LEDModel:
 
     def configure_for_style(self, style_id: int) -> None:
         """Configure state for a specific LED device style."""
-        from ..led_device import LED_STYLES
+        from ..device_led import LED_STYLES
         style = LED_STYLES.get(style_id)
         if style:
             self.state.style = style.style_id
@@ -1078,7 +1078,7 @@ class LEDModel:
             Each segment gets offset index into rainbow table.
             Timer advances by 4 each tick.
         """
-        from ..led_device import get_rgb_table
+        from ..device_led import get_rgb_table
         table = get_rgb_table()
         timer = self.state.rgb_timer
         table_len = len(table)  # 768
@@ -1098,7 +1098,7 @@ class LEDModel:
         From FormLED.cs line 9377:
             <30°C=cyan, 30-49=green, 50-69=yellow, 70-89=orange, ≥90=red
         """
-        from ..led_device import TEMP_COLOR_HIGH, TEMP_COLOR_THRESHOLDS, color_for_value
+        from ..device_led import TEMP_COLOR_HIGH, TEMP_COLOR_THRESHOLDS, color_for_value
 
         source = self.state.temp_source
         temp = self._metrics.get(f"{source}_temp", 0)
@@ -1111,7 +1111,7 @@ class LEDModel:
         From FormLED.cs line 9824:
             Same thresholds as temperature but for utilization %.
         """
-        from ..led_device import LOAD_COLOR_HIGH, LOAD_COLOR_THRESHOLDS, color_for_value
+        from ..device_led import LOAD_COLOR_HIGH, LOAD_COLOR_THRESHOLDS, color_for_value
 
         source = self.state.load_source
         # system_info uses "cpu_percent" and "gpu_usage" (not "{source}_load")

@@ -9,20 +9,10 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
+from ..device_scsi import find_lcd_devices
 from .assets import Assets, asset_exists, load_pixmap
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
-
-# Import device detection
-try:
-    from ..scsi_device import find_lcd_devices
-    SCSI_AVAILABLE = True
-except ImportError:
-    SCSI_AVAILABLE = False
-
-    def find_lcd_devices():
-        return []
-
 
 # Map device model names to A1 image base names (without .png)
 DEVICE_IMAGE_MAP = {
@@ -318,10 +308,7 @@ class UCDevice(BasePanel):
 
     def _detect_devices(self):
         """Detect connected LCD devices."""
-        if SCSI_AVAILABLE:
-            self.devices = find_lcd_devices()
-        else:
-            self.devices = []
+        self.devices = find_lcd_devices()
 
         self._build_device_buttons(self.devices)
 

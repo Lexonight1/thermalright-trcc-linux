@@ -1302,13 +1302,10 @@ class TestFormCZTVMaskPosition(unittest.TestCase):
     def test_dc_with_mask_position(self):
         """DC with mask_enabled and mask_position returns top-left coords."""
         mask = _make_test_image(100, 100)
-        dc_data = {
-            'mask_settings': {
-                'mask_enabled': True,
-                'mask_position': (160, 160),  # center
-            }
-        }
-        with patch('trcc.dc_parser.parse_dc_file', return_value=dc_data):
+        mock_dc = MagicMock()
+        mock_dc.mask_enabled = True
+        mock_dc.mask_settings = {'mask_position': (160, 160)}
+        with patch('trcc.dc_config.DcConfig', return_value=mock_dc):
             with tempfile.NamedTemporaryFile(suffix='.dc', delete=False) as f:
                 f.write(b'\xdd')
                 dc_path = f.name
@@ -1321,8 +1318,9 @@ class TestFormCZTVMaskPosition(unittest.TestCase):
     def test_dc_mask_not_enabled(self):
         """DC with mask_enabled=False returns None."""
         mask = _make_test_image(100, 100)
-        dc_data = {'mask_settings': {'mask_enabled': False}}
-        with patch('trcc.dc_parser.parse_dc_file', return_value=dc_data):
+        mock_dc = MagicMock()
+        mock_dc.mask_enabled = False
+        with patch('trcc.dc_config.DcConfig', return_value=mock_dc):
             with tempfile.NamedTemporaryFile(suffix='.dc', delete=False) as f:
                 f.write(b'\xdd')
                 dc_path = f.name
@@ -1335,7 +1333,7 @@ class TestFormCZTVMaskPosition(unittest.TestCase):
     def test_dc_parse_error(self):
         """DC parse exception returns None."""
         mask = _make_test_image(100, 100)
-        with patch('trcc.dc_parser.parse_dc_file', side_effect=RuntimeError):
+        with patch('trcc.dc_config.DcConfig', side_effect=RuntimeError):
             with tempfile.NamedTemporaryFile(suffix='.dc', delete=False) as f:
                 f.write(b'\xdd')
                 dc_path = f.name
@@ -1464,10 +1462,12 @@ class TestFormCZTVCallbacksAndHelpers(unittest.TestCase):
             f.write(b'\xdd' + b'\x00' * 50)
             dc_path = Path(f.name)
         try:
-            dc_data = {'display_elements': []}
             overlay_cfg = {'time_0': {'enabled': True}}
-            with patch('trcc.dc_parser.parse_dc_file', return_value=dc_data), \
-                 patch('trcc.dc_parser.dc_to_overlay_config', return_value=overlay_cfg), \
+            mock_dc = MagicMock()
+            mock_dc.to_overlay_config.return_value = overlay_cfg
+            mock_dc.display_options = {}
+            mock_dc.to_dict.return_value = {}
+            with patch('trcc.dc_config.DcConfig', return_value=mock_dc), \
                  patch.object(self.ctrl.overlay, 'set_config') as mock_set, \
                  patch.object(self.ctrl.overlay, 'set_config_resolution') as mock_res:
                 self.ctrl._load_dc_config(dc_path)
@@ -1482,7 +1482,7 @@ class TestFormCZTVCallbacksAndHelpers(unittest.TestCase):
             f.write(b'\xdd')
             dc_path = Path(f.name)
         try:
-            with patch('trcc.dc_parser.parse_dc_file', side_effect=RuntimeError('bad')):
+            with patch('trcc.dc_config.DcConfig', side_effect=RuntimeError('bad')):
                 self.ctrl._load_dc_config(dc_path)  # Should not raise
         finally:
             os.unlink(dc_path)
