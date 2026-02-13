@@ -3,9 +3,12 @@
 TRCC Linux — Command Line Interface.
 
 Entry points for the trcc-linux package (Typer CLI).
-Organized into four command classes:
+Organized into six command classes:
   DeviceCommands  — detection, selection, probing
-  DisplayCommands — LCD frame operations (test, send, color, resume)
+  DisplayCommands — LCD frame operations (test, send, color, video, resume,
+                    brightness, rotation, screencast, mask, overlay)
+  ThemeCommands   — theme listing, loading, save, export, import
+  LEDCommands     — LED color, mode, brightness, off, sensor source
   DiagCommands    — HID/LED diagnostics
   SystemCommands  — setup, install, admin, info, download
 """
@@ -134,6 +137,202 @@ def _cmd_color(
 ) -> int:
     """Display solid color."""
     return DisplayCommands.send_color(hex_color, device=device)
+
+
+@app.command("video")
+def _cmd_video(
+    path: Annotated[str, typer.Argument(help="Video/GIF/ZT file to play")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    no_loop: Annotated[bool, typer.Option(
+        "--no-loop", help="Play once without looping",
+    )] = False,
+    duration: Annotated[int, typer.Option(
+        "--duration", "-t", help="Stop after N seconds (0=unlimited)",
+    )] = 0,
+) -> int:
+    """Play video/GIF on LCD."""
+    return DisplayCommands.play_video(
+        path, device=device, loop=not no_loop, duration=duration)
+
+
+@app.command("brightness")
+def _cmd_brightness(
+    level: Annotated[int, typer.Argument(help="Brightness level: 1=25%, 2=50%, 3=100%")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+) -> int:
+    """Set display brightness."""
+    return DisplayCommands.set_brightness(level, device=device)
+
+
+@app.command("rotation")
+def _cmd_rotation(
+    degrees: Annotated[int, typer.Argument(help="Rotation: 0, 90, 180, or 270")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+) -> int:
+    """Set display rotation."""
+    return DisplayCommands.set_rotation(degrees, device=device)
+
+
+@app.command("screencast")
+def _cmd_screencast(
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    x: Annotated[int, typer.Option(help="Capture region X offset")] = 0,
+    y: Annotated[int, typer.Option(help="Capture region Y offset")] = 0,
+    w: Annotated[int, typer.Option(help="Capture region width (0=full)")] = 0,
+    h: Annotated[int, typer.Option(help="Capture region height (0=full)")] = 0,
+    fps: Annotated[int, typer.Option(help="Target frames per second")] = 10,
+) -> int:
+    """Stream screen region to LCD."""
+    return DisplayCommands.screencast(device=device, x=x, y=y, w=w, h=h, fps=fps)
+
+
+@app.command("mask")
+def _cmd_mask(
+    path: Annotated[Optional[str], typer.Argument(
+        help="Mask PNG file or theme directory",
+    )] = None,
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    clear: Annotated[bool, typer.Option(
+        "--clear", help="Clear mask (send solid black)",
+    )] = False,
+) -> int:
+    """Load mask overlay and send to LCD."""
+    if clear:
+        return DisplayCommands.send_color("#000000", device=device)
+    if not path:
+        typer.echo("Error: Provide a mask path or use --clear")
+        raise typer.Exit(1)
+    return DisplayCommands.load_mask(path, device=device)
+
+
+@app.command("overlay")
+def _cmd_overlay(
+    dc_path: Annotated[str, typer.Argument(help="DC config or theme directory path")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    send: Annotated[bool, typer.Option(
+        "--send", "-s", help="Send rendered result to LCD",
+    )] = False,
+    output: Annotated[Optional[str], typer.Option(
+        "--output", "-o", help="Save rendered image to file",
+    )] = None,
+) -> int:
+    """Render overlay from DC config."""
+    return DisplayCommands.render_overlay(
+        dc_path, device=device, send=send, output=output)
+
+
+@app.command("theme-list")
+def _cmd_theme_list(
+    cloud: Annotated[bool, typer.Option(
+        "--cloud", "-c", help="List cloud themes instead of local",
+    )] = False,
+    category: Annotated[Optional[str], typer.Option(
+        "--category", help="Filter by category (a=Gallery, b=Tech, c=HUD, etc.)",
+    )] = None,
+) -> int:
+    """List available themes."""
+    return ThemeCommands.list_themes(cloud=cloud, category=category)
+
+
+@app.command("theme-load")
+def _cmd_theme_load(
+    name: Annotated[str, typer.Argument(help="Theme name (from theme-list)")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+) -> int:
+    """Load a theme and send to LCD."""
+    return ThemeCommands.load_theme(name, device=device)
+
+
+@app.command("led-color")
+def _cmd_led_color(
+    hex_color: Annotated[str, typer.Argument(
+        metavar="HEX", help="Hex color (e.g., ff0000 for red)",
+    )],
+) -> int:
+    """Set LED static color."""
+    return LEDCommands.set_color(hex_color)
+
+
+@app.command("led-mode")
+def _cmd_led_mode(
+    mode: Annotated[str, typer.Argument(
+        help="Effect: static, breathing, colorful, rainbow",
+    )],
+) -> int:
+    """Set LED effect mode."""
+    return LEDCommands.set_mode(mode)
+
+
+@app.command("led-brightness")
+def _cmd_led_brightness(
+    level: Annotated[int, typer.Argument(help="Brightness 0-100")],
+) -> int:
+    """Set LED brightness."""
+    return LEDCommands.set_led_brightness(level)
+
+
+@app.command("led-off")
+def _cmd_led_off() -> int:
+    """Turn LEDs off."""
+    return LEDCommands.led_off()
+
+
+@app.command("led-sensor")
+def _cmd_led_sensor(
+    source: Annotated[str, typer.Argument(
+        help="Sensor source: cpu or gpu",
+    )],
+) -> int:
+    """Set LED sensor source for temp/load linked modes."""
+    return LEDCommands.set_sensor_source(source)
+
+
+@app.command("theme-save")
+def _cmd_theme_save(
+    name: Annotated[str, typer.Argument(help="Theme name")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    video: Annotated[Optional[str], typer.Option(
+        "--video", "-v", help="Video path for animated theme",
+    )] = None,
+) -> int:
+    """Save current display as a custom theme."""
+    return ThemeCommands.save_theme(name, device=device, video=video)
+
+
+@app.command("theme-export")
+def _cmd_theme_export(
+    theme_name: Annotated[str, typer.Argument(help="Theme name to export")],
+    output: Annotated[str, typer.Argument(help="Output .tr file path")],
+) -> int:
+    """Export a theme as .tr file."""
+    return ThemeCommands.export_theme(theme_name, output)
+
+
+@app.command("theme-import")
+def _cmd_theme_import(
+    file_path: Annotated[str, typer.Argument(help="Path to .tr file")],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+) -> int:
+    """Import a theme from .tr file."""
+    return ThemeCommands.import_theme(file_path, device=device)
 
 
 @app.command("info")
@@ -662,6 +861,294 @@ class DisplayCommands:
             return 1
 
     @staticmethod
+    def play_video(video_path, *, device=None, loop=True, duration=0):
+        """Play video/GIF/ZT on LCD device."""
+        try:
+            import time
+            from pathlib import Path
+
+            if not os.path.exists(video_path):
+                print(f"Error: File not found: {video_path}")
+                return 1
+
+            from trcc.services import MediaService
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            w, h = dev.resolution
+
+            media = MediaService()
+            media.set_target_size(w, h)
+            if not media.load(Path(video_path)):
+                print(f"Error: Failed to load video: {video_path}")
+                return 1
+
+            total = media._state.total_frames
+            fps = media._state.fps
+            print(f"Playing {video_path} ({total} frames, {fps:.0f}fps) "
+                  f"on {dev.path} [{w}x{h}]")
+            if loop:
+                print("Press Ctrl+C to stop.")
+
+            media._state.loop = loop
+            media.play()
+
+            interval = media.frame_interval_ms / 1000.0
+            start = time.monotonic()
+
+            while media.is_playing:
+                frame, should_send, progress = media.tick()
+                if frame is None:
+                    break
+                if should_send:
+                    svc.send_pil(frame, w, h)
+                if progress:
+                    pct, cur, total_t = progress
+                    print(f"\r  {cur} / {total_t} ({pct:.0f}%)",
+                          end="", flush=True)
+                if duration and (time.monotonic() - start) >= duration:
+                    break
+                time.sleep(interval)
+
+            print("\nDone.")
+            return 0
+        except KeyboardInterrupt:
+            print("\nStopped.")
+            return 0
+        except Exception as e:
+            print(f"Error playing video: {e}")
+            return 1
+
+    @staticmethod
+    def set_brightness(level, *, device=None):
+        """Set display brightness level (1=25%, 2=50%, 3=100%).
+
+        Persists to device config so 'trcc resume' uses it.
+        """
+        try:
+            level_map = {1: 25, 2: 50, 3: 100}
+            if level not in level_map:
+                print("Error: brightness level must be 1, 2, or 3")
+                print("  1 = 25%  (dim)")
+                print("  2 = 50%  (medium)")
+                print("  3 = 100% (full)")
+                return 1
+
+            percent = level_map[level]
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+
+            # Persist to device config
+            from trcc.conf import device_config_key, save_device_setting
+            key = device_config_key(dev.device_index, dev.vid, dev.pid)
+            save_device_setting(key, 'brightness_level', level)
+
+            print(f"Brightness set to L{level} ({percent}%) on {dev.path}")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def set_rotation(degrees, *, device=None):
+        """Set display rotation (0, 90, 180, 270).
+
+        Persists to device config so 'trcc resume' uses it.
+        """
+        try:
+            if degrees not in (0, 90, 180, 270):
+                print("Error: rotation must be 0, 90, 180, or 270")
+                return 1
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+
+            from trcc.conf import device_config_key, save_device_setting
+            key = device_config_key(dev.device_index, dev.vid, dev.pid)
+            save_device_setting(key, 'rotation', degrees)
+
+            print(f"Rotation set to {degrees}° on {dev.path}")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def screencast(*, device=None, x=0, y=0, w=0, h=0, fps=10):
+        """Stream screen region to LCD. Ctrl+C to stop."""
+        try:
+            import time
+
+            from PIL import ImageGrab
+
+            from trcc.services import ImageService
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            lcd_w, lcd_h = dev.resolution
+
+            # Determine capture region
+            bbox = None
+            if w > 0 and h > 0:
+                bbox = (x, y, x + w, y + h)
+                print(f"Capturing region ({x},{y}) {w}x{h} → {dev.path} [{lcd_w}x{lcd_h}]")
+            else:
+                print(f"Capturing full screen → {dev.path} [{lcd_w}x{lcd_h}]")
+
+            print(f"Target: {fps} fps. Press Ctrl+C to stop.")
+
+            interval = 1.0 / fps
+            frames = 0
+
+            while True:
+                start = time.monotonic()
+                img = ImageGrab.grab(bbox=bbox)
+                img = ImageService.resize(img, lcd_w, lcd_h)
+                svc.send_pil(img, lcd_w, lcd_h)
+                frames += 1
+                print(f"\r  Frames: {frames}", end="", flush=True)
+                elapsed = time.monotonic() - start
+                if elapsed < interval:
+                    time.sleep(interval - elapsed)
+
+        except KeyboardInterrupt:
+            print(f"\nStopped after {frames} frames.")
+            return 0
+        except ImportError:
+            print("Error: Screen capture requires Pillow with ImageGrab support.")
+            print("On Linux, install: pip install Pillow")
+            return 1
+        except Exception as e:
+            print(f"\nError: {e}")
+            return 1
+
+    @staticmethod
+    def load_mask(mask_path, *, device=None):
+        """Load mask overlay from file/directory and send composited image."""
+        try:
+            from pathlib import Path
+
+            from PIL import Image
+
+            from trcc.services import ImageService, OverlayService
+
+            if not os.path.exists(mask_path):
+                print(f"Error: Path not found: {mask_path}")
+                return 1
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            w, h = dev.resolution
+
+            # Find mask image
+            p = Path(mask_path)
+            if p.is_dir():
+                mask_file = p / "01.png"
+                if not mask_file.exists():
+                    mask_file = next(p.glob("*.png"), None)
+                if not mask_file:
+                    print(f"Error: No PNG files in {mask_path}")
+                    return 1
+            else:
+                mask_file = p
+
+            overlay = OverlayService(w, h)
+            mask_img = Image.open(mask_file).convert('RGBA')
+            overlay.set_mask(mask_img)
+
+            # Black background + mask
+            bg = ImageService.solid_color(0, 0, 0, w, h)
+            overlay.set_background(bg)
+            overlay.enabled = True
+            result = overlay.render()
+
+            svc.send_pil(result, w, h)
+            print(f"Sent mask {mask_file.name} to {dev.path}")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def render_overlay(dc_path, *, device=None, send=False, output=None):
+        """Render overlay from DC config file."""
+        try:
+            from pathlib import Path
+
+            from trcc.services import ImageService, OverlayService
+            from trcc.system_info import get_all_metrics
+
+            if not os.path.exists(dc_path):
+                print(f"Error: Path not found: {dc_path}")
+                return 1
+
+            # Resolve device for resolution
+            w, h = 320, 320
+            svc = None
+            if device or send:
+                svc = DeviceCommands._get_service(device)
+                if svc and svc.selected:
+                    w, h = svc.selected.resolution
+
+            overlay = OverlayService(w, h)
+
+            # Load DC config
+            p = Path(dc_path)
+            dc_file = p / "config1.dc" if p.is_dir() else p
+            display_opts = overlay.load_from_dc(dc_file)
+
+            # Collect system metrics
+            metrics = get_all_metrics()
+            overlay.update_metrics(metrics)
+            overlay.enabled = True
+
+            # Black background
+            bg = ImageService.solid_color(0, 0, 0, w, h)
+            overlay.set_background(bg)
+            result = overlay.render()
+
+            if output:
+                result.save(output)
+                print(f"Saved overlay render to {output}")
+
+            if send and svc and svc.selected:
+                svc.send_pil(result, w, h)
+                print(f"Sent overlay to {svc.selected.path}")
+
+            if not output and not send:
+                elements = len(overlay.config) if overlay.config else 0
+                print(f"Overlay config loaded: {elements} elements ({w}x{h})")
+                if display_opts:
+                    for k, v in display_opts.items():
+                        print(f"  {k}: {v}")
+
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
     def reset(device=None):
         """Reset/reinitialize the LCD device."""
         try:
@@ -766,6 +1253,433 @@ class DisplayCommands:
             print(f"Resumed {sent} device(s).")
             return 0
 
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+
+# =========================================================================
+# ThemeCommands — theme listing and loading
+# =========================================================================
+
+class ThemeCommands:
+    """Theme discovery and loading commands."""
+
+    @staticmethod
+    def list_themes(cloud=False, category=None):
+        """List available themes for the current device resolution."""
+        try:
+            from trcc.conf import settings
+            from trcc.data_repository import DataManager
+            from trcc.services import ThemeService
+
+            w, h = settings.width, settings.height
+            if not w or not h:
+                w, h = 320, 320
+
+            DataManager.ensure_all(w, h)
+            settings._resolve_paths()
+
+            if cloud:
+                web_dir = settings.web_dir
+                if not web_dir or not web_dir.exists():
+                    print(f"No cloud themes for {w}x{h}.")
+                    return 0
+                themes = ThemeService.discover_cloud(web_dir, category)
+                print(f"Cloud themes ({w}x{h}): {len(themes)}")
+                for t in themes:
+                    cat = f" [{t.category}]" if t.category else ""
+                    print(f"  {t.name}{cat}")
+            else:
+                td = settings.theme_dir
+                if not td or not td.exists():
+                    print(f"No local themes for {w}x{h}.")
+                    return 0
+                themes = ThemeService.discover_local(td.path, (w, h))
+                print(f"Local themes ({w}x{h}): {len(themes)}")
+                for t in themes:
+                    kind = "video" if t.is_animated else "static"
+                    user = " [user]" if t.name.startswith(('Custom_', 'User')) else ""
+                    print(f"  {t.name} ({kind}){user}")
+
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def load_theme(name, *, device=None):
+        """Load a theme by name and send to LCD."""
+        try:
+            from PIL import Image
+
+            from trcc.conf import (
+                device_config_key,
+                save_device_setting,
+                settings,
+            )
+            from trcc.data_repository import DataManager
+            from trcc.services import ImageService, ThemeService
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            w, h = dev.resolution
+
+            DataManager.ensure_all(w, h)
+            settings._resolve_paths()
+
+            td = settings.theme_dir
+            if not td or not td.exists():
+                print(f"No themes for {w}x{h}.")
+                return 1
+
+            themes = ThemeService.discover_local(td.path, (w, h))
+            match = next((t for t in themes if t.name == name), None)
+            if not match:
+                # Try partial match
+                match = next((t for t in themes if name.lower() in t.name.lower()), None)
+            if not match:
+                print(f"Theme not found: {name}")
+                print("Use 'trcc theme-list' to see available themes.")
+                return 1
+
+            # Load the theme image
+            if match.is_animated and match.animation_path:
+                print(f"Theme '{match.name}' is animated — use 'trcc video {match.animation_path}'")
+                return 0
+
+            if match.background_path and match.background_path.exists():
+                img = Image.open(match.background_path).convert('RGB')
+                img = ImageService.resize(img, w, h)
+
+                # Apply saved adjustments
+                from trcc.conf import get_device_config
+                key = device_config_key(dev.device_index, dev.vid, dev.pid)
+                cfg = get_device_config(key)
+                brightness = {1: 25, 2: 50, 3: 100}.get(
+                    cfg.get('brightness_level', 3), 100)
+                rotation = cfg.get('rotation', 0)
+                img = ImageService.apply_brightness(img, brightness)
+                img = ImageService.apply_rotation(img, rotation)
+
+                svc.send_pil(img, w, h)
+
+                # Save as last-used theme
+                save_device_setting(key, 'theme_path', str(match.path))
+                print(f"Loaded '{match.name}' → {dev.path}")
+            else:
+                print(f"Theme '{match.name}' has no background image.")
+                return 1
+
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def save_theme(name, *, device=None, video=None):
+        """Save current display state as a custom theme."""
+        try:
+            from pathlib import Path
+
+            from PIL import Image
+
+            from trcc.data_repository import USER_DATA_DIR
+            from trcc.services import ThemeService
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            w, h = dev.resolution
+
+            # Load current background from last-used theme
+            from trcc.conf import device_config_key, get_device_config
+            key = device_config_key(dev.device_index, dev.vid, dev.pid)
+            cfg = get_device_config(key)
+            theme_path = cfg.get('theme_path')
+
+            bg = None
+            if theme_path:
+                from trcc.data_repository import ThemeDir as TDir
+                td = TDir(theme_path)
+                if td.bg.exists():
+                    bg = Image.open(td.bg).convert('RGB')
+                    bg = bg.resize((w, h), Image.Resampling.LANCZOS)
+
+            if not bg:
+                print("No current theme to save. Load a theme first.")
+                return 1
+
+            video_path = Path(video) if video else None
+            data_dir = Path(USER_DATA_DIR)
+            ok, msg = ThemeService.save(
+                name, data_dir, (w, h),
+                background=bg, overlay_config={},
+                video_path=video_path,
+                current_theme_path=Path(theme_path) if theme_path else None,
+            )
+            print(msg)
+            return 0 if ok else 1
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def export_theme(theme_name, output_path):
+        """Export a theme as .tr file."""
+        try:
+            from pathlib import Path
+
+            from trcc.conf import settings
+            from trcc.data_repository import DataManager
+            from trcc.services import ThemeService
+
+            w, h = settings.width, settings.height
+            if not w or not h:
+                w, h = 320, 320
+
+            DataManager.ensure_all(w, h)
+            settings._resolve_paths()
+
+            td = settings.theme_dir
+            if not td or not td.exists():
+                print(f"No themes for {w}x{h}.")
+                return 1
+
+            # Find theme by name
+            themes = ThemeService.discover_local(td.path, (w, h))
+            match = next((t for t in themes if t.name == theme_name), None)
+            if not match:
+                match = next(
+                    (t for t in themes if theme_name.lower() in t.name.lower()),
+                    None,
+                )
+            if not match or not match.path:
+                print(f"Theme not found: {theme_name}")
+                return 1
+
+            ok, msg = ThemeService.export_tr(match.path, Path(output_path))
+            print(msg)
+            return 0 if ok else 1
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def import_theme(file_path, *, device=None):
+        """Import a theme from .tr file."""
+        try:
+            from pathlib import Path
+
+            from trcc.data_repository import USER_DATA_DIR
+            from trcc.services import ThemeService
+
+            svc = DeviceCommands._get_service(device)
+            if not svc.selected:
+                print("No device found.")
+                return 1
+
+            dev = svc.selected
+            w, h = dev.resolution
+            data_dir = Path(USER_DATA_DIR)
+
+            ok, result = ThemeService.import_tr(
+                Path(file_path), data_dir, (w, h))
+            if ok and not isinstance(result, str):
+                print(f"Imported: {result.name}")
+            else:
+                print(result)
+            return 0 if ok else 1
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+
+# =========================================================================
+# LEDCommands — LED color, mode, brightness control
+# =========================================================================
+
+class LEDCommands:
+    """LED control commands."""
+
+    @staticmethod
+    def _get_led_service():
+        """Detect LED device and create initialized LEDService."""
+        from trcc.device_detector import detect_devices
+        from trcc.services import LEDService
+
+        devices = detect_devices()
+        led_dev = next(
+            (d for d in devices if d.implementation == 'hid_led'), None)
+        if not led_dev:
+            return None, None
+
+        led_svc = LEDService()
+        from trcc.device_led import probe_led_model
+        info = probe_led_model(led_dev.vid, led_dev.pid,
+                               usb_path=led_dev.usb_path)
+        if info and info.style:
+            style_id = info.style.style_id
+        else:
+            style_id = 1
+
+        status = led_svc.initialize(led_dev, style_id)
+        return led_svc, status
+
+    @staticmethod
+    def set_color(hex_color):
+        """Set LED static color."""
+        try:
+            hex_color = hex_color.lstrip('#')
+            if len(hex_color) != 6:
+                print("Error: Invalid hex color. Use format: ff0000")
+                return 1
+
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+
+            from trcc.core.models import LEDMode
+
+            led_svc, status = LEDCommands._get_led_service()
+            if not led_svc:
+                print("No LED device found.")
+                return 1
+
+            print(status)
+            led_svc.set_mode(LEDMode.STATIC)
+            led_svc.set_color(r, g, b)
+            led_svc.toggle_global(True)
+            led_svc.send_tick()
+            led_svc.save_config()
+
+            print(f"LED color set to #{hex_color}")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def set_mode(mode_name):
+        """Set LED effect mode."""
+        try:
+            import time
+
+            from trcc.core.models import LEDMode
+
+            mode_map = {
+                'static': LEDMode.STATIC,
+                'breathing': LEDMode.BREATHING,
+                'colorful': LEDMode.COLORFUL,
+                'rainbow': LEDMode.RAINBOW,
+            }
+
+            mode = mode_map.get(mode_name.lower())
+            if not mode:
+                print(f"Error: Unknown mode '{mode_name}'")
+                print(f"Available: {', '.join(mode_map)}")
+                return 1
+
+            led_svc, status = LEDCommands._get_led_service()
+            if not led_svc:
+                print("No LED device found.")
+                return 1
+
+            print(status)
+            led_svc.set_mode(mode)
+            led_svc.toggle_global(True)
+
+            if mode in (LEDMode.BREATHING, LEDMode.COLORFUL, LEDMode.RAINBOW):
+                print(f"LED mode: {mode_name} (running animation, Ctrl+C to stop)")
+                try:
+                    while True:
+                        led_svc.send_tick()
+                        time.sleep(0.05)
+                except KeyboardInterrupt:
+                    pass
+                print("\nStopped.")
+            else:
+                led_svc.send_tick()
+                print(f"LED mode: {mode_name}")
+
+            led_svc.save_config()
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def set_led_brightness(level):
+        """Set LED brightness (0-100)."""
+        try:
+            if level < 0 or level > 100:
+                print("Error: Brightness must be 0-100")
+                return 1
+
+            led_svc, status = LEDCommands._get_led_service()
+            if not led_svc:
+                print("No LED device found.")
+                return 1
+
+            print(status)
+            led_svc.set_brightness(level)
+            led_svc.toggle_global(True)
+            led_svc.send_tick()
+            led_svc.save_config()
+
+            print(f"LED brightness set to {level}%")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def led_off():
+        """Turn LEDs off."""
+        try:
+            led_svc, status = LEDCommands._get_led_service()
+            if not led_svc:
+                print("No LED device found.")
+                return 1
+
+            print(status)
+            led_svc.toggle_global(False)
+            led_svc.send_tick()
+            led_svc.save_config()
+
+            print("LEDs turned off.")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    @staticmethod
+    def set_sensor_source(source):
+        """Set CPU/GPU sensor source for temp/load linked LED modes."""
+        try:
+            source = source.lower()
+            if source not in ('cpu', 'gpu'):
+                print("Error: Source must be 'cpu' or 'gpu'")
+                return 1
+
+            led_svc, status = LEDCommands._get_led_service()
+            if not led_svc:
+                print("No LED device found.")
+                return 1
+
+            print(status)
+            led_svc.set_sensor_source(source)
+            led_svc.save_config()
+
+            print(f"LED sensor source set to {source.upper()}")
+            return 0
         except Exception as e:
             print(f"Error: {e}")
             return 1
@@ -1373,6 +2287,7 @@ _get_driver = DeviceCommands._get_driver
 _get_service = DeviceCommands._get_service
 send_image = DisplayCommands.send_image
 send_color = DisplayCommands.send_color
+play_video = DisplayCommands.play_video
 reset_device = DisplayCommands.reset
 resume = DisplayCommands.resume
 show_info = SystemCommands.show_info
@@ -1387,6 +2302,27 @@ download_themes = SystemCommands.download_themes
 _hex_dump = DiagCommands._hex_dump
 _hid_debug_lcd = DiagCommands._hid_debug_lcd
 _hid_debug_led = DiagCommands._hid_debug_led
+
+# Display adjustments
+set_brightness = DisplayCommands.set_brightness
+set_rotation = DisplayCommands.set_rotation
+screencast = DisplayCommands.screencast
+load_mask = DisplayCommands.load_mask
+render_overlay = DisplayCommands.render_overlay
+
+# Theme commands
+list_themes = ThemeCommands.list_themes
+load_theme = ThemeCommands.load_theme
+save_theme = ThemeCommands.save_theme
+export_theme = ThemeCommands.export_theme
+import_theme = ThemeCommands.import_theme
+
+# LED commands
+led_color = LEDCommands.set_color
+led_mode = LEDCommands.set_mode
+led_brightness = LEDCommands.set_led_brightness
+led_off = LEDCommands.led_off
+led_sensor = LEDCommands.set_sensor_source
 
 
 

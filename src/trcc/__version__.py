@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -72,3 +72,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          (theme_io, constants, device_base). Module renames: paths→data_repository,
 #          sensor_enumerator→system_sensors, sysinfo_config→system_config,
 #          cloud_downloader→theme_cloud, driver_lcd→device_lcd. 2081 tests.
+# 3.0.1  - Full CLI parity: 36 Typer commands expose all service methods.
+#          New: theme-save, theme-export, theme-import, led-sensor, mask --clear,
+#          brightness, rotation, screencast, overlay, theme-list, theme-load,
+#          led-color, led-mode, led-brightness, led-off, video. 2148 tests.
