@@ -1,79 +1,80 @@
 # Development Status
 
-TRCC Linux is under **active development**. This page tracks what's stable, what's in progress, and what's coming next.
+TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.0.3 have been ported.
 
-**Current version:** 1.2.0
+**Current version:** 2.0.0
 **Branch:** `stable`
+**Tests:** 2105 across 29 files
+**PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
 
 ## What's Stable
 
-These features are tested and working on the `stable` branch:
+All features are tested and working on the `stable` branch:
 
-- **SCSI LCD support** — Frozen Warframe (SE/PRO/Ultra), Thermalright LCD, Winbond LCD
+- **4 protocol backends** — SCSI, HID, LED, Bulk (raw USB)
 - **Full GUI** — local/cloud/mask themes, overlays, video playback, carousel, image cropper, video trimmer
 - **System info overlays** — 77+ sensors (CPU, GPU, RAM, disk, network, fans)
+- **LED RGB control** — 7 effect modes (Static, Breathing, Rainbow, Cycle, Wave, Flash, Music), sensor-linked colors
+- **HR10 support** — 7-segment display renderer, NVMe temperature daemon, color wheel
 - **Per-device config** — each LCD remembers its theme, brightness, rotation, overlay, and carousel settings
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
-- **CLI** — `detect`, `send`, `setup-udev`, `gui`, `resume`, `install-desktop`, `uninstall`
-- **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS
-- **96% test coverage** — 1836 tests across 25 test files
+- **CLI** — 15 commands: `detect`, `send`, `setup-udev`, `gui`, `resume`, `report`, `hid-debug`, `led-diag`, `hr10-tempd`, and more
+- **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
+- **96% test coverage** — 2105 tests across 29 test files
 
-### Supported Devices (Stable)
+### Supported Devices
 
-| Product | VID:PID | Protocol |
-|---------|---------|----------|
-| Frozen Warframe SE/PRO/Ultra | 0402:3922 | SCSI |
-| Thermalright LCD | 87CD:70DB | SCSI |
-| Winbond LCD | 0416:5406 | SCSI |
+**SCSI devices** — fully supported:
+| USB ID | Devices |
+|--------|---------|
+| `87CD:70DB` | FROZEN HORIZON PRO, FROZEN MAGIC PRO, FROZEN VISION V2, CORE VISION, ELITE VISION, AK120, AX120, PA120 DIGITAL, Wonder Vision |
+| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360 |
+| `0416:5406` | LC1, LC2, LC3, LC5 (AIO pump heads) |
+| `0402:3922` | FROZEN WARFRAME, FROZEN WARFRAME SE |
 
-## What's In Progress
+**HID LCD devices** — auto-detected:
+| USB ID | Devices |
+|--------|---------|
+| `0416:5302` | AS120 VISION, BA120 VISION, FROZEN WARFRAME PRO, ELITE VISION, LC5 |
+| `0418:5303` | TARAN ARMS |
+| `0418:5304` | TARAN ARMS |
 
-### HID Device Support (`hid-protocol-testing` branch)
+**HID LED devices** — RGB LED control:
+| USB ID | Devices |
+|--------|---------|
+| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, HR10 2280 PRO DIGITAL |
 
-HID devices use a different USB protocol (DA/DB/DC/DD handshake instead of SCSI). The code is written and tested (563 HID/LED tests) but needs real hardware validation.
-
-**Devices being tested:**
-
-| VID:PID | Product | Tester Status |
-|---------|---------|---------------|
-| 0416:8001 | Nuvoton HID (Digital series, Vision products) | Tester active — GUI launches, LED panel showing, awaiting handshake data |
-| 0416:5302 | Winbond USBDISPLAY (Trofeo Vision LCD) | Tester active — device detected, awaiting GUI test |
-| 0416:52E2 | ALi HID LCD (Vision/Warframe newer HW) | Awaiting tester |
-| 0418:52E3 | ALi Corp LCD variant | Awaiting tester |
-| 0418:52E4 | ALi Corp LCD variant | Awaiting tester |
-
-**LED RGB control** is also on this branch — 7 effect modes (Static, Breathing, Rainbow, Cycle, Wave, Flash, Music) for devices like AX120 DIGITAL.
+**Bulk USB devices** — raw USB protocol:
+| USB ID | Devices |
+|--------|---------|
+| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360 |
 
 ## Roadmap
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Test coverage 96%+ | Done |
-| 2 | CI/CD (GitHub Actions) | Done |
-| 3 | Type checking (pyright basic) | Done |
-| 4 | Cross-distro compatibility | Done |
-| 5 | Security hardening | Done |
-| 6 | Reference theme save (config.json) | Done |
-| 7 | Linting / formatting (ruff) | Done — 0 violations, E/F/W/I rules |
-| 8 | Version bump → 1.2.0 | Done |
-| 9 | Packaging (wheel with assets) | Done — `pip install .` produces 188MB wheel |
-| 10 | HID device validation | In progress (needs testers) |
-| 11 | PyPI publish | Next |
-| 12 | Type annotation hardening (pyright strict) | Planned |
-
-## What May Change
-
-- **HID device support** is on a separate branch and may change as testers report issues
-- **CLI output format** may be adjusted (e.g. `trcc detect` output)
-- **Config file format** may evolve (migrations will be handled where possible)
+| 1 | Full GUI port of Windows TRCC 2.0.3 | Done |
+| 2 | Test coverage 96%+ | Done (2105 tests) |
+| 3 | CI/CD (GitHub Actions) | Done |
+| 4 | Type checking (pyright basic) | Done |
+| 5 | Cross-distro compatibility | Done |
+| 6 | Linting (ruff) | Done — 0 violations |
+| 7 | PyPI publish | Done — [trcc-linux](https://pypi.org/project/trcc-linux/) |
+| 8 | HID LCD support | Done — auto-detected |
+| 9 | LED RGB control | Done — 7 modes + sensor-linked |
+| 10 | Bulk USB protocol | Done — GrandVision/Mjolnir Vision |
+| 11 | HR10 7-segment display | Done — temp daemon + GUI |
+| 12 | On-demand download | Done — 15 resolutions + 33 web archives |
+| 13 | Diagnostic report (`trcc report`) | Done |
+| 14 | SELinux full audit | Planned |
+| 15 | Type annotation hardening (pyright strict) | Planned |
 
 ## Reporting Issues
 
 If something breaks:
-1. `git pull && pip install --force-reinstall --no-deps .`
-2. Check the [CHANGELOG](CHANGELOG.md) for recent changes
-3. Run `trcc detect --all` and include the output
-4. Open an issue at https://github.com/Lexonight1/thermalright-trcc-linux/issues
+1. Run `trcc report` and copy the output
+2. Open an issue at https://github.com/Lexonight1/thermalright-trcc-linux/issues
+3. Include your distro, kernel version, and the report output
 
 ## See Also
 
@@ -81,5 +82,7 @@ If something breaks:
 - [CHANGELOG.md](CHANGELOG.md) — version history
 - [DEVICE_TESTING.md](DEVICE_TESTING.md) — how to help test devices
 - [INSTALL_GUIDE.md](INSTALL_GUIDE.md) — installation for all distros
+- [CLI_REFERENCE.md](CLI_REFERENCE.md) — all 15 commands
 - [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — SCSI protocol (from USBLCD.exe reverse engineering)
 - [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol (from USBLCDNEW.exe reverse engineering)
+- [USBLED_PROTOCOL.md](USBLED_PROTOCOL.md) — HID LED protocol (from FormLED.cs reverse engineering)

@@ -15,31 +15,31 @@ These devices have been tested on real hardware and are confirmed working with T
 
 ---
 
-## In Testing
+## Supported (Tester-Reported)
 
-These devices have been identified by testers but are still being validated.
+These devices have been reported by testers with varying levels of validation.
 
-### HID LCD Devices (Handshake Pending)
+### HID LCD Devices
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
-| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Detected, handshake pending (awaiting v1.2.9+ retest) |
-| Mjolnir Vision 360 | SCSI (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | Same VID:PID as GrandVision — should work, awaiting retest |
+| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Detected, awaiting v2.0.0 retest |
+| Mjolnir Vision 360 | Bulk (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | Same VID:PID as GrandVision, awaiting retest |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
 | Assassin X 120 R Digital | HID (0416:8001) | [#5](https://github.com/Lexonight1/thermalright-trcc-linux/issues/5) | LED RGB working |
-| HR10 2280 PRO Digital | HID (0416:8001) | [#1](https://github.com/Lexonight1/thermalright-trcc-linux/issues/1) | 7-segment display, NVMe temp daemon, color wheel |
-| Peerless Assassin 120 Digital ARGB White | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | LED partially working, handshake pending (awaiting PM/SUB fix retest) |
-| Phantom Spirit 120 Digital EVO | HID (0416:8001) | [#19](https://github.com/Lexonight1/thermalright-trcc-linux/issues/19) | Detected, handshake pending (awaiting v1.2.9+ retest) |
+| HR10 2280 PRO Digital | HID (0416:8001) | [#1](https://github.com/Lexonight1/thermalright-trcc-linux/issues/1) | Fully supported — 7-segment display, NVMe temp daemon, color wheel |
+| Peerless Assassin 120 Digital ARGB White | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | LED partially working, awaiting retest |
+| Phantom Spirit 120 Digital EVO | HID (0416:8001) | [#19](https://github.com/Lexonight1/thermalright-trcc-linux/issues/19) | Detected, awaiting v2.0.0 retest |
 
 ---
 
-## Planned Support (Need Testers)
+## Need Testers
 
-These products are recognized by the Windows TRCC app and should work once HID support is validated. If you own one of these, we'd love your help testing.
+These products are recognized by the Windows TRCC app and should work with TRCC Linux. If you own one of these, we'd love your help testing — run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues).
 
 ### Full LCD Screen Products (Vision Series)
 
@@ -85,7 +85,7 @@ These have a small digital display showing CPU/GPU temperature plus addressable 
 | Royal Knight 120 Digital |
 | Royal Knight 130 Digital |
 | Phantom Spirit 120 Digital |
-| ~~HR10-2280 PRO Digital~~ (supported — see above) |
+| ~~HR10-2280 PRO Digital~~ (fully supported — see above) |
 | MC-3 DIGITAL |
 
 ---
@@ -109,7 +109,7 @@ The exact product model is identified after a USB handshake. The device responds
 
 ## How to Help Test
 
-If you own any of the planned devices and run Linux:
+If you own any of the untested devices above and run Linux:
 
 1. Install: `pip install trcc-linux`
 2. Set up udev rules: `sudo trcc setup-udev` (then unplug/replug USB cable)
