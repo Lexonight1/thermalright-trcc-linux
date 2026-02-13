@@ -8,11 +8,13 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build-and-publish:
     name: Build and publish release artifacts
     runs-on: ubuntu-latest
+    environment: pypi
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -43,3 +45,6 @@ jobs:
         with:
           name: dist-${{ github.ref_name }}
           path: dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
