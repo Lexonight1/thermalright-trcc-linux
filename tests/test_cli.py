@@ -1175,7 +1175,7 @@ class TestProbeDevice(unittest.TestCase):
         from trcc.device_detector import DetectedDevice
         defaults = dict(
             vid=0x0416, pid=0x8001, vendor_name="Winbond",
-            product_name="LED Controller (HID)", usb_path="1-2",
+            product_name="LED Controller", usb_path="1-2",
             implementation="hid_led", model="LED_DIGITAL",
             button_image="A1CZTV", protocol="hid", device_type=1,
         )
@@ -1255,7 +1255,7 @@ class TestFormatDevice(unittest.TestCase):
         from trcc.device_detector import DetectedDevice
         defaults = dict(
             vid=0x0416, pid=0x8001, vendor_name="Winbond",
-            product_name="LED Controller (HID)", usb_path="1-2",
+            product_name="LED Controller", usb_path="1-2",
             implementation="hid_led", model="LED_DIGITAL",
             button_image="A1CZTV", protocol="hid", device_type=1,
         )
@@ -1267,7 +1267,7 @@ class TestFormatDevice(unittest.TestCase):
         result = _format_device(dev, probe=False)
         # HID devices show VID:PID as path (no SCSI device)
         self.assertIn("0416:8001", result)
-        self.assertIn("LED Controller (HID)", result)
+        self.assertIn("LED Controller", result)
         self.assertIn("[0416:8001]", result)
         self.assertIn("(HID)", result)
 
@@ -1338,7 +1338,7 @@ class TestHidDebug(unittest.TestCase):
         from trcc.device_hid import HidHandshakeInfo
         dev = DetectedDevice(
             vid=0x0416, pid=0x5302, vendor_name="Winbond",
-            product_name="USBDISPLAY (HID)", usb_path="1-2",
+            product_name="USBDISPLAY", usb_path="1-2",
             implementation="hid_type2", protocol="hid", device_type=2,
         )
         info = HidHandshakeInfo(

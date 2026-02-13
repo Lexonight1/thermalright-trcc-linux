@@ -71,12 +71,12 @@ class DetectedDevice:
 # Known LCD devices (SCSI/USB Mass Storage)
 KNOWN_DEVICES: dict[tuple[int, int], DeviceEntry] = {
     (0x87CD, 0x70DB): DeviceEntry(
-        vendor="Thermalright", product="LCD Display (USBLCD)",
+        vendor="Thermalright", product="LCD Display",
         implementation="thermalright_lcd_v1",
     ),
     # NOTE: 87AD:70DB (GrandVision) moved to _BULK_DEVICES — it's raw USB bulk, not SCSI.
     (0x0416, 0x5406): DeviceEntry(
-        vendor="Winbond", product="LCD Display (USBLCD)",
+        vendor="Winbond", product="LCD Display",
         implementation="ali_corp_lcd_v1",
     ),
     # USB 0402:3922 - FROZEN WARFRAME series (SE/PRO/Ultra, confirmed on PRO 360 Black)
@@ -90,15 +90,15 @@ KNOWN_DEVICES: dict[tuple[int, int], DeviceEntry] = {
 # HID LCD devices — auto-detected when plugged in.
 _HID_LCD_DEVICES: dict[tuple[int, int], DeviceEntry] = {
     (0x0416, 0x5302): DeviceEntry(
-        vendor="Winbond", product="USBDISPLAY (HID)",
+        vendor="Winbond", product="USBDISPLAY",
         implementation="hid_type2", protocol="hid", device_type=2,
     ),
     (0x0418, 0x5303): DeviceEntry(
-        vendor="ALi Corp", product="LCD Display (HID)",
+        vendor="ALi Corp", product="LCD Display",
         implementation="hid_type3", protocol="hid", device_type=3,
     ),
     (0x0418, 0x5304): DeviceEntry(
-        vendor="ALi Corp", product="LCD Display (HID)",
+        vendor="ALi Corp", product="LCD Display",
         implementation="hid_type3", protocol="hid", device_type=3,
     ),
 }
@@ -106,7 +106,7 @@ _HID_LCD_DEVICES: dict[tuple[int, int], DeviceEntry] = {
 # LED HID devices (RGB controllers)
 _LED_DEVICES: dict[tuple[int, int], DeviceEntry] = {
     (0x0416, 0x8001): DeviceEntry(
-        vendor="Winbond", product="LED Controller (HID)",
+        vendor="Winbond", product="LED Controller",
         model="LED_DIGITAL", implementation="hid_led",
         protocol="hid", device_type=1,
     ),
@@ -115,7 +115,7 @@ _LED_DEVICES: dict[tuple[int, int], DeviceEntry] = {
 # Raw USB bulk devices (bInterfaceClass=255, Vendor Specific)
 _BULK_DEVICES: dict[tuple[int, int], DeviceEntry] = {
     (0x87AD, 0x70DB): DeviceEntry(
-        vendor="ChiZhu Tech", product="GrandVision 360 AIO (Bulk USB)",
+        vendor="ChiZhu Tech", product="GrandVision 360 AIO",
         model="GRAND_VISION", implementation="bulk_usblcdnew",
         protocol="bulk", device_type=4,
     ),

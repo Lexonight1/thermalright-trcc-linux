@@ -527,7 +527,7 @@ class TestBulkDeviceDetection(unittest.TestCase):
         fake_dev = DetectedDevice(
             vid=0x87AD, pid=0x70DB,
             vendor_name="ChiZhu Tech",
-            product_name="GrandVision 360 AIO (Bulk USB)",
+            product_name="GrandVision 360 AIO",
             usb_path="2-1",
             implementation="bulk_usblcdnew",
             model="GRAND_VISION",

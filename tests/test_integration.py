@@ -20,7 +20,7 @@ def _make_device(vid=0x87CD, pid=0x70DB, scsi="/dev/sg0", usb_path="2-1",
     """Create a DetectedDevice with sensible defaults."""
     return DetectedDevice(
         vid=vid, pid=pid,
-        vendor_name="Thermalright", product_name="LCD Display (USBLCD)",
+        vendor_name="Thermalright", product_name="LCD Display",
         usb_path=usb_path, scsi_device=scsi,
         implementation=impl, model=model,
         button_image="A1CZTV", protocol=protocol, device_type=1,
