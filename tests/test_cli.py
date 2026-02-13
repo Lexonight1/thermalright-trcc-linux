@@ -929,10 +929,10 @@ class TestUninstall(unittest.TestCase):
             legacy_dir = home / ".trcc"
             legacy_dir.mkdir()
             (legacy_dir / "data").mkdir()
-            autostart = home / ".config" / "autostart" / "trcc.desktop"
+            autostart = home / ".config" / "autostart" / "trcc-linux.desktop"
             autostart.parent.mkdir(parents=True, exist_ok=True)
             autostart.write_text("[Desktop Entry]")
-            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            desktop = home / ".local" / "share" / "applications" / "trcc-linux.desktop"
             desktop.parent.mkdir(parents=True, exist_ok=True)
             desktop.write_text("[Desktop Entry]")
 
@@ -1366,7 +1366,7 @@ class TestInstallDesktop(unittest.TestCase):
                  patch('pathlib.Path.home', return_value=home):
                 result = install_desktop()
             self.assertEqual(result, 0)
-            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            desktop = home / ".local" / "share" / "applications" / "trcc-linux.desktop"
             self.assertTrue(desktop.exists())
             self.assertIn("Exec=trcc gui", desktop.read_text())
 
@@ -1377,7 +1377,7 @@ class TestInstallDesktop(unittest.TestCase):
             with patch('pathlib.Path.home', return_value=home):
                 result = install_desktop()
             self.assertEqual(result, 0)
-            desktop = home / ".local" / "share" / "applications" / "trcc.desktop"
+            desktop = home / ".local" / "share" / "applications" / "trcc-linux.desktop"
             self.assertTrue(desktop.exists())
 
     def test_dispatch_install_desktop(self):

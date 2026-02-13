@@ -76,7 +76,7 @@ Theme archives for all 15 LCD resolutions are tracked in git. On first use, `ens
 1. Checks the package dir (`src/trcc/data/`) for extracted themes
 2. Checks the user dir (`~/.trcc/data/`) for previously extracted themes
 3. If no archive found locally, **downloads from GitHub** (`raw.githubusercontent.com`)
-4. Extracts via `py7zr` (Python) or system `7z` CLI
+4. Extracts via system `7z` CLI
 5. Falls back to `~/.trcc/data/` if the package dir is read-only
 
 ```

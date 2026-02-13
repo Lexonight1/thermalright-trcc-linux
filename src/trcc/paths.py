@@ -82,12 +82,7 @@ class SysUtils:
 
     @staticmethod
     def has_7z_support() -> bool:
-        """Check if 7z extraction is available (py7zr or system 7z)."""
-        try:
-            import py7zr  # noqa: F401
-            return True
-        except ImportError:
-            pass
+        """Check if 7z CLI is available."""
         return shutil.which('7z') is not None
 
 
@@ -242,9 +237,7 @@ class DataManager:
     )
 
     _7Z_INSTALL_HELP = (
-        "7z not found and py7zr not installed. Install one:\n"
-        "  pip install py7zr          (recommended, pure Python)\n"
-        "  ---\n"
+        "7z not found. Install p7zip for your distro:\n"
         "  Fedora/RHEL:    sudo dnf install p7zip p7zip-plugins\n"
         "  Ubuntu/Debian:  sudo apt install p7zip-full\n"
         "  Arch:           sudo pacman -S p7zip\n"
@@ -256,7 +249,7 @@ class DataManager:
     )
 
     # ------------------------------------------------------------------
-    # Archive extraction
+    # Archive safety
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -264,44 +257,30 @@ class DataManager:
         """Check that an archive member path doesn't escape the destination (zip slip)."""
         return not (os.path.isabs(name) or '..' in name.split('/'))
 
+    # ------------------------------------------------------------------
+    # Archive extraction
+    # ------------------------------------------------------------------
+
     @staticmethod
     def extract_7z(archive: str, target_dir: str) -> bool:
-        """Extract a .7z archive into target_dir. Returns True on success.
-
-        Tries py7zr first, falls back to system 7z command.
-        """
+        """Extract a .7z archive into target_dir using 7z CLI. Returns True on success."""
         os.makedirs(target_dir, exist_ok=True)
-
-        try:
-            import py7zr
-            with py7zr.SevenZipFile(archive, 'r') as z:
-                safe_names = [n for n in z.getnames()
-                              if DataManager.is_safe_archive_member(n)]
-                z.extract(target_dir, targets=safe_names)
-            log.info("Extracted %s (py7zr)", os.path.basename(archive))
-            return True
-        except ImportError:
-            pass
-        except Exception as e:
-            log.warning("py7zr extraction failed: %s", e)
-
         try:
             result = subprocess.run(
                 ['7z', 'x', archive, f'-o{target_dir}', '-y'],
                 capture_output=True, timeout=120,
             )
             if result.returncode == 0:
-                log.info("Extracted %s (7z CLI)", os.path.basename(archive))
+                log.info("Extracted %s", os.path.basename(archive))
                 return True
-            log.warning("7z CLI failed (rc=%d): %s", result.returncode, result.stderr.decode())
+            log.warning("7z failed (rc=%d): %s", result.returncode, result.stderr.decode())
         except FileNotFoundError:
             log.warning(
-                "Neither py7zr nor 7z CLI available — cannot extract %s\n%s",
+                "7z not found — cannot extract %s\n%s",
                 archive, DataManager._7Z_INSTALL_HELP,
             )
         except Exception as e:
-            log.warning("7z CLI extraction failed: %s", e)
-
+            log.warning("7z extraction failed: %s", e)
         return False
 
     # ------------------------------------------------------------------

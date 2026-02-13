@@ -388,64 +388,44 @@ class TestPerDeviceConfig(unittest.TestCase):
 # ── _extract_7z ──────────────────────────────────────────────────────────────
 
 class TestExtract7z(unittest.TestCase):
-    """Test _extract_7z with py7zr and 7z CLI fallbacks."""
+    """Test extract_7z with 7z CLI."""
 
-    def test_py7zr_success(self):
-        """py7zr available and extraction succeeds."""
-        mock_7z = MagicMock()
-        mock_7z_cls = MagicMock(return_value=mock_7z)
-        mock_7z.__enter__ = MagicMock(return_value=mock_7z)
-        mock_7z.__exit__ = MagicMock(return_value=False)
-
-        with tempfile.TemporaryDirectory() as d:
-            archive = os.path.join(d, 'test.7z')
-            target = os.path.join(d, 'out')
-            Path(archive).touch()
-
-            with patch.dict('sys.modules', {'py7zr': MagicMock(SevenZipFile=mock_7z_cls)}):
-                result = _extract_7z(archive, target)
-
-            self.assertTrue(result)
-            self.assertTrue(os.path.isdir(target))
-
-    def test_py7zr_missing_falls_back_to_cli(self):
-        """py7zr not installed, 7z CLI succeeds."""
+    def test_7z_cli_success(self):
+        """7z CLI extraction succeeds."""
         with tempfile.TemporaryDirectory() as d:
             archive = os.path.join(d, 'test.7z')
             target = os.path.join(d, 'out')
             Path(archive).touch()
 
             mock_result = type('R', (), {'returncode': 0, 'stderr': b''})()
-            with patch('trcc.paths.subprocess.run', return_value=mock_result) as mock_run:
-                # Force py7zr ImportError by patching import
-                import builtins
-                orig_import = builtins.__import__
-                def fake_import(name, *args, **kwargs):
-                    if name == 'py7zr':
-                        raise ImportError('no py7zr')
-                    return orig_import(name, *args, **kwargs)
-                with patch('builtins.__import__', side_effect=fake_import):
-                    result = _extract_7z(archive, target)
+            with patch('trcc.paths.subprocess.run', return_value=mock_result):
+                result = _extract_7z(archive, target)
 
             self.assertTrue(result)
-            mock_run.assert_called_once()
+            self.assertTrue(os.path.isdir(target))
 
-    def test_both_fail_returns_false(self):
-        """Neither py7zr nor 7z CLI works."""
+    def test_7z_cli_failure(self):
+        """7z CLI returns non-zero exit code."""
+        with tempfile.TemporaryDirectory() as d:
+            archive = os.path.join(d, 'test.7z')
+            target = os.path.join(d, 'out')
+            Path(archive).touch()
+
+            mock_result = type('R', (), {'returncode': 2, 'stderr': b'error'})()
+            with patch('trcc.paths.subprocess.run', return_value=mock_result):
+                result = _extract_7z(archive, target)
+
+            self.assertFalse(result)
+
+    def test_7z_not_found(self):
+        """7z not installed — FileNotFoundError."""
         with tempfile.TemporaryDirectory() as d:
             archive = os.path.join(d, 'test.7z')
             target = os.path.join(d, 'out')
             Path(archive).touch()
 
             with patch('trcc.paths.subprocess.run', side_effect=FileNotFoundError):
-                import builtins
-                orig_import = builtins.__import__
-                def fake_import(name, *args, **kwargs):
-                    if name == 'py7zr':
-                        raise ImportError('no py7zr')
-                    return orig_import(name, *args, **kwargs)
-                with patch('builtins.__import__', side_effect=fake_import):
-                    result = _extract_7z(archive, target)
+                result = _extract_7z(archive, target)
 
             self.assertFalse(result)
 
@@ -563,33 +543,29 @@ class TestFindDataDir(unittest.TestCase):
 # ── Targeted coverage: extraction fallbacks ──────────────────────────────────
 
 class TestExtract7zCLI(unittest.TestCase):
-    """Cover 7z CLI fallback paths."""
+    """Cover 7z CLI edge cases."""
 
     @patch('trcc.paths.subprocess.run')
     def test_7z_cli_success(self, mock_run):
-        """py7zr not available, 7z CLI succeeds."""
+        """7z CLI succeeds."""
         mock_run.return_value = MagicMock(returncode=0)
-        with patch('builtins.__import__', side_effect=ImportError("no py7zr")):
-            with tempfile.TemporaryDirectory() as d:
-                _extract_7z('/fake/archive.7z', d)
-        # May or may not succeed depending on how __import__ is patched
-        # The key is exercising the CLI branch
+        with tempfile.TemporaryDirectory() as d:
+            result = _extract_7z('/fake/archive.7z', d)
+        self.assertTrue(result)
 
     @patch('trcc.paths.subprocess.run', side_effect=FileNotFoundError)
     def test_7z_cli_not_found(self, _):
-        """Neither py7zr nor 7z CLI → returns False."""
-        with patch.dict('sys.modules', {'py7zr': None}):
-            with tempfile.TemporaryDirectory() as d:
-                result = _extract_7z('/fake/archive.7z', d)
-                self.assertFalse(result)
+        """7z not installed → returns False."""
+        with tempfile.TemporaryDirectory() as d:
+            result = _extract_7z('/fake/archive.7z', d)
+            self.assertFalse(result)
 
     @patch('trcc.paths.subprocess.run', side_effect=RuntimeError("fail"))
     def test_7z_cli_exception(self, _):
         """7z CLI raises unexpected exception → returns False."""
-        with patch.dict('sys.modules', {'py7zr': None}):
-            with tempfile.TemporaryDirectory() as d:
-                result = _extract_7z('/fake/archive.7z', d)
-                self.assertFalse(result)
+        with tempfile.TemporaryDirectory() as d:
+            result = _extract_7z('/fake/archive.7z', d)
+            self.assertFalse(result)
 
 
 class TestFindResourceDefault(unittest.TestCase):

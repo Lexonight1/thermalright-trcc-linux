@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 # Linux autostart desktop file
 _AUTOSTART_DIR = Path.home() / '.config' / 'autostart'
-_AUTOSTART_FILE = _AUTOSTART_DIR / 'trcc.desktop'
+_AUTOSTART_FILE = _AUTOSTART_DIR / 'trcc-linux.desktop'
 
 
 def _get_trcc_exec() -> str:
@@ -63,6 +63,7 @@ Exec={exec_path} --last-one
 Icon=trcc
 Terminal=false
 Categories=Utility;System;
+StartupWMClass=trcc-linux
 X-GNOME-Autostart-enabled=true
 """
 

@@ -2203,6 +2203,7 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
         decorated: Use decorated window with titlebar.
         start_hidden: Start minimized to system tray (--last-one autostart).
     """
+    QApplication.setDesktopFileName("trcc-linux")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 

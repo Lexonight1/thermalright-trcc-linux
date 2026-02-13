@@ -445,7 +445,7 @@ sudo swupd bundle-add sysadmin-basic devpkg-pipewire
 | `lm-sensors` / `lm_sensors` | Hardware sensor readings (CPU/GPU temps, fan speeds) — improves sensor accuracy |
 | `PyQt6` / `python3-pyqt6` | The graphical user interface (GUI) toolkit |
 | `ffmpeg` | Video and GIF playback on the LCD |
-| `p7zip` / `7zip` | Extracts bundled theme `.7z` archives (optional if `py7zr` is installed) |
+| `p7zip` / `7zip` | Extracts bundled theme `.7z` archives (required) |
 | `grim` | Screen capture on Wayland desktops (optional) |
 | `python3-gobject` / `python3-dbus` | PipeWire screen capture for GNOME/KDE Wayland (optional) |
 | `pyusb` + `libusb` | USB communication for HID LCD devices (optional, testing branch only) |

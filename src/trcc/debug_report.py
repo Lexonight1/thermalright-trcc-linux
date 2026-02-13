@@ -141,25 +141,19 @@ class DebugReport:
             sec.lines.append(f"  getenforce failed: {e}")
 
     def _dependencies(self) -> None:
+        from trcc.doctor import get_module_version
+
         sec = self._add("Dependencies")
-        for mod_name, pkg_name in [
+        for import_name, pkg_name in [
+            ("PyQt6", "PyQt6"),
             ("usb.core", "pyusb"),
             ("hid", "hidapi"),
         ]:
-            try:
-                mod = __import__(mod_name)
-                ver = getattr(mod, "__version__", getattr(mod, "version", "?"))
-                if isinstance(ver, tuple):
-                    ver = ".".join(str(x) for x in ver)
-                sec.lines.append(f"  {pkg_name}: {ver}")
-            except ImportError:
+            ver = get_module_version(import_name)
+            if ver is not None:
+                sec.lines.append(f"  {pkg_name}: {ver or '?'}")
+            else:
                 sec.lines.append(f"  {pkg_name}: not installed")
-        # PyQt6 stores version in QtCore, not on the top-level module
-        try:
-            from PyQt6.QtCore import PYQT_VERSION_STR
-            sec.lines.append(f"  PyQt6: {PYQT_VERSION_STR}")
-        except ImportError:
-            sec.lines.append("  PyQt6: not installed")
 
     def _devices(self) -> None:
         sec = self._add("Detected devices")

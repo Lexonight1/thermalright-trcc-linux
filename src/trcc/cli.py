@@ -159,6 +159,9 @@ Examples:
     # Report command (one-liner diagnostic for bug reports)
     subparsers.add_parser("report", help="Generate full diagnostic report for bug reports")
 
+    # Doctor command (dependency health check)
+    subparsers.add_parser("doctor", help="Check dependencies, libraries, and permissions")
+
     # Download command (like spacy download)
     download_parser = subparsers.add_parser("download", help="Download theme packs")
     download_parser.add_argument("pack", nargs="?", help="Theme pack name (e.g., themes-320)")
@@ -215,6 +218,9 @@ Examples:
         return SystemCommands.download_themes(
             pack=args.pack, show_list=args.list,
             force=args.force, show_info=args.info)
+    elif args.command == "doctor":
+        from trcc.doctor import run_doctor
+        return run_doctor()
 
     return 0
 
@@ -1086,11 +1092,12 @@ Terminal=false
 Type=Application
 Categories=Utility;System;
 Keywords=thermalright;lcd;cooler;aio;cpu;
+StartupWMClass=trcc-linux
 """
 
         # Install .desktop file
         app_dir.mkdir(parents=True, exist_ok=True)
-        desktop_dst = app_dir / "trcc.desktop"
+        desktop_dst = app_dir / "trcc-linux.desktop"
         desktop_dst.write_text(desktop_content)
         print(f"Installed {desktop_dst}")
 
@@ -1140,8 +1147,11 @@ Keywords=thermalright;lcd;cooler;aio;cpu;
         user_items = [
             home / ".config" / "trcc",                          # config dir
             home / ".trcc",                                      # legacy config dir
-            home / ".config" / "autostart" / "trcc.desktop",     # autostart
-            home / ".local" / "share" / "applications" / "trcc.desktop",  # desktop shortcut
+            home / ".config" / "autostart" / "trcc-linux.desktop",     # autostart
+            home / ".local" / "share" / "applications" / "trcc-linux.desktop",  # desktop shortcut
+            # Legacy filenames (pre-v2.0.2)
+            home / ".config" / "autostart" / "trcc.desktop",
+            home / ".local" / "share" / "applications" / "trcc.desktop",
         ]
 
         removed = []

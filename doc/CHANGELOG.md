@@ -199,7 +199,7 @@
 - On-demand download for themes, cloud previews, and mask archives from GitHub on first use
 - 33 Web archives (cloud previews + masks) for all resolutions
 - Downloaded archives stored in `~/.trcc/data/` when package dir is read-only (pip install)
-- Cross-distro 7z install help shown when neither `py7zr` nor system `7z` is available
+- Cross-distro 7z install help shown when system `7z` is not available
 
 ### HID Device Identification
 - PM→FBL→resolution mapping from Windows FormCZTV.cs (all known PM byte values)

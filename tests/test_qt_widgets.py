@@ -407,7 +407,7 @@ class TestAutostart(unittest.TestCase):
             orig_file = mod._AUTOSTART_FILE
             try:
                 mod._AUTOSTART_DIR = tmp_path / 'autostart'
-                mod._AUTOSTART_FILE = mod._AUTOSTART_DIR / 'trcc.desktop'
+                mod._AUTOSTART_FILE = mod._AUTOSTART_DIR / 'trcc-linux.desktop'
                 # Enable
                 _set_autostart(True)
                 self.assertTrue(mod._AUTOSTART_FILE.exists())
