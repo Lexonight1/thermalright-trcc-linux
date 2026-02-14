@@ -246,7 +246,8 @@ class Layout:
     # Color picker positions
     COLOR_X_SPIN = (32, 32, 53, 19)
     COLOR_Y_SPIN = (121, 32, 53, 19)
-    COLOR_FONT_BTN = (12, 87, 170, 24)
+    COLOR_FONT_BTN = (12, 87, 125, 24)
+    COLOR_FONT_SIZE_SPIN = (140, 89, 42, 20)
     COLOR_AREA = (8, 139, 214, 136)
     COLOR_R = (83, 304, 36, 16)
     COLOR_G = (132, 304, 36, 16)

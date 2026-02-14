@@ -2237,6 +2237,25 @@ class TRCCMainWindowMVC(QMainWindow):
             app.quit()
 
 
+def _acquire_instance_lock() -> object | None:
+    """Try to acquire a single-instance lock file.
+
+    Returns the open file handle (must stay alive) or None if another instance
+    is already running.  Uses fcntl.flock — the OS releases the lock
+    automatically when the process exits, even on crash/SIGKILL.
+    """
+    import fcntl
+    lock_path = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "trcc-linux.lock"
+    try:
+        fh = open(lock_path, "w")  # noqa: SIM115
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(str(os.getpid()))
+        fh.flush()
+        return fh  # caller must keep a reference so the lock stays held
+    except OSError:
+        return None
+
+
 def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
                 start_hidden: bool = False):
     """Run the MVC PyQt6 application.
@@ -2247,10 +2266,16 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
         start_hidden: Start minimized to system tray (--last-one autostart).
     """
     import os
+    lock = _acquire_instance_lock()
+    if lock is None:
+        print("[TRCC] Another instance is already running.")
+        return 0
+
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     QApplication.setDesktopFileName("trcc-linux")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    app.setProperty("_instance_lock", lock)  # prevent GC from releasing the file lock
 
     font = QFont("Microsoft YaHei", 10)
     if not font.exactMatch():

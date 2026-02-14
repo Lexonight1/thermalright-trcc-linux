@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.5"
+__version__ = "3.0.6"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -91,3 +91,6 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          (Mjolnir Vision → 240×320). 2166 tests.
 # 3.0.5  - Fix LED mode button images: asset filename typo caused buttons
 #          to show plain text instead of icons. 2167 tests.
+# 3.0.6  - Single-instance guard: prevent duplicate systray entries on launch.
+#          Font size spinbox in overlay color picker (independent of font dialog).
+#          2167 tests.

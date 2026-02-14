@@ -635,19 +635,28 @@ class ColorPickerPanel(QFrame):
         self.y_spin.setToolTip("Y position")
         self.y_spin.valueChanged.connect(self._on_position_changed)
 
-        # Font picker button
+        # Font picker button (name only)
         self.font_btn = QPushButton(self)
         self.font_btn.setGeometry(*Layout.COLOR_FONT_BTN)
         self.font_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; border: none; "
             f"color: {Colors.TEXT}; font-size: 10px; text-align: left; padding-left: 27px; }}"
         )
-        self.font_btn.setText("Microsoft YaHei  36")
+        self.font_btn.setText("Microsoft YaHei")
         self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.font_btn.setToolTip("Choose font")
         self.font_btn.clicked.connect(self._pick_font)
         self._current_font_name = "Microsoft YaHei"
         self._current_font_size = 36
+
+        # Font size spinbox (separate adjuster)
+        self.font_size_spin = QSpinBox(self)
+        self.font_size_spin.setGeometry(*Layout.COLOR_FONT_SIZE_SPIN)
+        self.font_size_spin.setRange(6, 200)
+        self.font_size_spin.setValue(36)
+        self.font_size_spin.setStyleSheet(Styles.INPUT_FIELD)
+        self.font_size_spin.setToolTip("Font size")
+        self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
 
         # Color picker area click target
         self.color_area_btn = QPushButton(self)
@@ -775,13 +784,24 @@ class ColorPickerPanel(QFrame):
         if ok:
             self._current_font_name = font.family()
             self._current_font_size = font.pointSize()
-            self.font_btn.setText(f"{font.family()}  {font.pointSize()}")
+            self.font_btn.setText(font.family())
+            self.font_size_spin.blockSignals(True)
+            self.font_size_spin.setValue(font.pointSize())
+            self.font_size_spin.blockSignals(False)
             self.font_changed.emit(font.family(), font.pointSize())
+
+    def _on_font_size_changed(self, size: int):
+        """Handle font size spinbox change independently."""
+        self._current_font_size = size
+        self.font_changed.emit(self._current_font_name, size)
 
     def set_font_display(self, font_name, font_size):
         self._current_font_name = font_name
         self._current_font_size = font_size
-        self.font_btn.setText(f"{font_name}  {font_size}")
+        self.font_btn.setText(font_name)
+        self.font_size_spin.blockSignals(True)
+        self.font_size_spin.setValue(font_size)
+        self.font_size_spin.blockSignals(False)
 
 
 # ============================================================================
