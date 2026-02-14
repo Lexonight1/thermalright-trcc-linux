@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.4"
+__version__ = "3.0.5"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -89,3 +89,5 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          all USBLCDNew devices (87AD:70DB), matching C# ImageToJpg protocol.
 #          PM=32 remains RGB565 (cmd=3). Add PM=5 to bulk resolution table
 #          (Mjolnir Vision → 240×320). 2166 tests.
+# 3.0.5  - Fix LED mode button images: asset filename typo caused buttons
+#          to show plain text instead of icons. 2167 tests.
