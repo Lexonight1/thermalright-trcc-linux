@@ -360,48 +360,57 @@ class TestBulkDeviceSendFrame(unittest.TestCase):
         return bd
 
     def test_send_frame_header_format(self):
-        """Header is 64 bytes with data size as uint32 LE at offset 60."""
-        bd = self._setup_device()
+        """Header has magic, cmd, dimensions, mode, and payload length."""
+        bd = self._setup_device(width=320, height=320)
         data = b'\x00' * 1000
         bd.send_frame(data)
 
-        args = bd._ep_out.write.call_args
-        payload = args[0][0]
-        # First 64 bytes are the header
-        header = payload[:64]
-        data_size = struct.unpack_from("<I", header, 60)[0]
-        self.assertEqual(data_size, 1000)
+        # First write is the 64-byte header
+        header = bd._ep_out.write.call_args_list[0][0][0]
+        self.assertEqual(len(header), 64)
+        # Magic
+        self.assertEqual(header[0:4], b'\x12\x34\x56\x78')
+        # Cmd = 3 (raw RGB565)
+        self.assertEqual(struct.unpack_from("<I", header, 4)[0], 3)
+        # Width / height
+        self.assertEqual(struct.unpack_from("<I", header, 8)[0], 320)
+        self.assertEqual(struct.unpack_from("<I", header, 12)[0], 320)
+        # Mode = 2
+        self.assertEqual(struct.unpack_from("<I", header, 56)[0], 2)
+        # Payload length
+        self.assertEqual(struct.unpack_from("<I", header, 60)[0], 1000)
 
-    def test_send_frame_payload_includes_data(self):
+    def test_send_frame_payload_chunked(self):
+        """Pixel data is sent in chunks after the header."""
         bd = self._setup_device()
-        data = b'\xAB\xCD' * 500
+        data = b'\xAB\xCD' * 500  # 1000 bytes
         bd.send_frame(data)
 
-        args = bd._ep_out.write.call_args
-        payload = args[0][0]
-        self.assertEqual(payload[64:], data)
-        self.assertEqual(len(payload), 64 + 1000)
+        calls = bd._ep_out.write.call_args_list
+        # calls: header + 1 data chunk (< 16 KiB) + ZLP
+        self.assertEqual(calls[1][0][0], data)
 
-    def test_send_frame_zlp_when_512_aligned(self):
-        """Send ZLP if total payload is 512-byte aligned."""
+    def test_send_frame_zlp_always_sent(self):
+        """ZLP frame delimiter is always sent after pixel data."""
         bd = self._setup_device()
-        # 64 (header) + 448 (data) = 512, which is 512-byte aligned
-        data = b'\x00' * 448
-        bd.send_frame(data)
-
-        # Should have 2 writes: payload + ZLP
-        self.assertEqual(bd._ep_out.write.call_count, 2)
-        second_call = bd._ep_out.write.call_args_list[1]
-        self.assertEqual(second_call[0][0], b"")
-
-    def test_send_frame_no_zlp_when_not_aligned(self):
-        """No ZLP when total is not 512-byte aligned."""
-        bd = self._setup_device()
-        # 64 + 100 = 164, not 512-aligned
         data = b'\x00' * 100
         bd.send_frame(data)
 
-        self.assertEqual(bd._ep_out.write.call_count, 1)
+        # Last write should be ZLP
+        last_call = bd._ep_out.write.call_args_list[-1]
+        self.assertEqual(last_call[0][0], b"")
+
+    def test_send_frame_large_data_chunked(self):
+        """Data larger than 16 KiB is sent in multiple chunks."""
+        bd = self._setup_device()
+        data = b'\x00' * (16 * 1024 + 100)  # 16484 bytes
+        bd.send_frame(data)
+
+        calls = bd._ep_out.write.call_args_list
+        # header + 2 data chunks + ZLP = 4 writes
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls[1][0][0]), 16 * 1024)
+        self.assertEqual(len(calls[2][0][0]), 100)
 
     def test_send_frame_returns_true_on_success(self):
         bd = self._setup_device()

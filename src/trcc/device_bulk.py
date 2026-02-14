@@ -51,8 +51,9 @@ def _bulk_resolution(pm: int, sub: int = 0) -> tuple[int, int]:
 
 _HANDSHAKE_READ_SIZE = 1024
 _HANDSHAKE_TIMEOUT_MS = 1000
-_WRITE_TIMEOUT_MS = 1000
+_WRITE_TIMEOUT_MS = 5000
 _FRAME_HEADER_SIZE = 64
+_WRITE_CHUNK_SIZE = 16 * 1024  # 16 KiB per USB bulk write
 
 
 class BulkDevice:
@@ -80,39 +81,57 @@ class BulkDevice:
         import usb.core
         import usb.util
 
-        dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)  # type: ignore[union-attr]
+        dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
         if dev is None:
             raise RuntimeError(f"USB device {self.vid:04x}:{self.pid:04x} not found")
 
-        # Detach kernel driver if attached
-        for i in range(dev.get_active_configuration().bNumInterfaces):  # type: ignore[union-attr]
-            if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
-                dev.detach_kernel_driver(i)  # type: ignore[union-attr]
-                log.debug("Detached kernel driver from interface %d", i)
+        # Detach kernel driver before set_configuration() to avoid EBUSY.
+        # Can't rely on get_active_configuration() — it throws if no config
+        # is active yet.  Try interfaces 0-3 (covers all known devices).
+        for i in range(4):
+            try:
+                if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
+                    dev.detach_kernel_driver(i)  # type: ignore[union-attr]
+                    log.debug("Detached kernel driver from interface %d", i)
+            except (usb.core.USBError, NotImplementedError):
+                pass
 
         dev.set_configuration()  # type: ignore[union-attr]
         cfg = dev.get_active_configuration()  # type: ignore[union-attr]
-        intf = cfg[(0, 0)]  # type: ignore[index]
+
+        # Prefer vendor-specific interface (bInterfaceClass=255)
+        intf = None
+        for candidate in cfg:
+            if candidate.bInterfaceClass == 255:  # type: ignore[union-attr]
+                intf = candidate
+                break
+        if intf is None:
+            intf = cfg[(0, 0)]  # type: ignore[index]
+
+        usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
 
         self._ep_out = usb.util.find_descriptor(
             intf,
-            custom_match=lambda e: usb.util.endpoint_direction(
-                e.bEndpointAddress
-            ) == usb.util.ENDPOINT_OUT,
+            custom_match=lambda e: (
+                usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+                and usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK
+            ),
         )
         self._ep_in = usb.util.find_descriptor(
             intf,
-            custom_match=lambda e: usb.util.endpoint_direction(
-                e.bEndpointAddress
-            ) == usb.util.ENDPOINT_IN,
+            custom_match=lambda e: (
+                usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+                and usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK
+            ),
         )
 
         if self._ep_out is None or self._ep_in is None:
             raise RuntimeError("Could not find bulk IN/OUT endpoints")
 
+        self._intf = intf.bInterfaceNumber  # type: ignore[union-attr]
         self._dev = dev
-        log.info("Opened bulk device %04x:%04x (EP OUT=0x%02x, EP IN=0x%02x)",
-                 self.vid, self.pid,
+        log.info("Opened bulk device %04x:%04x (intf=%d, EP OUT=0x%02x, EP IN=0x%02x)",
+                 self.vid, self.pid, self._intf,
                  self._ep_out.bEndpointAddress,  # type: ignore[union-attr]
                  self._ep_in.bEndpointAddress)  # type: ignore[union-attr]
 
@@ -169,10 +188,14 @@ class BulkDevice:
     def send_frame(self, rgb565_data: bytes) -> bool:
         """Send one RGB565 frame via bulk write.
 
-        Frame format (from USBLCDNew ThreadSendDeviceData):
-          - 64-byte header (bytes[60:64] = data size as uint32 LE)
-          - RGB565 pixel data
-          - ZLP if total size is 512-byte aligned
+        Header format (64 bytes, reverse-engineered from USBLCDNew + rejeb):
+          offset  0: magic  12 34 56 78
+          offset  4: cmd    3 = raw RGB565, 2 = JPEG
+          offset  8: width  (LE u32)
+          offset 12: height (LE u32)
+          offset 56: mode   2
+          offset 60: payload length (LE u32)
+        Followed by pixel data in 16 KiB chunks, then a ZLP delimiter.
         """
         if self._dev is None or self._ep_out is None:
             self.handshake()
@@ -183,27 +206,41 @@ class BulkDevice:
 
         # Build 64-byte header
         header = bytearray(64)
-        struct.pack_into("<I", header, 60, data_size)
-
-        payload = bytes(header) + rgb565_data
-        total = len(payload)
+        header[0:4] = _HANDSHAKE_PAYLOAD[0:4]           # magic 12 34 56 78
+        struct.pack_into("<I", header, 4, 3)             # cmd = raw RGB565
+        struct.pack_into("<I", header, 8, self.width)    # width
+        struct.pack_into("<I", header, 12, self.height)  # height
+        struct.pack_into("<I", header, 56, 2)            # mode
+        struct.pack_into("<I", header, 60, data_size)    # payload length
 
         try:
-            self._ep_out.write(payload, timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
+            # Send header
+            self._ep_out.write(bytes(header), timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
 
-            # Send ZLP if 512-byte aligned (from CS code)
-            if total % 512 == 0:
-                self._ep_out.write(b"", timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
+            # Send pixel data in chunks
+            offset = 0
+            while offset < data_size:
+                chunk = rgb565_data[offset:offset + _WRITE_CHUNK_SIZE]
+                self._ep_out.write(chunk, timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
+                offset += len(chunk)
 
+            # ZLP frame delimiter
+            self._ep_out.write(b"", timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
+
+            log.debug("Bulk frame sent: %dx%d, %d bytes", self.width, self.height, data_size)
             return True
         except Exception:
-            log.exception("Bulk frame send failed (%d bytes)", total)
+            log.exception("Bulk frame send failed (%d bytes)", data_size)
             return False
 
     def close(self) -> None:
         """Release USB device."""
         if self._dev is not None:
             import usb.util
+            try:
+                usb.util.release_interface(self._dev, self._intf)
+            except Exception:
+                pass
             usb.util.dispose_resources(self._dev)
             self._dev = None
             self._ep_out = None
