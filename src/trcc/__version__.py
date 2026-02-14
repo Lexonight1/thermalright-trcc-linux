@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.1"
+__version__ = "3.0.2"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -76,3 +76,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          New: theme-save, theme-export, theme-import, led-sensor, mask --clear,
 #          brightness, rotation, screencast, overlay, theme-list, theme-load,
 #          led-color, led-mode, led-brightness, led-off, video. 2148 tests.
+# 3.0.2  - Fix bulk protocol (87AD:70DB GrandVision): correct frame header
+#          format (magic, cmd, dimensions, mode), robust kernel driver detach
+#          before set_configuration(), chunked 16 KiB writes, interface claim.
+#          Fix legacy autostart cleanup (glob desktop files). 2156 tests.
