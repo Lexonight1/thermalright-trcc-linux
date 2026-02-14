@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.0.2
+
+### Bulk Protocol Fix
+- **Fixed**: Bulk protocol frame header (correct magic bytes, kernel driver detach, chunked writes)
+- **Fixed**: Legacy autostart cleanup — glob desktop files, remove duplicates
+- Auto-detect GPU vendor for sensor mapping: NVIDIA > AMD > Intel
+- CI: added FastAPI test dependencies (httpx, python-multipart) to dev extras
+- 2156 tests across 33 files
+
 ## v3.0.1
 
 ### Full CLI Parity
