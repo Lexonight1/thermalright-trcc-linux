@@ -221,7 +221,7 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 36 commands, options, 
 
 ## Contributors
 
-A big thanks to everyone who has contributed to this project:
+A big thanks to everyone who has contributed invaluable reports to this project:
 
 - **[Lcstyle](https://github.com/Lcstyle)** — HR10 2280 PRO Digital support (7-segment display, color wheel, NVMe temperature daemon)
 - **[PantherX12max](https://github.com/PantherX12max)** — Trofeo Vision LCD hardware testing
