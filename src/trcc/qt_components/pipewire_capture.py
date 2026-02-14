@@ -30,9 +30,9 @@ PIPEWIRE_AVAILABLE = False
 _IMPORT_ERROR = ""
 
 try:
-    import dbus
-    import gi
-    from dbus.mainloop.glib import DBusGMainLoop
+    import dbus  # pyright: ignore[reportMissingImports]
+    import gi  # pyright: ignore[reportMissingImports]
+    from dbus.mainloop.glib import DBusGMainLoop  # pyright: ignore[reportMissingImports]
     gi.require_version('Gst', '1.0')
     gi.require_version('GstApp', '1.0')
     from gi.repository import GLib, Gst, GstApp  # noqa: F401  # type: ignore[attr-defined]

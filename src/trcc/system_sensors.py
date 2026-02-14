@@ -27,7 +27,7 @@ from trcc.core.models import SensorInfo
 from trcc.data_repository import SysUtils
 
 try:
-    import pynvml
+    import pynvml  # pyright: ignore[reportMissingImports]
     pynvml.nvmlInit()
     NVML_AVAILABLE = True
 except Exception:

@@ -36,7 +36,7 @@ from .core.models import (
 
 # hidapi is optional ([hid] extra)
 try:
-    import hid as hidapi
+    import hid as hidapi  # pyright: ignore[reportMissingImports]
     HIDAPI_AVAILABLE = True
 except ImportError:
     HIDAPI_AVAILABLE = False
