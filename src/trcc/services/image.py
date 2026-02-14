@@ -1,4 +1,4 @@
-"""Image processing service — RGB565, rotation, brightness.
+"""Image processing service — RGB565, JPEG, rotation, brightness.
 
 Pure Python (PIL + numpy), no Qt or GUI dependencies.
 Absorbed from controllers.py: image_to_rgb565(), apply_rotation(),
@@ -6,6 +6,7 @@ _apply_brightness(), byte_order_for().
 """
 from __future__ import annotations
 
+import io
 import struct
 from typing import Any
 
@@ -40,6 +41,29 @@ class ImageService:
         b = (arr[:, :, 2] >> 3) & 0x1F
         rgb565 = (r << 11) | (g << 5) | b
         return rgb565.astype(f'{byte_order}u2').tobytes()
+
+    @staticmethod
+    def to_jpeg(img: Any, quality: int = 95, max_size: int = 450_000) -> bytes:
+        """Compress PIL Image to JPEG bytes.
+
+        Matches C# CompressionImage(): starts at *quality*, reduces by 5
+        until output < *max_size*.  USBLCDNew bulk devices expect JPEG
+        (cmd=2) instead of raw RGB565.
+        """
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        for q in range(quality, 4, -5):
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=q)
+            data = buf.getvalue()
+            if len(data) < max_size:
+                return data
+
+        # Fallback: minimum quality
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=5)
+        return buf.getvalue()
 
     @staticmethod
     def apply_rotation(image: Any, rotation: int) -> Any:

@@ -136,15 +136,21 @@ class DeviceService:
         return self.send_rgb565(rgb565, width, height)
 
     def send_pil(self, image: Any, width: int, height: int) -> bool:
-        """Convert PIL Image to RGB565 with auto byte order and send.
+        """Encode PIL Image for device and send.
 
-        Determines byte order from selected device protocol/resolution.
+        Bulk devices use JPEG (C# ImageToJpg), SCSI/HID use RGB565.
         """
         from .image import ImageService
 
         device = self._selected
+        protocol = device.protocol if device else 'scsi'
+
+        if protocol == 'bulk':
+            jpeg = ImageService.to_jpeg(image)
+            return self.send_rgb565(jpeg, width, height)
+
         byte_order = ImageService.byte_order_for(
-            device.protocol if device else 'scsi',
+            protocol,
             device.resolution if device else (320, 320),
         )
         return self.send_image(image, width, height, byte_order)

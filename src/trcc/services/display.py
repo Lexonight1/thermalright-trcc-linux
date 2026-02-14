@@ -405,7 +405,7 @@ class DisplayService:
         result: dict[str, Any] = {'preview': processed, 'progress': progress}
 
         if should_send and self.auto_send:
-            result['rgb565'] = self._image_to_rgb565(processed)
+            result['rgb565'] = self._encode_for_device(processed)
         else:
             result['rgb565'] = None
 
@@ -422,24 +422,36 @@ class DisplayService:
     # ── LCD send ──────────────────────────────────────────────────────
 
     def send_current_image(self) -> bytes | None:
-        """Prepare current image for LCD send. Returns RGB565 bytes or None."""
+        """Prepare current image for LCD send. Returns encoded bytes or None."""
         if not self.current_image:
             return None
         image = self.current_image
         if self.overlay.enabled:
             image = self.overlay.render(image)
         image = self._apply_adjustments(image)
-        return self._image_to_rgb565(image)
+        return self._encode_for_device(image)
 
-    def _image_to_rgb565(self, img: Any) -> bytes:
-        """Convert PIL Image to RGB565 bytes with auto byte order."""
+    def _encode_for_device(self, img: Any) -> bytes:
+        """Encode image for LCD device.
+
+        C# protocol: bulk devices (USBLCDNew) use JPEG (cmd=2),
+        SCSI/HID use raw RGB565.
+        """
         device = self.devices.selected
+        protocol = device.protocol if device else 'scsi'
+
+        if protocol == 'bulk':
+            data = ImageService.to_jpeg(img)
+            log.debug("_encode_for_device: %dx%d → JPEG %d bytes",
+                      img.width, img.height, len(data))
+            return data
+
         byte_order = ImageService.byte_order_for(
-            device.protocol if device else 'scsi',
+            protocol,
             device.resolution if device else (320, 320),
         )
         data = ImageService.to_rgb565(img, byte_order)
-        log.debug("_image_to_rgb565: %dx%d mode=%s order=%s → %d bytes",
+        log.debug("_encode_for_device: %dx%d mode=%s order=%s → RGB565 %d bytes",
                   img.width, img.height, img.mode, byte_order, len(data))
         return data
 

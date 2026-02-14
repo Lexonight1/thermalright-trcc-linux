@@ -177,16 +177,17 @@ class TestBulkDeviceHandshake(unittest.TestCase):
         self.assertEqual(bd.width, 480)
         self.assertEqual(bd.height, 480)
 
-    def test_handshake_pm5_mjolnir_480x480(self):
-        """PM=5 (Mjolnir Vision) → default FBL=72 → 480x480."""
+    def test_handshake_pm5_mjolnir_240x320(self):
+        """PM=5 (Mjolnir Vision) → FBL=50 → 240x320."""
         bd = self._setup_device()
         resp = _make_handshake_response(pm=5)
         bd._ep_in.read.return_value = resp
 
         result = bd.handshake()
 
-        self.assertEqual(result.resolution, (480, 480))
+        self.assertEqual(result.resolution, (240, 320))
         self.assertEqual(bd.pm, 5)
+        self.assertTrue(bd.use_jpeg)
 
     def test_handshake_pm7_640x480(self):
         """PM=7 → FBL override to 64 → 640x480."""
@@ -329,6 +330,23 @@ class TestBulkDeviceHandshake(unittest.TestCase):
         self.assertEqual(bd._raw_handshake, resp)
         self.assertEqual(len(bd._raw_handshake), 1024)
 
+    def test_handshake_use_jpeg_default(self):
+        """All bulk PMs use JPEG (cmd=2) except PM=32."""
+        bd = self._setup_device()
+        for pm in (1, 5, 7, 9, 10, 11, 12, 64, 65, 99):
+            resp = _make_handshake_response(pm=pm)
+            bd._ep_in.read.return_value = resp
+            bd.handshake()
+            self.assertTrue(bd.use_jpeg, f"PM={pm} should use JPEG")
+
+    def test_handshake_pm32_uses_rgb565(self):
+        """PM=32 is the only bulk PM that uses RGB565 (cmd=3)."""
+        bd = self._setup_device()
+        resp = _make_handshake_response(pm=32)
+        bd._ep_in.read.return_value = resp
+        bd.handshake()
+        self.assertFalse(bd.use_jpeg)
+
     def test_handshake_opens_device_if_needed(self):
         """If _dev is None, handshake calls _open() first."""
         bd = BulkDevice(0x87AD, 0x70DB)
@@ -349,7 +367,7 @@ class TestBulkDeviceHandshake(unittest.TestCase):
 class TestBulkDeviceSendFrame(unittest.TestCase):
     """Test frame send protocol."""
 
-    def _setup_device(self, width=320, height=320):
+    def _setup_device(self, width=320, height=320, use_jpeg=True):
         bd = BulkDevice(0x87AD, 0x70DB)
         bd._dev = MagicMock()
         bd._ep_out = MagicMock()
@@ -357,27 +375,39 @@ class TestBulkDeviceSendFrame(unittest.TestCase):
         bd.width = width
         bd.height = height
         bd.pm = 100
+        bd.use_jpeg = use_jpeg
         return bd
 
-    def test_send_frame_header_format(self):
-        """Header has magic, cmd, dimensions, mode, and payload length."""
-        bd = self._setup_device(width=320, height=320)
+    def test_send_frame_jpeg_header(self):
+        """JPEG mode (default): cmd=2 in header."""
+        bd = self._setup_device(width=480, height=480, use_jpeg=True)
         data = b'\x00' * 1000
         bd.send_frame(data)
 
-        # First write is the 64-byte header
         header = bd._ep_out.write.call_args_list[0][0][0]
         self.assertEqual(len(header), 64)
-        # Magic
+        self.assertEqual(header[0:4], b'\x12\x34\x56\x78')
+        # Cmd = 2 (JPEG)
+        self.assertEqual(struct.unpack_from("<I", header, 4)[0], 2)
+        self.assertEqual(struct.unpack_from("<I", header, 8)[0], 480)
+        self.assertEqual(struct.unpack_from("<I", header, 12)[0], 480)
+        self.assertEqual(struct.unpack_from("<I", header, 56)[0], 2)
+        self.assertEqual(struct.unpack_from("<I", header, 60)[0], 1000)
+
+    def test_send_frame_rgb565_header(self):
+        """RGB565 mode (PM=32): cmd=3 in header."""
+        bd = self._setup_device(width=320, height=320, use_jpeg=False)
+        data = b'\x00' * 1000
+        bd.send_frame(data)
+
+        header = bd._ep_out.write.call_args_list[0][0][0]
+        self.assertEqual(len(header), 64)
         self.assertEqual(header[0:4], b'\x12\x34\x56\x78')
         # Cmd = 3 (raw RGB565)
         self.assertEqual(struct.unpack_from("<I", header, 4)[0], 3)
-        # Width / height
         self.assertEqual(struct.unpack_from("<I", header, 8)[0], 320)
         self.assertEqual(struct.unpack_from("<I", header, 12)[0], 320)
-        # Mode = 2
         self.assertEqual(struct.unpack_from("<I", header, 56)[0], 2)
-        # Payload length
         self.assertEqual(struct.unpack_from("<I", header, 60)[0], 1000)
 
     def test_send_frame_payload_chunked(self):

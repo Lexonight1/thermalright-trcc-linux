@@ -8,8 +8,9 @@ from USBLCDNew.exe ThreadSendDeviceData (87AD:70DB GrandVision series).
 Protocol:
   1. Handshake: write 64 bytes {0x12,0x34,0x56,0x78,...,byte[56]=0x01},
      read 1024 bytes.  resp[24]=PM, resp[36]=SUB.
-  2. Frame send: 64-byte header + RGB565 pixel data, bulk write.
-     ZLP if total size is 512-byte aligned.
+  2. Frame send: 64-byte header + payload, bulk write.
+     cmd=2 for JPEG (all PMs except 32), cmd=3 for raw RGB565 (PM=32).
+     ZLP after payload as frame delimiter.
 """
 
 from __future__ import annotations
@@ -34,7 +35,11 @@ _HANDSHAKE_PAYLOAD = bytes([
 
 # PM values with explicit resolution overrides for bulk devices.
 # All others default to FBL=72 → 480x480.
-_BULK_KNOWN_PMS = {7, 9, 10, 11, 12, 32, 64, 65}
+_BULK_KNOWN_PMS = {5, 7, 9, 10, 11, 12, 32, 64, 65}
+
+# C# FormCZTVInit: myDeviceMode=2 (JPEG) for all USBLCDNew devices,
+# except PM=32 which overrides to myDeviceMode=4 (RGB565, cmd=3).
+_BULK_RGB565_PMS = {32}
 
 
 def _bulk_resolution(pm: int, sub: int = 0) -> tuple[int, int]:
@@ -74,6 +79,7 @@ class BulkDevice:
         self.sub_type: int = 0
         self.width: int = 0
         self.height: int = 0
+        self.use_jpeg: bool = True  # C#: all bulk use JPEG except PM=32
         self._raw_handshake: bytes = b""
 
     def _open(self):
@@ -169,6 +175,9 @@ class BulkDevice:
         self.pm = resp[24]
         self.sub_type = resp[36]
 
+        # C#: myDeviceMode=2 (JPEG) for all USBLCDNew, except PM=32 → mode 4 (RGB565)
+        self.use_jpeg = self.pm not in _BULK_RGB565_PMS
+
         # Derive resolution from PM+SUB (from FormCZTVInit in FormCZTV.cs).
         # Bulk devices (87AD:70DB) get FBL=72 hardcoded by USBLCDNEW.exe,
         # then PM overrides FBL for certain device models.
@@ -176,8 +185,8 @@ class BulkDevice:
         if resolution:
             self.width, self.height = resolution
 
-        log.info("Bulk handshake OK: PM=%d, SUB=%d, resolution=%s",
-                 self.pm, self.sub_type, resolution)
+        log.info("Bulk handshake OK: PM=%d, SUB=%d, resolution=%s, jpeg=%s",
+                 self.pm, self.sub_type, resolution, self.use_jpeg)
 
         return HandshakeResult(
             resolution=resolution,
@@ -185,29 +194,34 @@ class BulkDevice:
             raw_response=resp,
         )
 
-    def send_frame(self, rgb565_data: bytes) -> bool:
-        """Send one RGB565 frame via bulk write.
+    def send_frame(self, image_data: bytes) -> bool:
+        """Send one frame via bulk write.
 
-        Header format (64 bytes, reverse-engineered from USBLCDNew + rejeb):
+        C# protocol (FormCZTV.cs ImageToJpg / ImageTo565):
+          - JPEG mode (cmd=2): all PMs except 32.  Payload is JPEG bytes.
+          - RGB565 mode (cmd=3): PM=32 only.  Payload is raw RGB565 pixels.
+
+        Header format (64 bytes):
           offset  0: magic  12 34 56 78
-          offset  4: cmd    3 = raw RGB565, 2 = JPEG
+          offset  4: cmd    2 = JPEG, 3 = raw RGB565
           offset  8: width  (LE u32)
           offset 12: height (LE u32)
           offset 56: mode   2
           offset 60: payload length (LE u32)
-        Followed by pixel data in 16 KiB chunks, then a ZLP delimiter.
+        Followed by payload in 16 KiB chunks, then a ZLP delimiter.
         """
         if self._dev is None or self._ep_out is None:
             self.handshake()
 
         assert self._ep_out is not None
 
-        data_size = len(rgb565_data)
+        data_size = len(image_data)
+        cmd = 2 if self.use_jpeg else 3
 
         # Build 64-byte header
         header = bytearray(64)
         header[0:4] = _HANDSHAKE_PAYLOAD[0:4]           # magic 12 34 56 78
-        struct.pack_into("<I", header, 4, 3)             # cmd = raw RGB565
+        struct.pack_into("<I", header, 4, cmd)            # cmd
         struct.pack_into("<I", header, 8, self.width)    # width
         struct.pack_into("<I", header, 12, self.height)  # height
         struct.pack_into("<I", header, 56, 2)            # mode
@@ -217,20 +231,21 @@ class BulkDevice:
             # Send header
             self._ep_out.write(bytes(header), timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
 
-            # Send pixel data in chunks
+            # Send payload in chunks
             offset = 0
             while offset < data_size:
-                chunk = rgb565_data[offset:offset + _WRITE_CHUNK_SIZE]
+                chunk = image_data[offset:offset + _WRITE_CHUNK_SIZE]
                 self._ep_out.write(chunk, timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
                 offset += len(chunk)
 
             # ZLP frame delimiter
             self._ep_out.write(b"", timeout=_WRITE_TIMEOUT_MS)  # type: ignore[union-attr]
 
-            log.debug("Bulk frame sent: %dx%d, %d bytes", self.width, self.height, data_size)
+            log.debug("Bulk frame sent: %dx%d, cmd=%d, %d bytes",
+                      self.width, self.height, cmd, data_size)
             return True
         except Exception:
-            log.exception("Bulk frame send failed (%d bytes)", data_size)
+            log.exception("Bulk frame send failed (cmd=%d, %d bytes)", cmd, data_size)
             return False
 
     def close(self) -> None:

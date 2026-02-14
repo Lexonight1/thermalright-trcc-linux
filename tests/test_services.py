@@ -150,6 +150,77 @@ class TestImageServiceResize(unittest.TestCase):
         self.assertEqual(result.size, (50, 50))
 
 
+class TestImageServiceToJpeg(unittest.TestCase):
+    """Test JPEG encoding (C# CompressionImage pattern)."""
+
+    def test_returns_valid_jpeg(self):
+        img = Image.new('RGB', (100, 100), (255, 0, 0))
+        data = ImageService.to_jpeg(img)
+        self.assertTrue(data[:2] == b'\xff\xd8')  # JPEG SOI marker
+
+    def test_quality_reduces_until_under_max(self):
+        """Large images should reduce quality until under max_size."""
+        img = Image.new('RGB', (480, 480), (128, 64, 200))
+        data = ImageService.to_jpeg(img, quality=95, max_size=450_000)
+        self.assertLess(len(data), 450_000)
+
+    def test_tiny_max_size_still_returns_data(self):
+        """Even with very small max_size, fallback to quality=5."""
+        img = Image.new('RGB', (100, 100), (255, 128, 0))
+        data = ImageService.to_jpeg(img, quality=95, max_size=1)
+        self.assertTrue(len(data) > 0)
+        self.assertTrue(data[:2] == b'\xff\xd8')
+
+    def test_rgba_input_converted(self):
+        """RGBA images should be converted to RGB before encoding."""
+        img = Image.new('RGBA', (50, 50), (255, 0, 0, 128))
+        data = ImageService.to_jpeg(img)
+        self.assertTrue(data[:2] == b'\xff\xd8')
+
+    def test_default_quality_95(self):
+        """Default quality produces smaller output than raw RGB565."""
+        img = Image.new('RGB', (320, 320), (100, 150, 200))
+        jpeg = ImageService.to_jpeg(img)
+        rgb565 = ImageService.to_rgb565(img)
+        self.assertLess(len(jpeg), len(rgb565))
+
+
+class TestDeviceServiceSendPilBulk(unittest.TestCase):
+    """Test that send_pil routes bulk devices through JPEG encoding."""
+
+    def test_bulk_sends_jpeg(self):
+        """Bulk protocol → ImageService.to_jpeg() path."""
+        from trcc.core.models import DeviceInfo
+        svc = DeviceService()
+        dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk')
+        svc.select(dev)
+
+        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
+            img = Image.new('RGB', (480, 480), (255, 0, 0))
+            result = svc.send_pil(img, 480, 480)
+
+        self.assertTrue(result)
+        call_data = mock_send.call_args[0][0]
+        self.assertTrue(call_data[:2] == b'\xff\xd8')  # JPEG data
+
+    def test_scsi_sends_rgb565(self):
+        """SCSI protocol → ImageService.to_rgb565() path (not JPEG)."""
+        from trcc.core.models import DeviceInfo
+        svc = DeviceService()
+        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi',
+                         resolution=(320, 320))
+        svc.select(dev)
+
+        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
+            img = Image.new('RGB', (320, 320), (255, 0, 0))
+            result = svc.send_pil(img, 320, 320)
+
+        self.assertTrue(result)
+        call_data = mock_send.call_args[0][0]
+        # RGB565: 320*320*2 = 204800 bytes, not JPEG
+        self.assertEqual(len(call_data), 320 * 320 * 2)
+
+
 # =============================================================================
 # DeviceService
 # =============================================================================

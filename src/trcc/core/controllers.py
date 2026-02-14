@@ -577,12 +577,12 @@ class LCDDeviceController:
             log.debug("Send skipped — no device selected")
             return
         try:
-            rgb565 = self._display._image_to_rgb565(image)
+            encoded = self._display._encode_for_device(image)
             log.debug("Sending %d bytes to %s (%dx%d)",
-                      len(rgb565), device.path,
+                      len(encoded), device.path,
                       self.lcd_width, self.lcd_height)
             self.devices.send_image_async(
-                rgb565, self.lcd_width, self.lcd_height)
+                encoded, self.lcd_width, self.lcd_height)
         except Exception as e:
             self._fire_error(f"LCD send error: {e}")
 
