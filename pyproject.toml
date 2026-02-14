@@ -57,6 +57,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.4.0",
     "httpx>=0.24.0",
+    "python-multipart>=0.0.6",
 ]
 all = [
     "trcc-linux[nvidia,wayland,hid,api,dev]",
