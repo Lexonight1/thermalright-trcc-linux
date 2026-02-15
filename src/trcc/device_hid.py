@@ -441,8 +441,9 @@ class HidDeviceType2(HidDevice):
     def send_frame(self, image_data: bytes) -> bool:
         """Send one image frame to the device.
 
-        Matches C# frame loop: synchronous Transfer() to Ep02,
-        then Thread.Sleep(1).
+        TRCC (UCDevice.cs ThreadSendDeviceData2) sends frames in 512-byte
+        chunks via UsbHidDevice.SendMessage().  We mirror that: build the
+        padded packet, then write it in 512-byte pieces.
 
         Args:
             image_data: Raw image bytes (JPEG or other format the
@@ -458,12 +459,17 @@ class HidDeviceType2(HidDevice):
             raise RuntimeError("Type 2 device not initialized — call handshake() first")
 
         packet = self.build_frame_packet(image_data)
-        transferred = self.transport.write(EP_WRITE_02, packet, DEFAULT_TIMEOUT_MS)
+
+        # C# UCDevice.cs ThreadSendDeviceData2: sends 512-byte chunks
+        total = 0
+        for offset in range(0, len(packet), USB_BULK_ALIGNMENT):
+            chunk = packet[offset:offset + USB_BULK_ALIGNMENT]
+            total += self.transport.write(EP_WRITE_02, chunk, DEFAULT_TIMEOUT_MS)
 
         # C#: Thread.Sleep(1) after frame transfer
         time.sleep(DELAY_FRAME_TYPE2_S)
 
-        return transferred > 0
+        return total > 0
 
 
 # =========================================================================
@@ -715,7 +721,16 @@ class PyUsbTransport(UsbTransport):
             log.debug("Kernel driver detach: %s", e)
 
         # C#: SetConfiguration(1), ClaimInterface(0)
-        self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
+        # On Linux, set_configuration() sends a real SET_CONFIGURATION control
+        # transfer which can reset the USB bus if the device is already configured.
+        # Windows LibUsbDotNet makes it a no-op when already at that config.
+        # Skip if the device is already at the right configuration.
+        try:
+            cfg: Any = self._device.get_active_configuration()  # type: ignore[union-attr]
+            if cfg.bConfigurationValue != USB_CONFIGURATION:
+                self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
+        except usb.core.USBError:
+            self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
         usb.util.claim_interface(self._device, USB_INTERFACE)  # type: ignore[union-attr]
         self._is_open = True
 
