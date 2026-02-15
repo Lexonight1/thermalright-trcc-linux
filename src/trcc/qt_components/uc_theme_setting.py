@@ -1535,13 +1535,13 @@ class UCThemeSetting(BasePanel):
     def _on_format_changed(self, mode, mode_sub):
         self._update_selected(require_mode=mode, mode_sub=mode_sub)
         # Persist format preference so it carries across theme changes
-        from ..conf import save_format_pref
+        from ..conf import Settings
         if mode == MODE_TIME:
-            save_format_pref('time_format', mode_sub)
+            Settings.save_format_pref('time_format', mode_sub)
         elif mode == MODE_DATE:
-            save_format_pref('date_format', mode_sub)
+            Settings.save_format_pref('date_format', mode_sub)
         elif mode == MODE_HARDWARE:
-            save_format_pref('temp_unit', mode_sub)
+            Settings.save_format_pref('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
         self._update_selected(require_mode=MODE_CUSTOM, text=text)

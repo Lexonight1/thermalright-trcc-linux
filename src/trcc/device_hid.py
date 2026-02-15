@@ -595,54 +595,61 @@ class HidDeviceType3(HidDevice):
 
 
 # =========================================================================
-# Public API  (mirrors scsi_device.send_image_to_device)
+# HidDeviceManager — stateful send API (mirrors ScsiDevice pattern)
 # =========================================================================
 
-# Track initialized devices by transport identity
-_initialized_transports: Set[int] = set()
-_device_handlers: dict = {}
+class HidDeviceManager:
+    """Manages HID device state: handshake caching and frame sending.
 
-
-def send_image_to_hid_device(
-    transport: UsbTransport,
-    image_data: bytes,
-    device_type: int,
-) -> bool:
-    """Send image data to a HID LCD device.
-
-    Performs handshake on first call per transport, then sends frames.
-
-    Args:
-        transport: Open USB transport to the device.
-        image_data: Raw image bytes (JPEG or device-native format).
-        device_type: 2 for "H" variant, 3 for "ALi" variant.
-
-    Returns:
-        True if the send succeeded.
+    Tracks which transports have been initialized so handshake is only
+    performed once per transport lifetime.
     """
-    transport_id = id(transport)
 
-    try:
-        if transport_id not in _initialized_transports:
-            if device_type == 2:
-                handler = HidDeviceType2(transport)
-            elif device_type == 3:
-                handler = HidDeviceType3(transport)
-            else:
-                raise ValueError(f"Unknown HID device type: {device_type}")
+    _initialized_transports: Set[int] = set()
+    _device_handlers: dict = {}
 
-            handler.handshake()
-            _device_handlers[transport_id] = handler
-            _initialized_transports.add(transport_id)
+    @classmethod
+    def send_image(
+        cls,
+        transport: UsbTransport,
+        image_data: bytes,
+        device_type: int,
+    ) -> bool:
+        """Send image data to a HID LCD device.
 
-        handler = _device_handlers[transport_id]
-        return handler.send_frame(image_data)
+        Performs handshake on first call per transport, then sends frames.
 
-    except Exception as e:
-        print(f"[!] HID send failed: {e}")
-        _initialized_transports.discard(transport_id)
-        _device_handlers.pop(transport_id, None)
-        return False
+        Args:
+            transport: Open USB transport to the device.
+            image_data: Raw image bytes (JPEG or device-native format).
+            device_type: 2 for "H" variant, 3 for "ALi" variant.
+
+        Returns:
+            True if the send succeeded.
+        """
+        transport_id = id(transport)
+
+        try:
+            if transport_id not in cls._initialized_transports:
+                if device_type == 2:
+                    handler = HidDeviceType2(transport)
+                elif device_type == 3:
+                    handler = HidDeviceType3(transport)
+                else:
+                    raise ValueError(f"Unknown HID device type: {device_type}")
+
+                handler.handshake()
+                cls._device_handlers[transport_id] = handler
+                cls._initialized_transports.add(transport_id)
+
+            handler = cls._device_handlers[transport_id]
+            return handler.send_frame(image_data)
+
+        except Exception as e:
+            print(f"[!] HID send failed: {e}")
+            cls._initialized_transports.discard(transport_id)
+            cls._device_handlers.pop(transport_id, None)
+            return False
 
 
 # =========================================================================

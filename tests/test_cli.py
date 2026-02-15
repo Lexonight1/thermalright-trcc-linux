@@ -199,7 +199,7 @@ class TestDetect(unittest.TestCase):
         mock_mod.detect_devices.return_value = [dev]
 
         with patch.dict('sys.modules', {'trcc.device_detector': mock_mod}), \
-             patch('trcc.conf.get_selected_device', return_value='/dev/sg0'):
+             patch('trcc.conf.Settings.get_selected_device', return_value='/dev/sg0'):
             result = detect(show_all=False)
         self.assertEqual(result, 0)
 
@@ -210,8 +210,8 @@ class TestSettingsHelpers(unittest.TestCase):
     def test_get_selected_no_file(self):
         """Returns None when no config file."""
         with patch('trcc.conf.CONFIG_PATH', '/nonexistent/config.json'):
-            from trcc.conf import get_selected_device
-            self.assertIsNone(get_selected_device())
+            from trcc.conf import Settings
+            self.assertIsNone(Settings.get_selected_device())
 
     def test_set_and_get_selected(self):
         """Round-trip: set then get selected device."""
@@ -219,9 +219,9 @@ class TestSettingsHelpers(unittest.TestCase):
             config_path = os.path.join(tmp, 'config.json')
             with patch('trcc.conf.CONFIG_PATH', config_path), \
                  patch('trcc.conf.CONFIG_DIR', tmp):
-                from trcc.conf import get_selected_device, save_selected_device
-                save_selected_device('/dev/sg1')
-                result = get_selected_device()
+                from trcc.conf import Settings
+                Settings.save_selected_device('/dev/sg1')
+                result = Settings.get_selected_device()
             self.assertEqual(result, '/dev/sg1')
 
     def test_set_preserves_other_keys(self):
@@ -235,8 +235,8 @@ class TestSettingsHelpers(unittest.TestCase):
 
             with patch('trcc.conf.CONFIG_PATH', config_path), \
                  patch('trcc.conf.CONFIG_DIR', tmp):
-                from trcc.conf import save_selected_device
-                save_selected_device('/dev/sg2')
+                from trcc.conf import Settings
+                Settings.save_selected_device('/dev/sg2')
 
             with open(config_path) as f:
                 data = json.load(f)
@@ -360,7 +360,7 @@ class TestSelectDevice(unittest.TestCase):
         mock_mod = MagicMock()
         mock_mod.detect_devices.return_value = [dev]
         with patch.dict('sys.modules', {'trcc.device_detector': mock_mod}), \
-             patch('trcc.conf.save_selected_device') as mock_set:
+             patch('trcc.conf.Settings.save_selected_device') as mock_set:
             result = select_device(1)
         self.assertEqual(result, 0)
         mock_set.assert_called_once_with('/dev/sg1')
@@ -643,7 +643,7 @@ class TestDetectExtra(unittest.TestCase):
         from contextlib import redirect_stdout
         buf = io.StringIO()
         with patch.dict('sys.modules', {'trcc.device_detector': mock_mod}), \
-             patch('trcc.conf.get_selected_device', return_value='/dev/sg1'), \
+             patch('trcc.conf.Settings.get_selected_device', return_value='/dev/sg1'), \
              redirect_stdout(buf):
             result = detect(show_all=True)
         self.assertEqual(result, 0)
@@ -661,7 +661,7 @@ class TestDetectExtra(unittest.TestCase):
         from contextlib import redirect_stdout
         buf = io.StringIO()
         with patch.dict('sys.modules', {'trcc.device_detector': mock_mod}), \
-             patch('trcc.conf.get_selected_device', return_value='/dev/sg9'), \
+             patch('trcc.conf.Settings.get_selected_device', return_value='/dev/sg9'), \
              redirect_stdout(buf):
             result = detect(show_all=False)
         self.assertEqual(result, 0)
@@ -679,8 +679,8 @@ class TestSettingsCorruptJSON(unittest.TestCase):
             path = f.name
         try:
             with patch('trcc.conf.CONFIG_PATH', path):
-                from trcc.conf import get_selected_device
-                result = get_selected_device()
+                from trcc.conf import Settings
+                result = Settings.get_selected_device()
             self.assertIsNone(result)
         finally:
             os.unlink(path)
@@ -693,9 +693,9 @@ class TestSettingsCorruptJSON(unittest.TestCase):
                 f.write('{bad')
             with patch('trcc.conf.CONFIG_PATH', path), \
                  patch('trcc.conf.CONFIG_DIR', tmp):
-                from trcc.conf import get_selected_device, save_selected_device
-                save_selected_device('/dev/sg0')
-                result = get_selected_device()
+                from trcc.conf import Settings
+                Settings.save_selected_device('/dev/sg0')
+                result = Settings.get_selected_device()
             self.assertEqual(result, '/dev/sg0')
 
 
@@ -803,7 +803,7 @@ class TestSelectDeviceException(unittest.TestCase):
 
 class TestSendImageEdge(unittest.TestCase):
 
-    @patch('trcc.conf.get_selected_device', return_value='/dev/sg0')
+    @patch('trcc.conf.Settings.get_selected_device', return_value='/dev/sg0')
     def test_send_image_exception(self, _):
         """send_image with nonexistent file -> exception -> returns 1."""
         result = send_image('/nonexistent/file.png')
@@ -929,8 +929,8 @@ class TestResume(unittest.TestCase):
         svc = MagicMock()
         svc.detect.return_value = [dev]
         with patch('trcc.services.DeviceService', return_value=svc), \
-             patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-             patch('trcc.conf.get_device_config', return_value={}):
+             patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+             patch('trcc.conf.Settings.get_device_config', return_value={}):
             result = resume()
         self.assertEqual(result, 1)
 
@@ -950,8 +950,8 @@ class TestResume(unittest.TestCase):
             svc.send_pil.return_value = True
 
             with patch('trcc.services.DeviceService', return_value=svc), \
-                 patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-                 patch('trcc.conf.get_device_config', return_value={
+                 patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+                 patch('trcc.conf.Settings.get_device_config', return_value={
                      'theme_path': theme_dir,
                      'brightness_level': 3,
                      'rotation': 0,
@@ -975,8 +975,8 @@ class TestResume(unittest.TestCase):
             svc.send_pil.return_value = True
 
             with patch('trcc.services.DeviceService', return_value=svc), \
-                 patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-                 patch('trcc.conf.get_device_config', return_value={
+                 patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+                 patch('trcc.conf.Settings.get_device_config', return_value={
                      'theme_path': theme_dir,
                      'brightness_level': 1,
                      'rotation': 90,
@@ -999,8 +999,8 @@ class TestResume(unittest.TestCase):
         svc = MagicMock()
         svc.detect.return_value = [dev]
         with patch('trcc.services.DeviceService', return_value=svc), \
-             patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-             patch('trcc.conf.get_device_config', return_value={
+             patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+             patch('trcc.conf.Settings.get_device_config', return_value={
                  'theme_path': '/nonexistent/theme/dir',
              }):
             result = resume()
@@ -1582,7 +1582,7 @@ class TestGetService(unittest.TestCase):
         svc.selected = None
         svc.detect.return_value = [dev]
         with patch('trcc.services.DeviceService', return_value=svc), \
-             patch('trcc.conf.get_selected_device', return_value='/dev/sg0'):
+             patch('trcc.conf.Settings.get_selected_device', return_value='/dev/sg0'):
             _get_service()
         svc.select.assert_called_once_with(dev)
 
@@ -1621,8 +1621,8 @@ class TestSetBrightness(unittest.TestCase):
         """Valid level persists to config."""
         svc = _mock_service()
         with patch.object(DeviceCommands, '_get_service', return_value=svc), \
-             patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-             patch('trcc.conf.save_device_setting') as mock_save:
+             patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+             patch('trcc.conf.Settings.save_device_setting') as mock_save:
             result = DisplayCommands.set_brightness(2)
             self.assertEqual(result, 0)
             mock_save.assert_called_once_with('0:87cd_70db', 'brightness_level', 2)
@@ -1647,8 +1647,8 @@ class TestSetRotation(unittest.TestCase):
         """Valid rotation persists to config."""
         svc = _mock_service()
         with patch.object(DeviceCommands, '_get_service', return_value=svc), \
-             patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-             patch('trcc.conf.save_device_setting') as mock_save:
+             patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+             patch('trcc.conf.Settings.save_device_setting') as mock_save:
             result = DisplayCommands.set_rotation(180)
             self.assertEqual(result, 0)
             mock_save.assert_called_once_with('0:87cd_70db', 'rotation', 180)
@@ -1861,9 +1861,9 @@ class TestThemeLoad(unittest.TestCase):
                        return_value=mock_img), \
                  patch('trcc.services.ImageService.apply_rotation',
                        return_value=mock_img), \
-                 patch('trcc.conf.device_config_key', return_value='0:87cd_70db'), \
-                 patch('trcc.conf.get_device_config', return_value={}), \
-                 patch('trcc.conf.save_device_setting'):
+                 patch('trcc.conf.Settings.device_config_key', return_value='0:87cd_70db'), \
+                 patch('trcc.conf.Settings.get_device_config', return_value={}), \
+                 patch('trcc.conf.Settings.save_device_setting'):
                 td = MagicMock()
                 td.exists.return_value = True
                 td.path = Path(tmpdir)
@@ -1977,8 +1977,8 @@ class TestThemeSave(unittest.TestCase):
         mock_svc = MagicMock()
         mock_svc.selected = dev
         with patch.object(DeviceCommands, '_get_service', return_value=mock_svc), \
-             patch('trcc.conf.device_config_key', return_value='k'), \
-             patch('trcc.conf.get_device_config', return_value={}):
+             patch('trcc.conf.Settings.device_config_key', return_value='k'), \
+             patch('trcc.conf.Settings.get_device_config', return_value={}):
             self.assertEqual(ThemeCommands.save_theme('MyTheme'), 1)
 
     def test_save_success(self):
@@ -1995,8 +1995,8 @@ class TestThemeSave(unittest.TestCase):
 
             with patch.object(DeviceCommands, '_get_service',
                               return_value=mock_svc), \
-                 patch('trcc.conf.device_config_key', return_value='k'), \
-                 patch('trcc.conf.get_device_config',
+                 patch('trcc.conf.Settings.device_config_key', return_value='k'), \
+                 patch('trcc.conf.Settings.get_device_config',
                        return_value={'theme_path': tmpdir}), \
                  patch('trcc.services.theme.ThemeService.save',
                        return_value=(True, 'Saved: Custom_MyTheme')) as mock_save:

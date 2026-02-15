@@ -246,12 +246,12 @@ class HidProtocol(DeviceProtocol):
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:
-            from .device_hid import send_image_to_hid_device
+            from .device_hid import HidDeviceManager
             if self._transport is None:
                 self._transport = self._create_transport()
                 self._transport.open()
                 self._notify_state_changed("transport_open", True)
-            success = send_image_to_hid_device(
+            success = HidDeviceManager.send_image(
                 self._transport, image_data, self._device_type
             )
             self._notify_send_complete(success)
@@ -271,7 +271,7 @@ class HidProtocol(DeviceProtocol):
             self._notify_state_changed("transport_open", False)
 
     def get_info(self) -> 'ProtocolInfo':
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         if backends["pyusb"]:
             active = "pyusb"
         elif backends["hidapi"]:
@@ -294,7 +294,7 @@ class HidProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        return create_usb_transport(self._vid, self._pid)
+        return DeviceProtocolFactory.create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -302,7 +302,7 @@ class HidProtocol(DeviceProtocol):
 
     @property
     def is_available(self) -> bool:
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         return backends["pyusb"] or backends["hidapi"]
 
     def __repr__(self) -> str:
@@ -432,7 +432,7 @@ class LedProtocol(DeviceProtocol):
             self._notify_state_changed("transport_open", False)
 
     def get_info(self) -> 'ProtocolInfo':
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         if backends["pyusb"]:
             active = "pyusb"
         elif backends["hidapi"]:
@@ -453,7 +453,7 @@ class LedProtocol(DeviceProtocol):
 
     def _create_transport(self):
         """Create the best available USB transport."""
-        return create_usb_transport(self._vid, self._pid)
+        return DeviceProtocolFactory.create_usb_transport(self._vid, self._pid)
 
     @property
     def protocol_name(self) -> str:
@@ -461,7 +461,7 @@ class LedProtocol(DeviceProtocol):
 
     @property
     def is_available(self) -> bool:
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         return backends["pyusb"] or backends["hidapi"]
 
     @property
@@ -548,7 +548,7 @@ class BulkProtocol(DeviceProtocol):
             self._device = None
 
     def get_info(self) -> 'ProtocolInfo':
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         active = "pyusb" if backends["pyusb"] else "none"
         backends["sg_raw"] = False
         return ProtocolInfo(
@@ -567,22 +567,11 @@ class BulkProtocol(DeviceProtocol):
 
     @property
     def is_available(self) -> bool:
-        backends = _get_hid_backends()
+        backends = DeviceProtocolFactory._get_hid_backends()
         return backends["pyusb"]
 
     def __repr__(self) -> str:
         return f"BulkProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
-
-
-# =========================================================================
-# Backward-compatible aliases (old names still work)
-# =========================================================================
-
-# Old name → new name so existing code/tests don't break
-DeviceSender = DeviceProtocol
-ScsiSender = ScsiProtocol
-HidSender = HidProtocol
-LedSender = LedProtocol
 
 
 # =========================================================================
@@ -700,9 +689,127 @@ class DeviceProtocolFactory:
         """Number of cached protocols (for testing)."""
         return len(cls._protocols)
 
+    # =================================================================
+    # USB transport + backend helpers
+    # =================================================================
 
-# Backward-compatible alias
-DeviceSenderFactory = DeviceProtocolFactory
+    @staticmethod
+    def _check_sg_raw() -> bool:
+        """Check if sg_raw is available on the system."""
+        import shutil
+        return shutil.which("sg_raw") is not None
+
+    @staticmethod
+    def create_usb_transport(vid: int, pid: int):
+        """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
+        from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+        if PYUSB_AVAILABLE:
+            from .device_hid import PyUsbTransport
+            return PyUsbTransport(vid, pid)
+        elif HIDAPI_AVAILABLE:
+            from .device_hid import HidApiTransport
+            return HidApiTransport(vid, pid)
+        else:
+            raise ImportError(
+                "No USB backend available. Install pyusb or hidapi:\n"
+                "  pip install pyusb   (+ apt install libusb-1.0-0)\n"
+                "  pip install hidapi  (+ apt install libhidapi-dev)"
+            )
+
+    @staticmethod
+    def _get_hid_backends() -> Dict[str, bool]:
+        """Check HID backend availability."""
+        try:
+            from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+            return {"pyusb": PYUSB_AVAILABLE, "hidapi": HIDAPI_AVAILABLE}
+        except ImportError:
+            return {"pyusb": False, "hidapi": False}
+
+    @classmethod
+    def get_backend_availability(cls) -> Dict[str, bool]:
+        """Check which USB/SCSI backends are installed.
+
+        Returns dict with keys: sg_raw, pyusb, hidapi — each True/False.
+        """
+        hid = cls._get_hid_backends()
+        return {
+            "sg_raw": cls._check_sg_raw(),
+            "pyusb": hid["pyusb"],
+            "hidapi": hid["hidapi"],
+        }
+
+    @classmethod
+    def get_protocol_info(cls, device_info=None) -> 'ProtocolInfo':
+        """Get protocol/backend info for a device (or system defaults).
+
+        If a cached protocol exists for this device, delegates to its get_info().
+        Otherwise builds ProtocolInfo from backend availability.
+
+        Args:
+            device_info: DeviceInfo object (or None for system-level info).
+
+        Returns:
+            ProtocolInfo with all fields populated.
+        """
+        if device_info is None:
+            backends = cls.get_backend_availability()
+            return ProtocolInfo(
+                protocol="none",
+                device_type=0,
+                protocol_display="No device",
+                device_type_display="",
+                active_backend="none",
+                backends=backends,
+            )
+
+        # If there's a cached protocol, ask it directly
+        key = cls._device_key(device_info)
+        proto = cls._protocols.get(key)
+        if proto is not None:
+            return proto.get_info()
+
+        # No cached protocol — build info from scratch
+        backends = cls.get_backend_availability()
+        protocol = getattr(device_info, 'protocol', 'scsi')
+        device_type = getattr(device_info, 'device_type', 1)
+
+        implementation = getattr(device_info, 'implementation', '')
+
+        if protocol == "scsi":
+            active = "sg_raw" if backends["sg_raw"] else "none"
+        elif protocol == "bulk":
+            active = "pyusb" if backends["pyusb"] else "none"
+        elif protocol == "hid":
+            if backends["pyusb"]:
+                active = "pyusb"
+            elif backends["hidapi"]:
+                active = "hidapi"
+            else:
+                active = "none"
+        else:
+            active = "none"
+
+        # LED devices report as "led" protocol
+        if implementation == "hid_led":
+            return ProtocolInfo(
+                protocol="led",
+                device_type=1,
+                protocol_display=PROTOCOL_NAMES.get("led", "LED"),
+                device_type_display=LED_DEVICE_TYPE_NAME,
+                active_backend=active,
+                backends=backends,
+                transport_open=False,
+            )
+
+        return ProtocolInfo(
+            protocol=protocol,
+            device_type=device_type,
+            protocol_display=PROTOCOL_NAMES.get(protocol, protocol),
+            device_type_display=DEVICE_TYPE_NAMES.get(device_type, f"Type {device_type}"),
+            active_backend=active,
+            backends=backends,
+            transport_open=False,
+        )
 
 
 # =========================================================================
@@ -732,7 +839,7 @@ class ProtocolInfo:
 
     Usage in GUI::
 
-        info = get_protocol_info(device)
+        info = DeviceProtocolFactory.get_protocol_info(device)
         label.setText(f"{info.protocol_display} via {info.active_backend}")
     """
     protocol: str = "scsi"
@@ -761,121 +868,3 @@ class ProtocolInfo:
         if self.protocol == "scsi":
             return self.backends.get("sg_raw", False)
         return self.backends.get("pyusb", False) or self.backends.get("hidapi", False)
-
-
-def _check_sg_raw() -> bool:
-    """Check if sg_raw is available on the system."""
-    import shutil
-    return shutil.which("sg_raw") is not None
-
-
-def create_usb_transport(vid: int, pid: int):
-    """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
-    from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
-    if PYUSB_AVAILABLE:
-        from .device_hid import PyUsbTransport
-        return PyUsbTransport(vid, pid)
-    elif HIDAPI_AVAILABLE:
-        from .device_hid import HidApiTransport
-        return HidApiTransport(vid, pid)
-    else:
-        raise ImportError(
-            "No USB backend available. Install pyusb or hidapi:\n"
-            "  pip install pyusb   (+ apt install libusb-1.0-0)\n"
-            "  pip install hidapi  (+ apt install libhidapi-dev)"
-        )
-
-
-def _get_hid_backends() -> Dict[str, bool]:
-    """Check HID backend availability."""
-    try:
-        from .device_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
-        return {"pyusb": PYUSB_AVAILABLE, "hidapi": HIDAPI_AVAILABLE}
-    except ImportError:
-        return {"pyusb": False, "hidapi": False}
-
-
-def get_backend_availability() -> Dict[str, bool]:
-    """Check which USB/SCSI backends are installed.
-
-    Returns dict with keys: sg_raw, pyusb, hidapi — each True/False.
-    """
-    hid = _get_hid_backends()
-    return {
-        "sg_raw": _check_sg_raw(),
-        "pyusb": hid["pyusb"],
-        "hidapi": hid["hidapi"],
-    }
-
-
-def get_protocol_info(device_info=None) -> ProtocolInfo:
-    """Get protocol/backend info for a device (or system defaults).
-
-    If a cached protocol exists for this device, delegates to its get_info().
-    Otherwise builds ProtocolInfo from backend availability.
-
-    Args:
-        device_info: DeviceInfo object (or None for system-level info).
-
-    Returns:
-        ProtocolInfo with all fields populated.
-    """
-    if device_info is None:
-        backends = get_backend_availability()
-        return ProtocolInfo(
-            protocol="none",
-            device_type=0,
-            protocol_display="No device",
-            device_type_display="",
-            active_backend="none",
-            backends=backends,
-        )
-
-    # If there's a cached protocol, ask it directly
-    key = DeviceProtocolFactory._device_key(device_info)
-    proto = DeviceProtocolFactory._protocols.get(key)
-    if proto is not None:
-        return proto.get_info()
-
-    # No cached protocol — build info from scratch
-    backends = get_backend_availability()
-    protocol = getattr(device_info, 'protocol', 'scsi')
-    device_type = getattr(device_info, 'device_type', 1)
-
-    implementation = getattr(device_info, 'implementation', '')
-
-    if protocol == "scsi":
-        active = "sg_raw" if backends["sg_raw"] else "none"
-    elif protocol == "bulk":
-        active = "pyusb" if backends["pyusb"] else "none"
-    elif protocol == "hid":
-        if backends["pyusb"]:
-            active = "pyusb"
-        elif backends["hidapi"]:
-            active = "hidapi"
-        else:
-            active = "none"
-    else:
-        active = "none"
-
-    # LED devices report as "led" protocol
-    if implementation == "hid_led":
-        return ProtocolInfo(
-            protocol="led",
-            device_type=1,
-            protocol_display=PROTOCOL_NAMES.get("led", "LED"),
-            device_type_display=LED_DEVICE_TYPE_NAME,
-            active_backend=active,
-            backends=backends,
-            transport_open=False,
-        )
-
-    return ProtocolInfo(
-        protocol=protocol,
-        device_type=device_type,
-        protocol_display=PROTOCOL_NAMES.get(protocol, protocol),
-        device_type_display=DEVICE_TYPE_NAMES.get(device_type, f"Type {device_type}"),
-        active_backend=active,
-        backends=backends,
-        transport_open=False,
-    )

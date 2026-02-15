@@ -17,7 +17,6 @@ from trcc.device_hid import (
     UsbTransport,
 )
 from trcc.device_led import (
-    _PM_REGISTRY,
     DELAY_POST_INIT_S,
     DELAY_PRE_INIT_S,
     HID_REPORT_SIZE,
@@ -32,22 +31,14 @@ from trcc.device_led import (
     LED_RESPONSE_SIZE,
     LED_STYLES,
     LED_VID,
-    LOAD_COLOR_HIGH,
-    LOAD_COLOR_THRESHOLDS,
-    PM_TO_STYLE,
     PRESET_COLORS,
     SEND_COOLDOWN_S,
-    TEMP_COLOR_HIGH,
-    TEMP_COLOR_THRESHOLDS,
+    ColorEngine,
     LedDeviceStyle,
     LedHandshakeInfo,
     LedHidSender,
     LedPacketBuilder,
-    color_for_value,
-    generate_rgb_table,
-    get_model_for_pm,
-    get_rgb_table,
-    get_style_for_pm,
+    PmRegistry,
     remap_led_colors,
     send_led_colors,
 )
@@ -66,12 +57,12 @@ def _patch_sleep():
 
 @pytest.fixture(autouse=True)
 def _clear_rgb_table_cache():
-    """Reset the module-level _RGB_TABLE cache between tests."""
-    import trcc.device_led as mod
-    original = mod._RGB_TABLE
-    mod._RGB_TABLE = None
+    """Reset the ColorEngine cached table between tests."""
+    from trcc.device_led import ColorEngine
+    original = ColorEngine._cached_table
+    ColorEngine._cached_table = None
     yield
-    mod._RGB_TABLE = original
+    ColorEngine._cached_table = original
 
 
 # =========================================================================
@@ -195,7 +186,7 @@ class TestLedDeviceStyle:
 
 
 # =========================================================================
-# TestPmMapping — _PM_REGISTRY, PM_TO_STYLE, get_model_for_pm
+# TestPmMapping — PmRegistry._REGISTRY, PmRegistry.PM_TO_STYLE, PmRegistry.get_model_name
 # =========================================================================
 
 class TestPmMapping:
@@ -203,132 +194,131 @@ class TestPmMapping:
 
     def test_pm_to_style_all_values_map_to_valid_styles(self):
         """Every PM byte should map to a valid LED style."""
-        for pm, style_id in PM_TO_STYLE.items():
+        for pm, style_id in PmRegistry.PM_TO_STYLE.items():
             assert style_id in LED_STYLES, f"PM {pm} maps to unknown style {style_id}"
 
     def test_pm_to_style_known_mappings(self):
         """Verify specific PM→style mappings from FormLEDInit."""
-        assert PM_TO_STYLE[1] == 1    # FROZEN_HORIZON_PRO → style 1
-        assert PM_TO_STYLE[16] == 2   # PA120_DIGITAL → style 2
-        assert PM_TO_STYLE[32] == 3   # AK120_DIGITAL → style 3
-        assert PM_TO_STYLE[48] == 5   # LF8 → style 5
-        assert PM_TO_STYLE[80] == 6   # LF12 → style 6
-        assert PM_TO_STYLE[96] == 7   # LF10 → style 7
-        assert PM_TO_STYLE[112] == 9  # LC2 → style 9
-        assert PM_TO_STYLE[128] == 4  # LC1 → style 4
-        assert PM_TO_STYLE[208] == 8  # CZ1 → style 8
+        assert PmRegistry.PM_TO_STYLE[1] == 1    # FROZEN_HORIZON_PRO → style 1
+        assert PmRegistry.PM_TO_STYLE[16] == 2   # PA120_DIGITAL → style 2
+        assert PmRegistry.PM_TO_STYLE[32] == 3   # AK120_DIGITAL → style 3
+        assert PmRegistry.PM_TO_STYLE[48] == 5   # LF8 → style 5
+        assert PmRegistry.PM_TO_STYLE[80] == 6   # LF12 → style 6
+        assert PmRegistry.PM_TO_STYLE[96] == 7   # LF10 → style 7
+        assert PmRegistry.PM_TO_STYLE[112] == 9  # LC2 → style 9
+        assert PmRegistry.PM_TO_STYLE[128] == 4  # LC1 → style 4
+        assert PmRegistry.PM_TO_STYLE[208] == 8  # CZ1 → style 8
 
     def test_pm_to_style_pa120_variants(self):
         """PA120 variants (pm 16-31) all map to style 2."""
         for pm in [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]:
-            assert PM_TO_STYLE[pm] == 2
+            assert PmRegistry.PM_TO_STYLE[pm] == 2
 
     def test_pm_to_model_known_mappings(self):
-        """Verify specific PM→model name via get_model_for_pm()."""
-        assert get_model_for_pm(1) == "FROZEN_HORIZON_PRO"
-        assert get_model_for_pm(2) == "FROZEN_MAGIC_PRO"
-        assert get_model_for_pm(3) == "AX120_DIGITAL"
-        assert get_model_for_pm(16) == "PA120_DIGITAL"
-        assert get_model_for_pm(32) == "AK120_DIGITAL"
-        assert get_model_for_pm(208) == "CZ1"
+        """Verify specific PM→model name via PmRegistry.get_model_name()."""
+        assert PmRegistry.get_model_name(1) == "FROZEN_HORIZON_PRO"
+        assert PmRegistry.get_model_name(2) == "FROZEN_MAGIC_PRO"
+        assert PmRegistry.get_model_name(3) == "AX120_DIGITAL"
+        assert PmRegistry.get_model_name(16) == "PA120_DIGITAL"
+        assert PmRegistry.get_model_name(32) == "AK120_DIGITAL"
+        assert PmRegistry.get_model_name(208) == "CZ1"
 
     def test_pm_registry_has_entries(self):
-        """_PM_REGISTRY should cover all known PM values."""
-        assert len(_PM_REGISTRY) >= 30  # 16 primary + 14 PA120 variants
+        """PmRegistry._REGISTRY should cover all known PM values."""
+        assert len(PmRegistry._REGISTRY) >= 30  # 16 primary + 14 PA120 variants
 
     def test_pm_registry_pa120_variants_have_model(self):
         """PA120 variant PMs (17-22, 24-31) should have model names."""
         for pm in (17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31):
-            assert get_model_for_pm(pm) == "PA120_DIGITAL"
+            assert PmRegistry.get_model_name(pm) == "PA120_DIGITAL"
 
-    def test_get_model_for_pm_unknown(self):
+    def test_get_model_name_unknown(self):
         """Unknown PM falls back to 'Unknown (pm=N)'."""
-        assert get_model_for_pm(255) == "Unknown (pm=255)"
+        assert PmRegistry.get_model_name(255) == "Unknown (pm=255)"
 
-    def test_get_model_for_pm_hr10_override(self):
+    def test_get_model_name_hr10_override(self):
         """HR10 (pm=128, sub=129) overrides LC1 model name."""
-        assert get_model_for_pm(128) == "LC1"
-        assert get_model_for_pm(128, 129) == "HR10_2280_PRO_DIGITAL"
+        assert PmRegistry.get_model_name(128) == "LC1"
+        assert PmRegistry.get_model_name(128, 129) == "HR10_2280_PRO_DIGITAL"
 
-    def test_get_style_for_pm_known(self):
-        """get_style_for_pm returns correct style for known PM."""
-        style = get_style_for_pm(1)
+    def test_get_style_known(self):
+        """PmRegistry.get_style returns correct style for known PM."""
+        style = PmRegistry.get_style(1)
         assert style.style_id == 1
         assert style.model_name == "AX120_DIGITAL"
 
-    def test_get_style_for_pm_unknown_falls_back_to_style_1(self):
+    def test_get_style_unknown_falls_back_to_style_1(self):
         """Unknown PM bytes should fall back to style 1."""
-        style = get_style_for_pm(255)
+        style = PmRegistry.get_style(255)
         assert style.style_id == 1
         assert style.led_count == 30
 
-    def test_get_style_for_pm_zero(self):
+    def test_get_style_zero(self):
         """PM 0 is unknown — falls back to style 1."""
-        style = get_style_for_pm(0)
+        style = PmRegistry.get_style(0)
         assert style.style_id == 1
 
-    def test_get_style_for_pm_pa120(self):
+    def test_get_style_pa120(self):
         """PA120 style has correct zone count."""
-        style = get_style_for_pm(16)
+        style = PmRegistry.get_style(16)
         assert style.zone_count == 4
         assert style.led_count == 84
 
-    def test_get_style_for_pm_cz1(self):
+    def test_get_style_cz1(self):
         """CZ1 (pm=208) resolves to style 8."""
-        style = get_style_for_pm(208)
+        style = PmRegistry.get_style(208)
         assert style.style_id == 8
         assert style.led_count == 18
 
-    def test_get_style_for_pm_lc1_default(self):
+    def test_get_style_lc1_default(self):
         """LC1 (pm=128, sub_type=0) resolves to style 4."""
-        style = get_style_for_pm(128, sub_type=0)
+        style = PmRegistry.get_style(128, sub_type=0)
         assert style.style_id == 4
 
-    def test_get_style_for_pm_hr10_sub_type_override(self):
+    def test_get_style_hr10_sub_type_override(self):
         """HR10 (pm=128, sub_type=129) resolves to style 13 via SUB_TYPE_OVERRIDES."""
-        style = get_style_for_pm(128, sub_type=129)
+        style = PmRegistry.get_style(128, sub_type=129)
         assert style.style_id == 13
         assert style.model_name == "HR10_2280_PRO_DIGITAL"
         assert style.led_count == 31
 
     def test_sub_type_override_takes_precedence(self):
-        """SUB_TYPE_OVERRIDES should override PM_TO_STYLE."""
-        from trcc.device_led import SUB_TYPE_OVERRIDES
+        """PmRegistry._OVERRIDES should override PmRegistry.PM_TO_STYLE."""
         # HR10 entry exists
-        assert (128, 129) in SUB_TYPE_OVERRIDES
+        assert (128, 129) in PmRegistry._OVERRIDES
         # Without sub_type, PM=128 → style 4 (LC1)
-        assert get_style_for_pm(128).style_id == 4
+        assert PmRegistry.get_style(128).style_id == 4
         # With sub_type=129, PM=128 → style 13 (HR10)
-        assert get_style_for_pm(128, 129).style_id == 13
+        assert PmRegistry.get_style(128, 129).style_id == 13
 
 
 # =========================================================================
-# TestRgbTable — generate_rgb_table() and get_rgb_table()
+# TestRgbTable — ColorEngine.generate_table() and ColorEngine.get_table()
 # =========================================================================
 
 class TestRgbTable:
     """Test the 768-entry RGB rainbow lookup table."""
 
     def test_table_length(self):
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         assert len(table) == 768
 
     def test_all_values_in_range(self):
         """All RGB components should be 0-255."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         for r, g, b in table:
             assert 0 <= r <= 255
             assert 0 <= g <= 255
             assert 0 <= b <= 255
 
     def test_all_entries_are_tuples_of_three(self):
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         for entry in table:
             assert len(entry) == 3
 
     def test_first_entry_is_red(self):
         """Index 0: start of Red->Yellow phase — pure red."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[0]
         assert r == 255
         assert g == 0
@@ -336,7 +326,7 @@ class TestRgbTable:
 
     def test_phase_boundary_127_is_yellow(self):
         """Index 127: end of Red->Yellow phase — should be (255, 255, 0)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[127]
         assert r == 255
         assert g == 255
@@ -344,7 +334,7 @@ class TestRgbTable:
 
     def test_phase_boundary_255_is_green(self):
         """Index 255: end of Yellow->Green phase — should be (0, 255, 0)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[255]
         assert r == 0
         assert g == 255
@@ -352,7 +342,7 @@ class TestRgbTable:
 
     def test_phase_boundary_383_is_cyan(self):
         """Index 383: end of Green->Cyan phase — should be (0, 255, 255)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[383]
         assert r == 0
         assert g == 255
@@ -360,7 +350,7 @@ class TestRgbTable:
 
     def test_phase_boundary_511_is_blue(self):
         """Index 511: end of Cyan->Blue phase — should be (0, 0, 255)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[511]
         assert r == 0
         assert g == 0
@@ -368,7 +358,7 @@ class TestRgbTable:
 
     def test_phase_boundary_639_is_magenta(self):
         """Index 639: end of Blue->Magenta phase — should be (255, 0, 255)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[639]
         assert r == 255
         assert g == 0
@@ -376,14 +366,14 @@ class TestRgbTable:
 
     def test_last_entry_is_near_red(self):
         """Index 767: end of Magenta->Red phase — should be close to (255, 0, 0)."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         r, g, b = table[767]
         assert r == 255
         assert b == 0  # blue fully gone
 
     def test_smooth_transitions_no_large_jumps(self):
         """Adjacent entries should differ by at most a small amount per component."""
-        table = generate_rgb_table()
+        table = ColorEngine.generate_table()
         max_delta = 0
         for i in range(len(table) - 1):
             r1, g1, b1 = table[i]
@@ -395,101 +385,102 @@ class TestRgbTable:
         # With 128 steps per phase spanning 0-255, max step is ceil(255/127) = 3
         assert max_delta <= 3
 
-    def test_get_rgb_table_returns_cached(self):
-        """get_rgb_table() should return the same object on repeated calls."""
-        table1 = get_rgb_table()
-        table2 = get_rgb_table()
+    def test_get_table_returns_cached(self):
+        """ColorEngine.get_table() should return the same object on repeated calls."""
+        table1 = ColorEngine.get_table()
+        table2 = ColorEngine.get_table()
         assert table1 is table2
 
-    def test_get_rgb_table_same_content_as_generate(self):
-        """get_rgb_table() returns same content as generate_rgb_table()."""
-        cached = get_rgb_table()
-        fresh = generate_rgb_table()
+    def test_get_table_same_content_as_generate(self):
+        """ColorEngine.get_table() returns same content as ColorEngine.generate_table()."""
+        cached = ColorEngine.get_table()
+        fresh = ColorEngine.generate_table()
         assert cached == fresh
 
-    def test_get_rgb_table_length(self):
-        assert len(get_rgb_table()) == 768
+    def test_get_table_length(self):
+        assert len(ColorEngine.get_table()) == 768
 
 
 # =========================================================================
-# TestColorThresholds — color_for_value()
+# TestColorThresholds — ColorEngine.color_for_value()
 # =========================================================================
 
 class TestColorThresholds:
-    """Test color_for_value() with temperature and load thresholds."""
+    """Test ColorEngine.color_for_value() with temperature and load thresholds."""
 
     # --- Temperature thresholds ---
 
     def test_temp_below_30_cyan(self):
-        assert color_for_value(20, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(20, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_temp_exactly_0_cyan(self):
-        assert color_for_value(0, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(0, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_temp_29_cyan(self):
-        assert color_for_value(29, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(29, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_temp_30_cyan(self):
         """30 is the first gradient stop — clamps to cyan."""
-        assert color_for_value(30, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(30, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_temp_49_interpolated_near_green(self):
         """49 is near the (50, green) stop — interpolated cyan→green, mostly green."""
-        assert color_for_value(49, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 12)
+        assert ColorEngine.color_for_value(49, ColorEngine.TEMP_GRADIENT) == (0, 255, 12)
 
     def test_temp_50_green(self):
         """50 is the second gradient stop — exactly green."""
-        assert color_for_value(50, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 0)
+        assert ColorEngine.color_for_value(50, ColorEngine.TEMP_GRADIENT) == (0, 255, 0)
 
     def test_temp_69_interpolated_near_yellow(self):
         """69 is near the (70, yellow) stop — interpolated green→yellow."""
-        assert color_for_value(69, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (242, 255, 0)
+        assert ColorEngine.color_for_value(69, ColorEngine.TEMP_GRADIENT) == (242, 255, 0)
 
     def test_temp_70_yellow(self):
         """70 is the third gradient stop — exactly yellow."""
-        assert color_for_value(70, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 255, 0)
+        assert ColorEngine.color_for_value(70, ColorEngine.TEMP_GRADIENT) == (255, 255, 0)
 
     def test_temp_89_interpolated_near_orange(self):
         """89 is near the (90, orange) stop — interpolated yellow→orange."""
-        assert color_for_value(89, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 117, 0)
+        assert ColorEngine.color_for_value(89, ColorEngine.TEMP_GRADIENT) == (255, 117, 0)
 
     def test_temp_90_orange(self):
         """90 is the fourth gradient stop — exactly orange."""
-        assert color_for_value(90, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 110, 0)
+        assert ColorEngine.color_for_value(90, ColorEngine.TEMP_GRADIENT) == (255, 110, 0)
 
     def test_temp_100_red(self):
-        assert color_for_value(100, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 0, 0)
+        assert ColorEngine.color_for_value(100, ColorEngine.TEMP_GRADIENT) == (255, 0, 0)
 
     def test_temp_negative_cyan(self):
         """Negative temperature is still below 30."""
-        assert color_for_value(-10, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(-10, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_temp_very_high_red(self):
-        assert color_for_value(999, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (255, 0, 0)
+        assert ColorEngine.color_for_value(999, ColorEngine.TEMP_GRADIENT) == (255, 0, 0)
 
     # --- Load thresholds (same as temp) ---
 
     def test_load_thresholds_same_as_temp(self):
-        """LOAD_COLOR_THRESHOLDS should be the same object as TEMP_COLOR_THRESHOLDS."""
-        assert LOAD_COLOR_THRESHOLDS is TEMP_COLOR_THRESHOLDS
+        """ColorEngine.LOAD_GRADIENT should be the same object as ColorEngine.TEMP_GRADIENT."""
+        assert ColorEngine.LOAD_GRADIENT is ColorEngine.TEMP_GRADIENT
 
-    def test_load_high_color_same_as_temp(self):
-        assert LOAD_COLOR_HIGH is TEMP_COLOR_HIGH
+    def test_load_gradient_same_as_temp(self):
+        """Both gradients share the same last stop (red at 100)."""
+        assert ColorEngine.LOAD_GRADIENT[-1][1] == ColorEngine.TEMP_GRADIENT[-1][1]
 
     def test_load_0_percent_cyan(self):
-        assert color_for_value(0, LOAD_COLOR_THRESHOLDS, LOAD_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(0, ColorEngine.LOAD_GRADIENT) == (0, 255, 255)
 
     def test_load_100_percent_red(self):
-        assert color_for_value(100, LOAD_COLOR_THRESHOLDS, LOAD_COLOR_HIGH) == (255, 0, 0)
+        assert ColorEngine.color_for_value(100, ColorEngine.LOAD_GRADIENT) == (255, 0, 0)
 
     # --- Float boundary precision ---
 
     def test_float_just_below_30(self):
-        assert color_for_value(29.999, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(29.999, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
     def test_float_just_at_30(self):
         """30.0 is the first gradient stop — clamps to cyan."""
-        assert color_for_value(30.0, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH) == (0, 255, 255)
+        assert ColorEngine.color_for_value(30.0, ColorEngine.TEMP_GRADIENT) == (0, 255, 255)
 
 
 # =========================================================================
@@ -1293,15 +1284,15 @@ class TestLedConstants:
     def test_delay_post_init(self):
         assert DELAY_POST_INIT_S == 0.200
 
-    def test_temp_color_high(self):
-        assert TEMP_COLOR_HIGH == (255, 0, 0)
+    def test_temp_gradient_last_stop_is_red(self):
+        assert ColorEngine.TEMP_GRADIENT[-1][1] == (255, 0, 0)
 
     def test_temp_thresholds_length(self):
-        assert len(TEMP_COLOR_THRESHOLDS) == 5
+        assert len(ColorEngine.TEMP_GRADIENT) == 5
 
     def test_temp_thresholds_ascending(self):
         """Threshold values should be in ascending order."""
-        values = [t[0] for t in TEMP_COLOR_THRESHOLDS]
+        values = [t[0] for t in ColorEngine.TEMP_GRADIENT]
         assert values == sorted(values)
 
 

@@ -9,18 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from trcc.conf import (
-    clear_installed_resolutions,
-    device_config_key,
-    get_device_config,
-    get_saved_resolution,
-    get_saved_temp_unit,
-    load_config,
-    save_config,
-    save_device_setting,
-    save_resolution,
-    save_temp_unit,
-)
+from trcc.conf import Settings, load_config, save_config
 from trcc.data_repository import (
     DataManager,
     Resources,
@@ -164,15 +153,15 @@ class TestResolutionConfig(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_default_resolution(self):
-        self.assertEqual(get_saved_resolution(), (320, 320))
+        self.assertEqual(Settings._get_saved_resolution(), (320, 320))
 
     def test_save_and_load_resolution(self):
-        save_resolution(480, 480)
-        self.assertEqual(get_saved_resolution(), (480, 480))
+        Settings._save_resolution(480, 480)
+        self.assertEqual(Settings._get_saved_resolution(), (480, 480))
 
     def test_invalid_resolution_returns_default(self):
         save_config({'resolution': 'bad'})
-        self.assertEqual(get_saved_resolution(), (320, 320))
+        self.assertEqual(Settings._get_saved_resolution(), (320, 320))
 
 
 class TestTempUnitConfig(unittest.TestCase):
@@ -195,11 +184,11 @@ class TestTempUnitConfig(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_default_temp_unit(self):
-        self.assertEqual(get_saved_temp_unit(), 0)
+        self.assertEqual(Settings._get_saved_temp_unit(), 0)
 
     def test_save_fahrenheit(self):
-        save_temp_unit(1)
-        self.assertEqual(get_saved_temp_unit(), 1)
+        Settings._save_temp_unit(1)
+        self.assertEqual(Settings._get_saved_temp_unit(), 1)
 
 
 class TestResolutionInstalled(unittest.TestCase):
@@ -259,13 +248,13 @@ class TestResolutionInstalled(unittest.TestCase):
     def test_clear_removes_all(self):
         DataManager.mark_resolution_installed(320, 320)
         DataManager.mark_resolution_installed(480, 480)
-        clear_installed_resolutions()
+        Settings.clear_installed_resolutions()
         self.assertFalse(DataManager.is_resolution_installed(320, 320))
         self.assertFalse(DataManager.is_resolution_installed(480, 480))
 
     def test_clear_on_empty_config(self):
         # Should not raise
-        clear_installed_resolutions()
+        Settings.clear_installed_resolutions()
         self.assertFalse(DataManager.is_resolution_installed(320, 320))
 
     def test_marker_without_data_returns_false(self):
@@ -279,15 +268,15 @@ class TestDeviceConfigKey(unittest.TestCase):
     """Test device_config_key formatting."""
 
     def test_format(self):
-        key = device_config_key(0, 0x87CD, 0x70DB)
+        key = Settings.device_config_key(0, 0x87CD, 0x70DB)
         self.assertEqual(key, '0:87cd_70db')
 
     def test_format_with_index(self):
-        key = device_config_key(2, 0x0402, 0x3922)
+        key = Settings.device_config_key(2, 0x0402, 0x3922)
         self.assertEqual(key, '2:0402_3922')
 
     def test_zero_padded(self):
-        key = device_config_key(0, 0x0001, 0x0002)
+        key = Settings.device_config_key(0, 0x0001, 0x0002)
         self.assertEqual(key, '0:0001_0002')
 
 
@@ -311,30 +300,30 @@ class TestPerDeviceConfig(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_get_missing_device_returns_empty(self):
-        self.assertEqual(get_device_config('0:87cd_70db'), {})
+        self.assertEqual(Settings.get_device_config('0:87cd_70db'), {})
 
     def test_save_and_get(self):
-        save_device_setting('0:87cd_70db', 'brightness_level', 3)
-        cfg = get_device_config('0:87cd_70db')
+        Settings.save_device_setting('0:87cd_70db', 'brightness_level', 3)
+        cfg = Settings.get_device_config('0:87cd_70db')
         self.assertEqual(cfg['brightness_level'], 3)
 
     def test_multiple_settings_same_device(self):
-        save_device_setting('0:87cd_70db', 'brightness_level', 2)
-        save_device_setting('0:87cd_70db', 'rotation', 90)
-        cfg = get_device_config('0:87cd_70db')
+        Settings.save_device_setting('0:87cd_70db', 'brightness_level', 2)
+        Settings.save_device_setting('0:87cd_70db', 'rotation', 90)
+        cfg = Settings.get_device_config('0:87cd_70db')
         self.assertEqual(cfg['brightness_level'], 2)
         self.assertEqual(cfg['rotation'], 90)
 
     def test_multiple_devices_independent(self):
-        save_device_setting('0:87cd_70db', 'brightness_level', 1)
-        save_device_setting('1:0402_3922', 'brightness_level', 3)
-        self.assertEqual(get_device_config('0:87cd_70db')['brightness_level'], 1)
-        self.assertEqual(get_device_config('1:0402_3922')['brightness_level'], 3)
+        Settings.save_device_setting('0:87cd_70db', 'brightness_level', 1)
+        Settings.save_device_setting('1:0402_3922', 'brightness_level', 3)
+        self.assertEqual(Settings.get_device_config('0:87cd_70db')['brightness_level'], 1)
+        self.assertEqual(Settings.get_device_config('1:0402_3922')['brightness_level'], 3)
 
     def test_save_complex_value(self):
         carousel = {'enabled': True, 'interval': 5, 'themes': ['Theme1', 'Theme3']}
-        save_device_setting('0:87cd_70db', 'carousel', carousel)
-        cfg = get_device_config('0:87cd_70db')
+        Settings.save_device_setting('0:87cd_70db', 'carousel', carousel)
+        cfg = Settings.get_device_config('0:87cd_70db')
         self.assertEqual(cfg['carousel']['enabled'], True)
         self.assertEqual(cfg['carousel']['themes'], ['Theme1', 'Theme3'])
 
@@ -343,27 +332,27 @@ class TestPerDeviceConfig(unittest.TestCase):
             'enabled': True,
             'config': {'time_0': {'x': 10, 'y': 10, 'metric': 'time'}},
         }
-        save_device_setting('0:87cd_70db', 'overlay', overlay)
-        cfg = get_device_config('0:87cd_70db')
+        Settings.save_device_setting('0:87cd_70db', 'overlay', overlay)
+        cfg = Settings.get_device_config('0:87cd_70db')
         self.assertTrue(cfg['overlay']['enabled'])
         self.assertIn('time_0', cfg['overlay']['config'])
 
     def test_overwrite_setting(self):
-        save_device_setting('0:87cd_70db', 'rotation', 0)
-        save_device_setting('0:87cd_70db', 'rotation', 180)
-        self.assertEqual(get_device_config('0:87cd_70db')['rotation'], 180)
+        Settings.save_device_setting('0:87cd_70db', 'rotation', 0)
+        Settings.save_device_setting('0:87cd_70db', 'rotation', 180)
+        self.assertEqual(Settings.get_device_config('0:87cd_70db')['rotation'], 180)
 
     def test_device_config_preserves_global(self):
-        save_temp_unit(1)
-        save_device_setting('0:87cd_70db', 'brightness_level', 2)
-        self.assertEqual(get_saved_temp_unit(), 1)
+        Settings._save_temp_unit(1)
+        Settings.save_device_setting('0:87cd_70db', 'brightness_level', 2)
+        self.assertEqual(Settings._get_saved_temp_unit(), 1)
 
     def test_config_json_structure(self):
         """Verify the on-disk JSON structure matches documentation."""
-        save_resolution(480, 480)
-        save_temp_unit(1)
-        save_device_setting('0:87cd_70db', 'theme_path', '/some/path')
-        save_device_setting('0:87cd_70db', 'brightness_level', 2)
+        Settings._save_resolution(480, 480)
+        Settings._save_temp_unit(1)
+        Settings.save_device_setting('0:87cd_70db', 'theme_path', '/some/path')
+        Settings.save_device_setting('0:87cd_70db', 'brightness_level', 2)
 
         with open(self.config_path) as f:
             raw = json.load(f)

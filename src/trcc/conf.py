@@ -4,7 +4,7 @@ Single source of truth for resolution, paths, preferences, and device settings.
 Config is stored at ~/.config/trcc/config.json (XDG-compliant).
 
 Usage:
-    from trcc.conf import settings
+    from trcc.conf import settings, Settings
 
     settings.width          # LCD width
     settings.height         # LCD height
@@ -14,8 +14,13 @@ Usage:
     settings.masks_dir      # Cloud mask overlay dir
     settings.temp_unit      # 0=Celsius, 1=Fahrenheit
 
-    # Low-level config access
-    from trcc.conf import load_config, save_config, device_config_key
+    # Static settings operations
+    Settings.device_config_key(0, 0x87cd, 0x70db)
+    Settings.get_device_config(key)
+    Settings.save_device_setting(key, 'theme', 'dark')
+
+    # Low-level config access (module-level)
+    from trcc.conf import load_config, save_config
 """
 from __future__ import annotations
 
@@ -71,144 +76,125 @@ def save_config(config: dict):
 
 
 # =========================================================================
-# Resolution persistence
-# =========================================================================
-
-def get_saved_resolution() -> tuple[int, int]:
-    """Get saved LCD resolution, defaulting to (320, 320)."""
-    config = load_config()
-    res = config.get('resolution', [320, 320])
-    if isinstance(res, list) and len(res) == 2:
-        return (int(res[0]), int(res[1]))
-    return (320, 320)
-
-
-def save_resolution(width: int, height: int):
-    """Persist LCD resolution to config."""
-    config = load_config()
-    config['resolution'] = [width, height]
-    save_config(config)
-
-
-# =========================================================================
-# Temperature unit persistence
-# =========================================================================
-
-def get_saved_temp_unit() -> int:
-    """Get saved temperature unit. 0=Celsius, 1=Fahrenheit. Defaults to 0."""
-    return load_config().get('temp_unit', 0)
-
-
-def save_temp_unit(unit: int):
-    """Persist temperature unit to config. 0=Celsius, 1=Fahrenheit."""
-    config = load_config()
-    config['temp_unit'] = unit
-    save_config(config)
-
-
-# =========================================================================
-# Selected device persistence (CLI device selection)
-# =========================================================================
-
-def get_selected_device() -> Optional[str]:
-    """Get CLI-selected device path (e.g. '/dev/sg0'). Returns None if unset."""
-    return load_config().get('selected_device')
-
-
-def save_selected_device(device_path: str):
-    """Persist CLI-selected device path."""
-    config = load_config()
-    config['selected_device'] = device_path
-    save_config(config)
-
-
-# =========================================================================
-# Per-device configuration
-# =========================================================================
-
-def device_config_key(index: int, vid: int, pid: int) -> str:
-    """Build per-device config key, e.g. '0:87cd_70db'."""
-    return f"{index}:{vid:04x}_{pid:04x}"
-
-
-def get_device_config(key: str) -> dict:
-    """Get per-device config dict. Returns empty dict if not found."""
-    return load_config().get('devices', {}).get(key, {})
-
-
-def save_device_setting(key: str, setting: str, value):
-    """Save a single setting for a device."""
-    config = load_config()
-    devices = config.setdefault('devices', {})
-    dev_cfg = devices.setdefault(key, {})
-    dev_cfg[setting] = value
-    save_config(config)
-
-
-# =========================================================================
-# Format preferences (persist across theme changes)
-# =========================================================================
-
-def get_format_prefs() -> dict:
-    """Get saved format preferences. Keys: time_format, date_format, temp_unit."""
-    return load_config().get('format_prefs', {})
-
-
-def save_format_pref(key: str, value: int):
-    """Save a single format preference (e.g. time_format=1 for 12h)."""
-    config = load_config()
-    prefs = config.setdefault('format_prefs', {})
-    prefs[key] = value
-    save_config(config)
-
-
-def apply_format_prefs(overlay_config: dict) -> dict:
-    """Apply saved format prefs to an overlay config dict.
-
-    Theme DC defines element layout; user prefs override format fields.
-    Each element cherry-picks the relevant pref for its metric type.
-    """
-    prefs = get_format_prefs()
-    if not prefs:
-        return overlay_config
-    for entry in overlay_config.values():
-        if not isinstance(entry, dict):
-            continue
-        metric = entry.get('metric', '')
-        if metric == 'time' and 'time_format' in prefs:
-            entry['time_format'] = prefs['time_format']
-        elif metric == 'date' and 'date_format' in prefs:
-            entry['date_format'] = prefs['date_format']
-        if 'temp_unit' in prefs and 'metric' in entry:
-            entry['temp_unit'] = prefs['temp_unit']
-    return overlay_config
-
-
-# =========================================================================
-# Resolution installation markers
-# =========================================================================
-
-def clear_installed_resolutions():
-    """Remove all resolution-installed markers (used by uninstall)."""
-    config = load_config()
-    config.pop("installed_resolutions", None)
-    save_config(config)
-
-
-# =========================================================================
-# Settings singleton
+# Settings class — all config operations + singleton
 # =========================================================================
 
 class Settings:
     """Application-wide settings singleton.
 
-    Components read from here instead of calling path helpers directly.
-    ``set_resolution()`` updates derived paths and persists to config.
+    Static methods provide config operations (device, format, resolution).
+    Instance holds resolved paths and current state.
     """
 
+    # --- Private persistence helpers (init-only / called by instance methods) ---
+
+    @staticmethod
+    def _get_saved_resolution() -> tuple[int, int]:
+        """Get saved LCD resolution, defaulting to (320, 320)."""
+        config = load_config()
+        res = config.get('resolution', [320, 320])
+        if isinstance(res, list) and len(res) == 2:
+            return (int(res[0]), int(res[1]))
+        return (320, 320)
+
+    @staticmethod
+    def _save_resolution(width: int, height: int):
+        """Persist LCD resolution to config."""
+        config = load_config()
+        config['resolution'] = [width, height]
+        save_config(config)
+
+    @staticmethod
+    def _get_saved_temp_unit() -> int:
+        """Get saved temperature unit. 0=Celsius, 1=Fahrenheit. Defaults to 0."""
+        return load_config().get('temp_unit', 0)
+
+    @staticmethod
+    def _save_temp_unit(unit: int):
+        """Persist temperature unit to config. 0=Celsius, 1=Fahrenheit."""
+        config = load_config()
+        config['temp_unit'] = unit
+        save_config(config)
+
+    # --- Public static methods (device config, format prefs, etc.) ---
+
+    @staticmethod
+    def get_selected_device() -> Optional[str]:
+        """Get CLI-selected device path (e.g. '/dev/sg0'). Returns None if unset."""
+        return load_config().get('selected_device')
+
+    @staticmethod
+    def save_selected_device(device_path: str):
+        """Persist CLI-selected device path."""
+        config = load_config()
+        config['selected_device'] = device_path
+        save_config(config)
+
+    @staticmethod
+    def device_config_key(index: int, vid: int, pid: int) -> str:
+        """Build per-device config key, e.g. '0:87cd_70db'."""
+        return f"{index}:{vid:04x}_{pid:04x}"
+
+    @staticmethod
+    def get_device_config(key: str) -> dict:
+        """Get per-device config dict. Returns empty dict if not found."""
+        return load_config().get('devices', {}).get(key, {})
+
+    @staticmethod
+    def save_device_setting(key: str, setting: str, value):
+        """Save a single setting for a device."""
+        config = load_config()
+        devices = config.setdefault('devices', {})
+        dev_cfg = devices.setdefault(key, {})
+        dev_cfg[setting] = value
+        save_config(config)
+
+    @staticmethod
+    def get_format_prefs() -> dict:
+        """Get saved format preferences. Keys: time_format, date_format, temp_unit."""
+        return load_config().get('format_prefs', {})
+
+    @staticmethod
+    def save_format_pref(key: str, value: int):
+        """Save a single format preference (e.g. time_format=1 for 12h)."""
+        config = load_config()
+        prefs = config.setdefault('format_prefs', {})
+        prefs[key] = value
+        save_config(config)
+
+    @staticmethod
+    def apply_format_prefs(overlay_config: dict) -> dict:
+        """Apply saved format prefs to an overlay config dict.
+
+        Theme DC defines element layout; user prefs override format fields.
+        Each element cherry-picks the relevant pref for its metric type.
+        """
+        prefs = Settings.get_format_prefs()
+        if not prefs:
+            return overlay_config
+        for entry in overlay_config.values():
+            if not isinstance(entry, dict):
+                continue
+            metric = entry.get('metric', '')
+            if metric == 'time' and 'time_format' in prefs:
+                entry['time_format'] = prefs['time_format']
+            elif metric == 'date' and 'date_format' in prefs:
+                entry['date_format'] = prefs['date_format']
+            if 'temp_unit' in prefs and 'metric' in entry:
+                entry['temp_unit'] = prefs['temp_unit']
+        return overlay_config
+
+    @staticmethod
+    def clear_installed_resolutions():
+        """Remove all resolution-installed markers (used by uninstall)."""
+        config = load_config()
+        config.pop("installed_resolutions", None)
+        save_config(config)
+
+    # --- Instance methods and properties ---
+
     def __init__(self) -> None:
-        # Resolution (from saved config)
-        w, h = get_saved_resolution()
+        w, h = Settings._get_saved_resolution()
         self._width = w
         self._height = h
 
@@ -218,7 +204,7 @@ class Settings:
         self.masks_dir: Optional[Path] = None
 
         # User preferences
-        self.temp_unit: int = get_saved_temp_unit()
+        self.temp_unit: int = Settings._get_saved_temp_unit()
 
         # Static paths
         self.user_data_dir = Path(USER_DATA_DIR)
@@ -249,12 +235,12 @@ class Settings:
         self._height = height
         self._resolve_paths()
         if persist:
-            save_resolution(width, height)
+            Settings._save_resolution(width, height)
 
     def set_temp_unit(self, unit: int) -> None:
         """Set temperature unit (0=Celsius, 1=Fahrenheit) and persist."""
         self.temp_unit = unit
-        save_temp_unit(unit)
+        Settings._save_temp_unit(unit)
 
     def _resolve_paths(self) -> None:
         """Resolve theme/web/mask directories for current resolution."""

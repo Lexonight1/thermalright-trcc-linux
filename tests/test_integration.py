@@ -46,7 +46,7 @@ class TestDetectToSend(unittest.TestCase):
     def test_detect_init_send(self, _, mock_detect, mock_run, mock_sg):
         """detect_devices → LCDDriver(path) → send_frame goes through all layers."""
         from trcc.device_lcd import LCDDriver
-        from trcc.device_scsi import _get_frame_chunks
+        from trcc.device_scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -68,7 +68,7 @@ class TestDetectToSend(unittest.TestCase):
 
         # poll(read) + init(write) + frame chunks(write)
         # sg_raw calls: 1 read (poll) + 1 write (init) + N chunk writes
-        chunks = _get_frame_chunks(320, 320)
+        chunks = ScsiDevice._get_frame_chunks(320, 320)
         expected_calls = 1 + 1 + len(chunks)  # poll + init + chunks
         self.assertEqual(mock_run.call_count, expected_calls)
 
@@ -163,8 +163,8 @@ class TestCLIResumePipeline(unittest.TestCase):
 
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.device_detector.DeviceDetector.detect")
-    @patch("trcc.conf.get_device_config")
-    @patch("trcc.conf.device_config_key")
+    @patch("trcc.conf.Settings.get_device_config")
+    @patch("trcc.conf.Settings.device_config_key")
     def test_resume_with_saved_theme(self, mock_key, mock_cfg, mock_detect,
                                      mock_get_protocol):
         """resume() sends last theme with brightness and rotation applied."""
@@ -201,8 +201,8 @@ class TestCLIResumePipeline(unittest.TestCase):
         self.assertEqual(result, 1)
 
     @patch("trcc.device_detector.DeviceDetector.detect")
-    @patch("trcc.conf.get_device_config")
-    @patch("trcc.conf.device_config_key")
+    @patch("trcc.conf.Settings.get_device_config")
+    @patch("trcc.conf.Settings.device_config_key")
     def test_resume_no_saved_theme(self, mock_key, mock_cfg, mock_detect):
         """resume() with no saved theme returns 1."""
         from trcc.cli import resume
@@ -228,7 +228,7 @@ class TestCLIDetectPipeline(unittest.TestCase):
         dev = _make_device()
         mock_detect.return_value = [dev]
 
-        with patch("trcc.conf.get_selected_device", return_value="/dev/sg0"):
+        with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"):
             result = detect(show_all=True)
         self.assertEqual(result, 0)
 
@@ -252,7 +252,7 @@ class TestCLIDetectPipeline(unittest.TestCase):
         ]
         mock_detect.return_value = devs
 
-        with patch("trcc.conf.get_selected_device", return_value="/dev/sg0"):
+        with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"):
             result = detect(show_all=True)
         self.assertEqual(result, 0)
 
@@ -310,7 +310,7 @@ class TestMultiResolution(unittest.TestCase):
     def test_480x480_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """480x480 produces correct frame size and chunk count."""
         from trcc.device_lcd import LCDDriver
-        from trcc.device_scsi import _get_frame_chunks
+        from trcc.device_scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -324,7 +324,7 @@ class TestMultiResolution(unittest.TestCase):
         frame = driver.create_solid_color(0, 255, 0)
         self.assertEqual(len(frame), 480 * 480 * 2)
 
-        chunks = _get_frame_chunks(480, 480)
+        chunks = ScsiDevice._get_frame_chunks(480, 480)
         total = sum(s for _, s in chunks)
         self.assertEqual(total, 480 * 480 * 2)
         # 480*480*2 = 460800, ceil(460800/65536) = 8 chunks
@@ -337,7 +337,7 @@ class TestMultiResolution(unittest.TestCase):
     def test_240x240_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """240x240 produces correct frame size and chunk count."""
         from trcc.device_lcd import LCDDriver
-        from trcc.device_scsi import _get_frame_chunks
+        from trcc.device_scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -351,7 +351,7 @@ class TestMultiResolution(unittest.TestCase):
         frame = driver.create_solid_color(0, 0, 255)
         self.assertEqual(len(frame), 240 * 240 * 2)
 
-        chunks = _get_frame_chunks(240, 240)
+        chunks = ScsiDevice._get_frame_chunks(240, 240)
         total = sum(s for _, s in chunks)
         self.assertEqual(total, 240 * 240 * 2)
         # 240*240*2 = 115200, ceil(115200/65536) = 2 chunks
@@ -525,9 +525,9 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
         """_build_header produces 20-byte header with valid CRC32."""
         import binascii
 
-        from trcc.device_scsi import _build_header
+        from trcc.device_scsi import ScsiDevice
 
-        header = _build_header(0xF5, 0xE100)
+        header = ScsiDevice._build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)
 
         # First 4 bytes = cmd (little-endian)
@@ -545,9 +545,9 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
 
     def test_frame_chunk_headers_unique(self):
         """Each frame chunk has a unique command with incrementing index."""
-        from trcc.device_scsi import _get_frame_chunks
+        from trcc.device_scsi import ScsiDevice
 
-        chunks = _get_frame_chunks(320, 320)
+        chunks = ScsiDevice._get_frame_chunks(320, 320)
         cmds = [cmd for cmd, _ in chunks]
 
         # All commands should be unique

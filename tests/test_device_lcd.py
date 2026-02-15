@@ -30,19 +30,19 @@ class TestLCDDriverHeaderCRC(unittest.TestCase):
     """Test _build_header and _crc32 (delegated to scsi_device)."""
 
     def test_crc32(self):
-        from trcc.device_scsi import _crc32
+        from trcc.device_scsi import ScsiDevice
         data = b'\x01\x00\x00\x00' + b'\x00' * 8 + b'\x00\x02\x00\x00'
         expected = binascii.crc32(data) & 0xFFFFFFFF
-        self.assertEqual(_crc32(data), expected)
+        self.assertEqual(ScsiDevice._crc32(data), expected)
 
     def test_build_header_length(self):
-        from trcc.device_scsi import _build_header
-        header = _build_header(0x01, 512)
+        from trcc.device_scsi import ScsiDevice
+        header = ScsiDevice._build_header(0x01, 512)
         self.assertEqual(len(header), 20)
 
     def test_build_header_structure(self):
-        from trcc.device_scsi import _build_header
-        header = _build_header(0x42, 1024)
+        from trcc.device_scsi import ScsiDevice
+        header = ScsiDevice._build_header(0x42, 1024)
 
         cmd = struct.unpack_from('<I', header, 0)[0]
         size = struct.unpack_from('<I', header, 12)[0]
@@ -133,8 +133,8 @@ class TestLCDDriverFrameOps(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             driver.create_solid_color(0, 0, 0)
 
-    @patch('trcc.device_lcd._scsi_write', return_value=True)
-    @patch('trcc.device_lcd._get_frame_chunks', return_value=[(0x10, 100)])
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write', return_value=True)
+    @patch('trcc.device_scsi.ScsiDevice._get_frame_chunks', return_value=[(0x10, 100)])
     def test_send_frame_pads_short_data(self, mock_chunks, mock_write):
         driver = self._make_driver()
         driver.send_frame(b'\x00' * 50)
@@ -188,36 +188,36 @@ class TestLCDDriverScsiIO(unittest.TestCase):
     @patch('trcc.data_repository.SysUtils.require_sg_raw')
     @patch('trcc.device_scsi.subprocess.run')
     def test_scsi_read_success(self, mock_run, _):
-        from trcc.device_scsi import _scsi_read
+        from trcc.device_scsi import ScsiDevice
         mock_run.return_value = MagicMock(returncode=0, stdout=b'\xDE\xAD')
-        result = _scsi_read('/dev/sg0', b'\x01\x02', 256)
+        result = ScsiDevice._scsi_read('/dev/sg0', b'\x01\x02', 256)
         self.assertEqual(result, b'\xDE\xAD')
         mock_run.assert_called_once()
 
     @patch('trcc.data_repository.SysUtils.require_sg_raw')
     @patch('trcc.device_scsi.subprocess.run')
     def test_scsi_read_failure(self, mock_run, _):
-        from trcc.device_scsi import _scsi_read
+        from trcc.device_scsi import ScsiDevice
         mock_run.return_value = MagicMock(returncode=1, stdout=b'')
-        result = _scsi_read('/dev/sg0', b'\x01', 128)
+        result = ScsiDevice._scsi_read('/dev/sg0', b'\x01', 128)
         self.assertEqual(result, b'')
 
     @patch('trcc.data_repository.SysUtils.require_sg_raw')
     @patch('trcc.device_scsi.subprocess.run')
     def test_scsi_write_success(self, mock_run, _):
-        from trcc.device_scsi import _build_header, _scsi_write
+        from trcc.device_scsi import ScsiDevice
         mock_run.return_value = MagicMock(returncode=0)
-        header = _build_header(0x101F5, 100)
-        result = _scsi_write('/dev/sg0', header, b'\x00' * 100)
+        header = ScsiDevice._build_header(0x101F5, 100)
+        result = ScsiDevice._scsi_write('/dev/sg0', header, b'\x00' * 100)
         self.assertTrue(result)
 
     @patch('trcc.data_repository.SysUtils.require_sg_raw')
     @patch('trcc.device_scsi.subprocess.run')
     def test_scsi_write_failure(self, mock_run, _):
-        from trcc.device_scsi import _build_header, _scsi_write
+        from trcc.device_scsi import ScsiDevice
         mock_run.return_value = MagicMock(returncode=1)
-        header = _build_header(0x101F5, 100)
-        result = _scsi_write('/dev/sg0', header, b'\x00' * 100)
+        header = ScsiDevice._build_header(0x101F5, 100)
+        result = ScsiDevice._scsi_write('/dev/sg0', header, b'\x00' * 100)
         self.assertFalse(result)
 
 
@@ -233,8 +233,8 @@ class TestLCDDriverInitDevice(unittest.TestCase):
         driver.initialized = False
         return driver
 
-    @patch('trcc.device_lcd._scsi_write', return_value=True)
-    @patch('trcc.device_lcd._scsi_read', return_value=b'')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write', return_value=True)
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read', return_value=b'')
     def test_init_device_calls_poll_then_init(self, mock_read, mock_write):
         driver = self._make_driver()
         driver.init_device()
@@ -242,8 +242,8 @@ class TestLCDDriverInitDevice(unittest.TestCase):
         mock_write.assert_called_once()
         self.assertTrue(driver.initialized)
 
-    @patch('trcc.device_lcd._scsi_write', return_value=True)
-    @patch('trcc.device_lcd._scsi_read', return_value=b'')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write', return_value=True)
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read', return_value=b'')
     def test_init_device_skips_if_already_initialized(self, mock_read, mock_write):
         driver = self._make_driver()
         driver.initialized = True

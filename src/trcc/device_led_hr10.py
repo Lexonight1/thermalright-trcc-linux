@@ -201,162 +201,159 @@ class Hr10Display:
             for i in range(LED_COUNT)
         ]
 
+    # =====================================================================
+    # SSD Thermal Profiles
+    # =====================================================================
+    # Each profile defines color gradient stops and throttle threshold.
+    # Gradient: list of (temp_c, (R, G, B)) — linearly interpolated.
+    # throttle_c: temperature where the drive begins thermal throttling.
 
+    SSD_PROFILES: Dict[str, dict] = {
+        "samsung-9100-pro": {
+            "name": "Samsung 9100 PRO",
+            "gradient": [
+                (25, (0, 100, 255)),     # Cool blue
+                (40, (0, 200, 200)),     # Teal
+                (55, (0, 255, 100)),     # Green
+                (65, (255, 200, 0)),     # Warm yellow
+                (75, (255, 100, 0)),     # Orange
+                (80, (255, 0, 0)),       # Red — throttle threshold
+            ],
+            "throttle_c": 80,
+        },
+        "samsung-980": {
+            "name": "Samsung 980",
+            "gradient": [
+                (25, (0, 100, 255)),
+                (40, (0, 200, 200)),
+                (55, (0, 255, 100)),
+                (65, (255, 200, 0)),
+                (70, (255, 100, 0)),
+                (75, (255, 0, 0)),
+            ],
+            "throttle_c": 75,
+        },
+        "default": {
+            "name": "Generic NVMe",
+            "gradient": [
+                (25, (0, 100, 255)),
+                (40, (0, 200, 200)),
+                (55, (0, 255, 100)),
+                (65, (255, 200, 0)),
+                (75, (255, 100, 0)),
+                (80, (255, 0, 0)),
+            ],
+            "throttle_c": 80,
+        },
+    }
 
-# =========================================================================
-# SSD Thermal Profiles
-# =========================================================================
-# Each profile defines color gradient stops and throttle threshold.
-# Gradient: list of (temp_c, (R, G, B)) — linearly interpolated between stops.
-# throttle_c: temperature where the drive begins thermal throttling.
+    # =====================================================================
+    # NVMe Temperature Helpers
+    # =====================================================================
 
-SSD_PROFILES: Dict[str, dict] = {
-    "samsung-9100-pro": {
-        "name": "Samsung 9100 PRO",
-        "gradient": [
-            (25, (0, 100, 255)),     # Cool blue
-            (40, (0, 200, 200)),     # Teal
-            (55, (0, 255, 100)),     # Green
-            (65, (255, 200, 0)),     # Warm yellow
-            (75, (255, 100, 0)),     # Orange
-            (80, (255, 0, 0)),       # Red — throttle threshold
-        ],
-        "throttle_c": 80,
-    },
-    "samsung-980": {
-        "name": "Samsung 980",
-        "gradient": [
-            (25, (0, 100, 255)),
-            (40, (0, 200, 200)),
-            (55, (0, 255, 100)),
-            (65, (255, 200, 0)),
-            (70, (255, 100, 0)),
-            (75, (255, 0, 0)),
-        ],
-        "throttle_c": 75,
-    },
-    "default": {
-        "name": "Generic NVMe",
-        "gradient": [
-            (25, (0, 100, 255)),
-            (40, (0, 200, 200)),
-            (55, (0, 255, 100)),
-            (65, (255, 200, 0)),
-            (75, (255, 100, 0)),
-            (80, (255, 0, 0)),
-        ],
-        "throttle_c": 80,
-    },
-}
+    @staticmethod
+    def find_nvme_hwmon(model_substr: str = "9100") -> Optional[str]:
+        """Find the hwmon path for an NVMe drive by model name.
 
+        Scans /sys/class/hwmon/hwmon*/name for "nvme", then checks
+        device/model for model_substr.
 
-# =========================================================================
-# NVMe Temperature Helpers
-# =========================================================================
+        Returns:
+            hwmon path (e.g. "/sys/class/hwmon/hwmon1"), or None.
+        """
+        hwmon_base = Path("/sys/class/hwmon")
+        if not hwmon_base.exists():
+            return None
 
-def find_nvme_hwmon(model_substr: str = "9100") -> Optional[str]:
-    """Find the hwmon path for an NVMe drive by model name.
-
-    Scans /sys/class/hwmon/hwmon*/name for "nvme", then checks
-    device/model for model_substr.
-
-    Returns:
-        hwmon path (e.g. "/sys/class/hwmon/hwmon1"), or None.
-    """
-    hwmon_base = Path("/sys/class/hwmon")
-    if not hwmon_base.exists():
-        return None
-
-    nvme_hwmons = []
-    for entry in sorted(hwmon_base.iterdir()):
-        name_file = entry / "name"
-        if not name_file.exists():
-            continue
-        try:
-            name = name_file.read_text().strip()
-        except OSError:
-            continue
-        if name != "nvme":
-            continue
-        nvme_hwmons.append(entry)
-
-    # Try to match model substring
-    for hwmon in nvme_hwmons:
-        model_file = hwmon / "device" / "model"
-        if model_file.exists():
+        nvme_hwmons = []
+        for entry in sorted(hwmon_base.iterdir()):
+            name_file = entry / "name"
+            if not name_file.exists():
+                continue
             try:
-                model = model_file.read_text().strip()
-                if model_substr in model:
-                    return str(hwmon)
+                name = name_file.read_text().strip()
             except OSError:
                 continue
+            if name != "nvme":
+                continue
+            nvme_hwmons.append(entry)
 
-    # Fallback: first NVMe hwmon
-    if nvme_hwmons:
-        return str(nvme_hwmons[0])
+        # Try to match model substring
+        for hwmon in nvme_hwmons:
+            model_file = hwmon / "device" / "model"
+            if model_file.exists():
+                try:
+                    model = model_file.read_text().strip()
+                    if model_substr in model:
+                        return str(hwmon)
+                except OSError:
+                    continue
 
-    return None
+        # Fallback: first NVMe hwmon
+        if nvme_hwmons:
+            return str(nvme_hwmons[0])
 
-
-def read_temp_celsius(hwmon_path: str) -> Optional[float]:
-    """Read temperature in Celsius from hwmon sysfs.
-
-    Args:
-        hwmon_path: Path to hwmon directory (e.g. "/sys/class/hwmon/hwmon1").
-
-    Returns:
-        Temperature in Celsius, or None on error.
-    """
-    try:
-        raw = Path(hwmon_path, "temp1_input").read_text().strip()
-        return int(raw) / 1000.0
-    except (OSError, ValueError):
         return None
 
+    @staticmethod
+    def read_temp_celsius(hwmon_path: str) -> Optional[float]:
+        """Read temperature in Celsius from hwmon sysfs.
 
+        Args:
+            hwmon_path: Path to hwmon directory (e.g. "/sys/class/hwmon/hwmon1").
 
-def breathe_brightness(
-    temp_c: float, throttle_c: float, phase: float
-) -> float:
-    """Compute breathe brightness multiplier (0.0–1.0).
+        Returns:
+            Temperature in Celsius, or None on error.
+        """
+        try:
+            raw = Path(hwmon_path, "temp1_input").read_text().strip()
+            return int(raw) / 1000.0
+        except (OSError, ValueError):
+            return None
 
-    - Below 40°C: no breathing, steady 100%
-    - 40°C–throttle: sine-wave breathe, period decreases from 4s to 0.5s
-    - Above throttle: fast blink (0.25s period), sharp on/off
+    @staticmethod
+    def breathe_brightness(
+        temp_c: float, throttle_c: float, phase: float
+    ) -> float:
+        """Compute breathe brightness multiplier (0.0-1.0).
 
-    Args:
-        temp_c: Current temperature in Celsius.
-        throttle_c: Throttle threshold in Celsius.
-        phase: Current time in seconds (monotonic).
+        - Below 40C: no breathing, steady 100%
+        - 40C-throttle: sine-wave breathe, period decreases from 4s to 0.5s
+        - Above throttle: fast blink (0.25s period), sharp on/off
 
-    Returns:
-        Brightness multiplier 0.0–1.0.
-    """
-    if temp_c < 40:
-        return 1.0
+        Args:
+            temp_c: Current temperature in Celsius.
+            throttle_c: Throttle threshold in Celsius.
+            phase: Current time in seconds (monotonic).
 
-    if temp_c >= throttle_c:
-        # Fast blink: 0.25s period, square wave
-        period = 0.25
-        return 1.0 if (phase % period) < (period / 2) else 0.15
+        Returns:
+            Brightness multiplier 0.0-1.0.
+        """
+        if temp_c < 40:
+            return 1.0
 
-    # Breathe zone: 40°C → throttle_c
-    # Period: 4.0s at 40°C → 0.5s at throttle_c
-    t = (temp_c - 40.0) / (throttle_c - 40.0)
-    period = 4.0 - t * 3.5  # 4.0 → 0.5
-    # Smooth sine breathe (min brightness 30%)
-    wave = (math.sin(2 * math.pi * phase / period) + 1.0) / 2.0
-    return 0.3 + 0.7 * wave
+        if temp_c >= throttle_c:
+            # Fast blink: 0.25s period, square wave
+            period = 0.25
+            return 1.0 if (phase % period) < (period / 2) else 0.15
 
+        # Breathe zone: 40C -> throttle_c
+        # Period: 4.0s at 40C -> 0.5s at throttle_c
+        t = (temp_c - 40.0) / (throttle_c - 40.0)
+        period = 4.0 - t * 3.5  # 4.0 -> 0.5
+        # Smooth sine breathe (min brightness 30%)
+        wave = (math.sin(2 * math.pi * phase / period) + 1.0) / 2.0
+        return 0.3 + 0.7 * wave
 
-def select_profile(model_name: str) -> dict:
-    """Select the best SSD thermal profile for a given model name."""
-    model_lower = model_name.lower()
-    if "9100" in model_lower:
-        return SSD_PROFILES["samsung-9100-pro"]
-    if "980" in model_lower:
-        return SSD_PROFILES["samsung-980"]
-    return SSD_PROFILES["default"]
+    @staticmethod
+    def select_profile(model_name: str) -> dict:
+        """Select the best SSD thermal profile for a given model name."""
+        model_lower = model_name.lower()
+        if "9100" in model_lower:
+            return Hr10Display.SSD_PROFILES["samsung-9100-pro"]
+        if "980" in model_lower:
+            return Hr10Display.SSD_PROFILES["samsung-980"]
+        return Hr10Display.SSD_PROFILES["default"]
 
 
 # =========================================================================
@@ -380,17 +377,17 @@ def run_hr10_daemon(
     Returns:
         Exit code (0 = clean shutdown, 1 = error).
     """
-    from .device_factory import create_usb_transport
+    from .device_factory import DeviceProtocolFactory
     from .device_led import (
         LED_PID,
         LED_VID,
+        ColorEngine,
         LedHidSender,
         LedPacketBuilder,
-        color_for_value,
     )
 
     # Find NVMe drive
-    hwmon_path = find_nvme_hwmon(model_substr)
+    hwmon_path = Hr10Display.find_nvme_hwmon(model_substr)
     if hwmon_path is None:
         print(f"Error: No NVMe drive found matching '{model_substr}'")
         print("Available hwmon devices:")
@@ -417,14 +414,14 @@ def run_hr10_daemon(
     print(f"NVMe drive: {model_name} ({hwmon_path})")
 
     # Select thermal profile
-    profile = select_profile(model_name)
+    profile = Hr10Display.select_profile(model_name)
     gradient = profile["gradient"]
     throttle_c = profile["throttle_c"]
     print(f"Thermal profile: {profile['name']} (throttle: {throttle_c}°C)")
 
     # Open USB transport (uses shared helper — no duplication)
     try:
-        transport = create_usb_transport(LED_VID, LED_PID)
+        transport = DeviceProtocolFactory.create_usb_transport(LED_VID, LED_PID)
     except ImportError as e:
         print(f"Error: {e}")
         return 1
@@ -482,7 +479,7 @@ def run_hr10_daemon(
 
             # Read temperature (at most once per second)
             if last_temp_c is None or (now - last_temp_read) >= temp_read_interval:
-                temp_c = read_temp_celsius(hwmon_path)
+                temp_c = Hr10Display.read_temp_celsius(hwmon_path)
                 if temp_c is not None:
                     last_temp_c = temp_c
                     last_temp_read = now
@@ -504,8 +501,8 @@ def run_hr10_daemon(
                 text_changed = True
 
             # Compute thermal color and breathe brightness
-            thermal_color = color_for_value(temp_c, gradient)
-            breathe_mult = breathe_brightness(temp_c, throttle_c, phase)
+            thermal_color = ColorEngine.color_for_value(temp_c, gradient)
+            breathe_mult = Hr10Display.breathe_brightness(temp_c, throttle_c, phase)
             effective_brightness = int(brightness * breathe_mult)
 
             text = f"{display_temp:.0f}{unit_suffix}"

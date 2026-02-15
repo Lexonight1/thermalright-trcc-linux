@@ -35,7 +35,7 @@ from trcc.core.models import (
 # Patches to avoid file I/O and downloads during LCDDeviceController tests
 LCD_SVC_PATCHES = [
     ('trcc.data_repository.DataManager.ensure_all', None),
-    ('trcc.conf.save_resolution', None),
+    ('trcc.conf.Settings._save_resolution', None),
 ]
 
 
@@ -472,7 +472,7 @@ class TestLCDDeviceController(unittest.TestCase):
 
         self.patches = [
             patch('trcc.data_repository.DataManager.ensure_all'),
-            patch('trcc.conf.save_resolution'),
+            patch('trcc.conf.Settings._save_resolution'),
         ]
         for p in self.patches:
             p.start()
@@ -1175,7 +1175,7 @@ class TestCreateController(unittest.TestCase):
             (data_dir / 'theme320320').mkdir()
 
             with patch('trcc.data_repository.DataManager.ensure_all'), \
-                 patch('trcc.conf.save_resolution'):
+                 patch('trcc.conf.Settings._save_resolution'):
                 ctrl = create_controller(data_dir)
                 self.assertIsInstance(ctrl, LCDDeviceController)
                 ctrl.cleanup()

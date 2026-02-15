@@ -110,6 +110,22 @@ class SegmentDisplay(ABC):
     ) -> List[bool]:
         """Compute boolean LED mask from sensor metrics and rotation phase."""
 
+    def phase_source(self, phase: int) -> str:
+        """Return 'cpu', 'gpu', or 'other' for a given phase.
+
+        Derived from the first metric key in PHASES. Styles without
+        PHASES (single-phase or non-CPU/GPU) return 'other'.
+        """
+        phases = getattr(self, 'PHASES', None)
+        if not phases or phase >= len(phases):
+            return "other"
+        first_key = phases[phase][0]
+        if first_key.startswith("cpu"):
+            return "cpu"
+        if first_key.startswith("gpu"):
+            return "gpu"
+        return "other"
+
     # ── Shared encoding logic ──────────────────────────────────────
 
     def _encode_3digit(

@@ -196,11 +196,11 @@ class DeviceService:
         so this is only needed for pre-handshake discovery.
         """
         from ..core.models import fbl_to_resolution
-        from ..device_scsi import _build_header, _scsi_read
+        from ..device_scsi import ScsiDevice
 
         try:
-            poll_header = _build_header(0xF5, 0xE100)
-            response = _scsi_read(device_path, poll_header[:16], 0xE100)
+            poll_header = ScsiDevice._build_header(0xF5, 0xE100)
+            response = ScsiDevice._scsi_read(device_path, poll_header[:16], 0xE100)
             if not response:
                 if verbose:
                     log.warning("Empty poll response from %s", device_path)
@@ -226,8 +226,8 @@ class DeviceService:
     def get_protocol_info(self) -> Optional[Any]:
         """Get protocol/backend info for the selected device."""
         try:
-            from ..device_factory import get_protocol_info
+            from ..device_factory import DeviceProtocolFactory
 
-            return get_protocol_info(self._selected)
+            return DeviceProtocolFactory.get_protocol_info(self._selected)
         except ImportError:
             return None

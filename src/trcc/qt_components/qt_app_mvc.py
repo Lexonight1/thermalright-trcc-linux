@@ -34,12 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..conf import (
-    device_config_key,
-    get_device_config,
-    save_device_setting,
-    settings,
-)
+from ..conf import Settings, settings
 
 # Import MVC core
 from ..core.controllers import LEDDeviceController, create_controller
@@ -502,6 +497,8 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.overlay.set_temp_unit(temp_int)
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
+        if self._led_controller:
+            self._led_controller.led.set_seg_temp_unit(unit)
         settings.set_temp_unit(temp_int)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
@@ -801,7 +798,7 @@ class TRCCMainWindowMVC(QMainWindow):
         """Handle device selection — restore per-device config."""
         log.info("Device selected: %s [%04X:%04X] %s %s",
                  device.path, device.vid, device.pid, device.protocol, device.resolution)
-        self._active_device_key = device_config_key(
+        self._active_device_key = Settings.device_config_key(
             device.device_index, device.vid, device.pid)
         self.uc_preview.set_status(f"Device: {device.path}")
 
@@ -855,7 +852,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._on_resolution_changed(w, h)
 
         # Restore per-device brightness and rotation
-        cfg = get_device_config(self._active_device_key)
+        cfg = Settings.get_device_config(self._active_device_key)
         brightness_level = cfg.get('brightness_level', 2)
         rotation_index = cfg.get('rotation', 0) // 90
 
@@ -1083,7 +1080,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.themes.select_theme(theme)
         self._load_theme_overlay_config(path)
         if self._active_device_key:
-            save_device_setting(self._active_device_key, 'theme_path', str(path))
+            Settings.save_device_setting(self._active_device_key, 'theme_path', str(path))
 
     def _on_local_theme_clicked(self, theme_info):
         """Forward local theme selection to controller."""
@@ -1112,7 +1109,7 @@ class TRCCMainWindowMVC(QMainWindow):
             theme = ThemeInfo.from_video(video_path, preview_path if preview_path.exists() else None)
             self.controller.themes.select_theme(theme)
             if self._active_device_key:
-                save_device_setting(self._active_device_key, 'theme_path',
+                Settings.save_device_setting(self._active_device_key, 'theme_path',
                                     str(video_path))
 
     def _on_mask_clicked(self, mask_info):
@@ -1141,7 +1138,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Save overlay config per-device
         if self._active_device_key:
-            save_device_setting(self._active_device_key, 'overlay', {
+            Settings.save_device_setting(self._active_device_key, 'overlay', {
                 'enabled': self.uc_theme_setting.overlay_grid.overlay_enabled,
                 'config': element_data,
             })
@@ -1338,7 +1335,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_theme_local.load_themes()
             # Persist saved theme path for --last-one resume
             if self._active_device_key and self.controller.current_theme_path:
-                save_device_setting(self._active_device_key, 'theme_path',
+                Settings.save_device_setting(self._active_device_key, 'theme_path',
                                     str(self.controller.current_theme_path))
 
     def _on_export_clicked(self):
@@ -1464,10 +1461,10 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Save overlay enabled state per-device
         if self._active_device_key:
-            cfg = get_device_config(self._active_device_key)
+            cfg = Settings.get_device_config(self._active_device_key)
             overlay = cfg.get('overlay', {})
             overlay['enabled'] = enabled
-            save_device_setting(self._active_device_key, 'overlay', overlay)
+            Settings.save_device_setting(self._active_device_key, 'overlay', overlay)
 
     def _on_screencast_params_changed(self, x, y, w, h):
         """Store screencast region coordinates for the capture loop."""
@@ -1543,7 +1540,7 @@ class TRCCMainWindowMVC(QMainWindow):
         # Persist carousel state per-device
         if self._active_device_key:
             themes = self.uc_theme_local.get_slideshow_themes()
-            save_device_setting(self._active_device_key, 'carousel', {
+            Settings.save_device_setting(self._active_device_key, 'carousel', {
                 'enabled': self.uc_theme_local.is_slideshow(),
                 'interval': self.uc_theme_local.get_slideshow_interval(),
                 'themes': [t.name for t in themes],
@@ -1762,6 +1759,10 @@ class TRCCMainWindowMVC(QMainWindow):
         # Sync saved sensor source to UI
         source = self._led_controller.led.state.temp_source
         self.uc_led_control.set_sensor_source(source)
+
+        # Sync saved temp unit to segment display
+        seg_unit = "F" if settings.temp_unit == 1 else "C"
+        self._led_controller.led.set_seg_temp_unit(seg_unit)
 
         self._show_view('led')
         self._led_active = True
@@ -2044,8 +2045,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         if overlay_config:
             # Apply user's saved format preferences (time/date/temp)
-            from ..conf import apply_format_prefs
-            apply_format_prefs(overlay_config)
+            Settings.apply_format_prefs(overlay_config)
 
             self.uc_theme_setting.set_overlay_enabled(True)
             self.uc_theme_setting.load_from_overlay_config(overlay_config)
@@ -2055,7 +2055,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
             # Persist to per-device config so overlay survives device re-selection
             if self._active_device_key:
-                save_device_setting(self._active_device_key, 'overlay', {
+                Settings.save_device_setting(self._active_device_key, 'overlay', {
                     'enabled': True,
                     'config': overlay_config,
                 })
@@ -2107,7 +2107,7 @@ class TRCCMainWindowMVC(QMainWindow):
         rotation = index * 90
         self.controller.set_rotation(rotation)
         if self._active_device_key:
-            save_device_setting(self._active_device_key, 'rotation', rotation)
+            Settings.save_device_setting(self._active_device_key, 'rotation', rotation)
         self.uc_preview.set_status(f"Rotation: {rotation}°")
 
     def _on_brightness_cycle(self):
@@ -2121,7 +2121,7 @@ class TRCCMainWindowMVC(QMainWindow):
         brightness = brightness_values[self._brightness_level]
         self.controller.set_brightness(brightness)
         if self._active_device_key:
-            save_device_setting(self._active_device_key, 'brightness_level',
+            Settings.save_device_setting(self._active_device_key, 'brightness_level',
                                 self._brightness_level)
         self.uc_preview.set_status(f"Brightness: L{self._brightness_level} ({brightness}%)")
 

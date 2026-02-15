@@ -33,13 +33,13 @@ from trcc.device_hid import (
     USB_BULK_ALIGNMENT,
     USB_CONFIGURATION,
     USB_INTERFACE,
+    HidDeviceManager,
     HidDeviceType2,
     HidDeviceType3,
     HidHandshakeInfo,
     UsbTransport,
     _ceil_to_512,
     find_hid_devices,
-    send_image_to_hid_device,
 )
 
 # Patch time.sleep globally for all tests in this module so handshake/frame
@@ -700,24 +700,23 @@ class TestType3FrameSend:
 
 
 # =========================================================================
-# send_image_to_hid_device — public API
+# HidDeviceManager.send_image — public API
 # =========================================================================
 
 class TestSendImageToHidDevice:
     """Test the high-level public API."""
 
     def setup_method(self):
-        """Clear global state between tests."""
-        import trcc.device_hid as mod
-        mod._initialized_transports.clear()
-        mod._device_handlers.clear()
+        """Clear class state between tests."""
+        HidDeviceManager._initialized_transports.clear()
+        HidDeviceManager._device_handlers.clear()
 
     def test_type2_first_call_does_handshake(self):
         transport = _make_mock_transport()
         transport.read.return_value = _make_type2_valid_response()
         transport.write.return_value = 512
 
-        result = send_image_to_hid_device(transport, b'\xFF' * 100, device_type=2)
+        result = HidDeviceManager.send_image(transport, b'\xFF' * 100, device_type=2)
         assert result is True
         # 1 write for init + 1 write for frame
         assert transport.write.call_count == 2
@@ -727,11 +726,11 @@ class TestSendImageToHidDevice:
         transport.read.return_value = _make_type2_valid_response()
         transport.write.return_value = 512
 
-        send_image_to_hid_device(transport, b'\xFF' * 100, device_type=2)
+        HidDeviceManager.send_image(transport, b'\xFF' * 100, device_type=2)
         transport.reset_mock()
         transport.write.return_value = 512
 
-        send_image_to_hid_device(transport, b'\xAA' * 100, device_type=2)
+        HidDeviceManager.send_image(transport, b'\xAA' * 100, device_type=2)
         # Only 1 write (frame), no handshake
         assert transport.write.call_count == 1
 
@@ -740,7 +739,7 @@ class TestSendImageToHidDevice:
         transport.read.return_value = _make_type3_valid_response()
         transport.write.return_value = TYPE3_FRAME_TOTAL
 
-        result = send_image_to_hid_device(transport, b'\xFF' * 100, device_type=3)
+        result = HidDeviceManager.send_image(transport, b'\xFF' * 100, device_type=3)
         assert result is True
         # 1 write for init + 1 write for frame
         assert transport.write.call_count == 2
@@ -754,17 +753,17 @@ class TestSendImageToHidDevice:
         ]
         transport.write.return_value = TYPE3_FRAME_TOTAL
 
-        send_image_to_hid_device(transport, b'\xFF' * 100, device_type=3)
+        HidDeviceManager.send_image(transport, b'\xFF' * 100, device_type=3)
         transport.reset_mock()
         transport.write.return_value = TYPE3_FRAME_TOTAL
         transport.read.return_value = b'\x00' * TYPE3_ACK_SIZE
 
-        send_image_to_hid_device(transport, b'\xAA' * 100, device_type=3)
+        HidDeviceManager.send_image(transport, b'\xAA' * 100, device_type=3)
         assert transport.write.call_count == 1  # frame only
 
     def test_invalid_device_type(self):
         transport = _make_mock_transport()
-        result = send_image_to_hid_device(transport, b'\xFF', device_type=99)
+        result = HidDeviceManager.send_image(transport, b'\xFF', device_type=99)
         assert result is False
 
     def test_handshake_failure_returns_false(self):
@@ -772,7 +771,7 @@ class TestSendImageToHidDevice:
         transport.read.return_value = b'\x00' * TYPE2_RESPONSE_SIZE  # bad response
         transport.write.return_value = 512
 
-        result = send_image_to_hid_device(transport, b'\xFF' * 100, device_type=2)
+        result = HidDeviceManager.send_image(transport, b'\xFF' * 100, device_type=2)
         assert result is False
 
     def test_handshake_failure_allows_retry(self):
@@ -787,18 +786,18 @@ class TestSendImageToHidDevice:
         transport.write.return_value = 512
 
         # First call fails (all 3 retries get bad response)
-        result1 = send_image_to_hid_device(transport, b'\xFF', device_type=2)
+        result1 = HidDeviceManager.send_image(transport, b'\xFF', device_type=2)
         assert result1 is False
 
         # Second call retries handshake and succeeds
-        result2 = send_image_to_hid_device(transport, b'\xFF', device_type=2)
+        result2 = HidDeviceManager.send_image(transport, b'\xFF', device_type=2)
         assert result2 is True
 
     def test_write_exception_returns_false(self):
         transport = _make_mock_transport()
         transport.write.side_effect = OSError("USB disconnected")
 
-        result = send_image_to_hid_device(transport, b'\xFF', device_type=2)
+        result = HidDeviceManager.send_image(transport, b'\xFF', device_type=2)
         assert result is False
 
 

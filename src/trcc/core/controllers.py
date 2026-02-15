@@ -659,6 +659,9 @@ class LEDController:
     def set_sensor_source(self, source: str) -> None:
         self._svc.set_sensor_source(source)
 
+    def set_seg_temp_unit(self, unit: str) -> None:
+        self._svc.set_seg_temp_unit(unit)
+
     def set_clock_format(self, is_24h: bool) -> None:
         self._svc.set_clock_format(is_24h)
 

@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.7"
+__version__ = "3.0.8"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -99,3 +99,8 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          data/logic separation. Covers AX120, PA120, AK120, LC1, LF8,
 #          LF12, LF10, CZ1, LC2, LF11, LF15. LEDService generalized for
 #          all digit-display styles (not just AX120). 2291 tests.
+# 3.0.8  - Fix LED segment display: °C/°F toggle now propagates to segment
+#          renderer, CPU/GPU sensor source selector now filters phase cycling
+#          (show only CPU or GPU instead of always both). OOP refactor: move
+#          loose functions into classes across 5 files (conf.py, device_scsi.py,
+#          device_led_hr10.py, device_factory.py, device_hid.py). 2290 tests.

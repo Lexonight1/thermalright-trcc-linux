@@ -291,7 +291,7 @@ class DebugReport:
 
     def _handshake_led(self, dev, sec: _Section) -> None:
         from trcc.device_factory import LedProtocol
-        from trcc.device_led import PM_TO_STYLE, LedHandshakeInfo
+        from trcc.device_led import LedHandshakeInfo, PmRegistry
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
         try:
@@ -302,7 +302,7 @@ class DebugReport:
                 return
 
             assert isinstance(info, LedHandshakeInfo)
-            known = "KNOWN" if info.pm in PM_TO_STYLE else "UNKNOWN"
+            known = "KNOWN" if info.pm in PmRegistry.PM_TO_STYLE else "UNKNOWN"
             style_info = ""
             if info.style:
                 style_info = (f", LEDs={info.style.led_count}, "

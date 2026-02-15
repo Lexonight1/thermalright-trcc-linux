@@ -42,16 +42,10 @@ class FakeDeviceInfo:
 # =========================================================================
 
 from trcc.device_factory import (  # noqa: E402
-    # New names
     DeviceProtocol,
     DeviceProtocolFactory,
-    # Backward-compatible aliases
-    DeviceSender,
-    DeviceSenderFactory,
     HidProtocol,
-    HidSender,
     ScsiProtocol,
-    ScsiSender,
 )
 
 # =========================================================================
@@ -120,13 +114,6 @@ class TestDeviceProtocolABC:
         s = HidProtocol(0x0416, 0x5302, 2)
         assert isinstance(s, DeviceProtocol)
 
-    def test_backward_compat_aliases(self):
-        """Old class names still work."""
-        assert DeviceSender is DeviceProtocol
-        assert ScsiSender is ScsiProtocol
-        assert HidSender is HidProtocol
-        assert DeviceSenderFactory is DeviceProtocolFactory
-
 
 # =========================================================================
 # Tests: Observer callbacks on DeviceProtocol
@@ -168,7 +155,7 @@ class TestObserverCallbacks:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device", return_value=True)
+    @patch("trcc.device_hid.HidDeviceManager.send_image", return_value=True)
     def test_hid_state_changed_on_transport_open(self, mock_send, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -276,7 +263,7 @@ class TestHidProtocol:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_send_creates_pyusb_transport(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -293,7 +280,7 @@ class TestHidProtocol:
     @patch("trcc.device_hid.PYUSB_AVAILABLE", False)
     @patch("trcc.device_hid.HIDAPI_AVAILABLE", True)
     @patch("trcc.device_hid.HidApiTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_send_falls_back_to_hidapi(self, mock_send_hid, MockHidApi, *_):
         mock_transport = MagicMock()
         MockHidApi.return_value = mock_transport
@@ -322,7 +309,7 @@ class TestHidProtocol:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_transport_reused_across_sends(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -343,7 +330,7 @@ class TestHidProtocol:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_close_closes_transport(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -475,7 +462,7 @@ class TestDeviceServiceFactoryWiring:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_hid_type2_routes_to_hid(self, mock_hid_send, MockPyUsb, hid_type2_device):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -490,7 +477,7 @@ class TestDeviceServiceFactoryWiring:
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.PyUsbTransport")
-    @patch("trcc.device_hid.send_image_to_hid_device")
+    @patch("trcc.device_hid.HidDeviceManager.send_image")
     def test_hid_type3_routes_to_hid(self, mock_hid_send, MockPyUsb, hid_type3_device):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -722,8 +709,7 @@ class TestProtocolInfo:
     """Test the get_protocol_info() GUI API."""
 
     def test_protocol_info_scsi_device(self, scsi_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(scsi_device)
+        info = DeviceProtocolFactory.get_protocol_info(scsi_device)
         assert info.protocol == "scsi"
         assert info.device_type == 1
         assert info.is_scsi is True
@@ -732,8 +718,7 @@ class TestProtocolInfo:
         assert "sg_raw" in info.active_backend or info.active_backend == "none"
 
     def test_protocol_info_hid_type2(self, hid_type2_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type2_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.protocol == "hid"
         assert info.device_type == 2
         assert info.is_hid is True
@@ -742,76 +727,66 @@ class TestProtocolInfo:
         assert "Type 2" in info.device_type_display
 
     def test_protocol_info_hid_type3(self, hid_type3_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type3_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type3_device)
         assert info.device_type == 3
         assert "Type 3" in info.device_type_display
         assert "ALi" in info.device_type_display
 
     def test_protocol_info_no_device(self):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(None)
+        info = DeviceProtocolFactory.get_protocol_info(None)
         assert info.protocol == "none"
         assert info.protocol_display == "No device"
         assert info.active_backend == "none"
 
     def test_protocol_info_has_backends_dict(self, scsi_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(scsi_device)
+        info = DeviceProtocolFactory.get_protocol_info(scsi_device)
         assert "sg_raw" in info.backends
         assert "pyusb" in info.backends
         assert "hidapi" in info.backends
         assert all(isinstance(v, bool) for v in info.backends.values())
 
     def test_has_backend_scsi(self, scsi_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(scsi_device)
+        info = DeviceProtocolFactory.get_protocol_info(scsi_device)
         # has_backend depends on sg_raw being installed
         assert info.has_backend == info.backends["sg_raw"]
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", True)
     @patch("trcc.device_hid.HIDAPI_AVAILABLE", False)
     def test_hid_active_backend_pyusb(self, hid_type2_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type2_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.active_backend == "pyusb"
         assert info.has_backend is True
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", False)
     @patch("trcc.device_hid.HIDAPI_AVAILABLE", True)
     def test_hid_active_backend_hidapi(self, hid_type3_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type3_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type3_device)
         assert info.active_backend == "hidapi"
         assert info.has_backend is True
 
     @patch("trcc.device_hid.PYUSB_AVAILABLE", False)
     @patch("trcc.device_hid.HIDAPI_AVAILABLE", False)
     def test_hid_no_backend(self, hid_type2_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type2_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.active_backend == "none"
         assert info.has_backend is False
 
     def test_get_backend_availability(self):
-        from trcc.device_factory import get_backend_availability
-        avail = get_backend_availability()
+        avail = DeviceProtocolFactory.get_backend_availability()
         assert "sg_raw" in avail
         assert "pyusb" in avail
         assert "hidapi" in avail
 
     def test_transport_open_false_by_default(self, hid_type2_device):
-        from trcc.device_factory import get_protocol_info
-        info = get_protocol_info(hid_type2_device)
+        info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.transport_open is False
 
     @patch("trcc.device_scsi.send_image_to_device", return_value=True)
     def test_cached_protocol_delegates_get_info(self, mock_send, scsi_device):
         """When a protocol is cached, get_protocol_info delegates to proto.get_info()."""
-        from trcc.device_factory import get_protocol_info
         # Create and cache a protocol
         DeviceProtocolFactory.get_protocol(scsi_device)
-        info = get_protocol_info(scsi_device)
+        info = DeviceProtocolFactory.get_protocol_info(scsi_device)
         assert info.protocol == "scsi"
         assert info.is_scsi is True
 

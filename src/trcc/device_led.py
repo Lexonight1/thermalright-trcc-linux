@@ -124,63 +124,78 @@ class PmEntry(NamedTuple):
     button_image: str
 
 
-_PM_REGISTRY: dict[int, PmEntry] = {
-    1:   PmEntry(1, "FROZEN_HORIZON_PRO", "A1FROZEN HORIZON PRO"),
-    2:   PmEntry(1, "FROZEN_MAGIC_PRO", "A1FROZEN MAGIC PRO"),
-    3:   PmEntry(1, "AX120_DIGITAL", "A1AX120 DIGITAL"),
-    16:  PmEntry(2, "PA120_DIGITAL", "A1PA120 DIGITAL"),
-    23:  PmEntry(2, "RK120_DIGITAL", "A1RK120 DIGITAL"),
-    32:  PmEntry(3, "AK120_DIGITAL", "A1AK120 Digital"),
-    48:  PmEntry(5, "LF8", "A1LF8"),
-    49:  PmEntry(5, "LF10", "A1LF10"),
-    80:  PmEntry(6, "LF12", "A1LF12"),
-    96:  PmEntry(7, "LF10", "A1LF10"),
-    112: PmEntry(9, "LC2", "A1LC2"),
-    128: PmEntry(4, "LC1", "A1LC1"),
-    129: PmEntry(10, "LF11", "A1LF11"),
-    144: PmEntry(11, "LF15", "A1LF15"),
-    160: PmEntry(12, "LF13", "A1LF13"),
-    208: PmEntry(8, "CZ1", "A1CZ1"),
-}
-# PA120 variants (PMs 17-22, 24-31) all map to style 2.
-_PA120 = PmEntry(2, "PA120_DIGITAL", "A1PA120 DIGITAL")
-for _pm in range(17, 32):
-    if _pm not in _PM_REGISTRY:
-        _PM_REGISTRY[_pm] = _PA120
+class PmRegistry:
+    """Encapsulates all PM-to-device metadata lookups.
 
-# Backward-compat: PM → style_id (used by cli.py, tests)
-PM_TO_STYLE: dict[int, int] = {pm: e.style_id for pm, e in _PM_REGISTRY.items()}
-
-
-# (pm, sub_type) → PmEntry override for devices that share a PM byte.
-# HR10 2280 Pro Digital shares PM=128 with LC1 but has sub_type=129.
-SUB_TYPE_OVERRIDES: dict[tuple[int, int], PmEntry] = {
-    (128, 129): PmEntry(13, "HR10_2280_PRO_DIGITAL", "A1HR10 2280 PRO DIGITAL"),
-}
-
-
-def _resolve_pm(pm: int, sub_type: int = 0) -> Optional[PmEntry]:
-    """Resolve PM + SUB to a PmEntry, checking overrides first."""
-    return SUB_TYPE_OVERRIDES.get((pm, sub_type)) or _PM_REGISTRY.get(pm)
-
-
-def get_led_button_image(pm: int, sub: int = 0) -> Optional[str]:
-    """Resolve LED device button image from PM byte.
-
-    Returns None if PM is unknown.
+    Maps firmware PM bytes (from HID handshake) to device style, model name,
+    and button image.  Handles sub-type overrides (e.g. HR10 vs LC1 on PM=128)
+    and PA120 variant range (PMs 17-31).
     """
-    entry = _resolve_pm(pm, sub)
-    return entry.button_image if entry else None
 
+    # (pm, sub_type) → PmEntry override for devices that share a PM byte.
+    _OVERRIDES: dict[tuple[int, int], PmEntry] = {
+        (128, 129): PmEntry(13, "HR10_2280_PRO_DIGITAL", "A1HR10 2280 PRO DIGITAL"),
+    }
 
-def get_model_for_pm(pm: int, sub_type: int = 0) -> str:
-    """Get human-readable model name for a PM + SUB byte combo.
+    # PM → PmEntry base registry (built once at class load time).
+    _REGISTRY: dict[int, PmEntry] = {
+        1:   PmEntry(1, "FROZEN_HORIZON_PRO", "A1FROZEN HORIZON PRO"),
+        2:   PmEntry(1, "FROZEN_MAGIC_PRO", "A1FROZEN MAGIC PRO"),
+        3:   PmEntry(1, "AX120_DIGITAL", "A1AX120 DIGITAL"),
+        16:  PmEntry(2, "PA120_DIGITAL", "A1PA120 DIGITAL"),
+        23:  PmEntry(2, "RK120_DIGITAL", "A1RK120 DIGITAL"),
+        32:  PmEntry(3, "AK120_DIGITAL", "A1AK120 Digital"),
+        48:  PmEntry(5, "LF8", "A1LF8"),
+        49:  PmEntry(5, "LF10", "A1LF10"),
+        80:  PmEntry(6, "LF12", "A1LF12"),
+        96:  PmEntry(7, "LF10", "A1LF10"),
+        112: PmEntry(9, "LC2", "A1LC2"),
+        128: PmEntry(4, "LC1", "A1LC1"),
+        129: PmEntry(10, "LF11", "A1LF11"),
+        144: PmEntry(11, "LF15", "A1LF15"),
+        160: PmEntry(12, "LF13", "A1LF13"),
+        208: PmEntry(8, "CZ1", "A1CZ1"),
+        # PA120 variants (PMs 17-22, 24-31) all map to style 2.
+        **{pm: PmEntry(2, "PA120_DIGITAL", "A1PA120 DIGITAL")
+           for pm in range(17, 32) if pm not in (23,)},
+    }
 
-    Checks SUB_TYPE_OVERRIDES first (e.g. HR10 vs LC1), then _PM_REGISTRY.
-    Falls back to "Unknown (pm=N)" for unrecognized PMs.
-    """
-    entry = _resolve_pm(pm, sub_type)
-    return entry.model_name if entry else f"Unknown (pm={pm})"
+    # PM → style_id convenience mapping (used by cli.py, debug_report.py).
+    PM_TO_STYLE: dict[int, int] = {pm: e.style_id for pm, e in _REGISTRY.items()}
+
+    @classmethod
+    def resolve(cls, pm: int, sub_type: int = 0) -> Optional[PmEntry]:
+        """Resolve PM + SUB to a PmEntry, checking overrides first."""
+        return cls._OVERRIDES.get((pm, sub_type)) or cls._REGISTRY.get(pm)
+
+    @classmethod
+    def get_button_image(cls, pm: int, sub: int = 0) -> Optional[str]:
+        """Resolve LED device button image from PM byte.
+
+        Returns None if PM is unknown.
+        """
+        entry = cls.resolve(pm, sub)
+        return entry.button_image if entry else None
+
+    @classmethod
+    def get_model_name(cls, pm: int, sub_type: int = 0) -> str:
+        """Get human-readable model name for a PM + SUB byte combo.
+
+        Checks overrides first (e.g. HR10 vs LC1), then base registry.
+        Falls back to "Unknown (pm=N)" for unrecognized PMs.
+        """
+        entry = cls.resolve(pm, sub_type)
+        return entry.model_name if entry else f"Unknown (pm={pm})"
+
+    @classmethod
+    def get_style(cls, pm: int, sub_type: int = 0) -> LedDeviceStyle:
+        """Get LED device style from firmware PM byte (and optional sub_type).
+
+        Falls back to style 1 (30 LEDs) for unknown PM values.
+        """
+        entry = cls.resolve(pm, sub_type)
+        return LED_STYLES[entry.style_id if entry else 1]
+
 
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers
 # Note: Windows ucColor1Delegate has swapped B,G params (R,B,G order)
@@ -308,136 +323,120 @@ def remap_led_colors(
     return [colors[idx] if idx < len(colors) else black for idx in table]
 
 
-def get_style_for_pm(pm: int, sub_type: int = 0) -> LedDeviceStyle:
-    """Get LED device style from firmware pm byte (and optional sub_type).
+# =========================================================================
+# Color engine — RGB rainbow table + sensor-to-color gradient mapping
+# =========================================================================
 
-    Some devices share a PM byte (e.g. LC1 and HR10 both use PM=128).
-    The sub_type disambiguates them via SUB_TYPE_OVERRIDES.
+class ColorEngine:
+    """Encapsulates all LED color computation.
 
-    Falls back to style 1 (30 LEDs) for unknown pm values.
+    - 768-entry RGB rainbow table (FormLED.cs RGBTable[768, 3])
+    - Temperature/load → color gradient with smooth interpolation
     """
-    entry = _resolve_pm(pm, sub_type)
-    return LED_STYLES[entry.style_id if entry else 1]
 
+    # Gradient stops: (value, (R, G, B)) — linearly interpolated between stops.
+    TEMP_GRADIENT: List[Tuple[float, Tuple[int, int, int]]] = [
+        (30, (0, 255, 255)),    # Cyan
+        (50, (0, 255, 0)),      # Green
+        (70, (255, 255, 0)),    # Yellow
+        (90, (255, 110, 0)),    # Orange
+        (100, (255, 0, 0)),     # Red
+    ]
 
-# =========================================================================
-# RGB Rainbow Table (from FormLED.cs RGBTable[768, 3])
-# =========================================================================
+    LOAD_GRADIENT = TEMP_GRADIENT  # Same gradient (0-100%)
 
-def generate_rgb_table() -> List[Tuple[int, int, int]]:
-    """Generate the 768-entry RGB rainbow lookup table.
+    _cached_table: Optional[List[Tuple[int, int, int]]] = None
 
-    Matches FormLED.cs RGBTable initialization — smooth HSV hue cycle
-    through 768 steps covering all rainbow colors.
+    @staticmethod
+    def generate_table() -> List[Tuple[int, int, int]]:
+        """Generate the 768-entry RGB rainbow lookup table.
 
-    The table cycles through:
-        0-127:   Red→Yellow     (R=255, G increases 0→255)
-        128-255: Yellow→Green   (R decreases 255→0, G=255)
-        256-383: Green→Cyan     (G=255, B increases 0→255)
-        384-511: Cyan→Blue      (G decreases 255→0, B=255)
-        512-639: Blue→Magenta   (R increases 0→255, B=255)
-        640-767: Magenta→Red    (B decreases 255→0, R=255)
-    """
-    table = []
-    phase_len = 128  # 768 / 6 phases
+        Matches FormLED.cs RGBTable initialization — smooth HSV hue cycle
+        through 768 steps covering all rainbow colors.
 
-    for i in range(768):
-        phase = i // phase_len
-        offset = i % phase_len
-        t = int(255 * offset / (phase_len - 1)) if phase_len > 1 else 0
+        The table cycles through:
+            0-127:   Red→Yellow     (R=255, G increases 0→255)
+            128-255: Yellow→Green   (R decreases 255→0, G=255)
+            256-383: Green→Cyan     (G=255, B increases 0→255)
+            384-511: Cyan→Blue      (G decreases 255→0, B=255)
+            512-639: Blue→Magenta   (R increases 0→255, B=255)
+            640-767: Magenta→Red    (B decreases 255→0, R=255)
+        """
+        table = []
+        phase_len = 128  # 768 / 6 phases
 
-        if phase == 0:    # Red → Yellow
-            r, g, b = 255, t, 0
-        elif phase == 1:  # Yellow → Green
-            r, g, b = 255 - t, 255, 0
-        elif phase == 2:  # Green → Cyan
-            r, g, b = 0, 255, t
-        elif phase == 3:  # Cyan → Blue
-            r, g, b = 0, 255 - t, 255
-        elif phase == 4:  # Blue → Magenta
-            r, g, b = t, 0, 255
-        else:             # Magenta → Red
-            r, g, b = 255, 0, 255 - t
+        for i in range(768):
+            phase = i // phase_len
+            offset = i % phase_len
+            t = int(255 * offset / (phase_len - 1)) if phase_len > 1 else 0
 
-        table.append((r, g, b))
+            if phase == 0:    # Red → Yellow
+                r, g, b = 255, t, 0
+            elif phase == 1:  # Yellow → Green
+                r, g, b = 255 - t, 255, 0
+            elif phase == 2:  # Green → Cyan
+                r, g, b = 0, 255, t
+            elif phase == 3:  # Cyan → Blue
+                r, g, b = 0, 255 - t, 255
+            elif phase == 4:  # Blue → Magenta
+                r, g, b = t, 0, 255
+            else:             # Magenta → Red
+                r, g, b = 255, 0, 255 - t
 
-    return table
+            table.append((r, g, b))
 
+        return table
 
-# Module-level cached table
-_RGB_TABLE: Optional[List[Tuple[int, int, int]]] = None
+    @classmethod
+    def get_table(cls) -> List[Tuple[int, int, int]]:
+        """Get the cached 768-entry RGB rainbow table."""
+        if cls._cached_table is None:
+            cls._cached_table = cls.generate_table()
+        return cls._cached_table
 
+    @staticmethod
+    def _lerp(
+        c1: Tuple[int, int, int], c2: Tuple[int, int, int], t: float,
+    ) -> Tuple[int, int, int]:
+        """Linearly interpolate between two RGB colors (t=0->c1, t=1->c2)."""
+        t = max(0.0, min(1.0, t))
+        return (
+            int(c1[0] + (c2[0] - c1[0]) * t),
+            int(c1[1] + (c2[1] - c1[1]) * t),
+            int(c1[2] + (c2[2] - c1[2]) * t),
+        )
 
-def get_rgb_table() -> List[Tuple[int, int, int]]:
-    """Get the cached 768-entry RGB rainbow table."""
-    global _RGB_TABLE
-    if _RGB_TABLE is None:
-        _RGB_TABLE = generate_rgb_table()
-    return _RGB_TABLE
+    @staticmethod
+    def color_for_value(
+        value: float,
+        gradient: List[Tuple[float, Tuple[int, int, int]]],
+        high_color: Optional[Tuple[int, int, int]] = None,
+    ) -> Tuple[int, int, int]:
+        """Map a sensor value to an RGB color with smooth gradient interpolation.
 
+        Linearly interpolates between adjacent gradient stops.
+        Clamps to first/last color outside the gradient range.
 
-# =========================================================================
-# Temperature/Load → Color gradient (FormLED.cs WDLD_Timer, enhanced with interpolation)
-# =========================================================================
+        Args:
+            value: Sensor reading (temperature C, load %, etc.).
+            gradient: List of (threshold, (R, G, B)) stops.
+            high_color: Ignored (backward compat). Last gradient stop used instead.
+        """
+        if value <= gradient[0][0]:
+            return gradient[0][1]
+        if value >= gradient[-1][0]:
+            return gradient[-1][1]
 
-# Gradient stops: (value, (R, G, B)) — linearly interpolated between stops.
-TEMP_COLOR_GRADIENT: List[Tuple[float, Tuple[int, int, int]]] = [
-    (30, (0, 255, 255)),    # Cyan
-    (50, (0, 255, 0)),      # Green
-    (70, (255, 255, 0)),    # Yellow
-    (90, (255, 110, 0)),    # Orange
-    (100, (255, 0, 0)),     # Red
-]
+        for i in range(len(gradient) - 1):
+            lo_val, lo_color = gradient[i]
+            hi_val, hi_color = gradient[i + 1]
+            if lo_val <= value <= hi_val:
+                t = (value - lo_val) / (hi_val - lo_val)
+                return ColorEngine._lerp(lo_color, hi_color, t)
 
-LOAD_COLOR_GRADIENT = TEMP_COLOR_GRADIENT  # Same gradient (0-100%)
-
-# Backward-compat aliases
-TEMP_COLOR_THRESHOLDS = TEMP_COLOR_GRADIENT
-TEMP_COLOR_HIGH = (255, 0, 0)
-LOAD_COLOR_THRESHOLDS = TEMP_COLOR_GRADIENT
-LOAD_COLOR_HIGH = (255, 0, 0)
-
-
-def _lerp_color(
-    c1: Tuple[int, int, int], c2: Tuple[int, int, int], t: float
-) -> Tuple[int, int, int]:
-    """Linearly interpolate between two RGB colors (t=0→c1, t=1→c2)."""
-    t = max(0.0, min(1.0, t))
-    return (
-        int(c1[0] + (c2[0] - c1[0]) * t),
-        int(c1[1] + (c2[1] - c1[1]) * t),
-        int(c1[2] + (c2[2] - c1[2]) * t),
-    )
-
-
-def color_for_value(
-    value: float,
-    gradient: List[Tuple[float, Tuple[int, int, int]]],
-    high_color: Optional[Tuple[int, int, int]] = None,
-) -> Tuple[int, int, int]:
-    """Map a sensor value to an RGB color with smooth gradient interpolation.
-
-    Linearly interpolates between adjacent gradient stops.
-    Clamps to first/last color outside the gradient range.
-
-    Args:
-        value: Sensor reading (temperature °C, load %, etc.).
-        gradient: List of (threshold, (R, G, B)) stops.
-        high_color: Ignored (backward compat). Last gradient stop used instead.
-    """
-    if value <= gradient[0][0]:
-        return gradient[0][1]
-    if value >= gradient[-1][0]:
         return gradient[-1][1]
 
-    for i in range(len(gradient) - 1):
-        lo_val, lo_color = gradient[i]
-        hi_val, hi_color = gradient[i + 1]
-        if lo_val <= value <= hi_val:
-            t = (value - lo_val) / (hi_val - lo_val)
-            return _lerp_color(lo_color, hi_color, t)
 
-    return gradient[-1][1]
 
 
 # =========================================================================
@@ -633,8 +632,8 @@ class LedHidSender:
                 # zeros on AX120 devices (shadowepaxeor-glitch PM=0 was wrong).
                 pm = resp[5]
                 sub_type = resp[4]
-                style = get_style_for_pm(pm, sub_type)
-                model_name = get_model_for_pm(pm, sub_type)
+                style = PmRegistry.get_style(pm, sub_type)
+                model_name = PmRegistry.get_model_name(pm, sub_type)
 
                 return LedHandshakeInfo(
                     model_id=pm,
@@ -804,137 +803,12 @@ class _LedProbeCache:
             return LedHandshakeInfo(
                 pm=pm,
                 sub_type=sub_type,
-                style=get_style_for_pm(pm, sub_type),
+                style=PmRegistry.get_style(pm, sub_type),
                 model_name=entry['model_name'],
             )
         except Exception as e:
             log.debug("Failed to load probe cache: %s", e)
             return None
-
-
-# =========================================================================
-# AX120 Digital — 7-segment display renderer (style 1, 30 LEDs)
-# =========================================================================
-# LED layout from UCScreenLED.cs default field values:
-#   Index 0-1:  Always-on indicator LEDs
-#   Index 2-3:  CPU label (Cpu1, Cpu2)
-#   Index 4-5:  GPU label (Gpu1, Gpu2)
-#   Index 6:    °C indicator (SSD)
-#   Index 7:    °F indicator (HSD)
-#   Index 8:    % indicator (BFB)
-#   Index 9-15:  Digit 1 segments A,B,C,D,E,F,G
-#   Index 16-22: Digit 2 segments A,B,C,D,E,F,G
-#   Index 23-29: Digit 3 segments A,B,C,D,E,F,G
-
-AX120_LED_COUNT = 30
-
-# Indicator LED indices
-AX120_ALWAYS_ON = (0, 1)
-AX120_CPU_LEDS = (2, 3)
-AX120_GPU_LEDS = (4, 5)
-AX120_CELSIUS = 6
-AX120_FAHRENHEIT = 7
-AX120_PERCENT = 8
-
-# Digit LED indices — wire order is standard A,B,C,D,E,F,G
-AX120_WIRE_ORDER = ('a', 'b', 'c', 'd', 'e', 'f', 'g')
-AX120_DIGIT_LEDS = (
-    (9, 10, 11, 12, 13, 14, 15),    # Digit 1 (hundreds)
-    (16, 17, 18, 19, 20, 21, 22),   # Digit 2 (tens)
-    (23, 24, 25, 26, 27, 28, 29),   # Digit 3 (ones)
-)
-
-# Rotation phases (from FormLED.cs GetVal, style 1 isLunBo rotation)
-AX120_PHASE_CPU_TEMP = 0
-AX120_PHASE_CPU_USAGE = 1
-AX120_PHASE_GPU_TEMP = 2
-AX120_PHASE_GPU_USAGE = 3
-AX120_PHASE_COUNT = 4
-
-
-class Ax120Display:
-    """Renders sensor metrics onto the AX120 Digital's 30-LED 7-segment display.
-
-    Layout: [always-on][CPU][GPU][°C][°F][%] [Digit1][Digit2][Digit3]
-    Cycles through CPU temp → CPU usage → GPU temp → GPU usage.
-    """
-
-    # Standard 7-segment encoding (shared with HR10)
-    CHAR_SEGMENTS: dict[str, set[str]] = {
-        '0': {'a', 'b', 'c', 'd', 'e', 'f'},
-        '1': {'b', 'c'},
-        '2': {'a', 'b', 'd', 'e', 'g'},
-        '3': {'a', 'b', 'c', 'd', 'g'},
-        '4': {'b', 'c', 'f', 'g'},
-        '5': {'a', 'c', 'd', 'f', 'g'},
-        '6': {'a', 'c', 'd', 'e', 'f', 'g'},
-        '7': {'a', 'b', 'c'},
-        '8': {'a', 'b', 'c', 'd', 'e', 'f', 'g'},
-        '9': {'a', 'b', 'c', 'd', 'f', 'g'},
-        ' ': set(),
-    }
-
-    @staticmethod
-    def get_mask(
-        value: int,
-        source: str,
-        metric: str,
-        temp_unit: str = "C",
-    ) -> List[bool]:
-        """Compute 30-element boolean mask for a sensor reading.
-
-        Args:
-            value: Sensor value (temperature °C or usage %).
-            source: "cpu" or "gpu".
-            metric: "temp" or "usage".
-            temp_unit: "C" or "F" for temperature indicator.
-
-        Returns:
-            30-element list of bools (True = LED on).
-        """
-        mask = [False] * AX120_LED_COUNT
-
-        # Always-on indicator LEDs (C#: isOn[0]=true, isOn[1]=true)
-        for idx in AX120_ALWAYS_ON:
-            mask[idx] = True
-
-        # Source indicator LEDs
-        if source == "cpu":
-            for idx in AX120_CPU_LEDS:
-                mask[idx] = True
-        else:
-            for idx in AX120_GPU_LEDS:
-                mask[idx] = True
-
-        # Metric indicator LEDs
-        if metric == "temp":
-            mask[AX120_FAHRENHEIT if temp_unit == "F" else AX120_CELSIUS] = True
-        else:
-            mask[AX120_PERCENT] = True
-
-        # 3-digit value with leading zero suppression (C# SetMyNumeral)
-        clamped = max(0, min(999, value))
-        d_hundreds = clamped // 100
-        d_tens = (clamped % 100) // 10
-        d_ones = clamped % 10
-        digits = [str(d_hundreds), str(d_tens), str(d_ones)]
-
-        # Leading zero suppression: blank hundreds if 0, blank tens if both 0
-        if d_hundreds == 0:
-            digits[0] = ' '
-            if d_tens == 0:
-                digits[1] = ' '
-
-        for digit_idx, ch in enumerate(digits):
-            if ch == ' ':
-                continue
-            segments_on = Ax120Display.CHAR_SEGMENTS.get(ch, set())
-            led_indices = AX120_DIGIT_LEDS[digit_idx]
-            for wire_idx, seg_name in enumerate(AX120_WIRE_ORDER):
-                if seg_name in segments_on:
-                    mask[led_indices[wire_idx]] = True
-
-        return mask
 
 
 def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
@@ -961,8 +835,8 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
 
     transport = None
     try:
-        from .device_factory import create_usb_transport
-        transport = create_usb_transport(vid, pid)
+        from .device_factory import DeviceProtocolFactory
+        transport = DeviceProtocolFactory.create_usb_transport(vid, pid)
         transport.open()
         sender = LedHidSender(transport)
         info = sender.handshake()

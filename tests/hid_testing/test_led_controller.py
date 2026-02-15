@@ -426,7 +426,7 @@ class TestLEDServiceTickDispatch:
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.device_led.get_rgb_table")
+    @patch("trcc.device_led.ColorEngine.get_table")
     def test_tick_rainbow(self, mock_table, led_svc):
         # Provide a minimal table
         mock_table.return_value = [(i, i, i) for i in range(768)]
@@ -434,14 +434,14 @@ class TestLEDServiceTickDispatch:
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.device_led.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.device_led.ColorEngine.color_for_value", return_value=(0, 255, 255))
     def test_tick_temp_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.TEMP_LINKED)
         led_svc.update_metrics({"cpu_temp": 25})
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.device_led.color_for_value", return_value=(255, 255, 0))
+    @patch("trcc.device_led.ColorEngine.color_for_value", return_value=(255, 255, 0))
     def test_tick_load_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.LOAD_LINKED)
         led_svc.update_metrics({"cpu_load": 60})
@@ -579,7 +579,7 @@ class TestTickColorful:
 class TestTickRainbow:
     """CHMS_Timer: 768-entry table, offset per segment."""
 
-    @patch("trcc.device_led.get_rgb_table")
+    @patch("trcc.device_led.ColorEngine.get_table")
     def test_uses_rgb_table(self, mock_table, led_svc):
         table = [(i, 0, 0) for i in range(768)]
         mock_table.return_value = table
@@ -589,21 +589,21 @@ class TestTickRainbow:
         assert len(colors) == led_svc.state.segment_count
         mock_table.assert_called()
 
-    @patch("trcc.device_led.get_rgb_table")
+    @patch("trcc.device_led.ColorEngine.get_table")
     def test_advances_by_4(self, mock_table, led_svc):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_svc.state.rgb_timer = 0
         led_svc._tick_rainbow_for(led_svc.state.segment_count)
         assert led_svc.state.rgb_timer == 4
 
-    @patch("trcc.device_led.get_rgb_table")
+    @patch("trcc.device_led.ColorEngine.get_table")
     def test_timer_wraps(self, mock_table, led_svc):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_svc.state.rgb_timer = 764
         led_svc._tick_rainbow_for(led_svc.state.segment_count)
         assert led_svc.state.rgb_timer == 0  # (764 + 4) % 768 = 0
 
-    @patch("trcc.device_led.get_rgb_table")
+    @patch("trcc.device_led.ColorEngine.get_table")
     def test_segments_get_different_offsets(self, mock_table, led_svc):
         """Different segments get different colors from the table."""
         table = [(i, i, i) for i in range(768)]
@@ -623,7 +623,7 @@ class TestTickRainbow:
 class TestTickTempLinked:
     """WDLD_Timer: color from CPU/GPU temperature thresholds."""
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.state.temp_source = "cpu"
@@ -633,7 +633,7 @@ class TestTickTempLinked:
         # First positional arg is the temp value
         assert mock_cfv.call_args[0][0] == 45
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_uses_gpu_temp(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 0, 0)
         led_svc.state.temp_source = "gpu"
@@ -641,14 +641,14 @@ class TestTickTempLinked:
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
         led_svc._metrics = {}
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_uniform_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc._metrics = {"cpu_temp": 40}
@@ -664,7 +664,7 @@ class TestTickTempLinked:
 class TestTickLoadLinked:
     """FZLD_Timer: color from CPU/GPU load thresholds."""
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_uses_cpu_load_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 255, 0)
         led_svc.state.load_source = "cpu"
@@ -672,7 +672,7 @@ class TestTickLoadLinked:
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_uses_gpu_load(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 110, 0)
         led_svc.state.load_source = "gpu"
@@ -680,7 +680,7 @@ class TestTickLoadLinked:
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
-    @patch("trcc.device_led.color_for_value")
+    @patch("trcc.device_led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
         led_svc._metrics = {}
@@ -876,8 +876,8 @@ class TestLEDDeviceControllerInitialize:
 
     @patch("trcc.services.led.LEDService.configure_for_style")
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
-    @patch("trcc.conf.get_device_config", return_value={})
+    @patch("trcc.conf.Settings.device_config_key", return_value="0:0416_8001")
+    @patch("trcc.conf.Settings.get_device_config", return_value={})
     @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
@@ -889,8 +889,8 @@ class TestLEDDeviceControllerInitialize:
         mock_configure.assert_called_once_with(1)
 
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
-    @patch("trcc.conf.get_device_config", return_value={})
+    @patch("trcc.conf.Settings.device_config_key", return_value="0:0416_8001")
+    @patch("trcc.conf.Settings.get_device_config", return_value={})
     @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
@@ -905,8 +905,8 @@ class TestLEDDeviceControllerInitialize:
 
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol",
            side_effect=Exception("No backend"))
-    @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
-    @patch("trcc.conf.get_device_config", return_value={})
+    @patch("trcc.conf.Settings.device_config_key", return_value="0:0416_8001")
+    @patch("trcc.conf.Settings.get_device_config", return_value={})
     @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
@@ -922,8 +922,8 @@ class TestLEDDeviceControllerInitialize:
         assert len(calls) >= 1
 
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
-    @patch("trcc.conf.get_device_config", return_value={})
+    @patch("trcc.conf.Settings.device_config_key", return_value="0:0416_8001")
+    @patch("trcc.conf.Settings.get_device_config", return_value={})
     @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
@@ -935,8 +935,8 @@ class TestLEDDeviceControllerInitialize:
         assert form_controller._device_key == "0:0416_8001"
 
     @patch("trcc.device_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.conf.device_config_key", return_value="0:0416_8001")
-    @patch("trcc.conf.get_device_config", return_value={})
+    @patch("trcc.conf.Settings.device_config_key", return_value="0:0416_8001")
+    @patch("trcc.conf.Settings.get_device_config", return_value={})
     @patch("trcc.device_led.LED_STYLES", {
         1: MagicMock(style_id=1, led_count=30, segment_count=10,
                      zone_count=1, model_name="AX120"),
@@ -959,7 +959,7 @@ class TestLEDDeviceControllerInitialize:
 class TestLEDDeviceControllerSaveConfig:
     """Test save_config() persists state to device config."""
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_calls_save_device_setting(
         self, mock_save, form_controller
     ):
@@ -978,7 +978,7 @@ class TestLEDDeviceControllerSaveConfig:
         assert config['color'] == [10, 20, 30]
         assert config['brightness'] == 75
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_includes_global_on(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.global_on = False
@@ -988,7 +988,7 @@ class TestLEDDeviceControllerSaveConfig:
         config = mock_save.call_args[0][2]
         assert config['global_on'] is False
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_includes_segments(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.segment_on = [True, False, True]
@@ -998,7 +998,7 @@ class TestLEDDeviceControllerSaveConfig:
         config = mock_save.call_args[0][2]
         assert config['segments_on'] == [True, False, True]
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_includes_zones(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.zones = [
@@ -1014,7 +1014,7 @@ class TestLEDDeviceControllerSaveConfig:
         assert config['zones'][0]['brightness'] == 50
         assert config['zones'][0]['on'] is False
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_no_zones_for_single_zone(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.zones = []
@@ -1029,13 +1029,13 @@ class TestLEDDeviceControllerSaveConfig:
         form_controller._device_key = None
         form_controller.save_config()  # No exception
 
-    @patch("trcc.conf.save_device_setting", side_effect=Exception("IO error"))
+    @patch("trcc.conf.Settings.save_device_setting", side_effect=Exception("IO error"))
     def test_save_config_handles_exception(self, mock_save, form_controller):
         """Exception during save is caught, not raised."""
         form_controller._device_key = "0:0416_8001"
         form_controller.save_config()  # No exception
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_includes_sources(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.temp_source = "gpu"
@@ -1055,7 +1055,7 @@ class TestLEDDeviceControllerSaveConfig:
 class TestLEDDeviceControllerLoadConfig:
     """Test load_config() restores state from device config."""
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_mode(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'mode': LEDMode.RAINBOW.value}
@@ -1064,7 +1064,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.mode is LEDMode.RAINBOW
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_color(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'color': [10, 20, 30]}
@@ -1073,7 +1073,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.color == (10, 20, 30)
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_brightness(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'brightness': 42}
@@ -1082,7 +1082,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.brightness == 42
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_global_on(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'global_on': False}
@@ -1091,7 +1091,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.global_on is False
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_segments(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'segments_on': [True, False, True, True, True,
@@ -1101,7 +1101,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.segment_on[1] is False
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_sources(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {'temp_source': 'gpu', 'load_source': 'gpu'}
@@ -1111,7 +1111,7 @@ class TestLEDDeviceControllerLoadConfig:
         assert form_controller.led.state.temp_source == "gpu"
         assert form_controller.led.state.load_source == "gpu"
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_zones(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {
@@ -1131,7 +1131,7 @@ class TestLEDDeviceControllerLoadConfig:
         assert form_controller.led.state.zones[0].on is False
         assert form_controller.led.state.zones[1].mode is LEDMode.RAINBOW
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_empty_config(self, mock_get_cfg, form_controller):
         """Empty config leaves state unchanged."""
         mock_get_cfg.return_value = {}
@@ -1140,7 +1140,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller.load_config()
         assert form_controller.led.state.mode is original_mode
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_no_led_config_key(self, mock_get_cfg, form_controller):
         """Config without 'led_config' key leaves state unchanged."""
         mock_get_cfg.return_value = {'some_other': 'data'}
@@ -1152,7 +1152,7 @@ class TestLEDDeviceControllerLoadConfig:
         form_controller._device_key = None
         form_controller.load_config()  # No exception
 
-    @patch("trcc.conf.get_device_config", side_effect=Exception("IO error"))
+    @patch("trcc.conf.Settings.get_device_config", side_effect=Exception("IO error"))
     def test_load_config_handles_exception(self, mock_get_cfg, form_controller):
         """Exception during load is caught, not raised."""
         form_controller._device_key = "0:0416_8001"
@@ -1166,7 +1166,7 @@ class TestLEDDeviceControllerLoadConfig:
 class TestLEDDeviceControllerCleanup:
     """Test cleanup() — saves config and clears protocol."""
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_cleanup_saves_config(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.cleanup()
@@ -1178,7 +1178,7 @@ class TestLEDDeviceControllerCleanup:
         form_controller.cleanup()
         assert form_controller.led._protocol is None
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_cleanup_saves_then_clears(self, mock_save, form_controller):
         """cleanup() calls save_config, then clears protocol."""
         proto = MagicMock()
@@ -1350,7 +1350,7 @@ class TestLEDControllerZoneMethods:
 class TestLC2ClockPersistence:
     """Test save/load of LC2 clock settings."""
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_includes_clock_fields(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.led.state.is_timer_24h = False
@@ -1362,7 +1362,7 @@ class TestLC2ClockPersistence:
         assert config['is_timer_24h'] is False
         assert config['is_week_sunday'] is True
 
-    @patch("trcc.conf.save_device_setting")
+    @patch("trcc.conf.Settings.save_device_setting")
     def test_save_config_clock_defaults(self, mock_save, form_controller):
         form_controller._device_key = "0:0416_8001"
         form_controller.save_config()
@@ -1371,7 +1371,7 @@ class TestLC2ClockPersistence:
         assert config['is_timer_24h'] is True
         assert config['is_week_sunday'] is False
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_restores_clock_fields(self, mock_get_cfg, form_controller):
         mock_get_cfg.return_value = {
             'led_config': {
@@ -1385,7 +1385,7 @@ class TestLC2ClockPersistence:
         assert form_controller.led.state.is_timer_24h is False
         assert form_controller.led.state.is_week_sunday is True
 
-    @patch("trcc.conf.get_device_config")
+    @patch("trcc.conf.Settings.get_device_config")
     def test_load_config_missing_clock_fields(self, mock_get_cfg, form_controller):
         """Missing clock fields keep defaults."""
         mock_get_cfg.return_value = {'led_config': {'mode': 0}}
@@ -1436,20 +1436,20 @@ class TestTickSingleMode:
             LEDMode.COLORFUL, (0, 0, 0), 4)
         assert len(colors) == 4
 
-    @patch("trcc.device_led.get_rgb_table",
+    @patch("trcc.device_led.ColorEngine.get_table",
            return_value=[(i, i, i) for i in range(768)])
     def test_rainbow(self, mock_table, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.RAINBOW, (0, 0, 0), 6)
         assert len(colors) == 6
 
-    @patch("trcc.device_led.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.device_led.ColorEngine.color_for_value", return_value=(0, 255, 255))
     def test_temp_linked(self, mock_cfv, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.TEMP_LINKED, (0, 0, 0), 3)
         assert len(colors) == 3
 
-    @patch("trcc.device_led.color_for_value", return_value=(255, 0, 0))
+    @patch("trcc.device_led.ColorEngine.color_for_value", return_value=(255, 0, 0))
     def test_load_linked(self, mock_cfv, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.LOAD_LINKED, (0, 0, 0), 3)

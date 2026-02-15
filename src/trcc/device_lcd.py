@@ -9,7 +9,7 @@ from typing import Optional
 
 from .core.models import LCDDeviceConfig
 from .device_detector import DetectedDevice, detect_devices, get_default_device
-from .device_scsi import _build_header, _get_frame_chunks, _scsi_read, _scsi_write
+from .device_scsi import ScsiDevice
 from .services.device import DeviceService
 from .services.image import ImageService
 
@@ -96,15 +96,15 @@ class LCDDriver:
 
         # Step 1: Poll device
         poll_cmd, poll_size = self.implementation.poll_command
-        poll_header = _build_header(poll_cmd, poll_size)
+        poll_header = ScsiDevice._build_header(poll_cmd, poll_size)
         log.debug("Poll: cmd=0x%X, size=0x%X", poll_cmd, poll_size)
-        _scsi_read(self.device_path, poll_header[:16], poll_size)
+        ScsiDevice._scsi_read(self.device_path, poll_header[:16], poll_size)
 
         # Step 2: Init
         init_cmd, init_size = self.implementation.init_command
-        init_header = _build_header(init_cmd, init_size)
+        init_header = ScsiDevice._build_header(init_cmd, init_size)
         log.debug("Init: cmd=0x%X, size=0x%X", init_cmd, init_size)
-        _scsi_write(self.device_path, init_header, b'\x00' * init_size)
+        ScsiDevice._scsi_write(self.device_path, init_header, b'\x00' * init_size)
 
         self.initialized = True
         log.info("LCD device initialized: %s (%s)", self.device_path,
@@ -126,7 +126,7 @@ class LCDDriver:
             self.init_device()
 
         # Get frame chunks for current resolution
-        chunks = _get_frame_chunks(self.implementation.width,
+        chunks = ScsiDevice._get_frame_chunks(self.implementation.width,
                                    self.implementation.height)
         total_size = sum(size for _, size in chunks)
 
@@ -139,8 +139,8 @@ class LCDDriver:
         log.debug("Sending frame: %d bytes in %d chunks", total_size, len(chunks))
         offset = 0
         for cmd, size in chunks:
-            header = _build_header(cmd, size)
-            _scsi_write(self.device_path, header, image_data[offset:offset + size])
+            header = ScsiDevice._build_header(cmd, size)
+            ScsiDevice._scsi_write(self.device_path, header, image_data[offset:offset + size])
             offset += size
 
     def create_solid_color(self, r: int, g: int, b: int) -> bytes:

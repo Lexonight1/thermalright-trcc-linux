@@ -558,8 +558,8 @@ class DeviceCommands:
                 svc.select(svc.devices[0])
         elif not svc.selected:
             # Fall back to saved selection
-            from trcc.conf import get_selected_device
-            saved = get_selected_device()
+            from trcc.conf import Settings
+            saved = Settings.get_selected_device()
             if saved:
                 match = next((d for d in svc.devices if d.path == saved), None)
                 if match:
@@ -581,10 +581,10 @@ class DeviceCommands:
     @staticmethod
     def _get_driver(device=None):
         """Create an LCDDriver, resolving selected device and extracting archives."""
-        from trcc.conf import get_selected_device
+        from trcc.conf import Settings
         from trcc.device_lcd import LCDDriver
         if device is None:
-            device = get_selected_device()
+            device = Settings.get_selected_device()
         driver = LCDDriver(device_path=device)
         DeviceCommands._ensure_extracted(driver)
         return driver
@@ -684,7 +684,7 @@ class DeviceCommands:
     def detect(show_all=False):
         """Detect LCD device."""
         try:
-            from trcc.conf import get_selected_device
+            from trcc.conf import Settings
             from trcc.device_detector import check_udev_rules, detect_devices
 
             devices = detect_devices()
@@ -693,14 +693,14 @@ class DeviceCommands:
                 return 1
 
             if show_all:
-                selected = get_selected_device()
+                selected = Settings.get_selected_device()
                 for i, dev in enumerate(devices, 1):
                     marker = "*" if dev.scsi_device == selected else " "
                     print(f"{marker} [{i}] {DeviceCommands._format(dev, probe=True)}")
                 if len(devices) > 1:
                     print("\nUse 'trcc select N' to switch devices")
             else:
-                selected = get_selected_device()
+                selected = Settings.get_selected_device()
                 dev = None
                 if selected:
                     dev = next((d for d in devices if d.scsi_device == selected), None)
@@ -727,7 +727,7 @@ class DeviceCommands:
     def select(number):
         """Select a device by number."""
         try:
-            from trcc.conf import save_selected_device
+            from trcc.conf import Settings
             from trcc.device_detector import detect_devices
 
             devices = detect_devices()
@@ -740,7 +740,7 @@ class DeviceCommands:
                 return 1
 
             device = devices[number - 1]
-            save_selected_device(device.scsi_device)
+            Settings.save_selected_device(device.scsi_device)
             print(f"Selected: {device.scsi_device} ({device.product_name})")
             return 0
         except Exception as e:
@@ -948,9 +948,9 @@ class DisplayCommands:
             dev = svc.selected
 
             # Persist to device config
-            from trcc.conf import device_config_key, save_device_setting
-            key = device_config_key(dev.device_index, dev.vid, dev.pid)
-            save_device_setting(key, 'brightness_level', level)
+            from trcc.conf import Settings
+            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+            Settings.save_device_setting(key, 'brightness_level', level)
 
             print(f"Brightness set to L{level} ({percent}%) on {dev.path}")
             return 0
@@ -976,9 +976,9 @@ class DisplayCommands:
 
             dev = svc.selected
 
-            from trcc.conf import device_config_key, save_device_setting
-            key = device_config_key(dev.device_index, dev.vid, dev.pid)
-            save_device_setting(key, 'rotation', degrees)
+            from trcc.conf import Settings
+            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+            Settings.save_device_setting(key, 'rotation', degrees)
 
             print(f"Rotation set to {degrees}° on {dev.path}")
             return 0
@@ -1178,7 +1178,7 @@ class DisplayCommands:
         try:
             import time
 
-            from trcc.conf import device_config_key, get_device_config
+            from trcc.conf import Settings
             from trcc.services import DeviceService, ImageService
 
             svc = DeviceService()
@@ -1201,8 +1201,8 @@ class DisplayCommands:
                 if dev.protocol != "scsi":
                     continue
 
-                key = device_config_key(dev.device_index, dev.vid, dev.pid)
-                cfg = get_device_config(key)
+                key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+                cfg = Settings.get_device_config(key)
                 theme_path = cfg.get("theme_path")
 
                 if not theme_path:
@@ -1313,11 +1313,7 @@ class ThemeCommands:
         try:
             from PIL import Image
 
-            from trcc.conf import (
-                device_config_key,
-                save_device_setting,
-                settings,
-            )
+            from trcc.conf import Settings, settings
             from trcc.data_repository import DataManager
             from trcc.services import ImageService, ThemeService
 
@@ -1357,9 +1353,9 @@ class ThemeCommands:
                 img = ImageService.resize(img, w, h)
 
                 # Apply saved adjustments
-                from trcc.conf import get_device_config
-                key = device_config_key(dev.device_index, dev.vid, dev.pid)
-                cfg = get_device_config(key)
+                from trcc.conf import Settings
+                key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+                cfg = Settings.get_device_config(key)
                 brightness = {1: 25, 2: 50, 3: 100}.get(
                     cfg.get('brightness_level', 3), 100)
                 rotation = cfg.get('rotation', 0)
@@ -1369,7 +1365,7 @@ class ThemeCommands:
                 svc.send_pil(img, w, h)
 
                 # Save as last-used theme
-                save_device_setting(key, 'theme_path', str(match.path))
+                Settings.save_device_setting(key, 'theme_path', str(match.path))
                 print(f"Loaded '{match.name}' → {dev.path}")
             else:
                 print(f"Theme '{match.name}' has no background image.")
@@ -1400,9 +1396,9 @@ class ThemeCommands:
             w, h = dev.resolution
 
             # Load current background from last-used theme
-            from trcc.conf import device_config_key, get_device_config
-            key = device_config_key(dev.device_index, dev.vid, dev.pid)
-            cfg = get_device_config(key)
+            from trcc.conf import Settings
+            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+            cfg = Settings.get_device_config(key)
             theme_path = cfg.get('theme_path')
 
             bg = None
@@ -1765,7 +1761,7 @@ class DiagCommands:
     def _hid_debug_led(dev) -> None:
         """HID handshake diagnostic for LED devices (Type 1)."""
         from trcc.device_factory import LedProtocol
-        from trcc.device_led import PM_TO_STYLE, LedHandshakeInfo
+        from trcc.device_led import LedHandshakeInfo, PmRegistry
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
         info = protocol.handshake()
@@ -1792,7 +1788,7 @@ class DiagCommands:
             print(f"  Segments   = {style.segment_count}")
             print(f"  Zones      = {style.zone_count}")
 
-        if info.pm in PM_TO_STYLE:
+        if info.pm in PmRegistry.PM_TO_STYLE:
             print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
         else:
             print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
@@ -1871,8 +1867,8 @@ class DiagCommands:
             from trcc.device_led import (
                 LED_PID,
                 LED_VID,
-                PM_TO_STYLE,
                 LedHandshakeInfo,
+                PmRegistry,
             )
 
             print("LED Device Diagnostic")
@@ -1902,7 +1898,7 @@ class DiagCommands:
             print(f"  Segments:   {style.segment_count}")
             print(f"  Zones:      {style.zone_count}")
 
-            if info.pm in PM_TO_STYLE:
+            if info.pm in PmRegistry.PM_TO_STYLE:
                 print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
             else:
                 print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
@@ -2160,10 +2156,10 @@ StartupWMClass=trcc-linux
         import shutil
         from pathlib import Path
 
-        from trcc.conf import clear_installed_resolutions
+        from trcc.conf import Settings
 
         # Clear resolution markers before wiping config dir
-        clear_installed_resolutions()
+        Settings.clear_installed_resolutions()
 
         home = Path.home()
 
@@ -2255,8 +2251,8 @@ StartupWMClass=trcc-linux
                 return 0
 
             if force:
-                from trcc.conf import clear_installed_resolutions
-                clear_installed_resolutions()
+                from trcc.conf import Settings
+                Settings.clear_installed_resolutions()
 
             return download_pack(pack, force=force)
 

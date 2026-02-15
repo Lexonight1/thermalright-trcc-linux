@@ -111,9 +111,20 @@ class LEDService:
             self.state.zones[zone].brightness = max(0, min(100, brightness))
 
     def set_sensor_source(self, source: str) -> None:
-        """Set CPU/GPU source for temp/load linked modes."""
+        """Set CPU/GPU source for temp/load linked modes and segment cycling."""
         self.state.temp_source = source
         self.state.load_source = source
+        # Reset phase to first allowed phase when source changes
+        if self._segment_mode and self._seg_display:
+            self._seg_phase = self._first_allowed_phase()
+            self._seg_tick_count = 0
+            self._update_segment_mask()
+
+    def set_seg_temp_unit(self, unit: str) -> None:
+        """Set temperature unit for segment display ('C' or 'F')."""
+        self._seg_temp_unit = unit
+        if self._segment_mode:
+            self._update_segment_mask()
 
     def set_clock_format(self, is_24h: bool) -> None:
         self.state.is_timer_24h = is_24h
@@ -154,9 +165,7 @@ class LEDService:
             self._seg_tick_count += 1
             if self._seg_tick_count >= self._seg_phase_ticks:
                 self._seg_tick_count = 0
-                self._seg_phase = (
-                    (self._seg_phase + 1) % self._seg_display.phase_count
-                )
+                self._seg_phase = self._next_allowed_phase()
             self._update_segment_mask()
 
         if self.state.zone_count > 1 and self.state.zones:
@@ -257,8 +266,8 @@ class LEDService:
 
     def _tick_rainbow_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """CHMS_Timer: 768-entry RGB table with per-segment offset."""
-        from ..device_led import get_rgb_table
-        table = get_rgb_table()
+        from ..device_led import ColorEngine
+        table = ColorEngine.get_table()
         timer = self.state.rgb_timer
         table_len = len(table)
 
@@ -273,21 +282,21 @@ class LEDService:
 
     def _tick_temp_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """WDLD_Timer: color from temperature thresholds."""
-        from ..device_led import TEMP_COLOR_HIGH, TEMP_COLOR_THRESHOLDS, color_for_value
+        from ..device_led import ColorEngine
 
         source = self.state.temp_source
         temp = self._metrics.get(f"{source}_temp", 0)
-        color = color_for_value(temp, TEMP_COLOR_THRESHOLDS, TEMP_COLOR_HIGH)
+        color = ColorEngine.color_for_value(temp, ColorEngine.TEMP_GRADIENT)
         return [color] * seg_count
 
     def _tick_load_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """FZLD_Timer: color from CPU/GPU load thresholds."""
-        from ..device_led import LOAD_COLOR_HIGH, LOAD_COLOR_THRESHOLDS, color_for_value
+        from ..device_led import ColorEngine
 
         source = self.state.load_source
         key = "cpu_percent" if source == "cpu" else "gpu_usage"
         load = self._metrics.get(key, 0)
-        color = color_for_value(load, LOAD_COLOR_THRESHOLDS, LOAD_COLOR_HIGH)
+        color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
         return [color] * seg_count
 
     # ── HR10 7-segment ──────────────────────────────────────────────
@@ -307,6 +316,31 @@ class LEDService:
         )
 
     # ── Segment display (all styles 1-11) ────────────────────────
+
+    def _next_allowed_phase(self) -> int:
+        """Advance to next phase that matches the selected sensor source."""
+        total = self._seg_display.phase_count
+        for offset in range(1, total + 1):
+            candidate = (self._seg_phase + offset) % total
+            if self._phase_allowed(candidate):
+                return candidate
+        return (self._seg_phase + 1) % total
+
+    def _first_allowed_phase(self) -> int:
+        """Find the first phase matching the selected sensor source."""
+        total = self._seg_display.phase_count
+        for phase in range(total):
+            if self._phase_allowed(phase):
+                return phase
+        return 0
+
+    def _phase_allowed(self, phase: int) -> bool:
+        """Check if a phase matches the current sensor source filter."""
+        source = self.state.temp_source
+        phase_src = self._seg_display.phase_source(phase)
+        if phase_src == "other":
+            return True
+        return phase_src == source
 
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
@@ -370,10 +404,10 @@ class LEDService:
 
     def initialize(self, device_info: Any, led_style: int = 1) -> str:
         """Initialize for a device. Returns status message."""
-        from ..conf import device_config_key
+        from ..conf import Settings
 
         self._led_style = led_style
-        self._device_key = device_config_key(
+        self._device_key = Settings.device_config_key(
             getattr(device_info, 'device_index', 0),
             device_info.vid,
             device_info.pid,
@@ -417,7 +451,7 @@ class LEDService:
         if not self._device_key:
             return
         try:
-            from ..conf import save_device_setting
+            from ..conf import Settings
 
             config: Dict[str, Any] = {
                 'mode': self.state.mode.value,
@@ -440,7 +474,7 @@ class LEDService:
                     }
                     for z in self.state.zones
                 ]
-            save_device_setting(self._device_key, 'led_config', config)
+            Settings.save_device_setting(self._device_key, 'led_config', config)
         except Exception as e:
             log.error("Failed to save LED config: %s", e)
 
@@ -449,9 +483,9 @@ class LEDService:
         if not self._device_key:
             return
         try:
-            from ..conf import get_device_config
+            from ..conf import Settings
 
-            dev_config = get_device_config(self._device_key)
+            dev_config = Settings.get_device_config(self._device_key)
             led_config = dev_config.get('led_config', {})
             if not led_config:
                 return

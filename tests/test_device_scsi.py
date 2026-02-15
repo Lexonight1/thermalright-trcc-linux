@@ -12,14 +12,7 @@ from trcc.device_scsi import (
     _CHUNK_SIZE,
     _FRAME_CMD_BASE,
     _POST_INIT_DELAY,
-    _build_header,
-    _crc32,
-    _get_frame_chunks,
-    _init_device,
-    _initialized_devices,
-    _scsi_read,
-    _scsi_write,
-    _send_frame,
+    ScsiDevice,
     find_lcd_devices,
     send_image_to_device,
 )
@@ -46,14 +39,14 @@ class TestCRC32(unittest.TestCase):
     """CRC32 against known values."""
 
     def test_empty(self):
-        self.assertEqual(_crc32(b''), binascii.crc32(b'') & 0xFFFFFFFF)
+        self.assertEqual(ScsiDevice._crc32(b''), binascii.crc32(b'') & 0xFFFFFFFF)
 
     def test_known_value(self):
-        self.assertEqual(_crc32(b'hello'), binascii.crc32(b'hello') & 0xFFFFFFFF)
+        self.assertEqual(ScsiDevice._crc32(b'hello'), binascii.crc32(b'hello') & 0xFFFFFFFF)
 
     def test_unsigned(self):
         """Result is always unsigned 32-bit."""
-        result = _crc32(b'\xff' * 100)
+        result = ScsiDevice._crc32(b'\xff' * 100)
         self.assertGreaterEqual(result, 0)
         self.assertLess(result, 2**32)
 
@@ -62,33 +55,33 @@ class TestBuildHeader(unittest.TestCase):
     """20-byte SCSI command header: cmd(4) + zeros(8) + size(4) + crc32(4)."""
 
     def test_length(self):
-        header = _build_header(0xF5, 0xE100)
+        header = ScsiDevice._build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)
 
     def test_cmd_field(self):
-        header = _build_header(0xF5, 0xE100)
+        header = ScsiDevice._build_header(0xF5, 0xE100)
         cmd = struct.unpack('<I', header[:4])[0]
         self.assertEqual(cmd, 0xF5)
 
     def test_zero_padding(self):
-        header = _build_header(0xF5, 0xE100)
+        header = ScsiDevice._build_header(0xF5, 0xE100)
         self.assertEqual(header[4:12], b'\x00' * 8)
 
     def test_size_field(self):
-        header = _build_header(0x1F5, 0xE100)
+        header = ScsiDevice._build_header(0x1F5, 0xE100)
         size = struct.unpack('<I', header[12:16])[0]
         self.assertEqual(size, 0xE100)
 
     def test_crc_matches_payload(self):
-        header = _build_header(0xF5, 0xE100)
+        header = ScsiDevice._build_header(0xF5, 0xE100)
         payload = header[:16]
         expected_crc = binascii.crc32(payload) & 0xFFFFFFFF
         actual_crc = struct.unpack('<I', header[16:20])[0]
         self.assertEqual(actual_crc, expected_crc)
 
     def test_different_cmds_different_headers(self):
-        h1 = _build_header(0xF5, 0xE100)
-        h2 = _build_header(0x1F5, 0xE100)
+        h1 = ScsiDevice._build_header(0xF5, 0xE100)
+        h2 = ScsiDevice._build_header(0x1F5, 0xE100)
         self.assertNotEqual(h1, h2)
 
 
@@ -96,53 +89,53 @@ class TestGetFrameChunks(unittest.TestCase):
     """Frame chunk calculation for various resolutions."""
 
     def test_320x320_total_bytes(self):
-        chunks = _get_frame_chunks(320, 320)
+        chunks = ScsiDevice._get_frame_chunks(320, 320)
         total = sum(size for _, size in chunks)
         self.assertEqual(total, 320 * 320 * 2)  # 204,800
 
     def test_320x320_chunk_count(self):
-        chunks = _get_frame_chunks(320, 320)
-        self.assertEqual(len(chunks), 4)  # 3×64K + 8K
+        chunks = ScsiDevice._get_frame_chunks(320, 320)
+        self.assertEqual(len(chunks), 4)  # 3x64K + 8K
 
     def test_480x480_total_bytes(self):
-        chunks = _get_frame_chunks(480, 480)
+        chunks = ScsiDevice._get_frame_chunks(480, 480)
         total = sum(size for _, size in chunks)
         self.assertEqual(total, 480 * 480 * 2)  # 460,800
 
     def test_480x480_chunk_count(self):
-        chunks = _get_frame_chunks(480, 480)
-        self.assertEqual(len(chunks), 8)  # 7×64K + 2K
+        chunks = ScsiDevice._get_frame_chunks(480, 480)
+        self.assertEqual(len(chunks), 8)  # 7x64K + 2K
 
     def test_640x480_total_bytes(self):
-        chunks = _get_frame_chunks(640, 480)
+        chunks = ScsiDevice._get_frame_chunks(640, 480)
         total = sum(size for _, size in chunks)
         self.assertEqual(total, 640 * 480 * 2)  # 614,400
 
     def test_240x240_total_bytes(self):
-        chunks = _get_frame_chunks(240, 240)
+        chunks = ScsiDevice._get_frame_chunks(240, 240)
         total = sum(size for _, size in chunks)
         self.assertEqual(total, 240 * 240 * 2)  # 115,200
 
     def test_chunk_sizes_within_limit(self):
         """No chunk exceeds 64 KiB."""
         for w, h in [(320, 320), (480, 480), (640, 480)]:
-            for _, size in _get_frame_chunks(w, h):
+            for _, size in ScsiDevice._get_frame_chunks(w, h):
                 self.assertLessEqual(size, _CHUNK_SIZE)
 
     def test_cmd_encodes_index(self):
         """Chunk index embedded in bits [27:24] above base command."""
-        chunks = _get_frame_chunks(480, 480)
+        chunks = ScsiDevice._get_frame_chunks(480, 480)
         for i, (cmd, _) in enumerate(chunks):
             expected = _FRAME_CMD_BASE | (i << 24)
             self.assertEqual(cmd, expected, f"Chunk {i}: {cmd:#x} != {expected:#x}")
 
     def test_last_chunk_may_be_smaller(self):
-        chunks = _get_frame_chunks(320, 320)
+        chunks = ScsiDevice._get_frame_chunks(320, 320)
         last_size = chunks[-1][1]
         self.assertEqual(last_size, 320 * 320 * 2 - 3 * _CHUNK_SIZE)  # 8192
 
 
-# ── SCSI read/write ─────────────────────────────────────────────────────────
+# -- SCSI read/write --
 
 class TestScsiRead(unittest.TestCase):
     """Low-level SCSI READ via sg_raw."""
@@ -150,7 +143,7 @@ class TestScsiRead(unittest.TestCase):
     @patch('trcc.device_scsi.subprocess.run')
     def test_success_returns_stdout(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b'\xAA\xBB')
-        result = _scsi_read('/dev/sg0', b'\x01\x02\x03', 256)
+        result = ScsiDevice._scsi_read('/dev/sg0', b'\x01\x02\x03', 256)
         self.assertEqual(result, b'\xAA\xBB')
         mock_run.assert_called_once()
         args = mock_run.call_args[0][0]
@@ -160,13 +153,13 @@ class TestScsiRead(unittest.TestCase):
     @patch('trcc.device_scsi.subprocess.run')
     def test_failure_returns_empty(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1, stdout=b'')
-        result = _scsi_read('/dev/sg0', b'\x01', 128)
+        result = ScsiDevice._scsi_read('/dev/sg0', b'\x01', 128)
         self.assertEqual(result, b'')
 
     @patch('trcc.device_scsi.subprocess.run')
     def test_cdb_hex_encoding(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b'')
-        _scsi_read('/dev/sg0', b'\xFF\x00\xAB', 100)
+        ScsiDevice._scsi_read('/dev/sg0', b'\xFF\x00\xAB', 100)
         args = mock_run.call_args[0][0]
         # CDB bytes should be hex-encoded in command
         self.assertIn('ff', args)
@@ -180,36 +173,36 @@ class TestScsiWrite(unittest.TestCase):
     @patch('trcc.device_scsi.subprocess.run')
     def test_success_returns_true(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
-        header = _build_header(0x101F5, 0x10000)
-        result = _scsi_write('/dev/sg0', header, b'\x00' * 100)
+        header = ScsiDevice._build_header(0x101F5, 0x10000)
+        result = ScsiDevice._scsi_write('/dev/sg0', header, b'\x00' * 100)
         self.assertTrue(result)
 
     @patch('trcc.device_scsi.subprocess.run')
     def test_failure_returns_false(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)
-        header = _build_header(0x101F5, 0x10000)
-        result = _scsi_write('/dev/sg0', header, b'\x00' * 10)
+        header = ScsiDevice._build_header(0x101F5, 0x10000)
+        result = ScsiDevice._scsi_write('/dev/sg0', header, b'\x00' * 10)
         self.assertFalse(result)
 
     @patch('trcc.device_scsi.subprocess.run')
     def test_temp_file_auto_cleaned(self, mock_run):
         """Temp file is auto-deleted by NamedTemporaryFile(delete=True)."""
         mock_run.return_value = MagicMock(returncode=0)
-        header = _build_header(0x101F5, 100)
-        _scsi_write('/dev/sg0', header, b'\x00' * 10)
+        header = ScsiDevice._build_header(0x101F5, 100)
+        ScsiDevice._scsi_write('/dev/sg0', header, b'\x00' * 10)
         mock_run.assert_called_once()
 
 
-# ── Init device ──────────────────────────────────────────────────────────────
+# -- Init device --
 
 class TestInitDevice(unittest.TestCase):
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_sends_poll_then_init(self, mock_read, mock_write, mock_sleep):
         mock_read.return_value = b'\x00' * 16  # No boot signature
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
         mock_read.assert_called_once()
         mock_write.assert_called_once()
         # Poll read uses 0xE100 length
@@ -220,25 +213,25 @@ class TestInitDevice(unittest.TestCase):
         self.assertEqual(len(write_args[0][2]), 0xE100)
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_post_init_delay(self, mock_read, mock_write, mock_sleep):
         """Post-init delay lets display controller settle."""
         mock_read.return_value = b'\x00' * 16
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
         # Last sleep call should be the post-init delay
         mock_sleep.assert_called_with(_POST_INIT_DELAY)
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_boot_signature_waits_and_retries(self, mock_read, mock_write, mock_sleep):
         """Device returning 0xA1A2A3A4 at bytes[4:8] triggers wait + re-poll."""
         boot_response = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
         ready_response = b'\x64' + b'\x00' * 15  # 320x320, no boot sig
         mock_read.side_effect = [boot_response, ready_response]
 
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
 
         # Should have polled twice
         self.assertEqual(mock_read.call_count, 2)
@@ -248,14 +241,14 @@ class TestInitDevice(unittest.TestCase):
         self.assertEqual(calls[1][0][0], _POST_INIT_DELAY)
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_boot_signature_max_retries(self, mock_read, mock_write, mock_sleep):
         """Gives up after _BOOT_MAX_RETRIES attempts."""
         boot_response = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
         mock_read.return_value = boot_response  # Always booting
 
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
 
         # Polled max retries times
         self.assertEqual(mock_read.call_count, _BOOT_MAX_RETRIES)
@@ -263,68 +256,68 @@ class TestInitDevice(unittest.TestCase):
         mock_write.assert_called_once()
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_empty_poll_response_no_wait(self, mock_read, mock_write, mock_sleep):
         """Empty poll response (error) doesn't trigger boot wait."""
         mock_read.return_value = b''  # Command failed
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
         mock_read.assert_called_once()
         # Only post-init delay, no boot wait
         mock_sleep.assert_called_once_with(_POST_INIT_DELAY)
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_short_poll_response_no_wait(self, mock_read, mock_write, mock_sleep):
         """Poll response shorter than 8 bytes doesn't trigger boot check."""
         mock_read.return_value = b'\x64\x00\x00\x00'  # Only 4 bytes
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
         mock_read.assert_called_once()
         mock_sleep.assert_called_once_with(_POST_INIT_DELAY)
 
     @patch('trcc.device_scsi.time.sleep')
-    @patch('trcc.device_scsi._scsi_write')
-    @patch('trcc.device_scsi._scsi_read')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_read')
     def test_boot_then_ready_on_second_poll(self, mock_read, mock_write, mock_sleep):
         """Boot signature on first poll, ready on second — only 1 wait."""
         boot = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
         ready = b'\x64' + b'\x00' * 15
         mock_read.side_effect = [boot, ready]
 
-        _init_device('/dev/sg0')
+        ScsiDevice._init_device('/dev/sg0')
 
         self.assertEqual(mock_read.call_count, 2)
         sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
         self.assertEqual(sleep_calls, [_BOOT_WAIT_SECONDS, _POST_INIT_DELAY])
 
 
-# ── Send frame ───────────────────────────────────────────────────────────────
+# -- Send frame --
 
 class TestSendFrame(unittest.TestCase):
 
-    @patch('trcc.device_scsi._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
     def test_sends_all_chunks(self, mock_write):
         # 320x320 = 4 chunks
         data = b'\x00' * (320 * 320 * 2)
-        _send_frame('/dev/sg0', data)
+        ScsiDevice._send_frame('/dev/sg0', data)
         self.assertEqual(mock_write.call_count, 4)
 
-    @patch('trcc.device_scsi._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
     def test_pads_short_data(self, mock_write):
-        _send_frame('/dev/sg0', b'\x00' * 100)
+        ScsiDevice._send_frame('/dev/sg0', b'\x00' * 100)
         # Should still send all 4 chunks totaling 320*320*2 bytes
         total_sent = sum(len(c[0][2]) for c in mock_write.call_args_list)
         self.assertEqual(total_sent, 320 * 320 * 2)
 
-    @patch('trcc.device_scsi._scsi_write')
+    @patch('trcc.device_scsi.ScsiDevice._scsi_write')
     def test_custom_resolution(self, mock_write):
         data = b'\x00' * (480 * 480 * 2)
-        _send_frame('/dev/sg0', data, 480, 480)
+        ScsiDevice._send_frame('/dev/sg0', data, 480, 480)
         self.assertEqual(mock_write.call_count, 8)  # 480x480 = 8 chunks
 
 
-# ── find_lcd_devices ─────────────────────────────────────────────────────────
+# -- find_lcd_devices --
 
 class TestFindLCDDevices(unittest.TestCase):
 
@@ -382,39 +375,39 @@ class TestFindLCDDevices(unittest.TestCase):
         self.assertEqual(devices[0]['resolution'], (320, 320))
 
 
-# ── send_image_to_device ─────────────────────────────────────────────────────
+# -- send_image_to_device --
 
 class TestSendImageToDevice(unittest.TestCase):
 
     def setUp(self):
-        _initialized_devices.clear()
+        ScsiDevice._initialized_devices.clear()
 
-    @patch('trcc.device_scsi._send_frame')
-    @patch('trcc.device_scsi._init_device')
+    @patch('trcc.device_scsi.ScsiDevice._send_frame')
+    @patch('trcc.device_scsi.ScsiDevice._init_device')
     def test_first_send_initializes(self, mock_init, mock_send):
         result = send_image_to_device('/dev/sg0', b'\x00' * 100, 320, 320)
         self.assertTrue(result)
         mock_init.assert_called_once_with('/dev/sg0')
         mock_send.assert_called_once()
 
-    @patch('trcc.device_scsi._send_frame')
-    @patch('trcc.device_scsi._init_device')
+    @patch('trcc.device_scsi.ScsiDevice._send_frame')
+    @patch('trcc.device_scsi.ScsiDevice._init_device')
     def test_second_send_skips_init(self, mock_init, mock_send):
         send_image_to_device('/dev/sg0', b'\x00', 320, 320)
         send_image_to_device('/dev/sg0', b'\x00', 320, 320)
         mock_init.assert_called_once()  # Only once
         self.assertEqual(mock_send.call_count, 2)
 
-    @patch('trcc.device_scsi._send_frame', side_effect=Exception('fail'))
-    @patch('trcc.device_scsi._init_device')
+    @patch('trcc.device_scsi.ScsiDevice._send_frame', side_effect=Exception('fail'))
+    @patch('trcc.device_scsi.ScsiDevice._init_device')
     def test_error_returns_false_and_resets(self, mock_init, _):
         result = send_image_to_device('/dev/sg0', b'\x00', 320, 320)
         self.assertFalse(result)
         # Device should be removed from initialized set for re-init
-        self.assertNotIn('/dev/sg0', _initialized_devices)
+        self.assertNotIn('/dev/sg0', ScsiDevice._initialized_devices)
 
-    @patch('trcc.device_scsi._send_frame')
-    @patch('trcc.device_scsi._init_device', side_effect=Exception('init fail'))
+    @patch('trcc.device_scsi.ScsiDevice._send_frame')
+    @patch('trcc.device_scsi.ScsiDevice._init_device', side_effect=Exception('init fail'))
     def test_init_error_returns_false(self, mock_init, _):
         result = send_image_to_device('/dev/sg0', b'\x00', 320, 320)
         self.assertFalse(result)
