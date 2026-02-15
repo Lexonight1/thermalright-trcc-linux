@@ -122,6 +122,7 @@ class PmEntry(NamedTuple):
     style_id: int
     model_name: str
     button_image: str
+    preview_image: str = ""  # PM-specific preview; empty = use style default
 
 
 class PmRegistry:
@@ -139,8 +140,8 @@ class PmRegistry:
 
     # PM → PmEntry base registry (built once at class load time).
     _REGISTRY: dict[int, PmEntry] = {
-        1:   PmEntry(1, "FROZEN_HORIZON_PRO", "A1FROZEN HORIZON PRO"),
-        2:   PmEntry(1, "FROZEN_MAGIC_PRO", "A1FROZEN MAGIC PRO"),
+        1:   PmEntry(1, "FROZEN_HORIZON_PRO", "A1FROZEN HORIZON PRO", "DFROZEN_HORIZON_PRO"),
+        2:   PmEntry(1, "FROZEN_MAGIC_PRO", "A1FROZEN MAGIC PRO", "DFROZEN_MAGIC_PRO"),
         3:   PmEntry(1, "AX120_DIGITAL", "A1AX120 DIGITAL"),
         16:  PmEntry(2, "PA120_DIGITAL", "A1PA120 DIGITAL"),
         23:  PmEntry(2, "RK120_DIGITAL", "A1RK120 DIGITAL"),
@@ -195,6 +196,15 @@ class PmRegistry:
         """
         entry = cls.resolve(pm, sub_type)
         return LED_STYLES[entry.style_id if entry else 1]
+
+    @classmethod
+    def get_preview_image(cls, pm: int, sub_type: int = 0) -> str:
+        """Get device preview image name, PM-specific or style default."""
+        entry = cls.resolve(pm, sub_type)
+        if entry and entry.preview_image:
+            return entry.preview_image
+        style = cls.get_style(pm, sub_type)
+        return style.preview_image
 
 
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers

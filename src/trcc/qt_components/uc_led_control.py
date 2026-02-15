@@ -41,9 +41,9 @@ from .uc_seven_segment import UCSevenSegment
 PANEL_WIDTH = 1274
 PANEL_HEIGHT = 800
 
-# UCScreenLED preview (standard devices)
+# UCScreenLED preview (standard devices) — 460x460 matches CS UCScreenLED
 PREVIEW_X, PREVIEW_Y = 16, 80
-PREVIEW_W, PREVIEW_H = 536, 536
+PREVIEW_W, PREVIEW_H = 460, 460
 
 # 7-segment preview position (HR10 — shorter, same left area)
 SEG_PREVIEW_X, SEG_PREVIEW_Y = 30, 100
@@ -333,7 +333,7 @@ class UCLedControl(QWidget):
 
         # -- Title label --
         self._title = QLabel("RGB LED Control", self)
-        self._title.setGeometry(PREVIEW_X, 20, 536, 40)
+        self._title.setGeometry(PREVIEW_X, 20, PREVIEW_W, 40)
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._title.setStyleSheet(
             "color: white; font-size: 20px; font-weight: bold;"
@@ -820,7 +820,8 @@ class UCLedControl(QWidget):
     # ================================================================
 
     def initialize(self, style_id: int, segment_count: int,
-                   zone_count: int = 1, lang: str = 'en') -> None:
+                   zone_count: int = 1, lang: str = 'en',
+                   model: str = '') -> None:
         """Configure for a specific LED device style.
 
         Args:
@@ -828,10 +829,12 @@ class UCLedControl(QWidget):
             segment_count: Number of LED segments.
             zone_count: Number of independent zones.
             lang: Language code for localized background.
+            model: Device model name (for PM-specific preview image).
         """
         self._style_id = style_id
         self._zone_count = zone_count
         self._lang = lang
+        self._model = model
         self._is_hr10 = (style_id == 13)
 
         # Toggle preview widgets
@@ -841,14 +844,22 @@ class UCLedControl(QWidget):
         if not self._is_hr10:
             self._preview.set_style(style_id, segment_count)
 
-        # Load device preview background (standard preview)
-        from ..device_led import LED_STYLES
+        # Load device preview background (PM-specific or style default)
+        from ..device_led import LED_STYLES, PmRegistry
         style = LED_STYLES.get(style_id)
         if style:
             if not self._is_hr10:
-                preview_pixmap = Assets.get(style.preview_image)
+                # Resolve preview: check PmRegistry for model-specific image,
+                # fall back to style default (Windows: FormLEDInit per-NO)
+                preview_name = style.preview_image
+                if model:
+                    for pm, entry in PmRegistry._REGISTRY.items():
+                        if entry.model_name == model and entry.preview_image:
+                            preview_name = entry.preview_image
+                            break
+                preview_pixmap = Assets.get(preview_name)
                 if preview_pixmap:
-                    self._preview.set_background(QPixmap(preview_pixmap))
+                    self._preview.set_overlay(QPixmap(preview_pixmap))
 
             # Set panel background
             bg_base = style.background_base
@@ -1082,6 +1093,8 @@ class UCLedControl(QWidget):
             btn.setChecked(i == index)
         if self._is_hr10:
             self._update_mode_visibility()
+        else:
+            self._preview.set_led_mode(index)
         # Show sensor source selector for temp/load linked modes
         self._set_source_visibility(index in (4, 5))
         self.mode_changed.emit(index)

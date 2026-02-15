@@ -1778,7 +1778,8 @@ class TRCCMainWindowMVC(QMainWindow):
         style_info = LEDService.get_style_info(led_style)
         if style_info:
             self.uc_led_control.initialize(
-                led_style, style_info.segment_count, style_info.zone_count, self._lang
+                led_style, style_info.segment_count, style_info.zone_count,
+                self._lang, model=model,
             )
         # Sync saved sensor source to UI
         source = self._led_controller.led.state.temp_source
