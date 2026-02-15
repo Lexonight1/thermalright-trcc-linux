@@ -38,6 +38,7 @@ jobs:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           artifacts: dist/*
+          skipIfReleaseExists: true
 
       - name: Upload dist to actions artifacts
         uses: actions/upload-artifact@v6
