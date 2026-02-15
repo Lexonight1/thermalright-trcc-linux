@@ -276,7 +276,7 @@ class Layout:
 
     # UCSystemInfoOptions (sensor grid) — Windows: (190, 98) on Form1, size 1254x692
     # y=80 covers the FormCZTV tab bar area (Windows hides FormCZTV entirely)
-    SYSINFO_PANEL = (10, 80, 1254, 710)
+    SYSINFO_PANEL = (10, 80, 1254, 692)
 
     # UCAbout / Control Center panel
     ABOUT_CLOSE_BTN = (1212, 24, 40, 40)
