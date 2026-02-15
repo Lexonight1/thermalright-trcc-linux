@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.9"
+__version__ = "3.0.10"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -108,3 +108,8 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          zones 4+ by 4 wire positions). Fix HID Type 2 frame send: chunk at
 #          512 bytes matching C# UCDevice.cs, skip redundant SetConfiguration
 #          to prevent USB bus reset on Linux. 2290 tests.
+# 3.0.10 - Rewrite UCScreenLED: exact CS paint order (dark fill → decorations
+#          → LED rectangles → overlay mask), 12 ledPosition arrays with exact
+#          Rectangle(x,y,w,h) coordinates, 460×460 widget. Unified device
+#          sidebar buttons: remove DeviceButton class, all buttons use
+#          create_image_button with setChecked() toggle. 2288 tests.

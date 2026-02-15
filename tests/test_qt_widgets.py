@@ -178,7 +178,6 @@ class TestUCPreview(unittest.TestCase):
 
 from trcc.qt_components.uc_device import (  # noqa: E402
     DEVICE_IMAGE_MAP,
-    DeviceButton,
     UCDevice,
     _get_device_images,
 )
@@ -201,30 +200,13 @@ class TestDeviceImageMap(unittest.TestCase):
         if normal:
             self.assertTrue(normal.endswith('.png'))
 
-
-class TestDeviceButton(unittest.TestCase):
-    """Test DeviceButton widget."""
-
-    def test_init(self):
-        info = {'name': 'Test LCD', 'path': '/dev/sg0', 'model': 'UNKNOWN'}
-        btn = DeviceButton(info)
-        self.assertEqual(btn.device_info, info)
-        self.assertFalse(btn.selected)
-
-    def test_set_selected(self):
-        info = {'name': 'LCD', 'path': '/dev/sg0'}
-        btn = DeviceButton(info)
-        btn.set_selected(True)
-        self.assertTrue(btn.selected)
-
-    def test_device_clicked_signal(self):
-        info = {'name': 'LCD', 'path': '/dev/sg0'}
-        btn = DeviceButton(info)
-        received = []
-        btn.device_clicked.connect(lambda d: received.append(d))
-        btn.click()
-        self.assertEqual(len(received), 1)
-        self.assertEqual(received[0]['path'], '/dev/sg0')
+    def test_get_device_images_hid_default_skipped(self):
+        """HID devices with generic A1CZTV return None (await handshake)."""
+        normal, active = _get_device_images({
+            'protocol': 'hid', 'button_image': 'A1CZTV',
+        })
+        self.assertIsNone(normal)
+        self.assertIsNone(active)
 
 
 class TestUCDevice(unittest.TestCase):
