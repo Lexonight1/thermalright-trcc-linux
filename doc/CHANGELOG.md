@@ -1,5 +1,61 @@
 # Changelog
 
+## v3.0.9
+
+### PA120 Remap Fix & HID Type 2 Disconnect Fix
+- **Fixed**: PA120 LED remap table — misplaced SSD/HSD/C11/B11 block shifted zones 4+ by 4 wire positions
+- **Fixed**: HID Type 2 frame send — chunk at 512 bytes matching C# UCDevice.cs (was sending full packet in one write, causing USB disconnect on some devices)
+- **Fixed**: HID Type 2 `open()` — skip redundant `set_configuration()` if already configured, preventing USB bus reset on Linux
+- 2290 tests across 35 files
+
+## v3.0.8
+
+### LED Segment Display Fix
+- **Fixed**: LED segment display °C/°F toggle now propagates to segment renderer
+- **Fixed**: CPU/GPU sensor source selector now filters phase cycling (show only CPU or GPU instead of always both)
+- OOP refactor: moved loose functions into classes across 5 files (conf.py, device_scsi.py, device_led_hr10.py, device_factory.py, device_hid.py)
+- 2290 tests across 35 files
+
+## v3.0.7
+
+### Unified Segment Display Renderer
+- Unified segment display renderer for all 11 LED device styles
+- OOP class hierarchy: `SegmentDisplay` ABC + 10 subclasses (AX120, PA120, AK120, LC1, LF8, LF12, LF10, CZ1, LC2, LF11)
+- Data/logic separation with `CHAR_7SEG` and `CHAR_13SEG` encoding tables
+- `LEDService` generalized for all digit-display styles (not just AX120)
+- 2291 tests across 35 files
+
+## v3.0.6
+
+### Single-Instance Guard
+- Single-instance guard: prevent duplicate systray entries on launch
+- Font size spinbox in overlay color picker (independent of font dialog)
+- 2167 tests across 35 files
+
+## v3.0.5
+
+### LED Mode Button Image Fix
+- **Fixed**: LED mode button images — asset filename typo caused buttons to show plain text instead of icons (`D2灯光1{i+1}` → `D2灯光{i+1}`)
+- 2167 tests across 35 files
+
+## v3.0.4
+
+### Bulk Frame Encoding Fix
+- **Fixed**: Bulk frame encoding — JPEG (cmd=2) instead of raw RGB565 for all USBLCDNew devices (87AD:70DB), matching C# `ImageToJpg` protocol
+- PM=32 remains RGB565 (cmd=3) for raw-mode devices
+- Added PM=5 to bulk resolution table (Mjolnir Vision → 240×320)
+- 2166 tests across 35 files
+
+## v3.0.3
+
+### Background Display Mode Fix
+- **Fixed**: Background display mode — continuous LCD sending via metrics timer (C# `myBjxs`/`isToTimer` parity), toggle OFF renders black+overlays, theme click resets all mode toggles
+- Security hardening: timing-safe auth, PIL bomb cap, zip-slip guard, TOCTOU fix
+- Tooltips on all user-facing buttons
+- Distro name in debug report
+- Help → troubleshooting guide
+- 2162 tests across 33 files
+
 ## v3.0.2
 
 ### Bulk Protocol Fix

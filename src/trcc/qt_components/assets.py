@@ -151,6 +151,7 @@ class Assets:
     ABOUT_LOGOUT_HOVER = 'Alogout选中.png'
     CHECKBOX_OFF = 'P点选框.png'
     CHECKBOX_ON = 'P点选框A.png'
+    UPDATE_BTN = 'A2立即更新.png'
 
     @classmethod
     def get(cls, name: str) -> str | None:

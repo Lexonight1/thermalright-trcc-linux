@@ -23,17 +23,18 @@ These devices have been reported by testers with varying levels of validation.
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
-| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Detected, awaiting v2.0.0 retest |
-| Mjolnir Vision 360 | Bulk (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | Same VID:PID as GrandVision, awaiting retest |
+| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Fix posted in v3.0.9 (chunked writes + skip SetConfig), awaiting confirmation |
+| Mjolnir Vision 360 | Bulk (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | Fix posted in v3.0.4 (JPEG encoding + PM=5), awaiting confirmation |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
 | Assassin X 120 R Digital | HID (0416:8001) | [#5](https://github.com/Lexonight1/thermalright-trcc-linux/issues/5) | LED RGB working |
+| AX120 Digital | HID (0416:8001) | [#23](https://github.com/Lexonight1/thermalright-trcc-linux/issues/23) | Fix posted in v3.0.8 (°C/°F + phase cycling), awaiting confirmation |
 | HR10 2280 PRO Digital | HID (0416:8001) | [#1](https://github.com/Lexonight1/thermalright-trcc-linux/issues/1) | Fully supported — 7-segment display, NVMe temp daemon, color wheel |
-| Peerless Assassin 120 Digital ARGB White | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | LED partially working, awaiting retest |
-| Phantom Spirit 120 Digital EVO | HID (0416:8001) | [#19](https://github.com/Lexonight1/thermalright-trcc-linux/issues/19) | Detected, awaiting v2.0.0 retest |
+| Peerless Assassin 120 Digital ARGB White | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | Fix posted in v3.0.9 (PA120 remap table), awaiting confirmation |
+| Phantom Spirit 120 Digital EVO | HID (0416:8001) | [#19](https://github.com/Lexonight1/thermalright-trcc-linux/issues/19) | Detected, awaiting retest |
 
 ---
 

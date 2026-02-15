@@ -282,7 +282,8 @@ class Layout:
     ABOUT_HDD = (297, 254, 14, 14)
     ABOUT_REFRESH_INPUT = (299, 291, 36, 16)
     ABOUT_WEBSITE = (94, 726, 353, 43)
-    ABOUT_VERSION = (1175, 735, 87, 27)
+    ABOUT_VERSION = (1150, 735, 87, 27)
+    ABOUT_UPDATE_BTN = (297, 328, 48, 26)
 
     # Language selection checkboxes (within UCAbout)
     ABOUT_LANG_BUTTONS = [

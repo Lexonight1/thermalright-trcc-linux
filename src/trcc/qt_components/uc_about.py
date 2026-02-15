@@ -14,14 +14,21 @@ Windows controls (from UCAbout.cs):
 - Language checkboxes at y=373/403
 """
 
+from __future__ import annotations
+
+import json
 import logging
 import shutil
+import subprocess
+import sys
 import webbrowser
 from pathlib import Path
+from threading import Thread
+from urllib.request import urlopen
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, Qt, Signal
 from PySide6.QtGui import QBrush, QIcon, QIntValidator, QPalette
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QToolTip
 
 from .assets import Assets, load_pixmap
 from .base import BasePanel, create_image_button
@@ -120,6 +127,21 @@ def ensure_autostart():
     return _is_autostart_enabled()
 
 
+def _check_pypi_version() -> str | None:
+    """Fetch the latest trcc-linux version from PyPI. Returns version string or None."""
+    try:
+        with urlopen('https://pypi.org/pypi/trcc-linux/json', timeout=5) as resp:
+            data = json.loads(resp.read())
+            return data['info']['version']
+    except Exception:
+        return None
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    """Parse '3.0.9' into (3, 0, 9) for comparison."""
+    return tuple(int(x) for x in v.split('.'))
+
+
 class UCAbout(BasePanel):
     """
     Control Center panel matching Windows UCAbout.
@@ -140,6 +162,7 @@ class UCAbout(BasePanel):
     startup_changed = Signal(bool)       # auto-start enabled
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
     refresh_changed = Signal(int)        # refresh interval (seconds)
+    _update_available = Signal(str)      # latest version string
 
     def __init__(self, lang: str = 'en', parent=None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
@@ -231,11 +254,55 @@ class UCAbout(BasePanel):
         self.version_label = QLabel(__version__, self)
         self.version_label.setGeometry(*Layout.ABOUT_VERSION)
         self.version_label.setStyleSheet(
-            "color: white; font-size: 12px; background: transparent;"
+            "color: white; font-size: 16px; font-weight: bold; background: transparent;"
         )
         self.version_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
+
+        # === Software update area (buttonBCZT — baked into background) ===
+        # Tooltip shown to the right of the button via event override
+        self._update_tooltip = "Running latest"
+        self._update_rect = self.rect().__class__(  # QRect
+            *Layout.ABOUT_UPDATE_BTN)
+
+        self.update_btn = QPushButton(self)
+        self.update_btn.setGeometry(*Layout.ABOUT_UPDATE_BTN)
+        self.update_btn.setFlat(True)
+        self.update_btn.setStyleSheet(Styles.FLAT_BUTTON)
+        self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_btn.hide()
+        self.update_btn.installEventFilter(self)
+        self.update_btn.clicked.connect(self._on_update_clicked)
+        self._update_available.connect(self._on_update_result)
+        self._latest_version: str | None = None
+
+        # Check PyPI for updates in background
+        Thread(target=self._check_for_update, daemon=True).start()
+
+    def _show_update_tooltip(self):
+        """Show tooltip to the right of the update button, vertically centered."""
+        tip_pos = self.mapToGlobal(
+            QPoint(self._update_rect.right() + 4,
+                   self._update_rect.center().y() - 36))
+        QToolTip.showText(tip_pos, self._update_tooltip, self,
+                          self._update_rect)
+
+    def event(self, e: QEvent) -> bool:
+        """Show update tooltip to the right of the button area."""
+        if e.type() == QEvent.Type.ToolTip:
+            pos = e.pos()  # pyright: ignore[reportAttributeAccessIssue]
+            if self._update_rect.contains(pos):
+                self._show_update_tooltip()
+                return True
+        return super().event(e)
+
+    def eventFilter(self, obj, e: QEvent) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Intercept tooltip on update button to use same custom position."""
+        if obj is self.update_btn and e.type() == QEvent.Type.ToolTip:
+            self._show_update_tooltip()
+            return True
+        return super().eventFilter(obj, e)
 
     def _make_checkbox(self, x, y, w, h, checked=False):
         """Create a checkbox-style toggle button using Windows checkbox images."""
@@ -315,6 +382,41 @@ class UCAbout(BasePanel):
         self._lang = lang_suffix
         self._apply_background()
         self.language_changed.emit(lang_suffix)
+
+    # --- Software update ---
+
+    def _check_for_update(self):
+        """Background thread: query PyPI and emit result via signal."""
+        latest = _check_pypi_version()
+        if latest:
+            self._update_available.emit(latest)
+
+    def _on_update_result(self, latest: str):
+        """Handle PyPI version check result (runs on main thread via signal)."""
+        from trcc.__version__ import __version__
+        if _parse_version(latest) > _parse_version(__version__):
+            self._latest_version = latest
+            self._update_tooltip = f"Version {latest} available"
+            self.update_btn.show()
+            log.info("Update available: %s → %s", __version__, latest)
+
+    def _on_update_clicked(self):
+        """Run pip install --upgrade trcc-linux."""
+        self.update_btn.hide()
+        self._update_tooltip = "Updating..."
+        log.info("Starting upgrade to %s", self._latest_version)
+        Thread(target=self._run_upgrade, daemon=True).start()
+
+    def _run_upgrade(self):
+        """Background thread: run pip upgrade."""
+        try:
+            subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'trcc-linux'],
+                check=True, capture_output=True, text=True,
+            )
+            log.info("Upgrade to %s successful", self._latest_version)
+        except subprocess.CalledProcessError as e:
+            log.error("Upgrade failed: %s", e.stderr)
 
     # --- Close ---
 

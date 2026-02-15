@@ -2,9 +2,9 @@
 
 TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.0.3 have been ported, with full CLI/GUI/API parity via hexagonal architecture.
 
-**Current version:** 3.0.1
+**Current version:** 3.0.9
 **Branch:** `stable`
-**Tests:** 2148 across 31 files
+**Tests:** 2290 across 35 files
 **PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
 
 ## What's Stable
@@ -14,7 +14,7 @@ All features are tested and working on the `stable` branch:
 - **4 protocol backends** — SCSI, HID, LED, Bulk (raw USB)
 - **Full GUI** — local/cloud/mask themes, overlays, video playback, carousel, image cropper, video trimmer
 - **System info overlays** — 77+ sensors (CPU, GPU, RAM, disk, network, fans)
-- **LED RGB control** — 7 effect modes (Static, Breathing, Rainbow, Cycle, Wave, Flash, Music), sensor-linked colors
+- **LED RGB control** — 6 effect modes (Static, Breathing, Colorful, Rainbow, Temp-linked, Load-linked), sensor-linked colors, 13 device styles
 - **HR10 support** — 7-segment display renderer, NVMe temperature daemon, color wheel
 - **Per-device config** — each LCD remembers its theme, brightness, rotation, overlay, and carousel settings
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
@@ -22,7 +22,7 @@ All features are tested and working on the `stable` branch:
 - **REST API** — optional FastAPI adapter for headless/remote control (`trcc serve`)
 - **Services layer** — 8 pure-Python service classes shared by GUI, CLI, and API
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
-- **96% test coverage** — 2148 tests across 31 test files
+- **96% test coverage** — 2290 tests across 35 test files
 
 ### Supported Devices
 
@@ -63,7 +63,7 @@ All features are tested and working on the `stable` branch:
 | 6 | Linting (ruff) | Done — 0 violations |
 | 7 | PyPI publish | Done — [trcc-linux](https://pypi.org/project/trcc-linux/) |
 | 8 | HID LCD support | Done — auto-detected |
-| 9 | LED RGB control | Done — 7 modes + sensor-linked |
+| 9 | LED RGB control | Done — 6 modes, 13 styles, sensor-linked |
 | 10 | Bulk USB protocol | Done — GrandVision/Mjolnir Vision |
 | 11 | HR10 7-segment display | Done — temp daemon + GUI |
 | 12 | On-demand download | Done — 15 resolutions + 33 web archives |
@@ -71,8 +71,9 @@ All features are tested and working on the `stable` branch:
 | 14 | Hexagonal architecture (services layer) | Done — 8 services |
 | 15 | CLI Typer refactor | Done — 36 commands |
 | 16 | REST API adapter | Done — FastAPI (`trcc serve`) |
-| 17 | SELinux full audit | Planned |
-| 18 | Type annotation hardening (pyright strict) | Planned |
+| 17 | Unified segment display renderer | Done — 11 styles, OOP class hierarchy |
+| 18 | SELinux full audit | Planned |
+| 19 | Type annotation hardening (pyright strict) | Planned |
 
 ## Reporting Issues
 
