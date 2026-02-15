@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "3.0.8"
+__version__ = "3.0.9"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -104,3 +104,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          (show only CPU or GPU instead of always both). OOP refactor: move
 #          loose functions into classes across 5 files (conf.py, device_scsi.py,
 #          device_led_hr10.py, device_factory.py, device_hid.py). 2290 tests.
+# 3.0.9  - Fix PA120 LED remap table (misplaced SSD/HSD/C11/B11 block shifted
+#          zones 4+ by 4 wire positions). Fix HID Type 2 frame send: chunk at
+#          512 bytes matching C# UCDevice.cs, skip redundant SetConfiguration
+#          to prevent USB bus reset on Linux. 2290 tests.
