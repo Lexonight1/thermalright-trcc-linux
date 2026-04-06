@@ -312,3 +312,52 @@ def run_setup(auto_yes: bool = False) -> int:
     """Interactive setup wizard — dispatches to platform-specific adapter."""
     from trcc.core.app import TrccApp
     return TrccApp.get().setup_platform(auto_yes=auto_yes)
+
+
+def set_gpu() -> int:
+    """Interactive GPU selector for multi-GPU systems."""
+    from trcc.core.platform import LINUX
+    if not LINUX:
+        print("GPU selection is currently supported on Linux only.")
+        return 1
+
+    from trcc.adapters.system.linux.sensors import detect_gpus
+    from trcc.conf import Settings
+
+    gpus = detect_gpus()
+    if not gpus:
+        print("No GPUs detected.")
+        return 1
+
+    if len(gpus) == 1:
+        print(f"Only one GPU detected: {gpus[0]['name']}")
+        print("No selection needed.")
+        return 0
+
+    current = Settings._get_saved_gpu_pci_slot()
+
+    print("Detected GPUs:\n")
+    for i, gpu in enumerate(gpus, 1):
+        marker = " ← current" if gpu['pci_slot'] == current else ""
+        print(f"  {i}) {gpu['name']}{marker}")
+
+    print()
+    try:
+        choice = input("Select GPU [1-{}]: ".format(len(gpus))).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 1
+
+    try:
+        idx = int(choice) - 1
+        if not (0 <= idx < len(gpus)):
+            raise ValueError
+    except ValueError:
+        print("Invalid selection.")
+        return 1
+
+    selected = gpus[idx]
+    Settings.set_gpu(selected['pci_slot'])
+    print(f"\nGPU set to: {selected['name']}")
+    print("Restart trcc for the change to take effect.")
+    return 0

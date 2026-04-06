@@ -328,6 +328,21 @@ class Settings:
         save_config(config)
 
     @staticmethod
+    def _get_saved_gpu_pci_slot() -> str | None:
+        """Get saved GPU PCI slot preference. Returns None if not set."""
+        return load_config().get('gpu_pci_slot')
+
+    @staticmethod
+    def _save_gpu_pci_slot(pci_slot: str | None):
+        """Persist GPU PCI slot preference to config."""
+        config = load_config()
+        if pci_slot is None:
+            config.pop('gpu_pci_slot', None)
+        else:
+            config['gpu_pci_slot'] = pci_slot
+        save_config(config)
+
+    @staticmethod
     def _get_saved_refresh_interval() -> int:
         """Get saved metrics refresh interval in seconds. Defaults to 1."""
         return int(load_config().get('refresh_interval', 1))
@@ -555,6 +570,20 @@ class Settings:
         """Set metrics refresh interval in seconds and persist."""
         self.refresh_interval = interval
         Settings._save_refresh_interval(interval)
+
+    @staticmethod
+    def set_gpu(pci_slot: str | None) -> None:
+        """Set preferred GPU by PCI slot (e.g. '0000:0f:00.0') and persist.
+
+        Invalidates the sensor default map cache so the new GPU takes effect.
+        """
+        Settings._save_gpu_pci_slot(pci_slot)
+        # Invalidate cached sensor mapping so next read uses the new GPU
+        try:
+            from trcc.adapters.system.linux.sensors import SensorEnumerator
+            SensorEnumerator._default_map = None
+        except ImportError:
+            pass
 
     @property
     def lang(self) -> str:
