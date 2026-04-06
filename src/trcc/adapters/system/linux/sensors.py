@@ -101,6 +101,104 @@ def _detect_gpu_vendors() -> list[str]:
     return vendors
 
 
+def detect_gpus() -> list[dict[str, str]]:
+    """Detect all GPUs with PCI slot, vendor, and human-readable name.
+
+    Returns list of dicts: {'pci_slot', 'vendor', 'name', 'driver_key', 'drm_card'}.
+    Name is resolved from the kernel's DRM device name or lspci output.
+    """
+    import subprocess
+
+    pci_base = Path('/sys/bus/pci/devices')
+    drm_base = Path('/sys/class/drm')
+    hwmon_base = Path('/sys/class/hwmon')
+    if not pci_base.exists():
+        return []
+
+    # Build PCI slot → lspci name mapping
+    pci_names: dict[str, str] = {}
+    try:
+        result = subprocess.run(
+            ['lspci', '-mm'], capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            import re
+            for line in result.stdout.splitlines():
+                # lspci -mm fields (quoted):
+                #   0=class, 1=vendor, 2=device, 3=SVendor (may be -), 4=SDevice
+                # e.g.: 06:00.0 "VGA..." "AMD..." "Navi 10 [Radeon...]" -rc1 -p00 "Sapphire..." "PULSE RX 7900 XTX"
+                match = re.match(r'^(\S+)\s+', line)
+                if match:
+                    slot = match.group(1)
+                    quoted = re.findall(r'"([^"]*)"', line)
+                    # Prefer subsystem device name (index 4), fall back to device (index 2)
+                    if len(quoted) >= 5 and quoted[4]:
+                        pci_names[slot] = quoted[4]
+                    elif len(quoted) >= 3:
+                        pci_names[slot] = quoted[2]
+    except (FileNotFoundError, OSError):
+        pass
+
+    # Build PCI device path → DRM card name mapping
+    pci_to_drm: dict[str, str] = {}
+    if drm_base.exists():
+        for card_dir in sorted(drm_base.glob('card[0-9]*')):
+            if '-' in card_dir.name:
+                continue
+            try:
+                dev_path = (card_dir / 'device').resolve()
+                pci_to_drm[str(dev_path)] = card_dir.name
+            except OSError:
+                continue
+
+    # Build PCI device path → hwmon driver_key mapping
+    pci_to_driver_key: dict[str, str] = {}
+    if hwmon_base.exists():
+        driver_counts: dict[str, int] = {}
+        for hwmon_dir in sorted(hwmon_base.iterdir()):
+            driver_name = SysUtils.read_sysfs(str(hwmon_dir / 'name')) or hwmon_dir.name
+            driver_counts[driver_name] = driver_counts.get(driver_name, 0) + 1
+            if driver_counts[driver_name] > 1:
+                driver_key = f"{driver_name}.{driver_counts[driver_name] - 1}"
+            else:
+                driver_key = driver_name
+            try:
+                dev_path = str((hwmon_dir / 'device').resolve())
+                pci_to_driver_key[dev_path] = driver_key
+            except OSError:
+                continue
+
+    gpus: list[dict[str, str]] = []
+    for dev_dir in sorted(pci_base.iterdir()):
+        class_path = dev_dir / 'class'
+        vendor_path = dev_dir / 'vendor'
+        if not class_path.exists() or not vendor_path.exists():
+            continue
+        try:
+            pci_class = class_path.read_text().strip()
+            if not (pci_class.startswith('0x0300') or pci_class.startswith('0x0302')):
+                continue
+            vendor = vendor_path.read_text().strip().removeprefix('0x')
+            pci_slot = dev_dir.name  # e.g. "0000:0f:00.0"
+            dev_resolved = str(dev_dir.resolve())
+
+            # Short slot for lspci lookup (strip domain prefix)
+            short_slot = pci_slot.split(':', 1)[1] if ':' in pci_slot else pci_slot
+            name = pci_names.get(short_slot, f"GPU [{vendor}] at {pci_slot}")
+
+            gpus.append({
+                'pci_slot': pci_slot,
+                'vendor': vendor,
+                'name': name,
+                'driver_key': pci_to_driver_key.get(dev_resolved, ''),
+                'drm_card': pci_to_drm.get(dev_resolved, ''),
+            })
+        except OSError:
+            continue
+
+    return gpus
+
+
 class SensorEnumerator(SensorEnumeratorABC):
     """Discovers and reads all available hardware sensors on Linux."""
 
@@ -648,6 +746,16 @@ class SensorEnumerator(SensorEnumeratorABC):
         mapping['cpu_power'] = _find_first(source='rapl') or ''
 
         # GPU — prefer NVIDIA (pynvml) > AMD (amdgpu hwmon + drm) > Intel (i915 hwmon + drm)
+        # When multiple GPUs exist, respect user's saved preference (PCI slot).
+        from trcc.conf import Settings
+        preferred_pci = Settings._get_saved_gpu_pci_slot()
+        preferred_gpu = None
+        if preferred_pci:
+            for gpu in detect_gpus():
+                if gpu['pci_slot'] == preferred_pci:
+                    preferred_gpu = gpu
+                    break
+
         nvidia_temp = _find_first(source='nvidia', name_contains='Temperature')
         if nvidia_temp:
             mapping['gpu_temp'] = nvidia_temp
@@ -657,10 +765,20 @@ class SensorEnumerator(SensorEnumeratorABC):
         else:
             gpu_vendors = _detect_gpu_vendors()
             if _GPU_VENDOR_AMD in gpu_vendors:
-                mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='amdgpu', category='temperature') or ''
-                mapping['gpu_usage'] = _find_first(source='drm', category='usage') or ''
-                mapping['gpu_clock'] = _find_first(source='hwmon', name_contains='amdgpu', category='clock') or ''
-                mapping['gpu_power'] = _find_first(source='hwmon', name_contains='amdgpu', category='power') or ''
+                # Determine which amdgpu driver_key and drm card to use
+                if preferred_gpu and preferred_gpu['vendor'] == _GPU_VENDOR_AMD:
+                    amd_driver = preferred_gpu['driver_key'] or 'amdgpu'
+                    amd_card = preferred_gpu['drm_card']
+                else:
+                    amd_driver = 'amdgpu'
+                    amd_card = ''
+                mapping['gpu_temp'] = _find_first(source='hwmon', name_contains=amd_driver, category='temperature') or ''
+                if amd_card:
+                    mapping['gpu_usage'] = _find_first(source='drm', name_contains=amd_card, category='usage') or ''
+                else:
+                    mapping['gpu_usage'] = _find_first(source='drm', category='usage') or ''
+                mapping['gpu_clock'] = _find_first(source='hwmon', name_contains=amd_driver, category='clock') or ''
+                mapping['gpu_power'] = _find_first(source='hwmon', name_contains=amd_driver, category='power') or ''
             elif _GPU_VENDOR_INTEL in gpu_vendors:
                 mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='i915', category='temperature') or ''
                 mapping['gpu_usage'] = ''  # Intel iGPU doesn't expose utilization via sysfs

@@ -916,6 +916,13 @@ def _cmd_perf(
     return 0 if report.all_passed else 1
 
 
+@app.command("set-gpu", rich_help_panel="System")
+@_cli_handler
+def _cmd_set_gpu() -> int:
+    """Select which GPU to monitor (for multi-GPU systems)."""
+    return _system.set_gpu()
+
+
 @app.command("setup", rich_help_panel="System")
 def _cmd_setup(
     yes: Annotated[bool, typer.Option(
