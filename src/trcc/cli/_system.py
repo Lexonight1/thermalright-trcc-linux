@@ -321,7 +321,7 @@ def set_gpu() -> int:
         print("GPU selection is currently supported on Linux only.")
         return 1
 
-    from trcc.adapters.system.linux.sensors import detect_gpus
+    from trcc.adapters.system.linux.sensors import detect_gpus, SensorEnumerator
     from trcc.conf import Settings
 
     gpus = detect_gpus()
@@ -358,6 +358,7 @@ def set_gpu() -> int:
 
     selected = gpus[idx]
     Settings.set_gpu(selected['pci_slot'])
+    SensorEnumerator._default_map = None
     print(f"\nGPU set to: {selected['name']}")
     print("Restart trcc for the change to take effect.")
     return 0

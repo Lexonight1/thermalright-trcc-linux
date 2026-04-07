@@ -747,8 +747,8 @@ class SensorEnumerator(SensorEnumeratorABC):
 
         # GPU — prefer NVIDIA (pynvml) > AMD (amdgpu hwmon + drm) > Intel (i915 hwmon + drm)
         # When multiple GPUs exist, respect user's saved preference (PCI slot).
-        from trcc.conf import Settings
-        preferred_pci = Settings._get_saved_gpu_pci_slot()
+        from trcc.conf import load_config
+        preferred_pci = load_config().get('gpu_pci_slot')
         preferred_gpu = None
         if preferred_pci:
             for gpu in detect_gpus():
