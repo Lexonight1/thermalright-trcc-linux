@@ -815,8 +815,24 @@ class SensorEnumerator(SensorEnumeratorABC):
         mapping['cpu_freq'] = 'psutil:cpu_freq'
         mapping['cpu_power'] = _find_first(source='rapl') or ''
 
-        # GPU — pick best GPU by VRAM, fall back to vendor priority.
-        gpu = self._best_gpu()
+        # GPU — when gpu_slots are configured (cycle mode), use the active slot.
+        # Otherwise fall back to _best_gpu() auto-detection by VRAM.
+        from trcc.conf import load_config
+        config = load_config()
+        gpu_slots = config.get('gpu_slots', {})
+        if gpu_slots:
+            active_slot = config.get('gpu_active_slot', next(iter(gpu_slots), ''))
+            preferred_pci = gpu_slots.get(active_slot)
+            preferred_gpu = None
+            if preferred_pci:
+                for g in detect_gpus():
+                    if g['pci_slot'] == preferred_pci:
+                        preferred_gpu = g
+                        break
+            gpu = preferred_gpu or self._best_gpu()
+        else:
+            gpu = self._best_gpu()
+
         if gpu.get('vendor') == 'nvidia':
             prefix = f"nvidia:{gpu['nvidia_idx']}"
             mapping['gpu_temp'] = f"{prefix}:temp"
@@ -824,10 +840,10 @@ class SensorEnumerator(SensorEnumeratorABC):
             mapping['gpu_clock'] = f"{prefix}:clock"
             mapping['gpu_power'] = f"{prefix}:power"
         elif gpu.get('vendor') == 'amd':
-            drv = gpu['hwmon_driver']
-            card = gpu['drm_card']
+            drv = gpu.get('hwmon_driver', 'amdgpu')
+            card = gpu.get('drm_card', '')
             mapping['gpu_temp'] = _find_first(source='hwmon', name_contains=drv, category='temperature') or ''
-            mapping['gpu_usage'] = _find_first(source='drm', name_contains=card, category='usage') or ''
+            mapping['gpu_usage'] = _find_first(source='drm', name_contains=card, category='usage') or '' if card else ''
             mapping['gpu_clock'] = _find_first(source='hwmon', name_contains=drv, category='clock') or ''
             mapping['gpu_power'] = _find_first(source='hwmon', name_contains=drv, category='power') or ''
         elif _GPU_VENDOR_INTEL in _detect_gpu_vendors():
