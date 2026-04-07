@@ -1522,3 +1522,36 @@ class TestCrossStyleConsistency:
 
                 def compute_mask(self, metrics, phase=0, temp_unit="C", **kw):  # type: ignore[override]
                     return []
+
+
+class TestPA120GpuIndicator:
+    def test_indicator_top_slot(self):
+        """Top slot indicator lights segment A (LED 45)."""
+        d = PA120Display()
+        m = HardwareMetrics(cpu_temp=50.0, cpu_percent=30.0, gpu_temp=65.0, gpu_usage=40.0)
+        mask = d.compute_mask(m, gpu_indicator_slot="top")
+        assert mask[45] is True
+
+    def test_indicator_middle_slot(self):
+        """Middle slot indicator lights segment G (LED 51)."""
+        d = PA120Display()
+        m = HardwareMetrics(cpu_temp=50.0, cpu_percent=30.0, gpu_temp=65.0, gpu_usage=40.0)
+        mask = d.compute_mask(m, gpu_indicator_slot="middle")
+        assert mask[51] is True
+
+    def test_indicator_bottom_slot(self):
+        """Bottom slot indicator lights segment D (LED 48)."""
+        d = PA120Display()
+        m = HardwareMetrics(cpu_temp=50.0, cpu_percent=30.0, gpu_temp=65.0, gpu_usage=40.0)
+        mask = d.compute_mask(m, gpu_indicator_slot="bottom")
+        assert mask[48] is True
+
+    def test_no_indicator_when_none(self):
+        """No extra indicator LED when gpu_indicator_slot not passed."""
+        d = PA120Display()
+        # gpu_temp=15 → leftmost digit blank (leading zero suppressed), LED 45 off
+        m = HardwareMetrics(cpu_temp=50.0, cpu_percent=30.0, gpu_temp=15.0, gpu_usage=40.0)
+        mask_no_indicator = d.compute_mask(m)
+        mask_indicator = d.compute_mask(m, gpu_indicator_slot="top")
+        assert mask_no_indicator[45] is False
+        assert mask_indicator[45] is True

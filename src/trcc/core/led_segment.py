@@ -293,6 +293,11 @@ class PA120Display(SegmentDisplay):
         (73, 74, 75, 76, 77, 78, 79),
     )
     GPU_USE_PARTIAL = (82, 83)
+    GPU_INDICATOR_LEDS: dict[str, int] = {
+        'top': 45,     # segment A on GPU_TEMP_DIGITS[0]
+        'middle': 51,  # segment G on GPU_TEMP_DIGITS[0]
+        'bottom': 48,  # segment D on GPU_TEMP_DIGITS[0]
+    }
     ZONE_LEDS: Tuple[Tuple[int, ...], ...] = (
         (CPU1, CPU2, SSD, HSD) + tuple(range(10, 31)),
         (BFB,) + tuple(range(31, 45)) + (80, 81),
@@ -326,6 +331,10 @@ class PA120Display(SegmentDisplay):
         self._encode_2digit_partial(
             int(getattr(metrics, 'gpu_usage', 0)),
             self.GPU_USE_DIGITS, self.GPU_USE_PARTIAL, mask)
+        # GPU indicator: light horizontal segment on leftmost temp digit
+        gpu_indicator_slot = kw.get('gpu_indicator_slot')
+        if gpu_indicator_slot and gpu_indicator_slot in self.GPU_INDICATOR_LEDS:
+            mask[self.GPU_INDICATOR_LEDS[gpu_indicator_slot]] = True
         return mask
 
 
