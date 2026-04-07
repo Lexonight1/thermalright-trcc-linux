@@ -12,10 +12,6 @@ from trcc.core.platform import LINUX, detect_install_method, is_root
 
 log = logging.getLogger(__name__)
 
-# Patching stubs — real imports happen lazily inside set_gpu() (Linux only)
-detect_gpus = None  # type: ignore[assignment]
-SensorEnumerator = None  # type: ignore[assignment]
-Settings = None  # type: ignore[assignment]
 
 
 def _require_linux(command: str) -> int | None:
@@ -325,11 +321,8 @@ def set_gpu() -> int:
         print("GPU selection is currently supported on Linux only.")
         return 1
 
-    global detect_gpus, SensorEnumerator, Settings
-    if detect_gpus is None:
-        from trcc.adapters.system.linux.sensors import detect_gpus, SensorEnumerator
-    if Settings is None:
-        from trcc.conf import Settings
+    from trcc.adapters.system.linux.sensors import detect_gpus, SensorEnumerator
+    from trcc.conf import Settings
 
     gpus = detect_gpus()
     if not gpus:
