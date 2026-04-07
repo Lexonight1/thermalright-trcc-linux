@@ -616,7 +616,12 @@ class Settings:
         Settings._save_gpu_pci_slot(pci_slot)
 
     @staticmethod
-    def set_gpu_slots(slots: dict[str, str], cycle_seconds: int = 5) -> None:
+    def set_gpu_indicator_color(color: str) -> None:
+        """Set GPU indicator LED color (hex) and persist."""
+        Settings._save_gpu_indicator_color(color)
+
+    @staticmethod
+    def set_gpu_slots(slots: dict[str, str], cycle_seconds: int) -> None:
         """Set GPU slot assignments (multi-GPU cycle mode) and persist."""
         Settings._save_gpu_slots(slots)
         Settings._save_gpu_cycle_seconds(cycle_seconds)
