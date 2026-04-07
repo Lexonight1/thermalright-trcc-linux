@@ -573,17 +573,8 @@ class Settings:
 
     @staticmethod
     def set_gpu(pci_slot: str | None) -> None:
-        """Set preferred GPU by PCI slot (e.g. '0000:0f:00.0') and persist.
-
-        Invalidates the sensor default map cache so the new GPU takes effect.
-        """
+        """Set preferred GPU by PCI slot (e.g. '0000:0f:00.0') and persist."""
         Settings._save_gpu_pci_slot(pci_slot)
-        # Invalidate cached sensor mapping so next read uses the new GPU
-        try:
-            from trcc.adapters.system.linux.sensors import SensorEnumerator
-            SensorEnumerator._default_map = None
-        except ImportError:
-            pass
 
     @property
     def lang(self) -> str:
