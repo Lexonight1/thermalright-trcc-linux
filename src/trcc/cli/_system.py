@@ -12,6 +12,14 @@ from trcc.core.platform import LINUX, detect_install_method, is_root
 
 log = logging.getLogger(__name__)
 
+if LINUX:
+    from trcc.adapters.system.linux.sensors import SensorEnumerator, detect_gpus  # noqa: E402
+    from trcc.conf import Settings
+else:
+    detect_gpus = None  # type: ignore[assignment]
+    SensorEnumerator = None  # type: ignore[assignment]
+    Settings = None  # type: ignore[assignment]
+
 
 def _require_linux(command: str) -> int | None:
     """Return error code if not on Linux, None if OK to proceed."""
@@ -316,13 +324,9 @@ def run_setup(auto_yes: bool = False) -> int:
 
 def set_gpu() -> int:
     """Interactive GPU selector for multi-GPU systems."""
-    from trcc.core.platform import LINUX
     if not LINUX:
         print("GPU selection is currently supported on Linux only.")
         return 1
-
-    from trcc.adapters.system.linux.sensors import detect_gpus, SensorEnumerator
-    from trcc.conf import Settings
 
     gpus = detect_gpus()
     if not gpus:
@@ -332,33 +336,71 @@ def set_gpu() -> int:
     if len(gpus) == 1:
         print(f"Only one GPU detected: {gpus[0]['name']}")
         print("No selection needed.")
+        Settings.set_gpu(gpus[0]['pci_slot'])
+        SensorEnumerator._default_map = None
         return 0
 
-    current = Settings._get_saved_gpu_pci_slot()
-
+    # Multi-GPU: assign to slots
     print("Detected GPUs:\n")
     for i, gpu in enumerate(gpus, 1):
-        marker = " ← current" if gpu['pci_slot'] == current else ""
-        print(f"  {i}) {gpu['name']}{marker}")
+        print(f"  {i}) {gpu['name']}")
 
-    print()
+    current_slots = Settings._get_saved_gpu_slots()
+    slot_names = ["top", "middle", "bottom"]
+    slots: dict[str, str] = {}
+
+    print("\nAssign GPUs to indicator slots (enter to skip):\n")
+    for slot in slot_names:
+        current_pci = current_slots.get(slot)
+        current_label = ""
+        if current_pci:
+            for g in gpus:
+                if g['pci_slot'] == current_pci:
+                    current_label = f" ← current: {g['name']}"
+                    break
+
+        try:
+            choice = input(f"  {slot.capitalize()} slot [1-{len(gpus)}]{current_label}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+
+        if not choice:
+            continue
+        try:
+            idx = int(choice) - 1
+            if not (0 <= idx < len(gpus)):
+                raise ValueError
+        except ValueError:
+            print(f"  Skipping {slot} (invalid input).")
+            continue
+        slots[slot] = gpus[idx]['pci_slot']
+
+    if not slots:
+        print("\nNo slots assigned.")
+        return 1
+
+    # Cycle frequency
     try:
-        choice = input("Select GPU [1-{}]: ".format(len(gpus))).strip()
+        freq_input = input("\nCycle frequency in seconds (enter for 5s): ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return 1
+    cycle_seconds = int(freq_input) if freq_input.isdigit() and int(freq_input) > 0 else 5
 
-    try:
-        idx = int(choice) - 1
-        if not (0 <= idx < len(gpus)):
-            raise ValueError
-    except ValueError:
-        print("Invalid selection.")
-        return 1
-
-    selected = gpus[idx]
-    Settings.set_gpu(selected['pci_slot'])
+    Settings.set_gpu_slots(slots, cycle_seconds)
+    first_slot_pci = next(iter(slots.values()))
+    Settings.set_gpu(first_slot_pci)
     SensorEnumerator._default_map = None
-    print(f"\nGPU set to: {selected['name']}")
+
+    print("\nGPU slots configured:")
+    for slot, pci in slots.items():
+        name = pci
+        for g in gpus:
+            if g['pci_slot'] == pci:
+                name = g['name']
+                break
+        print(f"  {slot}: {name}")
+    print(f"Cycle: every {cycle_seconds}s")
     print("Restart trcc for the change to take effect.")
     return 0
