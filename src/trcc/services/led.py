@@ -396,6 +396,11 @@ class LEDService:
                 SensorEnumerator._default_map = None
             except ImportError:
                 pass
+            try:
+                from trcc.services.system import get_instance
+                get_instance()._defaults = None
+            except (ImportError, RuntimeError):
+                pass
 
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
