@@ -1306,3 +1306,56 @@ class TestLEDServiceGetattr:
         """Accessing an unknown attribute raises AttributeError."""
         with pytest.raises(AttributeError):
             _ = led_svc.totally_unknown_attribute_xyz
+
+
+# =========================================================================
+# Tests: LEDService — GPU cycle timer
+# =========================================================================
+
+class TestGpuCycleTimer:
+    def test_init_gpu_cycle_loads_config(self):
+        svc = LEDService()
+        config = {
+            'gpu_slots': {'top': '0000:0f:00.0', 'bottom': '0000:06:00.0'},
+            'gpu_cycle_seconds': 3,
+            'gpu_active_slot': 'top',
+            'gpu_indicator_color': '#FF0000',
+        }
+        with patch("trcc.conf.load_config", return_value=config):
+            svc._init_gpu_cycle()
+        assert svc._gpu_slot_order == ['top', 'bottom']
+        assert svc._gpu_active_slot == 'top'
+        assert svc._gpu_cycle_seconds == 3
+        assert svc._gpu_indicator_color == (255, 0, 0)
+
+    def test_advance_rotates_slot(self):
+        svc = LEDService()
+        svc._gpu_slots = {'top': 'a', 'bottom': 'b'}
+        svc._gpu_slot_order = ['top', 'bottom']
+        svc._gpu_active_slot = 'top'
+        svc._gpu_cycle_seconds = 1
+        svc._gpu_cycle_ticks = 0
+        with patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.conf.save_config"):
+            # tick enough times (1s / 0.15 = ~7 ticks)
+            for _ in range(7):
+                svc._advance_gpu_cycle()
+        assert svc._gpu_active_slot == 'bottom'
+
+    def test_advance_single_slot_no_rotation(self):
+        svc = LEDService()
+        svc._gpu_slots = {'top': 'a'}
+        svc._gpu_slot_order = ['top']
+        svc._gpu_active_slot = 'top'
+        svc._gpu_cycle_seconds = 1
+        svc._gpu_cycle_ticks = 0
+        for _ in range(20):
+            svc._advance_gpu_cycle()
+        assert svc._gpu_active_slot == 'top'
+
+    def test_indicator_color_default(self):
+        svc = LEDService()
+        config = {'gpu_slots': {'top': 'a'}}
+        with patch("trcc.conf.load_config", return_value=config):
+            svc._init_gpu_cycle()
+        assert svc._gpu_indicator_color == (0, 0, 255)

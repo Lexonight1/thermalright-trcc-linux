@@ -72,6 +72,14 @@ class LEDService:
         self._device_key: Optional[str] = None
         self._led_style: int = 1
 
+        # GPU cycle state (PA120 multi-GPU slot rotation)
+        self._gpu_slots: dict[str, str] = {}
+        self._gpu_slot_order: list[str] = []
+        self._gpu_active_slot: str = ''
+        self._gpu_cycle_seconds: int = 5
+        self._gpu_cycle_ticks: int = 0
+        self._gpu_indicator_color: tuple[int, int, int] = (0, 0, 255)
+
     # ── Style resolution (static) ───────────────────────────────────
 
     @staticmethod
@@ -275,6 +283,9 @@ class LEDService:
             self._seg_tick_count = 0
             self._update_segment_mask()
 
+        if self._seg_display and hasattr(self._seg_display, 'GPU_INDICATOR_LEDS'):
+            self._init_gpu_cycle()
+
     # ── Effect engine ───────────────────────────────────────────────
 
     def tick(self) -> List[Tuple[int, int, int]]:
@@ -307,8 +318,14 @@ class LEDService:
             if zone_map:
                 # Styles 2/7 (PA120/LF10): physical zones with per-zone
                 # color/mode — each zone colors its own mapped LED indices.
-                return self._tick_multi_zone(
+                self._advance_gpu_cycle()
+                colors = self._tick_multi_zone(
                     zone_map, self._seg_display.zone_metric_sources)
+                if self._gpu_active_slot and hasattr(self._seg_display, 'GPU_INDICATOR_LEDS'):
+                    indicator_led = self._seg_display.GPU_INDICATOR_LEDS.get(self._gpu_active_slot)
+                    if indicator_led is not None and indicator_led < len(colors):
+                        colors[indicator_led] = self._gpu_indicator_color
+                return colors
             # Non-2/7 styles: C# uses global rgbR1/G1/B1 and myLedMode.
             # Zones only drive segment display data rotation (CPU/GPU),
             # not LED color. Fall through to global tick below.
@@ -340,6 +357,46 @@ class LEDService:
                 return candidate
         return current
 
+    def _init_gpu_cycle(self) -> None:
+        """Load GPU cycle config. Called on configure_for_style for PA120."""
+        from trcc.conf import load_config
+        config = load_config()
+        self._gpu_slots = config.get('gpu_slots', {})
+        slot_order = ['top', 'middle', 'bottom']
+        self._gpu_slot_order = [s for s in slot_order if s in self._gpu_slots]
+        self._gpu_active_slot = config.get('gpu_active_slot', '')
+        if self._gpu_active_slot not in self._gpu_slot_order and self._gpu_slot_order:
+            self._gpu_active_slot = self._gpu_slot_order[0]
+        self._gpu_cycle_seconds = config.get('gpu_cycle_seconds', 5)
+        self._gpu_cycle_ticks = 0
+        hex_color = config.get('gpu_indicator_color', '#0000FF')
+        try:
+            h = hex_color.lstrip('#')
+            self._gpu_indicator_color = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except (ValueError, IndexError):
+            self._gpu_indicator_color = (0, 0, 255)
+
+    def _advance_gpu_cycle(self) -> None:
+        """Advance cycle timer. Rotate to next slot when timer fires."""
+        if len(self._gpu_slot_order) < 2:
+            return
+        self._gpu_cycle_ticks += 1
+        ticks_needed = max(1, int(self._gpu_cycle_seconds / 0.15))
+        if self._gpu_cycle_ticks >= ticks_needed:
+            self._gpu_cycle_ticks = 0
+            current_idx = self._gpu_slot_order.index(self._gpu_active_slot)
+            next_idx = (current_idx + 1) % len(self._gpu_slot_order)
+            self._gpu_active_slot = self._gpu_slot_order[next_idx]
+            from trcc.conf import load_config, save_config
+            config = load_config()
+            config['gpu_active_slot'] = self._gpu_active_slot
+            save_config(config)
+            try:
+                from trcc.adapters.system.linux.sensors import SensorEnumerator
+                SensorEnumerator._default_map = None
+            except ImportError:
+                pass
+
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
 
@@ -357,6 +414,7 @@ class LEDService:
             week_sunday=self.state.is_week_sunday,
             sub_style=self.state.sub_style,
             memory_ratio=self.state.memory_ratio,
+            gpu_indicator_slot=self._gpu_active_slot if self._gpu_slots else None,
         )
 
     # ── Display-ready colors ────────────────────────────────────────
