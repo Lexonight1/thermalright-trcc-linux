@@ -26,6 +26,8 @@ import json
 import locale
 import logging
 import os
+import tempfile
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -44,6 +46,7 @@ log = logging.getLogger(__name__)
 
 CONFIG_DIR = USER_CONFIG_DIR
 CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
+_config_lock = threading.Lock()
 
 # USBLCD (SCSI/RGB565) supported resolutions
 SUPPORTED_RESOLUTIONS = [
@@ -141,29 +144,43 @@ def _migrate_device_keys(config: dict) -> bool:
 def load_config() -> dict:
     """Load user config from disk. Returns empty dict if file is missing."""
     _migrate_old_config()
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            config = json.load(f)
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as e:
-        log.warning("Config file is corrupt (%s) — resetting to defaults: %s", CONFIG_PATH, e)
-        return {}
-    except OSError as e:
-        log.error("Failed to read config file (%s): %s", CONFIG_PATH, e)
-        return {}
+    with _config_lock:
+        try:
+            with open(CONFIG_PATH, 'r') as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError as e:
+            log.warning("Config file is corrupt (%s) — resetting to defaults: %s", CONFIG_PATH, e)
+            return {}
+        except OSError as e:
+            log.error("Failed to read config file (%s): %s", CONFIG_PATH, e)
+            return {}
     if _migrate_device_keys(config):
         save_config(config)
     return config
 
 
 def save_config(config: dict):
-    """Save user config to disk (fsync'd for durability across shutdowns)."""
+    """Save user config to disk atomically (write-to-temp + rename).
+
+    Prevents corruption when the LED cycle timer and GUI save concurrently.
+    """
     os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
+    with _config_lock:
+        fd, tmp_path = tempfile.mkstemp(dir=CONFIG_DIR, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(config, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, CONFIG_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 # =========================================================================
