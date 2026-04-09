@@ -362,6 +362,8 @@ def set_gpu() -> int:
             return 1
 
         if not choice:
+            if current_pci:
+                slots[slot] = current_pci
             continue
         try:
             idx = int(choice) - 1
