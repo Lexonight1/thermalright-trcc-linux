@@ -874,6 +874,44 @@ class SensorEnumerator(SensorEnumeratorABC):
 
         # Memory
         mapping['mem_temp'] = _find_first(source='hwmon', name_contains='spd') or ''
+
+    def gpu_mapping_for_pci(self, pci_slot: str) -> dict[str, str]:
+        """Build gpu_temp/usage/clock/power sensor IDs for a specific PCI slot.
+
+        Used by the LED cycle timer to pre-build mappings for all GPU slots
+        so switching is instant (no re-enumeration needed).
+        """
+        self._ensure_discovered()
+        for g in detect_gpus():
+            if g['pci_slot'] != pci_slot:
+                continue
+            v = g.get('vendor', '')
+            if v == _GPU_VENDOR_AMD:
+                drv = g.get('driver_key', 'amdgpu')
+                card = g.get('drm_card', '')
+                return {
+                    'gpu_temp': _find_first(source='hwmon', name_contains=drv, category='temperature') or '',
+                    'gpu_usage': _find_first(source='drm', name_contains=card, category='usage') or '' if card else '',
+                    'gpu_clock': _find_first(source='hwmon', name_contains=drv, category='clock') or '',
+                    'gpu_power': _find_first(source='hwmon', name_contains=drv, category='power') or '',
+                }
+            elif v == _GPU_VENDOR_NVIDIA:
+                # TODO: resolve nvidia_idx from PCI slot for multi-NVIDIA
+                prefix = f"nvidia:0"
+                return {
+                    'gpu_temp': f"{prefix}:temp",
+                    'gpu_usage': f"{prefix}:gpu_util",
+                    'gpu_clock': f"{prefix}:clock",
+                    'gpu_power': f"{prefix}:power",
+                }
+            elif v == _GPU_VENDOR_INTEL:
+                return {
+                    'gpu_temp': _find_first(source='hwmon', name_contains='i915', category='temperature') or '',
+                    'gpu_usage': '',
+                    'gpu_clock': _find_first(source='drm', category='clock') or '',
+                    'gpu_power': _find_first(source='hwmon', name_contains='i915', category='power') or '',
+                }
+        return {'gpu_temp': '', 'gpu_usage': '', 'gpu_clock': '', 'gpu_power': ''}
         mapping['mem_percent'] = 'psutil:mem_percent'
         mapping['mem_available'] = 'psutil:mem_available'
         mapping['mem_clock'] = ''  # No reliable Linux source

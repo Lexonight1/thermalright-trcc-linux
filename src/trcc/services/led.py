@@ -80,6 +80,7 @@ class LEDService:
         self._gpu_cycle_seconds: int = 5
         self._gpu_cycle_last: float = 0.0
         self._gpu_indicator_color: tuple[int, int, int] = (0, 0, 255)
+        self._gpu_slot_mappings: dict[str, dict[str, str]] = {}
 
     # ── Style resolution (static) ───────────────────────────────────
 
@@ -376,6 +377,17 @@ class LEDService:
             self._gpu_indicator_color = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
         except (ValueError, IndexError):
             self._gpu_indicator_color = (0, 0, 255)
+        # Pre-build sensor mappings per slot for instant switching
+        self._gpu_slot_mappings = {}
+        if len(self._gpu_slot_order) >= 2:
+            try:
+                from trcc.adapters.system.linux.sensors import SensorEnumerator
+                enumerator = SensorEnumerator()
+                for slot in self._gpu_slot_order:
+                    pci = self._gpu_slots[slot]
+                    self._gpu_slot_mappings[slot] = enumerator.gpu_mapping_for_pci(pci)
+            except ImportError:
+                pass
 
     def _advance_gpu_cycle(self) -> None:
         """Advance cycle timer. Rotate to next slot when timer fires."""
@@ -391,17 +403,26 @@ class LEDService:
             config = load_config()
             config['gpu_active_slot'] = self._gpu_active_slot
             save_config(config)
-            try:
-                from trcc.adapters.system.linux.sensors import SensorEnumerator
-                SensorEnumerator._default_map = None
-            except ImportError:
-                pass
-            try:
-                from trcc.services.system import get_instance
-                get_instance()._defaults = None
-            except (ImportError, RuntimeError):
-                pass
+            self._swap_gpu_mapping()
             self._update_segment_mask()
+
+    def _swap_gpu_mapping(self) -> None:
+        """Patch SystemService._defaults with pre-built GPU sensor IDs.
+
+        All GPU sensor data is already in the read cache — this just
+        switches which sensor IDs the metric keys point to.  Instant,
+        no re-enumeration or cache invalidation needed.
+        """
+        mapping = self._gpu_slot_mappings.get(self._gpu_active_slot)
+        if not mapping:
+            return
+        try:
+            from trcc.services.system import get_instance
+            svc = get_instance()
+            if svc._defaults is not None:
+                svc._defaults.update(mapping)
+        except (ImportError, RuntimeError):
+            pass
 
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
