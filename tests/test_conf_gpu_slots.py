@@ -30,9 +30,7 @@ def test_gpu_indicator_color_default(tmp_path, monkeypatch):
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
     assert Settings._get_saved_gpu_indicator_color() == "#0000FF"
 
-def test_gpu_pci_slot_fallback(tmp_path, monkeypatch):
+def test_empty_gpu_slots_default(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
-    Settings._save_gpu_pci_slot("0000:0f:00.0")
     assert Settings._get_saved_gpu_slots() == {}
-    assert Settings._get_saved_gpu_pci_slot() == "0000:0f:00.0"

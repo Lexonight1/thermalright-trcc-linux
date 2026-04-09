@@ -822,38 +822,11 @@ class SensorEnumerator(SensorEnumeratorABC):
         mapping['cpu_freq'] = 'psutil:cpu_freq'
         mapping['cpu_power'] = _find_first(source='rapl') or ''
 
-        # GPU — when gpu_slots are configured (cycle mode), use the active slot.
-        # Otherwise fall back to _best_gpu() auto-detection by VRAM.
-        from trcc.conf import load_config
-        config = load_config()
-        gpu_slots = config.get('gpu_slots', {})
-        if gpu_slots:
-            active_slot = config.get('gpu_active_slot', next(iter(gpu_slots), ''))
-            preferred_pci = gpu_slots.get(active_slot)
-            gpu: dict = {}
-            if preferred_pci:
-                for g in detect_gpus():
-                    if g['pci_slot'] == preferred_pci:
-                        # Normalise detect_gpus() dict to _best_gpu() format:
-                        # vendor '1002' → 'amd', driver_key → hwmon_driver
-                        v = g.get('vendor', '')
-                        if v == _GPU_VENDOR_AMD:
-                            gpu = {'vendor': 'amd', 'nvidia_idx': None,
-                                   'drm_card': g.get('drm_card', ''),
-                                   'hwmon_driver': g.get('driver_key', 'amdgpu')}
-                        elif v == _GPU_VENDOR_NVIDIA:
-                            gpu = {'vendor': 'nvidia', 'nvidia_idx': 0,
-                                   'drm_card': g.get('drm_card', ''),
-                                   'hwmon_driver': g.get('driver_key', '')}
-                        elif v == _GPU_VENDOR_INTEL:
-                            gpu = {'vendor': 'intel', 'nvidia_idx': None,
-                                   'drm_card': g.get('drm_card', ''),
-                                   'hwmon_driver': g.get('driver_key', 'i915')}
-                        break
-            if not gpu:
-                gpu = self._best_gpu()
-        else:
-            gpu = self._best_gpu()
+        # GPU — pick best GPU by VRAM, fall back to vendor priority.
+        # When gpu_slots are configured, the LED cycle timer patches
+        # _defaults with per-slot sensor IDs via _swap_gpu_mapping(),
+        # so map_defaults only needs the initial best-GPU mapping.
+        gpu = self._best_gpu()
 
         if gpu.get('vendor') == 'nvidia':
             prefix = f"nvidia:{gpu['nvidia_idx']}"

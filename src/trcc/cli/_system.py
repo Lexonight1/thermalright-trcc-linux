@@ -13,7 +13,6 @@ from trcc.core.platform import LINUX, detect_install_method, is_root
 log = logging.getLogger(__name__)
 
 
-
 def _require_linux(command: str) -> int | None:
     """Return error code if not on Linux, None if OK to proceed."""
     if not LINUX:
@@ -321,7 +320,7 @@ def set_gpu() -> int:
         print("GPU selection is currently supported on Linux only.")
         return 1
 
-    from trcc.adapters.system.linux.sensors import detect_gpus, SensorEnumerator
+    from trcc.adapters.system.linux.sensors import detect_gpus
     from trcc.conf import Settings
 
     gpus = detect_gpus()
@@ -331,9 +330,7 @@ def set_gpu() -> int:
 
     if len(gpus) == 1:
         print(f"Only one GPU detected: {gpus[0]['name']}")
-        print("No selection needed.")
-        Settings.set_gpu(gpus[0]['pci_slot'])
-        SensorEnumerator._default_map = None
+        print("Auto-detected by VRAM — no slot assignment needed.")
         return 0
 
     # Multi-GPU: assign to slots
@@ -420,9 +417,6 @@ def set_gpu() -> int:
 
     Settings.set_gpu_slots(slots, cycle_seconds)
     Settings.set_gpu_indicator_color(indicator_color)
-    first_slot_pci = next(iter(slots.values()))
-    Settings.set_gpu(first_slot_pci)
-    SensorEnumerator._default_map = None
 
     print("\nGPU slots configured:")
     for slot, pci in slots.items():

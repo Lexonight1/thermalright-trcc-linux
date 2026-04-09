@@ -396,7 +396,7 @@ class LEDService:
             # Re-read metrics immediately so display shows new GPU's data
             try:
                 from trcc.services.system import get_instance
-                fresh = get_instance().all_metrics()
+                fresh = get_instance().all_metrics
                 self._metrics = fresh
                 self._engine.metrics = fresh
             except (ImportError, RuntimeError):

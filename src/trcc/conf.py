@@ -345,21 +345,6 @@ class Settings:
         save_config(config)
 
     @staticmethod
-    def _get_saved_gpu_pci_slot() -> str | None:
-        """Get saved GPU PCI slot preference. Returns None if not set."""
-        return load_config().get('gpu_pci_slot')
-
-    @staticmethod
-    def _save_gpu_pci_slot(pci_slot: str | None):
-        """Persist GPU PCI slot preference to config."""
-        config = load_config()
-        if pci_slot is None:
-            config.pop('gpu_pci_slot', None)
-        else:
-            config['gpu_pci_slot'] = pci_slot
-        save_config(config)
-
-    @staticmethod
     def _get_saved_gpu_slots() -> dict[str, str]:
         """Get GPU slot assignments. Returns dict like {'top': '0000:0f:00.0'}."""
         return load_config().get('gpu_slots', {})
@@ -626,11 +611,6 @@ class Settings:
         """Set metrics refresh interval in seconds and persist."""
         self.refresh_interval = interval
         Settings._save_refresh_interval(interval)
-
-    @staticmethod
-    def set_gpu(pci_slot: str | None) -> None:
-        """Set preferred GPU by PCI slot (e.g. '0000:0f:00.0') and persist."""
-        Settings._save_gpu_pci_slot(pci_slot)
 
     @staticmethod
     def set_gpu_indicator_color(color: str) -> None:
