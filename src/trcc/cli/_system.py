@@ -381,7 +381,12 @@ def set_gpu() -> int:
     except (EOFError, KeyboardInterrupt):
         print()
         return 1
-    cycle_seconds = int(freq_input) if freq_input.isdigit() and int(freq_input) > 0 else 5
+    if freq_input.isdigit() and 1 <= int(freq_input) <= 300:
+        cycle_seconds = int(freq_input)
+    else:
+        cycle_seconds = 5
+        if freq_input:
+            print(f"  Invalid (must be 1-300s), using {cycle_seconds}s.")
 
     # Indicator color
     named_colors = {

@@ -126,6 +126,26 @@ class SystemService:
             return self._enumerator.read_one(sensor_id)
         return None
 
+    # ── GPU slot support (used by LEDService for instant GPU switching) ──
+
+    def gpu_mapping_for_pci(self, pci_slot: str) -> dict[str, str]:
+        """Build gpu_temp/usage/clock/power sensor IDs for a PCI slot.
+
+        Delegates to the enumerator. Used by LEDService to pre-build
+        per-slot sensor mappings at init.
+        """
+        self._ensure_discovered()
+        return self._enumerator.gpu_mapping_for_pci(pci_slot)
+
+    def update_gpu_defaults(self, mapping: dict[str, str]) -> None:
+        """Patch the cached defaults with GPU sensor IDs for a specific slot.
+
+        Called by LEDService on cycle switch to reroute gpu_temp/usage/etc.
+        to the newly active GPU's sensors without full re-enumeration.
+        """
+        defaults = self._ensure_defaults()
+        defaults.update(mapping)
+
     # ── Metric properties ─────────────────────────────────────────────
 
     @property

@@ -1334,13 +1334,23 @@ class TestGpuCycleTimer:
         svc._gpu_slot_order = ['top', 'bottom']
         svc._gpu_active_slot = 'top'
         svc._gpu_cycle_seconds = 1
-        svc._gpu_cycle_ticks = 0
+        svc._gpu_cycle_last = 0.0
         with patch("trcc.conf.load_config", return_value={}), \
-             patch("trcc.conf.save_config"):
-            # tick enough times (1s / 0.15 = ~7 ticks)
-            for _ in range(7):
-                svc._advance_gpu_cycle()
+             patch("trcc.conf.save_config"), \
+             patch("time.monotonic", return_value=10.0):
+            svc._advance_gpu_cycle()
         assert svc._gpu_active_slot == 'bottom'
+
+    def test_advance_does_not_rotate_before_interval(self):
+        svc = LEDService()
+        svc._gpu_slots = {'top': 'a', 'bottom': 'b'}
+        svc._gpu_slot_order = ['top', 'bottom']
+        svc._gpu_active_slot = 'top'
+        svc._gpu_cycle_seconds = 5
+        svc._gpu_cycle_last = 10.0
+        with patch("time.monotonic", return_value=12.0):
+            svc._advance_gpu_cycle()
+        assert svc._gpu_active_slot == 'top'
 
     def test_advance_single_slot_no_rotation(self):
         svc = LEDService()
@@ -1348,8 +1358,8 @@ class TestGpuCycleTimer:
         svc._gpu_slot_order = ['top']
         svc._gpu_active_slot = 'top'
         svc._gpu_cycle_seconds = 1
-        svc._gpu_cycle_ticks = 0
-        for _ in range(20):
+        svc._gpu_cycle_last = 0.0
+        with patch("time.monotonic", return_value=10.0):
             svc._advance_gpu_cycle()
         assert svc._gpu_active_slot == 'top'
 

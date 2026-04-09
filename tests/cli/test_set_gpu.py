@@ -21,7 +21,7 @@ def test_set_gpu_multi_assigns_slots(monkeypatch):
         {'pci_slot': '0000:0f:00.0', 'vendor': '1002', 'name': 'RX 7900 XTX',
          'driver_key': 'amdgpu.1', 'drm_card': 'card1'},
     ]
-    inputs = iter(["2", "", "1", ""])
+    inputs = iter(["2", "", "1", "", ""])
     monkeypatch.setattr("trcc.core.platform.LINUX", True)
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
     with patch("trcc.adapters.system.linux.sensors.detect_gpus", return_value=fake_gpus), \

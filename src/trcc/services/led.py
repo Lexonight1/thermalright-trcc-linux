@@ -422,15 +422,15 @@ class LEDService:
             return
         try:
             from trcc.services.system import get_instance
-            enumerator = get_instance()._enumerator
+            svc = get_instance()
             for slot in self._gpu_slot_order:
                 pci = self._gpu_slots[slot]
-                self._gpu_slot_mappings[slot] = enumerator.gpu_mapping_for_pci(pci)
+                self._gpu_slot_mappings[slot] = svc.gpu_mapping_for_pci(pci)
         except (ImportError, RuntimeError):
             pass
 
     def _swap_gpu_mapping(self) -> None:
-        """Patch SystemService._defaults with pre-built GPU sensor IDs.
+        """Reroute GPU sensor IDs via SystemService public API.
 
         All GPU sensor data is already in the read cache — this just
         switches which sensor IDs the metric keys point to.  Instant,
@@ -442,9 +442,7 @@ class LEDService:
             return
         try:
             from trcc.services.system import get_instance
-            svc = get_instance()
-            if svc._defaults is not None:
-                svc._defaults.update(mapping)
+            get_instance().update_gpu_defaults(mapping)
         except (ImportError, RuntimeError):
             pass
 
