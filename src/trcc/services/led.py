@@ -7,6 +7,7 @@ LEDDevice (core/led_device.py) delegates to this service.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, List, Optional, Tuple
 
@@ -377,17 +378,9 @@ class LEDService:
             self._gpu_indicator_color = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
         except (ValueError, IndexError):
             self._gpu_indicator_color = (0, 0, 255)
-        # Pre-build sensor mappings per slot for instant switching
+        # Pre-built sensor mappings per slot — populated on first tick
+        # (too early to enumerate sensors during connect/handshake phase)
         self._gpu_slot_mappings = {}
-        if len(self._gpu_slot_order) >= 2:
-            try:
-                from trcc.adapters.system.linux.sensors import SensorEnumerator
-                enumerator = SensorEnumerator()
-                for slot in self._gpu_slot_order:
-                    pci = self._gpu_slots[slot]
-                    self._gpu_slot_mappings[slot] = enumerator.gpu_mapping_for_pci(pci)
-            except ImportError:
-                pass
 
     def _advance_gpu_cycle(self) -> None:
         """Advance cycle timer. Rotate to next slot when timer fires."""
@@ -399,12 +392,42 @@ class LEDService:
             current_idx = self._gpu_slot_order.index(self._gpu_active_slot)
             next_idx = (current_idx + 1) % len(self._gpu_slot_order)
             self._gpu_active_slot = self._gpu_slot_order[next_idx]
-            from trcc.conf import load_config, save_config
-            config = load_config()
-            config['gpu_active_slot'] = self._gpu_active_slot
-            save_config(config)
             self._swap_gpu_mapping()
+            # Re-read metrics immediately so display shows new GPU's data
+            try:
+                from trcc.services.system import get_instance
+                fresh = get_instance().all_metrics()
+                self._metrics = fresh
+                self._engine.metrics = fresh
+            except (ImportError, RuntimeError):
+                pass
             self._update_segment_mask()
+            # Persist active slot in background — not worth blocking render
+            slot = self._gpu_active_slot
+            threading.Thread(
+                target=self._save_active_slot, args=(slot,), daemon=True,
+            ).start()
+
+    @staticmethod
+    def _save_active_slot(slot: str) -> None:
+        """Persist gpu_active_slot to config (runs in background thread)."""
+        from trcc.conf import load_config, save_config
+        config = load_config()
+        config['gpu_active_slot'] = slot
+        save_config(config)
+
+    def _ensure_gpu_slot_mappings(self) -> None:
+        """Lazily build per-slot sensor mappings on first call."""
+        if self._gpu_slot_mappings:
+            return
+        try:
+            from trcc.services.system import get_instance
+            enumerator = get_instance()._enumerator
+            for slot in self._gpu_slot_order:
+                pci = self._gpu_slots[slot]
+                self._gpu_slot_mappings[slot] = enumerator.gpu_mapping_for_pci(pci)
+        except (ImportError, RuntimeError):
+            pass
 
     def _swap_gpu_mapping(self) -> None:
         """Patch SystemService._defaults with pre-built GPU sensor IDs.
@@ -413,6 +436,7 @@ class LEDService:
         switches which sensor IDs the metric keys point to.  Instant,
         no re-enumeration or cache invalidation needed.
         """
+        self._ensure_gpu_slot_mappings()
         mapping = self._gpu_slot_mappings.get(self._gpu_active_slot)
         if not mapping:
             return
