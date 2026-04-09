@@ -7,6 +7,7 @@ LEDDevice (core/led_device.py) delegates to this service.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, List, Optional, Tuple
 
 from ..core.models import (
@@ -77,7 +78,7 @@ class LEDService:
         self._gpu_slot_order: list[str] = []
         self._gpu_active_slot: str = ''
         self._gpu_cycle_seconds: int = 5
-        self._gpu_cycle_ticks: int = 0
+        self._gpu_cycle_last: float = 0.0
         self._gpu_indicator_color: tuple[int, int, int] = (0, 0, 255)
 
     # ── Style resolution (static) ───────────────────────────────────
@@ -368,7 +369,7 @@ class LEDService:
         if self._gpu_active_slot not in self._gpu_slot_order and self._gpu_slot_order:
             self._gpu_active_slot = self._gpu_slot_order[0]
         self._gpu_cycle_seconds = config.get('gpu_cycle_seconds', 5)
-        self._gpu_cycle_ticks = 0
+        self._gpu_cycle_last = time.monotonic()
         hex_color = config.get('gpu_indicator_color', '#0000FF')
         try:
             h = hex_color.lstrip('#')
@@ -380,10 +381,9 @@ class LEDService:
         """Advance cycle timer. Rotate to next slot when timer fires."""
         if len(self._gpu_slot_order) < 2:
             return
-        self._gpu_cycle_ticks += 1
-        ticks_needed = max(1, int(self._gpu_cycle_seconds / 0.15))
-        if self._gpu_cycle_ticks >= ticks_needed:
-            self._gpu_cycle_ticks = 0
+        now = time.monotonic()
+        if (now - self._gpu_cycle_last) >= self._gpu_cycle_seconds:
+            self._gpu_cycle_last = now
             current_idx = self._gpu_slot_order.index(self._gpu_active_slot)
             next_idx = (current_idx + 1) % len(self._gpu_slot_order)
             self._gpu_active_slot = self._gpu_slot_order[next_idx]
@@ -401,6 +401,7 @@ class LEDService:
                 get_instance()._defaults = None
             except (ImportError, RuntimeError):
                 pass
+            self._update_segment_mask()
 
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
