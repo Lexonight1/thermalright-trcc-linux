@@ -384,7 +384,40 @@ def set_gpu() -> int:
         return 1
     cycle_seconds = int(freq_input) if freq_input.isdigit() and int(freq_input) > 0 else 5
 
+    # Indicator color
+    named_colors = {
+        'red': '#FF0000', 'green': '#00FF00', 'blue': '#0000FF',
+        'yellow': '#FFFF00', 'cyan': '#00FFFF', 'magenta': '#FF00FF',
+        'white': '#FFFFFF', 'orange': '#FFA500', 'purple': '#800080',
+        'pink': '#FFC0CB', 'lime': '#00FF00', 'teal': '#008080',
+        'aqua': '#00FFFF', 'coral': '#FF7F50', 'gold': '#FFD700',
+        'violet': '#EE82EE', 'indigo': '#4B0082', 'crimson': '#DC143C',
+        'turquoise': '#40E0D0', 'salmon': '#FA8072',
+    }
+    current_color = Settings._get_saved_gpu_indicator_color()
+    try:
+        color_input = input(
+            f"\nIndicator color — name or hex (enter for {current_color}): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 1
+    if color_input:
+        lowered = color_input.lower()
+        if lowered in named_colors:
+            indicator_color = named_colors[lowered]
+        else:
+            raw = color_input.lstrip('#')
+            if len(raw) == 6 and all(c in '0123456789abcdefABCDEF' for c in raw):
+                indicator_color = f"#{raw.upper()}"
+            else:
+                print(f"  Unknown color '{color_input}', using {current_color}.")
+                indicator_color = current_color
+    else:
+        indicator_color = current_color
+
     Settings.set_gpu_slots(slots, cycle_seconds)
+    Settings.set_gpu_indicator_color(indicator_color)
     first_slot_pci = next(iter(slots.values()))
     Settings.set_gpu(first_slot_pci)
     SensorEnumerator._default_map = None
@@ -398,5 +431,6 @@ def set_gpu() -> int:
                 break
         print(f"  {slot}: {name}")
     print(f"Cycle: every {cycle_seconds}s")
+    print(f"Indicator color: {indicator_color}")
     print("Restart trcc for the change to take effect.")
     return 0
