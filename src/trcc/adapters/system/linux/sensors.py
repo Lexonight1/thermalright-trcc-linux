@@ -823,13 +823,28 @@ class SensorEnumerator(SensorEnumeratorABC):
         if gpu_slots:
             active_slot = config.get('gpu_active_slot', next(iter(gpu_slots), ''))
             preferred_pci = gpu_slots.get(active_slot)
-            preferred_gpu = None
+            gpu: dict = {}
             if preferred_pci:
                 for g in detect_gpus():
                     if g['pci_slot'] == preferred_pci:
-                        preferred_gpu = g
+                        # Normalise detect_gpus() dict to _best_gpu() format:
+                        # vendor '1002' → 'amd', driver_key → hwmon_driver
+                        v = g.get('vendor', '')
+                        if v == _GPU_VENDOR_AMD:
+                            gpu = {'vendor': 'amd', 'nvidia_idx': None,
+                                   'drm_card': g.get('drm_card', ''),
+                                   'hwmon_driver': g.get('driver_key', 'amdgpu')}
+                        elif v == _GPU_VENDOR_NVIDIA:
+                            gpu = {'vendor': 'nvidia', 'nvidia_idx': 0,
+                                   'drm_card': g.get('drm_card', ''),
+                                   'hwmon_driver': g.get('driver_key', '')}
+                        elif v == _GPU_VENDOR_INTEL:
+                            gpu = {'vendor': 'intel', 'nvidia_idx': None,
+                                   'drm_card': g.get('drm_card', ''),
+                                   'hwmon_driver': g.get('driver_key', 'i915')}
                         break
-            gpu = preferred_gpu or self._best_gpu()
+            if not gpu:
+                gpu = self._best_gpu()
         else:
             gpu = self._best_gpu()
 
@@ -846,7 +861,7 @@ class SensorEnumerator(SensorEnumeratorABC):
             mapping['gpu_usage'] = _find_first(source='drm', name_contains=card, category='usage') or '' if card else ''
             mapping['gpu_clock'] = _find_first(source='hwmon', name_contains=drv, category='clock') or ''
             mapping['gpu_power'] = _find_first(source='hwmon', name_contains=drv, category='power') or ''
-        elif _GPU_VENDOR_INTEL in _detect_gpu_vendors():
+        elif gpu.get('vendor') == 'intel':
             mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='i915', category='temperature') or ''
             mapping['gpu_usage'] = ''
             mapping['gpu_clock'] = _find_first(source='drm', category='clock') or ''
