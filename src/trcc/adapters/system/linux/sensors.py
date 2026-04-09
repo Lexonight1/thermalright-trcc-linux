@@ -952,22 +952,15 @@ class SensorEnumerator(SensorEnumeratorABC):
                     'gpu_clock': _find(sensors, source='hwmon', name_contains=drv, category='clock') or '',
                     'gpu_power': _find(sensors, source='hwmon', name_contains=drv, category='power') or '',
                 }
-            elif v == _GPU_VENDOR_NVIDIA:
-                # TODO: resolve nvidia_idx from PCI slot for multi-NVIDIA
-                prefix = "nvidia:0"
-                return {
-                    'gpu_temp': f"{prefix}:temp",
-                    'gpu_usage': f"{prefix}:gpu_util",
-                    'gpu_clock': f"{prefix}:clock",
-                    'gpu_power': f"{prefix}:power",
-                }
-            elif v == _GPU_VENDOR_INTEL:
-                return {
-                    'gpu_temp': _find(sensors, source='hwmon', name_contains='i915', category='temperature') or '',
-                    'gpu_usage': '',
-                    'gpu_clock': _find(sensors, source='drm', category='clock') or '',
-                    'gpu_power': _find(sensors, source='hwmon', name_contains='i915', category='power') or '',
-                }
+            # NVIDIA: resolve nvidia_idx from PCI slot via
+            # pynvml.nvmlDeviceGetHandleByPciBusId(pci_slot), then use
+            # pynvml.nvmlDeviceGetIndex(handle) to build "nvidia:{idx}:*"
+            # sensor IDs.  Same pattern as AMD — one mapping per PCI slot.
+            #
+            # Intel: multi-GPU is uncommon, but the same approach works —
+            # match i915 hwmon instances by resolving /sys/class/drm/cardN
+            # → PCI device path, then filter _find() by that card's hwmon
+            # name (e.g. 'i915' vs 'i915.1', same as AMD's driver_key).
         return {'gpu_temp': '', 'gpu_usage': '', 'gpu_clock': '', 'gpu_power': ''}
 
 
