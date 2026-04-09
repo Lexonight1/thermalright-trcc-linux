@@ -350,38 +350,9 @@ class Settings:
         return load_config().get('gpu_slots', {})
 
     @staticmethod
-    def _save_gpu_slots(slots: dict[str, str]):
-        """Persist GPU slot assignments."""
-        config = load_config()
-        if not slots:
-            config.pop('gpu_slots', None)
-        else:
-            config['gpu_slots'] = slots
-        save_config(config)
-
-    @staticmethod
-    def _get_saved_gpu_cycle_seconds() -> int:
-        """Get GPU cycle interval in seconds. Defaults to 5."""
-        return int(load_config().get('gpu_cycle_seconds', 5))
-
-    @staticmethod
-    def _save_gpu_cycle_seconds(seconds: int):
-        """Persist GPU cycle interval."""
-        config = load_config()
-        config['gpu_cycle_seconds'] = seconds
-        save_config(config)
-
-    @staticmethod
     def _get_saved_gpu_indicator_color() -> str:
         """Get GPU indicator LED color as hex. Defaults to pure blue."""
         return load_config().get('gpu_indicator_color', '#0000FF')
-
-    @staticmethod
-    def _save_gpu_indicator_color(color: str):
-        """Persist GPU indicator LED color."""
-        config = load_config()
-        config['gpu_indicator_color'] = color
-        save_config(config)
 
     @staticmethod
     def _get_saved_refresh_interval() -> int:
@@ -615,13 +586,20 @@ class Settings:
     @staticmethod
     def set_gpu_indicator_color(color: str) -> None:
         """Set GPU indicator LED color (hex) and persist."""
-        Settings._save_gpu_indicator_color(color)
+        config = load_config()
+        config['gpu_indicator_color'] = color
+        save_config(config)
 
     @staticmethod
     def set_gpu_slots(slots: dict[str, str], cycle_seconds: int) -> None:
         """Set GPU slot assignments (multi-GPU cycle mode) and persist."""
-        Settings._save_gpu_slots(slots)
-        Settings._save_gpu_cycle_seconds(cycle_seconds)
+        config = load_config()
+        if slots:
+            config['gpu_slots'] = slots
+        else:
+            config.pop('gpu_slots', None)
+        config['gpu_cycle_seconds'] = cycle_seconds
+        save_config(config)
 
     @property
     def lang(self) -> str:

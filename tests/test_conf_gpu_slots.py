@@ -1,28 +1,26 @@
-from trcc.conf import Settings
+from trcc.conf import Settings, load_config
 
 
-def test_save_and_load_gpu_slots(tmp_path, monkeypatch):
+def test_set_gpu_slots_persists(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
     slots = {"top": "0000:0f:00.0", "bottom": "0000:06:00.0"}
-    Settings._save_gpu_slots(slots)
+    Settings.set_gpu_slots(slots, 10)
     assert Settings._get_saved_gpu_slots() == slots
+    config = load_config()
+    assert config['gpu_cycle_seconds'] == 10
 
-def test_save_and_load_gpu_cycle_seconds(tmp_path, monkeypatch):
+def test_set_gpu_slots_default_cycle(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
-    Settings._save_gpu_cycle_seconds(10)
-    assert Settings._get_saved_gpu_cycle_seconds() == 10
+    Settings.set_gpu_slots({"top": "0000:0f:00.0"}, 5)
+    config = load_config()
+    assert config['gpu_cycle_seconds'] == 5
 
-def test_gpu_cycle_seconds_default(tmp_path, monkeypatch):
+def test_set_gpu_indicator_color(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
-    assert Settings._get_saved_gpu_cycle_seconds() == 5
-
-def test_save_and_load_gpu_indicator_color(tmp_path, monkeypatch):
-    config_path = tmp_path / "config.json"
-    monkeypatch.setattr("trcc.conf.CONFIG_PATH", str(config_path))
-    Settings._save_gpu_indicator_color("#FF0000")
+    Settings.set_gpu_indicator_color("#FF0000")
     assert Settings._get_saved_gpu_indicator_color() == "#FF0000"
 
 def test_gpu_indicator_color_default(tmp_path, monkeypatch):
