@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any, cast
 
 from trcc.cli import _cli_handler
 from trcc.core.models import parse_hex_color as _parse_hex
@@ -60,12 +61,12 @@ def _devices_snapshot(app) -> list:
         return []
 
 
-def _sorted_devices(app) -> list:
+def _sorted_devices(app: Any) -> list[Any]:
     devs = _devices_snapshot(app)
     return sorted(devs, key=lambda d: (_device_index(d), _device_path(d)))
 
 
-def _resolve_device(app, selector: str | None):
+def _resolve_device(app: Any, selector: str | None) -> Any | None:
     """Resolve a device from a selector (path or 1-based index).
 
     Selector precedence:
@@ -117,13 +118,13 @@ def _resolve_device(app, selector: str | None):
     return first_lcd or devices[0]
 
 
-def _resolve_lcd(app, selector: str | None):
+def _resolve_lcd(app: Any, selector: str | None) -> tuple[Any, dict | None]:
     dev = _resolve_device(app, selector)
     if dev is None:
         return None, {"success": False, "error": "No device found", "message": "No device found"}
     if not getattr(dev, 'is_lcd', False):
         return None, {"success": False, "error": "Selected device is not an LCD", "message": "Selected device is not an LCD"}
-    return dev, None
+    return cast(Any, dev), None
 
 
 def _print_result(result: dict, *, preview: bool = False) -> int:
