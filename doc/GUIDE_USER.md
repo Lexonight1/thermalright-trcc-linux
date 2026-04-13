@@ -220,12 +220,13 @@ Everything the GUI does, the CLI can do too. Useful for scripting, headless serv
 ```bash
 # Device management
 trcc detect              # list connected devices
-trcc select 0            # select device by index
+trcc detect --all        # list all devices + numbers
+trcc select 1            # select device by number (from detect --all)
 
 # Display
 trcc send image.png      # send an image to the LCD
 trcc theme-load Theme1   # load a theme by name
-trcc brightness 80       # set brightness to 80%
+trcc brightness 3        # brightness preset (1=25%, 2=50%, 3=100%)
 trcc rotation 90         # rotate display
 
 # LED
@@ -318,6 +319,8 @@ Verbose logging — useful for bug reports. Check `~/.trcc/trcc.log` for details
 ### Multiple Devices
 TRCC supports multiple LCD/LED devices simultaneously. Each device gets its own config, theme, and overlay settings. Click a device in the sidebar to switch.
 
+For details (including how inactive LCDs keep video playing), see `doc/GUIDE_MULTI_DISPLAY.md`.
+
 ### Brightness Schedule
 Set brightness from the CLI or API on a cron job:
 ```bash
@@ -340,6 +343,7 @@ The overlay editor uses system fonts. Install any TrueType font on your system a
 | [User Guide](GUIDE_USER.md) | This document — how to use everything |
 | [CLI Reference](REFERENCE_CLI.md) | All 60 CLI commands |
 | [API Reference](REFERENCE_API.md) | All 55 REST API endpoints |
+| [Multi-Display](GUIDE_MULTI_DISPLAY.md) | Multiple LCD devices at once |
 | [Troubleshooting](GUIDE_TROUBLESHOOTING.md) | Common problems and fixes |
 | [Device Testing](GUIDE_DEVICE_TESTING.md) | Testing with specific hardware |
 | [Supported Devices](REFERENCE_DEVICES.md) | Full device compatibility list |

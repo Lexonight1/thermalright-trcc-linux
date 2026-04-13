@@ -427,9 +427,8 @@ class TRCCApp(QMainWindow):
             if path != target and isinstance(handler, LCDHandler):
                 lcd = handler.display
                 if lcd.connected and lcd.device_info:
-                    log.info("_rebuild_all_handlers: restoring inactive LCD %s", path)
-                    lcd.restore_device_settings()
-                    lcd.restore_last_theme()
+                    log.info("_rebuild_all_handlers: restoring inactive LCD %s (keep-alive)", path)
+                    handler.restore_inactive_state()
 
     def _add_handler(self, device: Any) -> None:
         """Create handler for one new device."""
@@ -470,6 +469,10 @@ class TRCCApp(QMainWindow):
                 self._ipc_server.device = device
                 if lcd_handler.display.device_service:
                     lcd_handler.display.device_service.on_frame_sent = self._ipc_server.capture_frame
+            # Multi-display: restore state on inactive devices immediately so
+            # they can keep playing video even when not selected in the UI.
+            if self._active_path and self._active_path != path:
+                lcd_handler.restore_inactive_state()
         if not added and path not in self._handlers:
             log.warning("_add_handler: unhandled device type %s path=%s — skipped",
                         type(device).__name__, path)

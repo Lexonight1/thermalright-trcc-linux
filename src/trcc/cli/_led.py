@@ -34,7 +34,11 @@ def _led_call(method_name: str, preview: bool = False, **kwargs) -> int:
     if (rc := _connect_or_fail()):
         return rc
     from trcc.core.app import TrccApp
-    led = TrccApp.get().device(0)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
     result = getattr(led, method_name)(**kwargs)
     return _print_result(result, preview=preview)
 
@@ -54,7 +58,12 @@ def set_color(builder, hex_color, *, preview=False):
     if (rc := _connect_or_fail()):
         return rc
     r, g, b = rgb
-    result = TrccApp.get().device(0).set_color(r, g, b)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
+    result = led.set_color(r, g, b)
     return _print_result(result, preview=preview)
 
 
@@ -65,7 +74,11 @@ def set_mode(builder, mode_name, *, preview=False):
     if (rc := _connect_or_fail()):
         return rc
     from trcc.core.app import TrccApp
-    led = TrccApp.get().device(0)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
     result = led.set_mode(mode_name)
     if not result["success"]:
         print(f"Error: {result['error']}")
@@ -118,7 +131,12 @@ def set_led_brightness(builder, level, *, preview=False):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail()):
         return rc
-    result = TrccApp.get().device(0).set_brightness(level)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
+    result = led.set_brightness(level)
     return _print_result(result, preview=preview)
 
 
@@ -134,7 +152,12 @@ def set_sensor_source(builder, source):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail()):
         return rc
-    result = TrccApp.get().device(0).set_sensor_source(source)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
+    result = led.set_sensor_source(source)
     return _print_result(result)
 
 
@@ -148,7 +171,12 @@ def set_zone_color(builder, zone: int, hex_color: str, *, preview: bool = False)
     if (rc := _connect_or_fail()):
         return rc
     r, g, b = rgb
-    result = TrccApp.get().device(0).set_zone_color(zone, r, g, b)
+    app = TrccApp.get()
+    led = app.led_device
+    if led is None:
+        print("Error: No LED device found.")
+        return 1
+    result = led.set_zone_color(zone, r, g, b)
     return _print_result(result, preview=preview)
 
 

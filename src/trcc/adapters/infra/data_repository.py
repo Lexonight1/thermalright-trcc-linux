@@ -204,7 +204,8 @@ class DataManager:
                 archive, DataManager._7z_install_help(),
             )
         except Exception as e:
-            log.warning("extract_7z: failed: %s", e)
+            log.warning("extract_7z: failed: %s: %s", type(e).__name__, e)
+            log.debug("extract_7z exception details", exc_info=True)
         return False
 
     # ------------------------------------------------------------------
@@ -249,7 +250,8 @@ class DataManager:
             log.warning("Download failed (%d): %s", e.code, url)
             e.close()
         except Exception as e:
-            log.warning("Download failed: %s", e)
+            log.warning("Download failed: %s: %s", type(e).__name__, e)
+            log.debug("Download exception details", exc_info=True)
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
@@ -321,7 +323,13 @@ class DataManager:
             )
             return False
 
-        os.makedirs(user_dir, exist_ok=True)
+        try:
+            os.makedirs(user_dir, exist_ok=True)
+        except Exception as e:
+            log.warning("%s: cannot create %s: %s: %s",
+                        label, user_dir, type(e).__name__, e)
+            log.debug("mkdir exception details", exc_info=True)
+            return False
         if (ok := DataManager.extract_7z(archive, user_dir)):
             # Some archives wrap contents in a single subdirectory that matches
             # the target dir name (e.g. 1600720.7z contains 1600720/a001.png).
@@ -562,5 +570,4 @@ FONT_SEARCH_DIRS: List[str] = [
     '/run/current-system/sw/share/fonts/opentype',      # NixOS
     '/gnu/store/fonts',                                 # Guix (approx)
 ]
-
 

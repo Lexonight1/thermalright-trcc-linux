@@ -105,7 +105,7 @@ def list_masks():
 @_cli_handler
 def load_theme(builder, name, *, device=None, preview=False):
     """Load a theme by name and send to LCD."""
-    from trcc.cli._display import _connect_or_fail
+    from trcc.cli._display import _connect_or_fail, _resolve_lcd
     from trcc.core.app import TrccApp
     from trcc.services import ImageService
 
@@ -113,7 +113,11 @@ def load_theme(builder, name, *, device=None, preview=False):
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        print(f"Error: {err.get('error', 'Unknown error')}")
+        return 1
     result = lcd.load_theme_by_name(name)
 
     if not result.get("success"):
@@ -219,14 +223,18 @@ def save_theme(name, *, device=None, video=None, background=None,
     """Save current display state as a custom theme."""
     from pathlib import Path
 
-    from trcc.cli._display import _connect_or_fail
+    from trcc.cli._display import _connect_or_fail, _resolve_lcd
     from trcc.core.app import TrccApp
 
     log.debug("save_theme name=%s device=%s background=%s", name, device, background)
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        print(f"Error: {err.get('error', 'Unknown error')}")
+        return 1
 
     # --background / --video → load into DisplayService state
     if (bg_source := background or video):
@@ -333,7 +341,7 @@ def import_theme(file_path, *, device=None):
     from trcc.adapters.infra.dc_config import DcConfig
     from trcc.adapters.infra.dc_parser import load_config_json
     from trcc.adapters.infra.dc_writer import import_theme as _import_fn
-    from trcc.cli._display import _connect_or_fail
+    from trcc.cli._display import _connect_or_fail, _resolve_lcd
     from trcc.conf import settings as _settings
     from trcc.core.app import TrccApp
     from trcc.services import ThemeService
@@ -342,7 +350,11 @@ def import_theme(file_path, *, device=None):
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        print(f"Error: {err.get('error', 'Unknown error')}")
+        return 1
     w, h = lcd.lcd_size
     data_dir = _settings.user_data_dir
 

@@ -19,7 +19,69 @@ log = logging.getLogger(__name__)
 def _connect_or_fail(device: str | None = None) -> int:
     """Connect device via discover(). Returns exit code (0 = success)."""
     from trcc.cli._connect import connect_device
+    # device option supports either a real device path (e.g. /dev/sg0) or a
+    # 1-based index from `trcc detect --all`. Indices are resolved after scan.
+    if device and device.isdigit():
+        return connect_device(None)
     return connect_device(device)
+
+
+def _sorted_devices(app):
+    def _key(d):
+        info = getattr(d, 'device_info', None)
+        idx = getattr(info, 'device_index', 0) if info else 0
+        path = getattr(info, 'path', '') if info else ''
+        return (idx, path)
+    return sorted(app.devices, key=_key)
+
+
+def _resolve_device(app, selector: str | None):
+    """Resolve a device from a selector (path or 1-based index).
+
+    Selector precedence:
+      1) Explicit selector (path or index)
+      2) Saved selection (Settings.selected_device)
+      3) First LCD device
+      4) First device (fallback)
+    """
+    from trcc.conf import Settings
+
+    devices = _sorted_devices(app)
+    if not devices:
+        return None
+
+    if selector:
+        if selector.isdigit():
+            idx = int(selector)
+            if idx < 1 or idx > len(devices):
+                return None
+            return devices[idx - 1]
+        match = app.device_by_path(selector)
+        if match is not None:
+            return match
+        # Fallback: match by DeviceInfo.path if dict key differs
+        for d in devices:
+            info = getattr(d, 'device_info', None)
+            if info and getattr(info, 'path', None) == selector:
+                return d
+        return None
+
+    saved = Settings.get_selected_device()
+    if saved:
+        match = app.device_by_path(saved)
+        if match is not None:
+            return match
+    lcd = next((d for d in devices if getattr(d, 'is_lcd', False)), None)
+    return lcd or devices[0]
+
+
+def _resolve_lcd(app, selector: str | None):
+    dev = _resolve_device(app, selector)
+    if dev is None:
+        return None, {"success": False, "error": "No device found", "message": "No device found"}
+    if not getattr(dev, 'is_lcd', False):
+        return None, {"success": False, "error": "Selected device is not an LCD", "message": "Selected device is not an LCD"}
+    return dev, None
 
 
 def _print_result(result: dict, *, preview: bool = False) -> int:
@@ -44,11 +106,11 @@ def test(device=None, loop=False, preview=False):
         if (rc := _connect_or_fail(device)):
             return rc
 
-        lcd = TrccApp.get().device(0)
-        assert lcd is not None
-        if lcd.device_path and 'led' in lcd.device_path:
-            print("LED controller with segment display — use 'trcc led' commands.")
-            return 0
+        app = TrccApp.get()
+        lcd, err = _resolve_lcd(app, device)
+        if err:
+            print(f"Error: {err.get('error', 'Unknown error')}")
+            return 1
         w, h = lcd.lcd_size
 
         colors = [
@@ -103,8 +165,11 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
 
         if (rc := _connect_or_fail(device)):
             return rc
-        lcd = TrccApp.get().device(0)
-        assert lcd is not None
+        app = TrccApp.get()
+        lcd, err = _resolve_lcd(app, device)
+        if err:
+            print(f"Error: {err.get('error', 'Unknown error')}")
+            return 1
 
         dev_path = lcd.device_path
         w, h = lcd.lcd_size
@@ -195,8 +260,11 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
-    assert lcd is not None
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        print(f"Error: {err.get('error', 'Unknown error')}")
+        return 1
     lcd_w, lcd_h = lcd.lcd_size
 
     capture = builder.build_setup().get_screencast_capture(x, y, w, h)
@@ -274,7 +342,11 @@ def send_image(builder, image_path, device=None, preview=False):
     log.debug("send_image path=%s device=%s", image_path, device)
     if (rc := _connect_or_fail(device)):
         return rc
-    result = TrccApp.get().device(0).send_image(image_path)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err)
+    result = lcd.send_image(image_path)
     return _print_result(result, preview=preview)
 
 
@@ -289,7 +361,11 @@ def send_color(builder, hex_color, device=None, preview=False):
     if (rc := _connect_or_fail(device)):
         return rc
     r, g, b = rgb
-    result = TrccApp.get().device(0).send_color(r, g, b)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err)
+    result = lcd.send_color(r, g, b)
     return _print_result(result, preview=preview)
 
 
@@ -299,10 +375,14 @@ def set_brightness(builder, level, *, device=None):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail(device)):
         return rc
-    try:
-        result = TrccApp.get().device(0).set_brightness(level)
-    except ValueError:
-        result = None
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err)
+
+    # Back-compat preset levels (Windows UI): 1/2/3 → 25/50/100%
+    percent = {1: 25, 2: 50, 3: 100}.get(level, level)
+    result = lcd.set_brightness(percent)
     if not result or not result.get("success"):
         error = result.get("error", "invalid brightness level") if result else "invalid brightness level"
         print(f"Error: {error}")
@@ -320,7 +400,11 @@ def set_rotation(builder, degrees, *, device=None):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail(device)):
         return rc
-    result = TrccApp.get().device(0).set_rotation(degrees)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err)
+    result = lcd.set_rotation(degrees)
     return _print_result(result)
 
 
@@ -330,7 +414,11 @@ def set_split_mode(builder, mode, *, device=None, preview=False):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail(device)):
         return rc
-    result = TrccApp.get().device(0).set_split_mode(mode)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err, preview=preview)
+    result = lcd.set_split_mode(mode)
     return _print_result(result, preview=preview)
 
 
@@ -340,7 +428,11 @@ def load_mask(builder, mask_path, *, device=None, preview=False):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail(device)):
         return rc
-    result = TrccApp.get().device(0).load_mask_standalone(mask_path)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err, preview=preview)
+    result = lcd.load_mask_standalone(mask_path)
     return _print_result(result, preview=preview)
 
 
@@ -355,7 +447,11 @@ def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
     if (rc := _connect_or_fail(device)):
         return rc
     _ensure_system(builder)
-    result = TrccApp.get().device(0).render_overlay_from_dc(
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err)
+    result = lcd.render_overlay_from_dc(
         dc_path, send=send, output=output or None,
         metrics=get_all_metrics(),
     )
@@ -380,7 +476,10 @@ def reset(builder, device=None, *, preview=False):
     from trcc.core.app import TrccApp
     if (rc := _connect_or_fail(device)):
         return rc
-    lcd = TrccApp.get().device(0)
+    app = TrccApp.get()
+    lcd, err = _resolve_lcd(app, device)
+    if err:
+        return _print_result(err, preview=preview)
     print(f"  Device: {lcd.device_path}")
     result = lcd.reset()
     return _print_result(result, preview=preview)
@@ -418,17 +517,26 @@ def resume(builder):
         print("No compatible TRCC device detected.")
         return 1
 
-    lcd = app.device(0)
-    result = lcd.restore_last_theme()
-    if not result.get("success"):
-        print(f"Error: {result.get('error', 'Unknown error')}")
+    sent = 0
+    animated = 0
+    for dev in _sorted_devices(app):
+        if not getattr(dev, 'is_lcd', False):
+            continue
+        result = dev.restore_last_theme()
+        if not result.get("success"):
+            continue
+        sent += 1
+        if result.get("is_animated", False):
+            animated += 1
+            print(f"  [{dev.device_path}] Restored (animated — run 'trcc video -d {dev.device_path}' for playback)")
+        else:
+            print(f"  [{dev.device_path}] Sent")
+
+    if sent == 0:
         print("No themes were sent. Use the GUI to set a theme first.")
         return 1
-
-    is_animated = result.get("is_animated", False)
-    if is_animated:
-        print(f"  [{lcd.device_path}] Restored (animated — start GUI for playback)")
+    if animated:
+        print(f"Resumed {sent} device(s) ({animated} animated).")
     else:
-        print(f"  [{lcd.device_path}] Sent")
-    print("Resumed 1 device.")
+        print(f"Resumed {sent} device(s).")
     return 0

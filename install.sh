@@ -273,11 +273,14 @@ do_install() {
     trcc_cmd="$(find_trcc_cmd)"
     info "Running: $trcc_cmd setup --yes"
     # trcc setup handles: system deps, GPU drivers, udev, SELinux, desktop entry
-    # Use env PATH to ensure ~/.local/bin is visible under sudo
+    # IMPORTANT: run as the real user so the user's site-packages/venv are visible.
+    # (If run as root, ~/.local installs won't be importable and `trcc` will crash.)
+    #
+    # Use env PATH so ~/.local/bin is visible even if the user's shell rc wasn't loaded.
     if [[ "$trcc_cmd" == PYTHONPATH=* ]]; then
-        eval "$trcc_cmd setup --yes"
+        sudo -u "$REAL_USER" -H bash -lc "PATH=\"$REAL_HOME/.local/bin:$VENV_DIR/bin:\$PATH\" $trcc_cmd setup --yes"
     else
-        PATH="$REAL_HOME/.local/bin:$VENV_DIR/bin:$PATH" "$trcc_cmd" setup --yes
+        sudo -u "$REAL_USER" -H env PATH="$REAL_HOME/.local/bin:$VENV_DIR/bin:$PATH" "$trcc_cmd" setup --yes
     fi
 
     print_success

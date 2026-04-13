@@ -73,6 +73,11 @@ trcc select 2          # select device number 2
 
 Device numbers correspond to the `[N]` shown in `trcc detect --all`.
 
+Many LCD commands also accept `--device/-d` to override the target device.
+You can pass either:
+- A device path (example: `/dev/sg2`)
+- A 1-based device number from `trcc detect --all` (example: `--device 2`)
+
 ---
 
 ### `trcc send`
@@ -87,7 +92,7 @@ trcc send image.png --preview       # show ANSI preview in terminal
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--preview`, `-p` | Show ANSI art preview in terminal (for headless/SSH) |
 
 The image is automatically resized and cropped to fit the LCD resolution.
@@ -106,7 +111,7 @@ trcc color '#0000ff'   # blue (quote the # in shell)
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--preview`, `-p` | Show ANSI art preview in terminal |
 
 ---
@@ -124,7 +129,7 @@ trcc test --preview    # show ANSI preview for each color
 | Option | Description |
 |--------|-------------|
 | `--loop`, `-l` | Loop colors continuously (Ctrl+C to stop) |
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--preview`, `-p` | Show ANSI art preview in terminal |
 
 ---
@@ -140,7 +145,7 @@ trcc reset --device /dev/sg2
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--preview`, `-p` | Show ANSI art preview in terminal |
 
 ---
@@ -556,7 +561,7 @@ trcc brightness 3       # 100%
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 
 Persists to per-device config.
 
@@ -575,7 +580,7 @@ trcc rotation 270       # 270° clockwise
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 
 Persists to per-device config.
 
@@ -593,7 +598,7 @@ trcc video clip.mp4 --duration 30
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--no-loop` | Play once instead of looping |
 | `--duration` | Stop after N seconds (default: 0 = forever) |
 | `--preview`, `-p` | Animate ANSI preview in terminal |
@@ -641,7 +646,7 @@ trcc theme --background animated.gif \
 | `--time-format` | Time format: 0=24h HH:MM, 1=12h hh:MM |
 | `--date-format` | Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy |
 | `--save`, `-s` | Save as named theme (e.g. `--save MyTheme`) |
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--no-loop` | Play once instead of looping |
 | `--duration` | Stop after N seconds (default: 0 = forever) |
 | `--preview`, `-p` | Animate ANSI preview in terminal |
@@ -694,7 +699,7 @@ trcc screencast --fps 15
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--x`, `--y` | Top-left corner of capture region |
 | `--w`, `--h` | Width/height of capture region (0 = full screen) |
 | `--fps` | Frames per second (default: 10) |
@@ -714,7 +719,7 @@ trcc mask --clear                 # remove mask (send solid black)
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--clear` | Clear mask (send solid black) |
 | `--preview`, `-p` | Show ANSI art preview in terminal |
 
@@ -732,7 +737,7 @@ trcc overlay /path/to/theme/dir --output rendered.png
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--send`, `-s` | Send rendered result to LCD |
 | `--output`, `-o` | Save rendered image to file |
 | `--preview`, `-p` | Show ANSI art preview in terminal |
@@ -782,7 +787,7 @@ trcc theme-load warframe          # partial match
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--preview`, `-p` | Live ANSI preview in terminal (updates with metrics) |
 
 Handles both static and animated themes. Loads overlay config (DC/config.json), wires metrics, applies mask. Static themes enter a keep-alive loop; animated themes play video with overlay. `-p` shows live-updating ANSI preview for both.
@@ -800,7 +805,7 @@ trcc theme-save AnimTheme --video /path/to/clip.mp4
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 | `--video`, `-v` | Video path for animated theme |
 
 Saves to `~/.trcc/data/theme{W}{H}/Custom_{name}/`.
@@ -1030,7 +1035,7 @@ trcc split 3                       # Dynamic Island style 3
 
 | Option | Description |
 |--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+| `--device`, `-d` | Device path or `trcc detect --all` number (default: selected device) |
 
 Only applies to non-square widescreen LCDs.
 

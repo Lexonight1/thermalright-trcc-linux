@@ -60,6 +60,9 @@ class LCDHandler(BaseHandler):
         self._data_dir = data_dir
         self._is_visible = is_visible_fn or (lambda: True)
         self.log: logging.Logger = log  # module-level until apply_device_config
+        # UI focus state: inactive handlers must not mutate shared widgets.
+        # (Multiple LCDHandler instances share a single widget set in the GUI.)
+        self._ui_active = False
 
         # Per-device state
         self._device_key = ''
@@ -98,6 +101,7 @@ class LCDHandler(BaseHandler):
         """First-time device setup + full widget refresh."""
         self.log.info("apply_device_config: device_index=%d %04x:%04x %dx%d",
                       device.device_index, device.vid, device.pid, w, h)
+        self._ui_active = True
         self._device_key = Settings.device_config_key(
             device.device_index, device.vid, device.pid)
         # Per-device child logger — tags handler logs with device index
@@ -111,7 +115,34 @@ class LCDHandler(BaseHandler):
 
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
+        self._ui_active = True
         self._refresh(w, h)
+
+    def restore_inactive_state(self) -> None:
+        """Restore last theme for an inactive LCD without touching shared widgets.
+
+        Used by multi-display scenarios: all LCDs should continue playing video
+        even when not selected in the GUI sidebar.  This method restores the
+        device state and starts the per-device video timer, but avoids updating
+        the shared preview/settings widgets (which are owned by the active handler).
+        """
+        self._ui_active = False
+        if not self._lcd.connected:
+            return
+        try:
+            self._lcd.restore_device_settings()
+            result = self._lcd.restore_last_theme()
+        except Exception:
+            self.log.exception("restore_inactive_state: failed")
+            return
+
+        if not result.get("success"):
+            return
+        if result.get("is_animated") and self._lcd.playing:
+            interval = max(1, int(self._lcd.interval or 33))
+            if not self._animation_timer.isActive():
+                self.log.info("restore_inactive_state: starting background video timer interval=%dms", interval)
+                self._animation_timer.start(interval)
 
     def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current state.
@@ -440,14 +471,15 @@ class LCDHandler(BaseHandler):
         if frame_index is not None and frame_index % 30 == 0:
             self.log.debug("_on_video_tick: frame=%d encoded=%s", frame_index, result.get('encoded') is not None)
 
-        # Update progress bar
-        progress = result.get('progress')
-        if progress is not None:
-            percent, current_time, total_time = progress
-            self._w['preview'].set_progress(percent, current_time, total_time)
+        # Update progress bar (active UI only — widgets are shared)
+        if self._ui_active:
+            progress = result.get('progress')
+            if progress is not None:
+                percent, current_time, total_time = progress
+                self._w['preview'].set_progress(percent, current_time, total_time)
 
-        # Skip preview update when window is minimized
-        if self._is_visible():
+        # Preview update (active UI only — widgets are shared)
+        if self._ui_active and self._is_visible():
             preview = result.get('preview')
             if preview is not None:
                 index = result.get('frame_index')
@@ -748,12 +780,19 @@ class LCDHandler(BaseHandler):
 
     def cleanup(self) -> None:
         """Stop timers and release device resources."""
-        self.deactivate()
+        self._animation_timer.stop()
+        self._slideshow_timer.stop()
+        self._flash_timer.stop()
         self._cleanup_device()
 
     def deactivate(self) -> None:
         """Pause handler — stop timers when switching away from this device."""
-        self._animation_timer.stop()
+        # Important: keep video timer running for multi-display.
+        # Inactive handlers must not update shared widgets, but should keep
+        # pumping frames to their physical device while playing.
+        self._ui_active = False
+        if not self._lcd.playing:
+            self._animation_timer.stop()
         self._slideshow_timer.stop()
         self._flash_timer.stop()
 
