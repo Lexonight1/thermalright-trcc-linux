@@ -846,9 +846,33 @@ class TestLifecycle:
     """deactivate, cleanup."""
 
     def test_deactivate(self, lcd_handler):
+        lcd_handler._lcd.playing = False
         lcd_handler.deactivate()
         lcd_handler._animation_timer.stop.assert_called()
         lcd_handler._slideshow_timer.stop.assert_called()
+
+    def test_deactivate_keeps_video_timer_running(self, lcd_handler):
+        """Switching away should not pause physical video playback on other LCDs."""
+        lcd_handler._lcd.playing = True
+        lcd_handler.deactivate()
+        lcd_handler._animation_timer.stop.assert_not_called()
+        lcd_handler._slideshow_timer.stop.assert_called()
+
+    def test_restore_inactive_state_starts_video_timer(self, make_lcd_handler, mock_lcd_device):
+        """Inactive LCDs should start their animation timer after restoring an animated theme."""
+        mock_lcd_device.connected = True
+        mock_lcd_device.playing = True
+        mock_lcd_device.interval = 40
+        mock_lcd_device.restore_last_theme.return_value = {
+            'success': True,
+            'is_animated': True,
+        }
+        h = make_lcd_handler(lcd=mock_lcd_device)
+        h._animation_timer.isActive.return_value = False
+
+        h.restore_inactive_state()
+
+        h._animation_timer.start.assert_called_with(40)
 
     def test_cleanup_calls_stop(self, lcd_handler, mock_lcd_device):
         """cleanup calls stop() — ensures video state is consistent."""
