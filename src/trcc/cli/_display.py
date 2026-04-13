@@ -26,13 +26,43 @@ def _connect_or_fail(device: str | None = None) -> int:
     return connect_device(device)
 
 
-def _sorted_devices(app):
-    def _key(d):
-        info = getattr(d, 'device_info', None)
-        idx = getattr(info, 'device_index', 0) if info else 0
-        path = getattr(info, 'path', '') if info else ''
-        return (idx, path)
-    return sorted(app.devices, key=_key)
+def _device_path(dev) -> str:
+    """Best-effort device path for matching CLI selectors."""
+    path = getattr(dev, 'device_path', None)
+    if isinstance(path, str) and path:
+        return path
+    info = getattr(dev, 'device_info', None)
+    info_path = getattr(info, 'path', None) if info is not None else None
+    if isinstance(info_path, str) and info_path:
+        return info_path
+    return ''
+
+
+def _device_index(dev) -> int:
+    """Best-effort stable index for sorting (used by CLI numeric selectors)."""
+    info = getattr(dev, 'device_info', None)
+    idx = getattr(info, 'device_index', 0) if info is not None else 0
+    try:
+        return int(idx)
+    except Exception:
+        return 0
+
+
+def _devices_snapshot(app) -> list:
+    """Return a list of connected devices from TrccApp (or test doubles)."""
+    devs = getattr(app, 'devices', None)
+    if isinstance(devs, list):
+        return devs
+    # TrccApp.devices is a property returning list[Device]
+    try:
+        return list(devs) if devs is not None else []
+    except Exception:
+        return []
+
+
+def _sorted_devices(app) -> list:
+    devs = _devices_snapshot(app)
+    return sorted(devs, key=lambda d: (_device_index(d), _device_path(d)))
 
 
 def _resolve_device(app, selector: str | None):
@@ -47,8 +77,6 @@ def _resolve_device(app, selector: str | None):
     from trcc.conf import Settings
 
     devices = _sorted_devices(app)
-    if not devices:
-        return None
 
     if selector:
         if selector.isdigit():
@@ -56,23 +84,37 @@ def _resolve_device(app, selector: str | None):
             if idx < 1 or idx > len(devices):
                 return None
             return devices[idx - 1]
-        match = app.device_by_path(selector)
-        if match is not None:
-            return match
-        # Fallback: match by DeviceInfo.path if dict key differs
+        # Path selector — match against best-effort device path
         for d in devices:
-            info = getattr(d, 'device_info', None)
-            if info and getattr(info, 'path', None) == selector:
+            if _device_path(d) == selector:
                 return d
+        # If TrccApp provides device_by_path, try it as a last resort
+        device_by_path = getattr(app, 'device_by_path', None)
+        if callable(device_by_path):
+            try:
+                match = device_by_path(selector)
+                if match is not None:
+                    return match
+            except Exception:
+                pass
         return None
+
+    # No selector: prefer the active LCD handle (tests + UI patterns)
+    lcd = getattr(app, 'lcd', None)
+    if lcd is not None:
+        return lcd
 
     saved = Settings.get_selected_device()
     if saved:
-        match = app.device_by_path(saved)
-        if match is not None:
-            return match
-    lcd = next((d for d in devices if getattr(d, 'is_lcd', False)), None)
-    return lcd or devices[0]
+        for d in devices:
+            if _device_path(d) == saved:
+                return d
+
+    if not devices:
+        return None
+
+    first_lcd = next((d for d in devices if getattr(d, 'is_lcd', False)), None)
+    return first_lcd or devices[0]
 
 
 def _resolve_lcd(app, selector: str | None):
