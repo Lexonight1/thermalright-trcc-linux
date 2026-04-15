@@ -127,6 +127,8 @@ class LCDHandler(BaseHandler):
         the shared preview/settings widgets (which are owned by the active handler).
         """
         self._ui_active = False
+        # Clear stale pixmap cache from any previous session so we start fresh.
+        self._pixmap_cache.clear()
         if not self._lcd.connected:
             return
         try:
@@ -488,6 +490,13 @@ class LCDHandler(BaseHandler):
                     preview_id = id(preview)
                     if cached is None or cached[0] != preview_id:
                         pixmap = QPixmap.fromImage(preview)
+                        # Evict stale entries when cache exceeds the video
+                        # frame count (or a hard cap of 512 if unknown).
+                        # Without this the dict grows unbounded for long
+                        # sessions because frame_index is ever-increasing.
+                        cap = getattr(self._lcd, 'total_frames', None) or 512
+                        if len(self._pixmap_cache) >= cap:
+                            self._pixmap_cache.clear()
                         self._pixmap_cache[index] = (preview_id, pixmap)
                     else:
                         pixmap = cached[1]
@@ -783,6 +792,7 @@ class LCDHandler(BaseHandler):
         self._animation_timer.stop()
         self._slideshow_timer.stop()
         self._flash_timer.stop()
+        self._pixmap_cache.clear()
         self._cleanup_device()
 
     def deactivate(self) -> None:
