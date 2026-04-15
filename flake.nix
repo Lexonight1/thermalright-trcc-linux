@@ -89,7 +89,7 @@
           packages = [
             (python.withPackages (ps: with ps; [
               pyside6 numpy psutil pyusb click typer fastapi uvicorn
-              python-multipart prompt-toolkit sounddevice 
+              python-multipart prompt-toolkit sounddevice
               pytest pytest-cov pytest-xdist httpx nvidia-ml-py ruff
             ]))
             pkgs.portaudio
