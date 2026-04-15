@@ -2,7 +2,7 @@
   description = "TRCC Linux — Thermalright LCD/LED Control Center";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -33,6 +33,7 @@
             python-multipart
             prompt-toolkit
             sounddevice
+            certifi
           ];
 
           optional-dependencies = {
