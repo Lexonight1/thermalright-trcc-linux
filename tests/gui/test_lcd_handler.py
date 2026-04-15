@@ -832,6 +832,8 @@ class TestRender:
         """_render_and_send calls render_and_send and updates preview."""
         img = MagicMock()
         mock_lcd_device.render_and_send.return_value = {'success': True, 'image': img}
+        lcd_handler._ui_active = True
+        lcd_handler._w['preview'].isVisible.return_value = True
         lcd_handler._render_and_send()
         mock_lcd_device.render_and_send.assert_called()
         lcd_handler._w['preview'].set_image.assert_called_with(img)
