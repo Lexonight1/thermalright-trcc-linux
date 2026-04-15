@@ -37,7 +37,7 @@
           ];
 
           optional-dependencies = {
-            nvidia = [ python.pkgs.pynvml ];
+            nvidia = [ python.pkgs.nvidia-ml-py ];
           };
 
           nativeBuildInputs = [ pkgs.makeWrapper ];
@@ -89,8 +89,8 @@
           packages = [
             (python.withPackages (ps: with ps; [
               pyside6 numpy psutil pyusb click typer fastapi uvicorn
-              python-multipart prompt-toolkit sounddevice
-              pytest pytest-cov ruff
+              python-multipart prompt-toolkit sounddevice 
+              pytest pytest-cov pytest-xdist httpx nvidia-ml-py ruff
             ]))
             pkgs.portaudio
             pkgs.libusb1
