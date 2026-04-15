@@ -71,6 +71,7 @@ class LCDHandler(BaseHandler):
         self._ldd_is_split = False
         self._background_active = False
         self._slideshow_index = 0
+        self._last_render_id: int | None = None
 
         # QPixmap cache keyed by frame index: {index: (id(qimage), QPixmap)}
         # Avoids QImage→QPixmap conversion on every tick when L3 cache is warm.
@@ -555,6 +556,8 @@ class LCDHandler(BaseHandler):
         """Metrics tick: video cache text update only."""
         if not self._lcd.connected or not self._lcd.playing:
             return
+        if not self._lcd.enabled:
+            return
         self.log.debug("overlay_tick: video playing — updating cache text overlay")
         self._lcd.update_video_cache_text(metrics)
 
@@ -707,6 +710,7 @@ class LCDHandler(BaseHandler):
         """Render overlay + send to LCD, update preview.
 
         Skipped when video/screencast is active — those own the device.
+        Skipped if nothing changed since last render (cache hit).
         """
         self.log.debug("_render_and_send: playing=%s overlay_enabled=%s has_image=%s",
                   self._lcd.playing, self._lcd.enabled,
@@ -716,7 +720,13 @@ class LCDHandler(BaseHandler):
         result = self._lcd.render_and_send()
         image = result.get('image')
         if image:
-            self._w['preview'].set_image(image)
+            if self._ui_active and self._is_visible():
+                self._w['preview'].set_image(image)
+            new_id = id(image)
+            if self._last_render_id == new_id:
+                self.log.debug("_render_and_send: cache hit, skipping")
+                return
+            self._last_render_id = new_id
 
     def render_and_preview(self) -> Any:
         """Render overlay and update preview (no send)."""
