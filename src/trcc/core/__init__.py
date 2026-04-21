@@ -1,24 +1,6 @@
+"""Core domain — pure Python, no I/O, no framework deps.
+
+Everything here compiles without pyusb, PySide6, FastAPI, or anything
+adapter-ish.  Adapter and UI code depend on this package; this package
+depends on nothing in the app.
 """
-TRCC Core — Ports, Devices, Models
-
-Ports (ABCs): Device, Renderer — contracts for adapters.
-Devices: LCDDevice, LEDDevice — concrete Device implementations.
-Builder: ControllerBuilder — assembles devices with DI.
-Models: Data classes only (ThemeInfo, DeviceInfo, VideoState, etc.)
-"""
-
-from .models import (
-    DeviceInfo,
-    PlaybackState,
-    ThemeInfo,
-    ThemeType,
-    VideoState,
-)
-
-__all__ = [
-    'ThemeType',
-    'PlaybackState',
-    'ThemeInfo',
-    'DeviceInfo',
-    'VideoState',
-]

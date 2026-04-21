@@ -1,1 +1,1 @@
-"""System integration adapters — sensors, info, config."""
+"""Platform implementations — one module per OS."""

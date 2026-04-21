@@ -1,582 +1,282 @@
-"""Shared test fixtures for the TRCC Linux test suite.
+"""Shared fixtures for tests/next.
 
-Tier 0: Environment — disable live IPC daemon (tests must never route through GUI)
-Tier 1: Data factories — DeviceInfo, mock devices, native renderer surfaces
-Tier 2: Filesystem — isolated config dirs, theme dirs, temp PNGs
-Tier 3: Qt — session-scoped QApplication (offscreen)
-Tier 4: Performance report — Valgrind-style summary for CPU + memory tests
+Provides fakes at the transport boundary so tests exercise real
+protocol logic (ScsiLcd.connect, DisplayService.render) without
+touching USB / SG_IO / ioctl.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import List, Optional, Tuple
 
 import pytest
-from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QApplication
 
-from trcc.adapters.render.qt import QtRenderer
-from trcc.core.models import DeviceInfo
+from trcc.core.ports import (
+    AutostartManager,
+    BulkTransport,
+    CpuSource,
+    GpuSource,
+    MemorySource,
+    Paths,
+    Platform,
+    ScsiTransport,
+    SensorEnumerator,
+)
 
-# ═══════════════════════════════════════════════════════════════════════
-# Performance report — Valgrind-style summary for test_cpu.py / test_memory.py
-# Uses PerfReport from core/perf.py (domain object, hexagonal)
-# ═══════════════════════════════════════════════════════════════════════
-from trcc.core.perf import PerfReport
-from trcc.services.image import ImageService
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Register the perf report collector."""
-    config._perf_report = PerfReport()  # type: ignore[attr-defined]
+# ── Transport fakes ──────────────────────────────────────────────────
 
 
-def pytest_terminal_summary(
-    terminalreporter: Any, exitstatus: int, config: pytest.Config,
-) -> None:
-    """Print Valgrind-style performance summary after test run."""
-    report: PerfReport = getattr(config, '_perf_report', None)  # type: ignore[assignment]
-    if report and report.has_data:
-        tw = terminalreporter._tw
-        for line in report.format_report():
-            tw.line(line)
+class FakeBulkTransport(BulkTransport):
+    """In-memory BulkTransport — records writes, yields scripted reads."""
 
-# ── Qt + Renderer initialization (once per test session) ────────────────
-# QApplication must exist before QtRenderer — QFontDatabase.addApplicationFont
-# segfaults without one. Create it once at module level for all tests.
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-_app = QApplication.instance() or QApplication([])
-ImageService.set_renderer(QtRenderer())
+    def __init__(self) -> None:
+        self._open = False
+        self.writes: List[Tuple[int, bytes]] = []
+        self.read_script: List[bytes] = []
 
-# =========================================================================
-# Surface helpers — create/inspect native renderer surfaces in tests
-# =========================================================================
+    @property
+    def is_open(self) -> bool:
+        return self._open
 
-def make_test_surface(
-    w: int = 320, h: int = 320,
-    color: tuple[int, ...] = (128, 0, 0),
-) -> Any:
-    """Create a native renderer surface (QImage) for testing.
+    def open(self) -> bool:
+        self._open = True
+        return True
 
-    For RGB: pass 3-tuple. For RGBA: pass 4-tuple.
-    """
-    r = ImageService._r()
-    return r.create_surface(w, h, color)
+    def close(self) -> None:
+        self._open = False
+
+    def write(self, endpoint: int, data: bytes, timeout_ms: int = 100) -> int:
+        self.writes.append((endpoint, bytes(data)))
+        return len(data)
+
+    def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+        if not self.read_script:
+            return b""
+        buf = self.read_script.pop(0)
+        return buf[:length]
 
 
-def surface_size(surface: Any) -> tuple[int, int]:
-    """Get (width, height) from any renderer surface."""
-    return ImageService._r().surface_size(surface)
+class FakeScsiTransport(ScsiTransport):
+    """In-memory ScsiTransport — records CDBs, yields scripted read data."""
+
+    def __init__(self) -> None:
+        self._open = False
+        self.sent: List[Tuple[bytes, bytes]] = []
+        self.read_script: List[bytes] = []
+        self.send_should_succeed = True
+
+    @property
+    def is_open(self) -> bool:
+        return self._open
+
+    def open(self) -> bool:
+        self._open = True
+        return True
+
+    def close(self) -> None:
+        self._open = False
+
+    def send_cdb(self, cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
+        self.sent.append((bytes(cdb), bytes(data)))
+        return self.send_should_succeed
+
+    def read_cdb(self, cdb: bytes, length: int, timeout_ms: int = 5000) -> bytes:
+        if not self.read_script:
+            return b""
+        buf = self.read_script.pop(0)
+        return buf[:length]
 
 
-def get_pixel(surface: Any, x: int, y: int) -> tuple[int, ...]:
-    """Get pixel color from any renderer surface.
+# ── Platform fake ────────────────────────────────────────────────────
 
-    Returns (r, g, b) for RGB surfaces, (r, g, b, a) for RGBA.
-    """
-    img: QImage = surface
-    color = QColor(img.pixel(x, y))
-    if img.hasAlphaChannel():
-        return (color.red(), color.green(), color.blue(), color.alpha())
-    return (color.red(), color.green(), color.blue())
 
-# =========================================================================
-# Tier 0: Environment — disable live IPC daemon + builder
-# =========================================================================
+class FakePaths(Paths):
+    def __init__(self, root: Path) -> None:
+        self._root = root
 
-@pytest.fixture(autouse=True)
-def _restore_renderer():
-    """Save and restore ImageService._renderer around every test.
+    def config_dir(self) -> Path:
+        return self._root
 
-    ImageService._renderer is class-level state. Any test that calls
-    set_renderer() — directly or via builder.build_lcd() / app.set_renderer()
-    — would permanently corrupt it for all subsequent tests in the same
-    worker process, causing unrelated tests to fail with MagicMock instead
-    of a real Renderer.  This fixture makes the renderer restore automatic.
-    """
-    from trcc.services.image import ImageService
-    saved = ImageService._renderer
-    yield
-    ImageService.set_renderer(saved)
+    def data_dir(self) -> Path:
+        return self._root / "data"
+
+    def user_content_dir(self) -> Path:
+        return self._root / "user"
+
+    def log_file(self) -> Path:
+        return self._root / "trcc.log"
+
+
+class FakeAutostart(AutostartManager):
+    def __init__(self) -> None:
+        self._enabled = False
+
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def enable(self) -> None:
+        self._enabled = True
+
+    def disable(self) -> None:
+        self._enabled = False
+
+    def refresh(self) -> None:
+        pass
+
+
+class FakeCpu(CpuSource):
+    def __init__(self) -> None:
+        self.values = {"temp": 42.0, "usage": 15.0, "freq": 3200.0, "power": 65.0}
+
+    @property
+    def name(self) -> str:
+        return "Fake CPU"
+
+    def temp(self) -> Optional[float]:
+        return self.values["temp"]
+
+    def usage(self) -> Optional[float]:
+        return self.values["usage"]
+
+    def freq(self) -> Optional[float]:
+        return self.values["freq"]
+
+    def power(self) -> Optional[float]:
+        return self.values["power"]
+
+
+class FakeMemory(MemorySource):
+    def used(self) -> Optional[float]:
+        return 8192.0
+
+    def available(self) -> Optional[float]:
+        return 24576.0
+
+    def total(self) -> Optional[float]:
+        return 32768.0
+
+    def percent(self) -> Optional[float]:
+        return 25.0
+
+
+class FakeGpu(GpuSource):
+    def __init__(self, index: int, discrete: bool = True,
+                 vendor: str = "test") -> None:
+        self._index = index
+        self._discrete = discrete
+        self._vendor = vendor
+        self.values = {
+            "temp": 55.0, "usage": 30.0, "clock": 1800.0, "power": 180.0,
+            "fan": 42.0, "vram_used": 1024.0, "vram_total": 8192.0,
+        }
+
+    @property
+    def key(self) -> str:
+        return f"{self._vendor}:{self._index}"
+
+    @property
+    def name(self) -> str:
+        return f"Fake {self._vendor.upper()} GPU {self._index}"
+
+    @property
+    def is_discrete(self) -> bool:
+        return self._discrete
+
+    def temp(self) -> Optional[float]:
+        return self.values["temp"]
+
+    def usage(self) -> Optional[float]:
+        return self.values["usage"]
+
+    def clock(self) -> Optional[float]:
+        return self.values["clock"]
+
+    def power(self) -> Optional[float]:
+        return self.values["power"]
+
+    def fan(self) -> Optional[float]:
+        return self.values["fan"]
+
+    def vram_used(self) -> Optional[float]:
+        return self.values["vram_used"]
+
+    def vram_total(self) -> Optional[float]:
+        return self.values["vram_total"]
+
+
+class FakePlatform(Platform):
+    """Minimal Platform fake — bulk/scsi transports replayable from tests."""
+
+    def __init__(self, tmp_home: Path) -> None:
+        self.bulk = FakeBulkTransport()
+        self.scsi = FakeScsiTransport()
+        self._paths = FakePaths(tmp_home)
+        self._autostart = FakeAutostart()
+        self._sensors: Optional[SensorEnumerator] = None
+
+    def open_bulk(self, vid, pid, serial=None) -> BulkTransport:
+        return self.bulk
+
+    def open_scsi(self, vid, pid, serial=None) -> ScsiTransport:
+        return self.scsi
+
+    def scan_devices(self) -> List:
+        return []
+
+    def paths(self) -> Paths:
+        return self._paths
+
+    def sensors(self) -> SensorEnumerator:
+        if self._sensors is None:
+            from trcc.adapters.sensors.aggregator import BaselineSensors
+            self._sensors = BaselineSensors(
+                cpu=FakeCpu(), memory=FakeMemory(),
+                gpus=[FakeGpu(0, discrete=True, vendor="nvidia")],
+                fans=[],
+            )
+        return self._sensors
+
+    def autostart(self) -> AutostartManager:
+        return self._autostart
+
+    def setup(self, interactive: bool = True) -> int:
+        return 0
+
+    def check_permissions(self) -> List[str]:
+        return []
+
+    def distro_name(self) -> str:
+        return "Fake Linux"
+
+    def install_method(self) -> str:
+        return "test"
+
+
+# ── Fixtures ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
-def mock_platform():
-    """MagicMock PlatformAdapter — inject into ControllerBuilder for tests."""
-    return MagicMock()
+def tmp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect $HOME + XDG_CONFIG_HOME to a per-test tmp dir.
 
-
-@pytest.fixture(autouse=True)
-def _mock_builder(mock_platform):
-    """Patch TrccApp.init() and ControllerBuilder.for_current_os() for all tests.
-
-    TrccApp singleton is reset before each test so state never leaks.
-    Tests that need a real builder (test_builder.py) can override by re-patching.
+    Keeps LinuxAutostart, LinuxPaths, etc. from touching the user's
+    real filesystem during tests.
     """
-    from trcc.core.app import TrccApp
-    from trcc.core.builder import ControllerBuilder
-
-    TrccApp.reset()
-
-    mock_builder = MagicMock(spec=ControllerBuilder)
-    mock_builder._os = mock_platform
-    mock_builder.os = mock_platform
-    mock_builder.build_system.return_value = MagicMock()
-    mock_builder.build_device.return_value = MagicMock()
-    mock_builder.build_detect_fn.return_value = MagicMock()
-    mock_builder.build_hardware_fns.return_value = (MagicMock(), MagicMock())
-    mock_builder.with_renderer.return_value = mock_builder
-    mock_builder.with_data_dir.return_value = mock_builder
-
-    mock_app = MagicMock()
-    mock_app.builder = mock_builder
-    mock_app._ensure_data_fn = None
-
-    # Default return values — success dicts so CLI commands don't print "Error".
-    _ok = {"success": True, "message": "ok"}
-    mock_app.discover.return_value = _ok
-    mock_app.init_platform.return_value = None
-    mock_app.set_language.return_value = _ok
-    # lcd/led properties return MagicMock by default (via spec=TrccApp)
-    # has_lcd/has_led — True by default so _connect_or_fail passes
-    mock_app.has_lcd = True
-    mock_app.has_led = True
-    # lcd_device / led_device — mocks that CLI test_display etc. access
-    # spec=False so auto-attrs work, but set is_ipc=False to match real Device
-    mock_app.lcd_device = MagicMock(is_ipc=False)
-    mock_app.led_device = MagicMock(is_ipc=False)
-    # lcd/led shorthand — writable so CLI conftest can swap them
-    mock_app.lcd = mock_app.lcd_device
-    mock_app.led = mock_app.led_device
-    # Unified accessors — device(index) returns lcd by default
-    _default_device = mock_app.lcd_device
-    mock_app.device = lambda index=0: _default_device
-    mock_app.devices = [_default_device]
-    mock_app.has_device = lambda lcd=None: True
-    # OS methods — return sensible defaults
-    mock_app.setup_platform.return_value = 0
-    mock_app.setup_udev.return_value = 0
-    mock_app.setup_selinux.return_value = 0
-    mock_app.setup_polkit.return_value = 0
-    mock_app.install_desktop.return_value = 0
-    mock_app.setup_winusb.return_value = 0
-    mock_app.download_themes.return_value = 0
-    mock_app.set_metrics_refresh.return_value = _ok
-
-    # Set the singleton so TrccApp.get() returns mock_app without needing init().
-    # Composition roots call TrccApp.get() in CLI commands — this prevents RuntimeError.
-    TrccApp._instance = mock_app  # type: ignore[assignment]
-
-    with patch("trcc.core.builder.ControllerBuilder.for_current_os", return_value=mock_builder), \
-         patch("trcc.core.app.TrccApp.init", return_value=mock_app):
-        yield mock_builder
-
-
-@pytest.fixture(autouse=True)
-def _no_ipc():
-    """Prevent tests from routing through a live GUI/API instance.
-
-    When the GUI or API is running, find_active() returns an InstanceKind
-    and core routes through proxies, bypassing mocked services.
-    Patch core detection and IPCTransport.available().
-    """
-    with patch("trcc.core.instance.find_active", return_value=None), \
-         patch("trcc.ipc.IPCTransport.available", return_value=False):
-        yield
-
-# =========================================================================
-# Tier 1: Data factories
-# =========================================================================
-
-@pytest.fixture
-def device_info():
-    """Factory fixture: create DeviceInfo with sensible defaults."""
-    def _make(
-        path: str = "/dev/sg0",
-        name: str = "LCD",
-        vid: int = 0x87CD,
-        pid: int = 0x70DB,
-        protocol: str = "scsi",
-        resolution: tuple[int, int] = (320, 320),
-        **kw,
-    ) -> DeviceInfo:
-        return DeviceInfo(
-            name=name, path=path, vid=vid, pid=pid,
-            protocol=protocol, resolution=resolution, **kw,
-        )
-    return _make
-
-
-@pytest.fixture
-def mock_device():
-    """Factory fixture: MagicMock DetectedDevice."""
-    def _make(
-        path: str = "/dev/sg0",
-        name: str = "LCD",
-        vid: int = 0x87CD,
-        pid: int = 0x70DB,
-        protocol: str = "scsi",
-    ) -> MagicMock:
-        dev = MagicMock()
-        dev.scsi_device = path
-        dev.product_name = name
-        dev.vid = vid
-        dev.pid = pid
-        dev.protocol = protocol
-        dev.usb_path = "1-2"
-        dev.vendor_name = "Thermalright"
-        return dev
-    return _make
-
-
-@pytest.fixture
-def mock_service(device_info):
-    """Factory fixture: mock DeviceService with pre-selected device."""
-    def _make(device=None) -> MagicMock:
-        svc = MagicMock()
-        dev = device or device_info()
-        svc.selected = dev
-        svc.devices = [dev]
-        svc.detect.return_value = svc.devices
-        svc.send_frame.return_value = True
-        return svc
-    return _make
-
-
-@pytest.fixture
-def test_image():
-    """Factory fixture: native renderer surface for testing."""
-    def _make(w: int = 320, h: int = 320,
-              color: tuple[int, ...] = (128, 0, 0)) -> Any:
-        return make_test_surface(w, h, color)
-    return _make
-
-
-# =========================================================================
-# Tier 2: Filesystem fixtures
-# =========================================================================
-
-@pytest.fixture(autouse=True)
-def tmp_config(tmp_path, monkeypatch):
-    """Isolated config dir — patches CONFIG_DIR/CONFIG_PATH to tmp_path.
-
-    Autouse: no test should ever read from or write to the real ~/.trcc/config.json.
-    Initializes Settings with a platform path resolver pointing to tmp_path.
-    Also redirects the log file and strips any real file handlers from the root
-    logger so test-generated log messages never bleed into ~/.trcc/trcc.log.
-    """
-    import logging
-    from pathlib import Path
-
-    config_dir = str(tmp_path / "trcc")
-    config_path = str(tmp_path / "trcc" / "config.json")
-    handshake_path = str(tmp_path / "trcc" / "last_handshake.json")
-    os.makedirs(config_dir, exist_ok=True)
-    monkeypatch.setattr("trcc.conf.CONFIG_DIR", config_dir)
-    monkeypatch.setattr("trcc.conf.CONFIG_PATH", config_path)
-    monkeypatch.setattr("trcc.conf._HANDSHAKE_CACHE_PATH", handshake_path)
-
-    # Redirect log file so StandardLoggingConfigurator never writes to the real
-    # ~/.trcc/trcc.log during tests.
-    test_log = Path(config_dir) / "trcc.log"
-    monkeypatch.setattr(
-        "trcc.adapters.infra.diagnostics._DEFAULT_LOG_FILE", test_log,
-    )
-    # Strip any real file handlers the root logger may have accumulated from a
-    # previous configure() call (e.g. from a prior test that bootstrapped the app).
-    root = logging.getLogger()
-    real_log = Path.home() / ".trcc" / "trcc.log"
-    for h in list(root.handlers):
-        if isinstance(h, logging.FileHandler) and Path(h.baseFilename) == real_log:
-            root.removeHandler(h)
-            h.close()
-
-    # Initialize Settings with a test path resolver (DI)
-    # Uses tmp_path so tests never touch real ~/.trcc/
-    from unittest.mock import MagicMock
-
-    from trcc.conf import init_settings
-
-    resolver = MagicMock()
-    resolver.config_dir.return_value = config_dir
-    resolver.data_dir.return_value = str(tmp_path / "trcc" / "data")
-    resolver.user_content_dir.return_value = str(tmp_path / "trcc-user")
-    resolver.theme_dir.side_effect = lambda w, h: str(tmp_path / "trcc" / "data" / f"theme{w}{h}")
-    resolver.web_dir.side_effect = lambda w, h: str(tmp_path / "trcc" / "data" / "web" / f"{w}{h}")
-    resolver.web_masks_dir.side_effect = lambda w, h: str(tmp_path / "trcc" / "data" / "web" / f"zt{w}{h}")
-    resolver.user_masks_dir.side_effect = lambda w, h: str(tmp_path / "trcc-user" / "data" / "web" / f"zt{w}{h}")
-    os.makedirs(str(tmp_path / "trcc" / "data"), exist_ok=True)
-    init_settings(resolver)
-
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     return tmp_path
 
 
 @pytest.fixture
-def theme_dir(tmp_path):
-    """Factory fixture: create a valid theme directory structure."""
-    def _make(name: str = "TestTheme", *, has_bg: bool = True,
-              has_dc: bool = False, has_mask: bool = False) -> Path:
-        td = tmp_path / name
-        td.mkdir(exist_ok=True)
-        if has_bg:
-            make_test_surface(320, 320, (0, 0, 0)).save(str(td / "00.png"))
-        if has_dc:
-            # Minimal 0xDD format stub
-            (td / "config1.dc").write_bytes(b"\xDD" + b"\x00" * 100)
-        if has_mask:
-            make_test_surface(320, 320, (255, 255, 255, 128)).save(
-                str(td / "mask.png"))
-        return td
-    return _make
+def fake_platform(tmp_home: Path) -> FakePlatform:
+    return FakePlatform(tmp_home)
 
 
 @pytest.fixture
-def png_factory(tmp_path):
-    """Factory fixture: write a minimal PNG and return its path."""
-    def _make(filename: str = "test.png", w: int = 320, h: int = 320) -> str:
-        path = str(tmp_path / filename)
-        make_test_surface(w, h, (128, 0, 0)).save(path, "PNG")
-        return path
-    return _make
-
-
-# =========================================================================
-# Tier 2b: DI fixtures — injectable ports for pure hexagonal tests
-# =========================================================================
-
-@pytest.fixture
-def settings_with_resolution(tmp_config):
-    """Settings pre-configured with a device resolution (FBL_PROFILES[100] = 320×320).
-
-    Mirrors what production does after a device connects: settings.set_resolution()
-    is called with the handshake result. Widget tests that check initial state
-    dependent on the active resolution should request this fixture.
-    """
-    from trcc.conf import settings
-    from trcc.core.models import FBL_PROFILES
-
-    p = FBL_PROFILES[100]
-    settings.set_resolution(p.width, p.height)
-    return tmp_config
-
-@pytest.fixture
-def failed_lcd_device():
-    """Mock LCD Device whose methods always return failure dicts.
-
-    Use to test failure paths in LCD operations without needing a real device.
-    """
-    from unittest.mock import MagicMock
-
-    lcd = MagicMock()
-    _fail = {"success": False, "error": "simulated failure"}
-    lcd.set_brightness.return_value = _fail
-    lcd.set_rotation.return_value = _fail
-    lcd.set_split_mode.return_value = _fail
-    lcd.send_image.return_value = _fail
-    lcd.send_color.return_value = _fail
-    lcd.restore_last_theme.return_value = _fail
-    lcd.select.return_value = _fail
-    lcd.load_mask_standalone.return_value = _fail
-    return lcd
+def fake_bulk() -> FakeBulkTransport:
+    return FakeBulkTransport()
 
 
 @pytest.fixture
-def failed_led_device():
-    """Mock LED Device whose methods always return failure dicts.
-
-    Use to test failure paths in LED operations without needing a real device.
-    """
-    from unittest.mock import MagicMock
-
-    led = MagicMock()
-    _fail = {"success": False, "error": "simulated failure"}
-    led.update_color.return_value = _fail
-    led.update_mode.return_value = _fail
-    led.update_brightness.return_value = _fail
-    led.turn_off.return_value = _fail
-    return led
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# DI device fixtures — real builder flow, noop protocol
-# ═════════════════════════════════════════════════════════════════════════════
-
-
-@pytest.fixture
-def mock_lcd_platform(tmp_path):
-    """MockPlatform with one LCD device (320x320 SCSI)."""
-    from mock_platform import MockPlatform
-    spec = [{"type": "lcd", "vid": "0402", "pid": "3922",
-             "resolution": "320x320", "pm": 100}]
-    root = tmp_path / '.trcc'
-    root.mkdir(exist_ok=True)
-    (root / 'data').mkdir(exist_ok=True)
-    return MockPlatform(spec, root=root)
-
-
-@pytest.fixture
-def mock_led_platform(tmp_path):
-    """MockPlatform with one LED device (AX120)."""
-    from mock_platform import MockPlatform
-    spec = [{"type": "led", "vid": "0416", "pid": "8001",
-             "model": "AX120_DIGITAL"}]
-    root = tmp_path / '.trcc'
-    root.mkdir(exist_ok=True)
-    (root / 'data').mkdir(exist_ok=True)
-    return MockPlatform(spec, root=root)
-
-
-@pytest.fixture
-def lcd_device(mock_lcd_platform, tmp_config):
-    """Connected LCD Device through real builder flow."""
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
-
-    init_settings(mock_lcd_platform)
-    builder = ControllerBuilder(mock_lcd_platform).with_renderer(QtRenderer())
-    detected = mock_lcd_platform.create_detect_fn()()[0]
-    device = builder.build_device(detected)
-    device.connect(detected)
-    return device
-
-
-@pytest.fixture
-def led_device(mock_led_platform, tmp_config):
-    """Connected LED Device through real builder flow."""
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
-
-    init_settings(mock_led_platform)
-    builder = ControllerBuilder(mock_led_platform)
-    detected = mock_led_platform.create_detect_fn()()[0]
-    device = builder.build_device(detected)
-    device.connect(detected)
-    return device
-
-
-@pytest.fixture
-def fake_detect():
-    """No-hardware detect callable. Inject into any function that accepts detect_fn.
-
-    Set fake_detect.return_value = [devices] to control the device list.
-    Tests never reach into internal routing — pure DI.
-
-    Example::
-
-        def test_no_devices(fake_detect):
-            result = detect(detect_fn=fake_detect)
-            assert result == 1
-    """
-    return MagicMock(return_value=[])
-
-
-# =========================================================================
-# Tier 3: Qt fixture
-# =========================================================================
-
-@pytest.fixture(scope="session")
-def qapp():
-    """Session-scoped QApplication for all GUI tests (offscreen).
-
-    Reuses the module-level _app created at conftest import time.
-    """
-    return _app
-
-
-# =========================================================================
-# Legacy factory functions — used by test_cli.py and test_integration.py
-# =========================================================================
-
-def make_device_info(
-    path: str = "/dev/sg0",
-    name: str = "LCD",
-    vid: int = 0x87CD,
-    pid: int = 0x70DB,
-    protocol: str = "scsi",
-    resolution: tuple[int, int] = (320, 320),
-    **kw,
-) -> DeviceInfo:
-    """Create DeviceInfo with sensible defaults. Used by test_cli."""
-    return DeviceInfo(
-        name=name, path=path, vid=vid, pid=pid,
-        protocol=protocol, resolution=resolution, **kw,
-    )
-
-
-def make_mock_service(device: DeviceInfo | None = None) -> MagicMock:
-    """Create mock DeviceService with pre-selected device. Used by test_cli."""
-    svc = MagicMock()
-    dev = device or make_device_info()
-    svc.selected = dev
-    svc.devices = [dev]
-    svc.detect.return_value = svc.devices
-    svc.send_frame.return_value = True
-    return svc
-
-
-def save_test_png(path: str, w: int = 320, h: int = 320) -> None:
-    """Write a minimal PNG at path. Used by test_integration."""
-    make_test_surface(w, h).save(path, "PNG")
-
-
-# =========================================================================
-# Tier 5: Platform builder fixtures — real adapters, no patching
-#
-# The autouse _mock_builder patches ControllerBuilder.for_current_os for all
-# tests. These fixtures bypass that by constructing a real ControllerBuilder
-# with the appropriate PlatformAdapter injected directly.
-#
-# Available everywhere (root conftest) — adapters, services, core, cli, api
-# tests all share the same platform contract.
-# =========================================================================
-
-@pytest.fixture()
-def linux_builder():
-    """ControllerBuilder wired with the real LinuxPlatform."""
-    from trcc.adapters.system.linux_platform import LinuxPlatform
-    from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder(LinuxPlatform())
-
-
-@pytest.fixture()
-def windows_builder():
-    """ControllerBuilder wired with the real WindowsPlatform."""
-    from trcc.adapters.system.windows_platform import WindowsPlatform
-    from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder(WindowsPlatform())
-
-
-@pytest.fixture()
-def macos_builder():
-    """ControllerBuilder wired with the real MacOSPlatform."""
-    from trcc.adapters.system.macos_platform import MacOSPlatform
-    from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder(MacOSPlatform())
-
-
-@pytest.fixture()
-def bsd_builder():
-    """ControllerBuilder wired with the real BSDPlatform."""
-    from trcc.adapters.system.bsd_platform import BSDPlatform
-    from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder(BSDPlatform())
-
-
-def make_device_service(**overrides):
-    """Create a DeviceService with mock adapter deps (no RuntimeError).
-
-    Use this in tests that construct DeviceService directly. All adapter
-    callables default to MagicMock so construction never raises.
-    """
-    from trcc.services import DeviceService
-
-    defaults = {
-        'detect_fn': MagicMock(return_value=[]),
-        'probe_led_fn': MagicMock(return_value=None),
-        'get_protocol': MagicMock(return_value=MagicMock()),
-        'get_protocol_info': MagicMock(return_value=None),
-    }
-    defaults.update(overrides)
-    return DeviceService(**defaults)
+def fake_scsi() -> FakeScsiTransport:
+    return FakeScsiTransport()

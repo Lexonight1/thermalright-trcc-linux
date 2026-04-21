@@ -1,27 +1,16 @@
-"""TRCC Services — Core hexagon (pure Python, no Qt/HTTP/CLI).
+"""Services — pure-Python business logic.
 
-Business logic shared by all driving adapters:
-- gui/ (PySide6 GUI via LCDDevice/LEDDevice)
-- cli/ (Typer CLI via LCDDevice/LEDDevice)
-- api/ (FastAPI REST via LCDDevice/LEDDevice)
+Services depend on ports (Platform, Renderer, SensorEnumerator) via DI
+and know nothing about Qt, pyusb, FastAPI, typer, or any adapter.  They
+compose into Commands, which UIs dispatch.
+
+One module per responsibility:
+    settings.py   — per-device user preferences (persisted JSON)
+    theme.py      — theme discovery + parsing
+    display.py    — theme + sensors → frame bytes (Phase 5c, needs Renderer)
+    overlay.py    — compositing + text (Phase 5c, needs Renderer)
+    media.py      — video / animation decode (Phase 5c)
+    led.py        — LED state + segment masks (Phase 8, lands with Led device)
+    sensors.py    — sensor polling + metric mapping (Phase 5, uses Platform)
+    data.py       — theme / mask download + extraction (Phase 12)
 """
-
-from .device import DeviceService
-from .display import DisplayService
-from .image import ImageService
-from .led import LEDService
-from .media import MediaService
-from .overlay import OverlayService
-from .system import SystemService
-from .theme import ThemeService
-
-__all__ = [
-    'DeviceService',
-    'DisplayService',
-    'ImageService',
-    'LEDService',
-    'MediaService',
-    'OverlayService',
-    'SystemService',
-    'ThemeService',
-]

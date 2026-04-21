@@ -1,644 +1,532 @@
-"""Core ports — ABCs that define contracts for adapter implementations.
+"""Ports — ABCs that adapters implement.
 
-Ports live in core/ so both services/ and adapters/ can import them
-without violating hexagonal dependency direction.
-
-SOLID:
-    S — Each ABC has one responsibility
-    O — New device types extend Device without modifying existing code
-    L — LCDDevice/LEDDevice fully substitutable as Device
-    I — Device ABC: 4 methods. Renderer ABC: domain-focused groups.
-        Replaces DisplayPort (47) and LEDPort (30) — ISP violations.
-    D — All adapters depend on these core abstractions
+Pure contract definitions.  Adapter implementations live in
+`trcc.adapters.*`.  Services and App depend on these ABCs, never on
+concrete implementations.
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Protocol, runtime_checkable
-
-from trcc.core.models import JPEG_MAX_BYTES, DetectedDevice
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, Tuple, TypeVar
 
 if TYPE_CHECKING:
-    from trcc.core.models import SensorInfo
-
-
-@dataclass(frozen=True, slots=True)
-class RawFrame:
-    """Raw decoded video frame — pure bytes, no framework deps.
-
-    Produced by media decoders (VideoDecoder, ThemeZtDecoder).
-    Converted to native renderer surfaces by the render adapter.
-    """
-    data: bytes
-    width: int
-    height: int
-
-
-class Renderer(ABC):
-    """Port: rendering backend for the full image pipeline.
-
-    Covers overlay compositing, image adjustments (brightness, rotation),
-    device encoding (RGB565, JPEG), and file I/O.
-
-    Concrete implementation:
-        - QtRenderer (adapters/render/qt.py) — PySide6 QImage/QPainter
-    """
-
-    # ── Surface lifecycle ─────────────────────────────────────────
-
-    @abstractmethod
-    def create_surface(self, width: int, height: int,
-                       color: tuple[int, ...] | None = None) -> Any:
-        """Create a new rendering surface (blank transparent or solid color)."""
-
-    @abstractmethod
-    def copy_surface(self, surface: Any) -> Any:
-        """Defensive copy of a surface."""
-
-    @abstractmethod
-    def convert_to_rgba(self, surface: Any) -> Any:
-        """Ensure surface has alpha channel."""
-
-    @abstractmethod
-    def convert_to_rgb(self, surface: Any) -> Any:
-        """Ensure surface is RGB (strip alpha)."""
-
-    @abstractmethod
-    def surface_size(self, surface: Any) -> tuple[int, int]:
-        """Return (width, height) of a surface."""
-
-    # ── Compositing ───────────────────────────────────────────────
-
-    @abstractmethod
-    def composite(self, base: Any, overlay: Any,
-                  position: tuple[int, int],
-                  mask: Any | None = None) -> Any:
-        """Alpha-composite *overlay* onto *base* at *position*."""
-
-    @abstractmethod
-    def resize(self, surface: Any, width: int, height: int) -> Any:
-        """Resize surface with high-quality resampling."""
-
-    # ── Text ──────────────────────────────────────────────────────
-
-    @abstractmethod
-    def draw_text(self, surface: Any, x: int, y: int, text: str,
-                  color: str, font: Any, anchor: str = 'mm') -> None:
-        """Draw text onto surface at (x, y)."""
-
-    @abstractmethod
-    def get_font(self, size: int, bold: bool = False,
-                 italic: bool = False,
-                 font_name: str | None = None) -> Any:
-        """Resolve and cache a font at given size."""
-
-    @abstractmethod
-    def clear_font_cache(self) -> None:
-        """Flush font cache (e.g. after resolution change)."""
-
-    # ── Image adjustments ─────────────────────────────────────────
-
-    @abstractmethod
-    def apply_brightness(self, surface: Any, percent: int) -> Any:
-        """Apply brightness adjustment (100 = unchanged, 0 = black)."""
-
-    @abstractmethod
-    def apply_rotation(self, surface: Any, degrees: int) -> Any:
-        """Rotate surface by 0/90/180/270 degrees."""
-
-    # ── Device encoding ───────────────────────────────────────────
-
-    @abstractmethod
-    def encode_rgb565(self, surface: Any, byte_order: str = '>') -> bytes:
-        """Encode surface to RGB565 bytes for LCD device."""
-
-    @abstractmethod
-    def encode_jpeg(self, surface: Any, quality: int = 95,
-                    max_size: int = JPEG_MAX_BYTES) -> bytes:
-        """Encode surface to JPEG bytes with size constraint."""
-
-    # ── File I/O ──────────────────────────────────────────────────
-
-    @abstractmethod
-    def open_image(self, path: Any) -> Any:
-        """Load image file into native surface."""
-
-    # ── Drawing primitives ────────────────────────────────────────
-
-    @abstractmethod
-    def fill_rect(self, surface: Any, x: int, y: int,
-                  w: int, h: int, color: tuple[int, ...]) -> None:
-        """Fill a rectangle on the surface with solid color."""
-
-    @abstractmethod
-    def draw_rect_outline(self, surface: Any, x: int, y: int,
-                          w: int, h: int, color: tuple[int, ...]) -> None:
-        """Draw an unfilled rectangle outline on the surface."""
-
-    @abstractmethod
-    def get_pixels_rgb(self, surface: Any, cols: int,
-                       rows: int) -> list[list[tuple[int, int, int]]]:
-        """Return pixel grid scaled to cols×rows as (r, g, b) tuples.
-
-        Used for ANSI terminal output — cold path, not hot path.
-        """
-
-    # ── Legacy boundary ───────────────────────────────────────────
-
-    @abstractmethod
-    def from_raw_rgb24(self, frame: "RawFrame") -> Any:
-        """Convert RawFrame (RGB24 bytes) → native surface."""
+    from .models import (
+        DeviceInfo,
+        HandshakeResult,
+        ProductInfo,
+        RawFrame,
+        SensorReading,
+    )
 
 
 # =========================================================================
-class DeviceConfigService:
-    """Per-device config persistence — shared base for LCD and LED.
+# Transports — byte movers, one ABC per wire family
+# =========================================================================
+#
+# Two transport families cover every protocol:
+#
+#   BulkTransport  — raw USB bulk/interrupt read/write (HID, BULK, LY, LED)
+#   ScsiTransport  — SCSI CDB + data phase, kernel-native where possible
+#                    (Linux SG_IO, Windows DeviceIoControl, macOS/BSD BOT)
+#
+# Protocols hold one of these; they don't care which OS subclass is
+# injected.  Platform.open(vid, pid, wire) returns the right transport
+# for (OS, wire).
 
-    Concrete implementation of device_key, persist, get_config.
-    Subclasses add device-specific methods (apply_format_prefs for LCD,
-    save_state/load_state for LED).
+
+class BulkTransport(ABC):
+    """Abstract USB bulk/interrupt transport.  One per open device handle."""
+
+    @abstractmethod
+    def open(self) -> bool:
+        """Open the device and claim interface.  True on success."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release interface and close the handle."""
+
+    @property
+    @abstractmethod
+    def is_open(self) -> bool:
+        """Whether the transport currently holds an open handle."""
+
+    @abstractmethod
+    def write(self, endpoint: int, data: bytes,
+              timeout_ms: int = 100) -> int:
+        """Bulk-write bytes to an OUT endpoint.  Returns bytes transferred."""
+
+    @abstractmethod
+    def read(self, endpoint: int, length: int,
+             timeout_ms: int = 100) -> bytes:
+        """Bulk-read up to *length* bytes from an IN endpoint."""
+
+
+class ScsiTransport(ABC):
+    """Abstract SCSI transport.  One per open device handle.
+
+    Uses CDB-level primitives so the kernel (Linux SG_IO, Windows
+    DeviceIoControl) can bundle CDB + data + status in a single syscall
+    where the OS supports it.  macOS/BSD fall back to userspace BOT.
     """
 
-    def __init__(
-        self,
-        config_key_fn: Callable[..., str],
-        save_setting_fn: Callable[..., None],
-        get_config_fn: Callable[..., dict],
-    ) -> None:
-        self._config_key_fn = config_key_fn
-        self._save_fn = save_setting_fn
-        self._get_fn = get_config_fn
+    @abstractmethod
+    def open(self) -> bool:
+        """Open the device.  True on success."""
 
-    def device_key(self, dev: Any) -> str:
-        """Compute per-device config key from device info."""
-        return self._config_key_fn(dev.device_index, dev.vid, dev.pid)
+    @abstractmethod
+    def close(self) -> None:
+        """Release resources."""
 
-    def persist(self, dev: Any, field: str, value: Any) -> None:
-        """Save a single setting for a device."""
-        if dev:
-            self._save_fn(self.device_key(dev), field, value)
+    @property
+    @abstractmethod
+    def is_open(self) -> bool:
+        """Whether the transport currently holds an open handle."""
 
-    def get_config(self, dev: Any) -> dict:
-        """Read full per-device config dict."""
-        if not dev:
-            return {}
-        return self._get_fn(self.device_key(dev))
+    @abstractmethod
+    def send_cdb(self, cdb: bytes, data: bytes,
+                 timeout_ms: int = 5000) -> bool:
+        """Send a 16-byte CDB with a data-out payload.  True on CSW status 0."""
+
+    @abstractmethod
+    def read_cdb(self, cdb: bytes, length: int,
+                 timeout_ms: int = 5000) -> bytes:
+        """Send a 16-byte CDB and read *length* bytes of data-in."""
+
+
+# Transport type variable — constrained to the two transport ABCs.
+# Each Device subclass binds T to the transport it needs, so
+# `self._transport.write(...)` narrows correctly per device.
+T = TypeVar("T", BulkTransport, ScsiTransport)
 
 
 # =========================================================================
-# Infrastructure port types — injected into services via DI
+# Device — one per physical device, knows its wire protocol
 # =========================================================================
 
-# Type alias for device detection callable.
-# Concrete: DeviceDetector.detect
-DetectDevicesFn = Callable[[], list[Any]]
 
-# Type alias for LED model probe callable.
-# Concrete: probe_led_model
-ProbeLedModelFn = Callable[..., Any]
+class Device(ABC, Generic[T]):
+    """A physical USB device we control.
 
+    Concrete subclasses (ScsiLcd, HidLcd, BulkLcd, LyLcd, Led) own their
+    wire protocol and declare the transport they need via the type
+    parameter: `class ScsiLcd(Device[ScsiTransport])`.  The transport
+    is DI'd at construction — devices never build their own.
 
-@runtime_checkable
-class DeviceProtocol(Protocol):
-    """Port: protocol for communicating with a USB device."""
-
-    def handshake(self) -> Any: ...
-    def send_data(self, *args: Any, **kwargs: Any) -> bool: ...
-
-
-# Type alias for protocol factory callable.
-# Concrete: DeviceProtocolFactory.get_protocol
-GetProtocolFn = Callable[[Any], DeviceProtocol]
-
-# Type alias for protocol info query callable.
-# Concrete: DeviceProtocolFactory.get_protocol_info
-GetProtocolInfoFn = Callable[[Any], Any]
-
-# Type alias for data archive extraction callable.
-# Concrete: DataManager.ensure_all(width, height, progress_fn=None)
-EnsureDataFn = Callable[..., None]
-
-# Type alias for DC config file parser factory.
-# Concrete: DcConfig (class itself, called as DcConfig(path))
-DcConfigFactory = Callable[..., Any]
-
-# Type alias for config.json loader.
-# Concrete: dc_parser.load_config_json
-LoadConfigJsonFn = Callable[[str], Any]
-
-# Type alias for instance detection callable.
-# Concrete: core.instance.find_active
-# Returns InstanceKind | None — who currently owns the device.
-FindActiveFn = Callable[[], Any]
-
-# Type alias for proxy factory callable.
-# Concrete: ipc.create_device_proxy
-# Takes InstanceKind, returns a DeviceProxy.
-ProxyFactoryFn = Callable[[Any], Any]
-
-# Type alias for theme export callable.
-# Concrete: dc_writer.export_theme
-ExportThemeFn = Callable[[str, str], None]
-
-# Type alias for theme import callable.
-# Concrete: dc_writer.import_theme
-ImportThemeFn = Callable[[str, str], None]
-
-# Type alias for privileged command builder.
-# Concrete: hardware._privileged_cmd
-PrivilegedCmdFn = Callable[[str, list[str]], list[str]]
-
-# Type aliases for platform hardware info callables.
-GetMemoryInfoFn = Callable[[], list[dict[str, str]]]
-GetDiskInfoFn = Callable[[], list[dict[str, str]]]
-
-
-@dataclass(frozen=True, slots=True)
-class DoctorPlatformConfig:
-    """Platform-specific constants for the doctor health check.
-
-    Each OS adapter returns one of these from doctor_config().
-    doctor.py reads the fields and stays OS-blind.
+    All devices share the same outward contract: connect / send /
+    disconnect.  They know nothing about the OS, Platform, or other
+    devices.
     """
-    distro_name: str
-    pkg_manager: Optional[str]
-    check_libusb: bool
-    extra_binaries: list[tuple[str, bool, str]]   # (name, required, note)
-    run_gpu_check: bool
-    run_udev_check: bool
-    run_selinux_check: bool
-    run_rapl_check: bool
-    run_polkit_check: bool
-    run_winusb_check: bool
-    enable_ansi: bool
 
+    def __init__(self, info: "ProductInfo", transport: T) -> None:
+        self.info = info
+        self._transport: T = transport
+        self._handshake: Optional["HandshakeResult"] = None
 
-@dataclass(frozen=True, slots=True)
-class ReportPlatformConfig:
-    """Platform-specific constants for the diagnostic report.
+    @abstractmethod
+    def connect(self) -> "HandshakeResult":
+        """Open the transport and perform the wire-protocol handshake."""
 
-    Each OS adapter returns one of these from report_config().
-    debug_report.py reads the fields and stays OS-blind.
-    """
-    distro_name: str
-    collect_lsusb: bool
-    collect_udev: bool
-    collect_selinux: bool
-    collect_rapl: bool
-    collect_device_permissions: bool
+    @abstractmethod
+    def send(self, payload: Any) -> bool:
+        """Send a payload in device-native format.  Protocol-specific shape."""
+
+    @abstractmethod
+    def disconnect(self) -> None:
+        """Close the transport and release state."""
+
+    @property
+    def is_connected(self) -> bool:
+        return self._handshake is not None
+
+    @property
+    def is_led(self) -> bool:
+        """True for LED-control devices; False for LCD-frame devices."""
+        return False
+
+    @property
+    def key(self) -> str:
+        return self.info.key
 
 
 # =========================================================================
-# Sensor Enumerator ABC — contract for platform sensor adapters
+# Sensor sources — one ABC per hardware role
+# =========================================================================
+#
+# Every reading is Optional[float].  None means "this hardware doesn't
+# expose it" — a headless VM has no CPU temp, an APU has no discrete
+# GPU, a server has no fans.  Overlays skip None silently so barebones
+# and $5k rigs use the same themes, show what they have.
+#
+# Units are normalized at the source:
+#     temp → °C     clock → MHz     power → W
+#     memory → MB   percent → 0-100
+#
+# Overlay keys use normalized, vendor-neutral names:
+#     cpu:temp  cpu:usage  cpu:freq  cpu:power
+#     gpu:primary:temp  gpu:0:temp  gpu:nvidia:0:temp
+#     memory:used  memory:percent
+#     fan:cpu:rpm  fan:gpu:percent
+
+
+class CpuSource(ABC):
+    """Primary CPU.  usage/freq nearly always present; temp/power may be None."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def temp(self) -> Optional[float]:
+        """CPU package temperature in °C, or None."""
+
+    @abstractmethod
+    def usage(self) -> Optional[float]:
+        """CPU utilization 0-100, or None."""
+
+    @abstractmethod
+    def freq(self) -> Optional[float]:
+        """Current CPU frequency in MHz, or None."""
+
+    @abstractmethod
+    def power(self) -> Optional[float]:
+        """Package power draw in W, or None."""
+
+
+class MemorySource(ABC):
+    """System RAM."""
+
+    @abstractmethod
+    def used(self) -> Optional[float]:
+        """Used RAM in MB, or None."""
+
+    @abstractmethod
+    def available(self) -> Optional[float]:
+        """Available RAM in MB, or None."""
+
+    @abstractmethod
+    def total(self) -> Optional[float]:
+        """Total RAM in MB, or None."""
+
+    @abstractmethod
+    def percent(self) -> Optional[float]:
+        """Used fraction 0-100, or None."""
+
+
+class GpuSource(ABC):
+    """One GPU — NVIDIA/AMD/Intel/Apple, discrete or integrated."""
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'nvidia:0', 'amd:0', 'intel:igpu'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable model name."""
+
+    @property
+    @abstractmethod
+    def is_discrete(self) -> bool:
+        """True for dedicated cards, False for iGPUs sharing CPU memory."""
+
+    @abstractmethod
+    def temp(self) -> Optional[float]:
+        """Core temperature in °C, or None."""
+
+    @abstractmethod
+    def usage(self) -> Optional[float]:
+        """Utilization 0-100, or None."""
+
+    @abstractmethod
+    def clock(self) -> Optional[float]:
+        """Core clock in MHz, or None."""
+
+    @abstractmethod
+    def power(self) -> Optional[float]:
+        """Board power draw in W, or None."""
+
+    @abstractmethod
+    def fan(self) -> Optional[float]:
+        """Fan speed 0-100, or None."""
+
+    @abstractmethod
+    def vram_used(self) -> Optional[float]:
+        """VRAM used in MB, or None."""
+
+    @abstractmethod
+    def vram_total(self) -> Optional[float]:
+        """VRAM total in MB, or None."""
+
+
+class FanSource(ABC):
+    """One fan — may be role-mapped (cpu/gpu/sys1) or anonymous."""
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'cpu', 'gpu', 'sys1', 'hwmon:nct6798:fan1'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable label."""
+
+    @abstractmethod
+    def rpm(self) -> Optional[int]:
+        """Current RPM, or None."""
+
+    @abstractmethod
+    def percent(self) -> Optional[float]:
+        """Duty cycle 0-100, or None."""
+
+
+# =========================================================================
+# SensorEnumerator — the aggregate: composes one CPU + one memory + N GPUs + N fans
 # =========================================================================
 
 
 class SensorEnumerator(ABC):
-    """Port: hardware sensor discovery and reading.
+    """OS-level sensor root.  Each OS has one implementation.
 
-    Each platform adapter (Linux, Windows, macOS, BSD) implements this ABC
-    to provide sensor data via native sources (hwmon, LHM, IOKit, sysctl).
-
-    Concrete implementations:
-        - SensorEnumerator (adapters/system/linux_platform.py)
-        - SensorEnumerator (adapters/system/windows_platform.py)
-        - SensorEnumerator (adapters/system/macos_platform.py)
-        - SensorEnumerator (adapters/system/bsd_platform.py)
+    Exposes structured access (cpu, memory, gpus, fans) AND a flat
+    dict view for overlays keyed by normalized names.
     """
 
+    # ── Structured access ───────────────────────────────────────────
     @abstractmethod
-    def discover(self) -> list[SensorInfo]:
-        """Scan hardware for available sensors. Call once at startup."""
+    def cpu(self) -> CpuSource: ...
 
     @abstractmethod
-    def get_sensors(self) -> list[SensorInfo]:
-        """Return previously discovered sensors."""
+    def memory(self) -> MemorySource: ...
 
     @abstractmethod
-    def get_by_category(self, category: str) -> list[SensorInfo]:
-        """Filter sensors by category."""
+    def gpus(self) -> List[GpuSource]:
+        """All detected GPUs, sorted discrete-first.  Empty if no GPU."""
+
+    @abstractmethod
+    def fans(self) -> List[FanSource]:
+        """All detected fans.  Empty if none."""
+
+    def primary_gpu(self) -> Optional[GpuSource]:
+        """First discrete GPU, else first integrated, else None."""
+        gpus = self.gpus()
+        for gpu in gpus:
+            if gpu.is_discrete:
+                return gpu
+        return gpus[0] if gpus else None
+
+    # ── Flat dict view (for overlay lookups) ────────────────────────
+    @abstractmethod
+    def discover(self) -> List["SensorReading"]:
+        """One SensorReading per normalized key.  Snapshot at call time."""
 
     @abstractmethod
     def read_all(self) -> dict[str, float]:
-        """Return current sensor readings (non-blocking, from cache)."""
+        """Current readings keyed by normalized name.  Omits None values."""
 
     @abstractmethod
     def read_one(self, sensor_id: str) -> Optional[float]:
-        """Read a single sensor by ID."""
+        """Read a single normalized key."""
 
     @abstractmethod
-    def start_polling(self, interval: float = 2.0) -> None:
-        """Start background polling thread."""
+    def start_polling(self, interval_s: float = 2.0) -> None: ...
 
     @abstractmethod
-    def stop_polling(self) -> None:
-        """Stop background polling thread."""
-
-    @abstractmethod
-    def set_poll_interval(self, seconds: float) -> None:
-        """Set background poll interval (user's data refresh setting)."""
-
-    @abstractmethod
-    def map_defaults(self) -> dict[str, str]:
-        """Map legacy metric keys to sensor IDs for overlay rendering.
-
-        Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
-        """
-
-    @abstractmethod
-    def set_preferred_gpu(self, gpu_key: str) -> None:
-        """Set user-selected GPU for metric mapping."""
-
-    @abstractmethod
-    def get_gpu_list(self) -> list[tuple[str, str]]:
-        """Return discovered GPUs as (gpu_key, display_name) pairs."""
+    def stop_polling(self) -> None: ...
 
 
 # =========================================================================
-# Autostart Manager ABC — shared ensure() logic, OS-specific mechanisms
+# Paths — where user data lives on this OS
+# =========================================================================
+
+
+class Paths(ABC):
+    """Filesystem locations.  Each OS resolves these differently."""
+
+    @abstractmethod
+    def config_dir(self) -> Path: ...
+
+    @abstractmethod
+    def data_dir(self) -> Path: ...
+
+    @abstractmethod
+    def user_content_dir(self) -> Path: ...
+
+    @abstractmethod
+    def log_file(self) -> Path: ...
+
+
+# =========================================================================
+# Renderer — pixel operations (PySide6 on all OSes today)
+# =========================================================================
+
+
+class Renderer(ABC):
+    """Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py)."""
+
+    # ── Surfaces ──────────────────────────────────────────────────────
+    @abstractmethod
+    def create_surface(self, width: int, height: int,
+                       color: Optional[Tuple[int, ...]] = None) -> Any: ...
+
+    @abstractmethod
+    def open_image(self, path: Path) -> Any: ...
+
+    @abstractmethod
+    def surface_size(self, surface: Any) -> Tuple[int, int]: ...
+
+    # ── Compositing ───────────────────────────────────────────────────
+    @abstractmethod
+    def composite(self, base: Any, overlay: Any,
+                  position: Tuple[int, int],
+                  mask: Any | None = None) -> Any: ...
+
+    @abstractmethod
+    def resize(self, surface: Any, width: int, height: int) -> Any: ...
+
+    @abstractmethod
+    def rotate(self, surface: Any, degrees: int) -> Any: ...
+
+    # ── Adjustments ───────────────────────────────────────────────────
+    @abstractmethod
+    def apply_brightness(self, surface: Any, percent: int) -> Any: ...
+
+    # ── Text ──────────────────────────────────────────────────────────
+    @abstractmethod
+    def draw_text(self, surface: Any, x: int, y: int, text: str,
+                  color: str, size: int, bold: bool = False,
+                  italic: bool = False) -> None: ...
+
+    # ── Encoding ──────────────────────────────────────────────────────
+    @abstractmethod
+    def encode_rgb565(self, surface: Any) -> bytes: ...
+
+    @abstractmethod
+    def encode_jpeg(self, surface: Any, quality: int = 95,
+                    max_size: int = 0) -> bytes: ...
+
+    # ── Legacy boundary (video frames) ────────────────────────────────
+    @abstractmethod
+    def from_raw_rgb24(self, frame: "RawFrame") -> Any: ...
+
+
+# =========================================================================
+# AutostartManager — OS-specific boot-time launch configuration
 # =========================================================================
 
 
 class AutostartManager(ABC):
-    """Port: platform-specific autostart mechanism.
-
-    Each platform adapter implements the four abstract methods.
-    The concrete ensure() method provides first-launch auto-enable logic
-    shared across all platforms.
-
-    Concrete implementations:
-        - LinuxAutostartManager   (adapters/system/linux_platform.py)  — XDG .desktop
-        - WindowsAutostartManager (adapters/system/windows_platform.py) — winreg Run key
-        - MacOSAutostartManager   (adapters/system/macos_platform.py)  — Launch Agent plist
-        - LinuxAutostartManager   reused for BSD (XDG .desktop)
-    """
-
-    @staticmethod
-    def get_exec() -> str:
-        """Resolve full path to trcc binary (shared across all platforms).
-
-        Resolution order:
-        1. PyInstaller bundle — sys.executable (trcc.exe / trcc)
-        2. pip/pipx install  — shutil.which('trcc')
-        3. git clone fallback — PYTHONPATH=<src> python -m trcc.cli
-        """
-        import shutil
-        import sys
-        from pathlib import Path
-
-        if getattr(sys, 'frozen', False):
-            return sys.executable
-        trcc_path = shutil.which('trcc')
-        if trcc_path:
-            return trcc_path
-        src_dir = str(Path(__file__).parent.parent.parent)
-        return f'env PYTHONPATH={src_dir} {sys.executable} -m trcc.cli'
+    @abstractmethod
+    def is_enabled(self) -> bool: ...
 
     @abstractmethod
-    def is_enabled(self) -> bool:
-        """Return True if autostart is currently configured."""
+    def enable(self) -> None: ...
 
     @abstractmethod
-    def enable(self) -> None:
-        """Register autostart entry for the current user."""
+    def disable(self) -> None: ...
 
     @abstractmethod
-    def disable(self) -> None:
-        """Remove autostart entry for the current user."""
-
-    @abstractmethod
-    def refresh(self) -> None:
-        """Update the autostart entry if the binary path has changed."""
-
-    def ensure(self) -> bool:
-        """Auto-enable on first launch; refresh on subsequent launches.
-
-        On first launch: calls enable() and marks config as configured.
-        On subsequent launches: calls refresh() to keep path current.
-        Returns the current autostart state.
-        """
-        from ..conf import load_config, save_config
-
-        config = load_config()
-        if not config.get('autostart_configured'):
-            self.enable()
-            config['autostart_configured'] = True
-            save_config(config)
-            return True
-
-        self.refresh()
-        return self.is_enabled()
+    def refresh(self) -> None: ...
 
 
 # =========================================================================
-# Platform ABC — OS foundation, drop in an OS so devices can speak to it
+# Platform — OS root, one instance per app
 # =========================================================================
 
 
 class Platform(ABC):
-    """Port: OS foundation. Shared logic here, each OS overrides what differs.
+    """OS abstraction.  DI'd into App at startup.
 
-    One instance per app, DI'd via ControllerBuilder. Devices, services,
-    and views call Platform methods — never touch OS-specific code directly.
-
-    Concrete implementations:
-        adapters/system/linux_platform.py   — LinuxPlatform
-        adapters/system/windows_platform.py — WindowsPlatform
-        adapters/system/macos_platform.py   — MacOSPlatform
-        adapters/system/bsd_platform.py     — BSDPlatform
+    Responsibilities:
+        - Enumerate attached devices (scan_devices).
+        - Open USB handles (open_usb).
+        - Expose sensors, paths, autostart.
+        - Run OS-specific setup (udev, WinUSB guide, etc.).
     """
 
-    def __init__(self) -> None:
-        self._sensor_enum: SensorEnumerator | None = None
+    # ── Transport factories — one per wire family ────────────────────
+    @abstractmethod
+    def open_bulk(self, vid: int, pid: int,
+                  serial: Optional[str] = None) -> BulkTransport:
+        """Return an unopened BulkTransport for a USB-bulk device.
 
-    # ── Universal (concrete — same on all OSes) ──────────────────────
+        Used by HID / BULK / LY / LED protocols.  Every OS can do this
+        via libusb, so the concrete class is usually shared.
+        """
 
-    def config_dir(self) -> str:
-        """User config directory (~/.trcc/)."""
-        from trcc.core.paths import USER_CONFIG_DIR
-        return USER_CONFIG_DIR
+    @abstractmethod
+    def open_scsi(self, vid: int, pid: int,
+                  serial: Optional[str] = None) -> ScsiTransport:
+        """Return an unopened ScsiTransport for a SCSI-LCD device.
 
-    def data_dir(self) -> str:
-        """User data directory (~/.trcc/data/)."""
-        from trcc.core.paths import USER_DATA_DIR
-        return USER_DATA_DIR
+        Used by SCSI protocols.  Each OS has a native path:
+            Linux   → SG_IO ioctl on /dev/sgN
+            Windows → DeviceIoControl on the raw volume
+            macOS   → USB BOT (no SG equivalent)
+            BSD     → USB BOT
+        """
 
-    def user_content_dir(self) -> str:
-        """User-created content directory (~/.trcc-user/)."""
-        from trcc.core.paths import USER_CONTENT_DIR
-        return USER_CONTENT_DIR
+    @abstractmethod
+    def scan_devices(self) -> List["DeviceInfo"]:
+        """Enumerate currently-attached supported devices."""
 
-    def web_dir(self, width: int, height: int) -> str:
-        """Cloud theme web directory for a resolution."""
-        from trcc.core.paths import get_web_dir
-        return get_web_dir(width, height)
+    # ── Filesystem ────────────────────────────────────────────────────
+    @abstractmethod
+    def paths(self) -> Paths: ...
 
-    def web_masks_dir(self, width: int, height: int) -> str:
-        """Cloud masks directory for a resolution."""
-        from trcc.core.paths import get_web_masks_dir
-        return get_web_masks_dir(width, height)
+    # ── Sensors ───────────────────────────────────────────────────────
+    @abstractmethod
+    def sensors(self) -> SensorEnumerator: ...
 
-    def user_masks_dir(self, width: int, height: int) -> str:
-        """User-created masks directory for a resolution."""
-        from trcc.core.paths import get_user_masks_dir
-        return get_user_masks_dir(width, height)
+    # ── Autostart ─────────────────────────────────────────────────────
+    @abstractmethod
+    def autostart(self) -> AutostartManager: ...
 
-    def create_sensor_enumerator(self) -> SensorEnumerator:
-        """Return the OS-specific sensor enumerator (cached)."""
-        if self._sensor_enum is None:
-            self._sensor_enum = self._make_sensor_enumerator()
-        return self._sensor_enum
+    # ── One-time setup (udev rules / WinUSB guide / etc.) ─────────────
+    @abstractmethod
+    def setup(self, interactive: bool = True) -> int:
+        """Run OS-specific setup.  Returns a shell-style exit code."""
 
+    @abstractmethod
+    def check_permissions(self) -> List[str]:
+        """Return a list of user-facing permission warnings, empty if OK."""
+
+    # ── OS identity (for UIs, diagnostics, install hints) ─────────────
+    @abstractmethod
+    def distro_name(self) -> str: ...
+
+    @abstractmethod
     def install_method(self) -> str:
-        """Detect how trcc-linux was installed (pip, pacman, pyinstaller, etc.)."""
-        from trcc.core.platform import detect_install_method
-        return detect_install_method()
+        """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
 
-    def screen_capture_params(
-        self, x: int, y: int, w: int, h: int,
-    ) -> tuple[str, str, list[str]] | None:
-        """Return (fmt, inp, region_args) for ffmpeg screen capture, or None."""
-        fmt = self._screen_capture_format()
-        if not fmt:
-            return None
-        if fmt == 'gdigrab':
-            region = ['-offset_x', str(x), '-offset_y', str(y),
-                      '-video_size', f'{w}x{h}'] if (w and h) else []
-            return fmt, 'desktop', region
-        if fmt == 'avfoundation':
-            region = ['-video_size', f'{w}x{h}'] if (w and h) else []
-            return fmt, '1:none', region
-        # x11grab (Linux/BSD)
-        import os
-        display = os.environ.get('DISPLAY')
-        if not display:
-            return None
-        inp = f'{display}+{x},{y}' if (w and h) else display
-        region = ['-video_size', f'{w}x{h}'] if (w and h) else []
-        return fmt, inp, region
+    # ── OS-selection factory ──────────────────────────────────────────
+    _BY_OS: dict[str, Tuple[str, str]] = {
+        "linux": ("trcc.adapters.system.linux", "LinuxPlatform"),
+        "win32": ("trcc.adapters.system.windows", "WindowsPlatform"),
+        "darwin": ("trcc.adapters.system.macos", "MacOSPlatform"),
+        "bsd": ("trcc.adapters.system.bsd", "BSDPlatform"),
+    }
 
-    # ── Defaults (concrete — override where needed) ──────────────────
+    @classmethod
+    def detect(cls) -> "Platform":
+        """Pick the right Platform subclass for the running OS."""
+        import importlib
+        import sys
 
-    def _screen_capture_format(self) -> str | None:
-        """Screen capture format string. Override per OS."""
-        return None
+        key = sys.platform
+        if "bsd" in key:
+            key = "bsd"
+        if key not in cls._BY_OS:
+            key = "linux"
+        module_path, class_name = cls._BY_OS[key]
+        mod = importlib.import_module(module_path)
+        return getattr(mod, class_name)()
 
-    def configure_dpi(self) -> None:
-        """Apply DPI config before QApplication. Windows overrides."""
 
-    def configure_stdout(self) -> None:
-        """Reconfigure stdout encoding. Windows overrides for UTF-8."""
+# =========================================================================
+# Callable type aliases (infrastructure DI)
+# =========================================================================
 
-    def wire_ipc_raise(self, app: Any, window: Any) -> None:
-        """Wire IPC signal to raise window on second instance. POSIX overrides."""
-
-    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
-        """Resolve GUI assets directory. Non-Linux copies to user dir."""
-        return pkg_assets_dir
-
-    def minimize_on_close(self) -> bool:
-        """Minimize to taskbar on close? Windows overrides -> True."""
-        return False
-
-    def no_devices_hint(self) -> Optional[str]:
-        """Hint when no devices detected. Windows overrides with WinUSB note."""
-        return None
-
-    def install_desktop(self) -> int:
-        """Install .desktop menu entry. Linux overrides."""
-        return 1
-
-    def needs_setup(self) -> bool:
-        """Check if critical system integration is missing."""
-        return False
-
-    def auto_setup(self) -> None:
-        """First-run auto-setup prompt."""
-
-    def check_permissions(self, devices: list[Any]) -> list[str]:
-        """Return permission warning messages. Linux overrides."""
-        return []
-
-    def get_system_files(self) -> list[str]:
-        """System-level file paths installed by this platform."""
-        return []
-
-    # ── Abstract (each OS must implement) ────────────────────────────
-
-    @abstractmethod
-    def _make_sensor_enumerator(self) -> SensorEnumerator:
-        """Create the OS-specific sensor enumerator instance."""
-
-    @abstractmethod
-    def create_scsi_transport(self, path: str,
-                              vid: int = 0, pid: int = 0) -> Any:
-        """Create OS-specific SCSI transport for a device path."""
-
-    @abstractmethod
-    def create_detect_fn(self) -> Callable[[], List[DetectedDevice]]:
-        """Return a device detection callable for this OS."""
-
-    @abstractmethod
-    def run_setup(self, auto_yes: bool = False) -> int:
-        """Run the full interactive setup wizard. Returns exit code."""
-
-    @abstractmethod
-    def install_rules(self) -> int:
-        """Install device access rules (udev on Linux, WinUSB guide on Windows)."""
-
-    @abstractmethod
-    def check_deps(self) -> list:
-        """Check all system dependencies. Returns list of DepResult."""
-
-    @abstractmethod
-    def get_pkg_manager(self) -> Optional[str]:
-        """Detect the native package manager (dnf, winget, brew, pkg, etc.)."""
-
-    @abstractmethod
-    def distro_name(self) -> str:
-        """Human-readable OS/distro name."""
-
-    @abstractmethod
-    def doctor_config(self) -> DoctorPlatformConfig:
-        """Return platform-specific constants for the doctor health check."""
-
-    @abstractmethod
-    def report_config(self) -> ReportPlatformConfig:
-        """Return platform-specific constants for the diagnostic report."""
-
-    @abstractmethod
-    def archive_tool_install_help(self) -> str:
-        """Platform-specific instructions for installing 7z/p7zip."""
-
-    @abstractmethod
-    def ffmpeg_install_help(self) -> str:
-        """Platform-specific instructions for installing ffmpeg."""
-
-    @abstractmethod
-    def get_memory_info(self) -> list[dict[str, str]]:
-        """Return DRAM slot info (dmidecode on Linux, WMI on Windows, etc.)."""
-
-    @abstractmethod
-    def get_disk_info(self) -> list[dict[str, str]]:
-        """Return physical disk info (lsblk on Linux, WMI on Windows, etc.)."""
-
-    @abstractmethod
-    def acquire_instance_lock(self) -> object | None:
-        """Acquire exclusive single-instance lock. Returns handle or None."""
-
-    @abstractmethod
-    def raise_existing_instance(self) -> None:
-        """Signal the already-running instance to raise its window."""
-
-    @abstractmethod
-    def autostart_enable(self) -> None:
-        """Enable autostart for the current user."""
-
-    @abstractmethod
-    def autostart_disable(self) -> None:
-        """Disable autostart for the current user."""
-
-    @abstractmethod
-    def autostart_enabled(self) -> bool:
-        """Return True if autostart is currently configured."""
+DetectDevicesFn = Callable[[], List["DeviceInfo"]]

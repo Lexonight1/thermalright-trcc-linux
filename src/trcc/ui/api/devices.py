@@ -1,204 +1,35 @@
-"""Device detection, selection, and image send endpoints."""
+"""/devices router — discover / connect / disconnect."""
 from __future__ import annotations
 
-import logging
+from fastapi import APIRouter, Request
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from ...core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
+from ._shared import (
+    http_error_if_failed,
+    to_connect_response,
+    to_disconnect_response,
+    to_discover_response,
+)
+from .schemas import ConnectResponse, DisconnectResponse, DiscoverResponse
 
-from trcc.services import ImageService
-from trcc.ui.api.models import DeviceResponse
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
-
-
-# ── Helpers ────────────────────────────────────────────────────────────
-
-def _device_to_response(idx: int, dev) -> DeviceResponse:
-    return DeviceResponse(
-        id=idx,
-        name=dev.name,
-        vid=dev.vid,
-        pid=dev.pid,
-        protocol=dev.protocol or "scsi",
-        resolution=dev.resolution or (0, 0),
-        path=dev.path or "",
-    )
+router = APIRouter(prefix="/devices", tags=["devices"])
 
 
-def _get_device_by_id(device_id: int):
-    """Look up device by index, raise 404 if not found."""
-    from trcc.ui.api import _device_svc
-
-    devices = _device_svc.devices
-    if device_id < 0 or device_id >= len(devices):
-        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-    return devices[device_id]
+@router.get("", response_model=DiscoverResponse)
+def list_devices(request: Request) -> DiscoverResponse:
+    result = request.app.state.trcc.dispatch(DiscoverDevices())
+    return to_discover_response(result)
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────
-
-def _all_devices_via_trcc():
-    """Return discovered devices via Trcc (LCDs first, then LEDs)."""
-    from trcc.ui.api._boot import get_trcc
-    t = get_trcc()
-    # pylint: disable=protected-access
-    return list(t._lcd_devices) + list(t._led_devices)
+@router.post("/{key}/connect", response_model=ConnectResponse)
+def connect(key: str, request: Request) -> ConnectResponse:
+    result = request.app.state.trcc.dispatch(ConnectDevice(key=key))
+    http_error_if_failed(result)
+    return to_connect_response(result)
 
 
-@router.get("/devices")
-def list_devices() -> list[DeviceResponse]:
-    """List currently discovered devices (via Trcc)."""
-    devs = _all_devices_via_trcc()
-    return [_device_to_response(i, d.device_info) for i, d in enumerate(devs)
-            if d.device_info is not None]
-
-
-@router.post("/devices/detect")
-def detect_devices() -> list[DeviceResponse]:
-    """Rescan USB for devices via Trcc.discover()."""
-    from trcc.ui.api._boot import get_trcc
-    get_trcc().discover()
-    return list_devices()
-
-
-@router.post("/devices/{device_id}/select")
-def select_device(device_id: int) -> dict:
-    """Select a device by index. Initializes the appropriate dispatcher."""
-    import trcc.ui.api as api
-    from trcc.ui.api import _device_svc
-
-    dev = _get_device_by_id(device_id)
-
-    # Skip teardown if re-selecting the same device that's already active
-    already_active = (
-        _device_svc.selected is not None
-        and _device_svc.selected is dev
-        and api._device_dispatcher
-    )
-    if already_active:
-        return {"selected": dev.name, "resolution": dev.resolution}
-
-    _device_svc.select(dev)
-
-    # Stop any running background threads from previous device
-    api.stop_video_playback()
-    api.stop_overlay_loop()
-
-    # Check if another instance (GUI) already owns the device
-    from trcc.core.instance import find_active
-    from trcc.ipc import create_device_proxy
-
-    active = find_active()
-
-    if active is not None:
-        proxy = create_device_proxy(active)
-        api._device_dispatcher = proxy
-
-        # Active instance already discovered resolution — sync to DeviceInfo
-        proxy_res = proxy.resolution
-        if proxy_res != (0, 0):
-            dev.resolution = proxy_res
-
-        log.info("Using %s instance for device %s", active.value, dev.name)
-    else:
-        # Standalone mode — API manages device directly
-        _device_svc.on_frame_sent = api.set_current_image
-
-        from trcc.core.app import TrccApp
-        app = TrccApp.get()
-        app.discover(path=getattr(dev, 'path', None))
-
-        device = None
-        if app.devices:
-            device = app.device(0)
-            api._device_dispatcher = device
-        elif getattr(dev, 'protocol', '') != 'led':
-            # LCD fallback — build from DeviceService when scan missed it
-            _device_svc._discover_resolution(dev)
-            device = app.device_from_service(_device_svc)
-            if device and device.connected:
-                api._device_dispatcher = device
-
-        if device is None or not getattr(device, 'connected', False):
-            return {"selected": dev.name, "resolution": dev.resolution}
-
-        from trcc.core.device.lcd import LCDDevice
-        if isinstance(device, LCDDevice):
-            w_res, h_res = dev.resolution or (0, 0)
-
-            # Download/extract theme data for this resolution in background
-            if w_res and h_res:
-                app._ensure_data_background(device, w_res, h_res)
-
-            api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
-
-            device.restore_device_settings()
-            result = device.restore_last_theme()
-            if result.get("image"):
-                api.set_current_image(result["image"])
-                log.info("Restored last theme for preview")
-
-    # Mount static file directories for this device's resolution
-    w, h = dev.resolution or (0, 0)
-    if w and h:
-        api.mount_static_dirs(w, h)
-
-    return {"selected": dev.name, "resolution": dev.resolution}
-
-
-
-@router.get("/devices/{device_id}")
-def get_device(device_id: int) -> DeviceResponse:
-    """Get details for a specific device."""
-    dev = _get_device_by_id(device_id)
-    return _device_to_response(device_id, dev)
-
-
-@router.post("/devices/{device_id}/send")
-async def send_image(device_id: int, image: UploadFile, rotation: int = 0,
-                     brightness: int = 100) -> dict:
-    """Send an image to the device LCD.
-
-    Accepts image file upload. Validates size and format before processing.
-    Routes through LCDDevice for consistent encoding and send behavior.
-    """
-    import tempfile
-    from pathlib import Path
-
-    from trcc.ui.api.display import _get_display
-
-    _get_device_by_id(device_id)  # validate device exists
-    lcd = _get_display()
-
-    # Read and validate upload
-    data = await image.read()
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Image exceeds 10 MB limit")
-
-    # Save upload to temp file, load via LCDDevice
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
-        f.write(data)
-        tmp_path = Path(f.name)
-
-    try:
-        result = lcd.load_image(tmp_path)
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Invalid image"))
-
-        if rotation:
-            lcd.set_rotation(rotation)
-        if brightness != 100:
-            lcd.set_brightness(brightness)
-
-        send_result = lcd.send(result["image"])
-        if not send_result.get("success"):
-            raise HTTPException(status_code=500, detail="Send failed (device busy or error)")
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-    w, h = lcd.lcd_size
-    return {"sent": True, "resolution": (w, h)}
+@router.post("/{key}/disconnect", response_model=DisconnectResponse)
+def disconnect(key: str, request: Request) -> DisconnectResponse:
+    result = request.app.state.trcc.dispatch(DisconnectDevice(key=key))
+    http_error_if_failed(result, status_code=404)
+    return to_disconnect_response(result)
