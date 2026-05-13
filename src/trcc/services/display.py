@@ -744,7 +744,7 @@ class DisplayService:
         else:
             return False, "No data directory configured"
         ok, msg = ThemePersistence.save(
-            name, data_dir, self.lcd_size,
+            name, data_dir, self.canvas_size,
             current_image=self._clean_background or self.current_image,
             overlay=self.overlay,
             mask_source_dir=self._mask_source_dir,
@@ -755,7 +755,8 @@ class DisplayService:
         if ok:
             safe_name = f'Custom_{name}' if not name.startswith('Custom_') else name
             from ..core.paths import theme_dir_name
-            self.current_theme_path = data_dir / theme_dir_name(self.lcd_width, self.lcd_height) / safe_name
+            cw, ch = self.canvas_size
+            self.current_theme_path = data_dir / theme_dir_name(cw, ch) / safe_name
         return ok, msg
 
     def export_config(self, export_path: Path) -> tuple[bool, str]:
