@@ -297,6 +297,8 @@ def screencast(builder=None, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview
 def send_image(image_path, *, lcd: int = 0, device=None, preview=False):
     """Send image to LCD."""
     from pathlib import Path
+    if (rc := _connect_or_fail(device)):
+        return rc
     return _emit(trcc().lcd.send_image(lcd, Path(image_path)))
 
 
@@ -305,22 +307,30 @@ def send_color(hex_color, *, lcd: int = 0, device=None, preview=False):
     if not (rgb := _parse_hex(hex_color)):
         typer.echo("Error: Invalid hex color. Use format: ff0000", err=True)
         return 1
+    if (rc := _connect_or_fail(device)):
+        return rc
     r, g, b = rgb
     return _emit(trcc().lcd.send_color(lcd, r, g, b))
 
 
 def set_brightness(level, *, lcd: int = 0, device=None):
     """Set display brightness level (1=25%, 2=50%, 3=100%)."""
+    if (rc := _connect_or_fail(device)):
+        return rc
     return _emit(trcc().lcd.set_brightness(lcd, level))
 
 
 def set_rotation(degrees, *, lcd: int = 0, device=None):
     """Set display rotation (0, 90, 180, 270)."""
+    if (rc := _connect_or_fail(device)):
+        return rc
     return _emit(trcc().lcd.set_rotation(lcd, degrees))
 
 
 def set_split_mode(mode, *, lcd: int = 0, device=None, preview=False):
     """Set split mode (Dynamic Island) for widescreen displays."""
+    if (rc := _connect_or_fail(device)):
+        return rc
     return _emit(trcc().lcd.set_split_mode(lcd, mode))
 
 

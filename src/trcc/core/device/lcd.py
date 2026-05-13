@@ -128,6 +128,7 @@ class LCDDevice(Device):
             settings.set_resolution(w, h)
             self.set_resolution(w, h)
             self.initialize(settings.user_data_dir)
+            self.restore_device_settings()
         else:
             self.log.warning("initialize_pipeline: skipped — resolution is %s", res)
         # Issue #141 — seed overlay language from saved settings so a
@@ -382,16 +383,18 @@ class LCDDevice(Device):
         if not os.path.exists(image_path):
             return {"success": False, "error": f"File not found: {image_path}"}
         from ...services import ImageService
-        w, h = self.lcd_size
+        w, h = self.canvas_size
         img = ImageService.open_and_resize(image_path, w, h)
-        self._device_svc.send_frame(img, w, h)
+        ea = self._display_svc._encode_angle() if self._display_svc else 0
+        self._device_svc.send_frame(img, w, h, encode_angle=ea)
         return {"success": True, "image": img, "message": f"Sent {image_path}"}
 
     def send_color(self, r: int, g: int, b: int) -> dict:
         from ...services import ImageService
-        w, h = self.lcd_size
+        w, h = self.canvas_size
         img = ImageService.solid_color(r, g, b, w, h)
-        self._device_svc.send_frame(img, w, h)
+        ea = self._display_svc._encode_angle() if self._display_svc else 0
+        self._device_svc.send_frame(img, w, h, encode_angle=ea)
         return {"success": True, "image": img,
                 "message": f"Sent color #{r:02x}{g:02x}{b:02x}"}
 
@@ -425,9 +428,10 @@ class LCDDevice(Device):
 
     def reset(self) -> dict:
         from ...services import ImageService
-        w, h = self.lcd_size
+        w, h = self.canvas_size
         img = ImageService.solid_color(255, 0, 0, w, h)
-        self._device_svc.send_frame(img, w, h)
+        ea = self._display_svc._encode_angle() if self._display_svc else 0
+        self._device_svc.send_frame(img, w, h, encode_angle=ea)
         return {"success": True, "image": img, "message": "Device reset — RED"}
 
     # ══════════════════════════════════════════════════════════════════════
