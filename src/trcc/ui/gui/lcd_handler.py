@@ -353,6 +353,7 @@ class LCDHandler(BaseHandler):
             Settings.save_device_settings(
                 self._device_key,
                 theme_name=path.name, theme_type='local', mask_id='')
+            self._save_rotation_theme(path.name, 'local')
         elif persist and not self._device_key:
             self.log.warning("_select_theme_from_path: not persisting — device_key is empty")
 
@@ -375,6 +376,7 @@ class LCDHandler(BaseHandler):
                 Settings.save_device_settings(
                     self._device_key,
                     theme_name=video_path.stem, theme_type='cloud')
+                self._save_rotation_theme(video_path.stem, 'cloud')
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
@@ -671,6 +673,73 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_image(image)
         self._update_theme_directories()
         self._reload_cloud_theme_for_rotation()
+        # Restore last theme used at this rotation (per-rotation theme memory)
+        self._restore_rotation_theme(degrees)
+
+    def _save_rotation_theme(self, theme_name: str, theme_type: str) -> None:
+        """Save current theme under its rotation key for per-rotation memory."""
+        if not self._device_key:
+            return
+        rotation = self._lcd.rotation
+        cfg = Settings.get_device_config(self._device_key) or {}
+        rotation_themes = dict(cfg.get('rotation_themes', {}))
+        rotation_themes[str(rotation)] = {'theme_name': theme_name, 'theme_type': theme_type}
+        Settings.save_device_settings(self._device_key, rotation_themes=rotation_themes)
+        self.log.debug("_save_rotation_theme: rotation=%d theme=%s type=%s",
+                       rotation, theme_name, theme_type)
+
+    def _restore_rotation_theme(self, degrees: int) -> None:
+        """Load the last theme used at this rotation, if saved."""
+        if not self._device_key:
+            return
+        cfg = Settings.get_device_config(self._device_key) or {}
+        rotation_themes = cfg.get('rotation_themes', {})
+        saved = rotation_themes.get(str(degrees))
+        if not saved:
+            return
+        theme_name = saved.get('theme_name')
+        theme_type = saved.get('theme_type', 'local')
+        if not theme_name:
+            self._load_first_available_theme()
+            return
+        self.log.info("_restore_rotation_theme: rotation=%d theme=%s type=%s",
+                      degrees, theme_name, theme_type)
+        lcd = self._lcd
+        if theme_type == 'cloud':
+            web_dir = lcd.web_dir
+            if web_dir:
+                mp4 = web_dir / f"{theme_name}.mp4"
+                png = web_dir / f"{theme_name}.png"
+                if mp4.exists():
+                    from trcc.services.theme import ThemeInfo
+                    theme = ThemeInfo.from_video(mp4, png if png.exists() else None)
+                    self._select_theme(theme)
+                    return
+        else:
+            for base in (lcd._display_svc.user_theme_dir, lcd._display_svc.local_dir):
+                if not base:
+                    continue
+                candidate = base / theme_name
+                if candidate.exists():
+                    self._select_theme_from_path(candidate, persist=False)
+                    return
+        # Fallback: load first available theme for this rotation
+        self._load_first_available_theme()
+
+    def _load_first_available_theme(self) -> None:
+        """Load the first available theme for the current rotation as a fallback."""
+        lcd = self._lcd
+        for base in (lcd._display_svc.user_theme_dir, lcd._display_svc.local_dir):
+            if not base:
+                continue
+            try:
+                for item in sorted(base.iterdir()):
+                    if item.is_dir() and (item / '00.png').exists():
+                        self.log.info("_load_first_available_theme: loading %s", item)
+                        self._select_theme_from_path(item, persist=False)
+                        return
+            except Exception:
+                pass
 
     def _reload_cloud_theme_for_rotation(self) -> None:
         """If a cloud video is active on a non-square device, load the

@@ -71,7 +71,7 @@ class LCDThemeWorkflow:
 
     def load_by_name(self, name: str, width: int = 0, height: int = 0) -> dict:
         d = self._device
-        w, h = (width, height) if width and height else d.lcd_size
+        w, h = (width, height) if width and height else d.canvas_size
         td = d.theme_dir
         theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
         utd = d.user_theme_dir
@@ -131,7 +131,7 @@ class LCDThemeWorkflow:
         from ...services.image import ImageService
         from ...services.overlay import OverlayService
         r = ImageService.renderer()
-        w, h = d.lcd_size
+        w, h = d.canvas_size
         mask_img = OverlayService.load_mask_from_path(p, r, w, h)
         if mask_img is None:
             return {"success": False, "error": f"Failed to load mask: {path}"}
@@ -197,7 +197,7 @@ class LCDThemeWorkflow:
         if not theme_name:
             return {"error": "No saved theme", "success": False}
 
-        w, h = d.lcd_size
+        w, h = d.canvas_size
         svc = d._display_svc
 
         if theme_type == "cloud":
@@ -309,7 +309,7 @@ class LCDThemeWorkflow:
             return None
         theme_name = current.name
         svc = d._display_svc
-        for base in (svc.local_dir, svc.web_dir):
+        for base in (svc.user_theme_dir, svc.local_dir, svc.web_dir):
             if not base:
                 continue
             candidate = Path(base) / theme_name

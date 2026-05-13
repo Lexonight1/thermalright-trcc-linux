@@ -400,14 +400,16 @@ class LCDDevice(Device):
         self.log.debug("send: image=%s", type(image).__name__ if image else None)
         if not self._device_svc.selected:
             return {"success": False, "error": "No device selected"}
-        w, h = self.lcd_size
-        self._device_svc.send_frame_async(image, w, h)
+        w, h = self.canvas_size
+        ea = self._display_svc._encode_angle() if self._display_svc else 0
+        self._device_svc.send_frame_async(image, w, h, encode_angle=ea)
         return {"success": True}
 
     def send_frame(self, image: Any) -> bool:
         """Synchronously send image to LCD device."""
-        w, h = self.lcd_size
-        return self._device_svc.send_frame(image, w, h)
+        w, h = self.canvas_size
+        ea = self._display_svc._encode_angle() if self._display_svc else 0
+        return self._device_svc.send_frame(image, w, h, encode_angle=ea)
 
     def send_async(self, image: Any, width: int, height: int) -> None:
         if self._device_svc.is_busy:
@@ -451,6 +453,15 @@ class LCDDevice(Device):
         """Re-probe filesystem dirs and update config."""
         if self._display_svc:
             self._display_svc.refresh_dirs()
+            if self._theme_svc:
+                self._theme_svc.set_directories(
+                    local_dir=self._display_svc.local_dir,
+                    web_dir=self._display_svc.web_dir,
+                    masks_dir=self._display_svc.masks_dir,
+                )
+                w, h = self.canvas_size
+                if w and h:
+                    self._theme_svc.load_local_themes((w, h))
         self._persist_dirs()
 
     def restore_device_settings(self) -> None:
@@ -487,21 +498,11 @@ class LCDDevice(Device):
         image = svc.set_rotation(degrees)
         self._persist('rotation', degrees)
 
-        new_theme_dir = svc.theme_dir
-        # ThemeDir is a value object without __eq__, so compare paths.
-        old_path = old_theme_dir.path if old_theme_dir else None
-        new_path = new_theme_dir.path if new_theme_dir else None
-        theme_dir_changed = (old_path != new_path)
-        if old_canvas != svc.canvas_size and theme_dir_changed:
-            self.log.info("set_rotation: theme dir changed %s→%s, reloading",
-                     old_theme_dir.path if old_theme_dir else None,
-                     new_theme_dir.path if new_theme_dir else None)
-            reloaded = self._reload_theme_for_rotation()
-            if reloaded is not None:
-                image = reloaded
-        elif old_canvas != svc.canvas_size:
-            self.log.info("set_rotation: canvas changed %s→%s but theme dir "
-                     "unchanged — pixel-rotating only",
+        if old_canvas != svc.canvas_size:
+            self.refresh_dirs()
+
+        if old_canvas != svc.canvas_size:
+            self.log.info("set_rotation: canvas changed %s→%s, dirs refreshed",
                      old_canvas, svc.canvas_size)
 
         w, h = self.lcd_size
