@@ -72,11 +72,12 @@ class PollingMetricsLoop(MetricsLoop):
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name='trcc-metrics')
         self._thread.start()
-        log.debug(
+        log.info(
             'PollingMetricsLoop started (tick=%.0fms, poll=settings.refresh_interval)',
             _TICK_INTERVAL * 1000)
 
     def stop(self) -> None:
+        was_running = self._thread is not None and self._thread.is_alive()
         self._stop.set()
         self._wake.set()
         if self._thread and self._thread.is_alive():
@@ -84,6 +85,8 @@ class PollingMetricsLoop(MetricsLoop):
         self._thread = None
         self._wake.clear()
         self._stop.clear()
+        if was_running:
+            log.info('PollingMetricsLoop stopped')
 
     def wake(self) -> None:
         self._wake.set()
