@@ -109,11 +109,11 @@ def _detach_kernel_drivers(dev: Any, count: int = 4) -> bool:
 
 def _reset_and_refind(dev: Any, vid: int, pid: int) -> Any:
     """Reset USB device, wait, re-find, detach drivers. Returns new handle."""
-    import usb.core  # type: ignore[import-untyped]
+    from . import _pyusb_find
 
     dev.reset()  # type: ignore[union-attr]
     time.sleep(0.5)
-    new_dev = usb.core.find(idVendor=vid, idProduct=pid)
+    new_dev = _pyusb_find.find(idVendor=vid, idProduct=pid)
     if new_dev is None:
         raise RuntimeError(_ERR_NOT_FOUND.format(vid=vid, pid=pid))
     _detach_kernel_drivers(new_dev)
@@ -145,13 +145,15 @@ def open_usb_device(
         RuntimeError: Device not found, or kernel driver could not be detached.
         usb.core.USBError: Permission denied (errno 13).
     """
-    import usb.core  # type: ignore[import-untyped]
+    import usb.core  # type: ignore[import-untyped]  # for USBError below
     import usb.util  # type: ignore[import-untyped]
+
+    from . import _pyusb_find
 
     kwargs: dict[str, Any] = {'idVendor': vid, 'idProduct': pid}
     if usb_address is not None:
         kwargs['custom_match'] = usb_address.matches
-    dev = usb.core.find(**kwargs)
+    dev = _pyusb_find.find(**kwargs)
     if dev is None:
         where = f" @ {usb_address}" if usb_address else ""
         raise RuntimeError(_ERR_NOT_FOUND.format(vid=vid, pid=pid) + where)

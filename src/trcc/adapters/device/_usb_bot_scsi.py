@@ -51,8 +51,9 @@ class UsbBotScsiTransport(ScsiTransport):
     def open(self) -> bool:
         """Find device, detach kernel driver, claim interface."""
         try:
-            import usb.core  # pyright: ignore[reportMissingImports]
             import usb.util  # pyright: ignore[reportMissingImports]
+
+            from . import _pyusb_find
         except ImportError:
             log.error(self._pyusb_install_hint)
             return False
@@ -60,7 +61,7 @@ class UsbBotScsiTransport(ScsiTransport):
         kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
         if self._usb_address is not None:
             kwargs['custom_match'] = self._usb_address.matches
-        dev: Any = usb.core.find(**kwargs)
+        dev: Any = _pyusb_find.find(**kwargs)
         if dev is None:
             where = f" @ {self._usb_address}" if self._usb_address else ""
             log.error("Device %04X:%04X%s not found", self._vid, self._pid, where)

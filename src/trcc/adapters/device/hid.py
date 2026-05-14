@@ -37,6 +37,7 @@ from trcc.core.models import (
     pm_to_fbl,
 )
 
+from . import _pyusb_find
 from .frame import FrameDevice
 
 # hidapi is optional ([hid] extra)
@@ -634,7 +635,7 @@ class PyUsbTransport(UsbTransport):
             # idVendor/idProduct prefilter for speed.
             kwargs['custom_match'] = self._usb_address.matches
 
-        self._device = usb.core.find(**kwargs)  # type: ignore[union-attr]
+        self._device = _pyusb_find.find(**kwargs)  # type: ignore[union-attr]
         if self._device is None:
             where = f" @ {self._usb_address}" if self._usb_address else ""
             raise RuntimeError(
@@ -888,7 +889,7 @@ def find_hid_devices() -> list:
     ]
 
     for vid, pid, dtype in known:
-        found = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)
+        found = _pyusb_find.find(find_all=True, idVendor=vid, idProduct=pid)
         for dev in found or []:
             serial_idx = getattr(dev, 'iSerialNumber', 0)
             serial = usb.util.get_string(dev, serial_idx) if serial_idx else ""

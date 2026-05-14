@@ -85,7 +85,7 @@ class DeviceDetector:
     def _detect(scsi_resolver: ScsiResolver | None) -> list[DetectedDevice]:
         """Core detection via pyusb with injected SCSI resolver."""
         try:
-            import usb.core  # pyright: ignore[reportMissingImports]
+            from . import _pyusb_find
         except ImportError:
             log.error("pyusb not installed — pip install pyusb")
             return []
@@ -95,7 +95,7 @@ class DeviceDetector:
             # find_all=True yields every match; `or ()` handles None when
             # no devices are present, so two same-VID/PID coolers each
             # produce their own DetectedDevice (issue #128).
-            for usb_dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
+            for usb_dev in (_pyusb_find.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
                 dev: Any = usb_dev
                 usb_path = f'usb:{dev.bus}:{dev.address}'
                 scsi_dev = (

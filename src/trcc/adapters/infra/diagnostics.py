@@ -226,6 +226,18 @@ _INSTALL_MAP: dict[str, dict[str, str]] = {
         'pacman': 'python-hid',
         'zypper': 'python3-hidapi',
     },
+    'nvidia-ml-py': {
+        # Distro names lag PyPI — pyproject pins `nvidia-ml-py>=11.0.0` but
+        # Debian/Fedora repos still ship the legacy `pynvml`-prefixed alias
+        # (same upstream code, exposes the `pynvml` module). Arch ships the
+        # official current name. Reflected in packaging/arch/PKGBUILD +
+        # release.yml Recommends/optdepend so doctor + packagers agree.
+        'apt': 'python3-pynvml',
+        'dnf': 'python3-pynvml',
+        'pacman': 'python-nvidia-ml-py',
+        'zypper': 'python3-nvidia-ml-py',
+        'rpm-ostree': 'python3-pynvml',
+    },
 }
 
 _INSTALL_CMD: dict[str, str] = {
@@ -406,8 +418,8 @@ def _check_library(
     return True
 
 
-def _check_gpu_packages() -> None:
-    if not (results := check_gpu()):
+def _check_gpu_packages(pm: str | None = None) -> None:
+    if not (results := check_gpu(pm)):
         print(f"  {_OPT}  No discrete GPU detected")
         return
     for g in results:
@@ -649,8 +661,14 @@ def check_system_deps(
     return results
 
 
-def check_gpu() -> list[GpuResult]:
-    """Detect GPU vendors and check matching packages."""
+def check_gpu(pm: str | None = None) -> list[GpuResult]:
+    """Detect GPU vendors and check matching packages.
+
+    ``pm`` is the active package manager (apt/dnf/pacman/…). When passed,
+    the NVIDIA install hint resolves to the right distro package
+    (issue #145 — `pip install nvidia-ml-py` fails on PEP 668-managed
+    Pythons like Ubuntu 24.04 / Mint 22). None → falls back to pip.
+    """
     from pathlib import Path  # local so tests can patch pathlib.Path
     pci_base = Path('/sys/bus/pci/devices')
     if not pci_base.exists():
@@ -672,10 +690,14 @@ def check_gpu() -> list[GpuResult]:
     results: list[GpuResult] = []
     if '10de' in vendors:
         ver = get_module_version('pynvml')
+        # Per-distro hint resolves to the right native package name —
+        # apt → python3-pynvml, pacman → python-nvidia-ml-py, etc.
+        # Falls back to pip when no package manager is detected.
+        hint = _install_hint('nvidia-ml-py', pm) if pm else 'pip install nvidia-ml-py'
         results.append(GpuResult(
             vendor='nvidia', label='NVIDIA GPU',
             package_installed=ver is not None,
-            install_cmd='pip install nvidia-ml-py',
+            install_cmd=hint,
         ))
     if '1002' in vendors:
         results.append(GpuResult(
@@ -842,7 +864,7 @@ def run_doctor(doctor_config: DoctorPlatformConfig | None = None) -> int:
 
     if doctor_config.run_gpu_check:
         print()
-        _check_gpu_packages()
+        _check_gpu_packages(pm)
 
     if doctor_config.check_libusb:
         print()

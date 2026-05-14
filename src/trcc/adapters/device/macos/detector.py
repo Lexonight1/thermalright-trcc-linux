@@ -35,7 +35,7 @@ class MacOSDeviceDetector:
         devices: list[DetectedDevice] = []
 
         try:
-            import usb.core  # pyright: ignore[reportMissingImports]
+            from .. import _pyusb_find
         except ImportError:
             log.error("pyusb not installed — pip install pyusb")
             return []
@@ -60,7 +60,7 @@ class MacOSDeviceDetector:
         for registry, protocol, device_type in all_registries:
             for (vid, pid), entry in registry.items():
                 # find_all=True so two same-VID/PID coolers both surface (issue #128).
-                for usb_dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
+                for usb_dev in (_pyusb_find.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
                     dev: Any = usb_dev
                     impl = 'hid_led' if registry is _LED_DEVICES else entry.implementation
                     dt = device_type if device_type is not None else getattr(entry, 'device_type', 2)

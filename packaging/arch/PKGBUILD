@@ -24,7 +24,7 @@ depends=(
 optdepends=(
     '7zip: theme archive extraction'
     'ffmpeg: video and GIF playback'
-    'python-pynvml: NVIDIA GPU sensor support'
+    'python-nvidia-ml-py: NVIDIA GPU sensor support'
     'python-dbus: Wayland session support'
     'python-gobject: Wayland session support'
     'python-hidapi: Alternative HID transport'
