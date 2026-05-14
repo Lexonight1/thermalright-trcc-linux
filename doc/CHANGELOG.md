@@ -1,5 +1,63 @@
 # Changelog
 
+## v9.6.3
+
+Daemon-mode regression fix + cross-platform metric-source hygiene.
+No user-visible feature changes; this is an internal correctness
+release that closes a latent crash for `TRCC_DAEMON=1` users and
+silences the metrics-fallback log spam on dev / minimal-install boxes.
+
+**Daemon-mode metrics crash (latent regression in v9.6.2).** The
+2026-05-14 metrics chain migration moved CLI / API call sites to
+`_trcc().os.metrics`, but `TrccProxy` had no `os` facade.  Anyone with
+`TRCC_DAEMON=1` would crash on every metrics-touching command
+(`trcc info`, `trcc led test`, theme overlay loops, API
+`/system/metrics`).  Fix: added `OSFacadeProxy` exposing `.metrics`
+via a new `_meta.metrics` IPC route, plus `HardwareMetrics` wire
+serialization helpers.  Verified end-to-end by
+`dev/smoke_daemon_metrics.py`.
+
+**Capability probing moved to one-shot at construction.**
+`LinuxPlatform.__init__` now resolves subprocess tool paths via
+`shutil.which()` once at startup — `_tools: dict[str, str | None]` is
+frozen for the rest of the app's lifetime.  Read paths consult the
+cached map and skip absent tools cleanly.  No more `try: subprocess;
+except FileNotFoundError: log.debug("X not installed")` chain firing
+on every metrics tick — startup logs ONE `INFO` line listing what's
+available and what's absent, then deterministic reads thereafter.
+
+**NVML probe-at-discovery (sysctl-style).** Each NVIDIA card now has
+its supported metric set resolved at `_discover_nvidia` time by
+calling each `_read_nvml_<metric>` once.  Cards register `SensorInfo`
+entries only for metrics they actually answer; `_poll_nvidia` is a
+flat loop over the per-card supported set with no per-tick try/except
+for "NVML_ERROR_NOT_SUPPORTED" cases.  Per-card fan / power /
+mem-info absence is now silent (the card genuinely doesn't support it)
+instead of logging on every poll.
+
+**Cross-OS log hygiene.** Same "professional code never says 'failed'
+for normal absence" pass across the Windows, macOS, and BSD platform
+adapters.  18 noisy log lines neutralized — `"X returned <ExceptionName>"`
+instead of `"X failed"` / `"X not installed"`.
+
+**Smoke harnesses added under `dev/`:**
+- `smoke_metrics_chain.py` — 9 checks pinning every former
+  `svc.all_metrics` / `get_all_metrics()` call site.
+- `smoke_l1_unification.py` — verifies GUI panel + LCD overlay + LED
+  engine all observe the same `HardwareMetrics` record.  Run this on
+  the Windows VM to confirm the original L1 broadcast fix.
+- `smoke_daemon_metrics.py` — boots a daemon, drives
+  `TrccProxy.os.metrics` over IPC, asserts populated record.
+
+**Lambda audit.** 69 lambdas removed from `src/trcc` (119 → 50).
+Every callable in the runtime is now a named class method, function,
+or `operator.itemgetter`-style accessor — Smalltalk-style discipline
+applied to Qt signal slots (variable-cardinality button bindings now
+use `setProperty` + `self.sender().property(key)`), benchmark
+scaffolding, sort keys, and dataclass `default_factory`.  Remaining
+50 are concentrated in GUI panels not yet swept; tracked for a
+follow-up session.
+
 ## v9.6.2
 
 User-visible fixes for the open issue backlog. Two parallel packaging
