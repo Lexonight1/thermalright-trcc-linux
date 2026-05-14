@@ -340,20 +340,15 @@ class TRCCApp(QMainWindow):
         # AppObserver.on_app_event(event, data) dispatch (Phase 9).
         from trcc.core.events import Topic
         bus = self._trcc.events
-        bus.subscribe(Topic.DEVICE_LIST,
-                      lambda devices: self._device_added_signal.emit(('changed', devices)))
-        bus.subscribe(Topic.DEVICE_CONNECTED,
-                      lambda device: self._device_added_signal.emit(('connected', device)))
-        bus.subscribe(Topic.DEVICE_DISCONNECTED,
-                      lambda device: self._device_removed_signal.emit(device))
-        bus.subscribe(Topic.FRAME,
-                      lambda path, image: self._frame_signal.emit({'path': path, 'image': image}))
-        bus.subscribe(Topic.METRICS,
-                      lambda metrics: self._metrics_signal.emit(metrics))
+        bus.subscribe(Topic.DEVICE_LIST, self._on_bus_device_list)
+        bus.subscribe(Topic.DEVICE_CONNECTED, self._on_bus_device_connected)
+        bus.subscribe(Topic.DEVICE_DISCONNECTED, self._on_bus_device_disconnected)
+        bus.subscribe(Topic.FRAME, self._on_bus_frame)
+        bus.subscribe(Topic.METRICS, self._on_bus_metrics)
         # System suspend — stop the screen capture pipeline before the
         # device list goes empty.  Trcc handles device cleanup itself;
         # this hook is just for UI-level resources.
-        bus.subscribe(Topic.SYSTEM_SUSPENDED, lambda: self._screencast.stop())
+        bus.subscribe(Topic.SYSTEM_SUSPENDED, self._on_bus_system_suspended)
 
         # Handshake signal
         self._handshake_done = Signal(object, object)  # type: ignore[assignment]
@@ -381,6 +376,28 @@ class TRCCApp(QMainWindow):
         self._setup_systray()
         # Sleep handling lives on Trcc now — wired by Platform.subscribe_power()
         # in Trcc.__init__.  Nothing to do GUI-side.
+
+    # ── EventBus bridges — invoked on the publisher thread, re-emit on
+    #    a Qt signal so handlers run on the GUI thread.  Named slots,
+    #    not lambdas (per feedback_no_lambdas).
+
+    def _on_bus_device_list(self, devices: Any) -> None:
+        self._device_added_signal.emit(('changed', devices))
+
+    def _on_bus_device_connected(self, device: Any) -> None:
+        self._device_added_signal.emit(('connected', device))
+
+    def _on_bus_device_disconnected(self, device: Any) -> None:
+        self._device_removed_signal.emit(device)
+
+    def _on_bus_frame(self, path: Any, image: Any) -> None:
+        self._frame_signal.emit({'path': path, 'image': image})
+
+    def _on_bus_metrics(self, metrics: Any) -> None:
+        self._metrics_signal.emit(metrics)
+
+    def _on_bus_system_suspended(self) -> None:
+        self._screencast.stop()
 
     # ── Device event handlers (main thread) ─────────────────────────
 
@@ -804,7 +821,8 @@ class TRCCApp(QMainWindow):
                 self.form_container, x, y, w, h,
                 normal_img, active_img, checkable=True)
             btn.setToolTip(tooltip)
-            btn.clicked.connect(lambda checked, idx=panel_idx: self._show_panel(idx))
+            btn.setProperty('panel_idx', panel_idx)
+            btn.clicked.connect(self._on_mode_button_clicked)
             self.mode_buttons.append(btn)
         if self.mode_buttons:
             self.mode_buttons[0].setChecked(True)
@@ -1055,7 +1073,9 @@ class TRCCApp(QMainWindow):
 
         lang_combo = QComboBox(self.uc_about)
         lang_combo.setGeometry(297, 413, 200, 28)
-        for code in sorted(LANGUAGE_NAMES, key=lambda c: LANGUAGE_NAMES[c]):
+        def _by_display_name(code: str) -> str:
+            return LANGUAGE_NAMES[code]
+        for code in sorted(LANGUAGE_NAMES, key=_by_display_name):
             lang_combo.addItem(LANGUAGE_NAMES[code], code)
         idx = lang_combo.findData(lang)
         if idx >= 0:
@@ -1082,6 +1102,15 @@ class TRCCApp(QMainWindow):
 
     # ── View Navigation ─────────────────────────────────────────────
 
+    def _on_mode_button_clicked(self, *_qt_args: Any) -> None:
+        """Mode-button slot — reads panel_idx from sender's property."""
+        sender = self.sender()
+        if sender is None:
+            return
+        panel_idx = sender.property('panel_idx')
+        if panel_idx is not None:
+            self._show_panel(panel_idx)
+
     def _show_panel(self, index: int) -> None:
         self.panel_stack.setCurrentIndex(index)
         panel_to_button = {0: 0, 1: 2, 2: 3, 3: 1}
@@ -1090,6 +1119,37 @@ class TRCCApp(QMainWindow):
             btn.setChecked(i == active_btn)
         if index != 2:
             self.uc_activity_sidebar.setVisible(False)
+
+    # ── View-switch slots (named, not lambdas) ──────────────────────
+
+    def _on_home_clicked(self) -> None:
+        self._show_view('sysinfo')
+
+    def _on_about_clicked(self) -> None:
+        self._show_view('about')
+
+    # ── Download status slots ───────────────────────────────────────
+
+    def _on_theme_download_started(self, theme_id: str) -> None:
+        self.uc_preview.set_status(f"Downloading: {theme_id}...")
+
+    def _on_theme_download_finished(self, theme_id: str, ok: bool) -> None:
+        verb = 'Downloaded' if ok else 'Download failed'
+        self.uc_preview.set_status(f"{verb}: {theme_id}")
+
+    def _on_mask_download_started(self, mask_id: str) -> None:
+        self.uc_preview.set_status(f"Downloading: {mask_id}...")
+
+    def _on_mask_download_finished(self, mask_id: str, ok: bool) -> None:
+        verb = 'Downloaded' if ok else 'Failed'
+        self.uc_preview.set_status(f"{verb}: {mask_id}")
+
+    def _on_drag_end_noop(self) -> None:
+        """No-op slot — drag-end emits the signal but we don't act on it here."""
+
+    def _on_element_added(self, _payload: Any) -> None:
+        """Hide the activity sidebar once an element has been added to the theme."""
+        self.uc_activity_sidebar.setVisible(False)
 
     def _show_view(self, view: str) -> None:
         active = getattr(self, '_active_path', None)
@@ -1110,29 +1170,23 @@ class TRCCApp(QMainWindow):
 
     def _connect_view_signals(self) -> None:
         self.uc_device.device_selected.connect(self._on_device_widget_clicked)
-        self.uc_device.home_clicked.connect(lambda: self._show_view('sysinfo'))
-        self.uc_device.about_clicked.connect(lambda: self._show_view('about'))
+        self.uc_device.home_clicked.connect(self._on_home_clicked)
+        self.uc_device.about_clicked.connect(self._on_about_clicked)
 
         self.uc_theme_local.theme_selected.connect(self._on_local_theme_clicked)
         self.uc_theme_local.delete_requested.connect(self._on_delete_theme)
         self.uc_theme_local.delegate.connect(self._on_local_delegate)
         self.uc_theme_web.theme_selected.connect(self._on_cloud_theme_clicked)
-        self.uc_theme_web.download_started.connect(
-            lambda tid: self.uc_preview.set_status(f"Downloading: {tid}..."))
-        self.uc_theme_web.download_finished.connect(
-            lambda tid, ok: self.uc_preview.set_status(
-                f"{'Downloaded' if ok else 'Download failed'}: {tid}"))
+        self.uc_theme_web.download_started.connect(self._on_theme_download_started)
+        self.uc_theme_web.download_finished.connect(self._on_theme_download_finished)
         self.uc_theme_mask.mask_selected.connect(self._on_mask_clicked)
-        self.uc_theme_mask.download_started.connect(
-            lambda mask_id: self.uc_preview.set_status(f"Downloading: {mask_id}..."))
-        self.uc_theme_mask.download_finished.connect(
-            lambda mask_id, ok: self.uc_preview.set_status(
-                f"{'Downloaded' if ok else 'Failed'}: {mask_id}"))
+        self.uc_theme_mask.download_started.connect(self._on_mask_download_started)
+        self.uc_theme_mask.download_finished.connect(self._on_mask_download_finished)
 
         self.uc_preview.delegate.connect(self._on_preview_delegate)
         self.uc_preview.element_drag_start.connect(self._on_drag_start)
         self.uc_preview.element_drag_move.connect(self._on_drag_move)
-        self.uc_preview.element_drag_end.connect(lambda: None)
+        self.uc_preview.element_drag_end.connect(self._on_drag_end_noop)
         self.uc_preview.element_nudge.connect(self._on_nudge)
         self._drag_origin_x = 0
         self._drag_origin_y = 0
@@ -1144,12 +1198,10 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting.delegate.connect(self._on_settings_delegate)
         self.uc_theme_setting.add_panel.hardware_requested.connect(
             self._on_overlay_add_requested)
-        self.uc_theme_setting.add_panel.element_added.connect(
-            lambda _: self.uc_activity_sidebar.setVisible(False))
+        self.uc_theme_setting.add_panel.element_added.connect(self._on_element_added)
         self.uc_theme_setting.overlay_grid.toggle_changed.connect(self._on_overlay_toggle)
         self.uc_theme_setting.overlay_grid.element_selected.connect(self._on_element_flash)
-        self.uc_theme_setting.screencast_params_changed.connect(
-            lambda x, y, w, h: self._screencast.set_params(x, y, w, h))
+        self.uc_theme_setting.screencast_params_changed.connect(self._screencast.set_params)
         self.uc_theme_setting.screencast_panel.border_toggled.connect(self._screencast.set_border)
         self.uc_theme_setting.screencast_panel.audio_toggled.connect(self._screencast.set_audio_enabled)
         self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
@@ -1798,9 +1850,12 @@ class TRCCApp(QMainWindow):
         from .eyedropper import EyedropperOverlay
         self._eyedropper_overlay = EyedropperOverlay()
         self._eyedropper_overlay.color_picked.connect(self._eyedropper_pick)
-        self._eyedropper_overlay.cancelled.connect(
-            lambda: setattr(self, '_eyedropper_overlay', None))
+        self._eyedropper_overlay.cancelled.connect(self._eyedropper_cancelled)
         self._eyedropper_overlay.show()
+
+    def _eyedropper_cancelled(self) -> None:
+        """Eyedropper closed without a pick — release the overlay reference."""
+        self._eyedropper_overlay = None
 
     def _eyedropper_pick(self, r: int, g: int, b: int) -> None:
         self._eyedropper_overlay = None

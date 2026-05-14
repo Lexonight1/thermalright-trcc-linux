@@ -56,15 +56,21 @@ class KvmChannelState:
     b: int = 0
 
 
+def _default_channels() -> list[KvmChannelState]:
+    """One ``KvmChannelState`` per controller channel — default factory."""
+    return [KvmChannelState() for _ in range(NUM_CHANNELS)]
+
+
+def _default_channel_enables() -> list[int]:
+    """Copy of the firmware's default channel-enable mask — default factory."""
+    return list(DEFAULT_CHANNEL_ENABLES)
+
+
 @dataclass
 class KvmLedState:
     """Complete KVM LED controller state (10 channels)."""
-    channels: list[KvmChannelState] = field(default_factory=lambda: [
-        KvmChannelState() for _ in range(NUM_CHANNELS)
-    ])
-    channel_enables: list[int] = field(
-        default_factory=lambda: list(DEFAULT_CHANNEL_ENABLES)
-    )
+    channels: list[KvmChannelState] = field(default_factory=_default_channels)
+    channel_enables: list[int] = field(default_factory=_default_channel_enables)
 
 
 # =========================================================================

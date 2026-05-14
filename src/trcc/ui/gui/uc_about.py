@@ -205,9 +205,9 @@ class UCAbout(BasePanel):
 
         # === Temperature unit radio buttons ===
         self.celsius_btn = self._make_checkbox(*Layout.ABOUT_CELSIUS, checked=True)
-        self.celsius_btn.clicked.connect(lambda: self._set_temp('C'))
+        self.celsius_btn.clicked.connect(self._on_celsius_clicked)
         self.fahrenheit_btn = self._make_checkbox(*Layout.ABOUT_FAHRENHEIT)
-        self.fahrenheit_btn.clicked.connect(lambda: self._set_temp('F'))
+        self.fahrenheit_btn.clicked.connect(self._on_fahrenheit_clicked)
 
         # === HDD info checkbox (buttonYP) ===
         self.hdd_btn = self._make_checkbox(*Layout.ABOUT_HDD, checked=self._read_hdd)
@@ -230,10 +230,10 @@ class UCAbout(BasePanel):
         # Visual-only — always multi-threaded on Linux (Qt signals handle threading)
         self.single_thread_btn = self._make_checkbox(
             *Layout.ABOUT_SINGLE_THREAD, checked=False)
-        self.single_thread_btn.clicked.connect(lambda: self._set_thread_mode(False))
+        self.single_thread_btn.clicked.connect(self._on_single_thread_clicked)
         self.multi_thread_btn = self._make_checkbox(
             *Layout.ABOUT_MULTI_THREAD, checked=True)
-        self.multi_thread_btn.clicked.connect(lambda: self._set_thread_mode(True))
+        self.multi_thread_btn.clicked.connect(self._on_multi_thread_clicked)
 
         # Website button (invisible, over background text area)
         self.website_btn = QPushButton(self)
@@ -242,8 +242,7 @@ class UCAbout(BasePanel):
         self.website_btn.setStyleSheet(Styles.FLAT_BUTTON)
         self.website_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.website_btn.setToolTip("Open thermalright.com")
-        self.website_btn.clicked.connect(
-            lambda: webbrowser.open('https://www.thermalright.com'))
+        self.website_btn.clicked.connect(self._on_website_clicked)
 
         # Version label
         from trcc.__version__ import __version__
@@ -285,8 +284,7 @@ class UCAbout(BasePanel):
 
         # Check GitHub for updates in background, then every hour
         self._update_timer = QTimer(self)
-        self._update_timer.timeout.connect(
-            lambda: Thread(target=self._check_for_update, daemon=True).start())
+        self._update_timer.timeout.connect(self._start_update_check)
         self._update_timer.start(60 * 60 * 1000)  # 1 hour
         Thread(target=self._check_for_update, daemon=True).start()
 
@@ -347,6 +345,19 @@ class UCAbout(BasePanel):
         self.invoke_delegate(self.CMD_STARTUP, self._autostart)
 
     # --- Temperature unit ---
+
+    def _on_celsius_clicked(self) -> None:
+        self._set_temp('C')
+
+    def _on_fahrenheit_clicked(self) -> None:
+        self._set_temp('F')
+
+    def _on_website_clicked(self) -> None:
+        webbrowser.open('https://www.thermalright.com')
+
+    def _start_update_check(self) -> None:
+        """Kick a background update check — slot fired by the 1-hour QTimer."""
+        Thread(target=self._check_for_update, daemon=True).start()
 
     def _set_temp(self, mode: str):
         """Toggle temperature unit (radio behavior)."""
@@ -430,6 +441,12 @@ class UCAbout(BasePanel):
             self.gpu_changed.emit(gpu_key)
 
     # --- Running Mode ---
+
+    def _on_single_thread_clicked(self) -> None:
+        self._set_thread_mode(False)
+
+    def _on_multi_thread_clicked(self) -> None:
+        self._set_thread_mode(True)
 
     def _set_thread_mode(self, multi: bool):
         """Toggle running mode radio buttons (visual only, not wired)."""

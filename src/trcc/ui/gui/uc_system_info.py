@@ -137,7 +137,8 @@ class SystemInfoPanel(QWidget):
                     "QPushButton:hover { color: white; }"
                 )
             row_idx = i
-            sel.clicked.connect(lambda checked, r=row_idx: self.sensor_select_requested.emit(self, r))
+            sel.setProperty('row_idx', row_idx)
+            sel.clicked.connect(self._on_selector_clicked)
             self._selector_btns.append(sel)
 
         # Delete button for custom panels (category_id=0)
@@ -151,7 +152,7 @@ class SystemInfoPanel(QWidget):
             )
             self._del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._del_btn.setToolTip("Delete panel")
-            self._del_btn.clicked.connect(lambda: self.delete_requested.emit(self))
+            self._del_btn.clicked.connect(self._on_delete_clicked)
 
             # Editable name for custom panels
             self._name_edit = QLineEdit(config.name, self)
@@ -162,9 +163,24 @@ class SystemInfoPanel(QWidget):
                 "border-bottom: 1px solid #444; color: #C0C0C0; font-size: 10px; }"
                 "QLineEdit:focus { border-bottom: 1px solid #9375FF; }"
             )
-            self._name_edit.editingFinished.connect(
-                lambda: self.name_changed.emit(self, self._name_edit.text())
-            )
+            self._name_edit.editingFinished.connect(self._on_name_edited)
+
+    def _on_selector_clicked(self, *_qt_args) -> None:
+        """Selector-button slot — reads row_idx from sender's property."""
+        sender = self.sender()
+        if sender is None:
+            return
+        row_idx = sender.property('row_idx')
+        if row_idx is not None:
+            self.sensor_select_requested.emit(self, row_idx)
+
+    def _on_delete_clicked(self) -> None:
+        """Delete-button slot — re-emit delete_requested with this panel."""
+        self.delete_requested.emit(self)
+
+    def _on_name_edited(self) -> None:
+        """editingFinished slot — emit name_changed with the new text."""
+        self.name_changed.emit(self, self._name_edit.text())
 
     def update_values(self, sensor_readings: dict[str, float]):
         """Update displayed values from sensor_id → value mapping."""
@@ -342,7 +358,7 @@ class UCSystemInfo(QWidget):
                 )
             self._add_btn.setGeometry(add_x, add_y, PANEL_W, PANEL_H)
             self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._add_btn.mousePressEvent = lambda e: self._on_add_clicked()  # type: ignore[assignment]
+            self._add_btn.mousePressEvent = self._handle_add_btn_press  # type: ignore[assignment]
             self._add_btn.show()
 
             # Fill remaining slots with empty placeholders
@@ -404,7 +420,7 @@ class UCSystemInfo(QWidget):
             )
         self._page_prev.setCursor(Qt.CursorShape.PointingHandCursor)
         self._page_prev.setToolTip("Previous page")
-        self._page_prev.clicked.connect(lambda: self._change_page(-1))
+        self._page_prev.clicked.connect(self._on_prev_page)
         self._page_prev.setEnabled(self._page > 0)
         self._page_prev.show()
 
@@ -426,7 +442,7 @@ class UCSystemInfo(QWidget):
             )
         self._page_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._page_next.setToolTip("Next page")
-        self._page_next.clicked.connect(lambda: self._change_page(1))
+        self._page_next.clicked.connect(self._on_next_page)
         self._page_next.setEnabled(self._page < total_pages - 1)
         self._page_next.show()
 
@@ -441,6 +457,12 @@ class UCSystemInfo(QWidget):
         """Navigate pages (-1 = prev, +1 = next)."""
         self._page += direction
         self._rebuild_grid()
+
+    def _on_prev_page(self) -> None:
+        self._change_page(-1)
+
+    def _on_next_page(self) -> None:
+        self._change_page(1)
 
     def _on_panel_clicked(self, panel: SystemInfoPanel):
         """Select a panel (highlight with white border)."""
@@ -475,6 +497,10 @@ class UCSystemInfo(QWidget):
                     )
                     panel.update_binding(row, panel.config.sensors[row])
                     self._config.save()
+
+    def _handle_add_btn_press(self, _event) -> None:
+        """mousePressEvent handler for the add-panel button — drops the event arg."""
+        self._on_add_clicked()
 
     def _on_add_clicked(self):
         """Add a new custom panel."""

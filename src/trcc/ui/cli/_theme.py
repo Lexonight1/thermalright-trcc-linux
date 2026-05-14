@@ -6,9 +6,15 @@ import logging
 import typer
 
 from trcc._boot import trcc
+from trcc.core.models import HardwareMetrics
 from trcc.ui.cli import _cli_handler
 
 log = logging.getLogger(__name__)
+
+
+def _current_metrics() -> HardwareMetrics:
+    """Supply fresh metrics to overlay loops — named callable, not a lambda."""
+    return trcc().os.metrics
 
 
 def _get_device_cfg() -> dict | None:
@@ -122,8 +128,7 @@ def load_theme(builder, name, *, device=None, preview=False):
         if overlay_config:
             import trcc.ui.cli as _cli_mod
             _cli_mod._ensure_system(builder)
-            from trcc._boot import trcc as _trcc
-            metrics_fn = lambda: _trcc().os.metrics  # noqa: E731
+            metrics_fn = _current_metrics
 
         # Wire mask from theme dir
         mask_path = None
@@ -170,8 +175,7 @@ def load_theme(builder, name, *, device=None, preview=False):
             try:
                 import trcc.ui.cli as _cli_mod
                 _cli_mod._ensure_system(builder)
-                from trcc._boot import trcc as _trcc
-                metrics_fn = lambda: _trcc().os.metrics  # noqa: E731
+                metrics_fn = _current_metrics
                 def _preview_frame(img):
                     print(ImageService.to_ansi_cursor_home(img), flush=True)
 

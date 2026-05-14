@@ -66,10 +66,20 @@ class UCThemeMask(DownloadableThemeBrowser):
 
         for cat_id, x, y, w, h in Layout.WEB_CATEGORIES:
             btn = self._make_filter_button(x, y, w, h, btn_normal, btn_active,
-                lambda checked, c=cat_id: self._set_category(c))
+                self._on_category_clicked)
+            btn.setProperty('cat_id', cat_id)
             self.cat_buttons[cat_id] = btn
 
         self.cat_buttons['all'].setChecked(True)
+
+    def _on_category_clicked(self, *_qt_args) -> None:
+        """Single category-button slot — reads the cat_id from sender's property."""
+        sender = self.sender()
+        if sender is None:
+            return
+        cat_id = sender.property('cat_id')
+        if cat_id is not None:
+            self._set_category(cat_id)
 
     def _set_category(self, category: str):
         """Filter masks by category suffix (a-e, y) or show all."""
@@ -85,8 +95,17 @@ class UCThemeMask(DownloadableThemeBrowser):
         if item_info.is_custom:
             thumb.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             thumb.customContextMenuRequested.connect(
-                lambda pos, info=item_info: self._show_custom_context_menu(thumb, info))
+                self._on_custom_context_menu_requested)
         return thumb
+
+    def _on_custom_context_menu_requested(self, _pos) -> None:
+        """Context-menu slot — reads thumb + item_info from sender."""
+        thumb = self.sender()
+        if not isinstance(thumb, MaskThumbnail):
+            return
+        info = getattr(thumb, 'mask_info', None) or getattr(thumb, 'item_info', None)
+        if info is not None:
+            self._show_custom_context_menu(thumb, info)
 
     def _show_custom_context_menu(self, widget: MaskThumbnail, info: MaskItem):
         """Right-click menu for custom masks — delete option."""

@@ -52,13 +52,16 @@ class ThemeThumbnail(BaseThumbnail):
             )
             self._delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._delete_btn.setToolTip("Delete theme")
-            self._delete_btn.clicked.connect(
-                lambda: self.delete_clicked.emit(self.item_info))
+            self._delete_btn.clicked.connect(self._on_delete_clicked)
             self._delete_btn.raise_()
             self._delete_btn.show()
         elif not deletable and self._delete_btn is not None:
             self._delete_btn.deleteLater()
             self._delete_btn = None
+
+    def _on_delete_clicked(self) -> None:
+        """Delete button slot — re-emit with this thumbnail's item info."""
+        self.delete_clicked.emit(self.item_info)
 
     def set_slideshow_badge(self, number: int):
         """Show slideshow badge. number=0 means unselected, 1-6 = position."""
@@ -145,7 +148,8 @@ class UCThemeLocal(BaseThemeBrowser):
         ]
         for (x, y, w, h), mode in configs:
             btn = self._make_filter_button(x, y, w, h, btn_normal, btn_active,
-                lambda checked, m=mode: self._set_filter(m))
+                self._on_filter_clicked)
+            btn.setProperty('filter_mode', mode)
             self._filter_buttons.append(btn)
 
         self._filter_buttons[0].setChecked(True)
@@ -199,6 +203,15 @@ class UCThemeLocal(BaseThemeBrowser):
     def set_theme_directory(self, path):
         self.theme_directory = Path(path) if path else None
         self.load_themes()
+
+    def _on_filter_clicked(self, *_qt_args):
+        """Filter-button slot — reads filter mode from sender's property."""
+        sender = self.sender()
+        if sender is None:
+            return
+        mode = sender.property('filter_mode')
+        if mode is not None:
+            self._set_filter(mode)
 
     def _set_filter(self, mode):
         self.filter_mode = mode

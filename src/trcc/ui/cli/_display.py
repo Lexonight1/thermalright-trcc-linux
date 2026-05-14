@@ -13,10 +13,16 @@ import os
 import typer
 
 from trcc._boot import trcc
+from trcc.core.models import HardwareMetrics
 from trcc.core.models import parse_hex_color as _parse_hex
 from trcc.ui.cli import _cli_handler
 
 log = logging.getLogger(__name__)
+
+
+def _current_metrics() -> HardwareMetrics:
+    """Supply fresh metrics to overlay loops — named callable, not a lambda."""
+    return trcc().os.metrics
 
 
 def _emit(result) -> int:
@@ -147,7 +153,7 @@ def play_video(builder=None, video_path=None, *, device=None, loop=True, duratio
             except Exception as e:
                 # Best-effort metrics warmup; play continues with stale defaults.
                 log.debug("_ensure_system warmup failed for play: %s", e)
-            metrics_fn = lambda: trcc().os.metrics  # noqa: E731
+            metrics_fn = _current_metrics
 
         app = trcc()
         snap = app.lcd.snapshot(lcd)

@@ -10,6 +10,7 @@ import logging
 import time
 import tracemalloc
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -17,6 +18,10 @@ from ..core.models import FBL_PROFILES, HardwareMetrics, LEDMode, LEDState, Play
 from ..core.perf import PerfReport
 
 log = logging.getLogger(__name__)
+
+
+def _noop() -> None:
+    """No-op setup hook for ``_mem_growth`` — strong-ref alternative to ``lambda: None``."""
 
 
 def _cpu_per_iter(fn: Callable[[], Any], iterations: int = 100) -> float:
@@ -71,23 +76,24 @@ def run_benchmarks() -> PerfReport:
     # ── CPU benchmarks ────────────────────────────────────────────
 
     # Image operations
-    avg = _cpu_per_iter(lambda: ImageService.resize(_surface(640, 640), _w320, _h320))
+    big_src = _surface(640, 640)
+    avg = _cpu_per_iter(partial(ImageService.resize, big_src, _w320, _h320))
     report.record_cpu(f"resize 640->{_w320}", avg, 0.003)
 
     img = _surface(_w320, _h320, (100, 100, 100))
-    avg = _cpu_per_iter(lambda: ImageService.apply_brightness(img, 50))
+    avg = _cpu_per_iter(partial(ImageService.apply_brightness, img, 50))
     report.record_cpu("apply_brightness 50%", avg, 0.002)
 
-    avg = _cpu_per_iter(lambda: ImageService.apply_rotation(img, 90))
+    avg = _cpu_per_iter(partial(ImageService.apply_rotation, img, 90))
     report.record_cpu("apply_rotation 90deg", avg, 0.003)
 
     # RGB565 encoding
     s320 = _surface(_w320, _h320, (255, 128, 0))
-    avg = _cpu_per_iter(lambda: r.encode_rgb565(s320, '>'))
+    avg = _cpu_per_iter(partial(r.encode_rgb565, s320, '>'))
     report.record_cpu(f"encode_rgb565 {_w320}x{_h320}", avg, 0.005)
 
     s480 = _surface(_w480, _h480, (0, 128, 255))
-    avg = _cpu_per_iter(lambda: r.encode_rgb565(s480, '>'))
+    avg = _cpu_per_iter(partial(r.encode_rgb565, s480, '>'))
     report.record_cpu(f"encode_rgb565 {_w480}x{_h480}", avg, 0.010)
 
     # Overlay rendering
@@ -96,7 +102,7 @@ def run_benchmarks() -> PerfReport:
     overlay.set_background(bg)
     overlay.enabled = True
 
-    avg = _cpu_per_iter(lambda: overlay.render(bg))
+    avg = _cpu_per_iter(partial(overlay.render, bg))
     report.record_cpu("overlay render (no config)", avg, 0.0005)
 
     overlay.config = {
@@ -106,13 +112,13 @@ def run_benchmarks() -> PerfReport:
                      'text': '70\u00b0C'},
     }
     metrics = HardwareMetrics(cpu_temp=65.0, gpu_temp=70.0)
-    avg = _cpu_per_iter(lambda: overlay.render(bg, metrics=metrics))
+    avg = _cpu_per_iter(partial(overlay.render, bg, metrics=metrics))
     report.record_cpu("overlay render (2 elements)", avg, 0.005)
 
     # Cache hit
     overlay.render(bg, metrics=metrics)  # prime
     avg = _cpu_per_iter(
-        lambda: overlay.render(bg, metrics=metrics), iterations=500)
+        partial(overlay.render, bg, metrics=metrics), iterations=500)
     report.record_cpu("overlay cache hit", avg, 0.0001)
 
     # DisplayService pipeline
@@ -128,18 +134,18 @@ def run_benchmarks() -> PerfReport:
     dsvc.current_image = dbg
     dsvc._clean_background = dbg
 
-    avg = _cpu_per_iter(lambda: dsvc._render_and_process())
+    avg = _cpu_per_iter(dsvc._render_and_process)
     report.record_cpu("render_and_process (plain)", avg, 0.003)
 
     dsvc.overlay.enabled = True
     dsvc.overlay.set_background(dbg)
-    avg = _cpu_per_iter(lambda: dsvc._render_and_process())
+    avg = _cpu_per_iter(dsvc._render_and_process)
     report.record_cpu("render_and_process + overlay", avg, 0.005)
 
     dsvc.overlay.enabled = False
     dsvc.brightness = 70
     dsvc.rotation = 90
-    avg = _cpu_per_iter(lambda: dsvc._render_and_process())
+    avg = _cpu_per_iter(dsvc._render_and_process)
     report.record_cpu("render_and_process + adjust", avg, 0.005)
 
     # Video tick
@@ -153,7 +159,7 @@ def run_benchmarks() -> PerfReport:
     dsvc2.media._state.total_frames = 10
     dsvc2.media._state.fps = 30
     dsvc2.media._state.state = PlaybackState.PLAYING
-    avg = _cpu_per_iter(lambda: dsvc2.video_tick())
+    avg = _cpu_per_iter(dsvc2.video_tick)
     report.record_cpu("video_tick", avg, 0.003)
 
     # LED tick
@@ -182,7 +188,7 @@ def run_benchmarks() -> PerfReport:
     state128.led_count = 128
     state128.mode = LEDMode.BREATHING
     svc128 = LEDService(state=state128)
-    avg = _cpu_per_iter(lambda: svc128.tick(), iterations=500)
+    avg = _cpu_per_iter(svc128.tick, iterations=500)
     report.record_cpu("LED tick breathing (128 seg)", avg, 0.001)
 
     # ── Memory benchmarks ─────────────────────────────────────────
@@ -208,7 +214,7 @@ def run_benchmarks() -> PerfReport:
     )
     dsvc3.current_image = dbg
     dsvc3._clean_background = dbg
-    growth = _mem_growth(lambda: None, dsvc3._render_and_process, 50)
+    growth = _mem_growth(_noop, dsvc3._render_and_process, 50)
     report.record_mem("display render x50", growth, 2_000_000)
 
     # LED tick x500
@@ -220,7 +226,7 @@ def run_benchmarks() -> PerfReport:
     led_static.led_count = 64
     led_static.mode = LEDMode.STATIC
     led_svc = LEDService(state=led_static)
-    growth = _mem_growth(lambda: None, led_svc.tick, 500)
+    growth = _mem_growth(_noop, led_svc.tick, 500)
     report.record_mem("LED static tick x500", growth, 500_000)
 
     # LED breathing tick x200
@@ -232,7 +238,7 @@ def run_benchmarks() -> PerfReport:
     led_breath.led_count = 64
     led_breath.mode = LEDMode.BREATHING
     led_bsvc = LEDService(state=led_breath)
-    growth = _mem_growth(lambda: None, led_bsvc.tick, 200)
+    growth = _mem_growth(_noop, led_bsvc.tick, 200)
     report.record_mem("LED breathing tick x200", growth, 500_000)
 
     # ── Scaling benchmarks ────────────────────────────────────────
@@ -267,7 +273,7 @@ def run_benchmarks() -> PerfReport:
     }
     overlay2._cache_key = None
     overlay2._overlay_cache = None
-    t2 = _cpu_per_iter(lambda: overlay2.render(bg, metrics=m), iterations=50)
+    t2 = _cpu_per_iter(partial(overlay2.render, bg, metrics=m), iterations=50)
 
     overlay2.config = {
         f'el_{i}': {'x': 10, 'y': 10 + i * 30, 'color': '#ffffff',
@@ -276,7 +282,7 @@ def run_benchmarks() -> PerfReport:
     }
     overlay2._cache_key = None
     overlay2._overlay_cache = None
-    t6 = _cpu_per_iter(lambda: overlay2.render(bg, metrics=m), iterations=50)
+    t6 = _cpu_per_iter(partial(overlay2.render, bg, metrics=m), iterations=50)
 
     ratio = t6 / max(t2, 1e-9)
     report.record_scale("overlay 6/2 element ratio", ratio, 6.0)

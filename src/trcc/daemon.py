@@ -188,6 +188,12 @@ def _build_trcc() -> Any:
 _HEARTBEAT_TIMER: Any = None
 
 
+def _heartbeat_tick() -> None:
+    """No-op timer slot — every tick transitions through Python so the
+    interpreter runs pending signal handlers (SIGTERM/SIGINT) on a
+    fully-idle daemon.  Named slot, not an anonymous lambda."""
+
+
 def _install_signal_handlers(qapp: Any, server: Any) -> None:
     """SIGTERM / SIGINT shut the server cleanly and break the event loop.
 
@@ -216,7 +222,7 @@ def _install_signal_handlers(qapp: Any, server: Any) -> None:
 
     timer = QTimer()
     timer.setInterval(100)
-    timer.timeout.connect(lambda: None)
+    timer.timeout.connect(_heartbeat_tick)
     timer.start()
     _HEARTBEAT_TIMER = timer  # keep alive past this function
 

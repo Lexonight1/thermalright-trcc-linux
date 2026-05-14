@@ -604,7 +604,7 @@ class UCLedControl(QWidget):
         self._btn_mon.setFlat(True)
         self._btn_mon.setStyleSheet(_cb_style)
         self._btn_mon.setToolTip("Week starts on Monday")
-        self._btn_mon.clicked.connect(lambda: self._set_week_start(False))
+        self._btn_mon.clicked.connect(self._on_mon_clicked)
         self._btn_mon.setVisible(False)
 
         # ============================================================
@@ -644,7 +644,7 @@ class UCLedControl(QWidget):
         self._btn_celsius.setFlat(True)
         self._btn_celsius.setStyleSheet(_cb_style)
         self._btn_celsius.setToolTip("Celsius")
-        self._btn_celsius.clicked.connect(lambda: self._set_temp_unit_btn(False))
+        self._btn_celsius.clicked.connect(self._on_celsius_clicked)
         self._btn_celsius.setVisible(False)
 
         self._btn_fahrenheit = QPushButton(self)
@@ -654,7 +654,7 @@ class UCLedControl(QWidget):
         self._btn_fahrenheit.setFlat(True)
         self._btn_fahrenheit.setStyleSheet(_cb_style)
         self._btn_fahrenheit.setToolTip("Fahrenheit")
-        self._btn_fahrenheit.clicked.connect(lambda: self._set_temp_unit_btn(True))
+        self._btn_fahrenheit.clicked.connect(self._on_fahrenheit_clicked)
         self._btn_fahrenheit.setVisible(False)
 
         # ============================================================
@@ -1144,6 +1144,15 @@ class UCLedControl(QWidget):
         self._btn_sun.setChecked(is_sunday)
         self._btn_mon.setChecked(not is_sunday)
         self.week_start_changed.emit(is_sunday)
+
+    def _on_mon_clicked(self) -> None:
+        self._set_week_start(False)
+
+    def _on_celsius_clicked(self) -> None:
+        self._set_temp_unit_btn(False)
+
+    def _on_fahrenheit_clicked(self) -> None:
+        self._set_temp_unit_btn(True)
 
     def _set_temp_unit_btn(self, is_fahrenheit: bool):
         """Handle °C/°F toggle button click."""

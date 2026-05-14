@@ -707,7 +707,22 @@ class LedProtocolFactory(ProtocolFactory):
 # Bridge the new factory subclasses into the orchestration class's registry —
 # keeps every legacy caller (``DeviceProtocolFactory.create_protocol`` /
 # ``.get_protocol``) working without rewrites.
+
+
+def _legacy_bridge(factory_cls: type[ProtocolFactory]) -> Callable[['DeviceInfo'], DeviceProtocol]:
+    """Adapt a ``ProtocolFactory`` subclass into the legacy 1-arg builder.
+
+    The legacy registry expects ``builder(info) -> DeviceProtocol``; the
+    new factory subclasses expose ``instance.make(info)``.  This wraps
+    one instance call in a named closure — no anonymous curried lambda.
+    """
+    factory_instance = factory_cls()
+    def build(info: 'DeviceInfo') -> DeviceProtocol:
+        return factory_instance.make(info)
+    return build
+
+
 DeviceProtocolFactory._PROTOCOL_REGISTRY = {
-    name: (lambda fc: lambda di: fc().make(di))(factory_cls)
+    name: _legacy_bridge(factory_cls)
     for name, factory_cls in ProtocolFactory._registry.items()
 }
