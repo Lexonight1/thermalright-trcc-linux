@@ -147,6 +147,37 @@ def _result_from_dict(data: dict[str, Any]) -> OpResult:
     )
 
 
+def _metrics_to_dict(metrics: Any) -> dict[str, Any]:
+    """Serialize a :class:`HardwareMetrics` for the IPC wire.
+
+    ``dataclasses.asdict`` handles the typed fields; the private
+    ``_populated`` set and ``readings`` dict are sent verbatim — sets
+    serialize to lists, reconstructed on the client.
+    """
+    body = dataclasses.asdict(metrics)
+    # _populated is a set; JSON needs a list.  asdict already gives
+    # us a list for set fields, but be explicit for read clarity.
+    body['_populated'] = sorted(metrics._populated)
+    body['readings'] = dict(metrics.readings)
+    return body
+
+
+def _metrics_from_dict(body: dict[str, Any]) -> Any:
+    """Reconstruct a :class:`HardwareMetrics` from the IPC wire dict."""
+    from .core.models import HardwareMetrics
+    # Pull the side-channel fields off, then feed the remaining keys to
+    # the dataclass constructor.  Unknown keys (forward-compat) are
+    # dropped by filtering against the dataclass fields.
+    populated: set[str] = set(body.pop('_populated', ()))
+    readings: dict[str, float] = dict(body.pop('readings', {}))
+    valid = {f.name for f in dataclasses.fields(HardwareMetrics)}
+    init_kwargs = {k: v for k, v in body.items() if k in valid}
+    m = HardwareMetrics(**init_kwargs)
+    m._populated = populated
+    m.readings = readings
+    return m
+
+
 # =========================================================================
 # Server (runs in the daemon process, Qt event loop)
 # =========================================================================
@@ -494,6 +525,14 @@ class IPCServer:
                 return {"success": False,
                         "error": f"{type(e).__name__}: {e}"}
             return _result_to_dict(result)
+        if method == "metrics":
+            try:
+                metrics = self._trcc.os.metrics
+            except Exception as e:
+                log.exception("_meta.metrics failed")
+                return {"success": False,
+                        "error": f"{type(e).__name__}: {e}"}
+            return {"success": True, "data": _metrics_to_dict(metrics)}
         if method == "status":
             return self._meta_status()
         if method == "lcd_descriptors":

@@ -118,6 +118,37 @@ class ControlCenterFacadeProxy(_FacadeProxy):
         super().__init__('control_center', socket_path, timeout)
 
 
+class OSFacadeProxy:
+    """Proxy for ``Trcc.os`` — exposes :attr:`metrics` via IPC.
+
+    Unlike the other facade proxies, ``os`` returns rich domain objects
+    (``HardwareMetrics``) rather than ``OpResult``-shaped responses, so
+    it can't share :class:`_FacadeProxy`'s generic dispatch.  The
+    metrics access goes through the daemon's ``_meta.metrics`` route and
+    reconstructs the dataclass on the client.
+    """
+
+    __slots__ = ('_socket_path', '_timeout')
+
+    def __init__(self, socket_path: Path | None = None,
+                 timeout: float = 10.0) -> None:
+        self._socket_path = socket_path
+        self._timeout = timeout
+
+    @property
+    def metrics(self) -> Any:
+        """Fetch a fresh :class:`HardwareMetrics` from the daemon."""
+        from ..ipc import _metrics_from_dict, send_manifold_request
+        data = send_manifold_request(
+            "_meta", "metrics", (), {},
+            socket_path=self._socket_path, timeout=self._timeout,
+        )
+        if not data.get("success", False):
+            raise RuntimeError(
+                f"OSFacadeProxy.metrics: daemon error: {data.get('error', '?')}")
+        return _metrics_from_dict(data["data"])
+
+
 # =============================================================================
 # EventBusProxy — subscribe over IPC. R5 wires the long-lived connection.
 # =============================================================================
@@ -324,7 +355,8 @@ class TrccProxy:
     have it work as soon as the daemon binds.
     """
 
-    __slots__ = ('_socket_path', '_timeout', 'control_center', 'events', 'lcd', 'led')
+    __slots__ = ('_socket_path', '_timeout', 'control_center', 'events',
+                 'lcd', 'led', 'os')
 
     def __init__(self, *, socket_path: Path | None = None,
                  timeout: float = 10.0,
@@ -341,6 +373,7 @@ class TrccProxy:
         self.lcd = LCDFacadeProxy(socket_path, timeout)
         self.led = LEDFacadeProxy(socket_path, timeout)
         self.control_center = ControlCenterFacadeProxy(socket_path, timeout)
+        self.os = OSFacadeProxy(socket_path, timeout)
         self.events = EventBusProxy(socket_path, timeout, renderer=renderer)
 
     # ── Trcc-level methods (proxied through the `_meta` role) ───────────────
