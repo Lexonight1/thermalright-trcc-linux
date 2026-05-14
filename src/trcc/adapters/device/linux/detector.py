@@ -58,7 +58,10 @@ def _resolve_vid_pid(sysfs_base: str) -> tuple[int, int] | None:
                 return v, p
     except (OSError, ValueError):
         pass
-    log.warning("sysfs VID/PID walk failed for %s — skipping device", sysfs_base)
+    # Common for non-USB SCSI generic devices (CD-ROMs, virtual disks) —
+    # they have no idVendor/idProduct in their parent chain.  Not a defect;
+    # we just skip those devices.  Debug-level so it doesn't trip user reports.
+    log.debug("sysfs %s has no USB parent — skipping (non-USB SCSI device)", sysfs_base)
     return None
 
 

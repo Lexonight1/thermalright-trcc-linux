@@ -42,7 +42,11 @@ class ScsiProtocol(LazyTransportProtocol):
     def _open_transport(self) -> Any:
         fn = DeviceProtocolFactory._scsi_transport_fn
         if fn is None:
-            log.error("SCSI transport factory not injected")
+            # Pre-boot ScsiProtocol instance (created before the
+            # composition root finished wiring) — graceful no-op; the
+            # caller bails on transport=None and a later call after
+            # boot completes succeeds.  Debug-level: not a defect.
+            log.debug("SCSI transport factory not yet wired — skipping open")
             return None
         log.debug("Opening SCSI transport: %s%s",
                   self._path,
