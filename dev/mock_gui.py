@@ -124,7 +124,7 @@ def main() -> None:
         Topic.DEVICE_LIST,
         tuple(chain(t.lcd_devices, t.led_devices)),
     )
-    t.start_metrics_loop()
+    # Metrics loop is started by Trcc.discover() — no explicit kick-off needed.
 
     # ── Run ──────────────────────────────────────────────────────────────
     signal.signal(signal.SIGINT, lambda *_: qapp.quit())

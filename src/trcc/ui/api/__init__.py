@@ -447,22 +447,6 @@ def stop_screencast() -> None:
     _screencast_params = None
 
 
-# ── LED keepalive loop (background thread for animated modes) ─────────
-
-def ensure_metrics_loop() -> None:
-    """Ensure the Trcc metrics loop is running — ticks all devices.
-
-    Called by API endpoints that need continuous device updates (animated
-    LED, overlay, keepalive). The core loop ticks all devices at 50ms
-    and polls sensors at settings.refresh_interval. No-op if already running.
-    """
-    from trcc._boot import trcc
-    t = trcc()
-    if t._metrics_thread and t._metrics_thread.is_alive():
-        return
-    t.start_metrics_loop()
-
-
 # ── Static file mounts (resolution-aware, remounted on device select) ─
 
 _mounted_routes: list[str] = []  # Track mounted paths for remount

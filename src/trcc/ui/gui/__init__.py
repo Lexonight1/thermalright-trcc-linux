@@ -137,7 +137,8 @@ def launch(verbosity: int = 0, decorated: bool = False,
         Topic.DEVICE_LIST,
         tuple(chain(t.lcd_devices, t.led_devices)),
     )
-    t.start_metrics_loop()
+    # Metrics loop already running — `Trcc.discover()` (called by the splash
+    # QThread) starts the OS-provided MetricsLoop after device enumeration.
 
     # ── IPC raise + signals ───────────────────────────────────────────────
     signal.signal(signal.SIGINT, lambda *_: qapp.quit())

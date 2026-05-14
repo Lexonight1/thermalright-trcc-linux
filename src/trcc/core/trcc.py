@@ -2,7 +2,9 @@
 
 The one class every UI talks to. Composes LCDCommands, LEDCommands,
 ControlCenterCommands, and an EventBus. Holds discovered devices.
-Owns the metrics tick loop, data extraction pipeline, and hotplug.
+Owns lifecycle for the injected `MetricsLoop` (started by `discover`,
+stopped by `cleanup` and OS suspend), data extraction pipeline, and
+hotplug.
 
 Parity rule: every method reachable from one UI is reachable from all
 three. No shortcuts, no UI-specific extensions. See TRCC_CONTRACT.md.
@@ -45,12 +47,9 @@ if TYPE_CHECKING:
     from .device.lcd import LCDDevice
     from .device.led import LEDDevice
     from .models import DetectedDevice, DeviceInfo
-    from .ports import EnsureDataFn, Platform, Renderer
+    from .ports import EnsureDataFn, MetricsLoop, Platform, Renderer
 
 log = logging.getLogger(__name__)
-
-# Animation tick rate — 50ms gives 20 FPS for video and overlay updates.
-_TICK_INTERVAL = 0.05
 
 
 class Trcc:
@@ -67,9 +66,8 @@ class Trcc:
     __slots__ = (
         '_current_metrics', '_download_pack_fn', '_ensure_data_fn',
         '_lcd_devices', '_led_devices', '_list_available_fn',
-        '_metrics_stop', '_metrics_thread', '_metrics_wake',
-        '_platform', '_renderer', '_settings', '_system_svc',
-        'control_center', 'events', 'lcd', 'led',
+        '_metrics_loop', '_platform', '_renderer', '_settings',
+        '_system_svc', 'control_center', 'events', 'lcd', 'led',
     )
 
     def __init__(
@@ -105,15 +103,17 @@ class Trcc:
         self._lcd_devices: DeviceRegistry[LCDDevice] = DeviceRegistry()
         self._led_devices: DeviceRegistry[LEDDevice] = DeviceRegistry()
 
-        self._metrics_thread: threading.Thread | None = None
-        self._metrics_stop: threading.Event = threading.Event()
-        self._metrics_wake: threading.Event = threading.Event()
-
         self.events = EventBus()
         self.lcd = LCDCommands(self._lcd_devices, self.events, self._settings)
         self.led = LEDCommands(self._led_devices, self.events)
         self.control_center = ControlCenterCommands(
             platform, self.events, self._settings)
+
+        # The OS produces the metrics loop — fourth factory in the chain
+        # (Platform / Protocol / Device / MetricsLoop). Default is a
+        # thread-based PollingMetricsLoop; per-OS overrides plug in native
+        # event sources (WMI / IOReport) without touching Trcc.
+        self._metrics_loop: MetricsLoop = platform.build_metrics_loop(self)
 
         # Subscribe to OS suspend/resume so a sleeping machine doesn't leave
         # devices with stale USB handles after wake (issue #144).  Platform
@@ -343,6 +343,15 @@ class Trcc:
         if ensure_data:
             self._ensure_data_blocking()
 
+        # Start the underlying command stream now that devices are connected.
+        # Idempotent — safe across suspend/resume and hotplug. RuntimeError
+        # when SystemService is missing is tolerated so headless / smoke
+        # paths still report a successful discover.
+        try:
+            self._metrics_loop.start()
+        except RuntimeError:
+            log.warning('discover: metrics loop not started — SystemService missing')
+
         lcd_infos = [d.device_info for d in self._lcd_devices]
         led_infos = [d.device_info for d in self._led_devices]
         return DiscoveryResult(
@@ -491,98 +500,33 @@ class Trcc:
         """Most recently polled metrics with temp unit applied, or None."""
         return self._current_metrics
 
-    def start_metrics_loop(self, interval: float | None = None) -> None:
-        """Start the 50ms tick + sensor-poll loop in a background thread.
+    def set_current_metrics(self, metrics: Any) -> None:
+        """Update the cached metrics snapshot.
 
-        Two cadences in one thread:
-          * **Tick** (every 50ms): advance device animation, send frames,
-            publish ``frame`` events.
-          * **Poll** (every ``settings.refresh_interval``): read sensors,
-            update every device, publish ``metrics``.
-
-        UIs (GUI / CLI / API) subscribe to events — none run their own
-        tick loops.
+        Called by the injected `MetricsLoop` after every poll iteration,
+        and by :meth:`apply_temp_unit` when the user switches °C ↔ °F.
+        Public so the loop port stays decoupled from Trcc's private state.
         """
-        if self._system_svc is None:
-            raise RuntimeError(
-                'Trcc.start_metrics_loop: SystemService not injected. '
-                'Pass system_svc=… at construction or call set_system_service().')
-        self.stop_metrics_loop()
-        self._metrics_stop.clear()
-        sys_svc = self._system_svc
+        self._current_metrics = metrics
 
-        # Capture settings at loop start — bound through DI when available,
-        # falls back to the global lazily otherwise (Phase 10A.3 partial).
-        _settings = self.settings
+    @property
+    def system_svc(self) -> SystemService | None:
+        """The injected sensor read-out service (or None if not yet set).
 
-        def _loop() -> None:
-            from .models import HardwareMetrics
-            tick_count = 0
-            while not self._metrics_stop.is_set():
-                try:
-                    poll_interval = (
-                        interval if interval is not None
-                        else max(1, _settings.refresh_interval)
-                    )
-                    metrics_every = max(1, int(poll_interval / _TICK_INTERVAL))
-                    if tick_count % metrics_every == 0:
-                        try:
-                            metrics = HardwareMetrics.with_temp_unit(
-                                sys_svc.all_metrics, _settings.temp_unit)
-                            self._current_metrics = metrics
-                            for device in tuple(chain(
-                                self._lcd_devices, self._led_devices,
-                            )):
-                                try:
-                                    device.update_metrics(metrics)
-                                except Exception:
-                                    log.exception('Metrics update error')
-                            self.events.publish(Topic.METRICS, metrics)
-                        except Exception:
-                            log.exception('Metrics poll error')
-
-                    for device in tuple(self._lcd_devices):
-                        path = getattr(device, 'device_path', '?') or '?'
-                        try:
-                            if (result := device.tick()) is not None:
-                                self.events.publish(Topic.FRAME, path, result)
-                            elif device.playing:
-                                device.update_video_cache_text(self._current_metrics)
-                        except Exception:
-                            log.exception('LCD tick error: %s', path)
-                    for device in tuple(self._led_devices):
-                        info = device.device_info
-                        path = (getattr(info, 'path', '?') if info else '?') or '?'
-                        try:
-                            if (result := device.tick()) is not None:
-                                self.events.publish(Topic.FRAME, path, result)
-                        except Exception:
-                            log.exception('LED tick error: %s', path)
-                except Exception:
-                    log.exception('Tick loop error')
-                tick_count += 1
-                self._metrics_wake.wait(_TICK_INTERVAL)
-                self._metrics_wake.clear()
-
-        self._metrics_thread = threading.Thread(
-            target=_loop, daemon=True, name='trcc-metrics')
-        self._metrics_thread.start()
-        log.debug('Metrics loop started (tick=%.0fms, poll=settings.refresh_interval)',
-                  _TICK_INTERVAL * 1000)
-
-    def stop_metrics_loop(self) -> None:
-        """Stop the background metrics loop. Idempotent."""
-        self._metrics_stop.set()
-        self._metrics_wake.set()
-        if self._metrics_thread and self._metrics_thread.is_alive():
-            self._metrics_thread.join(timeout=3)
-        self._metrics_thread = None
-        self._metrics_wake.clear()
-        self._metrics_stop.clear()
+        Exposed so the injected `MetricsLoop` can poll metrics without
+        reaching into Trcc's private state. Updated by
+        :meth:`set_system_service` for the test/dev fixture chain.
+        """
+        return self._system_svc
 
     def wake_metrics_loop(self) -> None:
-        """Wake the metrics loop immediately — used after settings changes."""
-        self._metrics_wake.set()
+        """Force an immediate poll iteration — used after settings changes.
+
+        Delegates to the injected `MetricsLoop.wake()`. Kept as a method
+        on Trcc so callers (control center commands) don't reach into
+        the loop directly.
+        """
+        self._metrics_loop.wake()
 
     # ── Cross-cutting OS operations (touch every device + the loop) ──
 
@@ -651,6 +595,7 @@ class Trcc:
         """
         from ..adapters.device.factory import DeviceProtocolFactory
         self.events.publish(Topic.SYSTEM_SUSPENDED)
+        self._metrics_loop.stop()
         for dev in self:
             try:
                 dev.cleanup()
@@ -680,7 +625,7 @@ class Trcc:
         close instead of reaching into ``DeviceProtocolFactory.close_all``.
         """
         from ..adapters.device.factory import DeviceProtocolFactory
-        self.stop_metrics_loop()
+        self._metrics_loop.stop()
         for dev in self:
             try:
                 dev.cleanup()

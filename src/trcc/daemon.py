@@ -2,7 +2,8 @@
 
 One process per user. Built once, lives until SIGTERM/SIGINT or the
 user runs ``trcc daemon stop``. Holds the singleton `Trcc`, discovers
-devices, runs the metrics loop (Phase 9 wires that in), and serves
+devices, runs the per-process `MetricsLoop` (started by
+`Trcc.discover()` after device enumeration — issue #148), and serves
 `Command` requests over the Unix socket through `IPCServer`.
 
 Singleton enforcement is socket-presence: the first invocation that

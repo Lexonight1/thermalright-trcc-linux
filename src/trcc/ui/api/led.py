@@ -28,10 +28,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/led", tags=["led"])
 
-_ANIMATED_MODES = frozenset({
-    'breathing', 'colorful', 'rainbow', 'temp_linked', 'load_linked',
-})
-
 
 def _result(result) -> dict:
     """Return asdict(result) or raise HTTPException on failure."""
@@ -51,13 +47,14 @@ def set_color(body: HexColorRequest, led: int = 0) -> dict:
 
 @router.post("/mode")
 def set_mode(body: ModeRequest, led: int = 0) -> dict:
-    """Set LED effect mode (static, breathing, colorful, rainbow, temp_linked, load_linked)."""
-    from trcc.ui.api import ensure_metrics_loop
+    """Set LED effect mode (static, breathing, colorful, rainbow, temp_linked, load_linked).
+
+    Animated modes drive the device from the per-process metrics loop
+    started by `Trcc.discover()`; no explicit start needed here.
+    """
     result = trcc().led.set_mode(led, body.mode)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error)
-    if body.mode.lower() in _ANIMATED_MODES:
-        ensure_metrics_loop()
     return asdict(result)
 
 

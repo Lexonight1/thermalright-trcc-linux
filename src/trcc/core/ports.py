@@ -444,6 +444,49 @@ class AutostartManager(ABC):
 
 
 # =========================================================================
+# Metrics Loop ABC — the underlying command stream that ticks every device
+# =========================================================================
+
+
+class MetricsLoop(ABC):
+    """Port: the per-process loop that drives device animation + sensor poll.
+
+    Owns two cadences in one mechanism:
+      * **Tick** — drive `device.tick()` for every connected device, publish
+        `Topic.FRAME` results. Fast (50ms on the polling default).
+      * **Poll** — read `system_svc.all_metrics`, push to every device's
+        `update_metrics()`, publish `Topic.METRICS`. Cadence = the user's
+        ``settings.refresh_interval``.
+
+    The mechanism is OS-discretionary. Default `PollingMetricsLoop` is a
+    thread-based polling loop used by every OS today. Future per-OS
+    overrides can switch to native event sources (WMI events on Windows,
+    IOReportSubscribe on macOS) without changing the contract.
+
+    Concrete implementations:
+        - PollingMetricsLoop (services/metrics_loop.py)
+        - NullMetricsLoop    (services/metrics_loop.py) — for tests + proxy clients
+    """
+
+    @abstractmethod
+    def start(self) -> None:
+        """Begin ticking + polling. Idempotent — safe to call when running."""
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop the loop and release any threads. Idempotent."""
+
+    @abstractmethod
+    def wake(self) -> None:
+        """Force an immediate poll iteration (used after settings changes)."""
+
+    @property
+    @abstractmethod
+    def is_running(self) -> bool:
+        """True iff the loop is currently active."""
+
+
+# =========================================================================
 # Platform ABC — OS foundation, drop in an OS so devices can speak to it
 # =========================================================================
 
@@ -598,6 +641,21 @@ class Platform(ABC):
         suspend/resume cleanup without each one wiring its own listener.
         """
         del on_suspend, on_resume  # default: no-op stub, subclasses override
+
+    def build_metrics_loop(self, trcc: Any) -> MetricsLoop:
+        """Construct the OS-appropriate `MetricsLoop` for this host.
+
+        Default returns a thread-based `PollingMetricsLoop` — works on
+        every OS today. Override per-OS for native event sources
+        (e.g. WindowsPlatform → WMI events, MacOSPlatform → IOReport).
+        Devices stay thin: they consume `update_metrics()` calls without
+        caring which mechanism produced them.
+
+        ``trcc`` is the host whose ``lcd_devices`` / ``led_devices`` /
+        ``events`` / ``settings`` / ``system_svc`` the loop reads.
+        """
+        from ..services.metrics_loop import PollingMetricsLoop
+        return PollingMetricsLoop(trcc)
 
     def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
         """Resolve GUI assets directory. Non-Linux copies to user dir."""
