@@ -294,8 +294,8 @@ def _run_profiler(data_type: str) -> dict:
         )
         if result.returncode == 0:
             return json.loads(result.stdout)
-    except Exception:
-        log.debug("system_profiler %s failed", data_type)
+    except Exception as e:
+        log.debug("system_profiler %s returned %s", data_type, type(e).__name__)
     return {}
 
 

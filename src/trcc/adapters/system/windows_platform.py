@@ -106,7 +106,7 @@ def _get_disk_health(device_id: str | None) -> str:
         log.debug("wmi package unavailable for disk health probe")
     except Exception as e:
         # WMI/COM exceptions don't share a common Python base — keep broad, log.
-        log.debug("WMI MSStorageDriver_FailurePredictStatus query failed for %s: %s", device_id, e)
+        log.debug("WMI MSStorageDriver_FailurePredictStatus(%s) returned %s", device_id, type(e).__name__)
     return 'Unknown'
 
 
@@ -287,7 +287,7 @@ class WindowsPlatform(Platform):
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(2)  # type: ignore[attr-defined]
         except (OSError, AttributeError) as e:
-            log.debug("SetProcessDpiAwareness failed (older Windows or missing shcore): %s", e)
+            log.debug("SetProcessDpiAwareness returned %s (older Windows or shcore absent)", type(e).__name__)
 
     def minimize_on_close(self) -> bool:
         return True

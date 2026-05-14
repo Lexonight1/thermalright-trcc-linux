@@ -81,7 +81,7 @@ def _sysctl(key: str) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except SUBPROCESS_EXC as e:
-        log.debug("sysctl probe failed for %s: %s", key, e)
+        log.debug("sysctl -n %s returned %s", key, type(e).__name__)
     return ''
 
 
@@ -183,7 +183,7 @@ def get_disk_info() -> list[dict[str, str]]:
             d.setdefault('health', 'Unknown')
 
     except SUBPROCESS_EXC as e:
-        log.debug("geom disk list failed: %s", e)
+        log.debug("geom disk list returned %s", type(e).__name__)
 
     return disks
 
@@ -240,7 +240,7 @@ class SensorEnumerator(SensorEnumeratorBase):
                         ))
 
         except SUBPROCESS_EXC as e:
-            log.debug("sysctl sensor discovery failed: %s", e)
+            log.debug("sysctl -a (sensor discovery) returned %s", type(e).__name__)
 
     # ── BSD-specific polling ──────────────────────────────────────────
 
@@ -275,7 +275,7 @@ class SensorEnumerator(SensorEnumeratorBase):
                         readings[f'sysctl:tz{tz_id}_temp'] = float(match.group(2))
 
         except SUBPROCESS_EXC as e:
-            log.debug("sysctl temperature poll failed: %s", e)
+            log.debug("sysctl -a (temperature poll) returned %s", type(e).__name__)
 
     # ── BSD-specific mapping ──────────────────────────────────────────
 

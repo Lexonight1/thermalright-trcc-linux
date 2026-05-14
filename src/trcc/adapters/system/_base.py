@@ -14,7 +14,8 @@ import logging
 import subprocess
 import threading
 import time
-from typing import Any
+from operator import itemgetter
+from typing import Any, ClassVar
 
 import psutil
 
@@ -33,7 +34,13 @@ try:
 except ImportError:
     pynvml = None  # type: ignore[assignment]
     NVML_EXC = (AttributeError, OSError)
-    log.debug("pynvml not installed — NVIDIA GPU sensors unavailable")
+    log.debug("pynvml package absent — NVIDIA GPU sensors will not register")
+
+# Module-level alias typed as ``Any`` — lets reader methods access
+# ``_pn.nvmlDeviceGet*`` without pyright tripping on the ``None`` union.
+# Runtime safety: every caller goes through ``_ensure_nvidia_ready()``
+# first, so ``_pn`` is never ``None`` at read time.
+_pn: Any = pynvml
 
 # Probe-boundary exception tuples — narrow `except Exception` at plugin boundaries.
 PSUTIL_EXC: tuple[type[BaseException], ...] = (psutil.Error, OSError, AttributeError)
@@ -87,6 +94,24 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         _poll_datetime()         — date/time readings
     """
 
+    # NVML metrics this enumerator exposes.  Each name has a matching
+    # ``_read_nvml_<name>`` method.  Discovery iterates this tuple to
+    # probe per-card support; poll iterates the per-card supported set.
+    # Mirror of LinuxPlatform's ``_PROBE_TOOLS`` discipline.
+    _NVML_METRICS: ClassVar[tuple[str, ...]] = (
+        'temp', 'gpu_busy', 'clock', 'power', 'fan', 'mem',
+    )
+    # name → (label suffix, sensor kind, unit) — SensorInfo metadata.
+    # ``mem`` expands to two SensorInfos (used + total) at registration time.
+    _NVML_META: ClassVar[dict[str, tuple[str, str, str]]] = {
+        'temp':     ('Temp',  'temperature', '°C'),
+        'gpu_busy': ('Usage', 'gpu_busy',    '%'),
+        'clock':    ('Clock', 'clock',       'MHz'),
+        'power':    ('Power', 'power',       'W'),
+        'fan':      ('Fan',   'fan',         '%'),
+        'mem':      ('VRAM',  'gpu_memory',  'MB'),  # expanded at register time
+    }
+
     def __init__(self) -> None:
         self._sensors: list[SensorInfo] = []
         self._readings: dict[str, float] = {}
@@ -100,8 +125,11 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         self._net_prev: tuple[Any, float] | None = None
         # cpu_percent bootstrap: first call uses short interval
         self._cpu_pct_bootstrapped: bool = False
-        # nvidia handles (populated by _discover_nvidia)
+        # nvidia handles + per-card supported-metric sets (populated by
+        # _discover_nvidia).  Each card's supported set is frozen at
+        # discovery — poll paths are deterministic over it.
         self._nvidia_handles: dict[int, object] = {}
+        self._nvidia_supported: dict[int, set[str]] = {}
         # GPU selection (set by composition root from settings)
         self._preferred_gpu: str = ''
 
@@ -218,10 +246,11 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
                 mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 vram_mb = int(mem.total) // (1024 * 1024)
             except NVML_EXC as e:
-                log.debug("nvmlDeviceGetMemoryInfo(idx=%d) failed: %s", idx, e)
+                log.debug("nvmlDeviceGetMemoryInfo(idx=%d) returned %s",
+                          idx, type(e).__name__)
                 vram_mb = 0
             gpus.append((f'nvidia:{idx}', f'{name} ({vram_mb} MB)', vram_mb))
-        gpus.sort(key=lambda g: g[2], reverse=True)
+        gpus.sort(key=itemgetter(2), reverse=True)
         return [(key, name) for key, name, _ in gpus]
 
     # ══════════════════════════════════════════════════════════════════
@@ -283,36 +312,59 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         ])
 
     def _discover_nvidia(self) -> None:
-        """Probe NVIDIA GPUs via pynvml and register sensors."""
-        if not _ensure_nvml() or pynvml is None:
+        """Probe NVIDIA GPUs via pynvml and register sensors.
+
+        For each card, call every ``_read_nvml_<metric>`` once.  Methods
+        that answer cleanly are added to the per-card supported set;
+        only those metrics get :class:`SensorInfo` registrations.
+        ``_poll_nvidia`` then reads without try/except for "not
+        supported" cases — sysctl-style discipline.
+        """
+        if not _ensure_nvml() or _pn is None:
             return
         try:
-            count = pynvml.nvmlDeviceGetCount()
-            for i in range(count):
-                try:
-                    handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                    name = pynvml.nvmlDeviceGetName(handle)
-                    if isinstance(name, bytes):
-                        name = name.decode()
-                    name = str(name)
-                except NVML_EXC as e:
-                    log.debug("nvidia:%d handle/name failed: %s", i, e)
-                    continue
-
-                self._nvidia_handles[i] = handle
-                prefix = f'nvidia:{i}'
-                label = name if count == 1 else f'GPU {i} ({name})'
-                self._sensors.extend([
-                    SensorInfo(f'{prefix}:temp', f'{label} Temp', 'temperature', '°C', 'nvidia'),
-                    SensorInfo(f'{prefix}:gpu_busy', f'{label} Usage', 'gpu_busy', '%', 'nvidia'),
-                    SensorInfo(f'{prefix}:clock', f'{label} Clock', 'clock', 'MHz', 'nvidia'),
-                    SensorInfo(f'{prefix}:power', f'{label} Power', 'power', 'W', 'nvidia'),
-                    SensorInfo(f'{prefix}:fan', f'{label} Fan', 'fan', '%', 'nvidia'),
-                    SensorInfo(f'{prefix}:mem_used', f'{label} VRAM Used', 'gpu_memory', 'MB', 'nvidia'),
-                    SensorInfo(f'{prefix}:mem_total', f'{label} VRAM Total', 'gpu_memory', 'MB', 'nvidia'),
-                ])
+            count = _pn.nvmlDeviceGetCount()
         except NVML_EXC as e:
-            log.debug("NVIDIA GPU discovery failed: %s", e)
+            log.debug("nvmlDeviceGetCount returned %s", type(e).__name__)
+            return
+
+        for i in range(count):
+            try:
+                handle = _pn.nvmlDeviceGetHandleByIndex(i)
+                name = _pn.nvmlDeviceGetName(handle)
+                if isinstance(name, bytes):
+                    name = name.decode()
+                name = str(name)
+            except NVML_EXC as e:
+                log.debug("nvidia:%d handle/name returned %s", i, type(e).__name__)
+                continue
+
+            self._nvidia_handles[i] = handle
+            supported: set[str] = set()
+            for metric in self._NVML_METRICS:
+                try:
+                    getattr(self, f'_read_nvml_{metric}')(handle)
+                    supported.add(metric)
+                except NVML_EXC:
+                    pass  # not supported on this card — silently absent
+            self._nvidia_supported[i] = supported
+
+            prefix = f'nvidia:{i}'
+            label = name if count == 1 else f'GPU {i} ({name})'
+            for metric in self._NVML_METRICS:
+                if metric not in supported:
+                    continue
+                short, kind, unit = self._NVML_META[metric]
+                if metric == 'mem':
+                    self._sensors.append(SensorInfo(
+                        f'{prefix}:mem_used', f'{label} {short} Used', kind, unit, 'nvidia'))
+                    self._sensors.append(SensorInfo(
+                        f'{prefix}:mem_total', f'{label} {short} Total', kind, unit, 'nvidia'))
+                else:
+                    self._sensors.append(SensorInfo(
+                        f'{prefix}:{metric}', f'{label} {short}', kind, unit, 'nvidia'))
+            log.info("nvidia:%d (%s) — %d/%d metrics supported",
+                     i, name, len(supported), len(self._NVML_METRICS))
 
     def _discover_computed(self) -> None:
         """Register date/time computed sensors."""
@@ -343,44 +395,61 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         readings['psutil:mem_percent'] = mem.percent
 
     def _poll_nvidia(self, readings: dict[str, float]) -> None:
-        """Read NVIDIA GPU sensors via pynvml."""
-        if not self._ensure_nvidia_ready() or pynvml is None:
+        """Read NVIDIA GPU sensors via pynvml.
+
+        Flat loop over each card's frozen supported-metric set —
+        capability was resolved at :meth:`_discover_nvidia` time, so
+        every iteration here is "known to answer".  Only transient I/O
+        errors get caught + logged; "not supported" cases were excluded
+        from the supported set at discovery and never reach poll.
+        """
+        if not self._ensure_nvidia_ready() or _pn is None:
             return
         for i, handle in self._nvidia_handles.items():
+            supported = self._nvidia_supported.get(i, set())
             prefix = f'nvidia:{i}'
-            try:
-                readings[f'{prefix}:temp'] = float(
-                    pynvml.nvmlDeviceGetTemperature(
-                        handle, pynvml.NVML_TEMPERATURE_GPU))
-            except NVML_EXC as e:
-                log.debug("%s:temp poll failed: %s", prefix, e)
-            try:
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                readings[f'{prefix}:gpu_busy'] = float(util.gpu)
-            except NVML_EXC as e:
-                log.debug("%s:gpu_busy poll failed: %s", prefix, e)
-            try:
-                readings[f'{prefix}:clock'] = float(
-                    pynvml.nvmlDeviceGetClockInfo(
-                        handle, pynvml.NVML_CLOCK_GRAPHICS))
-            except NVML_EXC as e:
-                log.debug("%s:clock poll failed: %s", prefix, e)
-            try:
-                readings[f'{prefix}:power'] = (
-                    pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0)
-            except NVML_EXC as e:
-                log.debug("%s:power poll failed: %s", prefix, e)
-            try:
-                readings[f'{prefix}:fan'] = float(
-                    pynvml.nvmlDeviceGetFanSpeed(handle))
-            except NVML_EXC as e:
-                log.debug("%s:fan poll failed: %s", prefix, e)
-            try:
-                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                readings[f'{prefix}:mem_used'] = float(mem.used) / (1024 * 1024)
-                readings[f'{prefix}:mem_total'] = float(mem.total) / (1024 * 1024)
-            except NVML_EXC as e:
-                log.debug("%s:mem poll failed: %s", prefix, e)
+            for metric in self._NVML_METRICS:
+                if metric not in supported:
+                    continue
+                try:
+                    result = getattr(self, f'_read_nvml_{metric}')(handle)
+                except NVML_EXC as e:
+                    log.debug("nvidia:%d %s returned %s",
+                              i, metric, type(e).__name__)
+                    continue
+                if metric == 'mem':
+                    used, total = result
+                    readings[f'{prefix}:mem_used'] = used
+                    readings[f'{prefix}:mem_total'] = total
+                else:
+                    readings[f'{prefix}:{metric}'] = result
+
+    # ── NVML readers — one method per metric, sysctl-style ───────────
+    # Discovery probes each, poll reads only the supported set.
+
+    def _read_nvml_temp(self, handle: Any) -> float:
+        return float(_pn.nvmlDeviceGetTemperature(
+            handle, _pn.NVML_TEMPERATURE_GPU))
+
+    def _read_nvml_gpu_busy(self, handle: Any) -> float:
+        return float(_pn.nvmlDeviceGetUtilizationRates(handle).gpu)
+
+    def _read_nvml_clock(self, handle: Any) -> float:
+        return float(_pn.nvmlDeviceGetClockInfo(
+            handle, _pn.NVML_CLOCK_GRAPHICS))
+
+    def _read_nvml_power(self, handle: Any) -> float:
+        return _pn.nvmlDeviceGetPowerUsage(handle) / 1000.0
+
+    def _read_nvml_fan(self, handle: Any) -> float:
+        return float(_pn.nvmlDeviceGetFanSpeed(handle))
+
+    def _read_nvml_mem(self, handle: Any) -> tuple[float, float]:
+        mem = _pn.nvmlDeviceGetMemoryInfo(handle)
+        return (
+            float(mem.used) / (1024 * 1024),
+            float(mem.total) / (1024 * 1024),
+        )
 
     def _poll_computed_io(self, readings: dict[str, float]) -> None:
         """Compute disk/network rates + totals from psutil counter deltas."""

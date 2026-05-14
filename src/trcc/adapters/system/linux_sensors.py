@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from operator import itemgetter
 from pathlib import Path
 
 import psutil
@@ -72,7 +73,11 @@ def _detect_gpu_vendors() -> list[str]:
             continue
 
     priority = {_GPU_VENDOR_NVIDIA: 0, _GPU_VENDOR_AMD: 1, _GPU_VENDOR_INTEL: 2}
-    vendors.sort(key=lambda v: priority.get(v, 99))
+
+    def _vendor_rank(vendor: str) -> int:
+        return priority.get(vendor, 99)
+
+    vendors.sort(key=_vendor_rank)
     return vendors
 
 
@@ -534,7 +539,7 @@ class SensorEnumerator(SensorEnumeratorBase):
                 key = f'{vendor_label.lower()}:{card}'
                 gpus.append((key, label, vram))
 
-        gpus.sort(key=lambda g: g[2], reverse=True)
+        gpus.sort(key=itemgetter(2), reverse=True)
         return [(key, name) for key, name, _ in gpus]
 
     def _best_gpu(self) -> dict:

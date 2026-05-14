@@ -4,6 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def _neg_actual(entry: PerfEntry) -> float:
+    """Sort key: descending by `actual` (slowest / largest first)."""
+    return -entry.actual
+
+
 @dataclass
 class PerfEntry:
     """Single performance measurement."""
@@ -63,10 +68,10 @@ class PerfReport:
                 "passed": e.passed,
             }
         return {
-            "cpu": [_entry(e) for e in sorted(self.cpu, key=lambda x: -x.actual)],
-            "memory": [_entry(e) for e in sorted(self.mem, key=lambda x: -x.actual)],
-            "scaling": [_entry(e) for e in sorted(self.scale, key=lambda x: -x.actual)],
-            "device": [_entry(e) for e in sorted(self.device, key=lambda x: -x.actual)],
+            "cpu": [_entry(e) for e in sorted(self.cpu, key=_neg_actual)],
+            "memory": [_entry(e) for e in sorted(self.mem, key=_neg_actual)],
+            "scaling": [_entry(e) for e in sorted(self.scale, key=_neg_actual)],
+            "device": [_entry(e) for e in sorted(self.device, key=_neg_actual)],
             "summary": {
                 "total": len(self.cpu) + len(self.mem) + len(self.scale) + len(self.device),
                 "cpu_count": len(self.cpu),
@@ -95,7 +100,7 @@ class PerfReport:
                 f"  {'Test':<44} {'Actual':>10} {'Limit':>10} {'Headroom':>10}")
             lines.append(
                 f"  {'----':<44} {'------':>10} {'-----':>10} {'-------':>10}")
-            for e in sorted(self.cpu, key=lambda x: -x.actual):
+            for e in sorted(self.cpu, key=_neg_actual):
                 a_ms = e.actual * 1000
                 l_ms = e.limit * 1000
                 a_str = (f"{a_ms:.2f} ms" if a_ms >= 0.1
@@ -116,7 +121,7 @@ class PerfReport:
                 f"  {'Test':<44} {'Growth':>10} {'Limit':>10} {'Headroom':>10}")
             lines.append(
                 f"  {'----':<44} {'------':>10} {'-----':>10} {'-------':>10}")
-            for e in sorted(self.mem, key=lambda x: -x.actual):
+            for e in sorted(self.mem, key=_neg_actual):
                 a_str = _fmt_bytes(int(e.actual))
                 l_str = _fmt_bytes(int(e.limit))
                 bar = _bar(e.actual, e.limit)
@@ -133,7 +138,7 @@ class PerfReport:
                 f"  {'Test':<44} {'Ratio':>10} {'Limit':>10} {'Headroom':>10}")
             lines.append(
                 f"  {'----':<44} {'------':>10} {'-----':>10} {'-------':>10}")
-            for e in sorted(self.scale, key=lambda x: -x.actual):
+            for e in sorted(self.scale, key=_neg_actual):
                 bar = _bar(e.actual, e.limit)
                 lines.append(
                     f"  {e.label:<44} {e.actual:>9.1f}x {e.limit:>9.1f}x"
@@ -148,7 +153,7 @@ class PerfReport:
                 f"  {'Test':<44} {'Actual':>10} {'Limit':>10} {'Headroom':>10}")
             lines.append(
                 f"  {'----':<44} {'------':>10} {'-----':>10} {'-------':>10}")
-            for e in sorted(self.device, key=lambda x: -x.actual):
+            for e in sorted(self.device, key=_neg_actual):
                 a_ms = e.actual * 1000
                 l_ms = e.limit * 1000
                 a_str = (f"{a_ms:.1f} ms" if a_ms >= 1.0

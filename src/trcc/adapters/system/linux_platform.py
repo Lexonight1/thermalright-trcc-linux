@@ -13,6 +13,7 @@ import shutil
 import site
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +57,11 @@ if TYPE_CHECKING:
 _SUBPROCESS_EXC: tuple[type[BaseException], ...] = (
     OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError,
 )
+
+# Subprocess tools probed once at LinuxPlatform construction.  Read paths
+# consult ``platform._tools`` and skip absent tools without re-probing.
+# Order doesn't matter — each tool feeds one or more fallback fields.
+_PROBE_TOOLS: tuple[str, ...] = ('sensors', 'dmidecode', 'lshw', 'smartctl')
 
 
 def _read_sysfs(path: str) -> str | None:
@@ -202,7 +208,7 @@ def _get_smart_health(dev_name: str) -> str | None:
                 if 'FAILED' in line:
                     return 'FAILED'
     except SUBPROCESS_EXC as e:
-        log.debug("smartctl health probe failed for %s: %s", dev_name, e)
+        log.debug("smartctl -H /dev/%s returned %s", dev_name, type(e).__name__)
     return None
 
 
@@ -590,7 +596,7 @@ def get_memory_info() -> list[dict[str, str]]:
             if current.get('size') and current['size'] != 'No Module Installed':
                 slots.append(current)
     except SUBPROCESS_EXC as e:
-        log.debug("dmidecode probe failed: %s", e)
+        log.debug("dmidecode -t memory returned %s", type(e).__name__)
 
     log.debug("get_memory_info: found %d populated slots", len(slots))
     if not slots:
@@ -600,7 +606,7 @@ def get_memory_info() -> list[dict[str, str]]:
             slots.append({'size': total_gb, 'type': 'Unknown',
                           'speed': 'Unknown', 'manufacturer': 'Unknown'})
         except PSUTIL_EXC as e:
-            log.debug("psutil.virtual_memory fallback failed: %s", e)
+            log.debug("psutil.virtual_memory returned %s", type(e).__name__)
     return slots
 
 
@@ -630,7 +636,7 @@ def get_disk_info() -> list[dict[str, str]]:
                     disk['health'] = health
                 disks.append(disk)
     except SUBPROCESS_EXC as e:
-        log.debug("lsblk probe failed: %s", e)
+        log.debug("lsblk -J returned %s", type(e).__name__)
     log.debug("get_disk_info: found %d disks", len(disks))
     return disks
 
@@ -640,13 +646,12 @@ def get_disk_info() -> list[dict[str, str]]:
 # =========================================================================
 
 class LinuxMetrics(Metrics):
-    """Linux HardwareMetrics builder — composes its sources in __init__.
+    """Linux HardwareMetrics — composes its sources in ``__init__``.
 
-    Linux is the simple case: ONE :class:`SensorEnumerator` already
-    chains hwmon + psutil + nvidia + computed I/O, plus three
-    subprocess fallback methods that fill gaps the enumerator missed.
-    The subprocess results are cached on the Platform so per-tick
-    instantiation doesn't re-shell-out.
+    Receives only what it needs via DI: an :class:`SensorEnumerator`
+    (hwmon / psutil / nvidia / computed I/O chain) and a resolved
+    ``fallback_cache`` the :class:`LinuxPlatform` populated once at
+    first build.  No Platform back-ref; no subprocess work at this layer.
     """
 
     def __init__(self,
@@ -654,86 +659,122 @@ class LinuxMetrics(Metrics):
                  fallback_cache: dict[str, float]) -> None:
         super().__init__()
         self._enumerator = enumerator
-        self._fallback_cache = fallback_cache
-        # The __init__ IS the build.  Linux composes 3 read methods —
-        # other OSes will list more here.  Order: cheap-first.
-        self._read_datetime()           # base ABC helper, instant
-        self._read_sensors(enumerator)  # base ABC helper, reads cached enumerator
-        self._read_subprocess_fallbacks()
+        # ``__init__`` IS the build — cheap-first ordering.
+        self._read_datetime()                       # base ABC helper, instant
+        self._read_sensors(enumerator)              # cached enumerator pass
+        self._apply_fallback_cache(fallback_cache)  # platform-resolved gaps
 
-    def _read_subprocess_fallbacks(self) -> None:
-        """Fill gaps via lm_sensors / dmidecode / smartctl.
-
-        Results are cached on ``self._fallback_cache`` (a Platform-owned
-        dict) — subprocess calls run once per app lifetime, not per tick.
-        """
+    def _apply_fallback_cache(self, cache: dict[str, float]) -> None:
+        """Copy cached subprocess-derived values into fields the enumerator missed."""
+        from trcc.core.models.sensor import FLOAT_FIELDS
         m = self.record
-        # Build the cache once; subsequent ticks just read from it.
-        if not self._fallback_cache:
-            self._populate_fallback_cache()
-        for attr, value in self._fallback_cache.items():
+        for attr, value in cache.items():
             if attr in m._populated or not hasattr(m, attr):
                 continue
-            from trcc.core.models.sensor import FLOAT_FIELDS
             v: float = value if attr in FLOAT_FIELDS else int(value)
             setattr(m, attr, v)
             m._populated.add(attr)
 
-    def _populate_fallback_cache(self) -> None:
-        """Run every subprocess fallback once and cache the results."""
-        m = self.record
-        # cpu_temp: lm_sensors
-        if 'cpu_temp' not in m._populated:
-            if (v := self._read_lm_sensors_cpu_temp()) is not None:
-                self._fallback_cache['cpu_temp'] = v
-        # cpu_percent: /proc/loadavg
-        if 'cpu_percent' not in m._populated:
-            if (v := self._read_proc_loadavg()) is not None:
-                self._fallback_cache['cpu_percent'] = v
-        # cpu_freq: /proc/cpuinfo
-        if 'cpu_freq' not in m._populated:
-            if (v := self._read_proc_cpuinfo_freq()) is not None:
-                self._fallback_cache['cpu_freq'] = v
-        # mem_temp: lm_sensors memory section
-        if 'mem_temp' not in m._populated:
-            if (v := self._read_lm_sensors_mem_temp()) is not None:
-                self._fallback_cache['mem_temp'] = v
-        # mem_clock: dmidecode / lshw / EDAC chain
-        if 'mem_clock' not in m._populated:
-            if (v := self._read_mem_clock_chain()) is not None:
-                self._fallback_cache['mem_clock'] = v
-        # disk_temp: smartctl
-        if 'disk_temp' not in m._populated:
-            if (v := self._read_smartctl_disk_temp()) is not None:
-                self._fallback_cache['disk_temp'] = v
 
-    # ── Individual subprocess reads ─────────────────────────────────
+class LinuxPlatform(Platform):
+    """Linux Platform — all OS logic inline, no intermediaries.
 
-    @staticmethod
-    def _read_lm_sensors_cpu_temp() -> float | None:
+    Owns the subprocess-tool capability map and the fallback-value cache.
+    Probes tool availability once via :func:`shutil.which` at construction.
+    Runs each available subprocess exactly once at first :meth:`_make_metrics`
+    call; thereafter every Metrics build reads from the resolved cache.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._autostart: LinuxAutostartManager | None = None
+        # Capability probe — ONE pass at startup.  ``shutil.which`` returns
+        # the full tool path or None.  Read paths gate on this; no
+        # try-FileNotFoundError-fall-through at runtime.  Announcement
+        # happens on first ``_make_metrics`` — logging isn't configured
+        # yet at ``PlatformFactory.current()`` time.
+        self._tools: dict[str, str | None] = {
+            name: shutil.which(name) for name in _PROBE_TOOLS
+        }
+        # Resolved subprocess-fallback values, populated once at first
+        # ``_make_metrics`` call and reused thereafter.  The lock guards
+        # the lazy probe — daemon metrics-loop thread + main-thread
+        # seed both race to be "first caller".
+        self._fallback_cache: dict[str, float] = {}
+        self._fallback_probed: bool = False
+        self._probe_lock = threading.Lock()
+
+    def _make_metrics(self) -> Metrics:
+        """Build a Linux Metrics snapshot.  Subprocess fallbacks run once.
+
+        Double-checked locking — the daemon metrics-loop thread and the
+        main-thread boot seed both race to be the first caller.  Without
+        the lock both would enter ``_probe_subprocess_fallbacks`` before
+        either flips the flag, producing duplicate announcements.
+        """
+        if not self._fallback_probed:
+            with self._probe_lock:
+                if not self._fallback_probed:
+                    self._probe_subprocess_fallbacks()
+                    self._fallback_probed = True
+        return LinuxMetrics(self.sensors, self._fallback_cache)
+
+    # ── One-shot subprocess fallback probe ───────────────────────────
+
+    def _probe_subprocess_fallbacks(self) -> None:
+        """Run each subprocess fallback once; cache any yields.
+
+        Each ``_read_*`` gates on tool presence and returns ``None``
+        cleanly when absent — no exceptions thrown for normal absence,
+        no log line emitted for "tool not installed".
+        """
+        available = sorted(k for k, v in self._tools.items() if v)
+        absent = sorted(k for k, v in self._tools.items() if not v)
+        log.info(
+            "Linux metric sources — available: %s%s",
+            ', '.join(available) if available else 'none',
+            f"; absent: {', '.join(absent)}" if absent else '',
+        )
+        cache = self._fallback_cache
+        if (v := self._read_lm_sensors_cpu_temp()) is not None:
+            cache['cpu_temp'] = v
+        if (v := self._read_proc_loadavg()) is not None:
+            cache['cpu_percent'] = v
+        if (v := self._read_proc_cpuinfo_freq()) is not None:
+            cache['cpu_freq'] = v
+        if (v := self._read_lm_sensors_mem_temp()) is not None:
+            cache['mem_temp'] = v
+        if (v := self._read_mem_clock_chain()) is not None:
+            cache['mem_clock'] = v
+        if (v := self._read_smartctl_disk_temp()) is not None:
+            cache['disk_temp'] = v
+
+    # ── Individual fallback reads — tool-gated, deterministic ────────
+
+    def _read_lm_sensors_cpu_temp(self) -> float | None:
+        if not (sensors := self._tools['sensors']):
+            return None
         try:
             result = subprocess.run(
-                ['sensors', '-u'], capture_output=True, text=True, timeout=5,
+                [sensors, '-u'], capture_output=True, text=True, timeout=5,
             )
             for line in result.stdout.split('\n'):
                 if 'temp1_input' in line or 'Tctl' in line.lower():
                     if (match := re.search(r':\s*([0-9.]+)', line)):
                         return float(match.group(1))
-        except FileNotFoundError:
-            log.debug("lm_sensors not installed — cpu_temp fallback unavailable")
         except _SUBPROCESS_EXC as e:
-            log.debug("cpu_temp fallback failed: %s", e)
+            log.debug("sensors -u returned %s", type(e).__name__)
         return None
 
     @staticmethod
     def _read_proc_loadavg() -> float | None:
+        if (loadavg := _read_sysfs('/proc/loadavg')) is None:
+            return None
         try:
-            if (loadavg := _read_sysfs('/proc/loadavg')):
-                load = float(loadavg.split()[0])
-                return min(100.0, load * 10)
-        except (OSError, ValueError, IndexError) as e:
-            log.debug("cpu_percent fallback failed: %s", e)
-        return None
+            load = float(loadavg.split()[0])
+            return min(100.0, load * 10)
+        except (ValueError, IndexError):
+            return None
 
     @staticmethod
     def _read_proc_cpuinfo_freq() -> float | None:
@@ -743,15 +784,16 @@ class LinuxMetrics(Metrics):
                     if 'cpu MHz' in line:
                         if (match := re.search(r':\s*([0-9.]+)', line)):
                             return float(match.group(1))
-        except (OSError, ValueError) as e:
-            log.debug("cpu_freq fallback failed: %s", e)
+        except (OSError, ValueError):
+            return None
         return None
 
-    @staticmethod
-    def _read_lm_sensors_mem_temp() -> float | None:
+    def _read_lm_sensors_mem_temp(self) -> float | None:
+        if not (sensors := self._tools['sensors']):
+            return None
         try:
             result = subprocess.run(
-                ['sensors', '-u'], capture_output=True, text=True, timeout=5,
+                [sensors, '-u'], capture_output=True, text=True, timeout=5,
             )
             if result.returncode != 0:
                 return None
@@ -765,45 +807,40 @@ class LinuxMetrics(Metrics):
                 if in_memory_section and 'temp' in line_lower and '_input' in line_lower:
                     if (match := re.search(r':\s*([0-9.]+)', line)):
                         return float(match.group(1))
-        except FileNotFoundError:
-            log.debug("lm_sensors not installed — mem_temp fallback unavailable")
         except _SUBPROCESS_EXC as e:
-            log.debug("mem_temp fallback failed: %s", e)
+            log.debug("sensors -u returned %s", type(e).__name__)
         return None
 
-    @staticmethod
-    def _read_mem_clock_chain() -> float | None:
-        """dmidecode → lshw → EDAC fall-through."""
-        try:
-            result = subprocess.run(
-                ['dmidecode', '-t', 'memory'],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'Configured Memory Speed' in line:
-                        if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', line)):
-                            return float(match.group(1))
-                for line in result.stdout.split('\n'):
-                    if 'Speed:' in line and 'Unknown' not in line:
-                        if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', line)):
-                            return float(match.group(1))
-        except FileNotFoundError:
-            log.debug("dmidecode not installed — mem_clock probe unavailable")
-        except _SUBPROCESS_EXC as e:
-            log.debug("mem_clock dmidecode probe failed: %s", e)
-        try:
-            result = subprocess.run(
-                ['lshw', '-class', 'memory', '-short'],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0:
-                if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', result.stdout)):
-                    return float(match.group(1))
-        except FileNotFoundError:
-            log.debug("lshw not installed — mem_clock lshw probe unavailable")
-        except _SUBPROCESS_EXC as e:
-            log.debug("mem_clock lshw probe failed: %s", e)
+    def _read_mem_clock_chain(self) -> float | None:
+        """dmidecode → lshw → EDAC chain (each step gated on tool presence)."""
+        if dmidecode := self._tools['dmidecode']:
+            try:
+                result = subprocess.run(
+                    [dmidecode, '-t', 'memory'],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if 'Configured Memory Speed' in line:
+                            if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', line)):
+                                return float(match.group(1))
+                    for line in result.stdout.split('\n'):
+                        if 'Speed:' in line and 'Unknown' not in line:
+                            if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', line)):
+                                return float(match.group(1))
+            except _SUBPROCESS_EXC as e:
+                log.debug("dmidecode -t memory returned %s", type(e).__name__)
+        if lshw := self._tools['lshw']:
+            try:
+                result = subprocess.run(
+                    [lshw, '-class', 'memory', '-short'],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    if (match := re.search(r'(\d+)\s*(?:MT/s|MHz)', result.stdout)):
+                        return float(match.group(1))
+            except _SUBPROCESS_EXC as e:
+                log.debug("lshw -class memory returned %s", type(e).__name__)
         mc_path = "/sys/devices/system/edac/mc"
         if os.path.exists(mc_path):
             try:
@@ -812,14 +849,15 @@ class LinuxMetrics(Metrics):
                         if (match := re.search(r'(\d+)\s*MHz', content)):
                             return float(match.group(1))
             except (OSError, ValueError) as e:
-                log.debug("mem_clock EDAC probe failed: %s", e)
+                log.debug("EDAC dimm_info returned %s", type(e).__name__)
         return None
 
-    @staticmethod
-    def _read_smartctl_disk_temp() -> float | None:
+    def _read_smartctl_disk_temp(self) -> float | None:
+        if not (smartctl := self._tools['smartctl']):
+            return None
         try:
             result = subprocess.run(
-                ['smartctl', '-A', '/dev/sda'],
+                [smartctl, '-A', '/dev/sda'],
                 capture_output=True, text=True, timeout=5,
             )
             if result.returncode == 0:
@@ -828,26 +866,9 @@ class LinuxMetrics(Metrics):
                         for part in line.split():
                             if part.isdigit() and int(part) < 100:
                                 return float(part)
-        except FileNotFoundError:
-            log.debug("smartctl not installed — disk_temp fallback unavailable")
         except _SUBPROCESS_EXC as e:
-            log.debug("disk_temp fallback failed: %s", e)
+            log.debug("smartctl -A returned %s", type(e).__name__)
         return None
-
-
-class LinuxPlatform(Platform):
-    """Linux Platform — all OS logic inline, no intermediaries."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._autostart: LinuxAutostartManager | None = None
-        # Subprocess fallback results, cached for LinuxMetrics across ticks
-        # so lm_sensors / dmidecode / smartctl don't shell out 1Hz.
-        self._fallback_cache: dict[str, float] = {}
-
-    def _make_metrics(self) -> Metrics:
-        """Construct a Linux metrics snapshot (subprocess cache shared across ticks)."""
-        return LinuxMetrics(self.sensors, self._fallback_cache)
 
     def _get_autostart(self) -> LinuxAutostartManager:
         if self._autostart is None:

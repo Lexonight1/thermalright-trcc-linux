@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from operator import itemgetter
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ def find_lcd_devices(detect_fn=None) -> list[dict]:
                 'implementation': dev.implementation,
             })
 
-    devices.sort(key=lambda d: d['path'])
+    devices.sort(key=itemgetter('path'))
     for i, d in enumerate(devices):
         d['device_index'] = i
 
