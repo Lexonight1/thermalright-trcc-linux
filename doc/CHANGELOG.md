@@ -1,5 +1,56 @@
 # Changelog
 
+## v9.6.2
+
+User-visible fixes for the open issue backlog. Two parallel packaging
+bugs and the daemon's missing metrics loop. Architecture work
+landed in v9.6.1 stays the same — only the packaging seams and the
+daemon's lifecycle call change.
+
+**Daemon metrics loop wired (#148).** ``trccd.service`` users on
+v9.5.7 / v9.6.0 / v9.6.1 saw the device discovered + IPC socket up
+but the panel stayed blank — the daemon never started the per-process
+metrics tick that drives ``device.tick()``.  Phase 9 moved
+``start_metrics_loop`` into ``Trcc`` but the daemon's call site was
+never updated. The lifecycle is now wired through a ``MetricsLoop``
+port produced by ``Platform.build_metrics_loop()`` — fourth factory
+in the OS → Protocol → Device → MetricsLoop chain. ``Trcc.discover()``
+starts the loop after enumeration; ``Trcc.cleanup()`` stops it.
+GUI/API/daemon all converge on the same composition.
+
+**Cross-distro NVIDIA install hint (#134 + #145).** The doctor used
+to hardcode ``pip install nvidia-ml-py`` which fails under PEP 668 on
+Ubuntu 24.04 / Linux Mint 22. ``_INSTALL_MAP`` now has an entry for
+``nvidia-ml-py`` covering apt / dnf / pacman / zypper / rpm-ostree;
+``check_gpu()`` takes a ``pm`` parameter so the hint resolves to the
+right native package name per distro. Arch packaging side: the
+``PKGBUILD`` optdepend + ``release.yml`` Arch optdepend were renamed
+``python-pynvml`` → ``python-nvidia-ml-py`` to match the upstream
+PyPI name we pin (``nvidia-ml-py``).
+
+**Windows libusb backend (#131).** Reporter on Windows 11 Python
+3.12 pip-installed trcc-linux and hit
+``usb.core.NoBackendError: No backend available`` — pyusb needs
+``libusb-1.0.dll`` on PATH and pip-installed users don't get one.
+The PyInstaller installer already bundles it via libusb-package;
+pip-installed users now get the same wheel as a transitive dep:
+
+  - ``pyproject.toml``: ``libusb-package>=1.0.26.3; sys_platform ==
+    'win32' and python_version < '3.14'``. Version-gated because
+    upstream wheels only go to cp313 today; the cap lifts when cp314
+    ships.
+  - New ``trcc/adapters/device/_pyusb_find.py`` is the single seam:
+    uses ``libusb_package.find`` on Windows (drop-in wrapper around
+    ``usb.core.find`` per pyocd's canonical pattern), falls back to
+    ``usb.core.find`` everywhere else. 7 call sites switched.
+
+Verified on Linux: ruff + pyright 0/0/0; ``smoke_sleep_cycle``
+13/13; ``smoke_platforms`` 42/42; real GUI on SCSI 0402:3922 frames
+flowing. Verified on Windows VM (Python 3.12): ``libusb-package``
+installs as transitive dep, ``_pyusb_find`` logs
+``pyusb backend: libusb-package (bundled libusb-1.0)``,
+``python -m trcc detect`` succeeds without ``NoBackendError``.
+
 ## v9.6.1
 
 Architecture refactor + Windows sensor strategy chain + per-OS smoke
