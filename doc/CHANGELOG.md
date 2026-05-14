@@ -1,5 +1,33 @@
 # Changelog
 
+## v9.6.4
+
+Quiet-log patch + a handful more `src/` lambdas converted to named callables.
+No behaviour changes for users on a healthy install — strictly a "what
+trcc report shows on a working box" hygiene release.
+
+**Log hygiene (issue #144):** two false-positive lines in `trcc report`
+on Fedora 44 / Python 3.14 dropped to DEBUG with clearer wording.
+
+- `sysfs VID/PID walk failed for /sys/class/scsi_generic/sg0/device —
+  skipping device` (WARNING) → now reads `sysfs ... has no USB parent
+  — skipping (non-USB SCSI device)` (DEBUG).  The line fires for every
+  non-USB SCSI generic device on the box (CD-ROMs, virtual disks,
+  AHCI hosts) and isn't a defect.
+- `SCSI transport factory not injected` (ERROR) → now reads `SCSI
+  transport factory not yet wired — skipping open` (DEBUG).  The line
+  fires when a `ScsiProtocol` instance is created before the
+  composition root finishes wiring (lazy-init race that the call site
+  bails on gracefully) — not an actual failure.
+
+**Continued no-lambdas sweep:** 7 more `src/` lambdas converted to
+named callables (`data_repository.py` fetch_fn, `dc_writer.py`
+`_metric_to_hardware_ids`, Windows `SensorSource` sort key,
+`CarouselConfig.theme_indices` default_factory, `ThemeService` sort
+key, GUI SIGINT handler, sensor-picker checkbox slot).  Continues the
+Smalltalk-style "every callable has a real qualname" discipline from
+v9.6.3.
+
 ## v9.6.3
 
 Daemon-mode regression fix + cross-platform metric-source hygiene.
