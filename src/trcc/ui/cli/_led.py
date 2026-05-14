@@ -199,7 +199,8 @@ def test_led(builder=None, *, mode: str | None = None, segments: int = 64,
 
     _ensure_system(builder)
     sys_svc = get_instance()
-    metrics = sys_svc.all_metrics
+    from trcc._boot import trcc as _trcc
+    metrics = _trcc().os.metrics
 
     print(f"LED ANSI Preview ({segments} segments)")
     print(f"CPU: {metrics.cpu_temp:.0f}°C {metrics.cpu_percent:.0f}%  "
@@ -257,7 +258,8 @@ def test_lcd(builder=None, *, cols: int = 60):
 
     _ensure_system(builder)
     sys_svc = get_instance()
-    metrics = sys_svc.all_metrics
+    from trcc._boot import trcc as _trcc
+    metrics = _trcc().os.metrics
 
     print(f"LCD ANSI Preview ({cols} cols)")
     print("─" * 60)

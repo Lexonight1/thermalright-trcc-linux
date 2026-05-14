@@ -122,8 +122,8 @@ def load_theme(builder, name, *, device=None, preview=False):
         if overlay_config:
             import trcc.ui.cli as _cli_mod
             _cli_mod._ensure_system(builder)
-            svc = _cli_mod._system_svc
-            metrics_fn = (lambda: svc.all_metrics) if svc else None
+            from trcc._boot import trcc as _trcc
+            metrics_fn = lambda: _trcc().os.metrics  # noqa: E731
 
         # Wire mask from theme dir
         mask_path = None
@@ -170,8 +170,8 @@ def load_theme(builder, name, *, device=None, preview=False):
             try:
                 import trcc.ui.cli as _cli_mod
                 _cli_mod._ensure_system(builder)
-                svc = _cli_mod._system_svc
-                metrics_fn = (lambda: svc.all_metrics) if svc else None
+                from trcc._boot import trcc as _trcc
+                metrics_fn = lambda: _trcc().os.metrics  # noqa: E731
                 def _preview_frame(img):
                     print(ImageService.to_ansi_cursor_home(img), flush=True)
 

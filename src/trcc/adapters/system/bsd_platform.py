@@ -31,9 +31,13 @@ from trcc.core.models import SensorInfo
 from trcc.core.ports import (
     AutostartManager,
     DoctorPlatformConfig,
+    Metrics,
     Platform,
     ReportPlatformConfig,
 )
+
+if TYPE_CHECKING:
+    from trcc.core.ports import SensorEnumerator as _SensorEnumeratorABC
 
 log = logging.getLogger(__name__)
 
@@ -301,11 +305,32 @@ class SensorEnumerator(SensorEnumeratorBase):
 # BSDPlatform — THE one class
 # =========================================================================
 
+class BSDMetrics(Metrics):
+    """BSD HardwareMetrics builder — composes its sources in __init__.
+
+    Today: leans on the BSD :class:`SensorEnumerator` which composes
+    ``sysctl hw.sensors`` + ``dev.cpu.N.temperature`` + psutil.  Future
+    ``_read_*`` methods slot in as new BSD probes are added.
+    """
+
+    def __init__(self, enumerator: _SensorEnumeratorABC) -> None:
+        super().__init__()
+        self._enumerator = enumerator
+        self._read_datetime()
+        self._read_sensors(enumerator)
+        # Future per-OS reads slot in here.
+
+
 class BSDPlatform(Platform):
     """BSD Platform — all OS logic inline, no intermediaries."""
 
     def __init__(self) -> None:
         super().__init__()
+
+    # ── Metrics ───────────────────────────────────────────────
+
+    def _make_metrics(self) -> Metrics:
+        return BSDMetrics(self.sensors)
 
     # ── Sensor factory ───────────────────────────────────────
 

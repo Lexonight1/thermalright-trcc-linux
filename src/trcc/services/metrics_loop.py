@@ -43,8 +43,9 @@ class PollingMetricsLoop(MetricsLoop):
         produced.  Playing LCDs also get their overlay-text cache
         refreshed with the latest metrics.
       * **Poll** (every ``settings.refresh_interval`` seconds): read
-        ``system_svc.all_metrics``, apply the user's temp unit, push to
-        every device's ``update_metrics()``, publish ``Topic.METRICS``.
+        ``trcc.os.metrics``, apply the user's temp unit + HDD-disable
+        toggle, push to every device's ``update_metrics()``, publish
+        ``Topic.METRICS``.
 
     The cadence ratio is recomputed each iteration, so settings changes
     take effect on the next tick.  ``wake()`` short-circuits the wait
@@ -62,11 +63,9 @@ class PollingMetricsLoop(MetricsLoop):
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        if self._trcc.system_svc is None:
-            raise RuntimeError(
-                'PollingMetricsLoop.start: SystemService not injected on Trcc. '
-                'Pass system_svc=… at Trcc construction or call '
-                'Trcc.set_system_service() before discover().')
+        # Metrics flow through ``trcc.os.metrics`` now — no SystemService
+        # dependency.  Each tick the platform constructs a fresh OS-specific
+        # :class:`Metrics` whose ``__init__`` composes its read methods.
         self.stop()
         self._stop.clear()
         self._thread = threading.Thread(
@@ -115,13 +114,28 @@ class PollingMetricsLoop(MetricsLoop):
             self._wake.clear()
 
     def _poll_metrics(self, HardwareMetrics: Any, _settings: Any) -> None:
+        """Tick the metrics broadcast — single OS-owned read, then fan out.
+
+        ``trcc.os.metrics`` is the canonical entrypoint: each OS subclass's
+        :class:`Metrics` __init__ composes whatever sources it needs (one
+        on Linux, many on Windows/macOS).  The result is HardwareMetrics
+        ready to broadcast — no SystemService middle layer needed.
+        """
         trcc = self._trcc
-        sys_svc = trcc.system_svc
-        if sys_svc is None:
-            return
         try:
             metrics = HardwareMetrics.with_temp_unit(
-                sys_svc.all_metrics, _settings.temp_unit)
+                trcc.os.metrics, _settings.temp_unit)
+            # HDD-disable setting — zero disk metrics when the user
+            # opted out (matches C# isHDD toggle).
+            if not _settings.hdd_enabled:
+                metrics.disk_temp = 0.0
+                metrics.disk_activity = 0.0
+                metrics.disk_read = 0.0
+                metrics.disk_write = 0.0
+                metrics._populated.discard('disk_temp')
+                metrics._populated.discard('disk_activity')
+                metrics._populated.discard('disk_read')
+                metrics._populated.discard('disk_write')
             trcc.set_current_metrics(metrics)
             for device in tuple(chain(trcc.lcd_devices, trcc.led_devices)):
                 try:

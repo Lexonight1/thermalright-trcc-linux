@@ -16,6 +16,16 @@ from .system import SystemService
 
 log = logging.getLogger(__name__)
 
+# Metrics computed inside format_metric() from datetime.now() — they aren't
+# tied to a hardware sensor so they bypass the HardwareMetrics._populated
+# gate. Anything sensor-backed must be in _populated to render.
+_COMPUTED_METRICS: frozenset[str] = frozenset({
+    'date', 'time', 'weekday',
+    'date_year', 'date_month', 'date_day',
+    'time_hour', 'time_minute', 'time_second',
+    'day_of_week',
+})
+
 
 class OverlayService:
     """Overlay rendering: config, mask, metrics → composited image.
@@ -479,7 +489,12 @@ class OverlayService:
                 case 'date' | 'weekday':
                     has_date = True
                 case _:
-                    if (val := getattr(metrics, metric_name, None)) is not None:
+                    # Same gate as _draw_text_elements — sensor-backed
+                    # metrics absent from _populated render as nothing, so
+                    # their cache key is a sentinel, not a (lying) value.
+                    if metric_name not in metrics._populated:
+                        vals.append(None)
+                    elif (val := getattr(metrics, metric_name, None)) is not None:
                         time_fmt = cfg.get('time_format', self.time_format)
                         date_fmt = cfg.get('date_format', self.date_format)
                         vals.append(SystemService.format_metric(
@@ -644,6 +659,12 @@ class OverlayService:
                 text = str(cfg['text'])
             elif 'metric' in cfg:
                 metric_name = cfg['metric']
+                # Date/time/weekday are derived inside format_metric from
+                # datetime.now() — they aren't sensor-backed, so they bypass
+                # the _populated gate and always render.
+                if metric_name not in _COMPUTED_METRICS \
+                        and metric_name not in metrics._populated:
+                    continue  # No source on this OS — skip the ghost zero.
                 if (value := getattr(metrics, metric_name, None)) is not None:
                     time_fmt = cfg.get('time_format', self.time_format)
                     date_fmt = cfg.get('date_format', self.date_format)
@@ -651,7 +672,7 @@ class OverlayService:
                         metric_name, value,
                         time_fmt, date_fmt, self.temp_unit, lang=self.lang)
                 else:
-                    text = "N/A"
+                    continue
             else:
                 continue
 

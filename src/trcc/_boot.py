@@ -213,7 +213,7 @@ def trcc(
             # overlay sensors render real values when this is the only
             # UI running on a headless box (issue #130).
             try:
-                metrics = system_svc.all_metrics
+                metrics = platform.metrics
                 for device in t:
                     device.update_metrics(metrics)
             except Exception:

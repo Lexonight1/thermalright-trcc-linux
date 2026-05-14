@@ -28,9 +28,13 @@ from trcc.adapters.system._shared import (
 )
 from trcc.core.ports import (
     DoctorPlatformConfig,
+    Metrics,
     Platform,
     ReportPlatformConfig,
 )
+
+if TYPE_CHECKING:
+    from trcc.core.ports import SensorEnumerator as _SensorEnumeratorABC
 
 log = logging.getLogger(__name__)
 
@@ -166,11 +170,38 @@ def get_disk_info() -> list[dict[str, str]]:
 # WindowsPlatform — THE one class
 # =========================================================================
 
+class WindowsMetrics(Metrics):
+    """Windows HardwareMetrics builder — composes its sources in __init__.
+
+    Today: leans on :class:`WindowsSensorEnumerator` which already chains
+    HWiNFO64 + LibreHardwareMonitor + MSAcpi + psutil + pynvml.  Future
+    growth slots cleanly here as new ``_read_*`` methods called from
+    __init__ — ADLX for AMD, IntelL0 for Intel, registry reads, WMI
+    one-shots — without touching the enumerator or Platform.
+    """
+
+    def __init__(self, enumerator: _SensorEnumeratorABC) -> None:
+        super().__init__()
+        self._enumerator = enumerator
+        # __init__ IS the build.  Each _read_* call fills self.record.
+        self._read_datetime()           # base ABC helper
+        self._read_sensors(enumerator)  # base ABC helper — walks WindowsSensorEnumerator chain
+        # Future per-OS reads slot in here:
+        #   self._read_adlx()       — AMD GPU via ADLX driver
+        #   self._read_intel_l0()   — Intel GPU via Level Zero
+        #   self._read_wmi_oneshots()  — Win32 namespace one-offs
+
+
 class WindowsPlatform(Platform):
     """Windows Platform — sensor work delegated to ``windows.WindowsSensorEnumerator``."""
 
     def __init__(self) -> None:
         super().__init__()
+
+    # ── Metrics ───────────────────────────────────────────────
+
+    def _make_metrics(self) -> Metrics:
+        return WindowsMetrics(self.sensors)
 
     # ── Sensor enumerator ─────────────────────────────────────
 

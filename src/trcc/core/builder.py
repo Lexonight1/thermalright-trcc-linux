@@ -159,7 +159,7 @@ class ControllerBuilder:
         """
         from ..services.system import SystemService
         return SystemService(
-            enumerator=self._os.create_sensor_enumerator(),
+            platform=self._os,
             settings=settings,
         )
 

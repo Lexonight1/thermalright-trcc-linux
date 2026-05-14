@@ -29,9 +29,13 @@ from trcc.adapters.system._shared import (
 from trcc.core.ports import (
     AutostartManager,
     DoctorPlatformConfig,
+    Metrics,
     Platform,
     ReportPlatformConfig,
 )
+
+if TYPE_CHECKING:
+    from trcc.core.ports import SensorEnumerator as _SensorEnumeratorABC
 
 log = logging.getLogger(__name__)
 
@@ -382,11 +386,35 @@ def get_disk_info() -> list[dict[str, str]]:
 # MacOSPlatform — THE one class
 # =========================================================================
 
+class MacOSMetrics(Metrics):
+    """macOS HardwareMetrics builder — composes its sources in __init__.
+
+    Today: leans on :class:`MacOSSensorEnumerator` which composes IOKit
+    SMC + Apple Silicon HID + powermetrics + psutil + pynvml.  Future
+    growth slots in as ``_read_*`` methods called from __init__ — macmon
+    ANE on Apple Silicon, IOReportSubscribe for push-based metrics, etc.
+    """
+
+    def __init__(self, enumerator: _SensorEnumeratorABC) -> None:
+        super().__init__()
+        self._enumerator = enumerator
+        self._read_datetime()
+        self._read_sensors(enumerator)
+        # Future per-OS reads slot in here:
+        #   self._read_macmon_ane()      — Apple Silicon ANE telemetry
+        #   self._read_ioreport_push()   — Push-based metrics via IOReportSubscribe
+
+
 class MacOSPlatform(Platform):
     """macOS Platform — all OS logic inline."""
 
     def __init__(self) -> None:
         super().__init__()
+
+    # ── Metrics ───────────────────────────────────────────────
+
+    def _make_metrics(self) -> Metrics:
+        return MacOSMetrics(self.sensors)
 
     # ── Sensor factory ───────────────────────────────────────
 

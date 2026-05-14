@@ -18,12 +18,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QWidget
 
 if TYPE_CHECKING:
     from ...adapters.system.config import SysInfoConfig
+    from ...core.models import HardwareMetrics
 
 from ...core.models import (
     CATEGORY_COLORS,
@@ -256,9 +257,10 @@ class UCSystemInfo(QWidget):
         self._slot_widgets: list[QWidget] = []
         self._selected_panel: SystemInfoPanel | None = None
 
-        self._update_timer = QTimer(self)
-        self._update_timer.timeout.connect(self._update_metrics)
-
+        # No local timer — observers of Topic.METRICS dispatch updates via
+        # update_from_metrics().  Trcc's PollingMetricsLoop is the single
+        # publisher; this panel reads from the same broadcast as the LCD
+        # overlay and the LED engine, so all three always agree.
         self._setup_ui()
 
     def _setup_ui(self):
@@ -505,14 +507,20 @@ class UCSystemInfo(QWidget):
         panel.config.name = new_name
         self._config.save()
 
-    def start_updates(self):
-        """Start periodic metric updates (1s interval)."""
-        self._update_metrics()
-        self._update_timer.start(1000)
+    def start_updates(self) -> None:
+        """No-op — retained for caller compatibility.
 
-    def stop_updates(self):
-        """Stop periodic metric updates."""
-        self._update_timer.stop()
+        The panel is a Topic.METRICS observer; updates arrive via
+        ``update_from_metrics`` dispatched by trcc_app's main-thread
+        signal.  The single publisher owns the cadence — no local timer.
+        """
+
+    def stop_updates(self) -> None:
+        """No-op — retained for cleanup-call compatibility.
+
+        The panel is a Topic.METRICS observer now; the single publisher
+        owns the cadence and lifecycle, so there's nothing to stop here.
+        """
 
     def set_temp_unit(self, unit: int):
         """Set temperature unit on all panels. 0=Celsius, 1=Fahrenheit."""
@@ -520,11 +528,13 @@ class UCSystemInfo(QWidget):
         for panel in self._panels_list:
             panel.set_temp_unit(unit)
 
-    def _update_metrics(self):
-        """Update all panels with current sensor readings."""
-        try:
-            readings = self._enumerator.read_all()
-            for panel in self._panels_list:
-                panel.update_values(readings)
-        except Exception as e:
-            log.error("Error updating metrics: %s", e)
+    def update_from_metrics(self, metrics: HardwareMetrics) -> None:
+        """Render panels from the unified metrics broadcast.
+
+        Pulls the raw ``readings`` dict carried on the broadcast so we
+        render the exact sensors the OS exposed — no field-by-field
+        filtering through the typed DTO.  Same source as the LCD overlay,
+        same source as the LED engine.
+        """
+        for panel in self._panels_list:
+            panel.update_values(metrics.readings)

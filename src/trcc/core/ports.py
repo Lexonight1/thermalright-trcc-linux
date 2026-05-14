@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from trcc.core.models import JPEG_MAX_BYTES, DetectedDevice
+from trcc.core.models import JPEG_MAX_BYTES, DetectedDevice, HardwareMetrics
 
 if TYPE_CHECKING:
     from trcc.core.models import SensorInfo, UsbAddress
@@ -444,6 +444,97 @@ class AutostartManager(ABC):
 
 
 # =========================================================================
+# Metrics ABC — OS-specific HardwareMetrics builder (snapshot per instance)
+# =========================================================================
+
+
+class Metrics(ABC):
+    """Port: build a :class:`HardwareMetrics` snapshot in ``__init__``.
+
+    Each subclass represents ONE OS's composition strategy.  The
+    constructor IS the build process — each subclass calls a sequence
+    of private read methods to populate ``self.record``:
+
+      * **Linux** — datetime + SensorEnumerator + lm_sensors +
+        dmidecode + smartctl.  Short __init__, mostly leveraging the
+        hwmon/psutil enumerator.
+      * **Windows** — datetime + SensorEnumerator (which already
+        chains HWiNFO + LHM + MSAcpi + psutil + pynvml) + WMI one-shots
+        + future ADLX/IntelL0.  Longer __init__.
+      * **macOS** — datetime + SensorEnumerator (IOKit + powermetrics
+        + psutil) + future macmon ANE reads.
+      * **BSD** — datetime + SensorEnumerator (sysctl + hw.sensors +
+        psutil).
+
+    The OS subclass's ``__init__`` length tells the truth about how
+    hard metrics composition is on that OS.  The public contract is
+    simply: instantiate, read ``self.record``.
+
+    Subprocess and other long-lived state belong on the Platform
+    subclass and get passed into the Metrics constructor — that way
+    per-tick instantiation doesn't re-run subprocess calls.
+    """
+
+    @abstractmethod
+    def __init__(self) -> None:
+        """Subclasses MUST override — the ``__init__`` body IS the build pass.
+
+        The override should call ``super().__init__()`` to allocate the
+        empty ``self.record`` then invoke whatever read methods (one for
+        each OS source) populate it.  This contract — "the constructor is
+        the read pass" — is enforced by making ``__init__`` abstract so
+        ``Metrics()`` cannot be instantiated directly.
+        """
+        from trcc.core.models import HardwareMetrics as _HM
+        self.record: HardwareMetrics = _HM()
+
+    def _read_datetime(self) -> None:
+        """Shared: populate the datetime fields from ``datetime.now()``.
+
+        These metrics are never sensor-backed, so they bypass the
+        ``HardwareMetrics._populated`` gate inside renderers.  Every
+        OS calls this from its ``__init__``.
+        """
+        import datetime as _dt
+        m = self.record
+        now = _dt.datetime.now()
+        m.date_year = now.year
+        m.date_month = now.month
+        m.date_day = now.day
+        m.time_hour = now.hour
+        m.time_minute = now.minute
+        m.time_second = now.second
+        m.day_of_week = now.weekday()
+        m._populated.update((
+            'date_year', 'date_month', 'date_day',
+            'time_hour', 'time_minute', 'time_second',
+            'day_of_week', 'date', 'time', 'weekday',
+        ))
+
+    def _read_sensors(self, enumerator: SensorEnumerator) -> None:
+        """Shared: copy enumerator readings into the typed DTO + readings dict.
+
+        Walks ``enumerator.map_defaults()`` (the OS's metric_key →
+        sensor_id mapping) and copies whatever the OS provided into
+        ``self.record``.  Also stores the raw cache on
+        ``self.record.readings`` so consumers iterating by sensor_id
+        (GUI sensor panel) read from the same record.
+        """
+        from trcc.core.models.sensor import FLOAT_FIELDS
+
+        m = self.record
+        readings = enumerator.read_all()
+        m.readings = readings
+        for attr_name, sensor_id in enumerator.map_defaults().items():
+            if sensor_id in readings and hasattr(m, attr_name):
+                value: float = readings[sensor_id]
+                if attr_name not in FLOAT_FIELDS:
+                    value = int(value)
+                setattr(m, attr_name, value)
+                m._populated.add(attr_name)
+
+
+# =========================================================================
 # Metrics Loop ABC — the underlying command stream that ticks every device
 # =========================================================================
 
@@ -454,7 +545,7 @@ class MetricsLoop(ABC):
     Owns two cadences in one mechanism:
       * **Tick** — drive `device.tick()` for every connected device, publish
         `Topic.FRAME` results. Fast (50ms on the polling default).
-      * **Poll** — read `system_svc.all_metrics`, push to every device's
+      * **Poll** — read `trcc.os.metrics`, push to every device's
         `update_metrics()`, publish `Topic.METRICS`. Cadence = the user's
         ``settings.refresh_interval``.
 
@@ -579,6 +670,42 @@ class Platform(ABC):
         if self._sensor_enum is None:
             self._sensor_enum = self._make_sensor_enumerator()
         return self._sensor_enum
+
+    # ── Metrics — delegated to OS-specific Metrics builder ───────────
+    #
+    # ``platform.metrics`` is THE method every observer of system
+    # readings calls.  PollingMetricsLoop reads it once per tick,
+    # broadcasts on Topic.METRICS, every UI thread renders from the
+    # same record.
+    #
+    # Delegation: Platform doesn't compose metrics itself — it owns
+    # too many other concerns (USB, screen capture, autostart, DPI).
+    # The OS subclass returns its own ``Metrics`` instance whose
+    # ``__init__`` calls every read method needed to fill the record.
+    # Linux's __init__ is short; Windows's is longer (HWiNFO + LHM +
+    # MSAcpi + ...).  The diversity lives in the OS Metrics class.
+
+    @property
+    def metrics(self) -> HardwareMetrics:
+        """Current hardware metrics for this OS — single source of truth.
+
+        Delegates to the OS-specific :class:`Metrics` builder.  Each
+        call constructs a fresh ``Metrics`` whose ``__init__`` runs the
+        OS's read methods; the resulting ``record`` is what every
+        observer sees on ``Topic.METRICS``.
+        """
+        return self._make_metrics().record
+
+    @abstractmethod
+    def _make_metrics(self) -> Metrics:
+        """Construct the OS-specific :class:`Metrics` snapshot.
+
+        Each Platform subclass returns a fresh ``Metrics`` instance —
+        whose ``__init__`` calls every read method needed to populate
+        ``HardwareMetrics``.  Subprocess caches (lm_sensors, dmidecode,
+        smartctl) belong on the Platform subclass and get passed into
+        the Metrics constructor to avoid re-running on every tick.
+        """
 
     def install_method(self) -> str:
         """Detect how trcc-linux was installed (pip, pacman, pyinstaller, etc.)."""

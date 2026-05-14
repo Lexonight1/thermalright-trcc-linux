@@ -140,7 +140,6 @@ def play_video(builder=None, video_path=None, *, device=None, loop=True, duratio
         # Metrics supplier for live overlay updates
         metrics_fn = None
         if overlay_config:
-            from trcc.services.system import get_all_metrics
             try:
                 from trcc.core.builder import ControllerBuilder
                 from trcc.ui.cli import _ensure_system
@@ -148,7 +147,7 @@ def play_video(builder=None, video_path=None, *, device=None, loop=True, duratio
             except Exception as e:
                 # Best-effort metrics warmup; play continues with stale defaults.
                 log.debug("_ensure_system warmup failed for play: %s", e)
-            metrics_fn = get_all_metrics
+            metrics_fn = lambda: trcc().os.metrics  # noqa: E731
 
         app = trcc()
         snap = app.lcd.snapshot(lcd)
@@ -335,18 +334,18 @@ def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
                    preview=False):
     """Render overlay from DC config file."""
     from trcc._boot import trcc as _trcc
-    from trcc.services.system import get_all_metrics
     from trcc.ui.cli import _ensure_system
 
     if (rc := _connect_or_fail(device)):
         return rc
     _ensure_system(builder)
-    if (lcd := _trcc().lcd_device) is None:
+    t = _trcc()
+    if (lcd := t.lcd_device) is None:
         print("Error: No LCD device connected.")
         return 1
     result = lcd.render_overlay_from_dc(
         dc_path, send=send, output=output or None,
-        metrics=get_all_metrics(),
+        metrics=t.os.metrics,
     )
     if not result["success"]:
         print(f"Error: {result['error']}")

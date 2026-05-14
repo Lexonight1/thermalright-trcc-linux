@@ -540,15 +540,12 @@ class Trcc:
         from .models import HardwareMetrics
 
         self.settings.set_temp_unit(unit)
-        fresh = None
-        if (svc := self._system_svc) is not None:
-            fresh = HardwareMetrics.with_temp_unit(svc.all_metrics, unit)
-            self._current_metrics = fresh
+        fresh = HardwareMetrics.with_temp_unit(self._platform.metrics, unit)
+        self._current_metrics = fresh
 
         for device in chain(self._lcd_devices, self._led_devices):
             device.set_temp_unit(unit)
-            if fresh is not None:
-                device.update_metrics(fresh)
+            device.update_metrics(fresh)
 
         self.wake_metrics_loop()
         unit_str = 'F' if unit else 'C'

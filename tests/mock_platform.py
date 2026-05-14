@@ -154,6 +154,11 @@ class MockPlatform(Platform):
 
     # ── Abstract implementations ─────────────────────────────────────
 
+    def _make_metrics(self):
+        """Mock platform reuses Linux's metrics composer for test convenience."""
+        from trcc.adapters.system.linux_platform import LinuxMetrics
+        return LinuxMetrics(self.sensors, {})
+
     def _make_sensor_enumerator(self) -> SensorEnumerator:
         from trcc.adapters.system.linux_platform import (
             SensorEnumerator as LinuxSensors,

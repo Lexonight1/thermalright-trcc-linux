@@ -20,6 +20,12 @@ class LEDEffectEngine:
     def __init__(self, state: LEDState, metrics: HardwareMetrics) -> None:
         self._state = state
         self._metrics = metrics
+        # Last color held for sensor-linked modes — used when the chosen
+        # source disappears from HardwareMetrics._populated (e.g. Windows
+        # VM with no thermal source).  Returning the held color keeps the
+        # LED visually stable instead of dropping to the gradient bottom.
+        self._last_temp_color: tuple[int, int, int] = (0, 0, 0)
+        self._last_load_color: tuple[int, int, int] = (0, 0, 0)
 
     @property
     def metrics(self) -> HardwareMetrics:
@@ -219,22 +225,35 @@ class LEDEffectEngine:
         self, seg_count: int,
         metric_source: tuple[str, str] | None = None,
     ) -> list[tuple[int, int, int]]:
-        """WDLD_Timer: color from temperature thresholds."""
+        """WDLD_Timer: color from temperature thresholds.
+
+        Holds the previous color when ``{source}_temp`` isn't populated
+        (no thermal sensor on this OS) so the LED stays visually stable
+        instead of jumping to the gradient bottom.
+        """
         from ..core.color import ColorEngine
 
         source = metric_source[0] if metric_source and metric_source[0] else self._state.temp_source
-        temp = getattr(self._metrics, f"{source}_temp", 0)
-        color = ColorEngine.color_for_value(temp, ColorEngine.TEMP_GRADIENT)
-        return [color] * seg_count
+        field = f"{source}_temp"
+        if field in self._metrics._populated:
+            temp = getattr(self._metrics, field, 0)
+            self._last_temp_color = ColorEngine.color_for_value(temp, ColorEngine.TEMP_GRADIENT)
+        return [self._last_temp_color] * seg_count
 
     def _tick_load_linked_for(
         self, seg_count: int,
         metric_source: tuple[str, str] | None = None,
     ) -> list[tuple[int, int, int]]:
-        """FZLD_Timer: color from CPU/GPU load thresholds."""
+        """FZLD_Timer: color from CPU/GPU load thresholds.
+
+        Same _populated gate as ``_tick_temp_linked_for`` — held color
+        when the OS provides no usage sensor for the chosen source.
+        """
         from ..core.color import ColorEngine
 
         source = metric_source[0] if metric_source and metric_source[0] else self._state.load_source
-        load = self._metrics.cpu_percent if source == "cpu" else self._metrics.gpu_usage
-        color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
-        return [color] * seg_count
+        field = 'cpu_percent' if source == 'cpu' else 'gpu_usage'
+        if field in self._metrics._populated:
+            load = self._metrics.cpu_percent if source == 'cpu' else self._metrics.gpu_usage
+            self._last_load_color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
+        return [self._last_load_color] * seg_count

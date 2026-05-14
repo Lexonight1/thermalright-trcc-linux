@@ -24,8 +24,8 @@ def _get_system_svc():
 @router.get("/metrics")
 def get_metrics() -> dict:
     """All system metrics as JSON (CPU, GPU, memory, disk, network, fans)."""
-    svc = _get_system_svc()
-    m = svc.all_metrics
+    from trcc._boot import trcc
+    m = trcc().os.metrics
     return dataclasses.asdict(m)
 
 
@@ -51,8 +51,8 @@ def get_metrics_by_category(category: str) -> dict:
             detail=f"Unknown category '{category}'. Use: {', '.join(sorted(prefix_map.keys()))}",
         )
 
-    svc = _get_system_svc()
-    m = svc.all_metrics
+    from trcc._boot import trcc
+    m = trcc().os.metrics
     all_data = dataclasses.asdict(m)
     return {k: v for k, v in all_data.items() if k.startswith(prefix)}
 

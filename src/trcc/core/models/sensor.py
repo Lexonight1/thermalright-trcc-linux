@@ -64,6 +64,13 @@ class HardwareMetrics:
     time: float = 0.0
     weekday: float = 0.0
 
+    # Observability surface — every Topic.METRICS subscriber reads from the
+    # same record.  Typed fields above answer "what's the CPU temp?" by name;
+    # ``readings`` answers "what raw sensors did the OS expose?" for consumers
+    # (GUI sensor panel) that iterate the cache; ``_populated`` distinguishes
+    # "no source on this OS" from "actually zero" so renderers skip ghost
+    # values instead of drawing literal "0°C".
+    readings: dict[str, float] = field(default_factory=dict, repr=False, compare=False)
     _populated: set[str] = field(default_factory=set, repr=False, compare=False)
 
     _TEMP_FIELDS = ('cpu_temp', 'gpu_temp', 'mem_temp', 'disk_temp')
@@ -72,14 +79,25 @@ class HardwareMetrics:
     def with_temp_unit(metrics: HardwareMetrics, temp_unit: int) -> HardwareMetrics:
         """Apply temperature unit conversion in-place (0=Celsius, 1=Fahrenheit).
 
-        Called once by MetricsMediator before dispatch — all downstream
-        consumers receive pre-converted temps.
+        Called once by the metrics broadcast before dispatch — every
+        Topic.METRICS subscriber receives pre-converted temps.
         """
         if temp_unit != 1:
             return metrics
         for attr in HardwareMetrics._TEMP_FIELDS:
             setattr(metrics, attr, celsius_to_fahrenheit(getattr(metrics, attr)))
         return metrics
+
+
+# Fields that keep float precision (need decimals for unit conversion in
+# format_metric: MB→GB, KB/s→MB/s, etc.). All other metrics are truncated to
+# int at the read boundary, matching the C# app's behavior.  Lives next to
+# the DTO so every metrics-builder (Platform.metrics, LinuxMetrics,
+# WindowsMetrics, …) reads the same set instead of redefining locally.
+FLOAT_FIELDS: frozenset[str] = frozenset({
+    'mem_available', 'disk_read', 'disk_write',
+    'net_up', 'net_down', 'net_total_up', 'net_total_down',
+})
 
 
 # Hardware sensor ↔ metric name mapping (single source of truth).

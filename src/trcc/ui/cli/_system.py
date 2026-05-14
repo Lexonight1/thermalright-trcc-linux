@@ -31,12 +31,13 @@ def _sudo_run(cmd):
 def show_info(builder=None, *, preview: bool = False, metric: str | None = None):
     """Show system metrics, optionally as ANSI terminal art."""
     try:
-        from trcc.services.system import format_metric, get_all_metrics
+        from trcc._boot import trcc as _trcc
+        from trcc.services.system import format_metric
         from trcc.ui.cli import _ensure_system
 
         log.debug("show_info preview=%s metric=%s", preview, metric)
         _ensure_system(builder)
-        metrics = get_all_metrics()
+        metrics = _trcc().os.metrics
 
         if preview:
             from trcc.services import ImageService

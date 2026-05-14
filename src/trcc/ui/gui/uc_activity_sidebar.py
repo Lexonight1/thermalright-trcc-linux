@@ -183,7 +183,7 @@ class UCActivitySidebar(QWidget):
         self.sensor_clicked.emit(config)
 
     def update_from_metrics(self, metrics) -> None:
-        """Accept pre-polled metrics from MetricsMediator."""
+        """Render from the unified Topic.METRICS broadcast."""
         try:
             for item in self._sensor_items:
                 item.update_value(metrics)

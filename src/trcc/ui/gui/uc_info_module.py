@@ -90,7 +90,7 @@ class UCInfoModule(QWidget):
         self._temp_unit = '\u00b0F' if unit else '\u00b0C'
 
     def update_from_metrics(self, metrics) -> None:
-        """Accept pre-polled metrics from MetricsMediator."""
+        """Render from the unified Topic.METRICS broadcast."""
         self._apply_metrics(metrics)
 
     def stop_updates(self) -> None:

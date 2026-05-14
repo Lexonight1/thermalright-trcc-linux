@@ -566,9 +566,16 @@ class TRCCApp(QMainWindow):
     # ── Metrics (main thread only) ───────────────────────────────────
 
     def _on_metrics_main_thread(self, metrics: Any) -> None:
-        """Update GUI-only subscribers. Devices are already ticked by TrccApp."""
+        """Dispatch the unified metrics broadcast to every visible GUI panel.
+
+        One publisher (PollingMetricsLoop), one record (HardwareMetrics
+        with typed fields + readings dict + _populated set), every panel
+        and the active device handler observe the same data.
+        """
         if self.uc_info_module.isVisible():
             self.uc_info_module.update_from_metrics(metrics)
+        if self.uc_system_info.isVisible():
+            self.uc_system_info.update_from_metrics(metrics)
         if self.is_app_visible() and self.uc_activity_sidebar.isVisible():
             self.uc_activity_sidebar.update_from_metrics(metrics)
 
@@ -1096,10 +1103,8 @@ class TRCCApp(QMainWindow):
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
 
-        if view == 'sysinfo':
-            self.uc_system_info.start_updates()
-        else:
-            self.uc_system_info.stop_updates()
+        # uc_system_info is a Topic.METRICS observer (see _on_metrics_main_thread);
+        # visibility alone decides whether the panel renders.  No timer to start.
 
     # ── Signal Wiring ───────────────────────────────────────────────
 

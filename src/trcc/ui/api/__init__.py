@@ -193,12 +193,11 @@ def start_overlay_loop(
     stop_event = _overlay_stop_event
     lcd = _device_dispatcher  # capture for closure
 
+    from trcc._boot import trcc as _trcc
+
     def _loop() -> None:
         while not stop_event.is_set():
-            if _system_svc is None:
-                stop_event.wait(2.0)
-                continue
-            metrics = _system_svc.all_metrics
+            metrics = _trcc().os.metrics
             if overlay.would_change(metrics):
                 overlay.update_metrics(metrics)
                 frame = overlay.render(metrics=metrics)
