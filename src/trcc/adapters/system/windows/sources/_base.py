@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from operator import attrgetter
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
@@ -98,7 +99,7 @@ class WindowsSensorSource(ABC):
         """
         return sorted(
             (sub() for sub in cls._registry.values()),
-            key=lambda src: src.priority,
+            key=attrgetter('priority'),
         )
 
     # ── Abstract API ───────────────────────────────────────────────────────

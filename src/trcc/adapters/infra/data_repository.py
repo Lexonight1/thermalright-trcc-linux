@@ -381,8 +381,13 @@ class DataManager:
             user_dir=os.path.join(DataManager._data_dir(), name),
             archive_name=f'{name}.7z',
             check_fn=has_themes,
-            fetch_fn=lambda a: DataManager._fetch_archive(a),
+            fetch_fn=DataManager._fetch_archive,
         )
+
+    @staticmethod
+    def _fetch_web_archive(archive_name: str) -> str | None:
+        """Bound fetcher for the 'web' subdirectory — named, not a lambda."""
+        return DataManager._fetch_archive(archive_name, 'web')
 
     @staticmethod
     def ensure_web(width: int, height: int) -> bool:
@@ -394,7 +399,7 @@ class DataManager:
             user_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             archive_name=f'{res_key}.7z',
             check_fn=_has_any_content,
-            fetch_fn=lambda a: DataManager._fetch_archive(a, 'web'),
+            fetch_fn=DataManager._fetch_web_archive,
         )
 
     @staticmethod
@@ -407,7 +412,7 @@ class DataManager:
             user_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             archive_name=f'{res_key}.7z',
             check_fn=has_themes,
-            fetch_fn=lambda a: DataManager._fetch_archive(a, 'web'),
+            fetch_fn=DataManager._fetch_web_archive,
         )
 
     @staticmethod

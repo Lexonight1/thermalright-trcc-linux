@@ -141,7 +141,10 @@ def launch(verbosity: int = 0, decorated: bool = False,
     # QThread) starts the OS-provided MetricsLoop after device enumeration.
 
     # ── IPC raise + signals ───────────────────────────────────────────────
-    signal.signal(signal.SIGINT, lambda *_: qapp.quit())
+    def _on_sigint(*_args):
+        """SIGINT handler — quit the Qt event loop cleanly."""
+        qapp.quit()
+    signal.signal(signal.SIGINT, _on_sigint)
     platform.wire_ipc_raise(qapp, window)
     # Issue #143 ("USB communication lost" after GUI exit) is handled at
     # the kernel level — udev rule sets power/autosuspend_delay_ms=30000

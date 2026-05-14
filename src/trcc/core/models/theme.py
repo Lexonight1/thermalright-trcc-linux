@@ -218,6 +218,11 @@ class ThemeConfig:
     mask_y: int = 0                    # YvalMB
 
 
+def _default_theme_indices() -> list[int]:
+    """6 carousel slots, each pointing to "unset" (-1) until the user assigns."""
+    return [-1, -1, -1, -1, -1, -1]
+
+
 @dataclass(slots=True)
 class CarouselConfig:
     """Carousel/slideshow configuration."""
@@ -225,7 +230,7 @@ class CarouselConfig:
     enabled: bool = False              # isLunbo
     interval_seconds: int = 3          # myLunBoTimer (minimum 3)
     count: int = 0                     # lunBoCount
-    theme_indices: list[int] = field(default_factory=lambda: [-1, -1, -1, -1, -1, -1])
+    theme_indices: list[int] = field(default_factory=_default_theme_indices)
     lcd_rotation: int = 1              # myLddVal (1-3): split mode style, NOT rotation
 
 

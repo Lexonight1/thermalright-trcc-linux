@@ -77,7 +77,7 @@ class SensorRow(QWidget):
         if not self._cb_off.isNull():
             self._cb.setIcon(QIcon(self._cb_off))
             self._cb.setIconSize(QSize(CHECKBOX_SIZE, CHECKBOX_SIZE))
-        self._cb.clicked.connect(lambda: self.clicked.emit(self.sensor.id))
+        self._cb.clicked.connect(self._on_checkbox_clicked)
 
         # Name label
         self._name = QLabel(sensor.name, self)
@@ -101,6 +101,10 @@ class SensorRow(QWidget):
         px = self._cb_on if selected else self._cb_off
         if not px.isNull():
             self._cb.setIcon(QIcon(px))
+
+    def _on_checkbox_clicked(self) -> None:
+        """Checkbox slot — re-emit clicked with this row's sensor id."""
+        self.clicked.emit(self.sensor.id)
 
     def update_value(self, value: float | None):
         """Update the displayed value."""

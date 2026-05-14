@@ -67,6 +67,11 @@ def _copy_flat_files(src: Path, dest: Path) -> None:
             shutil.copy2(str(f), str(dest / f.name))
 
 
+def _theme_sort_key(theme: ThemeInfo) -> tuple[bool, str]:
+    """Sort: built-in themes first (False < True), then alphabetical by name."""
+    return (theme.name.startswith(('User', 'Custom')), theme.name)
+
+
 class ThemeService:
     """Theme lifecycle: discover, load, save, export, import.
 
@@ -261,10 +266,7 @@ class ThemeService:
                             seen_names.add(item.name)
                             themes.append(theme)
 
-        themes.sort(key=lambda t: (
-            t.name.startswith(('User', 'Custom')),
-            t.name,
-        ))
+        themes.sort(key=_theme_sort_key)
         return themes
 
     @staticmethod

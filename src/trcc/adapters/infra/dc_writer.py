@@ -596,4 +596,6 @@ def read_carousel(filepath: str) -> CarouselConfig | None:
         return None
 
 
-_metric_to_hardware_ids = lambda metric: METRIC_TO_IDS.get(metric, (0, 0))  # noqa: E731
+def _metric_to_hardware_ids(metric: str) -> tuple[int, int]:
+    """Map a metric name to its (hardware_kind, hardware_idx) pair."""
+    return METRIC_TO_IDS.get(metric, (0, 0))
