@@ -354,6 +354,54 @@ class DeviceInfo:
             res = self.profile.resolution
         return (self.protocol, res, fbl, self.use_jpeg)
 
+    # ── Derived geometry — pure functions of resolution + rotation ──────
+
+    @property
+    def is_rotated(self) -> bool:
+        """True when content is rotated 90°/270° on a non-square device."""
+        w, h = self.resolution
+        return w != h and self.rotation in (90, 270)
+
+    @property
+    def canvas_size(self) -> tuple[int, int]:
+        """Render-target size — native, swapped on 90°/270° non-square rotation.
+
+        Single source of truth for the rotated canvas. The C# code carried
+        ``is1600x720`` flags directly on the form because the data lived on
+        one object; this is the same idea expressed as derived data on the
+        DTO. No service mirror state — read straight from the DeviceInfo.
+        """
+        w, h = self.resolution
+        return (h, w) if self.is_rotated else (w, h)
+
+    @property
+    def is_widescreen_split(self) -> bool:
+        """True if this device's resolution supports split mode (Dynamic Island)."""
+        from .protocol import SPLIT_MODE_RESOLUTIONS
+        return self.resolution in SPLIT_MODE_RESOLUTIONS
+
+    # ── Derived handshake-fingerprint helpers ───────────────────────────
+
+    @property
+    def effective_pm(self) -> int:
+        """PM byte, falling back to FBL code when PM=0.
+
+        Some bulk devices report PM=0 and rely on FBL alone to identify
+        the panel; this captures the ``pm_byte or fbl_code or 0`` pattern
+        that was previously inlined at every variant-resolution site.
+        """
+        return self.pm_byte or self.fbl_code or 0
+
+    @property
+    def encode_angle(self) -> int:
+        """Device encode rotation angle (C# RotateImg in ImageToJpg)."""
+        from .protocol import get_encode_rotation
+        if self.fbl_code is None:
+            return 0
+        return get_encode_rotation(
+            self.profile, self.sub_byte, self.rotation, pm_byte=self.pm_byte,
+        )
+
     # ── Post-handshake enrichment chokepoint ─────────────────────────────
 
     def enrich_from_handshake(self, result: Any) -> None:
@@ -389,9 +437,8 @@ class DeviceInfo:
         # Resolve sidebar identity from the (PM, SUB) fingerprint. Falls back
         # to FBL when PM=0 (some bulk devices). Phase B will also use the
         # full VariantOverride to populate panel_cutout + display_name.
-        effective_pm = self.pm_byte or self.fbl_code or 0
-        if effective_pm:
-            override = get_variant_override(effective_pm, self.sub_byte)
+        if (pm := self.effective_pm):
+            override = get_variant_override(pm, self.sub_byte)
             if override is not None and override.button_image:
                 self.button_image = override.button_image
 

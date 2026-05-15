@@ -185,7 +185,7 @@ class DeviceService:
                           getattr(result, 'model_name', ''))
                 log.info("Button image: %s → %s (pm=%s sub=%d)",
                          dev.path, dev.button_image,
-                         dev.pm_byte or dev.fbl_code, dev.sub_byte)
+                         dev.effective_pm, dev.sub_byte)
         except Exception as e:
             log.warning(
                 "Resolution discovery failed for %s [%04X:%04X]: %s",

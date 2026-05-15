@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ..core.ports import Platform
 
 from ..core._logging import tagged_logger
-from ..core.models import SPLIT_MODE_RESOLUTIONS
+from ..core.models import SPLIT_MODE_RESOLUTIONS, DeviceInfo
 from ..core.paths import (
     has_themes,
     masks_dir_name,
@@ -120,14 +120,30 @@ class DisplayService:
 
     @property
     def rotation(self) -> int:
+        """Current display rotation. Authoritative source: the selected device.
+
+        Falls back to a local field for tests/dev paths that don't seed a
+        ``DeviceInfo`` on ``self.devices.selected``. The ``isinstance`` check
+        guards against test fixtures that pass MagicMock duck-types.
+        """
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            return dev.rotation
         return self._rotation
 
     @rotation.setter
     def rotation(self, value: int) -> None:
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            dev.rotation = value
         self._rotation = value
 
     def is_rotated(self) -> bool:
-        """True when rotation is 90/270 on a non-square device."""
+        """True when rotation is 90/270 on a non-square device.
+
+        Derived from the selected device's resolution + rotation (data lives
+        on the DTO, not duplicated here).
+        """
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            return dev.is_rotated
         w, h = self._native
         return w != h and self._rotation in (90, 270)
 
@@ -135,11 +151,14 @@ class DisplayService:
     def canvas_size(self) -> tuple[int, int]:
         """Render-target dimensions — native, swapped on 90°/270° rotation.
 
-        Single source of truth for the rotated canvas.  Was four aliases
-        (canvas_resolution / output_resolution / effective_resolution /
-        canvas_size) — collapsed into one in Phase 8 because alias drift
-        is what caused every rotation bug since #137.
+        Reads from the selected device's ``canvas_size`` property — the
+        DTO is the single source of truth for derived geometry. Local
+        ``_native`` is the fallback for tests/paths that don't seed a
+        device. Was four aliases in Phase 8; centralized on the DTO in
+        Phase B.1.
         """
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            return dev.canvas_size
         w, h = self._native
         return (h, w) if self.is_rotated() else (w, h)
 
@@ -167,15 +186,15 @@ class DisplayService:
         return self.image_rotation_for(self.overlay.width, self.overlay.height)
 
     def _encode_angle(self) -> int:
-        """Device encode rotation angle (C# RotateImg in ImageToJpg)."""
-        from ..core.models import get_encode_rotation, get_profile
-        dev = self.devices.selected
-        if not dev or dev.fbl_code is None:
+        """Device encode rotation angle (C# RotateImg in ImageToJpg).
+
+        Reads from the selected device's ``encode_angle`` property — the
+        DTO derives this from profile + sub_byte + rotation + pm_byte,
+        all of which already live on it.
+        """
+        if not isinstance(dev := self.devices.selected, DeviceInfo):
             return 0
-        profile = get_profile(dev.fbl_code, dev.pm_byte)
-        return get_encode_rotation(
-            profile, dev.sub_byte, self.rotation, pm_byte=dev.pm_byte,
-        )
+        return dev.encode_angle
 
     @property
     def mask_source_dir(self) -> Path | None:
@@ -318,7 +337,14 @@ class DisplayService:
 
     @property
     def is_widescreen_split(self) -> bool:
-        """True if current resolution supports split mode."""
+        """True if current resolution supports split mode.
+
+        Reads from the selected device — the DTO checks its own resolution
+        against ``SPLIT_MODE_RESOLUTIONS``. Local ``lcd_size`` fallback for
+        device-less code paths.
+        """
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            return dev.is_widescreen_split
         return self.lcd_size in SPLIT_MODE_RESOLUTIONS
 
     # -- Frame conversion --------------------------------------------------

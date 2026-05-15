@@ -322,10 +322,19 @@ class LCDDevice(Device):
 
     @property
     def canvas_size(self) -> tuple[int, int]:
-        """Render-target size — native, swapped on 90°/270°."""
+        """Render-target size — native, swapped on 90°/270°.
+
+        Reads from ``device_info`` (single source of truth — derived from
+        ``resolution + rotation``). Falls back to ``_display_svc`` for
+        legacy paths where ``device_info`` is not yet populated.
+        """
+        if (info := self.device_info) is not None:
+            return info.canvas_size
         return self._display_svc.canvas_size if self._display_svc else (0, 0)
 
     def is_rotated(self) -> bool:
+        if (info := self.device_info) is not None:
+            return info.is_rotated
         return bool(self._display_svc and self._display_svc.is_rotated())
 
     @property
