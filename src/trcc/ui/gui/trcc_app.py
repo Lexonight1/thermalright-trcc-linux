@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from trcc.conf import Settings
 
 from ...adapters.infra.dc_writer import read_carousel
-from ...core.models import DeviceInfo
+from ...core.models import LCD_DEFAULT_BUTTON, DeviceInfo
 from ...core.ports import Platform
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -505,7 +505,7 @@ class TRCCApp(QMainWindow):
 
         # Button image already resolved by DeviceService._enrich_device()
         # at detection time. HID LCD (async handshake) resolved later in
-        # _on_handshake_done → _resolve_device_identity.
+        # _on_handshake_done → DeviceInfo.enrich_from_handshake → _sync_device_identity.
         self._refresh_sidebar()
 
     def _remove_handler(self, path: str) -> None:
@@ -1260,31 +1260,35 @@ class TRCCApp(QMainWindow):
             self._hs_notifier.done.emit(device, data)
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_handshake_done(self, device: DeviceInfo, data: tuple | None) -> None:
-        log.debug("_on_handshake_done: path=%s data=%s", device.path, data)
+    def _on_handshake_done(self, device: DeviceInfo, result: Any) -> None:
+        """Wire a HandshakeResult into the device + sidebar.
+
+        Model enrichment goes through ``DeviceInfo.enrich_from_handshake``
+        (single chokepoint). This handler then propagates the resolved
+        sidebar identity to ``uc_device`` and persists it via ``Settings``.
+        """
+        log.debug("_on_handshake_done: path=%s result=%s", device.path, result)
         self._handshake_pending = False
-        if not data:
+        if result is None:
             self.uc_preview.set_status("Handshake failed — replug device")
             return
-        resolution, fbl, pm, sub = data
-        if not resolution or resolution == (0, 0):
+
+        device.enrich_from_handshake(result)
+
+        if device.resolution == (0, 0):
             self.uc_preview.set_status("Handshake failed — no resolution")
             return
-        log.info("Handshake OK: %s -> %s (FBL=%s, PM=%s, SUB=%s)",
-                 device.path, resolution, fbl, pm, sub)
-        device.resolution = resolution
-        device.pm_byte = pm
-        device.sub_byte = sub
-        if fbl:
-            device.fbl_code = fbl
-            effective_pm = pm or fbl
-            log.debug("resolving identity: effective_pm=%d sub=%d (raw pm=%d fbl=%d)",
-                       effective_pm, sub, pm, fbl)
-            self._resolve_device_identity(device, effective_pm, sub)
+        log.info("Handshake OK: %s -> %s (FBL=%s, PM=%s, SUB=%s, model=%r)",
+                 device.path, device.resolution, device.fbl_code,
+                 device.pm_byte, device.sub_byte,
+                 getattr(result, 'model_name', ''))
+
+        # Sync sidebar + persisted Settings from the enriched device.
+        self._sync_device_identity(device)
 
         handler = self._handlers.get(device.path)
         if isinstance(handler, LCDHandler):
-            w, h = resolution
+            w, h = device.resolution
             log.debug("_on_handshake_done: handler found device_key=%r", handler.device_key)
             if not handler.device_key:
                 handler.apply_device_config(device, w, h)
@@ -1294,12 +1298,17 @@ class TRCCApp(QMainWindow):
             else:
                 log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 
-    def _resolve_device_identity(self, device: DeviceInfo, pm: int, sub: int = 0) -> None:
-        from ...core.models import get_button_image
-        btn_img = get_button_image(pm, sub)
-        log.debug("pm=%d sub=%d -> btn_img=%s", pm, sub, btn_img)
-        if not btn_img:
-            log.debug("no match for pm=%d sub=%d, keeping original button", pm, sub)
+    def _sync_device_identity(self, device: DeviceInfo) -> None:
+        """Propagate the enriched ``device.button_image`` to sidebar + Settings.
+
+        Model enrichment already happened in
+        ``DeviceInfo.enrich_from_handshake``; this method only handles the
+        view + persistence side (sidebar dict, sidebar button refresh,
+        Settings save).
+        """
+        btn_img = device.button_image
+        if not btn_img or btn_img == LCD_DEFAULT_BUTTON:
+            log.debug("no resolved button for %s — keeping default", device.path)
             return
         product = btn_img.replace('A1', '', 1).replace('_', ' ')
         log.info("%s -> %s (%s)", device.path, btn_img, product)
@@ -1309,7 +1318,7 @@ class TRCCApp(QMainWindow):
                 dev['product'] = product
                 dev['name'] = f"Thermalright {product}"
                 self.uc_device.update_device_button(dev)
-                log.debug("_resolve_device_identity: updated sidebar button for %s", device.path)
+                log.debug("_sync_device_identity: updated sidebar button for %s", device.path)
                 break
         active_key = Settings.device_config_key(device.device_index, device.vid, device.pid)
         Settings.save_device_settings(

@@ -1559,6 +1559,7 @@ class TestHandshakeDoneGuard:
     def test_applies_config_on_first_handshake(self, bare_trcc_app):
         """apply_device_config is called when device_key is empty (first handshake)."""
         from trcc.conf import Settings
+        from trcc.core.models import HandshakeResult
 
         device, handler = self._make_handler(device_key='')
         app = bare_trcc_app
@@ -1567,14 +1568,17 @@ class TestHandshakeDoneGuard:
         app._update_ldd_icon = MagicMock()
         app.uc_preview = MagicMock()
         app.uc_info_module = MagicMock()
-        app._resolve_device_identity = MagicMock()
+        app._sync_device_identity = MagicMock()
 
+        result = HandshakeResult(resolution=(320, 320), model_id=100)
         with patch.object(Settings, 'show_info_module', return_value=False):
-            app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+            app._on_handshake_done(device, result)
         handler.apply_device_config.assert_called_once()
 
     def test_skips_config_on_duplicate_handshake(self, bare_trcc_app):
         """apply_device_config is NOT called when device_key already set (duplicate handshake)."""
+        from trcc.core.models import HandshakeResult
+
         device, handler = self._make_handler(device_key='0:0402:3922')
         app = bare_trcc_app
         app._handshake_pending = True
@@ -1582,9 +1586,10 @@ class TestHandshakeDoneGuard:
         app._update_ldd_icon = MagicMock()
         app.uc_preview = MagicMock()
         app.uc_info_module = MagicMock()
-        app._resolve_device_identity = MagicMock()
+        app._sync_device_identity = MagicMock()
 
-        app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+        result = HandshakeResult(resolution=(320, 320), model_id=100)
+        app._on_handshake_done(device, result)
         handler.apply_device_config.assert_not_called()
 
 
@@ -1614,6 +1619,8 @@ class TestResolveDeviceIdentity:
 
     def test_scsi_uses_fbl_as_pm(self, bare_trcc_app):
         """SCSI handshake: pm=0 → `pm or fbl` resolves to fbl=100 → FROZEN WARFRAME PRO."""
+        from trcc.core.models import HandshakeResult
+
         app = bare_trcc_app
         app._handshake_pending = True
         app.uc_preview = MagicMock()
@@ -1627,14 +1634,18 @@ class TestResolveDeviceIdentity:
         app.uc_device.devices = [dev_dict]
 
         # SCSI handshake: resolution, fbl=100, pm=0, sub=0
-        app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+        app._on_handshake_done(
+            device, HandshakeResult(resolution=(320, 320), model_id=100))
 
-        # pm=0 → `pm or fbl` = 100 → get_button_image(100, 0) = A1FROZEN WARFRAME PRO
+        # pm=0 → `pm or fbl` = 100 → get_variant_override(100, 0).button_image
+        # = A1FROZEN WARFRAME PRO
         assert dev_dict['button_image'] == 'A1FROZEN WARFRAME PRO'
         app.uc_device.update_device_button.assert_called_once_with(dev_dict)
 
     def test_hid_uses_pm_sub_directly(self, bare_trcc_app):
         """HID handshake: pm=7, sub=1 → Stream Vision (not FBL-based)."""
+        from trcc.core.models import HandshakeResult
+
         app = bare_trcc_app
         app._handshake_pending = True
         app.uc_preview = MagicMock()
@@ -1648,13 +1659,17 @@ class TestResolveDeviceIdentity:
         app.uc_device.devices = [dev_dict]
 
         # HID handshake: resolution, fbl=64, pm=7, sub=1
-        app._on_handshake_done(device, ((480, 480), 64, 7, 1))
+        app._on_handshake_done(device, HandshakeResult(
+            resolution=(480, 480), model_id=64, pm_byte=7, sub_byte=1))
 
-        # pm=7 is truthy → `pm or fbl` = 7 → get_button_image(7, 1) = A1Stream Vision
+        # pm=7 is truthy → `pm or fbl` = 7 → get_variant_override(7, 1).button_image
+        # = A1Stream Vision
         assert dev_dict['button_image'] == 'A1Stream Vision'
 
     def test_unknown_pm_keeps_original_button(self, bare_trcc_app):
         """When PM/SUB doesn't match any entry, button_image stays unchanged."""
+        from trcc.core.models import HandshakeResult
+
         app = bare_trcc_app
         app._handshake_pending = True
         app.uc_preview = MagicMock()
@@ -1668,7 +1683,8 @@ class TestResolveDeviceIdentity:
         app.uc_device.devices = [dev_dict]
 
         # Unknown FBL=255 — no match in _LCD_BUTTON_IMAGE
-        app._on_handshake_done(device, ((320, 320), 255, 0, 0))
+        app._on_handshake_done(
+            device, HandshakeResult(resolution=(320, 320), model_id=255))
 
         # Button image unchanged
         assert dev_dict['button_image'] == 'A1CZTV'

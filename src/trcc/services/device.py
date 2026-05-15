@@ -11,11 +11,9 @@ from collections import deque
 from typing import Any
 
 from ..core.models import (
-    LCD_DEFAULT_BUTTON,
     LED_DEFAULT_BUTTON,
     DetectedDevice,
     DeviceInfo,
-    get_button_image,
 )
 from ..core.ports import (
     DetectDevicesFn,
@@ -94,34 +92,35 @@ class DeviceService:
     def _enrich_device(self, device: DeviceInfo, usb_path: str) -> None:
         """Enrich device identity at detection time.
 
-        LED: HID probe → PM, SUB, style, model, button_image.
-        LCD: no-op here — PM/SUB come from handshake in _discover_resolution(),
-        which calls resolve_button_image() after setting the fields.
+        LED: HID probe → ``DeviceInfo.enrich_from_led_probe`` (which also
+        resolves the button image via ``get_variant_override``). The probe
+        chokepoint stays variant-agnostic; we apply ``LED_DEFAULT_BUTTON``
+        here as the LED-family fallback when no override matched.
+        LCD: no-op here — handshake-driven enrichment runs in
+        ``_discover_resolution`` via ``DeviceInfo.enrich_from_handshake``.
         """
         if device.implementation != 'hid_led':
             return
-        self._probe_led(device, usb_path)
-        if device.pm_byte:
-            btn_img = get_button_image(device.pm_byte, device.sub_byte, is_led=True)
-            device.button_image = btn_img or LED_DEFAULT_BUTTON
-            log.info("Button image: %s → %s (pm=%d sub=%d)",
-                     device.path, device.button_image, device.pm_byte, device.sub_byte)
-
-    def _probe_led(self, device: DeviceInfo, usb_path: str) -> None:
-        """HID probe for LED devices — resolve PM → style, model, identity."""
         try:
-            info = self._probe_led_fn(device.vid, device.pid, usb_path=usb_path)
-            if info and info.style:
-                device.pm_byte = info.pm
-                device.sub_byte = getattr(info, 'sub_type', 0)
-                device.led_style_id = info.style.style_id
-                device.led_style_sub = getattr(info, 'style_sub', 0)
-                device.model = info.style.model_name
-                log.info("LED probe: PM=%d SUB=%d → style=%d model=%s",
-                         info.pm, device.sub_byte,
-                         info.style.style_id, info.style.model_name)
+            probe = self._probe_led_fn(device.vid, device.pid, usb_path=usb_path)
         except Exception as e:
-            log.warning("LED probe failed for %04X:%04X: %s", device.vid, device.pid, e)
+            log.warning("LED probe failed for %04X:%04X: %s",
+                        device.vid, device.pid, e)
+            return
+
+        prior_button = device.button_image
+        device.enrich_from_led_probe(probe)
+        if probe is None or getattr(probe, 'style', None) is None:
+            return
+        # The chokepoint only writes button_image on a variant-override hit.
+        # If pm_byte resolved but no override matched, fall back to the
+        # LED family default rather than the LCD default the dataclass holds.
+        if device.button_image == prior_button:
+            device.button_image = LED_DEFAULT_BUTTON
+        log.info("LED probe: PM=%d SUB=%d → style=%d model=%s, button=%s",
+                 device.pm_byte, device.sub_byte,
+                 probe.style.style_id, probe.style.model_name,
+                 device.button_image)
 
     # ── Selection ────────────────────────────────────────────────────
 
@@ -173,32 +172,20 @@ class DeviceService:
     def _discover_resolution(self, dev: DeviceInfo) -> None:
         """Run protocol handshake to discover resolution, FBL, PM/SUB, and button image.
 
-        Mutates dev in-place. Always runs handshake — even when resolution
-        is already known, we need PM/SUB for button image resolution.
+        Mutates dev in-place via the ``DeviceInfo.enrich_from_handshake``
+        chokepoint. Always runs handshake — even when resolution is already
+        known, we need PM/SUB for variant resolution.
         """
         try:
             protocol = self._get_protocol(dev)
             if (result := protocol.handshake()):
-                res = getattr(result, 'resolution', None)
-                if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
-                    dev.resolution = res
-                fbl = getattr(result, 'fbl', None) or getattr(result, 'model_id', None)
-                if fbl:
-                    dev.fbl_code = fbl
-                # Always copy pm/sub — 0 is a legitimate value (e.g.
-                # PM=0 SUB=0 is in the button image table at line 273).
-                # Previously guarded with `if pm:` which silently dropped
-                # PM=0 devices into the default code path.
-                dev.pm_byte = getattr(result, 'pm_byte', 0)
-                dev.sub_byte = getattr(result, 'sub_byte', 0)
-                log.debug("discover_resolution: %s fbl=%s pm=%d sub=%d",
-                          dev.path, fbl, dev.pm_byte, dev.sub_byte)
-                # Resolve button image now that PM/SUB are known
-                if (effective_pm := dev.pm_byte or dev.fbl_code):
-                    btn_img = get_button_image(effective_pm, dev.sub_byte)
-                    dev.button_image = btn_img or LCD_DEFAULT_BUTTON
-                    log.info("Button image: %s → %s (pm=%s sub=%d)",
-                             dev.path, dev.button_image, effective_pm, dev.sub_byte)
+                dev.enrich_from_handshake(result)
+                log.debug("discover_resolution: %s fbl=%s pm=%d sub=%d model=%r",
+                          dev.path, dev.fbl_code, dev.pm_byte, dev.sub_byte,
+                          getattr(result, 'model_name', ''))
+                log.info("Button image: %s → %s (pm=%s sub=%d)",
+                         dev.path, dev.button_image,
+                         dev.pm_byte or dev.fbl_code, dev.sub_byte)
         except Exception as e:
             log.warning(
                 "Resolution discovery failed for %s [%04X:%04X]: %s",

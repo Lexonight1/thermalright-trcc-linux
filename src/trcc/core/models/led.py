@@ -206,11 +206,15 @@ LED_SELECT_ALL_STYLES: frozenset[int] = frozenset({2, 7})
 
 @dataclass(slots=True)
 class LedHandshakeInfo(HandshakeResult):
-    """LED-specific handshake info (extends HandshakeResult)."""
+    """LED-specific handshake info (extends HandshakeResult).
+
+    ``model_name`` is inherited from ``HandshakeResult`` — every protocol
+    that produces it (Bulk parses ASCII bytes; LED resolves via PM registry)
+    writes the same field.
+    """
     pm: int = 0
     sub_type: int = 0
     style: LedDeviceStyle | None = None
-    model_name: str = ""
     style_sub: int = 0  # C# nowLedStyleSub — wire remap variant
 
 

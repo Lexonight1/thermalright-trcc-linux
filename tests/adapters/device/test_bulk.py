@@ -43,14 +43,76 @@ class _FakeUSBError(Exception):
         self.errno = errno
 
 
-def _make_handshake_response(pm: int = 100, sub: int = 0, length: int = 1024) -> bytes:
-    """Build a fake handshake response with PM at byte[24] and SUB at byte[36]."""
+def _make_handshake_response(pm: int = 100, sub: int = 0, length: int = 1024,
+                              model_name: bytes = b'') -> bytes:
+    """Build a fake handshake response with PM at byte[24], SUB at byte[36],
+    and optional ASCII model code at offset 4-12."""
     resp = bytearray(length)
     if length > 24:
         resp[24] = pm
     if length > 36:
         resp[36] = sub
+    if model_name and length >= 12:
+        slot = model_name[:8].ljust(8, b'\x00')
+        resp[4:12] = slot
     return bytes(resp)
+
+
+class TestBulkParseModelName(unittest.TestCase):
+    """_parse_model_name() — extracts ASCII handshake fingerprint."""
+
+    def test_parses_sscrm_v3(self):
+        """Reporter #149 raw bytes carry 'SSCRM-V3' at offset 4-12."""
+        from trcc.adapters.device.bulk import _parse_model_name
+        hex_str = ('12345678535343524d2d56330000000000000000'
+                   '904b909540000000200000000f00000003000000')
+        self.assertEqual(_parse_model_name(bytes.fromhex(hex_str), 4, 8),
+                          'SSCRM-V3')
+
+    def test_short_response_returns_empty(self):
+        from trcc.adapters.device.bulk import _parse_model_name
+        self.assertEqual(_parse_model_name(b'abc', 4, 8), '')
+
+    def test_pure_nul_returns_empty(self):
+        from trcc.adapters.device.bulk import _parse_model_name
+        self.assertEqual(_parse_model_name(bytes(16), 4, 8), '')
+
+    def test_stops_at_first_nul(self):
+        from trcc.adapters.device.bulk import _parse_model_name
+        # offset 4-12 = b'ABCD\x00EFGH' → 'ABCD'
+        self.assertEqual(
+            _parse_model_name(b'\x00\x00\x00\x00ABCD\x00EFGH', 4, 8), 'ABCD')
+
+    def test_strips_non_printable(self):
+        from trcc.adapters.device.bulk import _parse_model_name
+        # ASCII control chars at offset 4-12 — only the printable 'AB' survives
+        self.assertEqual(
+            _parse_model_name(b'\x00\x00\x00\x00AB\x01\x02CDEF', 4, 8), 'ABCDEF')
+
+
+class TestBulkHandshakeModelName(unittest.TestCase):
+    """Bulk handshake extracts model_name into HandshakeResult."""
+
+    def test_handshake_returns_model_name(self):
+        from trcc.adapters.device.bulk import BulkDevice
+        bd = BulkDevice(0x87AD, 0x70DB)
+        bd._dev = MagicMock()
+        bd._ep_out = MagicMock()
+        bd._ep_in = MagicMock()
+        bd._ep_in.read.return_value = _make_handshake_response(
+            pm=1, sub=1, model_name=b'SSCRM-V3')
+        result = bd.handshake()
+        self.assertEqual(result.model_name, 'SSCRM-V3')
+
+    def test_handshake_empty_model_name_when_slot_zero(self):
+        from trcc.adapters.device.bulk import BulkDevice
+        bd = BulkDevice(0x87AD, 0x70DB)
+        bd._dev = MagicMock()
+        bd._ep_out = MagicMock()
+        bd._ep_in = MagicMock()
+        bd._ep_in.read.return_value = _make_handshake_response(pm=1, sub=1)
+        result = bd.handshake()
+        self.assertEqual(result.model_name, '')
 
 
 class TestBulkDeviceConstants(unittest.TestCase):

@@ -21,6 +21,8 @@ class HandshakeResult:
     serial: str = ""
     pm_byte: int = 0   # Raw PM from handshake (for button image lookup)
     sub_byte: int = 0   # Raw SUB from handshake (for button image lookup)
+    model_name: str = ""   # ASCII product code parsed from raw_response, e.g. "SSCRM-V3" (Bulk).
+                            # Empty when the protocol carries no such bytes.
     raw_response: bytes = field(default=b"", repr=False)
 
 

@@ -862,6 +862,142 @@ class TestGetButtonImage:
 
 
 # =============================================================================
+# VariantOverride registry + lookup
+# =============================================================================
+
+
+class TestGetVariantOverride:
+    """get_variant_override() — full override record for a (PM, SUB) fingerprint."""
+
+    def test_known_lcd_pm_returns_override(self):
+        from trcc.core.models import VariantOverride, get_variant_override
+        override = get_variant_override(7, 1)
+        assert override is not None
+        assert isinstance(override, VariantOverride)
+        assert override.button_image == 'A1Stream Vision'
+
+    def test_known_led_pm_returns_override(self):
+        from trcc.core.models import get_variant_override
+        override = get_variant_override(80, 0, is_led=True)
+        assert override is not None
+        assert override.button_image == 'A1LF12'
+
+    def test_unknown_pm_returns_none(self):
+        from trcc.core.models import get_variant_override
+        assert get_variant_override(255, 0) is None
+
+    def test_panel_cutout_empty_until_phase_b(self):
+        """All existing rows ship with no panel_cutout — Phase B fills these."""
+        from trcc.core.models import get_variant_override
+        override = get_variant_override(100, 0)
+        assert override is not None
+        assert override.panel_cutout is None
+        assert override.display_name == ''
+
+
+# =============================================================================
+# DeviceInfo enrichment chokepoints
+# =============================================================================
+
+
+class TestEnrichFromHandshake:
+    """DeviceInfo.enrich_from_handshake — single chokepoint for handshake-driven mutation."""
+
+    @staticmethod
+    def _make_device(button_image: str = 'A1CZTV'):
+        return DeviceInfo(
+            name='LCD Display', path='/dev/sg0', vendor='Test', product='LCD',
+            model='CZTV', vid=0x0402, pid=0x3922, device_index=0,
+            protocol='scsi', device_type=1, implementation='test',
+            button_image=button_image,
+        )
+
+    def test_copies_resolution_pm_sub_fbl(self):
+        from trcc.core.models import HandshakeResult
+        dev = self._make_device()
+        dev.enrich_from_handshake(HandshakeResult(
+            resolution=(320, 320), model_id=100, pm_byte=0, sub_byte=0))
+        assert dev.resolution == (320, 320)
+        assert dev.fbl_code == 100
+        assert dev.pm_byte == 0
+        assert dev.sub_byte == 0
+
+    def test_resolves_button_image_via_variant_override(self):
+        from trcc.core.models import HandshakeResult
+        dev = self._make_device()
+        # PM=7 SUB=1 → A1Stream Vision (HID-style fingerprint)
+        dev.enrich_from_handshake(HandshakeResult(
+            resolution=(480, 480), model_id=64, pm_byte=7, sub_byte=1))
+        assert dev.button_image == 'A1Stream Vision'
+
+    def test_falls_back_to_fbl_when_pm_zero(self):
+        """PM=0 → use fbl_code as effective_pm (SCSI / some Bulk devices)."""
+        from trcc.core.models import HandshakeResult
+        dev = self._make_device()
+        # PM=0, FBL=100 → effective_pm=100 → A1FROZEN WARFRAME PRO
+        dev.enrich_from_handshake(HandshakeResult(
+            resolution=(320, 320), model_id=100, pm_byte=0, sub_byte=0))
+        assert dev.button_image == 'A1FROZEN WARFRAME PRO'
+
+    def test_unknown_pm_keeps_prior_button_image(self):
+        from trcc.core.models import HandshakeResult
+        dev = self._make_device(button_image='A1CZTV')
+        dev.enrich_from_handshake(HandshakeResult(
+            resolution=(320, 320), model_id=255, pm_byte=0, sub_byte=0))
+        assert dev.button_image == 'A1CZTV'
+
+    def test_none_result_is_no_op(self):
+        dev = self._make_device()
+        dev.resolution = (320, 320)
+        dev.enrich_from_handshake(None)
+        assert dev.resolution == (320, 320)
+
+    def test_zero_resolution_is_ignored(self):
+        """Failed handshake returns resolution=(0,0) — must not overwrite prior."""
+        from trcc.core.models import HandshakeResult
+        dev = self._make_device()
+        dev.resolution = (480, 480)
+        dev.enrich_from_handshake(HandshakeResult(resolution=(0, 0)))
+        assert dev.resolution == (480, 480)
+
+
+class TestEnrichFromLedProbe:
+    """DeviceInfo.enrich_from_led_probe — sister chokepoint for LED probe results."""
+
+    @staticmethod
+    def _make_led_device():
+        return DeviceInfo(
+            name='LED', path='hid:0416:8001', vendor='Test', product='LED',
+            vid=0x0416, pid=0x8001, device_index=0,
+            protocol='led', device_type=1, implementation='hid_led',
+        )
+
+    def test_none_probe_is_no_op(self):
+        dev = self._make_led_device()
+        dev.enrich_from_led_probe(None)
+        assert dev.pm_byte == 0
+
+    def test_probe_without_style_is_no_op(self):
+        from trcc.core.models import LedHandshakeInfo
+        dev = self._make_led_device()
+        dev.enrich_from_led_probe(LedHandshakeInfo(pm=80, sub_type=0, style=None))
+        assert dev.pm_byte == 0  # not written because style was None
+
+    def test_probe_with_style_writes_all_fields(self):
+        """Probe with non-None style → pm/sub/led_style_id/model written; LED variant override resolved."""
+        from trcc.core.models import LED_STYLES, LedHandshakeInfo
+        dev = self._make_led_device()
+        # PM=80 → LF12 (resolves through LED variant table)
+        style_id = LED_STYLES.by_name('LF12')
+        style = LED_STYLES[style_id]
+        dev.enrich_from_led_probe(LedHandshakeInfo(
+            pm=80, sub_type=0, style=style, style_sub=0))
+        assert dev.pm_byte == 80
+        assert dev.sub_byte == 0
+        assert dev.button_image == 'A1LF12'
+
+
+# =============================================================================
 # Overlay config builders (parse_metric_spec, build_overlay_config)
 # =============================================================================
 

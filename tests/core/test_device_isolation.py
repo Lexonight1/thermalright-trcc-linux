@@ -81,14 +81,14 @@ if DEV_DATA.exists():
 _BUTTON_COMBOS: list[tuple[int, int, str]] = []
 
 for pm_key, sub_map in sorted(_LCD_BUTTON_IMAGE.items()):
-    for sub_key, image in sorted(sub_map.items(), key=lambda x: (x[0] is None, x[0])):
+    for sub_key, override in sorted(sub_map.items(), key=lambda x: (x[0] is None, x[0])):
         if sub_key is None:
             continue
-        _BUTTON_COMBOS.append((pm_key, sub_key, image))
+        _BUTTON_COMBOS.append((pm_key, sub_key, override.button_image))
 
 for pm_key, sub_map in sorted(_LCD_BUTTON_IMAGE.items()):
     if list(sub_map.keys()) == [None]:
-        _BUTTON_COMBOS.append((pm_key, 0, sub_map[None]))
+        _BUTTON_COMBOS.append((pm_key, 0, sub_map[None].button_image))
 
 
 # ── Dir helper ──────────────────────────────────────────────────────────

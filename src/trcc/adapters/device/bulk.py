@@ -53,6 +53,19 @@ _BULK_KNOWN_PMS = {5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 50, 64, 65, 66, 
 _BULK_RGB565_PMS = {32}
 
 
+def _parse_model_name(resp: bytes, offset: int, length: int) -> str:
+    """Decode a NUL-padded ASCII model code from a handshake response slice.
+
+    Strips NUL terminators and any other non-printable bytes. Returns "" on
+    insufficient response length or pure-NUL slice.
+    """
+    if len(resp) < offset + length:
+        return ""
+    raw = resp[offset:offset + length]
+    name = raw.split(b'\x00', 1)[0].decode('ascii', errors='ignore')
+    return ''.join(c for c in name if c.isprintable()).strip()
+
+
 def _bulk_resolution(pm: int, sub: int = 0) -> tuple[int, int]:
     """Map bulk device PM+SUB to (width, height).
 
@@ -129,14 +142,21 @@ class BulkDevice(BulkFrameDevice, FrameDevice):
             fbl = pm_to_fbl(self.pm, self.sub_type)
         else:
             fbl = 72  # bulk default: 480x480 JPEG
-        log.info("Bulk handshake OK: PM=%d, SUB=%d, FBL=%d, resolution=%s, jpeg=%s",
-                 self.pm, self.sub_type, fbl, resolution, self.use_jpeg)
+
+        # ASCII product code at offset 4-12, NUL-padded. e.g. "SSCRM-V3" on
+        # 87AD:70DB. Used as a handshake fingerprint to distinguish physical
+        # product variants (e.g. Levita vs GrandVision 360) that share VID:PID.
+        model_name = _parse_model_name(resp, 4, 8)
+
+        log.info("Bulk handshake OK: PM=%d, SUB=%d, FBL=%d, resolution=%s, jpeg=%s, model=%r",
+                 self.pm, self.sub_type, fbl, resolution, self.use_jpeg, model_name)
 
         return HandshakeResult(
             resolution=resolution,
             model_id=fbl,
             pm_byte=self.pm,
             sub_byte=self.sub_type,
+            model_name=model_name,
             raw_response=resp,
         )
 

@@ -738,13 +738,13 @@ class Trcc:
         from ..adapters.device.led import probe_led_model
         return probe_led_model(vid, pid, usb_path=usb_path)
 
-    def handshake(self, info: DeviceInfo) -> tuple | None:
+    def handshake(self, info: DeviceInfo) -> Any | None:
         """One-shot handshake of a known device.
 
-        Returns ``(resolution, fbl, pm, sub)`` on success, ``None`` on
-        any failure.  Used by the GUI's reactivation flow to discover
-        the resolution of a hot-plugged or re-selected device without
-        going through full discovery.
+        Returns the raw ``HandshakeResult`` on success, ``None`` on any
+        failure. Used by the GUI's reactivation flow; the GUI feeds the
+        result into ``DeviceInfo.enrich_from_handshake`` rather than
+        re-implementing the field-by-field copy.
         """
         from ..adapters.device.factory import DeviceProtocolFactory
         try:
@@ -754,15 +754,7 @@ class Trcc:
             log.warning('handshake failed for %s',
                         getattr(info, 'path', info), exc_info=True)
             return None
-        if not result:
-            return None
-        return (
-            getattr(result, 'resolution', None),
-            (getattr(result, 'fbl', None)
-             or getattr(result, 'model_id', None)),
-            getattr(result, 'pm_byte', 0),
-            getattr(result, 'sub_byte', 0),
-        )
+        return result or None
 
     # ── Container protocol ───────────────────────────────────────────
     # Trcc IS the registry of connected devices — `for d in trcc` walks

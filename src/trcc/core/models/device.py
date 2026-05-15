@@ -31,6 +31,34 @@ class DeviceEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class PanelCutout:
+    """Rectangular cutout on the panel (e.g. smartphone-display camera notch).
+
+    Hardware fact — registry data, not user preference. Populated on a
+    ``VariantOverride`` when the panel has an obstructed region the render
+    pipeline should mask (the 灵动岛 / Dynamic Island feature).
+    """
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+@dataclass(frozen=True, slots=True)
+class VariantOverride:
+    """Per-(PM, SUB) overrides applied after handshake.
+
+    Resolves cases where one (VID, PID) ships as multiple physical products
+    sharing a chipset — the handshake fingerprint distinguishes them.
+    Currently carries the sidebar button image; ``panel_cutout`` and
+    ``display_name`` are populated by registry rows that need them.
+    """
+    button_image: str = ""
+    panel_cutout: PanelCutout | None = None
+    display_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class UsbAddress:
     """Bus + address — a unique physical USB device location.
 
@@ -326,6 +354,73 @@ class DeviceInfo:
             res = self.profile.resolution
         return (self.protocol, res, fbl, self.use_jpeg)
 
+    # ── Post-handshake enrichment chokepoint ─────────────────────────────
+
+    def enrich_from_handshake(self, result: Any) -> None:
+        """Apply a ``HandshakeResult`` to this DeviceInfo (LCD path).
+
+        The single sanctioned site that copies handshake-derived fields onto
+        a ``DeviceInfo`` and resolves the (PM, SUB) → ``VariantOverride``
+        lookup (button image today; ``panel_cutout`` / ``display_name`` once
+        Phase B fills those rows). Replaces the prior scattered field-by-field
+        mutations across ``services/device.py`` and ``ui/gui/trcc_app.py``.
+
+        Tolerant of partial results: each field is copied only if the
+        handshake produced a meaningful value, so unknown protocols (or
+        failed handshakes that returned ``HandshakeResult(raw_response=...)``)
+        leave the prior state intact.
+        """
+        if result is None:
+            return
+
+        res = getattr(result, 'resolution', None)
+        if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
+            self.resolution = res
+
+        fbl = getattr(result, 'fbl', None) or getattr(result, 'model_id', None)
+        if fbl:
+            self.fbl_code = fbl
+
+        # PM=0 / SUB=0 are legitimate (some entries are keyed under PM=0
+        # SUB=0). Always copy.
+        self.pm_byte = getattr(result, 'pm_byte', 0)
+        self.sub_byte = getattr(result, 'sub_byte', 0)
+
+        # Resolve sidebar identity from the (PM, SUB) fingerprint. Falls back
+        # to FBL when PM=0 (some bulk devices). Phase B will also use the
+        # full VariantOverride to populate panel_cutout + display_name.
+        effective_pm = self.pm_byte or self.fbl_code or 0
+        if effective_pm:
+            override = get_variant_override(effective_pm, self.sub_byte)
+            if override is not None and override.button_image:
+                self.button_image = override.button_image
+
+    def enrich_from_led_probe(self, probe: Any) -> None:
+        """Apply an ``LedHandshakeInfo`` to this DeviceInfo (LED path).
+
+        Sister to ``enrich_from_handshake``; consumes the LED probe shape
+        (has ``pm``, ``sub_type``, ``style``, ``style_sub`` instead of the
+        bulk handshake's ``pm_byte`` / ``sub_byte``). Resolves the LED
+        button-image variant in the same single step.
+
+        Tolerant of partial probes: ``probe.style`` may be ``None`` if the
+        device doesn't match any known LED style — the method leaves prior
+        state intact in that case.
+        """
+        if probe is None or getattr(probe, 'style', None) is None:
+            return
+        self.pm_byte = getattr(probe, 'pm', 0)
+        self.sub_byte = getattr(probe, 'sub_type', 0)
+        self.led_style_id = probe.style.style_id
+        self.led_style_sub = getattr(probe, 'style_sub', 0)
+        self.model = probe.style.model_name
+
+        if self.pm_byte:
+            override = get_variant_override(self.pm_byte, self.sub_byte,
+                                             is_led=True)
+            if override is not None and override.button_image:
+                self.button_image = override.button_image
+
 
 # Implementation key → display name (SCSI LCD devices)
 IMPL_NAMES: dict[str, str] = {
@@ -339,76 +434,93 @@ IMPL_NAMES: dict[str, str] = {
 # Device Button Image Map (from UCDevice.cs ADDUserButton)
 # =============================================================================
 
-_LCD_BUTTON_IMAGE: dict[int, dict[int | None, str]] = {
-    1:   {0: 'A1GRAND VISION', 1: 'A1GRAND VISION',
-          48: 'A1LM22', 49: 'A1LF14', None: 'A1GRAND VISION'},
-    3:   {None: 'A1CORE VISION'},
-    4:   {1: 'A1HYPER VISION', 2: 'A1RP130 VISION', 3: 'A1LM16SE',
-          4: 'A1LF10V', 5: 'A1LM19SE'},
-    5:   {None: 'A1Mjolnir VISION'},
-    6:   {1: 'frozen_warframe_ultra', 2: 'A1FROZEN VISION V2'},
-    7:   {1: 'A1Stream Vision', 2: 'A1Mjolnir VISION PRO'},
-    9:   {0: 'A1LC2JD', 1: 'A1LC2JD', 2: 'A1LC2JD', 3: 'A1LC2JD',
-          4: 'A1LC2JD', None: 'A1LF19'},
-    10:  {5: 'A1LF16', 6: 'A1LF18', 7: 'A1LD6', None: 'A1LC3'},
-    11:  {6: 'A1LD8', None: 'A1LF19'},
-    12:  {None: 'A1LF167'},
-    13:  {None: 'A1PC1'},
-    14:  {1: 'A1Stream Vision', 2: 'A1Mjolnir VISION PRO'},
-    15:  {2: 'A1LC8', None: 'A1LC7'},
-    16:  {None: 'A1CZ2'},
-    17:  {1: 'A1PC1', 2: 'A1LC9', 5: 'A1PC1', None: 'A1PC1'},
-    32:  {0: 'A1ELITE VISION', 1: 'A1FROZEN WARFRAME PRO',
-          None: 'A1ELITE VISION'},
-    36:  {None: 'A1AS120 VISION'},
-    49:  {None: 'A1FROZEN WARFRAME'},
-    50:  {None: 'A1FROZEN WARFRAME'},
-    51:  {None: 'A1FROZEN WARFRAME'},
-    52:  {None: 'A1BA120 VISION'},
-    53:  {1: 'A1LF21', 2: 'A1LF22', None: 'A1LF20'},
-    54:  {None: 'A1LC5'},
-    58:  {0: 'A1FROZEN WARFRAME SE', None: 'A1LM26'},
-    63:  {0: 'A1FROZEN WARFRAME PRO', 1: 'A1LM22', 2: 'A1LM27',
-          3: 'A1LM30'},
-    64:  {0: 'A1FROZEN WARFRAME PRO', 1: 'A1LM22', 2: 'A1LM27',
-          3: 'A1LM30'},
-    65:  {0: 'A1ELITE VISION', 1: 'A1LF14', 2: 'A1LF14', 3: 'A1LD7',
-          4: 'A1LD10', 5: 'A1LD7'},
-    66:  {0: 'A1ELITE VISION', 1: 'A1LF14', 2: 'A1LF14',
-          3: 'A1LD7', 4: 'A1LD7'},
-    68:  {None: 'A1LM24'},
-    69:  {2: 'A1LD9'},
-    100: {0: 'A1FROZEN WARFRAME PRO', 1: 'A1LM22',
-          None: 'A1FROZEN WARFRAME PRO'},
-    101: {0: 'A1ELITE VISION', 1: 'A1LF14', None: 'A1ELITE VISION'},
-    128: {None: 'A1LM24'},
-    129: {None: 'A1GRAND VISION'},
+# ──────────────────────────────────────────────────────────────────────────
+# Variant override registry — keyed by (pm, sub) from handshake.
+#
+# Phase B.0: each entry carries `button_image`. Phase B fills `panel_cutout`
+# and `display_name` on rows where the panel has a notch or a distinct
+# physical product variant (e.g. Levita vs GrandVision 360 sharing 87ad:70db).
+#
+# These dicts replaced earlier `dict[int, dict[int|None, str]]` shapes —
+# same nesting, richer leaf value (VariantOverride).
+# ──────────────────────────────────────────────────────────────────────────
+
+def _v(button_image: str) -> VariantOverride:
+    """Shorthand for VariantOverride rows that carry only a button image."""
+    return VariantOverride(button_image=button_image)
+
+
+_LCD_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
+    1:   {0: _v('A1GRAND VISION'), 1: _v('A1GRAND VISION'),
+          48: _v('A1LM22'), 49: _v('A1LF14'), None: _v('A1GRAND VISION')},
+    3:   {None: _v('A1CORE VISION')},
+    4:   {1: _v('A1HYPER VISION'), 2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
+          4: _v('A1LF10V'), 5: _v('A1LM19SE')},
+    5:   {None: _v('A1Mjolnir VISION')},
+    6:   {1: _v('frozen_warframe_ultra'), 2: _v('A1FROZEN VISION V2')},
+    7:   {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
+    9:   {0: _v('A1LC2JD'), 1: _v('A1LC2JD'), 2: _v('A1LC2JD'), 3: _v('A1LC2JD'),
+          4: _v('A1LC2JD'), None: _v('A1LF19')},
+    10:  {5: _v('A1LF16'), 6: _v('A1LF18'), 7: _v('A1LD6'), None: _v('A1LC3')},
+    11:  {6: _v('A1LD8'), None: _v('A1LF19')},
+    12:  {None: _v('A1LF167')},
+    13:  {None: _v('A1PC1')},
+    14:  {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
+    15:  {2: _v('A1LC8'), None: _v('A1LC7')},
+    16:  {None: _v('A1CZ2')},
+    17:  {1: _v('A1PC1'), 2: _v('A1LC9'), 5: _v('A1PC1'), None: _v('A1PC1')},
+    32:  {0: _v('A1ELITE VISION'), 1: _v('A1FROZEN WARFRAME PRO'),
+          None: _v('A1ELITE VISION')},
+    36:  {None: _v('A1AS120 VISION')},
+    49:  {None: _v('A1FROZEN WARFRAME')},
+    50:  {None: _v('A1FROZEN WARFRAME')},
+    51:  {None: _v('A1FROZEN WARFRAME')},
+    52:  {None: _v('A1BA120 VISION')},
+    53:  {1: _v('A1LF21'), 2: _v('A1LF22'), None: _v('A1LF20')},
+    54:  {None: _v('A1LC5')},
+    58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
+    63:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
+          3: _v('A1LM30')},
+    64:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
+          3: _v('A1LM30')},
+    65:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'), 3: _v('A1LD7'),
+          4: _v('A1LD10'), 5: _v('A1LD7')},
+    66:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'),
+          3: _v('A1LD7'), 4: _v('A1LD7')},
+    68:  {None: _v('A1LM24')},
+    69:  {2: _v('A1LD9')},
+    100: {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'),
+          None: _v('A1FROZEN WARFRAME PRO')},
+    101: {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), None: _v('A1ELITE VISION')},
+    128: {None: _v('A1LM24')},
+    129: {None: _v('A1GRAND VISION')},
 }
 
-_LED_BUTTON_IMAGE: dict[int, dict[int | None, str]] = {
-    1:   {None: 'A1FROZEN HORIZON PRO'},
-    2:   {None: 'A1FROZEN MAGIC PRO'},
-    3:   {None: 'A1AX120 DIGITAL'},
-    16:  {None: 'A1PA120 DIGITAL'},
-    23:  {None: 'A1RK120 DIGITAL'},
-    32:  {None: 'A1AK120 Digital'},
-    48:  {None: 'A1LF8'},
-    49:  {None: 'A1LF10'},
-    80:  {None: 'A1LF12'},
-    96:  {None: 'A1LF10'},
-    112: {None: 'A1LC2'},
-    128: {None: 'A1LC1'},
-    129: {None: 'A1LF11'},
-    144: {None: 'A1LF15'},
-    160: {None: 'A1LF13'},
-    176: {None: 'A1LF25'},
-    208: {None: 'A1CZ1'},
-    **{pm: {None: 'A1PA120 DIGITAL'} for pm in range(17, 32) if pm != 23},
+_LED_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
+    1:   {None: _v('A1FROZEN HORIZON PRO')},
+    2:   {None: _v('A1FROZEN MAGIC PRO')},
+    3:   {None: _v('A1AX120 DIGITAL')},
+    16:  {None: _v('A1PA120 DIGITAL')},
+    23:  {None: _v('A1RK120 DIGITAL')},
+    32:  {None: _v('A1AK120 Digital')},
+    48:  {None: _v('A1LF8')},
+    49:  {None: _v('A1LF10')},
+    80:  {None: _v('A1LF12')},
+    96:  {None: _v('A1LF10')},
+    112: {None: _v('A1LC2')},
+    128: {None: _v('A1LC1')},
+    129: {None: _v('A1LF11')},
+    144: {None: _v('A1LF15')},
+    160: {None: _v('A1LF13')},
+    176: {None: _v('A1LF25')},
+    208: {None: _v('A1CZ1')},
+    **{pm: {None: _v('A1PA120 DIGITAL')} for pm in range(17, 32) if pm != 23},
 }
 
 
-def _resolve_button(table: dict[int, dict[int | None, str]],
-                     key: int, sub: int) -> str | None:
+def _resolve_variant(table: dict[int, dict[int | None, VariantOverride]],
+                     key: int, sub: int) -> VariantOverride | None:
+    """Look up a VariantOverride by (PM key, SUB), preferring exact match over None default."""
     match table.get(key):
         case None:
             return None
@@ -416,6 +528,19 @@ def _resolve_button(table: dict[int, dict[int | None, str]],
             return sub_map[sub]
         case sub_map:
             return sub_map.get(None)
+
+
+def get_variant_override(key: int, sub: int = 0, *,
+                          is_led: bool = False) -> VariantOverride | None:
+    """Resolve full VariantOverride record for a (PM, SUB) handshake fingerprint.
+
+    Args:
+        key: PM byte (HID/Bulk) or FBL fallback when PM=0.
+        sub: SUB byte (HID/Bulk).
+        is_led: True for LED devices, False for LCD.
+    """
+    return _resolve_variant(
+        _LED_BUTTON_IMAGE if is_led else _LCD_BUTTON_IMAGE, key, sub)
 
 
 def get_button_image(key: int, sub: int = 0, *, is_led: bool = False) -> str | None:
@@ -426,7 +551,8 @@ def get_button_image(key: int, sub: int = 0, *, is_led: bool = False) -> str | N
         sub: SUB byte (HID) or PID (SCSI).
         is_led: True for LED devices (C# case 1), False for LCD (cases 2-4, 257).
     """
-    return _resolve_button(_LED_BUTTON_IMAGE if is_led else _LCD_BUTTON_IMAGE, key, sub)
+    override = get_variant_override(key, sub, is_led=is_led)
+    return override.button_image if override is not None else None
 
 
 __all__ = [
@@ -442,6 +568,9 @@ __all__ = [
     'DetectedDevice',
     'DeviceEntry',
     'DeviceInfo',
+    'PanelCutout',
     'UsbAddress',
+    'VariantOverride',
     'get_button_image',
+    'get_variant_override',
 ]
