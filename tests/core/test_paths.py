@@ -41,12 +41,22 @@ class TestPathConstants(unittest.TestCase):
         self.assertTrue(os.path.isdir(ASSETS_DIR), f"Missing: {ASSETS_DIR}")
 
     def test_resources_dir_in_gui_package(self):
-        """RESOURCES_DIR lives in the gui/ package now (gui/assets/)."""
-        self.assertTrue(RESOURCES_DIR.endswith(os.path.join('gui', 'assets')))
+        """RESOURCES_DIR lives in the ui/gui/ package (ui/gui/assets/)."""
+        self.assertTrue(
+            RESOURCES_DIR.endswith(os.path.join('ui', 'gui', 'assets')),
+            f"Expected suffix 'ui/gui/assets', got: {RESOURCES_DIR}")
 
-    @unittest.skip("Source bug: RESOURCES_DIR points to src/trcc/gui/assets but assets moved to src/trcc/ui/gui/assets in Phase 9. Not a Phase 10F issue — separate fix needed in core/paths.py")
     def test_resources_dir_exists(self):
         self.assertTrue(os.path.isdir(RESOURCES_DIR), f"Missing: {RESOURCES_DIR}")
+
+    def test_resources_dir_has_split_overlay(self):
+        """Canonical split-overlay asset resolves under RESOURCES_DIR.
+
+        Guards against future moves: if assets relocate again, this test fails
+        in test_paths.py rather than silently disabling the Dynamic Island
+        overlay at runtime (regression: GitHub #149)."""
+        asset = os.path.join(RESOURCES_DIR, 'split_overlay_b.png')
+        self.assertTrue(os.path.isfile(asset), f"Missing: {asset}")
 
 
 # =============================================================================

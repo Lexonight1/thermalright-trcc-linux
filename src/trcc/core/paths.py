@@ -12,7 +12,7 @@ _TRCC_PKG = str(Path(__file__).resolve().parents[1])
 
 # Asset directories (inside trcc package)
 ASSETS_DIR = os.path.join(_TRCC_PKG, 'assets')
-RESOURCES_DIR = os.path.join(_TRCC_PKG, 'gui', 'assets')
+RESOURCES_DIR = os.path.join(_TRCC_PKG, 'ui', 'gui', 'assets')
 
 # User config directory (~/.trcc/)
 USER_CONFIG_DIR = os.path.expanduser('~/.trcc')
