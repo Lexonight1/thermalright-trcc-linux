@@ -40,6 +40,29 @@ log = logging.getLogger(__name__)
 # USB errno constants.
 _ERRNO_EACCES = 13  # Permission denied — udev rules missing.
 _ERRNO_EBUSY = 16   # Device claimed by another process (e.g. GUI).
+# Errnos that indicate the device's underlying file/handle is gone —
+# the kernel re-enumerated the USB device or removed the SCSI generic
+# node entirely. Caching the prior handle and retrying is futile until
+# we re-open against the (possibly renumbered) device.
+_ERRNO_EBADF = 9          # Bad file descriptor — handle was closed under us.
+_ERRNO_ENXIO = 6          # No such device or address — SCSI generic gone.
+_ERRNO_ENODEV = 19        # No such device — USB device unplugged / renumerated.
+_ERRNO_ESHUTDOWN = 108    # Transport endpoint is shut down — USB stack tore down.
+_DISCONNECT_ERRNOS = frozenset(
+    (_ERRNO_EBADF, _ERRNO_ENXIO, _ERRNO_ENODEV, _ERRNO_ESHUTDOWN)
+)
+
+# After this many *consecutive* disconnect-class send failures, the protocol
+# closes its transport. The next send re-opens (or fails fast). Three keeps
+# us tolerant of one-off USB stack hiccups without spamming dead-handle
+# retries for hours.
+_DISCONNECT_FAILURE_THRESHOLD = 3
+
+# Maximum seconds between identical "device disconnected" WARNING lines.
+# Below this, identical warnings are suppressed (DEBUG). The C# Windows app
+# was silent during disconnect; we want at least state-transition logging
+# but not 15 lines per second filling the rotation.
+_DISCONNECT_WARN_INTERVAL_S = 30.0
 
 
 def _has_usb_errno(exc: Exception, errno_val: int) -> bool:
@@ -47,6 +70,21 @@ def _has_usb_errno(exc: Exception, errno_val: int) -> bool:
     cur: BaseException | None = exc
     while cur is not None:
         if getattr(cur, "errno", None) == errno_val:
+            return True
+        cur = cur.__cause__
+    return False
+
+
+def _is_disconnect_error(exc: Exception) -> bool:
+    """True if the exception chain matches a 'device handle is gone' errno.
+
+    These are not transient send failures — retrying the cached transport
+    will never succeed; the kernel has detached the device or invalidated
+    the file descriptor. Recovery requires closing and re-opening.
+    """
+    cur: BaseException | None = exc
+    while cur is not None:
+        if getattr(cur, "errno", None) in _DISCONNECT_ERRNOS:
             return True
         cur = cur.__cause__
     return False
@@ -86,6 +124,11 @@ class DeviceProtocol(ABC):
         # Handshake state — common to all protocols
         self._handshake_result: HandshakeResult | None = None
         self._last_error: Exception | None = None
+        # Recovery state — track consecutive disconnect-class send failures
+        # so we close the stale transport after a real disconnect and
+        # rate-limit the WARNING log. Reset on every successful send.
+        self._disconnect_failures: int = 0
+        self._last_disconnect_warn_at: float = 0.0
 
     @abstractmethod
     def send_data(self, image_data: bytes, width: int, height: int) -> bool:
@@ -198,20 +241,91 @@ class DeviceProtocol(ABC):
             self.on_state_changed(key, value)
 
     def _guarded_send(self, label: str, fn: Callable[[], bool]) -> bool:
-        """Execute a send operation with error handling and observer notification."""
+        """Execute a send operation with error handling, recovery, and observer notification.
+
+        On disconnect-class errors (``_DISCONNECT_ERRNOS``):
+          1. Increments ``_disconnect_failures``.
+          2. Rate-limits the WARNING log to one line per
+             ``_DISCONNECT_WARN_INTERVAL_S``.
+          3. After ``_DISCONNECT_FAILURE_THRESHOLD`` consecutive failures,
+             closes the stale transport so the next ``_ensure_transport``
+             opens a fresh handle, and fires
+             ``on_state_changed('connected', False)`` so callers can
+             trigger rediscovery.
+          4. Resets the counter on the next successful send.
+
+        Non-disconnect exceptions still emit a single WARNING per send.
+        """
         try:
-            if (success := fn()):
-                log.debug("Frame sent: %s", label)
-            else:
-                log.debug("Frame send returned False: %s", label)
-            self._notify_send_complete(success)
-            return success
+            success = fn()
         except Exception as e:
-            log.warning("Frame send failed (%s): %s — device may be disconnected",
-                        label, e)
-            self._notify_error(f"{label} send failed: {e}")
-            self._notify_send_complete(False)
+            self._handle_send_error(label, e)
             return False
+
+        if success:
+            log.debug("Frame sent: %s", label)
+            if self._disconnect_failures:
+                log.info("%s: send recovered after %d disconnect failure(s)",
+                         label, self._disconnect_failures)
+                self._disconnect_failures = 0
+                self._notify_state_changed("connected", True)
+        else:
+            log.debug("Frame send returned False: %s", label)
+        self._notify_send_complete(success)
+        return success
+
+    def _handle_send_error(self, label: str, exc: Exception) -> None:
+        """Classify a send-path exception and trigger recovery for disconnects.
+
+        Pure dispatch logic — no I/O beyond the rate-limited log + the
+        idempotent ``_close_transport`` callback. The hexagonal seam is
+        kept: this method runs on the protocol, but recovery (re-discovery,
+        UI state) is left to subscribers of ``on_state_changed``.
+        """
+        import time
+        is_disconnect = _is_disconnect_error(exc)
+
+        if is_disconnect:
+            self._disconnect_failures += 1
+            now = time.monotonic()
+            if (self._disconnect_failures == 1
+                    or now - self._last_disconnect_warn_at >= _DISCONNECT_WARN_INTERVAL_S):
+                log.warning(
+                    "Frame send failed (%s): %s — device may be disconnected "
+                    "(consecutive failures=%d)",
+                    label, exc, self._disconnect_failures)
+                self._last_disconnect_warn_at = now
+            else:
+                log.debug("Frame send failed (%s): %s (suppressed; "
+                          "consecutive failures=%d)",
+                          label, exc, self._disconnect_failures)
+            if self._disconnect_failures >= _DISCONNECT_FAILURE_THRESHOLD:
+                self._on_disconnect_threshold(label)
+        else:
+            log.warning("Frame send failed (%s): %s", label, exc)
+
+        self._last_error = exc
+        self._notify_error(f"{label} send failed: {exc}")
+        self._notify_send_complete(False)
+
+    def _on_disconnect_threshold(self, label: str) -> None:
+        """Hit on N consecutive disconnect-class failures.
+
+        Closes the stale transport (if the protocol owns one) and notifies
+        subscribers so an upstream LCDDevice can re-run discovery. Subclasses
+        without a transport (rare) can override; the default implementation
+        is safe for any protocol because ``close()`` is required by the ABC.
+        """
+        if self._disconnect_failures == _DISCONNECT_FAILURE_THRESHOLD:
+            log.warning("%s: %d consecutive disconnect failures — closing "
+                        "transport and signaling reconnect",
+                        label, self._disconnect_failures)
+            try:
+                self.close()
+            except Exception as e:
+                log.debug("%s: close() raised during disconnect recovery: %s",
+                          label, e)
+            self._notify_state_changed("connected", False)
 
     @staticmethod
     def _build_usb_protocol_info(

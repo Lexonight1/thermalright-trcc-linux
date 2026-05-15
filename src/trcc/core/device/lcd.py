@@ -67,11 +67,73 @@ class LCDDevice(Device):
         self.log: logging.Logger = log
         self._persistence = LCDPersistence(device_svc, lcd_config)
         self._theme = LCDThemeWorkflow(self)
+        # Transport-level connectivity flag. Flipped by protocol disconnect
+        # notifications (errno ENODEV / EBADF / etc. after the threshold).
+        # The natural lazy-open machinery handles re-opening on the next
+        # send; this flag exists so callers / UI can surface state and so
+        # we log the transition once instead of per-frame.
+        self._protocol_connected: bool = True
+        self._wire_protocol_observers()
 
     @property
     def protocol(self) -> DeviceProtocol | None:
         """The wire protocol (Scsi/HID/Bulk/Ly) DI'd by name at construction."""
         return self._protocol
+
+    # ── Recovery — protocol disconnect / reconnect observers ─────────────
+
+    def _wire_protocol_observers(self) -> None:
+        """Subscribe to disconnect/reconnect notifications from the protocol.
+
+        The protocol's ``_guarded_send`` fires ``on_state_changed("connected",
+        bool)`` when the disconnect-failure threshold is breached or after
+        the first successful send following recovery. We surface the
+        transition at the device-facade level so logs / UI / callers have
+        a single per-device signal instead of N per-frame WARNINGS.
+        """
+        if self._protocol is None:
+            return
+        # Chain rather than overwrite — protocols can have other listeners.
+        prior = getattr(self._protocol, 'on_state_changed', None)
+
+        def _chain(key: str, value: object) -> None:
+            self._on_protocol_state_changed(key, value)
+            if prior is not None:
+                prior(key, value)
+
+        self._protocol.on_state_changed = _chain
+
+    def _on_protocol_state_changed(self, key: str, value: object) -> None:
+        """React to protocol-level state transitions.
+
+        Currently only ``key == 'connected'`` triggers behavior: log the
+        transition with device identity, flip ``_protocol_connected``,
+        and emit a typed event for UI subscribers. Re-opening the transport
+        is handled by the natural lazy-open machinery on the next send.
+        """
+        if key != 'connected':
+            return
+        connected = bool(value)
+        if connected == self._protocol_connected:
+            return
+        self._protocol_connected = connected
+        info = self.device_info
+        ident = (f"{info.vid:04X}:{info.pid:04X}@{info.path}"
+                 if info is not None else "<unknown>")
+        if connected:
+            self.log.info("recovery: device %s reconnected", ident)
+        else:
+            self.log.warning("recovery: device %s disconnected — "
+                             "next send will attempt to re-open transport",
+                             ident)
+        if self._events is not None:
+            try:
+                from ..events import Topic
+                topic = (Topic.DEVICE_CONNECTED if connected
+                          else Topic.DEVICE_DISCONNECTED)
+                self._events.publish(topic, info)
+            except (AttributeError, ImportError):
+                pass
 
     # ══════════════════════════════════════════════════════════════════════
     # Shared lifecycle (DeviceInfo)

@@ -997,3 +997,146 @@ def test_factory_threads_addr_to_usb_protocols(vid, pid, entry):
         f"{entry.protocol} protocol for {vid:04x}:{pid:04x} did not receive "
         f"usb_address — got {protocol._usb_address!r}, expected {expected!r}"
     )
+
+
+# =========================================================================
+# Phase C — recovery from persistent disconnect-class send errors
+# =========================================================================
+
+
+class _StubProtocol(DeviceProtocol):
+    """Concrete DeviceProtocol with no-op abstract methods, for testing
+    the recovery state machinery in ``_guarded_send`` directly without
+    spinning up a real SCSI/HID/Bulk transport."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_calls = 0
+
+    def send_data(self, image_data, width, height):
+        return True
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+    def get_info(self):
+        return MagicMock()
+
+    @property
+    def protocol_name(self) -> str:
+        return "stub"
+
+    @property
+    def is_available(self) -> bool:
+        return True
+
+    def _do_handshake(self):
+        return None
+
+
+def _enodev_exc() -> OSError:
+    """Build an OSError that mimics the kernel's ENODEV signal."""
+    import errno
+    err = OSError(errno.ENODEV, "No such device")
+    err.errno = errno.ENODEV
+    return err
+
+
+def _ebadf_exc() -> OSError:
+    import errno
+    err = OSError(errno.EBADF, "Bad file descriptor")
+    err.errno = errno.EBADF
+    return err
+
+
+class TestGuardedSendRecovery:
+    """``_guarded_send`` recovery state machine.
+
+    Covers: disconnect-errno classification, consecutive-failure counting,
+    rate-limited WARNING logging, threshold-triggered close + state change,
+    and reset on the next successful send.
+    """
+
+    def test_successful_send_keeps_failure_counter_at_zero(self):
+        p = _StubProtocol()
+        ok = p._guarded_send("scsi", lambda: True)
+        assert ok is True
+        assert p._disconnect_failures == 0
+
+    def test_single_enodev_does_not_close_transport(self):
+        p = _StubProtocol()
+        ok = p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        assert ok is False
+        assert p._disconnect_failures == 1
+        assert p.close_calls == 0  # below threshold
+
+    def test_threshold_close_fires_at_third_consecutive_enodev(self):
+        p = _StubProtocol()
+        for _ in range(3):
+            p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        assert p._disconnect_failures == 3
+        assert p.close_calls == 1  # one close at threshold
+
+    def test_threshold_close_does_not_double_fire(self):
+        """4th+ failure must not call close() again — that would create
+        the same retry storm the rate-limit is preventing."""
+        p = _StubProtocol()
+        for _ in range(6):
+            p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        assert p._disconnect_failures == 6
+        assert p.close_calls == 1
+
+    def test_ebadf_is_treated_as_disconnect(self):
+        p = _StubProtocol()
+        p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_ebadf_exc()))
+        assert p._disconnect_failures == 1
+
+    def test_generic_exception_does_not_increment_disconnect_counter(self):
+        """A non-disconnect error (e.g. JPEG encoding bug) must not pollute
+        the disconnect counter — would cause a real disconnect later to
+        threshold prematurely."""
+        p = _StubProtocol()
+        p._guarded_send("scsi", lambda: (_ for _ in ()).throw(
+            RuntimeError("encoding failed")))
+        assert p._disconnect_failures == 0
+
+    def test_successful_send_resets_counter_and_fires_reconnect(self):
+        p = _StubProtocol()
+        state_changes: list[tuple[str, object]] = []
+        p.on_state_changed = lambda k, v: state_changes.append((k, v))
+        for _ in range(3):
+            p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        # Cleared by the next successful send.
+        ok = p._guarded_send("scsi", lambda: True)
+        assert ok is True
+        assert p._disconnect_failures == 0
+        assert ("connected", False) in state_changes
+        assert ("connected", True) in state_changes
+
+    def test_state_change_fired_once_on_threshold(self):
+        """Subscribers should see exactly one ('connected', False) for the
+        sustained-disconnect transition, not one per failed frame."""
+        p = _StubProtocol()
+        state_changes: list[tuple[str, object]] = []
+        p.on_state_changed = lambda k, v: state_changes.append((k, v))
+        for _ in range(5):
+            p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        assert state_changes.count(("connected", False)) == 1
+
+    def test_warning_log_rate_limited(self, caplog):
+        """First disconnect WARNs; immediate retries are DEBUG (suppressed)."""
+        import logging as _logging
+        caplog.set_level(_logging.DEBUG, logger="trcc.adapters.device.factory")
+        p = _StubProtocol()
+        for _ in range(10):
+            p._guarded_send("scsi", lambda: (_ for _ in ()).throw(_enodev_exc()))
+        warnings = [r for r in caplog.records
+                    if r.levelno == _logging.WARNING
+                    and "may be disconnected" in r.getMessage()]
+        # 10 ENODEVs in a tight loop: 1 warning at first failure, 1 warning
+        # at the threshold-close (different message), but NOT 10 disconnect
+        # warnings (the 'may be disconnected' line specifically).
+        assert len(warnings) == 1, (
+            f"Expected 1 rate-limited disconnect warning, got {len(warnings)}: "
+            f"{[r.getMessage() for r in warnings]}"
+        )
