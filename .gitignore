@@ -97,6 +97,8 @@ src/trcc/data/ui_*.json
 !/dev/smoke_linux.py
 !/dev/smoke_windows.py
 !/dev/smoke_macos.py
+!/dev/smoke_platforms.py
+!/dev/smoke_variant_resolution.py
 !/dev/smoke_bsd.py
 !/dev/_smoke_runtime.py
 /dev_*

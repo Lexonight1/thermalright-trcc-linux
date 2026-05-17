@@ -1,5 +1,148 @@
 # Changelog
 
+## v9.6.5
+
+Issue-driven patch release.  Closes #149 (Levita right-side notch),
+#150 (HID-debug partial-init import cycle), #151 (Help link 404).
+Folds in the v9.6.4 disconnect-recovery fix that pip-installed users
+haven't picked up yet, and adds the testability + diagnostics
+infrastructure needed to debug the next class of regressions on
+real reporter hardware.
+
+**Issue #149 — Thermalright Levita right-side camera notch.**  Reporter
+oranura's Levita (87AD:70DB Bulk, PM=64 SUB=3) shares the chipset
+with the older GrandVision 360 / WonderVision lineup but the
+smartphone-derived AMOLED panel carries its notch on the right edge
+instead of the left.  Previously the same split-overlay PNG covered
+the left side regardless, so Levita owners saw a black bar masking
+the wrong half of the screen.
+
+The fix lives in three layers:
+
+- ``_LCD_BUTTON_IMAGE`` and ``_LED_BUTTON_IMAGE`` were flat ``dict[PM,
+  dict[SUB|None, …]]`` lookups.  The C# decompile's
+  ``ADDUserButton(ID, pm, sub)`` dispatcher actually keys on
+  ``(deviceClass, pm, sub)`` where ``deviceClass`` comes from the USB
+  enumerator (case 1 LED / case 2 HID T2 / case 3-4 HID T3 / case
+  257 Bulk).  PM=64 in Bulk ≠ PM=64 in HID T2.  Without VID/PID
+  scoping the lookup cross-contaminates and that's how Levita was
+  masquerading as LM30.  Collapsed both flat tables into one
+  ``_VARIANT_REGISTRY: dict[(VID, PID), dict[PM, dict[SUB|None,
+  VariantOverride]]]`` sourced row-by-row from the C# case map.
+  SCSI siblings alias to the Bulk dict (87CD:70DB, 0402:3922,
+  0416:5406 share ``_BULK_VARIANTS``) because the C# router sends
+  them through case 257 too.
+- ``DeviceInfo`` gained a ``panel_cutout: PanelCutout | None`` field
+  (hardware truth — populated from the registry, not user config).
+  ``enrich_from_handshake`` resolves the variant override on
+  ``(self.vid, self.pid, self.effective_pm, self.sub_byte)`` and
+  copies both ``button_image`` and ``panel_cutout`` onto the DTO.
+  Logs at INFO on hit / DEBUG on miss with the full key so reporter
+  diagnostics show exactly which row resolved.
+- ``Renderer.flip_horizontal`` added to the port + QImage backend so
+  ``apply_split_overlay`` can mirror the cached PNG when the active
+  device's ``panel_cutout`` sits past the canvas midline.  Cache key
+  extended from ``(style, rotation)`` to ``(style, rotation,
+  mirrored)``.  Existing left-cutout PNGs stay untouched for
+  GrandVision and WonderVision; Levita gets the mirrored variant.
+
+**Issue #150 — ``hid-debug`` partial-init crash.**
+``adapters/infra/diagnostics`` does ``from
+trcc.adapters.device.hid_protocol import HidProtocol`` to drive an
+interactive handshake.  Because ``hid_protocol`` does ``from .factory
+import ...`` and ``factory`` had module-bottom ``from .hid_protocol
+import HidProtocol``, importing the diagnostic module first
+triggered the cycle: ``factory`` re-entered ``hid_protocol`` while
+its class body was still executing and got an ``AttributeError``.
+Fix: moved the five protocol imports out of ``factory.py``'s module
+bottom and into each ``ProtocolFactory.make()`` method.  ``factory``
+no longer touches a protocol module at import time, the cycle is
+broken in both directions, and reporters who ran the hid-debug
+command on Debian / Proxmox stop hitting the crash.
+
+**Issue #151 — Help button 404.**  The GUI Help button opened
+``doc/TROUBLESHOOTING.md`` but the file was renamed to
+``GUIDE_TROUBLESHOOTING.md`` in the doc reshuffle.  One-line URL fix
+in ``_on_help_clicked``.
+
+**Issue #148 — ``trccd`` daemon blank display.**  Already addressed
+on ``main``: ``_boot.trcc(discover_now=True)`` flows through
+``Trcc.discover()`` which calls ``self._metrics_loop.start()``.  This
+release publishes the fix to PyPI and the distro packages so the
+CachyOS reporter doesn't have to install from source.
+
+**Persistent log file (debugging infrastructure).**  The file handler
+was ``logging.FileHandler(path, mode='w')`` — every restart wiped
+the previous session's log, which made the next-class of "freezes
+after N minutes" bugs un-diagnosable: by the time the user could
+report, the evidence was gone.  Switched to
+``logging.handlers.RotatingFileHandler(path, mode='a', maxBytes=10
+MiB, backupCount=2)`` so a crash captured in flight survives the
+restart cycle that follows.
+
+**TRACE log level for per-frame chatter.**  ``send_frame``, ``tick``,
+``overlay.render`` and friends emit ~15-60 log records per second
+per device.  Even at ``DEBUG`` they swamped the file and buried the
+diagnostic signal.  Added ``TRACE_LEVEL = 5`` (below ``DEBUG``) in
+``core/models/constants`` and moved the per-frame log lines to
+``log.log(TRACE_LEVEL, …)``.  Default file handler stays at ``DEBUG``
+— frame spam is filtered out.  Pass ``-vv`` (verbosity ≥ 2) to open
+the TRACE gate when you actively need frame-rate diagnostics.
+
+**Disconnect recovery (folded forward from main).**  The v9.6.4
+release predated the ``ENODEV/EBADF/ENXIO`` recovery commit
+``4cd9c99c``.  This release ships it: ``_guarded_send`` now
+classifies disconnect-class errnos, closes the stale transport
+after the failure threshold, fires ``on_state_changed("connected",
+False)``, and the lazy-open machinery re-opens the handle on the
+next send.  Users whose USB device transiently disconnects
+(suspend/resume without ``PrepareForSleep``, kernel hub blip)
+recover transparently on the next frame instead of getting stuck
+on the firmware's "USB waiting" splash.
+
+**Test suite repaired (27 failures → 0).**  Pytest had accumulated 27
+failures during a long stretch of "ignore-tests-during-refactor"
+phases (Phase 9, 10A, 11, metrics unification, daemon redesign,
+sensor-source rebase, Trcc-singleton, TrccProxy).  Five root causes,
+all fixed at the test boundary:
+
+- API / CLI tests patched the legacy ``_system_svc.all_metrics``;
+  production reads ``trcc().os.metrics`` now (``Platform.metrics``).
+  Migrated 5 test files + hoisted the ``trcc`` import in
+  ``ui/api/system`` and ``ui/cli/_system`` so the patch target is
+  module-level.
+- LED service tests for temp-linked / load-linked modes used
+  ``HardwareMetrics(cpu_temp=…)`` without setting ``_populated``;
+  the production tick path now gates on ``_populated`` to hold the
+  prior color when a sensor is absent.  Tests updated to pass the
+  ``_populated`` set; the "missing metric defaults to zero" test
+  is now "missing metric holds prior color".
+- Device-open tests patched ``usb.core.find``; production calls
+  ``trcc.adapters.device._pyusb_find.find`` (the libusb-package
+  shim that fixes Windows).  Migrated bulk / BSD / macOS / detector
+  / integration tests to patch the new seam.
+- ``mock_io`` fixture patched ``_base.pynvml`` and
+  ``NVML_AVAILABLE`` but not ``_pn`` — the module-level alias
+  the production code reads.  NVIDIA-fallback tests now exercise
+  the real ``_discover_nvidia`` path.
+- ``get_button_image`` / ``get_variant_override`` gained
+  ``vid, pid`` parameters; ~30 test cases migrated to pass them.
+
+Plus targeted fixes for ``test_builder`` (asserts ``platform.sensors``
+not the removed ``create_sensor_enumerator``) and ``TestUCSystemInfo``
+(panel is now a Topic.METRICS observer, no local timer).
+
+**Variant resolution smoke harness.** ``dev/smoke_variant_resolution.py``
+walks every registered ``(VID, PID, PM, SUB)`` tuple — 347 lookups +
+225 handshake-driven enrichments — and asserts the resolved button
+image + panel_cutout match the registry, every referenced ``A1*.png``
+asset exists, the cutout-side decision (mirror vs no-mirror) is
+unambiguous, the wire-dict roundtrip preserves ``PanelCutout``, and
+no-variant-table families (HID T3 + LY) stay button-stable.  Plus
+the existing ``smoke_platforms`` got an unrelated fix for an
+``object()`` stub that didn't survive the disconnect-recovery
+``setattr`` in ``LCDDevice._wire_protocol_observers``.
+
 ## v9.6.4
 
 Quiet-log patch + a handful more `src/` lambdas converted to named callables.
