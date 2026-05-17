@@ -107,7 +107,9 @@ class Trcc:
         self.lcd = LCDCommands(self._lcd_devices, self.events, self._settings)
         self.led = LEDCommands(self._led_devices, self.events)
         self.control_center = ControlCenterCommands(
-            platform, self.events, self._settings)
+            platform, self.events, self._settings,
+            set_temp_unit=self.set_temp_unit,
+        )
 
         # The OS produces the metrics loop — fourth factory in the chain
         # (Platform / Protocol / Device / MetricsLoop). Default is a
@@ -504,7 +506,7 @@ class Trcc:
         """Update the cached metrics snapshot.
 
         Called by the injected `MetricsLoop` after every poll iteration,
-        and by :meth:`apply_temp_unit` when the user switches °C ↔ °F.
+        and by :meth:`set_temp_unit` when the user switches °C ↔ °F.
         Public so the loop port stays decoupled from Trcc's private state.
         """
         self._current_metrics = metrics
@@ -530,12 +532,15 @@ class Trcc:
 
     # ── Cross-cutting OS operations (touch every device + the loop) ──
 
-    def apply_temp_unit(self, unit: int) -> dict[str, Any]:
+    def set_temp_unit(self, unit: int) -> dict[str, Any]:
         """Persist temp unit + push to every device + refresh metrics.
 
         Cross-cuts settings, every connected device, and the metrics
         loop — lives on Trcc rather than ControlCenterCommands because
-        no facade owns the device list.
+        no facade owns the device list.  ``trcc.set_temp_unit(0|1)`` is
+        the canonical cross-UI entrypoint; ``ControlCenterCommands.
+        set_temp_unit('C'|'F')`` and ``LCDDevice.set_temp_unit`` are
+        thin wrappers that all funnel through here.
         """
         from .models import HardwareMetrics
 

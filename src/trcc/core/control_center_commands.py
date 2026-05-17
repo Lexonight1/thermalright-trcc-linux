@@ -52,10 +52,21 @@ class ControlCenterCommands:
     """Command surface for app-level settings and updates."""
 
     def __init__(self, platform: Platform, events: EventBus,
-                 settings: Any) -> None:
+                 settings: Any,
+                 *, set_temp_unit: Any = None) -> None:
         self._platform = platform
         self._events = events
         self._settings = settings
+        # Cross-cutting handler — ``Trcc.set_temp_unit`` propagates the
+        # unit to every connected device (overlay + LED), re-fetches the
+        # metrics record with the new unit applied, wakes the metrics
+        # loop, and publishes the event. ``ControlCenterCommands`` lives
+        # on the GUI surface and doesn't own the device list, so it
+        # delegates back to ``Trcc`` instead of duplicating the work.
+        # ``trcc.set_temp_unit(0|1)`` is the canonical cross-UI entry
+        # point; the wrapper here just accepts 'C'/'F' strings from the
+        # button-toggle UI shape.
+        self._trcc_set_temp_unit = set_temp_unit
         self._sensor_enum = None   # lazy — discover on first GPU/sensor query
 
     # ── Settings ─────────────────────────────────────────────────────
@@ -86,6 +97,27 @@ class ControlCenterCommands:
                     success=False,
                     error=f"Invalid temp unit '{unit}' — must be 'C' or 'F'",
                 )
+        if self._trcc_set_temp_unit is not None:
+            # Delegate to Trcc.set_temp_unit — persists the setting,
+            # refreshes the metrics record in the new unit, propagates
+            # ``OverlayService.set_temp_unit`` + ``LEDDevice.set_temp_unit``
+            # to every connected device, wakes the metrics loop, AND
+            # publishes ``Topic.CONTROL_CENTER_TEMP_UNIT``.  Skipping
+            # the delegate was the root cause of "GUI toggles unit but
+            # LCD still labels °C while reading °F" — the metrics
+            # value flipped via the polling loop's
+            # ``HardwareMetrics.with_temp_unit`` call, but the
+            # overlay's ``temp_unit`` (the suffix selector) didn't.
+            result = self._trcc_set_temp_unit(unit_int)
+            if result.get('success'):
+                return OpResult(
+                    success=True,
+                    message=result.get('message',
+                                       f'Temperature unit: °{unit.upper()}'),
+                )
+            return OpResult(success=False, error=result.get('error', ''))
+        # Test / legacy path — no Trcc back-ref injected.  Updates
+        # the persisted setting only; not used in production wiring.
         self._settings.set_temp_unit(unit_int)
         self._events.publish('control_center.temp_unit', unit.upper())
         return OpResult(success=True, message=f'Temperature unit: °{unit.upper()}')
