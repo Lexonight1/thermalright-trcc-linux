@@ -759,106 +759,111 @@ class TestProtocolTraits:
             t.requires_reboot = False  # type: ignore[misc]
 
 
+# VID/PID constants for the three C# device-class families
+_LED  = (0x0416, 0x8001)  # case 1
+_HID2 = (0x0416, 0x5302)  # case 2
+_BULK = (0x87AD, 0x70DB)  # case 257
+
+
 class TestGetButtonImage:
-    """get_button_image() — PM+SUB → button image name (#69)."""
+    """get_button_image() — (VID, PID, PM, SUB) → button image name (#69)."""
 
     def test_stream_vision_pm7_sub1(self):
-        """PM=7, SUB=1 → Stream Vision (not Frozen Warframe Pro)."""
+        """Bulk PM=7 SUB=1 → Stream Vision (not Frozen Warframe Pro)."""
         from trcc.core.models import get_button_image
-        assert get_button_image(7, 1) == 'A1Stream Vision'
+        assert get_button_image(*_BULK, 7, 1) == 'A1Stream Vision'
 
     def test_fbl64_sub0_is_frozen_warframe_pro(self):
-        """FBL=64 with sub=0 → Frozen Warframe Pro (the old buggy lookup)."""
+        """Bulk PM=64 SUB=0 → Frozen Warframe Pro."""
         from trcc.core.models import get_button_image
-        assert get_button_image(64, 0) == 'A1FROZEN WARFRAME PRO'
+        assert get_button_image(*_BULK, 64, 0) == 'A1FROZEN WARFRAME PRO'
 
     def test_pm7_sub1_differs_from_fbl64(self):
-        """PM=7/SUB=1 and FBL=64/SUB=0 must resolve differently (#69)."""
+        """PM=7 SUB=1 and PM=64 SUB=0 must resolve differently (#69)."""
         from trcc.core.models import get_button_image
-        assert get_button_image(7, 1) != get_button_image(64, 0)
+        assert get_button_image(*_BULK, 7, 1) != get_button_image(*_BULK, 64, 0)
 
     def test_pm32_sub1_frozen_warframe_pro(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(32, 1) == 'A1FROZEN WARFRAME PRO'
+        assert get_button_image(*_BULK, 32, 1) == 'A1FROZEN WARFRAME PRO'
 
     def test_unknown_pm_returns_none(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(255) is None
+        assert get_button_image(*_BULK, 255) is None
 
-    # -- SCSI devices use PM=FBL, SUB=0 (confirmed from USBLCD.exe decompile) --
-
-    def test_scsi_fbl100_frozen_warframe_pro(self):
-        """SCSI FBL=100 → FROZEN WARFRAME PRO (PM=FBL for SCSI devices)."""
+    def test_unknown_vid_pid_returns_none(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(100, 0) == 'A1FROZEN WARFRAME PRO'
+        assert get_button_image(0xDEAD, 0xBEEF, 1, 0) is None
 
-    def test_scsi_fbl50_frozen_warframe(self):
-        """SCSI FBL=50 → FROZEN WARFRAME."""
-        from trcc.core.models import get_button_image
-        assert get_button_image(50, 0) == 'A1FROZEN WARFRAME'
+    # -- Bulk family (C# case 257) --
 
-    def test_scsi_fbl101_elite_vision(self):
-        """SCSI FBL=101 → ELITE VISION."""
+    def test_bulk_pm100_frozen_warframe_pro(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(101, 0) == 'A1ELITE VISION'
+        assert get_button_image(*_BULK, 100, 0) == 'A1FROZEN WARFRAME PRO'
+
+    def test_bulk_pm101_elite_vision(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(*_BULK, 101, 0) == 'A1ELITE VISION'
+
+    def test_bulk_pm50_frozen_warframe(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(*_BULK, 50, 0) == 'A1FROZEN WARFRAME'
 
     # -- PM=9 SUB split (C#: sub<5→LC2JD, sub>=5→LF19) --
 
     def test_pm9_sub0_lc2jd(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(9, 0) == 'A1LC2JD'
+        assert get_button_image(*_BULK, 9, 0) == 'A1LC2JD'
 
     def test_pm9_sub4_lc2jd(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(9, 4) == 'A1LC2JD'
+        assert get_button_image(*_BULK, 9, 4) == 'A1LC2JD'
 
     def test_pm9_sub5_lf19(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(9, 5) == 'A1LF19'
+        assert get_button_image(*_BULK, 9, 5) == 'A1LF19'
 
-    # -- PM=49 (C# ID=2 case 49) --
+    # -- HID T2 family (C# case 2) --
 
-    def test_pm49_frozen_warframe(self):
+    def test_hid_t2_pm49_frozen_warframe(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(49, 0) == 'A1FROZEN WARFRAME'
+        assert get_button_image(*_HID2, 49, 0) == 'A1FROZEN WARFRAME'
 
-    # -- PM=65 sub=2 (C#: sub 1 OR 2 → LF14) --
-
-    def test_pm65_sub2_lf14(self):
+    def test_bulk_pm65_sub2_lf14(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(65, 2) == 'A1LF14'
+        assert get_button_image(*_BULK, 65, 2) == 'A1LF14'
 
-    # -- LED devices (is_led=True) --
+    # -- LED family (C# case 1) --
 
     def test_led_pm80_lf12(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(80, 0, is_led=True) == 'A1LF12'
+        assert get_button_image(*_LED, 80, 0) == 'A1LF12'
 
     def test_led_pm1_frozen_horizon(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(1, 0, is_led=True) == 'A1FROZEN HORIZON PRO'
+        assert get_button_image(*_LED, 1, 0) == 'A1FROZEN HORIZON PRO'
 
     def test_led_pm208_cz1(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(208, 0, is_led=True) == 'A1CZ1'
+        assert get_button_image(*_LED, 208, 0) == 'A1CZ1'
 
     def test_led_unknown_pm_returns_none(self):
         from trcc.core.models import get_button_image
-        assert get_button_image(255, 0, is_led=True) is None
+        assert get_button_image(*_LED, 255, 0) is None
 
-    # -- PM collision: same PM, different result for LED vs LCD --
+    # -- PM collision across VID/PID families: VID/PID scoping disambiguates --
 
-    def test_pm1_led_vs_lcd_differ(self):
-        """PM=1: LED → FROZEN_HORIZON_PRO, LCD → GRAND_VISION."""
+    def test_pm1_led_vs_bulk_differ(self):
+        """PM=1: LED family → FROZEN_HORIZON_PRO, Bulk family → GRAND_VISION."""
         from trcc.core.models import get_button_image
-        assert get_button_image(1, 0, is_led=True) == 'A1FROZEN HORIZON PRO'
-        assert get_button_image(1, 0, is_led=False) == 'A1GRAND VISION'
+        assert get_button_image(*_LED, 1, 0) == 'A1FROZEN HORIZON PRO'
+        assert get_button_image(*_BULK, 1, 0) == 'A1GRAND VISION'
 
-    def test_pm49_led_vs_lcd_differ(self):
-        """PM=49: LED → LF10, LCD → FROZEN_WARFRAME."""
+    def test_pm49_led_vs_hid_t2_differ(self):
+        """PM=49: LED family → LF10, HID T2 family → FROZEN_WARFRAME."""
         from trcc.core.models import get_button_image
-        assert get_button_image(49, 0, is_led=True) == 'A1LF10'
-        assert get_button_image(49, 0, is_led=False) == 'A1FROZEN WARFRAME'
+        assert get_button_image(*_LED, 49, 0) == 'A1LF10'
+        assert get_button_image(*_HID2, 49, 0) == 'A1FROZEN WARFRAME'
 
 
 # =============================================================================
@@ -867,32 +872,37 @@ class TestGetButtonImage:
 
 
 class TestGetVariantOverride:
-    """get_variant_override() — full override record for a (PM, SUB) fingerprint."""
+    """get_variant_override() — (VID, PID, PM, SUB) → full override record."""
 
-    def test_known_lcd_pm_returns_override(self):
+    def test_known_bulk_pm_returns_override(self):
         from trcc.core.models import VariantOverride, get_variant_override
-        override = get_variant_override(7, 1)
+        override = get_variant_override(*_BULK, 7, 1)
         assert override is not None
         assert isinstance(override, VariantOverride)
         assert override.button_image == 'A1Stream Vision'
 
     def test_known_led_pm_returns_override(self):
         from trcc.core.models import get_variant_override
-        override = get_variant_override(80, 0, is_led=True)
+        override = get_variant_override(*_LED, 80, 0)
         assert override is not None
         assert override.button_image == 'A1LF12'
 
     def test_unknown_pm_returns_none(self):
         from trcc.core.models import get_variant_override
-        assert get_variant_override(255, 0) is None
+        assert get_variant_override(*_BULK, 255, 0) is None
 
-    def test_panel_cutout_empty_until_phase_b(self):
-        """All existing rows ship with no panel_cutout — Phase B fills these."""
+    def test_panel_cutout_only_on_levita_row(self):
+        """Phase B fills panel_cutout on the Levita row; other rows leave it empty."""
         from trcc.core.models import get_variant_override
-        override = get_variant_override(100, 0)
-        assert override is not None
-        assert override.panel_cutout is None
-        assert override.display_name == ''
+        # Levita: Bulk PM=64 SUB=3 — right-side camera notch on 1600x720 panel.
+        levita = get_variant_override(*_BULK, 64, 3)
+        assert levita is not None
+        assert levita.panel_cutout is not None
+        assert levita.panel_cutout.x > 800  # right half of a 1600-wide canvas
+        # Sibling rows on the same PM stay flat (no notch).
+        sibling = get_variant_override(*_BULK, 64, 0)
+        assert sibling is not None
+        assert sibling.panel_cutout is None
 
 
 # =============================================================================
@@ -905,10 +915,13 @@ class TestEnrichFromHandshake:
 
     @staticmethod
     def _make_device(button_image: str = 'A1CZTV'):
+        # Bulk family (0x87AD:0x70DB) — most PM rows live here in the
+        # VID/PID-scoped registry, so the enrich path resolves to a real
+        # VariantOverride and exercises the production lookup flow.
         return DeviceInfo(
-            name='LCD Display', path='/dev/sg0', vendor='Test', product='LCD',
-            model='CZTV', vid=0x0402, pid=0x3922, device_index=0,
-            protocol='scsi', device_type=1, implementation='test',
+            name='LCD Display', path='usb:1:1', vendor='Test', product='LCD',
+            model='CZTV', vid=0x87AD, pid=0x70DB, device_index=0,
+            protocol='bulk', device_type=4, implementation='bulk_usblcdnew',
             button_image=button_image,
         )
 

@@ -158,7 +158,7 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
     """Verify find_usb_devices → detect_devices → get_default_device chain."""
 
     @patch("trcc.adapters.device.linux.detector.linux_scsi_resolver")
-    @patch("usb.core.find")
+    @patch("trcc.adapters.device._pyusb_find.find")
     def test_usb_to_scsi_mapping(self, mock_find, mock_scsi_resolver):
         """USB device found → SCSI path assigned via scsi_resolver → returned in detect()."""
         from trcc.adapters.device.detector import DeviceDetector

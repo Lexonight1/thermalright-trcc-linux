@@ -226,9 +226,16 @@ class TestControllerBuilderSystem(unittest.TestCase):
         self.assertIsInstance(system, SystemService)
 
     def test_build_system_uses_platform_enumerator(self):
+        """SystemService reads its enumerator from ``platform.sensors``.
+
+        ``Platform.sensors`` is a ``cached_property`` that defers to
+        ``create_sensor_enumerator()``; the test checks the public attribute
+        access since that's the contract the service depends on.
+        """
         platform = MagicMock()
         ControllerBuilder(platform).build_system()
-        platform.create_sensor_enumerator.assert_called_once()
+        # `.sensors` is read during SystemService.__init__ — at least once.
+        platform.sensors.discover.assert_called_once()
 
 
 class TestControllerBuilderExtra(unittest.TestCase):

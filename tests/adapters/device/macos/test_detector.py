@@ -28,7 +28,7 @@ class TestMacOSDetector:
                 return iter([mock_dev]) if find_all else mock_dev
             return iter(()) if find_all else None
 
-        with patch('usb.core.find', side_effect=mock_find):
+        with patch('trcc.adapters.device._pyusb_find.find', side_effect=mock_find):
             from trcc.adapters.device.macos.detector import MacOSDeviceDetector
             devices = MacOSDeviceDetector.detect()
 

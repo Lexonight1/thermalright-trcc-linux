@@ -163,36 +163,76 @@ class TestBulkDeviceInit(unittest.TestCase):
 
 
 class TestBulkDeviceOpen(unittest.TestCase):
-    """Test _open() USB enumeration."""
+    """Test _open() USB enumeration.
 
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+    Patches the actual seams used by ``open_usb_device`` and
+    ``BulkFrameDevice._open``: ``_pyusb_find.find`` for device discovery
+    and ``usb.util`` for endpoint / interface helpers. ``usb.core.USBError``
+    is swapped for ``_FakeUSBError`` for the duration of each error test.
+
+    Earlier tests replaced ``sys.modules['usb']`` with a MagicMock, which
+    broke pyusb's internal imports (``import usb.backend.libusb1``) when
+    the real ``_pyusb_find._find`` (bound at module load) was invoked.
+    Patching the seam directly avoids the package-vs-mock collision.
+    """
+
+    @staticmethod
+    def _patch_open(*, find_dev, usb_util_mock=None):
+        """Return a context manager patching find + usb.util together."""
+        from contextlib import ExitStack
+
+        import trcc.adapters.device._pyusb_find as pyusb_find
+        import trcc.adapters.device._usb_helpers as helpers
+
+        util = usb_util_mock or MagicMock()
+        if not hasattr(util, 'ENDPOINT_OUT'):
+            util.ENDPOINT_OUT = 0x00
+            util.ENDPOINT_IN = 0x80
+            util.ENDPOINT_TYPE_BULK = 0x02
+
+        stack = ExitStack()
+        stack.enter_context(patch.object(pyusb_find, 'find', return_value=find_dev))
+        stack.enter_context(patch.object(helpers, 'usb_util', util, create=True))
+        # ``open_usb_device`` does ``import usb.util`` inside the function;
+        # patch the actual binding at the call sites.
+        stack.enter_context(patch('usb.util.claim_interface', util.claim_interface))
+        stack.enter_context(patch('usb.util.find_descriptor', util.find_descriptor))
+        stack.enter_context(patch('usb.util.endpoint_direction', util.endpoint_direction))
+        stack.enter_context(patch('usb.util.endpoint_type', util.endpoint_type))
+        stack.enter_context(patch('usb.core.USBError', _FakeUSBError))
+        return stack, util
+
     def test_open_success(self):
         """Successful USB open: find device, detach drivers, find endpoints."""
-        import usb.core
-        import usb.util
-
         mock_dev = MagicMock()
-        usb.core.find.return_value = mock_dev
         mock_cfg = MagicMock()
         mock_cfg.bNumInterfaces = 1
         mock_dev.get_active_configuration.return_value = mock_cfg
         mock_dev.is_kernel_driver_active.return_value = False
         mock_intf = MagicMock()
+        mock_intf.bInterfaceClass = 255
+        mock_intf.bInterfaceNumber = 0
+        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
         mock_cfg.__getitem__ = MagicMock(return_value=mock_intf)
 
         ep_out = MagicMock()
         ep_out.bEndpointAddress = 0x01
         ep_in = MagicMock()
         ep_in.bEndpointAddress = 0x81
-        usb.util.find_descriptor.side_effect = [ep_out, ep_in]
-        usb.util.endpoint_direction.side_effect = lambda addr: addr & 0x80
-        usb.util.ENDPOINT_OUT = 0x00
-        usb.util.ENDPOINT_IN = 0x80
 
-        bd = BulkDevice(0x87AD, 0x70DB)
-        bd._open()
+        util = MagicMock()
+        util.ENDPOINT_OUT = 0x00
+        util.ENDPOINT_IN = 0x80
+        util.ENDPOINT_TYPE_BULK = 0x02
+        util.find_descriptor.side_effect = [ep_out, ep_in]
+        util.endpoint_direction.side_effect = lambda addr: addr & 0x80
+        util.endpoint_type.return_value = util.ENDPOINT_TYPE_BULK
 
-        usb.core.find.assert_called_once_with(idVendor=0x87AD, idProduct=0x70DB)
+        stack, _ = self._patch_open(find_dev=mock_dev, usb_util_mock=util)
+        with stack:
+            bd = BulkDevice(0x87AD, 0x70DB)
+            bd._open()
+
         self.assertEqual(bd._dev, mock_dev)
         self.assertEqual(bd._ep_out, ep_out)
         self.assertEqual(bd._ep_in, ep_in)
@@ -202,45 +242,40 @@ class TestBulkDeviceOpen(unittest.TestCase):
     # by the udev rule (``power/autosuspend_delay_ms=10000``) — see the
     # tests in tests/adapters/system/linux/test_platform.py for that path.
 
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
     def test_open_device_not_found(self):
-        import usb.core
-        usb.core.find.return_value = None
+        stack, _ = self._patch_open(find_dev=None)
+        with stack:
+            bd = BulkDevice(0x87AD, 0x70DB)
+            with self.assertRaises(RuntimeError):
+                bd._open()
 
-        bd = BulkDevice(0x87AD, 0x70DB)
-        with self.assertRaises(RuntimeError):
-            bd._open()
-
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
     def test_open_no_endpoints(self):
-        import usb.core
-        import usb.util
-
         mock_dev = MagicMock()
-        usb.core.find.return_value = mock_dev
         mock_cfg = MagicMock()
         mock_cfg.bNumInterfaces = 0
         mock_dev.get_active_configuration.return_value = mock_cfg
         mock_intf = MagicMock()
+        mock_intf.bInterfaceClass = 255
+        mock_intf.bInterfaceNumber = 0
+        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
         mock_cfg.__getitem__ = MagicMock(return_value=mock_intf)
-        usb.util.find_descriptor.return_value = None
 
-        bd = BulkDevice(0x87AD, 0x70DB)
-        with self.assertRaises(RuntimeError):
-            bd._open()
+        util = MagicMock()
+        util.ENDPOINT_OUT = 0x00
+        util.ENDPOINT_IN = 0x80
+        util.ENDPOINT_TYPE_BULK = 0x02
+        util.find_descriptor.return_value = None
 
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+        stack, _ = self._patch_open(find_dev=mock_dev, usb_util_mock=util)
+        with stack:
+            bd = BulkDevice(0x87AD, 0x70DB)
+            with self.assertRaises(RuntimeError):
+                bd._open()
+
     def test_open_selinux_blocked_detach_error_sets_flag(self):
-        """When detach_kernel_driver raises USBError and driver is still active,
-        selinux_blocked should be True → claim_interface EBUSY gives SELinux message."""
-        import usb.core
-        import usb.util
-
-        # Wire real exception class into mocked usb.core
-        usb.core.USBError = _FakeUSBError
-
+        """detach_kernel_driver raises USBError + driver stays active →
+        SELinux-flavored claim_interface EBUSY error."""
         mock_dev = MagicMock()
-        usb.core.find.return_value = mock_dev
         mock_cfg = MagicMock()
         mock_dev.get_active_configuration.return_value = mock_cfg
         mock_intf = MagicMock()
@@ -252,30 +287,20 @@ class TestBulkDeviceOpen(unittest.TestCase):
         mock_dev.is_kernel_driver_active.return_value = True
         mock_dev.detach_kernel_driver.side_effect = _FakeUSBError("Resource busy", errno=16)
 
-        # claim_interface fails with EBUSY
-        usb.util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
+        util = MagicMock()
+        util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
 
-        bd = BulkDevice(0x87AD, 0x70DB)
-        with self.assertRaises(RuntimeError) as ctx:
-            bd._open()
+        stack, _ = self._patch_open(find_dev=mock_dev, usb_util_mock=util)
+        with stack:
+            bd = BulkDevice(0x87AD, 0x70DB)
+            with self.assertRaises(RuntimeError) as ctx:
+                bd._open()
         self.assertIn("SELinux", str(ctx.exception))
         self.assertIn("setup-selinux", str(ctx.exception))
 
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
     def test_open_claim_ebusy_raises_without_reset(self):
-        """claim_interface EBUSY → RuntimeError, no device reset.
-
-        Resetting the device causes a firmware restart (logo flash on bulk
-        devices).  EBUSY means another process holds the interface — the
-        correct response is to fail cleanly, not force-reset the hardware.
-        """
-        import usb.core
-        import usb.util
-
-        usb.core.USBError = _FakeUSBError
-
+        """claim_interface EBUSY → RuntimeError, no device reset (issue #82)."""
         mock_dev = MagicMock()
-        usb.core.find.return_value = mock_dev
         mock_cfg = MagicMock()
         mock_dev.get_active_configuration.return_value = mock_cfg
         mock_dev.is_kernel_driver_active.return_value = False
@@ -284,13 +309,15 @@ class TestBulkDeviceOpen(unittest.TestCase):
         mock_intf.bInterfaceNumber = 0
         mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
 
-        usb.util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
+        util = MagicMock()
+        util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
 
-        bd = BulkDevice(0x87AD, 0x70DB)
-        with self.assertRaises(RuntimeError) as ctx:
-            bd._open()
+        stack, _ = self._patch_open(find_dev=mock_dev, usb_util_mock=util)
+        with stack:
+            bd = BulkDevice(0x87AD, 0x70DB)
+            with self.assertRaises(RuntimeError) as ctx:
+                bd._open()
 
-        # No reset — that would cause a logo flash (issue #82)
         mock_dev.reset.assert_not_called()
         self.assertIn("in use by another process", str(ctx.exception))
 
@@ -872,24 +899,15 @@ def test_bulk_send_frame_profile(device_vid, device_pid, device_pm, device_sub):
     assert result is True
 
 
-@patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
 def test_bulk_open_ebusy_no_reset(device_vid, device_pid):
     """EBUSY on claim_interface raises RuntimeError — no device reset, no logo flash.
 
     Issue #82: old code called dev.reset() on EBUSY causing firmware restart
     and boot logo flash on bulk devices. Fix: raise immediately instead.
     """
-    import usb.core
-    import usb.util
+    import trcc.adapters.device._pyusb_find as pyusb_find
 
-    class _FakeUSBErr(Exception):
-        def __init__(self, msg: str = "", errno: int | None = None):
-            super().__init__(msg)
-            self.errno = errno
-
-    usb.core.USBError = _FakeUSBErr
     mock_dev = MagicMock()
-    usb.core.find.return_value = mock_dev
     mock_cfg = MagicMock()
     mock_dev.get_active_configuration.return_value = mock_cfg
     mock_dev.is_kernel_driver_active.return_value = False
@@ -897,11 +915,18 @@ def test_bulk_open_ebusy_no_reset(device_vid, device_pid):
     mock_intf.bInterfaceClass = 255
     mock_intf.bInterfaceNumber = 0
     mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
-    usb.util.claim_interface.side_effect = _FakeUSBErr("busy", errno=16)
 
-    bd = BulkDevice(device_vid, device_pid)
-    with pytest.raises(RuntimeError) as exc_info:
-        bd._open()
+    util = MagicMock()
+    util.claim_interface.side_effect = _FakeUSBError("busy", errno=16)
+
+    with (
+        patch.object(pyusb_find, 'find', return_value=mock_dev),
+        patch('usb.util.claim_interface', util.claim_interface),
+        patch('usb.core.USBError', _FakeUSBError),
+    ):
+        bd = BulkDevice(device_vid, device_pid)
+        with pytest.raises(RuntimeError) as exc_info:
+            bd._open()
 
     mock_dev.reset.assert_not_called()  # No reset → no logo flash
     assert "in use by another process" in str(exc_info.value)

@@ -174,10 +174,12 @@ class TestRainbowMode:
 
 
 class TestTempLinkedMode:
+    """Tick path gated on ``HardwareMetrics._populated`` (metrics-unification)."""
+
     @patch('trcc.core.color.ColorEngine')
     def test_cpu_temp_source(self, mock_ce):
         mock_ce.color_for_value.return_value = (255, 0, 0)
-        metrics = HardwareMetrics(cpu_temp=75.0)
+        metrics = HardwareMetrics(cpu_temp=75.0, _populated={'cpu_temp'})
         state = LEDState(temp_source='cpu')
         engine = _make_engine(state, metrics)
         colors = engine._tick_temp_linked_for(3)
@@ -188,7 +190,7 @@ class TestTempLinkedMode:
     @patch('trcc.core.color.ColorEngine')
     def test_gpu_temp_source(self, mock_ce):
         mock_ce.color_for_value.return_value = (0, 0, 255)
-        metrics = HardwareMetrics(gpu_temp=80.0)
+        metrics = HardwareMetrics(gpu_temp=80.0, _populated={'gpu_temp'})
         state = LEDState(temp_source='gpu')
         engine = _make_engine(state, metrics)
         engine._tick_temp_linked_for(2)
@@ -202,10 +204,12 @@ class TestTempLinkedMode:
 
 
 class TestLoadLinkedMode:
+    """Same ``_populated`` gating as temp-linked mode."""
+
     @patch('trcc.core.color.ColorEngine')
     def test_cpu_load(self, mock_ce):
         mock_ce.color_for_value.return_value = (0, 255, 0)
-        metrics = HardwareMetrics(cpu_percent=45.0)
+        metrics = HardwareMetrics(cpu_percent=45.0, _populated={'cpu_percent'})
         state = LEDState(load_source='cpu')
         engine = _make_engine(state, metrics)
         engine._tick_load_linked_for(2)
@@ -215,7 +219,7 @@ class TestLoadLinkedMode:
     @patch('trcc.core.color.ColorEngine')
     def test_gpu_load(self, mock_ce):
         mock_ce.color_for_value.return_value = (128, 128, 0)
-        metrics = HardwareMetrics(gpu_usage=90.0)
+        metrics = HardwareMetrics(gpu_usage=90.0, _populated={'gpu_usage'})
         state = LEDState(load_source='gpu')
         engine = _make_engine(state, metrics)
         engine._tick_load_linked_for(1)
@@ -345,7 +349,10 @@ class TestMultiZone:
                 LEDZoneState(mode=LEDMode.TEMP_LINKED, brightness=100, on=True),
             ],
         )
-        metrics = HardwareMetrics(cpu_temp=50.0, gpu_temp=80.0)
+        metrics = HardwareMetrics(
+            cpu_temp=50.0, gpu_temp=80.0,
+            _populated={'cpu_temp', 'gpu_temp'},
+        )
         engine = _make_engine(state, metrics)
         zone_map = ((0, 1), (2, 3))
         metric_sources = (("cpu", "temp"), ("gpu", "temp"))
@@ -365,7 +372,10 @@ class TestMultiZone:
                 LEDZoneState(mode=LEDMode.TEMP_LINKED, brightness=100, on=True),
             ],
         )
-        metrics = HardwareMetrics(cpu_temp=50.0, gpu_temp=80.0)
+        metrics = HardwareMetrics(
+            cpu_temp=50.0, gpu_temp=80.0,
+            _populated={'cpu_temp', 'gpu_temp'},
+        )
         engine = _make_engine(state, metrics)
         zone_map = ((0, 1), (2, 3))
         colors = engine._tick_multi_zone(zone_map)  # No metric_sources

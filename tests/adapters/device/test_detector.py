@@ -143,7 +143,7 @@ class TestRunCommand:
 
 class TestDetect:
 
-    @patch('usb.core.find')
+    @patch('trcc.adapters.device._pyusb_find.find')
     def test_detect_finds_known_device(self, mock_find, mock_usb_device):
         mock_find.side_effect = lambda idVendor, idProduct, find_all=False: ([mock_usb_device] if (idVendor, idProduct) == (0x87CD, 0x70DB) else [])
         detect_fn = DeviceDetector.make_detect_fn(scsi_resolver=None)
@@ -152,7 +152,7 @@ class TestDetect:
         assert len(found) == 1
         assert found[0].vendor_name == 'Thermalright'
 
-    @patch('usb.core.find')
+    @patch('trcc.adapters.device._pyusb_find.find')
     def test_detect_calls_scsi_resolver_for_scsi_devices(self, mock_find, mock_usb_device):
         resolver = MagicMock(return_value='/dev/sg0')
         mock_find.side_effect = lambda idVendor, idProduct, find_all=False: ([mock_usb_device] if (idVendor, idProduct) == (0x0402, 0x3922) else [])
@@ -163,12 +163,12 @@ class TestDetect:
         assert found[0].scsi_device == '/dev/sg0'
         resolver.assert_called_with(0x0402, 0x3922)
 
-    @patch('usb.core.find', return_value=None)
+    @patch('trcc.adapters.device._pyusb_find.find', return_value=None)
     def test_detect_no_devices(self, _):
         detect_fn = DeviceDetector.make_detect_fn(scsi_resolver=None)
         assert detect_fn() == []
 
-    @patch('usb.core.find')
+    @patch('trcc.adapters.device._pyusb_find.find')
     def test_detect_skips_scsi_resolver_for_bulk(self, mock_find, mock_usb_device):
         """SCSI resolver must NOT be called for bulk devices (87AD:70DB)."""
         resolver = MagicMock(return_value='/dev/sg0')
@@ -180,7 +180,7 @@ class TestDetect:
         assert found[0].scsi_device is None
         resolver.assert_not_called()
 
-    @patch('usb.core.find')
+    @patch('trcc.adapters.device._pyusb_find.find')
     def test_detect_usb_path_format(self, mock_find, mock_usb_device):
         mock_usb_device.bus = 2
         mock_usb_device.address = 5

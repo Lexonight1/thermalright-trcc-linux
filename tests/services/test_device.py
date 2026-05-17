@@ -101,7 +101,9 @@ class TestDetect:
         assert svc.detect() == []
 
     def test_led_device_enrichment(self):
-        raw = [_make_detected('LED', impl='hid_led')]
+        # LED family is 0x0416:0x8001 in _VARIANT_REGISTRY; the enrichment
+        # path resolves the per-PM button only when the VID/PID matches.
+        raw = [_make_detected('LED', vid=0x0416, pid=0x8001, impl='hid_led')]
         svc = _make_service(raw)
         probe_result = MagicMock()
         probe_result.style.style_id = 5
@@ -119,7 +121,7 @@ class TestDetect:
         assert devices[0].button_image == 'A1LF8'
 
     def test_led_enrichment_failure_silent(self):
-        raw = [_make_detected('LED', impl='hid_led')]
+        raw = [_make_detected('LED', vid=0x0416, pid=0x8001, impl='hid_led')]
         svc = _make_service(raw)
         svc._probe_led_fn.side_effect = RuntimeError("probe failed")
         devices = svc.detect()

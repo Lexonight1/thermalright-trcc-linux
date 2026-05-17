@@ -569,7 +569,14 @@ class TestThemeOperations(unittest.TestCase):
 # ── System endpoints ───────────────────────────────────────────────────
 
 class TestSystemEndpoints(unittest.TestCase):
-    """System metrics and report endpoints."""
+    """System metrics and report endpoints.
+
+    Aggregate metrics composition moved off ``_system_svc.all_metrics`` and
+    onto ``Platform.metrics`` (read via ``_boot.trcc().os.metrics``).  Tests
+    patch the ``trcc`` symbol imported by the route so the endpoint reads
+    a controlled ``HardwareMetrics`` record instead of the test machine's
+    real sensors.
+    """
 
     def setUp(self):
         configure_auth(None)
@@ -579,33 +586,28 @@ class TestSystemEndpoints(unittest.TestCase):
     def tearDown(self):
         api_module._system_svc = self._saved_system_svc
 
-    def test_get_metrics(self):
+    @staticmethod
+    def _patch_metrics(**fields):
+        """Patch ``trcc.ui.api.system.trcc`` to expose a HardwareMetrics."""
         from trcc.core.models import HardwareMetrics
-        mock_svc = MagicMock()
-        m = HardwareMetrics()
-        m.cpu_temp = 65.0
-        m.cpu_percent = 42.0
-        m.gpu_temp = 70.0
-        mock_svc.all_metrics = m
-        api_module._system_svc = mock_svc
+        record = HardwareMetrics()
+        for attr, val in fields.items():
+            setattr(record, attr, val)
+        proxy = MagicMock()
+        proxy.os.metrics = record
+        return patch('trcc.ui.api.system.trcc', return_value=proxy)
 
-        resp = self.client.get("/system/metrics")
+    def test_get_metrics(self):
+        with self._patch_metrics(cpu_temp=65.0, cpu_percent=42.0, gpu_temp=70.0):
+            resp = self.client.get("/system/metrics")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["cpu_temp"], 65.0)
         self.assertEqual(data["gpu_temp"], 70.0)
 
     def test_get_metrics_by_category_cpu(self):
-        from trcc.core.models import HardwareMetrics
-        mock_svc = MagicMock()
-        m = HardwareMetrics()
-        m.cpu_temp = 65.0
-        m.cpu_percent = 42.0
-        m.gpu_temp = 70.0
-        mock_svc.all_metrics = m
-        api_module._system_svc = mock_svc
-
-        resp = self.client.get("/system/metrics/cpu")
+        with self._patch_metrics(cpu_temp=65.0, cpu_percent=42.0, gpu_temp=70.0):
+            resp = self.client.get("/system/metrics/cpu")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("cpu_temp", data)
@@ -613,11 +615,8 @@ class TestSystemEndpoints(unittest.TestCase):
         self.assertNotIn("gpu_temp", data)
 
     def test_get_metrics_invalid_category(self):
-        api_module._system_svc = MagicMock()
-        from trcc.core.models import HardwareMetrics
-        api_module._system_svc.all_metrics = HardwareMetrics()
-
-        resp = self.client.get("/system/metrics/invalid")
+        with self._patch_metrics():
+            resp = self.client.get("/system/metrics/invalid")
         self.assertEqual(resp.status_code, 400)
 
     @patch('trcc.adapters.infra.debug_report.DebugReport')
@@ -2052,82 +2051,82 @@ class TestSystemEdgeCases(unittest.TestCase):
     def tearDown(self) -> None:
         api_module._system_svc = self._saved_system_svc
 
-    def _mock_svc_with_metrics(self, **kw):
+    def _patch_metrics(self, **kw):
+        """Patch ``trcc.ui.api.system.trcc`` to expose a controlled HardwareMetrics."""
         from trcc.core.models import HardwareMetrics
-        svc = MagicMock()
-        m = HardwareMetrics()
+        record = HardwareMetrics()
         for attr, val in kw.items():
-            setattr(m, attr, val)
-        svc.all_metrics = m
-        api_module._system_svc = svc
-        return svc
+            setattr(record, attr, val)
+        proxy = MagicMock()
+        proxy.os.metrics = record
+        return patch('trcc.ui.api.system.trcc', return_value=proxy)
 
     def test_get_metrics_memory_category(self) -> None:
-        self._mock_svc_with_metrics(mem_percent=80.0, mem_available=4096.0)
-        resp = self.client.get("/system/metrics/mem")
+        with self._patch_metrics(mem_percent=80.0, mem_available=4096.0):
+            resp = self.client.get("/system/metrics/mem")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("mem_percent", data)
         self.assertNotIn("cpu_temp", data)
 
     def test_get_metrics_memory_alias(self) -> None:
-        self._mock_svc_with_metrics(mem_percent=55.0)
-        resp = self.client.get("/system/metrics/memory")
+        with self._patch_metrics(mem_percent=55.0):
+            resp = self.client.get("/system/metrics/memory")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("mem_percent", resp.json())
 
     def test_get_metrics_disk_category(self) -> None:
-        self._mock_svc_with_metrics(disk_activity=42.0)
-        resp = self.client.get("/system/metrics/disk")
+        with self._patch_metrics(disk_activity=42.0):
+            resp = self.client.get("/system/metrics/disk")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("disk_activity", data)
 
     def test_get_metrics_network_category(self) -> None:
-        self._mock_svc_with_metrics(net_up=100.0)
-        resp = self.client.get("/system/metrics/net")
+        with self._patch_metrics(net_up=100.0):
+            resp = self.client.get("/system/metrics/net")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("net_up", resp.json())
 
     def test_get_metrics_network_alias(self) -> None:
-        self._mock_svc_with_metrics(net_down=50.0)
-        resp = self.client.get("/system/metrics/network")
+        with self._patch_metrics(net_down=50.0):
+            resp = self.client.get("/system/metrics/network")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("net_down", resp.json())
 
     def test_get_metrics_fan_category(self) -> None:
-        self._mock_svc_with_metrics(fan_cpu=1200.0)
-        resp = self.client.get("/system/metrics/fan")
+        with self._patch_metrics(fan_cpu=1200.0):
+            resp = self.client.get("/system/metrics/fan")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("fan_cpu", resp.json())
 
     def test_get_metrics_gpu_category(self) -> None:
-        self._mock_svc_with_metrics(gpu_temp=85.0)
-        resp = self.client.get("/system/metrics/gpu")
+        with self._patch_metrics(gpu_temp=85.0):
+            resp = self.client.get("/system/metrics/gpu")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("gpu_temp", data)
         self.assertNotIn("cpu_temp", data)
 
     def test_get_metrics_invalid_category_detail_lists_valid(self) -> None:
-        self._mock_svc_with_metrics()
-        resp = self.client.get("/system/metrics/poweruser")
+        with self._patch_metrics():
+            resp = self.client.get("/system/metrics/poweruser")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("cpu", resp.json()["detail"])
 
     def test_get_metrics_all_fields_present(self) -> None:
-        self._mock_svc_with_metrics(cpu_temp=72.5)
-        resp = self.client.get("/system/metrics")
+        with self._patch_metrics(cpu_temp=72.5):
+            resp = self.client.get("/system/metrics")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIsInstance(data, dict)
         self.assertIn("cpu_temp", data)
         self.assertEqual(data["cpu_temp"], 72.5)
 
-    def test_system_svc_initialized_at_module_level(self) -> None:
-        """SystemService is wired at API module level (composition root)."""
-        self._mock_svc_with_metrics(cpu_temp=55.0)
-        resp = self.client.get("/system/metrics")
+    def test_metrics_endpoint_reads_from_platform_metrics(self) -> None:
+        """API metrics endpoint sources from Platform.metrics, not _system_svc."""
+        with self._patch_metrics(cpu_temp=55.0):
+            resp = self.client.get("/system/metrics")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["cpu_temp"], 55.0)
 

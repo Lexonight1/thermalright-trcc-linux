@@ -43,7 +43,7 @@ class TestMacOSScsiTransport:
         assert CBW_SIZE == 31
         assert CSW_SIZE == 13
 
-    @patch('usb.core.find')
+    @patch('trcc.adapters.device._pyusb_find.find')
     @patch('usb.util.endpoint_direction')
     @patch('usb.util.ENDPOINT_OUT', 0x00)
     @patch('usb.util.ENDPOINT_IN', 0x80)

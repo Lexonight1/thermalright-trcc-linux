@@ -585,13 +585,19 @@ class TestTickRainbow:
 # =========================================================================
 
 class TestTickTempLinked:
-    """WDLD_Timer: color from CPU/GPU temperature thresholds."""
+    """WDLD_Timer: color from CPU/GPU temperature thresholds.
+
+    The tick path is gated on ``HardwareMetrics._populated`` since the
+    metrics-unification refactor — fields the OS didn't actually source
+    don't trigger a color recompute (the LED holds its last color rather
+    than jumping to gradient bottom on a missing sensor).
+    """
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.state.temp_source = "cpu"
-        led_svc.update_metrics(HardwareMetrics(cpu_temp=45))
+        led_svc.update_metrics(HardwareMetrics(cpu_temp=45, _populated={'cpu_temp'}))
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         mock_cfv.assert_called_once()
         # First positional arg is the temp value
@@ -601,21 +607,23 @@ class TestTickTempLinked:
     def test_uses_gpu_temp(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 0, 0)
         led_svc.state.temp_source = "gpu"
-        led_svc.update_metrics(HardwareMetrics(gpu_temp=92))
+        led_svc.update_metrics(HardwareMetrics(gpu_temp=92, _populated={'gpu_temp'}))
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
-    def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
+    def test_missing_metric_holds_prior_color(self, mock_cfv, led_svc):
+        """When the source field is not in ``_populated`` (no OS sensor),
+        the tick must NOT recompute — last color is held."""
         mock_cfv.return_value = (0, 255, 255)
-        led_svc.update_metrics(HardwareMetrics())
+        led_svc.update_metrics(HardwareMetrics())  # empty _populated
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
-        assert mock_cfv.call_args[0][0] == 0
+        mock_cfv.assert_not_called()
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_uniform_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
-        led_svc.update_metrics(HardwareMetrics(cpu_temp=40))
+        led_svc.update_metrics(HardwareMetrics(cpu_temp=40, _populated={'cpu_temp'}))
         colors = led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert all(c == (0, 255, 0) for c in colors)
         assert len(colors) == led_svc.state.segment_count
@@ -626,13 +634,17 @@ class TestTickTempLinked:
 # =========================================================================
 
 class TestTickLoadLinked:
-    """FZLD_Timer: color from CPU/GPU load thresholds."""
+    """FZLD_Timer: color from CPU/GPU load thresholds.
+
+    Same ``_populated`` gating as ``_tick_temp_linked_for`` — unsourced
+    fields hold the last color instead of recomputing.
+    """
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_uses_cpu_load_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 255, 0)
         led_svc.state.load_source = "cpu"
-        led_svc.update_metrics(HardwareMetrics(cpu_percent=60))
+        led_svc.update_metrics(HardwareMetrics(cpu_percent=60, _populated={'cpu_percent'}))
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
@@ -640,16 +652,16 @@ class TestTickLoadLinked:
     def test_uses_gpu_load(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 110, 0)
         led_svc.state.load_source = "gpu"
-        led_svc.update_metrics(HardwareMetrics(gpu_usage=85))
+        led_svc.update_metrics(HardwareMetrics(gpu_usage=85, _populated={'gpu_usage'}))
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
-    def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
+    def test_missing_metric_holds_prior_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
-        led_svc.update_metrics(HardwareMetrics())
+        led_svc.update_metrics(HardwareMetrics())  # empty _populated
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
-        assert mock_cfv.call_args[0][0] == 0
+        mock_cfv.assert_not_called()
 
 
 # =========================================================================

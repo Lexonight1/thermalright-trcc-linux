@@ -198,70 +198,72 @@ class TestShowInfo:
     """show_info — text mode, preview mode, metric filter, error handling."""
 
     def _make_metrics(self, **overrides):
-        """Create a minimal HardwareMetrics-like mock."""
-        m = MagicMock()
+        """Build a real HardwareMetrics with the right ``_populated`` flags.
+
+        ``show_info`` reads ``metrics._populated`` to decide which keys to
+        print — keys not in the set are skipped (no ghost zeros). The
+        helper only marks keys whose value the caller actually overrides,
+        so a test that passes ``cpu_temp=75.0`` lights up CPU but no other
+        groups, and the always-show date/time keys stay populated.
+        """
+        from trcc.core.models import HardwareMetrics
+        always_show = {"date", "time", "weekday"}
         defaults = {
             "cpu_temp": 42.0, "cpu_percent": 15.0, "cpu_freq": 3600.0, "cpu_power": 45.0,
-            "gpu_temp": 0.0, "gpu_usage": 0.0, "gpu_clock": 0.0, "gpu_power": 0.0,
-            "mem_temp": 0.0, "mem_percent": 60.0, "mem_clock": 0.0, "mem_available": 8.0,
-            "disk_temp": 0.0, "disk_activity": 0.0, "disk_read": 0.0, "disk_write": 0.0,
-            "net_up": 0.0, "net_down": 0.0, "net_total_up": 0.0, "net_total_down": 0.0,
-            "fan_cpu": 0.0, "fan_gpu": 0.0, "fan_ssd": 0.0, "fan_sys2": 0.0,
+            "mem_percent": 60.0, "mem_available": 8.0,
             "date": "2026-02-28", "time": "12:00", "weekday": "Saturday",
         }
-        defaults.update(overrides)
-        m.__class__.__name__ = "HardwareMetrics"
-        # Make getattr work for all keys
-        for k, v in defaults.items():
+        m = HardwareMetrics()
+        for k, v in {**defaults, **overrides}.items():
             setattr(m, k, v)
+            if k in defaults or k in overrides:
+                m._populated.add(k)
+        # Always-show fields stay populated even when the test overrides
+        # them to 0/empty (the production code still prints them).
+        m._populated |= always_show
         return m
+
+    @staticmethod
+    def _patch_trcc(metrics):
+        proxy = MagicMock()
+        proxy.os.metrics = metrics
+        return patch("trcc.ui.cli._system.trcc", return_value=proxy)
 
     def test_text_mode_returns_zero(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.ui.cli._system.show_info.__module__", create=True), \
-             patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             rc = show_info()
         assert rc == 0
 
     def test_text_mode_prints_header(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info()
-        out = capsys.readouterr().out
-        assert "System Information" in out
+        assert "System Information" in capsys.readouterr().out
 
     def test_text_mode_shows_cpu_group(self, capsys):
         metrics = self._make_metrics(cpu_temp=75.0, cpu_percent=50.0)
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info()
-        out = capsys.readouterr().out
-        assert "CPU" in out
+        assert "CPU" in capsys.readouterr().out
 
     def test_text_mode_skips_zero_values(self, capsys):
-        # gpu_temp is 0.0 and not in the always-show list — should be omitted
-        metrics = self._make_metrics(gpu_temp=0.0, gpu_usage=0.0, gpu_clock=0.0, gpu_power=0.0)
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        # gpu_temp isn't in defaults or overrides → not in _populated → omitted
+        metrics = self._make_metrics()
+        with self._patch_trcc(metrics):
             show_info()
-        out = capsys.readouterr().out
-        assert "gpu_temp" not in out
+        assert "gpu_temp" not in capsys.readouterr().out
 
     def test_text_mode_always_shows_date_time(self, capsys):
-        # date/time/weekday are shown even when value is 0.0 or falsy
         metrics = self._make_metrics(date="2026-02-28", time="00:00", weekday="Saturday")
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info()
         out = capsys.readouterr().out
         assert "date" in out or "Date" in out
 
     def test_preview_mode_calls_image_service(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)), \
+        with self._patch_trcc(metrics), \
              patch("trcc.services.ImageService") as mock_svc:
             mock_svc.metrics_to_ansi.return_value = "ANSI_ART"
             rc = show_info(preview=True)
@@ -270,18 +272,15 @@ class TestShowInfo:
 
     def test_preview_mode_prints_ansi_output(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)), \
+        with self._patch_trcc(metrics), \
              patch("trcc.services.ImageService") as mock_svc:
             mock_svc.metrics_to_ansi.return_value = "<<ANSI>>"
             show_info(preview=True)
-        out = capsys.readouterr().out
-        assert "<<ANSI>>" in out
+        assert "<<ANSI>>" in capsys.readouterr().out
 
     def test_metric_filter_cpu(self, capsys):
         metrics = self._make_metrics(cpu_temp=80.0)
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info(metric="cpu")
         out = capsys.readouterr().out
         assert "CPU" in out
@@ -291,8 +290,7 @@ class TestShowInfo:
 
     def test_metric_filter_mem_alias(self, capsys):
         metrics = self._make_metrics(mem_percent=75.0)
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info(metric="mem")
         out = capsys.readouterr().out
         assert "Memory" in out
@@ -300,8 +298,7 @@ class TestShowInfo:
 
     def test_metric_filter_net_alias(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info(metric="net")
         out = capsys.readouterr().out
         assert "Network" in out
@@ -309,19 +306,17 @@ class TestShowInfo:
 
     def test_metric_filter_time_alias(self, capsys):
         metrics = self._make_metrics()
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             show_info(metric="time")
-        out = capsys.readouterr().out
-        assert "Date" in out
+        assert "Date" in capsys.readouterr().out
 
     def test_error_handling_returns_one(self, capsys):
-        with patch("trcc.services.system.get_all_metrics", side_effect=RuntimeError("no sensors")):
+        with patch("trcc.ui.cli._system.trcc", side_effect=RuntimeError("no sensors")):
             rc = show_info()
         assert rc == 1
 
     def test_error_handling_prints_message(self, capsys):
-        with patch("trcc.services.system.get_all_metrics", side_effect=RuntimeError("no sensors")):
+        with patch("trcc.ui.cli._system.trcc", side_effect=RuntimeError("no sensors")):
             show_info()
         out = capsys.readouterr().out
         assert "Error" in out
@@ -330,8 +325,7 @@ class TestShowInfo:
     def test_unknown_metric_filter_shows_all(self, capsys):
         # Non-matching alias → no groups → nothing filtered out
         metrics = self._make_metrics(cpu_temp=90.0)
-        with patch("trcc.services.system.get_all_metrics", return_value=metrics), \
-             patch("trcc.services.system.format_metric", side_effect=lambda k, v: str(v)):
+        with self._patch_trcc(metrics):
             rc = show_info(metric="unknown")
         assert rc == 0
 

@@ -19,7 +19,6 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -424,8 +423,10 @@ class TestUCSystemInfo:
     def test_temp_unit_default(self, sysinfo):
         assert sysinfo._temp_unit == 0
 
-    def test_has_update_timer(self, sysinfo):
-        assert isinstance(sysinfo._update_timer, QTimer)
+    def test_no_local_update_timer(self, sysinfo):
+        """Panel is a Topic.METRICS observer — single publisher owns cadence,
+        so no local timer lives on the widget anymore (was ``_update_timer``)."""
+        assert not hasattr(sysinfo, '_update_timer')
 
     def test_add_button_visible_when_space(self, sysinfo):
         """Add button appears when fewer than PANELS_PER_PAGE panels."""
@@ -537,29 +538,22 @@ class TestUCSystemInfo:
             sysinfo._on_panel_clicked(sysinfo._panels_list[0])
             assert len(received) == 1
 
-    # ── Timer management ──
+    # ── Lifecycle stubs (no-op since the metrics broadcast owns cadence) ──
 
-    def test_start_updates(self, sysinfo):
-        mock_enum = sysinfo._enumerator
-        mock_enum.read_all.return_value = {}
-        sysinfo.start_updates()
-        assert sysinfo._update_timer.isActive()
+    def test_start_updates_is_safe_noop(self, sysinfo):
+        """start_updates() is a no-op kept for caller compatibility — must not raise."""
+        sysinfo.start_updates()  # should complete without exception
+
+    def test_stop_updates_is_safe_noop(self, sysinfo):
+        """stop_updates() is a no-op kept for caller compatibility — must not raise."""
         sysinfo.stop_updates()
 
-    def test_stop_updates(self, sysinfo):
-        mock_enum = sysinfo._enumerator
-        mock_enum.read_all.return_value = {}
+    def test_start_updates_does_not_pull_metrics_locally(self, sysinfo):
+        """The panel is a Topic.METRICS observer — it must not poll the enumerator
+        directly. The single publisher (PollingMetricsLoop) owns cadence."""
+        sysinfo._enumerator.read_all.reset_mock()
         sysinfo.start_updates()
-        sysinfo.stop_updates()
-        assert not sysinfo._update_timer.isActive()
-
-    def test_start_updates_calls_update_metrics(self, sysinfo):
-        """start_updates() immediately calls _update_metrics."""
-        mock_enum = sysinfo._enumerator
-        mock_enum.read_all.return_value = {}
-        sysinfo.start_updates()
-        mock_enum.read_all.assert_called()
-        sysinfo.stop_updates()
+        sysinfo._enumerator.read_all.assert_not_called()
 
     # ── Temperature unit ──
 
@@ -582,25 +576,29 @@ class TestUCSystemInfo:
                 sysinfo._on_name_changed(panel, "NewName")
             assert panel.config.name == "NewName"
 
-    # ── Update metrics error handling ──
+    # ── update_from_metrics — the Topic.METRICS observer entry point ──
 
-    def test_update_metrics_handles_exception(self, sysinfo):
-        """_update_metrics doesn't crash when enumerator raises."""
-        sysinfo._enumerator.read_all.side_effect = RuntimeError("sensor fail")
-        # Should not raise
-        sysinfo._update_metrics()
-
-    def test_update_metrics_updates_panels(self, sysinfo):
-        """_update_metrics forwards readings to all panels."""
+    def test_update_from_metrics_forwards_readings_to_all_panels(self, sysinfo):
+        """update_from_metrics(HardwareMetrics) hands readings to every panel."""
+        from trcc.core.models import HardwareMetrics
         readings = {"hwmon:coretemp:temp1": 70.0}
-        sysinfo._enumerator.read_all.return_value = readings
-        sysinfo._update_metrics()
-        # First panel's first sensor is coretemp:temp1
-        if sysinfo._panels_list:
-            first = sysinfo._panels_list[0]
-            # After update, first label should show the value
-            text = first._value_labels[0].text()
-            assert text != "--" or first.config.sensors[0].sensor_id != "hwmon:coretemp:temp1"
+        metrics = HardwareMetrics()
+        metrics.readings = readings
+        for panel in sysinfo._panels_list:
+            panel.update_values = MagicMock()
+        sysinfo.update_from_metrics(metrics)
+        for panel in sysinfo._panels_list:
+            panel.update_values.assert_called_once_with(readings)
+
+    def test_update_from_metrics_empty_readings_is_safe(self, sysinfo):
+        """Empty readings dict must not raise; every panel still gets a tick."""
+        from trcc.core.models import HardwareMetrics
+        metrics = HardwareMetrics()
+        for panel in sysinfo._panels_list:
+            panel.update_values = MagicMock()
+        sysinfo.update_from_metrics(metrics)
+        for panel in sysinfo._panels_list:
+            panel.update_values.assert_called_once_with({})
 
 
 # =========================================================================
@@ -1642,8 +1640,8 @@ class TestResolveDeviceIdentity:
         assert dev_dict['button_image'] == 'A1FROZEN WARFRAME PRO'
         app.uc_device.update_device_button.assert_called_once_with(dev_dict)
 
-    def test_hid_uses_pm_sub_directly(self, bare_trcc_app):
-        """HID handshake: pm=7, sub=1 → Stream Vision (not FBL-based)."""
+    def test_bulk_uses_pm_sub_directly(self, bare_trcc_app):
+        """Bulk handshake: pm=7, sub=1 → Stream Vision (not FBL-based)."""
         from trcc.core.models import HandshakeResult
 
         app = bare_trcc_app
@@ -1652,17 +1650,18 @@ class TestResolveDeviceIdentity:
         app.uc_info_module = MagicMock()
         app._handlers = {}
 
-        device = self._make_device('hid:0416:5302', 'hid', vid=0x0416, pid=0x5302)
+        # PM=7 SUB=1 lives in the Bulk family (C# case 257), not HID T2.
+        device = self._make_device('usb:1:1', 'bulk', vid=0x87AD, pid=0x70DB)
 
         app.uc_device = MagicMock()
-        dev_dict = {'path': 'hid:0416:5302', 'button_image': 'A1CZTV', 'name': 'LCD'}
+        dev_dict = {'path': 'usb:1:1', 'button_image': 'A1CZTV', 'name': 'LCD'}
         app.uc_device.devices = [dev_dict]
 
-        # HID handshake: resolution, fbl=64, pm=7, sub=1
+        # Bulk handshake: resolution, fbl=64, pm=7, sub=1
         app._on_handshake_done(device, HandshakeResult(
             resolution=(480, 480), model_id=64, pm_byte=7, sub_byte=1))
 
-        # pm=7 is truthy → `pm or fbl` = 7 → get_variant_override(7, 1).button_image
+        # pm=7 truthy → get_variant_override(87AD, 70DB, 7, 1).button_image
         # = A1Stream Vision
         assert dev_dict['button_image'] == 'A1Stream Vision'
 

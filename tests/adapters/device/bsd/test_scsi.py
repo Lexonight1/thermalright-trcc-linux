@@ -50,13 +50,10 @@ class TestBSDScsiTransport:
             m_open.assert_called_once()
             m_close.assert_called_once()
 
-    @patch('usb.core.find')
-    @patch('usb.util.endpoint_direction')
-    @patch('usb.util.ENDPOINT_OUT', 0x00)
-    @patch('usb.util.ENDPOINT_IN', 0x80)
-    def test_open_success(self, mock_ep_dir, mock_find):
+    @staticmethod
+    def _make_mock_device(*, kernel_driver_active: bool) -> MagicMock:
         mock_dev = MagicMock()
-        mock_dev.is_kernel_driver_active.return_value = False
+        mock_dev.is_kernel_driver_active.return_value = kernel_driver_active
         mock_ep_out = MagicMock()
         mock_ep_out.bEndpointAddress = 0x02
         mock_ep_in = MagicMock()
@@ -65,49 +62,45 @@ class TestBSDScsiTransport:
         mock_cfg = MagicMock()
         mock_cfg.__getitem__ = MagicMock(return_value=mock_intf)
         mock_dev.get_active_configuration.return_value = mock_cfg
-        mock_find.return_value = mock_dev
-        mock_ep_dir.side_effect = lambda addr: addr & 0x80
+        return mock_dev
 
+    def test_open_success(self):
+        from trcc.adapters.device import _pyusb_find
         from trcc.adapters.device.bsd.scsi import BSDScsiTransport
-        t = BSDScsiTransport(vid=0x0402, pid=0x3922)
-        assert t.open() is True
-        assert t._dev is mock_dev
-        assert t._ep_out == 0x02
-        assert t._ep_in == 0x81
 
-    @patch('usb.core.find')
-    @patch('usb.util.endpoint_direction')
-    @patch('usb.util.ENDPOINT_OUT', 0x00)
-    @patch('usb.util.ENDPOINT_IN', 0x80)
-    def test_open_detaches_kernel_driver(self, mock_ep_dir, mock_find):
-        mock_dev = MagicMock()
-        mock_dev.is_kernel_driver_active.return_value = True
-        mock_ep_out = MagicMock()
-        mock_ep_out.bEndpointAddress = 0x02
-        mock_ep_in = MagicMock()
-        mock_ep_in.bEndpointAddress = 0x81
-        mock_intf = [mock_ep_out, mock_ep_in]
-        mock_cfg = MagicMock()
-        mock_cfg.__getitem__ = MagicMock(return_value=mock_intf)
-        mock_dev.get_active_configuration.return_value = mock_cfg
-        mock_find.return_value = mock_dev
-        mock_ep_dir.side_effect = lambda addr: addr & 0x80
+        mock_dev = self._make_mock_device(kernel_driver_active=False)
+        with (
+            patch.object(_pyusb_find, 'find', return_value=mock_dev),
+            patch('usb.util.endpoint_direction', side_effect=lambda a: a & 0x80),
+            patch('usb.util.ENDPOINT_OUT', 0x00),
+            patch('usb.util.ENDPOINT_IN', 0x80),
+        ):
+            t = BSDScsiTransport(vid=0x0402, pid=0x3922)
+            assert t.open() is True
+            assert t._dev is mock_dev
+            assert t._ep_out == 0x02
+            assert t._ep_in == 0x81
 
+    def test_open_detaches_kernel_driver(self):
+        from trcc.adapters.device import _pyusb_find
         from trcc.adapters.device.bsd.scsi import BSDScsiTransport
-        t = BSDScsiTransport(vid=0x0402, pid=0x3922)
-        assert t.open() is True
-        mock_dev.detach_kernel_driver.assert_called_once_with(0)
+
+        mock_dev = self._make_mock_device(kernel_driver_active=True)
+        with (
+            patch.object(_pyusb_find, 'find', return_value=mock_dev),
+            patch('usb.util.endpoint_direction', side_effect=lambda a: a & 0x80),
+            patch('usb.util.ENDPOINT_OUT', 0x00),
+            patch('usb.util.ENDPOINT_IN', 0x80),
+        ):
+            t = BSDScsiTransport(vid=0x0402, pid=0x3922)
+            assert t.open() is True
+            mock_dev.detach_kernel_driver.assert_called_once_with(0)
 
     def test_open_fails_device_not_found(self):
-        mock_usb_core = MagicMock()
-        mock_usb_core.find.return_value = None
+        from trcc.adapters.device import _pyusb_find
+        from trcc.adapters.device.bsd.scsi import BSDScsiTransport
 
-        with patch.dict('sys.modules', {
-            'usb': MagicMock(),
-            'usb.core': mock_usb_core,
-            'usb.util': MagicMock(),
-        }):
-            from trcc.adapters.device.bsd.scsi import BSDScsiTransport
+        with patch.object(_pyusb_find, 'find', return_value=None):
             t = BSDScsiTransport(vid=0x0402, pid=0x3922)
             assert t.open() is False
 

@@ -138,10 +138,16 @@ class MockIO:
 
 @pytest.fixture
 def mock_io():
-    """Mock all base I/O boundaries. Returns MockIO with patches active."""
+    """Mock all base I/O boundaries. Returns MockIO with patches active.
+
+    ``_pn`` is the module-level alias the production code reads — bound to
+    ``pynvml`` at import time. Patching ``pynvml`` alone misses ``_pn``, so
+    both names get the same mock here.
+    """
     io = MockIO()
     with patch(f'{BASE}.psutil', io.psutil), \
          patch(f'{BASE}.pynvml', io.pynvml), \
+         patch(f'{BASE}._pn', io.pynvml), \
          patch(f'{BASE}.NVML_AVAILABLE', True), \
          patch(f'{BASE}.time', io.time), \
          patch(f'{BASE}.datetime', io.datetime):
@@ -155,6 +161,7 @@ def mock_io_no_nvidia():
     io = MockIO()
     with patch(f'{BASE}.psutil', io.psutil), \
          patch(f'{BASE}.pynvml', None), \
+         patch(f'{BASE}._pn', None), \
          patch(f'{BASE}.NVML_AVAILABLE', False), \
          patch(f'{BASE}.time', io.time), \
          patch(f'{BASE}.datetime', io.datetime):

@@ -19,7 +19,6 @@ from trcc.core.device.lcd import LCDDevice as Device
 # =========================================================================
 _IMG_SVC = "trcc.services.ImageService"
 _OVL_SVC = "trcc.services.OverlayService"
-_METRICS = "trcc.services.system.get_all_metrics"
 _DEV_SVC = "trcc.services.DeviceService"
 _SETTINGS_KEY = "trcc.conf.Settings.device_config_key"
 _SETTINGS_SAVE = "trcc.conf.Settings.save_device_setting"
@@ -337,21 +336,19 @@ class TestOverlayOps:
         assert "Path not found" in result["error"]
 
     def test_render_overlay_success(self, lcd, tmp_path):
+        # ``render_overlay_from_dc`` accepts an explicit ``metrics`` kwarg
+        # (defaults to None, which skips overlay.update_metrics).  The old
+        # ``trcc.services.system.get_all_metrics`` patch target predates
+        # the metrics-unification refactor and no longer exists.
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-
-        with patch(_METRICS, return_value=MagicMock()):
-            result = lcd.render_overlay_from_dc(str(dc_file))
-
+        result = lcd.render_overlay_from_dc(str(dc_file))
         assert result["success"] is True
 
     def test_render_overlay_with_send(self, lcd, mock_device_svc, tmp_path):
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-
-        with patch(_METRICS, return_value=MagicMock()):
-            result = lcd.render_overlay_from_dc(str(dc_file), send=True)
-
+        result = lcd.render_overlay_from_dc(str(dc_file), send=True)
         assert result["success"] is True
         assert "/dev/sg0" in result["message"]
 
@@ -359,11 +356,8 @@ class TestOverlayOps:
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
         output_file = str(tmp_path / "out.png")
-
-        with patch(_METRICS, return_value=MagicMock()):
-            result = lcd.render_overlay_from_dc(
-                str(dc_file), output=output_file)
-
+        result = lcd.render_overlay_from_dc(
+            str(dc_file), output=output_file)
         assert result["success"] is True
         assert output_file in result["message"]
         assert Path(output_file).exists()
@@ -373,10 +367,7 @@ class TestOverlayOps:
         theme_dir = tmp_path / "theme"
         theme_dir.mkdir()
         (theme_dir / "config1.dc").write_bytes(b"\xDD" + b"\x00" * 50)
-
-        with patch(_METRICS, return_value=MagicMock()):
-            result = lcd.render_overlay_from_dc(str(theme_dir))
-
+        result = lcd.render_overlay_from_dc(str(theme_dir))
         assert result["success"] is True
 
 

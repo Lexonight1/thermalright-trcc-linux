@@ -17,7 +17,13 @@ from trcc.ui.api import app, configure_auth
 
 
 class _ApiSecurityBase(unittest.TestCase):
-    """Shared setup for security tests."""
+    """Shared setup for security tests.
+
+    Patches both legacy ``_system_svc`` (still used by some endpoints) AND
+    the post-metrics-unification ``trcc().os.metrics`` chokepoint so the
+    test client renders deterministic system metrics regardless of what
+    sensors the test host actually exposes.
+    """
 
     def setUp(self):
         from trcc.core.models import HardwareMetrics
@@ -25,10 +31,19 @@ class _ApiSecurityBase(unittest.TestCase):
         self.client = TestClient(app)
         self._saved_system_svc = api_module._system_svc
         mock_svc = MagicMock()
-        mock_svc.all_metrics = HardwareMetrics()
+        record = HardwareMetrics()
+        record.cpu_temp = 65.0
+        record.cpu_percent = 12.0
+        mock_svc.all_metrics = record
         api_module._system_svc = mock_svc
 
+        proxy = MagicMock()
+        proxy.os.metrics = record
+        self._trcc_patch = patch('trcc.ui.api.system.trcc', return_value=proxy)
+        self._trcc_patch.start()
+
     def tearDown(self):
+        self._trcc_patch.stop()
         api_module._system_svc = self._saved_system_svc
 
 

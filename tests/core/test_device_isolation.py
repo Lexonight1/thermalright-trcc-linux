@@ -15,9 +15,9 @@ from pathlib import Path
 import pytest
 
 from trcc.core.models import (
-    _LCD_BUTTON_IMAGE,
     _PM_SUB_TO_FBL,
     _PM_TO_FBL_OVERRIDES,
+    _VARIANT_REGISTRY,
     FBL_PROFILES,
     fbl_to_resolution,
     get_button_image,
@@ -76,19 +76,18 @@ if DEV_DATA.exists():
                         except ValueError:
                             pass
 
-# ── Button combos from _LCD_BUTTON_IMAGE ──────────────────────────────
+# ── Button combos from the VID/PID-scoped variant registry ─────────────
 
-_BUTTON_COMBOS: list[tuple[int, int, str]] = []
+_BUTTON_COMBOS: list[tuple[int, int, int, int, str]] = []  # (vid, pid, pm, sub, button)
 
-for pm_key, sub_map in sorted(_LCD_BUTTON_IMAGE.items()):
-    for sub_key, override in sorted(sub_map.items(), key=lambda x: (x[0] is None, x[0])):
-        if sub_key is None:
-            continue
-        _BUTTON_COMBOS.append((pm_key, sub_key, override.button_image))
-
-for pm_key, sub_map in sorted(_LCD_BUTTON_IMAGE.items()):
-    if list(sub_map.keys()) == [None]:
-        _BUTTON_COMBOS.append((pm_key, 0, sub_map[None].button_image))
+for (vid, pid), pm_map in sorted(_VARIANT_REGISTRY.items()):
+    for pm_key, sub_map in sorted(pm_map.items()):
+        for sub_key, override in sorted(sub_map.items(), key=lambda x: (x[0] is None, x[0])):
+            if sub_key is None:
+                continue
+            _BUTTON_COMBOS.append((vid, pid, pm_key, sub_key, override.button_image))
+        if list(sub_map.keys()) == [None]:
+            _BUTTON_COMBOS.append((vid, pid, pm_key, 0, sub_map[None].button_image))
 
 
 # ── Dir helper ──────────────────────────────────────────────────────────
@@ -189,11 +188,11 @@ class TestDirIsolation:
 class TestButtonIdentity:
     """36 PM+SUB handshake combos — each resolves to resolution + button image."""
 
-    @pytest.mark.parametrize('pm,sub,expected', _BUTTON_COMBOS,
-                             ids=[f'PM{pm}_SUB{sub}_{img}'
-                                  for pm, sub, img in _BUTTON_COMBOS])
-    def test_get_button_image(self, pm, sub, expected):
-        result = get_button_image(pm, sub)
+    @pytest.mark.parametrize('vid,pid,pm,sub,expected', _BUTTON_COMBOS,
+                             ids=[f'{vid:04x}_{pid:04x}_PM{pm}_SUB{sub}_{img}'
+                                  for vid, pid, pm, sub, img in _BUTTON_COMBOS])
+    def test_get_button_image(self, vid, pid, pm, sub, expected):
+        result = get_button_image(vid, pid, pm, sub)
         assert result == expected
 
     @pytest.mark.parametrize('pm,sub,fbl,w,h', _ALL_HANDSHAKES,

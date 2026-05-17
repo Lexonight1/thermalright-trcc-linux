@@ -1,24 +1,46 @@
-"""Tests for services/system.py — system monitoring service.
+"""Tests for services/system.py — SystemService.
+
+Aggregate metric composition lives on ``Platform.metrics`` since the metrics
+unification refactor; this service now owns sensor enumeration + panel
+breakdowns (disk / network / fan) + formatting.
 
 Covers:
-- Construction and strict DI
+- Construction and strict DI (platform-based)
 - Sensor discovery (lazy, cached)
-- Metric reading (via enumerator, via legacy keys)
-- format_metric() — all metric types
-- Fallback methods — subprocess parsing
-- all_metrics — aggregation with fallbacks
-- find_hwmon_by_name() — sysfs lookup
-- Module-level convenience API
+- Metric reading via the injected enumerator (read_all, read_one)
+- Polling lifecycle (set_poll_interval, start/stop_polling)
+- Panel aggregates (disk_stats, network_stats, fan_speeds)
+- format_metric() — static delegation to core
+- Module-level convenience API (set_instance / get_instance)
 """
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.core.models import HardwareMetrics
-from trcc.services.system import SystemService, _read_sysfs
+from trcc.services.system import (
+    SystemService,
+    format_metric,
+    get_instance,
+    set_instance,
+    set_poll_interval,
+)
+
+
+def _make_platform(enumerator: MagicMock) -> MagicMock:
+    """Wrap a MagicMock enumerator behind a MagicMock platform with .sensors."""
+    platform = MagicMock()
+    platform.sensors = enumerator
+    return platform
+
+
+def _make_settings(*, hdd_enabled: bool = True) -> MagicMock:
+    settings = MagicMock()
+    settings.hdd_enabled = hdd_enabled
+    return settings
+
 
 # =========================================================================
 # Construction
@@ -28,12 +50,12 @@ from trcc.services.system import SystemService, _read_sysfs
 class TestConstruction:
     def test_strict_di(self):
         with pytest.raises(TypeError):
-            SystemService()
+            SystemService()  # type: ignore[call-arg]
 
     def test_auto_discovers_on_construction(self):
         enum = MagicMock()
         enum.discover.return_value = []
-        SystemService(enumerator=enum)
+        SystemService(platform=_make_platform(enum), settings=_make_settings())
         enum.discover.assert_called_once()
 
 
@@ -47,22 +69,19 @@ class TestDiscovery:
         enum = MagicMock()
         enum.discover.return_value = ['sensor1', 'sensor2']
         enum.get_sensors.return_value = ['sensor1', 'sensor2']
-        svc = SystemService(enumerator=enum)
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         assert svc.sensors == ['sensor1', 'sensor2']
         enum.discover.assert_called_once()
 
-    def test_discover_called_exactly_once(self):
+    def test_enumerator_property_exposes_injected_enum(self):
         enum = MagicMock()
         enum.discover.return_value = []
-        enum.get_sensors.return_value = []
-        svc = SystemService(enumerator=enum)
-        _ = svc.sensors
-        _ = svc.enumerator
-        assert enum.discover.call_count == 1
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        assert svc.enumerator is enum
 
 
 # =========================================================================
-# Readings
+# Readings + polling lifecycle
 # =========================================================================
 
 
@@ -71,29 +90,29 @@ class TestReadings:
         enum = MagicMock()
         enum.discover.return_value = []
         enum.read_all.return_value = {'cpu_temp': 65.0}
-        svc = SystemService(enumerator=enum)
-        result = svc.read_all()
-        assert result == {'cpu_temp': 65.0}
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        assert svc.read_all() == {'cpu_temp': 65.0}
 
     def test_read_one(self):
         enum = MagicMock()
         enum.discover.return_value = []
         enum.read_one.return_value = 42.0
-        svc = SystemService(enumerator=enum)
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         assert svc.read_one('cpu_temp') == 42.0
 
-    def test_set_poll_interval(self):
+    def test_set_poll_interval_delegates(self):
         enum = MagicMock()
-        svc = SystemService(enumerator=enum)
+        enum.discover.return_value = []
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         svc.set_poll_interval(2.5)
         enum.set_poll_interval.assert_called_once_with(2.5)
 
     def test_start_stop_polling(self):
         enum = MagicMock()
         enum.discover.return_value = []
-        svc = SystemService(enumerator=enum)
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         svc.start_polling()
-        enum.start_polling.assert_called()
+        enum.start_polling.assert_called_once()
         svc.stop_polling()
         enum.stop_polling.assert_called_once()
 
@@ -177,225 +196,18 @@ class TestFormatMetric:
         assert len(result) > 0
 
     def test_day_of_week(self):
-        result = SystemService.format_metric('day_of_week', 0)
-        assert result == "MON"
+        assert SystemService.format_metric('day_of_week', 0) == "MON"
 
     def test_fallback_format(self):
         assert SystemService.format_metric('unknown_metric', 3.14159) == "3.1"
 
 
 # =========================================================================
-# Fallback methods
+# Panel aggregates — disk_stats / network_stats / fan_speeds
 # =========================================================================
 
 
-class TestFallbacks:
-    @patch('trcc.services.system.subprocess.run')
-    def test_fallback_cpu_temp(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="coretemp-isa-0000\ntemp1_input: 65.000\n",
-            returncode=0)
-        enum = MagicMock()
-        svc = SystemService(enumerator=enum)
-        assert svc._fallback_cpu_temp() == 65.0
-
-    @patch('trcc.services.system.subprocess.run')
-    def test_fallback_cpu_temp_none(self, mock_run):
-        mock_run.side_effect = FileNotFoundError
-        enum = MagicMock()
-        svc = SystemService(enumerator=enum)
-        assert svc._fallback_cpu_temp() is None
-
-    @patch('trcc.services.system._read_sysfs')
-    def test_fallback_cpu_usage(self, mock_read):
-        mock_read.return_value = "2.50 1.80 1.20 4/512 12345"
-        result = SystemService._fallback_cpu_usage()
-        assert result == 25.0  # 2.50 * 10, capped at 100
-
-    @patch('trcc.services.system._read_sysfs')
-    def test_fallback_cpu_usage_capped(self, mock_read):
-        mock_read.return_value = "15.00 10.00 8.00 4/512 12345"
-        result = SystemService._fallback_cpu_usage()
-        assert result == 100.0
-
-    @patch('builtins.open')
-    def test_fallback_cpu_freq(self, mock_open):
-        mock_open.return_value.__enter__ = lambda s: s
-        mock_open.return_value.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value.__iter__ = lambda s: iter([
-            "processor\t: 0\n",
-            "cpu MHz\t\t: 3600.000\n",
-        ])
-        result = SystemService._fallback_cpu_freq()
-        assert result == 3600.0
-
-    @patch('trcc.services.system.subprocess.run')
-    def test_fallback_disk_temp(self, mock_run):
-        # Parser finds first digit < 100 on a Temperature line.
-        # Use minimal output matching what the parser actually extracts.
-        mock_run.return_value = MagicMock(
-            stdout="Temperature: 42\n",
-            returncode=0)
-        result = SystemService._fallback_disk_temp()
-        assert result == 42.0
-
-    @patch('trcc.services.system.subprocess.run')
-    def test_probe_mem_clock_dmidecode(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="Memory Device\n\tConfigured Memory Speed: 3200 MT/s\n",
-            returncode=0)
-        result = SystemService._probe_mem_clock(
-            lambda cmd, args: [cmd, *args])
-        assert result == 3200.0
-
-
-# =========================================================================
-# all_metrics
-# =========================================================================
-
-
-class TestAllMetrics:
-    @patch('trcc.conf.settings')
-    def test_all_metrics_basic(self, mock_settings):
-        mock_settings.hdd_enabled = True
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {'cpu_temp': 'hwmon:cpu_temp'}
-        enum.read_all.return_value = {'hwmon:cpu_temp': 72.0}
-        svc = SystemService(enumerator=enum)
-        svc._fallback_cache = {}  # Pre-populate to skip subprocess
-
-        m = svc.all_metrics
-        assert isinstance(m, HardwareMetrics)
-        assert m.cpu_temp == 72  # int-truncated at read boundary
-
-    @patch('trcc.conf.settings')
-    def test_int_truncation_at_read_boundary(self, mock_settings):
-        """Non-rate metrics are truncated to int (matches C# app)."""
-        mock_settings.hdd_enabled = True
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {
-            'cpu_temp': 's:temp', 'cpu_percent': 's:pct',
-            'disk_read': 's:dr', 'mem_available': 's:ma',
-        }
-        enum.read_all.return_value = {
-            's:temp': 45.7, 's:pct': 42.9,
-            's:dr': 0.5, 's:ma': 18534.4,
-        }
-        svc = SystemService(enumerator=enum)
-        svc._fallback_cache = {}
-
-        m = svc.all_metrics
-        assert m.cpu_temp == 45        # int-truncated (floor)
-        assert m.cpu_percent == 42     # int-truncated (floor)
-        assert m.disk_read == 0.5      # float preserved (rate)
-        assert m.mem_available == 18534.4  # float preserved (size)
-
-    @patch('trcc.conf.settings')
-    def test_populated_tracks_set_fields(self, mock_settings):
-        """_populated contains only fields that got sensor data."""
-        mock_settings.hdd_enabled = True
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {'cpu_temp': 's:temp'}
-        enum.read_all.return_value = {'s:temp': 55.0}
-        svc = SystemService(enumerator=enum)
-        svc._fallback_cache = {}
-
-        m = svc.all_metrics
-        assert 'cpu_temp' in m._populated
-        assert 'gpu_temp' not in m._populated
-        # Date/time always populated
-        assert 'date' in m._populated
-        assert 'time' in m._populated
-
-    @patch('trcc.conf.settings')
-    def test_hdd_disabled_zeros_disk(self, mock_settings):
-        mock_settings.hdd_enabled = False
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {
-            'disk_temp': 's1',
-            'disk_activity': 's2',
-        }
-        enum.read_all.return_value = {'s1': 45.0, 's2': 80.0}
-        svc = SystemService(enumerator=enum)
-        svc._fallback_cache = {}
-
-        m = svc.all_metrics
-        assert m.disk_temp == 0.0
-        assert m.disk_activity == 0.0
-
-    @patch('trcc.conf.settings')
-    def test_fallback_cache_computed_once(self, mock_settings):
-        mock_settings.hdd_enabled = True
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {}
-        enum.read_all.return_value = {}
-        svc = SystemService(enumerator=enum)
-        svc._fallback_cache = {'cpu_temp': 55.0}
-
-        m = svc.all_metrics
-        assert m.cpu_temp == 55  # int-truncated fallback
-        assert 'cpu_temp' in m._populated
-
-
-# =========================================================================
-# find_hwmon_by_name
-# =========================================================================
-
-
-class TestFindHwmon:
-    @patch('trcc.services.system.os.path.exists')
-    @patch('trcc.services.system._read_sysfs')
-    def test_finds_matching_hwmon(self, mock_read, mock_exists):
-        mock_exists.return_value = True
-        mock_read.side_effect = lambda p: {
-            '/sys/class/hwmon/hwmon0/name': 'acpitz',
-            '/sys/class/hwmon/hwmon1/name': 'k10temp',
-        }.get(p)
-        result = SystemService.find_hwmon_by_name('k10temp')
-        assert result == '/sys/class/hwmon/hwmon1'
-
-    @patch('trcc.services.system.os.path.exists')
-    def test_no_hwmon_base(self, mock_exists):
-        mock_exists.return_value = False
-        assert SystemService.find_hwmon_by_name('k10temp') is None
-
-
-# =========================================================================
-# _read_sysfs helper
-# =========================================================================
-
-
-class TestReadSysfs:
-    @patch('builtins.open')
-    def test_reads_file(self, mock_open):
-        mock_open.return_value.__enter__ = lambda s: s
-        mock_open.return_value.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value.read.return_value = "  42000  \n"
-        assert _read_sysfs('/sys/class/hwmon/hwmon0/temp1_input') == "42000"
-
-    def test_returns_none_on_error(self):
-        assert _read_sysfs('/nonexistent/path') is None
-
-
-# =========================================================================
-# Metric properties
-# =========================================================================
-
-
-class TestMetricProperties:
-    def _make_svc(self):
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.map_defaults.return_value = {}
-        enum.read_one.return_value = None
-        svc = SystemService(enumerator=enum)
-        return svc
-
+class TestPanelStats:
     def test_disk_stats(self):
         enum = MagicMock()
         enum.discover.return_value = []
@@ -404,10 +216,20 @@ class TestMetricProperties:
             'computed:disk_write': 50.0,
             'computed:disk_activity': 75.0,
         }
-        svc = SystemService(enumerator=enum)
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         stats = svc.disk_stats
-        assert stats['disk_read'] == 100.0
-        assert stats['disk_write'] == 50.0
+        assert stats == {
+            'disk_read': 100.0,
+            'disk_write': 50.0,
+            'disk_activity': 75.0,
+        }
+
+    def test_disk_stats_skips_missing(self):
+        enum = MagicMock()
+        enum.discover.return_value = []
+        enum.read_all.return_value = {'computed:disk_read': 100.0}
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        assert svc.disk_stats == {'disk_read': 100.0}
 
     def test_network_stats(self):
         enum = MagicMock()
@@ -415,18 +237,71 @@ class TestMetricProperties:
         enum.read_all.return_value = {
             'computed:net_up': 1024.0,
             'computed:net_down': 512.0,
+            'computed:net_total_up': 8.0,
+            'computed:net_total_down': 16.0,
         }
-        svc = SystemService(enumerator=enum)
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
         stats = svc.network_stats
-        assert stats['net_up'] == 1024.0
+        assert stats == {
+            'net_up': 1024.0,
+            'net_down': 512.0,
+            'net_total_up': 8.0,
+            'net_total_down': 16.0,
+        }
 
-    def test_fan_speeds(self):
+    def test_fan_speeds_from_default_map(self):
         enum = MagicMock()
         enum.discover.return_value = []
         enum.map_defaults.return_value = {
             'fan_cpu': 'hwmon:fan1',
+            'fan_gpu': 'hwmon:fan2',
         }
-        enum.read_all.return_value = {'hwmon:fan1': 1200.0}
-        svc = SystemService(enumerator=enum)
-        fans = svc.fan_speeds
-        assert fans['fan_cpu'] == 1200.0
+        enum.read_all.return_value = {
+            'hwmon:fan1': 1200.0,
+            'hwmon:fan2': 1800.0,
+        }
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        assert svc.fan_speeds == {'fan_cpu': 1200.0, 'fan_gpu': 1800.0}
+
+    def test_fan_speeds_skips_unmapped(self):
+        enum = MagicMock()
+        enum.discover.return_value = []
+        enum.map_defaults.return_value = {}
+        enum.read_all.return_value = {}
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        assert svc.fan_speeds == {}
+
+
+# =========================================================================
+# Module-level convenience API
+# =========================================================================
+
+
+class TestModuleApi:
+    def test_get_instance_raises_before_set(self, monkeypatch):
+        # The module-level singleton is shared across tests; isolate via monkey-patch.
+        monkeypatch.setattr('trcc.services.system._instance', None)
+        with pytest.raises(RuntimeError, match='not initialized'):
+            get_instance()
+
+    def test_set_instance_starts_polling(self, monkeypatch):
+        monkeypatch.setattr('trcc.services.system._instance', None)
+        enum = MagicMock()
+        enum.discover.return_value = []
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        set_instance(svc)
+        enum.start_polling.assert_called_once()
+        assert get_instance() is svc
+
+    def test_module_set_poll_interval_delegates_to_singleton(self, monkeypatch):
+        monkeypatch.setattr('trcc.services.system._instance', None)
+        enum = MagicMock()
+        enum.discover.return_value = []
+        svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
+        set_instance(svc)
+        set_poll_interval(3.0)
+        enum.set_poll_interval.assert_called_once_with(3.0)
+
+    def test_module_format_metric_matches_class_method(self):
+        # Pure formatter — no singleton needed.
+        assert format_metric('cpu_temp', 65.0) == SystemService.format_metric('cpu_temp', 65.0)
