@@ -79,15 +79,13 @@ def set_gpu(gpu_key: str) -> dict:
             status_code=400,
             detail=f"Unknown GPU '{gpu_key}'. Available: {', '.join(sorted(valid_keys))}",
         )
+    # Single call — ``Trcc.set_gpu_device`` (via the control_center
+    # facade) propagates both ``settings.set_gpu_device`` and
+    # ``enumerator.set_preferred_gpu``. No more hand-rolled "also
+    # tell the running system service" line to remember.
     result = t.control_center.set_gpu_device(gpu_key)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error)
-    # Also tell the running system service to use this GPU going forward
-    try:
-        svc = _get_system_svc()
-        svc.enumerator.set_preferred_gpu(gpu_key)
-    except Exception as e:
-        log.warning("Could not update system service GPU preference: %s", e)
     log.info("API: GPU set to %s", gpu_key)
     return {"selected": gpu_key}
 

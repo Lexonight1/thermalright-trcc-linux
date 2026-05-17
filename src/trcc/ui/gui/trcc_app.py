@@ -1809,23 +1809,19 @@ class TRCCApp(QMainWindow):
 
     def _on_gpu_changed(self, gpu_key: str) -> None:
         log.debug("_on_gpu_changed: gpu_key=%s", gpu_key)
+        # Single call — ``Trcc.set_gpu_device`` now propagates
+        # ``enumerator.set_preferred_gpu`` itself.
         result = self._trcc.control_center.set_gpu_device(gpu_key)
-        # Tell the live enumerator to switch GPUs for subsequent metrics
-        self._system_svc.enumerator.set_preferred_gpu(gpu_key)
         self.uc_preview.set_status(result.format())
 
     def _set_language(self, lang: str) -> None:
         log.debug("_set_language: %s", lang)
-        # Persist via Trcc — same code path as CLI `trcc language` and
-        # API `PUT /app/language`. GUI side effects follow.
+        # ``Trcc.set_language`` propagates the new lang to every LCD's
+        # overlay (issue #141) — no GUI-side manual loop needed.
         self._trcc.control_center.set_language(lang)
-        # Issue #141 — push to every LCD's overlay so weekday
-        # abbreviations (`MON`/`TUE`/... → `MO`/`DI`/... for German)
-        # update immediately, no restart.
-        for lcd in self._trcc.lcd_devices:
-            disp = getattr(lcd, '_display_svc', None)
-            if disp is not None and disp.overlay is not None:
-                disp.overlay.set_lang(lang)
+        # GUI-only follow-ups: re-render backgrounds + refresh About +
+        # LED-panel localized background.  These touch widgets, not
+        # device state, so they stay here.
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()

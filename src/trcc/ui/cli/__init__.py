@@ -1034,8 +1034,12 @@ def _cmd_gpu_set(
     if gpu_key not in valid_keys:
         print(f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}")
         return 1
-    _trcc().settings.set_gpu_device(gpu_key)
-    svc.enumerator.set_preferred_gpu(gpu_key)
+    # Single call — ``Trcc.set_gpu_device`` (via the control_center
+    # facade) propagates ``settings.set_gpu_device`` AND
+    # ``enumerator.set_preferred_gpu``. The legacy two-line hand-roll
+    # was the same bug class as temp_unit: easy to forget the second
+    # line on a new caller.
+    _trcc().control_center.set_gpu_device(gpu_key)
     print(f"GPU set to: {gpu_key}")
     return 0
 

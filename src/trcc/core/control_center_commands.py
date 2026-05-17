@@ -48,25 +48,46 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split('.') if x.isdigit())
 
 
+def _delegate(callback: Any, arg: Any, *, fallback_msg: str) -> OpResult:
+    """Call a ``Trcc.set_*`` callback and adapt its dict-shaped return to OpResult.
+
+    Used by every ``ControlCenterCommands`` setter that delegates the
+    cross-cutting propagation work back to ``Trcc``. Keeps the four
+    delegating bodies (temp_unit / language / metrics_refresh /
+    gpu_device) identical — one source of truth for the
+    dict-result → OpResult lift.
+    """
+    result = callback(arg)
+    if result.get('success'):
+        return OpResult(success=True,
+                        message=result.get('message', fallback_msg))
+    return OpResult(success=False, error=result.get('error', ''))
+
+
 class ControlCenterCommands:
     """Command surface for app-level settings and updates."""
 
     def __init__(self, platform: Platform, events: EventBus,
                  settings: Any,
-                 *, set_temp_unit: Any = None) -> None:
+                 *,
+                 set_temp_unit: Any = None,
+                 set_language: Any = None,
+                 set_metrics_refresh: Any = None,
+                 set_gpu_device: Any = None) -> None:
         self._platform = platform
         self._events = events
         self._settings = settings
-        # Cross-cutting handler — ``Trcc.set_temp_unit`` propagates the
-        # unit to every connected device (overlay + LED), re-fetches the
-        # metrics record with the new unit applied, wakes the metrics
-        # loop, and publishes the event. ``ControlCenterCommands`` lives
-        # on the GUI surface and doesn't own the device list, so it
-        # delegates back to ``Trcc`` instead of duplicating the work.
-        # ``trcc.set_temp_unit(0|1)`` is the canonical cross-UI entry
-        # point; the wrapper here just accepts 'C'/'F' strings from the
-        # button-toggle UI shape.
+        # Cross-cutting handlers — ``Trcc`` owns the device list + the
+        # metrics loop + the sensor enumerator, so it's the only place
+        # that can propagate setting changes to every consumer.
+        # ``ControlCenterCommands`` lives on the UI surface and just
+        # delegates back; the callbacks below let the GUI / CLI / API
+        # all hit the canonical propagation paths through one method
+        # name each (``trcc.set_*``).
         self._trcc_set_temp_unit = set_temp_unit
+        self._trcc_set_language = set_language
+        self._trcc_set_metrics_refresh = set_metrics_refresh
+        self._trcc_set_gpu_device = set_gpu_device
         self._sensor_enum = None   # lazy — discover on first GPU/sensor query
 
     # ── Settings ─────────────────────────────────────────────────────
@@ -108,14 +129,8 @@ class ControlCenterCommands:
             # value flipped via the polling loop's
             # ``HardwareMetrics.with_temp_unit`` call, but the
             # overlay's ``temp_unit`` (the suffix selector) didn't.
-            result = self._trcc_set_temp_unit(unit_int)
-            if result.get('success'):
-                return OpResult(
-                    success=True,
-                    message=result.get('message',
-                                       f'Temperature unit: °{unit.upper()}'),
-                )
-            return OpResult(success=False, error=result.get('error', ''))
+            return _delegate(self._trcc_set_temp_unit, unit_int,
+                              fallback_msg=f'Temperature unit: °{unit.upper()}')
         # Test / legacy path — no Trcc back-ref injected.  Updates
         # the persisted setting only; not used in production wiring.
         self._settings.set_temp_unit(unit_int)
@@ -123,6 +138,12 @@ class ControlCenterCommands:
         return OpResult(success=True, message=f'Temperature unit: °{unit.upper()}')
 
     def set_language(self, lang: str) -> OpResult:
+        if self._trcc_set_language is not None:
+            # Delegate — propagates to every LCD overlay's ``set_lang``
+            # so weekday abbreviations update immediately for all UIs.
+            return _delegate(self._trcc_set_language, lang,
+                              fallback_msg=f'Language: {lang}')
+        # Test / legacy path — persists only.
         self._settings.lang = lang
         self._events.publish('control_center.language', lang)
         return OpResult(success=True, message=f'Language: {lang}')
@@ -141,11 +162,26 @@ class ControlCenterCommands:
                 success=False,
                 error=f'Refresh must be 1-100 seconds, got {seconds}',
             )
+        if self._trcc_set_metrics_refresh is not None:
+            # Delegate — also calls ``wake_metrics_loop()`` so the new
+            # interval takes effect on the next tick instead of waiting
+            # up to the OLD interval.
+            return _delegate(self._trcc_set_metrics_refresh, seconds,
+                              fallback_msg=f'Refresh interval: {seconds}s')
+        # Test / legacy path — persists only.
         self._settings.set_refresh_interval(seconds)
         self._events.publish('control_center.refresh', seconds)
         return OpResult(success=True, message=f'Refresh interval: {seconds}s')
 
     def set_gpu_device(self, gpu_key: str) -> OpResult:
+        if self._trcc_set_gpu_device is not None:
+            # Delegate — propagates ``enumerator.set_preferred_gpu(key)``
+            # so subsequent metrics polls read from the selected card.
+            # Previously every UI (GUI / CLI / API) had to remember to
+            # make that second call.
+            return _delegate(self._trcc_set_gpu_device, gpu_key,
+                              fallback_msg=f'GPU: {gpu_key}')
+        # Test / legacy path — persists only.
         self._settings.set_gpu_device(gpu_key)
         self._events.publish('control_center.gpu', gpu_key)
         return OpResult(success=True, message=f'GPU: {gpu_key}')

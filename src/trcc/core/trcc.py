@@ -109,6 +109,9 @@ class Trcc:
         self.control_center = ControlCenterCommands(
             platform, self.events, self._settings,
             set_temp_unit=self.set_temp_unit,
+            set_language=self.set_language,
+            set_metrics_refresh=self.set_metrics_refresh,
+            set_gpu_device=self.set_gpu_device,
         )
 
         # The OS produces the metrics loop — fourth factory in the chain
@@ -564,6 +567,37 @@ class Trcc:
         self.wake_metrics_loop()
         self.events.publish(Topic.CONTROL_CENTER_REFRESH, clamped)
         return {'success': True, 'message': f'Refresh interval set to {clamped}s'}
+
+    def set_language(self, lang: str) -> dict[str, Any]:
+        """Persist language + push to every LCD overlay (#141).
+
+        Canonical cross-UI entrypoint. Previously every UI (GUI / CLI /
+        API) had to remember to write Settings AND iterate the LCD list
+        to call ``overlay.set_lang`` — only the GUI did, leaving CLI and
+        API users with stale weekday abbreviations until restart.
+        """
+        normalized = lang or 'en'
+        self.settings.lang = normalized
+        for lcd in self._lcd_devices:
+            disp = getattr(lcd, '_display_svc', None)
+            if disp is not None and disp.overlay is not None:
+                disp.overlay.set_lang(normalized)
+        self.events.publish(Topic.CONTROL_CENTER_LANGUAGE, normalized)
+        return {'success': True, 'message': f'Language set to {normalized}'}
+
+    def set_gpu_device(self, gpu_key: str) -> dict[str, Any]:
+        """Persist preferred GPU + push to the live sensor enumerator.
+
+        Canonical cross-UI entrypoint. Previously every UI hand-rolled
+        ``settings.set_gpu_device(key)`` + ``enumerator.set_preferred_gpu
+        (key)`` — three independent places to forget the second call.
+        Now one call here propagates both.
+        """
+        self.settings.set_gpu_device(gpu_key)
+        if self._system_svc is not None:
+            self._system_svc.enumerator.set_preferred_gpu(gpu_key)
+        self.events.publish(Topic.CONTROL_CENTER_GPU, gpu_key)
+        return {'success': True, 'message': f'GPU set to {gpu_key}'}
 
     # ── Data / theme distribution (delegates to injected callables) ──
 
