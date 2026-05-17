@@ -2225,7 +2225,7 @@ class TestReportDiagnosticOutput:
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.diagnostics.os.listdir",
                    return_value=[]), \
-             patch("trcc.adapters.device.factory.HidProtocol",
+             patch("trcc.adapters.device.hid_protocol.HidProtocol",
                    return_value=mock_protocol), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
             report(detect_fn=lambda: [mock_dev])

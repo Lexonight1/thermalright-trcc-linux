@@ -1645,10 +1645,10 @@ class DebugReport:
         from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
-            HidProtocol,
             _has_usb_errno,
         )
         from trcc.adapters.device.hid import HidHandshakeInfo
+        from trcc.adapters.device.hid_protocol import HidProtocol
         from trcc.core.models import FBL_PROFILES, fbl_to_resolution, pm_to_fbl
 
         protocol = HidProtocol(vid=dev.vid, pid=dev.pid, device_type=dev.device_type)
@@ -1689,10 +1689,10 @@ class DebugReport:
         from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
-            LedProtocol,
             _has_usb_errno,
         )
         from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
+        from trcc.adapters.device.led_protocol import LedProtocol
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
         try:
@@ -1722,10 +1722,10 @@ class DebugReport:
             protocol.close()
 
     def _handshake_bulk(self, dev: Any, sec: _Section) -> None:
+        from trcc.adapters.device.bulk_protocol import BulkProtocol
         from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
-            BulkProtocol,
             _has_usb_errno,
         )
         from trcc.core.models import FBL_PROFILES
@@ -1762,9 +1762,9 @@ class DebugReport:
         from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
-            LyProtocol,
             _has_usb_errno,
         )
+        from trcc.adapters.device.ly_protocol import LyProtocol
         from trcc.core.models import FBL_PROFILES
 
         protocol = LyProtocol(vid=dev.vid, pid=dev.pid)

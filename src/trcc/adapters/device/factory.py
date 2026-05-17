@@ -729,15 +729,14 @@ class ProtocolInfo:
 # the protocol *name* carried on ``DeviceInfo``. Two factory layers, one
 # pattern — readers learn it once and apply it everywhere.
 #
-# Imports are at the bottom to avoid the circular dependency (each protocol
-# module imports DeviceProtocol/UsbProtocol/ProtocolInfo from this module).
+# Protocol classes are imported lazily inside each ``ProtocolFactory.make``
+# method.  Module-bottom imports would re-enter a still-loading protocol
+# module if any other code (e.g. ``adapters/infra/diagnostics``) imports a
+# protocol module *before* this factory module finishes loading — issue
+# #150's symptom (``cannot import name 'HidProtocol' from partially
+# initialized module``). Lazy imports inside ``make`` defer the resolution
+# to call-time, after every module has fully loaded.
 # =========================================================================
-
-from .bulk_protocol import BulkProtocol  # noqa: E402
-from .hid_protocol import HidProtocol  # noqa: E402
-from .led_protocol import LedProtocol  # noqa: E402
-from .ly_protocol import LyProtocol  # noqa: E402
-from .scsi_protocol import ScsiProtocol  # noqa: E402
 
 
 class ProtocolFactory(ABC):
@@ -780,6 +779,7 @@ class ScsiProtocolFactory(ProtocolFactory):
     """Build ``ScsiProtocol`` for ``info.protocol == 'scsi'``."""
 
     def make(self, info: 'DeviceInfo') -> DeviceProtocol:
+        from .scsi_protocol import ScsiProtocol
         return ScsiProtocol(info.path, info.vid, info.pid, usb_address=info.usb_address)
 
 
@@ -788,6 +788,7 @@ class HidProtocolFactory(ProtocolFactory):
     """Build ``HidProtocol`` (Type 2 or Type 3 chosen via ``info.device_type``)."""
 
     def make(self, info: 'DeviceInfo') -> DeviceProtocol:
+        from .hid_protocol import HidProtocol
         return HidProtocol(
             vid=info.vid, pid=info.pid,
             usb_address=info.usb_address,
@@ -800,6 +801,7 @@ class BulkProtocolFactory(ProtocolFactory):
     """Build ``BulkProtocol`` for raw-USB-bulk LCDs (USBLCDNew)."""
 
     def make(self, info: 'DeviceInfo') -> DeviceProtocol:
+        from .bulk_protocol import BulkProtocol
         return BulkProtocol(vid=info.vid, pid=info.pid, usb_address=info.usb_address)
 
 
@@ -808,6 +810,7 @@ class LyProtocolFactory(ProtocolFactory):
     """Build ``LyProtocol`` for LY USB-bulk LCDs (0416:5408 / 0416:5409)."""
 
     def make(self, info: 'DeviceInfo') -> DeviceProtocol:
+        from .ly_protocol import LyProtocol
         return LyProtocol(vid=info.vid, pid=info.pid, usb_address=info.usb_address)
 
 
@@ -816,6 +819,7 @@ class LedProtocolFactory(ProtocolFactory):
     """Build ``LedProtocol`` for RGB LED controllers (HID 64-byte reports)."""
 
     def make(self, info: 'DeviceInfo') -> DeviceProtocol:
+        from .led_protocol import LedProtocol
         return LedProtocol(vid=info.vid, pid=info.pid, usb_address=info.usb_address)
 
 

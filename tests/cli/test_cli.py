@@ -506,7 +506,7 @@ class TestHidDebug(unittest.TestCase):
         )
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = info
-        with patch('trcc.adapters.device.factory.HidProtocol', return_value=mock_protocol):
+        with patch('trcc.adapters.device.hid_protocol.HidProtocol', return_value=mock_protocol):
             result = device_debug(detect_fn=lambda: [dev])
         self.assertEqual(result, 0)
 

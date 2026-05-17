@@ -1834,7 +1834,7 @@ class TRCCApp(QMainWindow):
         import webbrowser
         webbrowser.open(
             'https://github.com/Lexonight1/thermalright-trcc-linux'
-            '/blob/main/doc/TROUBLESHOOTING.md')
+            '/blob/main/doc/GUIDE_TROUBLESHOOTING.md')
 
     def _on_capture_requested(self) -> None:
         from .screen_capture import ScreenCaptureOverlay

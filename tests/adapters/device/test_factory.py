@@ -44,9 +44,9 @@ class FakeDeviceInfo:
 from trcc.adapters.device.factory import (  # noqa: E402
     DeviceProtocol,
     DeviceProtocolFactory,
-    HidProtocol,
-    ScsiProtocol,
 )
+from trcc.adapters.device.hid_protocol import HidProtocol  # noqa: E402
+from trcc.adapters.device.scsi_protocol import ScsiProtocol  # noqa: E402
 
 # =========================================================================
 # Fixtures
@@ -918,11 +918,9 @@ class TestWindowsScsiProtocolHandshake:
 # at services/device.py:198, masking the failure as "Resolution discovery
 # failed".
 
-from trcc.adapters.device.factory import (  # noqa: E402
-    BulkProtocol,
-    LedProtocol,
-    LyProtocol,
-)
+from trcc.adapters.device.bulk_protocol import BulkProtocol  # noqa: E402
+from trcc.adapters.device.led_protocol import LedProtocol  # noqa: E402
+from trcc.adapters.device.ly_protocol import LyProtocol  # noqa: E402
 from trcc.core.models import (  # noqa: E402
     ALL_DEVICES,
     DetectedDevice,
