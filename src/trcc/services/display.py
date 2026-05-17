@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ..core.ports import Platform
 
 from ..core._logging import tagged_logger
-from ..core.models import SPLIT_MODE_RESOLUTIONS, DeviceInfo
+from ..core.models import SPLIT_MODE_RESOLUTIONS, TRACE_LEVEL, DeviceInfo
 from ..core.paths import (
     has_themes,
     masks_dir_name,
@@ -346,6 +346,13 @@ class DisplayService:
         if isinstance(dev := self.devices.selected, DeviceInfo):
             return dev.is_widescreen_split
         return self.lcd_size in SPLIT_MODE_RESOLUTIONS
+
+    @property
+    def panel_cutout(self) -> Any | None:
+        """Selected device's panel cutout (camera notch) — None when absent."""
+        if isinstance(dev := self.devices.selected, DeviceInfo):
+            return dev.panel_cutout
+        return None
 
     # -- Frame conversion --------------------------------------------------
 
@@ -734,8 +741,9 @@ class DisplayService:
 
     def send_current_image(self) -> bytes | None:
         """Prepare current image for LCD send. Returns encoded bytes or None."""
-        self.log.debug("send_current_image: has_image=%s overlay_enabled=%s",
-                  self.current_image is not None, self.overlay.enabled)
+        self.log.log(TRACE_LEVEL,
+                     "send_current_image: has_image=%s overlay_enabled=%s",
+                     self.current_image is not None, self.overlay.enabled)
         if not self.current_image:
             return None
         image = self.current_image

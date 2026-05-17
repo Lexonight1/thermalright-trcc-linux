@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from trcc.core.models import (
     DEVICE_TYPE_NAMES,
     PROTOCOL_NAMES,
+    TRACE_LEVEL,
     HandshakeResult,
     UsbAddress,
 )
@@ -263,14 +264,14 @@ class DeviceProtocol(ABC):
             return False
 
         if success:
-            log.debug("Frame sent: %s", label)
+            log.log(TRACE_LEVEL, "Frame sent: %s", label)
             if self._disconnect_failures:
                 log.info("%s: send recovered after %d disconnect failure(s)",
                          label, self._disconnect_failures)
                 self._disconnect_failures = 0
                 self._notify_state_changed("connected", True)
         else:
-            log.debug("Frame send returned False: %s", label)
+            log.log(TRACE_LEVEL, "Frame send returned False: %s", label)
         self._notify_send_complete(success)
         return success
 

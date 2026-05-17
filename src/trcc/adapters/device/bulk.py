@@ -21,6 +21,7 @@ import struct
 from trcc.core.models import (
     FRAME_WRITE_TIMEOUT_MS,
     HANDSHAKE_TIMEOUT_BULK_MS,
+    TRACE_LEVEL,
     HandshakeResult,
     fbl_to_resolution,
     pm_to_fbl,
@@ -209,8 +210,9 @@ class BulkDevice(BulkFrameDevice, FrameDevice):
                 if len(frame) % 512 == 0:
                     self._ep_out.write(b"", timeout=_WRITE_TIMEOUT_MS)
 
-                log.debug("Bulk frame sent: %dx%d, cmd=%d, %d bytes",
-                          self.width, self.height, cmd, data_size)
+                log.log(TRACE_LEVEL,
+                        "Bulk frame sent: %dx%d, cmd=%d, %d bytes",
+                        self.width, self.height, cmd, data_size)
                 return True
             except OSError:
                 if attempt == 0:

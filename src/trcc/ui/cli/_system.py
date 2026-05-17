@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from trcc._boot import trcc
 from trcc.core.platform import detect_install_method, is_root
 
 log = logging.getLogger(__name__)
@@ -15,8 +16,7 @@ log = logging.getLogger(__name__)
 
 def run_setup(auto_yes: bool = False) -> int:
     """Run interactive platform setup. OS handles everything."""
-    from trcc._boot import trcc as _trcc
-    return _trcc().os.run_setup(auto_yes=auto_yes)
+    return trcc().os.run_setup(auto_yes=auto_yes)
 
 
 # Backward-compat alias — _system.setup() call sites in cli/__init__.py
@@ -31,13 +31,12 @@ def _sudo_run(cmd):
 def show_info(builder=None, *, preview: bool = False, metric: str | None = None):
     """Show system metrics, optionally as ANSI terminal art."""
     try:
-        from trcc._boot import trcc as _trcc
         from trcc.services.system import format_metric
         from trcc.ui.cli import _ensure_system
 
         log.debug("show_info preview=%s metric=%s", preview, metric)
         _ensure_system(builder)
-        metrics = _trcc().os.metrics
+        metrics = trcc().os.metrics
 
         if preview:
             from trcc.services import ImageService

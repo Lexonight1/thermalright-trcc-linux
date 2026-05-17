@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .._logging import tagged_logger
+from ..models.constants import TRACE_LEVEL
 from .base import Device
 from .lcd_persistence import LCDPersistence
 from .lcd_theme_workflow import LCDThemeWorkflow
@@ -293,7 +294,7 @@ class LCDDevice(Device):
         ):
             new_frame = self._display_svc.render_overlay()
             if new_frame:
-                self.log.debug("tick: new overlay frame rendered")
+                self.log.log(TRACE_LEVEL, "tick: new overlay frame rendered")
                 self._last_overlay_frame = new_frame
         image = new_frame or getattr(self, '_last_overlay_frame', None) or self._display_svc.current_image
         if image:
@@ -468,7 +469,8 @@ class LCDDevice(Device):
 
     def send(self, image: Any) -> dict:
         """Encode and async-send image to LCD device."""
-        self.log.debug("send: image=%s", type(image).__name__ if image else None)
+        self.log.log(TRACE_LEVEL,
+                     "send: image=%s", type(image).__name__ if image else None)
         if not self._device_svc.selected:
             return {"success": False, "error": "No device selected"}
         w, h = self.lcd_size

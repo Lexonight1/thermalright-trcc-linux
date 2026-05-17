@@ -1,6 +1,13 @@
 """Domain constants — temperature conversion, display formats, locale maps."""
 from __future__ import annotations
 
+# Logging level for per-frame / per-tick lines.  Sits below DEBUG so the
+# default file handler stays quiet; ``-vv`` opens the gate. The named
+# binding ``logging.addLevelName(TRACE_LEVEL, 'TRACE')`` is set up by the
+# logging adapter at boot time.
+TRACE_LEVEL = 5
+
+
 # =============================================================================
 # Temperature conversion — single source of truth
 # =============================================================================
@@ -120,6 +127,7 @@ __all__ = [
     'LEGACY_TO_ISO',
     'LOCALE_TO_LANG',
     'TIME_FORMATS',
+    'TRACE_LEVEL',
     'WEEKDAYS',
     'WEEKDAYS_BY_LANG',
     'WEEKDAYS_CN',

@@ -8,8 +8,7 @@ from .constants import *  # noqa: F403
 from .device import *  # noqa: F403
 
 # Private names used by tests — explicit re-exports
-from .device import _LCD_BUTTON_IMAGE as _LCD_BUTTON_IMAGE
-from .device import _LED_BUTTON_IMAGE as _LED_BUTTON_IMAGE
+from .device import _VARIANT_REGISTRY as _VARIANT_REGISTRY
 from .led import *  # noqa: F403
 from .os import *  # noqa: F403
 from .overlay import *  # noqa: F403

@@ -6,6 +6,8 @@ import logging
 
 from fastapi import APIRouter
 
+from trcc._boot import trcc
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -24,9 +26,7 @@ def _get_system_svc():
 @router.get("/metrics")
 def get_metrics() -> dict:
     """All system metrics as JSON (CPU, GPU, memory, disk, network, fans)."""
-    from trcc._boot import trcc
-    m = trcc().os.metrics
-    return dataclasses.asdict(m)
+    return dataclasses.asdict(trcc().os.metrics)
 
 
 @router.get("/metrics/{category}")
@@ -51,9 +51,7 @@ def get_metrics_by_category(category: str) -> dict:
             detail=f"Unknown category '{category}'. Use: {', '.join(sorted(prefix_map.keys()))}",
         )
 
-    from trcc._boot import trcc
-    m = trcc().os.metrics
-    all_data = dataclasses.asdict(m)
+    all_data = dataclasses.asdict(trcc().os.metrics)
     return {k: v for k, v in all_data.items() if k.startswith(prefix)}
 
 

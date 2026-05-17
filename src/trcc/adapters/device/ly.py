@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from trcc.core.models import (
     FRAME_WRITE_TIMEOUT_MS,
     HANDSHAKE_TIMEOUT_LY_MS,
+    TRACE_LEVEL,
     HandshakeResult,
     fbl_to_resolution,
     pm_to_fbl,
@@ -232,8 +233,9 @@ class LyDevice(BulkFrameDevice, FrameDevice):
                 # Read ACK
                 self._ep_in.read(_HANDSHAKE_READ_SIZE, timeout=_READ_TIMEOUT_MS)
 
-                log.debug("LY frame sent: %dx%d, %d bytes, %d chunks",
-                          self.width, self.height, total_size, num_chunks)
+                log.log(TRACE_LEVEL,
+                        "LY frame sent: %dx%d, %d bytes, %d chunks",
+                        self.width, self.height, total_size, num_chunks)
                 return True
             except OSError:
                 if attempt == 0:

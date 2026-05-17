@@ -131,7 +131,7 @@ def find_lcd_devices(detect_fn=None) -> list[dict]:
                     if info and info.model_name:
                         model = info.model_name
                         led_style_id = info.style.style_id if info.style else None
-                        if (btn := get_button_image(info.pm, info.sub_type, is_led=True)):
+                        if (btn := get_button_image(dev.vid, dev.pid, info.pm, info.sub_type)):
                             button_image = btn
                 except Exception as e:
                     # Best-effort enrichment — probe_led_model returns None for

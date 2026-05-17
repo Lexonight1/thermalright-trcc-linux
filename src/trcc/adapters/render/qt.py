@@ -237,6 +237,9 @@ class QtRenderer(Renderer):
         transform.rotate(degrees)
         return surface.transformed(transform, Qt.TransformationMode.SmoothTransformation)
 
+    def flip_horizontal(self, surface: Any) -> Any:
+        return surface.mirrored(horizontal=True, vertical=False)
+
     # ── Device encoding ───────────────────────────────────────────
 
     def encode_rgb565(self, surface: Any, byte_order: str = '>') -> bytes:

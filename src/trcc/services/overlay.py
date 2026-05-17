@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core._logging import tagged_logger
-from ..core.models import HardwareMetrics
+from ..core.models import TRACE_LEVEL, HardwareMetrics
 from ..core.ports import Renderer
 from .system import SystemService
 
@@ -528,8 +528,9 @@ class OverlayService:
         Returns:
             Native surface (QImage).
         """
-        self.log.debug("overlay.render: has_bg=%s has_mask=%s enabled=%s",
-                  background is not None, self.theme_mask is not None, self.enabled)
+        self.log.log(TRACE_LEVEL,
+                     "overlay.render: has_bg=%s has_mask=%s enabled=%s",
+                     background is not None, self.theme_mask is not None, self.enabled)
         if background is not None and background is not self.background:
             self.set_background(background)
         m = metrics if metrics is not None else self._metrics

@@ -40,6 +40,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from trcc.core.models.constants import TRACE_LEVEL
+
 if TYPE_CHECKING:
     from trcc.core.ports import DoctorPlatformConfig, ReportPlatformConfig
 
@@ -50,6 +52,11 @@ log = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _DEFAULT_LOG_FILE = Path.home() / '.trcc' / 'trcc.log'
+
+# TRACE — finer than DEBUG, reserved for per-frame / per-tick hot-path lines
+# that would otherwise spam the file. Default file handler stays at DEBUG so
+# these are silent; opt-in via ``-vv`` (verbosity ≥ 2).
+logging.addLevelName(TRACE_LEVEL, 'TRACE')
 
 
 class DeviceLogger(logging.Logger):
@@ -121,18 +128,31 @@ class StandardLoggingConfigurator(TrccLoggingConfigurator):
     def configure(self, verbosity: int = 0) -> None:
         """Replace all root logger handlers with file + console.
 
-        Clears handlers set by the early __main__.py bootstrap so there
-        are no duplicates.
+        Verbosity → effective levels:
+          - 0:  file DEBUG (no TRACE),     console WARNING
+          - 1:  file DEBUG (no TRACE),     console INFO
+          - 2+: file TRACE (with frames),  console DEBUG
+
+        Per-frame / per-tick log lines emit at the TRACE level so the
+        default file output (verbosity ≤ 1) stays free of frame spam.
+        Pass ``-vv`` to enable per-frame diagnostics.
         """
         root = logging.getLogger()
         root.handlers.clear()
-        root.setLevel(logging.DEBUG)
+        root.setLevel(TRACE_LEVEL)
 
         self._log_file.parent.mkdir(parents=True, exist_ok=True)
         dev_filter = _DeviceDefaultFilter()
 
-        fh = logging.FileHandler(self._log_file, mode='w')
-        fh.setLevel(logging.DEBUG)
+        # Append, not truncate — preserves history across restarts so a
+        # freeze captured "in flight" can be diagnosed after the user
+        # exits and relaunches the app. Rotates on size below.
+        fh = logging.handlers.RotatingFileHandler(
+            self._log_file, mode='a',
+            maxBytes=10 * 1024 * 1024,  # 10 MiB
+            backupCount=2,              # trcc.log + trcc.log.1 + trcc.log.2
+        )
+        fh.setLevel(TRACE_LEVEL if verbosity >= 2 else logging.DEBUG)
         fh.setFormatter(logging.Formatter(self.FORMAT, datefmt=self.DATE_FMT))
         fh.addFilter(dev_filter)
         root.addHandler(fh)
@@ -1052,7 +1072,7 @@ def _debug_hid_lcd_interactive(dev: Any, test_frame: bool = False) -> None:
     print(f"  Resolution = {resolution[0]}x{resolution[1]}")
     print(f"  Encoding   = {'JPEG' if fbl in JPEG_MODE_FBLS else 'RGB565'}")
 
-    if (button := get_button_image(pm, sub)):
+    if (button := get_button_image(dev.vid, dev.pid, pm, sub)):
         print(f"  Button image = {button}")
     else:
         print(f"  Button image = unknown PM={pm} SUB={sub} (defaulting to CZTV)")

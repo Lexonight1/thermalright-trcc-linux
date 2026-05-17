@@ -1,10 +1,13 @@
 """Device models — entries, registries, detection, device info, button images."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from .protocol import _DEFAULT_PROFILE, BULK_RGB565_FBLS, DeviceProfile, get_profile
+
+log = logging.getLogger(__name__)
 
 # Default sidebar button images — matches C# fallback for unknown PM.
 LCD_DEFAULT_BUTTON = "A1CZTV"
@@ -223,6 +226,7 @@ class DeviceInfo:
     sub_byte: int = 0                           # SUB from handshake → encode rotation
     led_style_id: int | None = None             # LED style from probe
     led_style_sub: int = 0                      # LED style sub-variant
+    panel_cutout: PanelCutout | None = None     # Camera-notch / dead-area mask from variant registry
 
     # Runtime state
     connected: bool = True
@@ -295,6 +299,8 @@ class DeviceInfo:
         """
         addr_dict = d.get('usb_address')
         usb_address = UsbAddress(**addr_dict) if addr_dict else None
+        cutout_dict = d.get('panel_cutout')
+        panel_cutout = PanelCutout(**cutout_dict) if cutout_dict else None
         res = d.get('resolution', _DEFAULT_RESOLUTION)
         return cls(
             name=d.get('name', ''),
@@ -316,6 +322,7 @@ class DeviceInfo:
             sub_byte=d.get('sub_byte', 0),
             led_style_id=d.get('led_style_id'),
             led_style_sub=d.get('led_style_sub', 0),
+            panel_cutout=panel_cutout,
             connected=d.get('connected', True),
             brightness=d.get('brightness', _DEFAULT_BRIGHTNESS),
             rotation=d.get('rotation', _DEFAULT_ROTATION),
@@ -434,13 +441,26 @@ class DeviceInfo:
         self.pm_byte = getattr(result, 'pm_byte', 0)
         self.sub_byte = getattr(result, 'sub_byte', 0)
 
-        # Resolve sidebar identity from the (PM, SUB) fingerprint. Falls back
-        # to FBL when PM=0 (some bulk devices). Phase B will also use the
-        # full VariantOverride to populate panel_cutout + display_name.
+        # Resolve sidebar identity + panel_cutout from the (VID, PID, PM, SUB)
+        # fingerprint. VID/PID scopes the lookup to a single chipset family,
+        # so collisions like Bulk PM=64 SUB=3 (Levita) versus an unrelated
+        # HID product reporting the same bytes can't cross-contaminate.
         if (pm := self.effective_pm):
-            override = get_variant_override(pm, self.sub_byte)
-            if override is not None and override.button_image:
-                self.button_image = override.button_image
+            override = get_variant_override(self.vid, self.pid, pm, self.sub_byte)
+            if override is None:
+                log.debug("variant lookup miss: vid=%04x pid=%04x pm=%d sub=%d "
+                          "→ keeping button=%r panel_cutout=None",
+                          self.vid, self.pid, pm, self.sub_byte, self.button_image)
+            else:
+                log.info("variant lookup hit: vid=%04x pid=%04x pm=%d sub=%d "
+                         "→ button=%r panel_cutout=%s",
+                         self.vid, self.pid, pm, self.sub_byte,
+                         override.button_image or self.button_image,
+                         override.panel_cutout)
+                if override.button_image:
+                    self.button_image = override.button_image
+                if override.panel_cutout is not None:
+                    self.panel_cutout = override.panel_cutout
 
     def enrich_from_led_probe(self, probe: Any) -> None:
         """Apply an ``LedHandshakeInfo`` to this DeviceInfo (LED path).
@@ -463,8 +483,8 @@ class DeviceInfo:
         self.model = probe.style.model_name
 
         if self.pm_byte:
-            override = get_variant_override(self.pm_byte, self.sub_byte,
-                                             is_led=True)
+            override = get_variant_override(self.vid, self.pid,
+                                             self.pm_byte, self.sub_byte)
             if override is not None and override.button_image:
                 self.button_image = override.button_image
 
@@ -478,26 +498,32 @@ IMPL_NAMES: dict[str, str] = {
 
 
 # =============================================================================
-# Device Button Image Map (from UCDevice.cs ADDUserButton)
+# Variant override registry — keyed (VID, PID) → PM → SUB | None → VariantOverride.
+#
+# Sourced from TRCC.decompiled.cs::ADDUserButton, where the dispatch is
+# (deviceClass, pm, sub) with deviceClass derived from the USB enumerator:
+#
+#   case 1   → LED         (0x0416, 0x8001)
+#   case 2   → HID T2 LCD  (0x0416, 0x5302)
+#   case 3,4 → HID T3 LCD  (0x0418, 0x5303 / 0x5304)  — CZTV fallback only
+#   case 257 → Bulk LCD    (0x87AD, 0x70DB)            — USBLCDNEW family
+#
+# VID/PID scopes the (PM, SUB) lookup to a single chipset family, so a PM
+# value reused across protocol families (e.g. PM=53 in both HID T2 and
+# Bulk, or PM=64 SUB=3 in Bulk for Levita/LM30) resolves to the correct
+# product for the actual hardware that handshook.
 # =============================================================================
-
-# ──────────────────────────────────────────────────────────────────────────
-# Variant override registry — keyed by (pm, sub) from handshake.
-#
-# Phase B.0: each entry carries `button_image`. Phase B fills `panel_cutout`
-# and `display_name` on rows where the panel has a notch or a distinct
-# physical product variant (e.g. Levita vs GrandVision 360 sharing 87ad:70db).
-#
-# These dicts replaced earlier `dict[int, dict[int|None, str]]` shapes —
-# same nesting, richer leaf value (VariantOverride).
-# ──────────────────────────────────────────────────────────────────────────
 
 def _v(button_image: str) -> VariantOverride:
     """Shorthand for VariantOverride rows that carry only a button image."""
     return VariantOverride(button_image=button_image)
 
 
-_LCD_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
+# Bulk USBLCDNEW family (C# case 257) — the largest PM table.  Bulk
+# (0x87AD:0x70DB) is the canonical home; SCSI thermalright VID/PIDs alias
+# to this same dict because the C# ADDUserButton dispatcher routes SCSI
+# handshakes through case 257 too, sharing the PM lookup.
+_BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     1:   {0: _v('A1GRAND VISION'), 1: _v('A1GRAND VISION'),
           48: _v('A1LM22'), 49: _v('A1LF14'), None: _v('A1GRAND VISION')},
     3:   {None: _v('A1CORE VISION')},
@@ -518,18 +544,20 @@ _LCD_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
     17:  {1: _v('A1PC1'), 2: _v('A1LC9'), 5: _v('A1PC1'), None: _v('A1PC1')},
     32:  {0: _v('A1ELITE VISION'), 1: _v('A1FROZEN WARFRAME PRO'),
           None: _v('A1ELITE VISION')},
-    36:  {None: _v('A1AS120 VISION')},
-    49:  {None: _v('A1FROZEN WARFRAME')},
     50:  {None: _v('A1FROZEN WARFRAME')},
     51:  {None: _v('A1FROZEN WARFRAME')},
-    52:  {None: _v('A1BA120 VISION')},
     53:  {1: _v('A1LF21'), 2: _v('A1LF22'), None: _v('A1LF20')},
-    54:  {None: _v('A1LC5')},
-    58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
     63:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
           3: _v('A1LM30')},
+    # PM=64 SUB=3: Levita (new product) handshakes identically to LM30 (older
+    # product) — same chipset, same wire bytes. C# v2.1.4 doesn't have a
+    # Levita case yet so it labels the button "A1LM30"; we keep that label
+    # and attach a right-side panel_cutout because Levita is the variant
+    # users enable split_mode on (LM30's panel isn't 1600x720 widescreen
+    # with a notch, so its owners won't toggle split).
     64:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
-          3: _v('A1LM30')},
+          3: VariantOverride(button_image='A1LM30',
+                             panel_cutout=PanelCutout(x=1520, y=0, w=80, h=720))},
     65:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'), 3: _v('A1LD7'),
           4: _v('A1LD10'), 5: _v('A1LD7')},
     66:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'),
@@ -543,25 +571,49 @@ _LCD_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
     129: {None: _v('A1GRAND VISION')},
 }
 
-_LED_BUTTON_IMAGE: dict[int, dict[int | None, VariantOverride]] = {
-    1:   {None: _v('A1FROZEN HORIZON PRO')},
-    2:   {None: _v('A1FROZEN MAGIC PRO')},
-    3:   {None: _v('A1AX120 DIGITAL')},
-    16:  {None: _v('A1PA120 DIGITAL')},
-    23:  {None: _v('A1RK120 DIGITAL')},
-    32:  {None: _v('A1AK120 Digital')},
-    48:  {None: _v('A1LF8')},
-    49:  {None: _v('A1LF10')},
-    80:  {None: _v('A1LF12')},
-    96:  {None: _v('A1LF10')},
-    112: {None: _v('A1LC2')},
-    128: {None: _v('A1LC1')},
-    129: {None: _v('A1LF11')},
-    144: {None: _v('A1LF15')},
-    160: {None: _v('A1LF13')},
-    176: {None: _v('A1LF25')},
-    208: {None: _v('A1CZ1')},
-    **{pm: {None: _v('A1PA120 DIGITAL')} for pm in range(17, 32) if pm != 23},
+
+_VARIANT_REGISTRY: dict[tuple[int, int], dict[int, dict[int | None, VariantOverride]]] = {
+    # ── LED (case 1) — 0x0416:0x8001 ─────────────────────────────────────
+    (0x0416, 0x8001): {
+        1:   {None: _v('A1FROZEN HORIZON PRO')},
+        2:   {None: _v('A1FROZEN MAGIC PRO')},
+        3:   {None: _v('A1AX120 DIGITAL')},
+        16:  {None: _v('A1PA120 DIGITAL')},
+        23:  {None: _v('A1RK120 DIGITAL')},
+        32:  {None: _v('A1AK120 Digital')},
+        48:  {None: _v('A1LF8')},
+        49:  {None: _v('A1LF10')},
+        80:  {None: _v('A1LF12')},
+        96:  {None: _v('A1LF10')},
+        112: {None: _v('A1LC2')},
+        128: {None: _v('A1LC1')},
+        129: {None: _v('A1LF11')},
+        144: {None: _v('A1LF15')},
+        160: {None: _v('A1LF13')},
+        176: {None: _v('A1LF25')},
+        208: {None: _v('A1CZ1')},
+        **{pm: {None: _v('A1PA120 DIGITAL')} for pm in range(17, 32) if pm != 23},
+    },
+    # ── HID T2 LCD (case 2) — 0x0416:0x5302 ──────────────────────────────
+    (0x0416, 0x5302): {
+        36:  {None: _v('A1AS120 VISION')},
+        49:  {None: _v('A1FROZEN WARFRAME')},
+        50:  {None: _v('A1FROZEN WARFRAME')},
+        51:  {None: _v('A1FROZEN WARFRAME')},
+        52:  {None: _v('A1BA120 VISION')},
+        53:  {None: _v('A1LF20')},
+        54:  {None: _v('A1LC5')},
+        58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
+        100: {None: _v('A1FROZEN WARFRAME PRO')},
+        101: {None: _v('A1ELITE VISION')},
+        128: {None: _v('A1LM24')},
+    },
+    # ── Bulk USBLCDNEW (case 257) + SCSI thermalright (case 257 in C#) ──
+    # All share the _BULK_VARIANTS PM table — same dispatcher branch in C#.
+    (0x87AD, 0x70DB): _BULK_VARIANTS,
+    (0x87CD, 0x70DB): _BULK_VARIANTS,
+    (0x0402, 0x3922): _BULK_VARIANTS,
+    (0x0416, 0x5406): _BULK_VARIANTS,
 }
 
 
@@ -577,28 +629,25 @@ def _resolve_variant(table: dict[int, dict[int | None, VariantOverride]],
             return sub_map.get(None)
 
 
-def get_variant_override(key: int, sub: int = 0, *,
-                          is_led: bool = False) -> VariantOverride | None:
-    """Resolve full VariantOverride record for a (PM, SUB) handshake fingerprint.
+def get_variant_override(vid: int, pid: int, key: int,
+                          sub: int = 0) -> VariantOverride | None:
+    """Resolve full VariantOverride record for a (VID, PID, PM, SUB) handshake fingerprint.
 
     Args:
-        key: PM byte (HID/Bulk) or FBL fallback when PM=0.
-        sub: SUB byte (HID/Bulk).
-        is_led: True for LED devices, False for LCD.
+        vid: USB Vendor ID — scopes the lookup to one chipset family.
+        pid: USB Product ID — scopes within the vendor.
+        key: PM byte from handshake (or FBL fallback when PM=0).
+        sub: SUB byte from handshake.
     """
-    return _resolve_variant(
-        _LED_BUTTON_IMAGE if is_led else _LCD_BUTTON_IMAGE, key, sub)
+    family = _VARIANT_REGISTRY.get((vid, pid))
+    if family is None:
+        return None
+    return _resolve_variant(family, key, sub)
 
 
-def get_button_image(key: int, sub: int = 0, *, is_led: bool = False) -> str | None:
-    """Resolve device button image from PM+SUB (HID) or VID+PID (SCSI).
-
-    Args:
-        key: PM byte (HID) or VID (SCSI).
-        sub: SUB byte (HID) or PID (SCSI).
-        is_led: True for LED devices (C# case 1), False for LCD (cases 2-4, 257).
-    """
-    override = get_variant_override(key, sub, is_led=is_led)
+def get_button_image(vid: int, pid: int, key: int, sub: int = 0) -> str | None:
+    """Resolve device button image from (VID, PID, PM, SUB)."""
+    override = get_variant_override(vid, pid, key, sub)
     return override.button_image if override is not None else None
 
 

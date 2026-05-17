@@ -19,7 +19,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from ..core.models import SPLIT_OVERLAY_MAP
+from ..core.models import SPLIT_OVERLAY_MAP, TRACE_LEVEL
 from ..core.paths import RESOURCES_DIR
 from .image import ImageService
 
@@ -36,8 +36,10 @@ class RenderPipeline:
 
     def __init__(self, svc: DisplayService) -> None:
         self._svc = svc
-        # Pre-loaded split-overlay surfaces, keyed by (style, rotation).
-        self._split_cache: dict[tuple[int, int], Any] = {}
+        # Pre-loaded split-overlay surfaces, keyed by (style, rotation, mirrored).
+        # ``mirrored=True`` entries cover right-side cutout panels (Levita);
+        # left-side panels (GrandVision / WonderVision) use ``mirrored=False``.
+        self._split_cache: dict[tuple[int, int, bool], Any] = {}
 
     # ── Top-level entry points ──────────────────────────────────────────────
 
@@ -45,17 +47,17 @@ class RenderPipeline:
         """Render overlay on current image, apply brightness + preview rotation."""
         s = self._svc
         if not s.current_image:
-            s.log.debug("_render_and_process: no current_image")
+            s.log.log(TRACE_LEVEL, "_render_and_process: no current_image")
             return None
         image = s.current_image
-        s.log.debug(
-            "_render_and_process: current_image type=%s overlay_enabled=%s",
-            type(image).__name__, s.overlay.enabled,
-        )
+        s.log.log(TRACE_LEVEL,
+                  "_render_and_process: current_image type=%s overlay_enabled=%s",
+                  type(image).__name__, s.overlay.enabled)
         if s.overlay.enabled:
             image = s.overlay.render(image)
-            s.log.debug("_render_and_process: after overlay type=%s",
-                        type(image).__name__)
+            s.log.log(TRACE_LEVEL,
+                      "_render_and_process: after overlay type=%s",
+                      type(image).__name__)
         return self.apply_for_preview(self.apply_adjustments(image))
 
     def render_overlay_force(self) -> Any | None:
@@ -63,7 +65,8 @@ class RenderPipeline:
         s = self._svc
         bg = s._clean_background or s.current_image
         if not bg:
-            s.log.debug("render_overlay: no background, creating black bg")
+            s.log.log(TRACE_LEVEL,
+                      "render_overlay: no background, creating black bg")
             s._create_black_background()
             bg = s.current_image
         image = s.overlay.render(bg, force=True)
@@ -80,8 +83,9 @@ class RenderPipeline:
         ``apply_for_preview`` to add a single user-rotation for display.
         """
         s = self._svc
-        s.log.debug("_apply_adjustments: brightness=%d split_mode=%d",
-                    s.brightness, s.split_mode)
+        s.log.log(TRACE_LEVEL,
+                  "_apply_adjustments: brightness=%d split_mode=%d",
+                  s.brightness, s.split_mode)
         if s.brightness >= 100 and not s.split_mode:
             return image
         if s.brightness < 100:
@@ -101,19 +105,28 @@ class RenderPipeline:
         return image
 
     def apply_split_overlay(self, image: Any) -> Any:
-        """Composite Dynamic Island overlay for widescreen split mode."""
+        """Composite Dynamic Island overlay for widescreen split mode.
+
+        Mirrors the asset horizontally for devices whose camera-notch cutout
+        sits on the right side of the panel (Levita, ``87AD:70DB`` PM=64
+        SUB=3). Authored PNGs cover the left side; the renderer applies the
+        side decision from ``DeviceInfo.panel_cutout``.
+        """
         s = self._svc
         if not s.split_mode or not s.is_widescreen_split:
             return image
 
-        key = (s.split_mode, s.rotation)
-        if not (asset_name := SPLIT_OVERLAY_MAP.get(key)):
+        if not (asset_name := SPLIT_OVERLAY_MAP.get((s.split_mode, s.rotation))):
             return image
 
-        overlay = self._split_cache.get(key)
+        mirrored = self._cutout_is_right_side()
+        cache_key = (s.split_mode, s.rotation, mirrored)
+        overlay = self._split_cache.get(cache_key)
         if overlay is None:
             overlay = self._load_split_asset(asset_name)
-            self._split_cache[key] = overlay
+            if overlay is not None and mirrored:
+                overlay = ImageService.renderer().flip_horizontal(overlay)
+            self._split_cache[cache_key] = overlay
 
         if overlay is None:
             return image
@@ -130,6 +143,14 @@ class RenderPipeline:
         except (OSError, ValueError, RuntimeError) as e:
             s.log.error("Split overlay composite failed: %s", e)
             return image
+
+    def _cutout_is_right_side(self) -> bool:
+        """True when the active device's panel cutout sits past the canvas midline."""
+        cutout = self._svc.panel_cutout
+        if cutout is None:
+            return False
+        w, _ = self._svc.lcd_size
+        return cutout.x + cutout.w // 2 > w // 2
 
     @staticmethod
     def _load_split_asset(asset_name: str) -> Any | None:

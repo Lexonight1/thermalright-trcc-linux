@@ -109,6 +109,10 @@ class Renderer(ABC):
     def apply_rotation(self, surface: Any, degrees: int) -> Any:
         """Rotate surface by 0/90/180/270 degrees."""
 
+    @abstractmethod
+    def flip_horizontal(self, surface: Any) -> Any:
+        """Mirror surface along its vertical axis (left ↔ right)."""
+
     # ── Device encoding ───────────────────────────────────────────
 
     @abstractmethod

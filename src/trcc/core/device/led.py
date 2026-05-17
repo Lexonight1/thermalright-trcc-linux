@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from .._logging import tagged_logger
 from ..models import LEDMode
+from ..models.constants import TRACE_LEVEL
 from .base import Device
 
 if TYPE_CHECKING:
@@ -136,14 +137,14 @@ class LEDDevice(Device):
     def tick(self) -> dict | None:
         """Advance one LED animation frame, send to hardware, return colors."""
         if not self._led_svc:
-            log.debug("tick: no LED service — skipping")
+            log.log(TRACE_LEVEL, "tick: no LED service — skipping")
             return None
         colors = self._led_svc.tick()
         display_colors = self._led_svc.apply_mask(colors)
         if self._led_svc.has_protocol:
             ok = self._led_svc.send_colors(colors)
             if not ok:
-                log.debug("tick: send_colors skipped (concurrent)")
+                log.log(TRACE_LEVEL, "tick: send_colors skipped (concurrent)")
         return {"colors": colors, "display_colors": display_colors}
 
     # ══════════════════════════════════════════════════════════════════════
