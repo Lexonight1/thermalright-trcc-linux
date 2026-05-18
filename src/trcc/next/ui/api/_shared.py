@@ -10,12 +10,20 @@ from ...core.results import (
     ConnectResult,
     DisconnectResult,
     DiscoverResult,
+    FitModeResult,
+    GpuDeviceResult,
+    LanguageResult,
     LedColorsResult,
     OrientationResult,
+    OverlayResult,
+    RefreshIntervalResult,
     RenderResult,
     Result,
+    SendResult,
     SensorsResult,
     SetupResult,
+    SplitModeResult,
+    TempUnitResult,
     ThemeResult,
 )
 from .schemas import (
@@ -23,14 +31,22 @@ from .schemas import (
     ConnectResponse,
     DisconnectResponse,
     DiscoverResponse,
+    FitModeResponse,
+    GpuDeviceResponse,
     HandshakeSchema,
+    LanguageResponse,
     LedColorsResponse,
     OrientationResponse,
+    OverlayResponse,
     ProductSchema,
+    RefreshIntervalResponse,
     RenderResponse,
+    SendResponse,
     SensorReadingSchema,
     SensorsResponse,
     SetupResponse,
+    SplitModeResponse,
+    TempUnitResponse,
     ThemeResponse,
 )
 
@@ -122,6 +138,35 @@ def to_render_response(result: RenderResult) -> RenderResponse:
     )
 
 
+def to_send_response(result: SendResult) -> SendResponse:
+    return SendResponse(
+        ok=result.ok, message=result.message,
+        key=result.key,
+        bytes_sent=result.bytes_sent,
+    )
+
+
+def to_fit_mode_response(result: FitModeResult) -> FitModeResponse:
+    return FitModeResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, mode=result.mode,
+    )
+
+
+def to_overlay_response(result: OverlayResult) -> OverlayResponse:
+    return OverlayResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, enabled=result.enabled,
+    )
+
+
+def to_split_mode_response(result: SplitModeResult) -> SplitModeResponse:
+    return SplitModeResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, mode=result.mode,
+    )
+
+
 def to_led_response(result: LedColorsResult) -> LedColorsResponse:
     return LedColorsResponse(
         ok=result.ok, message=result.message,
@@ -141,6 +186,30 @@ def to_setup_response(result: SetupResult) -> SetupResponse:
         ok=result.ok, message=result.message,
         exit_code=result.exit_code,
         warnings=result.warnings,
+    )
+
+
+def to_temp_unit_response(result: TempUnitResult) -> TempUnitResponse:
+    return TempUnitResponse(
+        ok=result.ok, message=result.message, unit=result.unit,
+    )
+
+
+def to_language_response(result: LanguageResult) -> LanguageResponse:
+    return LanguageResponse(
+        ok=result.ok, message=result.message, language=result.language,
+    )
+
+
+def to_gpu_device_response(result: GpuDeviceResult) -> GpuDeviceResponse:
+    return GpuDeviceResponse(
+        ok=result.ok, message=result.message, gpu_key=result.gpu_key,
+    )
+
+
+def to_refresh_interval_response(result: RefreshIntervalResult) -> RefreshIntervalResponse:
+    return RefreshIntervalResponse(
+        ok=result.ok, message=result.message, seconds=result.seconds,
     )
 
 

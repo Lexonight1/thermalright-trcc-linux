@@ -74,6 +74,26 @@ class RenderResponse(ResultBase):
     theme_name: str = ""
 
 
+class SendResponse(ResultBase):
+    key: str = ""
+    bytes_sent: int = 0
+
+
+class FitModeResponse(ResultBase):
+    key: str = ""
+    mode: str = "width"
+
+
+class OverlayResponse(ResultBase):
+    key: str = ""
+    enabled: bool = True
+
+
+class SplitModeResponse(ResultBase):
+    key: str = ""
+    mode: int = 0
+
+
 class LedColorsResponse(ResultBase):
     key: str = ""
     colors: list[tuple[int, int, int]] = []
@@ -94,6 +114,25 @@ class SensorsResponse(ResultBase):
 class SetupResponse(ResultBase):
     exit_code: int = 0
     warnings: list[str] = []
+
+
+# ── Control-center settings ──────────────────────────────────────────
+
+
+class TempUnitResponse(ResultBase):
+    unit: str = "C"
+
+
+class LanguageResponse(ResultBase):
+    language: str = "en"
+
+
+class GpuDeviceResponse(ResultBase):
+    gpu_key: str | None = None
+
+
+class RefreshIntervalResponse(ResultBase):
+    seconds: float = 2.0
 
 
 # =========================================================================
@@ -117,3 +156,41 @@ class LedColorsRequest(BaseModel):
     colors: list[tuple[int, int, int]] = Field(..., min_length=1)
     global_on: bool = True
     brightness: int = Field(100, ge=0, le=100)
+
+
+class ColorRequest(BaseModel):
+    """Solid-color frame request — three 0-255 channels."""
+    r: int = Field(..., ge=0, le=255)
+    g: int = Field(..., ge=0, le=255)
+    b: int = Field(..., ge=0, le=255)
+
+
+class FitModeRequest(BaseModel):
+    mode: str = Field(..., pattern="^(width|height|stretch)$")
+
+
+class OverlayRequest(BaseModel):
+    enabled: bool
+
+
+class SplitModeRequest(BaseModel):
+    mode: int = Field(..., ge=0, le=3)
+
+
+# ── Control-center settings ──────────────────────────────────────────
+
+
+class TempUnitRequest(BaseModel):
+    unit: str = Field(..., pattern="^[CF]$")
+
+
+class LanguageRequest(BaseModel):
+    language: str = Field(..., min_length=1)
+
+
+class GpuDeviceRequest(BaseModel):
+    gpu_key: str = Field("", description="Sensor key, e.g. 'nvidia:0'. '' = auto.")
+
+
+class RefreshIntervalRequest(BaseModel):
+    seconds: float = Field(..., ge=0.1, le=60.0)

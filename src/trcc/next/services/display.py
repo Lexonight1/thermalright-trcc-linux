@@ -24,8 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..core.models import FitMode, ProductInfo, RawFrame, Theme, Wire
+from ..core.models import FitMode, ProductInfo, RawFrame, Theme
 from ..core.ports import Renderer
+from ..core.protocol import DeviceProfile, get_profile
 from .media import MediaService
 from .overlay import OverlayService
 from .settings import Settings
@@ -33,13 +34,6 @@ from .theme import ThemeService
 
 log = logging.getLogger(__name__)
 
-
-_ENCODING_BY_WIRE: dict[Wire, str] = {
-    Wire.SCSI: "rgb565",
-    Wire.HID: "rgb565",
-    Wire.BULK: "rgb565",
-    Wire.LY: "rgb565",
-}
 
 _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
@@ -93,10 +87,29 @@ class DisplayService:
         info: ProductInfo,
         theme: Theme,
         sensors: dict[str, float],
+        *,
+        profile: DeviceProfile | None = None,
     ) -> bytes:
-        """One pass — uses the per-device cache; only rebuilds what changed."""
+        """One pass — uses the per-device cache; only rebuilds what changed.
+
+        ``profile`` is the handshake-derived `DeviceProfile` from the
+        connected Device (HidLcd / ScsiLcd / …). When provided, it drives:
+            * the render canvas size (``profile.resolution`` — landscape
+              for portrait panels, so layers compose in their logical
+              orientation),
+            * device-side rotation before encode (``profile.rotate=True``
+              transposes landscape → portrait buffer),
+            * encoding choice (``profile.jpeg`` vs RGB565).
+
+        When ``profile`` is None (LED, pre-handshake, callers that don't
+        thread it through yet), behavior matches the pre-profile path:
+        canvas = ``info.native_resolution``, no device rotation, RGB565.
+        """
+        resolved_profile = self._resolve_profile(info, profile)
+        base_size = resolved_profile.resolution
+
         s = self._settings.for_device(info.key)
-        visual_size = self._visual_size(info.native_resolution, s.orientation)
+        visual_size = self._visual_size(base_size, s.orientation)
 
         scene = self._scenes.get(info.key)
         bg_key = self._bg_mask_key(info, theme, visual_size)
@@ -124,11 +137,51 @@ class DisplayService:
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
 
-        # Rotate content back to native buffer arrangement
+        # User-orientation rotation
         if s.orientation:
             surface = self._r.rotate(surface, 360 - s.orientation)
 
-        return self._encode_for_wire(surface, info)
+        # Device-side rotation: portrait panels render content in landscape
+        # for composition, then rotate 90° to match the device's portrait
+        # buffer arrangement before encoding. Matches the C# pipeline
+        # ("RGB565-LE rotated" in legacy report output).
+        if resolved_profile.rotate:
+            surface = self._r.rotate(surface, 90)
+
+        return self._encode_for_wire(surface, resolved_profile)
+
+    def build_solid_color_frame(
+        self,
+        *,
+        info: ProductInfo,
+        color: tuple[int, int, int],
+        profile: DeviceProfile | None = None,
+    ) -> bytes:
+        """Build a frame of a single solid color, ready for ``Device.send``.
+
+        Bypasses the theme/overlay scene cache — just creates a uniform
+        surface at the profile's resolution, applies device rotation if
+        the profile demands it, and encodes for the wire. Used by the
+        ``SendColor`` Command + diagnostic CLI ``display color`` path.
+
+        Apply brightness from per-device settings too, so a user who's
+        dimmed their display still sees a dimmed color test instead of
+        a bright wash.
+        """
+        resolved = self._resolve_profile(info, profile)
+        w, h = resolved.resolution
+        # Surface is opaque RGB; alpha not needed for solid fill.
+        surface = self._r.create_surface(w, h, color=(*color, 255))
+
+        s = self._settings.for_device(info.key)
+        if s.brightness != 100:
+            surface = self._r.apply_brightness(surface, s.brightness)
+
+        # Device-side rotation transposes the buffer for portrait panels.
+        if resolved.rotate:
+            surface = self._r.rotate(surface, 90)
+
+        return self._encode_for_wire(surface, resolved)
 
     def invalidate(self, key: str) -> None:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
@@ -247,13 +300,30 @@ class DisplayService:
     # ── Helpers ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _visual_size(native: tuple[int, int], orientation: int) -> tuple[int, int]:
-        w, h = native
+    def _visual_size(base: tuple[int, int], orientation: int) -> tuple[int, int]:
+        """Render canvas dimensions = ``base`` swapped for 90/270 orientation."""
+        w, h = base
         return (h, w) if orientation in (90, 270) else (w, h)
 
-    def _encode_for_wire(self, surface: Any, info: ProductInfo) -> bytes:
-        encoding = _ENCODING_BY_WIRE.get(info.wire, "rgb565")
-        if encoding == "jpeg":
+    @staticmethod
+    def _resolve_profile(
+        info: ProductInfo, override: DeviceProfile | None,
+    ) -> DeviceProfile:
+        """Pick the profile to drive frame building.
+
+        Preference: caller-supplied (from a live handshake) → registry
+        FBL lookup → synthesized fallback matching the pre-profile
+        behavior (native_resolution, RGB565, no rotation).
+        """
+        if override is not None:
+            return override
+        if info.fbl is not None:
+            return get_profile(info.fbl)
+        w, h = info.native_resolution
+        return DeviceProfile(width=w, height=h, jpeg=False, rotate=False)
+
+    def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:
+        if profile.jpeg:
             return self._r.encode_jpeg(surface)
         return self._r.encode_rgb565(surface)
 

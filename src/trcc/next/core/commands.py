@@ -29,11 +29,19 @@ from .events import (
     DeviceDisconnected,
     DeviceDiscovered,
     ErrorOccurred,
+    FitModeChanged,
     FrameSent,
+    GpuDeviceChanged,
+    LanguageChanged,
     LedColorsChanged,
     OrientationChanged,
+    OverlayChanged,
+    RefreshIntervalChanged,
+    SplitModeChanged,
+    TempUnitChanged,
     ThemeLoaded,
 )
+from .models import FitMode
 from .registry import find_product
 from .results import (
     AutostartResult,
@@ -41,14 +49,21 @@ from .results import (
     ConnectResult,
     DisconnectResult,
     DiscoverResult,
+    FitModeResult,
+    GpuDeviceResult,
+    LanguageResult,
     LedColorsResult,
     OrientationResult,
+    OverlayResult,
     PlatformInfoResult,
+    RefreshIntervalResult,
     RenderResult,
     Result,
     SendResult,
     SensorsResult,
     SetupResult,
+    SplitModeResult,
+    TempUnitResult,
     ThemeResult,
 )
 
@@ -201,6 +216,63 @@ class SendFrame(Command[SendResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class SendColor(Command[SendResult]):
+    """Push a solid-color frame to a connected LCD device.
+
+    Bypasses the theme/render pipeline — useful as a primary diagnostic
+    (``trcc-next display color 0402:3922 ff0000`` turns the screen red)
+    and as the smallest path that exercises every link in the wire chain:
+    handshake-derived profile → DisplayService.build_solid_color_frame →
+    Device.send.
+    """
+    key: str
+    r: int
+    g: int
+    b: int
+
+    def execute(self, app: App) -> SendResult:
+        for label, value in (("r", self.r), ("g", self.g), ("b", self.b)):
+            if not 0 <= value <= 255:
+                return SendResult(
+                    ok=False, key=self.key, bytes_sent=0,
+                    message=f"{label} out of range (0-255): {value}",
+                )
+
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=str(e))
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+
+        try:
+            frame = app.display.build_solid_color_frame(
+                info=device.info,
+                color=(self.r, self.g, self.b),
+                profile=device.profile,
+            )
+            ok = device.send(frame)
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="transport", key=self.key,
+            ))
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=str(e))
+
+        bytes_sent = len(frame) if ok else 0
+        if ok:
+            app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
+        return SendResult(
+            ok=ok, key=self.key, bytes_sent=bytes_sent,
+            message=(f"Sent {bytes_sent} bytes (#{self.r:02x}{self.g:02x}{self.b:02x})"
+                     if ok else "Send returned False"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RenderAndSend(Command[RenderResult]):
     """Render the device's active theme with live sensors, push to the wire.
 
@@ -234,6 +306,7 @@ class RenderAndSend(Command[RenderResult]):
         try:
             frame = app.display.build_frame(
                 info=device.info, theme=theme, sensors=sensors,
+                profile=device.profile,
             )
             ok = device.send(frame)
         except TransportError as e:
@@ -298,6 +371,7 @@ class LoadTheme(Command[ThemeResult]):
         try:
             frame = app.display.build_frame(
                 info=device.info, theme=theme, sensors={},
+                profile=device.profile,
             )
             sent = device.send(frame)
         except (TransportError, Exception) as e:
@@ -372,6 +446,101 @@ class SetBrightness(Command[BrightnessResult]):
         return BrightnessResult(
             ok=True, key=self.key, percent=self.percent,
             message=f"Brightness set to {self.percent}%",
+        )
+
+
+# ── Display tweaks (fit mode / overlay / split mode) ────────────────
+
+
+def _invalidate_scene(app: App, key: str) -> None:
+    """Drop the per-device scene cache if the display service is wired.
+
+    Settings changes that affect rendering (fit, mask, overlay, split)
+    need to bust the cache so the next render rebuilds with the new
+    setting. Pure settings writes don't need it; this helper is the
+    seam.
+    """
+    if app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
+        app.display.invalidate(key)
+
+
+@dataclass(frozen=True, slots=True)
+class SetFitMode(Command[FitModeResult]):
+    """Set how the background image/video fits the device canvas.
+
+    Accepts the FitMode value strings — ``"width"`` (letterbox top/
+    bottom), ``"height"`` (pillarbox left/right), ``"stretch"`` (fill,
+    distort).
+    """
+    key: str
+    mode: str
+
+    def execute(self, app: App) -> FitModeResult:
+        try:
+            parsed = FitMode(self.mode)
+        except ValueError:
+            valid = ", ".join(m.value for m in FitMode)
+            return FitModeResult(
+                ok=False, key=self.key, mode=self.mode,
+                message=f"mode must be one of: {valid} — got {self.mode!r}",
+            )
+        app.settings.set_fit_mode(self.key, parsed)
+        _invalidate_scene(app, self.key)
+        app.events.publish(FitModeChanged(key=self.key, mode=parsed.value))
+        return FitModeResult(
+            ok=True, key=self.key, mode=parsed.value,
+            message=f"fit mode set to {parsed.value}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EnableOverlay(Command[OverlayResult]):
+    """Toggle the metric overlay layer for a device.
+
+    When disabled, RenderAndSend skips the text/metric layer entirely —
+    just the bg+mask renders. Useful for users who want a clean wallpaper
+    without sensor readouts.
+    """
+    key: str
+    enabled: bool
+
+    def execute(self, app: App) -> OverlayResult:
+        app.settings.set_overlay_enabled(self.key, self.enabled)
+        _invalidate_scene(app, self.key)
+        app.events.publish(OverlayChanged(key=self.key, enabled=self.enabled))
+        return OverlayResult(
+            ok=True, key=self.key, enabled=self.enabled,
+            message=(f"overlay {'enabled' if self.enabled else 'disabled'} "
+                     f"for {self.key}"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetSplitMode(Command[SplitModeResult]):
+    """Set the Dynamic Island style for widescreen panels.
+
+    Value range: 0 (off), 1 (style A), 2 (style B, default), 3 (style C).
+    Stored per-device regardless of whether the device is widescreen;
+    rendering consults the device profile + resolution to decide whether
+    to composite the overlay.
+    """
+    key: str
+    mode: int
+
+    def execute(self, app: App) -> SplitModeResult:
+        if self.mode not in (0, 1, 2, 3):
+            return SplitModeResult(
+                ok=False, key=self.key, mode=self.mode,
+                message=(f"split mode must be 0 (off), 1, 2, or 3 — "
+                         f"got {self.mode}"),
+            )
+        app.settings.set_split_mode(self.key, self.mode)
+        _invalidate_scene(app, self.key)
+        app.events.publish(SplitModeChanged(key=self.key, mode=self.mode))
+        return SplitModeResult(
+            ok=True, key=self.key, mode=self.mode,
+            message=(f"split mode set to {self.mode} for {self.key}"
+                     if self.mode else f"split mode disabled for {self.key}"),
         )
 
 
@@ -564,4 +733,98 @@ class DisableAutostart(Command[AutostartResult]):
         return AutostartResult(
             ok=True, message="autostart disabled",
             enabled=mgr.is_enabled(), path=_autostart_path(app),
+        )
+
+
+# =========================================================================
+# Control-center settings (app-global; no device key)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class SetTempUnit(Command[TempUnitResult]):
+    """Set the global temperature unit ("C" or "F") and propagate to every device.
+
+    Cross-cutting setter — keeps AppSettings.temp_unit + every connected
+    device's DeviceSettings.temp_unit in lockstep so overlay renderers
+    see a consistent unit regardless of which device emits the next
+    frame.
+    """
+    unit: str
+
+    def execute(self, app: App) -> TempUnitResult:
+        if self.unit not in ("C", "F"):
+            return TempUnitResult(
+                ok=False, unit=self.unit,
+                message=f"unit must be 'C' or 'F', got {self.unit!r}",
+            )
+        app.settings.set_global_temp_unit(self.unit)   # type: ignore[arg-type]
+        app.events.publish(TempUnitChanged(unit=self.unit))
+        return TempUnitResult(
+            ok=True, unit=self.unit,
+            message=f"temp unit set to {self.unit}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLanguage(Command[LanguageResult]):
+    """Set the UI language code (ISO 639-1, e.g. 'en', 'zh', 'fr')."""
+    language: str
+
+    def execute(self, app: App) -> LanguageResult:
+        lang = self.language.strip()
+        if not lang:
+            return LanguageResult(
+                ok=False, language=self.language,
+                message="language code cannot be empty",
+            )
+        app.settings.set_language(lang)
+        app.events.publish(LanguageChanged(language=lang))
+        return LanguageResult(
+            ok=True, language=lang, message=f"language set to {lang}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetGpuDevice(Command[GpuDeviceResult]):
+    """Pick the primary GPU by sensor key (e.g. 'nvidia:0', 'amd:0').
+
+    Pass an empty string to clear the override and let
+    ``SensorEnumerator.primary_gpu()`` pick automatically.
+    """
+    gpu_key: str
+
+    def execute(self, app: App) -> GpuDeviceResult:
+        normalized: str | None = self.gpu_key.strip() or None
+        app.settings.set_active_gpu(normalized)
+        app.events.publish(GpuDeviceChanged(gpu_key=normalized))
+        return GpuDeviceResult(
+            ok=True, gpu_key=normalized,
+            message=(f"active gpu set to {normalized}" if normalized
+                     else "active gpu cleared (auto)"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetRefreshInterval(Command[RefreshIntervalResult]):
+    """Set the global metrics-refresh / render-and-send tick interval.
+
+    Clamped to [0.1, 60.0] seconds — anything outside that range either
+    starves the CPU (too low) or makes the LCD feel unresponsive (too
+    high).
+    """
+    seconds: float
+
+    def execute(self, app: App) -> RefreshIntervalResult:
+        if not 0.1 <= self.seconds <= 60.0:
+            return RefreshIntervalResult(
+                ok=False, seconds=self.seconds,
+                message=(f"refresh interval must be in [0.1, 60.0] seconds, "
+                         f"got {self.seconds}"),
+            )
+        app.settings.set_refresh_interval(self.seconds)
+        app.events.publish(RefreshIntervalChanged(seconds=self.seconds))
+        return RefreshIntervalResult(
+            ok=True, seconds=self.seconds,
+            message=f"refresh interval set to {self.seconds:.2f}s",
         )

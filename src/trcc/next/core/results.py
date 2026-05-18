@@ -74,6 +74,24 @@ class BrightnessResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class FitModeResult(Result):
+    key: str = ""
+    mode: str = "width"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayResult(Result):
+    key: str = ""
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class SplitModeResult(Result):
+    key: str = ""
+    mode: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class LedColorsResult(Result):
     key: str = ""
     colors: list[tuple[int, int, int]] = field(default_factory=list)
@@ -95,6 +113,26 @@ class AutostartResult(Result):
     """Current autostart state + path for diagnostic UIs."""
     enabled: bool = False
     path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TempUnitResult(Result):
+    unit: str = "C"
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageResult(Result):
+    language: str = "en"
+
+
+@dataclass(frozen=True, slots=True)
+class GpuDeviceResult(Result):
+    gpu_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshIntervalResult(Result):
+    seconds: float = 2.0
 
 
 @dataclass(frozen=True, slots=True)

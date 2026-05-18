@@ -197,3 +197,7 @@ class DeviceSettings:
     overlay_enabled: bool = True
     mask_position: tuple[int, int] | None = None
     fit_mode: FitMode = FitMode.WIDTH
+    # Split-mode (Dynamic Island) style for 1600×720 widescreen panels.
+    # 0 = off (no split overlay), 1/2/3 = style A/B/C.  Ignored by
+    # rendering on devices whose profile.resolution isn't widescreen.
+    split_mode: int = 0

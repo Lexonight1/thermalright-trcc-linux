@@ -60,6 +60,24 @@ class BrightnessChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class FitModeChanged(Event):
+    key: str
+    mode: str   # FitMode value: "width" | "height" | "stretch"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayChanged(Event):
+    key: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SplitModeChanged(Event):
+    key: str
+    mode: int
+
+
+@dataclass(frozen=True, slots=True)
 class ThemeLoaded(Event):
     key: str
     theme_name: str
@@ -81,6 +99,29 @@ class ErrorOccurred(Event):
     message: str
     kind: str = "general"
     key: str = ""
+
+
+# ── Control-center settings changes (no device key — app-global) ─────
+
+
+@dataclass(frozen=True, slots=True)
+class TempUnitChanged(Event):
+    unit: str   # "C" or "F"
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageChanged(Event):
+    language: str
+
+
+@dataclass(frozen=True, slots=True)
+class GpuDeviceChanged(Event):
+    gpu_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshIntervalChanged(Event):
+    seconds: float
 
 
 # =========================================================================

@@ -39,6 +39,14 @@ class AppSettings:
     active_device: str | None = None
     autostart_configured: bool = False
     ui_theme: Literal["dark", "light", "system"] = "system"
+    # Global default temp_unit — propagates to every DeviceSettings.temp_unit
+    # via Settings.set_global_temp_unit so overlay renderers see a consistent
+    # unit across all devices. Per-device override still possible via the
+    # per-device set_temp_unit() (used by tests / non-GUI consumers).
+    temp_unit: TempUnit = "C"
+    # User-selected primary GPU (e.g. 'nvidia:0', 'amd:0', or 'intel:igpu').
+    # None = let SensorEnumerator.primary_gpu() pick automatically.
+    active_gpu: str | None = None
 
 
 # =========================================================================
@@ -82,6 +90,25 @@ class Settings:
     def set_refresh_interval(self, seconds: float) -> None:
         with self._lock:
             self._app.refresh_interval_s = max(0.1, seconds)
+            self._save()
+
+    def set_global_temp_unit(self, unit: TempUnit) -> None:
+        """Set the global default temp_unit and propagate to every device.
+
+        Cross-cutting setter: keeps AppSettings.temp_unit and every
+        DeviceSettings.temp_unit in lockstep so overlay renderers can
+        read either layer and see the same answer.
+        """
+        with self._lock:
+            self._app.temp_unit = unit
+            for device_settings in self._devices.values():
+                device_settings.temp_unit = unit
+            self._save()
+
+    def set_active_gpu(self, gpu_key: str | None) -> None:
+        """Set the user-selected primary GPU. None = auto-pick."""
+        with self._lock:
+            self._app.active_gpu = gpu_key
             self._save()
 
     # ── DeviceSettings surface ────────────────────────────────────────
@@ -137,6 +164,12 @@ class Settings:
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
         with self._lock:
             self.for_device(key).fit_mode = mode
+            self._save()
+
+    def set_split_mode(self, key: str, mode: int) -> None:
+        """Set per-device Dynamic Island style (0=off, 1/2/3=A/B/C)."""
+        with self._lock:
+            self.for_device(key).split_mode = mode
             self._save()
 
     # ── Persistence ───────────────────────────────────────────────────

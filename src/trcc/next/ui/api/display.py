@@ -6,24 +6,40 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import (
+    EnableOverlay,
     LoadTheme,
     RenderAndSend,
+    SendColor,
     SetBrightness,
+    SetFitMode,
     SetOrientation,
+    SetSplitMode,
 )
 from ._shared import (
     http_error_if_failed,
     to_brightness_response,
+    to_fit_mode_response,
     to_orientation_response,
+    to_overlay_response,
     to_render_response,
+    to_send_response,
+    to_split_mode_response,
     to_theme_response,
 )
 from .schemas import (
     BrightnessRequest,
     BrightnessResponse,
+    ColorRequest,
+    FitModeRequest,
+    FitModeResponse,
     OrientationRequest,
     OrientationResponse,
+    OverlayRequest,
+    OverlayResponse,
     RenderResponse,
+    SendResponse,
+    SplitModeRequest,
+    SplitModeResponse,
     ThemeRequest,
     ThemeResponse,
 )
@@ -76,6 +92,46 @@ def load_theme(key: str, body: ThemeRequest,
     )
     http_error_if_failed(result)
     return to_theme_response(result)
+
+
+@router.post("/fit-mode", response_model=FitModeResponse)
+def set_fit_mode(key: str, body: FitModeRequest,
+                 request: Request) -> FitModeResponse:
+    result = request.app.state.trcc.dispatch(
+        SetFitMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_fit_mode_response(result)
+
+
+@router.post("/overlay", response_model=OverlayResponse)
+def set_overlay(key: str, body: OverlayRequest,
+                request: Request) -> OverlayResponse:
+    result = request.app.state.trcc.dispatch(
+        EnableOverlay(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_overlay_response(result)
+
+
+@router.post("/split-mode", response_model=SplitModeResponse)
+def set_split_mode(key: str, body: SplitModeRequest,
+                   request: Request) -> SplitModeResponse:
+    result = request.app.state.trcc.dispatch(
+        SetSplitMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_split_mode_response(result)
+
+
+@router.post("/color", response_model=SendResponse)
+def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
+    """Push a solid-color frame to a connected LCD device."""
+    result = request.app.state.trcc.dispatch(
+        SendColor(key=key, r=body.r, g=body.g, b=body.b),
+    )
+    http_error_if_failed(result)
+    return to_send_response(result)
 
 
 @router.post("/tick", response_model=RenderResponse)
