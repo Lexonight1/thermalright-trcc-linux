@@ -1242,8 +1242,19 @@ def device_debug(
                 else:
                     print(f"  Unknown protocol: {proto}")
             except ImportError as e:
-                print(f"  Missing dependency: {e}")
-                print("  Install: pip install pyusb  (or pip install hidapi)")
+                # Only suggest a pip install when the missing module is a real
+                # third-party USB backend. Anything else (a ``trcc.*`` module
+                # failing to load) is an internal bug — print the traceback so
+                # the reporter has something to file, not a phantom dep hint.
+                if e.name in ('usb', 'usb.core', 'usb.util', 'hid'):
+                    print(f"  Missing dependency: {e}")
+                    print("  Install: pip install pyusb  (or pip install hidapi)")
+                else:
+                    print(f"  Internal import error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print("  Please report at "
+                          "https://github.com/Lexonight1/thermalright-trcc-linux/issues")
             except Exception as e:
                 print(f"  Handshake FAILED: {e}")
                 import traceback
