@@ -6,14 +6,19 @@ from pathlib import Path
 import typer
 
 from ...core.commands import (
+    ApplyMask,
     EnableOverlay,
     LoadTheme,
+    PlayVideo,
     RenderAndSend,
     SendColor,
     SetBrightness,
     SetFitMode,
+    SetMaskPosition,
+    SetMaskVisible,
     SetOrientation,
     SetSplitMode,
+    StopVideo,
 )
 from ._ctx import get_app
 
@@ -114,6 +119,54 @@ def overlay(
         raise typer.Exit(code=1)
 
 
+@app.command("apply-mask")
+def apply_mask(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Image file path (png/jpg/jpeg/bmp/webp)",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+) -> None:
+    """Override the active theme's mask with a user-supplied image."""
+    result = get_app().dispatch(ApplyMask(key=key, path=path))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("mask-position")
+def mask_position(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    x: int = typer.Argument(..., help="X offset in pixels (≥ 0)"),
+    y: int = typer.Argument(..., help="Y offset in pixels (≥ 0)"),
+) -> None:
+    """Position the mask overlay within the canvas."""
+    result = get_app().dispatch(SetMaskPosition(key=key, x=x, y=y))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("mask-visible")
+def mask_visible(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    state: str = typer.Argument(..., help="'on' or 'off'"),
+) -> None:
+    """Toggle mask visibility."""
+    state_normalized = state.lower()
+    if state_normalized in ("on", "true", "1", "yes", "show"):
+        visible = True
+    elif state_normalized in ("off", "false", "0", "no", "hide"):
+        visible = False
+    else:
+        typer.echo(f"Invalid state: {state!r} (expected on/off)", err=True)
+        raise typer.Exit(code=2)
+    result = get_app().dispatch(SetMaskVisible(key=key, visible=visible))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @app.command("split-mode")
 def split_mode(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
@@ -137,6 +190,81 @@ def load_theme(
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("play-video")
+def play_video(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Video path (mp4/mov/webm/mkv/avi/zt)",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+    fps: int = typer.Option(
+        15, "--fps", help="Decode FPS (default: 15)",
+    ),
+) -> None:
+    """Decode a video and start playing it on the device.
+
+    Overrides the active theme's background until ``stop-video`` runs.
+    Frames advance on each ``display play`` tick.
+    """
+    result = get_app().dispatch(PlayVideo(key=key, path=path, fps=fps))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("stop-video")
+def stop_video(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Clear the video playback override (returns to the active theme)."""
+    result = get_app().dispatch(StopVideo(key=key))
+    typer.echo(result.message)
+
+
+@app.command("slideshow")
+def slideshow(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    themes_dir: Path = typer.Argument(
+        ..., help="Directory containing theme subdirectories",
+        exists=True, file_okay=False, dir_okay=True,
+    ),
+    interval: float = typer.Option(
+        30.0, "--interval", "-i",
+        help="Seconds between theme switches (default: 30.0)",
+    ),
+) -> None:
+    """Cycle through every theme under *themes_dir* on a fixed interval.
+
+    Blocking — runs until Ctrl-C. Each tick dispatches ``LoadTheme``
+    for the next theme in alphabetical order. Themes that fail to load
+    are skipped with a warning; the loop continues.
+    """
+    import time
+
+    app_obj = get_app()
+    themes = sorted(p for p in themes_dir.iterdir() if p.is_dir())
+    if not themes:
+        typer.echo(f"No theme subdirectories under {themes_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    interval_s = max(1.0, interval)
+    typer.echo(f"Slideshow on {key}: {len(themes)} themes, "
+               f"{interval_s:.1f}s between switches (Ctrl-C to stop)…")
+    idx = 0
+    try:
+        while True:
+            theme_path = themes[idx]
+            result = app_obj.dispatch(LoadTheme(key=key, path=theme_path))
+            if result.ok:
+                typer.echo(f"  → {theme_path.name}")
+            else:
+                typer.echo(f"  ! {theme_path.name}: {result.message}", err=True)
+            idx = (idx + 1) % len(themes)
+            time.sleep(interval_s)
+    except KeyboardInterrupt:
+        typer.echo("\nSlideshow stopped.")
 
 
 @app.command("play")

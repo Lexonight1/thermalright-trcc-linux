@@ -161,6 +161,18 @@ class Settings:
             self.for_device(key).mask_position = position
             self._save()
 
+    def set_mask_path(self, key: str, path: str | None) -> None:
+        """Set the user-supplied mask path (overrides the theme's mask)."""
+        with self._lock:
+            self.for_device(key).mask_path = path
+            self._save()
+
+    def set_mask_visible(self, key: str, visible: bool) -> None:
+        """Toggle mask visibility for the device."""
+        with self._lock:
+            self.for_device(key).mask_visible = visible
+            self._save()
+
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
         with self._lock:
             self.for_device(key).fit_mode = mode

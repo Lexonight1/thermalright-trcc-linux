@@ -229,23 +229,35 @@ class DisplayService:
         theme: Theme,
         visual_size: tuple[int, int],
     ) -> Any | None:
-        """Return a Renderer surface for the current background frame."""
+        """Return a Renderer surface for the current background frame.
+
+        Playback (set by ``PlayVideo`` or by a prior video-theme render)
+        takes precedence — lets users play arbitrary videos without
+        replacing the active theme. When no playback exists, fall back
+        to the theme's bundled background image or video.
+        """
+        # Playback override: PlayVideo Command pre-loads a video into
+        # MediaService; StopVideo clears it. While a playback exists,
+        # ignore the theme background entirely.
+        playback = self._media.playback(info.key)
+        if playback is not None and playback.frames:
+            frame: RawFrame | None = playback.advance()
+            return self._r.from_raw_rgb24(frame) if frame else None
+
         path = self._themes.background_path(theme)
         if path is None:
             return None
         ext = path.suffix.lower()
 
         if ext in _VIDEO_EXTS:
-            playback = self._media.playback(info.key)
-            if playback is None or not playback.frames:
-                try:
-                    playback = self._media.load_video(
-                        device_key=info.key, path=path, size=visual_size,
-                    )
-                except Exception as e:
-                    log.warning("Video decode failed for %s: %s", path.name, e)
-                    return None
-            frame: RawFrame | None = playback.advance()
+            try:
+                playback = self._media.load_video(
+                    device_key=info.key, path=path, size=visual_size,
+                )
+            except Exception as e:
+                log.warning("Video decode failed for %s: %s", path.name, e)
+                return None
+            frame = playback.advance()
             return self._r.from_raw_rgb24(frame) if frame else None
 
         if ext in _IMAGE_EXTS:

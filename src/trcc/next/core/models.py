@@ -201,3 +201,8 @@ class DeviceSettings:
     # 0 = off (no split overlay), 1/2/3 = style A/B/C.  Ignored by
     # rendering on devices whose profile.resolution isn't widescreen.
     split_mode: int = 0
+    # User-supplied mask path that overrides the active theme's mask.
+    # None = use the theme's bundled mask (or no mask if the theme has none).
+    mask_path: str | None = None
+    # Show / hide the mask overlay regardless of which mask source is active.
+    mask_visible: bool = True

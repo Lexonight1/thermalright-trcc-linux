@@ -6,25 +6,34 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import (
+    ApplyMask,
     EnableOverlay,
     LoadTheme,
+    PlayVideo,
     RenderAndSend,
     SendColor,
     SetBrightness,
     SetFitMode,
+    SetMaskPosition,
+    SetMaskVisible,
     SetOrientation,
     SetSplitMode,
+    StopVideo,
 )
 from ._shared import (
     http_error_if_failed,
     to_brightness_response,
     to_fit_mode_response,
+    to_mask_apply_response,
+    to_mask_position_response,
+    to_mask_visibility_response,
     to_orientation_response,
     to_overlay_response,
     to_render_response,
     to_send_response,
     to_split_mode_response,
     to_theme_response,
+    to_video_response,
 )
 from .schemas import (
     BrightnessRequest,
@@ -32,16 +41,24 @@ from .schemas import (
     ColorRequest,
     FitModeRequest,
     FitModeResponse,
+    MaskApplyRequest,
+    MaskApplyResponse,
+    MaskPositionRequest,
+    MaskPositionResponse,
+    MaskVisibilityRequest,
+    MaskVisibilityResponse,
     OrientationRequest,
     OrientationResponse,
     OverlayRequest,
     OverlayResponse,
+    PlayVideoRequest,
     RenderResponse,
     SendResponse,
     SplitModeRequest,
     SplitModeResponse,
     ThemeRequest,
     ThemeResponse,
+    VideoResponse,
 )
 
 router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
@@ -114,6 +131,56 @@ def set_overlay(key: str, body: OverlayRequest,
     return to_overlay_response(result)
 
 
+@router.post("/mask", response_model=MaskApplyResponse)
+def apply_mask(key: str, body: MaskApplyRequest,
+                request: Request) -> MaskApplyResponse:
+    """Apply a user-supplied mask.
+
+    Path is whitelisted by basename within the user_content_dir/masks
+    directory — mirrors the legacy theme-load CodeQL sanitizer so the
+    Path passed to the Command comes entirely from a trusted iterdir().
+    """
+    from pathlib import Path
+
+    from fastapi import HTTPException
+    platform = request.app.state.trcc.platform
+    masks_root = (platform.paths().user_content_dir() / "masks").resolve()
+    if not masks_root.is_dir():
+        raise HTTPException(400, "masks directory missing")
+    requested_name = Path(body.path).name
+    if not requested_name:
+        raise HTTPException(400, "mask path required")
+    candidates = {p.name: p for p in masks_root.iterdir() if p.is_file()}
+    chosen = candidates.get(requested_name)
+    if chosen is None:
+        raise HTTPException(400, f"unknown mask: {requested_name!r}")
+    result = request.app.state.trcc.dispatch(
+        ApplyMask(key=key, path=chosen),
+    )
+    http_error_if_failed(result)
+    return to_mask_apply_response(result)
+
+
+@router.post("/mask-position", response_model=MaskPositionResponse)
+def set_mask_position(key: str, body: MaskPositionRequest,
+                      request: Request) -> MaskPositionResponse:
+    result = request.app.state.trcc.dispatch(
+        SetMaskPosition(key=key, x=body.x, y=body.y),
+    )
+    http_error_if_failed(result)
+    return to_mask_position_response(result)
+
+
+@router.post("/mask-visible", response_model=MaskVisibilityResponse)
+def set_mask_visible(key: str, body: MaskVisibilityRequest,
+                     request: Request) -> MaskVisibilityResponse:
+    result = request.app.state.trcc.dispatch(
+        SetMaskVisible(key=key, visible=body.visible),
+    )
+    http_error_if_failed(result)
+    return to_mask_visibility_response(result)
+
+
 @router.post("/split-mode", response_model=SplitModeResponse)
 def set_split_mode(key: str, body: SplitModeRequest,
                    request: Request) -> SplitModeResponse:
@@ -122,6 +189,26 @@ def set_split_mode(key: str, body: SplitModeRequest,
     )
     http_error_if_failed(result)
     return to_split_mode_response(result)
+
+
+@router.post("/play-video", response_model=VideoResponse)
+def play_video(key: str, body: PlayVideoRequest,
+                request: Request) -> VideoResponse:
+    """Start a video playback override on the device."""
+    from pathlib import Path as _Path
+    result = request.app.state.trcc.dispatch(
+        PlayVideo(key=key, path=_Path(body.path), fps=body.fps),
+    )
+    http_error_if_failed(result)
+    return to_video_response(result)
+
+
+@router.post("/stop-video", response_model=VideoResponse)
+def stop_video(key: str, request: Request) -> VideoResponse:
+    """Clear the video playback override on the device."""
+    result = request.app.state.trcc.dispatch(StopVideo(key=key))
+    http_error_if_failed(result)
+    return to_video_response(result)
 
 
 @router.post("/color", response_model=SendResponse)

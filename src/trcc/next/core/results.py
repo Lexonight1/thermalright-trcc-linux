@@ -92,6 +92,43 @@ class SplitModeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class MaskApplyResult(Result):
+    key: str = ""
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MaskPositionResult(Result):
+    key: str = ""
+    position: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MaskVisibilityResult(Result):
+    key: str = ""
+    visible: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeExportResult(Result):
+    theme_name: str = ""
+    archive_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeImportResult(Result):
+    theme_name: str = ""
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class VideoResult(Result):
+    key: str = ""
+    path: str = ""
+    frame_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class LedColorsResult(Result):
     key: str = ""
     colors: list[tuple[int, int, int]] = field(default_factory=list)

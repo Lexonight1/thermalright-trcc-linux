@@ -25,6 +25,8 @@ from __future__ import annotations
 import builtins
 import json
 import logging
+import shutil
+import zipfile
 from pathlib import Path
 
 from ..core.errors import ThemeError
@@ -122,12 +124,77 @@ class ThemeService:
         return None
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
-        """Archive a theme directory for sharing.  Phase 12."""
-        raise ThemeError("ThemeService.export not yet implemented (Phase 12)")
+        """Archive a theme directory into a deflate-compressed zip.
+
+        Layout: every file under ``theme_path`` becomes an archive entry
+        keyed by its relative path. Empty subdirectories are dropped
+        (zip stores files, not directories).
+        """
+        if not theme_path.exists():
+            raise ThemeError(f"Theme directory does not exist: {theme_path}")
+        if not theme_path.is_dir():
+            raise ThemeError(f"Theme path is not a directory: {theme_path}")
+
+        try:
+            with zipfile.ZipFile(archive_path, "w",
+                                 compression=zipfile.ZIP_DEFLATED) as zf:
+                for file_path in sorted(theme_path.rglob("*")):
+                    if file_path.is_file():
+                        arcname = file_path.relative_to(theme_path)
+                        zf.write(file_path, arcname)
+        except OSError as e:
+            raise ThemeError(
+                f"Failed to write archive {archive_path}: {e}",
+            ) from e
+        log.info("Exported %s → %s", theme_path, archive_path)
 
     def import_(self, archive_path: Path, into_dir: Path) -> Theme:
-        """Unpack a shared theme archive.  Phase 12."""
-        raise ThemeError("ThemeService.import_ not yet implemented (Phase 12)")
+        """Unpack a theme archive into ``into_dir``.
+
+        Rejects zip-slip (absolute paths, parent-traversal) per the
+        same sanitizer used by the legacy mask downloader. On any
+        extraction failure, the partially-written destination is
+        cleaned up so users don't end up with half-extracted themes.
+        """
+        if not archive_path.exists():
+            raise ThemeError(f"Archive does not exist: {archive_path}")
+        if not archive_path.is_file():
+            raise ThemeError(f"Archive path is not a regular file: {archive_path}")
+        if into_dir.exists():
+            raise ThemeError(
+                f"Target already exists: {into_dir} "
+                "(refusing to overwrite — choose a different name)",
+            )
+
+        into_dir.mkdir(parents=True)
+        try:
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                skipped: list[str] = []
+                for info in zf.infolist():
+                    if not _is_safe_archive_member(info.filename):
+                        skipped.append(info.filename)
+                        continue
+                    zf.extract(info, into_dir)
+                if skipped:
+                    log.warning(
+                        "ThemeService.import_: skipped %d unsafe member(s) in %s: %s",
+                        len(skipped), archive_path, skipped,
+                    )
+        except zipfile.BadZipFile as e:
+            shutil.rmtree(into_dir, ignore_errors=True)
+            raise ThemeError(
+                f"Not a valid zip archive: {archive_path}: {e}",
+            ) from e
+        except OSError as e:
+            shutil.rmtree(into_dir, ignore_errors=True)
+            raise ThemeError(f"Failed to extract {archive_path}: {e}") from e
+
+        try:
+            return self.load(into_dir)
+        except ThemeError:
+            # Archive extracted but isn't a valid theme — clean up + re-raise.
+            shutil.rmtree(into_dir, ignore_errors=True)
+            raise
 
     # ── internals ─────────────────────────────────────────────────────
 
@@ -175,3 +242,10 @@ class ThemeService:
         width = int(config.get("width", 0))
         height = int(config.get("height", 0))
         return (width, height)
+
+
+def _is_safe_archive_member(name: str) -> bool:
+    """Reject absolute paths + parent-traversal in zip member names."""
+    if not name:
+        return False
+    return not (Path(name).is_absolute() or ".." in name.split("/"))

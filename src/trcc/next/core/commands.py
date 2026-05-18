@@ -34,12 +34,20 @@ from .events import (
     GpuDeviceChanged,
     LanguageChanged,
     LedColorsChanged,
+    MaskApplied,
+    MaskPositionChanged,
+    MaskVisibilityChanged,
     OrientationChanged,
     OverlayChanged,
     RefreshIntervalChanged,
     SplitModeChanged,
     TempUnitChanged,
+    ThemeExported,
+    ThemeImported,
     ThemeLoaded,
+    ThemeSaved,
+    VideoStarted,
+    VideoStopped,
 )
 from .models import FitMode
 from .registry import find_product
@@ -53,6 +61,9 @@ from .results import (
     GpuDeviceResult,
     LanguageResult,
     LedColorsResult,
+    MaskApplyResult,
+    MaskPositionResult,
+    MaskVisibilityResult,
     OrientationResult,
     OverlayResult,
     PlatformInfoResult,
@@ -64,7 +75,10 @@ from .results import (
     SetupResult,
     SplitModeResult,
     TempUnitResult,
+    ThemeExportResult,
+    ThemeImportResult,
     ThemeResult,
+    VideoResult,
 )
 
 if TYPE_CHECKING:
@@ -391,6 +405,264 @@ class LoadTheme(Command[ThemeResult]):
         )
 
 
+# ── Theme persistence: save / export / import ────────────────────────
+
+
+def _is_safe_theme_name(name: str) -> bool:
+    """Reject theme names that could escape ``user_content_dir``.
+
+    No path separators, no ``..``, no absolute prefixes, no NUL bytes,
+    no leading dots (avoid hidden dirs).
+    """
+    if not name or len(name) > 255:
+        return False
+    if name[0] == ".":
+        return False
+    bad = {"/", "\\", "\x00"}
+    if any(ch in bad for ch in name):
+        return False
+    return ".." not in name.split("/")
+
+
+@dataclass(frozen=True, slots=True)
+class SaveTheme(Command[ThemeResult]):
+    """Duplicate the device's active theme directory under a new name.
+
+    Pure file copy via ``shutil.copytree`` from the active theme's path
+    to ``user_content_dir / name``. The new directory is a fully
+    independent theme — editing it doesn't affect the source.
+    """
+    key: str
+    name: str
+
+    def execute(self, app: App) -> ThemeResult:
+        if not _is_safe_theme_name(self.name):
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=(f"invalid theme name {self.name!r} "
+                         "(no path separators, '..', leading '.', or NUL bytes)"),
+            )
+
+        theme = app.active_themes.get(self.key)
+        if theme is None:
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=(f"no active theme for {self.key} — load one first"),
+            )
+
+        import shutil
+        target = app.platform.paths().user_content_dir() / self.name
+        if target.exists():
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=(f"target already exists: {target} "
+                         "(choose a different name)"),
+            )
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(theme.path, target)
+        except OSError as e:
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=f"failed to copy theme: {e}",
+            )
+
+        app.events.publish(ThemeSaved(
+            key=self.key, theme_name=self.name, path=str(target),
+        ))
+        return ThemeResult(
+            ok=True, key=self.key, theme_name=self.name,
+            message=f"theme saved as '{self.name}' at {target}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExportTheme(Command[ThemeExportResult]):
+    """Zip a theme under ``user_content_dir / theme_name`` to an archive path.
+
+    The theme_name must resolve to a directory inside ``user_content_dir``;
+    the archive_path is written wherever the caller specifies (CLI/API
+    are responsible for sanitizing that path at their edge).
+    """
+    theme_name: str
+    archive_path: Path
+
+    def execute(self, app: App) -> ThemeExportResult:
+        if not _is_safe_theme_name(self.theme_name):
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.archive_path),
+                message=f"invalid theme name {self.theme_name!r}",
+            )
+
+        source = app.platform.paths().user_content_dir() / self.theme_name
+        if not source.is_dir():
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.archive_path),
+                message=f"theme {self.theme_name!r} not found at {source}",
+            )
+
+        try:
+            app.themes.export(source, self.archive_path)
+        except ThemeError as e:
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.archive_path),
+                message=str(e),
+            )
+
+        app.events.publish(ThemeExported(
+            theme_name=self.theme_name, archive_path=str(self.archive_path),
+        ))
+        return ThemeExportResult(
+            ok=True, theme_name=self.theme_name,
+            archive_path=str(self.archive_path),
+            message=f"theme '{self.theme_name}' exported to {self.archive_path}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ImportTheme(Command[ThemeImportResult]):
+    """Unpack a theme archive into ``user_content_dir / name``.
+
+    ``name`` defaults to the archive filename's stem when blank.
+    Zip-slip is filtered server-side by ``ThemeService.import_``.
+    """
+    archive_path: Path
+    name: str = ""
+
+    def execute(self, app: App) -> ThemeImportResult:
+        chosen_name = self.name.strip() or self.archive_path.stem
+        if not _is_safe_theme_name(chosen_name):
+            return ThemeImportResult(
+                ok=False, theme_name=chosen_name, path="",
+                message=f"invalid theme name {chosen_name!r}",
+            )
+
+        target = app.platform.paths().user_content_dir() / chosen_name
+
+        try:
+            theme = app.themes.import_(self.archive_path, target)
+        except ThemeError as e:
+            return ThemeImportResult(
+                ok=False, theme_name=chosen_name, path=str(target),
+                message=str(e),
+            )
+
+        app.events.publish(ThemeImported(
+            theme_name=chosen_name, path=str(theme.path),
+        ))
+        return ThemeImportResult(
+            ok=True, theme_name=chosen_name, path=str(theme.path),
+            message=f"theme imported as '{chosen_name}' at {theme.path}",
+        )
+
+
+# ── Video playback override ──────────────────────────────────────────
+
+
+_VIDEO_EXTS_OK = frozenset({".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"})
+
+
+@dataclass(frozen=True, slots=True)
+class PlayVideo(Command[VideoResult]):
+    """Decode a video into a per-device playback override.
+
+    While a playback is loaded, ``DisplayService._resolve_background``
+    pulls frames from it on every tick instead of the active theme's
+    background — so a user can play an arbitrary video without first
+    constructing a video-backed theme. Call ``StopVideo`` (or
+    ``DisconnectDevice``, which clears the playback) to revert.
+
+    The device must already be attached + connected; the playback's
+    frame size is taken from ``device.profile.resolution`` (or
+    ``info.native_resolution`` pre-handshake) so frames are pre-scaled
+    for the wire.
+    """
+    key: str
+    path: Path
+    fps: int = 15
+
+    def execute(self, app: App) -> VideoResult:
+        if self.path.suffix.lower() not in _VIDEO_EXTS_OK:
+            return VideoResult(
+                ok=False, key=self.key, path=str(self.path),
+                message=(f"unsupported video extension {self.path.suffix!r} "
+                         f"(expected one of {sorted(_VIDEO_EXTS_OK)})"),
+            )
+        if not self.path.exists():
+            return VideoResult(
+                ok=False, key=self.key, path=str(self.path),
+                message=f"video does not exist: {self.path}",
+            )
+        if not self.path.is_file():
+            return VideoResult(
+                ok=False, key=self.key, path=str(self.path),
+                message=f"video path is not a regular file: {self.path}",
+            )
+
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return VideoResult(ok=False, key=self.key, path=str(self.path),
+                                message=str(e))
+
+        if device.profile is not None:
+            size = device.profile.resolution
+        else:
+            size = device.info.native_resolution
+
+        try:
+            playback = app.media.load_video(
+                device_key=self.key, path=self.path, size=size,
+                fps=self.fps,
+            )
+        except ThemeError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="video", key=self.key,
+            ))
+            return VideoResult(ok=False, key=self.key, path=str(self.path),
+                                message=str(e))
+
+        # Bust the scene cache so the next render picks up the override.
+        _invalidate_scene(app, self.key)
+
+        app.events.publish(VideoStarted(
+            key=self.key, path=str(self.path),
+            frame_count=playback.frame_count,
+        ))
+        return VideoResult(
+            ok=True, key=self.key, path=str(self.path),
+            frame_count=playback.frame_count,
+            message=(f"playing {self.path.name} on {self.key} "
+                     f"({playback.frame_count} frame(s) @ {playback.fps} fps)"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StopVideo(Command[VideoResult]):
+    """Clear the device's playback override.
+
+    Idempotent — calling on a device with no playback is a no-op + ok=True
+    so scripts can use it as a defensive cleanup.
+    """
+    key: str
+
+    def execute(self, app: App) -> VideoResult:
+        had_playback = app.media.playback(self.key) is not None
+        app.media.unload(self.key)
+        _invalidate_scene(app, self.key)
+        if had_playback:
+            app.events.publish(VideoStopped(key=self.key))
+        return VideoResult(
+            ok=True, key=self.key,
+            message=(f"video stopped for {self.key}"
+                     if had_playback else f"no video playing for {self.key}"),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SetOrientation(Command[OrientationResult]):
     """Set per-device rotation (0 / 90 / 180 / 270).
@@ -541,6 +813,103 @@ class SetSplitMode(Command[SplitModeResult]):
             ok=True, key=self.key, mode=self.mode,
             message=(f"split mode set to {self.mode} for {self.key}"
                      if self.mode else f"split mode disabled for {self.key}"),
+        )
+
+
+# ── Mask Commands ────────────────────────────────────────────────────
+
+
+_MASK_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyMask(Command[MaskApplyResult]):
+    """Set a user-supplied mask image that overrides the active theme's mask.
+
+    Validates the path exists, is a regular file, and has an image
+    extension. Stores the **resolved absolute path** so subsequent
+    renders aren't affected by ``os.chdir`` between calls.
+    """
+    key: str
+    path: Path
+
+    def execute(self, app: App) -> MaskApplyResult:
+        candidate = self.path
+        if not candidate.exists():
+            return MaskApplyResult(
+                ok=False, key=self.key, path=str(candidate),
+                message=f"mask file does not exist: {candidate}",
+            )
+        if not candidate.is_file():
+            return MaskApplyResult(
+                ok=False, key=self.key, path=str(candidate),
+                message=f"mask path is not a regular file: {candidate}",
+            )
+        if candidate.suffix.lower() not in _MASK_IMAGE_EXTS:
+            return MaskApplyResult(
+                ok=False, key=self.key, path=str(candidate),
+                message=(f"mask must be one of {sorted(_MASK_IMAGE_EXTS)}, "
+                         f"got {candidate.suffix!r}"),
+            )
+        resolved = str(candidate.resolve())
+        app.settings.set_mask_path(self.key, resolved)
+        _invalidate_scene(app, self.key)
+        app.events.publish(MaskApplied(key=self.key, path=resolved))
+        return MaskApplyResult(
+            ok=True, key=self.key, path=resolved,
+            message=f"mask set to {resolved}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetMaskPosition(Command[MaskPositionResult]):
+    """Set the mask offset within the canvas, or pass None to reset to (0, 0)."""
+    key: str
+    x: int | None
+    y: int | None
+
+    def execute(self, app: App) -> MaskPositionResult:
+        if (self.x is None) != (self.y is None):
+            return MaskPositionResult(
+                ok=False, key=self.key,
+                message="x and y must both be set or both omitted (None)",
+            )
+        if self.x is not None and self.y is not None:
+            if self.x < 0 or self.y < 0:
+                return MaskPositionResult(
+                    ok=False, key=self.key,
+                    message=(f"mask position must be non-negative; "
+                             f"got x={self.x}, y={self.y}"),
+                )
+            position: tuple[int, int] | None = (self.x, self.y)
+        else:
+            position = None
+        app.settings.set_mask_position(self.key, position)
+        _invalidate_scene(app, self.key)
+        app.events.publish(MaskPositionChanged(key=self.key, position=position))
+        return MaskPositionResult(
+            ok=True, key=self.key, position=position,
+            message=(f"mask position set to {position}" if position
+                     else "mask position cleared (default to 0,0)"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetMaskVisible(Command[MaskVisibilityResult]):
+    """Toggle the mask overlay visibility for a device."""
+    key: str
+    visible: bool
+
+    def execute(self, app: App) -> MaskVisibilityResult:
+        app.settings.set_mask_visible(self.key, self.visible)
+        _invalidate_scene(app, self.key)
+        app.events.publish(
+            MaskVisibilityChanged(key=self.key, visible=self.visible),
+        )
+        return MaskVisibilityResult(
+            ok=True, key=self.key, visible=self.visible,
+            message=(f"mask {'shown' if self.visible else 'hidden'} "
+                     f"for {self.key}"),
         )
 
 

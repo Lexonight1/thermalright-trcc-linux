@@ -78,6 +78,55 @@ class SplitModeChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class MaskApplied(Event):
+    key: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class MaskPositionChanged(Event):
+    key: str
+    position: tuple[int, int] | None
+
+
+@dataclass(frozen=True, slots=True)
+class MaskVisibilityChanged(Event):
+    key: str
+    visible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeSaved(Event):
+    key: str
+    theme_name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeExported(Event):
+    theme_name: str
+    archive_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeImported(Event):
+    theme_name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class VideoStarted(Event):
+    key: str
+    path: str
+    frame_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class VideoStopped(Event):
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
 class ThemeLoaded(Event):
     key: str
     theme_name: str

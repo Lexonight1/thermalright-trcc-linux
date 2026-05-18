@@ -14,6 +14,9 @@ from ...core.results import (
     GpuDeviceResult,
     LanguageResult,
     LedColorsResult,
+    MaskApplyResult,
+    MaskPositionResult,
+    MaskVisibilityResult,
     OrientationResult,
     OverlayResult,
     RefreshIntervalResult,
@@ -24,7 +27,10 @@ from ...core.results import (
     SetupResult,
     SplitModeResult,
     TempUnitResult,
+    ThemeExportResult,
+    ThemeImportResult,
     ThemeResult,
+    VideoResult,
 )
 from .schemas import (
     BrightnessResponse,
@@ -36,6 +42,9 @@ from .schemas import (
     HandshakeSchema,
     LanguageResponse,
     LedColorsResponse,
+    MaskApplyResponse,
+    MaskPositionResponse,
+    MaskVisibilityResponse,
     OrientationResponse,
     OverlayResponse,
     ProductSchema,
@@ -47,7 +56,10 @@ from .schemas import (
     SetupResponse,
     SplitModeResponse,
     TempUnitResponse,
+    ThemeExportResponse,
+    ThemeImportResponse,
     ThemeResponse,
+    VideoResponse,
 )
 
 # =========================================================================
@@ -164,6 +176,57 @@ def to_split_mode_response(result: SplitModeResult) -> SplitModeResponse:
     return SplitModeResponse(
         ok=result.ok, message=result.message,
         key=result.key, mode=result.mode,
+    )
+
+
+def to_mask_apply_response(result: MaskApplyResult) -> MaskApplyResponse:
+    return MaskApplyResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, path=result.path,
+    )
+
+
+def to_mask_position_response(result: MaskPositionResult) -> MaskPositionResponse:
+    return MaskPositionResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, position=result.position,
+    )
+
+
+def to_mask_visibility_response(
+    result: MaskVisibilityResult,
+) -> MaskVisibilityResponse:
+    return MaskVisibilityResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, visible=result.visible,
+    )
+
+
+def to_theme_export_response(
+    result: ThemeExportResult,
+) -> ThemeExportResponse:
+    return ThemeExportResponse(
+        ok=result.ok, message=result.message,
+        theme_name=result.theme_name,
+        archive_path=result.archive_path,
+    )
+
+
+def to_theme_import_response(
+    result: ThemeImportResult,
+) -> ThemeImportResponse:
+    return ThemeImportResponse(
+        ok=result.ok, message=result.message,
+        theme_name=result.theme_name,
+        path=result.path,
+    )
+
+
+def to_video_response(result: VideoResult) -> VideoResponse:
+    return VideoResponse(
+        ok=result.ok, message=result.message,
+        key=result.key, path=result.path,
+        frame_count=result.frame_count,
     )
 
 

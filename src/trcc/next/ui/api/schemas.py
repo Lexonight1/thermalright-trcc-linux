@@ -94,6 +94,37 @@ class SplitModeResponse(ResultBase):
     mode: int = 0
 
 
+class MaskApplyResponse(ResultBase):
+    key: str = ""
+    path: str = ""
+
+
+class MaskPositionResponse(ResultBase):
+    key: str = ""
+    position: tuple[int, int] | None = None
+
+
+class MaskVisibilityResponse(ResultBase):
+    key: str = ""
+    visible: bool = True
+
+
+class ThemeExportResponse(ResultBase):
+    theme_name: str = ""
+    archive_path: str = ""
+
+
+class ThemeImportResponse(ResultBase):
+    theme_name: str = ""
+    path: str = ""
+
+
+class VideoResponse(ResultBase):
+    key: str = ""
+    path: str = ""
+    frame_count: int = 0
+
+
 class LedColorsResponse(ResultBase):
     key: str = ""
     colors: list[tuple[int, int, int]] = []
@@ -175,6 +206,48 @@ class OverlayRequest(BaseModel):
 
 class SplitModeRequest(BaseModel):
     mode: int = Field(..., ge=0, le=3)
+
+
+class MaskApplyRequest(BaseModel):
+    """Path to a mask image file (resolved server-side for security)."""
+    path: str = Field(..., min_length=1)
+
+
+class MaskPositionRequest(BaseModel):
+    """Either both x,y set (offsets ≥ 0) or both None (clear)."""
+    x: int | None = Field(None, ge=0)
+    y: int | None = Field(None, ge=0)
+
+
+class MaskVisibilityRequest(BaseModel):
+    visible: bool
+
+
+class ThemeSaveRequest(BaseModel):
+    """Save the device's active theme under a new name (basename only)."""
+    key: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+
+
+class ThemeExportRequest(BaseModel):
+    """Export an existing theme by name to a server-side archive path."""
+    theme_name: str = Field(..., min_length=1)
+    archive_path: str = Field(..., min_length=1)
+
+
+class ThemeImportRequest(BaseModel):
+    """Import a theme from a server-side archive path.
+
+    ``name`` defaults to the archive filename stem when blank.
+    """
+    archive_path: str = Field(..., min_length=1)
+    name: str = ""
+
+
+class PlayVideoRequest(BaseModel):
+    """Play a video as a device's background. Server-side path."""
+    path: str = Field(..., min_length=1)
+    fps: int = Field(15, ge=1, le=60)
 
 
 # ── Control-center settings ──────────────────────────────────────────

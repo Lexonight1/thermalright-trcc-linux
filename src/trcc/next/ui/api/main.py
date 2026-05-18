@@ -11,7 +11,7 @@ import logging
 from fastapi import FastAPI
 
 from ...app import App
-from . import config, devices, display, led, system
+from . import config, devices, display, led, system, theme
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ def build_app(trcc: App | None = None) -> FastAPI:
     api.include_router(led.router)
     api.include_router(system.router)
     api.include_router(config.router)
+    api.include_router(theme.router)
 
     @api.get("/", tags=["meta"])
     def root() -> dict:
@@ -52,6 +53,11 @@ def build_app(trcc: App | None = None) -> FastAPI:
                 "POST /devices/{key}/display/fit-mode",
                 "POST /devices/{key}/display/overlay",
                 "POST /devices/{key}/display/split-mode",
+                "POST /devices/{key}/display/mask",
+                "POST /devices/{key}/display/mask-position",
+                "POST /devices/{key}/display/mask-visible",
+                "POST /devices/{key}/display/play-video",
+                "POST /devices/{key}/display/stop-video",
                 "POST /devices/{key}/display/tick",
                 "POST /devices/{key}/led/colors",
                 "GET  /system/info",
@@ -61,6 +67,9 @@ def build_app(trcc: App | None = None) -> FastAPI:
                 "POST /config/language",
                 "POST /config/gpu",
                 "POST /config/refresh-interval",
+                "POST /theme/save",
+                "POST /theme/export",
+                "POST /theme/import",
             ],
         }
 
