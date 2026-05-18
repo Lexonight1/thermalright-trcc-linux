@@ -17,6 +17,7 @@ import struct
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
+from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,16 @@ class BulkLcd(Device[BulkTransport]):
         super().__init__(info, transport)
         self._pm: int = 0
         self._sub: int = 0
-        self._use_jpeg: bool = True
+        # Cached at handshake. Carries PM-derived resolution from the FBL
+        # tables, with the Bulk-specific JPEG-vs-RGB565 override:
+        # USBLCDNew uses JPEG (cmd=2) for every PM except 32, which forces
+        # RGB565 (cmd=3). FBL_PROFILES alone wouldn't capture that.
+        self._profile: DeviceProfile | None = None
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Handshake-derived profile; None pre-handshake."""
+        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -74,29 +84,46 @@ class BulkLcd(Device[BulkTransport]):
 
         self._pm = resp[24]
         self._sub = resp[36]
-        self._use_jpeg = self._pm not in _RGB565_PMS
+
+        # Build the cached profile. Resolution comes from the FBL tables
+        # (mirrors legacy ``_bulk_resolution``); the jpeg flag is the
+        # Bulk-specific override (USBLCDNew → JPEG except PM=32).
+        fbl = pm_to_fbl(self._pm, self._sub)
+        base = get_profile(fbl, self._pm)
+        self._profile = DeviceProfile(
+            width=base.width, height=base.height,
+            jpeg=(self._pm not in _RGB565_PMS),
+            big_endian=base.big_endian, rotate=base.rotate,
+            encode_base=base.encode_base, encode_invert=base.encode_invert,
+            encode_sub_bases=base.encode_sub_bases,
+            encode_pm_bases=base.encode_pm_bases,
+        )
 
         result = HandshakeResult(
-            resolution=self.info.native_resolution,
+            resolution=self._profile.resolution,
             model_id=self._pm,
             pm_byte=self._pm,
             sub_byte=self._sub,
+            fbl=fbl,
             raw_response=bytes(resp[:64]),
         )
         self._handshake = result
         log.info("BulkLcd handshake OK: PM=%d SUB=%d resolution=%s (%s)",
                  self._pm, self._sub, result.resolution,
-                 "JPEG" if self._use_jpeg else "RGB565")
+                 "JPEG" if self._profile.jpeg else "RGB565")
         return result
 
     def send(self, payload: bytes) -> bool:
-        if not self._transport.is_open:
+        if not self._transport.is_open or self._profile is None:
             raise TransportError(
                 f"BulkLcd {self.info.key} not connected — call connect() first"
             )
 
-        width, height = self.info.native_resolution
-        cmd = 2 if self._use_jpeg else 3
+        # Resolution + encoding come from the handshake-derived profile.
+        # USBLCDNew header carries actual w/h (used by the device firmware
+        # for de-blocking JPEG / interpreting the RGB565 buffer).
+        width, height = self._profile.resolution
+        cmd = 2 if self._profile.jpeg else 3
 
         header = bytearray(64)
         header[0:4] = _HANDSHAKE_PAYLOAD[0:4]
@@ -126,3 +153,4 @@ class BulkLcd(Device[BulkTransport]):
     def disconnect(self) -> None:
         self._transport.close()
         self._handshake = None
+        self._profile = None

@@ -19,6 +19,7 @@ import time
 from ...core.errors import HandshakeError, UnsupportedOperationError
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
+from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,16 @@ class HidLcd(Device[BulkTransport]):
             raise UnsupportedOperationError(
                 f"HidLcd requires device_type 2 or 3, got {info.device_type}"
             )
+        # Populated by handshake. Carries PM-derived geometry + encoding
+        # flags (jpeg, big_endian, rotate). Frame builders use this instead
+        # of info.native_resolution so a device variant that reports a
+        # different resolution at handshake is honored.
+        self._profile: DeviceProfile | None = None
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Handshake-derived profile; None pre-handshake."""
+        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -168,6 +179,7 @@ class HidLcd(Device[BulkTransport]):
     def disconnect(self) -> None:
         self._transport.close()
         self._handshake = None
+        self._profile = None
 
     # ── Wire protocol — Type 2 variant ────────────────────────────────
 
@@ -190,20 +202,25 @@ class HidLcd(Device[BulkTransport]):
         )
 
     def _parse_response_type2(self, resp: bytes) -> HandshakeResult:
-        """Type 2: PM at resp[5], SUB at resp[4], optional serial at resp[20:36]."""
+        """Type 2: PM at resp[5], SUB at resp[4], optional serial at resp[20:36].
+
+        Geometry comes from the PM byte via ``pm_to_fbl`` + ``get_profile``
+        — a device that reports e.g. PM=58 surfaces as 320×240, not the
+        registry's static native_resolution.
+        """
         pm = resp[5]
         sub = resp[4]
         has_serial = len(resp) > 36 and resp[16] == 0x10
         serial = resp[20:36].hex().upper() if has_serial else ""
-        # Type 2 resolution is carried by device_type + pm — the full
-        # pm→fbl→resolution mapping lands in Phase 5 (services).  For
-        # now, fall back to the native resolution from the product info.
+        fbl = pm_to_fbl(pm, sub)
+        self._profile = get_profile(fbl, pm)
         return HandshakeResult(
-            resolution=self.info.native_resolution,
+            resolution=self._profile.resolution,
             model_id=pm,
             serial=serial,
             pm_byte=pm,
             sub_byte=sub,
+            fbl=fbl,
             raw_response=bytes(resp[:64]),
         )
 
@@ -213,9 +230,15 @@ class HidLcd(Device[BulkTransport]):
         Mode detection:
             JPEG (FF D8 magic) → header byte[6]=0x00, actual w×h in bytes[8:12]
             RGB565             → header byte[6]=0x01, hardcoded 240×320
+
+        For JPEG, the header carries the device's PM-derived resolution
+        (cached in ``self._profile`` at handshake). Pre-handshake callers
+        fall back to ``info.native_resolution`` so smoke tests that build
+        frames before connect() still produce a valid header.
         """
         is_jpeg = len(image_data) >= 2 and image_data[:2] == b'\xff\xd8'
-        w, h = self.info.native_resolution
+        w, h = (self._profile.resolution if self._profile is not None
+                else self.info.native_resolution)
 
         header = bytearray([
             0xDA, 0xDB, 0xDC, 0xDD,   # magic
@@ -245,11 +268,15 @@ class HidLcd(Device[BulkTransport]):
         return len(resp) >= 14 and resp[0] in (0x65, 0x66)
 
     def _parse_response_type3(self, resp: bytes) -> HandshakeResult:
-        """Type 3: FBL = resp[0] - 1 (0x65→100, 0x66→101); serial at resp[10:14]."""
+        """Type 3: FBL = resp[0] - 1 (0x65→100, 0x66→101); serial at resp[10:14].
+
+        Geometry comes from the FBL via ``get_profile`` (PM=FBL for Type 3).
+        """
         serial = resp[10:14].hex().upper()
         fbl = resp[0] - 1
+        self._profile = get_profile(fbl, fbl)
         return HandshakeResult(
-            resolution=self.info.native_resolution,
+            resolution=self._profile.resolution,
             model_id=fbl,
             serial=serial,
             pm_byte=fbl,

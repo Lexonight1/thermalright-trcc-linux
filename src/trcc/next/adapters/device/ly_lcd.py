@@ -21,6 +21,7 @@ import struct
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
+from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,15 @@ class LyLcd(Device[BulkTransport]):
         self._sub: int = 0
         # LY uses chunk header byte[8]=1, LY1 uses byte[8]=2
         self._chunk_cmd: int = 1 if info.pid == _PID_LY else 2
+        # Cached at handshake. FBL 192 (Trofeo Vision 9.16 family) carries
+        # both jpeg=True and the multi-sub rotation table — DisplayService
+        # reads profile.jpeg / .rotate / .encode_sub_bases from here.
+        self._profile: DeviceProfile | None = None
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Handshake-derived profile; None pre-handshake."""
+        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -91,11 +101,15 @@ class LyLcd(Device[BulkTransport]):
             self._pm = 50 + resp[36]
             self._sub = resp[22] if len(resp) > 22 else 0
 
+        fbl = pm_to_fbl(self._pm, self._sub)
+        self._profile = get_profile(fbl, self._pm)
+
         result = HandshakeResult(
-            resolution=self.info.native_resolution,
+            resolution=self._profile.resolution,
             model_id=self._pm,
             pm_byte=self._pm,
             sub_byte=self._sub,
+            fbl=fbl,
             raw_response=bytes(resp[:64]),
         )
         self._handshake = result
@@ -166,3 +180,4 @@ class LyLcd(Device[BulkTransport]):
     def disconnect(self) -> None:
         self._transport.close()
         self._handshake = None
+        self._profile = None

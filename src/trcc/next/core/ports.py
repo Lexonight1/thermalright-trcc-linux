@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         RawFrame,
         SensorReading,
     )
+    from .protocol import DeviceProfile
 
 
 # =========================================================================
@@ -148,6 +149,16 @@ class Device(ABC, Generic[T]):
     @property
     def key(self) -> str:
         return self.info.key
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Handshake-derived geometry + encoding profile.
+
+        Set by LCD subclasses when ``connect()`` parses the PM/FBL bytes.
+        LED devices and pre-handshake state both return None — callers
+        that build frames must fall back to ``info.native_resolution``.
+        """
+        return None
 
 
 # =========================================================================

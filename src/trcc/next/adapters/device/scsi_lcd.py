@@ -15,6 +15,7 @@ import time
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import Device, ScsiTransport
+from ...core.protocol import DeviceProfile, get_profile
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,16 @@ class ScsiLcd(Device[ScsiTransport]):
 
     def __init__(self, info: ProductInfo, transport: ScsiTransport) -> None:
         super().__init__(info, transport)
+        # Populated by connect() from the FBL byte the device reports.
+        # Carries PM-derived geometry + encoding flags so send() / the
+        # DisplayService pipeline honor what the device actually claims,
+        # not the static native_resolution from the registry.
+        self._profile: DeviceProfile | None = None
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Handshake-derived profile; None pre-handshake."""
+        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
@@ -95,8 +106,12 @@ class ScsiLcd(Device[ScsiTransport]):
         # Step 3: let the display controller settle
         time.sleep(_POST_INIT_DELAY_S)
 
+        # Geometry comes from the FBL byte via get_profile — a device that
+        # reports e.g. FBL=102 surfaces its resolution from the profile,
+        # not the registry's static native_resolution. SCSI uses PM=FBL.
+        self._profile = get_profile(fbl, fbl)
         result = HandshakeResult(
-            resolution=self.info.native_resolution,
+            resolution=self._profile.resolution,
             model_id=fbl,
             pm_byte=fbl,
             sub_byte=0,
@@ -139,6 +154,7 @@ class ScsiLcd(Device[ScsiTransport]):
     def disconnect(self) -> None:
         self._transport.close()
         self._handshake = None
+        self._profile = None
 
     # ── SCSI framing ──────────────────────────────────────────────────
 
