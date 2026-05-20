@@ -343,3 +343,169 @@ def _parse_windows_device_id(device_id: str) -> tuple[str, str] | None:
     if match is None:
         return None
     return match.group("vid").lower(), match.group("pid").lower()
+
+
+# =========================================================================
+# FreeBSD — devd seqpacket socket
+# =========================================================================
+
+
+_DEVD_SOCKET_PATH = "/var/run/devd.seqpacket.pipe"
+_DEVD_RECV_BUFSIZE = 8192
+_DEVD_RECV_TIMEOUT_S = 0.5
+
+# devd event format:
+#   !system=USB subsystem=DEVICE type=ATTACH ugen=ugen3.4 cdev=ugen3.4
+#     vendor=0x0402 product=0x3922 …
+# Anchored on the canonical USB-device line.  ``vendor`` and ``product``
+# appear in either order across releases; two separate regexes handle that.
+_DEVD_USB_EVENT_RE = re.compile(
+    r"!system=USB\s+subsystem=DEVICE\s+type=(?P<action>ATTACH|DETACH)",
+)
+_DEVD_VENDOR_RE = re.compile(r"vendor=0x(?P<vid>[0-9A-Fa-f]+)")
+_DEVD_PRODUCT_RE = re.compile(r"product=0x(?P<pid>[0-9A-Fa-f]+)")
+
+
+def _open_devd_socket() -> Any | None:
+    """Connect to ``/var/run/devd.seqpacket.pipe``.
+
+    Returns the connected socket on success, ``None`` when the socket
+    doesn't exist (non-FreeBSD or devd not running).
+    """
+    import socket as _socket
+
+    if not hasattr(_socket, "AF_UNIX"):
+        return None
+    try:
+        sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_SEQPACKET)
+        sock.settimeout(_DEVD_RECV_TIMEOUT_S)
+        sock.connect(_DEVD_SOCKET_PATH)
+    except (OSError, AttributeError):
+        log.debug("devd seqpacket socket unavailable", exc_info=True)
+        return None
+    return sock
+
+
+class FreeBSDHotplugMonitor(HotplugMonitor):
+    """Reads USB events from devd's seqpacket socket.
+
+    One daemon thread reads newline-bounded messages from
+    ``/var/run/devd.seqpacket.pipe``; each message is parsed via the
+    shared ``_parse_devd_event`` helper and routed onto the bus when
+    the vid:pid matches the TRCC registry.
+
+    Degrades to a no-op (with a debug log) when the socket doesn't
+    exist — same shape as ``LinuxHotplugMonitor`` falling back to noop
+    without pyudev.
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._bus: EventBus | None = None
+        self._sock: Any = None
+        self._known = _KNOWN_VID_PID
+
+    def start(self, bus: EventBus) -> None:
+        if self._thread is not None:
+            return
+
+        sock = _open_devd_socket()
+        if sock is None:
+            log.info(
+                "FreeBSDHotplugMonitor: /var/run/devd.seqpacket.pipe "
+                "unavailable — live USB events disabled",
+            )
+            return
+
+        self._bus = bus
+        self._sock = sock
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="trcc-next-hotplug-devd",
+        )
+        self._thread.start()
+        log.info("FreeBSDHotplugMonitor: watching devd USB events")
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        self._stop_event.set()
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                log.debug("devd socket close failed", exc_info=True)
+            self._sock = None
+        self._thread.join(timeout=2.0)
+        self._thread = None
+        self._bus = None
+        log.info("FreeBSDHotplugMonitor: stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    # ── Worker loop ──────────────────────────────────────────────────
+
+    def _poll_loop(self) -> None:
+        """Recv loop — exits when the socket closes or stop is set."""
+        while not self._stop_event.is_set():
+            if self._sock is None:
+                return
+            try:
+                raw = self._sock.recv(_DEVD_RECV_BUFSIZE)
+            except TimeoutError:
+                continue
+            except OSError:
+                log.debug("devd recv failed", exc_info=True)
+                return
+            if not raw:
+                return                # socket closed
+            try:
+                message = raw.decode("utf-8", errors="replace")
+            except UnicodeDecodeError:
+                continue
+            self._dispatch(message)
+
+    # ── Pure dispatch helper (tested directly) ───────────────────────
+
+    def _dispatch(self, message: str) -> None:
+        parsed = _parse_devd_event(message)
+        if parsed is None:
+            return
+        action, vid, pid = parsed
+        if (vid, pid) not in self._known:
+            return
+        if self._bus is None:
+            return
+
+        key = f"{vid}:{pid}"
+        if action == "ATTACH":
+            log.info("Hotplug add: %s", key)
+            self._bus.publish(DeviceAttached(key=key, vid=int(vid, 16),
+                                             pid=int(pid, 16)))
+        elif action == "DETACH":
+            log.info("Hotplug remove: %s", key)
+            self._bus.publish(DeviceDetached(key=key, vid=int(vid, 16),
+                                             pid=int(pid, 16)))
+
+
+def _parse_devd_event(message: str) -> tuple[str, str, str] | None:
+    """Parse a devd USB event line into ``(action, vid, pid)``.
+
+    Returns ``None`` when the message isn't a USB attach/detach event
+    or is missing vendor/product fields.  Hex strings are normalized
+    to lowercase 4-digit form so they match the registry's ``vid:pid``
+    keys without case juggling at the call site.
+    """
+    event = _DEVD_USB_EVENT_RE.search(message)
+    if event is None:
+        return None
+    vendor = _DEVD_VENDOR_RE.search(message)
+    product = _DEVD_PRODUCT_RE.search(message)
+    if vendor is None or product is None:
+        return None
+    vid = vendor.group("vid").lower().zfill(4)
+    pid = product.group("pid").lower().zfill(4)
+    return event.group("action"), vid, pid

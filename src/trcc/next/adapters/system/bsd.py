@@ -26,7 +26,6 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from ..sensors.aggregator import BaselineSensors
 
 log = logging.getLogger(__name__)
 
@@ -88,9 +87,10 @@ class BSDPlatform(Platform):
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
-        # Baseline (psutil + nvml) until BsdSysctl sensor source lands.
+        """sysctl CPU temp on top of the psutil/NVML baseline."""
         if self._sensors is None:
-            self._sensors = BaselineSensors()
+            from ..sensors.bsd import build_bsd_sensors
+            self._sensors = build_bsd_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
@@ -100,11 +100,18 @@ class BSDPlatform(Platform):
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
-        from ._hotplug import NoopHotplugMonitor
+        """devd seqpacket socket on FreeBSD; noop on OpenBSD/NetBSD."""
         if self._hotplug is None:
-            self._hotplug = NoopHotplugMonitor(
-                reason="BSD hotplug listener not yet implemented",
-            )
+            import platform as _platform
+
+            if _platform.system() in ("FreeBSD", "DragonFly"):
+                from ._hotplug import FreeBSDHotplugMonitor
+                self._hotplug = FreeBSDHotplugMonitor()
+            else:
+                from ._hotplug import NoopHotplugMonitor
+                self._hotplug = NoopHotplugMonitor(
+                    reason=f"hotplug listener not implemented for {_platform.system()}",
+                )
         return self._hotplug
 
     def setup(self, interactive: bool = True) -> int:
