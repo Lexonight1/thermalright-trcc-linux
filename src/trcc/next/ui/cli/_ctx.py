@@ -1,9 +1,16 @@
-"""Shared CLI context — App singleton + lightweight helpers."""
+"""Shared CLI context — App singleton + lightweight helpers.
+
+In daemon mode (``TRCC_NEXT_DAEMON=1``) the App is actually an
+``AppProxy`` — same ``dispatch(cmd) -> Result`` surface, calls travel
+over the Unix socket to the running daemon.  Resolved via the canonical
+``_boot.trcc_next()`` factory.
+"""
 from __future__ import annotations
 
 import logging
 from functools import lru_cache
 
+from ..._boot import trcc_next
 from ...app import App
 from ...core.ports import Platform, Renderer
 
@@ -30,13 +37,10 @@ def set_renderer(renderer: Renderer) -> None:
 
 @lru_cache(maxsize=1)
 def get_app() -> App:
-    """Lazy App singleton used by every CLI command handler."""
-    platform = _platform_override or Platform.detect()
-    renderer = _renderer_override
-    if renderer is None:
-        try:
-            from ...adapters.render.qt import QtRenderer
-            renderer = QtRenderer()
-        except Exception as e:
-            log.warning("QtRenderer unavailable (%s); display commands will fail", e)
-    return App(platform=platform, renderer=renderer)
+    """Lazy App singleton used by every CLI command handler.
+
+    Returns an in-process ``App`` (default) or an ``AppProxy`` when
+    ``TRCC_NEXT_DAEMON=1`` is set — UIs don't distinguish, both expose
+    ``dispatch(cmd) -> Result``.
+    """
+    return trcc_next(platform=_platform_override, renderer=_renderer_override)

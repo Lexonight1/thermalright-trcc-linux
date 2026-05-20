@@ -43,6 +43,41 @@ def api(
     serve(host=host, port=port)
 
 
+@app.command("daemon")
+def daemon() -> None:
+    """Run the background daemon that owns USB + serves CLI/API clients.
+
+    One process per user.  Binds a Unix socket at
+    ``$XDG_RUNTIME_DIR/trcc-next.sock`` and serves Commands until
+    SIGTERM / SIGINT or a remote ``trcc-next kill``.  Sets
+    ``TRCC_NEXT_DAEMON=1`` to route clients through this daemon.
+    """
+    from ...daemon import run_daemon
+    raise typer.Exit(code=run_daemon())
+
+
+@app.command("kill")
+def kill() -> None:
+    """Ask the running daemon to shut down, return when its socket is gone."""
+    from ...daemon import kill_daemon
+    if kill_daemon():
+        typer.echo("Daemon stopped.")
+    else:
+        typer.echo("Daemon failed to stop within timeout.", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command("status")
+def status() -> None:
+    """Report whether the daemon is currently reachable."""
+    from ...ipc import daemon_running, socket_path
+    if daemon_running():
+        typer.echo(f"Daemon is running (socket: {socket_path()}).")
+    else:
+        typer.echo(f"No daemon reachable at {socket_path()}.")
+        raise typer.Exit(code=1)
+
+
 @app.callback()
 def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
