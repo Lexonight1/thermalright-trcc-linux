@@ -19,9 +19,11 @@ from ...core.commands import (
     SetOrientation,
     SetSplitMode,
     StopVideo,
+    UploadBootAnimation,
 )
 from ._shared import (
     http_error_if_failed,
+    to_boot_animation_response,
     to_brightness_response,
     to_fit_mode_response,
     to_mask_apply_response,
@@ -36,6 +38,8 @@ from ._shared import (
     to_video_response,
 )
 from .schemas import (
+    BootAnimationRequest,
+    BootAnimationResponse,
     BrightnessRequest,
     BrightnessResponse,
     ColorRequest,
@@ -209,6 +213,44 @@ def stop_video(key: str, request: Request) -> VideoResponse:
     result = request.app.state.trcc.dispatch(StopVideo(key=key))
     http_error_if_failed(result)
     return to_video_response(result)
+
+
+_BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
+})
+
+
+@router.post("/boot-animation", response_model=BootAnimationResponse)
+def upload_boot_animation(key: str, body: BootAnimationRequest,
+                          request: Request) -> BootAnimationResponse:
+    """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
+
+    *frames_dir* must point to an existing directory; we enumerate it
+    via iterdir() and dispatch only image files we found.  No user-
+    supplied path component flows into a filesystem call beyond the
+    initial directory resolution.
+    """
+    frames_path = Path(body.frames_dir).resolve()
+    if not frames_path.is_dir():
+        raise HTTPException(400, f"frames_dir is not a directory: {body.frames_dir!r}")
+
+    frame_paths = sorted(
+        p for p in frames_path.iterdir()
+        if p.is_file() and p.suffix.lower() in _BOOT_ANIM_IMAGE_EXTS
+    )
+    if not frame_paths:
+        raise HTTPException(400, "No supported image frames found in frames_dir")
+    if len(frame_paths) > 248:
+        raise HTTPException(
+            400, f"Too many frames: {len(frame_paths)} (max 248)",
+        )
+
+    delays = [body.delay_ds] * len(frame_paths)
+    result = request.app.state.trcc.dispatch(UploadBootAnimation(
+        key=key, frame_paths=frame_paths, delays_ds=delays,
+    ))
+    http_error_if_failed(result)
+    return to_boot_animation_response(result)
 
 
 @router.post("/color", response_model=SendResponse)

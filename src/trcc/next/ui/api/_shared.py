@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from ...core.models import HandshakeResult, ProductInfo, SensorReading
 from ...core.results import (
+    BootAnimationResult,
     BrightnessResult,
     ConnectResult,
     DisconnectResult,
@@ -33,6 +34,7 @@ from ...core.results import (
     VideoResult,
 )
 from .schemas import (
+    BootAnimationResponse,
     BrightnessResponse,
     ConnectResponse,
     DisconnectResponse,
@@ -227,6 +229,17 @@ def to_video_response(result: VideoResult) -> VideoResponse:
         ok=result.ok, message=result.message,
         key=result.key, path=result.path,
         frame_count=result.frame_count,
+    )
+
+
+def to_boot_animation_response(
+    result: BootAnimationResult,
+) -> BootAnimationResponse:
+    return BootAnimationResponse(
+        ok=result.ok, message=result.message,
+        key=result.key,
+        frames_uploaded=result.frames_uploaded,
+        frames_total=result.frames_total,
     )
 
 

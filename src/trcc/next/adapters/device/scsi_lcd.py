@@ -11,6 +11,7 @@ import binascii
 import logging
 import struct
 import time
+import zlib
 
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
@@ -43,6 +44,24 @@ _SMALL_DISPLAY_PIXELS = 76800      # ≤320×240 uses the small chunk size
 # Timeouts
 _HANDSHAKE_TIMEOUT_MS = 10000
 _FRAME_TIMEOUT_MS = 5000
+
+# Boot animation — compressed multi-frame upload to device flash.
+# Command bytes from USBLCD.exe reverse engineering: first frame carries
+# the total frame count in CDB word2; carousel frames carry the index in
+# word2 and pack the dwell-byte into CDB cmd's high byte.
+_ANIM_FIRST_CMD = 0x000201F5
+_ANIM_CAROUSEL_CMD = 0x000301F5
+_ANIM_COMPRESS_LEVEL = 3       # zlib level — fast, matches the Windows app
+_ANIM_FIRST_DELAY_S = 0.5      # 500 ms settle after first-frame upload
+_ANIM_FRAME_DELAY_S = 0.01     # 10 ms pacing between carousel frames
+_ANIM_MAX_FRAMES = 249         # firmware rejects ≥ 250
+_ANIM_DELAY_MAX_BYTE = 250     # wire byte saturates at 250 (≈ 2.5 s)
+
+# Boot animation is only supported on these display geometries — the
+# firmware ignores the carousel upload otherwise.
+_BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
+    (240, 240), (240, 320), (320, 240), (320, 320),
+})
 
 
 # =========================================================================
@@ -155,6 +174,79 @@ class ScsiLcd(Device[ScsiTransport]):
         self._transport.close()
         self._handshake = None
         self._profile = None
+
+    # ── Boot animation ────────────────────────────────────────────────
+
+    def send_boot_animation(
+        self,
+        frames: list[bytes],
+        delays_ds: list[int],
+    ) -> int:
+        """Upload a multi-frame compressed boot animation to device flash.
+
+        ``frames`` are RGB565 byte buffers at the device's resolution
+        (caller is responsible for encoding).  ``delays_ds[i]`` is the
+        dwell time before frame ``i+1`` plays, in **deciseconds** (10ths
+        of a second) — matches the legacy USBLCD.exe UI unit.  Range on
+        the wire is 1 ds … 25 ds (firmware caps at 250).
+
+        Returns the number of frames successfully uploaded (0 on reject,
+        full count on success, partial count on mid-stream failure).
+        """
+        if not self._transport.is_open:
+            raise TransportError(
+                f"ScsiLcd {self.info.key} not connected — call connect() first"
+            )
+
+        resolution = (self._handshake.resolution if self._handshake
+                      else self.info.native_resolution)
+        if resolution not in _BOOT_ANIM_RESOLUTIONS:
+            log.warning("Boot animation not supported for %dx%d", *resolution)
+            return 0
+
+        count = len(frames)
+        if count == 0 or count >= _ANIM_MAX_FRAMES:
+            log.warning("Boot animation frame count %d out of range (1-%d)",
+                        count, _ANIM_MAX_FRAMES - 1)
+            return 0
+
+        # Phase 1: first frame — frame_count in word2, no delay byte.
+        compressed = zlib.compress(frames[0], _ANIM_COMPRESS_LEVEL)
+        cdb = self._build_anim_cdb(_ANIM_FIRST_CMD, count, len(compressed))
+        if not self._transport.send_cdb(cdb, compressed, _FRAME_TIMEOUT_MS):
+            log.error("Boot animation: first-frame write failed")
+            return 0
+        log.info("Boot animation: first frame sent (%d bytes compressed, %d total)",
+                 len(compressed), count)
+        time.sleep(_ANIM_FIRST_DELAY_S)
+
+        # Phase 2: carousel frames — index in word2, delay packed into
+        # the cmd's high byte (delays_ds * 10, saturated at 250).
+        for idx, frame in enumerate(frames):
+            compressed = zlib.compress(frame, _ANIM_COMPRESS_LEVEL)
+            delay_ds = delays_ds[idx] if idx < len(delays_ds) else 10
+            delay_byte = min(delay_ds * 10, _ANIM_DELAY_MAX_BYTE) & 0xFF
+            cmd = _ANIM_CAROUSEL_CMD | (delay_byte << 24)
+            cdb = self._build_anim_cdb(cmd, idx, len(compressed))
+            if not self._transport.send_cdb(cdb, compressed, _FRAME_TIMEOUT_MS):
+                log.error("Boot animation: carousel frame %d write failed", idx)
+                return idx  # partial — caller sees how far we got
+            time.sleep(_ANIM_FRAME_DELAY_S)
+
+        log.info("Boot animation: %d frames uploaded successfully", count)
+        return count
+
+    @staticmethod
+    def _build_anim_cdb(cmd: int, word2: int, compressed_size: int) -> bytes:
+        """16-byte CDB for compressed-animation commands (no CRC32 trailer).
+
+        Layout differs from the frame CDB:
+            [0:4]   cmd (carousel folds dwell-byte into bits [31:24])
+            [4:8]   zeros
+            [8:12]  word2 — frame_count for first, frame_index for carousel
+            [12:16] compressed_size
+        """
+        return struct.pack("<IIII", cmd, 0, word2, compressed_size)
 
     # ── SCSI framing ──────────────────────────────────────────────────
 

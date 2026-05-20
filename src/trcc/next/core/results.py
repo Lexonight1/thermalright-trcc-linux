@@ -129,6 +129,14 @@ class VideoResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class BootAnimationResult(Result):
+    """One compressed boot-animation upload to a SCSI LCD."""
+    key: str = ""
+    frames_uploaded: int = 0
+    frames_total: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class LedColorsResult(Result):
     key: str = ""
     colors: list[tuple[int, int, int]] = field(default_factory=list)

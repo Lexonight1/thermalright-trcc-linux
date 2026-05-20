@@ -53,6 +53,7 @@ from .models import FitMode
 from .registry import find_product
 from .results import (
     AutostartResult,
+    BootAnimationResult,
     BrightnessResult,
     ConnectResult,
     DisconnectResult,
@@ -660,6 +661,91 @@ class StopVideo(Command[VideoResult]):
             ok=True, key=self.key,
             message=(f"video stopped for {self.key}"
                      if had_playback else f"no video playing for {self.key}"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UploadBootAnimation(Command[BootAnimationResult]):
+    """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
+
+    The animation persists across power cycles — it plays from device
+    flash on every boot until overwritten.  **SCSI-only**; HID / Bulk /
+    LY / LED devices return ok=False with a clear message.
+
+    Each frame is loaded via the renderer (any standard image format),
+    resized to the device resolution if needed, and encoded to RGB565
+    before zlib compression on the device side.  Supported geometries:
+    240×240, 240×320, 320×240, 320×320.  Frame count 1–248.
+
+    ``delays_ds[i]`` is the dwell time before frame ``i+1`` plays, in
+    deciseconds (10ths of a second); firmware caps at 25 ds (2.5 s).
+    Defaults to 10 ds (1 s) for any frame without an explicit delay.
+    """
+    key: str
+    frame_paths: list[Path]
+    delays_ds: list[int]
+
+    def execute(self, app: App) -> BootAnimationResult:
+        from ..adapters.device.scsi_lcd import ScsiLcd
+
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return BootAnimationResult(
+                ok=False, key=self.key, message=str(e),
+                frames_total=len(self.frame_paths),
+            )
+        if not isinstance(device, ScsiLcd):
+            return BootAnimationResult(
+                ok=False, key=self.key,
+                message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
+                frames_total=len(self.frame_paths),
+            )
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+        if not self.frame_paths:
+            return BootAnimationResult(
+                ok=False, key=self.key, message="No frames provided",
+            )
+
+        # Resolution must come from the handshake-derived profile — boot
+        # anim is gated on a fixed set of geometries the firmware accepts,
+        # and a device's registry native_resolution can lie if firmware
+        # reports a different FBL byte than the product entry expects.
+        profile = device.profile
+        resolution = (profile.resolution if profile
+                      else device.info.native_resolution)
+
+        encoded: list[bytes] = []
+        for path in self.frame_paths:
+            try:
+                encoded.append(app.display.encode_boot_anim_frame(path, resolution))
+            except (OSError, ValueError) as e:
+                return BootAnimationResult(
+                    ok=False, key=self.key,
+                    frames_total=len(self.frame_paths),
+                    message=f"Failed to load {path.name}: {e}",
+                )
+
+        try:
+            uploaded = device.send_boot_animation(encoded, list(self.delays_ds))
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="transport", key=self.key,
+            ))
+            return BootAnimationResult(
+                ok=False, key=self.key, frames_total=len(encoded),
+                message=str(e),
+            )
+
+        ok = uploaded == len(encoded)
+        return BootAnimationResult(
+            ok=ok, key=self.key,
+            frames_uploaded=uploaded, frames_total=len(encoded),
+            message=(f"Uploaded {uploaded} frames to {self.key} flash"
+                     if ok else f"Partial upload: {uploaded}/{len(encoded)} frames"),
         )
 
 

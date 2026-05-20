@@ -125,6 +125,12 @@ class VideoResponse(ResultBase):
     frame_count: int = 0
 
 
+class BootAnimationResponse(ResultBase):
+    key: str = ""
+    frames_uploaded: int = 0
+    frames_total: int = 0
+
+
 class LedColorsResponse(ResultBase):
     key: str = ""
     colors: list[tuple[int, int, int]] = []
@@ -248,6 +254,18 @@ class ThemeImportRequest(BaseModel):
     """
     archive_path: str = Field(..., min_length=1)
     name: str = ""
+
+
+class BootAnimationRequest(BaseModel):
+    """Boot-animation upload — a directory of frames + per-frame dwell."""
+    frames_dir: str = Field(
+        ..., description="Filesystem directory containing 1–248 image frames "
+                         "(PNG / JPG / BMP / WebP), sorted alphabetically.",
+    )
+    delay_ds: int = Field(
+        10, ge=1, le=25,
+        description="Uniform dwell per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s).",
+    )
 
 
 class PlayVideoRequest(BaseModel):

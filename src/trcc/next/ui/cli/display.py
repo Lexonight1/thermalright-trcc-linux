@@ -19,6 +19,7 @@ from ...core.commands import (
     SetOrientation,
     SetSplitMode,
     StopVideo,
+    UploadBootAnimation,
 )
 from ._ctx import get_app
 
@@ -265,6 +266,52 @@ def slideshow(
             time.sleep(interval_s)
     except KeyboardInterrupt:
         typer.echo("\nSlideshow stopped.")
+
+
+_IMAGE_EXTS_FOR_ANIM: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
+})
+
+
+@app.command("boot-anim")
+def boot_anim(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922 (SCSI only)"),
+    frames_dir: Path = typer.Argument(
+        ..., help="Directory of image frames (sorted alphabetically; 1–248 frames)",
+        exists=True, file_okay=False, dir_okay=True,
+    ),
+    delay_ds: int = typer.Option(
+        10, "--delay", "-d", min=1, max=25,
+        help="Dwell time per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s)",
+    ),
+) -> None:
+    """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
+
+    The animation plays from device flash on every boot until overwritten.
+    Only SCSI panels with 240×240 / 240×320 / 320×240 / 320×320 resolution
+    support boot animations.
+
+    Frame files are picked up in alphabetical order from *frames_dir* —
+    PNG / JPG / JPEG / BMP / WebP.  Each frame uses the same dwell time
+    via --delay (per-frame delays via the API only).
+    """
+    frame_paths = sorted(
+        p for p in frames_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in _IMAGE_EXTS_FOR_ANIM
+    )
+    if not frame_paths:
+        typer.echo(f"No supported image frames found under {frames_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    delays = [delay_ds] * len(frame_paths)
+    typer.echo(f"Uploading {len(frame_paths)} boot-animation frames to {key} "
+               f"({delay_ds * 0.1:.1f}s each)…")
+    result = get_app().dispatch(UploadBootAnimation(
+        key=key, frame_paths=frame_paths, delays_ds=delays,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("play")

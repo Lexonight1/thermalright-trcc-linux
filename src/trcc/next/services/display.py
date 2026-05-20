@@ -197,6 +197,25 @@ class DisplayService:
     def invalidate_all(self) -> None:
         self._scenes.clear()
 
+    # ── One-off encoding (used by Commands that bypass the scene cache) ──
+
+    def encode_boot_anim_frame(
+        self,
+        image_path: Path,
+        resolution: tuple[int, int],
+    ) -> bytes:
+        """Encode one image to RGB565 bytes at the given resolution.
+
+        Used by UploadBootAnimation — boot-animation frames are always
+        RGB565 regardless of the device's normal wire format, and the
+        firmware applies its own rotation, so we skip both the JPEG
+        branch and the profile's portrait-rotation step.
+        """
+        surface = self._r.open_image(image_path)
+        if self._r.surface_size(surface) != resolution:
+            surface = self._r.resize(surface, *resolution)
+        return self._r.encode_rgb565(surface)
+
     # ── Layer 1: background + mask ────────────────────────────────────
 
     def _build_bg_mask(
