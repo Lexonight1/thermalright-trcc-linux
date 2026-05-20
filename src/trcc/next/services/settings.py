@@ -17,7 +17,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
@@ -224,14 +224,14 @@ class Settings:
         if source not in ("cpu", "gpu"):
             raise ValueError(f"Invalid temp source: {source!r}; expected 'cpu' or 'gpu'")
         with self._lock:
-            self.for_led(key).temp_source = source  # type: ignore[assignment]
+            self.for_led(key).temp_source = cast(Literal["cpu", "gpu"], source)
             self._save()
 
     def set_led_load_source(self, key: str, source: str) -> None:
         if source not in ("cpu", "gpu"):
             raise ValueError(f"Invalid load source: {source!r}; expected 'cpu' or 'gpu'")
         with self._lock:
-            self.for_led(key).load_source = source  # type: ignore[assignment]
+            self.for_led(key).load_source = cast(Literal["cpu", "gpu"], source)
             self._save()
 
     def set_led_zone_count(self, key: str, count: int) -> None:

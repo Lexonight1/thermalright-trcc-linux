@@ -125,8 +125,19 @@ def test_history_path_creates_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     path = _history_path()
     assert path.parent.is_dir()
     # Filename is stable across sessions
     assert path.name == "shell_history"
     assert path.parent == tmp_path / ".local" / "state" / "trcc-next"
+
+
+def test_history_path_honors_xdg_state_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    custom = tmp_path / "custom-xdg-state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(custom))
+    path = _history_path()
+    assert path.parent == custom / "trcc-next"
+    assert path.parent.is_dir()

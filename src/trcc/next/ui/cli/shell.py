@@ -21,6 +21,7 @@ repeat per invocation.
 from __future__ import annotations
 
 import logging
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -46,10 +47,12 @@ _HELP_COMMANDS: frozenset[str] = frozenset({"help", "?"})
 
 
 def _history_path() -> Path:
-    """Persist REPL history across sessions under XDG_STATE_HOME."""
-    base = Path.home() / ".local" / "state" / "trcc-next"
-    base.mkdir(parents=True, exist_ok=True)
-    return base / "shell_history"
+    """Persist REPL history across sessions under ``$XDG_STATE_HOME``."""
+    xdg_state = os.environ.get("XDG_STATE_HOME")
+    base = Path(xdg_state) if xdg_state else Path.home() / ".local" / "state"
+    target = base / "trcc-next"
+    target.mkdir(parents=True, exist_ok=True)
+    return target / "shell_history"
 
 
 def _build_completer() -> NestedCompleter:
