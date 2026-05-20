@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..core.models import FitMode, ProductInfo, RawFrame, Theme
+from ..core.models import DeviceSettings, FitMode, ProductInfo, RawFrame, Theme
 from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile
 from .media import MediaService
@@ -200,28 +200,51 @@ class DisplayService:
     ) -> Any:
         """Compose fitted background + mask at visual size."""
         canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
+        s = self._settings.for_device(info.key)
 
         # Paint the fitted background
         source = self._resolve_background(info, theme, visual_size)
         if source is not None:
             src_w, src_h = self._r.surface_size(source)
             dst_w, dst_h = visual_size
-            fit_mode = self._settings.for_device(info.key).fit_mode
             fit_w, fit_h, off_x, off_y = _fit(
-                fit_mode, src_w, src_h, dst_w, dst_h,
+                s.fit_mode, src_w, src_h, dst_w, dst_h,
             )
             fitted = self._r.resize(source, fit_w, fit_h)
             canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
 
-        # Composite the mask on top of the background (if present)
-        mask_path = self._themes.mask_path(theme)
-        if mask_path is not None:
-            mask = self._r.open_image(mask_path)
-            if self._r.surface_size(mask) != visual_size:
-                mask = self._r.resize(mask, *visual_size)
-            canvas = self._r.composite(canvas, mask, position=(0, 0))
+        # Mask layer: per-device override (ApplyMask Command) takes
+        # precedence over the theme's bundled mask; mask_visible=False
+        # skips the layer entirely. Position defaults to (0, 0).
+        mask_source = self._resolve_mask_source(s, theme)
+        if mask_source is not None:
+            mask = self._r.open_image(mask_source)
+            position = s.mask_position or (0, 0)
+            canvas = self._r.composite(canvas, mask, position=position)
 
         return canvas
+
+    def _resolve_mask_source(
+        self,
+        device_settings: DeviceSettings,
+        theme: Theme,
+    ) -> Path | None:
+        """Pick which mask file (if any) to render for this device.
+
+        Order: per-device override → theme's bundled mask → None. Returns
+        None when ``mask_visible`` is False so the caller skips the layer.
+        """
+        if not device_settings.mask_visible:
+            return None
+        if device_settings.mask_path is not None:
+            override = Path(device_settings.mask_path)
+            if override.exists():
+                return override
+            log.warning(
+                "Per-device mask %s does not exist; falling back to theme mask",
+                override,
+            )
+        return self._themes.mask_path(theme)
 
     def _resolve_background(
         self,
@@ -293,7 +316,13 @@ class DisplayService:
         if is_video:
             pb = self._media.playback(info.key)
             cursor = pb.cursor if pb else 0
-        return (str(theme.path), visual_size, cursor)
+        # Mask state belongs in this key so the bg+mask layer rebuilds when
+        # ApplyMask / SetMaskPosition / SetMaskVisible run. The Commands
+        # already explicitly invalidate, but including it defends against
+        # any path that mutates Settings without going through Commands.
+        s = self._settings.for_device(info.key)
+        mask_sig = (s.mask_path, s.mask_position, s.mask_visible, s.fit_mode)
+        return (str(theme.path), visual_size, cursor, mask_sig)
 
     @staticmethod
     def _overlay_key(
@@ -367,7 +396,3 @@ def _fit(
 
 # Re-exported for unit tests
 fit = _fit
-
-
-# Silence pyright on unused Path import (kept for future file-path cache keys)
-_ = Path
