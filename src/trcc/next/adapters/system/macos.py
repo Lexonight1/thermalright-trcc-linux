@@ -28,7 +28,6 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from ..sensors.aggregator import BaselineSensors
 
 log = logging.getLogger(__name__)
 
@@ -91,9 +90,15 @@ class MacOSPlatform(Platform):
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
-        # Baseline (psutil + nvml) until MacOsSmc sensor source lands.
+        """SMC temperature on top of the psutil / NVML baseline.
+
+        Intel keys ship enabled by default; Apple Silicon keys are
+        gated behind ``TRCC_NEXT_APPLE_SILICON_SMC=1`` until reporter-
+        confirmed.
+        """
         if self._sensors is None:
-            self._sensors = BaselineSensors()
+            from ..sensors.macos import build_macos_sensors
+            self._sensors = build_macos_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
