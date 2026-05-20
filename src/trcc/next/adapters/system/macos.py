@@ -54,20 +54,6 @@ class MacOSPaths(Paths):
         return self._root / "Logs" / "trcc.log"
 
 
-class _NoopAutostart(AutostartManager):
-    def is_enabled(self) -> bool:
-        return False
-
-    def enable(self) -> None:
-        pass
-
-    def disable(self) -> None:
-        pass
-
-    def refresh(self) -> None:
-        pass
-
-
 class MacOSPlatform(Platform):
     """macOS implementation of Platform — BOT-only SCSI via libusb."""
 
@@ -112,7 +98,8 @@ class MacOSPlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
-            self._autostart = _NoopAutostart()
+            from ._autostart import NoopAutostart
+            self._autostart = NoopAutostart()
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:

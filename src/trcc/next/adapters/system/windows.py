@@ -272,20 +272,6 @@ class WindowsScsiTransport(ScsiTransport):
 # =========================================================================
 
 
-class _NoopAutostart(AutostartManager):
-    def is_enabled(self) -> bool:
-        return False
-
-    def enable(self) -> None:
-        pass
-
-    def disable(self) -> None:
-        pass
-
-    def refresh(self) -> None:
-        pass
-
-
 # =========================================================================
 # WindowsPlatform
 # =========================================================================
@@ -340,15 +326,14 @@ class WindowsPlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
-            self._autostart = _NoopAutostart()
+            from ._autostart import WindowsAutostart
+            self._autostart = WindowsAutostart()
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
-        from ._hotplug import NoopHotplugMonitor
         if self._hotplug is None:
-            self._hotplug = NoopHotplugMonitor(
-                reason="Windows hotplug listener not yet implemented",
-            )
+            from ._hotplug import WindowsHotplugMonitor
+            self._hotplug = WindowsHotplugMonitor()
         return self._hotplug
 
     def setup(self, interactive: bool = True) -> int:
