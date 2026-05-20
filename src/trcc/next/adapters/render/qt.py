@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -128,20 +128,33 @@ class QtRenderer(Renderer):
     # ── Adjustments ───────────────────────────────────────────────────
 
     def apply_brightness(self, surface: Any, percent: int) -> Any:
-        """Linear brightness adjust.  100 = unchanged, 0 = black, >100 brighter."""
-        if percent == 100:
-            return QImage(surface)
+        """Dim a surface by overlaying semi-transparent black.
 
-        factor = max(0, min(200, percent)) / 100.0
-        result = QImage(surface.size(), QImage.Format.Format_ARGB32)
-        result.fill(Qt.GlobalColor.transparent)
-        for y in range(surface.height()):
-            for x in range(surface.width()):
-                pixel = QColor(surface.pixel(x, y))
-                r = min(255, int(pixel.red() * factor))
-                g = min(255, int(pixel.green() * factor))
-                b = min(255, int(pixel.blue() * factor))
-                result.setPixelColor(x, y, QColor(r, g, b, pixel.alpha()))
+        FIXME (post-Phase E cleanup): this matches legacy's QPainter-
+        overlay implementation byte-for-byte, but the cleaner math is
+        ``pixel * (percent / 100)`` — a literal multiply per channel.
+        Both produce visually identical output; the QPainter approach
+        is GPU-accelerated and matches what legacy already ships to
+        users, so we adopt it for the Phase C parity gate.
+
+        After Phase E (legacy deletion) we can revisit and switch to
+        the pure-math implementation if there's a reason; the diff is
+        sub-perceptible so there's no rush.
+
+        Math: ``alpha = int(255 * (1 - percent/100))`` then source-over
+        composite black at that alpha.  ``percent >= 100`` is a no-op
+        (legacy doesn't implement brightness boost above 100% either).
+        """
+        if percent >= 100:
+            return surface
+        result = surface.copy()
+        alpha = int(255 * (1.0 - percent / 100.0))
+        painter = QPainter(result)
+        painter.fillRect(
+            QRect(0, 0, result.width(), result.height()),
+            QColor(0, 0, 0, alpha),
+        )
+        painter.end()
         return result
 
     # ── Text ──────────────────────────────────────────────────────────
