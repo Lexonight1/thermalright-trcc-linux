@@ -49,17 +49,24 @@ class FitMode(str, Enum):
 
 
 class LedStyle(str, Enum):
-    """LED strip layout style (affects color remap + segment mask)."""
-    AX120 = "ax120"
-    PA120 = "pa120"
-    AK120 = "ak120"
-    LC1 = "lc1"
-    LF8 = "lf8"
-    LF12 = "lf12"
-    LF10 = "lf10"
-    CZ1 = "cz1"
-    LC2 = "lc2"
-    LF11 = "lf11"
+    """LED strip layout style (affects color remap + segment mask).
+
+    Names mirror legacy ``LED_STYLES`` model_name field. Order matches
+    legacy style_id (1..12) so the PM-byte → style map in
+    ``core/led_protocol.py`` can express its lookups symbolically.
+    """
+    AX120 = "ax120"     # legacy style_id 1
+    PA120 = "pa120"     # legacy style_id 2
+    AK120 = "ak120"     # legacy style_id 3
+    LC1 = "lc1"         # legacy style_id 4
+    LF8 = "lf8"         # legacy style_id 5
+    LF12 = "lf12"       # legacy style_id 6
+    LF10 = "lf10"       # legacy style_id 7
+    CZ1 = "cz1"         # legacy style_id 8
+    LC2 = "lc2"         # legacy style_id 9
+    LF11 = "lf11"       # legacy style_id 10
+    LF15 = "lf15"       # legacy style_id 11
+    LF13 = "lf13"       # legacy style_id 12
 
 
 # =========================================================================

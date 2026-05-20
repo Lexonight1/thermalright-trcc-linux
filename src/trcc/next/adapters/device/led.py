@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 
 from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
+from ...core.led_protocol import resolve_pm
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
 
@@ -122,10 +123,27 @@ class Led(Device[BulkTransport]):
                 self._pm = resp[5]
                 self._sub = resp[4]
 
+                # PM byte → device style + readable model name. Falls back to
+                # the registry's ``led_style`` / ``product`` when the firmware
+                # reports a PM not in PmRegistry (e.g. a new SKU).
+                entry = resolve_pm(self._pm, self._sub)
+                if entry is not None:
+                    style = entry.style
+                    model_name = entry.model_name
+                    style_sub = entry.style_sub
+                else:
+                    log.warning("Led handshake: unknown PM=%d (sub=%d); "
+                                "falling back to registry defaults",
+                                self._pm, self._sub)
+                    style = self.info.led_style
+                    model_name = self.info.product
+                    style_sub = 0
+
                 self._led_handshake = LedHandshakeResult(
                     pm=self._pm, sub_type=self._sub,
-                    style=self.info.led_style,
-                    model_name=self.info.product,
+                    style=style,
+                    model_name=model_name,
+                    style_sub=style_sub,
                     raw_response=bytes(resp[:64]),
                 )
                 result = HandshakeResult(
@@ -136,9 +154,10 @@ class Led(Device[BulkTransport]):
                     raw_response=bytes(resp[:64]),
                 )
                 self._handshake = result
-                log.info("Led handshake OK: PM=%d SUB=%d style=%s",
+                log.info("Led handshake OK: PM=%d SUB=%d style=%s model=%s",
                          self._pm, self._sub,
-                         self.info.led_style.value if self.info.led_style else "—")
+                         style.value if style else "—",
+                         model_name or "—")
                 return result
 
             except Exception as e:
