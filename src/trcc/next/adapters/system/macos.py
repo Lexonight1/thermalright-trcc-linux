@@ -103,17 +103,31 @@ class MacOSPlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
-            from ._autostart import NoopAutostart
-            self._autostart = NoopAutostart()
+            from ._autostart import MacOSAutostart
+            self._autostart = MacOSAutostart()
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
-        from ._hotplug import NoopHotplugMonitor
+        """Polling fallback — 1 s ``scan_devices`` diff.
+
+        Native IOKit ``IOServiceAddMatchingNotification`` + CFRunLoop
+        would require either ~250 lines of fragile ctypes or a 50 MB
+        pyobjc dep; polling once a second hits the same UX (≤1 s
+        attach/detach latency) at zero new cost.
+        """
         if self._hotplug is None:
-            self._hotplug = NoopHotplugMonitor(
-                reason="macOS hotplug listener not yet implemented",
-            )
+            from ._hotplug import PollingHotplugMonitor
+            self._hotplug = PollingHotplugMonitor(scan=self._scan_vid_pid_set)
         return self._hotplug
+
+    def _scan_vid_pid_set(self) -> set[tuple[int, int]]:
+        """Snapshot of currently-attached registry vid:pid combos.
+
+        Named method (not a lambda) so PollingHotplugMonitor's scan
+        callable survives across stack frames + shows up in tracebacks
+        with a real name.
+        """
+        return {(d.vid, d.pid) for d in self.scan_devices()}
 
     def setup(self, interactive: bool = True) -> int:
         """Diagnose codesign / quarantine / privileges, print fix steps.

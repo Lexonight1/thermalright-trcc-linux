@@ -3,17 +3,28 @@
   Linux    → ``LinuxHotplugMonitor`` (pyudev netlink monitor)
   Windows  → ``WindowsHotplugMonitor`` (WMI ``__InstanceCreationEvent`` /
              ``__InstanceDeletionEvent`` on ``Win32_PnPEntity``)
-  macOS    → ``NoopHotplugMonitor`` (IOKit listener pending B.8)
-  BSD      → ``NoopHotplugMonitor`` (devd listener pending B.5)
+  FreeBSD  → ``FreeBSDHotplugMonitor`` (devd seqpacket socket)
+  macOS    → ``PollingHotplugMonitor`` (scan_devices() diff every 1 s)
+  Others   → ``NoopHotplugMonitor``
 
-Each per-OS implementation degrades to the noop when its backend
-isn't installed (pyudev / wmi optional deps).
+macOS uses ``PollingHotplugMonitor`` instead of the IOKit native API
+because:
+  * The native path needs ``IOServiceAddMatchingNotification`` +
+    ``CFRunLoop`` from a thread, ~250 lines of fragile ctypes.
+  * The pyobjc-framework-IOKit alternative drags in ~50 MB of pyobjc.
+  * Polling every 1 s gives ≤1 s detection latency on real hardware
+    with zero new deps and a pure-Python listener that's actually
+    debuggable on the reporter's box.
+
+The polling monitor is OS-generic — any platform whose native
+listener hasn't shipped can opt in.
 """
 from __future__ import annotations
 
 import logging
 import re
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...core.events import (
@@ -509,3 +520,109 @@ def _parse_devd_event(message: str) -> tuple[str, str, str] | None:
     vid = vendor.group("vid").lower().zfill(4)
     pid = product.group("pid").lower().zfill(4)
     return event.group("action"), vid, pid
+
+
+# =========================================================================
+# Polling fallback — OS-generic; used by macOS today, available to any
+# platform that lacks a native hotplug listener
+# =========================================================================
+
+
+# Default poll interval — 1 s gives sub-second detection latency at
+# negligible CPU cost.  Tests override to drive the loop deterministically.
+_POLL_INTERVAL_S = 1.0
+
+
+class PollingHotplugMonitor(HotplugMonitor):
+    """Hotplug detection via periodic ``Platform.scan_devices()`` diff.
+
+    Doesn't watch any OS event source — instead it asks the Platform
+    for the live device list every ``_POLL_INTERVAL_S`` seconds, diffs
+    against the previous snapshot, and publishes
+    ``DeviceAttached`` / ``DeviceDetached`` for the difference.
+
+    Sub-second responsiveness, zero new deps, debuggable in pure
+    Python.  Quality matches a native listener for TRCC's use case
+    (one hotplug per few minutes) at the cost of a per-second sysfs /
+    usb-bus walk that ``scan_devices`` does anyway.
+
+    DI seam: ``scan`` is a callable returning ``set[(vid, pid)]`` so
+    tests drive the diff without touching the real platform.
+    """
+
+    def __init__(
+        self,
+        scan: Callable[[], set[tuple[int, int]]],
+        *,
+        interval_s: float = _POLL_INTERVAL_S,
+    ) -> None:
+        self._scan = scan
+        self._interval_s = interval_s
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._bus: EventBus | None = None
+        self._known = _KNOWN_VID_PID
+        self._last_seen: set[tuple[int, int]] = set()
+
+    def start(self, bus: EventBus) -> None:
+        if self._thread is not None:
+            return
+        self._bus = bus
+        self._stop_event.clear()
+        # Prime the snapshot so freshly-already-present devices don't
+        # trigger spurious "attach" events on first tick.
+        try:
+            self._last_seen = {vp for vp in self._scan() if vp in self._registry_set()}
+        except Exception:
+            log.exception("PollingHotplugMonitor: initial scan failed")
+            self._last_seen = set()
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="trcc-next-hotplug-poll",
+        )
+        self._thread.start()
+        log.info("PollingHotplugMonitor: polling every %.1fs", self._interval_s)
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        self._stop_event.set()
+        self._thread.join(timeout=2.0)
+        self._thread = None
+        self._bus = None
+        log.info("PollingHotplugMonitor: stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    # ── Diff helper (pure — tested directly) ──────────────────────────
+
+    def _registry_set(self) -> set[tuple[int, int]]:
+        """Registry as int tuples, matching scan_devices's shape."""
+        return {(int(vid, 16), int(pid, 16)) for vid, pid in self._known}
+
+    def _tick(self) -> None:
+        """One scan + diff + publish iteration."""
+        try:
+            current = {vp for vp in self._scan() if vp in self._registry_set()}
+        except Exception:
+            log.exception("PollingHotplugMonitor: scan failed")
+            return
+        added = current - self._last_seen
+        removed = self._last_seen - current
+        self._last_seen = current
+        if self._bus is None:
+            return
+        for vid, pid in added:
+            key = f"{vid:04x}:{pid:04x}"
+            log.info("Hotplug add: %s", key)
+            self._bus.publish(DeviceAttached(key=key, vid=vid, pid=pid))
+        for vid, pid in removed:
+            key = f"{vid:04x}:{pid:04x}"
+            log.info("Hotplug remove: %s", key)
+            self._bus.publish(DeviceDetached(key=key, vid=vid, pid=pid))
+
+    def _poll_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._tick()
+            self._stop_event.wait(self._interval_s)

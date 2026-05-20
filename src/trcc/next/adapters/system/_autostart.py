@@ -1,14 +1,24 @@
 """Autostart manager implementations + the shared no-op fallback.
 
-``WindowsAutostart`` writes the user's HKCU Run key.  Other OSes get
-``NoopAutostart`` for now (macOS LaunchAgent lands in B.7); each
-platform's ``Platform.autostart()`` consumes one of these.
+  * ``WindowsAutostart``  — writes HKCU\\Software\\Microsoft\\
+                            Windows\\CurrentVersion\\Run via ``winreg``.
+  * ``MacOSAutostart``    — writes a LaunchAgent plist under
+                            ``~/Library/LaunchAgents/`` and
+                            ``launchctl bootstrap``s it.
+  * ``NoopAutostart``     — fallback for BSD + any future OS we
+                            haven't wired yet.
+
+Each platform's ``Platform.autostart()`` consumes one of these via a
+local import so the heavy code paths only load when actually needed.
 """
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from ...core.ports import AutostartManager
@@ -164,3 +174,153 @@ class WindowsAutostart(AutostartManager):
             0,
             access,
         )
+
+
+# =========================================================================
+# macOS — LaunchAgent plist + launchctl
+# =========================================================================
+
+
+_MAC_LABEL = "com.thermalright.trcc-next"
+_DEFAULT_PLIST_PATH = (
+    Path.home() / "Library" / "LaunchAgents" / f"{_MAC_LABEL}.plist"
+)
+
+
+def _resolve_macos_program_args() -> list[str]:
+    """Return the argv that the LaunchAgent should run on login."""
+    if (exe := shutil.which("trcc-next")) is not None:
+        return [exe, "gui"]
+    return [sys.executable, "-m", "trcc.next", "gui"]
+
+
+def _render_plist(program_args: list[str], *, label: str = _MAC_LABEL) -> str:
+    """Render the LaunchAgent plist body — pure-string, fully testable."""
+    args_xml = "\n".join(f"        <string>{arg}</string>" for arg in program_args)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"\n'
+        '  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        '    <key>Label</key>\n'
+        f'    <string>{label}</string>\n'
+        '    <key>ProgramArguments</key>\n'
+        '    <array>\n'
+        f"{args_xml}\n"
+        '    </array>\n'
+        '    <key>RunAtLoad</key>\n'
+        '    <true/>\n'
+        '    <key>KeepAlive</key>\n'
+        '    <false/>\n'
+        '</dict>\n'
+        '</plist>\n'
+    )
+
+
+# Callable type alias for tests — runs a ``launchctl`` subcommand and
+# returns its exit code.  Production binds it to ``subprocess.run``; the
+# fake in tests records every invocation without touching the system.
+LaunchctlRunner = Any
+
+
+def _default_launchctl_runner(args: list[str]) -> int:
+    """Run ``launchctl <args>`` and return its returncode."""
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=5,
+                              check=False)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as e:
+        log.debug("launchctl %s failed: %s", args, e)
+        return -1
+    if proc.returncode != 0:
+        log.debug("launchctl %s exited %d: %s",
+                  args, proc.returncode, proc.stderr.strip())
+    return proc.returncode
+
+
+class MacOSAutostart(AutostartManager):
+    """Autostart via LaunchAgent plist + ``launchctl bootstrap``.
+
+    LaunchAgents live under ``~/Library/LaunchAgents/`` and fire on
+    user login.  No admin / no system-wide service — same UX as the
+    Windows HKCU Run key.
+
+    ``enable`` writes the plist + ``launchctl bootstrap gui/<uid>``s
+    it; ``disable`` ``bootout``s the agent and unlinks the plist.
+    Both are idempotent and tolerant of "already loaded" / "not
+    loaded" exit codes.
+
+    DI seam: ``plist_path`` + ``runner`` + ``program_args`` so the
+    full enable / disable cycle runs on Linux against a tmpdir + a
+    recording runner.
+    """
+
+    def __init__(
+        self,
+        *,
+        plist_path: Path | None = None,
+        program_args: list[str] | None = None,
+        runner: Any = None,
+        label: str = _MAC_LABEL,
+        uid: int | None = None,
+    ) -> None:
+        self._plist_path = plist_path if plist_path is not None else _DEFAULT_PLIST_PATH
+        self._program_args = (
+            list(program_args) if program_args is not None
+            else _resolve_macos_program_args()
+        )
+        self._runner: Any = runner if runner is not None else _default_launchctl_runner
+        self._label = label
+        # launchctl needs the GUI domain identifier; default to the
+        # current uid.  Tests inject a fixed uid for stable assertions.
+        self._uid = uid if uid is not None else os.getuid()
+
+    @property
+    def _domain_target(self) -> str:
+        """``gui/<uid>/<label>`` — the launchd service identifier."""
+        return f"gui/{self._uid}/{self._label}"
+
+    @property
+    def _domain(self) -> str:
+        return f"gui/{self._uid}"
+
+    # ── AutostartManager ABC ───────────────────────────────────────
+
+    def is_enabled(self) -> bool:
+        """True when the plist file exists on disk.
+
+        ``launchctl print`` would give a more authoritative answer, but
+        it spawns a subprocess on every UI tick; file existence is the
+        canonical install marker that legacy + iStat / Stats also use.
+        """
+        return self._plist_path.exists()
+
+    def enable(self) -> None:
+        self._plist_path.parent.mkdir(parents=True, exist_ok=True)
+        body = _render_plist(self._program_args, label=self._label)
+        self._plist_path.write_text(body, encoding="utf-8")
+        # bootstrap can fail with code 17 ("already loaded") — that's OK.
+        rc = self._runner([
+            "launchctl", "bootstrap", self._domain, str(self._plist_path),
+        ])
+        if rc not in (0, 17):
+            log.debug("launchctl bootstrap returned %d", rc)
+        log.info("MacOSAutostart: enabled at %s", self._plist_path)
+
+    def disable(self) -> None:
+        # bootout can fail with code 5 ("not loaded") — that's also OK.
+        if self._plist_path.exists():
+            rc = self._runner([
+                "launchctl", "bootout", self._domain_target,
+            ])
+            if rc not in (0, 5):
+                log.debug("launchctl bootout returned %d", rc)
+            try:
+                self._plist_path.unlink()
+            except OSError:
+                log.exception("MacOSAutostart.disable: failed to remove plist")
+                return
+            log.info("MacOSAutostart: disabled")
+
+    def refresh(self) -> None:
+        """No-op: the plist needs no rebuild between sessions."""
