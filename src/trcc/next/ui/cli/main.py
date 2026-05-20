@@ -78,6 +78,19 @@ def status() -> None:
         raise typer.Exit(code=1)
 
 
+@app.command("shell")
+def shell() -> None:
+    """Open an interactive prompt sharing one App across commands.
+
+    Each line is parsed as if it were a fresh ``trcc-next`` invocation,
+    but the App is built once and reused — no per-command handshake.
+    In daemon mode the App is an AppProxy that round-trips each line
+    to the running daemon.  Ctrl-D or ``exit`` quits.
+    """
+    from .shell import run_shell
+    raise typer.Exit(code=run_shell(app))
+
+
 @app.callback()
 def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
