@@ -16,6 +16,7 @@ from trcc.next.core.ports import (
     BulkTransport,
     CpuSource,
     GpuSource,
+    HotplugMonitor,
     MemorySource,
     Paths,
     Platform,
@@ -238,6 +239,12 @@ class FakePlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         return self._autostart
+
+    def hotplug(self) -> HotplugMonitor:
+        from trcc.next.adapters.system._hotplug import NoopHotplugMonitor
+        if not hasattr(self, "_hotplug_monitor"):
+            self._hotplug_monitor = NoopHotplugMonitor(reason="test fake")
+        return self._hotplug_monitor
 
     def setup(self, interactive: bool = True) -> int:
         return 0

@@ -173,6 +173,39 @@ class RefreshIntervalChanged(Event):
     seconds: float
 
 
+# ── Hotplug / power transitions ──────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceAttached(Event):
+    """A registry-known device just appeared on the bus.  Pre-handshake."""
+    key: str
+    vid: int
+    pid: int
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceDetached(Event):
+    """A registry-known device just left the bus.  Distinct from
+    :class:`DeviceDisconnected` (which is dispatched by explicit
+    Command).  UIs that hold a per-device handle should release on this.
+    """
+    key: str
+    vid: int
+    pid: int
+
+
+@dataclass(frozen=True, slots=True)
+class SystemSuspending(Event):
+    """The OS is about to suspend.  Power-aware adapters should
+    quiesce I/O — devices behave erratically over suspend cycles."""
+
+
+@dataclass(frozen=True, slots=True)
+class SystemResumed(Event):
+    """The OS just resumed from suspend.  Re-discover + reconnect."""
+
+
 # =========================================================================
 # Bus
 # =========================================================================

@@ -81,6 +81,10 @@ class App:
         self._display: DisplayService | None = None
         if renderer is not None:
             self._wire_display(renderer)
+        # Hotplug listener — caller (daemon, GUI launcher, tests) decides
+        # whether to ``start_hotplug``.  In-process CLI scripts that
+        # only do one Command don't need it; the daemon and GUI do.
+        self._hotplug_started = False
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""
@@ -154,9 +158,32 @@ class App:
             self._display.invalidate(key)
 
     def close(self) -> None:
-        """Disconnect every attached device."""
+        """Disconnect every attached device + stop the hotplug listener."""
+        self.stop_hotplug()
         for key in list(self.devices):
             self.detach(key)
+
+    # ── Hotplug ───────────────────────────────────────────────────────
+
+    def start_hotplug(self) -> None:
+        """Start the OS hotplug listener (idempotent).
+
+        Translates udev / kernel events into ``DeviceAttached`` /
+        ``DeviceDetached`` events on ``self.events``.  Long-lived
+        processes (daemon, GUI) should call this once on startup;
+        one-shot CLI scripts can skip it.
+        """
+        if self._hotplug_started:
+            return
+        self.platform.hotplug().start(self.events)
+        self._hotplug_started = True
+
+    def stop_hotplug(self) -> None:
+        """Stop the hotplug listener (idempotent)."""
+        if not self._hotplug_started:
+            return
+        self.platform.hotplug().stop()
+        self._hotplug_started = False
 
     # ── Command dispatch ──────────────────────────────────────────────
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
+    from .events import EventBus
     from .models import (
         DeviceInfo,
         HandshakeResult,
@@ -444,6 +445,37 @@ class AutostartManager(ABC):
 
 
 # =========================================================================
+# HotplugMonitor — OS-specific add/remove + sleep/wake listener
+# =========================================================================
+
+
+class HotplugMonitor(ABC):
+    """Background listener that pushes hardware events onto the EventBus.
+
+    Implementations spawn one daemon thread that translates OS-native
+    udev / IOKit / WM_DEVICECHANGE notifications into
+    :class:`DeviceAttached` / :class:`DeviceDetached` (for registry-known
+    vid:pid combos) and, where the OS exposes it,
+    :class:`SystemSuspending` / :class:`SystemResumed`.
+
+    UIs / Commands never call into the monitor directly — they subscribe
+    to the EventBus.
+    """
+
+    @abstractmethod
+    def start(self, bus: EventBus) -> None:
+        """Begin listening.  Idempotent — calling twice is a no-op."""
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop listening + clean up the listener thread."""
+
+    @property
+    @abstractmethod
+    def is_running(self) -> bool: ...
+
+
+# =========================================================================
 # Platform — OS root, one instance per app
 # =========================================================================
 
@@ -495,6 +527,16 @@ class Platform(ABC):
     # ── Autostart ─────────────────────────────────────────────────────
     @abstractmethod
     def autostart(self) -> AutostartManager: ...
+
+    # ── Hotplug ───────────────────────────────────────────────────────
+    @abstractmethod
+    def hotplug(self) -> HotplugMonitor:
+        """Return the OS hotplug listener.
+
+        Caller manages lifecycle — typically the daemon starts it once
+        on boot and stops it on shutdown.  Sub-Platforms that can't
+        observe USB hotplug yield a no-op monitor.
+        """
 
     # ── One-time setup (udev rules / WinUSB guide / etc.) ─────────────
     @abstractmethod

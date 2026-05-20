@@ -26,6 +26,7 @@ from ...core.models import DeviceInfo
 from ...core.ports import (
     AutostartManager,
     BulkTransport,
+    HotplugMonitor,
     Paths,
     Platform,
     ScsiTransport,
@@ -375,6 +376,7 @@ class LinuxPlatform(Platform):
         self._paths = LinuxPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
+        self._hotplug: HotplugMonitor | None = None
 
     # ── Transport factories ──────────────────────────────────────────
 
@@ -438,6 +440,12 @@ class LinuxPlatform(Platform):
         if self._autostart is None:
             self._autostart = LinuxAutostart()
         return self._autostart
+
+    def hotplug(self) -> HotplugMonitor:
+        if self._hotplug is None:
+            from ._hotplug import LinuxHotplugMonitor
+            self._hotplug = LinuxHotplugMonitor()
+        return self._hotplug
 
     # ── Setup / permissions ──────────────────────────────────────────
 

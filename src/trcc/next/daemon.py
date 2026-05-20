@@ -58,6 +58,7 @@ def run_daemon() -> int:
 
     from ._boot import _build_local_app
     app = _build_local_app()
+    app.start_hotplug()
     server = ipc.IPCServer(app)
     server.start()
     _install_signal_handlers(server)

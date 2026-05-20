@@ -19,6 +19,7 @@ from ...core.models import DeviceInfo
 from ...core.ports import (
     AutostartManager,
     BulkTransport,
+    HotplugMonitor,
     Paths,
     Platform,
     ScsiTransport,
@@ -74,6 +75,7 @@ class MacOSPlatform(Platform):
         self._paths = MacOSPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
+        self._hotplug: HotplugMonitor | None = None
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
@@ -112,6 +114,14 @@ class MacOSPlatform(Platform):
         if self._autostart is None:
             self._autostart = _NoopAutostart()
         return self._autostart
+
+    def hotplug(self) -> HotplugMonitor:
+        from ._hotplug import NoopHotplugMonitor
+        if self._hotplug is None:
+            self._hotplug = NoopHotplugMonitor(
+                reason="macOS hotplug listener not yet implemented",
+            )
+        return self._hotplug
 
     def setup(self, interactive: bool = True) -> int:
         """Diagnose codesign / quarantine / privileges, print fix steps.
