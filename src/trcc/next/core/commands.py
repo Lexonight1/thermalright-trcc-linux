@@ -12,7 +12,7 @@ between UIs and the domain.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
@@ -49,6 +49,7 @@ from .events import (
     VideoStarted,
     VideoStopped,
 )
+from .led_models import LEDMode, LedRuntimeState
 from .models import FitMode
 from .registry import find_product
 from .results import (
@@ -1061,21 +1062,28 @@ class SetLedColors(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class RenderLed(Command[LedColorsResult]):
-    """Compute the segment-display mask from current sensors + send one frame.
+    """Compute one LED frame from current settings + sensors and send it.
 
-    Pulls the handshake-resolved ``style`` + ``style_sub`` off the
-    device, builds a logical color array of ``[color] * mask_size``,
-    asks the matching ``SegmentDisplay`` for the on/off mask given the
-    current sensor snapshot + phase, and dispatches the resulting
-    ``LedPayload`` through ``Led.send`` (which applies the wire-remap
-    automatically).
+    Drives both branches in one Command:
 
-    Styles without a segment display (LF13, unknown PM) fall back to a
-    no-op send of the requested colors — the caller still drives the
-    LEDs through ``SetLedColors`` for those panels.
+      * **Segment-display styles** (most LED panels) — ``compute_mask``
+        gives the per-segment on/off pattern from the live sensor
+        snapshot; the effects engine fills in the color for every lit
+        segment.
+      * **Non-segment styles** (LF13, LC2) — no mask; the engine
+        directly fills ``style.led_count`` colors.
+
+    Mode comes from ``Settings.for_led(key).mode`` (persisted) unless
+    the caller passes an explicit ``color`` override, in which case the
+    Command short-circuits to STATIC behavior at *that* color (used by
+    the CLI ``led color <key> <hex>`` diagnostic).
+
+    Transient counters live on ``app.led_runtime[key]`` — the engine
+    advances them as a side effect so consecutive ``RenderLed``
+    dispatches phase forward.
     """
     key: str
-    color: tuple[int, int, int] = (255, 0, 0)
+    color: tuple[int, int, int] | None = None    # None = use Settings.led.color
     phase: int = 0
 
     def execute(self, app: App) -> LedColorsResult:
@@ -1116,6 +1124,42 @@ class RenderLed(Command[LedColorsResult]):
                 message=(f"{self.key} firmware PM unknown — no style "
                          "resolved; use SetLedColors instead"),
             )
+
+        led_settings = app.settings.for_led(self.key)
+        runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
+        device_settings = app.settings.for_device(self.key)
+
+        # Build the flat sensor dict the engine consumes.  Two shapes
+        # coexist: the dotted IDs we already produce for SensorReading,
+        # and the legacy view used by compute_mask().
+        enum = app.platform.sensors()
+        descriptors = enum.discover()
+        current = enum.read_all()
+        from .models import SensorReading
+        readings = {
+            d.sensor_id: SensorReading(
+                sensor_id=d.sensor_id, category=d.category,
+                value=current.get(d.sensor_id, 0.0),
+                unit=d.unit, label=d.label,
+            )
+            for d in descriptors
+        }
+        metrics = LegacyMetricsView(readings)
+
+        # If the caller passed an explicit color, treat it as a STATIC
+        # diagnostic at full brightness (same shape RenderLed has always
+        # offered — "show this color as bright as the LEDs can go").
+        # Otherwise the engine reads everything off LedDeviceSettings.
+        explicit_color = self.color
+        effective_settings = (
+            replace(led_settings,
+                    mode=LEDMode.STATIC,
+                    color=explicit_color,
+                    brightness=100,
+                    test_mode=False)
+            if explicit_color is not None else led_settings
+        )
+
         display = get_display(style)
         if display is None:
             return LedColorsResult(
@@ -1124,39 +1168,22 @@ class RenderLed(Command[LedColorsResult]):
                          "use SetLedColors instead"),
             )
 
-        # Pull current sensor snapshot as SensorReading dict so
-        # LegacyMetricsView can do its attribute → sensor_id translation.
-        enum = app.platform.sensors()
-        descriptors = enum.discover()
-        current = enum.read_all()
-        from .models import SensorReading
-        readings = {
-            d.sensor_id: SensorReading(
-                sensor_id=d.sensor_id,
-                category=d.category,
-                value=current.get(d.sensor_id, 0.0),
-                unit=d.unit,
-                label=d.label,
-            )
-            for d in descriptors
-        }
-        metrics = LegacyMetricsView(readings)
-
-        settings = app.settings.for_device(self.key)
         mask = compute_mask(
-            style,
-            metrics,
-            phase=self.phase,
-            temp_unit=settings.temp_unit,
-            is_24h=(settings.time_format == "24h"),
+            style, metrics, phase=self.phase,
+            temp_unit=device_settings.temp_unit,
+            is_24h=(device_settings.time_format == "24h"),
         )
-        colors = [self.color] * len(mask)
+        segment_count = len(mask)
+        colors = app.led_effects.tick(
+            effective_settings, runtime, current,
+            led_count=segment_count,
+        )
 
         payload = LedPayload(
             colors=colors,
             is_on=mask,
-            global_on=True,
-            brightness=settings.brightness,
+            global_on=effective_settings.global_on,
+            brightness=effective_settings.brightness,
         )
         try:
             ok = device.send(payload)
@@ -1173,11 +1200,140 @@ class RenderLed(Command[LedColorsResult]):
             app.events.publish(LedColorsChanged(
                 key=self.key, color_count=len(colors),
             ))
-        style_name = style.value
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,
-            message=(f"Rendered {style_name} mask ({sum(mask)}/{len(mask)} LEDs on)"
+            message=(f"Rendered {style.value} {effective_settings.mode.name} "
+                     f"({sum(mask)}/{len(mask)} LEDs on)"
                      if ok else "LED send returned False"),
+        )
+
+
+# =========================================================================
+# LED setter Commands — mode / color / brightness / sources / test mode
+# =========================================================================
+
+
+def _publish_led_settings_changed(app: App, key: str) -> None:
+    """Single event for any LED settings mutation — UIs subscribe once."""
+    app.events.publish(LedColorsChanged(key=key, color_count=0))
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedMode(Command[LedColorsResult]):
+    """Set the global animation mode for an LED device."""
+    key: str
+    mode: LEDMode
+
+    def execute(self, app: App) -> LedColorsResult:
+        app.settings.set_led_mode(self.key, self.mode)
+        # Phase counters reset on mode change so animation restarts cleanly
+        runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
+        runtime.rgb_timer = 0
+        runtime.test_timer = 0
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED mode set to {self.mode.name}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedColor(Command[LedColorsResult]):
+    """Set the global LED color (used in STATIC / BREATHING / COLORFUL modes)."""
+    key: str
+    color: tuple[int, int, int]
+
+    def execute(self, app: App) -> LedColorsResult:
+        for label, value in zip("rgb", self.color, strict=False):
+            if not 0 <= value <= 255:
+                return LedColorsResult(
+                    ok=False, key=self.key, colors=[],
+                    message=f"{label} out of range (0-255): {value}",
+                )
+        app.settings.set_led_color(self.key, self.color)
+        _publish_led_settings_changed(app, self.key)
+        r, g, b = self.color
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[self.color],
+            message=f"LED color set to #{r:02x}{g:02x}{b:02x}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedBrightness(Command[LedColorsResult]):
+    """Set the global LED brightness percent (0–100)."""
+    key: str
+    percent: int
+
+    def execute(self, app: App) -> LedColorsResult:
+        if not 0 <= self.percent <= 100:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"brightness out of range (0-100): {self.percent}",
+            )
+        app.settings.set_led_brightness(self.key, self.percent)
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED brightness set to {self.percent}%",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EnableLedTestMode(Command[LedColorsResult]):
+    """Enable / disable the 4-color diagnostic test cycle."""
+    key: str
+    enabled: bool
+
+    def execute(self, app: App) -> LedColorsResult:
+        app.settings.set_led_test_mode(self.key, self.enabled)
+        runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
+        runtime.test_timer = 0
+        runtime.test_color = 0
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED test mode {'enabled' if self.enabled else 'disabled'}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedTempSource(Command[LedColorsResult]):
+    """Pick the sensor source for TEMP_LINKED mode (``'cpu'`` or ``'gpu'``)."""
+    key: str
+    source: str
+
+    def execute(self, app: App) -> LedColorsResult:
+        try:
+            app.settings.set_led_temp_source(self.key, self.source)
+        except ValueError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED temp source set to {self.source}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedLoadSource(Command[LedColorsResult]):
+    """Pick the sensor source for LOAD_LINKED mode (``'cpu'`` or ``'gpu'``)."""
+    key: str
+    source: str
+
+    def execute(self, app: App) -> LedColorsResult:
+        try:
+            app.settings.set_led_load_source(self.key, self.source)
+        except ValueError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED load source set to {self.source}",
         )
 
 

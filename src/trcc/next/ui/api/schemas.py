@@ -196,9 +196,34 @@ class LedColorsRequest(BaseModel):
 
 
 class LedRenderRequest(BaseModel):
-    """Sensor-driven render — caller supplies the lit-segment color + phase."""
-    color: tuple[int, int, int] = (255, 0, 0)
+    """Sensor-driven render.  ``color`` is an optional STATIC override."""
+    color: tuple[int, int, int] | None = None
     phase: int = Field(0, ge=0)
+
+
+class LedModeRequest(BaseModel):
+    """Set the global animation mode for an LED device."""
+    mode: str = Field(
+        ..., pattern="^(static|breathing|colorful|rainbow|temp_linked|load_linked)$",
+        description="Case-insensitive mode name.",
+    )
+
+
+class LedColorRequest(BaseModel):
+    color: tuple[int, int, int] = Field(...)
+
+
+class LedBrightnessRequest(BaseModel):
+    percent: int = Field(..., ge=0, le=100)
+
+
+class LedTestModeRequest(BaseModel):
+    enabled: bool
+
+
+class LedSourceRequest(BaseModel):
+    """Source body for ``temp-source`` / ``load-source`` endpoints."""
+    source: str = Field(..., pattern="^(cpu|gpu)$")
 
 
 class ColorRequest(BaseModel):

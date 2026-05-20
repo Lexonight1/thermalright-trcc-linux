@@ -17,11 +17,13 @@ from .adapters.device.scsi_lcd import ScsiLcd
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
 from .core.events import EventBus
+from .core.led_models import LedRuntimeState
 from .core.models import Theme, Wire
 from .core.ports import Device, Platform, Renderer
 from .core.registry import find_product
 from .core.results import Result
 from .services.display import DisplayService
+from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.overlay import OverlayService
 from .services.settings import Settings
@@ -69,6 +71,11 @@ class App:
         # Currently-loaded Theme per device — set by LoadTheme, read by
         # RenderAndSend ticker, cleared on DisconnectDevice.
         self.active_themes: dict[str, Theme] = {}
+        # Per-device LED runtime counters — populated lazily by RenderLed,
+        # cleared by DisconnectDevice.  Not persisted — these are tick
+        # phase counters, not user prefs.
+        self.led_runtime: dict[str, LedRuntimeState] = {}
+        self.led_effects = LEDEffectEngine()
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -141,6 +148,7 @@ class App:
         if device is not None:
             device.disconnect()
         self.active_themes.pop(key, None)
+        self.led_runtime.pop(key, None)
         self.media.unload(key)
         if self._display is not None:
             self._display.invalidate(key)

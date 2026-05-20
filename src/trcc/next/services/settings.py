@@ -20,6 +20,7 @@ from threading import RLock
 from typing import Any, Literal
 
 from ..core.errors import ConfigError
+from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
 from ..core.models import DeviceSettings, FitMode, TempUnit
 from ..core.ports import Paths
 
@@ -69,6 +70,7 @@ class Settings:
         self._lock = RLock()
         self._app = AppSettings()
         self._devices: dict[str, DeviceSettings] = {}
+        self._led_devices: dict[str, LedDeviceSettings] = {}
         self._load()
 
     # ── AppSettings surface ───────────────────────────────────────────
@@ -184,6 +186,106 @@ class Settings:
             self.for_device(key).split_mode = mode
             self._save()
 
+    # ── LED-device settings ───────────────────────────────────────────
+
+    def for_led(self, key: str) -> LedDeviceSettings:
+        """Return the LedDeviceSettings for *key*, defaulting on first touch."""
+        with self._lock:
+            if key not in self._led_devices:
+                self._led_devices[key] = LedDeviceSettings()
+            return self._led_devices[key]
+
+    def set_led_mode(self, key: str, mode: LEDMode) -> None:
+        with self._lock:
+            self.for_led(key).mode = mode
+            self._save()
+
+    def set_led_color(self, key: str, color: tuple[int, int, int]) -> None:
+        with self._lock:
+            self.for_led(key).color = color
+            self._save()
+
+    def set_led_brightness(self, key: str, percent: int) -> None:
+        with self._lock:
+            self.for_led(key).brightness = max(0, min(100, percent))
+            self._save()
+
+    def set_led_global_on(self, key: str, on: bool) -> None:
+        with self._lock:
+            self.for_led(key).global_on = on
+            self._save()
+
+    def set_led_test_mode(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_led(key).test_mode = enabled
+            self._save()
+
+    def set_led_temp_source(self, key: str, source: str) -> None:
+        if source not in ("cpu", "gpu"):
+            raise ValueError(f"Invalid temp source: {source!r}; expected 'cpu' or 'gpu'")
+        with self._lock:
+            self.for_led(key).temp_source = source  # type: ignore[assignment]
+            self._save()
+
+    def set_led_load_source(self, key: str, source: str) -> None:
+        if source not in ("cpu", "gpu"):
+            raise ValueError(f"Invalid load source: {source!r}; expected 'cpu' or 'gpu'")
+        with self._lock:
+            self.for_led(key).load_source = source  # type: ignore[assignment]
+            self._save()
+
+    def set_led_zone_count(self, key: str, count: int) -> None:
+        """Resize the zones list — called by Led.connect once style is known."""
+        with self._lock:
+            settings = self.for_led(key)
+            current = len(settings.zones)
+            if count == current:
+                return
+            if count > current:
+                settings.zones.extend(
+                    LedZoneSettings() for _ in range(count - current)
+                )
+            else:
+                settings.zones = settings.zones[:count]
+            self._save()
+
+    def set_led_zone(
+        self, key: str, zone: int,
+        *,
+        mode: LEDMode | None = None,
+        color: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+        on: bool | None = None,
+    ) -> None:
+        """Update one zone's persistent state — only the given fields change."""
+        with self._lock:
+            settings = self.for_led(key)
+            if not 0 <= zone < len(settings.zones):
+                raise IndexError(
+                    f"Zone {zone} out of range for {key} "
+                    f"(have {len(settings.zones)})"
+                )
+            z = settings.zones[zone]
+            if mode is not None:
+                z.mode = mode
+            if color is not None:
+                z.color = color
+            if brightness is not None:
+                z.brightness = max(0, min(100, brightness))
+            if on is not None:
+                z.on = on
+            self._save()
+
+    def set_led_zone_sync(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_led(key).zone_sync = enabled
+            self._save()
+
+    def set_led_zone_sync_interval(self, key: str, ticks: int) -> None:
+        with self._lock:
+            self.for_led(key).zone_sync_interval_ticks = max(1, ticks)
+            self._save()
+
     # ── Persistence ───────────────────────────────────────────────────
 
     def _config_path(self) -> Path:
@@ -208,6 +310,8 @@ class Settings:
                     setattr(self._app, field_name, value)
             for key, data in raw.get("devices", {}).items():
                 self._devices[key] = _device_settings_from_dict(data)
+            for key, data in raw.get("led_devices", {}).items():
+                self._led_devices[key] = _led_settings_from_dict(data)
 
     def _save(self) -> None:
         """Atomic write: tmp file → fsync → rename."""
@@ -217,6 +321,7 @@ class Settings:
         payload = {
             "app": asdict(self._app),
             "devices": {k: asdict(v) for k, v in self._devices.items()},
+            "led_devices": {k: asdict(v) for k, v in self._led_devices.items()},
         }
         tmp = path.with_suffix(".json.tmp")
         try:
@@ -260,6 +365,46 @@ def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
         except ValueError:
             kwargs.pop("fit_mode")
     return DeviceSettings(**kwargs)
+
+
+def _led_zone_from_dict(data: dict[str, Any]) -> LedZoneSettings:
+    """Build one LedZoneSettings from a parsed JSON dict."""
+    kwargs: dict[str, Any] = {}
+    valid = set(LedZoneSettings.__dataclass_fields__)
+    for k, v in data.items():
+        if k in valid:
+            kwargs[k] = v
+    if "mode" in kwargs and isinstance(kwargs["mode"], int):
+        try:
+            kwargs["mode"] = LEDMode(kwargs["mode"])
+        except ValueError:
+            kwargs.pop("mode")
+    if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
+        kwargs["color"] = tuple(kwargs["color"])
+    return LedZoneSettings(**kwargs)
+
+
+def _led_settings_from_dict(data: dict[str, Any]) -> LedDeviceSettings:
+    """Build LedDeviceSettings from a parsed JSON dict, tolerant of extras."""
+    kwargs: dict[str, Any] = {}
+    valid = set(LedDeviceSettings.__dataclass_fields__)
+    for k, v in data.items():
+        if k in valid:
+            kwargs[k] = v
+    # Mode enum from its int value
+    if "mode" in kwargs and isinstance(kwargs["mode"], int):
+        try:
+            kwargs["mode"] = LEDMode(kwargs["mode"])
+        except ValueError:
+            kwargs.pop("mode")
+    # Color tuple restoration
+    if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
+        kwargs["color"] = tuple(kwargs["color"])
+    # Zones (each is its own dataclass)
+    if isinstance(kwargs.get("zones"), list):
+        kwargs["zones"] = [_led_zone_from_dict(z) for z in kwargs["zones"]
+                           if isinstance(z, dict)]
+    return LedDeviceSettings(**kwargs)
 
 
 # Silence ruff "field imported but not used" when this module grows
