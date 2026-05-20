@@ -189,6 +189,12 @@ class LedColorsRequest(BaseModel):
     brightness: int = Field(100, ge=0, le=100)
 
 
+class LedRenderRequest(BaseModel):
+    """Sensor-driven render — caller supplies the lit-segment color + phase."""
+    color: tuple[int, int, int] = (255, 0, 0)
+    phase: int = Field(0, ge=0)
+
+
 class ColorRequest(BaseModel):
     """Solid-color frame request — three 0-255 channels."""
     r: int = Field(..., ge=0, le=255)

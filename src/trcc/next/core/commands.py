@@ -973,6 +973,128 @@ class SetLedColors(Command[LedColorsResult]):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RenderLed(Command[LedColorsResult]):
+    """Compute the segment-display mask from current sensors + send one frame.
+
+    Pulls the handshake-resolved ``style`` + ``style_sub`` off the
+    device, builds a logical color array of ``[color] * mask_size``,
+    asks the matching ``SegmentDisplay`` for the on/off mask given the
+    current sensor snapshot + phase, and dispatches the resulting
+    ``LedPayload`` through ``Led.send`` (which applies the wire-remap
+    automatically).
+
+    Styles without a segment display (LF13, unknown PM) fall back to a
+    no-op send of the requested colors — the caller still drives the
+    LEDs through ``SetLedColors`` for those panels.
+    """
+    key: str
+    color: tuple[int, int, int] = (255, 0, 0)
+    phase: int = 0
+
+    def execute(self, app: App) -> LedColorsResult:
+        from ..adapters.device.led import Led, LedPayload
+        from ..services.led_segment import (
+            LegacyMetricsView,
+            compute_mask,
+            get_display,
+        )
+
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=str(e),
+            )
+
+        if not isinstance(device, Led):
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"{self.key} is not an LED device",
+            )
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+        if device.led_handshake is None:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"{self.key} handshake incomplete — no style resolved",
+            )
+
+        style = device.led_handshake.style
+        if style is None:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=(f"{self.key} firmware PM unknown — no style "
+                         "resolved; use SetLedColors instead"),
+            )
+        display = get_display(style)
+        if display is None:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=(f"style {style.value} has no segment display — "
+                         "use SetLedColors instead"),
+            )
+
+        # Pull current sensor snapshot as SensorReading dict so
+        # LegacyMetricsView can do its attribute → sensor_id translation.
+        enum = app.platform.sensors()
+        descriptors = enum.discover()
+        current = enum.read_all()
+        from .models import SensorReading
+        readings = {
+            d.sensor_id: SensorReading(
+                sensor_id=d.sensor_id,
+                category=d.category,
+                value=current.get(d.sensor_id, 0.0),
+                unit=d.unit,
+                label=d.label,
+            )
+            for d in descriptors
+        }
+        metrics = LegacyMetricsView(readings)
+
+        settings = app.settings.for_device(self.key)
+        mask = compute_mask(
+            style,
+            metrics,
+            phase=self.phase,
+            temp_unit=settings.temp_unit,
+            is_24h=(settings.time_format == "24h"),
+        )
+        colors = [self.color] * len(mask)
+
+        payload = LedPayload(
+            colors=colors,
+            is_on=mask,
+            global_on=True,
+            brightness=settings.brightness,
+        )
+        try:
+            ok = device.send(payload)
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="transport", key=self.key,
+            ))
+            return LedColorsResult(
+                ok=False, key=self.key, colors=colors,
+                message=str(e),
+            )
+
+        if ok:
+            app.events.publish(LedColorsChanged(
+                key=self.key, color_count=len(colors),
+            ))
+        style_name = style.value
+        return LedColorsResult(
+            ok=ok, key=self.key, colors=colors,
+            message=(f"Rendered {style_name} mask ({sum(mask)}/{len(mask)} LEDs on)"
+                     if ok else "LED send returned False"),
+        )
+
+
 # =========================================================================
 # Sensors
 # =========================================================================

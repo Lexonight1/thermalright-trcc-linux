@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from ...core.commands import SetLedColors
+from ...core.commands import RenderLed, SetLedColors
 from ._shared import http_error_if_failed, to_led_response
-from .schemas import LedColorsRequest, LedColorsResponse
+from .schemas import LedColorsRequest, LedColorsResponse, LedRenderRequest
 
 router = APIRouter(prefix="/devices/{key}/led", tags=["led"])
 
@@ -20,6 +20,17 @@ def set_colors(key: str, body: LedColorsRequest,
             global_on=body.global_on,
             brightness=body.brightness,
         ),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/render", response_model=LedColorsResponse)
+def render(key: str, body: LedRenderRequest,
+            request: Request) -> LedColorsResponse:
+    """Compute the segment-display mask from current sensors + send."""
+    result = request.app.state.trcc.dispatch(
+        RenderLed(key=key, color=body.color, phase=body.phase),
     )
     http_error_if_failed(result)
     return to_led_response(result)

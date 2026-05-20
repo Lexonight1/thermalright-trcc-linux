@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typer
 
-from ...core.commands import SetLedColors
+from ...core.commands import RenderLed, SetLedColors
 from ._ctx import get_app
 
 app = typer.Typer(help="RGB LED control.", no_args_is_help=True)
@@ -34,6 +34,30 @@ def set_colors(
     result = get_app().dispatch(SetLedColors(
         key=key, colors=parsed,
         global_on=not off, brightness=brightness,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("render")
+def render(
+    key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
+    color: str = typer.Option("ff0000", "--color", "-c",
+                              help="Hex color (#rrggbb) for the lit segments"),
+    phase: int = typer.Option(0, "--phase", "-p",
+                              help="Rotation phase for multi-phase displays"),
+) -> None:
+    """Render one segment-display frame from current sensors + send.
+
+    Pulls the handshake-resolved style, computes the on/off LED mask
+    from the current sensor snapshot, and sends the requested color to
+    every lit LED.  Stateless — call repeatedly (or on a timer) to
+    animate.  Use ``set-colors`` instead for direct per-LED control.
+    """
+    parsed = _parse_hex_color(color)
+    result = get_app().dispatch(RenderLed(
+        key=key, color=parsed, phase=phase,
     ))
     typer.echo(result.message)
     if not result.ok:

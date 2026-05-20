@@ -172,7 +172,13 @@ class Led(Device[BulkTransport]):
         ) from last_err
 
     def send(self, payload: LedPayload) -> bool:
-        """Send one LED color update.  Payload must be a LedPayload."""
+        """Send one LED color update.  Payload must be a LedPayload.
+
+        Colors arrive in logical (UI / segment-display) order; the
+        per-style wire-remap table reorders them to physical-wire order
+        before the packet is built. Styles without a remap table (and
+        the pre-handshake / unknown-PM cases) pass through unchanged.
+        """
         if not isinstance(payload, LedPayload):
             raise UnsupportedOperationError(
                 "Led.send() requires a LedPayload; "
@@ -182,6 +188,32 @@ class Led(Device[BulkTransport]):
             raise TransportError(
                 f"Led {self.info.key} not connected — call connect() first"
             )
+
+        # Apply wire-order remap using the handshake-resolved style.
+        # Both colors AND the optional is_on mask arrive in logical
+        # (UI / segment-display) order — the per-style table reorders
+        # both to physical-wire order before the packet is built. Skip
+        # the work when style is unknown or no table applies (identity
+        # passthrough).
+        if self._led_handshake is not None and payload.colors:
+            from ...services.led_segment import remap_led_colors
+            style = self._led_handshake.style
+            style_sub = self._led_handshake.style_sub
+            remapped_colors = remap_led_colors(payload.colors, style, style_sub)
+            remapped_is_on: list[bool] | None = payload.is_on
+            if remapped_colors is not payload.colors and payload.is_on is not None:
+                # Reuse the remap function by lifting booleans into a
+                # color-shaped sequence so the same table applies.
+                colored_mask = [(1, 0, 0) if v else (0, 0, 0) for v in payload.is_on]
+                physical_mask = remap_led_colors(colored_mask, style, style_sub)
+                remapped_is_on = [c[0] == 1 for c in physical_mask]
+            if remapped_colors is not payload.colors:
+                payload = LedPayload(
+                    colors=remapped_colors,
+                    is_on=remapped_is_on,
+                    global_on=payload.global_on,
+                    brightness=payload.brightness,
+                )
 
         packet = self._build_packet(payload)
 
