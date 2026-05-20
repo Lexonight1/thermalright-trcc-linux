@@ -32,7 +32,7 @@ from ...core.ports import (
 )
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
-from ..sensors.aggregator import BaselineSensors
+from ..sensors.windows import build_windows_sensors
 
 log = logging.getLogger(__name__)
 
@@ -333,9 +333,9 @@ class WindowsPlatform(Platform):
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
-        # Baseline (psutil + nvml) until WindowsLhm sensor source lands.
+        """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
         if self._sensors is None:
-            self._sensors = BaselineSensors()
+            self._sensors = build_windows_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
