@@ -72,6 +72,68 @@ def test_accepts_dd_cloud_format(tmp_path: Path) -> None:
     assert cfg["elements"] == []
 
 
+def _build_dd_element(
+    mode: int,
+    mode_sub: int = 0,
+    x: int = 0,
+    y: int = 0,
+    main_count: int = 0,
+    sub_count: int = 0,
+    custom_text: bytes = b"",
+) -> bytes:
+    """Build one 0xDD element record."""
+    el = bytearray()
+    el.extend(struct.pack("<ii", mode, mode_sub))
+    el.extend(struct.pack("<ii", x, y))
+    el.extend(struct.pack("<ii", main_count, sub_count))
+    # Font block — empty font_name (length 0), size 24, neutral style/color
+    el.append(0)                                   # font_name length
+    el.extend(struct.pack("<f", 24.0))             # size
+    el.extend(bytes([0, 0, 0, 255, 255, 255, 255]))  # style+unit+charset+alpha+rgb
+    # custom_text — length prefix + bytes
+    el.append(len(custom_text))
+    el.extend(custom_text)
+    return bytes(el)
+
+
+def _build_dd_buffer(element_blobs: list[bytes]) -> bytes:
+    """Build a minimal 0xDD theme file with the given element blobs."""
+    buf = bytearray()
+    buf.append(0xDD)                                  # magic
+    buf.append(1)                                     # system_info flag
+    buf.extend(struct.pack("<i", len(element_blobs))) # count
+    for blob in element_blobs:
+        buf.extend(blob)
+    return bytes(buf)
+
+
+def test_dd_time_weekday_date_emit_clock_elements(tmp_path: Path) -> None:
+    """0xDD mode 1/2/3 must emit ``type: "clock"`` with the right source."""
+    f = tmp_path / "clocks.dc"
+    f.write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=1, x=10, y=20),  # TIME
+        _build_dd_element(mode=2, x=30, y=40),  # WEEKDAY
+        _build_dd_element(mode=3, x=50, y=60),  # DATE
+    ]))
+
+    cfg = load_dc_as_theme_config(f)
+
+    assert len(cfg["elements"]) == 3
+    by_source = {e["source"]: e for e in cfg["elements"]}
+    assert by_source["time"]["type"] == "clock"
+    assert by_source["time"]["x"] == 10
+    assert by_source["time"]["y"] == 20
+    assert by_source["weekday"]["type"] == "clock"
+    assert by_source["weekday"]["x"] == 30
+    assert by_source["date"]["type"] == "clock"
+    assert by_source["date"]["x"] == 50
+
+    # No placeholder text should leak — DD clock elements never emit "text"
+    text_payloads = [e.get("text") for e in cfg["elements"] if e["type"] == "text"]
+    assert "{time}" not in text_payloads
+    assert "{date}" not in text_payloads
+
+
 def test_rejects_dd_cloud_format_with_bogus_count(tmp_path: Path) -> None:
     """0xDD with element_count > 100 is rejected as malformed."""
     f = tmp_path / "cloud.dc"

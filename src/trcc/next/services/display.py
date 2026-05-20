@@ -27,6 +27,7 @@ from typing import Any
 from ..core.models import DeviceSettings, FitMode, ProductInfo, RawFrame, Theme
 from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile
+from ._clock import compute_clock
 from .media import MediaService
 from .overlay import OverlayService
 from .settings import Settings
@@ -111,9 +112,15 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         visual_size = self._visual_size(base_size, s.orientation)
 
+        clock = compute_clock(
+            time_format=s.time_format,
+            date_format=s.date_format,
+            language=self._settings.app.language,
+        )
+
         scene = self._scenes.get(info.key)
         bg_key = self._bg_mask_key(info, theme, visual_size)
-        overlay_key = self._overlay_key(theme, visual_size, sensors)
+        overlay_key = self._overlay_key(theme, visual_size, sensors, clock)
 
         if scene is None or scene.bg_mask_key != bg_key:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
@@ -121,7 +128,7 @@ class DisplayService:
             bg_surface = scene.bg_mask_surface
 
         if scene is None or scene.overlay_key != overlay_key:
-            overlay_surface = self._build_overlay(theme, sensors, visual_size)
+            overlay_surface = self._build_overlay(theme, sensors, visual_size, clock)
         else:
             overlay_surface = scene.overlay_surface
 
@@ -296,10 +303,11 @@ class DisplayService:
         theme: Theme,
         sensors: dict[str, float],
         visual_size: tuple[int, int],
+        clock: dict[str, str],
     ) -> Any:
-        """Transparent layer with text + metric elements painted on."""
+        """Transparent layer with text + metric + clock elements painted on."""
         overlay_canvas = self._r.create_surface(*visual_size)
-        return self._overlay.render(overlay_canvas, theme.config, sensors)
+        return self._overlay.render(overlay_canvas, theme.config, sensors, clock=clock)
 
     # ── Cache keys ────────────────────────────────────────────────────
 
@@ -329,6 +337,7 @@ class DisplayService:
         theme: Theme,
         visual_size: tuple[int, int],
         sensors: dict[str, float],
+        clock: dict[str, str],
     ) -> tuple[Any, ...]:
         # Sensors turn into a sorted tuple of (id, rounded_value).  Rounding
         # limits cache-busting to meaningful changes (e.g. 45.3 → 45.4 is
@@ -336,7 +345,8 @@ class DisplayService:
         sensor_tuple = tuple(sorted(
             (k, round(v, 1)) for k, v in sensors.items()
         ))
-        return (id(theme.config), visual_size, sensor_tuple)
+        clock_tuple = tuple(sorted(clock.items()))
+        return (id(theme.config), visual_size, sensor_tuple, clock_tuple)
 
     # ── Helpers ───────────────────────────────────────────────────────
 

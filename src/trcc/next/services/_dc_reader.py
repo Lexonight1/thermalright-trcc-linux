@@ -318,10 +318,10 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
     DATE / CUSTOM).  Trailer block (display options + mask settings) is
     optional.
 
-    Time / weekday / date elements emit `type: "text"` placeholders for
-    now — next/'s OverlayService doesn't render dynamic clocks yet, so
-    we surface the position+font and let a later pass wire the live
-    text.  Hardware and custom elements render correctly today.
+    Time / weekday / date elements emit ``type: "clock"`` with a
+    ``source`` discriminator; OverlayService resolves them per-frame
+    against the device's time/date format and the app language.
+    Hardware and custom elements render correctly today.
     """
     r = _Reader(data, start=1)   # skip magic
     r.read_bool()                # system_info flag (unused in next/)
@@ -424,9 +424,12 @@ def _build_dd_element(
             if not custom_text:
                 return None
             return {**base, "type": "text", "text": custom_text}
-        case 1 | 2 | 3:  # TIME / WEEKDAY / DATE — placeholder text for now
-            placeholder = {1: "{time}", 2: "{weekday}", 3: "{date}"}[mode]
-            return {**base, "type": "text", "text": placeholder}
+        case 1:  # TIME
+            return {**base, "type": "clock", "source": "time"}
+        case 2:  # WEEKDAY
+            return {**base, "type": "clock", "source": "weekday"}
+        case 3:  # DATE
+            return {**base, "type": "clock", "source": "date"}
         case _:
             log.debug("0xDD: unknown element mode %d; skipping", mode)
             return None

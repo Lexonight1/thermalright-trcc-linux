@@ -29,6 +29,7 @@ class OverlayService:
         base: Any,
         config: dict[str, Any],
         sensors: dict[str, float],
+        clock: dict[str, str] | None = None,
     ) -> Any:
         """Render every overlay element from *config* onto *base*.
 
@@ -40,9 +41,17 @@ class OverlayService:
                   "color": "#ffffff", "size": int, "bold": bool, "italic": bool },
                 { "type": "metric", "x": int, "y": int, "metric": "cpu_temp",
                   "format": "{value:.0f}°C", "color": "#ffffff", "size": int },
+                { "type": "clock", "x": int, "y": int,
+                  "source": "time" | "weekday" | "date",
+                  "color": "#ffffff", "size": int },
                 ...
               ]
             }
+
+        ``clock`` is a pre-resolved ``{"time": "14:58", "date": ...,
+        "weekday": ...}`` dict produced by DisplayService via
+        ``services._clock.compute_clock``.  When ``None``, clock
+        elements are skipped (e.g. test fixtures that don't care).
         """
         if not config.get("overlay_enabled", True):
             return base
@@ -53,7 +62,7 @@ class OverlayService:
 
         elements: list[dict[str, Any]] = config.get("elements", [])
         for element in elements:
-            self._draw_element(overlay, element, sensors)
+            self._draw_element(overlay, element, sensors, clock or {})
 
         return self._r.composite(base, overlay, position=(0, 0))
 
@@ -64,12 +73,15 @@ class OverlayService:
         surface: Any,
         element: dict[str, Any],
         sensors: dict[str, float],
+        clock: dict[str, str],
     ) -> None:
         kind = element.get("type")
         if kind == "text":
             self._draw_text(surface, element)
         elif kind == "metric":
             self._draw_metric(surface, element, sensors)
+        elif kind == "clock":
+            self._draw_clock(surface, element, clock)
         else:
             log.debug("Skipping unknown overlay element type: %r", kind)
 
@@ -98,6 +110,28 @@ class OverlayService:
             return
         fmt = str(element.get("format", "{value}"))
         text = fmt.format(value=value)
+        self._r.draw_text(
+            surface,
+            x=int(element.get("x", 0)),
+            y=int(element.get("y", 0)),
+            text=text,
+            color=str(element.get("color", "#ffffff")),
+            size=int(element.get("size", 16)),
+            bold=bool(element.get("bold", False)),
+            italic=bool(element.get("italic", False)),
+        )
+
+    def _draw_clock(
+        self,
+        surface: Any,
+        element: dict[str, Any],
+        clock: dict[str, str],
+    ) -> None:
+        source = str(element.get("source", ""))
+        text = clock.get(source, "")
+        if not text:
+            log.debug("Clock source %r unresolved; skipping", source)
+            return
         self._r.draw_text(
             surface,
             x=int(element.get("x", 0)),
