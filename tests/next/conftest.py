@@ -287,3 +287,87 @@ def fake_bulk() -> FakeBulkTransport:
 @pytest.fixture
 def fake_scsi() -> FakeScsiTransport:
     return FakeScsiTransport()
+
+
+# =========================================================================
+# CLI fixtures — typer.testing.CliRunner + _ctx App override
+# =========================================================================
+#
+# Moved here from test_cli_commands.py so future per-command test files
+# (test_cli_display.py, test_cli_led.py, …) consume them directly.
+# The fixture is the foundation; per-file tests are the example.
+
+
+@pytest.fixture
+def cli_runner():
+    """typer.testing.CliRunner — captures stdout + exit codes."""
+    from typer.testing import CliRunner
+
+    return CliRunner()
+
+
+class _CliRenderer:
+    """Stand-in for QtRenderer used by CLI command bodies.
+
+    CLI rarely renders anything itself, but ``display color`` /
+    ``display boot-anim`` / etc. exercise the DisplayService which
+    needs *some* renderer.  This one short-circuits every method to
+    a trivial result so tests stay headless.
+    """
+
+    def create_surface(self, width, height, color=None):
+        return _Surface(width, height)
+
+    def open_image(self, path):
+        return _Surface(100, 100)
+
+    def surface_size(self, surface):
+        return (surface.w, surface.h)
+
+    def composite(self, base, overlay, position, mask=None):
+        return base
+
+    def resize(self, surface, width, height):
+        return _Surface(width, height)
+
+    def rotate(self, surface, degrees):
+        return surface
+
+    def apply_brightness(self, surface, percent):
+        return surface
+
+    def draw_text(self, surface, x, y, text, color, size,
+                  bold=False, italic=False):
+        pass
+
+    def encode_rgb565(self, surface):
+        return b"\x00\x00" * (surface.w * surface.h)
+
+    def encode_jpeg(self, surface, quality=95, max_size=0):
+        return b""
+
+    def from_raw_rgb24(self, frame):
+        return _Surface(100, 100)
+
+
+class _Surface:
+    def __init__(self, w: int = 100, h: int = 100) -> None:
+        self.w, self.h = w, h
+
+
+@pytest.fixture(autouse=False)
+def cli_app(fake_platform):
+    """Pre-wire the CLI's lru_cached App so every command body runs
+    against FakePlatform + a smoke renderer.
+
+    Not autouse — tests that don't touch the CLI shouldn't pay the
+    fixture cost.  The CLI test files opt in.
+    """
+    from trcc.next.ui.cli import _ctx
+
+    _ctx.set_platform(fake_platform)
+    _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]
+    yield _ctx.get_app()
+    _ctx.get_app.cache_clear()
+    _ctx._platform_override = None
+    _ctx._renderer_override = None
