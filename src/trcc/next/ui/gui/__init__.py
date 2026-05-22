@@ -55,6 +55,15 @@ def launch(verbosity: int = 0, decorated: bool = False,
     from ...core.ports import Platform
     platform = Platform.detect()
 
+    # ── Logging — rotating file at paths.log_file() + stderr WARNING+
+    # Without this, only the CLI root callback's basicConfig is in
+    # effect (stderr-only) and `~/.trcc/trcc.log` never gets written.
+    from ...adapters.infra.logging import configure_logging
+    configure_logging(
+        platform.paths().log_file(),
+        level=logging.DEBUG if verbosity >= 1 else logging.INFO,
+    )
+
     # ── Single-instance lock + raise-existing-window ─────────────────
     from ...ipc import SingleInstance
     instance = SingleInstance("gui")

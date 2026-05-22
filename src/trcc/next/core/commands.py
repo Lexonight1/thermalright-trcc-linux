@@ -971,7 +971,17 @@ class SetOrientation(Command[OrientationResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetBrightness(Command[BrightnessResult]):
-    """Set per-device display brightness (0–100)."""
+    """Set per-device display brightness (0–100).
+
+    Brightness is a software dimmer applied by the Renderer during
+    composite; the device protocol has no separate brightness command.
+    Persisting alone is therefore not enough — for the user to see a
+    brighter / dimmer screen we must invalidate the cached scene and
+    push a re-rendered frame.  Legacy ``LCDDevice.set_brightness``
+    does this in one step (``display_svc.set_brightness`` →
+    ``_publish_frame``); we mirror that here by invalidating + dispatching
+    ``RenderAndSend`` on the connected-with-active-theme path.
+    """
     key: str
     percent: int
 
@@ -983,6 +993,26 @@ class SetBrightness(Command[BrightnessResult]):
             )
         app.settings.set_brightness(self.key, self.percent)
         app.events.publish(BrightnessChanged(key=self.key, percent=self.percent))
+
+        # Re-render the active frame so the new brightness actually
+        # shows on screen.  For static themes (no animation tick) this
+        # is the only way the device sees the change.
+        device = app.devices.get(self.key)
+        theme = app.active_themes.get(self.key)
+        if (
+            device is not None and device.is_connected
+            and theme is not None
+            and app._renderer is not None  # pyright: ignore[reportPrivateUsage]
+        ):
+            _invalidate_scene(app, self.key)
+            RenderAndSend(key=self.key).execute(app)
+        else:
+            log.debug(
+                "SetBrightness: skipped re-render (connected=%s theme=%s renderer=%s)",
+                device is not None and device.is_connected,
+                theme is not None,
+                app._renderer is not None,  # pyright: ignore[reportPrivateUsage]
+            )
         return BrightnessResult(
             ok=True, key=self.key, percent=self.percent,
             message=f"Brightness set to {self.percent}%",

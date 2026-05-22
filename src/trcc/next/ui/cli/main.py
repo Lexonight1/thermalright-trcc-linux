@@ -188,11 +188,20 @@ def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
                                  help="Enable DEBUG-level logging"),
 ) -> None:
-    """Root callback — sets up logging for every subcommand."""
+    """Root callback — sets up logging for every subcommand.
+
+    Writes to the rotating file at ``paths.log_file()`` (legacy parity:
+    ``~/.trcc/trcc.log``) AND mirrors WARNING+ to stderr.  ``-v`` flips
+    both handlers to DEBUG.
+    """
+    from ...adapters.infra.logging import configure_logging
+    from ...core.ports import Platform
+
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
+    configure_logging(
+        Platform.detect().paths().log_file(),
         level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stderr_level=level,
     )
 
 
