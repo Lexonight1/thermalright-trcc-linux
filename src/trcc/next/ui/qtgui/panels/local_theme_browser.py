@@ -40,6 +40,7 @@ class LocalThemeBrowser(BasePanel):
         self._picker = DevicePickerWidget(
             self.app, self._bus, kind_filter="lcd", parent=self,
         )
+        self._picker.key_changed.connect(lambda _key: self.refresh())
 
         key_form = QFormLayout()
         key_form.addRow("Device key:", self._picker)
@@ -95,9 +96,18 @@ class LocalThemeBrowser(BasePanel):
     # ── Public API ────────────────────────────────────────────────────
 
     def refresh(self) -> None:
-        """Re-fetch the theme list and rebuild the widget."""
-        result = self.dispatch(ListThemes())
+        """Re-fetch the theme list for the picked device's resolution."""
         self._list.clear()
+        key = self._picker.current_key()
+        if not key:
+            self._status.setText(
+                "Pick a device first to list themes at its resolution.",
+            )
+            return
+        resolution = self._target_size(key)
+        if resolution is None:
+            return
+        result = self.dispatch(ListThemes(resolution=resolution))
         for theme in result.themes:
             w, h = theme.resolution
             item = QListWidgetItem(f"{theme.name}   ({w}×{h})")

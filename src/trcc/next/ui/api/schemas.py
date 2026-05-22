@@ -445,11 +445,6 @@ class MasksListResponse(ResultBase):
     masks: list[FileEntrySchema] = []
 
 
-class BackgroundsListResponse(ResultBase):
-    directory: str = ""
-    backgrounds: list[FileEntrySchema] = []
-
-
 class FontsListResponse(ResultBase):
     fonts: list[str] = []
 
@@ -667,20 +662,6 @@ class KeepaliveResponse(ResultBase):
 class FirstRunStatusResponse(ResultBase):
     is_first_run: bool = True
     marker_path: str = ""
-
-
-class MigrateFromLegacyRequest(BaseModel):
-    dry_run: bool = True
-
-
-class MigrateFromLegacyResponse(ResultBase):
-    legacy_config_path: str = ""
-    legacy_config_exists: bool = False
-    themes_copied: list[str] = []
-    masks_copied: list[str] = []
-    settings_keys_imported: list[str] = []
-    warnings: list[str] = []
-    dry_run: bool = True
 
 
 class ColorRequest(BaseModel):

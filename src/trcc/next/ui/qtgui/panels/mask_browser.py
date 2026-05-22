@@ -142,8 +142,17 @@ class MaskBrowser(BasePanel):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh(self) -> None:
-        result = self.dispatch(ListMasks())
         self._list.clear()
+        key = self._picker.current_key()
+        if not key:
+            self._status.setText(
+                "Pick a device first to list masks at its resolution.",
+            )
+            return
+        resolution = self._target_resolution(key)
+        if resolution is None:
+            return
+        result = self.dispatch(ListMasks(resolution=resolution))
         for entry in result.masks:
             item = QListWidgetItem(entry.name)
             item.setData(Qt.ItemDataRole.UserRole, entry.path)
@@ -167,6 +176,32 @@ class MaskBrowser(BasePanel):
             )
             return None
         return key
+
+    def _target_resolution(self, key: str) -> tuple[int, int] | None:
+        """Resolve the device's resolution from the handshake profile."""
+        device = self.app.devices.get(key)
+        if device is not None and device.profile is not None:
+            return device.profile.resolution
+        if device is not None and device.info.native_resolution != (0, 0):
+            return device.info.native_resolution
+        try:
+            vid_s, pid_s = key.split(":")
+            vid = int(vid_s, 16)
+            pid = int(pid_s, 16)
+        except ValueError:
+            self._status.setText(
+                f"Device key {key!r} isn't shaped like 'vid:pid'.",
+            )
+            return None
+        from ....core.registry import find_product
+        product = find_product(vid, pid)
+        if product is None or product.native_resolution == (0, 0):
+            self._status.setText(
+                f"No registry entry for {key} — connect the device first "
+                "so we know the target resolution.",
+            )
+            return None
+        return product.native_resolution
 
     def _on_apply(self) -> None:
         item = self._list.currentItem()
@@ -216,7 +251,8 @@ class MaskBrowser(BasePanel):
         self._status.setText(result.message)
 
     def _on_key_changed(self, _new_key: str) -> None:
-        """User picked a different device — sync mask widgets from snapshot."""
+        """User picked a different device — refresh list + sync widgets."""
+        self.refresh()
         self._sync_from_snapshot()
 
     def _sync_from_snapshot(self) -> None:

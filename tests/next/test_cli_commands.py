@@ -563,21 +563,6 @@ def test_display_list_masks_empty(
     assert "0 mask" in result.output
 
 
-def test_display_list_backgrounds_finds_file(
-    cli_runner: CliRunner, cli_app, tmp_path,
-) -> None:
-    """``list-backgrounds`` returns files with matching extensions."""
-    del cli_app
-    (tmp_path / "bg.png").write_bytes(b"x")
-    (tmp_path / "ignored.txt").write_text("nope")
-    result = cli_runner.invoke(
-        _app(), ["display", "list-backgrounds", "--dir", str(tmp_path)],
-    )
-    assert result.exit_code == 0
-    assert "bg.png" in result.output
-    assert "ignored.txt" not in result.output
-
-
 def test_display_upload_mask(
     cli_runner: CliRunner, cli_app, tmp_path,
 ) -> None:

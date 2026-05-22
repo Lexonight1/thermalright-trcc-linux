@@ -31,7 +31,6 @@ from .services.first_run import FirstRunService
 from .services.keepalive import KeepaliveService
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
-from .services.migrate import LegacyMigrationService
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
@@ -101,10 +100,11 @@ class App:
         # are tick-driven; no background threads inside the services.
         self.slideshow = SlideshowService()
         self.keepalive = KeepaliveService()
-        # First-run flag + legacy migration helper.  Both are lightweight
-        # — the marker file is one stat call, the migration runs on demand.
+        # First-run flag — lightweight marker-file check.  next/'s Paths
+        # port resolves to legacy's content layout (see `core/ports.py`),
+        # so installed-user themes/masks are visible in place without an
+        # explicit migration pass.
         self.first_run = FirstRunService(platform.paths())
-        self.migration = LegacyMigrationService(platform.paths(), self.settings)
         # Quickstart — guided first-session orchestrator.  Sequences
         # doctor + scan with explicit step boundaries so any UI renders
         # the same flow.

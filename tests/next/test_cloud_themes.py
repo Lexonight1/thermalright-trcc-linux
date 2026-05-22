@@ -13,9 +13,16 @@ import pytest
 from trcc.next.adapters.repo.http import HttpFetchError
 from trcc.next.adapters.theme.cloud import CzhordeCatalog
 from trcc.next.core.ports import HttpFetcher
+from trcc.next.core.protocol import FBL_PROFILES
 from trcc.next.services.cloud_theme import CloudThemeService
 
 from .conftest import FakePaths
+
+# Unique resolutions from the canonical FBL profile registry — the
+# single source of truth for "what canvases the rebuild supports."
+TEST_RESOLUTIONS: list[tuple[int, int]] = sorted({
+    (p.width, p.height) for p in FBL_PROFILES.values()
+})
 
 
 class FakeHttp(HttpFetcher):
@@ -116,25 +123,31 @@ def test_download_rejects_path_injection(tmp_path: Path) -> None:
 # =========================================================================
 
 
-def test_materialise_creates_theme_dir(tmp_path: Path) -> None:
+@pytest.mark.parametrize("resolution", TEST_RESOLUTIONS)
+def test_materialise_creates_theme_dir(
+    tmp_path: Path, resolution: tuple[int, int],
+) -> None:
+    w, h = resolution
     cache = tmp_path / "cache"
     cache.mkdir()
     paths = FakePaths(tmp_path)
     http = FakeHttp()
     http.responses[
-        "http://www.czhorde.cc/tr/bj320320/a004.mp4"
+        f"http://www.czhorde.cc/tr/bj{w}{h}/a004.mp4"
     ] = b"mp4-bytes"
     service = CloudThemeService(
         catalog=CzhordeCatalog(
-            http=http, cache_dir=cache, resolution="320x320",
+            http=http, cache_dir=cache, resolution=f"{w}x{h}",
         ),
         paths=paths,
     )
-    theme_dir = service.materialise("a004")
+    theme_dir = service.materialise("a004", resolution=resolution)
     assert theme_dir.is_dir()
     assert (theme_dir / "a004.mp4").is_file()
     assert (theme_dir / "trcc-next.json").is_file()
+    # Per-resolution staging matches legacy layout (data/web/{W}{H}/).
+    assert theme_dir.parent == paths.cloud_theme_dir(w, h)
     # Re-running is idempotent — no extra HTTP call, no duplicate write.
-    again = service.materialise("a004")
+    again = service.materialise("a004", resolution=resolution)
     assert again == theme_dir
     assert len(http.calls) == 1

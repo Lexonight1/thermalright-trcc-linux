@@ -15,7 +15,6 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     MarkFirstRunDone,
-    MigrateFromLegacy,
     ReadSensors,
     RunDoctor,
     RunHealthCheck,
@@ -35,7 +34,6 @@ from ._shared import (
     to_hdd_enabled_response,
     to_health_report_response,
     to_languages_list_response,
-    to_migrate_legacy_response,
     to_sensors_response,
     to_setup_response,
     to_update_check_response,
@@ -54,8 +52,6 @@ from .schemas import (
     HddEnabledResponse,
     HealthReportResponse,
     LanguagesListResponse,
-    MigrateFromLegacyRequest,
-    MigrateFromLegacyResponse,
     SensorsResponse,
     SetupResponse,
     UpdateCheckResponse,
@@ -202,16 +198,3 @@ def mark_setup_done(request: Request) -> FirstRunStatusResponse:
     return to_first_run_status_response(result)
 
 
-@router.post("/migrate-from-legacy", response_model=MigrateFromLegacyResponse)
-def migrate_from_legacy(
-    body: MigrateFromLegacyRequest, request: Request,
-) -> MigrateFromLegacyResponse:
-    """Pull legacy TRCC themes/masks/settings forward into next/.
-
-    ``dry_run=true`` (the default) previews the migration without
-    copying — call with ``dry_run=false`` to commit.
-    """
-    result = request.app.state.trcc.dispatch(
-        MigrateFromLegacy(dry_run=body.dry_run),
-    )
-    return to_migrate_legacy_response(result)

@@ -103,10 +103,36 @@ def import_(body: ThemeImportRequest,
 def list_(
     request: Request,
     directory: str | None = None,
+    key: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> ThemesListResponse:
-    """List themes under a directory (defaults to user_content_dir)."""
-    target = Path(directory) if directory else None
-    result = request.app.state.trcc.dispatch(ListThemes(directory=target))
+    """List themes for a device resolution.
+
+    Pass ``?key=vid:pid`` (resolution from the connected device's
+    handshake profile), or ``?width=W&height=H`` for an explicit
+    override, or ``?directory=`` to scan an exact dir (escape hatch).
+    """
+    if directory:
+        result = request.app.state.trcc.dispatch(
+            ListThemes(directory=Path(directory)),
+        )
+    else:
+        resolution: tuple[int, int] | None = None
+        if key is not None:
+            device = request.app.state.trcc.devices.get(key)
+            if device is None or device.profile is None:
+                return ThemesListResponse(
+                    ok=False, directory="", themes=[],
+                    message=(f"Device {key} not connected — connect first "
+                             "so we know the target resolution"),
+                )
+            resolution = device.profile.resolution
+        elif width is not None and height is not None:
+            resolution = (width, height)
+        result = request.app.state.trcc.dispatch(
+            ListThemes(resolution=resolution),
+        )
     http_error_if_failed(result)
     return to_themes_list_response(result)
 

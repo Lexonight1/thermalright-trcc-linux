@@ -377,12 +377,6 @@ class MasksListResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
-class BackgroundsListResult(Result):
-    directory: str = ""
-    backgrounds: list[FileEntry] = field(default_factory=list)
-
-
-@dataclass(frozen=True, slots=True)
 class FontsListResult(Result):
     fonts: list[str] = field(default_factory=list)
 
@@ -557,22 +551,11 @@ class KeepaliveResult(Result):
     bytes_resent: int = 0
 
 
-# First-run + legacy migration
+# First-run
 @dataclass(frozen=True, slots=True)
 class FirstRunStatusResult(Result):
     is_first_run: bool = True
     marker_path: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class MigrateLegacyResult(Result):
-    legacy_config_path: str = ""
-    legacy_config_exists: bool = False
-    themes_copied: list[str] = field(default_factory=list)
-    masks_copied: list[str] = field(default_factory=list)
-    settings_keys_imported: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    dry_run: bool = True
 
 
 @dataclass(frozen=True, slots=True)

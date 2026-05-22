@@ -19,7 +19,6 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     MarkFirstRunDone,
-    MigrateFromLegacy,
     ReadSensors,
     RunDoctor,
     RunHealthCheck,
@@ -189,36 +188,6 @@ def mark_setup_done() -> None:
     """Tell trcc-next the welcome flow has been completed."""
     r = get_app().dispatch(MarkFirstRunDone())
     typer.echo(r.message)
-
-
-@app.command("migrate-from-legacy")
-def migrate_from_legacy(
-    yes: bool = typer.Option(
-        False, "--yes", "-y",
-        help="Actually copy.  Without this, runs a dry-run preview.",
-    ),
-) -> None:
-    """Pull legacy TRCC themes / masks / settings into next/.
-
-    By default this previews the migration without touching the
-    filesystem — pass ``--yes`` to commit.
-    """
-    r = get_app().dispatch(MigrateFromLegacy(dry_run=not yes))
-    typer.echo(r.message)
-    if r.themes_copied:
-        typer.echo(f"  themes ({len(r.themes_copied)}):")
-        for name in r.themes_copied:
-            typer.echo(f"    {name}")
-    if r.masks_copied:
-        typer.echo(f"  masks ({len(r.masks_copied)}):")
-        for name in r.masks_copied:
-            typer.echo(f"    {name}")
-    if r.settings_keys_imported:
-        typer.echo(f"  settings keys: {', '.join(r.settings_keys_imported)}")
-    for w in r.warnings:
-        typer.echo(f"  warning: {w}", err=True)
-    if (r.dry_run and r.themes_copied) or (r.dry_run and r.masks_copied):
-        typer.echo("\nRe-run with --yes to commit the migration.")
 
 
 @app.command("health")

@@ -1621,7 +1621,7 @@ class TRCCApp(QMainWindow):
         if not isinstance(cropped, _QImage) or cropped.isNull():
             return
         w, hw = h.display.lcd_size
-        user_dir = self._app.platform.paths().user_masks_dir(w, hw)
+        user_dir = self._app.platform.paths().user_mask_dir(w, hw)
         user_dir.mkdir(parents=True, exist_ok=True)
 
         raw_name = self._mask_upload_filename or 'custom_001'

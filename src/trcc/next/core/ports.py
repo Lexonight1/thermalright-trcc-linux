@@ -356,7 +356,14 @@ class SensorEnumerator(ABC):
 
 
 class Paths(ABC):
-    """Filesystem locations.  Each OS resolves these differently."""
+    """Filesystem locations.  Each OS resolves these differently.
+
+    Resolution-aware helpers (`theme_dir`, `cloud_theme_dir`,
+    `cloud_mask_dir`, `user_mask_dir`) are concrete on the ABC because
+    every OS uses the same subpath layout — only the root differs.
+    Subpaths match legacy `src/trcc/core/paths.py` byte-for-byte so
+    next/ reads existing user content in place without migration.
+    """
 
     @abstractmethod
     def config_dir(self) -> Path: ...
@@ -370,8 +377,25 @@ class Paths(ABC):
     @abstractmethod
     def log_file(self) -> Path: ...
 
-    def user_masks_dir(self, width: int, height: int) -> Path:
-        return self.user_content_dir() / "masks" / f"{width}x{height}"
+    def theme_dir(self, width: int, height: int) -> Path:
+        """Themes shipped with the app or downloaded from GitHub releases."""
+        return self.data_dir() / f"theme{width}{height}"
+
+    def user_theme_dir(self, width: int, height: int) -> Path:
+        """Per-resolution user-saved theme dir (legacy layout)."""
+        return self.user_content_dir() / "data" / f"theme{width}{height}"
+
+    def cloud_theme_dir(self, width: int, height: int) -> Path:
+        """Cloud-catalog themes downloaded at runtime."""
+        return self.data_dir() / "web" / f"{width}{height}"
+
+    def cloud_mask_dir(self, width: int, height: int) -> Path:
+        """Cloud-catalog masks downloaded at runtime."""
+        return self.data_dir() / "web" / f"zt{width}{height}"
+
+    def user_mask_dir(self, width: int, height: int) -> Path:
+        """User-created masks — survives uninstall + redownload."""
+        return self.user_content_dir() / "data" / "web" / f"zt{width}{height}"
 
 
 # =========================================================================

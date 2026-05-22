@@ -14,7 +14,6 @@ from ...core.commands import (
     FlashOverlayElement,
     KeepAliveLoop,
     LcdSnapshot,
-    ListBackgrounds,
     ListMasks,
     LoadImage,
     LoadTheme,
@@ -483,29 +482,42 @@ def upload_mask(
 
 @app.command("list-masks")
 def list_masks(
+    key: str | None = typer.Argument(
+        None,
+        help=("Device key (e.g. 0402:3922) — its resolution scopes the scan. "
+              "Required unless --dir is given."),
+    ),
     directory: Path | None = typer.Option(
         None, "--dir", "-d",
-        help="Directory to scan (default: user_content_dir/masks)",
+        help="Override: scan an explicit directory instead of the device's mask dirs",
     ),
 ) -> None:
-    """List mask images."""
-    result = get_app().dispatch(ListMasks(directory=directory))
+    """List mask images for the device's resolution.
+
+    By default, scans both the cloud-downloaded mask dir
+    (``data/web/zt{W}{H}``) and the user-created mask dir
+    (``user_content_dir/data/web/zt{W}{H}``).
+    """
+    if directory is not None:
+        result = get_app().dispatch(ListMasks(directory=directory))
+    elif key:
+        app_obj = get_app()
+        device = app_obj.devices.get(key)
+        if device is None or device.profile is None:
+            typer.echo(
+                f"Device {key} not connected — connect first so we know "
+                "the target resolution",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        result = app_obj.dispatch(
+            ListMasks(resolution=device.profile.resolution),
+        )
+    else:
+        typer.echo("Provide a device key, or --dir DIRECTORY.", err=True)
+        raise typer.Exit(code=1)
     typer.echo(result.message)
     for entry in result.masks:
-        typer.echo(f"  {entry.name:30} {entry.path}")
-
-
-@app.command("list-backgrounds")
-def list_backgrounds(
-    directory: Path | None = typer.Option(
-        None, "--dir", "-d",
-        help="Directory to scan (default: user_content_dir/backgrounds)",
-    ),
-) -> None:
-    """List background images / videos."""
-    result = get_app().dispatch(ListBackgrounds(directory=directory))
-    typer.echo(result.message)
-    for entry in result.backgrounds:
         typer.echo(f"  {entry.name:30} {entry.path}")
 
 

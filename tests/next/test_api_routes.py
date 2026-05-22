@@ -26,8 +26,14 @@ from fastapi.testclient import TestClient
 
 from trcc.next.app import App
 from trcc.next.core.ports import Renderer
+from trcc.next.core.protocol import FBL_PROFILES
 
 from .conftest import FakePlatform
+
+# Unique resolutions from the canonical FBL profile registry.
+API_TEST_RESOLUTIONS: list[tuple[int, int]] = sorted({
+    (p.width, p.height) for p in FBL_PROFILES.values()
+})
 
 # =========================================================================
 # Minimal renderer — FastAPI build_app needs *some* renderer to construct
@@ -495,19 +501,22 @@ def test_display_loop_no_playback(api_client: TestClient) -> None:
     assert resp.status_code in (400, 404)
 
 
-def test_display_masks_listing_empty(api_client: TestClient) -> None:
-    """``GET /display/masks`` returns ok=True with the masks/ contents."""
-    resp = api_client.get("/display/masks")
+@pytest.mark.parametrize("resolution", API_TEST_RESOLUTIONS)
+def test_display_masks_listing_empty(
+    api_client: TestClient, resolution: tuple[int, int],
+) -> None:
+    """``GET /display/masks?width=W&height=H`` returns ok=True with an
+    empty list when the user has no masks at that resolution yet.
+    Parametrized over every resolution in FBL_PROFILES to prove the
+    resolution-aware path port resolves for every supported canvas."""
+    w, h = resolution
+    resp = api_client.get(
+        "/display/masks", params={"width": w, "height": h},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-
-
-def test_display_backgrounds_listing_empty(api_client: TestClient) -> None:
-    resp = api_client.get("/display/backgrounds")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is True
+    assert body["masks"] == []
 
 
 def test_theme_delete_unknown(api_client: TestClient) -> None:

@@ -162,10 +162,12 @@ class UCThemeMask(DownloadableThemeBrowser):
     def _user_masks_dir(self) -> Path:
         """Get the user custom masks directory for current resolution."""
         w, h = self._parse_resolution()
-        if self._paths is not None:
-            return self._paths.user_masks_dir(w, h)
-        # Defensive fallback — should never hit if trcc_app injected paths.
-        return Path.home() / ".trcc-user" / "data" / "web" / f"zt{w}{h}"
+        if self._paths is None:
+            raise RuntimeError(
+                "WebMaskBrowser was constructed without a Paths port — "
+                "trcc_app must inject one at build time."
+            )
+        return self._paths.user_mask_dir(w, h)
 
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""

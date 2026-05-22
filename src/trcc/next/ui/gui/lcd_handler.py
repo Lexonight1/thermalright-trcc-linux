@@ -176,11 +176,11 @@ class LCDHandler(BaseHandler):
         # Cache canvas + lcd size in the shared _DeviceState
         self._state.canvas_size = (w, h)
         self._state.lcd_size = (w, h)
-        # Resolution-specific dirs (Paths port owns layout)
+        # Resolution-specific dirs (Paths port owns layout — matches legacy)
         paths = self._app.platform.paths()
-        self._state.masks_dir = paths.user_masks_dir(w, h)
-        self._state.theme_dir = paths.user_content_dir() / "themes" / f"{w}x{h}"
-        self._state.web_dir = paths.user_content_dir() / "web" / f"{w}x{h}"
+        self._state.masks_dir = paths.user_mask_dir(w, h)
+        self._state.theme_dir = paths.theme_dir(w, h)
+        self._state.web_dir = paths.cloud_theme_dir(w, h)
         self._refresh(w, h)
 
     def reactivate(self, w: int, h: int) -> None:

@@ -14,7 +14,6 @@ from ...core.commands import (
     FlashOverlayElement,
     KeepAliveLoop,
     LcdSnapshot,
-    ListBackgrounds,
     ListMasks,
     LoadTheme,
     LoopVideo,
@@ -42,7 +41,6 @@ from ...core.commands import (
 from ._shared import (
     http_error_if_failed,
     to_background_mode_response,
-    to_backgrounds_list_response,
     to_boot_animation_response,
     to_brightness_response,
     to_fit_mode_response,
@@ -72,7 +70,6 @@ from ._shared import (
 from .schemas import (
     BackgroundModeRequest,
     BackgroundModeResponse,
-    BackgroundsListResponse,
     BootAnimationRequest,
     BootAnimationResponse,
     BrightnessRequest,
@@ -542,16 +539,30 @@ meta_router = APIRouter(prefix="/display", tags=["display"])
 
 
 @meta_router.get("/masks", response_model=MasksListResponse)
-def list_masks(request: Request) -> MasksListResponse:
-    """List masks under user_content_dir/masks."""
-    result = request.app.state.trcc.dispatch(ListMasks())
+def list_masks(
+    request: Request,
+    key: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> MasksListResponse:
+    """List masks for a device resolution.
+
+    Pass either ``?key=vid:pid`` (resolved through the connected
+    device's handshake profile) or ``?width=W&height=H`` for an
+    explicit override.
+    """
+    resolution: tuple[int, int] | None = None
+    if key is not None:
+        device = request.app.state.trcc.devices.get(key)
+        if device is None or device.profile is None:
+            return MasksListResponse(
+                ok=False, directory="", masks=[],
+                message=(f"Device {key} not connected — connect first "
+                         "so we know the target resolution"),
+            )
+        resolution = device.profile.resolution
+    elif width is not None and height is not None:
+        resolution = (width, height)
+    result = request.app.state.trcc.dispatch(ListMasks(resolution=resolution))
     http_error_if_failed(result)
     return to_masks_list_response(result)
-
-
-@meta_router.get("/backgrounds", response_model=BackgroundsListResponse)
-def list_backgrounds(request: Request) -> BackgroundsListResponse:
-    """List backgrounds under user_content_dir/backgrounds."""
-    result = request.app.state.trcc.dispatch(ListBackgrounds())
-    http_error_if_failed(result)
-    return to_backgrounds_list_response(result)

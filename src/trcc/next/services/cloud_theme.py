@@ -49,7 +49,9 @@ class CloudThemeService:
 
     # ── Network + materialisation ─────────────────────────────────────
 
-    def materialise(self, theme_id: str) -> Path:
+    def materialise(
+        self, theme_id: str, resolution: tuple[int, int],
+    ) -> Path:
         """Download the cloud theme and lay it out as a next/ theme dir.
 
         Returns the directory path; ``LoadTheme(path=that_dir)`` then
@@ -57,11 +59,12 @@ class CloudThemeService:
 
         Idempotent — re-running with the same id returns the existing
         directory.  The MP4 is cached by the catalog; here we just stage
-        the dir under ``user_content_dir`` with a minimal config.
+        the dir under ``paths.cloud_theme_dir(w, h)`` (resolution-keyed,
+        matches legacy layout) with a minimal config.
         """
         mp4_path = self._catalog.download_theme(theme_id)
 
-        theme_dir = self._theme_dir_for(theme_id)
+        theme_dir = self._theme_dir_for(theme_id, resolution)
         theme_dir.mkdir(parents=True, exist_ok=True)
 
         # Stage the background under the canonical name DisplayService
@@ -80,13 +83,11 @@ class CloudThemeService:
 
     # ── Internals ─────────────────────────────────────────────────────
 
-    def _theme_dir_for(self, theme_id: str) -> Path:
-        # Stage under user_content_dir so it shows up in `theme list` too.
-        return (
-            self._paths.user_content_dir()
-            / "cloud"
-            / theme_id
-        )
+    def _theme_dir_for(
+        self, theme_id: str, resolution: tuple[int, int],
+    ) -> Path:
+        w, h = resolution
+        return self._paths.cloud_theme_dir(w, h) / theme_id
 
 
 def _minimal_config(theme_id: str) -> dict:

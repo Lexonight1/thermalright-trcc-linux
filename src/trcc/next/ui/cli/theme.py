@@ -76,14 +76,42 @@ def import_(
 
 @app.command("list")
 def list_(
+    key: str | None = typer.Argument(
+        None,
+        help=("Device key (e.g. 0402:3922) — its resolution scopes the scan. "
+              "Required unless --dir is given."),
+    ),
     directory: Path | None = typer.Option(
         None, "--dir", "-d",
-        help="Directory to scan (default: user_content_dir).",
+        help="Override: scan an explicit directory instead of the device's theme dirs.",
         exists=False, file_okay=False, dir_okay=True,
     ),
 ) -> None:
-    """List themes under a directory."""
-    result = get_app().dispatch(ListThemes(directory=directory))
+    """List themes for a device resolution.
+
+    By default scans both ``data/theme{W}{H}`` (pkg + GitHub-downloaded)
+    and ``user_content_dir/data/theme{W}{H}`` (legacy user-saved
+    location) so installed-user themes show up alongside fresh
+    downloads.
+    """
+    if directory is not None:
+        result = get_app().dispatch(ListThemes(directory=directory))
+    elif key:
+        app_obj = get_app()
+        device = app_obj.devices.get(key)
+        if device is None or device.profile is None:
+            typer.echo(
+                f"Device {key} not connected — connect first so we know "
+                "the target resolution",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        result = app_obj.dispatch(
+            ListThemes(resolution=device.profile.resolution),
+        )
+    else:
+        typer.echo("Provide a device key, or --dir DIRECTORY.", err=True)
+        raise typer.Exit(code=1)
     typer.echo(result.message)
     for theme in result.themes:
         w, h = theme.resolution

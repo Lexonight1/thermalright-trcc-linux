@@ -55,7 +55,6 @@ from .registry import find_product
 from .results import (
     AutostartResult,
     BackgroundModeResult,
-    BackgroundsListResult,
     BootAnimationResult,
     BrightnessResult,
     ClockFormatResult,
@@ -100,7 +99,6 @@ from .results import (
     MaskUploadResult,
     MaskVisibilityResult,
     MemoryRatioResult,
-    MigrateLegacyResult,
     OrientationResult,
     OverlayBackgroundResult,
     OverlayConfigResult,
@@ -618,21 +616,47 @@ class ImportTheme(Command[ThemeImportResult]):
 
 @dataclass(frozen=True, slots=True)
 class ListThemes(Command[ThemesListResult]):
-    """Enumerate themes under a directory (defaults to user_content_dir)."""
+    """Enumerate themes for a device resolution.
+
+    With ``resolution=(w, h)`` (the GUI/CLI default), walks both
+    ``paths.theme_dir(w, h)`` (pkg + cloud-downloaded) and
+    ``paths.user_theme_dir(w, h)`` (legacy user-saved location) so
+    in-place users see every theme without a migration step.
+
+    With ``directory=``, scans that exact dir (escape hatch for tests
+    and ad-hoc browsing).
+    """
+    resolution: tuple[int, int] | None = None
     directory: Path | None = None
 
     def execute(self, app: App) -> ThemesListResult:
-        target = self.directory or app.platform.paths().user_content_dir()
-        themes = app.themes.list(target)
-        entries = [
-            ThemeListEntry(
-                name=t.name, resolution=t.resolution, path=str(t.path),
+        if self.directory is not None:
+            roots = [self.directory]
+        elif self.resolution is not None:
+            paths = app.platform.paths()
+            w, h = self.resolution
+            roots = [paths.theme_dir(w, h), paths.user_theme_dir(w, h)]
+        else:
+            return ThemesListResult(
+                ok=False, directory="", themes=[],
+                message="ListThemes requires resolution=(w,h) or directory=...",
             )
-            for t in themes
-        ]
+
+        seen: set[Path] = set()
+        entries: list[ThemeListEntry] = []
+        for root in roots:
+            for theme in app.themes.list(root):
+                if theme.path in seen:
+                    continue
+                seen.add(theme.path)
+                entries.append(ThemeListEntry(
+                    name=theme.name, resolution=theme.resolution,
+                    path=str(theme.path),
+                ))
+        target_str = "; ".join(str(r) for r in roots)
         return ThemesListResult(
-            ok=True, directory=str(target), themes=entries,
-            message=f"{len(entries)} theme(s) under {target}",
+            ok=True, directory=target_str, themes=entries,
+            message=f"{len(entries)} theme(s) under {target_str}",
         )
 
 
@@ -949,6 +973,32 @@ def _invalidate_scene(app: App, key: str) -> None:
     """
     if app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
         app.display.invalidate(key)
+
+
+def _resolve_resolution(app: App, key: str) -> tuple[int, int] | None:
+    """Best-effort resolution lookup from a device key.
+
+    Tries (1) connected device's handshake profile, (2) its DeviceInfo
+    native_resolution, (3) the product registry entry's
+    native_resolution.  Returns ``None`` when none yield a known size
+    (unknown product or malformed key).
+    """
+    device = app.devices.get(key)
+    if device is not None:
+        if device.profile is not None:
+            return device.profile.resolution
+        if device.info.native_resolution != (0, 0):
+            return device.info.native_resolution
+    try:
+        vid_s, pid_s = key.split(":")
+        vid = int(vid_s, 16)
+        pid = int(pid_s, 16)
+    except ValueError:
+        return None
+    product = find_product(vid, pid)
+    if product is None or product.native_resolution == (0, 0):
+        return None
+    return product.native_resolution
 
 
 @dataclass(frozen=True, slots=True)
@@ -2042,11 +2092,12 @@ class DeleteTheme(Command[DeleteThemeResult]):
 
 @dataclass(frozen=True, slots=True)
 class UploadCustomMask(Command[MaskUploadResult]):
-    """Copy a mask image into user_content_dir/masks and apply it.
+    """Copy a mask image into the user-mask dir for the device's resolution.
 
-    The caller passes an absolute path; we copy it into the trusted root
-    so subsequent calls reference the in-repo path.  Then we dispatch
-    ApplyMask to wire it onto the device.
+    The caller passes an absolute path; we copy it into the per-resolution
+    user mask dir (``paths.user_mask_dir(w, h)``) so subsequent calls
+    reference the in-repo path.  Then we dispatch ApplyMask to wire it
+    onto the device.
     """
     key: str
     source: Path
@@ -2059,7 +2110,14 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 ok=False, key=self.key, path="",
                 message=f"Source not a file: {self.source}",
             )
-        masks_root = app.platform.paths().user_content_dir() / "masks"
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=(f"Cannot resolve resolution for {self.key} — "
+                         "connect the device or register the product first"),
+            )
+        masks_root = app.platform.paths().user_mask_dir(*resolution)
         try:
             masks_root.mkdir(parents=True, exist_ok=True)
         except OSError as e:
@@ -2088,61 +2146,51 @@ class UploadCustomMask(Command[MaskUploadResult]):
 
 
 _MASK_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
-_BG_EXTS = frozenset({
-    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
-    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt",
-})
 
 
 @dataclass(frozen=True, slots=True)
 class ListMasks(Command[MasksListResult]):
-    """Enumerate mask images under user_content_dir/masks."""
+    """Enumerate masks for a device resolution.
+
+    With ``resolution=(w, h)`` (default for the GUI), scans both the
+    cloud-downloaded mask dir (``paths.cloud_mask_dir``) and the
+    user-created mask dir (``paths.user_mask_dir``).
+
+    With ``directory=``, scans that exact dir (escape hatch for tests
+    and CLI use).
+    """
+    resolution: tuple[int, int] | None = None
     directory: Path | None = None
 
     def execute(self, app: App) -> MasksListResult:
-        directory = (
-            self.directory
-            or app.platform.paths().user_content_dir() / "masks"
-        )
-        if not directory.is_dir():
+        if self.directory is not None:
+            roots = [self.directory]
+        elif self.resolution is not None:
+            paths = app.platform.paths()
+            w, h = self.resolution
+            roots = [paths.cloud_mask_dir(w, h), paths.user_mask_dir(w, h)]
+        else:
             return MasksListResult(
-                ok=True, directory=str(directory), masks=[],
-                message=f"No mask directory at {directory}",
+                ok=False, directory="", masks=[],
+                message="ListMasks requires resolution=(w,h) or directory=...",
             )
-        entries = [
-            FileEntry(name=p.name, path=str(p))
-            for p in sorted(directory.iterdir())
-            if p.is_file() and p.suffix.lower() in _MASK_EXTS
-        ]
+
+        seen: set[Path] = set()
+        entries: list[FileEntry] = []
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for p in sorted(root.iterdir()):
+                if not (p.is_file() and p.suffix.lower() in _MASK_EXTS):
+                    continue
+                if p in seen:
+                    continue
+                seen.add(p)
+                entries.append(FileEntry(name=p.name, path=str(p)))
+        target_str = "; ".join(str(r) for r in roots)
         return MasksListResult(
-            ok=True, directory=str(directory), masks=entries,
-            message=f"{len(entries)} mask(s) under {directory}",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ListBackgrounds(Command[BackgroundsListResult]):
-    """Enumerate background images/videos under user_content_dir/backgrounds."""
-    directory: Path | None = None
-
-    def execute(self, app: App) -> BackgroundsListResult:
-        directory = (
-            self.directory
-            or app.platform.paths().user_content_dir() / "backgrounds"
-        )
-        if not directory.is_dir():
-            return BackgroundsListResult(
-                ok=True, directory=str(directory), backgrounds=[],
-                message=f"No backgrounds directory at {directory}",
-            )
-        entries = [
-            FileEntry(name=p.name, path=str(p))
-            for p in sorted(directory.iterdir())
-            if p.is_file() and p.suffix.lower() in _BG_EXTS
-        ]
-        return BackgroundsListResult(
-            ok=True, directory=str(directory), backgrounds=entries,
-            message=f"{len(entries)} background(s) under {directory}",
+            ok=True, directory=target_str, masks=entries,
+            message=f"{len(entries)} mask(s) under {target_str}",
         )
 
 
@@ -2419,18 +2467,27 @@ class ListCloudThemes(Command[CloudThemesListResult]):
 class LoadCloudTheme(Command[CloudThemeLoadResult]):
     """Download a cloud theme and load it on a device.
 
-    Materialises the cloud MP4 into a real theme directory under
-    ``user_content_dir/cloud/<theme_id>`` (idempotent — subsequent calls
-    are no-ops if the dir already exists), then dispatches LoadTheme to
-    render the first frame.
+    Materialises the cloud MP4 into a per-resolution theme directory
+    under ``paths.cloud_theme_dir(w, h) / <theme_id>`` (idempotent —
+    subsequent calls are no-ops if the dir already exists), then
+    dispatches LoadTheme to render the first frame.
     """
     key: str
     theme_id: str
 
     def execute(self, app: App) -> CloudThemeLoadResult:
         from ..adapters.repo.http import HttpFetchError
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            return CloudThemeLoadResult(
+                ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
+                message=(f"Cannot resolve resolution for {self.key} — "
+                         "connect the device or register the product first"),
+            )
         try:
-            theme_dir = app.cloud_themes.materialise(self.theme_id)
+            theme_dir = app.cloud_themes.materialise(
+                self.theme_id, resolution,
+            )
         except ValueError as e:
             return CloudThemeLoadResult(
                 ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
@@ -2966,36 +3023,6 @@ class MarkFirstRunDone(Command[FirstRunStatusResult]):
             ok=True, is_first_run=False,
             marker_path=str(app.first_run.marker_path),
             message="First-run marker written.",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class MigrateFromLegacy(Command[MigrateLegacyResult]):
-    """Pull legacy TRCC themes / masks / settings forward into next/.
-
-    ``dry_run=True`` reports what *would* happen without copying
-    anything — recommended for the first call so users can see the
-    scope before committing.
-    """
-    dry_run: bool = True
-
-    def execute(self, app: App) -> MigrateLegacyResult:
-        report = app.migration.run(dry_run=self.dry_run)
-        return MigrateLegacyResult(
-            ok=True,
-            legacy_config_path=report.legacy_config_path,
-            legacy_config_exists=report.legacy_config_exists,
-            themes_copied=list(report.themes_copied),
-            masks_copied=list(report.masks_copied),
-            settings_keys_imported=list(report.settings_keys_imported),
-            warnings=list(report.warnings),
-            dry_run=report.dry_run,
-            message=(
-                f"Migration {'preview' if report.dry_run else 'complete'} — "
-                f"{len(report.themes_copied)} theme(s), "
-                f"{len(report.masks_copied)} mask(s), "
-                f"{len(report.settings_keys_imported)} setting(s)"
-            ),
         )
 
 

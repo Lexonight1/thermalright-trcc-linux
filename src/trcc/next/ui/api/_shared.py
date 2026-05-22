@@ -7,7 +7,6 @@ from fastapi import HTTPException
 from ...core.models import HandshakeResult, ProductInfo, SensorReading
 from ...core.results import (
     BackgroundModeResult,
-    BackgroundsListResult,
     BootAnimationResult,
     BrightnessResult,
     ClockFormatResult,
@@ -45,7 +44,6 @@ from ...core.results import (
     MaskUploadResult,
     MaskVisibilityResult,
     MemoryRatioResult,
-    MigrateLegacyResult,
     OrientationResult,
     OverlayBackgroundResult,
     OverlayConfigResult,
@@ -76,7 +74,6 @@ from ...core.results import (
 )
 from .schemas import (
     BackgroundModeResponse,
-    BackgroundsListResponse,
     BootAnimationResponse,
     BrightnessResponse,
     ClockFormatResponse,
@@ -122,7 +119,6 @@ from .schemas import (
     MaskUploadResponse,
     MaskVisibilityResponse,
     MemoryRatioResponse,
-    MigrateFromLegacyResponse,
     OrientationResponse,
     OverlayBackgroundResponse,
     OverlayConfigResponse,
@@ -497,17 +493,6 @@ def to_masks_list_response(r: MasksListResult) -> MasksListResponse:
     )
 
 
-def to_backgrounds_list_response(
-    r: BackgroundsListResult,
-) -> BackgroundsListResponse:
-    return BackgroundsListResponse(
-        ok=r.ok, message=r.message, directory=r.directory,
-        backgrounds=[
-            FileEntrySchema(name=b.name, path=b.path) for b in r.backgrounds
-        ],
-    )
-
-
 def to_fonts_list_response(r: FontsListResult) -> FontsListResponse:
     return FontsListResponse(
         ok=r.ok, message=r.message, fonts=r.fonts,
@@ -693,21 +678,6 @@ def to_first_run_status_response(
     return FirstRunStatusResponse(
         ok=r.ok, message=r.message,
         is_first_run=r.is_first_run, marker_path=r.marker_path,
-    )
-
-
-def to_migrate_legacy_response(
-    r: MigrateLegacyResult,
-) -> MigrateFromLegacyResponse:
-    return MigrateFromLegacyResponse(
-        ok=r.ok, message=r.message,
-        legacy_config_path=r.legacy_config_path,
-        legacy_config_exists=r.legacy_config_exists,
-        themes_copied=list(r.themes_copied),
-        masks_copied=list(r.masks_copied),
-        settings_keys_imported=list(r.settings_keys_imported),
-        warnings=list(r.warnings),
-        dry_run=r.dry_run,
     )
 
 
