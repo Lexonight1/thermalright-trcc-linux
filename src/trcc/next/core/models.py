@@ -94,6 +94,8 @@ class ProductInfo:
     orientations: tuple[int, ...] = (0,)
     native_orientation: NativeOrientation = "landscape"
     led_style: LedStyle | None = None
+    model: str = "CZTV"                 # GUI sidebar button-image lookup
+    button_image: str = "A1CZTV"        # asset base name (no .png)
 
     @property
     def key(self) -> str:

@@ -248,7 +248,6 @@ class LCDHandler(BaseHandler):
     def _on_data_ready(self) -> None:
         """Background data extraction finished — re-probe dirs and update UI."""
         self.log.info("_on_data_ready: refreshing dirs and theme lists")
-        self._device.refresh_dirs()
         auto_loaded = self._update_theme_directories()
         self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
 
@@ -308,41 +307,39 @@ class LCDHandler(BaseHandler):
             local._apply_decorations()
 
     def _restore_theme_and_preview(self, cfg: dict) -> None:
-        """Restore last theme + overlay, or clear preview if none."""
-        self.log.debug("_restore_theme_and_preview: cfg keys=%s", list(cfg.keys()))
-        result = self._device.restore_last_theme()
-        if not result.get("success"):
-            self.log.info("_restore_theme_and_preview: no saved theme — %s",
-                          result.get("error", "unknown"))
-        if result.get("success"):
-            image = result.get("image")
-            is_animated = result.get("is_animated", False)
-            if image:
-                self._w['preview'].set_image(image, fast=is_animated)
-            overlay_config = result.get("overlay_config")
-            overlay_enabled = result.get("overlay_enabled", False)
-            if overlay_config:
-                self._w['theme_setting'].load_from_overlay_config(overlay_config)
-            self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
-            if is_animated and self._device.playing:
-                self._animation_timer.start(self._device.interval)
-                self._w['preview'].set_playing(True)
-                self._w['preview'].show_video_controls(True)
-            return
+        """Restore last theme + overlay, or clear preview if none.
 
-        # No saved theme — show device's current image or clear preview
-        image = self._device.current_image
-        if image:
-            self._w['preview'].set_image(image)
-        else:
-            self._w['preview'].set_image(None)
-        # Restore overlay from config even without a saved theme
+        Dispatches RestoreLastTheme (which re-runs LoadTheme for the
+        persisted theme name). Playback / animation state comes from
+        :class:`MediaService`; preview redraws via ``rebuild_preview``.
+        """
+        self.log.debug("_restore_theme_and_preview: cfg keys=%s", list(cfg.keys()))
+        result = self._app.dispatch(RestoreLastTheme(key=self._device_key))
         overlay_cfg = cfg.get('overlay', {})
         overlay_config = overlay_cfg.get('config')
         overlay_enabled = overlay_cfg.get('enabled', False)
         if overlay_config:
             self._w['theme_setting'].load_from_overlay_config(overlay_config)
         self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
+
+        if not result.ok:
+            self.log.info("_restore_theme_and_preview: no saved theme — %s",
+                          result.message)
+            self._w['preview'].set_image(None)
+            return
+
+        playback = self._app.media.playback(self._device_key)
+        if playback is not None and playback.frames:
+            self._state.current_theme_path = (
+                self._app.platform.paths().user_content_dir() / result.theme_name
+                if result.theme_name else None
+            )
+            self._animation_timer.start(self._video_interval_ms())
+            if self._ui_active:
+                self._w['preview'].set_playing(True)
+                self._w['preview'].show_video_controls(True)
+        else:
+            self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
     # _select_theme is gone — next/'s LoadTheme Command owns the whole
@@ -542,59 +539,32 @@ class LCDHandler(BaseHandler):
         return max(1, int(1000 / fps))
 
     def _on_video_tick(self) -> None:
-        """Timer callback: advance one video frame."""
-        result = self._device.video_tick()
-        if not result:
-            return
-        frame_index = result.get('frame_index')
-        if frame_index is not None and frame_index % 30 == 0:
-            self.log.debug("_on_video_tick: frame=%d encoded=%s", frame_index, result.get('encoded') is not None)
+        """Timer callback: advance one video frame.
 
-        # Update progress bar (active UI only — widget is shared across handlers)
+        next/ owns playback in :class:`MediaService`; ``RenderAndSend``
+        builds + encodes + sends the current cursor's frame.  Preview
+        widget refreshes via the ``FrameSent`` → ``rebuild_preview``
+        bridge — no per-tick image plumbing here.
+        """
+        from ...core.commands import RenderAndSend
+        playback = self._app.media.playback(self._device_key)
+        if playback is None or not playback.frames:
+            return
+        playback.advance()
+
         if self._ui_active:
-            progress = result.get('progress')
-            if progress is not None:
-                percent, current_time, total_time = progress
-                self._w['preview'].set_progress(percent, current_time, total_time)
+            total = playback.frame_count
+            cursor = playback.cursor
+            percent = (cursor / total) if total else 0.0
+            self._w['preview'].set_progress(percent, cursor, total)
 
-        # Preview update — active UI only, and skip when window is minimized
-        if self._ui_active and self._is_visible():
-            preview = result.get('preview')
-            if preview is not None:
-                index = result.get('frame_index')
-                if index is not None:
-                    cached = self._pixmap_cache.get(index)
-                    preview_id = id(preview)
-                    if cached is None or cached[0] != preview_id:
-                        # Cap cache to bound memory in long-running videos.
-                        if len(self._pixmap_cache) >= 256:
-                            self._pixmap_cache.clear()
-                        pixmap = QPixmap.fromImage(preview)
-                        self._pixmap_cache[index] = (preview_id, pixmap)
-                    else:
-                        pixmap = cached[1]
-                    self._w['preview'].set_image(pixmap, fast=True)
-                else:
-                    self._w['preview'].set_image(preview, fast=True)
-
-        if not self._device.connected:
+        device = self._app.devices.get(self._device_key)
+        if device is None or not device.is_connected:
             return
 
-        # Pre-encoded path
-        encoded = result.get('encoded')
-        if encoded is not None:
-            w, h = self._device.lcd_size
-            self.log.debug("_on_video_tick: sending encoded frame %s (%dx%d, %d bytes)",
-                      result.get('frame_index'), w, h, len(encoded))
-            self._device.device_service.send_rgb565_async(encoded, w, h)
-            return
-
-        # Fallback encode
-        send_img = result.get('send_image')
-        if send_img:
-            w, h = self._device.lcd_size
-            self.log.debug("_on_video_tick: sending raw frame %s (%dx%d)", result.get('frame_index'), w, h)
-            self._device.send_async(send_img, w, h)
+        result = self._app.dispatch(RenderAndSend(key=self._device_key))
+        if not result.ok:
+            self.log.debug("_on_video_tick: render failed — %s", result.message)
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
@@ -625,10 +595,15 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_image(image)
 
     def rebuild_preview(self) -> None:
-        """Re-render the preview from current state (FrameSent observer)."""
-        # Phase 7 verification will wire this through
-        # app.display.build_preview_surface(...) using the cached state.
-        # For now, no-op so the BusBridge subscriber can call it safely.
+        """Re-render the preview from current state (FrameSent observer).
+
+        Builds a preview surface from the App's render pipeline using
+        the live theme + sensors; updates the preview widget when the
+        handler owns the UI.  Idempotent — safe to call from FrameSent.
+        """
+        image = self._build_preview_surface()
+        if image is not None and self._ui_active:
+            self._w['preview'].set_image(image, fast=self._animation_timer.isActive())
 
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""
@@ -781,57 +756,79 @@ class LCDHandler(BaseHandler):
     def _render_and_send(self) -> None:
         """Render overlay + send to LCD, update preview.
 
-        Skipped when video/screencast is active — those own the device.
-        Dedups identical re-renders (PR #120 perf): if the source image
-        identity hasn't changed since the last send, skip the round-trip.
+        Skipped while video playback owns the wire (the animation timer
+        loop dispatches its own ``RenderAndSend``).  Preview refresh
+        happens via the ``FrameSent`` → ``rebuild_preview`` bridge.
         """
-        self.log.debug("_render_and_send: playing=%s overlay_enabled=%s has_image=%s",
-                  self._device.playing, self._device.enabled,
-                  self._device.current_image is not None)
-        if self._device.playing:
+        from ...core.commands import RenderAndSend
+        if self._animation_timer.isActive():
             return
-        current = self._device.current_image
-        render_id = id(current) if current is not None else None
-        if render_id is not None and render_id == self._last_render_id:
-            self.log.debug("_render_and_send: skip duplicate render id=%s", render_id)
+        device = self._app.devices.get(self._device_key)
+        if device is None or not device.is_connected:
             return
-        result = self._device.render_and_send()
-        self._last_render_id = render_id
-        image = result.get('image')
-        if image and self._ui_active:
-            self._w['preview'].set_image(image)
+        result = self._app.dispatch(RenderAndSend(key=self._device_key))
+        if not result.ok:
+            self.log.debug("_render_and_send: failed — %s", result.message)
 
     def render_and_preview(self) -> Any:
         """Render overlay and update preview (no send)."""
-        result = self._device.render()
-        image = result.get('image')
-        if image:
+        image = self._build_preview_surface()
+        if image is not None and self._ui_active:
             self._w['preview'].set_image(image)
         return image
+
+    def _build_preview_surface(self) -> Any:
+        """Build a preview surface from the App's render pipeline.
+
+        Returns None when the device has no active theme yet (pre-load)
+        or the device key no longer points at a live Device.
+        """
+        device = self._app.devices.get(self._device_key)
+        if device is None:
+            return None
+        theme = self._app.active_themes.get(self._device_key)
+        if theme is None:
+            return None
+        sensors = self._app.platform.sensors().read_all()
+        try:
+            return self._app.display.build_preview_surface(
+                info=device.info, theme=theme, sensors=sensors,
+                profile=device.profile,
+            )
+        except Exception as e:
+            self.log.debug("_build_preview_surface: %s", e)
+            return None
 
     # ── Helpers ─────────────────────────────────────────────────────
 
     def _update_theme_directories(self) -> bool:
-        """Reload theme browser directories for current resolution.
+        """Reload theme browser directories for the current resolution.
 
         Returns True if a first-install auto-load happened (caller should
         skip restore_last_theme to avoid a redundant double-load).
+
+        Reads come from ``_DeviceState`` (cached at connect / rotation),
+        not the legacy ``self._device.X`` properties which next/'s
+        Device port doesn't expose.
         """
-        lcd = self._device
-        ow, oh = lcd.canvas_size
-        self.log.debug("_update_theme_directories: output=%dx%d theme_dir=%s "
-                  "web_dir=%s masks_dir=%s rotated=%s",
-                  ow, oh,
-                  lcd.theme_dir.path if lcd.theme_dir else None,
-                  lcd.web_dir, lcd.masks_dir, lcd.is_rotated())
-        td = lcd.theme_dir
-        if td and td.path.exists():
-            self._w['theme_local'].set_theme_directory(td.path)
-        if lcd.web_dir:
-            self._w['theme_web'].set_web_directory(lcd.web_dir)
+        ow, oh = self._state.canvas_size
+        theme_dir = self._state.theme_dir
+        web_dir = self._state.web_dir
+        masks_dir = self._state.masks_dir
+
+        self.log.debug(
+            "_update_theme_directories: output=%dx%d theme_dir=%s "
+            "web_dir=%s masks_dir=%s rotated=%s",
+            ow, oh, theme_dir, web_dir, masks_dir, self._state.is_rotated,
+        )
+
+        if theme_dir and theme_dir.exists():
+            self._w['theme_local'].set_theme_directory(theme_dir)
+        if web_dir:
+            self._w['theme_web'].set_web_directory(web_dir)
         self._w['theme_web'].set_resolution(f'{ow}x{oh}')
-        if lcd.masks_dir:
-            self._w['theme_mask'].set_mask_directory(lcd.masks_dir)
+        if masks_dir:
+            self._w['theme_mask'].set_mask_directory(masks_dir)
         self._w['theme_mask'].set_resolution(f'{ow}x{oh}')
         self._w['image_cut'].set_resolution(ow, oh)
         self._w['video_cut'].set_resolution(ow, oh)
@@ -840,9 +837,9 @@ class LCDHandler(BaseHandler):
         # the device has nothing rendered yet AND no saved theme name.
         ds = self._app.settings.for_device(self._device_key)
         if (self._state.current_theme_path is None
-                and td and td.path.exists()
+                and theme_dir and theme_dir.exists()
                 and not ds.current_theme):
-            for item in sorted(td.path.iterdir()):
+            for item in sorted(theme_dir.iterdir()):
                 if item.is_dir() and (item / '00.png').exists():
                     self.log.info("Data ready: auto-loading first theme: %s", item)
                     self._select_theme_from_path(item, persist=True,
@@ -850,7 +847,7 @@ class LCDHandler(BaseHandler):
                     return True
             self.log.debug(
                 "_update_theme_directories: no valid theme found for auto-load in %s",
-                td.path,
+                theme_dir,
             )
         return False
 

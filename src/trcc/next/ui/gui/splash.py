@@ -150,11 +150,34 @@ class BootstrapWorker(QThread):
         self._app = app
 
     def run(self) -> None:
-        from ...core.commands import DiscoverDevices
+        """Discover + connect every attached device.
+
+        next/'s split:
+          * ``DiscoverDevices`` — enumerate the registry against live USB
+          * ``ConnectDevice(key=…)`` — attach the transport + handshake
+
+        The window's sidebar reads from ``app.devices``, which only the
+        Connect step populates.  Without this loop the GUI starts empty
+        and every subsequent dispatch on a device key errors out with
+        "Not attached: vid:pid".
+        """
+        from ...core.commands import ConnectDevice, DiscoverDevices
 
         try:
             self.progress.emit("Discovering devices…")
-            self._app.dispatch(DiscoverDevices())
+            result = self._app.dispatch(DiscoverDevices())
+            for product in result.products:
+                self.progress.emit(
+                    f"Connecting {product.vendor} {product.product}…",
+                )
+                connect_result = self._app.dispatch(
+                    ConnectDevice(key=product.key),
+                )
+                if not connect_result.ok:
+                    log.warning(
+                        "Connect %s failed: %s",
+                        product.key, connect_result.message,
+                    )
         except Exception as exc:
             log.exception("Bootstrap error")
             self.failed.emit(str(exc))

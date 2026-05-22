@@ -47,7 +47,7 @@ from unittest.mock import MagicMock
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from trcc.core.models import (  # noqa: E402
+from trcc.core.models import (
     BULK_DEVICES,
     HID_LCD_DEVICES,
     LED_DEVICES,
@@ -57,12 +57,10 @@ from trcc.core.models import (  # noqa: E402
     DeviceInfo,
     HandshakeResult,
     PanelCutout,
-    UsbAddress,
-    VariantOverride,
     get_button_image,
     get_variant_override,
 )
-from trcc.core.models.device import _VARIANT_REGISTRY  # noqa: E402
+from trcc.core.models.device import _VARIANT_REGISTRY
 
 _ASSETS_DIR = _REPO_ROOT / "src" / "trcc" / "ui" / "gui" / "assets"
 

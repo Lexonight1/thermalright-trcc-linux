@@ -30,17 +30,17 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from trcc.adapters.system import PlatformFactory  # noqa: E402 — triggers @register
-from trcc.adapters.system.bsd_platform import BSDPlatform  # noqa: E402
-from trcc.adapters.system.linux_platform import LinuxPlatform  # noqa: E402
-from trcc.adapters.system.macos_platform import MacOSPlatform  # noqa: E402
-from trcc.adapters.system.windows_platform import WindowsPlatform  # noqa: E402
-from trcc.core.models import (  # noqa: E402
+from trcc.adapters.system import PlatformFactory
+from trcc.adapters.system.bsd_platform import BSDPlatform
+from trcc.adapters.system.linux_platform import LinuxPlatform
+from trcc.adapters.system.macos_platform import MacOSPlatform
+from trcc.adapters.system.windows_platform import WindowsPlatform
+from trcc.core.models import (
     ALL_DEVICES,
     DetectedDevice,
     DeviceInfo,
 )
-from trcc.core.ports import Platform  # noqa: E402
+from trcc.core.ports import Platform
 
 
 # ── Result type — visual report at end ──────────────────────────────────
@@ -177,7 +177,7 @@ def run_platform(cls: type[Platform]) -> list[CheckResult]:
     platform = cls()
     results.append(check_abstract_methods_overridden(cls))
     for check in _PLATFORM_CHECKS[1:]:
-        results.append(check(platform))  # noqa: PERF401 — readability over loop fold
+        results.append(check(platform))
     return results
 
 

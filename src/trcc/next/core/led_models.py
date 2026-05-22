@@ -123,23 +123,6 @@ class LedRuntimeState:
 
 
 # =========================================================================
-# Preset palette — picker buttons in legacy FormLED ucColor1
-# =========================================================================
-
-
-PRESET_COLORS: tuple[tuple[int, int, int], ...] = (
-    (255,   0,  42),  # C1 — red-pink
-    (255, 110,   0),  # C2 — orange
-    (255, 255,   0),  # C3 — yellow
-    (  0, 255,   0),  # C4 — green
-    (  0, 255, 255),  # C5 — cyan
-    (  0,  91, 255),  # C6 — blue
-    (214,   0, 255),  # C7 — purple
-    (255, 255, 255),  # C8 — white
-)
-
-
-# =========================================================================
 # Style spec — per-LED-style layout metadata
 # =========================================================================
 #
@@ -226,43 +209,6 @@ LED_STYLES: dict[LedStyle, LedStyleSpec] = {
     LedStyle.LF13:  LedStyleSpec(62,  62, 0, "LF13",
                                  "led_preview_lf13",  "led_bg_lf13"),
 }
-
-
-# Styles that show "select all zones" instead of the rotating carousel —
-# PA120 (style 2) and LF10 (style 7) sync every zone to one colour.
-LED_SELECT_ALL_STYLES: frozenset[LedStyle] = frozenset({
-    LedStyle.PA120, LedStyle.LF10,
-})
-
-
-# Per-style default-off segment indices.  Empty / missing = all segments on.
-LED_DEFAULT_OFF: dict[LedStyle, frozenset[int]] = {
-    LedStyle.AX120: frozenset({4, 5, 7, 8}),
-    LedStyle.PA120: frozenset({7}),
-    LedStyle.AK120: frozenset({3, 5}),
-    LedStyle.LC1:   frozenset({1, 2, 25, 26, 30}),
-    LedStyle.LF8:   frozenset({1, 3}),
-    LedStyle.LF12:  frozenset({1, 3}),
-    LedStyle.LF10:  frozenset({2, 5}),
-    LedStyle.CZ1:   frozenset({1, 2, 3}),
-    LedStyle.LF11:  frozenset({1, 2, 32, 33, 37}),
-    LedStyle.LF15:  frozenset({1, 3}),
-}
-
-
-# Mode-button labels (FormLED.cs Solid / Breathe / Cycle / Rainbow / Temp / Load).
-# i18n keys — pass through ``tr()`` at render time.
-LED_MODE_LABELS: tuple[str, ...] = (
-    "Solid", "Breathe", "Color Cycle", "Rainbow", "Temp Linked", "Load Linked",
-)
-
-
-# Preset-color button asset basenames (eight C1..C8 buttons).
-LED_PRESET_ASSETS: tuple[str, ...] = (
-    "led_preset_red", "led_preset_orange", "led_preset_yellow",
-    "led_preset_green", "led_preset_cyan", "led_preset_blue",
-    "led_preset_purple", "led_preset_white",
-)
 
 
 # Per-style zone-button asset pairs (normal, active).  Styles map onto
