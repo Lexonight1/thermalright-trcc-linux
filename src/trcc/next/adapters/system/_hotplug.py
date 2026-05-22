@@ -72,10 +72,12 @@ class NoopHotplugMonitor(HotplugMonitor):
         self._running = True
 
     def stop(self) -> None:
+        log.debug("NoopHotplugMonitor.stop")
         self._running = False
 
     @property
     def is_running(self) -> bool:
+        log.debug("NoopHotplugMonitor.is_running → %s", self._running)
         return self._running
 
 
@@ -151,7 +153,9 @@ class LinuxHotplugMonitor(HotplugMonitor):
 
     @property
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        running = self._thread is not None and self._thread.is_alive()
+        log.debug("LinuxHotplugMonitor.is_running → %s", running)
+        return running
 
     # ── Internal: poll loop ──────────────────────────────────────────
 
@@ -283,7 +287,9 @@ class WindowsHotplugMonitor(HotplugMonitor):
 
     @property
     def is_running(self) -> bool:
-        return any(t.is_alive() for t in self._threads)
+        running = any(t.is_alive() for t in self._threads)
+        log.debug("WindowsHotplugMonitor.is_running → %s", running)
+        return running
 
     # ── Worker loop ──────────────────────────────────────────────────
 
@@ -458,7 +464,9 @@ class FreeBSDHotplugMonitor(HotplugMonitor):
 
     @property
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        running = self._thread is not None and self._thread.is_alive()
+        log.debug("FreeBSDHotplugMonitor.is_running → %s", running)
+        return running
 
     # ── Worker loop ──────────────────────────────────────────────────
 
@@ -596,7 +604,9 @@ class PollingHotplugMonitor(HotplugMonitor):
 
     @property
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        running = self._thread is not None and self._thread.is_alive()
+        log.debug("PollingHotplugMonitor.is_running → %s", running)
+        return running
 
     # ── Diff helper (pure — tested directly) ──────────────────────────
 

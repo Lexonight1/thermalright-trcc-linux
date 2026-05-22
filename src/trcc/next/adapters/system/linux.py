@@ -56,18 +56,26 @@ class LinuxPaths(Paths):
         home = Path.home()
         self._root = home / ".trcc"
         self._user_content = home / ".trcc-user"
+        log.info("LinuxPaths: root=%s user_content=%s",
+                 self._root, self._user_content)
 
     def config_dir(self) -> Path:
+        log.debug("LinuxPaths.config_dir → %s", self._root)
         return self._root
 
     def data_dir(self) -> Path:
-        return self._root / "data"
+        path = self._root / "data"
+        log.debug("LinuxPaths.data_dir → %s", path)
+        return path
 
     def user_content_dir(self) -> Path:
+        log.debug("LinuxPaths.user_content_dir → %s", self._user_content)
         return self._user_content
 
     def log_file(self) -> Path:
-        return self._root / "trcc.log"
+        path = self._root / "trcc.log"
+        log.debug("LinuxPaths.log_file → %s", path)
+        return path
 
 
 # =========================================================================
@@ -104,29 +112,41 @@ class LinuxAutostart(AutostartManager):
         xdg = os.environ.get("XDG_CONFIG_HOME")
         base = Path(xdg) if xdg else Path.home() / ".config"
         self._path = base / "autostart" / _AUTOSTART_FILENAME
+        log.info("LinuxAutostart: desktop file path = %s", self._path)
 
     @property
     def path(self) -> Path:
+        log.debug("LinuxAutostart.path → %s", self._path)
         return self._path
 
     def is_enabled(self) -> bool:
-        return self._path.is_file()
+        enabled = self._path.is_file()
+        log.debug("LinuxAutostart.is_enabled → %s (%s)", enabled, self._path)
+        return enabled
 
     def enable(self) -> None:
+        log.info("LinuxAutostart.enable: writing %s", self._path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(self._render(), encoding="utf-8")
         self._path.chmod(0o644)
         log.info("Autostart enabled: %s", self._path)
 
     def disable(self) -> None:
+        log.info("LinuxAutostart.disable: removing %s", self._path)
         if self._path.exists():
             self._path.unlink()
             log.info("Autostart disabled: %s", self._path)
+        else:
+            log.info("LinuxAutostart.disable: %s did not exist", self._path)
 
     def refresh(self) -> None:
         """Re-render the .desktop file if it's present (picks up new Exec path)."""
         if self._path.exists():
+            log.info("LinuxAutostart.refresh: re-rendering %s", self._path)
             self.enable()
+        else:
+            log.debug("LinuxAutostart.refresh: %s not present — nothing to refresh",
+                      self._path)
 
     def _render(self) -> str:
         return _AUTOSTART_TEMPLATE.format(exec_cmd=self._exec_cmd())
@@ -255,35 +275,46 @@ class LinuxScsiTransport(ScsiTransport):
         self._fd: int | None = None
         # Cache for send_cdb: {data_len: (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)}
         self._write_bufs: dict[int, tuple] = {}
+        log.info("LinuxScsiTransport: bound to %s", device_path)
 
     @property
     def is_open(self) -> bool:
-        return self._fd is not None
+        opened = self._fd is not None
+        log.debug("LinuxScsiTransport.is_open → %s (fd=%s)", opened, self._fd)
+        return opened
 
     def open(self) -> bool:
         if self._fd is not None:
+            log.debug("LinuxScsiTransport.open: %s already open (fd=%d)",
+                      self._path, self._fd)
             return True
         try:
             self._fd = os.open(self._path, os.O_RDWR | os.O_NONBLOCK)
-            log.debug("SG_IO opened %s (fd=%d)", self._path, self._fd)
+            log.info("LinuxScsiTransport: opened %s (fd=%d)", self._path, self._fd)
             return True
         except OSError as e:
-            log.error("SG_IO open failed for %s: %s", self._path, e)
+            log.error("LinuxScsiTransport: open failed for %s: %s", self._path, e)
             return False
 
     def close(self) -> None:
-        if self._fd is not None:
-            try:
-                os.close(self._fd)
-            except OSError:
-                pass
-            self._fd = None
-            self._write_bufs.clear()
+        if self._fd is None:
+            log.debug("LinuxScsiTransport.close: %s already closed", self._path)
+            return
+        log.info("LinuxScsiTransport: closing %s (fd=%d)", self._path, self._fd)
+        try:
+            os.close(self._fd)
+        except OSError as e:
+            log.warning("LinuxScsiTransport: os.close raised %s — continuing", e)
+        self._fd = None
+        self._write_bufs.clear()
 
     def send_cdb(self, cdb: bytes, data: bytes,
                  timeout_ms: int = 5000) -> bool:
         """SCSI CDB + data-out via single SG_IO ioctl.  True on status 0."""
+        log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
+                  len(cdb), len(data), timeout_ms)
         if self._fd is None:
+            log.error("LinuxScsiTransport.send_cdb: %s not open", self._path)
             raise TransportError(f"LinuxScsiTransport {self._path} not open")
 
         bufs = self._write_bufs.get(len(data))
@@ -312,7 +343,10 @@ class LinuxScsiTransport(ScsiTransport):
 
         Not cached — reads happen only at handshake/poll, not per frame.
         """
+        log.debug("LinuxScsiTransport.read_cdb: cdb_len=%d length=%d timeout=%dms",
+                  len(cdb), length, timeout_ms)
         if self._fd is None:
+            log.error("LinuxScsiTransport.read_cdb: %s not open", self._path)
             raise TransportError(f"LinuxScsiTransport {self._path} not open")
 
         cdb_buf = (ctypes.c_ubyte * len(cdb)).from_buffer_copy(cdb)
@@ -373,6 +407,7 @@ class LinuxPlatform(Platform):
     """
 
     def __init__(self) -> None:
+        log.info("LinuxPlatform: initialising")
         self._paths = LinuxPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
@@ -383,6 +418,7 @@ class LinuxPlatform(Platform):
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
         """Return an unopened PyUsbBulkTransport for HID/BULK/LY/LED."""
+        log.info("LinuxPlatform.open_bulk: %04x:%04x serial=%r", vid, pid, serial)
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
@@ -393,14 +429,17 @@ class LinuxPlatform(Platform):
         transport.  Raises TransportError if the device isn't present
         as a SCSI generic or sd block device.
         """
+        log.info("LinuxPlatform.open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         path = _resolve_scsi_path(vid, pid)
         if path is None:
+            log.error("LinuxPlatform.open_scsi: no /dev/sg* node for %04x:%04x",
+                      vid, pid)
             raise TransportError(
                 f"No SCSI device node found for {vid:04x}:{pid:04x} — "
                 "check that the device is attached and the scsi_generic "
                 "kernel module is loaded"
             )
-        log.debug("LinuxPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
+        log.info("LinuxPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return LinuxScsiTransport(path)
 
     def scan_devices(self) -> list[DeviceInfo]:
@@ -410,6 +449,8 @@ class LinuxPlatform(Platform):
         physically enumerated and let the Device subclass handle any
         per-OS driver detach on connect().
         """
+        log.info("LinuxPlatform.scan_devices: scanning %d known VID/PID pairs",
+                 len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
@@ -421,30 +462,41 @@ class LinuxPlatform(Platform):
                 except Exception:
                     serial = ""
                 found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None))
-        log.debug("scan_devices: %d device(s) found", len(found))
+                log.info("  found %04x:%04x serial=%r", vid, pid, serial)
+        log.info("LinuxPlatform.scan_devices: %d device(s) total", len(found))
         return found
 
     # ── Filesystem ────────────────────────────────────────────────────
 
     def paths(self) -> Paths:
+        log.debug("LinuxPlatform.paths()")
         return self._paths
 
     # ── Sensors / Autostart (stubs; real impls later) ─────────────────
 
     def sensors(self) -> SensorEnumerator:
         if self._sensors is None:
+            log.info("LinuxPlatform.sensors: building sensor enumerator")
             self._sensors = build_linux_sensors()
+        else:
+            log.debug("LinuxPlatform.sensors: returning cached enumerator")
         return self._sensors
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
+            log.info("LinuxPlatform.autostart: building LinuxAutostart")
             self._autostart = LinuxAutostart()
+        else:
+            log.debug("LinuxPlatform.autostart: returning cached manager")
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
         if self._hotplug is None:
             from ._hotplug import LinuxHotplugMonitor
+            log.info("LinuxPlatform.hotplug: building LinuxHotplugMonitor")
             self._hotplug = LinuxHotplugMonitor()
+        else:
+            log.debug("LinuxPlatform.hotplug: returning cached monitor")
         return self._hotplug
 
     # ── Setup / permissions ──────────────────────────────────────────
@@ -462,6 +514,7 @@ class LinuxPlatform(Platform):
         Non-interactive mode prints what would be done and returns 0
         without touching the system.
         """
+        log.info("LinuxPlatform.setup: interactive=%s", interactive)
         if not interactive:
             log.info("=== dry run (pass interactive=True to apply) ===")
             install_udev_rules(dry_run=True)
@@ -478,12 +531,14 @@ class LinuxPlatform(Platform):
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
+        log.info("LinuxPlatform.check_permissions: probing")
         warnings: list[str] = []
         if not Path("/etc/udev/rules.d/99-trcc-lcd.rules").exists():
             warnings.append(
                 "udev rules not installed — device access may require root. "
                 "Run 'python -m trcc.next system setup' to install them."
             )
+        log.info("LinuxPlatform.check_permissions: %d warning(s)", len(warnings))
         return warnings
 
     # ── OS identity ───────────────────────────────────────────────────
@@ -492,37 +547,51 @@ class LinuxPlatform(Platform):
         """Parse /etc/os-release for the pretty name."""
         path = Path("/etc/os-release")
         if not path.exists():
+            log.info("LinuxPlatform.distro_name: /etc/os-release missing, "
+                     "defaulting to 'Linux'")
             return "Linux"
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.startswith("PRETTY_NAME="):
-                    return line.split("=", 1)[1].strip().strip('"')
-        except Exception:
-            pass
+                    name = line.split("=", 1)[1].strip().strip('"')
+                    log.info("LinuxPlatform.distro_name → %s", name)
+                    return name
+        except Exception as e:
+            log.warning("LinuxPlatform.distro_name: parse failed (%s) — "
+                        "defaulting to 'Linux'", e)
         return "Linux"
 
     def install_method(self) -> str:
         """Rough heuristic: PyInstaller bundle > pip > source."""
         import sys
         if getattr(sys, 'frozen', False):
+            log.info("LinuxPlatform.install_method → pyinstaller (frozen)")
             return "pyinstaller"
         try:
             import shutil
             if shutil.which("trcc"):
+                log.info("LinuxPlatform.install_method → pip (trcc on PATH)")
                 return "pip"
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("LinuxPlatform.install_method: shutil.which raised %s", e)
+        log.info("LinuxPlatform.install_method → source")
         return "source"
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
 
     def memory_info(self) -> list[dict[str, str]]:
         """DRAM slot probe via dmidecode; psutil fallback for totals only."""
-        return _linux_memory_info()
+        log.info("LinuxPlatform.memory_info: probing")
+        slots = _linux_memory_info()
+        log.info("LinuxPlatform.memory_info: %d slot(s)", len(slots))
+        return slots
 
     def disk_info(self) -> list[dict[str, str]]:
         """Disk probe via lsblk + smartctl health."""
-        return _linux_disk_info()
+        log.info("LinuxPlatform.disk_info: probing")
+        disks = _linux_disk_info()
+        log.info("LinuxPlatform.disk_info: %d disk(s)", len(disks))
+        return disks
 
 
 # =========================================================================
