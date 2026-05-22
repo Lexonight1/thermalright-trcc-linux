@@ -219,12 +219,21 @@ class LCDHandler(BaseHandler):
         self._state.canvas_size = (w, h)
         self._state.lcd_size = (w, h)
         paths = self._app.platform.paths()
-        self._state.masks_dir = paths.user_mask_dir(w, h)
+        # ``masks_dir`` here is the CLOUD mask cache the browser scans
+        # as its "primary" directory.  The panel pulls the user mask
+        # dir (``paths.user_mask_dir(w, h)``) itself via its injected
+        # Paths port and walks both — see ``uc_theme_mask.refresh_masks``.
+        # Pre-fix this was set to user_mask_dir, so the panel walked
+        # the user dir TWICE (primary + user) and missed the 120 cloud
+        # masks that live at ``data/web/zt{W}{H}``.
+        self._state.masks_dir = paths.cloud_mask_dir(w, h)
         self._state.theme_dir = paths.theme_dir(w, h)
         self._state.web_dir = paths.cloud_theme_dir(w, h)
         self.log.info(
-            "_refresh: theme_dir=%s web_dir=%s masks_dir=%s",
-            self._state.theme_dir, self._state.web_dir, self._state.masks_dir,
+            "_refresh: theme_dir=%s web_dir=%s masks_dir(cloud)=%s "
+            "user_mask_dir=%s",
+            self._state.theme_dir, self._state.web_dir,
+            self._state.masks_dir, paths.user_mask_dir(w, h),
         )
         # next/'s per-device settings live in app.settings.for_device(key)
         # — DeviceSettings dataclass.  Build a dict-shape view so the

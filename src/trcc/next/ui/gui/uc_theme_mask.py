@@ -141,7 +141,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def set_mask_directory(self, path):
         """Set the mask directory and load masks."""
-        log.debug("set_mask_directory: %s", path)
+        log.info("uc_theme_mask.set_mask_directory: %s", path)
         self.mask_directory = Path(path) if path else None
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
@@ -215,8 +215,9 @@ class UCThemeMask(DownloadableThemeBrowser):
         if self._category != 'all':
             masks = [m for m in masks if m.name and m.name[-1:] == self._category]
 
-        log.debug("refresh_masks: %d masks, cat=%s, dir=%s",
-                   len(masks), self._category, self.mask_directory)
+        log.info("uc_theme_mask.refresh_masks: %d mask(s), cat=%s, "
+                 "cloud_dir=%s user_dir=%s",
+                 len(masks), self._category, self.mask_directory, user_dir)
         self._populate_grid(masks)
 
     def _on_item_clicked(self, item_info: MaskItem):
