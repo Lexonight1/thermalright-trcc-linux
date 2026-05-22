@@ -35,8 +35,10 @@ This installs **two** binaries:
 * `trcc-next`   — the rebuild you'll use for this guide.
 
 next/ does **not** clobber legacy state.  It stores its settings in
-`~/.trcc/trcc-next.json` (legacy stays at `~/.trcc/config.json`).  Use
-both freely — they don't fight over the same files.
+`~/.trcc/trcc.json` (legacy stays at `~/.trcc/config.json`).  Use both
+freely — they don't fight over the same files.  Settings written by
+pre-cutover next/ (`~/.trcc/trcc-next.json`) are read on first launch
+and promoted to the new name on the next save.
 
 ## First run
 
@@ -153,14 +155,14 @@ The CPU temp shows on the device on the next render tick.
 
 ## Where files live
 
-* Config: `~/.trcc/trcc-next.json`
+* Config: `~/.trcc/trcc.json`
 * Log: `~/.trcc/trcc.log` (rotates at 1 MB × 5 backups)
 * Themes you import: `~/.trcc/themes/<name>/`
 * Masks you upload: `~/.trcc/masks/`
 * Cloud theme cache: `~/.local/share/trcc/cloud_themes/<resolution>/`
 
-You can wipe `~/.trcc/trcc-next.json` to reset next/ to defaults —
-your themes and masks stay where they are.
+You can wipe `~/.trcc/trcc.json` to reset next/ to defaults — your
+themes and masks stay where they are.
 
 ## Reporting bugs
 

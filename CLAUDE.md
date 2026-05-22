@@ -319,7 +319,7 @@ When the user reports a broken feature: `grep -iE "error|traceback|warning" ~/.t
 Before rewriting any call site that dispatches through a facade (`self._app.*`, `self._trcc.*`, etc.), `grep "if self._app is not None"` in the same file. Many sites already have `else: self._x.y()` fallback paths written years ago — flipping the parameter that selects them is a 1-line fix instead of an 80-line rewrite.
 
 ### Shape-Compat Before Writing a Migration
-Before adding code that writes a file another tool reads (legacy ↔ next/ sharing `config.json`, any inter-tool state), READ the other tool's reader and match the shape. Use a different filename if shapes differ (`trcc-next.json`) — sharing a filename with different shapes is how you corrupt user data.
+Before adding code that writes a file another tool reads (legacy ↔ next/ sharing `config.json`, any inter-tool state), READ the other tool's reader and match the shape. Use a different filename if shapes differ (`trcc.json` is next/'s persistence filename, distinct from legacy's `config.json`) — sharing a filename with different shapes is how you corrupt user data. Don't bake temporal labels (`-next`, `-new`, `-v2`) into permanent filenames; pick a name that survives cutover.
 
 ### pycache Before Bulk Moves
 `git rm -r dir/` leaves `__pycache__` behind. Then `git mv a/x dir/` nests at `dir/a/x` instead of replacing. Before any bulk directory operation: `find . -name __pycache__ -type d -exec rm -rf {} +`.

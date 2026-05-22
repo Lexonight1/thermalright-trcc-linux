@@ -144,7 +144,7 @@ def test_materialise_creates_theme_dir(
     theme_dir = service.materialise("a004", resolution=resolution)
     assert theme_dir.is_dir()
     assert (theme_dir / "a004.mp4").is_file()
-    assert (theme_dir / "trcc-next.json").is_file()
+    assert (theme_dir / "trcc.json").is_file()
     # Per-resolution staging matches legacy layout (data/web/{W}{H}/).
     assert theme_dir.parent == paths.cloud_theme_dir(w, h)
     # Re-running is idempotent — no extra HTTP call, no duplicate write.

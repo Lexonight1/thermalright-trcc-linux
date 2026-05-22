@@ -4,11 +4,11 @@ TRCC Windows + legacy Linux wrote themes as `config1.dc` — a binary
 format with a magic byte (0xDC / 0xDD), version, enable flags, 13
 font records, 13 element positions, and mask/rotation flags.
 
-next/ writes theme configs as plain JSON going forward (``trcc-next.json``).
+next/ writes theme configs as plain JSON going forward (``trcc.json``).
 This codec lets users:
   * load their existing DC-format themes (read path) — ``ThemeService.load``
     invokes it as a fallback, converts to our JSON-compatible dict, and
-    writes ``trcc-next.json`` alongside so the next load skips the binary
+    writes ``trcc.json`` alongside so the next load skips the binary
     path; and
   * export a next/-managed theme back to legacy DC format (write path) so
     it round-trips to Windows TRCC + legacy Linux users.

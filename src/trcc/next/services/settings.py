@@ -1,4 +1,4 @@
-"""Settings — user preferences, persisted to trcc-next.json.
+"""Settings — user preferences, persisted to trcc.json.
 
 Filename is deliberately distinct from legacy's ``config.json`` — the
 two trees use different JSON shapes, and sharing a filename would make
@@ -63,7 +63,12 @@ class AppSettings:
 # =========================================================================
 
 
-_CONFIG_FILE = "trcc-next.json"
+_CONFIG_FILE = "trcc.json"
+# One-shot migration: pre-cutover next/ persisted to ``trcc-next.json``.
+# Settings._load reads the old name when the new one doesn't exist; the
+# next save writes the new name and leaves the old file untouched so
+# legacy/rollback paths still work.
+_PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 _LEGACY_CONFIG_FILE = "config.json"
 
 
@@ -463,11 +468,24 @@ class Settings:
         return self._paths.config_dir() / _CONFIG_FILE
 
     def _load(self) -> None:
-        """Load config from disk.  Missing/corrupt → defaults, warn only."""
+        """Load config from disk.  Missing/corrupt → defaults, warn only.
+
+        Falls back to the pre-cutover ``trcc-next.json`` filename so
+        users who started on next/ before the rename keep their state;
+        the next ``_save`` writes the new ``trcc.json`` automatically.
+        """
         path = self._config_path()
         if not path.exists():
-            log.debug("No config file at %s, using defaults", path)
-            return
+            old_path = self._paths.config_dir() / _PRE_CUTOVER_CONFIG_FILE
+            if old_path.exists():
+                log.info(
+                    "Reading pre-cutover config %s; next save will write %s",
+                    old_path, path,
+                )
+                path = old_path
+            else:
+                log.debug("No config file at %s, using defaults", path)
+                return
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as e:

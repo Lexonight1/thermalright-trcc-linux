@@ -30,7 +30,7 @@ def _write_theme(directory: Path, name: str = "demo",
     theme_dir = directory / name
     theme_dir.mkdir(parents=True)
     config = {"name": name, "width": width, "height": height, "elements": []}
-    (theme_dir / "trcc-next.json").write_text(
+    (theme_dir / "trcc.json").write_text(
         json.dumps(config, indent=2), encoding="utf-8",
     )
     (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
@@ -62,7 +62,7 @@ def test_export_writes_zip_with_expected_members(tmp_home: Path) -> None:
     assert archive.exists()
     with zipfile.ZipFile(archive) as zf:
         names = set(zf.namelist())
-    assert "trcc-next.json" in names
+    assert "trcc.json" in names
     assert "background.png" in names
 
 
@@ -111,7 +111,7 @@ def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
 
     assert theme.name == "demo"
     assert theme.resolution == (320, 320)
-    assert (target / "trcc-next.json").is_file()
+    assert (target / "trcc.json").is_file()
     assert (target / "background.png").is_file()
 
 
@@ -152,7 +152,7 @@ def test_import_skips_zip_slip_members(tmp_home: Path) -> None:
     # Also include a valid theme config so .load() succeeds.
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr(
-            "trcc-next.json",
+            "trcc.json",
             json.dumps({"name": "ok", "width": 320, "height": 320}),
         )
         zf.writestr("../escape.txt", b"would escape")
@@ -166,7 +166,7 @@ def test_import_skips_zip_slip_members(tmp_home: Path) -> None:
     # Only the safe member made it in
     extracted = {p.relative_to(target).as_posix()
                  for p in target.rglob("*") if p.is_file()}
-    assert "trcc-next.json" in extracted
+    assert "trcc.json" in extracted
     # No file with "escape" or "abs" anywhere in the path
     assert all("escape" not in p and "abs" not in p for p in extracted)
 
@@ -203,7 +203,7 @@ def test_save_theme_duplicates_active_theme(
     assert result.ok is True
     saved = user_content_dir / "my-copy"
     assert saved.is_dir()
-    assert (saved / "trcc-next.json").is_file()
+    assert (saved / "trcc.json").is_file()
 
 
 def test_save_theme_no_active_theme_returns_failure(app: App) -> None:

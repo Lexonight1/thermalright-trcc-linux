@@ -73,7 +73,7 @@ class CloudThemeService:
         if not target_mp4.is_file():
             target_mp4.write_bytes(mp4_path.read_bytes())
 
-        config_path = theme_dir / "trcc-next.json"
+        config_path = theme_dir / "trcc.json"
         if not config_path.is_file():
             config_path.write_text(
                 json.dumps(_minimal_config(theme_id), indent=2) + "\n",

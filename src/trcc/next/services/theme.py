@@ -1,7 +1,7 @@
 """ThemeService — theme discovery and metadata parsing.
 
 A theme in TRCC is a directory containing:
-    trcc-next.json    next/'s native element layout / fonts / colors
+    trcc.json         next/'s native element layout / fonts / colors
     background.png    (or .jpg) the base image
     optional extras   mask images, animation frames, fonts
 
@@ -12,11 +12,13 @@ This service provides:
     import_(src, dst)   → unpack a shared theme archive
 
 Config resolution:
-    trcc-next.json — next/'s native format.  Named distinctly from
-                     legacy's `config.json` so migration never clobbers
-                     a theme a legacy install also reads.
+    trcc.json     — next/'s native format.  Named distinctly from
+                    legacy's `config.json` so migration never clobbers
+                    a theme a legacy install also reads.  Themes
+                    written by pre-cutover next/ used `trcc-next.json`;
+                    that name is still read as a fallback.
     config1.dc    — binary legacy format (read-only fallback);
-                    auto-migrated to trcc-next.json on first load.
+                    auto-migrated to trcc.json on first load.
 
 Rendering (turning a Theme into frame bytes) is DisplayService's job.
 """
@@ -39,7 +41,11 @@ log = logging.getLogger(__name__)
 # Distinct filename from legacy's `config.json` — next/'s JSON layout
 # uses a list of elements, legacy's expects a dict keyed by metric name.
 # Separating filenames avoids ever reading the other tool's shape.
-_CONFIG_FILE = "trcc-next.json"
+_CONFIG_FILE = "trcc.json"
+# Pre-cutover name — read as a fallback so themes saved during the
+# parallel-tree period still load.  Next save under DC migration writes
+# the new name; old files are left alone for rollback.
+_PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 _DC_CONFIG_FILE = "config1.dc"
 _BACKGROUND_CANDIDATES = (
     # next/ native names
@@ -101,8 +107,11 @@ class ThemeService:
         for entry in sorted(directory.iterdir()):
             if not entry.is_dir():
                 continue
-            if not ((entry / _CONFIG_FILE).exists()
-                    or (entry / _DC_CONFIG_FILE).exists()):
+            if not (
+                (entry / _CONFIG_FILE).exists()
+                or (entry / _PRE_CUTOVER_CONFIG_FILE).exists()
+                or (entry / _DC_CONFIG_FILE).exists()
+            ):
                 continue
             try:
                 themes.append(self.load(entry))
@@ -260,12 +269,14 @@ class ThemeService:
     def _load_config(self, path: Path) -> dict:
         """Load theme config, preferring JSON and falling back to DC.
 
-        On first successful DC load, writes a `trcc-next.json` alongside
-        so subsequent loads skip the binary path.  Legacy's `config.json`
+        On first successful DC load, writes a ``trcc.json`` alongside
+        so subsequent loads skip the binary path.  Legacy's ``config.json``
         uses a different shape, so we keep filenames separate — the two
         tools can share theme directories without stepping on each other.
-        Migration failure (read-only dir, permission, etc.) is logged
-        but doesn't prevent the theme from loading.
+        Pre-cutover next/ wrote ``trcc-next.json``; that name is still
+        read as a fallback.  Migration failure (read-only dir,
+        permission, etc.) is logged but doesn't prevent the theme from
+        loading.
         """
         json_path = path / _CONFIG_FILE
         if json_path.exists():
@@ -273,6 +284,15 @@ class ThemeService:
                 return json.loads(json_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
                 raise ThemeError(f"Invalid theme config {json_path}: {e}") from e
+
+        legacy_next_path = path / _PRE_CUTOVER_CONFIG_FILE
+        if legacy_next_path.exists():
+            try:
+                return json.loads(legacy_next_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                raise ThemeError(
+                    f"Invalid theme config {legacy_next_path}: {e}",
+                ) from e
 
         dc_path = path / _DC_CONFIG_FILE
         if dc_path.exists():

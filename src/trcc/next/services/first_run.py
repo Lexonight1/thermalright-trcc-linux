@@ -6,7 +6,7 @@ if they haven't run it.
 
 State is a single marker file under ``Paths.config_dir()``:
 ``.first-run-done``.  Empty file — its presence is the signal.
-Wiping ``trcc-next.json`` doesn't re-trigger first-run by design (a
+Wiping ``trcc.json`` doesn't re-trigger first-run by design (a
 user's settings reset shouldn't replay the onboarding wizard); deleting
 the marker file specifically does.
 

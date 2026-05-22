@@ -415,7 +415,9 @@ class LoadTheme(Command[ThemeResult]):
                                              key=self.key))
             return ThemeResult(ok=False, key=self.key, message=str(e))
 
-        app.settings.set_current_theme(self.key, theme.name)
+        # Persist the absolute path — names are display strings, paths
+        # are the stable reference RestoreLastTheme needs.
+        app.settings.set_current_theme(self.key, str(theme.path.resolve()))
         app.active_themes[self.key] = theme
         app.display.invalidate(self.key)  # drop stale scene cache from prev theme
         app.media.unload(self.key)        # drop stale video frames
@@ -2439,24 +2441,83 @@ class RestoreLastTheme(Command[ThemeResult]):
     Convenience wrapper around LoadTheme — looks up the last
     ``current_theme`` for this device and re-dispatches LoadTheme so
     the render pipeline catches up on connect or after a restart.
+
+    ``current_theme`` is normally the theme's absolute path (written by
+    LoadTheme).  Legacy values can be bare theme names like
+    ``"image:00"`` or ``"Custom_Theme1"`` — those trigger a heuristic
+    search across the device's known theme roots so existing users
+    don't lose their last selection on upgrade.
     """
     key: str
 
     def execute(self, app: App) -> ThemeResult:
         settings = app.settings.for_device(self.key)
-        theme_name = settings.current_theme
-        if not theme_name:
+        stored = settings.current_theme
+        if not stored:
             return ThemeResult(
                 ok=False, key=self.key,
                 message=f"No persisted theme for {self.key}",
             )
-        path = app.platform.paths().user_content_dir() / theme_name
-        if not path.is_dir():
+
+        # Absolute or already-resolvable path → use it directly.
+        candidate = Path(stored)
+        if candidate.is_dir():
+            return LoadTheme(key=self.key, path=candidate).execute(app)
+
+        # Legacy bare-name value — search the known theme roots.
+        resolved = _search_theme_by_name(app, self.key, stored)
+        if resolved is None:
             return ThemeResult(
-                ok=False, key=self.key, theme_name=theme_name,
-                message=f"Persisted theme {theme_name!r} not found at {path}",
+                ok=False, key=self.key, theme_name=stored,
+                message=(f"Persisted theme {stored!r} not found in any "
+                         "known theme root for this device"),
             )
-        return LoadTheme(key=self.key, path=path).execute(app)
+        return LoadTheme(key=self.key, path=resolved).execute(app)
+
+
+def _search_theme_by_name(
+    app: App, key: str, name: str,
+) -> Path | None:
+    """Locate a theme directory by name across this device's roots.
+
+    Used by RestoreLastTheme to recover legacy ``current_theme`` values
+    (display names like ``"image:00"``, ``"Custom_Theme1"``) that
+    pre-date persisting the absolute path.
+
+    Search order:
+      1. ``theme_dir(w,h)/<name>``           — pkg + GitHub-downloaded
+      2. ``user_theme_dir(w,h)/<name>``      — legacy user-saved layout
+      3. ``user_content_dir()/<name>``       — next/ flat user saves
+      4. ``user_content_dir()/single-image/<name_after_image_prefix>``
+      5. ``cloud_theme_dir(w,h)/<name>``     — cloud cache
+
+    Each candidate must be a directory containing a theme config
+    (``trcc.json`` or ``config1.dc``) — guarded by
+    ``ThemeService`` semantics.
+    """
+    paths = app.platform.paths()
+    resolution = _resolve_resolution(app, key)
+    candidates: list[Path] = []
+    if resolution is not None:
+        w, h = resolution
+        candidates.append(paths.theme_dir(w, h) / name)
+        candidates.append(paths.user_theme_dir(w, h) / name)
+        candidates.append(paths.cloud_theme_dir(w, h) / name)
+    candidates.append(paths.user_content_dir() / name)
+    # "image:foo" → single-image/foo (LoadImage layout).
+    if name.startswith("image:"):
+        candidates.append(
+            paths.user_content_dir() / "single-image" / name[len("image:"):],
+        )
+    for c in candidates:
+        if not c.is_dir():
+            continue
+        if any(
+            (c / marker).exists()
+            for marker in ("trcc.json", "trcc-next.json", "config1.dc")
+        ):
+            return c
+    return None
 
 
 # =========================================================================
@@ -2810,7 +2871,7 @@ class LoadImage(Command[ThemeResult]):
                 or target_image.stat().st_size != self.path.stat().st_size
             ):
                 shutil.copy2(self.path, target_image)
-            config_path = theme_dir / "trcc-next.json"
+            config_path = theme_dir / "trcc.json"
             if not config_path.is_file():
                 config_path.write_text(
                     json.dumps({
