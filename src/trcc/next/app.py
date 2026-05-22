@@ -228,6 +228,26 @@ class App:
         Generic in the Result subclass so the caller sees the concrete
         Result type (e.g. DiscoverResult with .products) without casting.
         UIs should only reach the rest of the app through this method.
+
+        Logging is single-chokepoint: every dispatch emits one log line
+        at ``cmd.LOG_LEVEL`` on entry and one on outcome.  Failures
+        (``result.ok`` is False) escalate to WARNING regardless of the
+        command's default level so they're always visible.  Per-tick
+        commands set ``LOG_LEVEL = DEBUG`` so they only show under -vv.
         """
-        log.debug("dispatch: %s", type(cmd).__name__)
-        return cmd.execute(self)
+        log.log(cmd.LOG_LEVEL, "dispatch %r", cmd)
+        result = cmd.execute(self)
+        if not getattr(result, "ok", True):
+            log.warning(
+                "%s failed: %s",
+                type(cmd).__name__,
+                getattr(result, "message", "(no message)"),
+            )
+        else:
+            log.log(
+                cmd.LOG_LEVEL,
+                "%s ok: %s",
+                type(cmd).__name__,
+                getattr(result, "message", ""),
+            )
+        return result

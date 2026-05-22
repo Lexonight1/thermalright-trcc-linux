@@ -15,7 +15,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, TypeVar
 
 from .errors import (
     DeviceNotConnectedError,
@@ -154,7 +154,15 @@ class Command(ABC, Generic[R_co]):
     ``app.dispatch(DiscoverDevices())`` is typed as ``DiscoverResult``,
     not the Result base — callers get the subclass's fields (products,
     readings, etc.) without casting.
+
+    ``LOG_LEVEL`` controls how App.dispatch logs the command's entry +
+    successful outcome.  Default INFO.  Per-tick commands (RenderAndSend,
+    SendFrame, RenderLed, ReadSensors, *Snapshot) override to DEBUG so
+    they show only under ``-vv``; they fire dozens of times per second
+    and would drown the log at INFO.
     """
+
+    LOG_LEVEL: ClassVar[int] = logging.INFO
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...
@@ -254,7 +262,11 @@ class SendFrame(Command[SendResult]):
 
     Bypasses the theme/render pipeline (Phase 5+) — useful for scripts
     and end-to-end smoke tests.
+
+    Per-tick payload — logged at DEBUG so a default INFO run isn't
+    drowned in frame chatter.
     """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
     data: bytes
 
@@ -351,7 +363,10 @@ class RenderAndSend(Command[RenderResult]):
     DisplayService scene cache so only the changed layer rebuilds per
     tick (sensors moved → redraw overlay; video cursor advanced →
     rebuild bg; otherwise pure cache hit + composite).
+
+    Per-tick: logged at DEBUG so a default INFO run isn't drowned.
     """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
 
     def execute(self, app: App) -> RenderResult:
@@ -1292,7 +1307,10 @@ class RenderLed(Command[LedColorsResult]):
     Transient counters live on ``app.led_runtime[key]`` — the engine
     advances them as a side effect so consecutive ``RenderLed``
     dispatches phase forward.
+
+    Per-tick: logged at DEBUG so a default INFO run isn't drowned.
     """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
     color: tuple[int, int, int] | None = None    # None = use Settings.led.color
     phase: int = 0
@@ -2375,7 +2393,11 @@ class ListGpus(Command[GpusListResult]):
 
 @dataclass(frozen=True, slots=True)
 class LcdSnapshot(Command[LcdSnapshotResult]):
-    """Per-device LCD state snapshot — what settings.for_device holds."""
+    """Per-device LCD state snapshot — what settings.for_device holds.
+
+    Polled by UIs to refresh state — logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
 
     def execute(self, app: App) -> LcdSnapshotResult:
@@ -2400,7 +2422,11 @@ class LcdSnapshot(Command[LcdSnapshotResult]):
 
 @dataclass(frozen=True, slots=True)
 class LedSnapshot(Command[LedSnapshotResult]):
-    """Per-device LED state snapshot."""
+    """Per-device LED state snapshot.
+
+    Polled by UIs to refresh state — logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
 
     def execute(self, app: App) -> LedSnapshotResult:
@@ -2425,7 +2451,11 @@ class LedSnapshot(Command[LedSnapshotResult]):
 
 @dataclass(frozen=True, slots=True)
 class ControlCenterSnapshot(Command[ControlCenterSnapshotResult]):
-    """App-wide settings snapshot."""
+    """App-wide settings snapshot.
+
+    Polled by UIs to refresh state — logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> ControlCenterSnapshotResult:
         a = app.settings.app
@@ -2630,7 +2660,12 @@ class ReadSensors(Command[SensorsResult]):
     Pulls descriptor metadata (label / unit / category) from
     `discover()` and fresh values from `read_all()`, then merges the
     two so every returned `SensorReading` carries the current value.
+
+    Polled per refresh tick — logged at DEBUG so a default INFO run
+    isn't drowned.
     """
+
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> SensorsResult:
         from .models import SensorReading
