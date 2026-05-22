@@ -12,7 +12,10 @@ from typing import List
 import pytest
 
 from trcc.next.core.errors import ThemeError
-from trcc.next.services._dc_reader import load_dc_as_theme_config
+from trcc.next.services._dc_reader import (
+    dc_as_legacy_overlay_config,
+    load_dc_as_theme_config,
+)
 
 
 def _build_dc(
@@ -205,3 +208,69 @@ def test_rotation_field_passes_through(tmp_path: Path) -> None:
     cfg = load_dc_as_theme_config(f)
 
     assert cfg["rotation"] == 180
+
+
+# =========================================================================
+# dc_as_legacy_overlay_config — legacy GUI shape (dict keyed by metric)
+# =========================================================================
+
+
+def test_legacy_overlay_returns_empty_when_no_dc(tmp_path: Path) -> None:
+    """A theme dir with no config1.dc yields an empty overlay config."""
+    assert dc_as_legacy_overlay_config(tmp_path) == {}
+
+
+def test_legacy_overlay_skips_corrupt_dc(tmp_path: Path) -> None:
+    """A DC with bad magic doesn't raise — just empty overlay."""
+    (tmp_path / "config1.dc").write_bytes(b"\xff\x00\x00")
+    assert dc_as_legacy_overlay_config(tmp_path) == {}
+
+
+def test_legacy_overlay_dd_clocks_keyed_by_source(tmp_path: Path) -> None:
+    """0xDD time/weekday/date elements key on their source name with the
+    legacy font dict + position fields the overlay grid expects."""
+    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=1, x=10, y=20),
+        _build_dd_element(mode=2, x=30, y=40),
+        _build_dd_element(mode=3, x=50, y=60),
+    ]))
+
+    cfg = dc_as_legacy_overlay_config(tmp_path)
+
+    assert set(cfg.keys()) == {"time", "weekday", "date"}
+    assert cfg["time"]["x"] == 10
+    assert cfg["time"]["y"] == 20
+    assert cfg["time"]["metric"] == "time"
+    assert cfg["time"]["time_format"] == 0
+    assert cfg["date"]["date_format"] == 0
+    # Font dict is the legacy shape overlay_grid consumes.
+    assert "font" in cfg["time"]
+    assert {"name", "size", "style"} <= set(cfg["time"]["font"])
+
+
+def test_legacy_overlay_disambiguates_duplicates(tmp_path: Path) -> None:
+    """Two TIME elements get distinct keys ("time" then "time_1")."""
+    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=1, x=10, y=20),
+        _build_dd_element(mode=1, x=30, y=40),
+    ]))
+
+    cfg = dc_as_legacy_overlay_config(tmp_path)
+
+    assert set(cfg.keys()) == {"time", "time_1"}
+    assert cfg["time"]["x"] == 10
+    assert cfg["time_1"]["x"] == 30
+
+
+def test_legacy_overlay_custom_text(tmp_path: Path) -> None:
+    """A 0xDD CUSTOM element surfaces as a custom_text entry with the
+    raw string preserved."""
+    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=4, x=5, y=15, custom_text=b"GPU"),
+    ]))
+
+    cfg = dc_as_legacy_overlay_config(tmp_path)
+
+    assert list(cfg.keys()) == ["custom_text"]
+    assert cfg["custom_text"]["text"] == "GPU"
+    assert cfg["custom_text"]["x"] == 5

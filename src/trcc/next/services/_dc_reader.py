@@ -230,7 +230,7 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         try:
             if idx == 0:
                 custom_text = r.read_string()
-            r.read_string()                          # font_name (unused; system default)
+            font_name = r.read_string() or _DEFAULT_FONT_NAME
             size = _clamp_font_size(r.read_float())
             style = r.read_byte()                    # bit0 = bold, bit1 = italic
             r.read_byte()                            # unit
@@ -240,13 +240,17 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             green = r.read_byte()
             blue = r.read_byte()
             fonts.append({
+                "name": font_name,
                 "size": size,
                 "bold": bool(style & 0x01),
                 "italic": bool(style & 0x02),
                 "color": f"#{red:02x}{green:02x}{blue:02x}" if alpha else "#ffffff",
             })
         except (struct.error, IndexError):
-            fonts.append({"size": 24, "bold": False, "italic": False, "color": "#ffffff"})
+            fonts.append({
+                "name": _DEFAULT_FONT_NAME, "size": 24, "bold": False,
+                "italic": False, "color": "#ffffff",
+            })
 
     # Display options
     try:
@@ -387,7 +391,7 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
 
 def _read_dd_font(r: _Reader) -> dict[str, Any]:
     """Read the font/color record that follows every 0xDD element."""
-    r.read_string()                                 # font_name (unused)
+    name = r.read_string() or _DEFAULT_FONT_NAME
     size = _clamp_font_size(r.read_float())
     style = r.read_byte()                           # bit0=bold, bit1=italic
     r.read_byte()                                   # font_unit
@@ -397,6 +401,7 @@ def _read_dd_font(r: _Reader) -> dict[str, Any]:
     green = r.read_byte()
     blue = r.read_byte()
     return {
+        "name": name,
         "size": size,
         "bold": bool(style & 0x01),
         "italic": bool(style & 0x02),
@@ -443,6 +448,111 @@ def _build_dd_element(
 
 
 # =========================================================================
+# Legacy-shape adapter — for the legacy GUI port (overlay_grid widget)
+# =========================================================================
+
+
+_DEFAULT_FONT_NAME = "Microsoft YaHei"
+
+
+def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
+    """Read a theme's ``config1.dc`` and return the legacy GUI's
+    overlay_config dict shape (one entry per element, keyed by metric
+    name with counters for duplicates).
+
+    Used by the legacy GUI port's overlay grid; new code should consume
+    `load_dc_as_theme_config`'s list shape directly via the Command bus.
+
+    Returns ``{}`` when the theme has no DC file or it can't be parsed —
+    callers treat empty dict as "no overlay to restore" rather than as
+    an error.
+    """
+    dc_path = theme_dir / "config1.dc"
+    if not dc_path.is_file():
+        return {}
+    try:
+        theme_config = load_dc_as_theme_config(dc_path)
+    except ThemeError as e:
+        log.warning("dc_as_legacy_overlay_config: %s skipped (%s)", dc_path, e)
+        return {}
+
+    overlay: dict[str, dict[str, Any]] = {}
+    counters: dict[str, int] = {}
+    for element in theme_config.get("elements", ()):
+        if not isinstance(element, dict):
+            continue
+        key, entry = _next_element_to_legacy_entry(element, counters)
+        if key is None or entry is None:
+            continue
+        overlay[key] = entry
+    return overlay
+
+
+def _next_element_to_legacy_entry(
+    element: dict[str, Any], counters: dict[str, int],
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Translate one next/-shaped element into a (key, legacy entry) pair.
+
+    Legacy entry shape (consumed by overlay_grid.load_from_overlay_config):
+        {
+          "x": int, "y": int, "color": str, "enabled": bool,
+          "font": {"size": int, "style": "bold"|"regular", "name": str},
+          # type-specific:
+          "metric": "time"|"date"|"weekday"|<sensor-id>,
+          "text": str,           # for type="text"
+          "time_format" / "date_format" / "temp_unit": int,
+        }
+    """
+    etype = element.get("type")
+    if etype not in ("text", "metric", "clock"):
+        return None, None
+
+    font = {
+        "name": element.get("name", _DEFAULT_FONT_NAME),
+        "size": int(element.get("size", 24)),
+        "style": "bold" if element.get("bold") else "regular",
+    }
+    entry: dict[str, Any] = {
+        "x": int(element.get("x", 0)),
+        "y": int(element.get("y", 0)),
+        "color": element.get("color", "#ffffff"),
+        "enabled": True,
+        "font": font,
+    }
+
+    if etype == "text":
+        entry["text"] = element.get("text", "")
+        # Legacy keys custom-text under "custom_text" + optional counter.
+        return _take_key("custom_text", counters), entry
+    if etype == "clock":
+        source = element.get("source", "")
+        if source not in ("time", "date", "weekday"):
+            return None, None
+        entry["metric"] = source
+        if source == "time":
+            entry["time_format"] = 0
+        elif source == "date":
+            entry["date_format"] = 0
+        return _take_key(source, counters), entry
+    # type == "metric"
+    metric_id = element.get("metric", "")
+    if not metric_id:
+        return None, None
+    entry["metric"] = metric_id
+    # Hardware temperature metrics carry a unit choice (C/F); the grid
+    # honours ``temp_unit`` when present, so seed it from user prefs.
+    if metric_id.endswith("temp"):
+        entry["temp_unit"] = 0
+    return _take_key(metric_id, counters), entry
+
+
+def _take_key(base: str, counters: dict[str, int]) -> str:
+    n = counters.get(base, 0)
+    counters[base] = n + 1
+    return base if n == 0 else f"{base}_{n}"
+
+
+# =========================================================================
 # Write path — emit a legacy-compatible config1.dc (0xDD format)
 # =========================================================================
 
@@ -466,7 +576,6 @@ def _sensor_to_hw() -> dict[str, tuple[int, int]]:
     return _SENSOR_TO_HW
 
 
-_DEFAULT_FONT_NAME = "Microsoft YaHei"
 _DEFAULT_FONT_UNIT = 3      # GraphicsUnit.Point
 _DEFAULT_FONT_CHARSET = 134  # GB2312 — matches legacy Windows TRCC default
 
