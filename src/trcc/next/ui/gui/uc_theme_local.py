@@ -200,8 +200,21 @@ class UCThemeLocal(BaseThemeBrowser):
     def _no_items_message(self) -> str:
         return "No themes found"
 
-    def set_theme_directory(self, path):
+    def set_theme_directory(self, path, *extra_paths):
+        """Bind the panel to one or more on-disk theme roots.
+
+        Accepts a single path (legacy callers) or a primary + extra
+        paths so the same widget shows themes from
+        ``paths.theme_dir(w, h)`` (pkg / GitHub-downloaded) AND
+        ``paths.user_theme_dir(w, h)`` (legacy user-saved) without
+        the caller pre-merging.
+        """
         self.theme_directory = Path(path) if path else None
+        self._extra_theme_directories = [Path(p) for p in extra_paths if p]
+        log.debug(
+            "uc_theme_local.set_theme_directory: primary=%s extras=%s",
+            self.theme_directory, self._extra_theme_directories,
+        )
         self.load_themes()
 
     def _on_filter_clicked(self, *_qt_args):
@@ -223,29 +236,41 @@ class UCThemeLocal(BaseThemeBrowser):
     def load_themes(self):
         self._clear_grid()
 
-        if not self.theme_directory or not self.theme_directory.exists():
+        # Walk each bound theme root.  Primary (theme_dir = pkg / GitHub-
+        # downloaded) + any extras (user_theme_dir = legacy user-saved).
+        # Both layouts use Theme.png or 00.png as the preview marker.
+        roots: list[Path] = []
+        if self.theme_directory and self.theme_directory.exists():
+            roots.append(self.theme_directory)
+        roots.extend(
+            p for p in getattr(self, "_extra_theme_directories", ())
+            if p and p.exists()
+        )
+        log.info("uc_theme_local.load_themes: scanning %s",
+                 [str(p) for p in roots] or "<empty — nothing bound>")
+        if not roots:
             self._show_empty_message()
             return
 
-        # Walk the per-resolution themes dir directly.  Each subdir with
-        # a Theme.png or 00.png is one theme.  next/'s ThemeService owns
-        # the load path; the GUI just needs the listing for the browser.
         all_items: list[LocalThemeItem] = []
-        for theme_dir in sorted(self.theme_directory.iterdir()):
-            if not theme_dir.is_dir():
-                continue
-            thumb = theme_dir / 'Theme.png'
-            bg = theme_dir / '00.png'
-            preview = thumb if thumb.exists() else (bg if bg.exists() else None)
-            if preview is None:
-                continue
-            all_items.append(LocalThemeItem(
-                name=theme_dir.name,
-                path=str(theme_dir),
-                thumbnail=str(preview),
-                is_user=theme_dir.name.startswith(('User', 'Custom')),
-            ))
-
+        seen: set[Path] = set()
+        for root in roots:
+            for theme_dir in sorted(root.iterdir()):
+                if not theme_dir.is_dir() or theme_dir in seen:
+                    continue
+                thumb = theme_dir / 'Theme.png'
+                bg = theme_dir / '00.png'
+                preview = thumb if thumb.exists() else (bg if bg.exists() else None)
+                if preview is None:
+                    continue
+                seen.add(theme_dir)
+                all_items.append(LocalThemeItem(
+                    name=theme_dir.name,
+                    path=str(theme_dir),
+                    thumbnail=str(preview),
+                    is_user=theme_dir.name.startswith(('User', 'Custom')),
+                ))
+        log.info("uc_theme_local.load_themes: %d theme(s) found", len(all_items))
         self._all_themes = all_items
 
         # Filter for display

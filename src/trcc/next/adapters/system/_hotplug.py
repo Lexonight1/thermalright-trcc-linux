@@ -287,9 +287,10 @@ class WindowsHotplugMonitor(HotplugMonitor):
 
     @property
     def is_running(self) -> bool:
-        running = any(t.is_alive() for t in self._threads)
-        log.debug("WindowsHotplugMonitor.is_running → %s", running)
-        return running
+        # Per-method logging on Windows-specific monitors is deferred
+        # until I've researched the canonical Windows logging pattern
+        # (WMI/ETW conventions vs plain Python logging) on real hardware.
+        return any(t.is_alive() for t in self._threads)
 
     # ── Worker loop ──────────────────────────────────────────────────
 

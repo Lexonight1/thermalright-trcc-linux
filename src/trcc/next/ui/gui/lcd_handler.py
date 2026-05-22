@@ -174,18 +174,11 @@ class LCDHandler(BaseHandler):
         self._ui_active = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{info.key}")
-        # Cache canvas + lcd size in the shared _DeviceState
-        self._state.canvas_size = (w, h)
-        self._state.lcd_size = (w, h)
-        # Resolution-specific dirs (Paths port owns layout — matches legacy)
-        paths = self._app.platform.paths()
-        self._state.masks_dir = paths.user_mask_dir(w, h)
-        self._state.theme_dir = paths.theme_dir(w, h)
-        self._state.web_dir = paths.cloud_theme_dir(w, h)
         self._refresh(w, h)
 
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
+        self.log.info("reactivate: %dx%d", w, h)
         self._ui_active = True
         self._refresh(w, h)
 
@@ -216,8 +209,23 @@ class LCDHandler(BaseHandler):
 
     def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current persisted settings."""
-        self.log.debug("_refresh: device_key=%s resolution=%dx%d",
-                       self._device_key, w, h)
+        self.log.info("_refresh: device_key=%s resolution=%dx%d",
+                      self._device_key, w, h)
+        # Cache canvas + lcd size + per-resolution dirs in the shared
+        # _DeviceState.  Done here (not in apply_device_config) so
+        # reactivate() also refreshes them — reactivate runs every time
+        # the user picks the device in the sidebar, and the paths port
+        # is the source of truth for theme/mask/web directories.
+        self._state.canvas_size = (w, h)
+        self._state.lcd_size = (w, h)
+        paths = self._app.platform.paths()
+        self._state.masks_dir = paths.user_mask_dir(w, h)
+        self._state.theme_dir = paths.theme_dir(w, h)
+        self._state.web_dir = paths.cloud_theme_dir(w, h)
+        self.log.info(
+            "_refresh: theme_dir=%s web_dir=%s masks_dir=%s",
+            self._state.theme_dir, self._state.web_dir, self._state.masks_dir,
+        )
         # next/'s per-device settings live in app.settings.for_device(key)
         # — DeviceSettings dataclass.  Build a dict-shape view so the
         # legacy _restore_X methods that read cfg.get(...) keep working.
@@ -830,14 +838,24 @@ class LCDHandler(BaseHandler):
         web_dir = self._state.web_dir
         masks_dir = self._state.masks_dir
 
-        self.log.debug(
+        # Also expose the legacy user-saved theme location so the
+        # browser picks up Custom_* themes from
+        # ``~/.trcc-user/data/theme{w}{h}/`` alongside the pkg/cloud
+        # themes from ``~/.trcc/data/theme{w}{h}/``.
+        paths = self._app.platform.paths()
+        user_theme_dir = paths.user_theme_dir(ow, oh)
+
+        self.log.info(
             "_update_theme_directories: output=%dx%d theme_dir=%s "
-            "web_dir=%s masks_dir=%s rotated=%s",
-            ow, oh, theme_dir, web_dir, masks_dir, self._state.is_rotated,
+            "user_theme_dir=%s web_dir=%s masks_dir=%s rotated=%s",
+            ow, oh, theme_dir, user_theme_dir, web_dir, masks_dir,
+            self._state.is_rotated,
         )
 
         if theme_dir and theme_dir.exists():
-            self._w['theme_local'].set_theme_directory(theme_dir)
+            self._w['theme_local'].set_theme_directory(theme_dir, user_theme_dir)
+        elif user_theme_dir and user_theme_dir.exists():
+            self._w['theme_local'].set_theme_directory(user_theme_dir)
         if web_dir:
             self._w['theme_web'].set_web_directory(web_dir)
         self._w['theme_web'].set_resolution(f'{ow}x{oh}')
