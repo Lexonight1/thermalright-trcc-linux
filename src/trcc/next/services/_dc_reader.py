@@ -364,6 +364,9 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
     transparent_display = False
     rotation = 0
     overlay_enabled = True
+    mask_visible = False
+    mask_x = 0
+    mask_y = 0
     try:
         background_display = r.read_bool()
         transparent_display = r.read_bool()
@@ -373,9 +376,9 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
         overlay_enabled = r.read_bool()
         for _ in range(4):
             r.read_int32()                          # overlay rect: x, y, w, h
-        r.read_bool()                               # mask_enabled
-        for _ in range(2):
-            r.read_int32()                          # mask position: x, y
+        mask_visible = r.read_bool()
+        mask_x = r.read_int32()
+        mask_y = r.read_int32()
     except (struct.error, IndexError):
         pass
 
@@ -385,6 +388,8 @@ def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
         "rotation": rotation,
         "background_display": background_display,
         "transparent_display": transparent_display,
+        "mask_visible": mask_visible,
+        "mask_position": [mask_x, mask_y],
         "elements": elements,
     }
 

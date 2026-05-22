@@ -421,6 +421,14 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
     mask = raw.get("mask")
     if isinstance(mask, str) and mask:
         out["mask"] = mask
+    pos = raw.get("mask_position")
+    if isinstance(pos, (list, tuple)) and len(pos) == 2:
+        try:
+            out["mask_position"] = [int(pos[0]), int(pos[1])]
+        except (TypeError, ValueError):
+            pass
+    if "mask_visible" in raw:
+        out["mask_visible"] = bool(raw["mask_visible"])
     return out
 
 

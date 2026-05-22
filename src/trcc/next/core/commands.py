@@ -447,10 +447,11 @@ class LoadTheme(Command[ThemeResult]):
         theme_path_str = str(theme.path.resolve())
 
         # Legacy themes (config.json shape) can carry an attached mask
-        # under a top-level ``mask`` key pointing to a mask subdir.
-        # ``_resolve_mask_path`` accepts the dir + resolves to dir/01.png.
-        # Dispatch ApplyMask so DisplayService picks it up on the next
-        # render — without this, themes with masks render unmasked.
+        # under a top-level ``mask`` key pointing to a mask subdir +
+        # ``mask_position`` (x, y) + ``mask_visible`` bool.  Same fields
+        # come out of the DC binary reader's trailer.  Apply each so
+        # DisplayService picks them up on the next render — without
+        # this, themes with masks render unmasked or at the wrong offset.
         embedded_mask = theme.config.get("mask")
         if isinstance(embedded_mask, str) and embedded_mask:
             mask_path = Path(embedded_mask)
@@ -463,6 +464,20 @@ class LoadTheme(Command[ThemeResult]):
                     "LoadTheme: theme %s declares mask %s but ApplyMask "
                     "failed: %s", theme.name, mask_path, apply.message,
                 )
+        pos = theme.config.get("mask_position")
+        if isinstance(pos, (list, tuple)) and len(pos) == 2:
+            try:
+                px, py = int(pos[0]), int(pos[1])
+            except (TypeError, ValueError):
+                px, py = 0, 0
+            SetMaskPosition(key=self.key, x=px, y=py).execute(app)
+            log.info("LoadTheme: mask position set to (%d, %d) for %s",
+                     px, py, theme.name)
+        if "mask_visible" in theme.config:
+            visible = bool(theme.config["mask_visible"])
+            SetMaskVisible(key=self.key, visible=visible).execute(app)
+            log.info("LoadTheme: mask visibility set to %s for %s",
+                     visible, theme.name)
 
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:
