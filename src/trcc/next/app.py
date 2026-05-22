@@ -7,7 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from .adapters.device.bulk_lcd import BulkLcd
 from .adapters.device.hid_lcd import HidLcd
@@ -19,7 +19,16 @@ from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
-from .core.events import EventBus
+from .core.events import (
+    BrightnessChanged,
+    EventBus,
+    FitModeChanged,
+    MaskApplied,
+    MaskPositionChanged,
+    MaskVisibilityChanged,
+    OverlayChanged,
+    SplitModeChanged,
+)
 from .core.led_models import LedRuntimeState
 from .core.models import Theme, Wire
 from .core.ports import Device, Platform, Renderer
@@ -114,6 +123,12 @@ class App:
         self._display: DisplayService | None = None
         if renderer is not None:
             self._wire_display(renderer)
+        # Device-render observer — single subscriber that maps any
+        # visual-mutation event onto a fresh RenderAndSend, so the
+        # device (and the preview widget downstream of FrameSent) both
+        # see the new composite without ad-hoc dispatch in each
+        # Command.  See _DeviceRenderObserver below.
+        self._render_observer = _DeviceRenderObserver(self)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -251,3 +266,67 @@ class App:
                 getattr(result, "message", ""),
             )
         return result
+
+
+# =========================================================================
+# _DeviceRenderObserver — single subscriber that bridges
+# visual-mutation events to a fresh composite + wire push.
+#
+# Architecture:
+#   Settings change (brightness / mask / overlay / fit / split …)
+#     → Command persists + invalidates scene + publishes event
+#     → THIS observer subscribes to the event
+#     → dispatches RenderAndSend
+#         → DisplayService.build_frame → device.send → FrameSent published
+#     → preview widget (separate observer via bus_bridge) consumes FrameSent
+#
+# Both the device (wire) and the preview (widget) are downstream
+# observers of the same composited frame.  This class is the bridge
+# that turns "settings changed" into "frame composited" — without it
+# the composite never rebuilds for static themes and the click is
+# silent.
+# =========================================================================
+
+
+class _DeviceRenderObserver:
+    """Listen for visual-mutation events; trigger one re-render each."""
+
+    def __init__(self, app: App) -> None:
+        self._app = app
+        # Lazy import — RenderAndSend lives in core.commands, which
+        # already imports from app.py via TYPE_CHECKING.
+        from .core.commands import RenderAndSend
+        self._RenderAndSend = RenderAndSend
+        for event_cls in (
+            BrightnessChanged, MaskApplied, MaskPositionChanged,
+            MaskVisibilityChanged, OverlayChanged, FitModeChanged,
+            SplitModeChanged,
+        ):
+            app.events.subscribe(event_cls, self._on_visual_change)
+
+    def _on_visual_change(self, event: Any) -> None:
+        """Any visual-mutation event → one RenderAndSend for that key."""
+        key = getattr(event, "key", "")
+        if not key:
+            return
+        device = self._app.devices.get(key)
+        theme = self._app.active_themes.get(key)
+        if (
+            device is None or not device.is_connected
+            or theme is None
+            or self._app._renderer is None  # pyright: ignore[reportPrivateUsage]
+        ):
+            log.debug(
+                "DeviceRenderObserver: skip render on %s (connected=%s "
+                "theme=%s renderer=%s)",
+                type(event).__name__,
+                device is not None and device.is_connected,
+                theme is not None,
+                self._app._renderer is not None,  # pyright: ignore[reportPrivateUsage]
+            )
+            return
+        log.debug(
+            "DeviceRenderObserver: %s for %s → RenderAndSend",
+            type(event).__name__, key,
+        )
+        self._app.dispatch(self._RenderAndSend(key=key))

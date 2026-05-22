@@ -1026,27 +1026,11 @@ class SetBrightness(Command[BrightnessResult]):
                 message="Brightness out of range (0–100)",
             )
         app.settings.set_brightness(self.key, self.percent)
+        _invalidate_scene(app, self.key)
         app.events.publish(BrightnessChanged(key=self.key, percent=self.percent))
-
-        # Re-render the active frame so the new brightness actually
-        # shows on screen.  For static themes (no animation tick) this
-        # is the only way the device sees the change.
-        device = app.devices.get(self.key)
-        theme = app.active_themes.get(self.key)
-        if (
-            device is not None and device.is_connected
-            and theme is not None
-            and app._renderer is not None  # pyright: ignore[reportPrivateUsage]
-        ):
-            _invalidate_scene(app, self.key)
-            RenderAndSend(key=self.key).execute(app)
-        else:
-            log.debug(
-                "SetBrightness: skipped re-render (connected=%s theme=%s renderer=%s)",
-                device is not None and device.is_connected,
-                theme is not None,
-                app._renderer is not None,  # pyright: ignore[reportPrivateUsage]
-            )
+        # Re-render happens via the visual-event observer wired in
+        # App.__init__ — every visual-affecting mutation publishes its
+        # event and the observer dispatches one RenderAndSend.
         return BrightnessResult(
             ok=True, key=self.key, percent=self.percent,
             message=f"Brightness set to {self.percent}%",
@@ -1232,6 +1216,9 @@ class ApplyMask(Command[MaskApplyResult]):
         app.settings.set_mask_path(self.key, resolved)
         _invalidate_scene(app, self.key)
         app.events.publish(MaskApplied(key=self.key, path=resolved))
+        # DeviceRenderObserver wired in App.__init__ subscribes to
+        # MaskApplied and dispatches RenderAndSend — no per-Command
+        # re-render here.
         return MaskApplyResult(
             ok=True, key=self.key, path=resolved,
             message=f"mask set to {resolved}",
