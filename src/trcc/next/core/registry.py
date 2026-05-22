@@ -14,6 +14,19 @@ from __future__ import annotations
 from .models import Kind, ProductInfo, Wire
 
 # =========================================================================
+# Display constants used by the GUI
+# =========================================================================
+
+# Sidebar fallback button image when a device hasn't been identified
+# (e.g. a HID LCD pre-handshake).  Used by uc_device.py + trcc_app.py to
+# decide whether to render a text-only sidebar entry.
+LCD_DEFAULT_BUTTON: str = "A1CZTV"
+
+# LCD brightness levels the hardware accepts.  Cycled by the brightness
+# button on the bottom controls strip.
+BRIGHTNESS_STEPS: tuple[int, ...] = (25, 50, 100)
+
+# =========================================================================
 # ALL_DEVICES — hardware registry
 # =========================================================================
 

@@ -41,7 +41,6 @@ from ...core.commands import (
     SetRefreshInterval,
     SetTempUnit,
 )
-from ...core.models import DeviceInfo
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -237,6 +236,36 @@ class ScreencastHandler:
 
 
 # =============================================================================
+# _MetricsView — duck-typed HardwareMetrics adapter
+# =============================================================================
+# The legacy GUI widgets read ``metrics.cpu_temp``, ``metrics.gpu_usage``,
+# etc., plus ``metrics.readings`` (dict[sensor_id, value]) for the
+# system_info dashboard.  In next/ we have only the readings dict from
+# ``ReadSensors``; this adapter exposes both shapes from one dict.
+# =============================================================================
+
+
+class _MetricsView:
+    """Read-only view onto a ``readings`` dict + ``.<sensor_id>`` attrs.
+
+    ``getattr(view, "cpu_temp")`` returns the corresponding reading or
+    ``None``; ``view.readings`` returns the underlying dict so legacy
+    widgets that read it directly (uc_system_info) still work.
+    """
+
+    __slots__ = ("readings",)
+
+    def __init__(self, readings: dict[str, float]) -> None:
+        self.readings = readings
+
+    def __getattr__(self, name: str) -> float | None:
+        # Called only when the attribute isn't on __slots__ — read from
+        # readings dict and fall back to None to match legacy widgets'
+        # "missing sensor" handling.
+        return self.readings.get(name)
+
+
+# =============================================================================
 # TRCCApp — Main Window / AppObserver
 # =============================================================================
 
@@ -287,7 +316,7 @@ class TRCCApp(QMainWindow):
         self._ui_state.load()
 
         # Apply saved GPU selection to the sensor enumerator
-        if app.settings.app.gpu_device:
+        if app.settings.app.active_gpu:
             # Best-effort — not every SensorEnumerator implementation
             # exposes set_preferred_gpu; legacy GPU panels still work
             # without it (next/ picks the discrete GPU by default).
@@ -295,7 +324,7 @@ class TRCCApp(QMainWindow):
                 self._sensors, "set_preferred_gpu", None,
             )
             if callable(set_pref):
-                set_pref(app.settings.app.gpu_device)
+                set_pref(app.settings.app.active_gpu)
 
         self._decorated = decorated
         self._drag_pos: Any = None
@@ -351,14 +380,15 @@ class TRCCApp(QMainWindow):
         self._hs_notifier = _HandshakeNotifier(self)
         self._hs_notifier.done.connect(self._on_handshake_done)
 
-        # Restore temp unit from app settings
-        saved_unit = app.settings.app.temp_unit
-        self.uc_system_info.set_temp_unit(saved_unit)
-        self.uc_led_control.set_temp_unit(saved_unit)
-        if saved_unit == 1:
+        # Restore temp unit from app settings.  Legacy widgets take int
+        # 0/1; next/'s AppSettings.temp_unit is a "C"/"F" literal.
+        saved_unit_int = 1 if app.settings.app.temp_unit == "F" else 0
+        self.uc_system_info.set_temp_unit(saved_unit_int)
+        self.uc_led_control.set_temp_unit(saved_unit_int)
+        if saved_unit_int == 1:
             self.uc_about._set_temp('F')
 
-        # Autostart
+        # Autostart — uc_about.ensure_autostart takes the AutostartManager
         autostart_state = ensure_autostart(app.platform.autostart())
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
@@ -434,80 +464,30 @@ class TRCCApp(QMainWindow):
         if target_key:
             self._activate_device(target_key)
 
-    def _on_bus_system_suspended(self) -> None:
-        self._screencast.stop()
-
-    # ── Device event handlers (main thread) ─────────────────────────
-
-    def _on_device_added_main_thread(self, payload: Any) -> None:
-        match payload:
-            case ('changed', devices):
-                log.debug("_on_device_added_main_thread: kind=changed")
-                self._rebuild_all_handlers(devices)
-            case (kind, device):
-                log.debug("_on_device_added_main_thread: kind=%s", kind)
-                self._add_handler(device)
-
-    def _on_device_removed_main_thread(self, device: Any) -> None:
-        path = device.device_info.path if device.device_info else ''
-        log.debug("_on_device_removed_main_thread: path=%s", path)
-        self._remove_handler(path)
-
-    def _rebuild_all_handlers(self, devices: list) -> None:
-        """Replace all handlers with new device list from scan()."""
-        for handler in list(self._handlers.values()):
-            handler.cleanup()
-        self._handlers.clear()
-        self._active_key = ''
-
-        for device in devices:
-            self._add_handler(device)
-
-        self._refresh_sidebar()
-
-        # Restore last active device, fall back to first LCD
-        last_idx = Settings.get_last_device()
-        target = next(
-            (p for p, h in self._handlers.items()
-             if h.device_info and h.device_info.device_index == last_idx),
-            None,
-        )
-        if target:
-            log.debug("_rebuild_all_handlers: restored last device index=%d path=%s", last_idx, target)
-        else:
-            target = next(
-                (p for p, h in self._handlers.items() if isinstance(h, LCDHandler)),
-                next(iter(self._handlers), None),
-            )
-            log.debug("_rebuild_all_handlers: fallback to first LCD/device: %s", target)
-        if target:
-            self._activate_device(target)
-        else:
-            log.warning("_rebuild_all_handlers: no device to activate")
-
-        # Restore saved themes on inactive LCD devices so they keep playing
-        # video in the background even when not selected in the GUI sidebar.
-        for path, handler in self._handlers.items():
-            if path != target and isinstance(handler, LCDHandler):
-                log.info("_rebuild_all_handlers: restoring inactive LCD %s", path)
-                handler.restore_inactive_state()
+    # ── Handler lifecycle ───────────────────────────────────────────
 
     def _add_handler(self, device: Any) -> None:
-        """Create handler for one new device."""
-        info = device.device_info
-        if info is None:
-            log.warning("Device has no device_info, skipping")
-            return
-        path = info.path
+        """Create a handler for one newly-attached device.
 
-        added = False
-        if device.is_led and path not in self._handlers:
+        next/'s ``Device`` exposes ``info`` (ProductInfo) and ``key``
+        (vid:pid).  ``info.key`` is the registry key the handler dict
+        is indexed by.
+        """
+        info = device.info
+        if info is None:
+            log.warning("_add_handler: device.info is None — skipping")
+            return
+        key = info.key
+        if key in self._handlers:
+            return
+
+        if device.is_led:
             handler = LEDHandler(
-                device, self.uc_led_control, self._on_temp_unit_changed)
-            self._handlers[path] = handler
-            log.info("LED handler added: %s", path)
-            added = True
-        elif device.is_lcd and path not in self._handlers:
+                device, self.uc_led_control, self._on_temp_unit_changed,
+            )
+            self._handlers[key] = handler
+            log.info("LED handler added: %s", key)
+        else:
             widgets = {
                 'preview': self.uc_preview,
                 'theme_setting': self.uc_theme_setting,
@@ -518,43 +498,25 @@ class TRCCApp(QMainWindow):
                 'video_cut': self.uc_video_cut,
                 'rotation_combo': self.rotation_combo,
             }
-            # Compute LCD index: count LCD handlers created before this one.
-            # Matches Trcc.discover() ordering which iterates in detection order.
-            lcd_idx = sum(
-                1 for h in self._handlers.values()
-                if isinstance(h, LCDHandler)
-            )
-            # Route handler through Trcc.lcd (10C.2): every write goes via
-            # the command bus so the dispatch path is identical whether the
-            # handler is talking to a real Trcc or a TrccProxy.  The Phase 9
-            # boot unification put GUI + CLI + API on the same Trcc registry,
-            # so the silent no-op bug class that prompted the c7e14b69 revert
-            # (handlers + commands looking at different registries) is gone.
             lcd_handler = LCDHandler(
                 device, widgets, self._make_timer, self._data_dir,
                 is_visible_fn=self.is_app_visible,
-                app=self._trcc, lcd_idx=lcd_idx)
-            self._handlers[path] = lcd_handler
-            log.info("LCD handler added: %s", path)
-            added = True
-        if not added and path not in self._handlers:
-            log.warning("_add_handler: unhandled device type %s path=%s — skipped",
-                        type(device).__name__, path)
+                app=self._app, lcd_idx=key,
+            )
+            self._handlers[key] = lcd_handler
+            log.info("LCD handler added: %s", key)
 
-        # Button image already resolved by DeviceService._enrich_device()
-        # at detection time. HID LCD (async handshake) resolved later in
-        # _on_handshake_done → DeviceInfo.enrich_from_handshake → _sync_device_identity.
         self._refresh_sidebar()
 
-    def _remove_handler(self, path: str) -> None:
-        """Remove and cleanup one device handler."""
-        handler = self._handlers.pop(path, None)
+    def _remove_handler(self, key: str) -> None:
+        """Remove and clean up one device handler."""
+        handler = self._handlers.pop(key, None)
         if handler is None:
             return
         handler.cleanup()
-        log.info("%s handler removed: %s", type(handler).__name__, path)
+        log.info("%s handler removed: %s", type(handler).__name__, key)
 
-        if self._active_key == path:
+        if self._active_key == key:
             self._active_key = ''
             remaining = list(self._handlers)
             if remaining:
@@ -563,102 +525,81 @@ class TRCCApp(QMainWindow):
         self._refresh_sidebar()
 
     def _refresh_sidebar(self) -> None:
-        """Update UCDevice with current device list."""
-        import dataclasses
+        """Update UCDevice from the current handler set.
+
+        Sidebar widget consumes legacy-shape dicts:
+        ``{name, path, button_image, protocol, model, vid, pid, device_index}``.
+        Adapt from next/ ``ProductInfo`` here so the widget code stays
+        untouched.
+        """
         devices: list[dict] = []
-        for handler in self._handlers.values():
-            if (info := handler.device_info):
-                devices.append(dataclasses.asdict(info))
+        for idx, key in enumerate(self._handlers.keys()):
+            dev = self._app.devices.get(key)
+            if dev is None:
+                continue
+            info = dev.info
+            devices.append({
+                'name': f"{info.vendor} {info.product}".strip()
+                        or f"Device {info.vid:04x}:{info.pid:04x}",
+                'path': info.key,                   # vid:pid serves as legacy 'path'
+                'button_image': getattr(info, 'button_image', '') or '',
+                'protocol': info.wire.value,
+                'model': getattr(info, 'model', '') or '',
+                'vid': info.vid,
+                'pid': info.pid,
+                'device_index': idx,                # legacy display ordering
+            })
         self.uc_device.update_devices(devices)
 
-    def _activate_device(self, path: str) -> None:
-        """Switch panel stack to show the given device."""
-        if path == self._active_key:
+    def _activate_device(self, key: str) -> None:
+        """Switch panel stack to show the device with ``key``."""
+        if key == self._active_key:
             return
-        log.info("_activate_device: %s", path)
-        # Deactivate previous device before switching. LCDs go into a
-        # soft-pause so their video keeps playing on the device while
-        # another LCD owns the GUI; LEDs/others use the full stop.
+        log.info("_activate_device: %s", key)
+        # Deactivate previous: LCDs soft-pause (keep playing on device),
+        # everything else stops fully.
         if self._active_key:
             prev = self._handlers.get(self._active_key)
             if isinstance(prev, LCDHandler):
                 prev.set_inactive()
             elif prev is not None:
                 prev.deactivate()
-        self._active_key = path
-        handler = self._handlers.get(path)
+        self._active_key = key
+        handler = self._handlers.get(key)
         if handler is None:
-            log.warning("_activate_device: no handler for path=%s (known: %s)",
-                        path, list(self._handlers.keys()))
+            log.warning(
+                "_activate_device: no handler for key=%s (known: %s)",
+                key, list(self._handlers.keys()),
+            )
             return
 
-        # Persist last active device so we restore it on next launch
-        if handler.device_info:
-            Settings.save_last_device(handler.device_info.device_index)
+        # Persist last-active device for next launch (UI state — not
+        # domain settings, so it lives in UiStateStore not app.settings).
+        self._ui_state.set_last_device_key(key)
 
+        device = self._app.devices.get(key)
         if isinstance(handler, LCDHandler):
-            if handler.display.connected:
-                if (info := handler.display.device_info):
-                    w, h = info.resolution
+            if device is not None and device.is_connected:
+                profile = device.profile
+                if profile is not None:
+                    w, h = profile.resolution
                     if (w, h) == (0, 0):
-                        log.debug("_activate_device: LCD %s resolution (0,0) — starting handshake", path)
-                        self._start_handshake(info)
+                        log.debug("_activate_device: LCD %s no canvas yet — handshake", key)
+                        self._start_handshake(device)
                     elif not handler.device_key:
-                        log.debug("_activate_device: LCD %s first-time config %dx%d", path, w, h)
-                        handler.apply_device_config(info, w, h)
+                        log.debug("_activate_device: LCD %s first-time config %dx%d", key, w, h)
+                        handler.apply_device_config(device.info, w, h)
                         self._update_ldd_icon()
                     else:
-                        log.debug("_activate_device: LCD %s reactivate %dx%d", path, w, h)
+                        log.debug("_activate_device: LCD %s reactivate %dx%d", key, w, h)
                         handler.reactivate(w, h)
-        elif isinstance(handler, LEDHandler):
-            info = handler.device_info
-            if info and not handler.active:
-                log.debug("_activate_device: LED %s — showing", path)
-                handler.show(info)
+                else:
+                    self._start_handshake(device)
+        elif isinstance(handler, LEDHandler) and not handler.active:
+            log.debug("_activate_device: LED %s — showing", key)
+            handler.show(device.info if device is not None else None)
 
         self._show_view(handler.view_name)
-
-    # ── Metrics (main thread only) ───────────────────────────────────
-
-    def _on_metrics_main_thread(self, metrics: Any) -> None:
-        """Dispatch the unified metrics broadcast to every visible GUI panel.
-
-        One publisher (PollingMetricsLoop), one record (HardwareMetrics
-        with typed fields + readings dict + _populated set), every panel
-        and the active device handler observe the same data.
-        """
-        if self.uc_info_module.isVisible():
-            self.uc_info_module.update_from_metrics(metrics)
-        if self.uc_system_info.isVisible():
-            self.uc_system_info.update_from_metrics(metrics)
-        if self.is_app_visible() and self.uc_activity_sidebar.isVisible():
-            self.uc_activity_sidebar.update_from_metrics(metrics)
-
-        # Notify active handler for metrics-driven updates
-        handler = self._handlers.get(self._active_key)
-        if handler is not None:
-            handler.update_metrics(metrics)
-
-    def _on_frame_main_thread(self, payload: Any) -> None:
-        """Receive a rendered frame from the background tick loop and push to preview.
-
-        tick() renders + sends to device. This mirrors the result to the
-        preview widget on the main thread — no re-render needed.
-        LCD: QImage for preview widget. LED: colors dict for LED panel.
-        """
-        path: str = payload['path']
-        image: Any = payload['image']
-        if path != self._active_key:
-            return
-        handler = self._handlers.get(path)
-        if handler is not None:
-            handler.handle_frame(image)
-
-    # ── Sleep monitor ───────────────────────────────────────────────
-    # Power events are owned by Platform.subscribe_power() now and
-    # forwarded into Trcc._on_suspend / _on_resume.  GUI subscribes to
-    # the EventBus for `device.list` repaints when resume rediscovery
-    # republishes the device snapshot — no QDBus listener needed here.
 
     # ── Timers ──────────────────────────────────────────────────────
 
@@ -744,9 +685,11 @@ class TRCCApp(QMainWindow):
         if pix:
             self._pixmap_refs.append(pix)
 
-        # Preview
-        self.uc_preview = UCPreview(
-            self._trcc.settings.width, self._trcc.settings.height, self.form_container)
+        # Preview — pick a sensible default size; the LCD handler
+        # calls preview.set_resolution(w, h) on connect with the real
+        # canvas, so the initial dimensions only affect the brief
+        # pre-connect render.
+        self.uc_preview = UCPreview(320, 320, self.form_container)
         self.uc_preview.setGeometry(*Layout.PREVIEW)
 
         # Info module
@@ -774,13 +717,24 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(self.uc_theme_local, Assets.THEME_LOCAL_BG)
         self.panel_stack.addWidget(self.uc_theme_local)
 
-        from ...adapters.infra.data_repository import DataManager
-        from ...adapters.infra.theme_cloud import CloudThemeDownloader
+        # Cloud theme download path — wraps next/'s CloudThemeService so
+        # the legacy UCThemeWeb widget keeps its (theme_id, resolution,
+        # cache_dir) → str|None signature.  Extraction is a no-op for
+        # next/: CloudThemeService downloads + caches in one step.
+        from ...core.commands import LoadCloudTheme
+        _app_local = self._app
+
         def _download_theme(theme_id: str, resolution: str, cache_dir: str) -> str | None:
-            return CloudThemeDownloader(resolution=resolution, cache_dir=cache_dir).download_theme(theme_id)
+            del cache_dir  # next/ owns the cache path
+            del resolution  # next/'s catalog knows per-device resolution
+            r = _app_local.dispatch(LoadCloudTheme(
+                key=self._active_key, theme_id=theme_id,
+            ))
+            return r.message if r.ok else None
+
         def _extract_theme(archive: str, dest: str) -> None:
-            DataManager.extract_7z(archive, dest)
-            DataManager._unwrap_nested_dir(dest)
+            del archive, dest  # CloudThemeService downloads-and-extracts atomically
+
         self.uc_theme_web = UCThemeWeb(download_fn=_download_theme, extract_fn=_extract_theme)
         self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
@@ -802,28 +756,33 @@ class TRCCApp(QMainWindow):
         self._create_title_buttons()
         self._apply_settings_backgrounds()
 
-        # About panel
-        gpu_list = self._system_svc.enumerator.get_gpu_list()
+        # About panel — gpu_list from the sensor enumerator (best-effort)
+        get_gpu_list = getattr(self._sensors, "get_gpu_list", None)
+        gpu_list = get_gpu_list() if callable(get_gpu_list) else []
         self.uc_about = UCAbout(
-            parent=central, platform=self._platform,
-            gpu_list=gpu_list, trcc=self._trcc)
+            parent=central, platform=self._app.platform,
+            gpu_list=gpu_list, app=self._app, ui_state=self._ui_state,
+        )
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
 
         # System info dashboard
-        from ...adapters.system.config import SysInfoConfig
+        from ...adapters.infra.sysinfo_config import SysInfoConfig
         self.uc_system_info = UCSystemInfo(
-            self._system_svc.enumerator,
+            self._sensors,
             sysinfo_config=SysInfoConfig(),
             parent=central)
         self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
         self.uc_system_info.setVisible(False)
 
-        # LED panel — hardware fns injected
+        # LED panel — Platform port supplies the memory/disk probes
         self.uc_led_control = UCLedControl(central)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
-        self.uc_led_control.set_hardware_fns(self._platform.get_memory_info, self._platform.get_disk_info)
+        self.uc_led_control.set_hardware_fns(
+            self._app.platform.memory_info,
+            self._app.platform.disk_info,
+        )
 
         # Form1 buttons
         self.form1_close_btn = create_image_button(
@@ -878,7 +837,7 @@ class TRCCApp(QMainWindow):
         self.rotation_combo.setToolTip("LCD rotation")
         self.rotation_combo.currentIndexChanged.connect(self._on_rotation_change)
 
-        from ...core.models import BRIGHTNESS_STEPS
+        from ...core.registry import BRIGHTNESS_STEPS
         self._ldd_pixmaps: dict = {}
         for i, percent in enumerate(BRIGHTNESS_STEPS, start=1):
             pix = Assets.load_pixmap(f'app_brightness_{i}.png')
@@ -995,7 +954,7 @@ class TRCCApp(QMainWindow):
             TITLE_BAR_TEXT,
             tr,
         )
-        lang = self._trcc.settings.lang
+        lang = self._app.settings.app.language
         self._i18n_labels: list[tuple[QLabel, str | None]] = []
 
         def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
@@ -1285,83 +1244,97 @@ class TRCCApp(QMainWindow):
 
     # ── Handshake (LCD resolution discovery) ────────────────────────
 
-    def _start_handshake(self, device: DeviceInfo) -> None:
-        log.debug("_start_handshake: path=%s pending=%s", device.path, self._handshake_pending)
+    def _start_handshake(self, device: Any) -> None:
+        """Dispatch ConnectDevice in a background thread.
+
+        next/'s ``ConnectDevice`` Command runs the wire-protocol handshake
+        and returns a ``ConnectResult`` with the device's resolution.  We
+        run it off the Qt main thread so the GUI stays responsive during
+        the SCSI / HID round-trip; the result is delivered back via the
+        ``_hs_notifier`` Qt signal on the main thread.
+        """
+        key = device.info.key if hasattr(device, "info") else str(device)
+        log.debug("_start_handshake: key=%s pending=%s", key, self._handshake_pending)
         if self._handshake_pending:
             return
         self._handshake_pending = True
         self.uc_preview.set_status("Connecting to device...")
 
         import threading
+
         def worker() -> None:
-            data = self._trcc.handshake(device)
-            self._hs_notifier.done.emit(device, data)
+            try:
+                result = self._app.dispatch(ConnectDevice(key=key))
+            except Exception as exc:
+                log.exception("ConnectDevice raised")
+                result = None
+                _ = exc
+            self._hs_notifier.done.emit(device, result)
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_handshake_done(self, device: DeviceInfo, result: Any) -> None:
-        """Wire a HandshakeResult into the device + sidebar.
+    def _on_handshake_done(self, device: Any, result: Any) -> None:
+        """Wire a ConnectResult into the handler + sidebar.
 
-        Model enrichment goes through ``DeviceInfo.enrich_from_handshake``
-        (single chokepoint). This handler then propagates the resolved
-        sidebar identity to ``uc_device`` and persists it via ``Settings``.
+        next/'s ConnectDevice already populated ``device.profile`` (or
+        left it None on failure).  This handler propagates the resolved
+        identity to ``uc_device`` and surfaces the resolution to the
+        active LCD handler.
         """
-        log.debug("_on_handshake_done: path=%s result=%s", device.path, result)
+        key = device.info.key if hasattr(device, "info") else str(device)
+        log.debug("_on_handshake_done: key=%s ok=%s",
+                  key, getattr(result, "ok", False))
         self._handshake_pending = False
-        if result is None:
+        if result is None or not getattr(result, "ok", False):
             self.uc_preview.set_status("Handshake failed — replug device")
             return
 
-        device.enrich_from_handshake(result)
-
-        if device.resolution == (0, 0):
-            self.uc_preview.set_status("Handshake failed — no resolution")
+        live = self._app.devices.get(key)
+        if live is None or live.profile is None:
+            self.uc_preview.set_status("Handshake failed — no profile")
             return
-        log.info("Handshake OK: %s -> %s (FBL=%s, PM=%s, SUB=%s, model=%r)",
-                 device.path, device.resolution, device.fbl_code,
-                 device.pm_byte, device.sub_byte,
-                 getattr(result, 'model_name', ''))
+        w, h = live.profile.resolution
+        log.info("Handshake OK: %s -> %dx%d", key, w, h)
 
-        # Sync sidebar + persisted Settings from the enriched device.
-        self._sync_device_identity(device)
+        # Sync sidebar from the enriched device.
+        self._sync_device_identity(live)
 
-        handler = self._handlers.get(device.path)
+        handler = self._handlers.get(key)
         if isinstance(handler, LCDHandler):
-            w, h = device.resolution
-            log.debug("_on_handshake_done: handler found device_key=%r", handler.device_key)
+            log.debug("_on_handshake_done: handler device_key=%r", handler.device_key)
             if not handler.device_key:
-                handler.apply_device_config(device, w, h)
+                handler.apply_device_config(live.info, w, h)
                 self._update_ldd_icon()
-                if Settings.show_info_module():
+                if self._ui_state.state.show_info_module:
                     self.uc_info_module.setVisible(True)
             else:
                 log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 
-    def _sync_device_identity(self, device: DeviceInfo) -> None:
-        """Propagate the enriched ``device.button_image`` to sidebar + Settings.
+    def _sync_device_identity(self, device: Any) -> None:
+        """Propagate ``device.info.button_image`` to the sidebar widget.
 
-        Model enrichment already happened in
-        ``DeviceInfo.enrich_from_handshake``; this method only handles the
-        view + persistence side (sidebar dict, sidebar button refresh,
-        Settings save).
+        next/'s ConnectDevice already enriches ``device.info`` through
+        the registry; this method handles the GUI-side view sync —
+        sidebar dict refresh + button image update.
         """
-        btn_img = device.button_image
+        info = device.info
+        btn_img = getattr(info, "button_image", "") or ""
+        from ...core.registry import LCD_DEFAULT_BUTTON
         if not btn_img or btn_img == LCD_DEFAULT_BUTTON:
-            log.debug("no resolved button for %s — keeping default", device.path)
+            log.debug("no resolved button for %s — keeping default", info.key)
             return
         product = btn_img.replace('A1', '', 1).replace('_', ' ')
-        log.info("%s -> %s (%s)", device.path, btn_img, product)
+        log.info("%s -> %s (%s)", info.key, btn_img, product)
         for dev in self.uc_device.devices:
-            if dev.get('path') == device.path:
+            if dev.get('path') == info.key:
                 dev['button_image'] = btn_img
                 dev['product'] = product
                 dev['name'] = f"Thermalright {product}"
                 self.uc_device.update_device_button(dev)
-                log.debug("_sync_device_identity: updated sidebar button for %s", device.path)
+                log.debug("_sync_device_identity: updated sidebar button for %s", info.key)
                 break
-        active_key = Settings.device_config_key(device.device_index, device.vid, device.pid)
-        Settings.save_device_settings(
-            active_key,
-            resolved_button_image=btn_img, resolved_product=product)
+        # next/'s device registry persists the button_image lookup
+        # automatically through ProductInfo enrichment; no separate
+        # Settings.save_device_settings call needed here.
 
     # ── Theme Event Handlers ─────────────────────────────────────────
 
@@ -1638,7 +1611,7 @@ class TRCCApp(QMainWindow):
         if not isinstance(cropped, _QImage) or cropped.isNull():
             return
         w, hw = h.display.lcd_size
-        user_dir = Path(self._trcc.settings._path_resolver.user_masks_dir(w, hw))
+        user_dir = self._app.platform.paths().user_masks_dir(w, hw)
         user_dir.mkdir(parents=True, exist_ok=True)
 
         raw_name = self._mask_upload_filename or 'custom_001'
@@ -1710,21 +1683,13 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if h:
             h.display.enable_overlay(enabled)
+        # Persistence: next/'s EnableOverlay Command (dispatched by the
+        # LCD handler when present) owns the persisted ``overlay_enabled``
+        # flag in app.settings.for_device(key) — no separate write here.
 
-        active_key = Settings.device_config_key(
-            *self._active_device_index_vid_pid())
-        if active_key:
-            cfg = Settings.get_device_config(active_key)
-            overlay = cfg.get('overlay', {})
-            overlay['enabled'] = enabled
-            Settings.save_device_setting(active_key, 'overlay', overlay)
-
-    def _active_device_index_vid_pid(self) -> tuple[int, int, int]:
-        h = self._active_lcd()
-        if h and h.display and h.display.device_info:
-            info = h.display.device_info
-            return info.device_index, info.vid, info.pid
-        return 0, 0, 0
+    def _active_device_key(self) -> str:
+        """Return the active device key, or '' if no active device."""
+        return self._active_key
 
     def _on_element_flash(self, index: int, config: dict) -> None:
         h = self._active_lcd()
@@ -1790,7 +1755,7 @@ class TRCCApp(QMainWindow):
             self._update_ldd_icon()
             self.uc_preview.set_status(f"Split mode: {mode}")
         else:
-            from ...core.models import BRIGHTNESS_STEPS
+            from ...core.registry import BRIGHTNESS_STEPS
             steps = BRIGHTNESS_STEPS
             cur = h.brightness_level
             nxt = steps[(steps.index(cur) + 1) % len(steps)] if cur in steps else steps[0]
@@ -1820,8 +1785,9 @@ class TRCCApp(QMainWindow):
         temp_unit = 1 if unit == 'F' else 0
 
         # Persist via the unified command bus — CLI / API / GUI all
-        # route through the same SetTempUnit Command.
-        self._app.dispatch(SetTempUnit(unit=temp_unit))
+        # route through the same SetTempUnit Command.  Command takes
+        # the literal "C" / "F" string, not the int code.
+        self._app.dispatch(SetTempUnit(unit=unit))
 
         # GUI-only: re-render each LCD handler's preview
         for handler in self._handlers.values():
@@ -1857,7 +1823,7 @@ class TRCCApp(QMainWindow):
         log.debug("_set_language: %s", lang)
         # SetLanguage propagates to every LCD overlay through the
         # Command's execute(), same path as CLI/API.
-        self._app.dispatch(SetLanguage(lang=lang))
+        self._app.dispatch(SetLanguage(language=lang))
         # GUI-only follow-ups: re-render backgrounds + refresh About +
         # LED-panel localized background.
         self._apply_settings_backgrounds()
@@ -1907,26 +1873,16 @@ class TRCCApp(QMainWindow):
     # ── Carousel Config ─────────────────────────────────────────────
 
     def _load_carousel_config(self, theme_dir: Path) -> None:
-        config = read_carousel(str(theme_dir / 'Theme.dc'))
-        if config is None:
-            return
-        all_themes = self.uc_theme_local._all_themes
-        slideshow_names = [
-            all_themes[idx].name
-            for idx in config.theme_indices
-            if 0 <= idx < len(all_themes)
-        ]
-        self.uc_theme_local._lunbo_array = slideshow_names
-        self.uc_theme_local._slideshow = config.enabled
-        self.uc_theme_local._slideshow_interval = config.interval_seconds
-        self.uc_theme_local.timer_input.setText(str(config.interval_seconds))
-        px = (self.uc_theme_local._lunbo_on if config.enabled
-              else self.uc_theme_local._lunbo_off)
-        if not px.isNull():
-            self.uc_theme_local.slideshow_btn.setIcon(QIcon(px))
-            self.uc_theme_local.slideshow_btn.setIconSize(
-                self.uc_theme_local.slideshow_btn.size())
-        self.uc_theme_local._apply_decorations()
+        """Restore the legacy ``Theme.dc`` carousel config into the UI.
+
+        next/'s slideshow lives in :class:`SlideshowService` and is
+        driven by :class:`ConfigureSlideshow` / :class:`SetSlideshow`
+        Commands.  The handler is responsible for restoring per-device
+        slideshow state on connect; this method becomes a no-op stub
+        until Phase 5's lcd_handler rewire surfaces ``set_slideshow``
+        directly to the local-theme widget.
+        """
+        del theme_dir  # carousel restore moved into LCDHandler
 
     # ── Window Events ───────────────────────────────────────────────
 
@@ -1974,7 +1930,8 @@ class TRCCApp(QMainWindow):
         self.uc_activity_sidebar.stop_updates()
         if self._ipc_server:
             self._ipc_server.shutdown()
-        self._trcc.cleanup()
+        # ``app.close()`` detaches every device + stops hotplug.
+        self._app.close()
         TRCCApp._instance = None
         event.accept()
         if (app := QApplication.instance()):
