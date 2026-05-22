@@ -59,6 +59,7 @@ class RenderResult(Result):
 class ThemeResult(Result):
     key: str = ""
     theme_name: str = ""
+    theme_path: str = ""
 
 
 @dataclass(frozen=True, slots=True)

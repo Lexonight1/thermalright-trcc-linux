@@ -329,11 +329,21 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_image(None)
             return
 
+        self.log.info(
+            "_restore_theme_and_preview: loaded %s from %s",
+            result.theme_name, result.theme_path,
+        )
+        # Restore the overlay grid from the theme's persisted config1.dc
+        # (or trcc.json).  Without this the overlay UI is empty on every
+        # restart even though the theme renders correctly on the device.
+        if result.theme_path:
+            self._load_theme_overlay_config(
+                Path(result.theme_path), persist=False,
+            )
         playback = self._app.media.playback(self._device_key)
         if playback is not None and playback.frames:
             self._state.current_theme_path = (
-                self._app.platform.paths().user_content_dir() / result.theme_name
-                if result.theme_name else None
+                Path(result.theme_path) if result.theme_path else None
             )
             self._animation_timer.start(self._video_interval_ms())
             if self._ui_active:

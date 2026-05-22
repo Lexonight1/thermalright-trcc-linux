@@ -11,6 +11,7 @@ between UIs and the domain.
 """
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -134,6 +135,8 @@ from .results import (
 
 if TYPE_CHECKING:
     from ..app import App
+
+log = logging.getLogger(__name__)
 
 
 # =========================================================================
@@ -426,15 +429,18 @@ class LoadTheme(Command[ThemeResult]):
         # If device is attached + connected + Renderer available, send an
         # immediate first frame.  Otherwise the theme is saved for the
         # next connect / tick.
+        theme_path_str = str(theme.path.resolve())
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:
             return ThemeResult(
                 ok=True, key=self.key, theme_name=theme.name,
+                theme_path=theme_path_str,
                 message=f"Theme '{theme.name}' saved (device not connected)",
             )
         if app._renderer is None:  # pyright: ignore[reportPrivateUsage]
             return ThemeResult(
                 ok=True, key=self.key, theme_name=theme.name,
+                theme_path=theme_path_str,
                 message=f"Theme '{theme.name}' saved (no Renderer attached)",
             )
 
@@ -449,13 +455,19 @@ class LoadTheme(Command[ThemeResult]):
                                              key=self.key))
             return ThemeResult(
                 ok=False, key=self.key, theme_name=theme.name,
+                theme_path=theme_path_str,
                 message=f"Render/send failed: {e}",
             )
 
         if sent:
             app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
+            log.info(
+                "LoadTheme: %s rendered + sent (%d bytes) from %s",
+                theme.name, len(frame), theme_path_str,
+            )
         return ThemeResult(
             ok=sent, key=self.key, theme_name=theme.name,
+            theme_path=theme_path_str,
             message=(f"Theme '{theme.name}' loaded and sent ({len(frame)} bytes)"
                      if sent else f"Theme '{theme.name}' rendered but send failed"),
         )
