@@ -167,11 +167,18 @@ class QtRenderer(Renderer):
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
                   italic: bool = False) -> None:
+        """Draw *text* centered on ``(x, y)`` — matches C# DrawString
+        with ``RectangleF(myX - w/2, myY - h/2, w, h)``.
+        """
         font = self._get_font(size, bold, italic)
         painter = QPainter(surface)
         painter.setPen(QPen(QColor(color)))
         painter.setFont(font)
-        painter.drawText(x, y, text)
+        metrics = painter.fontMetrics()
+        text_w = metrics.horizontalAdvance(text)
+        text_h = metrics.height()
+        rect = QRect(x - text_w // 2, y - text_h // 2, text_w, text_h)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
         painter.end()
 
     def _get_font(self, size: int, bold: bool,

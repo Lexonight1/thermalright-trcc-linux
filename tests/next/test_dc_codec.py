@@ -19,10 +19,17 @@ from pathlib import Path
 import pytest
 
 from trcc.next.core.errors import ThemeError
-from trcc.next.services._dc_reader import (
-    load_dc_as_theme_config,
-    write_dc_from_theme_config,
-)
+from trcc.next.services import _dc as Dc
+
+
+def load_dc_as_theme_config(path):
+    return Dc.File(path).read()
+
+
+def write_dc_from_theme_config(path, config, *, user_overlay_elements=None):
+    return Dc.File(path).write(
+        config, user_overlay_elements=user_overlay_elements,
+    )
 
 
 @pytest.fixture

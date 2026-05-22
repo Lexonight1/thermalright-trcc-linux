@@ -11,11 +11,17 @@ Uses the Renderer port exclusively; knows nothing about Qt directly.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
+from ..core.errors import ThemeError
 from ..core.ports import Renderer
+from . import _dc as Dc
 
 log = logging.getLogger(__name__)
+
+
+_DC_CONFIG_FILE = "config1.dc"
 
 
 class OverlayService:
@@ -23,6 +29,49 @@ class OverlayService:
 
     def __init__(self, renderer: Renderer) -> None:
         self._r = renderer
+
+    @staticmethod
+    def calculate_mask_position(
+        mask_dir: Path,
+        mask_size: tuple[int, int],
+        lcd_size: tuple[int, int],
+    ) -> tuple[int, int]:
+        """Top-left position for a mask on the LCD canvas.
+
+        Direct port of legacy ``OverlayService.calculate_mask_position``:
+
+          * Full-size mask (>= LCD in both dims) -> ``(0, 0)``
+          * Sub-screen mask without a usable DC entry -> centered
+          * Sub-screen mask with ``mask_position`` in its sibling
+            ``config1.dc`` -> top-left from C# (XvalMB - W/2, YvalMB - H/2)
+        """
+        mask_w, mask_h = mask_size
+        lcd_w, lcd_h = lcd_size
+        if mask_w >= lcd_w and mask_h >= lcd_h:
+            return (0, 0)
+        centered = ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+        dc_path = mask_dir / _DC_CONFIG_FILE
+        if not dc_path.is_file():
+            return centered
+        try:
+            cfg = Dc.File(dc_path).read()
+        except ThemeError as e:
+            log.warning(
+                "calculate_mask_position: %s unreadable (%s); centering",
+                dc_path, e,
+            )
+            return centered
+        if not cfg.get("mask_visible"):
+            return centered
+        pos = cfg.get("mask_position")
+        if not isinstance(pos, (list, tuple)) or len(pos) != 2:
+            return centered
+        try:
+            cx, cy = int(pos[0]), int(pos[1])
+        except (TypeError, ValueError):
+            return centered
+        # DC stores CENTER coords; render at top-left = center - size/2.
+        return (cx - mask_w // 2, cy - mask_h // 2)
 
     def render(
         self,

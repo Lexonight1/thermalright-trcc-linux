@@ -1222,10 +1222,8 @@ class ApplyMask(Command[MaskApplyResult]):
         # sibling DC trailer and convert to top-left; missing/unreadable
         # DC = center on the canvas.  Without this, sub-screen masks
         # (most of the cloud catalog) draw at (0,0) and look invisible.
-        from ..services._dc_reader import (
-            calculate_mask_position,
-            load_dc_as_theme_config,
-        )
+        from ..services import _dc as Dc
+        from ..services.overlay import OverlayService
         try:
             mask_img = app.display._r.open_image(resolved_file)  # pyright: ignore[reportPrivateUsage]
             mw, mh = app.display._r.surface_size(mask_img)  # pyright: ignore[reportPrivateUsage]
@@ -1241,7 +1239,9 @@ class ApplyMask(Command[MaskApplyResult]):
             self.path if self.path.is_dir() else resolved_file.parent
         )
         if mw > 0 and mh > 0 and canvas != (0, 0):
-            px, py = calculate_mask_position(mask_dir, (mw, mh), canvas)
+            px, py = OverlayService.calculate_mask_position(
+                mask_dir, (mw, mh), canvas,
+            )
             app.settings.set_mask_position(self.key, (px, py))
             log.info(
                 "ApplyMask: %s sized %dx%d on %dx%d canvas → position (%d, %d)",
@@ -1256,7 +1256,7 @@ class ApplyMask(Command[MaskApplyResult]):
         theme = app.active_themes.get(self.key)
         if theme is not None and mask_dc.is_file():
             try:
-                dc = load_dc_as_theme_config(mask_dc)
+                dc = Dc.File(mask_dc).read()
             except Exception as e:
                 log.warning("ApplyMask: %s DC unreadable (%s) — keeping "
                             "theme's overlay layout", mask_dc, e)

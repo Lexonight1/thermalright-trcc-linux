@@ -33,7 +33,7 @@ from pathlib import Path
 
 from ..core.errors import ThemeError
 from ..core.models import Theme
-from ._dc_reader import load_dc_as_theme_config
+from . import _dc as Dc
 
 log = logging.getLogger(__name__)
 
@@ -133,15 +133,12 @@ class ThemeService:
         overlay elements (if any), and writes a 0xDD-format DC file.
         Returns the output path.
         """
-        from ._dc_reader import write_dc_from_theme_config
-
         try:
             config = self._load_config(theme_dir)
         except ThemeError:
             raise
-        write_dc_from_theme_config(
-            output_path, config,
-            user_overlay_elements=user_overlay_elements,
+        Dc.File(output_path).write(
+            config, user_overlay_elements=user_overlay_elements,
         )
         return output_path
 
@@ -314,7 +311,7 @@ class ThemeService:
 
         dc_path = path / _DC_CONFIG_FILE
         if dc_path.exists():
-            config = load_dc_as_theme_config(dc_path)
+            config = Dc.File(dc_path).read()
             self._try_migrate(json_path, config)
             return config
 

@@ -12,10 +12,12 @@ from typing import List
 import pytest
 
 from trcc.next.core.errors import ThemeError
-from trcc.next.services._dc_reader import (
-    dc_as_legacy_overlay_config,
-    load_dc_as_theme_config,
-)
+from trcc.next.services import _dc as Dc
+from trcc.next.ui.gui._overlay_grid_adapter import dc_as_legacy_overlay_config
+
+
+def load_dc_as_theme_config(path):
+    return Dc.File(path).read()
 
 
 def _build_dc(
