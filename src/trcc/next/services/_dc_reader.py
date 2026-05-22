@@ -25,6 +25,7 @@ legacy without bytes flapping.
 """
 from __future__ import annotations
 
+import json
 import logging
 import struct
 from pathlib import Path
@@ -517,36 +518,60 @@ _DEFAULT_FONT_NAME = "Microsoft YaHei"
 
 
 def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
-    """Read a theme's ``config1.dc`` and return the legacy GUI's
+    """Read a theme's overlay config and return the legacy GUI's
     overlay_config dict shape (one entry per element, keyed by metric
     name with counters for duplicates).
 
-    Used by the legacy GUI port's overlay grid; new code should consume
-    `load_dc_as_theme_config`'s list shape directly via the Command bus.
+    Source preference, matching ``ThemeService._load_config``:
 
-    Returns ``{}`` when the theme has no DC file or it can't be parsed —
-    callers treat empty dict as "no overlay to restore" rather than as
-    an error.
+      1. ``config1.dc`` — binary, parsed via ``load_dc_as_theme_config``
+      2. ``config.json`` (legacy) — already-keyed ``dc:`` sub-dict; passes
+         through to the overlay-config shape with light normalisation.
+
+    Returns ``{}`` only when neither file exists or both parse fails —
+    callers treat empty as "no overlay to restore" rather than as an
+    error.
     """
     dc_path = theme_dir / "config1.dc"
-    if not dc_path.is_file():
-        return {}
-    try:
-        theme_config = load_dc_as_theme_config(dc_path)
-    except ThemeError as e:
-        log.warning("dc_as_legacy_overlay_config: %s skipped (%s)", dc_path, e)
-        return {}
+    if dc_path.is_file():
+        try:
+            theme_config = load_dc_as_theme_config(dc_path)
+        except ThemeError as e:
+            log.warning("dc_as_legacy_overlay_config: %s skipped (%s)",
+                        dc_path, e)
+        else:
+            overlay: dict[str, dict[str, Any]] = {}
+            counters: dict[str, int] = {}
+            for element in theme_config.get("elements", ()):
+                if not isinstance(element, dict):
+                    continue
+                key, entry = _next_element_to_legacy_entry(element, counters)
+                if key is None or entry is None:
+                    continue
+                overlay[key] = entry
+            if overlay:
+                return overlay
 
-    overlay: dict[str, dict[str, Any]] = {}
-    counters: dict[str, int] = {}
-    for element in theme_config.get("elements", ()):
-        if not isinstance(element, dict):
-            continue
-        key, entry = _next_element_to_legacy_entry(element, counters)
-        if key is None or entry is None:
-            continue
-        overlay[key] = entry
-    return overlay
+    legacy_json = theme_dir / "config.json"
+    if legacy_json.is_file():
+        try:
+            raw = json.loads(legacy_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning("dc_as_legacy_overlay_config: %s unreadable (%s)",
+                        legacy_json, e)
+            return {}
+        dc_dict = raw.get("dc")
+        if isinstance(dc_dict, dict):
+            # Legacy config.json's ``dc:`` sub-dict is ALREADY the
+            # overlay_config shape the GUI expects — pass through with
+            # only the ``enabled`` filter (matches the overlay grid's
+            # default skip-disabled behaviour).
+            return {
+                k: v for k, v in dc_dict.items()
+                if isinstance(v, dict) and v.get("enabled", True)
+            }
+
+    return {}
 
 
 def _next_element_to_legacy_entry(
