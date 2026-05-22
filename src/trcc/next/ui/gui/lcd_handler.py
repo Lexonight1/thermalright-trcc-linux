@@ -36,6 +36,7 @@ from ...core.commands import (
     SetOrientation,
     SetOverlayConfig,
     SetSplitMode,
+    StopVideo,
     UploadCustomMask,
 )
 from ...services._dc_reader import dc_as_legacy_overlay_config
@@ -381,7 +382,14 @@ class LCDHandler(BaseHandler):
 
     def _select_theme_from_path(self, path: Path, persist: bool = True,
                                 overlay_config: bool = True) -> None:
-        """Load a local/mask theme by directory path."""
+        """Load a local/mask theme by directory path.
+
+        Direct port of legacy ``LCDHandler._select_theme_from_path``:
+        the orchestration order matters — every step is here because
+        the legacy sequence relies on the state being reset BEFORE the
+        new theme + overlay load runs.  Re-ordering any step risks
+        leaking the previous mask / animation / video onto the device.
+        """
         self.log.info("_select_theme_from_path: %s persist=%s overlay_config=%s",
                  path, persist, overlay_config)
         if not path.exists():
@@ -393,6 +401,14 @@ class LCDHandler(BaseHandler):
         # Reset mode toggles (C# ReadSystemConfiguration override)
         self._background_active = False
         self._animation_timer.stop()
+        self._app.dispatch(StopVideo(key=self._device_key))
+        # Picking a new theme clears the previous mask — legacy persists
+        # ``mask_id=''`` here so a follow-up render doesn't keep the old
+        # mask layered on top of the new theme's bg.  Direct settings
+        # write (no Command) mirrors legacy's
+        # ``Settings.save_device_settings(mask_id='')`` — the upcoming
+        # LoadTheme below triggers the render via its own publish chain.
+        self._app.settings.set_mask_path(self._device_key, None)
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
         self._w['theme_setting'].video_panel.set_enabled(False)
