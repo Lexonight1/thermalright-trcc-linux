@@ -76,9 +76,9 @@ def launch(verbosity: int = 0, decorated: bool = False,
     # ``trcc_next()`` returns either a real App (default) or an
     # AppProxy (when ``TRCC_NEXT_DAEMON=1``) — both expose the same
     # dispatch surface, so MainWindow doesn't care which it gets.
+    from ..._boot import trcc_next
     from ...adapters.render.qt import QtRenderer
     from ...app import App
-    from ..._boot import trcc_next
     renderer = QtRenderer()
     app = cast(App, trcc_next(platform=platform, renderer=renderer))
 

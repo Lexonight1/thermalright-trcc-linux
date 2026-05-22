@@ -425,10 +425,16 @@ class TRCCApp(QMainWindow):
 
     def _on_bus_sensors_updated(self, _event: Any) -> None:
         """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
+        from typing import cast
+
         from ...core.commands import ReadSensors
+        from ...core.models import HardwareMetrics
         result = self._app.dispatch(ReadSensors())
         readings = {r.sensor_id: r.value for r in result.readings}
-        metrics = _MetricsView(readings)
+        # _MetricsView duck-types HardwareMetrics — readings dict +
+        # ``.<sensor_id>`` attribute access.  Cast satisfies pyright on
+        # the legacy widget signatures that expect HardwareMetrics.
+        metrics = cast(HardwareMetrics, _MetricsView(readings))
 
         if self.uc_info_module.isVisible():
             self.uc_info_module.update_from_metrics(metrics)

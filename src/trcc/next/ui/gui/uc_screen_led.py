@@ -468,7 +468,7 @@ class UCScreenLED(QWidget):
         self._positions = STYLE_POSITIONS.get(style_id, _POS_1)
         self._led_count = len(self._positions)
         self._colors = [(0, 0, 0)] * self._led_count
-        from ...core.models import LED_DEFAULT_OFF
+        from ...core.led_models import LED_DEFAULT_OFF
         off = LED_DEFAULT_OFF.get(style_id, frozenset())
         self._is_on = [i not in off for i in range(self._led_count)]
         self._load_decorations(style_id)

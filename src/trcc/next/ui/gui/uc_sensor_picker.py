@@ -200,12 +200,32 @@ class SensorPickerDialog(QDialog):
         self._update_values()  # Initial read
 
     def _populate_sensors(self):
-        """Create rows for all discovered sensors, grouped by source."""
-        sensors = self._enumerator.get_sensors()
+        """Create rows for all discovered sensors, grouped by source.
+
+        next/'s ``SensorEnumerator.discover()`` returns
+        :class:`SensorReading` (no ``source`` field — that concept lives
+        in the legacy SensorInfo).  Build SensorInfo objects on the fly
+        with a best-effort source inferred from the sensor_id prefix.
+        """
+        sensors = self._enumerator.discover()
+
+        # Adapt SensorReading → SensorInfo (legacy shape).  Source is
+        # inferred from the sensor_id prefix when present, e.g.
+        # "hwmon:coretemp:temp1" → "hwmon".
+        sensor_infos: list[SensorInfo] = []
+        for r in sensors:
+            source = r.sensor_id.split(':', 1)[0] if ':' in r.sensor_id else 'system'
+            sensor_infos.append(SensorInfo(
+                id=r.sensor_id,
+                name=r.label or r.sensor_id,
+                category=r.category,
+                unit=r.unit,
+                source=source,
+            ))
 
         # Group by source
         groups: dict[str, list[SensorInfo]] = {}
-        for s in sensors:
+        for s in sensor_infos:
             groups.setdefault(s.source, []).append(s)
 
         # Source display order and names

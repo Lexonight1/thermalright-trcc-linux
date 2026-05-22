@@ -23,7 +23,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QWidget
 
 if TYPE_CHECKING:
-    from ...adapters.system.config import SysInfoConfig
+    from ...adapters.infra.sysinfo_config import SysInfoConfig
     from ...core.models import HardwareMetrics
 
 from ...core.models import (

@@ -21,8 +21,8 @@ from pathlib import Path
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QMovie
 
+from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import CloudThemeItem
-from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from .base import BaseThumbnail, DownloadableThemeBrowser
 from .constants import Layout, Sizes
 

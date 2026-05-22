@@ -29,13 +29,13 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.i18n import tr
-from ...core.models import (
+from ...core.led_models import (
     LED_MODE_LABELS,
     LED_PRESET_ASSETS,
     LED_SELECT_ALL_STYLES,
     PRESET_COLORS,
-    HardwareMetrics,
 )
+from ...core.models import HardwareMetrics
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -326,8 +326,8 @@ class UCLedControl(QWidget):
         self._title.setVisible(False)
 
         # -- Mode buttons (text rendered via i18n, not baked into PNG) --
-        from ..._boot import trcc as _trcc
-        lang = _trcc().settings.lang
+        from ..._boot import trcc_next as _trcc
+        lang = _trcc().settings.app.language
         self._mode_buttons: list[QPushButton] = []
         for i, label_key in enumerate(MODE_LABELS):
             label = tr(label_key, lang)
@@ -784,8 +784,8 @@ class UCLedControl(QWidget):
         self._preview.set_style(style_id, segment_count)
 
         # Load device preview background (PM-specific or style default)
-        from ...core.models import LED_STYLES, PmRegistry
-        style = LED_STYLES[style_id]
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID, PmRegistry
+        style = LED_STYLES[STYLE_BY_LEGACY_ID[style_id]]
 
         # Resolve preview: check PmRegistry for model-specific image,
         # fall back to style default (Windows: FormLEDInit per-NO)
@@ -799,8 +799,8 @@ class UCLedControl(QWidget):
             self._preview.set_overlay(QPixmap(preview_pixmap))
 
         # Set panel background (localized with fallback)
-        from ..._boot import trcc as _trcc
-        bg_name = Assets.get_localized(style.background_base, _trcc().settings.lang)
+        from ..._boot import trcc_next as _trcc
+        bg_name = Assets.get_localized(style.background_base, _trcc().settings.app.language)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
 
@@ -856,10 +856,10 @@ class UCLedControl(QWidget):
 
     def apply_localized_background(self) -> None:
         """Re-apply localized background and text labels for current lang."""
-        from ..._boot import trcc as _trcc
-        from ...core.models import LED_STYLES
-        lang = _trcc().settings.lang
-        style = LED_STYLES[self._style_id]
+        from ..._boot import trcc_next as _trcc
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
+        lang = _trcc().settings.app.language
+        style = LED_STYLES[STYLE_BY_LEGACY_ID[self._style_id]]
         bg_name = Assets.get_localized(style.background_base, lang)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
@@ -895,8 +895,8 @@ class UCLedControl(QWidget):
         - button5-6 (led_zone_mode_5-6): styles 3, 5, 6, 11
         - buttonN1-4 (led_zone_btn_1-4): styles 4, 7, 8, 10
         """
-        from ...core.models import LED_STYLES
-        if not (assets := LED_STYLES[style_id].zone_assets):
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
+        if not (assets := LED_STYLES[STYLE_BY_LEGACY_ID[style_id]].zone_assets):
             return
         for i, btn in enumerate(self._zone_buttons):
             if i < len(assets):

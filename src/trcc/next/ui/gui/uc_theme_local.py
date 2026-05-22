@@ -227,23 +227,23 @@ class UCThemeLocal(BaseThemeBrowser):
             self._show_empty_message()
             return
 
-        from ..._boot import trcc as _trcc
-        from ...services import ThemeService
-
-        ucd = _trcc().settings.user_content_dir
-        themes = ThemeService.discover_local_merged(
-            self.theme_directory, ucd / 'data' if ucd else None)
-
+        # Walk the per-resolution themes dir directly.  Each subdir with
+        # a Theme.png or 00.png is one theme.  next/'s ThemeService owns
+        # the load path; the GUI just needs the listing for the browser.
         all_items: list[LocalThemeItem] = []
-        for t in themes:
-            thumb = t.path / 'Theme.png' if t.path else None
-            bg = t.path / '00.png' if t.path else None
-            preview = thumb if (thumb and thumb.exists()) else bg
+        for theme_dir in sorted(self.theme_directory.iterdir()):
+            if not theme_dir.is_dir():
+                continue
+            thumb = theme_dir / 'Theme.png'
+            bg = theme_dir / '00.png'
+            preview = thumb if thumb.exists() else (bg if bg.exists() else None)
+            if preview is None:
+                continue
             all_items.append(LocalThemeItem(
-                name=t.name,
-                path=str(t.path) if t.path else "",
-                thumbnail=str(preview) if preview else "",
-                is_user=t.name.startswith(('User', 'Custom')),
+                name=theme_dir.name,
+                path=str(theme_dir),
+                thumbnail=str(preview),
+                is_user=theme_dir.name.startswith(('User', 'Custom')),
             ))
 
         self._all_themes = all_items

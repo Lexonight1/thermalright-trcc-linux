@@ -16,6 +16,7 @@ import os
 import subprocess
 import tempfile
 from functools import lru_cache
+from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
@@ -63,7 +64,7 @@ def grab_full_screen() -> QPixmap:
             tool = cmd[0]
             try:
                 result = subprocess.run(cmd, capture_output=True, timeout=5)
-                if result.returncode == 0 and os.path.getsize(tmp_path) > 0:
+                if result.returncode == 0 and Path(tmp_path).stat().st_size > 0:
                     pixmap = QPixmap(tmp_path)
                     if not pixmap.isNull():
                         log.debug("Screen capture via %s", tool)
@@ -76,7 +77,7 @@ def grab_full_screen() -> QPixmap:
                 log.warning("Screen capture tool %s timed out", tool)
     finally:
         try:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
         except OSError:
             pass
 
@@ -115,7 +116,7 @@ def grab_screen_region(x: int, y: int, w: int, h: int) -> QPixmap:
             tool = cmd[0]
             try:
                 result = subprocess.run(cmd, capture_output=True, timeout=2)
-                if result.returncode == 0 and os.path.getsize(tmp_path) > 0:
+                if result.returncode == 0 and Path(tmp_path).stat().st_size > 0:
                     pixmap = QPixmap(tmp_path)
                     if not pixmap.isNull():
                         log.debug("Region capture via %s", tool)
@@ -133,7 +134,7 @@ def grab_screen_region(x: int, y: int, w: int, h: int) -> QPixmap:
             return full.copy(x, y, w, h)
     finally:
         try:
-            os.unlink(tmp_path)
+            Path(tmp_path).unlink()
         except OSError:
             pass
 

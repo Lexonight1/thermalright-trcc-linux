@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Literal
 
+from .models import LedStyle
+
 # =========================================================================
 # LEDMode — the six color-cycling effects
 # =========================================================================
@@ -89,6 +91,15 @@ class LedDeviceSettings:
     clock_24h: bool = True
     week_sunday: bool = False
 
+    # Memory ratio mode — true: percentage (0-100), false: GB used.
+    # Display logic on devices with memory gauges reads this.
+    memory_ratio: bool = True
+
+    # Disk index — which physical disk to surface for read/write stats.
+    # 0 = system / primary disk; subsequent indices map to additional disks
+    # via psutil disk discovery.
+    disk_index: int = 0
+
 
 # =========================================================================
 # Transient runtime counters — NOT persisted
@@ -126,3 +137,248 @@ PRESET_COLORS: tuple[tuple[int, int, int], ...] = (
     (214,   0, 255),  # C7 — purple
     (255, 255, 255),  # C8 — white
 )
+
+
+# =========================================================================
+# Style spec — per-LED-style layout metadata
+# =========================================================================
+#
+# Counts + asset basenames so the legacy-style ``UCLedControl`` panel and
+# ``UCScreenLED`` preview can lay themselves out without consulting a
+# device instance.  Mirrors legacy ``LedDeviceStyle`` fields except the
+# style key is the :class:`LedStyle` enum instead of an integer id.
+
+
+@dataclass(frozen=True, slots=True)
+class LedStyleSpec:
+    """LED-strip layout metadata + asset basenames for one style.
+
+    Used by the legacy-style RGB-control panel:
+      * ``led_count`` / ``segment_count`` — sizing the preview + masks
+      * ``zone_count`` — how many zone buttons to show (1 = single-zone)
+      * ``model_name`` — title-bar string ("AX120_DIGITAL")
+      * ``preview_image`` — device-image asset for the preview pane
+      * ``background_base`` — localised panel background asset
+      * ``zone_assets`` — per-zone (normal, active) asset basenames;
+        legacy GUI builds the zone buttons from this tuple.  Empty
+        means "use the panel's flat fallback styling".
+    """
+    led_count: int
+    segment_count: int
+    zone_count: int
+    model_name: str
+    preview_image: str
+    background_base: str = "led_bg_segment"
+    zone_assets: tuple[tuple[str, str], ...] = ()
+
+
+# Legacy integer style_id (1..12) for each LedStyle — kept because the
+# segment-position arrays inside :mod:`next.ui.gui.uc_screen_led` are
+# byte-for-byte ports of the legacy ``UCScreenLED.cs`` data, which was
+# keyed by these ints.  The widget consumes the int; everything else
+# uses :class:`LedStyle`.
+LEGACY_STYLE_ID: dict[LedStyle, int] = {
+    LedStyle.AX120: 1,
+    LedStyle.PA120: 2,
+    LedStyle.AK120: 3,
+    LedStyle.LC1:   4,
+    LedStyle.LF8:   5,
+    LedStyle.LF12:  6,
+    LedStyle.LF10:  7,
+    LedStyle.CZ1:   8,
+    LedStyle.LC2:   9,
+    LedStyle.LF11:  10,
+    LedStyle.LF15:  11,
+    LedStyle.LF13:  12,
+}
+
+# Inverse lookup — legacy int → :class:`LedStyle` enum.  Used by GUI
+# widgets that still index data by the legacy int and need to recover
+# the enum to look up the matching :class:`LedStyleSpec`.
+STYLE_BY_LEGACY_ID: dict[int, LedStyle] = {
+    v: k for k, v in LEGACY_STYLE_ID.items()
+}
+
+
+LED_STYLES: dict[LedStyle, LedStyleSpec] = {
+    LedStyle.AX120: LedStyleSpec(30,  10, 4, "AX120_DIGITAL",
+                                 "led_preview_ax120", "led_bg_segment"),
+    LedStyle.PA120: LedStyleSpec(84,  18, 4, "PA120_DIGITAL",
+                                 "led_preview_pa120", "led_bg_segment_4zone"),
+    LedStyle.AK120: LedStyleSpec(64,  10, 2, "AK120_DIGITAL",
+                                 "led_preview_ak120", "led_bg_segment"),
+    LedStyle.LC1:   LedStyleSpec(31,  14, 3, "LC1",
+                                 "led_preview_lc1",   "led_bg_lc1"),
+    LedStyle.LF8:   LedStyleSpec(93,  23, 2, "LF8",
+                                 "led_preview_lf8",   "led_bg_lf8"),
+    LedStyle.LF12:  LedStyleSpec(124, 72, 2, "LF12",
+                                 "led_preview_lf12",  "led_bg_lf12"),
+    LedStyle.LF10:  LedStyleSpec(116, 12, 3, "LF10",
+                                 "led_preview_lf10",  "led_bg_lf10"),
+    LedStyle.CZ1:   LedStyleSpec(18,  13, 4, "CZ1",
+                                 "led_preview_cz1",   "led_bg_cz1"),
+    LedStyle.LC2:   LedStyleSpec(61,  31, 0, "LC2",
+                                 "led_preview_lc2",   "led_bg_lc2"),
+    LedStyle.LF11:  LedStyleSpec(38,  17, 4, "LF11",
+                                 "led_preview_lf11",  "led_bg_lf11"),
+    LedStyle.LF15:  LedStyleSpec(93,  72, 2, "LF15",
+                                 "led_preview_lf15",  "led_bg_lf15"),
+    LedStyle.LF13:  LedStyleSpec(62,  62, 0, "LF13",
+                                 "led_preview_lf13",  "led_bg_lf13"),
+}
+
+
+# Styles that show "select all zones" instead of the rotating carousel —
+# PA120 (style 2) and LF10 (style 7) sync every zone to one colour.
+LED_SELECT_ALL_STYLES: frozenset[LedStyle] = frozenset({
+    LedStyle.PA120, LedStyle.LF10,
+})
+
+
+# Per-style default-off segment indices.  Empty / missing = all segments on.
+LED_DEFAULT_OFF: dict[LedStyle, frozenset[int]] = {
+    LedStyle.AX120: frozenset({4, 5, 7, 8}),
+    LedStyle.PA120: frozenset({7}),
+    LedStyle.AK120: frozenset({3, 5}),
+    LedStyle.LC1:   frozenset({1, 2, 25, 26, 30}),
+    LedStyle.LF8:   frozenset({1, 3}),
+    LedStyle.LF12:  frozenset({1, 3}),
+    LedStyle.LF10:  frozenset({2, 5}),
+    LedStyle.CZ1:   frozenset({1, 2, 3}),
+    LedStyle.LF11:  frozenset({1, 2, 32, 33, 37}),
+    LedStyle.LF15:  frozenset({1, 3}),
+}
+
+
+# Mode-button labels (FormLED.cs Solid / Breathe / Cycle / Rainbow / Temp / Load).
+# i18n keys — pass through ``tr()`` at render time.
+LED_MODE_LABELS: tuple[str, ...] = (
+    "Solid", "Breathe", "Color Cycle", "Rainbow", "Temp Linked", "Load Linked",
+)
+
+
+# Preset-color button asset basenames (eight C1..C8 buttons).
+LED_PRESET_ASSETS: tuple[str, ...] = (
+    "led_preset_red", "led_preset_orange", "led_preset_yellow",
+    "led_preset_green", "led_preset_cyan", "led_preset_blue",
+    "led_preset_purple", "led_preset_white",
+)
+
+
+# Per-style zone-button asset pairs (normal, active).  Styles map onto
+# three asset families (button1-4 / button5-6 / buttonN1-4) — see legacy
+# ``_ZONE_ASSETS_BTN14`` etc.
+_ZONE_ASSETS_BTN14: tuple[tuple[str, str], ...] = (
+    ("led_zone_mode_1", "led_zone_mode_1_active"),
+    ("led_zone_mode_2", "led_zone_mode_2_active"),
+    ("led_zone_mode_3", "led_zone_mode_3_active"),
+    ("led_zone_mode_4", "led_zone_mode_4_active"),
+)
+_ZONE_ASSETS_BTN56: tuple[tuple[str, str], ...] = (
+    ("led_zone_mode_5", "led_zone_mode_5_active"),
+    ("led_zone_mode_6", "led_zone_mode_6_active"),
+)
+_ZONE_ASSETS_BTNN: tuple[tuple[str, str], ...] = (
+    ("led_zone_btn_1", "led_zone_btn_1_active"),
+    ("led_zone_btn_2", "led_zone_btn_2_active"),
+    ("led_zone_btn_3", "led_zone_btn_3_active"),
+    ("led_zone_btn_4", "led_zone_btn_4_active"),
+)
+
+ZONE_STYLE_ASSETS: dict[LedStyle, tuple[tuple[str, str], ...]] = {
+    LedStyle.AX120: _ZONE_ASSETS_BTN14,
+    LedStyle.PA120: _ZONE_ASSETS_BTN14,
+    LedStyle.AK120: _ZONE_ASSETS_BTN56,
+    LedStyle.LF8:   _ZONE_ASSETS_BTN56,
+    LedStyle.LF12:  _ZONE_ASSETS_BTN56,
+    LedStyle.LF15:  _ZONE_ASSETS_BTN56,
+    LedStyle.LC1:   _ZONE_ASSETS_BTNN,
+    LedStyle.LF10:  _ZONE_ASSETS_BTNN,
+    LedStyle.CZ1:   _ZONE_ASSETS_BTNN,
+    LedStyle.LF11:  _ZONE_ASSETS_BTNN,
+}
+
+
+# =========================================================================
+# Legacy GUI-only LED tables (consumed by uc_led_control + uc_screen_led)
+# =========================================================================
+
+# Style IDs that support "select all zones" — sync every zone to the
+# same mode/color/brightness in one operation.  PA120 (style 2) and
+# LF10 (style 7).
+LED_SELECT_ALL_STYLES: frozenset[int] = frozenset({2, 7})
+
+# Preset color buttons in the LED panel (legacy C# FormLED ucColor1
+# preset bar).  Eight fixed positions; the panel renders these as
+# square swatches users click to apply.
+PRESET_COLORS: list[tuple[int, int, int]] = [
+    (255, 0, 42),     # C1 — red/pink
+    (255, 110, 0),    # C2 — orange
+    (255, 255, 0),    # C3 — yellow
+    (0, 255, 0),      # C4 — green
+    (0, 255, 255),    # C5 — cyan
+    (0, 91, 255),     # C6 — blue
+    (214, 0, 255),    # C7 — purple
+    (255, 255, 255),  # C8 — white
+]
+
+# Asset basenames for the eight preset buttons (legacy resx names).
+LED_PRESET_ASSETS: list[str] = [
+    'led_preset_red', 'led_preset_orange', 'led_preset_yellow',
+    'led_preset_green', 'led_preset_cyan', 'led_preset_blue',
+    'led_preset_purple', 'led_preset_white',
+]
+
+# Six animation-mode buttons; the LED panel renders these as a row.
+LED_MODE_LABELS: list[str] = [
+    "Solid", "Breathe", "Color Cycle", "Rainbow",
+    "Temp Linked", "Load Linked",
+]
+
+# Segments that are OFF by default per legacy style.  Keys are the
+# int style id (1-12, see LEGACY_STYLE_ID); values are 0-based segment
+# indices the panel should render dim until the user clicks them on.
+LED_DEFAULT_OFF: dict[int, frozenset[int]] = {
+    1:  frozenset({4, 5, 7, 8}),
+    2:  frozenset({7}),
+    3:  frozenset({3, 5}),
+    4:  frozenset({1, 2, 25, 26, 30}),
+    5:  frozenset({1, 3}),
+    6:  frozenset({1, 3}),
+    7:  frozenset({2, 5}),
+    8:  frozenset({1, 2, 3}),
+    10: frozenset({1, 2, 32, 33, 37}),
+    11: frozenset({1, 3}),
+}
+
+
+# =========================================================================
+# PmRegistry — legacy PM-byte → display-model lookup
+# =========================================================================
+# next/'s ProductInfo carries the resolved model name directly; the
+# legacy GUI's UCLedControl reads ``PmRegistry._REGISTRY`` to swap
+# preview images at handshake time.  We expose a minimal compatible
+# shape (a class with a ``_REGISTRY`` dict) so the widget keeps working
+# without rewiring.  Empty by default — populated lazily if/when next/'s
+# registry exposes PM mappings.
+
+
+@dataclass(frozen=True, slots=True)
+class _PmRegistryEntry:
+    """One PM-byte → model entry (legacy GUI shape)."""
+    model_name: str = ""
+    preview_image: str = ""
+
+
+class _PmRegistryShim:
+    """Legacy-compatible registry stub.
+
+    next/ resolves model identity via ``ProductInfo`` at handshake.  This
+    shim exists only so legacy widgets that iterate ``PmRegistry._REGISTRY``
+    keep working with the existing iteration shape.
+    """
+
+    _REGISTRY: dict[int, _PmRegistryEntry] = {}
+
+
+PmRegistry = _PmRegistryShim()

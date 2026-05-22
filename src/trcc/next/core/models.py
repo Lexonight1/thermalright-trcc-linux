@@ -679,6 +679,122 @@ class MaskItem:
     is_custom: bool = False
 
 
+@dataclass(slots=True)
+class LocalThemeItem:
+    """Item in the local themes browser (UCThemeLocal)."""
+    name: str = ""
+    path: str = ""
+    thumbnail: str = ""
+    is_local: bool = True
+    is_user: bool = False
+    index: int = 0  # position in unfiltered list
+
+
+@dataclass(slots=True)
+class CloudThemeItem:
+    """Item in the cloud themes browser (UCThemeWeb)."""
+    name: str = ""
+    id: str = ""
+    video: str | None = None
+    preview: str | None = None
+    is_local: bool = False
+
+
+# Resolution → (panel_w, panel_h) scaling table for the image_cut /
+# video_cut background assets.  Native size for square + small
+# rectangles; halved (or smaller) for widescreen so the panel chrome
+# stays a fixed 500×702 px.
+PANEL_ASSET_DIMS: dict[tuple[int, int], tuple[int, int]] = {
+    (240, 240): (240, 240),
+    (320, 320): (320, 320),
+    (360, 360): (360, 360),
+    (480, 480): (480, 480),
+    (320, 240): (320, 240),   (240, 320): (240, 320),
+    (640, 480): (320, 240),   (480, 640): (240, 320),
+    (800, 480): (400, 240),   (480, 800): (240, 400),
+    (854, 480): (427, 240),   (480, 854): (240, 427),
+    (960, 540): (480, 270),   (540, 960): (270, 480),
+    (960, 320): (480, 160),   (320, 960): (160, 480),
+    (640, 172): (320, 86),    (172, 640): (86, 320),
+    (1280, 480): (480, 180),  (480, 1280): (180, 480),
+    (1600, 720): (400, 180),  (720, 1600): (180, 400),
+    (1920, 462): (480, 116),  (462, 1920): (116, 480),
+    (1920, 440): (480, 110),  (440, 1920): (110, 480),
+}
+
+
+def panel_asset_dims(w: int, h: int) -> tuple[int, int]:
+    """Scaled panel dims for a device resolution.  Used by image / video cut.
+
+    Falls back to (320, 240) landscape or (240, 320) portrait when the
+    resolution isn't in the table — matches the C# else branch.
+    """
+    if (dims := PANEL_ASSET_DIMS.get((w, h))):
+        return dims
+    return (240, 320) if h > w else (320, 240)
+
+
+# ``subprocess.CREATE_NO_WINDOW`` is Windows-only.  On other OSes the
+# attribute doesn't exist; we fall back to 0 so call sites can always
+# pass ``creationflags=SUBPROCESS_NO_WINDOW`` without an OS check.
+import subprocess as _subprocess  # noqa: E402 — keeps the public API at the top
+
+SUBPROCESS_NO_WINDOW: int = getattr(_subprocess, 'CREATE_NO_WINDOW', 0)
+
+
+# =========================================================================
+# Hardware metrics DTOs (legacy GUI widgets expect ``metrics.X`` access)
+# =========================================================================
+
+
+@dataclass(slots=True)
+class HardwareMetrics:
+    """Typed DTO for system sensor readings — legacy GUI widget shape.
+
+    next/'s sensor pipeline uses :class:`SensorReading` lists; the GUI's
+    ``_MetricsView`` adapter exposes both shapes from a single readings
+    dict.  This dataclass exists so widgets like ``UCSystemInfo`` and
+    ``UCInfoModule`` can keep their ``metrics.cpu_temp`` attribute reads
+    type-checking, even though the GUI builds them on the fly from a
+    ``ReadSensors`` result.
+    """
+    cpu_temp: float = 0.0
+    cpu_percent: float = 0.0
+    cpu_freq: float = 0.0
+    cpu_power: float = 0.0
+    gpu_temp: float = 0.0
+    gpu_usage: float = 0.0
+    gpu_clock: float = 0.0
+    gpu_power: float = 0.0
+    mem_temp: float = 0.0
+    mem_percent: float = 0.0
+    mem_clock: float = 0.0
+    mem_available: float = 0.0
+    disk_temp: float = 0.0
+    disk_activity: float = 0.0
+    disk_read: float = 0.0
+    disk_write: float = 0.0
+    net_up: float = 0.0
+    net_down: float = 0.0
+    net_total_up: float = 0.0
+    net_total_down: float = 0.0
+    fan_cpu: float = 0.0
+    fan_gpu: float = 0.0
+    fan_ssd: float = 0.0
+    fan_sys2: float = 0.0
+    readings: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SensorInfo:
+    """Describes a single hardware sensor (legacy GUI shape)."""
+    id: str
+    name: str
+    category: str
+    unit: str
+    source: str
+
+
 # Cloud mask server URLs by resolution string.  Source: C# UCMask
 # endpoints — same hostname / path layout legacy uses.  Per-resolution
 # downloads happen lazily when the user picks a mask thumbnail.
