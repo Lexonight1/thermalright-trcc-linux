@@ -386,8 +386,8 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
 
     Legacy shape (per the Windows TRCC + the legacy Linux tree):
         {
-          "background": "<path>",         # ignored; auto-discovered
-          "mask": "<path>",               # ignored; user override only
+          "background": "<path>",         # auto-discovered, also kept for ref
+          "mask": "<path-to-mask-subdir>",  # PRESERVED — applied on LoadTheme
           "dc": {                         # legacy overlay_config
               "time": {x, y, color, font:{size, name, style}, ...},
               "date": {...},
@@ -396,9 +396,11 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
           }
         }
 
-    Output is next/'s theme config (``elements`` list + flag fields).
-    Background discovery still walks _BACKGROUND_CANDIDATES so the
-    explicit ``background`` path field is informational only.
+    Output is next/'s theme config (``elements`` list + flag fields)
+    plus a ``mask`` passthrough so ``LoadTheme`` can dispatch
+    ``ApplyMask`` for themes that carry an attached mask.  Background
+    discovery still walks ``_BACKGROUND_CANDIDATES`` so the explicit
+    ``background`` path is informational only.
     """
     elements: list[dict] = []
     dc = raw.get("dc")
@@ -411,11 +413,15 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
             translated = _legacy_entry_to_next_element(entry)
             if translated is not None:
                 elements.append(translated)
-    return {
+    out: dict = {
         "name": theme_name,
         "overlay_enabled": True,
         "elements": elements,
     }
+    mask = raw.get("mask")
+    if isinstance(mask, str) and mask:
+        out["mask"] = mask
+    return out
 
 
 _LEGACY_FONT_DEFAULTS = {"name": "Microsoft YaHei", "size": 24, "style": "regular"}

@@ -445,6 +445,25 @@ class LoadTheme(Command[ThemeResult]):
         # immediate first frame.  Otherwise the theme is saved for the
         # next connect / tick.
         theme_path_str = str(theme.path.resolve())
+
+        # Legacy themes (config.json shape) can carry an attached mask
+        # under a top-level ``mask`` key pointing to a mask subdir.
+        # ``_resolve_mask_path`` accepts the dir + resolves to dir/01.png.
+        # Dispatch ApplyMask so DisplayService picks it up on the next
+        # render — without this, themes with masks render unmasked.
+        embedded_mask = theme.config.get("mask")
+        if isinstance(embedded_mask, str) and embedded_mask:
+            mask_path = Path(embedded_mask)
+            apply = ApplyMask(key=self.key, path=mask_path).execute(app)
+            if apply.ok:
+                log.info("LoadTheme: applied embedded mask %s (%s)",
+                         mask_path, theme.name)
+            else:
+                log.warning(
+                    "LoadTheme: theme %s declares mask %s but ApplyMask "
+                    "failed: %s", theme.name, mask_path, apply.message,
+                )
+
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:
             return ThemeResult(
