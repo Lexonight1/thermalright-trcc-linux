@@ -473,11 +473,13 @@ class LoadTheme(Command[ThemeResult]):
             SetMaskPosition(key=self.key, x=px, y=py).execute(app)
             log.info("LoadTheme: mask position set to (%d, %d) for %s",
                      px, py, theme.name)
-        if "mask_visible" in theme.config:
-            visible = bool(theme.config["mask_visible"])
-            SetMaskVisible(key=self.key, visible=visible).execute(app)
-            log.info("LoadTheme: mask visibility set to %s for %s",
-                     visible, theme.name)
+        # NB: do NOT dispatch SetMaskVisible from theme.config here.
+        # Legacy's ``OverlayService.theme_mask_visible`` defaults True
+        # and only toggles via explicit user action — the DC trailer's
+        # ``mask_visible`` field is a theme-design metadata flag
+        # ("this theme had a mask"), not a runtime visibility override.
+        # Binding the two strands persists False from any DC-truncation
+        # path and the mask never re-appears.
 
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:
