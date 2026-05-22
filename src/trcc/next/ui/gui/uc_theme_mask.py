@@ -190,9 +190,24 @@ class UCThemeMask(DownloadableThemeBrowser):
             for entry in sorted(source_dir.iterdir()):
                 if not entry.is_dir():
                     continue
+                # Accept any subdir that has either a DC config (the
+                # mask's own ``config1.dc`` carries its center coords)
+                # OR a preview image OR the canonical mask file.
+                # Preview lookup falls back through Theme.png → 01.png
+                # → first PNG so a DC-only mask still surfaces.
                 preview = entry / "Theme.png"
                 if not preview.exists():
-                    continue
+                    canonical = entry / "01.png"
+                    if canonical.exists():
+                        preview = canonical
+                    else:
+                        any_png = next(entry.glob("*.png"), None)
+                        if any_png is not None:
+                            preview = any_png
+                        elif (entry / "config1.dc").exists():
+                            preview = entry / "config1.dc"  # no image but valid
+                        else:
+                            continue
                 discovered.append(_DiscoveredMask(
                     name=entry.name,
                     path=entry,

@@ -258,16 +258,31 @@ class UCThemeLocal(BaseThemeBrowser):
             for theme_dir in sorted(root.iterdir()):
                 if not theme_dir.is_dir() or theme_dir in seen:
                     continue
+                # Accept any dir that carries a DC config OR a JSON
+                # theme config OR a preview asset.  Per the user:
+                # anything with a DC file in /data should get used.
+                has_dc = (
+                    (theme_dir / 'config1.dc').exists()
+                    or (theme_dir / 'config.json').exists()
+                    or (theme_dir / 'trcc.json').exists()
+                    or (theme_dir / 'trcc-next.json').exists()
+                )
                 thumb = theme_dir / 'Theme.png'
                 bg = theme_dir / '00.png'
-                preview = thumb if thumb.exists() else (bg if bg.exists() else None)
+                preview = (
+                    thumb if thumb.exists() else (bg if bg.exists() else None)
+                )
                 if preview is None:
+                    # Fall back to ANY .png in the dir; if there isn't
+                    # one and there's no DC marker either, skip.
+                    preview = next(theme_dir.glob('*.png'), None)
+                if preview is None and not has_dc:
                     continue
                 seen.add(theme_dir)
                 all_items.append(LocalThemeItem(
                     name=theme_dir.name,
                     path=str(theme_dir),
-                    thumbnail=str(preview),
+                    thumbnail=str(preview) if preview is not None else "",
                     is_user=theme_dir.name.startswith(('User', 'Custom')),
                 ))
         log.info("uc_theme_local.load_themes: %d theme(s) found", len(all_items))
