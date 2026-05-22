@@ -99,6 +99,11 @@ def launch(verbosity: int = 0, decorated: bool = False,
     # ── Hotplug listener (live device attach/detach) ────────────────
     app.start_hotplug()
 
+    # ── Metrics broadcast — publishes SensorsUpdated every
+    # refresh_interval_s so system info / activity sidebar / overlay
+    # refresh all tick from one cadence.
+    app.metrics_loop.start()
+
     # ── Main window — TRCCApp keeps the legacy chrome ──────────────
     window = TRCCApp(app=app, decorated=decorated)
 

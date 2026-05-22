@@ -27,6 +27,7 @@ from .core.events import (
     MaskPositionChanged,
     MaskVisibilityChanged,
     OverlayChanged,
+    SensorsUpdated,
     SplitModeChanged,
 )
 from .core.led_models import LedRuntimeState
@@ -40,6 +41,7 @@ from .services.first_run import FirstRunService
 from .services.keepalive import KeepaliveService
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
+from .services.metrics_loop import MetricsLoop
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
@@ -118,6 +120,13 @@ class App:
         # doctor + scan with explicit step boundaries so any UI renders
         # the same flow.
         self.quickstart = QuickstartService(platform)
+        # Periodic sensor broadcaster — owns the cadence that publishes
+        # ``SensorsUpdated`` so the GUI's system_info / activity_sidebar
+        # widgets and the DeviceRenderObserver (overlay refresh) all
+        # tick from one source.  Not auto-started — caller (GUI, daemon)
+        # calls ``app.metrics_loop.start()`` so headless CLI one-shots
+        # don't pay for a polling thread.
+        self.metrics_loop = MetricsLoop(self)
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -300,33 +309,46 @@ class _DeviceRenderObserver:
         for event_cls in (
             BrightnessChanged, MaskApplied, MaskPositionChanged,
             MaskVisibilityChanged, OverlayChanged, FitModeChanged,
-            SplitModeChanged,
+            SplitModeChanged, SensorsUpdated,
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 
     def _on_visual_change(self, event: Any) -> None:
-        """Any visual-mutation event → one RenderAndSend for that key."""
-        key = getattr(event, "key", "")
-        if not key:
+        """Any visual-mutation event → one RenderAndSend per affected key.
+
+        Per-device events (BrightnessChanged, MaskApplied, etc.) carry
+        a ``key`` field and re-render only that device.  Device-wide
+        events (SensorsUpdated) re-render every connected device with
+        an active theme — the new sensor reading affects every overlay.
+        """
+        if self._app._renderer is None:  # pyright: ignore[reportPrivateUsage]
             return
-        device = self._app.devices.get(key)
-        theme = self._app.active_themes.get(key)
-        if (
-            device is None or not device.is_connected
-            or theme is None
-            or self._app._renderer is None  # pyright: ignore[reportPrivateUsage]
-        ):
+        keys: list[str]
+        evt_key = getattr(event, "key", "")
+        if evt_key:
+            keys = [evt_key]
+        else:
+            keys = [
+                k for k, d in self._app.devices.items()
+                if d.is_connected and k in self._app.active_themes
+            ]
+        for key in keys:
+            device = self._app.devices.get(key)
+            theme = self._app.active_themes.get(key)
+            if (
+                device is None or not device.is_connected
+                or theme is None
+            ):
+                log.debug(
+                    "DeviceRenderObserver: skip %s for %s "
+                    "(connected=%s theme=%s)",
+                    type(event).__name__, key,
+                    device is not None and device.is_connected,
+                    theme is not None,
+                )
+                continue
             log.debug(
-                "DeviceRenderObserver: skip render on %s (connected=%s "
-                "theme=%s renderer=%s)",
-                type(event).__name__,
-                device is not None and device.is_connected,
-                theme is not None,
-                self._app._renderer is not None,  # pyright: ignore[reportPrivateUsage]
+                "DeviceRenderObserver: %s for %s → RenderAndSend",
+                type(event).__name__, key,
             )
-            return
-        log.debug(
-            "DeviceRenderObserver: %s for %s → RenderAndSend",
-            type(event).__name__, key,
-        )
-        self._app.dispatch(self._RenderAndSend(key=key))
+            self._app.dispatch(self._RenderAndSend(key=key))
