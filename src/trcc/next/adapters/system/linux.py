@@ -513,3 +513,127 @@ class LinuxPlatform(Platform):
         except Exception:
             pass
         return "source"
+
+    # ── Hardware probes (LED memory + disk widgets) ───────────────────
+
+    def memory_info(self) -> list[dict[str, str]]:
+        """DRAM slot probe via dmidecode; psutil fallback for totals only."""
+        return _linux_memory_info()
+
+    def disk_info(self) -> list[dict[str, str]]:
+        """Disk probe via lsblk + smartctl health."""
+        return _linux_disk_info()
+
+
+# =========================================================================
+# Linux hardware-probe helpers — used by LinuxPlatform.memory_info/disk_info
+# =========================================================================
+
+_DMI_MEMORY_FIELDS: frozenset[str] = frozenset({
+    'manufacturer', 'part_number', 'type', 'speed',
+    'configured_memory_speed', 'size', 'locator', 'form_factor',
+    'rank', 'data_width', 'total_width', 'configured_voltage',
+    'minimum_voltage', 'maximum_voltage', 'memory_technology',
+})
+
+_POLKIT_POLICY = '/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy'
+
+
+def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
+    """Build a command, wrapping in pkexec when polkit policy is installed."""
+    import shutil
+    if hasattr(os, 'geteuid') and os.geteuid() == 0:
+        return [binary, *args]
+    full_path = shutil.which(binary)
+    if full_path and Path(_POLKIT_POLICY).is_file() and shutil.which('pkexec'):
+        return ['pkexec', full_path, *args]
+    return [binary, *args]
+
+
+def _linux_memory_info() -> list[dict[str, str]]:
+    """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
+    import subprocess
+    slots: list[dict[str, str]] = []
+    try:
+        result = subprocess.run(
+            _privileged_cmd('dmidecode', ['-t', 'memory']),
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            current: dict[str, str] = {}
+            for raw_line in result.stdout.splitlines():
+                line = raw_line.strip()
+                if line.startswith('Memory Device'):
+                    if current.get('size') and current['size'] != 'No Module Installed':
+                        slots.append(current)
+                    current = {}
+                elif ':' in line:
+                    key, _, val = line.partition(':')
+                    val = val.strip()
+                    key = key.strip().lower().replace(' ', '_')
+                    if key in _DMI_MEMORY_FIELDS:
+                        current[key] = val
+            if current.get('size') and current['size'] != 'No Module Installed':
+                slots.append(current)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("dmidecode -t memory failed: %s", type(e).__name__)
+
+    if not slots:
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            total_gb = f"{mem.total / (1024**3):.1f} GB"
+            slots.append({'size': total_gb, 'type': 'Unknown',
+                          'speed': 'Unknown', 'manufacturer': 'Unknown'})
+        except (OSError, ImportError, AttributeError) as e:
+            log.debug("psutil.virtual_memory failed: %s", type(e).__name__)
+    return slots
+
+
+def _linux_disk_info() -> list[dict[str, str]]:
+    """Get disk info via lsblk -J + smartctl -H per disk."""
+    import json
+    import subprocess
+    disks: list[dict[str, str]] = []
+    try:
+        result = subprocess.run(
+            ['lsblk', '-J', '-o', 'NAME,MODEL,SIZE,TYPE,ROTA'],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            for dev in data.get('blockdevices', []):
+                if dev.get('type') != 'disk' or not dev.get('model'):
+                    continue
+                disk_type = 'HDD' if dev.get('rota') else 'SSD'
+                disk = {
+                    'name': dev.get('name', ''),
+                    'model': dev.get('model', 'Unknown').strip(),
+                    'size': dev.get('size', 'Unknown'),
+                    'type': disk_type,
+                }
+                if (health := _smart_health(dev['name'])):
+                    disk['health'] = health
+                disks.append(disk)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as e:
+        log.debug("lsblk -J failed: %s", type(e).__name__)
+    return disks
+
+
+def _smart_health(dev_name: str) -> str | None:
+    """SMART overall-health status via smartctl -H."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            _privileged_cmd('smartctl', ['-H', f'/dev/{dev_name}']),
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        for line in result.stdout.splitlines():
+            if 'overall-health' in line.lower() or 'health status' in line.lower():
+                if 'PASSED' in line:
+                    return 'PASSED'
+                if 'FAILED' in line:
+                    return 'FAILED'
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("smartctl -H /dev/%s failed: %s", dev_name, type(e).__name__)
+    return None

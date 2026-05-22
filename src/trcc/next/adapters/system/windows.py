@@ -359,3 +359,108 @@ class WindowsPlatform(Platform):
             return "pyinstaller"
         return "source"
 
+    # ── GUI behaviour ─────────────────────────────────────────────────
+
+    def minimize_on_close(self) -> bool:
+        """Windows: minimize to taskbar (legacy TRCC parity).
+
+        Linux/macOS/BSD inherit the base False (hide-to-tray).
+        """
+        return True
+
+    # ── Hardware probes (LED memory + disk widgets) ───────────────────
+
+    def memory_info(self) -> list[dict[str, str]]:
+        """DRAM slot probe via WMI Win32_PhysicalMemory."""
+        return _windows_memory_info()
+
+    def disk_info(self) -> list[dict[str, str]]:
+        """Disk probe via WMI Win32_DiskDrive."""
+        return _windows_disk_info()
+
+
+# =========================================================================
+# Windows hardware-probe helpers
+# =========================================================================
+
+
+def _format_size_bytes(value: int | str | None) -> str:
+    """Human-format a byte count as ``N GB`` (best-effort).
+
+    WMI returns int / str / None depending on the property and version
+    — narrow before coercing rather than blanket try/except.
+    """
+    if value is None or value == 0 or value == "0":
+        return ""
+    if isinstance(value, int):
+        return f"{value // (1024 ** 3)} GB"
+    if isinstance(value, str):
+        try:
+            return f"{int(value) // (1024 ** 3)} GB"
+        except ValueError:
+            return ""
+    return ""
+
+
+def _windows_memory_info() -> list[dict[str, str]]:
+    """Win32_PhysicalMemory probe; psutil fallback for totals."""
+    slots: list[dict[str, str]] = []
+    try:
+        import wmi  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        log.debug("wmi package missing — falling back to psutil total")
+        try:
+            import psutil
+            total = psutil.virtual_memory().total
+            slots.append({
+                "manufacturer": "Unknown", "part_number": "Unknown",
+                "type": "Unknown", "speed": "Unknown",
+                "size": f"{total // (1024 ** 3)} GB",
+                "form_factor": "Unknown", "locator": "Total",
+            })
+        except (OSError, ImportError, AttributeError) as e:
+            log.debug("psutil fallback failed: %s", type(e).__name__)
+        return slots
+    try:
+        w = wmi.WMI()
+        for mem in w.Win32_PhysicalMemory():
+            slot: dict[str, str] = {
+                "manufacturer": (mem.Manufacturer or "").strip(),
+                "part_number": (mem.PartNumber or "").strip(),
+                "speed": str(mem.ConfiguredClockSpeed or mem.Speed or ""),
+                "size": _format_size_bytes(mem.Capacity),
+                "locator": mem.DeviceLocator or "",
+                "rank": str(mem.Rank or ""),
+                "data_width": str(mem.DataWidth or ""),
+                "total_width": str(mem.TotalWidth or ""),
+                "type": "Unknown",          # full mapping kept simple here
+                "form_factor": "Unknown",
+            }
+            if slot["size"] and slot["size"] != "0 GB":
+                slots.append(slot)
+    except Exception as e:  # WMI surface is wide; log and fall through
+        log.debug("WMI memory query failed: %s", type(e).__name__)
+    return slots
+
+
+def _windows_disk_info() -> list[dict[str, str]]:
+    """Win32_DiskDrive probe."""
+    disks: list[dict[str, str]] = []
+    try:
+        import wmi  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        log.debug("wmi package missing — no disk info on Windows")
+        return disks
+    try:
+        w = wmi.WMI()
+        for disk in w.Win32_DiskDrive():
+            disks.append({
+                "name": disk.DeviceID or "",
+                "model": (disk.Model or "").strip(),
+                "size": _format_size_bytes(disk.Size),
+                "type": "Unknown",
+            })
+    except Exception as e:
+        log.debug("WMI disk query failed: %s", type(e).__name__)
+    return disks
+

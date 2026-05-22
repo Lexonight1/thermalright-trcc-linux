@@ -370,6 +370,9 @@ class Paths(ABC):
     @abstractmethod
     def log_file(self) -> Path: ...
 
+    def user_masks_dir(self, width: int, height: int) -> Path:
+        return self.user_content_dir() / "masks" / f"{width}x{height}"
+
 
 # =========================================================================
 # Renderer — pixel operations (PySide6 on all OSes today)
@@ -423,6 +426,53 @@ class Renderer(ABC):
     # ── Legacy boundary (video frames) ────────────────────────────────
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
+
+
+# =========================================================================
+# ScreenCapture — grab a region of the user's desktop as raw RGB bytes
+# =========================================================================
+
+
+class ScreenCapture(ABC):
+    """Port for "grab a rectangle off the desktop right now".
+
+    Adapters: :class:`QtScreenCapture` for Qt apps (X11 + Wayland
+    fallback).  Used by the screencast pipeline to feed live desktop
+    pixels into the device.
+
+    Returns a :class:`RawFrame` with RGB24 pixel data sized exactly to
+    the requested rectangle — callers handle scale/fit/encode.
+    """
+
+    @abstractmethod
+    def grab_region(self, x: int, y: int, width: int, height: int) -> RawFrame:
+        """Capture *width* × *height* pixels starting at (*x*, *y*).
+
+        Raise :class:`OSError` (or subclass) on capture failure — the
+        caller decides whether to retry, stop the screencast, or surface
+        the error to the user.
+        """
+        ...
+
+
+# =========================================================================
+# HttpFetcher — minimal HTTP GET, abstracted so tests can intercept
+# =========================================================================
+
+
+class HttpFetcher(ABC):
+    """Tiny port for "fetch bytes from URL" used by cloud-theme adapters.
+
+    Separate from full ``requests``/``httpx`` use because next/'s needs
+    are minimal — GET a small/medium body with a timeout, multi-server
+    fallback handled by the caller.  Tests inject a fake that returns
+    canned bytes; production uses ``UrllibHttpFetcher``.
+    """
+
+    @abstractmethod
+    def fetch(self, url: str, timeout_s: float = 30.0) -> bytes:
+        """Fetch a URL's body.  Raise on non-200 status or transport error."""
+        ...
 
 
 # =========================================================================
@@ -554,6 +604,32 @@ class Platform(ABC):
     @abstractmethod
     def install_method(self) -> str:
         """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
+
+    # ── GUI / hardware-probe convenience ──────────────────────────────
+    def minimize_on_close(self) -> bool:
+        """True if the GUI should minimize-to-tray on close instead of hiding.
+
+        Default ``False`` (hide-to-tray) matches Linux/macOS/BSD behaviour.
+        Windows overrides to ``True`` to match user expectations there.
+        """
+        return False
+
+    def memory_info(self) -> list[dict[str, str]]:
+        """Return DRAM slot descriptors for LC1-style memory displays.
+
+        Each dict carries keys like ``size`` / ``type`` / ``speed`` /
+        ``manufacturer`` / ``tcas`` / ``trcd`` / … as discovered.  An OS
+        with no probe yields an empty list — the caller renders ``NC``.
+        """
+        return []
+
+    def disk_info(self) -> list[dict[str, str]]:
+        """Return attached-disk descriptors for LF11-style disk displays.
+
+        Each dict carries ``name`` / ``model`` / ``size`` / ``type`` /
+        optional ``health``.  An OS with no probe yields an empty list.
+        """
+        return []
 
     # ── OS-selection factory ──────────────────────────────────────────
     _BY_OS: dict[str, tuple[str, str]] = {

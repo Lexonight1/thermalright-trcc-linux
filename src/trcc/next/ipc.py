@@ -445,3 +445,194 @@ def wait_for_daemon(*, timeout: float, poll_s: float = 0.05) -> bool:
 # above need the modules loaded — this line is a documentation anchor,
 # not a runtime no-op).
 _ = core
+
+
+# =========================================================================
+# SingleInstance — per-UI single-instance + raise-existing-window helper
+# =========================================================================
+
+
+class SingleInstance:
+    """Per-UI socket-based single-instance + raise-existing-window helper.
+
+    The first launch of ``trcc.next gui`` binds ``~/.cache/trcc-next/gui.sock``
+    and listens for ``{"raise": true}`` messages.  Subsequent launches
+    fail to bind, instead connect to the existing socket, send
+    ``{"raise": true}``, and bail out — the running window's
+    :attr:`on_raise` callback fires on the Qt main thread to show /
+    activate the existing window.
+
+    Architectural note: this is separate from the daemon's
+    :class:`IPCServer` (which serves Command dispatch).  Each UI type
+    (``gui`` / ``qtgui`` / future REPL) gets its own socket so two
+    different UIs can coexist while still enforcing one of each.
+
+    Usage::
+
+        instance = SingleInstance("gui")
+        if instance is None:        # peer launch — raise sent, exit cleanly
+            return 0
+        instance.on_raise = window.raise_window
+        ...
+    """
+
+    # Not strictly a normal class — the constructor may return None
+    # (when a peer is already running).  Encoded via __new__.
+
+    _DIR_NAME = "trcc-next"
+    _RAISE_MESSAGE = b'{"raise": true}\n'
+    _CONNECT_TIMEOUT_S = 1.0
+
+    def __new__(cls, name: str) -> SingleInstance | None:  # type: ignore[misc]
+        path = _instance_socket_path(name)
+        if not hasattr(socket, "AF_UNIX"):
+            log.warning(
+                "SingleInstance(%r): AF_UNIX missing on this platform; "
+                "running unconditionally", name,
+            )
+            return super().__new__(cls)
+
+        # ── Peer alive? ──
+        if _peer_alive(path, cls._CONNECT_TIMEOUT_S):
+            try:
+                _send_raise(path, cls._RAISE_MESSAGE, cls._CONNECT_TIMEOUT_S)
+                log.info("SingleInstance(%r): peer alive, raise sent", name)
+            except OSError as e:
+                log.warning(
+                    "SingleInstance(%r): peer responded then closed; "
+                    "raise send failed (%s)", name, e,
+                )
+            return None
+
+        # ── No peer — clean any stale socket file + bind ──
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError as e:
+                log.debug("SingleInstance(%r): stale socket unlink failed: %s",
+                          name, e)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        instance = super().__new__(cls)
+        instance._bind(name, path)
+        return instance
+
+    def __init__(self, name: str) -> None:
+        # __new__ does all the work; __init__ runs again on re-entry but
+        # binding already happened.  Keep this idempotent.
+        if not hasattr(self, "_name"):
+            self._name = name
+
+    def _bind(self, name: str, path: Path) -> None:
+        """Actually listen on the socket + spawn the accept thread."""
+        import threading
+
+        self._name = name
+        self._path = path
+        self._stop = False
+        self.on_raise: typing.Callable[[], None] | None = None
+
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(str(path))
+        sock.listen(4)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            log.debug("SingleInstance(%r): chmod 600 failed", name)
+        self._sock: socket.socket | None = sock
+
+        self._thread = threading.Thread(
+            target=self._accept_loop,
+            name=f"trcc-single-instance-{name}",
+            daemon=True,
+        )
+        self._thread.start()
+        log.info("SingleInstance(%r): listening on %s", name, path)
+
+    def close(self) -> None:
+        """Stop listening and remove the socket file."""
+        sock = getattr(self, "_sock", None)
+        if sock is None:
+            return
+        self._stop = True
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            log.debug("SingleInstance.close: SHUT_RDWR failed", exc_info=True)
+        try:
+            sock.close()
+        except OSError:
+            log.debug("SingleInstance.close: socket close failed", exc_info=True)
+        self._sock = None
+        try:
+            self._path.unlink()
+        except OSError:
+            log.debug("SingleInstance.close: unlink failed", exc_info=True)
+
+    # ── Internal — accept loop ───────────────────────────────────────
+
+    def _accept_loop(self) -> None:
+        while not self._stop:
+            sock = self._sock
+            if sock is None:
+                break
+            try:
+                client, _ = sock.accept()
+            except OSError:
+                break  # closed
+            with client:
+                client.settimeout(self._CONNECT_TIMEOUT_S)
+                try:
+                    data = client.recv(256)
+                except OSError:
+                    continue
+                if not data:
+                    continue
+                try:
+                    payload = json.loads(data.decode("utf-8").strip())
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    log.debug("SingleInstance: ignoring malformed peer message")
+                    continue
+                if isinstance(payload, dict) and payload.get("raise"):
+                    cb = self.on_raise
+                    if cb is not None:
+                        try:
+                            cb()
+                        except Exception:
+                            log.exception(
+                                "SingleInstance.on_raise raised",
+                            )
+
+
+def _instance_socket_path(name: str) -> Path:
+    """Per-UI socket path (one file per UI flavour)."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        base = Path(runtime) / SingleInstance._DIR_NAME
+    else:
+        base = Path.home() / ".cache" / SingleInstance._DIR_NAME
+    return base / f"{name}.sock"
+
+
+def _peer_alive(path: Path, timeout: float) -> bool:
+    """True if a peer is currently bound + accepting on ``path``."""
+    if not path.exists():
+        return False
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(str(path))
+        sock.close()
+        return True
+    except OSError:
+        return False
+
+
+def _send_raise(path: Path, payload: bytes, timeout: float) -> None:
+    """Connect + send a raise message to an existing peer."""
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    sock.connect(str(path))
+    try:
+        sock.sendall(payload)
+    finally:
+        sock.close()
