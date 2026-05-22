@@ -566,16 +566,18 @@ def test_display_list_masks_empty(
 def test_display_upload_mask(
     cli_runner: CliRunner, cli_app, tmp_path,
 ) -> None:
-    """``upload-mask`` copies source to user_content_dir/masks + applies it."""
+    """``upload-mask`` stages the source under
+    ``user_mask_dir(w,h)/custom_<stem>/01.png`` + applies it.  Matches
+    legacy's cloud-mask shape so legacy + next/ user masks coexist."""
     del cli_app
-    src = tmp_path / "custom.png"
+    src = tmp_path / "myhole.png"
     # Write a tiny PNG header so the file is non-empty + has the right ext.
     src.write_bytes(b"\x89PNG\r\n\x1a\n")
     result = cli_runner.invoke(
         _app(), ["display", "upload-mask", "0402:3922", str(src)],
     )
     assert result.exit_code == 0
-    assert "custom.png" in result.output
+    assert "custom_myhole" in result.output
 
 
 def test_theme_delete_unknown(

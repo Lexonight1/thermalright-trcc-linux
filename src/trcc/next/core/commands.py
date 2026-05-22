@@ -1086,14 +1086,36 @@ class SetSplitMode(Command[SplitModeResult]):
 
 _MASK_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
+# Canonical mask filename inside a legacy mask subdir (zt{W}{H}/<id>/01.png).
+# Cloud catalog + UploadCustomMask both use this name.
+_LEGACY_MASK_FILENAME = "01.png"
+
+
+def _resolve_mask_path(path: Path) -> Path | None:
+    """Resolve a mask reference to a renderable image file.
+
+    Accepts a direct image file OR a legacy mask directory (containing
+    ``01.png``).  Returns the file path renderers can ``open_image``,
+    or ``None`` when neither shape matches.
+    """
+    if path.is_file() and path.suffix.lower() in _MASK_IMAGE_EXTS:
+        return path
+    if path.is_dir():
+        legacy = path / _LEGACY_MASK_FILENAME
+        if legacy.is_file():
+            return legacy
+    return None
+
 
 @dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):
     """Set a user-supplied mask image that overrides the active theme's mask.
 
-    Validates the path exists, is a regular file, and has an image
-    extension. Stores the **resolved absolute path** so subsequent
-    renders aren't affected by ``os.chdir`` between calls.
+    Accepts either a direct image file (``.png``/``.jpg``/etc.) or a
+    legacy mask directory containing ``01.png`` (the layout used by
+    Thermalright's cloud mask catalog and by ``UploadCustomMask``).
+    Stores the **resolved absolute file path** so subsequent renders
+    aren't affected by ``os.chdir`` between calls.
     """
     key: str
     path: Path
@@ -1105,18 +1127,15 @@ class ApplyMask(Command[MaskApplyResult]):
                 ok=False, key=self.key, path=str(candidate),
                 message=f"mask file does not exist: {candidate}",
             )
-        if not candidate.is_file():
+        resolved_file = _resolve_mask_path(candidate)
+        if resolved_file is None:
             return MaskApplyResult(
                 ok=False, key=self.key, path=str(candidate),
-                message=f"mask path is not a regular file: {candidate}",
+                message=(f"mask path is neither a supported image file "
+                         f"nor a legacy mask directory with "
+                         f"{_LEGACY_MASK_FILENAME}: {candidate}"),
             )
-        if candidate.suffix.lower() not in _MASK_IMAGE_EXTS:
-            return MaskApplyResult(
-                ok=False, key=self.key, path=str(candidate),
-                message=(f"mask must be one of {sorted(_MASK_IMAGE_EXTS)}, "
-                         f"got {candidate.suffix!r}"),
-            )
-        resolved = str(candidate.resolve())
+        resolved = str(resolved_file.resolve())
         app.settings.set_mask_path(self.key, resolved)
         _invalidate_scene(app, self.key)
         app.events.publish(MaskApplied(key=self.key, path=resolved))
@@ -2094,10 +2113,13 @@ class DeleteTheme(Command[DeleteThemeResult]):
 class UploadCustomMask(Command[MaskUploadResult]):
     """Copy a mask image into the user-mask dir for the device's resolution.
 
-    The caller passes an absolute path; we copy it into the per-resolution
-    user mask dir (``paths.user_mask_dir(w, h)``) so subsequent calls
-    reference the in-repo path.  Then we dispatch ApplyMask to wire it
-    onto the device.
+    Writes the source under ``paths.user_mask_dir(w, h)/custom_<name>/``
+    as both ``01.png`` (the canonical mask renderers consume) and
+    ``Theme.png`` (the preview thumbnail Thermalright's cloud masks
+    use).  Matches legacy's mask-on-disk shape so cloud + user masks
+    coexist and the legacy mask browser picks them both up.
+
+    Then dispatches ApplyMask so the new mask wires onto the device.
     """
     key: str
     source: Path
@@ -2118,34 +2140,38 @@ class UploadCustomMask(Command[MaskUploadResult]):
                          "connect the device or register the product first"),
             )
         masks_root = app.platform.paths().user_mask_dir(*resolution)
+        mask_dir = masks_root / f"custom_{self.source.stem}"
         try:
-            masks_root.mkdir(parents=True, exist_ok=True)
+            mask_dir.mkdir(parents=True, exist_ok=True)
         except OSError as e:
             return MaskUploadResult(
                 ok=False, key=self.key, path="",
                 message=f"Failed to ensure masks dir: {e}",
             )
-        target = masks_root / self.source.name
+        mask_file = mask_dir / _LEGACY_MASK_FILENAME
+        preview_file = mask_dir / "Theme.png"
         try:
-            shutil.copy2(self.source, target)
+            shutil.copy2(self.source, mask_file)
+            # Preview = mask itself.  Legacy's cloud catalog ships a
+            # distinct Theme.png, but user uploads only have the one
+            # image; copying it satisfies legacy-port browsers that
+            # gate visibility on Theme.png existence.
+            shutil.copy2(self.source, preview_file)
         except OSError as e:
             return MaskUploadResult(
                 ok=False, key=self.key, path="",
                 message=f"Copy failed: {e}",
             )
-        apply_result = ApplyMask(key=self.key, path=target).execute(app)
+        apply_result = ApplyMask(key=self.key, path=mask_file).execute(app)
         if not apply_result.ok:
             return MaskUploadResult(
-                ok=False, key=self.key, path=str(target),
+                ok=False, key=self.key, path=str(mask_file),
                 message=f"Uploaded but apply failed: {apply_result.message}",
             )
         return MaskUploadResult(
-            ok=True, key=self.key, path=str(target),
-            message=f"Mask uploaded + applied: {target.name}",
+            ok=True, key=self.key, path=str(mask_file),
+            message=f"Mask uploaded + applied: {mask_dir.name}",
         )
-
-
-_MASK_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -2158,6 +2184,13 @@ class ListMasks(Command[MasksListResult]):
 
     With ``directory=``, scans that exact dir (escape hatch for tests
     and CLI use).
+
+    Masks come in two on-disk shapes:
+
+    * **Legacy directory** — ``<root>/<id>/01.png`` (cloud catalog +
+      ``UploadCustomMask``).  Returned with ``name=<id>``, ``path=01.png``.
+    * **Flat image** — ``<root>/<name>.png`` (forward-compat for any
+      future flat layout).  Returned with ``name=<filename>``.
     """
     resolution: tuple[int, int] | None = None
     directory: Path | None = None
@@ -2180,13 +2213,15 @@ class ListMasks(Command[MasksListResult]):
         for root in roots:
             if not root.is_dir():
                 continue
-            for p in sorted(root.iterdir()):
-                if not (p.is_file() and p.suffix.lower() in _MASK_EXTS):
+            for entry in sorted(root.iterdir()):
+                resolved = _resolve_mask_path(entry)
+                if resolved is None or resolved in seen:
                     continue
-                if p in seen:
-                    continue
-                seen.add(p)
-                entries.append(FileEntry(name=p.name, path=str(p)))
+                seen.add(resolved)
+                # For legacy subdirs, surface the subdir name (e.g.
+                # "000a") so users see the catalog id, not "01.png".
+                display_name = entry.name if entry.is_dir() else resolved.name
+                entries.append(FileEntry(name=display_name, path=str(resolved)))
         target_str = "; ".join(str(r) for r in roots)
         return MasksListResult(
             ok=True, directory=target_str, masks=entries,

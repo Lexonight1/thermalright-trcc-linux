@@ -67,14 +67,30 @@ def test_apply_mask_rejects_missing_file(app: App, tmp_home: Path) -> None:
     assert "does not exist" in result.message
 
 
-def test_apply_mask_rejects_directory(app: App, tmp_home: Path) -> None:
-    """A directory path is rejected even with an image-like name."""
+def test_apply_mask_rejects_empty_directory(app: App, tmp_home: Path) -> None:
+    """A directory without ``01.png`` (the legacy canonical mask file)
+    is rejected — empty dirs aren't masks."""
     dir_path = tmp_home / "fake.png"
     dir_path.mkdir()
     result = app.dispatch(ApplyMask(key=_KEY, path=dir_path))
 
     assert result.ok is False
-    assert "not a regular file" in result.message
+    assert "legacy mask directory" in result.message
+
+
+def test_apply_mask_accepts_legacy_mask_directory(
+    app: App, tmp_home: Path,
+) -> None:
+    """A directory containing ``01.png`` (legacy cloud-mask layout) is
+    accepted, with the inner file stored as the resolved mask path."""
+    dir_path = tmp_home / "000a"
+    dir_path.mkdir()
+    mask_file = dir_path / "01.png"
+    mask_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    result = app.dispatch(ApplyMask(key=_KEY, path=dir_path))
+
+    assert result.ok is True
+    assert result.path == str(mask_file.resolve())
 
 
 @pytest.mark.parametrize("bad_ext", [".txt", ".pdf", ".exe", ".html", ""])
@@ -86,7 +102,7 @@ def test_apply_mask_rejects_non_image_extensions(
     result = app.dispatch(ApplyMask(key=_KEY, path=path))
 
     assert result.ok is False
-    assert "mask must be one of" in result.message
+    assert "neither a supported image file" in result.message
 
 
 def test_apply_mask_publishes_event(app: App, mask_png: Path) -> None:
