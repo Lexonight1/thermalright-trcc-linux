@@ -1,7 +1,7 @@
 """Sensor aggregator — normalized key shape, primary GPU resolver."""
 from __future__ import annotations
 
-from trcc.next.adapters.sensors.aggregator import BaselineSensors
+from trcc.adapters.sensors.aggregator import BaselineSensors
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
 

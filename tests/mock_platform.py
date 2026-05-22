@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from trcc.adapters.device.factory import DeviceProtocol, ProtocolInfo
-from trcc.core.ports import (
+from trcc.legacy.adapters.device.factory import DeviceProtocol, ProtocolInfo
+from trcc.legacy.core.ports import (
     DoctorPlatformConfig,
     Platform,
     ReportPlatformConfig,
@@ -39,7 +39,7 @@ class NoopLCDProtocol(DeviceProtocol):
         self._sub = sub
 
     def _do_handshake(self):
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         return HandshakeResult(
             resolution=self._resolution,
             model_id=self._fbl,
@@ -77,7 +77,7 @@ class NoopLEDProtocol(DeviceProtocol):
         return True
 
     def _do_handshake(self):
-        from trcc.core.models import LedHandshakeInfo, PmRegistry
+        from trcc.legacy.core.models import LedHandshakeInfo, PmRegistry
         style = PmRegistry.get_style(self._pm, self._sub)
         model = PmRegistry.get_model_name(self._pm, self._sub)
         entry = PmRegistry.resolve(self._pm, self._sub)
@@ -140,15 +140,15 @@ class MockPlatform(Platform):
         return str(self._root.parent / '.trcc-user')
 
     def web_dir(self, width: int, height: int) -> str:
-        from trcc.core.paths import web_dir_name
+        from trcc.legacy.core.paths import web_dir_name
         return str(self._root / 'data' / 'web' / web_dir_name(width, height))
 
     def web_masks_dir(self, width: int, height: int) -> str:
-        from trcc.core.paths import masks_dir_name
+        from trcc.legacy.core.paths import masks_dir_name
         return str(self._root / 'data' / 'web' / masks_dir_name(width, height))
 
     def user_masks_dir(self, width: int, height: int) -> str:
-        from trcc.core.paths import masks_dir_name
+        from trcc.legacy.core.paths import masks_dir_name
         return str(self._root.parent / '.trcc-user' / 'data' / 'web'
                    / masks_dir_name(width, height))
 
@@ -156,11 +156,11 @@ class MockPlatform(Platform):
 
     def _make_metrics(self):
         """Mock platform reuses Linux's metrics composer for test convenience."""
-        from trcc.adapters.system.linux_platform import LinuxMetrics
+        from trcc.legacy.adapters.system.linux_platform import LinuxMetrics
         return LinuxMetrics(self.sensors, {})
 
     def _make_sensor_enumerator(self) -> SensorEnumerator:
-        from trcc.adapters.system.linux_platform import (
+        from trcc.legacy.adapters.system.linux_platform import (
             SensorEnumerator as LinuxSensors,
         )
         return LinuxSensors()
@@ -171,7 +171,7 @@ class MockPlatform(Platform):
         return None  # noop — protocols handle everything
 
     def detect_devices(self) -> list:
-        from trcc.core.models import ALL_DEVICES, DetectedDevice
+        from trcc.legacy.core.models import ALL_DEVICES, DetectedDevice
 
         devices: list[DetectedDevice] = []
         for i, spec in enumerate(self._specs):
@@ -293,7 +293,7 @@ class MockPlatform(Platform):
     # ── Noop protocol registration ───────────────────────────────────
 
     def _register_noop_protocols(self) -> None:
-        from trcc.adapters.device.factory import DeviceProtocolFactory
+        from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
         factory = DeviceProtocolFactory
         specs = self._specs
 
@@ -307,7 +307,7 @@ class MockPlatform(Platform):
                     res_str = spec.get('resolution', '320x320')
                     parts = res_str.split('x')
                     w, h = int(parts[0]), int(parts[1])
-                    from trcc.core.models import RESOLUTION_TO_PM
+                    from trcc.legacy.core.models import RESOLUTION_TO_PM
                     fbl = RESOLUTION_TO_PM.get((w, h), 100)
                     pm = spec.get('pm', fbl)
                     sub = spec.get('sub', 0)
@@ -326,7 +326,7 @@ class MockPlatform(Platform):
                     pm = spec.get('pm')
                     sub = spec.get('sub', 0)
                     if pm is None:
-                        from trcc.core.models import PmRegistry
+                        from trcc.legacy.core.models import PmRegistry
                         model = spec.get('model', '')
                         pm = next(
                             (p for p, e in PmRegistry if e.model_name == model),

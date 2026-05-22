@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.builder import ControllerBuilder
-from trcc.core.models import (
+from trcc.legacy.core.builder import ControllerBuilder
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     LED_DEVICES,
     PROTOCOL_TRAITS,
@@ -49,18 +49,18 @@ def test_for_current_os_returns_controller_builder():
 
 class TestLinuxBuilderContract:
     def test_has_os_platform(self, linux_builder):
-        from trcc.core.ports import Platform
+        from trcc.legacy.core.ports import Platform
         assert isinstance(linux_builder.os, Platform)
 
     def test_platform_iterable(self, linux_builder):
         """Phase 3: detect via list(platform) instead of build_detect_fn wrapper."""
         from unittest.mock import patch
-        with patch("trcc.adapters.device.detector.DeviceDetector.make_detect_fn",
+        with patch("trcc.legacy.adapters.device.detector.DeviceDetector.make_detect_fn",
                    return_value=lambda: []):
             assert list(linux_builder.os) == []
 
     def test_build_device_led_returns_led(self, linux_builder):
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         detected = DetectedDevice(
             vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
             usb_path="2-1", protocol="led",
@@ -72,11 +72,11 @@ class TestLinuxBuilderContract:
 
 class TestWindowsBuilderContract:
     def test_has_os_platform(self, windows_builder):
-        from trcc.core.ports import Platform
+        from trcc.legacy.core.ports import Platform
         assert isinstance(windows_builder.os, Platform)
 
     def test_build_device_led_returns_led(self, windows_builder):
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         detected = DetectedDevice(
             vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
             usb_path="2-1", protocol="led",
@@ -88,11 +88,11 @@ class TestWindowsBuilderContract:
 
 class TestMacOSBuilderContract:
     def test_has_os_platform(self, macos_builder):
-        from trcc.core.ports import Platform
+        from trcc.legacy.core.ports import Platform
         assert isinstance(macos_builder.os, Platform)
 
     def test_build_device_led_returns_led(self, macos_builder):
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         detected = DetectedDevice(
             vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
             usb_path="2-1", protocol="led",
@@ -104,11 +104,11 @@ class TestMacOSBuilderContract:
 
 class TestBSDBuilderContract:
     def test_has_os_platform(self, bsd_builder):
-        from trcc.core.ports import Platform
+        from trcc.legacy.core.ports import Platform
         assert isinstance(bsd_builder.os, Platform)
 
     def test_build_device_led_returns_led(self, bsd_builder):
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         detected = DetectedDevice(
             vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
             usb_path="2-1", protocol="led",
@@ -123,8 +123,8 @@ class TestBSDBuilderContract:
 @pytest.mark.parametrize("vid_pid,entry", list(ALL_DEVICES.items()),
                          ids=[f"{v:04X}:{p:04X}" for v, p in ALL_DEVICES])
 def test_build_device_routes_to_correct_type(vid_pid, entry, linux_builder):
-    from trcc.core.device import Device
-    from trcc.services.image import ImageService
+    from trcc.legacy.core.device import Device
+    from trcc.legacy.services.image import ImageService
 
     detected = _detected_for(*vid_pid, entry)
     trait = PROTOCOL_TRAITS.get(entry.protocol, PROTOCOL_TRAITS['scsi'])
@@ -141,7 +141,7 @@ def test_build_device_routes_to_correct_type(vid_pid, entry, linux_builder):
 @pytest.mark.parametrize("vid_pid,entry", list(ALL_DEVICES.items()),
                          ids=[f"{v:04X}:{p:04X}" for v, p in ALL_DEVICES])
 def test_build_device_wires_device_service(vid_pid, entry, linux_builder):
-    from trcc.services.image import ImageService
+    from trcc.legacy.services.image import ImageService
 
     detected = _detected_for(*vid_pid, entry)
     trait = PROTOCOL_TRAITS.get(entry.protocol, PROTOCOL_TRAITS['scsi'])
@@ -162,8 +162,8 @@ def test_led_devices_inject_protocol(vid_pid, entry, linux_builder):
 
 
 def test_build_device_no_detected_builds_lcd(linux_builder):
-    from trcc.core.device import Device
-    from trcc.services.image import ImageService
+    from trcc.legacy.core.device import Device
+    from trcc.legacy.services.image import ImageService
 
     linux_builder._renderer = ImageService.renderer()
     device = linux_builder.build_device(None)
@@ -206,7 +206,7 @@ def test_led_devices_classify_as_led():
 
 
 def test_lcd_and_led_have_distinct_protocols():
-    from trcc.core.models import HID_LCD_DEVICES
+    from trcc.legacy.core.models import HID_LCD_DEVICES
     hid_lcd_protocols = {e.protocol for e in HID_LCD_DEVICES.values()}
     led_protocols = {e.protocol for e in LED_DEVICES.values()}
     assert hid_lcd_protocols.isdisjoint(led_protocols)

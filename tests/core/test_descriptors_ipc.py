@@ -11,8 +11,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
-from trcc.core.models.device import DeviceInfo, UsbAddress
-from trcc.ipc import IPCServer
+from trcc.legacy.core.models.device import DeviceInfo, UsbAddress
+from trcc.legacy.ipc import IPCServer
 
 
 def _make_descriptor(idx: int, vid: int, pid: int, **overrides) -> DeviceInfo:

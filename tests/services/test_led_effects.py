@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from trcc.core.models import HardwareMetrics, LEDMode, LEDState, LEDZoneState
-from trcc.services.led_effects import LEDEffectEngine
+from trcc.legacy.core.models import HardwareMetrics, LEDMode, LEDState, LEDZoneState
+from trcc.legacy.services.led_effects import LEDEffectEngine
 
 
 def _make_engine(state: LEDState | None = None,
@@ -138,7 +138,7 @@ class TestColorfulMode:
 
 
 class TestRainbowMode:
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_uses_color_table(self, mock_ce):
         table = [(i, 0, 0) for i in range(768)]
         mock_ce.get_table.return_value = table
@@ -147,7 +147,7 @@ class TestRainbowMode:
         assert len(colors) == 3
         mock_ce.get_table.assert_called_once()
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_timer_advances_by_4(self, mock_ce):
         table = [(0, 0, 0)] * 768
         mock_ce.get_table.return_value = table
@@ -156,7 +156,7 @@ class TestRainbowMode:
         engine._tick_rainbow_for(1)
         assert state.rgb_timer == 4
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_per_segment_offset(self, mock_ce):
         """Each segment gets a different color from the table."""
         table = [(i, 0, 0) for i in range(768)]
@@ -176,7 +176,7 @@ class TestRainbowMode:
 class TestTempLinkedMode:
     """Tick path gated on ``HardwareMetrics._populated`` (metrics-unification)."""
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_cpu_temp_source(self, mock_ce):
         mock_ce.color_for_value.return_value = (255, 0, 0)
         metrics = HardwareMetrics(cpu_temp=75.0, _populated={'cpu_temp'})
@@ -187,7 +187,7 @@ class TestTempLinkedMode:
         mock_ce.color_for_value.assert_called_once_with(
             75.0, mock_ce.TEMP_GRADIENT)
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_gpu_temp_source(self, mock_ce):
         mock_ce.color_for_value.return_value = (0, 0, 255)
         metrics = HardwareMetrics(gpu_temp=80.0, _populated={'gpu_temp'})
@@ -206,7 +206,7 @@ class TestTempLinkedMode:
 class TestLoadLinkedMode:
     """Same ``_populated`` gating as temp-linked mode."""
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_cpu_load(self, mock_ce):
         mock_ce.color_for_value.return_value = (0, 255, 0)
         metrics = HardwareMetrics(cpu_percent=45.0, _populated={'cpu_percent'})
@@ -216,7 +216,7 @@ class TestLoadLinkedMode:
         mock_ce.color_for_value.assert_called_once_with(
             45.0, mock_ce.LOAD_GRADIENT)
 
-    @patch('trcc.core.color.ColorEngine')
+    @patch('trcc.legacy.core.color.ColorEngine')
     def test_gpu_load(self, mock_ce):
         mock_ce.color_for_value.return_value = (128, 128, 0)
         metrics = HardwareMetrics(gpu_usage=90.0, _populated={'gpu_usage'})
@@ -337,7 +337,7 @@ class TestMultiZone:
         assert len(colors) == 2
         assert colors == [(255, 0, 0)] * 2
 
-    @patch('trcc.core.color.ColorEngine.color_for_value')
+    @patch('trcc.legacy.core.color.ColorEngine.color_for_value')
     def test_per_zone_temp_linked_uses_zone_metric_source(self, mock_cfv):
         """PA120-style: zone 0 uses CPU temp, zone 2 uses GPU temp."""
         # Return different colors for different temp values
@@ -361,7 +361,7 @@ class TestMultiZone:
         assert colors[0] == (50, 0, 0)
         assert colors[2] == (80, 0, 0)
 
-    @patch('trcc.core.color.ColorEngine.color_for_value')
+    @patch('trcc.legacy.core.color.ColorEngine.color_for_value')
     def test_per_zone_temp_linked_fallback_to_global(self, mock_cfv):
         """Without metric_sources, all zones use global temp_source."""
         mock_cfv.side_effect = lambda val, _: (val, 0, 0)

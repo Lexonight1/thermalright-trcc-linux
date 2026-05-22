@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-MODULE = 'trcc.adapters.device.macos.detector'
+MODULE = 'trcc.legacy.adapters.device.macos.detector'
 
 
 class TestMacOSDetector:
@@ -11,7 +11,7 @@ class TestMacOSDetector:
     @patch(f'{MODULE}.usb', create=True)
     def test_detects_known_hid_device(self, mock_usb_mod):
         """Known HID LCD device is detected via pyusb."""
-        from trcc.adapters.device.detector import _HID_LCD_DEVICES
+        from trcc.legacy.adapters.device.detector import _HID_LCD_DEVICES
 
         if not _HID_LCD_DEVICES:
             return
@@ -28,8 +28,8 @@ class TestMacOSDetector:
                 return iter([mock_dev]) if find_all else mock_dev
             return iter(()) if find_all else None
 
-        with patch('trcc.adapters.device._pyusb_find.find', side_effect=mock_find):
-            from trcc.adapters.device.macos.detector import MacOSDeviceDetector
+        with patch('trcc.legacy.adapters.device._pyusb_find.find', side_effect=mock_find):
+            from trcc.legacy.adapters.device.macos.detector import MacOSDeviceDetector
             devices = MacOSDeviceDetector.detect()
 
         matching = [d for d in devices if d.vid == vid and d.pid == pid]
@@ -72,7 +72,7 @@ class TestGetUsbTree:
             returncode=0,
             stdout=json.dumps({'SPUSBDataType': [{'_name': 'USB 3.0 Bus'}]}),
         )
-        from trcc.adapters.device.macos.detector import get_usb_tree
+        from trcc.legacy.adapters.device.macos.detector import get_usb_tree
         tree = get_usb_tree()
         assert len(tree) == 1
         assert tree[0]['_name'] == 'USB 3.0 Bus'
@@ -85,5 +85,5 @@ class TestGetUsbTree:
         # (OSError, SubprocessError, ValueError, KeyError); FileNotFoundError
         # is the realistic "system_profiler not installed" mode.
         mock_run.side_effect = FileNotFoundError("no system_profiler")
-        from trcc.adapters.device.macos.detector import get_usb_tree
+        from trcc.legacy.adapters.device.macos.detector import get_usb_tree
         assert get_usb_tree() == []

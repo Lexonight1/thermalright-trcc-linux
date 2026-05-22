@@ -1,579 +1,568 @@
-"""LCD display control endpoints — brightness, rotation, color, mask, overlay, preview."""
+"""/devices/{key}/display router — orientation, brightness, theme."""
 from __future__ import annotations
 
-import asyncio
-import hmac
-import json
-import logging
-import uuid
 from pathlib import Path
 
-from fastapi import (
-    APIRouter,
-    Form,
-    HTTPException,
-    UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
-)
-from fastapi.responses import Response
+from fastapi import APIRouter, HTTPException, Request
 
-from trcc.ui.api.models import (
+from ...core.commands import (
+    AddOverlayElement,
+    ApplyMask,
+    ConfigureSlideshow,
+    DeleteOverlayElement,
+    EnableOverlay,
+    FlashOverlayElement,
+    KeepAliveLoop,
+    LcdSnapshot,
+    ListMasks,
+    LoadTheme,
+    LoopVideo,
+    PauseVideo,
+    PlayVideo,
+    RenderAndSend,
+    RestoreLastTheme,
+    SeekVideo,
+    SendColor,
+    SetBackgroundMode,
+    SetBrightness,
+    SetFitMode,
+    SetMaskPosition,
+    SetMaskVisible,
+    SetOrientation,
+    SetOverlayBackground,
+    SetOverlayConfig,
+    SetSlideshow,
+    SetSplitMode,
+    StopVideo,
+    UpdateOverlayElement,
+    UploadBootAnimation,
+    UploadCustomMask,
+)
+from ._shared import (
+    http_error_if_failed,
+    to_background_mode_response,
+    to_boot_animation_response,
+    to_brightness_response,
+    to_fit_mode_response,
+    to_keepalive_response,
+    to_lcd_snapshot_response,
+    to_loop_video_response,
+    to_mask_apply_response,
+    to_mask_position_response,
+    to_mask_upload_response,
+    to_mask_visibility_response,
+    to_masks_list_response,
+    to_orientation_response,
+    to_overlay_background_response,
+    to_overlay_config_response,
+    to_overlay_element_delete_response,
+    to_overlay_element_response,
+    to_overlay_response,
+    to_pause_video_response,
+    to_render_response,
+    to_seek_video_response,
+    to_send_response,
+    to_slideshow_response,
+    to_split_mode_response,
+    to_theme_response,
+    to_video_response,
+)
+from .schemas import (
+    BackgroundModeRequest,
+    BackgroundModeResponse,
+    BootAnimationRequest,
+    BootAnimationResponse,
     BrightnessRequest,
-    HexColorRequest,
-    RotationRequest,
-    ScreencastRequest,
-    ScreencastStatusResponse,
-    SplitRequest,
-    VideoStatusResponse,
-    dispatch_result,
-    parse_hex_or_400,
+    BrightnessResponse,
+    ColorRequest,
+    FitModeRequest,
+    FitModeResponse,
+    KeepaliveRequest,
+    KeepaliveResponse,
+    LcdSnapshotResponse,
+    LoopVideoRequest,
+    LoopVideoResponse,
+    MaskApplyRequest,
+    MaskApplyResponse,
+    MaskPositionRequest,
+    MaskPositionResponse,
+    MasksListResponse,
+    MaskUploadRequest,
+    MaskUploadResponse,
+    MaskVisibilityRequest,
+    MaskVisibilityResponse,
+    OrientationRequest,
+    OrientationResponse,
+    OverlayBackgroundRequest,
+    OverlayBackgroundResponse,
+    OverlayConfigRequest,
+    OverlayConfigResponse,
+    OverlayElementAddRequest,
+    OverlayElementDeleteResponse,
+    OverlayElementResponse,
+    OverlayElementUpdateRequest,
+    OverlayFlashRequest,
+    OverlayRequest,
+    OverlayResponse,
+    PauseVideoRequest,
+    PauseVideoResponse,
+    PlayVideoRequest,
+    RenderResponse,
+    SeekVideoRequest,
+    SeekVideoResponse,
+    SendResponse,
+    SlideshowConfigureRequest,
+    SlideshowResponse,
+    SlideshowToggleRequest,
+    SplitModeRequest,
+    SplitModeResponse,
+    ThemeRequest,
+    ThemeResponse,
+    VideoResponse,
 )
 
-log = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/display", tags=["display"])
+router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
 
 
-def _get_display():
-    """Get the active device, raise 409 if not connected."""
-    from trcc.ui.api import _device_dispatcher
-
-    if not _device_dispatcher or not _device_dispatcher.connected:
-        raise HTTPException(status_code=409, detail="No device selected. POST /devices/{id}/select first.")
-    return _device_dispatcher
-
-
-
-def _result(result) -> dict:
-    """Return asdict(result) or raise HTTPException on failure."""
-    from dataclasses import asdict
-    if not result.success:
-        raise HTTPException(status_code=400, detail=result.error or 'failed')
-    return asdict(result)
+@router.post("/orientation", response_model=OrientationResponse)
+def set_orientation(key: str, body: OrientationRequest,
+                    request: Request) -> OrientationResponse:
+    result = request.app.state.trcc.dispatch(
+        SetOrientation(key=key, degrees=body.degrees),
+    )
+    http_error_if_failed(result)
+    return to_orientation_response(result)
 
 
-@router.post("/color")
-def set_color(body: HexColorRequest, lcd: int = 0) -> dict:
-    """Send solid color to LCD."""
-    from trcc._boot import trcc
-    from trcc.ui.api import stop_overlay_loop, stop_video_playback
-
-    stop_video_playback()
-    stop_overlay_loop()
-    r, g, b = parse_hex_or_400(body.hex)
-    return _result(trcc().lcd.send_color(lcd, r, g, b))
+@router.post("/brightness", response_model=BrightnessResponse)
+def set_brightness(key: str, body: BrightnessRequest,
+                   request: Request) -> BrightnessResponse:
+    result = request.app.state.trcc.dispatch(
+        SetBrightness(key=key, percent=body.percent),
+    )
+    http_error_if_failed(result)
+    return to_brightness_response(result)
 
 
-@router.post("/brightness")
-def set_brightness(body: BrightnessRequest, lcd: int = 0) -> dict:
-    """Set display brightness (1=25%, 2=50%, 3=100%). Persists to config."""
-    from trcc._boot import trcc
-    return _result(trcc().lcd.set_brightness(lcd, body.level))
+@router.post("/theme", response_model=ThemeResponse)
+def load_theme(key: str, body: ThemeRequest,
+               request: Request) -> ThemeResponse:
+    # Whitelist by basename (CodeQL py/path-injection sanitizer barrier).
+    # Themes are flat dirs directly under ``user_content_dir`` (see
+    # ThemeService.list — only top-level subdirs with config.json /
+    # config1.dc count). We enumerate the trusted root once and look
+    # up by basename, so the Path passed to LoadTheme comes entirely
+    # from ``iterdir()`` — no user-controlled component flows into a
+    # filesystem call.
+    platform = request.app.state.trcc.platform
+    allowed_root = platform.user_content_dir().resolve(strict=True)
+    requested_name = Path(body.path).name
+    if not requested_name:
+        raise HTTPException(400, "Theme path required")
+    themes = {p.name: p for p in allowed_root.iterdir() if p.is_dir()}
+    candidate = themes.get(requested_name)
+    if candidate is None:
+        raise HTTPException(400, "Unknown theme")
+
+    result = request.app.state.trcc.dispatch(
+        LoadTheme(key=key, path=candidate),
+    )
+    http_error_if_failed(result)
+    return to_theme_response(result)
 
 
-@router.post("/rotation")
-def set_rotation(body: RotationRequest, lcd: int = 0) -> dict:
-    """Set display rotation (0, 90, 180, 270). Persists to config."""
-    from trcc._boot import trcc
-    return _result(trcc().lcd.set_rotation(lcd, body.degrees))
+@router.post("/fit-mode", response_model=FitModeResponse)
+def set_fit_mode(key: str, body: FitModeRequest,
+                 request: Request) -> FitModeResponse:
+    result = request.app.state.trcc.dispatch(
+        SetFitMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_fit_mode_response(result)
 
 
-@router.post("/split")
-def set_split(body: SplitRequest, lcd: int = 0) -> dict:
-    """Set split mode (0=off, 1-3=Dynamic Island). Persists to config."""
-    from trcc._boot import trcc
-    return _result(trcc().lcd.set_split_mode(lcd, body.mode))
+@router.post("/overlay", response_model=OverlayResponse)
+def set_overlay(key: str, body: OverlayRequest,
+                request: Request) -> OverlayResponse:
+    result = request.app.state.trcc.dispatch(
+        EnableOverlay(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_overlay_response(result)
 
 
-@router.post("/reset")
-def reset_display(lcd: int = 0) -> dict:
-    """Reset device by sending solid red frame."""
-    from trcc._boot import trcc
-    from trcc.ui.api import stop_overlay_loop, stop_video_playback
+@router.post("/mask", response_model=MaskApplyResponse)
+def apply_mask(key: str, body: MaskApplyRequest,
+                request: Request) -> MaskApplyResponse:
+    """Apply a user-supplied mask.
 
-    stop_video_playback()
-    stop_overlay_loop()
-    return _result(trcc().lcd.reset(lcd))
-
-
-@router.post("/mask")
-async def load_mask(image: UploadFile, lcd: int = 0) -> dict:
-    """Upload and apply mask overlay (PNG)."""
-    import tempfile
+    Path is whitelisted by basename within the user_content_dir/masks
+    directory — mirrors the legacy theme-load CodeQL sanitizer so the
+    Path passed to the Command comes entirely from a trusted iterdir().
+    """
     from pathlib import Path
 
-    from trcc._boot import trcc
-
-    data = await image.read()
-    if len(data) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Mask image exceeds 10 MB limit")
-
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-        tmp.write(data)
-        tmp_path = Path(tmp.name)
-    try:
-        return _result(trcc().lcd.apply_mask(lcd, tmp_path))
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-
-@router.post("/overlay")
-async def render_overlay(dc_path: str, send: bool = True) -> dict:
-    """Render overlay from DC config path and optionally send to device."""
-    import os
-
-    from trcc._boot import trcc as _trcc
-
-    # Validate path is within the data directory — prevent traversal
-
-    if '\0' in dc_path:
-        raise HTTPException(status_code=400, detail="Invalid overlay path")
-    allowed_dir = os.path.realpath(str(_trcc().settings.user_data_dir))
-    # Resolve to canonical path — handles both absolute and relative input
-    safe_path = os.path.realpath(os.path.join(allowed_dir, dc_path))
-    if not safe_path.startswith(allowed_dir + os.sep) and safe_path != allowed_dir:
-        raise HTTPException(status_code=400, detail="Invalid overlay path")
-
-
-    _get_display()
-    result = _get_display().render_overlay_from_dc(safe_path, send=send)
-    return dispatch_result(result)
-
-
-@router.get("/status")
-def display_status(lcd: int = 0) -> dict:
-    """Backward-compat status — connected + resolution + device path.
-
-    New callers should use /display/snapshot for the full typed state.
-    """
-    from trcc._boot import trcc
-    snap = trcc().lcd.snapshot(lcd)
-    # pylint: disable=protected-access
-    dev = trcc()._lcd_devices[lcd] if lcd < len(trcc()._lcd_devices) else None
-    device_path = dev.device_path if dev else None
-    return {
-        "connected": snap.connected,
-        "resolution": list(snap.resolution),
-        "device_path": device_path,
-    }
-
-
-@router.get("/snapshot")
-def display_snapshot(lcd: int = 0) -> dict:
-    """Full LCD snapshot via Trcc — all state in one call."""
-    from dataclasses import asdict
-
-    from trcc._boot import trcc
-    return asdict(trcc().lcd.snapshot(lcd))
-
-
-# ── Video playback endpoints ──────────────────────────────────────────
-
-
-@router.post("/video/stop")
-def video_stop() -> dict:
-    """Stop background video playback."""
-    from trcc.ui.api import stop_video_playback
-
-    stop_video_playback()
-    return {"success": True, "message": "Video playback stopped"}
-
-
-@router.post("/video/pause")
-def video_pause() -> dict:
-    """Toggle pause on background video playback."""
-    from trcc.ui.api import _media_service, pause_video_playback
-
-    if not _media_service:
-        raise HTTPException(status_code=409, detail="No video playing")
-    pause_video_playback()
-    return {"success": True, "paused": not _media_service.is_playing}
-
-
-@router.get("/video/status")
-def video_status() -> VideoStatusResponse:
-    """Get current video playback state."""
-    from trcc.core.models import PlaybackState
-    from trcc.ui.api import _media_service
-
-    if not _media_service:
-        return VideoStatusResponse()
-
-    state = _media_service.state
-    return VideoStatusResponse(
-        playing=state.state == PlaybackState.PLAYING,
-        paused=state.state == PlaybackState.PAUSED,
-        progress=state.progress,
-        current_time=state.current_time_str,
-        total_time=state.total_time_str,
-        fps=state.fps,
-        source=str(_media_service.source_path or ""),
-        loop=state.loop,
+    from fastapi import HTTPException
+    platform = request.app.state.trcc.platform
+    masks_root = (platform.paths().user_content_dir() / "masks").resolve()
+    if not masks_root.is_dir():
+        raise HTTPException(400, "masks directory missing")
+    requested_name = Path(body.path).name
+    if not requested_name:
+        raise HTTPException(400, "mask path required")
+    candidates = {p.name: p for p in masks_root.iterdir() if p.is_file()}
+    chosen = candidates.get(requested_name)
+    if chosen is None:
+        raise HTTPException(400, f"unknown mask: {requested_name!r}")
+    result = request.app.state.trcc.dispatch(
+        ApplyMask(key=key, path=chosen),
     )
+    http_error_if_failed(result)
+    return to_mask_apply_response(result)
 
 
-# ── Test endpoint ─────────────────────────────────────────────────────
+@router.post("/mask-position", response_model=MaskPositionResponse)
+def set_mask_position(key: str, body: MaskPositionRequest,
+                      request: Request) -> MaskPositionResponse:
+    result = request.app.state.trcc.dispatch(
+        SetMaskPosition(key=key, x=body.x, y=body.y),
+    )
+    http_error_if_failed(result)
+    return to_mask_position_response(result)
 
 
-@router.post("/test")
-def test_display() -> dict:
-    """Send a color cycle test to the LCD device.
-
-    Cycles through 7 colors (red, green, blue, yellow, magenta, cyan, white),
-    sending each as a solid frame with a 1-second pause between them.
-    """
-    import time
-
-    import trcc.ui.api as api
-
-    lcd = _get_display()
-    api.stop_video_playback()
-    api.stop_overlay_loop()
-
-    w, h = lcd.resolution  # type: ignore[union-attr]
-
-    colors = [
-        (255, 0, 0, "Red"),
-        (0, 255, 0, "Green"),
-        (0, 0, 255, "Blue"),
-        (255, 255, 0, "Yellow"),
-        (255, 0, 255, "Magenta"),
-        (0, 255, 255, "Cyan"),
-        (255, 255, 255, "White"),
-    ]
-
-    from trcc.services import ImageService
-
-    lcd = _get_display()
-    for r, g, b, _name in colors:
-        img = ImageService.solid_color(r, g, b, w, h)
-        lcd.send_color(r, g, b)
-        time.sleep(1)
-
-    # Update preview with last frame
-    api.set_current_image(img)  # type: ignore[possibly-undefined]
-
-    return {"success": True, "message": f"Test complete — cycled {len(colors)} colors on {w}x{h}"}
+@router.post("/mask-visible", response_model=MaskVisibilityResponse)
+def set_mask_visible(key: str, body: MaskVisibilityRequest,
+                     request: Request) -> MaskVisibilityResponse:
+    result = request.app.state.trcc.dispatch(
+        SetMaskVisible(key=key, visible=body.visible),
+    )
+    http_error_if_failed(result)
+    return to_mask_visibility_response(result)
 
 
-# ── Upload endpoint ───────────────────────────────────────────────────
+@router.post("/split-mode", response_model=SplitModeResponse)
+def set_split_mode(key: str, body: SplitModeRequest,
+                   request: Request) -> SplitModeResponse:
+    result = request.app.state.trcc.dispatch(
+        SetSplitMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_split_mode_response(result)
 
-_ALLOWED_UPLOAD_SUFFIXES = frozenset({
-    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp',
-    '.mp4', '.zt', '.webm', '.avi', '.mkv', '.mov',
+
+@router.post("/play-video", response_model=VideoResponse)
+def play_video(key: str, body: PlayVideoRequest,
+                request: Request) -> VideoResponse:
+    """Start a video playback override on the device."""
+    from pathlib import Path as _Path
+    result = request.app.state.trcc.dispatch(
+        PlayVideo(key=key, path=_Path(body.path), fps=body.fps),
+    )
+    http_error_if_failed(result)
+    return to_video_response(result)
+
+
+@router.post("/stop-video", response_model=VideoResponse)
+def stop_video(key: str, request: Request) -> VideoResponse:
+    """Clear the video playback override on the device."""
+    result = request.app.state.trcc.dispatch(StopVideo(key=key))
+    http_error_if_failed(result)
+    return to_video_response(result)
+
+
+_BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
 })
 
 
-@router.post("/upload")
-async def upload_file(file: UploadFile) -> dict:
-    """Upload an image or video file to the server for use with create-theme.
+@router.post("/boot-animation", response_model=BootAnimationResponse)
+def upload_boot_animation(key: str, body: BootAnimationRequest,
+                          request: Request) -> BootAnimationResponse:
+    """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
 
-    Returns the server-side path to pass as ``background`` or ``mask`` in
-    subsequent ``POST /display/create-theme`` calls.
+    *frames_dir* must point to an existing directory; we enumerate it
+    via iterdir() and dispatch only image files we found.  No user-
+    supplied path component flows into a filesystem call beyond the
+    initial directory resolution.
     """
-    from trcc._boot import trcc as _trcc
+    frames_path = Path(body.frames_dir).resolve()
+    if not frames_path.is_dir():
+        raise HTTPException(400, f"frames_dir is not a directory: {body.frames_dir!r}")
 
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in _ALLOWED_UPLOAD_SUFFIXES:
+    frame_paths = sorted(
+        p for p in frames_path.iterdir()
+        if p.is_file() and p.suffix.lower() in _BOOT_ANIM_IMAGE_EXTS
+    )
+    if not frame_paths:
+        raise HTTPException(400, "No supported image frames found in frames_dir")
+    if len(frame_paths) > 248:
         raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_SUFFIXES)}",
+            400, f"Too many frames: {len(frame_paths)} (max 248)",
         )
 
-    uploads_dir = _trcc().settings.user_data_dir / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
-    content = await file.read()
-    dest.write_bytes(content)
-
-    log.info("Uploaded %s → %s (%d bytes)", file.filename, dest, len(content))
-    return {"path": str(dest), "filename": dest.name, "size": len(content)}
+    delays = [body.delay_ds] * len(frame_paths)
+    result = request.app.state.trcc.dispatch(UploadBootAnimation(
+        key=key, frame_paths=frame_paths, delays_ds=delays,
+    ))
+    http_error_if_failed(result)
+    return to_boot_animation_response(result)
 
 
-# ── Create-theme endpoint ─────────────────────────────────────────────
-
-_VIDEO_SUFFIXES = frozenset({'.mp4', '.zt', '.webm', '.avi', '.mkv'})
-
-
-def _is_animated(path: Path) -> bool:
-    """Return True if path is a video or an animated GIF (nb_frames > 1)."""
-    suffix = path.suffix.lower()
-    if suffix in _VIDEO_SUFFIXES:
-        return True
-    if suffix == '.gif':
-        from trcc.adapters.infra.media_player import is_animated_gif
-        try:
-            return is_animated_gif(path)
-        except Exception as e:
-            log.warning("GIF animation check failed for %s: %s", path, e)
-    return False
-
-
-@router.post("/create-theme")
-async def create_theme(
-    background: UploadFile,
-    mask: UploadFile | None = None,
-    overlay: UploadFile | None = None,
-    metric: list[str] = Form(default=[]),
-    loop: bool = Form(True),
-    font_size: int = Form(14),
-    color: str = Form("ffffff"),
-    font: str = Form("Microsoft YaHei"),
-    font_style: str = Form("regular"),
-    temp_unit: int = Form(0),
-    time_format: int = Form(0),
-    date_format: int = Form(0),
-) -> dict:
-    """Send a custom theme to the LCD device via file upload.
-
-    Upload ``background`` (image or video), optional ``mask`` (PNG), and
-    optional ``overlay`` (JSON overlay config file) as multipart form files.
-    Alternatively use repeatable ``metric`` form fields instead of an overlay file.
-    Auto-detects animated backgrounds (video, animated GIF).
-
-    ``metric`` is repeatable: ``metric=cpu_temp:10,20`` ``metric=time:150,10:ffffff:24``
-
-    Metric spec format: ``key:x,y[:color[:size[:font[:style]]]]``
-
-    ``overlay`` JSON format: ``{"elements": [{"key": "cpu_temp", "x": 10, "y": 20, ...}]}``
-    """
-    import trcc.ui.api as api
-    from trcc._boot import trcc as _trcc
-    from trcc.core.models import build_overlay_config
-    from trcc.services import ImageService
-
-    lcd = _get_display()
-    api.stop_video_playback()
-    api.stop_overlay_loop()
-
-    # Save uploads to ~/.trcc/uploads/. Path() cast keeps types tight
-    # past the Trcc.settings → Any boundary.
-    uploads_dir = Path(_trcc().settings.user_data_dir) / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
-    bg_suffix = Path(background.filename or "").suffix.lower() or ".jpg"
-    bg_path = uploads_dir / f"{uuid.uuid4().hex}{bg_suffix}"
-    bg_path.write_bytes(await background.read())
-
-    mask_path: Path | None = None
-    if mask is not None:
-        mask_path = uploads_dir / f"{uuid.uuid4().hex}.png"
-        mask_path.write_bytes(await mask.read())
-
-    w, h = lcd.resolution  # type: ignore[union-attr]
-    animated = _is_animated(bg_path)
-
-    overlay_config = None
-    if overlay is not None:
-        # Uploaded JSON overlay config takes precedence over metric strings
-        try:
-            overlay_config = json.loads(await overlay.read())
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid overlay JSON: {e}") from e
-    elif metric:
-        try:
-            overlay_config = build_overlay_config(
-                metric,
-                default_color=color,
-                default_font_size=font_size,
-                default_font=font,
-                default_style=font_style,
-                temp_unit=temp_unit,
-                time_format=time_format,
-                date_format=date_format,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    if animated:
-        ok = api.start_video_playback(str(bg_path), w, h, loop=loop)
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to start video playback")
-        return {"success": True, "animated": True, "loop": loop, "resolution": f"{w}x{h}"}
-
-    # Static image
-    img = ImageService.open_and_resize(bg_path, w, h)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Failed to open background image")
-
-    if mask_path:
-        mask_result = _get_display().load_mask_standalone(str(mask_path))
-        if not mask_result.get("success"):
-            raise HTTPException(status_code=400, detail=mask_result.get("error", "Mask load failed"))
-        img = mask_result.get("image", img)
-
-    lcd_device = _get_display()
-
-    # Load background into DisplayService state
-    lcd_device.load_image(bg_path)
-
-    if overlay_config:
-        lcd_device.set_config(overlay_config)
-        lcd_device.enable_overlay(True)
-        result = lcd_device.render_and_send()
-        frame = result.get("image", img)
-        api.set_current_image(frame)
-    else:
-        lcd_device.send(img)
-        api.set_current_image(img)
-
-    return {"success": True, "animated": False, "resolution": f"{w}x{h}"}
-
-
-# ── Screencast endpoints ──────────────────────────────────────────────
-
-
-@router.post("/screencast/start")
-def screencast_start(body: ScreencastRequest) -> dict:
-    """Start streaming screen capture to LCD device.
-
-    Auto-detects backend: ffmpeg x11grab on X11, PipeWire on Wayland.
-    Mutually exclusive with video playback and overlay loops.
-    """
-    import trcc.ui.api as api
-
-    _get_display()
-    result = api.start_screencast(body.x, body.y, body.w, body.h, body.fps)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Screencast failed"))
-    return result
-
-
-@router.post("/screencast/stop")
-def screencast_stop() -> dict:
-    """Stop screen capture streaming."""
-    from trcc.ui.api import stop_screencast
-
-    stop_screencast()
-    return {"success": True, "message": "Screencast stopped"}
-
-
-@router.get("/screencast/status")
-def screencast_status() -> ScreencastStatusResponse:
-    """Check current screencast state."""
-    from trcc.ui.api import _screencast_frames, _screencast_params, _screencast_stop_event
-
-    running = (_screencast_stop_event is not None
-               and not _screencast_stop_event.is_set())
-    params = _screencast_params or {}
-    return ScreencastStatusResponse(
-        running=running,
-        backend=params.get("backend", ""),
-        fps=params.get("fps", 0),
-        region={k: params[k] for k in ("x", "y", "w", "h") if k in params},
-        frames=_screencast_frames,
+@router.post("/color", response_model=SendResponse)
+def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
+    """Push a solid-color frame to a connected LCD device."""
+    result = request.app.state.trcc.dispatch(
+        SendColor(key=key, r=body.r, g=body.g, b=body.b),
     )
+    http_error_if_failed(result)
+    return to_send_response(result)
 
 
-# ── Preview helpers ───────────────────────────────────────────────────
+@router.post("/tick", response_model=RenderResponse)
+def tick(key: str, request: Request) -> RenderResponse:
+    """Render the active theme with live sensors + send one frame.
 
-
-def _encode_frame(frame: object, fmt: str = 'JPEG', quality: int = 85) -> bytes | None:
-    """Encode a frame (QImage or raw bytes) to image bytes."""
-    from PySide6.QtGui import QImage
-
-    if isinstance(frame, bytes):
-        return frame  # Already encoded (IPC path)
-    if isinstance(frame, QImage):
-        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-        buf = QByteArray()
-        qbuf = QBuffer(buf)
-        qbuf.open(QIODevice.OpenModeFlag.ReadWrite)  # PNG needs seek
-        frame.save(qbuf, fmt, quality)  # type: ignore[call-overload]
-        qbuf.close()
-        return bytes(buf.data())
-    return None
-
-
-def _get_lcd_frame():
-    """Return the current in-process LCD frame (set by on_frame_sent capture)."""
-    from trcc.ui.api import _current_image
-    return _current_image
-
-
-# ── Preview endpoints ─────────────────────────────────────────────────
-
-
-@router.get("/preview")
-def display_preview() -> Response:
-    """Return the current LCD frame as a PNG image."""
-    frame = _get_lcd_frame()
-    if frame is None:
-        raise HTTPException(status_code=503, detail="No image available")
-
-    try:
-        data = _encode_frame(frame, fmt='PNG')
-    except Exception:
-        log.warning("Preview encode failed (frame type: %s)", type(frame).__name__, exc_info=True)
-        raise HTTPException(status_code=503, detail="Frame encode failed") from None
-    if data is None:
-        raise HTTPException(status_code=503, detail="Frame encode failed")
-    return Response(content=data, media_type="image/png")
-
-
-@router.websocket("/preview/stream")
-async def preview_stream(websocket: WebSocket):
-    """Live JPEG stream of the current LCD frame — like a screen capture.
-
-    Reads the LCD frame at a steady framerate and sends it as binary JPEG.
-    Frames come from the on_frame_sent capture (or, in daemon mode, from
-    a future TrccProxy event subscription — not wired yet).
-
-    Auth: ``?token=`` query param (checked against configured API token).
-    Client control: send JSON ``{"fps": N}``, ``{"quality": N}``, ``{"pause": bool}``.
+    Stateless — the caller (scheduled job, cron, client-side timer)
+    polls this at AppSettings.refresh_interval_s or whatever cadence
+    they like.  Uses the scene cache so ticks are cheap.
     """
-    from trcc.ui.api import _api_token
+    result = request.app.state.trcc.dispatch(RenderAndSend(key=key))
+    http_error_if_failed(result)
+    return to_render_response(result)
 
-    # ── Auth ──────────────────────────────────────────────────────────
-    if _api_token:
-        query_token = websocket.query_params.get("token", "")
-        if not hmac.compare_digest(query_token, _api_token):
-            await websocket.close(code=4001, reason="Unauthorized")
-            return
 
-    await websocket.accept()
 
-    fps = 10
-    quality = 85
-    paused = False
+@router.post("/restore-theme", response_model=ThemeResponse)
+def restore_theme(key: str, request: Request) -> ThemeResponse:
+    """Reload the device's persisted theme."""
+    result = request.app.state.trcc.dispatch(RestoreLastTheme(key=key))
+    http_error_if_failed(result)
+    return to_theme_response(result)
 
-    try:
-        while True:
-            # ── Check for client control messages (non-blocking) ──────
-            try:
-                raw = await asyncio.wait_for(
-                    websocket.receive_text(), timeout=1.0 / fps,
-                )
-                try:
-                    msg = json.loads(raw)
-                    if "fps" in msg:
-                        fps = max(1, min(30, int(msg["fps"])))
-                    if "quality" in msg:
-                        quality = max(10, min(100, int(msg["quality"])))
-                    if "pause" in msg:
-                        paused = bool(msg["pause"])
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    pass
-                continue  # restart loop after processing message
-            except asyncio.TimeoutError:
-                pass  # no message — proceed to frame read
 
-            if paused:
-                continue
+@router.get("/snapshot", response_model=LcdSnapshotResponse)
+def snapshot(key: str, request: Request) -> LcdSnapshotResponse:
+    """Return the persisted LCD state for one device."""
+    result = request.app.state.trcc.dispatch(LcdSnapshot(key=key))
+    http_error_if_failed(result)
+    return to_lcd_snapshot_response(result)
 
-            # ── Read current frame directly from source ───────────────
-            from trcc.ui.api import _current_image
-            frame = _current_image
-            if frame is None:
-                continue
 
-            # ── Encode and send ───────────────────────────────────────
-            if (data := _encode_frame(frame, fmt='JPEG', quality=quality)):
-                await websocket.send_bytes(data)
+@router.post("/slideshow", response_model=SlideshowResponse)
+def slideshow_toggle(key: str, body: SlideshowToggleRequest,
+                     request: Request) -> SlideshowResponse:
+    """Turn the device's slideshow on / off."""
+    result = request.app.state.trcc.dispatch(
+        SetSlideshow(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_slideshow_response(result)
 
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        log.debug("Preview stream closed", exc_info=True)
+
+@router.put("/slideshow", response_model=SlideshowResponse)
+def slideshow_configure(key: str, body: SlideshowConfigureRequest,
+                        request: Request) -> SlideshowResponse:
+    """Set the theme list + interval for a device's slideshow."""
+    result = request.app.state.trcc.dispatch(ConfigureSlideshow(
+        key=key,
+        themes=tuple(body.themes) if body.themes is not None else None,
+        interval_s=body.interval_s,
+    ))
+    http_error_if_failed(result)
+    return to_slideshow_response(result)
+
+
+@router.post("/keepalive", response_model=KeepaliveResponse)
+def keepalive(key: str, body: KeepaliveRequest,
+              request: Request) -> KeepaliveResponse:
+    """Run a keepalive burst (resend the last frame N times)."""
+    result = request.app.state.trcc.dispatch(KeepAliveLoop(
+        key=key, count=body.count, interval_s=body.interval_s,
+    ))
+    http_error_if_failed(result)
+    return to_keepalive_response(result)
+
+
+@router.post("/background-mode", response_model=BackgroundModeResponse)
+def background_mode(key: str, body: BackgroundModeRequest,
+                    request: Request) -> BackgroundModeResponse:
+    """Pick what fills the LCD behind overlays (theme/color/transparent)."""
+    result = request.app.state.trcc.dispatch(
+        SetBackgroundMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_background_mode_response(result)
+
+
+@router.post("/overlay-background", response_model=OverlayBackgroundResponse)
+def overlay_background(key: str, body: OverlayBackgroundRequest,
+                       request: Request) -> OverlayBackgroundResponse:
+    """Set the solid background color used when background-mode=color."""
+    result = request.app.state.trcc.dispatch(
+        SetOverlayBackground(key=key, color=body.color),
+    )
+    http_error_if_failed(result)
+    return to_overlay_background_response(result)
+
+
+# ── Overlay element CRUD ─────────────────────────────────────────────
+
+
+@router.post("/overlay-elements", response_model=OverlayElementResponse)
+def overlay_add(key: str, body: OverlayElementAddRequest,
+                request: Request) -> OverlayElementResponse:
+    """Add a user-edited overlay element."""
+    result = request.app.state.trcc.dispatch(AddOverlayElement(
+        key=key, type=body.type, x=body.x, y=body.y,
+        color=body.color, size=body.size,
+        bold=body.bold, italic=body.italic,
+        text=body.text, metric=body.metric, format=body.format,
+        source=body.source, element_id=body.element_id,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.patch(
+    "/overlay-elements/{element_id}",
+    response_model=OverlayElementResponse,
+)
+def overlay_update(key: str, element_id: str,
+                   body: OverlayElementUpdateRequest,
+                   request: Request) -> OverlayElementResponse:
+    """Mutate fields on an existing user-edited overlay element."""
+    result = request.app.state.trcc.dispatch(UpdateOverlayElement(
+        key=key, element_id=element_id,
+        x=body.x, y=body.y, color=body.color, size=body.size,
+        bold=body.bold, italic=body.italic,
+        text=body.text, metric=body.metric, format=body.format,
+        source=body.source,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.delete(
+    "/overlay-elements/{element_id}",
+    response_model=OverlayElementDeleteResponse,
+)
+def overlay_delete(key: str, element_id: str,
+                   request: Request) -> OverlayElementDeleteResponse:
+    """Remove an overlay element by id."""
+    result = request.app.state.trcc.dispatch(
+        DeleteOverlayElement(key=key, element_id=element_id),
+    )
+    http_error_if_failed(result)
+    return to_overlay_element_delete_response(result)
+
+
+@router.post(
+    "/overlay-elements/{element_id}/flash",
+    response_model=OverlayElementResponse,
+)
+def overlay_flash(key: str, element_id: str,
+                  body: OverlayFlashRequest,
+                  request: Request) -> OverlayElementResponse:
+    """Briefly highlight an overlay element in the GUI."""
+    result = request.app.state.trcc.dispatch(FlashOverlayElement(
+        key=key, element_id=element_id, duration_ms=body.duration_ms,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.put(
+    "/overlay-elements",
+    response_model=OverlayConfigResponse,
+)
+def overlay_set_config(key: str, body: OverlayConfigRequest,
+                       request: Request) -> OverlayConfigResponse:
+    """Bulk replace the user-overlay element list."""
+    elements = tuple(e.model_dump() for e in body.elements)
+    result = request.app.state.trcc.dispatch(
+        SetOverlayConfig(key=key, elements=elements),
+    )
+    http_error_if_failed(result)
+    return to_overlay_config_response(result)
+
+
+@router.post("/pause-video", response_model=PauseVideoResponse)
+def pause_video(key: str, body: PauseVideoRequest,
+                request: Request) -> PauseVideoResponse:
+    """Pause / resume video playback."""
+    result = request.app.state.trcc.dispatch(
+        PauseVideo(key=key, paused=body.paused),
+    )
+    http_error_if_failed(result)
+    return to_pause_video_response(result)
+
+
+@router.post("/seek-video", response_model=SeekVideoResponse)
+def seek_video(key: str, body: SeekVideoRequest,
+               request: Request) -> SeekVideoResponse:
+    """Jump to a specific frame."""
+    result = request.app.state.trcc.dispatch(
+        SeekVideo(key=key, frame=body.frame),
+    )
+    http_error_if_failed(result)
+    return to_seek_video_response(result)
+
+
+@router.post("/loop-video", response_model=LoopVideoResponse)
+def loop_video(key: str, body: LoopVideoRequest,
+               request: Request) -> LoopVideoResponse:
+    """Toggle whether playback wraps or sticks at the last frame."""
+    result = request.app.state.trcc.dispatch(
+        LoopVideo(key=key, loop=body.loop),
+    )
+    http_error_if_failed(result)
+    return to_loop_video_response(result)
+
+
+@router.post("/upload-mask", response_model=MaskUploadResponse)
+def upload_mask(key: str, body: MaskUploadRequest,
+                request: Request) -> MaskUploadResponse:
+    """Upload a mask file (server-side path) + apply it."""
+    from pathlib import Path as _Path
+    result = request.app.state.trcc.dispatch(
+        UploadCustomMask(key=key, source=_Path(body.source)),
+    )
+    http_error_if_failed(result)
+    return to_mask_upload_response(result)
+
+
+# ── Meta routes (no device key in path) ──────────────────────────────
+
+
+meta_router = APIRouter(prefix="/display", tags=["display"])
+
+
+@meta_router.get("/masks", response_model=MasksListResponse)
+def list_masks(
+    request: Request,
+    key: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> MasksListResponse:
+    """List masks for a device resolution.
+
+    Pass either ``?key=vid:pid`` (resolved through the connected
+    device's handshake profile) or ``?width=W&height=H`` for an
+    explicit override.
+    """
+    resolution: tuple[int, int] | None = None
+    if key is not None:
+        device = request.app.state.trcc.devices.get(key)
+        if device is None or device.profile is None:
+            return MasksListResponse(
+                ok=False, directory="", masks=[],
+                message=(f"Device {key} not connected — connect first "
+                         "so we know the target resolution"),
+            )
+        resolution = device.profile.resolution
+    elif width is not None and height is not None:
+        resolution = (width, height)
+    result = request.app.state.trcc.dispatch(ListMasks(resolution=resolution))
+    http_error_if_failed(result)
+    return to_masks_list_response(result)

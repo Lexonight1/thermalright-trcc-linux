@@ -1,1 +1,1 @@
-"""TRCC Adapters — device protocols, system integration, infrastructure."""
+"""Adapter implementations of core ports — USB transports, Platforms, Renderer."""

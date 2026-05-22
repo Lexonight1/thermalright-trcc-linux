@@ -21,16 +21,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from conftest import make_test_surface
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     HardwareMetrics,
     LEDMode,
     LEDState,
     PlaybackState,
 )
-from trcc.services.image import ImageService
-from trcc.services.led import LEDService
-from trcc.services.media import MediaService
-from trcc.services.overlay import OverlayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.led import LEDService
+from trcc.legacy.services.media import MediaService
+from trcc.legacy.services.overlay import OverlayService
 
 # ═══════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -49,7 +49,7 @@ def display_svc():
     mock_devices.selected = None
     overlay = OverlayService(320, 320, renderer=ImageService.renderer())
     media = MediaService()
-    from trcc.services.display import DisplayService
+    from trcc.legacy.services.display import DisplayService
     return DisplayService(devices=mock_devices, overlay=overlay, media=media)
 
 
@@ -325,7 +325,7 @@ class TestConfigCPU:
 
     def test_load_config_cpu(self, tmp_config, perf):
         """load_config() under 1ms/iter."""
-        from trcc.conf import load_config, save_config
+        from trcc.legacy.conf import load_config, save_config
         save_config({"devices": {"0": {"vid_pid": "0402_3922"}}})
 
         limit = 0.001
@@ -335,7 +335,7 @@ class TestConfigCPU:
 
     def test_save_config_cpu(self, tmp_config, perf):
         """save_config() under 1ms/iter."""
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         data = {"devices": {"0": {"vid_pid": "0402_3922", "brightness": 80}}}
 
         limit = 0.001

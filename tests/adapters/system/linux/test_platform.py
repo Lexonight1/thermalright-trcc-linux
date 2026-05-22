@@ -5,8 +5,8 @@ concrete Linux adapters are available in the test environment).
 """
 from __future__ import annotations
 
-from trcc.adapters.system.linux_platform import LinuxPlatform
-from trcc.core.ports import Platform, SensorEnumerator
+from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+from trcc.legacy.core.ports import Platform, SensorEnumerator
 
 
 class TestLinuxPlatformIsPlatform:

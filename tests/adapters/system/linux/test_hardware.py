@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from trcc.adapters.system.linux_platform import (
+from trcc.legacy.adapters.system.linux_platform import (
     _DMI_MEMORY_FIELDS,
     _POLKIT_POLICY,
     _get_smart_health,
@@ -238,8 +238,8 @@ class TestPrivilegedCmd:
 class TestGetMemoryInfo:
     """Tests for get_memory_info dmidecode parser."""
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_two_populated_slots(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Two populated DIMMs are both returned with all parsed fields."""
@@ -258,8 +258,8 @@ class TestGetMemoryInfo:
             assert slot['configured_voltage'] == '1.1 V'
             assert slot['memory_technology'] == 'DRAM'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_empty_slots_filtered(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """'No Module Installed' slots are excluded, populated slots kept."""
@@ -268,8 +268,8 @@ class TestGetMemoryInfo:
         assert len(slots) == 2
         assert all(s['manufacturer'] == 'G.Skill' for s in slots)
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_all_empty_falls_back_to_psutil(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """All slots empty → psutil fallback provides basic total."""
@@ -277,14 +277,14 @@ class TestGetMemoryInfo:
         mem_mock = SimpleNamespace(total=34359738368)  # 32 GB
         psutil_mock = MagicMock()
         psutil_mock.virtual_memory.return_value = mem_mock
-        with patch('trcc.adapters.system.linux_platform.psutil', psutil_mock):
+        with patch('trcc.legacy.adapters.system.linux_platform.psutil', psutil_mock):
             slots = get_memory_info()
         assert len(slots) == 1
         assert slots[0]['size'] == '32.0 GB'
         assert slots[0]['type'] == 'Unknown'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_dmidecode_nonzero_returncode_falls_back(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Non-zero returncode from dmidecode triggers psutil fallback."""
@@ -292,13 +292,13 @@ class TestGetMemoryInfo:
         mem_mock = SimpleNamespace(total=17179869184)  # 16 GB
         psutil_mock = MagicMock()
         psutil_mock.virtual_memory.return_value = mem_mock
-        with patch('trcc.adapters.system.linux_platform.psutil', psutil_mock):
+        with patch('trcc.legacy.adapters.system.linux_platform.psutil', psutil_mock):
             slots = get_memory_info()
         assert len(slots) == 1
         assert slots[0]['size'] == '16.0 GB'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_subprocess_exception_returns_empty(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """subprocess.run raising an exception returns empty list when psutil also fails."""
@@ -307,8 +307,8 @@ class TestGetMemoryInfo:
             slots = get_memory_info()
         assert slots == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_timeout_exception_returns_empty(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """subprocess.TimeoutExpired is caught gracefully."""
@@ -317,8 +317,8 @@ class TestGetMemoryInfo:
             slots = get_memory_info()
         assert slots == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_both_dmidecode_and_psutil_fail(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Both dmidecode exception and psutil failure → empty list."""
@@ -328,12 +328,12 @@ class TestGetMemoryInfo:
         # virtual_memory to raise the same exception type as PSUTIL_EXC catches.
         psutil_mock = MagicMock()
         psutil_mock.virtual_memory.side_effect = OSError('no psutil')
-        with patch('trcc.adapters.system.linux_platform.psutil', psutil_mock):
+        with patch('trcc.legacy.adapters.system.linux_platform.psutil', psutil_mock):
             slots = get_memory_info()
         assert slots == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_fields_not_in_dmi_fields_ignored(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Lines with keys not in _DMI_MEMORY_FIELDS are skipped."""
@@ -355,8 +355,8 @@ Memory Device
         assert slots[0]['size'] == '8 GB'
         assert slots[0]['type'] == 'DDR4'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_single_slot_no_trailing_header(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """A single Memory Device block at end of output is still captured."""
@@ -372,8 +372,8 @@ Memory Device
         assert slots[0]['manufacturer'] == 'Crucial'
         assert slots[0]['size'] == '32 GB'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['dmidecode', '-t', 'memory'])
     def test_empty_stdout(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Empty dmidecode stdout (no Memory Device sections) → psutil fallback."""
@@ -381,7 +381,7 @@ Memory Device
         mem_mock = SimpleNamespace(total=8589934592)  # 8 GB
         psutil_mock = MagicMock()
         psutil_mock.virtual_memory.return_value = mem_mock
-        with patch('trcc.adapters.system.linux_platform.psutil', psutil_mock):
+        with patch('trcc.legacy.adapters.system.linux_platform.psutil', psutil_mock):
             slots = get_memory_info()
         assert len(slots) == 1
         assert slots[0]['size'] == '8.0 GB'
@@ -394,8 +394,8 @@ Memory Device
 class TestGetDiskInfo:
     """Tests for get_disk_info lsblk parser."""
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_two_disks_with_smart(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """Two physical disks returned with SMART health data."""
         mock_run.return_value = _make_run_result(LSBLK_JSON)
@@ -410,8 +410,8 @@ class TestGetDiskInfo:
         assert disks[1]['name'] == 'sdb'
         assert disks[1]['type'] == 'HDD'
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_partitions_and_loops_filtered(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """Non-disk entries (partitions, loops) are excluded."""
         mock_run.return_value = _make_run_result(LSBLK_JSON)
@@ -421,8 +421,8 @@ class TestGetDiskInfo:
         assert 'sda1' not in names
         assert 'loop0' not in names
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_disk_without_model_filtered(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """Disk entries with model=None are excluded."""
         data = json.dumps({"blockdevices": [
@@ -433,8 +433,8 @@ class TestGetDiskInfo:
         disks = get_disk_info()
         assert disks == []
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_rotational_hdd_detected(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """rota=True marks disk as HDD."""
         data = json.dumps({"blockdevices": [
@@ -446,8 +446,8 @@ class TestGetDiskInfo:
         assert len(disks) == 1
         assert disks[0]['type'] == 'HDD'
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_ssd_detected_rota_false(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """rota=False marks disk as SSD."""
         data = json.dumps({"blockdevices": [
@@ -458,8 +458,8 @@ class TestGetDiskInfo:
         disks = get_disk_info()
         assert disks[0]['type'] == 'SSD'
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_smart_none_omits_health_key(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """When SMART returns None, 'health' key is not present in disk dict."""
         data = json.dumps({"blockdevices": [
@@ -470,36 +470,36 @@ class TestGetDiskInfo:
         disks = get_disk_info()
         assert 'health' not in disks[0]
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_lsblk_nonzero_returncode(self, mock_run: MagicMock) -> None:
         """Non-zero lsblk returncode returns empty list."""
         mock_run.return_value = _make_run_result(stdout='', returncode=1)
         disks = get_disk_info()
         assert disks == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_lsblk_exception_returns_empty(self, mock_run: MagicMock) -> None:
         """lsblk subprocess exception returns empty list."""
         mock_run.side_effect = FileNotFoundError('lsblk not found')
         disks = get_disk_info()
         assert disks == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_lsblk_timeout_returns_empty(self, mock_run: MagicMock) -> None:
         """lsblk timeout returns empty list."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd='lsblk', timeout=5)
         disks = get_disk_info()
         assert disks == []
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_lsblk_invalid_json_returns_empty(self, mock_run: MagicMock) -> None:
         """Malformed JSON from lsblk is caught and returns empty list."""
         mock_run.return_value = _make_run_result(stdout='not json{{{')
         disks = get_disk_info()
         assert disks == []
 
-    @patch('trcc.adapters.system.linux_platform._get_smart_health')
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._get_smart_health')
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
     def test_empty_blockdevices(self, mock_run: MagicMock, mock_health: MagicMock) -> None:
         """Empty blockdevices list returns no disks."""
         data = json.dumps({"blockdevices": []})
@@ -515,40 +515,40 @@ class TestGetDiskInfo:
 class TestGetSmartHealth:
     """Tests for _get_smart_health smartctl parser."""
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_returns_passed(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """SATA disk with 'overall-health' PASSED."""
         mock_run.return_value = _make_run_result(SMARTCTL_PASSED)
         assert _get_smart_health('sda') == 'PASSED'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_returns_failed(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Disk with FAILED SMART status."""
         mock_run.return_value = _make_run_result(SMARTCTL_FAILED)
         assert _get_smart_health('sda') == 'FAILED'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/nvme0n1'])
     def test_nvme_health_status_passed(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """NVMe disk with 'Health Status: PASSED' (different format)."""
         mock_run.return_value = _make_run_result(SMARTCTL_NVME_PASSED)
         assert _get_smart_health('nvme0n1') == 'PASSED'
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_no_health_line_returns_none(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """No health-related line in output returns None."""
         mock_run.return_value = _make_run_result(SMARTCTL_NO_HEALTH)
         assert _get_smart_health('sda') is None
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_health_line_without_passed_or_failed(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Health line present but with unexpected result string returns None."""
@@ -556,24 +556,24 @@ class TestGetSmartHealth:
         mock_run.return_value = _make_run_result(output)
         assert _get_smart_health('sda') is None
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_empty_stdout_returns_none(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """Empty smartctl output returns None."""
         mock_run.return_value = _make_run_result('')
         assert _get_smart_health('sda') is None
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_exception_returns_none(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """smartctl subprocess exception returns None."""
         mock_run.side_effect = FileNotFoundError('smartctl not found')
         assert _get_smart_health('sda') is None
 
-    @patch('trcc.adapters.system.linux_platform.subprocess.run')
-    @patch('trcc.adapters.system.linux_platform._privileged_cmd',
+    @patch('trcc.legacy.adapters.system.linux_platform.subprocess.run')
+    @patch('trcc.legacy.adapters.system.linux_platform._privileged_cmd',
            return_value=['smartctl', '-H', '/dev/sda'])
     def test_timeout_returns_none(self, mock_cmd: MagicMock, mock_run: MagicMock) -> None:
         """smartctl timeout returns None."""

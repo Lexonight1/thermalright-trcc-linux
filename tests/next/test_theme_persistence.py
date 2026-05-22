@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import ExportTheme, ImportTheme, SaveTheme
-from trcc.next.core.errors import ThemeError
-from trcc.next.core.events import ThemeExported, ThemeImported, ThemeSaved
-from trcc.next.core.models import Theme
-from trcc.next.services.theme import ThemeService
+from trcc.app import App
+from trcc.core.commands import ExportTheme, ImportTheme, SaveTheme
+from trcc.core.errors import ThemeError
+from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
+from trcc.core.models import Theme
+from trcc.services.theme import ThemeService
 
 from .conftest import FakePlatform
 

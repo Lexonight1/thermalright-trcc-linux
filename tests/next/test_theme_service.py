@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.core.errors import ThemeError
-from trcc.next.services.theme import ThemeService
+from trcc.core.errors import ThemeError
+from trcc.services.theme import ThemeService
 
 from .test_dc_reader import _build_dc
 
@@ -119,11 +119,11 @@ def test_background_path_finds_legacy_theme_png(tmp_path: Path) -> None:
 
 
 def test_loads_pre_cutover_filename(tmp_path: Path) -> None:
-    """Themes written by pre-cutover next/ (``trcc-next.json``) still
+    """Themes written by pre-cutover next/ (``trcc.json``) still
     load — the rename to ``trcc.json`` doesn't strand existing themes."""
     theme = tmp_path / "OldName"
     theme.mkdir()
-    (theme / "trcc-next.json").write_text(json.dumps({
+    (theme / "trcc.json").write_text(json.dumps({
         "name": "Pre-cutover", "elements": [], "overlay_enabled": True,
     }), encoding="utf-8")
 
@@ -132,7 +132,7 @@ def test_loads_pre_cutover_filename(tmp_path: Path) -> None:
 
     assert t.name == "Pre-cutover"
     # Old file is left in place — rollback safety, no silent deletion.
-    assert (theme / "trcc-next.json").exists()
+    assert (theme / "trcc.json").exists()
 
 
 def test_loads_legacy_config_json(tmp_path: Path) -> None:
@@ -195,10 +195,10 @@ def test_list_finds_legacy_config_json_themes(tmp_path: Path) -> None:
 
 
 def test_list_finds_pre_cutover_themes(tmp_path: Path) -> None:
-    """``list()`` recognises pre-cutover ``trcc-next.json`` as a marker."""
+    """``list()`` recognises pre-cutover ``trcc.json`` as a marker."""
     theme = tmp_path / "OldStill"
     theme.mkdir()
-    (theme / "trcc-next.json").write_text('{"elements": []}', encoding="utf-8")
+    (theme / "trcc.json").write_text('{"elements": []}', encoding="utf-8")
 
     themes = ThemeService().list(tmp_path)
 

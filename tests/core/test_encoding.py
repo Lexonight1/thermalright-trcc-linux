@@ -10,8 +10,8 @@ import unittest
 
 import pytest
 
-from trcc.core.encoding import byte_order_for, rgb_to_bytes
-from trcc.core.models import FBL_PROFILES
+from trcc.legacy.core.encoding import byte_order_for, rgb_to_bytes
+from trcc.legacy.core.models import FBL_PROFILES
 
 # ── Parametrized over every FBL profile ──────────────────────────────────────
 
@@ -57,23 +57,23 @@ class TestByteOrderFallback(unittest.TestCase):
 
     def test_320x320_defaults_big_endian(self):
         """320x320 without FBL → '>' (safe default for SCSI devices)."""
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[100]   # canonical 320x320 profile
         self.assertEqual(byte_order_for('scsi', profile.resolution), '>')
 
     def test_480x480_defaults_little_endian(self):
         """480x480 without FBL → '<'."""
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[72]
         self.assertEqual(byte_order_for('scsi', profile.resolution), '<')
 
     def test_240x240_defaults_little_endian(self):
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[36]
         self.assertEqual(byte_order_for('hid', profile.resolution), '<')
 
     def test_320x240_defaults_little_endian(self):
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[50]
         self.assertEqual(byte_order_for('scsi', profile.resolution), '<')
 

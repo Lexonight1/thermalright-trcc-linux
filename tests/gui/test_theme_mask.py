@@ -27,13 +27,13 @@ class TestUserMasksDir:
     """get_user_masks_dir returns correct path structure."""
 
     def test_resolution_in_path(self):
-        from trcc.core.paths import get_user_masks_dir
+        from trcc.legacy.core.paths import get_user_masks_dir
         result = get_user_masks_dir(480, 480)
         assert 'zt480480' in result
         assert '.trcc-user' in result
 
     def test_different_from_cloud_dir(self):
-        from trcc.core.paths import get_user_masks_dir, get_web_masks_dir
+        from trcc.legacy.core.paths import get_user_masks_dir, get_web_masks_dir
         assert get_user_masks_dir(320, 320) != get_web_masks_dir(320, 320)
 
 
@@ -43,12 +43,12 @@ class TestMaskItemCustom:
     """MaskItem.is_custom field."""
 
     def test_default_not_custom(self):
-        from trcc.core.models import MaskItem
+        from trcc.legacy.core.models import MaskItem
         item = MaskItem(name='000a')
         assert not item.is_custom
 
     def test_custom_flag(self):
-        from trcc.core.models import MaskItem
+        from trcc.legacy.core.models import MaskItem
         item = MaskItem(name='custom_001', is_custom=True)
         assert item.is_custom
 
@@ -75,7 +75,7 @@ class TestRefreshMasks:
         _make_mask_dir(cloud_dir, '000a')
         _make_mask_dir(user_dir, 'custom_001')
 
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = cloud_dir
         panel._resolution = '320x320'
@@ -93,7 +93,7 @@ class TestRefreshMasks:
         user_dir = tmp_path / 'user'
         _make_mask_dir(user_dir, 'custom_001')
 
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = tmp_path / 'empty_cloud'
         panel._resolution = '320x320'
@@ -113,7 +113,7 @@ class TestRefreshMasks:
         _make_mask_dir(cloud_dir, '000a')
         _make_mask_dir(user_dir, 'custom_001')
 
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = cloud_dir
         panel._resolution = '320x320'
@@ -129,7 +129,7 @@ class TestRefreshMasks:
 
     def test_empty_user_dir(self, tmp_path):
         """No crash when user masks dir doesn't exist."""
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = tmp_path / 'cloud'
         panel._resolution = '320x320'
@@ -150,7 +150,7 @@ class TestDeleteCustomMask:
         user_dir = tmp_path / 'user'
         mask_dir = _make_mask_dir(user_dir, 'custom_001')
 
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = tmp_path / 'cloud'
         panel._resolution = '320x320'
@@ -165,7 +165,7 @@ class TestDeleteCustomMask:
         user_dir = tmp_path / 'user'
         mask_dir = _make_mask_dir(user_dir, 'custom_001')
 
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel.mask_directory = tmp_path / 'cloud'
         panel._resolution = '320x320'
@@ -183,13 +183,13 @@ class TestParseResolution:
     """UCThemeMask._parse_resolution parses resolution string."""
 
     def test_square(self):
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel._resolution = '480x480'
         assert panel._parse_resolution() == (480, 480)
 
     def test_rectangular(self):
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
         panel = UCThemeMask()
         panel._resolution = '640x480'
         assert panel._parse_resolution() == (640, 480)
@@ -203,14 +203,14 @@ class TestMaskPanel:
 
     def test_has_upload_action(self):
         """MaskPanel includes Upload as second action button."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         assert 'Upload' in panel.actions
         assert 'Load' in panel.actions
 
     def test_set_position(self):
         """set_position updates entry fields."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         panel.set_position(100, 200)
         assert panel.entry_x.text() == '100'
@@ -218,7 +218,7 @@ class TestMaskPanel:
 
     def test_set_position_no_signal(self):
         """set_position doesn't emit mask_position_changed."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         panel.mask_position_changed = MagicMock()
         panel.set_position(50, 75)
@@ -226,7 +226,7 @@ class TestMaskPanel:
 
     def test_position_signal_on_text_change(self):
         """Typing in X/Y emits mask_position_changed."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         signals = []
         panel.mask_position_changed.connect(lambda x, y: signals.append((x, y)))
@@ -235,7 +235,7 @@ class TestMaskPanel:
 
     def test_eye_toggle(self):
         """Eye toggle emits mask_visibility_toggled."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         signals = []
         panel.mask_visibility_toggled.connect(lambda v: signals.append(v))
@@ -245,7 +245,7 @@ class TestMaskPanel:
 
     def test_set_mask_visible(self):
         """set_mask_visible updates internal state."""
-        from trcc.ui.gui.display_mode_panels import MaskPanel
+        from trcc.legacy.ui.gui.display_mode_panels import MaskPanel
         panel = MaskPanel()
         panel.set_mask_visible(False)
         assert not panel._mask_visible
@@ -258,7 +258,7 @@ class TestSaveCustomMask:
 
     def test_saves_mask_files(self, tmp_path):
         """Saving creates 01.png and Theme.png."""
-        from trcc.ui.gui.trcc_app import TRCCApp
+        from trcc.legacy.ui.gui.trcc_app import TRCCApp
 
         user_dir = tmp_path / 'user_masks'
         cropped = make_test_surface(320, 320, (0, 255, 0, 200))
@@ -280,7 +280,7 @@ class TestSaveCustomMask:
 
     def test_thumbnail_120x120(self, tmp_path):
         """Theme.png thumbnail is 120x120."""
-        from trcc.ui.gui.trcc_app import TRCCApp
+        from trcc.legacy.ui.gui.trcc_app import TRCCApp
 
         user_dir = tmp_path / 'user_masks'
         cropped = make_test_surface(320, 320, (0, 0, 255, 128))
@@ -300,7 +300,7 @@ class TestSaveCustomMask:
 
     def test_dedup_existing_name(self, tmp_path):
         """Duplicate name gets _2 suffix."""
-        from trcc.ui.gui.trcc_app import TRCCApp
+        from trcc.legacy.ui.gui.trcc_app import TRCCApp
 
         user_dir = tmp_path / 'user_masks'
         _make_mask_dir(user_dir, 'my_mask')
@@ -320,7 +320,7 @@ class TestSaveCustomMask:
 
     def test_applies_mask(self, tmp_path):
         """Saving calls apply_mask on handler."""
-        from trcc.ui.gui.trcc_app import TRCCApp
+        from trcc.legacy.ui.gui.trcc_app import TRCCApp
 
         user_dir = tmp_path / 'user_masks'
         cropped = make_test_surface(320, 320, (0, 0, 0, 255))

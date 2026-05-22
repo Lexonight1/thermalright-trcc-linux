@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trcc.adapters.device.led_kvm import (
+from trcc.legacy.adapters.device.led_kvm import (
     CMD_LED,
     CMD_ONOFF,
     CMD_SCENE_SAVE,

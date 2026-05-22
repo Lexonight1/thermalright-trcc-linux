@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.adapters.device.linux.detector import find_lcd_devices
-from trcc.adapters.device.scsi import (
+from trcc.legacy.adapters.device.linux.detector import find_lcd_devices
+from trcc.legacy.adapters.device.scsi import (
     _BOOT_MAX_RETRIES,
     _BOOT_SIGNATURE,
     _BOOT_WAIT_SECONDS,
@@ -25,7 +25,7 @@ from trcc.adapters.device.scsi import (
     ScsiDevice,
     ScsiTransport,
 )
-from trcc.core.models import FBL_PROFILES
+from trcc.legacy.core.models import FBL_PROFILES
 
 _p320 = FBL_PROFILES[100]   # 320×320 canonical profile
 
@@ -253,7 +253,7 @@ class TestScsiReadWrite:
 class TestInitDevice:
     """`_init_device()` polls until display leaves boot state, then inits."""
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_sends_poll_then_init(self, _sleep):
         """Single poll returns ready; device sends exactly one init write."""
         transport = FakeScsiTransport(reads=[b'\x64' + b'\x00' * 0xE100])  # FBL=100, no boot sig
@@ -265,7 +265,7 @@ class TestInitDevice:
         assert len(transport.sends) == 1
         assert len(transport.sends[0][1]) == 0xE100  # init payload length
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_post_init_delay(self, mock_sleep):
         """Last sleep is the post-init delay, regardless of prior sleeps."""
         transport = FakeScsiTransport(reads=[b'\x64' + b'\x00' * 15])
@@ -273,7 +273,7 @@ class TestInitDevice:
         dev._init_device()
         mock_sleep.assert_called_with(_POST_INIT_DELAY)
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_boot_signature_waits_and_retries(self, mock_sleep):
         """Boot sig on first poll → wait+re-poll; ready response ends the loop."""
         booting = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
@@ -287,7 +287,7 @@ class TestInitDevice:
         sleeps = [c[0][0] for c in mock_sleep.call_args_list]
         assert sleeps == [_BOOT_WAIT_SECONDS, _POST_INIT_DELAY]
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_boot_signature_max_retries(self, _sleep):
         """Device stays in boot state → give up after _BOOT_MAX_RETRIES polls."""
         booting = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
@@ -300,7 +300,7 @@ class TestInitDevice:
         # Still sends init even after max retries (best effort)
         assert len(transport.sends) == 1
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_empty_poll_response_falls_back_to_registry(self, _sleep):
         """Empty poll falls back to registry FBL for the device's VID/PID."""
         transport = FakeScsiTransport(reads=[b''])
@@ -311,7 +311,7 @@ class TestInitDevice:
         # Init write still happens (best effort)
         assert len(transport.sends) == 1
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_short_poll_response_no_wait(self, mock_sleep):
         """Poll response < 8 bytes skips boot-sig check."""
         transport = FakeScsiTransport(reads=[b'\x64\x00\x00\x00'])
@@ -320,7 +320,7 @@ class TestInitDevice:
         assert len(transport.read_calls) == 1
         mock_sleep.assert_called_once_with(_POST_INIT_DELAY)
 
-    @patch('trcc.adapters.device.scsi.time.sleep')
+    @patch('trcc.legacy.adapters.device.scsi.time.sleep')
     def test_boot_then_ready_on_second_poll(self, mock_sleep):
         """Boot sig first, ready second — exactly one boot-wait + one post-init."""
         booting = b'\x00' * 4 + _BOOT_SIGNATURE + b'\x00' * 8
@@ -430,12 +430,12 @@ class TestFindLCDDevices:
 # Diagnose profile tests — driven by tools/diagnose.py via TRCC_DIAGNOSE_* env vars
 # ---------------------------------------------------------------------------
 
-@patch('trcc.adapters.device.scsi.time.sleep')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_write')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read')
+@patch('trcc.legacy.adapters.device.scsi.time.sleep')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_write')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_read')
 def test_scsi_handshake_profile(mock_read, mock_write, mock_sleep, device_vid, device_pid, device_pm):
     """Handshake succeeds for the device profile from trcc report."""
-    from trcc.core.models import SCSI_DEVICES, fbl_to_resolution
+    from trcc.legacy.core.models import SCSI_DEVICES, fbl_to_resolution
     entry = SCSI_DEVICES.get((device_vid, device_pid))
     if entry is None:
         pytest.skip(
@@ -449,12 +449,12 @@ def test_scsi_handshake_profile(mock_read, mock_write, mock_sleep, device_vid, d
     assert (sd.width, sd.height) == fbl_to_resolution(device_pm)
 
 
-@patch('trcc.adapters.device.scsi.time.sleep')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_write')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read')
+@patch('trcc.legacy.adapters.device.scsi.time.sleep')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_write')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_read')
 def test_scsi_send_frame_profile(mock_read, mock_write, mock_sleep, device_vid, device_pid, device_pm):
     """Frame send succeeds for the device profile from trcc report."""
-    from trcc.core.models import SCSI_DEVICES
+    from trcc.legacy.core.models import SCSI_DEVICES
     entry = SCSI_DEVICES.get((device_vid, device_pid))
     if entry is None:
         pytest.skip(
@@ -472,7 +472,7 @@ def test_scsi_send_frame_profile(mock_read, mock_write, mock_sleep, device_vid, 
 # All-devices profile tests — parametrised over every entry in SCSI_DEVICES
 # ---------------------------------------------------------------------------
 
-from trcc.core.models import FBL_TO_RESOLUTION, SCSI_DEVICES  # noqa: E402
+from trcc.legacy.core.models import FBL_TO_RESOLUTION, SCSI_DEVICES  # noqa: E402
 
 _SCSI_PARAMS = [
     pytest.param(vid, pid, entry.fbl, id=f"{vid:04X}:{pid:04X}")
@@ -481,9 +481,9 @@ _SCSI_PARAMS = [
 
 
 @pytest.mark.parametrize("vid,pid,fbl", _SCSI_PARAMS)
-@patch('trcc.adapters.device.scsi.time.sleep')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_write')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read')
+@patch('trcc.legacy.adapters.device.scsi.time.sleep')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_write')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_read')
 def test_scsi_handshake_all_devices(mock_read, mock_write, mock_sleep, vid, pid, fbl):
     """Handshake resolves correct resolution for every SCSI device in the registry."""
     mock_read.return_value = bytes([fbl]) + b'\x00' * 15
@@ -494,9 +494,9 @@ def test_scsi_handshake_all_devices(mock_read, mock_write, mock_sleep, vid, pid,
 
 
 @pytest.mark.parametrize("vid,pid,fbl", _SCSI_PARAMS)
-@patch('trcc.adapters.device.scsi.time.sleep')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_write')
-@patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read')
+@patch('trcc.legacy.adapters.device.scsi.time.sleep')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_write')
+@patch('trcc.legacy.adapters.device.scsi.ScsiDevice._scsi_read')
 def test_scsi_send_frame_all_devices(mock_read, mock_write, mock_sleep, vid, pid, fbl):
     """Frame send works for every SCSI device in the registry."""
     mock_read.return_value = bytes([fbl]) + b'\x00' * 15

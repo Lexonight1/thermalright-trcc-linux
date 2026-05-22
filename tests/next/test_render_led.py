@@ -15,17 +15,17 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.led import (
+from trcc.adapters.device.led import (
     _COLOR_SCALE,
     _HID_REPORT_SIZE,
     _MAGIC,
     Led,
 )
-from trcc.next.app import App
-from trcc.next.core.commands import RenderLed
-from trcc.next.core.errors import DeviceNotConnectedError
-from trcc.next.core.models import LedStyle
-from trcc.next.services.led_segment import (
+from trcc.app import App
+from trcc.core.commands import RenderLed
+from trcc.core.errors import DeviceNotConnectedError
+from trcc.core.models import LedStyle
+from trcc.services.led_segment import (
     LED_REMAP_TABLES,
     LegacyMetricsView,
     compute_mask,
@@ -84,7 +84,7 @@ def test_render_led_lights_segment_mask_for_pa120(
     # apply the wire-remap to land on the per-physical-LED expectation.
     descriptors = fake_platform.sensors().discover()
     current = fake_platform.sensors().read_all()
-    from trcc.next.core.models import SensorReading
+    from trcc.core.models import SensorReading
     readings = {
         d.sensor_id: SensorReading(
             sensor_id=d.sensor_id, category=d.category,

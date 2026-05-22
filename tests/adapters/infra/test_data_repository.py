@@ -9,13 +9,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from trcc.adapters.infra.data_repository import (
+from trcc.legacy.adapters.infra.data_repository import (
     DataManager,
     Resources,
     _find_pkg_data_dir,
 )
-from trcc.conf import Settings, load_config, save_config
-from trcc.core.paths import has_themes, resolve_theme_dir
+from trcc.legacy.conf import Settings, load_config, save_config
+from trcc.legacy.core.paths import has_themes, resolve_theme_dir
 
 
 class TestPathHelpers(unittest.TestCase):
@@ -100,8 +100,8 @@ class TestConfigPersistence(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -140,8 +140,8 @@ class TestResolutionConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -173,8 +173,8 @@ class TestTempUnitConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -200,8 +200,8 @@ class TestConfigMigration(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -214,7 +214,7 @@ class TestConfigMigration(unittest.TestCase):
 
     def test_fresh_install_stamps_version(self):
         """First run: no config → stamps current version."""
-        from trcc.conf import _migrate_config
+        from trcc.legacy.conf import _migrate_config
         _migrate_config()
         cfg = load_config()
         from trcc.__version__ import __version__
@@ -229,7 +229,7 @@ class TestConfigMigration(unittest.TestCase):
             'resolution': [480, 480],
             'temp_unit': 1,
         })
-        from trcc.conf import _migrate_config
+        from trcc.legacy.conf import _migrate_config
         _migrate_config()
         cfg = load_config()
         self.assertIn('devices', cfg)
@@ -249,7 +249,7 @@ class TestConfigMigration(unittest.TestCase):
             'format_prefs': {'time_format': 1},
             'hdd_enabled': False,
         })
-        from trcc.conf import _migrate_config
+        from trcc.legacy.conf import _migrate_config
         _migrate_config()
         cfg = load_config()
         # Device-derived state cleared
@@ -272,7 +272,7 @@ class TestConfigMigration(unittest.TestCase):
         with open(probe_cache, 'w') as f:
             json.dump({'cache': True}, f)
         save_config({'config_version': '0.0.1'})
-        from trcc.conf import _migrate_config
+        from trcc.legacy.conf import _migrate_config
         _migrate_config()
         self.assertFalse(os.path.exists(probe_cache))
 
@@ -288,8 +288,8 @@ class TestResolutionInstalled(unittest.TestCase):
         self.pkg_data = os.path.join(self.tmp, 'pkg_data')
         os.makedirs(self.pkg_data)
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
             patch.object(DataManager, '_data_dir', staticmethod(lambda: self.user_data)),
         ]
         for p in self.patches:
@@ -372,8 +372,8 @@ class TestPerDeviceConfig(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmp, 'config.json')
         self.patches = [
-            patch('trcc.conf.CONFIG_PATH', self.config_path),
-            patch('trcc.conf.CONFIG_DIR', self.tmp),
+            patch('trcc.legacy.conf.CONFIG_PATH', self.config_path),
+            patch('trcc.legacy.conf.CONFIG_DIR', self.tmp),
         ]
         for p in self.patches:
             p.start()
@@ -466,7 +466,7 @@ class TestPerDeviceConfig(unittest.TestCase):
         with open(self.config_path, 'w') as f:
             json.dump(old_config, f)
 
-        from trcc.conf import load_config
+        from trcc.legacy.conf import load_config
         config = load_config()
         devs = config['devices']
         self.assertIn('0', devs)
@@ -490,7 +490,7 @@ class TestExtract7z(unittest.TestCase):
             Path(archive).touch()
 
             mock_result = type('R', (), {'returncode': 0, 'stderr': b'', 'stdout': ''})()
-            with patch('trcc.adapters.infra.data_repository.subprocess.run', return_value=mock_result):
+            with patch('trcc.legacy.adapters.infra.data_repository.subprocess.run', return_value=mock_result):
                 result = DataManager.extract_7z(archive, target)
 
             self.assertTrue(result)
@@ -504,7 +504,7 @@ class TestExtract7z(unittest.TestCase):
             Path(archive).touch()
 
             mock_result = type('R', (), {'returncode': 2, 'stderr': b'error', 'stdout': ''})()
-            with patch('trcc.adapters.infra.data_repository.subprocess.run', return_value=mock_result):
+            with patch('trcc.legacy.adapters.infra.data_repository.subprocess.run', return_value=mock_result):
                 result = DataManager.extract_7z(archive, target)
 
             self.assertFalse(result)
@@ -516,7 +516,7 @@ class TestExtract7z(unittest.TestCase):
             target = os.path.join(d, 'out')
             Path(archive).touch()
 
-            with patch('trcc.adapters.infra.data_repository.subprocess.run', side_effect=FileNotFoundError):
+            with patch('trcc.legacy.adapters.infra.data_repository.subprocess.run', side_effect=FileNotFoundError):
                 result = DataManager.extract_7z(archive, target)
 
             self.assertFalse(result)
@@ -542,7 +542,7 @@ class TestEnsureThemesExtracted(unittest.TestCase):
         """Returns False when no archive and no themes."""
         with tempfile.TemporaryDirectory() as d:
             with patch.object(DataManager, '_data_dir', staticmethod(lambda: d)), \
-                 patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', d), \
+                 patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', d), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: os.path.join(d, 'user'))), \
                  patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(DataManager.ensure_themes(320, 320))
@@ -555,7 +555,7 @@ class TestEnsureThemesExtracted(unittest.TestCase):
             archive = os.path.join(d, 'theme320320.7z')
             Path(archive).touch()
             with patch.object(DataManager, '_data_dir', staticmethod(lambda: d)), \
-                 patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', d), \
+                 patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', d), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: os.path.join(d, 'user'))), \
                  patch.object(DataManager, 'extract_7z', return_value=True) as mock_ex:
                 result = DataManager.ensure_themes(320, 320)
@@ -579,7 +579,7 @@ class TestEnsureWebExtracted(unittest.TestCase):
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
             with patch.object(DataManager, '_data_dir', staticmethod(lambda: d)), \
-                 patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', d), \
+                 patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', d), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: os.path.join(d, 'user'))), \
                  patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(DataManager.ensure_web(320, 320))
@@ -592,7 +592,7 @@ class TestEnsureWebExtracted(unittest.TestCase):
             archive = os.path.join(archive_dir, '320320.7z')
             Path(archive).touch()
             with patch.object(DataManager, '_data_dir', staticmethod(lambda: d)), \
-                 patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', d), \
+                 patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', d), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: os.path.join(d, 'user'))), \
                  patch.object(DataManager, 'extract_7z', return_value=True) as mock_ex:
                 result = DataManager.ensure_web(320, 320)
@@ -616,7 +616,7 @@ class TestEnsureWebMasksExtracted(unittest.TestCase):
     def test_no_archive(self):
         with tempfile.TemporaryDirectory() as d:
             with patch.object(DataManager, '_data_dir', staticmethod(lambda: d)), \
-                 patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', d), \
+                 patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', d), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: os.path.join(d, 'user'))), \
                  patch.object(DataManager, 'download_archive', return_value=False):
                 self.assertFalse(DataManager.ensure_web_masks(320, 320))
@@ -697,7 +697,7 @@ class TestEnsureAll(unittest.TestCase):
                 Path(path).touch()
 
             extracted = []
-            with patch('trcc.adapters.infra.data_repository._PKG_DATA_DIR', pkg), \
+            with patch('trcc.legacy.adapters.infra.data_repository._PKG_DATA_DIR', pkg), \
                  patch.object(DataManager, '_data_dir', staticmethod(lambda: user)), \
                  patch.object(DataManager, 'mark_resolution_installed'), \
                  patch.object(DataManager, 'extract_7z',
@@ -762,8 +762,8 @@ class TestFindPkgDataDir(unittest.TestCase):
 
     def test_returns_pkg_data_as_fallback(self):
         """When no valid dirs exist, falls back to _TRCC_PKG/data."""
-        with patch('trcc.adapters.infra.data_repository._TRCC_PKG', '/fake/src/trcc'), \
-             patch('trcc.adapters.infra.data_repository._PROJECT_ROOT', '/fake'), \
+        with patch('trcc.legacy.adapters.infra.data_repository._TRCC_PKG', '/fake/src/trcc'), \
+             patch('trcc.legacy.adapters.infra.data_repository._PROJECT_ROOT', '/fake'), \
              patch('os.path.isdir', return_value=False):
             result = _find_pkg_data_dir()
             self.assertEqual(result, '/fake/src/trcc/data')
@@ -774,7 +774,7 @@ class TestFindPkgDataDir(unittest.TestCase):
 class TestExtract7zCLI(unittest.TestCase):
     """Cover 7z CLI edge cases."""
 
-    @patch('trcc.adapters.infra.data_repository.subprocess.run')
+    @patch('trcc.legacy.adapters.infra.data_repository.subprocess.run')
     def test_7z_cli_success(self, mock_run):
         """7z CLI succeeds."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -782,14 +782,14 @@ class TestExtract7zCLI(unittest.TestCase):
             result = DataManager.extract_7z('/fake/archive.7z', d)
         self.assertTrue(result)
 
-    @patch('trcc.adapters.infra.data_repository.subprocess.run', side_effect=FileNotFoundError)
+    @patch('trcc.legacy.adapters.infra.data_repository.subprocess.run', side_effect=FileNotFoundError)
     def test_7z_cli_not_found(self, _):
         """7z not installed -> returns False."""
         with tempfile.TemporaryDirectory() as d:
             result = DataManager.extract_7z('/fake/archive.7z', d)
             self.assertFalse(result)
 
-    @patch('trcc.adapters.infra.data_repository.subprocess.run', side_effect=OSError("fail"))
+    @patch('trcc.legacy.adapters.infra.data_repository.subprocess.run', side_effect=OSError("fail"))
     def test_7z_cli_exception(self, _):
         """7z CLI raises OSError/SubprocessError -> returns False.
 
@@ -869,27 +869,27 @@ class TestPortraitDirectorySwitching(unittest.TestCase):
 
     def test_landscape_rotation_keeps_landscape(self):
         """Rotation 0 or 180 keeps original w×h."""
-        from trcc.core.paths import output_resolution
+        from trcc.legacy.core.paths import output_resolution
         self.assertEqual(output_resolution(1280, 480, 0), (1280, 480))
         self.assertEqual(output_resolution(1280, 480, 180), (1280, 480))
 
     def test_portrait_rotation_swaps_dims(self):
         """Rotation 90 or 270 swaps to h×w."""
-        from trcc.core.paths import output_resolution
+        from trcc.legacy.core.paths import output_resolution
         self.assertEqual(output_resolution(1280, 480, 90), (480, 1280))
         self.assertEqual(output_resolution(1280, 480, 270), (480, 1280))
 
     def test_square_display_no_swap(self):
         """Square displays never swap, regardless of rotation."""
-        from trcc.core.paths import output_resolution
+        from trcc.legacy.core.paths import output_resolution
         self.assertEqual(output_resolution(320, 320, 90), (320, 320))
 
     def test_1600x720_portrait(self):
         """1600x720 swaps to 720x1600 on portrait rotation."""
-        from trcc.core.paths import output_resolution
+        from trcc.legacy.core.paths import output_resolution
         self.assertEqual(output_resolution(1600, 720, 90), (720, 1600))
 
     def test_640x480_portrait(self):
         """640x480 swaps to 480x640 on portrait rotation."""
-        from trcc.core.paths import output_resolution
+        from trcc.legacy.core.paths import output_resolution
         self.assertEqual(output_resolution(640, 480, 270), (480, 640))

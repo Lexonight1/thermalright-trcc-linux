@@ -1,158 +1,289 @@
-"""LED RGB control endpoints — color, mode, zones, segments.
-
-All endpoints route through Trcc.led (universal command layer).
-Same surface CLI + GUI use — response shape is `asdict(LEDResult)` /
-`asdict(OpResult)` so clients see the same fields across every UI.
-"""
+"""/devices/{key}/led router — set LED colors + animation modes."""
 from __future__ import annotations
 
-import logging
-from dataclasses import asdict
+from fastapi import APIRouter, HTTPException, Request
 
-from fastapi import APIRouter, HTTPException
-
-from trcc._boot import trcc
-from trcc.ui.api.models import (
+from ...core.commands import (
+    EnableLedTestMode,
+    LedSnapshot,
+    ListLedModes,
+    ListLedStyles,
+    RenderLed,
+    SelectZone,
+    SetClockFormat,
+    SetDiskIndex,
+    SetLedBrightness,
+    SetLedColor,
+    SetLedColors,
+    SetLedLoadSource,
+    SetLedMode,
+    SetLedTempSource,
+    SetLedZoneColor,
+    SetLedZoneSync,
+    SetLedZoneSyncInterval,
+    SetMemoryRatio,
+    SetWeekStart,
+    ToggleLed,
+    ToggleSegment,
+)
+from ...core.led_models import LEDMode
+from ._shared import (
+    http_error_if_failed,
+    to_clock_format_response,
+    to_disk_index_response,
+    to_led_modes_list_response,
+    to_led_response,
+    to_led_snapshot_response,
+    to_led_styles_list_response,
+    to_memory_ratio_response,
+    to_week_start_response,
+)
+from .schemas import (
     ClockFormatRequest,
-    HexColorRequest,
-    LEDBrightnessRequest,
-    LEDSensorRequest,
-    ModeRequest,
-    TempUnitRequest,
-    ToggleRequest,
-    ZoneSyncRequest,
-    parse_hex_or_400,
+    ClockFormatResponse,
+    DiskIndexRequest,
+    DiskIndexResponse,
+    LedBrightnessRequest,
+    LedColorRequest,
+    LedColorsRequest,
+    LedColorsResponse,
+    LedModeRequest,
+    LedModesListResponse,
+    LedRenderRequest,
+    LedSelectZoneRequest,
+    LedSnapshotResponse,
+    LedSourceRequest,
+    LedStylesListResponse,
+    LedTestModeRequest,
+    LedToggleRequest,
+    LedToggleSegmentRequest,
+    LedZoneColorRequest,
+    LedZoneSyncRequest,
+    MemoryRatioRequest,
+    MemoryRatioResponse,
+    WeekStartRequest,
+    WeekStartResponse,
 )
 
-log = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/led", tags=["led"])
+router = APIRouter(prefix="/devices/{key}/led", tags=["led"])
 
 
-def _result(result) -> dict:
-    """Return asdict(result) or raise HTTPException on failure."""
-    if not result.success:
-        raise HTTPException(status_code=400, detail=result.error or 'failed')
-    return asdict(result)
-
-
-# ── Global operations ──────────────────────────────────────────────────
-
-@router.post("/color")
-def set_color(body: HexColorRequest, led: int = 0) -> dict:
-    """Set LED static color."""
-    r, g, b = parse_hex_or_400(body.hex)
-    return _result(trcc().led.set_color(led, r, g, b))
-
-
-@router.post("/mode")
-def set_mode(body: ModeRequest, led: int = 0) -> dict:
-    """Set LED effect mode (static, breathing, colorful, rainbow, temp_linked, load_linked).
-
-    Animated modes drive the device from the per-process metrics loop
-    started by `Trcc.discover()`; no explicit start needed here.
-    """
-    result = trcc().led.set_mode(led, body.mode)
-    if not result.success:
-        raise HTTPException(status_code=400, detail=result.error)
-    return asdict(result)
-
-
-@router.post("/brightness")
-def set_brightness(body: LEDBrightnessRequest, led: int = 0) -> dict:
-    """Set LED brightness (0-100)."""
-    return _result(trcc().led.set_brightness(led, body.level))
-
-
-@router.post("/off")
-def turn_off(led: int = 0) -> dict:
-    """Turn LEDs off."""
-    return _result(trcc().led.toggle(led, False))
-
-
-@router.post("/sensor")
-def set_sensor(body: LEDSensorRequest, led: int = 0) -> dict:
-    """Set CPU/GPU sensor source for temp/load linked modes."""
-    return _result(trcc().led.set_sensor_source(led, body.source))
-
-
-# ── Zone operations ────────────────────────────────────────────────────
-
-@router.post("/zones/{zone}/color")
-def set_zone_color(zone: int, body: HexColorRequest, led: int = 0) -> dict:
-    """Set color for a specific LED zone."""
-    r, g, b = parse_hex_or_400(body.hex)
-    return _result(trcc().led.set_color(led, r, g, b, zone=zone))
-
-
-@router.post("/zones/{zone}/mode")
-def set_zone_mode(zone: int, body: ModeRequest, led: int = 0) -> dict:
-    """Set effect mode for a specific LED zone."""
-    return _result(trcc().led.set_mode(led, body.mode, zone=zone))
-
-
-@router.post("/zones/{zone}/brightness")
-def set_zone_brightness(zone: int, body: LEDBrightnessRequest, led: int = 0) -> dict:
-    """Set brightness for a specific LED zone (0-100)."""
-    return _result(trcc().led.set_brightness(led, body.level, zone=zone))
-
-
-@router.post("/zones/{zone}/toggle")
-def toggle_zone(zone: int, body: ToggleRequest, led: int = 0) -> dict:
-    """Toggle a specific LED zone on/off."""
-    return _result(trcc().led.toggle(led, body.on, zone=zone))
-
-
-@router.post("/sync")
-def set_sync(body: ZoneSyncRequest, led: int = 0) -> dict:
-    """Enable/disable zone sync (circulate/select-all)."""
-    return _result(
-        trcc().led.set_zone_sync(led, body.enabled, interval_s=body.interval),
+@router.post("/colors", response_model=LedColorsResponse)
+def set_colors(key: str, body: LedColorsRequest,
+               request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        SetLedColors(
+            key=key,
+            colors=body.colors,
+            global_on=body.global_on,
+            brightness=body.brightness,
+        ),
     )
+    http_error_if_failed(result)
+    return to_led_response(result)
 
 
-# ── Segment operations ─────────────────────────────────────────────────
-
-@router.post("/segments/{index}/toggle")
-def toggle_segment(index: int, body: ToggleRequest, led: int = 0) -> dict:
-    """Toggle a specific LED segment on/off."""
-    return _result(trcc().led.toggle_segment(led, index, body.on))
-
-
-@router.post("/clock")
-def set_clock(body: ClockFormatRequest, led: int = 0) -> dict:
-    """Set LED segment display clock format (12h/24h)."""
-    return _result(trcc().led.set_clock_format(led, body.is_24h))
+@router.post("/render", response_model=LedColorsResponse)
+def render(key: str, body: LedRenderRequest,
+           request: Request) -> LedColorsResponse:
+    """One tick — engine reads Settings, advances counters, sends a frame."""
+    result = request.app.state.trcc.dispatch(
+        RenderLed(key=key, color=body.color, phase=body.phase),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
 
 
-@router.post("/temp-unit")
-def set_temp_unit(body: TempUnitRequest) -> dict:
-    """Set app-wide temperature unit (affects LED segments + LCD overlay)."""
-    unit_str = 'F' if body.unit else 'C'
-    return _result(trcc().control_center.set_temp_unit(unit_str))
+@router.post("/mode", response_model=LedColorsResponse)
+def set_mode(key: str, body: LedModeRequest,
+             request: Request) -> LedColorsResponse:
+    try:
+        mode = LEDMode[body.mode.upper()]
+    except KeyError as e:
+        raise HTTPException(400, f"Unknown LED mode: {body.mode!r}") from e
+    result = request.app.state.trcc.dispatch(SetLedMode(key=key, mode=mode))
+    http_error_if_failed(result)
+    return to_led_response(result)
 
 
-# ── Snapshot ──────────────────────────────────────────────────────────
-
-@router.get("/snapshot")
-def led_snapshot(led: int = 0) -> dict:
-    """Return the LED device's full state snapshot."""
-    return asdict(trcc().led.snapshot(led))
-
-
-@router.get("/styles")
-def list_led_styles() -> list[dict]:
-    """List all supported LED device styles and their capabilities."""
-    return [asdict(s) for s in trcc().led.list_styles()]
+@router.post("/color", response_model=LedColorsResponse)
+def set_color(key: str, body: LedColorRequest,
+              request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        SetLedColor(key=key, color=body.color),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
 
 
-# ── Status (backward-compat) ──────────────────────────────────────────
+@router.post("/brightness", response_model=LedColorsResponse)
+def set_brightness(key: str, body: LedBrightnessRequest,
+                   request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        SetLedBrightness(key=key, percent=body.percent),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
 
-@router.get("/status")
-def led_status(led: int = 0) -> dict:
-    """Get current LED state — connected, style id."""
-    snap = trcc().led.snapshot(led)
-    return {
-        "connected": snap.connected,
-        "style_id": snap.style_id,
-    }
+
+@router.post("/test-mode", response_model=LedColorsResponse)
+def test_mode(key: str, body: LedTestModeRequest,
+              request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        EnableLedTestMode(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/temp-source", response_model=LedColorsResponse)
+def temp_source(key: str, body: LedSourceRequest,
+                request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        SetLedTempSource(key=key, source=body.source),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/load-source", response_model=LedColorsResponse)
+def load_source(key: str, body: LedSourceRequest,
+                request: Request) -> LedColorsResponse:
+    result = request.app.state.trcc.dispatch(
+        SetLedLoadSource(key=key, source=body.source),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/toggle", response_model=LedColorsResponse)
+def toggle(key: str, body: LedToggleRequest,
+           request: Request) -> LedColorsResponse:
+    """Turn the LED device (or one zone) on/off."""
+    result = request.app.state.trcc.dispatch(
+        ToggleLed(key=key, on=body.on, zone=body.zone),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/zone-color", response_model=LedColorsResponse)
+def zone_color(key: str, body: LedZoneColorRequest,
+               request: Request) -> LedColorsResponse:
+    """Set one zone's persistent color."""
+    result = request.app.state.trcc.dispatch(
+        SetLedZoneColor(key=key, zone=body.zone, color=body.color),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/zone-sync", response_model=LedColorsResponse)
+def zone_sync(key: str, body: LedZoneSyncRequest,
+              request: Request) -> LedColorsResponse:
+    """Enable/disable the zone-sync carousel (optionally set interval)."""
+    trcc = request.app.state.trcc
+    result = trcc.dispatch(SetLedZoneSync(key=key, enabled=body.enabled))
+    http_error_if_failed(result)
+    if body.interval_ticks is not None:
+        ir = trcc.dispatch(
+            SetLedZoneSyncInterval(key=key, ticks=body.interval_ticks),
+        )
+        http_error_if_failed(ir)
+    return to_led_response(result)
+
+
+@router.post("/select-zone", response_model=LedColorsResponse)
+def select_zone(key: str, body: LedSelectZoneRequest,
+                request: Request) -> LedColorsResponse:
+    """Pick the currently-active zone."""
+    result = request.app.state.trcc.dispatch(
+        SelectZone(key=key, zone=body.zone),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/toggle-segment", response_model=LedColorsResponse)
+def toggle_segment(key: str, body: LedToggleSegmentRequest,
+                   request: Request) -> LedColorsResponse:
+    """Flip one segment on/off."""
+    result = request.app.state.trcc.dispatch(
+        ToggleSegment(key=key, index=body.index, on=body.on),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.get("/snapshot", response_model=LedSnapshotResponse)
+def snapshot(key: str, request: Request) -> LedSnapshotResponse:
+    """Return the persisted LED state for one device."""
+    result = request.app.state.trcc.dispatch(LedSnapshot(key=key))
+    http_error_if_failed(result)
+    return to_led_snapshot_response(result)
+
+
+@router.post("/clock-format", response_model=ClockFormatResponse)
+def clock_format(key: str, body: ClockFormatRequest,
+                 request: Request) -> ClockFormatResponse:
+    """Set the 12h/24h clock display."""
+    result = request.app.state.trcc.dispatch(
+        SetClockFormat(key=key, is_24h=body.is_24h),
+    )
+    http_error_if_failed(result)
+    return to_clock_format_response(result)
+
+
+@router.post("/week-start", response_model=WeekStartResponse)
+def week_start(key: str, body: WeekStartRequest,
+               request: Request) -> WeekStartResponse:
+    """Pick the week-start day (Sunday-first vs Monday-first)."""
+    result = request.app.state.trcc.dispatch(
+        SetWeekStart(key=key, sunday_first=body.sunday_first),
+    )
+    http_error_if_failed(result)
+    return to_week_start_response(result)
+
+
+@router.post("/memory-ratio", response_model=MemoryRatioResponse)
+def memory_ratio(key: str, body: MemoryRatioRequest,
+                 request: Request) -> MemoryRatioResponse:
+    """Memory display mode: ratio (%) or absolute (GB)."""
+    result = request.app.state.trcc.dispatch(
+        SetMemoryRatio(key=key, ratio_mode=body.ratio_mode),
+    )
+    http_error_if_failed(result)
+    return to_memory_ratio_response(result)
+
+
+@router.post("/disk-index", response_model=DiskIndexResponse)
+def disk_index(key: str, body: DiskIndexRequest,
+               request: Request) -> DiskIndexResponse:
+    """Pick which disk's read/write stats to surface."""
+    result = request.app.state.trcc.dispatch(
+        SetDiskIndex(key=key, index=body.index),
+    )
+    http_error_if_failed(result)
+    return to_disk_index_response(result)
+
+
+# ── Top-level meta routes (no device key in path) ────────────────────
+
+
+meta_router = APIRouter(prefix="/led", tags=["led"])
+
+
+@meta_router.get("/styles", response_model=LedStylesListResponse)
+def list_styles(request: Request) -> LedStylesListResponse:
+    """Enumerate every LED style in the PM byte registry."""
+    result = request.app.state.trcc.dispatch(ListLedStyles())
+    http_error_if_failed(result)
+    return to_led_styles_list_response(result)
+
+
+@meta_router.get("/modes", response_model=LedModesListResponse)
+def list_modes(request: Request) -> LedModesListResponse:
+    """Enumerate animation modes."""
+    result = request.app.state.trcc.dispatch(ListLedModes())
+    http_error_if_failed(result)
+    return to_led_modes_list_response(result)

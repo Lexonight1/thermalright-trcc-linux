@@ -17,9 +17,9 @@ import zlib
 
 import pytest
 
-from trcc.next.adapters.device.scsi_lcd import ScsiLcd
-from trcc.next.core.errors import TransportError
-from trcc.next.core.models import Kind, ProductInfo, Wire
+from trcc.adapters.device.scsi_lcd import ScsiLcd
+from trcc.core.errors import TransportError
+from trcc.core.models import Kind, ProductInfo, Wire
 
 from .conftest import FakeScsiTransport
 
@@ -50,7 +50,7 @@ def _connect(transport: FakeScsiTransport, fbl: int = 100,
              monkeypatch: pytest.MonkeyPatch | None = None) -> ScsiLcd:
     if monkeypatch is not None:
         monkeypatch.setattr(
-            "trcc.next.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
+            "trcc.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
         )
     transport.read_script.append(_poll_response(fbl))
     device = _make_scsi(transport, fbl=fbl, native=native)
@@ -116,10 +116,10 @@ def test_first_frame_cdb_has_total_count_in_word2(
 ) -> None:
     """Phase 1 CDB carries the total frame count, no delay byte folded in."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
     frames = [b"A" * 256, b"B" * 256, b"C" * 256]
@@ -146,10 +146,10 @@ def test_carousel_cdbs_carry_index_and_delay_byte(
 ) -> None:
     """Each carousel frame CDB: index in word2, delay_ds*10 in cmd[31:24]."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
     frames = [b"X" * 128, b"Y" * 128]
@@ -178,10 +178,10 @@ def test_carousel_delay_byte_caps_at_250(
 ) -> None:
     """A 25 ds delay → 250 on the wire; a 99 ds delay also saturates at 250."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
     frames = [b"P" * 64, b"Q" * 64]
@@ -199,10 +199,10 @@ def test_short_delays_default_to_ten_deciseconds(
 ) -> None:
     """When delays_ds is shorter than frames, missing entries default to 10 ds."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
     frames = [b"M" * 32] * 3
@@ -228,10 +228,10 @@ def test_mid_stream_send_failure_returns_partial_count(
 ) -> None:
     """Two frames in, transport fails — return index of failure (i.e. 2)."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
 
@@ -260,10 +260,10 @@ def test_first_frame_failure_returns_zero(
 ) -> None:
     """If the first-frame send fails, return 0 — nothing else gets sent."""
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, monkeypatch=monkeypatch)
     fake_scsi.send_should_succeed = False
@@ -289,10 +289,10 @@ def test_all_supported_resolutions_accepted(
     fbl: int, resolution: tuple[int, int],
 ) -> None:
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
     )
     device = _connect(fake_scsi, fbl=fbl, native=resolution, monkeypatch=monkeypatch)
 

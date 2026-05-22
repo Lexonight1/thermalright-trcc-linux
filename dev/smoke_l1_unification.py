@@ -106,7 +106,7 @@ def check_typed_fields_match_populated(trcc_fn) -> CheckResult:
 
 def check_broadcast_carries_both(trcc_fn) -> CheckResult:
     """``Topic.METRICS`` broadcast delivers a record with BOTH paths populated."""
-    from trcc.core.events import Topic
+    from trcc.legacy.core.events import Topic
     try:
         t = trcc_fn()
         captured: list = []
@@ -157,7 +157,7 @@ def main() -> int:
     print("  engine all observe the SAME HardwareMetrics record.\n")
     print(f"  Platform: {sys.platform}\n")
 
-    from trcc._boot import trcc as _trcc
+    from trcc.legacy._boot import trcc as _trcc
 
     failed = 0
     for check in _CHECKS:

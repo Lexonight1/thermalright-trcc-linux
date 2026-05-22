@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-import trcc.conf as _conf
-import trcc.ui.api as api_module
-from trcc.ui.api import app, configure_auth
+import trcc.legacy.conf as _conf
+import trcc.legacy.ui.api as api_module
+from trcc.legacy.ui.api import app, configure_auth
 
 
 class _ApiSecurityBase(unittest.TestCase):
@@ -26,7 +26,7 @@ class _ApiSecurityBase(unittest.TestCase):
     """
 
     def setUp(self):
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         configure_auth(None)
         self.client = TestClient(app)
         self._saved_system_svc = api_module._system_svc
@@ -39,7 +39,7 @@ class _ApiSecurityBase(unittest.TestCase):
 
         proxy = MagicMock()
         proxy.os.metrics = record
-        self._trcc_patch = patch('trcc.ui.api.system.trcc', return_value=proxy)
+        self._trcc_patch = patch('trcc.legacy.ui.api.system.trcc', return_value=proxy)
         self._trcc_patch.start()
 
     def tearDown(self):
@@ -99,9 +99,9 @@ class TestThemeIdTraversal(_ApiSecurityBase):
 
     def test_normal_theme_id_accepted(self):
         """Valid theme IDs like 'a001' should not be rejected by security checks."""
-        with patch("trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached",
+        with patch("trcc.legacy.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached",
                    return_value=False), \
-             patch("trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme",
+             patch("trcc.legacy.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme",
                    return_value=None):
             resp = self.client.post("/themes/web/a001/download?resolution=320x320")
         # 404 because theme doesn't exist on server — but not a security rejection
@@ -127,9 +127,9 @@ class TestThemeImportInfoLeakage(_ApiSecurityBase):
         super().tearDown()
 
     def test_service_error_no_internal_details(self):
-        with patch("trcc.ui.api.themes.ThemeService.import_tr",
+        with patch("trcc.legacy.ui.api.themes.ThemeService.import_tr",
                    return_value=(False, "corrupt archive at /home/user/.trcc/data/foo")), \
-             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
+             patch("trcc.legacy.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = "/tmp"
             resp = self.client.post(
                 "/themes/import",
@@ -141,9 +141,9 @@ class TestThemeImportInfoLeakage(_ApiSecurityBase):
         self.assertEqual(resp.json()["detail"], "Theme import failed")
 
     def test_exception_no_stack_trace(self):
-        with patch("trcc.ui.api.themes.ThemeService.import_tr",
+        with patch("trcc.legacy.ui.api.themes.ThemeService.import_tr",
                    side_effect=FileNotFoundError("/home/user/.trcc/data/secret/config.json")), \
-             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
+             patch("trcc.legacy.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = "/tmp"
             resp = self.client.post(
                 "/themes/import",
@@ -157,9 +157,9 @@ class TestThemeImportInfoLeakage(_ApiSecurityBase):
 
     def test_uploaded_filename_not_echoed(self):
         """Uploaded filenames must not be reflected back to clients."""
-        with patch("trcc.ui.api.themes.ThemeService.import_tr",
+        with patch("trcc.legacy.ui.api.themes.ThemeService.import_tr",
                    return_value=(True, "ok")), \
-             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
+             patch("trcc.legacy.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = "/tmp"
             resp = self.client.post(
                 "/themes/import",

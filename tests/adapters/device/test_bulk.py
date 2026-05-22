@@ -22,17 +22,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import trcc.adapters.device.factory  # noqa: F401
+import trcc.legacy.adapters.device.factory  # noqa: F401
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from trcc.adapters.device.bulk import (
+from trcc.legacy.adapters.device.bulk import (
     _HANDSHAKE_PAYLOAD,
     _HANDSHAKE_READ_SIZE,
     _HANDSHAKE_TIMEOUT_MS,
     BulkDevice,
 )
-from trcc.core.models import HandshakeResult
+from trcc.legacy.core.models import HandshakeResult
 
 
 class _FakeUSBError(Exception):
@@ -63,28 +63,28 @@ class TestBulkParseModelName(unittest.TestCase):
 
     def test_parses_sscrm_v3(self):
         """Reporter #149 raw bytes carry 'SSCRM-V3' at offset 4-12."""
-        from trcc.adapters.device.bulk import _parse_model_name
+        from trcc.legacy.adapters.device.bulk import _parse_model_name
         hex_str = ('12345678535343524d2d56330000000000000000'
                    '904b909540000000200000000f00000003000000')
         self.assertEqual(_parse_model_name(bytes.fromhex(hex_str), 4, 8),
                           'SSCRM-V3')
 
     def test_short_response_returns_empty(self):
-        from trcc.adapters.device.bulk import _parse_model_name
+        from trcc.legacy.adapters.device.bulk import _parse_model_name
         self.assertEqual(_parse_model_name(b'abc', 4, 8), '')
 
     def test_pure_nul_returns_empty(self):
-        from trcc.adapters.device.bulk import _parse_model_name
+        from trcc.legacy.adapters.device.bulk import _parse_model_name
         self.assertEqual(_parse_model_name(bytes(16), 4, 8), '')
 
     def test_stops_at_first_nul(self):
-        from trcc.adapters.device.bulk import _parse_model_name
+        from trcc.legacy.adapters.device.bulk import _parse_model_name
         # offset 4-12 = b'ABCD\x00EFGH' → 'ABCD'
         self.assertEqual(
             _parse_model_name(b'\x00\x00\x00\x00ABCD\x00EFGH', 4, 8), 'ABCD')
 
     def test_strips_non_printable(self):
-        from trcc.adapters.device.bulk import _parse_model_name
+        from trcc.legacy.adapters.device.bulk import _parse_model_name
         # ASCII control chars at offset 4-12 — only the printable 'AB' survives
         self.assertEqual(
             _parse_model_name(b'\x00\x00\x00\x00AB\x01\x02CDEF', 4, 8), 'ABCDEF')
@@ -94,7 +94,7 @@ class TestBulkHandshakeModelName(unittest.TestCase):
     """Bulk handshake extracts model_name into HandshakeResult."""
 
     def test_handshake_returns_model_name(self):
-        from trcc.adapters.device.bulk import BulkDevice
+        from trcc.legacy.adapters.device.bulk import BulkDevice
         bd = BulkDevice(0x87AD, 0x70DB)
         bd._dev = MagicMock()
         bd._ep_out = MagicMock()
@@ -105,7 +105,7 @@ class TestBulkHandshakeModelName(unittest.TestCase):
         self.assertEqual(result.model_name, 'SSCRM-V3')
 
     def test_handshake_empty_model_name_when_slot_zero(self):
-        from trcc.adapters.device.bulk import BulkDevice
+        from trcc.legacy.adapters.device.bulk import BulkDevice
         bd = BulkDevice(0x87AD, 0x70DB)
         bd._dev = MagicMock()
         bd._ep_out = MagicMock()
@@ -181,8 +181,8 @@ class TestBulkDeviceOpen(unittest.TestCase):
         """Return a context manager patching find + usb.util together."""
         from contextlib import ExitStack
 
-        import trcc.adapters.device._pyusb_find as pyusb_find
-        import trcc.adapters.device._usb_helpers as helpers
+        import trcc.legacy.adapters.device._pyusb_find as pyusb_find
+        import trcc.legacy.adapters.device._usb_helpers as helpers
 
         util = usb_util_mock or MagicMock()
         if not hasattr(util, 'ENDPOINT_OUT'):
@@ -762,8 +762,8 @@ class TestBulkProtocol(unittest.TestCase):
 
     def test_create_via_factory(self):
         """Factory routes protocol='bulk' to BulkProtocol."""
-        from trcc.adapters.device.bulk_protocol import BulkProtocol
-        from trcc.adapters.device.factory import DeviceProtocolFactory
+        from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
+        from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
 
         device_info = MagicMock()
         device_info.protocol = 'bulk'
@@ -778,7 +778,7 @@ class TestBulkProtocol(unittest.TestCase):
         proto.close()
 
     def test_protocol_info(self):
-        from trcc.adapters.device.bulk_protocol import BulkProtocol
+        from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
 
         proto = BulkProtocol(0x87AD, 0x70DB)
         info = proto.get_info()
@@ -788,7 +788,7 @@ class TestBulkProtocol(unittest.TestCase):
         proto.close()
 
     def test_is_not_led(self):
-        from trcc.adapters.device.bulk_protocol import BulkProtocol
+        from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
 
         proto = BulkProtocol(0x87AD, 0x70DB)
         self.assertFalse(proto.is_led)
@@ -799,7 +799,7 @@ class TestBulkDeviceDetection(unittest.TestCase):
     """Test that 87AD:70DB is detected as bulk protocol."""
 
     def test_in_bulk_devices_registry(self):
-        from trcc.adapters.device.detector import _BULK_DEVICES
+        from trcc.legacy.adapters.device.detector import _BULK_DEVICES
 
         self.assertIn((0x87AD, 0x70DB), _BULK_DEVICES)
         info = _BULK_DEVICES[(0x87AD, 0x70DB)]
@@ -808,17 +808,17 @@ class TestBulkDeviceDetection(unittest.TestCase):
         self.assertEqual(info.device_type, 4)
 
     def test_not_in_scsi_devices(self):
-        from trcc.adapters.device.detector import KNOWN_DEVICES
+        from trcc.legacy.adapters.device.detector import KNOWN_DEVICES
 
         self.assertNotIn((0x87AD, 0x70DB), KNOWN_DEVICES)
 
     def test_not_in_led_devices(self):
-        from trcc.adapters.device.detector import _LED_DEVICES
+        from trcc.legacy.adapters.device.detector import _LED_DEVICES
 
         self.assertNotIn((0x87AD, 0x70DB), _LED_DEVICES)
 
     def test_in_all_devices(self):
-        from trcc.adapters.device.detector import _get_all_devices
+        from trcc.legacy.adapters.device.detector import _get_all_devices
 
         all_devs = _get_all_devices()
         self.assertIn((0x87AD, 0x70DB), all_devs)
@@ -826,7 +826,7 @@ class TestBulkDeviceDetection(unittest.TestCase):
     @unittest.skip("Phase 9: find_lcd_devices removed from scsi.py — discovery moved to platform.create_detect_fn() / DeviceDetector.")
     def test_find_lcd_devices_bulk(self):
         """find_lcd_devices returns bulk device with correct protocol."""
-        from trcc.adapters.device.detector import DetectedDevice
+        from trcc.legacy.adapters.device.detector import DetectedDevice
 
         fake_dev = DetectedDevice(
             vid=0x87AD, pid=0x70DB,
@@ -840,7 +840,7 @@ class TestBulkDeviceDetection(unittest.TestCase):
             device_type=4,
         )
 
-        from trcc.adapters.device.scsi import find_lcd_devices
+        from trcc.legacy.adapters.device.scsi import find_lcd_devices
         devices = find_lcd_devices(detect_fn=lambda: [fake_dev])
 
         self.assertEqual(len(devices), 1)
@@ -885,7 +885,7 @@ def test_bulk_send_frame_profile(device_vid, device_pid, device_pm, device_sub):
     """Frame send succeeds for the device profile from trcc report."""
     import pytest as _pytest
 
-    from trcc.adapters.device.bulk import _BULK_RGB565_PMS, _bulk_resolution
+    from trcc.legacy.adapters.device.bulk import _BULK_RGB565_PMS, _bulk_resolution
     w, h = _bulk_resolution(device_pm, device_sub)
     if w == 0 or h == 0:
         _pytest.skip(f"No resolution for PM={device_pm} SUB={device_sub}")
@@ -905,7 +905,7 @@ def test_bulk_open_ebusy_no_reset(device_vid, device_pid):
     Issue #82: old code called dev.reset() on EBUSY causing firmware restart
     and boot logo flash on bulk devices. Fix: raise immediately instead.
     """
-    import trcc.adapters.device._pyusb_find as pyusb_find
+    import trcc.legacy.adapters.device._pyusb_find as pyusb_find
 
     mock_dev = MagicMock()
     mock_cfg = MagicMock()

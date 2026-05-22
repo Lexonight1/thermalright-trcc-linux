@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     FBL_PROFILES,
     HID_LCD_DEVICES,
@@ -25,7 +25,7 @@ from trcc.core.models import (
     DetectedDevice,
     DeviceInfo,
 )
-from trcc.services.device import DeviceService
+from trcc.legacy.services.device import DeviceService
 
 
 def _make_detected(name: str = 'LCD', vid: int = 0x0402, pid: int = 0x3922,
@@ -176,7 +176,7 @@ class TestSelection:
         assert result is not None
         assert result.path == '/dev/sg0'  # Falls back to first
 
-    @patch('trcc.conf.Settings')
+    @patch('trcc.legacy.conf.Settings')
     def test_scan_and_select_saved_preference(self, mock_settings):
         raw = [
             _make_detected('A', scsi_device='/dev/sg0'),
@@ -187,7 +187,7 @@ class TestSelection:
         result = svc.scan_and_select()
         assert result.path == '/dev/sg1'
 
-    @patch('trcc.conf.Settings')
+    @patch('trcc.legacy.conf.Settings')
     def test_scan_and_select_no_saved_uses_first(self, mock_settings):
         raw = [_make_detected('A', scsi_device='/dev/sg0')]
         svc = _make_service(raw)

@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.adapters.device.detector import (
+from trcc.legacy.adapters.device.detector import (
     KNOWN_DEVICES,
     DetectedDevice,
     DeviceDetector,
 )
-from trcc.adapters.device.linux.detector import linux_scsi_resolver
+from trcc.legacy.adapters.device.linux.detector import linux_scsi_resolver
 
-_CLS = 'trcc.adapters.device.detector.DeviceDetector'
+_CLS = 'trcc.legacy.adapters.device.detector.DeviceDetector'
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -118,22 +118,22 @@ class TestKnownDevices:
 
 class TestRunCommand:
 
-    @patch('trcc.adapters.device.detector.subprocess.run')
+    @patch('trcc.legacy.adapters.device.detector.subprocess.run')
     def test_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout='output\n')
         assert DeviceDetector.run_command(['echo', 'test']) == 'output'
 
-    @patch('trcc.adapters.device.detector.subprocess.run')
+    @patch('trcc.legacy.adapters.device.detector.subprocess.run')
     def test_nonzero_returns_empty(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1, stdout='ignored')
         assert DeviceDetector.run_command(['false']) == ''
 
-    @patch('trcc.adapters.device.detector.subprocess.run')
+    @patch('trcc.legacy.adapters.device.detector.subprocess.run')
     def test_timeout_returns_empty(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired('cmd', 5)
         assert DeviceDetector.run_command(['sleep', '100']) == ''
 
-    @patch('trcc.adapters.device.detector.subprocess.run')
+    @patch('trcc.legacy.adapters.device.detector.subprocess.run')
     def test_file_not_found_returns_empty(self, mock_run):
         mock_run.side_effect = FileNotFoundError()
         assert DeviceDetector.run_command(['missing']) == ''
@@ -143,7 +143,7 @@ class TestRunCommand:
 
 class TestDetect:
 
-    @patch('trcc.adapters.device._pyusb_find.find')
+    @patch('trcc.legacy.adapters.device._pyusb_find.find')
     def test_detect_finds_known_device(self, mock_find, mock_usb_device):
         mock_find.side_effect = lambda idVendor, idProduct, find_all=False: ([mock_usb_device] if (idVendor, idProduct) == (0x87CD, 0x70DB) else [])
         detect_fn = DeviceDetector.make_detect_fn(scsi_resolver=None)
@@ -152,7 +152,7 @@ class TestDetect:
         assert len(found) == 1
         assert found[0].vendor_name == 'Thermalright'
 
-    @patch('trcc.adapters.device._pyusb_find.find')
+    @patch('trcc.legacy.adapters.device._pyusb_find.find')
     def test_detect_calls_scsi_resolver_for_scsi_devices(self, mock_find, mock_usb_device):
         resolver = MagicMock(return_value='/dev/sg0')
         mock_find.side_effect = lambda idVendor, idProduct, find_all=False: ([mock_usb_device] if (idVendor, idProduct) == (0x0402, 0x3922) else [])
@@ -163,12 +163,12 @@ class TestDetect:
         assert found[0].scsi_device == '/dev/sg0'
         resolver.assert_called_with(0x0402, 0x3922)
 
-    @patch('trcc.adapters.device._pyusb_find.find', return_value=None)
+    @patch('trcc.legacy.adapters.device._pyusb_find.find', return_value=None)
     def test_detect_no_devices(self, _):
         detect_fn = DeviceDetector.make_detect_fn(scsi_resolver=None)
         assert detect_fn() == []
 
-    @patch('trcc.adapters.device._pyusb_find.find')
+    @patch('trcc.legacy.adapters.device._pyusb_find.find')
     def test_detect_skips_scsi_resolver_for_bulk(self, mock_find, mock_usb_device):
         """SCSI resolver must NOT be called for bulk devices (87AD:70DB)."""
         resolver = MagicMock(return_value='/dev/sg0')
@@ -180,7 +180,7 @@ class TestDetect:
         assert found[0].scsi_device is None
         resolver.assert_not_called()
 
-    @patch('trcc.adapters.device._pyusb_find.find')
+    @patch('trcc.legacy.adapters.device._pyusb_find.find')
     def test_detect_usb_path_format(self, mock_find, mock_usb_device):
         mock_usb_device.bus = 2
         mock_usb_device.address = 5
@@ -269,12 +269,12 @@ class TestPrintInfo:
 
 class TestLinuxScsiResolver:
 
-    @patch('trcc.adapters.device.linux.detector.os.path.exists', return_value=False)
+    @patch('trcc.legacy.adapters.device.linux.detector.os.path.exists', return_value=False)
     def test_no_sysfs_returns_none(self, _):
         assert linux_scsi_resolver(0x87CD, 0x70DB) is None
 
-    @patch('trcc.adapters.device.linux.detector.os.listdir')
-    @patch('trcc.adapters.device.linux.detector.os.path.exists')
+    @patch('trcc.legacy.adapters.device.linux.detector.os.listdir')
+    @patch('trcc.legacy.adapters.device.linux.detector.os.path.exists')
     def test_finds_sg_device(self, mock_exists, mock_listdir):
         def exists_side(path):
             return 'sg' in path or 'scsi_generic' in path or 'sys/class' in path

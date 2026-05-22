@@ -1,1 +1,1 @@
-"""Device protocol adapters — SCSI, HID, LED, Bulk."""
+"""Device adapters — transport + concrete Device subclasses."""

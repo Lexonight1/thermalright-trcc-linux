@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.i18n import LANGUAGE_NAMES, TITLE_BAR_POS, TITLE_BAR_TEXT, TRANSLATIONS, tr
+from trcc.legacy.core.i18n import LANGUAGE_NAMES, TITLE_BAR_POS, TITLE_BAR_TEXT, TRANSLATIONS, tr
 
 # Original 10 languages (now ISO 639-1 codes, migrated from C# suffixes in v8.3.10)
 ORIGINAL_LANGS = {'zh', 'zh_TW', 'en', 'de', 'ru', 'fr', 'pt', 'ja', 'es', 'ko'}
@@ -142,7 +142,7 @@ class TestCoordinateTuples:
     """Verify _POS coordinate tuples have correct structure."""
 
     def test_all_pos_tuples_are_5_ints(self) -> None:
-        from trcc.core import i18n
+        from trcc.legacy.core import i18n
         for name in dir(i18n):
             if name.endswith('_POS'):
                 val = getattr(i18n, name)
@@ -151,7 +151,7 @@ class TestCoordinateTuples:
                 assert all(isinstance(v, int) for v in val), f'{name} has non-int'
 
     def test_pos_values_non_negative(self) -> None:
-        from trcc.core import i18n
+        from trcc.legacy.core import i18n
         for name in dir(i18n):
             if name.endswith('_POS'):
                 val = getattr(i18n, name)

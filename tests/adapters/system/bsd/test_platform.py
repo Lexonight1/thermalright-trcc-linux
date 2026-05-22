@@ -4,8 +4,8 @@ Runs on Linux. Tests verify the interface exists.
 """
 from __future__ import annotations
 
-from trcc.adapters.system.bsd_platform import BSDPlatform
-from trcc.core.ports import Platform
+from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+from trcc.legacy.core.ports import Platform
 
 
 class TestBSDPlatformIsPlatform:

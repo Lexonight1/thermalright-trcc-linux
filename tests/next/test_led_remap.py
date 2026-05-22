@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.core.models import LedStyle
-from trcc.next.services.led_segment import (
+from trcc.core.models import LedStyle
+from trcc.services.led_segment import (
     LED_REMAP_SUB_TABLES,
     LED_REMAP_TABLES,
     remap_led_colors,

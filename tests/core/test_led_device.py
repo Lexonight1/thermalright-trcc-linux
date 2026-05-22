@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.core.device.led import LEDDevice as Device
-from trcc.core.models import DetectedDevice, LEDMode
+from trcc.legacy.core.device.led import LEDDevice as Device
+from trcc.legacy.core.models import DetectedDevice, LEDMode
 
 
 def _make_led(**overrides) -> Device:
@@ -569,7 +569,7 @@ class TestInitialize(unittest.TestCase):
         # Phase 9: Device is now a Union alias of LCDDevice|LEDDevice; patch
         # the concrete class's initialize_led directly.
         with unittest.mock.patch(
-            'trcc.core.device.led.LEDDevice.initialize_led') as mock_init:
+            'trcc.legacy.core.device.led.LEDDevice.initialize_led') as mock_init:
             mock_init.return_value = {"success": True, "status": "", "style": 2}
             result = led.initialize_led(device, 2)
         self.assertTrue(result['success'])

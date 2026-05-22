@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 
 import pytest
 
-from trcc.next.core.ports import (
+from trcc.core.ports import (
     AutostartManager,
     BulkTransport,
     CpuSource,
@@ -229,7 +229,7 @@ class FakePlatform(Platform):
 
     def sensors(self) -> SensorEnumerator:
         if self._sensors is None:
-            from trcc.next.adapters.sensors.aggregator import BaselineSensors
+            from trcc.adapters.sensors.aggregator import BaselineSensors
             self._sensors = BaselineSensors(
                 cpu=FakeCpu(), memory=FakeMemory(),
                 gpus=[FakeGpu(0, discrete=True, vendor="nvidia")],
@@ -241,7 +241,7 @@ class FakePlatform(Platform):
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
-        from trcc.next.adapters.system._hotplug import NoopHotplugMonitor
+        from trcc.adapters.system._hotplug import NoopHotplugMonitor
         if not hasattr(self, "_hotplug_monitor"):
             self._hotplug_monitor = NoopHotplugMonitor(reason="test fake")
         return self._hotplug_monitor
@@ -363,7 +363,7 @@ def cli_app(fake_platform):
     Not autouse — tests that don't touch the CLI shouldn't pay the
     fixture cost.  The CLI test files opt in.
     """
-    from trcc.next.ui.cli import _ctx
+    from trcc.ui.cli import _ctx
 
     _ctx.set_platform(fake_platform)
     _ctx.set_renderer(_CliRenderer())  # type: ignore[arg-type]

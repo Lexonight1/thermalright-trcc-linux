@@ -21,12 +21,12 @@ Covers:
 
 from unittest.mock import MagicMock, patch
 
-from trcc.adapters.infra.dc_config import (
+from trcc.legacy.adapters.infra.dc_config import (
     DcConfig,
     get_hardware_metric_name,
     metric_to_hardware_ids,
 )
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     DisplayElement,
     FontConfig,
     ThemeConfig,
@@ -133,7 +133,7 @@ def _make_parsed_dict(**overrides):
 class TestDcConfigLoad:
     """DcConfig(filepath) — _load populates all fields from parsed dict."""
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_filepath_triggers_load(self, mock_parse):
         """Constructor with filepath calls DcParser.parse."""
         elem = DisplayElement(mode=0, mode_sub=0, x=10, y=20)
@@ -151,7 +151,7 @@ class TestDcConfigLoad:
         assert dc.fonts == [font]
         assert dc.custom_text == 'test text'
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_version_and_flags(self, mock_parse):
         mock_parse.return_value = _make_parsed_dict(
             version=0x000000DD,
@@ -162,7 +162,7 @@ class TestDcConfigLoad:
         assert dc.system_info_enabled is False
         assert dc.flags == {'system_info': False, 'extra': 1}
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_display_options_mapped(self, mock_parse):
         """display_options dict maps to flat attributes."""
         mock_parse.return_value = _make_parsed_dict(
@@ -181,7 +181,7 @@ class TestDcConfigLoad:
         assert dc.ui_mode == 2
         assert dc.display_mode == 3
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_transparent_display_fallback_to_screencast(self, mock_parse):
         """transparent_display falls back to screencast_display if missing."""
         mock_parse.return_value = _make_parsed_dict(
@@ -190,7 +190,7 @@ class TestDcConfigLoad:
         dc = DcConfig('/fake/path.dc')
         assert dc.transparent_display is True
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_transparent_display_prefers_own_key(self, mock_parse):
         """transparent_display takes priority over screencast_display."""
         mock_parse.return_value = _make_parsed_dict(
@@ -202,7 +202,7 @@ class TestDcConfigLoad:
         dc = DcConfig('/fake/path.dc')
         assert dc.transparent_display is False
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_display_mode_fallback_to_mode_key(self, mock_parse):
         """display_mode reads from 'mode' key when 'display_mode' absent."""
         mock_parse.return_value = _make_parsed_dict(
@@ -211,7 +211,7 @@ class TestDcConfigLoad:
         dc = DcConfig('/fake/path.dc')
         assert dc.display_mode == 5
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_display_mode_prefers_mode_over_display_mode(self, mock_parse):
         """opts.get('mode', opts.get('display_mode', 0)) — 'mode' takes priority."""
         mock_parse.return_value = _make_parsed_dict(
@@ -220,7 +220,7 @@ class TestDcConfigLoad:
         dc = DcConfig('/fake/path.dc')
         assert dc.display_mode == 7
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_overlay_rect_4_elements(self, mock_parse):
         """mask_settings overlay_rect with 4 elements unpacks to x,y,w,h."""
         mock_parse.return_value = _make_parsed_dict(
@@ -236,7 +236,7 @@ class TestDcConfigLoad:
         assert dc.overlay_w == 400
         assert dc.overlay_h == 300
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_overlay_rect_wrong_length_ignored(self, mock_parse):
         """overlay_rect with length != 4 leaves defaults intact."""
         mock_parse.return_value = _make_parsed_dict(
@@ -249,7 +249,7 @@ class TestDcConfigLoad:
         assert dc.overlay_w == 0
         assert dc.overlay_h == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_overlay_rect_none_ignored(self, mock_parse):
         """overlay_rect=None leaves defaults intact."""
         mock_parse.return_value = _make_parsed_dict(
@@ -259,7 +259,7 @@ class TestDcConfigLoad:
         assert dc.overlay_w == 0
         assert dc.overlay_h == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_mask_position_2_elements(self, mock_parse):
         """mask_settings mask_position with 2 elements unpacks to mask_x, mask_y."""
         mock_parse.return_value = _make_parsed_dict(
@@ -273,7 +273,7 @@ class TestDcConfigLoad:
         assert dc.mask_x == 50
         assert dc.mask_y == 75
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_mask_position_wrong_length_ignored(self, mock_parse):
         """mask_position with length != 2 leaves defaults intact."""
         mock_parse.return_value = _make_parsed_dict(
@@ -283,7 +283,7 @@ class TestDcConfigLoad:
         assert dc.mask_x == 0
         assert dc.mask_y == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_mask_position_none_ignored(self, mock_parse):
         """mask_position=None leaves defaults intact."""
         mock_parse.return_value = _make_parsed_dict(
@@ -293,7 +293,7 @@ class TestDcConfigLoad:
         assert dc.mask_x == 0
         assert dc.mask_y == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_legacy_elements_stored(self, mock_parse):
         """Parsed 'elements' dict stored as legacy_elements."""
         legacy = {'time': MagicMock(), 'date': MagicMock()}
@@ -301,7 +301,7 @@ class TestDcConfigLoad:
         dc = DcConfig('/fake/path.dc')
         assert dc.legacy_elements is legacy
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_filepath_converted_to_str(self, mock_parse):
         """Path object is converted to str before passing to DcParser.parse."""
         from pathlib import Path
@@ -326,7 +326,7 @@ class TestDcConfigSave:
         dc.overlay_h = 480
 
         filepath = str(tmp_path / 'config1.dc')
-        with patch('trcc.adapters.infra.dc_writer.write') as mock_write:
+        with patch('trcc.legacy.adapters.infra.dc_writer.write') as mock_write:
             dc.save(filepath)
             mock_write.assert_called_once()
             tc = mock_write.call_args[0][0]
@@ -342,7 +342,7 @@ class TestDcConfigSave:
         """save() accepts pathlib.Path and converts to str for writer."""
         dc = DcConfig()
         filepath = tmp_path / 'config1.dc'
-        with patch('trcc.adapters.infra.dc_writer.write') as mock_write:
+        with patch('trcc.legacy.adapters.infra.dc_writer.write') as mock_write:
             dc.save(filepath)
             # Second arg should be a string
             assert mock_write.call_args[0][1] == str(filepath)
@@ -399,7 +399,7 @@ class TestToThemeConfig:
 class TestToOverlayConfig:
     """to_overlay_config() delegates to DcParser.to_overlay_config."""
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.to_overlay_config')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.to_overlay_config')
     def test_delegates_with_correct_parsed_dict(self, mock_to_overlay):
         mock_to_overlay.return_value = {'cpu_usage': {'x': 10, 'y': 20}}
 
@@ -427,7 +427,7 @@ class TestToOverlayConfig:
 class TestFromOverlayConfig:
     """from_overlay_config() creates DcConfig from overlay dict."""
 
-    @patch('trcc.adapters.infra.dc_writer.overlay_to_theme')
+    @patch('trcc.legacy.adapters.infra.dc_writer.overlay_to_theme')
     def test_creates_dc_from_overlay(self, mock_overlay_to_theme):
         elem = DisplayElement(mode=1, mode_sub=0, x=5, y=10)
         fake_tc = ThemeConfig(elements=[elem], overlay_w=800, overlay_h=600)
@@ -441,7 +441,7 @@ class TestFromOverlayConfig:
         assert dc.overlay_w == 800
         assert dc.overlay_h == 600
 
-    @patch('trcc.adapters.infra.dc_writer.overlay_to_theme')
+    @patch('trcc.legacy.adapters.infra.dc_writer.overlay_to_theme')
     def test_explicit_dimensions_passed_through(self, mock_overlay_to_theme):
         fake_tc = ThemeConfig(elements=[], overlay_w=480, overlay_h=320)
         mock_overlay_to_theme.return_value = fake_tc
@@ -449,7 +449,7 @@ class TestFromOverlayConfig:
         DcConfig.from_overlay_config({}, 480, 320)
         mock_overlay_to_theme.assert_called_once_with({}, 480, 320)
 
-    @patch('trcc.adapters.infra.dc_writer.overlay_to_theme')
+    @patch('trcc.legacy.adapters.infra.dc_writer.overlay_to_theme')
     def test_returns_dc_config_instance(self, mock_overlay_to_theme):
         fake_tc = ThemeConfig()
         mock_overlay_to_theme.return_value = fake_tc
@@ -464,7 +464,7 @@ class TestFromOverlayConfig:
 class TestToDict:
     """to_dict() returns backward-compatible parsed dict."""
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_all_fields_present(self, mock_parse):
         elem = DisplayElement(mode=0, mode_sub=0, x=0, y=0)
         font = FontConfig(name='Arial', size=10.0, style=0, unit=3, charset=0,
@@ -551,7 +551,7 @@ class TestRepr:
 class TestEdgeCases:
     """Miscellaneous edge cases for full coverage."""
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_empty_parsed_dict(self, mock_parse):
         """Parser returns minimal dict — all fields get defaults."""
         mock_parse.return_value = {}
@@ -563,7 +563,7 @@ class TestEdgeCases:
         assert dc.background_display is True
         assert dc.overlay_enabled is True
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_overlay_rect_empty_list(self, mock_parse):
         """overlay_rect=[] is falsy — defaults preserved."""
         mock_parse.return_value = _make_parsed_dict(
@@ -573,7 +573,7 @@ class TestEdgeCases:
         assert dc.overlay_x == 0
         assert dc.overlay_w == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_mask_position_empty_list(self, mock_parse):
         """mask_position=[] is falsy — defaults preserved."""
         mock_parse.return_value = _make_parsed_dict(
@@ -583,7 +583,7 @@ class TestEdgeCases:
         assert dc.mask_x == 0
         assert dc.mask_y == 0
 
-    @patch('trcc.adapters.infra.dc_config.DcParser.parse')
+    @patch('trcc.legacy.adapters.infra.dc_config.DcParser.parse')
     def test_system_info_defaults_true_when_missing(self, mock_parse):
         """flags dict without 'system_info' key defaults to True."""
         mock_parse.return_value = _make_parsed_dict(flags={})

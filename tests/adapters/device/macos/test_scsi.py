@@ -3,30 +3,30 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-MODULE = 'trcc.adapters.device.macos.scsi'
+MODULE = 'trcc.legacy.adapters.device.macos.scsi'
 
 
 class TestMacOSScsiTransport:
 
     def test_init(self):
-        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        from trcc.legacy.adapters.device.macos.scsi import MacOSScsiTransport
         t = MacOSScsiTransport(vid=0x0416, pid=0x5020)
         assert t._vid == 0x0416
         assert t._pid == 0x5020
         assert t._dev is None
 
     def test_send_cdb_fails_when_not_open(self):
-        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        from trcc.legacy.adapters.device.macos.scsi import MacOSScsiTransport
         t = MacOSScsiTransport(vid=0x0416, pid=0x5020)
         assert t.send_cdb(b'\xef', b'\x00' * 512) is False
 
     def test_close_noop_when_not_open(self):
-        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        from trcc.legacy.adapters.device.macos.scsi import MacOSScsiTransport
         t = MacOSScsiTransport(vid=0x0416, pid=0x5020)
         t.close()  # Should not raise
 
     def test_context_manager(self):
-        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        from trcc.legacy.adapters.device.macos.scsi import MacOSScsiTransport
         t = MacOSScsiTransport(vid=0x0416, pid=0x5020)
         with patch.object(t, 'open') as m_open, \
              patch.object(t, 'close') as m_close:
@@ -38,12 +38,12 @@ class TestMacOSScsiTransport:
     def test_cbw_constants(self):
         # CBW/CSW constants live in the shared USB BOT module (also used by
         # FreeBSD/OpenBSD); the macOS module just subclasses UsbBotScsiTransport.
-        from trcc.adapters.device._usb_bot_scsi import CBW_SIGNATURE, CBW_SIZE, CSW_SIZE
+        from trcc.legacy.adapters.device._usb_bot_scsi import CBW_SIGNATURE, CBW_SIZE, CSW_SIZE
         assert CBW_SIGNATURE == 0x43425355
         assert CBW_SIZE == 31
         assert CSW_SIZE == 13
 
-    @patch('trcc.adapters.device._pyusb_find.find')
+    @patch('trcc.legacy.adapters.device._pyusb_find.find')
     @patch('usb.util.endpoint_direction')
     @patch('usb.util.ENDPOINT_OUT', 0x00)
     @patch('usb.util.ENDPOINT_IN', 0x80)
@@ -62,7 +62,7 @@ class TestMacOSScsiTransport:
         mock_find.return_value = mock_dev
         mock_ep_dir.side_effect = lambda addr: 0x00 if addr == 0x02 else 0x80
 
-        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        from trcc.legacy.adapters.device.macos.scsi import MacOSScsiTransport
         t = MacOSScsiTransport(vid=0x0416, pid=0x5020)
         result = t.open()
 

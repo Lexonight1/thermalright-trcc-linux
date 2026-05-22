@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.conf import (
+from trcc.legacy.conf import (
     Settings,
     _detect_language,
     _migrate_config,
@@ -41,7 +41,7 @@ class TestLoadConfig:
     """load_config: reads JSON from CONFIG_PATH, returns {} on errors."""
 
     def test_returns_empty_dict_when_file_missing(self, tmp_config):
-        from trcc.conf import CONFIG_PATH
+        from trcc.legacy.conf import CONFIG_PATH
         if os.path.exists(CONFIG_PATH):
             os.remove(CONFIG_PATH)
         assert load_config() == {}
@@ -63,7 +63,7 @@ class TestLoadConfig:
         real_open = builtins.open
 
         def _bad_open(path, *a, **kw):
-            from trcc.conf import CONFIG_PATH
+            from trcc.legacy.conf import CONFIG_PATH
             if str(path) == CONFIG_PATH:
                 raise OSError("permission denied")
             return real_open(path, *a, **kw)
@@ -102,7 +102,7 @@ class TestHandshakeCache:
         assert load_last_handshake() == {}
 
     def test_load_returns_empty_on_corrupt_json(self, tmp_config):
-        from trcc.conf import _HANDSHAKE_CACHE_PATH
+        from trcc.legacy.conf import _HANDSHAKE_CACHE_PATH
         with open(_HANDSHAKE_CACHE_PATH, "w") as f:
             f.write("not json{{{")
         assert load_last_handshake() == {}
@@ -113,7 +113,7 @@ class TestHandshakeCache:
         real_open = builtins.open
 
         def _bad_open(path, *a, **kw):
-            from trcc.conf import _HANDSHAKE_CACHE_PATH
+            from trcc.legacy.conf import _HANDSHAKE_CACHE_PATH
             if str(path) == _HANDSHAKE_CACHE_PATH:
                 raise OSError("disk error")
             return real_open(path, *a, **kw)
@@ -168,7 +168,7 @@ class TestMigrateConfig:
         assert cfg["config_version"] == __version__
 
     def test_deletes_led_probe_cache_on_version_mismatch(self, tmp_config):
-        from trcc.conf import CONFIG_DIR
+        from trcc.legacy.conf import CONFIG_DIR
         probe_cache = os.path.join(CONFIG_DIR, "led_probe_cache.json")
         with open(probe_cache, "w") as f:
             json.dump({"stale": True}, f)
@@ -178,7 +178,7 @@ class TestMigrateConfig:
 
     def test_handles_led_probe_cache_delete_failure(self, tmp_config, monkeypatch):
         """OSError on probe cache delete is logged, not raised."""
-        from trcc.conf import CONFIG_DIR
+        from trcc.legacy.conf import CONFIG_DIR
         probe_cache = os.path.join(CONFIG_DIR, "led_probe_cache.json")
         with open(probe_cache, "w") as f:
             json.dump({"stale": True}, f)
@@ -447,7 +447,7 @@ class TestSettingsInit:
     """Settings.__init__: loads config, resolves paths."""
 
     def test_init_loads_defaults(self, tmp_config):
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         # No saved resolution → defaults to (0, 0)
         assert s.resolution == (0, 0)
@@ -461,7 +461,7 @@ class TestSettingsInit:
             "hdd_enabled": False,
             "lang": "de",
         })
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         assert s.resolution == (480, 480)
         assert s.width == 480
@@ -473,7 +473,7 @@ class TestSettingsInit:
     def test_init_zero_resolution(self, tmp_config):
         """Zero resolution is stored without error."""
         save_config({"resolution": [0, 0]})
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         assert s.width == 0
         assert s.height == 0
@@ -490,7 +490,7 @@ class TestSettingsInstance:
     @pytest.fixture
     def settings(self, tmp_config):
         """Create a Settings instance with mock path resolver (DI)."""
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         return s
 
@@ -533,21 +533,21 @@ class TestSettingsInstance:
     def test_get_saved_lang_falls_back_to_detect(self, tmp_config, monkeypatch):
         """No saved lang in config -> falls back to _detect_language."""
         monkeypatch.setattr("locale.getlocale", lambda: ("ja_JP", "UTF-8"))
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         assert s.lang == "ja"
 
     def test_get_saved_lang_uses_saved(self, tmp_config):
         """Saved lang in config is used directly."""
         save_config({"lang": "es"})
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         assert s.lang == "es"
 
     def test_get_saved_lang_migrates_legacy_code(self, tmp_config):
         """Legacy C# suffix in config.json is auto-migrated to ISO 639-1."""
         save_config({"lang": "d"})
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(_mock_resolver())
         assert s.lang == "de"
         assert load_config()["lang"] == "de"  # Persisted
@@ -564,7 +564,7 @@ class TestSetRotation:
     @pytest.fixture
     def settings(self, tmp_config):
         save_config({"resolution": [1280, 480]})
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             return Settings(_mock_resolver())
 
 
@@ -579,6 +579,6 @@ class TestSettingsProperties:
 
     def test_user_data_dir(self, tmp_config):
         r = _mock_resolver()
-        with patch("trcc.conf._migrate_config"):
+        with patch("trcc.legacy.conf._migrate_config"):
             s = Settings(r)
         assert s.user_data_dir == Path(r.data_dir())

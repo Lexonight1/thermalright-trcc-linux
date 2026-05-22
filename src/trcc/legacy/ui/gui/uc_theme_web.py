@@ -1,0 +1,306 @@
+"""
+PyQt6 UCThemeWeb - Cloud themes browser panel.
+
+Matches Windows TRCC.DCUserControl.UCThemeWeb (732x652)
+Shows cloud theme thumbnails with category filtering and on-demand download.
+
+Windows behavior:
+- Preview PNGs are bundled in Web/{resolution}/ (shipped with installer)
+- Clicking a thumbnail downloads the .mp4 if not cached, then plays it
+- DownLoadFile() with status label "Downloading..."
+- Downloaded themes show animated thumbnail previews from the MP4
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QMovie
+
+from ...core.models import CloudThemeItem
+from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
+from .base import BaseThumbnail, DownloadableThemeBrowser
+from .constants import Layout, Sizes
+
+log = logging.getLogger(__name__)
+
+
+def _ensure_thumb_gif(mp4_path: str, size: int = Sizes.THUMB_IMAGE) -> str | None:
+    """Create a 120x120 animated GIF from an MP4 via ffmpeg (cached).
+
+    Returns path to the GIF, or None if ffmpeg fails.
+    """
+    gif_path = Path(mp4_path).with_suffix('.gif')
+    if gif_path.exists():
+        return str(gif_path)
+    try:
+        subprocess.run([
+            'ffmpeg', '-i', mp4_path,
+            '-vf', f'scale={size}:{size}:force_original_aspect_ratio=decrease,'
+                   f'pad={size}:{size}:(ow-iw)/2:(oh-ih)/2:black,'
+                   'fps=8',
+            '-loop', '0', '-y', str(gif_path),
+        ], capture_output=True, timeout=30, creationflags=_NO_WINDOW)
+        if gif_path.exists():
+            return str(gif_path)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("uc_theme_web: ffmpeg mp4→gif failed for %s: %s", mp4_path, e)
+    return None
+
+
+class CloudThemeThumbnail(BaseThumbnail):
+    """Cloud theme thumbnail.
+
+    Downloaded themes play an animated GIF (generated from MP4 via ffmpeg).
+    Non-downloaded themes show static preview PNG with download indicator.
+    """
+
+    def __init__(self, item_info: CloudThemeItem, parent=None):
+        self._movie = None  # QMovie for animated GIF playback
+        super().__init__(item_info, parent)
+
+    def _get_display_name(self, info: CloudThemeItem) -> str:
+        return info.id or info.name
+
+    def _get_image_path(self, info: CloudThemeItem) -> str | None:
+        if info.video and Path(info.video).exists():
+            return None  # handled by _load_thumbnail via QMovie
+        return info.preview
+
+    def _load_thumbnail(self):
+        """Load thumbnail — animated GIF from MP4 or static PNG.
+
+        QMovie is created but NOT started — UCThemeWeb.showEvent()
+        starts animations only when the cloud panel is visible.
+        """
+        video = self.item_info.video
+        if video and Path(video).exists():
+            if (gif_path := _ensure_thumb_gif(video)):
+                self._movie = QMovie(gif_path)
+                self._movie.setScaledSize(
+                    QSize(Sizes.THUMB_IMAGE, Sizes.THUMB_IMAGE))
+                self.thumb_label.setMovie(self._movie)
+                return
+        # Fall back to static PNG
+        super()._load_thumbnail()
+
+
+
+class UCThemeWeb(DownloadableThemeBrowser):
+    """
+    Cloud themes browser panel.
+
+    Windows size: 732x652
+    Preview PNGs are bundled; MP4s downloaded on-demand when clicked.
+    GIF thumbnail animations only run while this panel is visible.
+    """
+
+    CMD_THEME_SELECTED = 16
+    CMD_CATEGORY_CHANGED = 4
+
+    def __init__(self,
+                 download_fn: Callable[[str, str, str], str | None] | None = None,
+                 extract_fn: Callable[[str, str], None] | None = None,
+                 parent=None):
+        self.current_category = 'all'
+        self.web_directory = None
+        self._resolution = ""
+        self._download_fn = download_fn
+        self._extract_fn = extract_fn
+        super().__init__(parent)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._set_movies_running(True)
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self._set_movies_running(False)
+
+    def _set_movies_running(self, running: bool) -> None:
+        """Start or stop all QMovie animations on cloud thumbnails."""
+        for widget in self.item_widgets:
+            if (movie := getattr(widget, '_movie', None)):
+                movie.start() if running else movie.stop()
+
+    def _create_filter_buttons(self):
+        """Seven category buttons matching Windows positions."""
+        btn_normal, btn_active = self._load_filter_assets()
+        self.cat_buttons = {}
+        self._btn_refs = [btn_normal, btn_active]
+
+        for cat_id, x, y, w, h in Layout.WEB_CATEGORIES:
+            btn = self._make_filter_button(x, y, w, h, btn_normal, btn_active,
+                lambda checked, c=cat_id: self._set_category(c))
+            self.cat_buttons[cat_id] = btn
+
+        self.cat_buttons['all'].setChecked(True)
+
+    def _create_thumbnail(self, item_info: CloudThemeItem) -> CloudThemeThumbnail:
+        return CloudThemeThumbnail(item_info)
+
+    def _no_items_message(self) -> str:
+        return "No cloud themes found\n\nDownload with: trcc download themes-320"
+
+    def set_web_directory(self, path):
+        """Set the Web directory (bundled PNGs + downloaded MP4s) and load themes."""
+        log.debug("set_web_directory: %s", path)
+        self.web_directory = Path(path) if path else None
+        self.load_themes()
+
+    def set_resolution(self, resolution: str):
+        """Set resolution for cloud downloads (e.g., '320x320')."""
+        log.debug("set_resolution: %s", resolution)
+        self._resolution = resolution
+
+    def _set_category(self, category):
+        log.debug("_set_category called: category=%r, _downloading=%s", category, self._downloading)
+        if self._downloading:
+            return  # Windows isDownLoad guard
+        self.current_category = category
+        for cat_id, btn in self.cat_buttons.items():
+            btn.setChecked(cat_id == category)
+        self.load_themes()
+        self.invoke_delegate(self.CMD_CATEGORY_CHANGED, category)
+
+    def _ensure_previews_extracted(self):
+        """Extract preview PNGs from .7z archive if not already extracted."""
+        if not self.web_directory:
+            return
+        # Check if PNGs already exist
+        if list(self.web_directory.glob('*.png')):
+            return
+        # Look for .7z archive next to the directory (Web/{resolution}.7z)
+        archive = self.web_directory.parent / f"{self.web_directory.name}.7z"
+        if not archive.exists():
+            return
+        if self._extract_fn:
+            self._extract_fn(str(archive), str(self.web_directory))
+
+    def load_themes(self):
+        """Load cloud themes from preview PNGs in Web directory.
+
+        PNGs are extracted from bundled .7z archives on first load.
+        MP4s are downloaded on-demand when user clicks a thumbnail.
+        """
+        self._clear_grid()
+
+        if not self.web_directory:
+            log.debug("load_themes: no web_directory set")
+            self._show_empty_message()
+            return
+
+        # Ensure directory exists
+        self.web_directory.mkdir(parents=True, exist_ok=True)
+
+        # Extract PNGs from .7z if needed
+        self._ensure_previews_extracted()
+
+        # Find cached MP4s (already downloaded)
+        cached = set()
+        for mp4 in self.web_directory.glob('*.mp4'):
+            cached.add(mp4.stem)
+
+        # Scan for preview PNGs (matches Windows CheakWebFile)
+        known_ids = []
+        for png in sorted(self.web_directory.glob('*.png')):
+            theme_id = png.stem
+            if self.current_category != 'all':
+                if not theme_id.startswith(self.current_category):
+                    continue
+            known_ids.append(theme_id)
+
+        themes = []
+        for theme_id in known_ids:
+            is_local = theme_id in cached
+            preview_path = self.web_directory / f"{theme_id}.png"
+
+            themes.append(CloudThemeItem(
+                name=theme_id,
+                id=theme_id,
+                video=str(self.web_directory / f"{theme_id}.mp4") if is_local else None,
+                preview=str(preview_path) if preview_path.exists() else None,
+                is_local=is_local,
+            ))
+
+        log.debug("load_themes: category=%r, %d themes (%d cached), dir=%s",
+                   self.current_category, len(themes), len(cached), self.web_directory)
+        self._populate_grid(themes)
+
+    def _on_item_clicked(self, item_info: CloudThemeItem):
+        """Handle click — play cached themes, download non-cached ones.
+
+        Clicks are NOT gated by `_downloading` — users can queue multiple
+        downloads in parallel.  Previously a first slow download locked
+        every subsequent click until it finished; users perceived "stuck
+        on first theme."
+        """
+        self._select_item(item_info)
+
+        if item_info.is_local:
+            self.theme_selected.emit(item_info)
+            self.invoke_delegate(self.CMD_THEME_SELECTED, item_info)
+        else:
+            self._download_cloud_theme(item_info.id)
+
+    def _download_cloud_theme(self, theme_id: str):
+        """Download a cloud theme MP4 (Windows DownLoadFile pattern)."""
+        if not self.web_directory:
+            log.warning("_download_cloud_theme: no web_directory — skipping %s", theme_id)
+            return
+
+        _fn = self._download_fn
+        if _fn is None:
+            log.warning("_download_cloud_theme: no download_fn — skipping %s", theme_id)
+            return
+
+        log.info("_download_cloud_theme: %s resolution=%s dir=%s",
+                 theme_id, self._resolution, self.web_directory)
+
+        def download_fn():
+            result = _fn(theme_id, self._resolution, str(self.web_directory))
+            log.info("_download_cloud_theme: %s result=%s", theme_id,
+                     'ok' if result else 'failed')
+            if result:
+                self._extract_preview(theme_id)
+            return bool(result)
+
+        self._start_download(theme_id, download_fn)
+
+    def _extract_preview(self, theme_id: str):
+        """Extract first frame from MP4 as PNG preview via FFmpeg."""
+        if self.web_directory is None:
+            log.debug("_extract_preview: no web_directory — skipping %s", theme_id)
+            return
+        try:
+            mp4_path = self.web_directory / f"{theme_id}.mp4"
+            png_path = self.web_directory / f"{theme_id}.png"
+            if mp4_path.exists() and not png_path.exists():
+                subprocess.run([
+                    'ffmpeg', '-i', str(mp4_path),
+                    '-vframes', '1', '-y', str(png_path)
+                ], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        except (OSError, subprocess.SubprocessError) as e:
+            log.debug("uc_theme_web: ffmpeg thumbnail extract failed for %s: %s", theme_id, e)
+
+    def _on_download_complete(self, theme_id: str, success: bool):
+        """Handle download completion — refresh and auto-select."""
+        super()._on_download_complete(theme_id, success)
+        if success:
+            self.load_themes()
+            # Restart QMovie animations — showEvent won't fire since panel
+            # is already visible, so newly created movies need manual start.
+            if self.isVisible():
+                self._set_movies_running(True)
+            # Auto-select the newly downloaded theme
+            for item in self.items:
+                if item.id == theme_id:
+                    self._on_item_clicked(item)
+                    break
+
+    def get_selected_theme(self):
+        return self.selected_item

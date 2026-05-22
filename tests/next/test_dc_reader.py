@@ -11,9 +11,9 @@ from typing import List
 
 import pytest
 
-from trcc.next.core.errors import ThemeError
-from trcc.next.services import _dc as Dc
-from trcc.next.ui.gui._overlay_grid_adapter import dc_as_legacy_overlay_config
+from trcc.core.errors import ThemeError
+from trcc.services import _dc as Dc
+from trcc.ui.gui._overlay_grid_adapter import dc_as_legacy_overlay_config
 
 
 def load_dc_as_theme_config(path):

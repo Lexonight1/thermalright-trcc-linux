@@ -73,7 +73,7 @@ def main() -> None:
     # Pre-seed the API boot cache with our MockPlatform — every endpoint
     # uses `_boot.get_trcc()` (devices, led, system, control_center,
     # themes, i18n) and picks up the cached, mock-backed Trcc.
-    from trcc._boot import trcc as get_trcc
+    from trcc.legacy._boot import trcc as get_trcc
     get_trcc(platform)
 
     # configure_app() builds TrccApp via ControllerBuilder.for_current_os,
@@ -81,7 +81,7 @@ def main() -> None:
     # legacy TrccApp path also see MockPlatform — same flow as production.
     os.environ.setdefault('TRCC_MOCK', '1')
 
-    import trcc.ui.api as api_module
+    import trcc.legacy.ui.api as api_module
     api_module.configure_app()
     api_module.configure_auth(token)
 

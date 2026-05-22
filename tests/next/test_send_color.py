@@ -18,18 +18,18 @@ from typing import Any
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import ConnectDevice, SendColor
-from trcc.next.core.events import FrameSent
-from trcc.next.core.models import Kind, ProductInfo, Wire
-from trcc.next.core.ports import Renderer
-from trcc.next.core.protocol import get_profile
-from trcc.next.services.display import DisplayService
-from trcc.next.services.media import MediaService
-from trcc.next.services.overlay import OverlayService
-from trcc.next.services.settings import Settings
-from trcc.next.services.theme import ThemeService
-from trcc.next.ui.cli.display import _parse_hex_color
+from trcc.app import App
+from trcc.core.commands import ConnectDevice, SendColor
+from trcc.core.events import FrameSent
+from trcc.core.models import Kind, ProductInfo, Wire
+from trcc.core.ports import Renderer
+from trcc.core.protocol import get_profile
+from trcc.services.display import DisplayService
+from trcc.services.media import MediaService
+from trcc.services.overlay import OverlayService
+from trcc.services.settings import Settings
+from trcc.services.theme import ThemeService
+from trcc.ui.cli.display import _parse_hex_color
 
 from .conftest import FakePaths, FakePlatform
 

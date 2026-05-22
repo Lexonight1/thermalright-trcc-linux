@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.system._hotplug import (
+from trcc.adapters.system._hotplug import (
     WindowsHotplugMonitor,
     _parse_windows_device_id,
 )
-from trcc.next.core.events import (
+from trcc.core.events import (
     DeviceAttached,
     DeviceDetached,
     EventBus,
@@ -128,7 +128,7 @@ def test_dispatch_handles_action_strings_unknown_actions(
 
 def test_start_no_op_without_wmi_package(monkeypatch: pytest.MonkeyPatch) -> None:
     """No wmi package installed → start() logs once and returns idle."""
-    from trcc.next.adapters.system import _hotplug as hotplug_mod
+    from trcc.adapters.system import _hotplug as hotplug_mod
 
     monkeypatch.setattr(hotplug_mod, "_import_wmi", lambda: None)
 

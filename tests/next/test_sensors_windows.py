@@ -9,7 +9,7 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from trcc.next.adapters.sensors._hwinfo import (
+from trcc.adapters.sensors._hwinfo import (
     _ENTRY_VALUE_OFFSET,
     _HEADER_FMT,
     _HEADER_SIZE,
@@ -24,8 +24,8 @@ from trcc.next.adapters.sensors._hwinfo import (
     _parse_header,
     _snapshot_from_bytes,
 )
-from trcc.next.adapters.sensors._lhm import LhmCpu, discover_lhm_gpus
-from trcc.next.adapters.sensors._msacpi import WmiAcpiCpu
+from trcc.adapters.sensors._lhm import LhmCpu, discover_lhm_gpus
+from trcc.adapters.sensors._msacpi import WmiAcpiCpu
 
 # =========================================================================
 # MSAcpi — thermal zones via root\wmi
@@ -362,23 +362,23 @@ def test_build_windows_sensors_constructs_chain(monkeypatch) -> None:
     verify the factory wires them up without crashing — each strategy
     falls back to None on the dev box, the chain hands off to psutil.
     """
-    from trcc.next.adapters.sensors import windows as win_factory
+    from trcc.adapters.sensors import windows as win_factory
 
     # Force each Windows-specific factory to return None so no real WMI/MMF call happens
     monkeypatch.setattr(
-        "trcc.next.adapters.sensors._msacpi._default_handle_factory",
+        "trcc.adapters.sensors._msacpi._default_handle_factory",
         lambda: None,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.sensors._lhm._default_handle_factory",
+        "trcc.adapters.sensors._lhm._default_handle_factory",
         lambda: None,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.sensors._hwinfo._default_mapping_factory",
+        "trcc.adapters.sensors._hwinfo._default_mapping_factory",
         lambda: None,
     )
     # Reset module-level HWiNFO snapshot cache so a previous test doesn't bleed in.
-    from trcc.next.adapters.sensors import _hwinfo as hwmod
+    from trcc.adapters.sensors import _hwinfo as hwmod
     hwmod._shared_snapshot = None
 
     sensors = win_factory.build_windows_sensors()

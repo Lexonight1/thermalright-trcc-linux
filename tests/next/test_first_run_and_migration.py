@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.next.app import App
-from trcc.next.core.commands import GetFirstRunStatus, MarkFirstRunDone
-from trcc.next.services.first_run import FirstRunService
+from trcc.app import App
+from trcc.core.commands import GetFirstRunStatus, MarkFirstRunDone
+from trcc.services.first_run import FirstRunService
 
 from .conftest import FakePaths
 

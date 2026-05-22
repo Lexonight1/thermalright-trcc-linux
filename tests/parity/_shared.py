@@ -13,7 +13,7 @@ Two responsibilities:
 
 Both trees coexist on ``main``; they share the top-level ``trcc`` namespace
 package, so a single Python process can import ``trcc.foo`` (legacy) and
-``trcc.next.foo`` side-by-side without collision.  Tests rely on that —
+``trcc.foo`` side-by-side without collision.  Tests rely on that —
 nothing here patches sys.modules or fiddles with the import system.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from trcc.next.core.models import LedStyle
+    from trcc.legacy.core.models import LedStyle
 
 
 # =========================================================================
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 def style_by_legacy_id() -> dict[int, LedStyle]:
     """Return the legacy_id → LedStyle map.  Imported lazily so this
     module is import-safe before next/ is on the path."""
-    from trcc.next.core.models import LedStyle
+    from trcc.legacy.core.models import LedStyle
 
     return {
         1:  LedStyle.AX120,

@@ -18,7 +18,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from trcc.adapters.infra.theme_downloader import (
+from trcc.legacy.adapters.infra.theme_downloader import (
     PackInfo,
     ThemeDownloader,
     _get_aliases,
@@ -154,7 +154,7 @@ class TestDownloadPack(unittest.TestCase):
 
     def test_delegates_to_ensure(self):
         """Calls DataManager.ensure_themes on download."""
-        from trcc.adapters.infra.data_repository import DataManager
+        from trcc.legacy.adapters.infra.data_repository import DataManager
         with patch.object(ThemeDownloader, '_is_installed', return_value=False), \
              patch.object(DataManager, 'ensure_themes', return_value=True), \
              patch.object(ThemeDownloader, '_theme_count', return_value=10):
@@ -177,7 +177,7 @@ class TestRemovePack(unittest.TestCase):
 
     def test_removes_installed(self):
         """Creates theme dir in settings.user_data_dir, removes it."""
-        import trcc.conf as _conf
+        import trcc.legacy.conf as _conf
         data_dir = _conf.settings.user_data_dir
         theme_dir = data_dir / 'theme320320'
         theme_dir.mkdir(parents=True)
@@ -188,7 +188,7 @@ class TestRemovePack(unittest.TestCase):
         self.assertFalse(theme_dir.exists())
 
     def test_remove_with_alias(self):
-        import trcc.conf as _conf
+        import trcc.legacy.conf as _conf
         data_dir = _conf.settings.user_data_dir
         theme_dir = data_dir / 'theme320320'
         theme_dir.mkdir(parents=True)
@@ -211,20 +211,20 @@ class TestHelpers(unittest.TestCase):
 
     def test_is_installed_false_when_empty(self):
         """Empty theme dir = not installed."""
-        import trcc.conf as _conf
+        import trcc.legacy.conf as _conf
         d = _conf.settings.user_data_dir / 'theme320320'
         d.mkdir(parents=True)
         self.assertFalse(ThemeDownloader._is_installed(320, 320))
 
     def test_is_installed_true_with_content(self):
-        import trcc.conf as _conf
+        import trcc.legacy.conf as _conf
         d = _conf.settings.user_data_dir / 'theme320320'
         d.mkdir(parents=True)
         (d / 'Theme1').mkdir()
         self.assertTrue(ThemeDownloader._is_installed(320, 320))
 
     def test_theme_count(self):
-        import trcc.conf as _conf
+        import trcc.legacy.conf as _conf
         d = _conf.settings.user_data_dir / 'theme320320'
         d.mkdir(parents=True)
         (d / 'Theme1').mkdir()

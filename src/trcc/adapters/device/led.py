@@ -1,501 +1,293 @@
-#!/usr/bin/env python3
+"""Led — Device implementation for RGB LED controllers (FormLED equivalent).
+
+HID 64-byte report transport.  Shares the Type 2 DA/DB/DC/DD magic with
+HID LCD devices, but LED packets use cmd=2 with per-LED RGB payload.
+
+Payload shape passed to send():
+    LedPayload(colors=[(r,g,b), ...], is_on=None, global_on=True, brightness=100)
+
+Color scaling matches FormLED.cs SendHidVal:
+    scaled = channel * (brightness/100) * 0.4
 """
-HID LED protocol layer for RGB LED controller devices (FormLED equivalent).
-
-Device1 in Windows TRCC — VID 0x0416, PID 0x8001 — uses 64-byte HID reports
-for RGB LED color control. The handshake uses the same DA/DB/DC/DD magic as
-HID Type 2 LCD devices, but LED data packets use cmd=2 with per-LED RGB payload.
-
-Protocol reverse-engineered from FormLED.cs and UCDevice.cs (TRCC 2.0.3).
-
-The ``UsbTransport`` ABC from hid_device.py is reused for transport.
-"""
-
 from __future__ import annotations
 
 import logging
+import struct
 import threading
 import time
-from pathlib import Path
+from dataclasses import dataclass, field
 
-from trcc.core.color import ColorEngine  # noqa: F401 — re-export
-from trcc.core.models import (
-    LED_REMAP_SUB_TABLES,  # noqa: F401 — re-export
-    LED_REMAP_TABLES,  # noqa: F401 — re-export
-    LED_STYLES,  # noqa: F401 — re-export
-    PRESET_COLORS,  # noqa: F401 — re-export
-    HandshakeResult,  # noqa: F401 — re-export
-    LedDeviceStyle,  # noqa: F401 — re-export
-    LedHandshakeInfo,
-    PmEntry,  # noqa: F401 — re-export
-    PmRegistry,
-    remap_led_colors,  # noqa: F401 — re-export
-)
-
-from .frame import LedDevice
-from .hid import (
-    DEFAULT_TIMEOUT_MS,
-    EP_READ_01,
-    EP_WRITE_02,
-    HANDSHAKE_MAX_RETRIES,
-    HANDSHAKE_RETRY_DELAY_S,
-    HANDSHAKE_TIMEOUT_MS,
-    TYPE2_MAGIC,
-    UsbTransport,
-)
+from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
+from ...core.led_protocol import resolve_pm
+from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
+from ...core.ports import BulkTransport, Device
 
 log = logging.getLogger(__name__)
 
-# =========================================================================
-# Constants (from FormLED.cs / UCDevice.cs)
-# =========================================================================
 
-# LED device VID/PID (device1 in UCDevice.cs)
-LED_VID = 0x0416
-LED_PID = 0x8001  # UsbHidDevice(1046, 32769, hidNameList1, 64)
+# ── Wire constants ─────────────────────────────────────────────────────
 
-# Handshake magic (same as HID Type 2, imported from hid_device)
-LED_MAGIC = TYPE2_MAGIC
+_EP_WRITE = 0x02
+_EP_READ = 0x81
 
-# Packet structure
-LED_HEADER_SIZE = 20
-LED_CMD_INIT = 1      # header[12] = 1 for handshake
-LED_CMD_DATA = 2      # header[12] = 2 for LED data
+_MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
+_HID_REPORT_SIZE = 64
+_HEADER_SIZE = 20
+_CMD_INIT = 1
+_CMD_DATA = 2
+_COLOR_SCALE = 0.4
 
-# HID report size (UCDevice.cs: ThreadSendDeviceData1, 64-byte chunks)
-HID_REPORT_SIZE = 64
-
-# Color scaling factor (FormLED.cs SendHidVal: (float)(int)color * 0.4f)
-LED_COLOR_SCALE = 0.4
-
-# Timing (UCDevice.cs: Thread.Sleep(30) after ThreadSendDeviceData1 completes)
-
-# Handshake init packet size (device1 uses 64-byte reports, not 512)
-LED_INIT_SIZE = 64
-LED_RESPONSE_SIZE = 64
-
-# Handshake timing (same as HID Type 2)
-DELAY_PRE_INIT_S = 0.050    # Thread.Sleep(50) before init
-DELAY_POST_INIT_S = 0.200   # Thread.Sleep(200) after init
+_HANDSHAKE_TIMEOUT_MS = 5000
+_HANDSHAKE_MAX_RETRIES = 3
+_HANDSHAKE_RETRY_DELAY_S = 0.5
+_DELAY_PRE_INIT_S = 0.050
+_DELAY_POST_INIT_S = 0.200
+_DEFAULT_TIMEOUT_MS = 100
 
 
-
-# LedDeviceStyle, LED_STYLES, PmEntry, PmRegistry, PRESET_COLORS,
-# LED_REMAP_TABLES, remap_led_colors, LedHandshakeInfo — all imported
-# from core.models (canonical location). Re-exported for backward compat.
+# ── Payload shape the send() caller provides ──────────────────────────
 
 
+@dataclass(frozen=True, slots=True)
+class LedPayload:
+    """Structured payload for Led.send().
 
-# ColorEngine moved to core/color.py — re-exported above for backward compat.
-
-
-
-# =========================================================================
-# Packet builder (from FormLED.cs SendHidVal)
-# =========================================================================
-
-class LedPacketBuilder:
-    """Builds LED HID packets matching FormLED.cs SendHidVal.
-
-    Packet structure:
-        [20-byte header] + [N * 3 bytes RGB payload]
-
-    Header layout (from FormLED.cs SendHidVal, line 4309):
-        Bytes 0-3:   0xDA, 0xDB, 0xDC, 0xDD  (magic)
-        Bytes 4-11:  0x00 * 8                  (reserved)
-        Byte  12:    command (1=init, 2=LED data)
-        Bytes 13-15: 0x00 * 3                  (reserved)
-        Bytes 16-17: payload length (little-endian uint16)
-        Bytes 18-19: 0x00 * 2                  (reserved)
-
-    RGB payload: N LEDs × 3 bytes (R, G, B), each scaled by 0.4.
+    colors:     per-LED RGB tuples (0-255).
+    is_on:      per-LED boolean mask; None means all on.
+    global_on:  master switch; False turns every LED off.
+    brightness: 0-100 multiplier applied before the FormLED 0.4x scale.
     """
-
-    @staticmethod
-    def build_header(payload_length: int) -> bytes:
-        """Build the 20-byte LED packet header.
-
-        Args:
-            payload_length: Length of RGB payload in bytes.
-
-        Returns:
-            20-byte header.
-        """
-        header = bytearray(LED_HEADER_SIZE)
-        # Magic bytes
-        header[0:4] = LED_MAGIC
-        # Command = LED data
-        header[12] = LED_CMD_DATA
-        # Payload length (little-endian uint16)
-        header[16] = payload_length & 0xFF
-        header[17] = (payload_length >> 8) & 0xFF
-        return bytes(header)
-
-    @staticmethod
-    def build_init_packet() -> bytes:
-        """Build the handshake init packet (cmd=1).
-
-        Same as HidDeviceType2 init but in a 64-byte packet:
-            [0xDA, 0xDB, 0xDC, 0xDD, 0*8, 0x01, 0*7]
-        Padded to HID_REPORT_SIZE (64 bytes).
-        """
-        header = bytearray(HID_REPORT_SIZE)
-        header[0:4] = LED_MAGIC
-        header[12] = LED_CMD_INIT
-        return bytes(header)
-
-    @staticmethod
-    def build_led_packet(
-        led_colors: list[tuple[int, int, int]],
-        is_on: list[bool] | None = None,
-        global_on: bool = True,
-        brightness: int = 100,
-    ) -> bytes:
-        """Build complete LED data packet from per-LED RGB colors.
-
-        Args:
-            led_colors: List of (R, G, B) tuples, one per LED.
-            is_on: Per-LED on/off state. None means all on.
-            global_on: Global on/off switch. False → all LEDs off.
-            brightness: Global brightness 0-100 (applied as multiplier).
-
-        Returns:
-            Complete packet (header + RGB payload) ready for chunking.
-        """
-        led_count = len(led_colors)
-        payload_length = led_count * 3
-        header = LedPacketBuilder.build_header(payload_length)
-
-        brightness_factor = max(0, min(100, brightness)) / 100.0
-
-        payload = bytearray(payload_length)
-        for i, (r, g, b) in enumerate(led_colors):
-            led_is_on = global_on and (is_on[i] if is_on is not None else True)
-
-            if led_is_on:
-                # Apply brightness and 0.4x scaling (FormLED.cs SendHidVal)
-                scaled_r = int(r * brightness_factor * LED_COLOR_SCALE)
-                scaled_g = int(g * brightness_factor * LED_COLOR_SCALE)
-                scaled_b = int(b * brightness_factor * LED_COLOR_SCALE)
-                payload[i * 3] = min(255, max(0, scaled_r))
-                payload[i * 3 + 1] = min(255, max(0, scaled_g))
-                payload[i * 3 + 2] = min(255, max(0, scaled_b))
-            # else: remains 0,0,0 (off)
-
-        return header + bytes(payload)
+    colors: list[tuple[int, int, int]]
+    is_on: list[bool] | None = None
+    global_on: bool = True
+    brightness: int = 100
 
 
-# =========================================================================
-# LED HID sender (from UCDevice.cs ThreadSendDeviceData1)
-# =========================================================================
+# ── Led Device ────────────────────────────────────────────────────────
 
-class LedHidSender(LedDevice):
-    """Sends LED packets via UsbTransport with 64-byte report chunking.
 
-    Matches UCDevice.cs ThreadSendDeviceData1 (lines 983-1026):
-    - Splits packet into 64-byte HID reports
-    - Thread.Sleep(30) cooldown after complete send
-    - Concurrent-send guard (isSendUsbThread0)
-    """
+class Led(Device[BulkTransport]):
+    """RGB LED controller over HID 64-byte reports."""
 
-    def __init__(self, transport: UsbTransport):
-        self._transport = transport
-        self._lock = threading.Lock()
+    def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
+        super().__init__(info, transport)
+        self._send_lock = threading.Lock()
+        self._pm: int = 0
+        self._sub: int = 0
+        self._led_handshake: LedHandshakeResult | None = None
 
-    def handshake(self) -> LedHandshakeInfo:
-        """Perform LED device handshake with retry.
+    @property
+    def is_led(self) -> bool:
+        return True
 
-        Sends init packet (cmd=1), reads response, extracts pm byte.
-        Retries up to HANDSHAKE_MAX_RETRIES times.
+    @property
+    def led_handshake(self) -> LedHandshakeResult | None:
+        """LED-specific handshake info (pm, sub_type, style)."""
+        return self._led_handshake
 
-        Windows DeviceDataReceived1() does NOT validate magic or command
-        bytes in the response — it accepts any non-empty response. We
-        warn but still accept responses with unexpected magic/command.
+    # ── Device ABC ────────────────────────────────────────────────────
 
-        Returns:
-            LedHandshakeInfo with pm, sub_type, and resolved style.
+    def connect(self) -> HandshakeResult:
+        log.info("Led %s: opening transport", self.info.key)
+        if not self._transport.open():
+            log.error("Led %s: transport open failed", self.info.key)
+            raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
-        Raises:
-            RuntimeError: If handshake fails after all retries.
-        """
-        init_pkt = LedPacketBuilder.build_init_packet()
         last_err: Exception | None = None
+        init_pkt = self._build_init_packet()
 
-        for attempt in range(1, HANDSHAKE_MAX_RETRIES + 1):
+        for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):
             try:
-                time.sleep(DELAY_PRE_INIT_S)
-                self._transport.write(EP_WRITE_02, init_pkt, HANDSHAKE_TIMEOUT_MS)
-                time.sleep(DELAY_POST_INIT_S)
+                time.sleep(_DELAY_PRE_INIT_S)
+                self._transport.write(_EP_WRITE, init_pkt, _HANDSHAKE_TIMEOUT_MS)
+                time.sleep(_DELAY_POST_INIT_S)
 
                 resp = self._transport.read(
-                    EP_READ_01, LED_RESPONSE_SIZE, HANDSHAKE_TIMEOUT_MS,
+                    _EP_READ, _HID_REPORT_SIZE, _HANDSHAKE_TIMEOUT_MS,
                 )
 
                 if len(resp) < 7:
-                    log.warning(
-                        "LED handshake attempt %d/%d: response too short (%d bytes)",
-                        attempt, HANDSHAKE_MAX_RETRIES, len(resp),
+                    last_err = HandshakeError(
+                        f"Response too short ({len(resp)} bytes)"
                     )
-                    last_err = RuntimeError(
-                        f"LED handshake failed: response too short ({len(resp)} bytes)"
-                    )
-                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
                     continue
 
-                # Warn but don't reject if magic doesn't match
-                # (Windows DeviceDataReceived1 doesn't validate magic)
-                if resp[0:4] != LED_MAGIC:
-                    log.warning(
-                        "LED handshake: unexpected magic (got %s, expected %s)",
-                        resp[0:4].hex(), LED_MAGIC.hex(),
-                    )
+                # Windows DeviceDataReceived1 doesn't validate magic/cmd —
+                # we warn on mismatch but accept.
+                if resp[0:4] != _MAGIC:
+                    log.warning("Led handshake: unexpected magic %s", resp[0:4].hex())
                 if len(resp) > 12 and resp[12] != 1:
-                    log.warning(
-                        "LED handshake: unexpected cmd byte (got %d, expected 1)",
-                        resp[12],
-                    )
+                    log.warning("Led handshake: unexpected cmd byte %d", resp[12])
 
-                # PM and SUB extraction — matches Windows UCDevice.cs offsets.
-                # Windows HID API prepends Report ID at data[0], so:
-                #   data[6] = raw resp[5] = PM (product model byte)
-                #   data[5] = raw resp[4] = SUB (sub-variant byte)
-                # Previous code used resp[6]/resp[5] (off by one) which read
-                # zeros on AX120 devices (shadowepaxeor-glitch PM=0 was wrong).
-                pm = resp[5]
-                sub_type = resp[4]
-                style = PmRegistry.get_style(pm, sub_type)
-                model_name = PmRegistry.get_model_name(pm, sub_type)
-                entry = PmRegistry.resolve(pm, sub_type)
-                style_sub = entry.style_sub if entry else 0
+                # PM and SUB extraction — matches Windows UCDevice.cs offsets:
+                # raw resp[5] = PM, raw resp[4] = SUB
+                self._pm = resp[5]
+                self._sub = resp[4]
 
-                log.info(
-                    "LED handshake: PM=%d SUB=%d style=%s model=%s style_sub=%d",
-                    pm, sub_type,
-                    style.style_id if style else "?",
-                    model_name, style_sub,
-                )
+                # PM byte → device style + readable model name. Falls back to
+                # the registry's ``led_style`` / ``product`` when the firmware
+                # reports a PM not in PmRegistry (e.g. a new SKU).
+                entry = resolve_pm(self._pm, self._sub)
+                if entry is not None:
+                    style = entry.style
+                    model_name = entry.model_name
+                    style_sub = entry.style_sub
+                else:
+                    log.warning("Led handshake: unknown PM=%d (sub=%d); "
+                                "falling back to registry defaults",
+                                self._pm, self._sub)
+                    style = self.info.led_style
+                    model_name = self.info.product
+                    style_sub = 0
 
-                return LedHandshakeInfo(
-                    model_id=pm,
-                    pm=pm,
-                    sub_type=sub_type,
+                self._led_handshake = LedHandshakeResult(
+                    pm=self._pm, sub_type=self._sub,
                     style=style,
                     model_name=model_name,
                     style_sub=style_sub,
                     raw_response=bytes(resp[:64]),
                 )
+                result = HandshakeResult(
+                    resolution=(0, 0),        # LEDs have no screen resolution
+                    model_id=self._pm,
+                    pm_byte=self._pm,
+                    sub_byte=self._sub,
+                    raw_response=bytes(resp[:64]),
+                )
+                self._handshake = result
+                log.info("Led handshake OK: PM=%d SUB=%d style=%s model=%s",
+                         self._pm, self._sub,
+                         style.value if style else "—",
+                         model_name or "—")
+                return result
 
             except Exception as e:
-                # Retry-and-capture any failure (USB I/O, parser, etc.) — last_err is re-raised.
-                log.warning(
-                    "LED handshake attempt %d/%d failed: %s",
-                    attempt, HANDSHAKE_MAX_RETRIES, e,
-                )
                 last_err = e
-                if attempt < HANDSHAKE_MAX_RETRIES:
-                    time.sleep(HANDSHAKE_RETRY_DELAY_S)
+                log.warning("Led handshake attempt %d/%d failed: %s",
+                            attempt, _HANDSHAKE_MAX_RETRIES, e)
+                if attempt < _HANDSHAKE_MAX_RETRIES:
+                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
 
-        raise last_err or RuntimeError(
-            f"LED handshake failed after {HANDSHAKE_MAX_RETRIES} attempts"
-        )
+        raise HandshakeError(
+            f"Led handshake failed after {_HANDSHAKE_MAX_RETRIES} attempts"
+        ) from last_err
 
-    def send_data(self, packet: bytes) -> bool:
-        """Send an LED data packet, chunked into 64-byte HID reports.
+    def send(self, payload: LedPayload) -> bool:
+        """Send one LED color update.  Payload must be a LedPayload.
 
-        Args:
-            packet: Complete LED packet (header + RGB payload).
-
-        Returns:
-            True if all chunks were sent successfully.
+        Colors arrive in logical (UI / segment-display) order; the
+        per-style wire-remap table reorders them to physical-wire order
+        before the packet is built. Styles without a remap table (and
+        the pre-handshake / unknown-PM cases) pass through unchanged.
         """
-        if not self._lock.acquire(blocking=False):
-            log.debug("send_data: already sending — skipped")
+        if not isinstance(payload, LedPayload):
+            log.error("Led %s: send() got %s, expected LedPayload",
+                      self.info.key, type(payload).__name__)
+            raise UnsupportedOperationError(
+                "Led.send() requires a LedPayload; "
+                f"got {type(payload).__name__}"
+            )
+        if not self._transport.is_open:
+            log.error("Led %s: send() called before connect()", self.info.key)
+            raise TransportError(
+                f"Led {self.info.key} not connected — call connect() first"
+            )
+
+        # Apply wire-order remap using the handshake-resolved style.
+        # Both colors AND the optional is_on mask arrive in logical
+        # (UI / segment-display) order — the per-style table reorders
+        # both to physical-wire order before the packet is built. Skip
+        # the work when style is unknown or no table applies (identity
+        # passthrough).
+        if self._led_handshake is not None and payload.colors:
+            from ...services.led_segment import remap_led_colors
+            style = self._led_handshake.style
+            style_sub = self._led_handshake.style_sub
+            remapped_colors = remap_led_colors(payload.colors, style, style_sub)
+            remapped_is_on: list[bool] | None = payload.is_on
+            if remapped_colors is not payload.colors and payload.is_on is not None:
+                # Reuse the remap function by lifting booleans into a
+                # color-shaped sequence so the same table applies.
+                colored_mask = [(1, 0, 0) if v else (0, 0, 0) for v in payload.is_on]
+                physical_mask = remap_led_colors(colored_mask, style, style_sub)
+                remapped_is_on = [c[0] == 1 for c in physical_mask]
+            if remapped_colors is not payload.colors:
+                payload = LedPayload(
+                    colors=remapped_colors,
+                    is_on=remapped_is_on,
+                    global_on=payload.global_on,
+                    brightness=payload.brightness,
+                )
+
+        packet = self._build_packet(payload)
+        log.debug("Led %s: sending %d-byte packet (%d colors)",
+                  self.info.key, len(packet), len(payload.colors))
+
+        if not self._send_lock.acquire(blocking=False):
+            log.debug("Led %s: already sending — skipped", self.info.key)
             return False
 
         try:
             remaining = len(packet)
             offset = 0
-
             while remaining > 0:
-                chunk_size = min(remaining, HID_REPORT_SIZE)
+                chunk_size = min(remaining, _HID_REPORT_SIZE)
                 chunk = packet[offset:offset + chunk_size]
-
-                # Pad last chunk to report size if needed
-                if len(chunk) < HID_REPORT_SIZE:
-                    chunk = chunk + b'\x00' * (HID_REPORT_SIZE - len(chunk))
-
-                self._transport.write(EP_WRITE_02, chunk, DEFAULT_TIMEOUT_MS)
+                if len(chunk) < _HID_REPORT_SIZE:
+                    chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
+                self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
                 remaining -= chunk_size
                 offset += chunk_size
-
             return True
-
+        except TransportError:
+            log.exception("Led send failed")
+            return False
         finally:
-            self._lock.release()
+            self._send_lock.release()
 
-    @property
-    def is_sending(self) -> bool:
-        """Whether a send is currently in progress."""
-        return self._lock.locked()
+    def disconnect(self) -> None:
+        log.info("Led %s: disconnecting", self.info.key)
+        self._transport.close()
+        self._handshake = None
+        self._led_handshake = None
 
-    def close(self) -> None:
-        """Release resources (transport is managed externally)."""
-
-
-# =========================================================================
-# Public API
-# =========================================================================
-
-def send_led_colors(
-    transport: UsbTransport,
-    led_colors: list[tuple[int, int, int]],
-    is_on: list[bool] | None = None,
-    global_on: bool = True,
-    brightness: int = 100,
-) -> bool:
-    """Build and send LED color data to an LED device.
-
-    Convenience function combining LedPacketBuilder and LedHidSender.
-
-    Args:
-        transport: Open USB transport to the device.
-        led_colors: List of (R, G, B) tuples, one per LED.
-        is_on: Per-LED on/off state. None means all on.
-        global_on: Global on/off switch.
-        brightness: Global brightness 0-100.
-
-    Returns:
-        True if the send succeeded.
-    """
-    packet = LedPacketBuilder.build_led_packet(
-        led_colors, is_on, global_on, brightness
-    )
-    sender = LedHidSender(transport)
-    return sender.send_data(packet)
-
-
-# =========================================================================
-# LED probe cache — persists handshake results across restarts
-# =========================================================================
-# The firmware only responds to the HID handshake once per power cycle.
-# Caching the result avoids consuming the one-shot handshake during
-# detection, so the actual LedProtocol.handshake() still works.
-
-
-class _LedProbeCache:
-    """Disk-backed cache for LED handshake results.
-
-    Keyed by VID:PID:usb_path so multiple identical-PID devices
-    are disambiguated by bus position.
-    """
+    # ── Packet builders ───────────────────────────────────────────────
 
     @staticmethod
-    def _path() -> Path:
-        config_dir = Path.home() / '.trcc'
-        config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / 'led_probe_cache.json'
+    def _build_init_packet() -> bytes:
+        header = bytearray(_HID_REPORT_SIZE)
+        header[0:4] = _MAGIC
+        header[12] = _CMD_INIT
+        return bytes(header)
 
     @staticmethod
-    def _key(vid: int, pid: int, usb_path: str = '') -> str:
-        if usb_path:
-            return f"{vid:04x}_{pid:04x}_{usb_path}"
-        return f"{vid:04x}_{pid:04x}"
+    def _build_header(payload_length: int) -> bytes:
+        header = bytearray(_HEADER_SIZE)
+        header[0:4] = _MAGIC
+        header[12] = _CMD_DATA
+        struct.pack_into("<H", header, 16, payload_length)
+        return bytes(header)
 
     @classmethod
-    def save(cls, vid: int, pid: int, info: LedHandshakeInfo,
-             usb_path: str = '') -> None:
-        """Cache a successful probe result to disk."""
-        import json
-        try:
-            cache_path = cls._path()
-            cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-            cache[cls._key(vid, pid, usb_path)] = {
-                'pm': info.pm,
-                'sub_type': info.sub_type,
-                'model_name': info.model_name,
-                'style_id': info.style.style_id if info.style else 1,
-            }
-            from trcc.core.io import atomic_write_json
-            atomic_write_json(cache_path, cache, indent=None)
-        except (OSError, ValueError, TypeError) as e:
-            log.debug("Failed to save probe cache: %s", e)
+    def _build_packet(cls, payload: LedPayload) -> bytes:
+        count = len(payload.colors)
+        payload_len = count * 3
+        header = cls._build_header(payload_len)
 
-    @classmethod
-    def load(cls, vid: int, pid: int,
-             usb_path: str = '') -> LedHandshakeInfo | None:
-        """Load a cached probe result from disk."""
-        import json
-        try:
-            cache_path = cls._path()
-            if not cache_path.exists():
-                return None
-            cache = json.loads(cache_path.read_text())
-            # Try bus-path-specific key first, then fall back to VID:PID-only
-            entry = cache.get(cls._key(vid, pid, usb_path))
-            if not entry and usb_path:
-                entry = cache.get(cls._key(vid, pid))
-            if not entry:
-                return None
-            pm = entry['pm']
-            sub_type = entry['sub_type']
-            pm_entry = PmRegistry.resolve(pm, sub_type)
-            return LedHandshakeInfo(
-                pm=pm,
-                sub_type=sub_type,
-                style=PmRegistry.get_style(pm, sub_type),
-                model_name=entry['model_name'],
-                style_sub=pm_entry.style_sub if pm_entry else 0,
+        brightness = max(0, min(100, payload.brightness)) / 100.0
+        body = bytearray(payload_len)
+        for i, (r, g, b) in enumerate(payload.colors):
+            on = payload.global_on and (
+                payload.is_on[i] if payload.is_on is not None else True
             )
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            log.debug("Failed to load probe cache: %s", e)
-            return None
+            if on:
+                body[i * 3] = min(255, max(0, int(r * brightness * _COLOR_SCALE)))
+                body[i * 3 + 1] = min(255, max(0, int(g * brightness * _COLOR_SCALE)))
+                body[i * 3 + 2] = min(255, max(0, int(b * brightness * _COLOR_SCALE)))
+            # else: stays 0,0,0 (off)
+        return header + bytes(body)
 
 
-def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
-                    usb_path: str = '') -> LedHandshakeInfo | None:
-    """Probe an LED device to discover its model via HID handshake.
-
-    Checks the disk cache first (keyed by VID:PID:bus_path).  Only
-    performs a live USB handshake when no cached result exists, since
-    the firmware only responds to the handshake once per power cycle.
-
-    Args:
-        vid: USB vendor ID.
-        pid: USB product ID.
-        usb_path: USB bus path (e.g. "usb:5:2") — used for cache
-            disambiguation AND to bind the transport to the specific
-            physical USB device when two LED controllers share VID:PID
-            (issue #128).
-
-    Returns:
-        LedHandshakeInfo with pm, sub_type, style, and model_name,
-        or None if the probe fails and no cached result exists.
-    """
-    from trcc.core.models import UsbAddress
-
-    # Cache-first: avoid consuming the one-shot handshake unnecessarily.
-    if (cached := _LedProbeCache.load(vid, pid, usb_path)) is not None:
-        return cached
-
-    transport = None
-    try:
-        from .factory import DeviceProtocolFactory
-        transport = DeviceProtocolFactory.create_usb_transport(
-            vid, pid, usb_address=UsbAddress.parse(usb_path),
-        )
-        transport.open()
-        sender = LedHidSender(transport)
-        info = sender.handshake()
-        if info:
-            _LedProbeCache.save(vid, pid, info, usb_path)
-        return info
-    except Exception as e:
-        # Probe outer — handshake retry layer above re-raises last_err of any type.
-        log.debug("LED probe failed for %04x:%04x: %s", vid, pid, e)
-        return None
-    finally:
-        if transport is not None:
-            try:
-                transport.close()
-            except OSError as e:
-                log.debug("LED probe transport close raised: %s", e)
+# `field` kept visible for future `LedPayload` extensions
+_ = field

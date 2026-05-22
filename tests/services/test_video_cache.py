@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from conftest import make_test_surface, surface_size
 
-from trcc.services.video_cache import VideoFrameCache
+from trcc.legacy.services.video_cache import VideoFrameCache
 
 
 def _make_frames(count: int = 5, w: int = 32, h: int = 32) -> list:

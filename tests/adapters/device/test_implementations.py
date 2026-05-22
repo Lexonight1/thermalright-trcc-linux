@@ -3,8 +3,8 @@
 import struct
 import unittest
 
-from trcc.core.encoding import rgb_to_bytes
-from trcc.core.models import IMPL_NAMES, LCDDeviceConfig
+from trcc.legacy.core.encoding import rgb_to_bytes
+from trcc.legacy.core.models import IMPL_NAMES, LCDDeviceConfig
 
 
 class TestRGBToBytes(unittest.TestCase):
@@ -72,13 +72,13 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(size, 0xE100)
 
     def test_frame_chunks_count(self):
-        from trcc.adapters.device.scsi import ScsiDevice
+        from trcc.legacy.adapters.device.scsi import ScsiDevice
         chunks = ScsiDevice._get_frame_chunks(self.cfg.width, self.cfg.height)
         self.assertEqual(len(chunks), 4)
 
     def test_frame_chunks_total_size(self):
         """Total frame data = sum of chunk sizes."""
-        from trcc.adapters.device.scsi import ScsiDevice
+        from trcc.legacy.adapters.device.scsi import ScsiDevice
         total = sum(size for _, size in ScsiDevice._get_frame_chunks(320, 320))
         # 3 * 0x10000 + 0x2000 = 196608 + 8192 = 204800 = 320*320*2
         self.assertEqual(total, 320 * 320 * 2)

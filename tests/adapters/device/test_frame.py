@@ -2,8 +2,8 @@
 
 import pytest
 
-from trcc.adapters.device.frame import FrameDevice, LedDevice, UsbDevice
-from trcc.core.models import HandshakeResult, HidHandshakeInfo, LedHandshakeInfo
+from trcc.legacy.adapters.device.frame import FrameDevice, LedDevice, UsbDevice
+from trcc.legacy.core.models import HandshakeResult, HidHandshakeInfo, LedHandshakeInfo
 
 # =========================================================================
 # UsbDevice (root ABC)
@@ -136,43 +136,43 @@ class TestHierarchy:
     """Verify real device classes are in the correct ABC hierarchy."""
 
     def test_scsi_is_frame_device(self):
-        from trcc.adapters.device.scsi import ScsiDevice
+        from trcc.legacy.adapters.device.scsi import ScsiDevice
 
         assert issubclass(ScsiDevice, FrameDevice)
         assert issubclass(ScsiDevice, UsbDevice)
 
     def test_bulk_is_frame_device(self):
-        from trcc.adapters.device.bulk import BulkDevice
+        from trcc.legacy.adapters.device.bulk import BulkDevice
 
         assert issubclass(BulkDevice, FrameDevice)
         assert issubclass(BulkDevice, UsbDevice)
 
     def test_hid_device_is_frame_device(self):
-        from trcc.adapters.device.hid import HidDevice
+        from trcc.legacy.adapters.device.hid import HidDevice
 
         assert issubclass(HidDevice, FrameDevice)
         assert issubclass(HidDevice, UsbDevice)
 
     def test_hid_type2_is_frame_device(self):
-        from trcc.adapters.device.hid import HidDeviceType2
+        from trcc.legacy.adapters.device.hid import HidDeviceType2
 
         assert issubclass(HidDeviceType2, FrameDevice)
         assert issubclass(HidDeviceType2, UsbDevice)
 
     def test_hid_type3_is_frame_device(self):
-        from trcc.adapters.device.hid import HidDeviceType3
+        from trcc.legacy.adapters.device.hid import HidDeviceType3
 
         assert issubclass(HidDeviceType3, FrameDevice)
         assert issubclass(HidDeviceType3, UsbDevice)
 
     def test_led_sender_is_led_device(self):
-        from trcc.adapters.device.led import LedHidSender
+        from trcc.legacy.adapters.device.led import LedHidSender
 
         assert issubclass(LedHidSender, LedDevice)
         assert issubclass(LedHidSender, UsbDevice)
 
     def test_led_sender_not_frame_device(self):
-        from trcc.adapters.device.led import LedHidSender
+        from trcc.legacy.adapters.device.led import LedHidSender
 
         assert not issubclass(LedHidSender, FrameDevice)
 

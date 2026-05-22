@@ -91,7 +91,7 @@ def _spawn_daemon(sock_path: Path) -> subprocess.Popen:
 def _kill_daemon_via_ipc(sock_path: Path) -> bool:
     """Send the manifold `{"kill": True}` request — the standard graceful
     shutdown path from any client."""
-    from trcc.ipc import one_shot_request
+    from trcc.legacy.ipc import one_shot_request
     try:
         response = one_shot_request(
             {"kill": True}, socket_path=sock_path, timeout=2.0)
@@ -126,8 +126,8 @@ def main() -> int:
             qapp = _cast(  # noqa: F841 — Qt needs a live QApplication
                 QApplication, QApplication.instance() or QApplication(sys.argv))
 
-            from trcc.adapters.render.qt import QtRenderer
-            from trcc.core.trcc_proxy import TrccProxy
+            from trcc.legacy.adapters.render.qt import QtRenderer
+            from trcc.legacy.core.trcc_proxy import TrccProxy
             renderer = QtRenderer()
             proxy = TrccProxy(socket_path=sock_path, renderer=renderer)
 
@@ -172,7 +172,7 @@ def main() -> int:
                 received.append(args)
                 event.set()
 
-            from trcc.core.events import Topic
+            from trcc.legacy.core.events import Topic
             sub_id = proxy.events.subscribe(Topic.FRAME, _on_frame)
 
             # Trigger a render+publish on the daemon.  We load a real

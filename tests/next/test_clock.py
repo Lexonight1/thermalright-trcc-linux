@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from trcc.next.services._clock import (
+from trcc.services._clock import (
     WEEKDAYS_BY_LANG,
     _translate_date_pattern,
     compute_clock,

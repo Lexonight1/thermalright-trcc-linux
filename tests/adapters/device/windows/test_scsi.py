@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.device.windows.scsi'
+MODULE = 'trcc.legacy.adapters.device.windows.scsi'
 
 
 # ── Structure Layout Tests ────────────────────────────────────────────
@@ -28,13 +28,13 @@ class TestScsiStructures:
             pytest.skip("ctypes.wintypes not available on Linux")
 
     def test_sptd_has_cdb_field(self):
-        from trcc.adapters.device.windows.scsi import SCSI_PASS_THROUGH_DIRECT
+        from trcc.legacy.adapters.device.windows.scsi import SCSI_PASS_THROUGH_DIRECT
         sptd = SCSI_PASS_THROUGH_DIRECT()
         assert hasattr(sptd, 'Cdb')
         assert len(sptd.Cdb) == 16
 
     def test_sptd_with_buffer_has_sense(self):
-        from trcc.adapters.device.windows.scsi import (
+        from trcc.legacy.adapters.device.windows.scsi import (
             SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER,
         )
         sptdwb = SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER()
@@ -42,7 +42,7 @@ class TestScsiStructures:
         assert len(sptdwb.sense) == 32
 
     def test_spt_buffered_has_offset_fields(self):
-        from trcc.adapters.device.windows.scsi import SCSI_PASS_THROUGH
+        from trcc.legacy.adapters.device.windows.scsi import SCSI_PASS_THROUGH
         spt = SCSI_PASS_THROUGH()
         assert hasattr(spt, 'DataBufferOffset')
         assert hasattr(spt, 'SenseInfoOffset')

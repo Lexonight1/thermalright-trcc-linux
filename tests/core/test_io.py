@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from trcc.core.io import atomic_write_json
+from trcc.legacy.core.io import atomic_write_json
 
 
 class TestAtomicWriteJson:
@@ -44,7 +44,7 @@ class TestAtomicWriteJson:
         path = tmp_path / "config.json"
         path.write_text(json.dumps({"old": True}))
 
-        with patch("trcc.core.io.json.dump",
+        with patch("trcc.legacy.core.io.json.dump",
                    side_effect=RuntimeError("simulated crash")):
             with pytest.raises(RuntimeError):
                 atomic_write_json(path, {"new": True})

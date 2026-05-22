@@ -22,12 +22,12 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtGui import QPixmap
 
-from trcc.ui.gui.uc_device import (
+from trcc.legacy.ui.gui.uc_device import (
     DEVICE_IMAGE_MAP,
     UCDevice,
     _get_device_images,
 )
-from trcc.ui.gui.uc_preview import UCPreview
+from trcc.legacy.ui.gui.uc_preview import UCPreview
 
 # ============================================================================
 # Helpers
@@ -53,8 +53,8 @@ def _valid_pixmap(w: int = 50, h: int = 50) -> QPixmap:
 def _patch_assets():
     """Patch Assets methods so no filesystem access is needed."""
     with (
-        patch('trcc.ui.gui.uc_device.Assets') as mock_assets_dev,
-        patch('trcc.ui.gui.uc_preview.Assets') as mock_assets_prev,
+        patch('trcc.legacy.ui.gui.uc_device.Assets') as mock_assets_dev,
+        patch('trcc.legacy.ui.gui.uc_preview.Assets') as mock_assets_prev,
     ):
         # Default: exists -> False, load_pixmap -> null pixmap
         for mock_assets in (mock_assets_dev, mock_assets_prev):
@@ -77,8 +77,8 @@ def _patch_assets():
 @pytest.fixture(autouse=True)
 def _patch_set_background_pixmap():
     """Patch set_background_pixmap to avoid real file I/O."""
-    with patch('trcc.ui.gui.uc_device.set_background_pixmap'):
-        with patch('trcc.ui.gui.uc_preview.set_background_pixmap'):
+    with patch('trcc.legacy.ui.gui.uc_device.set_background_pixmap'):
+        with patch('trcc.legacy.ui.gui.uc_preview.set_background_pixmap'):
             yield
 
 
@@ -96,14 +96,14 @@ class TestGetDeviceImages:
 
     def test_button_image_found_directly(self, qapp: object) -> None:
         """button_image exists in Assets -> returns (name, name+'a')."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1FROZEN WARFRAME'
             info = {'button_image': 'A1FROZEN WARFRAME', 'protocol': 'scsi'}
             assert _get_device_images(info) == ('A1FROZEN WARFRAME', 'A1FROZEN WARFRAMEa')
 
     def test_button_image_underscores_to_spaces(self, qapp: object) -> None:
         """button_image with underscores replaced by spaces matches."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             # Direct name not found, spaced version found
             m.exists.side_effect = lambda n: n == 'A1FROZEN WARFRAME'
             info = {'button_image': 'A1FROZEN_WARFRAME', 'protocol': 'scsi'}
@@ -111,7 +111,7 @@ class TestGetDeviceImages:
 
     def test_button_image_spaces_to_underscores(self, qapp: object) -> None:
         """button_image with spaces replaced by underscores matches."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             # Neither direct nor spaced found, underscored found
             m.exists.side_effect = lambda n: n == 'A1FROZEN_WARFRAME'
             info = {'button_image': 'A1FROZEN WARFRAME', 'protocol': 'scsi'}
@@ -120,28 +120,28 @@ class TestGetDeviceImages:
 
     def test_model_field_lookup(self, qapp: object) -> None:
         """model field found in DEVICE_IMAGE_MAP -> returns mapped image."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1CZ1'
             info = {'button_image': '', 'model': 'CZ1', 'protocol': 'scsi'}
             assert _get_device_images(info) == ('A1CZ1', 'A1CZ1a')
 
     def test_name_substring_match(self, qapp: object) -> None:
         """name field substring matches a DEVICE_IMAGE_MAP key."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1LC1'
             info = {'button_image': '', 'model': '', 'name': 'My LC1 Device', 'protocol': 'scsi'}
             assert _get_device_images(info) == ('A1LC1', 'A1LC1a')
 
     def test_name_substring_case_insensitive(self, qapp: object) -> None:
         """Name substring match is case insensitive."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1CZTV'
             info = {'button_image': '', 'model': '', 'name': 'cztv cooler', 'protocol': 'scsi'}
             assert _get_device_images(info) == ('A1CZTV', 'A1CZTVa')
 
     def test_non_hid_default_fallback(self, qapp: object) -> None:
         """Non-HID device with no match falls back to A1CZTV if asset exists."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             # Only A1CZTV exists
             m.exists.side_effect = lambda n: n == 'A1CZTV'
             info = {'button_image': '', 'model': '', 'name': 'Unknown XYZ', 'protocol': 'scsi'}
@@ -149,41 +149,41 @@ class TestGetDeviceImages:
 
     def test_hid_no_match_returns_none(self, qapp: object) -> None:
         """HID device with no match returns (None, None) -- no default fallback."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.return_value = False
             info = {'button_image': 'Unknown', 'model': '', 'name': 'Unknown', 'protocol': 'hid'}
             assert _get_device_images(info) == (None, None)
 
     def test_no_match_at_all_returns_none(self, qapp: object) -> None:
         """When nothing matches and A1CZTV asset missing, returns (None, None)."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.return_value = False
             info = {'button_image': '', 'model': '', 'name': 'Unknown', 'protocol': 'scsi'}
             assert _get_device_images(info) == (None, None)
 
     def test_empty_device_info(self, qapp: object) -> None:
         """Empty dict returns (None, None) when no assets exist."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.return_value = False
             assert _get_device_images({}) == (None, None)
 
     def test_button_image_empty_string_skips_to_model(self, qapp: object) -> None:
         """Empty button_image skips directly to model lookup."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1LF12'
             info = {'button_image': '', 'model': 'LF12', 'protocol': 'scsi'}
             assert _get_device_images(info) == ('A1LF12', 'A1LF12a')
 
     def test_hid_non_generic_button_image(self, qapp: object) -> None:
         """HID device with non-generic button_image uses it."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1FROZEN WARFRAME PRO'
             info = {'button_image': 'A1FROZEN WARFRAME PRO', 'protocol': 'hid'}
             assert _get_device_images(info) == ('A1FROZEN WARFRAME PRO', 'A1FROZEN WARFRAME PROa')
 
     def test_model_key_not_in_map(self, qapp: object) -> None:
         """Model field that is not in DEVICE_IMAGE_MAP falls through to name."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             m.exists.side_effect = lambda n: n == 'A1LC2'
             info = {
                 'button_image': '', 'model': 'UNKNOWN_MODEL',
@@ -193,7 +193,7 @@ class TestGetDeviceImages:
 
     def test_model_asset_not_found_falls_to_name(self, qapp: object) -> None:
         """Model maps to an image that doesn't exist -> falls through to name."""
-        with patch('trcc.ui.gui.uc_device.Assets') as m:
+        with patch('trcc.legacy.ui.gui.uc_device.Assets') as m:
             # Model maps to A1CZ1 which doesn't exist, but name matches CZTV
             m.exists.side_effect = lambda n: n == 'A1CZTV'
             info = {
@@ -467,9 +467,9 @@ class TestUCDeviceButtonUpdate:
         panel = UCDevice(detect_fn=lambda: [dev])
         # Simulate handshake resolving the product
         dev['button_image'] = 'A1FROZEN WARFRAME'
-        with patch('trcc.ui.gui.uc_device._get_device_images') as mock_img:
+        with patch('trcc.legacy.ui.gui.uc_device._get_device_images') as mock_img:
             mock_img.return_value = ('A1FROZEN WARFRAME', 'A1FROZEN WARFRAMEa')
-            with patch('trcc.ui.gui.uc_device.Assets') as mock_a:
+            with patch('trcc.legacy.ui.gui.uc_device.Assets') as mock_a:
                 pix = _valid_pixmap(140, 50)
                 mock_a.load_pixmap.return_value = pix
                 panel.update_device_button(dev)
@@ -481,7 +481,7 @@ class TestUCDeviceButtonUpdate:
         dev = _make_device(name='Unknown')
         panel = UCDevice(detect_fn=lambda: [dev])
         original_text = panel.device_buttons[0].text()
-        with patch('trcc.ui.gui.uc_device._get_device_images', return_value=(None, None)):
+        with patch('trcc.legacy.ui.gui.uc_device._get_device_images', return_value=(None, None)):
             panel.update_device_button(dev)
         assert panel.device_buttons[0].text() == original_text
 
@@ -596,7 +596,7 @@ class TestUCPreviewConstruction:
     @pytest.fixture
     def panel(self, settings_with_resolution):
         """UCPreview built from active settings — mirrors production trcc_app.py."""
-        from trcc.conf import settings
+        from trcc.legacy.conf import settings
         return UCPreview(settings.width, settings.height)
 
     def test_default_construction(self, panel: UCPreview) -> None:
@@ -828,7 +828,7 @@ class TestUCPreviewStatus:
 
     @pytest.fixture
     def panel(self, settings_with_resolution):
-        from trcc.conf import settings
+        from trcc.legacy.conf import settings
         return UCPreview(settings.width, settings.height)
 
     def test_set_status(self, panel: UCPreview) -> None:
@@ -871,7 +871,7 @@ class TestSetPlaying:
 
     @pytest.fixture
     def panel(self, settings_with_resolution) -> UCPreview:
-        from trcc.conf import settings
+        from trcc.legacy.conf import settings
         return UCPreview(settings.width, settings.height)
 
     def test_set_playing_no_refs_uses_text(self, panel: UCPreview) -> None:
@@ -920,7 +920,7 @@ class TestGetLcdSize:
     @pytest.fixture
     def panel(self, settings_with_resolution):
         """UCPreview built from active settings — mirrors production trcc_app.py."""
-        from trcc.conf import settings
+        from trcc.legacy.conf import settings
         return UCPreview(settings.width, settings.height)
 
     def test_default(self, panel: UCPreview) -> None:
@@ -975,7 +975,7 @@ class TestUCPreviewDelegates:
 
     @pytest.fixture
     def panel(self, settings_with_resolution) -> UCPreview:
-        from trcc.conf import settings
+        from trcc.legacy.conf import settings
         return UCPreview(settings.width, settings.height)
 
     def test_play_pause_delegate(self, panel: UCPreview) -> None:

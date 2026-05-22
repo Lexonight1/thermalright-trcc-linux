@@ -17,15 +17,15 @@ import pytest
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from trcc.adapters.render.qt import QtRenderer
-from trcc.core.models import DeviceInfo
+from trcc.legacy.adapters.render.qt import QtRenderer
+from trcc.legacy.core.models import DeviceInfo
 
 # ═══════════════════════════════════════════════════════════════════════
 # Performance report — Valgrind-style summary for test_cpu.py / test_memory.py
 # Uses PerfReport from core/perf.py (domain object, hexagonal)
 # ═══════════════════════════════════════════════════════════════════════
-from trcc.core.perf import PerfReport
-from trcc.services.image import ImageService
+from trcc.legacy.core.perf import PerfReport
+from trcc.legacy.services.image import ImageService
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -96,7 +96,7 @@ def _restore_renderer():
     worker process, causing unrelated tests to fail with MagicMock instead
     of a real Renderer.  This fixture makes the renderer restore automatic.
     """
-    from trcc.services.image import ImageService
+    from trcc.legacy.services.image import ImageService
     saved = ImageService._renderer
     yield
     ImageService.set_renderer(saved)
@@ -135,7 +135,7 @@ def _real_trcc_empty(tmp_config, mock_platform):
     state never leaks between tests.
     """
     from trcc import _boot
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.core.trcc import Trcc
 
     _boot._cached = None
     trcc = Trcc(mock_platform, renderer=ImageService.renderer())
@@ -155,9 +155,9 @@ def trcc_with_lcd(tmp_path, monkeypatch):
     from mock_platform import MockPlatform
 
     from trcc import _boot
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.trcc import Trcc
 
     spec = [{"type": "lcd", "vid": "0402", "pid": "3922",
              "resolution": "320x320", "pm": 100}]
@@ -181,9 +181,9 @@ def trcc_with_led(tmp_path, monkeypatch):
     from mock_platform import MockPlatform
 
     from trcc import _boot
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.trcc import Trcc
 
     spec = [{"type": "led", "vid": "0416", "pid": "8001",
              "model": "AX120_DIGITAL"}]
@@ -207,9 +207,9 @@ def trcc_with_both(tmp_path, monkeypatch):
     from mock_platform import MockPlatform
 
     from trcc import _boot
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.trcc import Trcc
 
     spec = [
         {"type": "lcd", "vid": "0402", "pid": "3922",
@@ -318,15 +318,15 @@ def tmp_config(tmp_path, monkeypatch):
     config_path = str(tmp_path / "trcc" / "config.json")
     handshake_path = str(tmp_path / "trcc" / "last_handshake.json")
     os.makedirs(config_dir, exist_ok=True)
-    monkeypatch.setattr("trcc.conf.CONFIG_DIR", config_dir)
-    monkeypatch.setattr("trcc.conf.CONFIG_PATH", config_path)
-    monkeypatch.setattr("trcc.conf._HANDSHAKE_CACHE_PATH", handshake_path)
+    monkeypatch.setattr("trcc.legacy.conf.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("trcc.legacy.conf.CONFIG_PATH", config_path)
+    monkeypatch.setattr("trcc.legacy.conf._HANDSHAKE_CACHE_PATH", handshake_path)
 
     # Redirect log file so StandardLoggingConfigurator never writes to the real
     # ~/.trcc/trcc.log during tests.
     test_log = Path(config_dir) / "trcc.log"
     monkeypatch.setattr(
-        "trcc.adapters.infra.diagnostics._DEFAULT_LOG_FILE", test_log,
+        "trcc.legacy.adapters.infra.diagnostics._DEFAULT_LOG_FILE", test_log,
     )
     # Strip any real file handlers the root logger may have accumulated from a
     # previous configure() call (e.g. from a prior test that bootstrapped the app).
@@ -341,7 +341,7 @@ def tmp_config(tmp_path, monkeypatch):
     # Uses tmp_path so tests never touch real ~/.trcc/
     from unittest.mock import MagicMock
 
-    from trcc.conf import init_settings
+    from trcc.legacy.conf import init_settings
 
     resolver = MagicMock()
     resolver.config_dir.return_value = config_dir
@@ -398,8 +398,8 @@ def settings_with_resolution(tmp_config):
     is called with the handshake result. Widget tests that check initial state
     dependent on the active resolution should request this fixture.
     """
-    from trcc.conf import settings
-    from trcc.core.models import FBL_PROFILES
+    from trcc.legacy.conf import settings
+    from trcc.legacy.core.models import FBL_PROFILES
 
     p = FBL_PROFILES[100]
     settings.set_resolution(p.width, p.height)
@@ -475,9 +475,9 @@ def mock_led_platform(tmp_path):
 @pytest.fixture
 def lcd_device(mock_lcd_platform, tmp_config):
     """Connected LCD Device through real builder flow."""
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.builder import ControllerBuilder
 
     init_settings(mock_lcd_platform)
     builder = ControllerBuilder(mock_lcd_platform).with_renderer(QtRenderer())
@@ -490,8 +490,8 @@ def lcd_device(mock_lcd_platform, tmp_config):
 @pytest.fixture
 def led_device(mock_led_platform, tmp_config):
     """Connected LED Device through real builder flow."""
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.builder import ControllerBuilder
 
     init_settings(mock_led_platform)
     builder = ControllerBuilder(mock_led_platform)
@@ -580,32 +580,32 @@ def save_test_png(path: str, w: int = 320, h: int = 320) -> None:
 @pytest.fixture()
 def linux_builder():
     """ControllerBuilder wired with the real LinuxPlatform."""
-    from trcc.adapters.system.linux_platform import LinuxPlatform
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+    from trcc.legacy.core.builder import ControllerBuilder
     return ControllerBuilder(LinuxPlatform())
 
 
 @pytest.fixture()
 def windows_builder():
     """ControllerBuilder wired with the real WindowsPlatform."""
-    from trcc.adapters.system.windows_platform import WindowsPlatform
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+    from trcc.legacy.core.builder import ControllerBuilder
     return ControllerBuilder(WindowsPlatform())
 
 
 @pytest.fixture()
 def macos_builder():
     """ControllerBuilder wired with the real MacOSPlatform."""
-    from trcc.adapters.system.macos_platform import MacOSPlatform
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+    from trcc.legacy.core.builder import ControllerBuilder
     return ControllerBuilder(MacOSPlatform())
 
 
 @pytest.fixture()
 def bsd_builder():
     """ControllerBuilder wired with the real BSDPlatform."""
-    from trcc.adapters.system.bsd_platform import BSDPlatform
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+    from trcc.legacy.core.builder import ControllerBuilder
     return ControllerBuilder(BSDPlatform())
 
 
@@ -615,7 +615,7 @@ def make_device_service(**overrides):
     Use this in tests that construct DeviceService directly. All adapter
     callables default to MagicMock so construction never raises.
     """
-    from trcc.services import DeviceService
+    from trcc.legacy.services import DeviceService
 
     defaults = {
         'detect_fn': MagicMock(return_value=[]),

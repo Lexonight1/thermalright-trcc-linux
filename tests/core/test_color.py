@@ -2,7 +2,7 @@
 
 import unittest
 
-from trcc.core.color import ColorEngine
+from trcc.legacy.core.color import ColorEngine
 
 
 class TestRainbowTable(unittest.TestCase):

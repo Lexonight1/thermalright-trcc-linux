@@ -11,7 +11,7 @@ import os
 import pytest
 from mock_platform import MockPlatform
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     FBL_PROFILES,
     PROTOCOL_TRAITS,
@@ -33,9 +33,9 @@ def _connect_lcd(spec: dict, tmp_path):
     (tmp_path / '.trcc').mkdir(exist_ok=True)
     (tmp_path / '.trcc' / 'data').mkdir(exist_ok=True)
 
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.builder import ControllerBuilder
 
     init_settings(platform)
     builder = ControllerBuilder(platform).with_renderer(QtRenderer())
@@ -51,8 +51,8 @@ def _connect_led(spec: dict, tmp_path):
     (tmp_path / '.trcc').mkdir(exist_ok=True)
     (tmp_path / '.trcc' / 'data').mkdir(exist_ok=True)
 
-    from trcc.conf import init_settings
-    from trcc.core.builder import ControllerBuilder
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.builder import ControllerBuilder
 
     init_settings(platform)
     builder = ControllerBuilder(platform)
@@ -86,7 +86,7 @@ def _make_spec_from_entry(vid: int, pid: int, entry: DeviceEntry) -> dict:
     is_led = PROTOCOL_TRAITS.get(entry.protocol, PROTOCOL_TRAITS['scsi']).is_led
     if is_led:
         return _led_spec(model=entry.model, name=f"{entry.vendor} {entry.product}")
-    from trcc.core.models import FBL_TO_RESOLUTION
+    from trcc.legacy.core.models import FBL_TO_RESOLUTION
     res = FBL_TO_RESOLUTION.get(entry.fbl, (320, 320))
     return _lcd_spec(vid, pid, entry.fbl, res[0], res[1],
                      f"{entry.vendor} {entry.product}")

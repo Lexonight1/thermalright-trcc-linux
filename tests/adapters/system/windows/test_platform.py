@@ -5,8 +5,8 @@ that need Windows APIs are checked for existence, not called.
 """
 from __future__ import annotations
 
-from trcc.adapters.system.windows_platform import WindowsPlatform
-from trcc.core.ports import Platform
+from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+from trcc.legacy.core.ports import Platform
 
 
 class TestWindowsPlatformIsPlatform:

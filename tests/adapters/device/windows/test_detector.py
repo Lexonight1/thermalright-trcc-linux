@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.device.windows.detector'
+MODULE = 'trcc.legacy.adapters.device.windows.detector'
 
 
 # ── VID/PID Parsing ───────────────────────────────────────────────────
@@ -14,30 +14,30 @@ MODULE = 'trcc.adapters.device.windows.detector'
 class TestParseVidPid:
 
     def test_standard_format(self):
-        from trcc.adapters.device.windows.detector import _parse_vid_pid
+        from trcc.legacy.adapters.device.windows.detector import _parse_vid_pid
         vid, pid = _parse_vid_pid('USB\\VID_0416&PID_5020\\12345')
         assert vid == 0x0416
         assert pid == 0x5020
 
     def test_lowercase(self):
-        from trcc.adapters.device.windows.detector import _parse_vid_pid
+        from trcc.legacy.adapters.device.windows.detector import _parse_vid_pid
         vid, pid = _parse_vid_pid('USB\\VID_0416&PID_5020\\abc')
         assert vid == 0x0416
 
     def test_no_match(self):
-        from trcc.adapters.device.windows.detector import _parse_vid_pid
+        from trcc.legacy.adapters.device.windows.detector import _parse_vid_pid
         vid, pid = _parse_vid_pid('PCI\\VEN_8086&DEV_1234')
         assert vid is None
         assert pid is None
 
     def test_empty_string(self):
-        from trcc.adapters.device.windows.detector import _parse_vid_pid
+        from trcc.legacy.adapters.device.windows.detector import _parse_vid_pid
         vid, pid = _parse_vid_pid('')
         assert vid is None
         assert pid is None
 
     def test_partial_match(self):
-        from trcc.adapters.device.windows.detector import _parse_vid_pid
+        from trcc.legacy.adapters.device.windows.detector import _parse_vid_pid
         vid, pid = _parse_vid_pid('VID_041')  # Too short
         assert vid is None
 
@@ -48,7 +48,7 @@ class TestParseVidPid:
 class TestMatchDevice:
 
     def test_unknown_vid_pid_returns_none(self):
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.windows.detector import _match_device
         pnp = MagicMock()
         pnp.DeviceID = 'USB\\VID_FFFF&PID_FFFF'
         result = _match_device(0xFFFF, 0xFFFF, pnp)
@@ -56,8 +56,8 @@ class TestMatchDevice:
 
     def test_known_scsi_device(self):
         """Known SCSI VID:PID should return DetectedDevice with protocol='scsi'."""
-        from trcc.adapters.device.detector import KNOWN_DEVICES
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.detector import KNOWN_DEVICES
+        from trcc.legacy.adapters.device.windows.detector import _match_device
 
         if not KNOWN_DEVICES:
             pytest.skip("No SCSI devices in registry")
@@ -77,8 +77,8 @@ class TestMatchDevice:
 
     def test_known_hid_lcd_device(self):
         """Known HID LCD VID:PID should return DetectedDevice with protocol='hid'."""
-        from trcc.adapters.device.detector import _HID_LCD_DEVICES
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.detector import _HID_LCD_DEVICES
+        from trcc.legacy.adapters.device.windows.detector import _match_device
 
         if not _HID_LCD_DEVICES:
             pytest.skip("No HID LCD devices in registry")
@@ -94,8 +94,8 @@ class TestMatchDevice:
 
     def test_known_bulk_device(self):
         """Known Bulk VID:PID should return protocol='bulk'."""
-        from trcc.adapters.device.detector import _BULK_DEVICES
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.detector import _BULK_DEVICES
+        from trcc.legacy.adapters.device.windows.detector import _match_device
 
         if not _BULK_DEVICES:
             pytest.skip("No Bulk devices in registry")
@@ -111,8 +111,8 @@ class TestMatchDevice:
 
     def test_known_ly_device(self):
         """Known LY VID:PID should return protocol='ly'."""
-        from trcc.adapters.device.detector import _LY_DEVICES
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.detector import _LY_DEVICES
+        from trcc.legacy.adapters.device.windows.detector import _match_device
 
         if not _LY_DEVICES:
             pytest.skip("No LY devices in registry")
@@ -128,8 +128,8 @@ class TestMatchDevice:
 
     def test_known_led_device(self):
         """Known LED VID:PID should return protocol='hid', implementation='hid_led'."""
-        from trcc.adapters.device.detector import _LED_DEVICES
-        from trcc.adapters.device.windows.detector import _match_device
+        from trcc.legacy.adapters.device.detector import _LED_DEVICES
+        from trcc.legacy.adapters.device.windows.detector import _match_device
 
         if not _LED_DEVICES:
             pytest.skip("No LED devices in registry")
@@ -152,7 +152,7 @@ class TestWindowsDetector:
 
     def test_returns_empty_without_wmi(self):
         """On Linux (no wmi), returns empty list."""
-        from trcc.adapters.device.windows.detector import WindowsDeviceDetector
+        from trcc.legacy.adapters.device.windows.detector import WindowsDeviceDetector
         devices = WindowsDeviceDetector.detect()
         assert devices == []
 
@@ -164,13 +164,13 @@ class TestFindPhysicalDrive:
 
     def test_returns_none_without_wmi(self):
         """On Linux, returns None (wmi not available)."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
         result = _find_physical_drive(0x0416, 0x5020)
         assert result is None
 
     def test_usbstor_tiny_disk_matches(self):
         """USBSTOR disk with 0 size matches — VID/PID confirmed, any vendor string works."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
 
         lcd_disk = MagicMock()
         lcd_disk.PNPDeviceID = r'USBSTOR\DISK&VEN_USBLCD&PROD_USB_PRC_SYSTEM&REV_\7&AF300EF&0'
@@ -198,7 +198,7 @@ class TestFindPhysicalDrive:
 
     def test_xsail_firmware_tiny_disk_matches(self):
         """Xsail firmware vendor string — size-based match works regardless."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
 
         lcd_disk = MagicMock()
         lcd_disk.PNPDeviceID = r'USBSTOR\DISK&VEN_XSAIL&PROD_USB_PRC_SYSTEM&REV_\7&AF300EF&0'
@@ -221,7 +221,7 @@ class TestFindPhysicalDrive:
 
     def test_flash_drive_ignored(self):
         """USB flash drive (large size) is not matched even if VID/PID confirmed."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
 
         flash_drive = MagicMock()
         flash_drive.PNPDeviceID = r'USBSTOR\DISK&VEN_KINGSTON&PROD_DATATRAVELER&REV_1.0\1234'
@@ -244,7 +244,7 @@ class TestFindPhysicalDrive:
 
     def test_no_usb_device_returns_none(self):
         """VID/PID not in USB tree — no disk returned."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
 
         mock_wmi_mod = MagicMock()
         mock_wmi_instance = MagicMock()
@@ -259,7 +259,7 @@ class TestFindPhysicalDrive:
 
     def test_wmi_exception_returns_none(self):
         """WMI unavailable — returns None gracefully."""
-        from trcc.adapters.device.windows.detector import _find_physical_drive
+        from trcc.legacy.adapters.device.windows.detector import _find_physical_drive
 
         mock_wmi_mod = MagicMock()
         mock_wmi_mod.WMI.side_effect = Exception("WMI unavailable")

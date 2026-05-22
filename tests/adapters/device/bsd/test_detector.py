@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-MODULE = 'trcc.adapters.device.bsd.detector'
+MODULE = 'trcc.legacy.adapters.device.bsd.detector'
 
 
 class TestGetUsbList:
@@ -14,7 +14,7 @@ class TestGetUsbList:
             returncode=0,
             stdout='ugen0.1: <USB EHCI> at usbus0\nugen0.2: <THERMALRIGHT> at usbus0\n',
         )
-        from trcc.adapters.device.bsd.detector import get_usb_list
+        from trcc.legacy.adapters.device.bsd.detector import get_usb_list
         lines = get_usb_list()
         assert len(lines) == 2
         assert 'THERMALRIGHT' in lines[1]
@@ -27,5 +27,5 @@ class TestGetUsbList:
         # (OSError, SubprocessError); FileNotFoundError is the realistic
         # "usbconfig not installed" mode.
         mock_run.side_effect = FileNotFoundError("no usbconfig")
-        from trcc.adapters.device.bsd.detector import get_usb_list
+        from trcc.legacy.adapters.device.bsd.detector import get_usb_list
         assert get_usb_list() == []

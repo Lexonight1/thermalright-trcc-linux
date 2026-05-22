@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.ui.cli._theme import (
+from trcc.legacy.ui.cli._theme import (
     export_theme,
     import_theme,
     list_backgrounds,
@@ -39,7 +39,7 @@ def cli_mock_lcd():
     mock_lcd.lcd_size = (320, 320)
     trcc._lcd_devices.clear()
     trcc._lcd_devices.append(mock_lcd)
-    with patch("trcc.ui.cli._display._connect_or_fail", return_value=0):
+    with patch("trcc.legacy.ui.cli._display._connect_or_fail", return_value=0):
         yield mock_lcd
     trcc._lcd_devices.clear()
 
@@ -47,7 +47,7 @@ def cli_mock_lcd():
 @pytest.fixture
 def cli_no_lcd():
     """Make _connect_or_fail return 1 (no LCD)."""
-    with patch("trcc.ui.cli._display._connect_or_fail", return_value=1):
+    with patch("trcc.legacy.ui.cli._display._connect_or_fail", return_value=1):
         yield
 
 # ===========================================================================
@@ -56,20 +56,20 @@ def cli_no_lcd():
 # the canonical module locations rather than trcc.ui.cli._theme.*
 # ===========================================================================
 
-_PATCH_SETTINGS = "trcc.conf.settings"
-_PATCH_SETTINGS_CLS = "trcc.conf.Settings"
-_PATCH_DATA_MANAGER = "trcc.adapters.infra.data_repository.DataManager"
-_PATCH_THEME_SVC = "trcc.services.ThemeService"
-_PATCH_IMAGE_SVC = "trcc.services.ImageService"
+_PATCH_SETTINGS = "trcc.legacy.conf.settings"
+_PATCH_SETTINGS_CLS = "trcc.legacy.conf.Settings"
+_PATCH_DATA_MANAGER = "trcc.legacy.adapters.infra.data_repository.DataManager"
+_PATCH_THEME_SVC = "trcc.legacy.services.ThemeService"
+_PATCH_IMAGE_SVC = "trcc.legacy.services.ImageService"
 
 
 # ===========================================================================
 # TestListThemes
 # ===========================================================================
 
-_PATCH_RESOLVE_THEME_DIR = "trcc.core.paths.resolve_theme_dir"
-_PATCH_HAS_THEMES = "trcc.core.paths.has_themes"
-_PATCH_GET_DEVICE_CFG = "trcc.ui.cli._theme._get_device_cfg"
+_PATCH_RESOLVE_THEME_DIR = "trcc.legacy.core.paths.resolve_theme_dir"
+_PATCH_HAS_THEMES = "trcc.legacy.core.paths.has_themes"
+_PATCH_GET_DEVICE_CFG = "trcc.legacy.ui.cli._theme._get_device_cfg"
 
 
 @pytest.mark.skip(reason="Phase 9: list_themes/backgrounds/masks now use trcc().lcd.list_*(lcd_idx) — tests need real trcc_with_lcd fixture and lcd.list_themes patching, not ThemeService patching")
@@ -79,7 +79,7 @@ class TestListThemes:
     @staticmethod
     def _setup_device_config(mock_theme_dir):
         """Write device config with theme_dir — same as connect() does."""
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         config = {'last_device': 0, 'devices': {
             '0': {'w': 320, 'h': 320, 'theme_dir': str(mock_theme_dir.path)},
         }}
@@ -143,7 +143,7 @@ class TestListThemes:
         assert "[user]" in out
 
     def test_local_no_themes_returns_0(self, capsys, tmp_path):
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         config = {'last_device': 0, 'devices': {
             '0': {'w': 320, 'h': 320, 'theme_dir': str(tmp_path / 'empty')},
         }}
@@ -168,7 +168,7 @@ class TestListBackgrounds:
 
     @staticmethod
     def _setup_device_config(web_dir):
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         config = {'last_device': 0, 'devices': {
             '0': {'w': 320, 'h': 320, 'web_dir': str(web_dir)},
         }}
@@ -250,14 +250,14 @@ class TestListMasks:
 
     @staticmethod
     def _setup_device_config(masks_dir='/masks/zt320320'):
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         config = {'last_device': 0, 'devices': {
             '0': {'w': 320, 'h': 320, 'masks_dir': masks_dir},
         }}
         save_config(config)
 
     def test_lists_masks_with_count(self, capsys):
-        from trcc.core.models import MaskInfo
+        from trcc.legacy.core.models import MaskInfo
         self._setup_device_config()
         theme_svc = MagicMock()
         theme_svc.discover_masks.return_value = [
@@ -274,7 +274,7 @@ class TestListMasks:
         assert "002b" in out
 
     def test_custom_mask_shown_with_tag(self, capsys):
-        from trcc.core.models import MaskInfo
+        from trcc.legacy.core.models import MaskInfo
         self._setup_device_config()
         theme_svc = MagicMock()
         theme_svc.discover_masks.return_value = [
@@ -447,8 +447,8 @@ class TestLoadTheme:
             "success": True, "image": img, "is_animated": False}
 
         mock_svc = MagicMock()
-        with patch("trcc.ui.cli._ensure_system"), \
-             patch("trcc.ui.cli._system_svc", mock_svc):
+        with patch("trcc.legacy.ui.cli._ensure_system"), \
+             patch("trcc.legacy.ui.cli._system_svc", mock_svc):
             load_theme(MagicMock(), "Theme1")
 
         call_kwargs = cli_mock_lcd.keep_alive_loop.call_args[1]
@@ -534,7 +534,7 @@ class TestExportTheme:
     """export_theme() — success, partial match, not found, no themes dir."""
 
     def _base_patches(self, mock_theme_dir, themes=None, w=320, h=320):
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         # Write device config so _get_device_cfg() finds it
         config = {'last_device': 0, 'devices': {
             '0': {'w': w, 'h': h, 'theme_dir': str(mock_theme_dir.path)},
@@ -602,7 +602,7 @@ class TestExportTheme:
         assert rc == 1
 
     def test_no_themes_dir_returns_1(self, capsys, tmp_path):
-        from trcc.conf import save_config
+        from trcc.legacy.conf import save_config
         # Device configured but theme_dir doesn't exist
         config = {'last_device': 0, 'devices': {
             '0': {'w': 320, 'h': 320, 'theme_dir': '/nonexistent'},

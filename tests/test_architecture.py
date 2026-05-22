@@ -17,17 +17,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.conftest import get_pixel, make_device_service, make_test_surface, surface_size
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     DeviceInfo,
     ThemeData,
     ThemeInfo,
     VideoState,
 )
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.media import MediaService
-from trcc.services.overlay import OverlayService
-from trcc.services.theme import ThemeService
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.media import MediaService
+from trcc.legacy.services.overlay import OverlayService
+from trcc.legacy.services.theme import ThemeService
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / 'src' / 'trcc' / 'services'
 
@@ -50,13 +50,13 @@ class TestDependencyInjection(unittest.TestCase):
         self.assertIs(svc.overlay, ovl)
         self.assertIs(svc.media, med)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_builder_wires_services_into_lcd_device(self, _):
         """ControllerBuilder creates LCDDevice with properly wired services."""
         from unittest.mock import MagicMock
 
-        from trcc.core.builder import ControllerBuilder
-        from trcc.core.device import Device
+        from trcc.legacy.core.builder import ControllerBuilder
+        from trcc.legacy.core.device import Device
 
         lcd = ControllerBuilder(MagicMock()).with_renderer(ImageService.renderer()).build_device()
         self.assertIsInstance(lcd, Device)
@@ -175,11 +175,11 @@ class TestDTOs(unittest.TestCase):
 
     def test_theme_data_lives_in_models(self):
         """ThemeData is in core.models, not in services."""
-        from trcc.core import models
+        from trcc.legacy.core import models
         self.assertTrue(hasattr(models, 'ThemeData'))
 
     def test_device_info_lives_in_models(self):
-        from trcc.core import models
+        from trcc.legacy.core import models
         self.assertTrue(hasattr(models, 'DeviceInfo'))
 
 
@@ -317,7 +317,7 @@ class TestHexagonalBoundary(unittest.TestCase):
             if py_file.name in self._COMPOSITION_ROOTS:
                 continue
             for module, lineno in self._get_module_level_imports(py_file):
-                if '.services' in module or module.startswith('trcc.services'):
+                if '.services' in module or module.startswith('trcc.legacy.services'):
                     violations.append(f"{py_file.name}:{lineno} imports {module}")
         self.assertEqual(violations, [], f"core/ → services/ violations: {violations}")
 
@@ -328,7 +328,7 @@ class TestHexagonalBoundary(unittest.TestCase):
             if py_file.name in self._COMPOSITION_ROOTS:
                 continue
             for module, lineno in self._get_module_level_imports(py_file):
-                if '.adapters' in module or module.startswith('trcc.adapters'):
+                if '.adapters' in module or module.startswith('trcc.legacy.adapters'):
                     violations.append(f"{py_file.name}:{lineno} imports {module}")
         self.assertEqual(violations, [], f"core/ → adapters/ violations: {violations}")
 
@@ -337,23 +337,23 @@ class TestPlatformImplementsPlatform(unittest.TestCase):
     """All platform adapters implement the Platform ABC."""
 
     def test_linux_implements_abc(self):
-        from trcc.adapters.system.linux_platform import LinuxPlatform
-        from trcc.core.ports import Platform
+        from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+        from trcc.legacy.core.ports import Platform
         self.assertTrue(issubclass(LinuxPlatform, Platform))
 
     def test_windows_implements_abc(self):
-        from trcc.adapters.system.windows_platform import WindowsPlatform
-        from trcc.core.ports import Platform
+        from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+        from trcc.legacy.core.ports import Platform
         self.assertTrue(issubclass(WindowsPlatform, Platform))
 
     def test_macos_implements_abc(self):
-        from trcc.adapters.system.macos_platform import MacOSPlatform
-        from trcc.core.ports import Platform
+        from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+        from trcc.legacy.core.ports import Platform
         self.assertTrue(issubclass(MacOSPlatform, Platform))
 
     def test_bsd_implements_abc(self):
-        from trcc.adapters.system.bsd_platform import BSDPlatform
-        from trcc.core.ports import Platform
+        from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+        from trcc.legacy.core.ports import Platform
         self.assertTrue(issubclass(BSDPlatform, Platform))
 
 
@@ -361,27 +361,27 @@ class TestSensorEnumeratorABC(unittest.TestCase):
     """All platform sensor enumerators implement the SensorEnumerator ABC."""
 
     def test_linux_implements_abc(self):
-        from trcc.adapters.system.linux_platform import SensorEnumerator
-        from trcc.core.ports import SensorEnumerator as ABC
+        from trcc.legacy.adapters.system.linux_platform import SensorEnumerator
+        from trcc.legacy.core.ports import SensorEnumerator as ABC
         self.assertTrue(issubclass(SensorEnumerator, ABC))
 
     def test_windows_implements_abc(self):
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             WindowsSensorEnumerator,
         )
-        from trcc.core.ports import SensorEnumerator as ABC
+        from trcc.legacy.core.ports import SensorEnumerator as ABC
         self.assertTrue(issubclass(WindowsSensorEnumerator, ABC))
 
     def test_macos_implements_abc(self):
         # Native sensor enumeration was extracted from macos_platform.py
         # into the multi-module macos/ package (PR #117 — jaminmc).
-        from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-        from trcc.core.ports import SensorEnumerator as ABC
+        from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
+        from trcc.legacy.core.ports import SensorEnumerator as ABC
         self.assertTrue(issubclass(MacOSSensorEnumerator, ABC))
 
     def test_bsd_implements_abc(self):
-        from trcc.adapters.system.bsd_platform import SensorEnumerator
-        from trcc.core.ports import SensorEnumerator as ABC
+        from trcc.legacy.adapters.system.bsd_platform import SensorEnumerator
+        from trcc.legacy.core.ports import SensorEnumerator as ABC
         self.assertTrue(issubclass(SensorEnumerator, ABC))
 
 
@@ -414,7 +414,7 @@ class TestCLISuggestedCommandsExist(unittest.TestCase):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str):
                     suggested.update(pattern.findall(node.value))
 
-        from trcc.ui.cli import app
+        from trcc.legacy.ui.cli import app
         registered = {cmd.name for cmd in app.registered_commands}
         missing = suggested - registered
         self.assertFalse(

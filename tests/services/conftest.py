@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.services import DeviceService, DisplayService, MediaService, OverlayService
-from trcc.services.image import ImageService
+from trcc.legacy.services import DeviceService, DisplayService, MediaService, OverlayService
+from trcc.legacy.services.image import ImageService
 
 
 def make_device_service(**overrides) -> DeviceService:

@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import ApplyMask, SetMaskPosition, SetMaskVisible
-from trcc.next.core.events import (
+from trcc.app import App
+from trcc.core.commands import ApplyMask, SetMaskPosition, SetMaskVisible
+from trcc.core.events import (
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,

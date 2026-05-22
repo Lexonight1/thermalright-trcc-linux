@@ -84,7 +84,7 @@ def _legacy_device(
     *, width: int, height: int,
 ) -> tuple[object, _LegacyRecordingTransport]:
     """Build a legacy ScsiDevice short-circuited to "already initialized"."""
-    from trcc.adapters.device.scsi import ScsiDevice
+    from trcc.legacy.adapters.device.scsi import ScsiDevice
 
     transport = _LegacyRecordingTransport()
     device = ScsiDevice(
@@ -101,9 +101,9 @@ def _next_device(
     *, width: int, height: int,
 ) -> tuple[object, _NextRecordingTransport]:
     """Build a next/ ScsiLcd with a populated handshake."""
-    from trcc.next.adapters.device.scsi_lcd import ScsiLcd
-    from trcc.next.core.models import HandshakeResult, Kind, ProductInfo, Wire
-    from trcc.next.core.protocol import get_profile
+    from trcc.legacy.adapters.device.scsi_lcd import ScsiLcd
+    from trcc.legacy.core.models import HandshakeResult, Kind, ProductInfo, Wire
+    from trcc.legacy.core.protocol import get_profile
 
     info = ProductInfo(
         vid=0x0402, pid=0x3922, vendor="ALi", product="parity",
@@ -133,17 +133,17 @@ def _zero_anim_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     the wait so the matrix runs in milliseconds — the byte output is
     independent of the delay between sends."""
     monkeypatch.setattr(
-        "trcc.adapters.device.scsi._ANIM_FIRST_DELAY_S", 0.0, raising=False,
+        "trcc.legacy.adapters.device.scsi._ANIM_FIRST_DELAY_S", 0.0, raising=False,
     )
     monkeypatch.setattr(
-        "trcc.adapters.device.scsi._ANIM_FRAME_DELAY_S", 0.0, raising=False,
+        "trcc.legacy.adapters.device.scsi._ANIM_FRAME_DELAY_S", 0.0, raising=False,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+        "trcc.legacy.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
         raising=False,
     )
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+        "trcc.legacy.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
         raising=False,
     )
 

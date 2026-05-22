@@ -11,9 +11,9 @@ from typing import Any
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import ConnectDevice, UploadBootAnimation
-from trcc.next.core.ports import Renderer
+from trcc.app import App
+from trcc.core.commands import ConnectDevice, UploadBootAnimation
+from trcc.core.ports import Renderer
 
 from .conftest import FakePlatform
 
@@ -95,13 +95,13 @@ def _make_app(tmp_path: Path, fbl: int = 100,
     """App with one connected SCSI device + a recording renderer."""
     if monkeypatch is not None:
         monkeypatch.setattr(
-            "trcc.next.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
+            "trcc.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
         )
         monkeypatch.setattr(
-            "trcc.next.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
+            "trcc.adapters.device.scsi_lcd._ANIM_FIRST_DELAY_S", 0.0,
         )
         monkeypatch.setattr(
-            "trcc.next.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
+            "trcc.adapters.device.scsi_lcd._ANIM_FRAME_DELAY_S", 0.0,
         )
 
     platform = FakePlatform(tmp_path)

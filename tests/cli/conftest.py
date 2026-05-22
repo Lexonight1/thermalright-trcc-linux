@@ -22,21 +22,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.device.lcd import LCDDevice
-from trcc.core.device.led import LEDDevice
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.overlay import OverlayService
+from trcc.legacy.core.device.lcd import LCDDevice
+from trcc.legacy.core.device.led import LEDDevice
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.overlay import OverlayService
 
 # ── Canonical patch targets ──────────────────────────────────────────────────
-PATCH_SETTINGS = "trcc.conf.settings"
-PATCH_SETTINGS_CLS = "trcc.conf.Settings"
-PATCH_DATA_MANAGER = "trcc.adapters.infra.data_repository.DataManager"
-PATCH_THEME_SVC = "trcc.services.ThemeService"
-PATCH_IMAGE_SVC = "trcc.services.ImageService"
-PATCH_CONNECT_LCD = "trcc.ui.cli._display._connect_or_fail"
+PATCH_SETTINGS = "trcc.legacy.conf.settings"
+PATCH_SETTINGS_CLS = "trcc.legacy.conf.Settings"
+PATCH_DATA_MANAGER = "trcc.legacy.adapters.infra.data_repository.DataManager"
+PATCH_THEME_SVC = "trcc.legacy.services.ThemeService"
+PATCH_IMAGE_SVC = "trcc.legacy.services.ImageService"
+PATCH_CONNECT_LCD = "trcc.legacy.ui.cli._display._connect_or_fail"
 # Phase 9: _connect_or_fail lives only in _display now (used by both _led and _theme).
-PATCH_CONNECT_LED = "trcc.ui.cli._display._connect_or_fail"
+PATCH_CONNECT_LED = "trcc.legacy.ui.cli._display._connect_or_fail"
 
 
 # ── Real renderer ────────────────────────────────────────────────────────────
@@ -108,8 +108,8 @@ def lcd(mock_device_svc, display_svc, renderer) -> LCDDevice:
 
     Only DeviceService (USB I/O) and MediaService (video decode) are mocked.
     """
-    from trcc.conf import Settings
-    from trcc.services.lcd_config import LCDConfigService
+    from trcc.legacy.conf import Settings
+    from trcc.legacy.services.lcd_config import LCDConfigService
     lcd_config = LCDConfigService(
         config_key_fn=Settings.device_config_key,
         save_setting_fn=Settings.save_device_setting,

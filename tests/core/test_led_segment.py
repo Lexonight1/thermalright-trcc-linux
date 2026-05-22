@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.led_segment import (
+from trcc.legacy.core.led_segment import (
     DISPLAYS,
     AK120Display,
     AX120Display,
@@ -32,7 +32,7 @@ from trcc.core.led_segment import (
     get_display,
     has_segment_display,
 )
-from trcc.core.models import HardwareMetrics
+from trcc.legacy.core.models import HardwareMetrics
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -1177,40 +1177,40 @@ class TestLC2Display:
         assert self.d.phase_count == 1
 
     def test_returns_61_bools(self) -> None:
-        with patch('trcc.core.led_segment.datetime') as mock_dt:
+        with patch('trcc.legacy.core.led_segment.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2024, 6, 15, 14, 30)
             mask = self.d.compute_mask(_make_metrics(), 0, "C")
         assert len(mask) == 61
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_colon_and_separator_always_on(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 15, 10, 0)
         mask = self.d.compute_mask(_make_metrics(), 0, "C")
         for idx in self.d.COLON_AND_SEP:
             assert mask[idx] is True
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_24h_hour_15_tens_lit(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 15, 15, 30)
         mask = self.d.compute_mask(_make_metrics(), 0, "C", is_24h=True)
         # Hour=15 → tens='1' → DIGITS[0] should have lit segments
         assert any(mask[led] for led in self.d.DIGITS[0])
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_12h_hour_3pm_tens_suppressed(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 15, 15, 30)
         mask = self.d.compute_mask(_make_metrics(), 0, "C", is_24h=False)
         # 15h → 3 in 12h → hour tens = 0 → suppress_zero → blank
         assert not any(mask[led] for led in self.d.DIGITS[0])
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_12h_midnight_shows_12(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 15, 0, 0)
         mask = self.d.compute_mask(_make_metrics(), 0, "C", is_24h=False)
         # 0h → 12 in 12h → hour tens = 1 → segments lit
         assert any(mask[led] for led in self.d.DIGITS[0])
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_month_tens_bc_set_for_october_plus(self, mock_dt: MagicMock) -> None:
         """Month 10-12: month tens = 1 → MONTH_TENS_BC both set."""
         mock_dt.now.return_value = datetime(2024, 10, 5, 10, 0)
@@ -1218,14 +1218,14 @@ class TestLC2Display:
         assert mask[self.d.MONTH_TENS_BC[0]] is True
         assert mask[self.d.MONTH_TENS_BC[1]] is True
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_month_tens_bc_clear_for_single_digit_month(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 3, 15, 10, 0)
         mask = self.d.compute_mask(_make_metrics(), 0, "C")
         assert mask[self.d.MONTH_TENS_BC[0]] is False
         assert mask[self.d.MONTH_TENS_BC[1]] is False
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_weekday_monday_one_bar(self, mock_dt: MagicMock) -> None:
         """Monday (weekday()=0 Mon-start) → w=0 → only bar[0] on."""
         mock_dt.now.return_value = datetime(2024, 2, 5, 12, 0)  # Monday
@@ -1235,7 +1235,7 @@ class TestLC2Display:
         assert mask[deco[1]] is False  # w=0 not > 0
         assert mask[deco[2]] is False
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_weekday_wednesday_three_bars(self, mock_dt: MagicMock) -> None:
         """Wednesday (weekday()=2) → w=2 → bars 0,1,2 on."""
         mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)  # Wednesday
@@ -1246,7 +1246,7 @@ class TestLC2Display:
         assert mask[deco[2]] is True
         assert mask[deco[3]] is False
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_weekday_sunday_all_bars(self, mock_dt: MagicMock) -> None:
         """Sunday (weekday()=6 Mon-start) → w=6 → all 7 bars on."""
         mock_dt.now.return_value = datetime(2024, 2, 18, 12, 0)  # Sunday
@@ -1254,7 +1254,7 @@ class TestLC2Display:
         for idx in range(54, 61):
             assert mask[idx] is True
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_week_sunday_mode_sunday_is_day_0(self, mock_dt: MagicMock) -> None:
         """week_sunday=True: Sunday=0, Monday=1, so Sunday→w=0→only bar[0]."""
         mock_dt.now.return_value = datetime(2024, 2, 18, 12, 0)  # Sunday (weekday()=6)
@@ -1264,14 +1264,14 @@ class TestLC2Display:
         # w = (6+1)%7 = 0 → bar[1] is False (w=0 not > 0)
         assert mask[deco[1]] is False
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_day_tens_suppressed_for_single_digit_day(self, mock_dt: MagicMock) -> None:
         """Day < 10 → day tens digit is blank (suppress_zero=True)."""
         mock_dt.now.return_value = datetime(2024, 6, 5, 12, 0)  # day=5
         mask = self.d.compute_mask(_make_metrics(), 0, "C")
         assert not any(mask[led] for led in self.d.DIGITS[5])
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_day_tens_lit_for_double_digit_day(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 14, 12, 0)  # day=14
         mask = self.d.compute_mask(_make_metrics(), 0, "C")
@@ -1414,14 +1414,14 @@ class TestModuleFunctions:
         compute_mask(1, _make_metrics(cpu_temp=100.0), temp_unit="C")
         compute_mask(1, _make_metrics(cpu_temp=100.0), temp_unit="F")
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_compute_mask_passes_is_24h_to_lc2(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 6, 15, 15, 0)
         m_24 = compute_mask(9, _make_metrics(), is_24h=True)
         m_12 = compute_mask(9, _make_metrics(), is_24h=False)
         assert m_24 != m_12
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_compute_mask_passes_week_sunday_to_lc2(self, mock_dt: MagicMock) -> None:
         mock_dt.now.return_value = datetime(2024, 2, 18, 12, 0)  # Sunday
         m_mon = compute_mask(9, _make_metrics(), week_sunday=False)

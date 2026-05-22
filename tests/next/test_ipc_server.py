@@ -18,22 +18,22 @@ from typing import Any
 
 import pytest
 
-from trcc.next import ipc
-from trcc.next.app import App
-from trcc.next.core.commands import (
+from trcc import ipc
+from trcc.app import App
+from trcc.core.commands import (
     ConnectDevice,
     DiscoverDevices,
     SendColor,
     SetBrightness,
 )
-from trcc.next.core.ports import Renderer
-from trcc.next.core.results import (
+from trcc.core.ports import Renderer
+from trcc.core.results import (
     BrightnessResult,
     ConnectResult,
     DiscoverResult,
     SendResult,
 )
-from trcc.next.proxy import AppProxy
+from trcc.proxy import AppProxy
 
 from .conftest import FakePlatform
 
@@ -105,12 +105,12 @@ def running_server(
     # Per-test socket — AF_UNIX paths are capped at ~108 bytes on Linux,
     # so pytest's tmp_path is too deep.  Use /tmp directly + a unique
     # suffix and clean up in teardown.
-    sock_path = Path(f"/tmp/trcc-next-test-{id(tmp_path):x}.sock")
+    sock_path = Path(f"/tmp/trcc-test-{id(tmp_path):x}.sock")
     monkeypatch.setattr(ipc, "socket_path", lambda: sock_path)
 
     # Settle the post-init delay so the FakePlatform handshake doesn't sleep
     monkeypatch.setattr(
-        "trcc.next.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
+        "trcc.adapters.device.scsi_lcd._POST_INIT_DELAY_S", 0.0,
     )
 
     platform = FakePlatform(tmp_path)

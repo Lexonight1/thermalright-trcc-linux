@@ -10,9 +10,9 @@ import pytest
 from conftest import make_test_surface
 from PySide6.QtGui import QImage
 
-from trcc.adapters.infra.data_repository import ThemeDir
-from trcc.core.models import ThemeData, ThemeInfo, ThemeType
-from trcc.services.theme import ThemeService, _copy_flat_files, theme_info_from_directory
+from trcc.legacy.adapters.infra.data_repository import ThemeDir
+from trcc.legacy.core.models import ThemeData, ThemeInfo, ThemeType
+from trcc.legacy.services.theme import ThemeService, _copy_flat_files, theme_info_from_directory
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -1150,7 +1150,7 @@ class TestExportImport:
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
         with patch(
-            'trcc.services.theme.theme_info_from_directory', return_value=fake_theme,
+            'trcc.legacy.services.theme.theme_info_from_directory', return_value=fake_theme,
         ):
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
@@ -1182,8 +1182,8 @@ class TestExportImport:
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
         with patch(
-            'trcc.services.theme.theme_info_from_directory', return_value=mismatched_theme,
-        ), patch('trcc.services.theme.log') as mock_log:
+            'trcc.legacy.services.theme.theme_info_from_directory', return_value=mismatched_theme,
+        ), patch('trcc.legacy.services.theme.log') as mock_log:
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
         assert ok is True
@@ -1202,8 +1202,8 @@ class TestExportImport:
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
         with patch(
-            'trcc.services.theme.theme_info_from_directory', return_value=zero_theme,
-        ), patch('trcc.services.theme.log') as mock_log:
+            'trcc.legacy.services.theme.theme_info_from_directory', return_value=zero_theme,
+        ), patch('trcc.legacy.services.theme.log') as mock_log:
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
         assert ok is True
@@ -1220,8 +1220,8 @@ class TestExportImport:
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
         with patch(
-            'trcc.services.theme.theme_info_from_directory', return_value=matching_theme,
-        ), patch('trcc.services.theme.log') as mock_log:
+            'trcc.legacy.services.theme.theme_info_from_directory', return_value=matching_theme,
+        ), patch('trcc.legacy.services.theme.log') as mock_log:
             ok, _ = svc.import_tr(import_file, tmp_path, lcd_size)
 
         assert ok is True
@@ -1536,8 +1536,8 @@ class TestLoadMaskInto:
         svc = ThemeService()
         mock_renderer = MagicMock()
         mock_renderer.open_image.side_effect = OSError('corrupt')
-        with patch('trcc.services.theme.ImageService.renderer', return_value=mock_renderer), \
-             patch('trcc.services.theme.log') as mock_log:
+        with patch('trcc.legacy.services.theme.ImageService.renderer', return_value=mock_renderer), \
+             patch('trcc.legacy.services.theme.log') as mock_log:
             svc._load_mask_into(data, td, 320, 320)
 
         assert data.mask is None
@@ -1551,7 +1551,7 @@ class TestImageHelpers:
 
     def test_open_image_delegates(self) -> None:
         with patch(
-            'trcc.services.theme.ImageService.open_and_resize',
+            'trcc.legacy.services.theme.ImageService.open_and_resize',
             return_value='sentinel',
         ) as mock_open:
             result = ThemeService._open_image(Path('/fake.png'), 320, 320)
@@ -1561,7 +1561,7 @@ class TestImageHelpers:
 
     def test_black_image_delegates(self) -> None:
         with patch(
-            'trcc.services.theme.ImageService.solid_color',
+            'trcc.legacy.services.theme.ImageService.solid_color',
             return_value='black_sentinel',
         ) as mock_solid:
             result = ThemeService._black_image(320, 320)

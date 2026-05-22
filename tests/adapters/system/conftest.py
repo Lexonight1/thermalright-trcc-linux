@@ -14,10 +14,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.models import SensorInfo
+from trcc.legacy.core.models import SensorInfo
 
 # Patch targets for the shared base class
-BASE = 'trcc.adapters.system._base'
+BASE = 'trcc.legacy.adapters.system._base'
 
 
 @dataclass
@@ -176,7 +176,7 @@ def mock_io_no_nvidia():
 
 def _make_base_enum():
     """Create lightest subclass (BSD) for base behavior tests."""
-    from trcc.adapters.system.bsd_platform import SensorEnumerator
+    from trcc.legacy.adapters.system.bsd_platform import SensorEnumerator
     return SensorEnumerator()
 
 
@@ -386,7 +386,7 @@ class TestFindFirst:
     """_find_first static helper."""
 
     def test_finds_by_source(self):
-        from trcc.adapters.system._base import SensorEnumeratorBase
+        from trcc.legacy.adapters.system._base import SensorEnumeratorBase
         sensors = [
             SensorInfo('a', 'A', 'temperature', '°C', 'hwmon'),
             SensorInfo('b', 'B', 'temperature', '°C', 'nvidia'),
@@ -394,11 +394,11 @@ class TestFindFirst:
         assert SensorEnumeratorBase._find_first(sensors, source='nvidia') == 'b'
 
     def test_returns_empty_on_no_match(self):
-        from trcc.adapters.system._base import SensorEnumeratorBase
+        from trcc.legacy.adapters.system._base import SensorEnumeratorBase
         assert SensorEnumeratorBase._find_first([], source='nvidia') == ''
 
     def test_finds_by_name_and_category(self):
-        from trcc.adapters.system._base import SensorEnumeratorBase
+        from trcc.legacy.adapters.system._base import SensorEnumeratorBase
         sensors = [
             SensorInfo('a', 'CPU Die', 'temperature', '°C', 'iokit'),
             SensorInfo('b', 'GPU Die', 'temperature', '°C', 'iokit'),

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.system.bsd_platform'
+MODULE = 'trcc.legacy.adapters.system.bsd_platform'
 
 SYSCTL_OUTPUT = (
     "dev.cpu.0.temperature: 45.0C\n"
@@ -33,7 +33,7 @@ def mock_bsd(mock_io_no_nvidia):
 @pytest.fixture
 def enum(mock_bsd):
     """Discovered BSD enumerator — ready for read_all/map_defaults."""
-    from trcc.adapters.system.bsd_platform import SensorEnumerator
+    from trcc.legacy.adapters.system.bsd_platform import SensorEnumerator
     e = SensorEnumerator()
     e.discover()
     return e
@@ -62,7 +62,7 @@ class TestDiscover:
             # Production catches SUBPROCESS_EXC — realistic sysctl absence is
             # FileNotFoundError, which is an OSError.
             sub.run.side_effect = FileNotFoundError("no sysctl")
-            from trcc.adapters.system.bsd_platform import SensorEnumerator
+            from trcc.legacy.adapters.system.bsd_platform import SensorEnumerator
             e = SensorEnumerator()
             sensors = e.discover()
             assert not any(s.source == 'sysctl' for s in sensors)
@@ -92,7 +92,7 @@ class TestReadAll:
             # Production catches SUBPROCESS_EXC. OSError covers permission /
             # not-found / timeout-style failures; bare RuntimeError is not caught.
             sub.run.side_effect = OSError("sysctl died")
-            from trcc.adapters.system.bsd_platform import SensorEnumerator
+            from trcc.legacy.adapters.system.bsd_platform import SensorEnumerator
             e = SensorEnumerator()
             e.discover()
             readings = e.read_all()

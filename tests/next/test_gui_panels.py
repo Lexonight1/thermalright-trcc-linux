@@ -21,7 +21,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from trcc.next.app import App
+from trcc.app import App
 
 from .conftest import FakePlatform
 
@@ -56,7 +56,7 @@ def gui_app(fake_platform: FakePlatform, qapp: object) -> App:
     """A test App with a real QtRenderer.  The renderer needs the
     QApplication, hence the ``qapp`` dependency."""
     del qapp                                # explicit dependency, no use
-    from trcc.next.adapters.render.qt import QtRenderer
+    from trcc.adapters.render.qt import QtRenderer
 
     return App(platform=fake_platform, renderer=QtRenderer())
 
@@ -71,8 +71,8 @@ def test_bus_bridge_subscribes_to_every_event_type(qapp: object) -> None:
     type.  Crashing here means a misnamed Signal or missing event
     import in bus_bridge.py."""
     del qapp
-    from trcc.next.core.events import EventBus
-    from trcc.next.ui.qtgui.bus_bridge import BusBridge
+    from trcc.core.events import EventBus
+    from trcc.ui.qtgui.bus_bridge import BusBridge
 
     bus = EventBus()
     bridge = BusBridge(bus)
@@ -91,8 +91,8 @@ def test_bus_bridge_forwards_events_to_qt_signals(qapp: object) -> None:
     """End-to-end: publishing an Event on the bus must arrive on the
     matching Qt signal.  Smokes the subscribe → emit pipeline."""
     del qapp
-    from trcc.next.core.events import DeviceConnected, EventBus
-    from trcc.next.ui.qtgui.bus_bridge import BusBridge
+    from trcc.core.events import DeviceConnected, EventBus
+    from trcc.ui.qtgui.bus_bridge import BusBridge
 
     bus = EventBus()
     bridge = BusBridge(bus)
@@ -114,7 +114,7 @@ def test_bus_bridge_forwards_events_to_qt_signals(qapp: object) -> None:
 
 def _bus(gui_app: App):
     """Single BusBridge for panel-construction tests."""
-    from trcc.next.ui.qtgui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.bus_bridge import BusBridge
     return BusBridge(gui_app.events)
 
 
@@ -124,7 +124,7 @@ def test_device_panel_constructs(gui_app: App) -> None:
     Builds → no exceptions.  Future tests can extend with click
     simulations + selection assertions.
     """
-    from trcc.next.ui.qtgui.panels.device_panel import DevicePanel
+    from trcc.ui.qtgui.panels.device_panel import DevicePanel
 
     panel = DevicePanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -133,7 +133,7 @@ def test_device_panel_constructs(gui_app: App) -> None:
 
 
 def test_display_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.display_panel import DisplayPanel
+    from trcc.ui.qtgui.panels.display_panel import DisplayPanel
 
     panel = DisplayPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -141,7 +141,7 @@ def test_display_panel_constructs(gui_app: App) -> None:
 
 
 def test_led_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.led_panel import LedPanel
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
 
     panel = LedPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -149,7 +149,7 @@ def test_led_panel_constructs(gui_app: App) -> None:
 
 
 def test_about_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.about_panel import AboutPanel
+    from trcc.ui.qtgui.panels.about_panel import AboutPanel
 
     panel = AboutPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -157,7 +157,7 @@ def test_about_panel_constructs(gui_app: App) -> None:
 
 
 def test_system_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.system_panel import SystemPanel
+    from trcc.ui.qtgui.panels.system_panel import SystemPanel
 
     panel = SystemPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -166,7 +166,7 @@ def test_system_panel_constructs(gui_app: App) -> None:
 
 def test_activity_sidebar_emits_selection(gui_app: App) -> None:
     """Sidebar click → selected signal fires with the entry key."""
-    from trcc.next.ui.qtgui.panels.sidebar import ActivitySidebar
+    from trcc.ui.qtgui.panels.sidebar import ActivitySidebar
 
     sidebar = ActivitySidebar(gui_app, _bus(gui_app))
     captured: list[str] = []
@@ -177,7 +177,7 @@ def test_activity_sidebar_emits_selection(gui_app: App) -> None:
 
 def test_base_panel_requires_setup_ui() -> None:
     """A subclass that forgets _setup_ui() can't even be defined."""
-    from trcc.next.ui.qtgui.base import BasePanel
+    from trcc.ui.qtgui.base import BasePanel
 
     with pytest.raises(TypeError, match="must implement _setup_ui"):
         class _BrokenPanel(BasePanel):  # type: ignore[misc]
@@ -186,7 +186,7 @@ def test_base_panel_requires_setup_ui() -> None:
 
 def test_assets_resolve_missing_returns_placeholder() -> None:
     """Missing asset names produce a 1×1 transparent placeholder."""
-    from trcc.next.ui.qtgui.assets import Assets
+    from trcc.ui.qtgui.assets import Assets
 
     pix = Assets.pixmap("definitely-not-an-asset-xyz")
     assert not pix.isNull()
@@ -196,7 +196,7 @@ def test_assets_resolve_missing_returns_placeholder() -> None:
 
 
 def test_local_theme_browser_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.local_theme_browser import LocalThemeBrowser
+    from trcc.ui.qtgui.panels.local_theme_browser import LocalThemeBrowser
 
     panel = LocalThemeBrowser(gui_app, _bus(gui_app))
     assert panel is not None
@@ -205,7 +205,7 @@ def test_local_theme_browser_constructs(gui_app: App) -> None:
 
 def test_cloud_theme_browser_populates_categories(gui_app: App) -> None:
     """Cloud browser fetches the static catalog on construct."""
-    from trcc.next.ui.qtgui.panels.cloud_theme_browser import CloudThemeBrowser
+    from trcc.ui.qtgui.panels.cloud_theme_browser import CloudThemeBrowser
 
     panel = CloudThemeBrowser(gui_app, _bus(gui_app))
     # "All categories" + 6 prefixes = at least 7 entries
@@ -213,7 +213,7 @@ def test_cloud_theme_browser_populates_categories(gui_app: App) -> None:
 
 
 def test_mask_browser_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.mask_browser import MaskBrowser
+    from trcc.ui.qtgui.panels.mask_browser import MaskBrowser
 
     panel = MaskBrowser(gui_app, _bus(gui_app))
     assert panel is not None
@@ -222,7 +222,7 @@ def test_mask_browser_constructs(gui_app: App) -> None:
 
 def test_status_panel_handles_missing_key(gui_app: App) -> None:
     """Refresh without a device key shows a friendly hint, not a crash."""
-    from trcc.next.ui.qtgui.panels.status_panel import StatusPanel
+    from trcc.ui.qtgui.panels.status_panel import StatusPanel
 
     panel = StatusPanel(gui_app, _bus(gui_app))
     panel._on_refresh()
@@ -231,7 +231,7 @@ def test_status_panel_handles_missing_key(gui_app: App) -> None:
 
 
 def test_overlay_editor_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
+    from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
 
     panel = OverlayEditorPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -240,7 +240,7 @@ def test_overlay_editor_constructs(gui_app: App) -> None:
 
 def test_overlay_editor_refresh_without_key_shows_hint(gui_app: App) -> None:
     """Refresh with no key in the field doesn't crash — shows guidance."""
-    from trcc.next.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
+    from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
 
     panel = OverlayEditorPanel(gui_app, _bus(gui_app))
     panel.refresh()
@@ -249,8 +249,8 @@ def test_overlay_editor_refresh_without_key_shows_hint(gui_app: App) -> None:
 
 def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     """The element dialog reads back the same fields it was prefilled with."""
-    from trcc.next.core.models import OverlayElement
-    from trcc.next.ui.qtgui.panels.overlay_editor import (
+    from trcc.core.models import OverlayElement
+    from trcc.ui.qtgui.panels.overlay_editor import (
         OverlayEditorPanel,
         _ElementDialog,
     )
@@ -273,7 +273,7 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
 
 
 def test_configuration_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -281,7 +281,7 @@ def test_configuration_panel_constructs(gui_app: App) -> None:
 
 
 def test_configuration_panel_load_without_key(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.configuration_panel import ConfigurationPanel
+    from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 
     panel = ConfigurationPanel(gui_app, _bus(gui_app))
     panel._load_from_snapshot()
@@ -289,7 +289,7 @@ def test_configuration_panel_load_without_key(gui_app: App) -> None:
 
 
 def test_preview_panel_constructs(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.preview_panel import PreviewPanel
+    from trcc.ui.qtgui.panels.preview_panel import PreviewPanel
 
     panel = PreviewPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -298,14 +298,14 @@ def test_preview_panel_constructs(gui_app: App) -> None:
 
 def test_preview_panel_handles_missing_key(gui_app: App) -> None:
     """No key + refresh just early-returns — no crash."""
-    from trcc.next.ui.qtgui.panels.preview_panel import PreviewPanel
+    from trcc.ui.qtgui.panels.preview_panel import PreviewPanel
 
     panel = PreviewPanel(gui_app, _bus(gui_app))
     panel._refresh()  # should be a no-op when key is empty
 
 
 def test_preview_panel_unknown_key_shows_placeholder(gui_app: App) -> None:
-    from trcc.next.ui.qtgui.panels.preview_panel import PreviewPanel
+    from trcc.ui.qtgui.panels.preview_panel import PreviewPanel
 
     panel = PreviewPanel(gui_app, _bus(gui_app))
     panel._picker.set_key("dead:beef")
@@ -316,7 +316,7 @@ def test_preview_panel_unknown_key_shows_placeholder(gui_app: App) -> None:
 
 def test_sensor_picker_filters_by_search(gui_app: App) -> None:
     """Search text narrows the visible sensor list."""
-    from trcc.next.ui.qtgui.sensor_picker import SensorPickerWidget
+    from trcc.ui.qtgui.sensor_picker import SensorPickerWidget
 
     picker = SensorPickerWidget(gui_app)
     # FakePlatform exposes "Fake CPU" — search for it
@@ -332,7 +332,7 @@ def test_sensor_picker_filters_by_search(gui_app: App) -> None:
 def test_splash_make_returns_widget(gui_app: App) -> None:
     """make_splash() returns either QSplashScreen or fallback QFrame."""
     del gui_app
-    from trcc.next.ui.qtgui.splash import make_splash
+    from trcc.ui.qtgui.splash import make_splash
 
     splash = make_splash()
     assert splash is not None
@@ -345,7 +345,7 @@ def test_load_image_command_via_tmpfile(
     gui_app: App, tmp_path,
 ) -> None:
     """LoadImage stages a real image file as a theme dir."""
-    from trcc.next.core.commands import LoadImage
+    from trcc.core.commands import LoadImage
 
     image = tmp_path / "test_image.png"
     # Minimal PNG header — file existence + extension are what we check
@@ -365,7 +365,7 @@ def test_load_image_command_via_tmpfile(
 
 
 def test_load_image_command_rejects_missing_file(gui_app: App) -> None:
-    from trcc.next.core.commands import LoadImage
+    from trcc.core.commands import LoadImage
 
     result = gui_app.dispatch(LoadImage(
         key="0402:3922", path=Path("/definitely/not/here.png"),
@@ -377,7 +377,7 @@ def test_load_image_command_rejects_missing_file(gui_app: App) -> None:
 def test_load_image_command_rejects_bad_extension(
     gui_app: App, tmp_path,
 ) -> None:
-    from trcc.next.core.commands import LoadImage
+    from trcc.core.commands import LoadImage
 
     bad = tmp_path / "not_an_image.txt"
     bad.write_text("hello")
@@ -388,8 +388,8 @@ def test_load_image_command_rejects_bad_extension(
 
 def test_status_panel_records_events(gui_app: App) -> None:
     """Bus events show up in the rolling log."""
-    from trcc.next.core.events import DeviceConnected
-    from trcc.next.ui.qtgui.panels.status_panel import StatusPanel
+    from trcc.core.events import DeviceConnected
+    from trcc.ui.qtgui.panels.status_panel import StatusPanel
 
     bus = _bus(gui_app)
     panel = StatusPanel(gui_app, bus)
@@ -409,7 +409,7 @@ def test_status_panel_records_events(gui_app: App) -> None:
 
 def test_main_window_constructs_and_includes_panels(gui_app: App) -> None:
     """The top-level MainWindow constructs and embeds the three panels."""
-    from trcc.next.ui.qtgui.app import MainWindow
+    from trcc.ui.qtgui.app import MainWindow
 
     window = MainWindow(gui_app)
     assert window is not None
@@ -426,7 +426,7 @@ def test_main_window_constructs_and_includes_panels(gui_app: App) -> None:
 def test_gui_launch_is_callable() -> None:
     """The ``launch`` factory exists + is callable.  Actually running
     it would block on qapp.exec(); tests just verify import resolution."""
-    from trcc.next.ui.qtgui import launch
+    from trcc.ui.qtgui import launch
 
     assert callable(launch)
 
@@ -450,7 +450,7 @@ def test_offscreen_qpa_is_set() -> None:
 
 def test_color_wheel_emits_hue_on_click(qapp: object) -> None:
     """ColorWheel drags update its hue and emit ``hue_changed``."""
-    from trcc.next.ui.qtgui.color_wheel import ColorWheel
+    from trcc.ui.qtgui.color_wheel import ColorWheel
 
     received: list[int] = []
     wheel = ColorWheel()
@@ -467,7 +467,7 @@ def test_image_crop_dialog_renders_target_size(qapp: object, tmp_path) -> None:
     """ImageCropDialog returns a QImage at exactly target_w×target_h."""
     from PySide6.QtGui import QColor, QImage, QPainter
 
-    from trcc.next.ui.qtgui.image_crop import ImageCropDialog
+    from trcc.ui.qtgui.image_crop import ImageCropDialog
 
     # Make a small synthetic source image to crop.
     src = QImage(200, 100, QImage.Format.Format_RGB32)
@@ -491,7 +491,7 @@ def test_splash_make_returns_widget_with_fallback(qapp: object) -> None:
 
     The asset isn't bundled in next/ yet, so this exercises the fallback.
     """
-    from trcc.next.ui.qtgui.splash import make_splash
+    from trcc.ui.qtgui.splash import make_splash
 
     splash = make_splash()
     assert hasattr(splash, "show")
@@ -501,7 +501,7 @@ def test_splash_make_returns_widget_with_fallback(qapp: object) -> None:
 
 def test_video_exporter_rejects_missing_source(tmp_path) -> None:
     """VideoExporter raises VideoExportError when the source doesn't exist."""
-    from trcc.next.services.video_export import (
+    from trcc.services.video_export import (
         VideoExporter,
         VideoExportError,
         VideoExportRequest,
@@ -518,7 +518,7 @@ def test_video_exporter_rejects_missing_source(tmp_path) -> None:
 
 def test_video_exporter_rejects_bad_range(tmp_path) -> None:
     """VideoExporter rejects end_ms <= start_ms."""
-    from trcc.next.services.video_export import (
+    from trcc.services.video_export import (
         VideoExporter,
         VideoExportError,
         VideoExportRequest,
@@ -536,7 +536,7 @@ def test_video_exporter_rejects_bad_range(tmp_path) -> None:
 
 def test_video_exporter_rejects_bad_rotation(tmp_path) -> None:
     """Rotation must be one of 0/90/180/270."""
-    from trcc.next.services.video_export import (
+    from trcc.services.video_export import (
         VideoExporter,
         VideoExportError,
         VideoExportRequest,
@@ -554,7 +554,7 @@ def test_video_exporter_rejects_bad_rotation(tmp_path) -> None:
 
 def test_load_video_command_rejects_missing_file(gui_app: App) -> None:
     """LoadVideo surfaces a structured error for non-existent paths."""
-    from trcc.next.core.commands import LoadVideo
+    from trcc.core.commands import LoadVideo
 
     result = gui_app.dispatch(LoadVideo(
         key="0402:3922", path=Path("/definitely/not/here.mp4"),
@@ -567,7 +567,7 @@ def test_load_video_command_rejects_bad_extension(
     gui_app: App, tmp_path,
 ) -> None:
     """LoadVideo rejects extensions outside the allow-list."""
-    from trcc.next.core.commands import LoadVideo
+    from trcc.core.commands import LoadVideo
 
     bad = tmp_path / "not_a_video.txt"
     bad.write_text("hello")
@@ -578,7 +578,7 @@ def test_load_video_command_rejects_bad_extension(
 
 def test_load_video_command_zt_passthrough(gui_app: App, tmp_path) -> None:
     """A .zt input is copied straight into a staged theme dir (no ffmpeg)."""
-    from trcc.next.core.commands import LoadVideo
+    from trcc.core.commands import LoadVideo
 
     # Minimal .zt header — 0xDC magic + a 1-frame placeholder.  LoadVideo
     # only cares about the extension + file existence at staging time.
@@ -600,7 +600,7 @@ def test_load_video_command_zt_passthrough(gui_app: App, tmp_path) -> None:
 
 def test_screen_overlay_is_wayland_returns_bool() -> None:
     """is_wayland() is callable + returns a bool regardless of env."""
-    from trcc.next.ui.qtgui.screen_overlay import is_wayland
+    from trcc.ui.qtgui.screen_overlay import is_wayland
 
     assert isinstance(is_wayland(), bool)
 
@@ -617,7 +617,7 @@ def _led_key() -> str:
 
 def test_led_color_tab_refresh(gui_app: App, qapp: object) -> None:
     """ColorTab.refresh_from updates RGB + brightness widgets in-place."""
-    from trcc.next.ui.qtgui.panels.led import ColorTab
+    from trcc.ui.qtgui.panels.led import ColorTab
 
     tab = ColorTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -635,7 +635,7 @@ def test_led_color_tab_apply_dispatches_commands(
     gui_app: App, qapp: object,
 ) -> None:
     """ColorTab Apply dispatches SetLedColor + SetLedBrightness."""
-    from trcc.next.ui.qtgui.panels.led import ColorTab
+    from trcc.ui.qtgui.panels.led import ColorTab
 
     tab = ColorTab(gui_app, _led_key)
     tab._set_color(255, 128, 0, emit_signals=False)
@@ -651,8 +651,8 @@ def test_led_mode_tab_selects_radio_for_persisted_mode(
     gui_app: App, qapp: object,
 ) -> None:
     """ModeTab.refresh_from checks the radio matching settings.mode."""
-    from trcc.next.core.led_models import LEDMode
-    from trcc.next.ui.qtgui.panels.led import ModeTab
+    from trcc.core.led_models import LEDMode
+    from trcc.ui.qtgui.panels.led import ModeTab
 
     tab = ModeTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -666,7 +666,7 @@ def test_led_zone_tab_hides_for_single_zone(
     gui_app: App, qapp: object,
 ) -> None:
     """ZoneTab shows its placeholder when settings.zones has ≤1 entries."""
-    from trcc.next.ui.qtgui.panels.led import ZoneTab
+    from trcc.ui.qtgui.panels.led import ZoneTab
 
     tab = ZoneTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -680,8 +680,8 @@ def test_led_zone_tab_builds_rows_for_multi_zone(
     gui_app: App, qapp: object,
 ) -> None:
     """ZoneTab builds one row per zone when count > 1."""
-    from trcc.next.core.led_models import LedZoneSettings
-    from trcc.next.ui.qtgui.panels.led import ZoneTab
+    from trcc.core.led_models import LedZoneSettings
+    from trcc.ui.qtgui.panels.led import ZoneTab
 
     tab = ZoneTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -701,7 +701,7 @@ def test_led_segment_tab_hides_when_no_segments(
     gui_app: App, qapp: object,
 ) -> None:
     """SegmentTab shows its placeholder when segment_on is empty."""
-    from trcc.next.ui.qtgui.panels.led import SegmentTab
+    from trcc.ui.qtgui.panels.led import SegmentTab
 
     tab = SegmentTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -713,7 +713,7 @@ def test_led_segment_tab_hides_when_no_segments(
 
 def test_led_segment_tab_builds_checks(gui_app: App, qapp: object) -> None:
     """SegmentTab builds one checkbox per segment when populated."""
-    from trcc.next.ui.qtgui.panels.led import SegmentTab
+    from trcc.ui.qtgui.panels.led import SegmentTab
 
     tab = SegmentTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -730,7 +730,7 @@ def test_led_advanced_tab_refreshes_radio_state(
     gui_app: App, qapp: object,
 ) -> None:
     """AdvancedTab.refresh_from selects the right temp/load radio + checkboxes."""
-    from trcc.next.ui.qtgui.panels.led import AdvancedTab
+    from trcc.ui.qtgui.panels.led import AdvancedTab
 
     tab = AdvancedTab(gui_app, _led_key)
     settings = gui_app.settings.for_led(_led_key())
@@ -751,7 +751,7 @@ def test_led_advanced_tab_refreshes_radio_state(
 def test_led_panel_constructs_with_tabs(gui_app: App, qapp: object) -> None:
     """LedPanel constructs, hosts the five sub-tabs, and refresh is a no-op
     when the key field is empty."""
-    from trcc.next.ui.qtgui.panels.led_panel import LedPanel
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
 
     panel = LedPanel(gui_app, _bus(gui_app))
     # No key → placeholder status, optional tabs hidden.
@@ -772,7 +772,7 @@ def test_led_panel_constructs_with_tabs(gui_app: App, qapp: object) -> None:
 
 def test_device_picker_populates_from_app(gui_app: App, qapp: object) -> None:
     """DevicePickerWidget shows every entry in app.devices on construction."""
-    from trcc.next.ui.qtgui.device_picker import DevicePickerWidget
+    from trcc.ui.qtgui.device_picker import DevicePickerWidget
 
     # FakePlatform attaches no devices by default, so the dropdown is
     # empty but still constructs cleanly.
@@ -788,7 +788,7 @@ def test_device_picker_emits_key_changed_on_text_finished(
     gui_app: App, qapp: object,
 ) -> None:
     """Manual text edit fires :sig:`key_changed` once the user commits."""
-    from trcc.next.ui.qtgui.device_picker import DevicePickerWidget
+    from trcc.ui.qtgui.device_picker import DevicePickerWidget
 
     received: list[str] = []
     picker = DevicePickerWidget(gui_app, _bus(gui_app))
@@ -805,7 +805,7 @@ def test_mask_browser_position_dispatches_command(
     gui_app: App, qapp: object,
 ) -> None:
     """Changing the mask position dispatches :class:`SetMaskPosition`."""
-    from trcc.next.ui.qtgui.panels.mask_browser import MaskBrowser
+    from trcc.ui.qtgui.panels.mask_browser import MaskBrowser
 
     panel = MaskBrowser(gui_app, _bus(gui_app))
     panel._picker.set_key("0402:3922")
@@ -821,7 +821,7 @@ def test_mask_browser_visibility_dispatches_command(
     gui_app: App, qapp: object,
 ) -> None:
     """Toggling visibility dispatches :class:`SetMaskVisible`."""
-    from trcc.next.ui.qtgui.panels.mask_browser import MaskBrowser
+    from trcc.ui.qtgui.panels.mask_browser import MaskBrowser
 
     panel = MaskBrowser(gui_app, _bus(gui_app))
     panel._picker.set_key("0402:3922")
@@ -840,7 +840,7 @@ def test_mask_browser_visibility_dispatches_command(
 
 def test_screencast_panel_constructs(gui_app: App, qapp: object) -> None:
     """ScreencastPanel builds without raising and starts in stopped state."""
-    from trcc.next.ui.qtgui.panels.screencast_panel import ScreencastPanel
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     assert panel is not None
@@ -853,7 +853,7 @@ def test_screencast_panel_start_without_region_is_a_no_op(
     gui_app: App, qapp: object,
 ) -> None:
     """Start without a chosen region surfaces guidance, doesn't tick."""
-    from trcc.next.ui.qtgui.panels.screencast_panel import ScreencastPanel
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._picker.set_key("0402:3922")
@@ -867,7 +867,7 @@ def test_screencast_panel_start_without_key_is_a_no_op(
     gui_app: App, qapp: object,
 ) -> None:
     """Start without a chosen device surfaces guidance, doesn't tick."""
-    from trcc.next.ui.qtgui.panels.screencast_panel import ScreencastPanel
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._region = (0, 0, 200, 100)
@@ -881,7 +881,7 @@ def test_screencast_panel_records_picked_region(
     gui_app: App, qapp: object,
 ) -> None:
     """Receiving region_selected updates the panel's region + label."""
-    from trcc.next.ui.qtgui.panels.screencast_panel import ScreencastPanel
+    from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._on_region_selected(40, 60, 320, 240)
@@ -893,8 +893,8 @@ def test_screencast_panel_records_picked_region(
 
 def test_screencast_build_frame_returns_bytes(gui_app: App) -> None:
     """``DisplayService.build_screencast_frame`` returns wire-ready bytes."""
-    from trcc.next.core.models import RawFrame
-    from trcc.next.core.registry import find_product
+    from trcc.core.models import RawFrame
+    from trcc.core.registry import find_product
 
     product = find_product(0x0402, 0x3922)
     assert product is not None
@@ -913,7 +913,7 @@ def test_screencast_build_frame_returns_bytes(gui_app: App) -> None:
 
 def test_region_overlay_constructs(qapp: object) -> None:
     """RegionSelectOverlay constructs without raising — no screen grab yet."""
-    from trcc.next.ui.qtgui.region_overlay import RegionSelectOverlay
+    from trcc.ui.qtgui.region_overlay import RegionSelectOverlay
 
     overlay = RegionSelectOverlay()
     assert hasattr(overlay, "region_selected")
@@ -923,8 +923,8 @@ def test_region_overlay_constructs(qapp: object) -> None:
 
 def test_led_panel_refreshes_on_key_set(gui_app: App, qapp: object) -> None:
     """Setting a key + refreshing rebuilds tab state from persisted settings."""
-    from trcc.next.core.led_models import LEDMode
-    from trcc.next.ui.qtgui.panels.led_panel import LedPanel
+    from trcc.core.led_models import LEDMode
+    from trcc.ui.qtgui.panels.led_panel import LedPanel
 
     settings = gui_app.settings.for_led(_led_key())
     settings.color = (50, 100, 150)

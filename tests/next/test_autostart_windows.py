@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from trcc.next.adapters.system._autostart import (
+from trcc.adapters.system._autostart import (
     NoopAutostart,
     WindowsAutostart,
 )
@@ -75,7 +75,7 @@ class _FakeWinreg:
 def test_is_enabled_false_before_any_writes() -> None:
     reg = _FakeWinreg()
     autostart = WindowsAutostart(
-        command='"C:\\trcc-next.exe" gui',
+        command='"C:\\trcc.exe" gui',
         registry=reg,
     )
     assert autostart.is_enabled() is False
@@ -84,13 +84,13 @@ def test_is_enabled_false_before_any_writes() -> None:
 def test_enable_writes_the_command_to_run_key() -> None:
     reg = _FakeWinreg()
     autostart = WindowsAutostart(
-        command='"C:\\trcc-next.exe" gui',
+        command='"C:\\trcc.exe" gui',
         registry=reg,
     )
     autostart.enable()
 
     run_key = reg.store[("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run")]
-    assert run_key == {"TRCCNext": '"C:\\trcc-next.exe" gui'}
+    assert run_key == {"TRCCNext": '"C:\\trcc.exe" gui'}
 
 
 def test_is_enabled_true_after_enable() -> None:
@@ -128,7 +128,7 @@ def test_is_enabled_false_when_value_differs_from_current_command() -> None:
     reg.store[("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run")] = {
         "TRCCNext": '"C:\\old\\trcc.exe" gui',
     }
-    autostart = WindowsAutostart(command='"C:\\new\\trcc-next.exe" gui',
+    autostart = WindowsAutostart(command='"C:\\new\\trcc.exe" gui',
                                  registry=reg)
     assert autostart.is_enabled() is False
 
@@ -177,22 +177,22 @@ def test_noop_autostart_always_disabled() -> None:
 def test_resolve_command_falls_back_to_python_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When trcc-next isn't on PATH, we use ``python -m trcc.next gui``."""
-    from trcc.next.adapters.system import _autostart
+    """When trcc isn't on PATH, we use ``python -m trcc gui``."""
+    from trcc.adapters.system import _autostart
 
     monkeypatch.setattr(_autostart.shutil, "which", lambda name: None)
     cmd = _autostart._resolve_command()
-    assert "-m trcc.next gui" in cmd
+    assert "-m trcc gui" in cmd
 
 
 def test_resolve_command_prefers_installed_console_script(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from trcc.next.adapters.system import _autostart
+    from trcc.adapters.system import _autostart
 
-    fake_path = "/opt/trcc/bin/trcc-next"
+    fake_path = "/opt/trcc/bin/trcc"
     monkeypatch.setattr(_autostart.shutil, "which",
-                        lambda name: fake_path if name == "trcc-next" else None)
+                        lambda name: fake_path if name == "trcc" else None)
     cmd = _autostart._resolve_command()
     assert cmd == f'"{fake_path}" gui'
 

@@ -47,7 +47,7 @@ from unittest.mock import MagicMock
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     BULK_DEVICES,
     HID_LCD_DEVICES,
     LED_DEVICES,
@@ -60,7 +60,7 @@ from trcc.core.models import (
     get_button_image,
     get_variant_override,
 )
-from trcc.core.models.device import _VARIANT_REGISTRY
+from trcc.legacy.core.models.device import _VARIANT_REGISTRY
 
 _ASSETS_DIR = _REPO_ROOT / "src" / "trcc" / "ui" / "gui" / "assets"
 

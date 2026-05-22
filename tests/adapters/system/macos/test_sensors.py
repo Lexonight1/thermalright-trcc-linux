@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.system.macos.sensors'
+MODULE = 'trcc.legacy.adapters.system.macos.sensors'
 
 
 def _powermetrics_plist_fixture() -> bytes:
@@ -117,7 +117,7 @@ class FakeSMCClient:
         key4 = key[:4]
         if key4 not in self._mock.keys:
             return None
-        from trcc.adapters.system.macos.smc_client import parse_smc_bytes
+        from trcc.legacy.adapters.system.macos.smc_client import parse_smc_bytes
 
         dt_int, raw = self._mock.keys[key4]
         buf = (ctypes.c_uint8 * 32)()
@@ -135,7 +135,7 @@ class FakeSMCClient:
         key4 = key[:4]
         if key4 not in self._mock.keys:
             return None
-        from trcc.adapters.system.macos.smc_client import decode_fan_rpm_raw
+        from trcc.legacy.adapters.system.macos.smc_client import decode_fan_rpm_raw
 
         dt_int, raw = self._mock.keys[key4]
         buf = (ctypes.c_uint8 * 32)()
@@ -224,7 +224,7 @@ def mock_macos_intel(mock_io_no_nvidia):
 @pytest.fixture
 def enum_no_smc(mock_macos_no_smc):
     """Discovered macOS enumerator without SMC access."""
-    from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+    from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
     e = MacOSSensorEnumerator()
     e.discover()
     return e
@@ -233,7 +233,7 @@ def enum_no_smc(mock_macos_no_smc):
 @pytest.fixture
 def enum_intel(mock_macos_intel):
     """Discovered macOS Intel enumerator (no SMC)."""
-    from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+    from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
     e = MacOSSensorEnumerator()
     e.discover()
     return e
@@ -242,7 +242,7 @@ def enum_intel(mock_macos_intel):
 @pytest.fixture
 def enum_with_smc(mock_macos, mock_smc):
     """Enumerator with working fake SMC (for SMC-specific assertions)."""
-    from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+    from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
     e = MacOSSensorEnumerator()
     e.discover()
     return e
@@ -320,7 +320,7 @@ class TestReadAll:
                 return MagicMock(stdout='')
 
             sub.run.side_effect = _run
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             readings = e.read_all()
@@ -371,7 +371,7 @@ class TestReadAll:
                     return MagicMock(stdout=mini)
                 return MagicMock(stdout='')
             sub.run.side_effect = _run
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             readings = e.read_all()
@@ -395,7 +395,7 @@ class TestReadAll:
                     raise PermissionError("no root")
                 return MagicMock(stdout='')
             sub.run.side_effect = _run
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             readings = e.read_all()
@@ -420,7 +420,7 @@ class TestReadAll:
                 return MagicMock(stdout=POWERMETRICS_PLIST_BYTES)
             sub.run.side_effect = _run
             mac_psutil.disk_usage.return_value = MagicMock(percent=55.0)
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             readings = e.read_all()
@@ -478,7 +478,7 @@ class TestMapDefaults:
 
             sub.run.side_effect = _run
             mock_io_no_nvidia.subprocess = sub
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             m = e.map_defaults()
@@ -511,7 +511,7 @@ class TestMapDefaults:
 
             sub.run.side_effect = _run
             mock_io_no_nvidia.subprocess = sub
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             m = e.map_defaults()
@@ -537,7 +537,7 @@ class TestMapDefaults:
 
             sub.run.side_effect = _run
 
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
             e = MacOSSensorEnumerator()
             e.discover()
             readings = e.read_all()
@@ -552,7 +552,7 @@ class TestSMCParsing:
     """parse_smc_bytes handles SMC data types."""
 
     def test_sp78_temperature(self):
-        from trcc.adapters.system.macos.smc_client import parse_smc_bytes
+        from trcc.legacy.adapters.system.macos.smc_client import parse_smc_bytes
         dt = struct.unpack('>I', b'sp78')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('>h', int(45.5 * 256))
@@ -561,7 +561,7 @@ class TestSMCParsing:
         assert abs(result - 45.5) < 0.01
 
     def test_fpe2_fan_speed(self):
-        from trcc.adapters.system.macos.smc_client import parse_smc_bytes
+        from trcc.legacy.adapters.system.macos.smc_client import parse_smc_bytes
         dt = struct.unpack('>I', b'fpe2')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('>H', (1200 * 4))
@@ -570,7 +570,7 @@ class TestSMCParsing:
         assert result == 1200.0
 
     def test_flt_float(self):
-        from trcc.adapters.system.macos.smc_client import parse_smc_bytes
+        from trcc.legacy.adapters.system.macos.smc_client import parse_smc_bytes
         dt = struct.unpack('>I', b'flt ')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('<f', 3.14)
@@ -581,7 +581,7 @@ class TestSMCParsing:
 
     def test_read_fan_rpm_fpe2_when_datatype_misparsed(self):
         """Wrong SMC datatype can make parse_smc_bytes tiny; raw uint16/4 is RPM."""
-        from trcc.adapters.system.macos.smc_client import SMCClient
+        from trcc.legacy.adapters.system.macos.smc_client import SMCClient
 
         c = SMCClient()
         buf = (ctypes.c_uint8 * 32)()
@@ -596,7 +596,7 @@ class TestSMCParsing:
 
     def test_read_fan_rpm_prefers_fpe2_when_parsed_absurdly_high(self):
         """Misparsed value in-band (~12k) vs fpe2 ~1.3k (matches iStat-style SMC)."""
-        from trcc.adapters.system.macos.smc_client import SMCClient
+        from trcc.legacy.adapters.system.macos.smc_client import SMCClient
 
         c = SMCClient()
         buf = (ctypes.c_uint8 * 32)()
@@ -607,13 +607,13 @@ class TestSMCParsing:
 
         c._read_key_raw = fake_raw  # type: ignore[method-assign]
         with patch(
-            'trcc.adapters.system.macos.smc_client.parse_smc_bytes',
+            'trcc.legacy.adapters.system.macos.smc_client.parse_smc_bytes',
             return_value=12352.0,
         ):
             assert abs(c.read_fan_rpm('F0Ac') - 1336.0) < 0.5
 
     def test_read_fan_rpm_literal_ui16_when_matches_raw(self):
-        from trcc.adapters.system.macos.smc_client import SMCClient
+        from trcc.legacy.adapters.system.macos.smc_client import SMCClient
 
         c = SMCClient()
         buf = (ctypes.c_uint8 * 32)()
@@ -628,7 +628,7 @@ class TestSMCParsing:
 
     def test_read_fan_rpm_flt_apple_silicon_matches_ismc(self):
         """F0Ac as flt (~1.3k RPM) — same encoding as ``ismc -o json``."""
-        from trcc.adapters.system.macos.smc_client import SMCClient
+        from trcc.legacy.adapters.system.macos.smc_client import SMCClient
 
         c = SMCClient()
         buf = (ctypes.c_uint8 * 32)()
@@ -644,7 +644,7 @@ class TestSMCParsing:
 
 class TestHidDedupe:
     def test_dedupe_hid_pairs_keeps_first_per_name(self):
-        from trcc.adapters.system.macos.hid_sensors import _dedupe_hid_pairs_by_name
+        from trcc.legacy.adapters.system.macos.hid_sensors import _dedupe_hid_pairs_by_name
 
         pairs = [('PMU_tdie1', 40.0), ('PMU_tdie1', 41.0), ('PMU_tdie2', 39.0)]
         assert _dedupe_hid_pairs_by_name(pairs) == [
@@ -656,22 +656,22 @@ class TestHidThermalNormalize:
     """Sanity bounds and sp78-style decoding for HID thermal floats."""
 
     def test_direct_celsius(self):
-        from trcc.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
+        from trcc.legacy.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
 
         assert _normalize_hid_thermal_celsius('PMU_tdie1', 34.5) == 34.5
 
     def test_tdev_raw_sp78(self):
-        from trcc.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
+        from trcc.legacy.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
 
         assert abs(_normalize_hid_thermal_celsius('PMU tdev2', 6400.0) - 25.0) < 0.01
 
     def test_generic_sp78_range(self):
-        from trcc.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
+        from trcc.legacy.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
 
         assert abs(_normalize_hid_thermal_celsius('PMU_tdie9', 8704.0) - 34.0) < 0.01
 
     def test_rejects_garbage_magnitude(self):
-        from trcc.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
+        from trcc.legacy.adapters.system.macos.hid_sensors import _normalize_hid_thermal_celsius
 
         assert _normalize_hid_thermal_celsius('PMU_tdie1', 1e200) is None
         assert _normalize_hid_thermal_celsius('PMU_tdie1', float('nan')) is None
@@ -681,13 +681,13 @@ class TestParseMetric:
     """_parse_metric helper — powermetrics line parser."""
 
     def test_temperature(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
+        from trcc.legacy.adapters.system.macos.sensors import _parse_metric
         assert _parse_metric('CPU die temperature: 45.23 C') == 45.23
 
     def test_fan(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
+        from trcc.legacy.adapters.system.macos.sensors import _parse_metric
         assert _parse_metric('Fan: 1200 rpm') == 1200.0
 
     def test_no_number(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
+        from trcc.legacy.adapters.system.macos.sensors import _parse_metric
         assert _parse_metric('no numbers here') == 0.0

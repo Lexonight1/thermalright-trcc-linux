@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from trcc.adapters.system.config import (
+from trcc.legacy.adapters.system.config import (
     CATEGORY_COLORS,
     CATEGORY_IMAGES,
     PanelConfig,

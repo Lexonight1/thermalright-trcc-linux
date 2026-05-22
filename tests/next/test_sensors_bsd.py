@@ -7,7 +7,7 @@ from the Linux dev box.
 """
 from __future__ import annotations
 
-from trcc.next.adapters.sensors._sysctl import SysctlCpu
+from trcc.adapters.sensors._sysctl import SysctlCpu
 
 # ── FreeBSD ──────────────────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ def test_garbage_value_skipped_not_raised() -> None:
 
 def test_freebsd_runner_default_factory_smoke() -> None:
     """Default runner doesn't crash on Linux — returns empty string."""
-    from trcc.next.adapters.sensors._sysctl import _default_runner
+    from trcc.adapters.sensors._sysctl import _default_runner
 
     output = _default_runner()
     assert isinstance(output, str)
@@ -142,10 +142,10 @@ def test_freebsd_runner_default_factory_smoke() -> None:
 
 def test_build_bsd_sensors_assembles_chain(monkeypatch) -> None:
     """The factory falls through to psutil when sysctl returns no data."""
-    from trcc.next.adapters.sensors import bsd as bsd_factory
+    from trcc.adapters.sensors import bsd as bsd_factory
 
     monkeypatch.setattr(
-        "trcc.next.adapters.sensors._sysctl._default_runner",
+        "trcc.adapters.sensors._sysctl._default_runner",
         lambda: "",
     )
     sensors = bsd_factory.build_bsd_sensors()

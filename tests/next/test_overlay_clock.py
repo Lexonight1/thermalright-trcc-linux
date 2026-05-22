@@ -8,8 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from trcc.next.core.ports import Renderer
-from trcc.next.services.overlay import OverlayService
+from trcc.core.ports import Renderer
+from trcc.services.overlay import OverlayService
 
 
 class _Surface:

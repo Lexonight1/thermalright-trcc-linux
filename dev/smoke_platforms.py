@@ -30,17 +30,17 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from trcc.adapters.system import PlatformFactory
-from trcc.adapters.system.bsd_platform import BSDPlatform
-from trcc.adapters.system.linux_platform import LinuxPlatform
-from trcc.adapters.system.macos_platform import MacOSPlatform
-from trcc.adapters.system.windows_platform import WindowsPlatform
-from trcc.core.models import (
+from trcc.legacy.adapters.system import PlatformFactory
+from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     DetectedDevice,
     DeviceInfo,
 )
-from trcc.core.ports import Platform
+from trcc.legacy.core.ports import Platform
 
 
 # ── Result type — visual report at end ──────────────────────────────────
@@ -218,7 +218,7 @@ def check_platform_factory_dispatch() -> CheckResult:
 
 def check_factory_registry_complete() -> CheckResult:
     """All 5 protocols (scsi, hid, bulk, ly, led) are factory-registered."""
-    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
     expected = {"scsi", "hid", "bulk", "ly", "led"}
     actual = set(DeviceProtocolFactory._PROTOCOL_REGISTRY)
     if missing := expected - actual:
@@ -235,7 +235,7 @@ def check_protocol_factory_subclasses() -> CheckResult:
     Catches anyone forgetting the ``@ProtocolFactory.register(name)`` line
     on a new protocol or removing one by accident.
     """
-    from trcc.adapters.device.factory import ProtocolFactory
+    from trcc.legacy.adapters.device.factory import ProtocolFactory
     expected = {"scsi", "hid", "bulk", "ly", "led"}
     actual = set(ProtocolFactory._registry)
     if missing := expected - actual:
@@ -254,12 +254,12 @@ def check_protocol_factory_for_info() -> CheckResult:
     verifies the type matches what the corresponding factory subclass would
     produce. Locks the dispatch-by-name contract Phase 4 depends on.
     """
-    from trcc.adapters.device.bulk_protocol import BulkProtocol
-    from trcc.adapters.device.factory import ProtocolFactory
-    from trcc.adapters.device.hid_protocol import HidProtocol
-    from trcc.adapters.device.led_protocol import LedProtocol
-    from trcc.adapters.device.ly_protocol import LyProtocol
-    from trcc.adapters.device.scsi_protocol import ScsiProtocol
+    from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
+    from trcc.legacy.adapters.device.factory import ProtocolFactory
+    from trcc.legacy.adapters.device.hid_protocol import HidProtocol
+    from trcc.legacy.adapters.device.led_protocol import LedProtocol
+    from trcc.legacy.adapters.device.ly_protocol import LyProtocol
+    from trcc.legacy.adapters.device.scsi_protocol import ScsiProtocol
     samples: dict[str, tuple[int, int, bool, type]] = {
         "scsi": (0x0402, 0x3922, True,  ScsiProtocol),
         "hid":  (0x0416, 0x5302, False, HidProtocol),
@@ -293,7 +293,7 @@ def check_factory_lambdas_accept_deviceinfo() -> CheckResult:
     lambda reaches for a missing field would crash here, before any user
     plugs in a real device.
     """
-    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
 
     # Use the canonical conversion chokepoint so the DeviceInfo carries
     # ``usb_address`` exactly as a real detector would produce.
@@ -362,7 +362,7 @@ def check_device_factory_subclasses() -> CheckResult:
     DeviceFactory). Same idiom as the others — catches anyone forgetting the
     ``@DeviceFactory.register(kind)`` line.
     """
-    from trcc.core.device.factory import DeviceFactory
+    from trcc.legacy.core.device.factory import DeviceFactory
     expected = {"lcd", "led"}
     actual = set(DeviceFactory._registry)
     if missing := expected - actual:
@@ -375,7 +375,7 @@ def check_device_factory_subclasses() -> CheckResult:
 
 def check_device_abc_subclass_shape() -> CheckResult:
     """LCDDevice + LEDDevice implement the Device ABC (Phase 1 contract)."""
-    from trcc.core.device import Device, LCDDevice, LEDDevice
+    from trcc.legacy.core.device import Device, LCDDevice, LEDDevice
     for sub in (LCDDevice, LEDDevice):
         if not issubclass(sub, Device):
             return CheckResult("Device ABC subclasses", False,
@@ -398,7 +398,7 @@ def check_device_protocol_di() -> CheckResult:
     """
     from types import SimpleNamespace
 
-    from trcc.core.device import LCDDevice, LEDDevice
+    from trcc.legacy.core.device import LCDDevice, LEDDevice
     # SimpleNamespace gives us a real ``__dict__`` so ``LCDDevice.__init__``
     # → ``_wire_protocol_observers`` can ``setattr(protocol,
     # 'on_state_changed', …)`` without crashing on a bare ``object()``.

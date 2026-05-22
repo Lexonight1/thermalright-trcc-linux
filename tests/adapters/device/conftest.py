@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.adapters.device.detector import enable_hid_testing
-from trcc.adapters.device.hid import UsbTransport
+from trcc.legacy.adapters.device.detector import enable_hid_testing
+from trcc.legacy.adapters.device.hid import UsbTransport
 
 
 @pytest.fixture(autouse=True)
@@ -18,8 +18,8 @@ def _enable_hid_for_tests():
 @pytest.fixture(autouse=True)
 def _patch_hid_sleep():
     """Disable time.sleep in HID device modules for fast tests."""
-    with patch("trcc.adapters.device.hid.time.sleep"), \
-         patch("trcc.adapters.device.led.time.sleep"):
+    with patch("trcc.legacy.adapters.device.hid.time.sleep"), \
+         patch("trcc.legacy.adapters.device.led.time.sleep"):
         yield
 
 

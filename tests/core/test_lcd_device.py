@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import get_pixel, make_test_surface
 
-from trcc.core.device.lcd import LCDDevice as Device
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.overlay import OverlayService
+from trcc.legacy.core.device.lcd import LCDDevice as Device
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.overlay import OverlayService
 
 
 def _disp_mock_with_geometry(resolution=(0, 0)) -> MagicMock:
@@ -64,7 +64,7 @@ def _make_real_lcd() -> tuple[Device, MagicMock]:
     Only DeviceService is mocked (USB boundary).
     Returns (lcd, mock_device_svc) so tests can verify send_frame calls.
     """
-    from trcc.core.models import ALL_DEVICES, FBL_PROFILES
+    from trcc.legacy.core.models import ALL_DEVICES, FBL_PROFILES
     vid_pid = (0x0402, 0x3922)
     info = ALL_DEVICES[vid_pid]
     w, h = FBL_PROFILES[info.fbl].resolution
@@ -557,9 +557,9 @@ class TestRestoreDeviceSettings(unittest.TestCase):
         svc = MagicMock(selected=dev)
         disp = _disp_mock_with_geometry()
         lcd = _make_lcd(device_svc=svc, display_svc=disp)
-        with patch('trcc.conf.Settings.device_config_key',
+        with patch('trcc.legacy.conf.Settings.device_config_key',
                    return_value="0"), \
-             patch('trcc.conf.Settings.get_device_config',
+             patch('trcc.legacy.conf.Settings.get_device_config',
                    return_value={'brightness_level': 50, 'rotation': 90}):
             lcd.restore_device_settings()
         # set_brightness calls DisplayService
@@ -606,7 +606,7 @@ class TestLoadLastTheme(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from trcc.services.lcd_config import LCDConfigService
+        from trcc.legacy.services.lcd_config import LCDConfigService
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
         svc = MagicMock(selected=dev)
         disp = MagicMock()
@@ -816,7 +816,7 @@ class TestLoadLastTheme(unittest.TestCase):
 @pytest.fixture
 def lcd_with_mocks():
     """Device with mock services. Geometry pulled from the device registry."""
-    from trcc.core.models import ALL_DEVICES, FBL_PROFILES
+    from trcc.legacy.core.models import ALL_DEVICES, FBL_PROFILES
     vid_pid = (0x0402, 0x3922)
     info = ALL_DEVICES[vid_pid]
     w, h = FBL_PROFILES[info.fbl].resolution
@@ -851,7 +851,7 @@ class TestLoadThemeByName:
     """Device.load_theme_by_name — core theme loading by name."""
 
     def test_found_theme_calls_select(self, lcd_with_mocks):
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         theme = ThemeInfo(name="CyberPunk", theme_type=ThemeType.LOCAL)
         lcd_with_mocks._theme_svc.discover_local_merged.return_value = [theme]
@@ -888,7 +888,7 @@ class TestLoadThemeByName:
         """Static theme image is sent to device after select()."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         fake_image = MagicMock()
         theme = ThemeInfo(
@@ -909,7 +909,7 @@ class TestLoadThemeByName:
         """Animated themes return image but don't call send (caller loops)."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         theme = ThemeInfo(
             name="Video001", theme_type=ThemeType.LOCAL,
@@ -930,7 +930,7 @@ class TestLoadThemeByName:
         """Theme name + type saved to per-device config, mask cleared."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         theme = ThemeInfo(
             name="Saved001", theme_type=ThemeType.LOCAL,
@@ -961,7 +961,7 @@ class TestLoadThemeByName:
         """Result dict includes theme_path and config_path for caller."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         dc_path = Path("/tmp/themes/WithDC/config1.dc")
         theme = ThemeInfo(
@@ -1034,7 +1034,7 @@ class TestLoadThemeByNameOverlay:
         """Static theme with config1.dc → overlay enabled + render_and_send called."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         theme = ThemeInfo(
             name="Overlay001", theme_type=ThemeType.LOCAL,
@@ -1066,7 +1066,7 @@ class TestLoadThemeByNameOverlay:
         """Static theme without config → overlay disabled, image sent directly."""
         from pathlib import Path
 
-        from trcc.core.models import ThemeInfo, ThemeType
+        from trcc.legacy.core.models import ThemeInfo, ThemeType
 
         fake_image = MagicMock()
         theme = ThemeInfo(

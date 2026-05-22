@@ -5,9 +5,9 @@ chunking) with fake transports — no USB, no ioctl.
 """
 from __future__ import annotations
 
-from trcc.next.adapters.device.scsi_lcd import ScsiLcd
-from trcc.next.adapters.device.usb_bot_scsi import UsbBotScsiTransport
-from trcc.next.core.models import Kind, ProductInfo, Wire
+from trcc.adapters.device.scsi_lcd import ScsiLcd
+from trcc.adapters.device.usb_bot_scsi import UsbBotScsiTransport
+from trcc.core.models import Kind, ProductInfo, Wire
 
 
 def _scsi_product() -> ProductInfo:
@@ -61,7 +61,7 @@ def test_scsi_lcd_send_raises_when_not_connected(fake_scsi) -> None:
     """send() without connect() must raise TransportError, not crash silently."""
     import pytest
 
-    from trcc.next.core.errors import TransportError
+    from trcc.core.errors import TransportError
 
     dev = ScsiLcd(_scsi_product(), fake_scsi)
     with pytest.raises(TransportError):

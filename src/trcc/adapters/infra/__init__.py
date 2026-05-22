@@ -1,1 +1,1 @@
-"""Infrastructure adapters — data access, file parsing, media decoding."""
+"""Infrastructure adapters (logging, networking, diagnostics support)."""

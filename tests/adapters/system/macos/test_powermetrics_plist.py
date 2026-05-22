@@ -5,7 +5,7 @@ import plistlib
 
 import pytest
 
-from trcc.adapters.system.macos.powermetrics_plist import parse_powermetrics_plist
+from trcc.legacy.adapters.system.macos.powermetrics_plist import parse_powermetrics_plist
 
 
 def test_parse_rejects_non_plist() -> None:

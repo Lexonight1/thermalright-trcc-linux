@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.scsi_lcd import ScsiLcd
-from trcc.next.core.models import Kind, ProductInfo, Wire
-from trcc.next.core.protocol import get_profile
+from trcc.adapters.device.scsi_lcd import ScsiLcd
+from trcc.core.models import Kind, ProductInfo, Wire
+from trcc.core.protocol import get_profile
 
 from .conftest import FakeScsiTransport
 
@@ -127,7 +127,7 @@ def test_boot_signature_triggers_retry_until_real_response(
     the third response.
     """
     # Avoid the 3-second sleep between retries in tests
-    monkeypatch.setattr("trcc.next.adapters.device.scsi_lcd._BOOT_WAIT_S", 0.0)
+    monkeypatch.setattr("trcc.adapters.device.scsi_lcd._BOOT_WAIT_S", 0.0)
 
     fake_scsi.read_script.append(_booting_response())
     fake_scsi.read_script.append(_booting_response())

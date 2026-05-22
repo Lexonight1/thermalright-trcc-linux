@@ -14,12 +14,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import get_pixel
 
-from trcc.core.device.lcd import LCDDevice as Device
-from trcc.core.models import ThemeInfo, ThemeType
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.overlay import OverlayService
-from trcc.services.theme_persistence import ThemePersistence
+from trcc.legacy.core.device.lcd import LCDDevice as Device
+from trcc.legacy.core.models import ThemeInfo, ThemeType
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.overlay import OverlayService
+from trcc.legacy.services.theme_persistence import ThemePersistence
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -787,7 +787,7 @@ class TestDisplayServiceContracts:
         self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """_convert_media_frames converts RawFrame objects to native surfaces."""
-        from trcc.core.ports import RawFrame
+        from trcc.legacy.core.ports import RawFrame
         raw = RawFrame(data=bytes(320 * 320 * 3), width=320, height=320)
         display_svc.media._frames = [raw]
         display_svc._convert_media_frames()
@@ -1029,7 +1029,7 @@ class TestRunStaticLoop:
         display_svc.overlay.enabled = True
         display_svc.overlay.set_config({"elem0": {"x": 0, "y": 0, "text": "test"}})
 
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         metrics_fn = MagicMock(return_value=HardwareMetrics())
 
         result = display_svc.run_static_loop(

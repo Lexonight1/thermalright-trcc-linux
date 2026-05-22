@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.next.core.commands import (
+from trcc.core.commands import (
     LoadTheme,
     SendColor,
     SetBrightness,
@@ -17,14 +17,14 @@ from trcc.next.core.commands import (
     SetOrientation,
     UploadBootAnimation,
 )
-from trcc.next.core.models import HandshakeResult
-from trcc.next.core.results import (
+from trcc.core.models import HandshakeResult
+from trcc.core.results import (
     ConnectResult,
     DiscoverResult,
     Result,
     SendResult,
 )
-from trcc.next.ipc import (
+from trcc.ipc import (
     COMMAND_TYPES,
     RESULT_TYPES,
     decode_command,

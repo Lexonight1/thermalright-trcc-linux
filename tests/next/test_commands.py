@@ -1,8 +1,8 @@
 """Commands — UI contract dispatched through App.dispatch."""
 from __future__ import annotations
 
-from trcc.next.app import App
-from trcc.next.core.commands import (
+from trcc.app import App
+from trcc.core.commands import (
     DisableAutostart,
     EnableAutostart,
     GetAutostartStatus,

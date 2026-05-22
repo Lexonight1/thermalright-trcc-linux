@@ -24,7 +24,7 @@ from typer.testing import CliRunner
 def _app():
     """Import the top-level Typer app inside each test so the
     ``cli_app`` fixture's platform override is in place first."""
-    from trcc.next.ui.cli.main import app
+    from trcc.ui.cli.main import app
     return app
 
 
@@ -599,12 +599,12 @@ def test_theme_delete_round_trip(
     # Point the FakePlatform's user_content_dir at tmp_path via the env vars
     # honored by tmp_home — but the cli_app fixture already redirects HOME.
     # We use the actual current user_content_dir for the cli.
-    from trcc.next.ui.cli import _ctx
+    from trcc.ui.cli import _ctx
     user_content = _ctx.get_app().platform.paths().user_content_dir()
     user_content.mkdir(parents=True, exist_ok=True)
     target = user_content / "Disposable"
     target.mkdir(exist_ok=True)
-    (target / "trcc-next.json").write_text(
+    (target / "trcc.json").write_text(
         '{"width": 320, "height": 320, "elements": []}',
     )
     result = cli_runner.invoke(_app(), ["theme", "delete", "Disposable"])
@@ -934,7 +934,7 @@ def test_theme_list_finds_a_theme(
     del cli_app
     theme_dir = tmp_path / "Sample"
     theme_dir.mkdir()
-    (theme_dir / "trcc-next.json").write_text(
+    (theme_dir / "trcc.json").write_text(
         '{"width": 320, "height": 320, "elements": []}',
     )
     result = cli_runner.invoke(
@@ -957,7 +957,7 @@ def test_every_sub_app_has_commands_registered() -> None:
     ``@app.command`` decorator isn't reapplied surfaces as an empty
     sub-app — caught here before the CLI ships missing functions.
     """
-    from trcc.next.ui.cli import (
+    from trcc.ui.cli import (
         config,
         device,
         display,

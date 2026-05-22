@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.paths import output_resolution
-from trcc.services.display import DisplayService
+from trcc.legacy.core.paths import output_resolution
+from trcc.legacy.services.display import DisplayService
 
 # =========================================================================
 # output_resolution (standalone function)

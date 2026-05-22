@@ -17,20 +17,20 @@ from noop_transports import (
     build_led_response,
 )
 
-from trcc.adapters.device.factory import DeviceProtocolFactory
-from trcc.adapters.system.bsd_platform import BSDPlatform
-from trcc.adapters.system.linux_platform import LinuxPlatform
-from trcc.adapters.system.macos_platform import MacOSPlatform
-from trcc.adapters.system.windows_platform import WindowsPlatform
-from trcc.core.builder import ControllerBuilder
-from trcc.core.models import (
+from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
+from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+from trcc.legacy.core.builder import ControllerBuilder
+from trcc.legacy.core.models import (
     HID_LCD_DEVICES,
     LED_DEVICES,
     SCSI_DEVICES,
     DetectedDevice,
     fbl_to_resolution,
 )
-from trcc.core.ports import Platform
+from trcc.legacy.core.ports import Platform
 
 ALL_PLATFORMS = [LinuxPlatform, WindowsPlatform, MacOSPlatform, BSDPlatform]
 

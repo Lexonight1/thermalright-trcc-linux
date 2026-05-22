@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Patch DeviceService at the source module — run_device_benchmarks imports it
-_DS = "trcc.services.DeviceService"
+_DS = "trcc.legacy.services.DeviceService"
 
 
 def _run(mock_svc, mock_factory=None):
@@ -19,7 +19,7 @@ def _run(mock_svc, mock_factory=None):
     probe_led_fn = MagicMock()
 
     with patch(_DS, return_value=mock_svc):
-        from trcc.services.perf import run_device_benchmarks
+        from trcc.legacy.services.perf import run_device_benchmarks
         return run_device_benchmarks(
             detect_fn=detect_fn,
             get_protocol=factory.get_protocol,
@@ -32,7 +32,7 @@ class TestRunDeviceBenchmarks:
     """run_device_benchmarks — LCD and LED hardware benchmarking."""
 
     def _mock_lcd_device(self):
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[100]   # canonical SCSI 320x320 big-endian device
         dev = MagicMock()
         dev.implementation = 'scsi'
@@ -58,14 +58,14 @@ class TestRunDeviceBenchmarks:
     @pytest.fixture()
     def _renderer(self):
         """Ensure renderer is available."""
-        from trcc.services.image import ImageService
+        from trcc.legacy.services.image import ImageService
         if ImageService._renderer is None:
             import os
             os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
             from PySide6.QtWidgets import QApplication
             if QApplication.instance() is None:
                 QApplication([])
-            from trcc.adapters.render.qt import QtRenderer
+            from trcc.legacy.adapters.render.qt import QtRenderer
             ImageService.set_renderer(QtRenderer())
 
     def test_no_devices_returns_empty(self):
@@ -199,9 +199,9 @@ class TestIPCPauseResume:
         mock_svc.devices = []
 
         with patch(_DS, return_value=mock_svc), \
-             patch("trcc.services.perf._ipc_pause", return_value=True) as m_pause, \
-             patch("trcc.services.perf._ipc_resume") as m_resume:
-            from trcc.services.perf import run_device_benchmarks
+             patch("trcc.legacy.services.perf._ipc_pause", return_value=True) as m_pause, \
+             patch("trcc.legacy.services.perf._ipc_resume") as m_resume:
+            from trcc.legacy.services.perf import run_device_benchmarks
             run_device_benchmarks(
                 detect_fn=MagicMock(),
                 get_protocol=MagicMock(),
@@ -218,9 +218,9 @@ class TestIPCPauseResume:
         mock_svc.devices = []
 
         with patch(_DS, return_value=mock_svc), \
-             patch("trcc.services.perf._ipc_pause", return_value=False) as m_pause, \
-             patch("trcc.services.perf._ipc_resume") as m_resume:
-            from trcc.services.perf import run_device_benchmarks
+             patch("trcc.legacy.services.perf._ipc_pause", return_value=False) as m_pause, \
+             patch("trcc.legacy.services.perf._ipc_resume") as m_resume:
+            from trcc.legacy.services.perf import run_device_benchmarks
             run_device_benchmarks(
                 detect_fn=MagicMock(),
                 get_protocol=MagicMock(),
@@ -233,21 +233,21 @@ class TestIPCPauseResume:
 
     @pytest.fixture()
     def _renderer(self):
-        from trcc.services.image import ImageService
+        from trcc.legacy.services.image import ImageService
         if ImageService._renderer is None:
             import os
             os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
             from PySide6.QtWidgets import QApplication
             if QApplication.instance() is None:
                 QApplication([])
-            from trcc.adapters.render.qt import QtRenderer
+            from trcc.legacy.adapters.render.qt import QtRenderer
             ImageService.set_renderer(QtRenderer())
 
     @pytest.mark.usefixtures("_renderer")
     def test_resumes_even_on_error(self):
         """GUI resumes even if benchmarks crash."""
         mock_svc = MagicMock()
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         profile = FBL_PROFILES[100]
         lcd_dev = MagicMock()
         lcd_dev.implementation = 'scsi'
@@ -259,9 +259,9 @@ class TestIPCPauseResume:
         mock_factory.get_protocol.side_effect = RuntimeError("USB exploded")
 
         with patch(_DS, return_value=mock_svc), \
-             patch("trcc.services.perf._ipc_pause", return_value=True), \
-             patch("trcc.services.perf._ipc_resume") as m_resume:
-            from trcc.services.perf import run_device_benchmarks
+             patch("trcc.legacy.services.perf._ipc_pause", return_value=True), \
+             patch("trcc.legacy.services.perf._ipc_resume") as m_resume:
+            from trcc.legacy.services.perf import run_device_benchmarks
             with pytest.raises(RuntimeError, match="USB exploded"):
                 run_device_benchmarks(
                     detect_fn=MagicMock(),

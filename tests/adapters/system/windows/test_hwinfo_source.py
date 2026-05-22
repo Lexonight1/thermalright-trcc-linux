@@ -28,7 +28,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.adapters.system.windows.sources.hwinfo import (
+from trcc.legacy.adapters.system.windows.sources.hwinfo import (
     _HWINFO_MAGIC,
     HWiNFOSource,
     _BytesMapping,

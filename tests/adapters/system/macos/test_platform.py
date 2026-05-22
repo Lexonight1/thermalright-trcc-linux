@@ -4,8 +4,8 @@ Runs on Linux. Tests verify the interface exists.
 """
 from __future__ import annotations
 
-from trcc.adapters.system.macos_platform import MacOSPlatform
-from trcc.core.ports import Platform
+from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+from trcc.legacy.core.ports import Platform
 
 
 class TestMacOSPlatformIsPlatform:

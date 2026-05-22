@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from trcc.core.device import Device
-from trcc.core.models import LEDMode
-from trcc.core.results import LEDResult, OpResult
+from trcc.legacy.core.device import Device
+from trcc.legacy.core.models import LEDMode
+from trcc.legacy.core.results import LEDResult, OpResult
 
 # =========================================================================
 # TestLEDDeviceInit
@@ -110,7 +110,7 @@ class TestLEDDeviceConnect:
         mock_dev_svc.devices = [fake_dev]
 
         dev = Device(device_svc=mock_dev_svc, device_type=False)
-        with patch('trcc.services.LEDService'):
+        with patch('trcc.legacy.services.LEDService'):
             result = dev.connect()
         assert result["success"] is False
         assert "No LED device" in result["error"]
@@ -605,106 +605,106 @@ class TestLEDCLISuccess:
     """Every LED command exits 0 when Trcc.led returns success."""
 
     def test_color(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-color', 'ff0000'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_color_with_hash_prefix(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-color', '#00ff00'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_color_with_preview(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-color', 'ff0000', '--preview'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_mode(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-mode', 'static'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_brightness(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-brightness', '60'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_off(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-off'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_sensor_cpu(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-sensor', 'cpu'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_zone_color(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-color', '0', 'ff0000'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_zone_mode(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-mode', '0', 'static'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_zone_brightness(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-brightness', '0', '75'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_zone_toggle_on(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-toggle', '1', 'true'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_zone_sync_with_interval(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-sync', 'true', '--interval', '3'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_segment(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-segment', '0', 'true'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_clock_24h(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-clock', 'true'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
 
     def test_temp_unit_F(self, monkeypatch):
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', _fake_trcc())
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', _fake_trcc())
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-temp-unit', 'F'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 0
@@ -714,20 +714,20 @@ class TestLEDCLIFailures:
     """Validation and error handling."""
 
     def test_color_invalid_hex(self):
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-color', 'zzzzzz'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
         assert 'Invalid hex' in (r.output + (getattr(r, 'stderr', '') or ''))
 
     def test_color_too_short(self):
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-color', 'ff00'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
 
     def test_zone_color_invalid_hex(self):
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-color', '0', 'xyz'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
@@ -736,8 +736,8 @@ class TestLEDCLIFailures:
         """Trcc returns failure → CLI exits 1."""
         fake = _fake_trcc(set_mode=LEDResult(
             success=False, error="Unknown mode 'banana'"))
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake)
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake)
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-mode', 'banana'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
@@ -745,8 +745,8 @@ class TestLEDCLIFailures:
     def test_zone_brightness_rejected(self, monkeypatch):
         fake = _fake_trcc(set_brightness=LEDResult(
             success=False, error='Brightness 0-100'))
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake)
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake)
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-zone-brightness', '0', '999'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
@@ -754,8 +754,8 @@ class TestLEDCLIFailures:
     def test_sensor_source_invalid(self, monkeypatch):
         fake = _fake_trcc(set_sensor_source=OpResult(
             success=False, error="Source must be 'cpu' or 'gpu'"))
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake)
-        r = CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake)
+        r = CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                                ['led-sensor', 'fan'],
                                standalone_mode=False, catch_exceptions=False)
         assert r.return_value == 1
@@ -766,8 +766,8 @@ class TestLEDCLIInvocation:
 
     def test_color_forwards_rgb(self, monkeypatch):
         fake_factory = _fake_trcc()
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake_factory)
-        CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake_factory)
+        CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                            ['led-color', 'ff8000'],
                            standalone_mode=False, catch_exceptions=False)
         app = fake_factory()
@@ -775,8 +775,8 @@ class TestLEDCLIInvocation:
 
     def test_zone_color_forwards_zone_kwarg(self, monkeypatch):
         fake_factory = _fake_trcc()
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake_factory)
-        CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake_factory)
+        CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                            ['led-zone-color', '2', '00ff00'],
                            standalone_mode=False, catch_exceptions=False)
         app = fake_factory()
@@ -784,8 +784,8 @@ class TestLEDCLIInvocation:
 
     def test_off_calls_toggle_false(self, monkeypatch):
         fake_factory = _fake_trcc()
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake_factory)
-        CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake_factory)
+        CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                            ['led-off'],
                            standalone_mode=False, catch_exceptions=False)
         app = fake_factory()
@@ -793,8 +793,8 @@ class TestLEDCLIInvocation:
 
     def test_temp_unit_calls_control_center(self, monkeypatch):
         fake_factory = _fake_trcc()
-        monkeypatch.setattr('trcc.ui.cli._led.trcc', fake_factory)
-        CliRunner().invoke(__import__('trcc.ui.cli', fromlist=['app']).app,
+        monkeypatch.setattr('trcc.legacy.ui.cli._led.trcc', fake_factory)
+        CliRunner().invoke(__import__('trcc.legacy.ui.cli', fromlist=['app']).app,
                            ['led-temp-unit', 'F'],
                            standalone_mode=False, catch_exceptions=False)
         app = fake_factory()

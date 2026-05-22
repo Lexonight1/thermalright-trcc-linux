@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.core.errors import ThemeError
-from trcc.next.services import _dc as Dc
+from trcc.core.errors import ThemeError
+from trcc.services import _dc as Dc
 
 
 def load_dc_as_theme_config(path):

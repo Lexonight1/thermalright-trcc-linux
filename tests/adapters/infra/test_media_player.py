@@ -9,12 +9,12 @@ from unittest.mock import MagicMock, patch
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QColor, QImage
 
-from trcc.adapters.infra.media_player import (
+from trcc.legacy.adapters.infra.media_player import (
     ThemeZtDecoder,
     VideoDecoder,
 )
-from trcc.core.models import FBL_PROFILES
-from trcc.core.ports import RawFrame
+from trcc.legacy.core.models import FBL_PROFILES
+from trcc.legacy.core.ports import RawFrame
 
 _p320 = FBL_PROFILES[100]   # 320×320 canonical profile
 

@@ -15,14 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import (
+from trcc.app import App
+from trcc.core.commands import (
     SetGpuDevice,
     SetLanguage,
     SetRefreshInterval,
     SetTempUnit,
 )
-from trcc.next.core.events import (
+from trcc.core.events import (
     GpuDeviceChanged,
     LanguageChanged,
     RefreshIntervalChanged,

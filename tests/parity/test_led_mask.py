@@ -68,7 +68,7 @@ _SCENARIOS = {
 
 def _legacy_metrics(scenario: dict[str, float]) -> Any:
     """Build a legacy ``HardwareMetrics`` populated from the scenario dict."""
-    from trcc.core.models.sensor import HardwareMetrics
+    from trcc.legacy.core.models.sensor import HardwareMetrics
 
     metrics = HardwareMetrics()
     for field_name, value in scenario.items():
@@ -82,8 +82,8 @@ def _legacy_metrics(scenario: dict[str, float]) -> Any:
 def _next_metrics(scenario: dict[str, float]) -> Any:
     """Build a next/ ``LegacyMetricsView`` over a SensorReading dict
     that resolves the same attribute names to the same values."""
-    from trcc.next.core.models import SensorReading
-    from trcc.next.services.led_segment import LegacyMetricsView
+    from trcc.legacy.core.models import SensorReading
+    from trcc.legacy.services.led_segment import LegacyMetricsView
 
     readings: dict[str, SensorReading] = {}
     # LegacyMetricsView translates legacy_attr → next sensor_id via a
@@ -106,7 +106,7 @@ def _legacy_mask(
     *, style_id: int, scenario: dict[str, float], phase: int,
     temp_unit: str, is_24h: bool, week_sunday: bool,
 ) -> list[bool]:
-    from trcc.core.led_segment import compute_mask as legacy_compute
+    from trcc.legacy.core.led_segment import compute_mask as legacy_compute
 
     return legacy_compute(
         style_id=style_id,
@@ -122,7 +122,7 @@ def _next_mask(
     *, style_id: int, scenario: dict[str, float], phase: int,
     temp_unit: str, is_24h: bool, week_sunday: bool,
 ) -> list[bool]:
-    from trcc.next.services.led_segment import compute_mask as next_compute
+    from trcc.legacy.services.led_segment import compute_mask as next_compute
 
     style = style_by_legacy_id()[style_id]
     return next_compute(
@@ -145,7 +145,7 @@ def _segment_display_style_ids() -> list[int]:
 
     LF13 (12) is a pure-RGB strip with no segment readout.
     """
-    from trcc.core.led_segment import DISPLAYS
+    from trcc.legacy.core.led_segment import DISPLAYS
 
     return sorted(DISPLAYS)
 
@@ -160,7 +160,7 @@ def _phase_range(style_id: int) -> list[int]:
     GPU temp → time, etc).  Iterate every documented phase plus phase
     0 so single-phase styles aren't skipped.
     """
-    from trcc.core.led_segment import DISPLAYS
+    from trcc.legacy.core.led_segment import DISPLAYS
 
     display = DISPLAYS.get(style_id)
     if display is None:
@@ -252,7 +252,7 @@ def test_mask_matches_with_clock_format_variants(
 def test_every_legacy_display_has_a_parity_row() -> None:
     """If legacy adds a new SegmentDisplay, the matrix automatically
     extends.  This pin asserts we're not silently dropping coverage."""
-    from trcc.core.led_segment import DISPLAYS
+    from trcc.legacy.core.led_segment import DISPLAYS
 
     ids = _segment_display_style_ids()
     assert set(ids) == set(DISPLAYS)

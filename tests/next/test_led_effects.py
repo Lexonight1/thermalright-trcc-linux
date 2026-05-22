@@ -7,12 +7,12 @@ contract is "advance the phase between ticks".
 """
 from __future__ import annotations
 
-from trcc.next.core.led_models import (
+from trcc.core.led_models import (
     LedDeviceSettings,
     LEDMode,
     LedRuntimeState,
 )
-from trcc.next.services.led_effects import (
+from trcc.services.led_effects import (
     ColorEngine,
     LEDEffectEngine,
 )

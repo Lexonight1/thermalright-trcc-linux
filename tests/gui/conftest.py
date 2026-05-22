@@ -29,7 +29,7 @@ def bare_trcc_app(qapp):
 
     Resets the singleton before and after — safe for parallel test workers.
     """
-    from trcc.ui.gui.trcc_app import TRCCApp
+    from trcc.legacy.ui.gui.trcc_app import TRCCApp
 
     TRCCApp._instance = None
     with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
@@ -74,7 +74,7 @@ def mock_lcd_device():
     All method return values are pre-set so LCDHandler never raises when
     routing commands through the bus.
     """
-    from trcc.core.models import ALL_DEVICES, FBL_PROFILES
+    from trcc.legacy.core.models import ALL_DEVICES, FBL_PROFILES
     info = ALL_DEVICES[(0x0402, 0x3922)]
     w, h = FBL_PROFILES[info.fbl].resolution
 
@@ -166,7 +166,7 @@ def mock_lcd_device():
 @pytest.fixture
 def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path):
     """Default LCDHandler with all dependencies wired from fixtures."""
-    from trcc.ui.gui.lcd_handler import LCDHandler
+    from trcc.legacy.ui.gui.lcd_handler import LCDHandler
     return LCDHandler(
         lcd=mock_lcd_device,
         widgets=mock_lcd_widgets,
@@ -183,7 +183,7 @@ def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path)
         h = make_lcd_handler(lcd=custom_lcd)
         h = make_lcd_handler(make_timer=tracking_timer)
     """
-    from trcc.ui.gui.lcd_handler import LCDHandler
+    from trcc.legacy.ui.gui.lcd_handler import LCDHandler
 
     def _factory(**overrides) -> LCDHandler:
         lcd = overrides.pop('lcd', mock_lcd_device)
@@ -203,7 +203,7 @@ def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path)
 @pytest.fixture
 def make_panel_config():
     """Factory: build a PanelConfig with sensible defaults."""
-    from trcc.adapters.system.config import PanelConfig, SensorBinding
+    from trcc.legacy.adapters.system.config import PanelConfig, SensorBinding
 
     def _factory(
         category_id: int = 1,
@@ -227,7 +227,7 @@ def make_custom_panel_config(make_panel_config):
 
     Inherits make_panel_config so sensor defaults are consistent.
     """
-    from trcc.adapters.system.config import SensorBinding
+    from trcc.legacy.adapters.system.config import SensorBinding
 
     def _factory(name: str = "Custom"):
         return make_panel_config(
@@ -255,7 +255,7 @@ def mock_sensor_enumerator():
 @pytest.fixture
 def make_led_state():
     """Factory: build a mock LED state object."""
-    from trcc.core.models import LEDMode, LEDZoneState
+    from trcc.legacy.core.models import LEDMode, LEDZoneState
 
     def _factory(
         *,
@@ -299,11 +299,11 @@ def mock_assets():
         "get_localized": MagicMock(return_value="fake"),
     }
     modules = [
-        "trcc.ui.gui.uc_color_wheel.Assets",
-        "trcc.ui.gui.uc_screen_led.Assets",
-        "trcc.ui.gui.uc_led_control.Assets",
-        "trcc.ui.gui.uc_system_info.Assets",
-        "trcc.ui.gui.lcd_handler.Assets",
+        "trcc.legacy.ui.gui.uc_color_wheel.Assets",
+        "trcc.legacy.ui.gui.uc_screen_led.Assets",
+        "trcc.legacy.ui.gui.uc_led_control.Assets",
+        "trcc.legacy.ui.gui.uc_system_info.Assets",
+        "trcc.legacy.ui.gui.lcd_handler.Assets",
     ]
     patches = [patch(m, **defaults) for m in modules]
     mocks = [p.start() for p in patches]

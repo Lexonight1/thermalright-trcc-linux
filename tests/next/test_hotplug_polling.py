@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.system._hotplug import PollingHotplugMonitor
-from trcc.next.core.events import (
+from trcc.adapters.system._hotplug import PollingHotplugMonitor
+from trcc.core.events import (
     DeviceAttached,
     DeviceDetached,
     EventBus,

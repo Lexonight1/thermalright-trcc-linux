@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.models import ServerInfo
+from trcc.legacy.core.models import ServerInfo
 
 # =========================================================================
 # Fixtures
@@ -44,7 +44,7 @@ def mock_qrcode():
 def mock_lan_ip():
     """Mock get_lan_ip to return a known address."""
     with patch(
-        "trcc.adapters.infra.network.get_lan_ip", return_value="192.168.1.100",
+        "trcc.legacy.adapters.infra.network.get_lan_ip", return_value="192.168.1.100",
     ) as m:
         yield m
 
@@ -93,13 +93,13 @@ class TestGetLanIp:
         mock_sock.getsockname.return_value = ("192.168.1.42", 12345)
         mock_sock.__enter__ = MagicMock(return_value=mock_sock)
         mock_sock.__exit__ = MagicMock(return_value=False)
-        with patch("trcc.adapters.infra.network.socket.socket", return_value=mock_sock):
-            from trcc.adapters.infra.network import get_lan_ip
+        with patch("trcc.legacy.adapters.infra.network.socket.socket", return_value=mock_sock):
+            from trcc.legacy.adapters.infra.network import get_lan_ip
             assert get_lan_ip() == "192.168.1.42"
 
     def test_fallback_on_oserror(self):
-        with patch("trcc.adapters.infra.network.socket.socket", side_effect=OSError):
-            from trcc.adapters.infra.network import get_lan_ip
+        with patch("trcc.legacy.adapters.infra.network.socket.socket", side_effect=OSError):
+            from trcc.legacy.adapters.infra.network import get_lan_ip
             assert get_lan_ip() == "127.0.0.1"
 
 
@@ -111,7 +111,7 @@ class TestPrintServeQr:
     """CLI QR code rendering — thin presentation over ServerInfo + get_lan_ip."""
 
     def test_qr_payload_matches_server_info(self, mock_qrcode: MagicMock):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("10.0.0.5", 9876, "secret", True)
 
         added_data = mock_qrcode.add_data.call_args[0][0]
@@ -124,7 +124,7 @@ class TestPrintServeQr:
     def test_wildcard_host_resolves_to_lan_ip(
         self, mock_qrcode: MagicMock, mock_lan_ip: MagicMock,
     ):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("0.0.0.0", 9876, None, False)
 
         added_data = mock_qrcode.add_data.call_args[0][0]
@@ -135,7 +135,7 @@ class TestPrintServeQr:
     def test_ipv6_wildcard_resolves_to_lan_ip(
         self, mock_qrcode: MagicMock, mock_lan_ip: MagicMock,
     ):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("::", 9876, None, False)
 
         added_data = mock_qrcode.add_data.call_args[0][0]
@@ -143,7 +143,7 @@ class TestPrintServeQr:
         assert payload["host"] == "192.168.1.100"
 
     def test_no_token_sends_empty_string(self, mock_qrcode: MagicMock):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("10.0.0.1", 9876, None, False)
 
         added_data = mock_qrcode.add_data.call_args[0][0]
@@ -153,7 +153,7 @@ class TestPrintServeQr:
     def test_explicit_host_skips_lan_detection(
         self, mock_qrcode: MagicMock, mock_lan_ip: MagicMock,
     ):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("10.0.0.5", 9876, None, False)
 
         mock_lan_ip.assert_not_called()
@@ -163,11 +163,11 @@ class TestPrintServeQr:
     def test_silently_skips_when_qrcode_not_installed(self):
         """No crash when qrcode package is missing."""
         with patch.dict("sys.modules", {"qrcode": None}):
-            from trcc.ui.cli import _print_serve_qr
+            from trcc.legacy.ui.cli import _print_serve_qr
             _print_serve_qr("10.0.0.1", 9876, "tok", False)
 
     def test_calls_print_ascii(self, mock_qrcode: MagicMock):
-        from trcc.ui.cli import _print_serve_qr
+        from trcc.legacy.ui.cli import _print_serve_qr
         _print_serve_qr("10.0.0.1", 9876, None, False)
 
         mock_qrcode.make.assert_called_once_with(fit=True)

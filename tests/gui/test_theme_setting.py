@@ -28,16 +28,16 @@ import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QMouseEvent, QPixmap
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     LocalThemeItem,
     OverlayElementConfig,
     OverlayMode,
 )
-from trcc.ui.gui.uc_theme_local import (
+from trcc.legacy.ui.gui.uc_theme_local import (
     ThemeThumbnail,
     UCThemeLocal,
 )
-from trcc.ui.gui.uc_theme_setting import (
+from trcc.legacy.ui.gui.uc_theme_setting import (
     CATEGORY_COLORS,
     CATEGORY_NAMES,
     SUB_METRICS,
@@ -62,19 +62,19 @@ def _patch_theme_assets(qapp):
         return QPixmap()
 
     with (
-        patch("trcc.ui.gui.overlay_element.Assets.load_pixmap",
+        patch("trcc.legacy.ui.gui.overlay_element.Assets.load_pixmap",
               side_effect=_null_pixmap),
-        patch("trcc.ui.gui.overlay_grid.Assets.load_pixmap",
+        patch("trcc.legacy.ui.gui.overlay_grid.Assets.load_pixmap",
               side_effect=_null_pixmap),
-        patch("trcc.ui.gui.color_and_add_panels.Assets.load_pixmap",
+        patch("trcc.legacy.ui.gui.color_and_add_panels.Assets.load_pixmap",
               side_effect=_null_pixmap),
-        patch("trcc.ui.gui.display_mode_panels.Assets.load_pixmap",
+        patch("trcc.legacy.ui.gui.display_mode_panels.Assets.load_pixmap",
               side_effect=_null_pixmap),
-        patch("trcc.ui.gui.display_mode_panels.set_background_pixmap"),
-        patch("trcc.ui.gui.color_and_add_panels.set_background_pixmap"),
-        patch("trcc.ui.gui.uc_theme_local.Assets.load_pixmap",
+        patch("trcc.legacy.ui.gui.display_mode_panels.set_background_pixmap"),
+        patch("trcc.legacy.ui.gui.color_and_add_panels.set_background_pixmap"),
+        patch("trcc.legacy.ui.gui.uc_theme_local.Assets.load_pixmap",
               side_effect=_null_pixmap),
-        patch("trcc.ui.gui.base.set_background_pixmap"),
+        patch("trcc.legacy.ui.gui.base.set_background_pixmap"),
     ):
         yield
 
@@ -240,7 +240,7 @@ class TestOverlayElementWidget:
         assert received == [3]
 
     def test_fixed_size(self, qapp):
-        from trcc.ui.gui.constants import Sizes
+        from trcc.legacy.ui.gui.constants import Sizes
         widget = OverlayElementWidget(0)
         assert widget.width() == Sizes.OVERLAY_CELL
         assert widget.height() == Sizes.OVERLAY_CELL
@@ -258,7 +258,7 @@ class TestOverlayGridPanel:
         assert len(panel._cells) == 42
 
     def test_grid_dimensions(self, qapp):
-        from trcc.ui.gui.constants import Sizes
+        from trcc.legacy.ui.gui.constants import Sizes
         panel = OverlayGridPanel()
         assert panel.width() == Sizes.OVERLAY_GRID_W
         assert panel.height() == Sizes.OVERLAY_GRID_H
@@ -796,7 +796,7 @@ class TestDisplayModePanel:
     def test_mask_uses_slider_toggle(self, qapp):
         panel = DisplayModePanel("mask", ["Load"])
         # Mask panel uses TOGGLE_MASK geometry
-        from trcc.ui.gui.constants import Layout
+        from trcc.legacy.ui.gui.constants import Layout
         geo = panel.toggle_btn.geometry()
         assert geo.x() == Layout.TOGGLE_MASK[0]
         assert geo.y() == Layout.TOGGLE_MASK[1]
@@ -859,7 +859,7 @@ class TestUCThemeSetting:
         assert settings.video_panel is not None
 
     def test_fixed_size(self, qapp):
-        from trcc.ui.gui.constants import Sizes
+        from trcc.legacy.ui.gui.constants import Sizes
         settings = UCThemeSetting()
         assert settings.width() == Sizes.SETTING_W
         assert settings.height() == Sizes.SETTING_H
@@ -948,7 +948,7 @@ class TestUCThemeSetting:
         settings._on_action_requested("Load")
         assert UCThemeSetting.CMD_MASK_LOAD in received
 
-    @patch("trcc.conf.Settings")
+    @patch("trcc.legacy.conf.Settings")
     def test_format_changed_persists_time(self, mock_settings, qapp, make_config):
         settings = UCThemeSetting()
         cfg = make_config(mode=OverlayMode.TIME)
@@ -1215,7 +1215,7 @@ class TestUCThemeLocal:
         panel._on_timer_changed()
         assert panel._slideshow_interval == 3
 
-    @patch("trcc.ui.gui.uc_theme_local.shutil.rmtree")
+    @patch("trcc.legacy.ui.gui.uc_theme_local.shutil.rmtree")
     def test_delete_theme(self, mock_rmtree, qapp, tmp_path, make_local_item):
         theme_dir = tmp_path / "themes"
         theme_dir.mkdir()

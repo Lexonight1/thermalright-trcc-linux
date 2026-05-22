@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     FBL_PROFILES,
     SCSI_DEVICES,
@@ -22,7 +22,7 @@ from trcc.core.models import (
     parse_hex_color,
     pm_to_fbl,
 )
-from trcc.services.theme import theme_info_from_directory
+from trcc.legacy.services.theme import theme_info_from_directory
 
 # =============================================================================
 # ThemeInfo
@@ -138,14 +138,14 @@ class TestDeviceInfoWireRoundTrip(unittest.TestCase):
                              f"field mismatch: {field}")
 
     def test_minimal_round_trip(self):
-        from trcc.core.models.device import DeviceInfo
+        from trcc.legacy.core.models.device import DeviceInfo
         original = DeviceInfo(name='LCD', path='/dev/sg0')
         restored = DeviceInfo.from_wire_dict(original.to_wire_dict())
         self._equal(original, restored)
 
     def test_full_scsi_device_round_trip(self):
         """SCSI device — usb_address=None, all identity fields populated."""
-        from trcc.core.models.device import DeviceInfo
+        from trcc.legacy.core.models.device import DeviceInfo
         original = DeviceInfo(
             name='Frozen Warframe Pro',
             path='/dev/sg5',
@@ -169,7 +169,7 @@ class TestDeviceInfoWireRoundTrip(unittest.TestCase):
 
     def test_hid_device_with_usb_address(self):
         """HID/Bulk/LY devices carry a UsbAddress — must round-trip."""
-        from trcc.core.models.device import DeviceInfo, UsbAddress
+        from trcc.legacy.core.models.device import DeviceInfo, UsbAddress
         original = DeviceInfo(
             name='Trofeo Vision 1280x480',
             path='usb:5:2',
@@ -191,7 +191,7 @@ class TestDeviceInfoWireRoundTrip(unittest.TestCase):
 
     def test_resolution_tuple_survives_json_listification(self):
         """JSON has no tuple type; from_wire_dict must coerce list → tuple."""
-        from trcc.core.models.device import DeviceInfo
+        from trcc.legacy.core.models.device import DeviceInfo
         original = DeviceInfo(name='LCD', path='/dev/sg0', resolution=(800, 480))
         wire = original.to_wire_dict()
         # Simulate a JSON round trip — every tuple becomes a list.
@@ -711,12 +711,12 @@ class TestProtocolTraits:
 
     def test_all_protocols_have_traits(self):
         """Every known protocol has an entry in PROTOCOL_TRAITS."""
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         for proto in ('scsi', 'hid', 'bulk', 'ly', 'led'):
             assert proto in PROTOCOL_TRAITS, f"Missing traits for {proto}"
 
     def test_scsi_traits(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         t = PROTOCOL_TRAITS['scsi']
         assert t.udev_subsystems == ('scsi_generic',)
         assert t.backend_key == 'sg_raw'
@@ -726,7 +726,7 @@ class TestProtocolTraits:
         assert t.is_led is False
 
     def test_hid_traits(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         t = PROTOCOL_TRAITS['hid']
         assert t.udev_subsystems == ('hidraw', 'usb')
         assert t.backend_key == 'pyusb'
@@ -734,18 +734,18 @@ class TestProtocolTraits:
         assert t.requires_reboot is False
 
     def test_bulk_ly_support_jpeg(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         assert PROTOCOL_TRAITS['bulk'].supports_jpeg is True
         assert PROTOCOL_TRAITS['ly'].supports_jpeg is True
 
     def test_led_is_led(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         t = PROTOCOL_TRAITS['led']
         assert t.is_led is True
         assert t.supports_jpeg is False
 
     def test_only_scsi_requires_reboot(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         for name, t in PROTOCOL_TRAITS.items():
             if name == 'scsi':
                 assert t.requires_reboot is True
@@ -753,7 +753,7 @@ class TestProtocolTraits:
                 assert t.requires_reboot is False, f"{name} should not require reboot"
 
     def test_traits_are_frozen(self):
-        from trcc.core.models import PROTOCOL_TRAITS
+        from trcc.legacy.core.models import PROTOCOL_TRAITS
         t = PROTOCOL_TRAITS['scsi']
         with pytest.raises(AttributeError):
             t.requires_reboot = False  # type: ignore[misc]
@@ -770,98 +770,98 @@ class TestGetButtonImage:
 
     def test_stream_vision_pm7_sub1(self):
         """Bulk PM=7 SUB=1 → Stream Vision (not Frozen Warframe Pro)."""
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 7, 1) == 'A1Stream Vision'
 
     def test_fbl64_sub0_is_frozen_warframe_pro(self):
         """Bulk PM=64 SUB=0 → Frozen Warframe Pro."""
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 64, 0) == 'A1FROZEN WARFRAME PRO'
 
     def test_pm7_sub1_differs_from_fbl64(self):
         """PM=7 SUB=1 and PM=64 SUB=0 must resolve differently (#69)."""
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 7, 1) != get_button_image(*_BULK, 64, 0)
 
     def test_pm32_sub1_frozen_warframe_pro(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 32, 1) == 'A1FROZEN WARFRAME PRO'
 
     def test_unknown_pm_returns_none(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 255) is None
 
     def test_unknown_vid_pid_returns_none(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(0xDEAD, 0xBEEF, 1, 0) is None
 
     # -- Bulk family (C# case 257) --
 
     def test_bulk_pm100_frozen_warframe_pro(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 100, 0) == 'A1FROZEN WARFRAME PRO'
 
     def test_bulk_pm101_elite_vision(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 101, 0) == 'A1ELITE VISION'
 
     def test_bulk_pm50_frozen_warframe(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 50, 0) == 'A1FROZEN WARFRAME'
 
     # -- PM=9 SUB split (C#: sub<5→LC2JD, sub>=5→LF19) --
 
     def test_pm9_sub0_lc2jd(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 9, 0) == 'A1LC2JD'
 
     def test_pm9_sub4_lc2jd(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 9, 4) == 'A1LC2JD'
 
     def test_pm9_sub5_lf19(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 9, 5) == 'A1LF19'
 
     # -- HID T2 family (C# case 2) --
 
     def test_hid_t2_pm49_frozen_warframe(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_HID2, 49, 0) == 'A1FROZEN WARFRAME'
 
     def test_bulk_pm65_sub2_lf14(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_BULK, 65, 2) == 'A1LF14'
 
     # -- LED family (C# case 1) --
 
     def test_led_pm80_lf12(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 80, 0) == 'A1LF12'
 
     def test_led_pm1_frozen_horizon(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 1, 0) == 'A1FROZEN HORIZON PRO'
 
     def test_led_pm208_cz1(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 208, 0) == 'A1CZ1'
 
     def test_led_unknown_pm_returns_none(self):
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 255, 0) is None
 
     # -- PM collision across VID/PID families: VID/PID scoping disambiguates --
 
     def test_pm1_led_vs_bulk_differ(self):
         """PM=1: LED family → FROZEN_HORIZON_PRO, Bulk family → GRAND_VISION."""
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 1, 0) == 'A1FROZEN HORIZON PRO'
         assert get_button_image(*_BULK, 1, 0) == 'A1GRAND VISION'
 
     def test_pm49_led_vs_hid_t2_differ(self):
         """PM=49: LED family → LF10, HID T2 family → FROZEN_WARFRAME."""
-        from trcc.core.models import get_button_image
+        from trcc.legacy.core.models import get_button_image
         assert get_button_image(*_LED, 49, 0) == 'A1LF10'
         assert get_button_image(*_HID2, 49, 0) == 'A1FROZEN WARFRAME'
 
@@ -875,25 +875,25 @@ class TestGetVariantOverride:
     """get_variant_override() — (VID, PID, PM, SUB) → full override record."""
 
     def test_known_bulk_pm_returns_override(self):
-        from trcc.core.models import VariantOverride, get_variant_override
+        from trcc.legacy.core.models import VariantOverride, get_variant_override
         override = get_variant_override(*_BULK, 7, 1)
         assert override is not None
         assert isinstance(override, VariantOverride)
         assert override.button_image == 'A1Stream Vision'
 
     def test_known_led_pm_returns_override(self):
-        from trcc.core.models import get_variant_override
+        from trcc.legacy.core.models import get_variant_override
         override = get_variant_override(*_LED, 80, 0)
         assert override is not None
         assert override.button_image == 'A1LF12'
 
     def test_unknown_pm_returns_none(self):
-        from trcc.core.models import get_variant_override
+        from trcc.legacy.core.models import get_variant_override
         assert get_variant_override(*_BULK, 255, 0) is None
 
     def test_panel_cutout_only_on_levita_row(self):
         """Phase B fills panel_cutout on the Levita row; other rows leave it empty."""
-        from trcc.core.models import get_variant_override
+        from trcc.legacy.core.models import get_variant_override
         # Levita: Bulk PM=64 SUB=3 — right-side camera notch on 1600x720 panel.
         levita = get_variant_override(*_BULK, 64, 3)
         assert levita is not None
@@ -926,7 +926,7 @@ class TestEnrichFromHandshake:
         )
 
     def test_copies_resolution_pm_sub_fbl(self):
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         dev = self._make_device()
         dev.enrich_from_handshake(HandshakeResult(
             resolution=(320, 320), model_id=100, pm_byte=0, sub_byte=0))
@@ -936,7 +936,7 @@ class TestEnrichFromHandshake:
         assert dev.sub_byte == 0
 
     def test_resolves_button_image_via_variant_override(self):
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         dev = self._make_device()
         # PM=7 SUB=1 → A1Stream Vision (HID-style fingerprint)
         dev.enrich_from_handshake(HandshakeResult(
@@ -945,7 +945,7 @@ class TestEnrichFromHandshake:
 
     def test_falls_back_to_fbl_when_pm_zero(self):
         """PM=0 → use fbl_code as effective_pm (SCSI / some Bulk devices)."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         dev = self._make_device()
         # PM=0, FBL=100 → effective_pm=100 → A1FROZEN WARFRAME PRO
         dev.enrich_from_handshake(HandshakeResult(
@@ -953,7 +953,7 @@ class TestEnrichFromHandshake:
         assert dev.button_image == 'A1FROZEN WARFRAME PRO'
 
     def test_unknown_pm_keeps_prior_button_image(self):
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         dev = self._make_device(button_image='A1CZTV')
         dev.enrich_from_handshake(HandshakeResult(
             resolution=(320, 320), model_id=255, pm_byte=0, sub_byte=0))
@@ -967,7 +967,7 @@ class TestEnrichFromHandshake:
 
     def test_zero_resolution_is_ignored(self):
         """Failed handshake returns resolution=(0,0) — must not overwrite prior."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         dev = self._make_device()
         dev.resolution = (480, 480)
         dev.enrich_from_handshake(HandshakeResult(resolution=(0, 0)))
@@ -991,14 +991,14 @@ class TestEnrichFromLedProbe:
         assert dev.pm_byte == 0
 
     def test_probe_without_style_is_no_op(self):
-        from trcc.core.models import LedHandshakeInfo
+        from trcc.legacy.core.models import LedHandshakeInfo
         dev = self._make_led_device()
         dev.enrich_from_led_probe(LedHandshakeInfo(pm=80, sub_type=0, style=None))
         assert dev.pm_byte == 0  # not written because style was None
 
     def test_probe_with_style_writes_all_fields(self):
         """Probe with non-None style → pm/sub/led_style_id/model written; LED variant override resolved."""
-        from trcc.core.models import LED_STYLES, LedHandshakeInfo
+        from trcc.legacy.core.models import LED_STYLES, LedHandshakeInfo
         dev = self._make_led_device()
         # PM=80 → LF12 (resolves through LED variant table)
         style_id = LED_STYLES.by_name('LF12')
@@ -1019,7 +1019,7 @@ class TestParseMetricSpec:
     """Tests for parse_metric_spec() — CLI metric spec → overlay element."""
 
     def test_basic_spec(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         key, elem = parse_metric_spec('gpu_temp:10,20', 0)
         assert key == 'cli_elem_0'
         assert elem['x'] == 10
@@ -1030,20 +1030,20 @@ class TestParseMetricSpec:
         assert elem['font']['size'] == 14
 
     def test_with_color_override(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('cpu_percent:50,100:ff0000', 1)
         assert elem['color'] == '#ff0000'
         assert elem['font']['size'] == 14
 
     def test_with_color_and_size_override(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('time:150,10:ffffff:24', 2)
         assert elem['color'] == '#ffffff'
         assert elem['font']['size'] == 24
         assert elem['metric'] == 'time'
 
     def test_custom_defaults(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec(
             'gpu_usage:5,5', 0,
             default_color='00ff00', default_size=20,
@@ -1054,53 +1054,53 @@ class TestParseMetricSpec:
         assert elem['font']['style'] == 'bold'
 
     def test_time_format_field(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('time:10,10', 0)
         assert 'time_format' in elem
 
     def test_date_format_field(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('date:10,10', 0)
         assert 'date_format' in elem
 
     def test_temp_metric_has_temp_unit(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('cpu_temp:10,10', 0)
         assert 'temp_unit' in elem
 
     def test_invalid_key_raises(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         with pytest.raises(ValueError, match="Unknown metric key"):
             parse_metric_spec('not_a_metric:10,10', 0)
 
     def test_missing_coords_raises(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         with pytest.raises(ValueError, match="Invalid"):
             parse_metric_spec('gpu_temp', 0)
 
     def test_bad_coords_raises(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         with pytest.raises(ValueError, match="Invalid coordinates"):
             parse_metric_spec('gpu_temp:abc,def', 0)
 
     def test_bad_size_raises(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         with pytest.raises(ValueError, match="Invalid size"):
             parse_metric_spec('gpu_temp:10,20:ff0000:notanint', 0)
 
     def test_color_with_hash_stripped(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('gpu_temp:10,20:#aabbcc', 0)
         assert elem['color'] == '#aabbcc'
 
     def test_empty_color_uses_default(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('gpu_temp:10,20::18', 0)
         assert elem['color'] == '#ffffff'
         assert elem['font']['size'] == 18
 
     def test_per_metric_font_override(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('gpu_temp:10,20:ff0000:18:Arial:bold', 0)
         assert elem['font']['name'] == 'Arial'
         assert elem['font']['style'] == 'bold'
@@ -1108,14 +1108,14 @@ class TestParseMetricSpec:
         assert elem['color'] == '#ff0000'
 
     def test_per_metric_font_without_style(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('cpu_temp:10,20::16:Courier', 0)
         assert elem['font']['name'] == 'Courier'
         assert elem['font']['style'] == 'regular'
         assert elem['font']['size'] == 16
 
     def test_per_metric_font_uses_global_when_empty(self):
-        from trcc.core.models import parse_metric_spec
+        from trcc.legacy.core.models import parse_metric_spec
         _, elem = parse_metric_spec('gpu_temp:10,20', 0,
                                      default_font='Mono', default_style='bold')
         assert elem['font']['name'] == 'Mono'
@@ -1126,13 +1126,13 @@ class TestBuildOverlayConfig:
     """Tests for build_overlay_config() — multiple specs → config dict."""
 
     def test_single_metric(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         config = build_overlay_config(['gpu_temp:10,20'])
         assert len(config) == 1
         assert 'cli_elem_0' in config
 
     def test_multiple_metrics(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         config = build_overlay_config([
             'gpu_temp:10,20',
             'cpu_percent:10,50',
@@ -1141,7 +1141,7 @@ class TestBuildOverlayConfig:
         assert len(config) == 3
 
     def test_global_defaults_applied(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         config = build_overlay_config(
             ['gpu_temp:10,20'],
             default_color='00ff00',
@@ -1156,7 +1156,7 @@ class TestBuildOverlayConfig:
         assert elem['font']['style'] == 'bold'
 
     def test_format_overrides(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         config = build_overlay_config(
             ['time:10,10', 'date:10,30', 'cpu_temp:10,50'],
             time_format=1, date_format=2, temp_unit=1,
@@ -1166,12 +1166,12 @@ class TestBuildOverlayConfig:
         assert config['cli_elem_2']['temp_unit'] == 1
 
     def test_invalid_metric_raises(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         with pytest.raises(ValueError, match="Unknown metric key"):
             build_overlay_config(['bogus:10,10'])
 
     def test_empty_list(self):
-        from trcc.core.models import build_overlay_config
+        from trcc.legacy.core.models import build_overlay_config
         config = build_overlay_config([])
         assert config == {}
 
@@ -1180,18 +1180,18 @@ class TestValidOverlayKeys:
     """Tests for VALID_OVERLAY_KEYS completeness."""
 
     def test_contains_hardware_metrics(self):
-        from trcc.core.models import HARDWARE_METRICS, VALID_OVERLAY_KEYS
+        from trcc.legacy.core.models import HARDWARE_METRICS, VALID_OVERLAY_KEYS
         for metric_name in HARDWARE_METRICS.values():
             assert metric_name in VALID_OVERLAY_KEYS
 
     def test_contains_time_date_weekday(self):
-        from trcc.core.models import VALID_OVERLAY_KEYS
+        from trcc.legacy.core.models import VALID_OVERLAY_KEYS
         assert 'time' in VALID_OVERLAY_KEYS
         assert 'date' in VALID_OVERLAY_KEYS
         assert 'weekday' in VALID_OVERLAY_KEYS
 
     def test_is_frozenset(self):
-        from trcc.core.models import VALID_OVERLAY_KEYS
+        from trcc.legacy.core.models import VALID_OVERLAY_KEYS
         assert isinstance(VALID_OVERLAY_KEYS, frozenset)
 
 

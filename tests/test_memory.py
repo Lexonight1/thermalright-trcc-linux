@@ -19,16 +19,16 @@ import pytest
 from conftest import make_test_surface
 from PySide6.QtGui import QImage
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     HardwareMetrics,
     LEDMode,
     LEDState,
     PlaybackState,
 )
-from trcc.services.image import ImageService
-from trcc.services.led import LEDService
-from trcc.services.media import MediaService
-from trcc.services.overlay import OverlayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.led import LEDService
+from trcc.legacy.services.media import MediaService
+from trcc.legacy.services.overlay import OverlayService
 
 # ═══════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -445,7 +445,7 @@ class TestConfigCycles:
 
     def test_repeated_load_save_bounded_memory(self, tmp_config, request):
         """100 load/save cycles stay within memory bounds."""
-        from trcc.conf import load_config, save_config
+        from trcc.legacy.conf import load_config, save_config
 
         tracemalloc.start()
         # Warm up
@@ -470,7 +470,7 @@ class TestConfigCycles:
 
     def test_config_dict_reclaimable(self, tmp_config, request):
         """Config dicts do not accumulate across repeated loads."""
-        from trcc.conf import load_config, save_config
+        from trcc.legacy.conf import load_config, save_config
 
         save_config({"key": "value"})
         tracemalloc.start()
@@ -494,7 +494,7 @@ class TestConfigCycles:
         """Old->new format migration does not leak old dict."""
         import json
 
-        from trcc.conf import CONFIG_PATH, load_config
+        from trcc.legacy.conf import CONFIG_PATH, load_config
 
         # Write old format directly (bypass save_config to avoid migration)
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
@@ -534,7 +534,7 @@ class TestDisplayServiceCycles:
         mock_devices.selected = None
         overlay = OverlayService(320, 320, renderer=ImageService.renderer())
         media = MediaService()
-        from trcc.services.display import DisplayService
+        from trcc.legacy.services.display import DisplayService
         svc = DisplayService(
             devices=mock_devices,
             overlay=overlay,
@@ -676,7 +676,7 @@ class TestQtWidgetMemory:
         """BasePanel subclass create/delete has no uncollectable cycles."""
         from PySide6.QtWidgets import QLabel
 
-        from trcc.ui.gui.base import BasePanel
+        from trcc.legacy.ui.gui.base import BasePanel
 
         class TestPanel(BasePanel):
             def _setup_ui(self):
@@ -695,8 +695,8 @@ class TestQtWidgetMemory:
 
     def test_preview_widget_image_released(self, settings_with_resolution):
         """UCPreview releases its pixmap on destruction."""
-        from trcc.conf import settings
-        from trcc.ui.gui.uc_preview import UCPreview
+        from trcc.legacy.conf import settings
+        from trcc.legacy.ui.gui.uc_preview import UCPreview
 
         preview = UCPreview(settings.width, settings.height)
         # Set an image
@@ -715,8 +715,8 @@ class TestQtWidgetMemory:
 
     def test_repeated_set_image_bounded(self, request, settings_with_resolution):
         """50 set_image() calls on UCPreview stay within memory bounds."""
-        from trcc.conf import settings
-        from trcc.ui.gui.uc_preview import UCPreview
+        from trcc.legacy.conf import settings
+        from trcc.legacy.ui.gui.uc_preview import UCPreview
 
         preview = UCPreview(settings.width, settings.height)
 

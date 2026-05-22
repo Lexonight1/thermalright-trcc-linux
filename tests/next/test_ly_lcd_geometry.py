@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.ly_lcd import LyLcd
-from trcc.next.core.models import Kind, ProductInfo, Wire
+from trcc.adapters.device.ly_lcd import LyLcd
+from trcc.core.models import Kind, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport
 

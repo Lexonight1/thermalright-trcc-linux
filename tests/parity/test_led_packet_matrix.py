@@ -31,7 +31,7 @@ def _style_dimensions() -> list[tuple[int, int]]:
     Imports the registry inside the function so this module stays
     import-safe before legacy is on the path.
     """
-    from trcc.core.models.led import LED_STYLES
+    from trcc.legacy.core.models.led import LED_STYLES
 
     return [(style_id, style.led_count) for style_id, style in LED_STYLES]
 
@@ -41,7 +41,7 @@ def _style_dimensions() -> list[tuple[int, int]]:
 # by reading the legacy table.
 def _sub_dimensions() -> list[tuple[int, int, int]]:
     """``(legacy_style_id, style_sub, led_count)`` per documented variant."""
-    from trcc.core.models.led import LED_REMAP_SUB_TABLES, LED_STYLES
+    from trcc.legacy.core.models.led import LED_REMAP_SUB_TABLES, LED_STYLES
 
     return [
         (style_id, sub, LED_STYLES[style_id].led_count)
@@ -63,8 +63,8 @@ def _legacy_bytes(
     global_on: bool = True,
     is_on: list[bool] | None = None,
 ) -> bytes:
-    from trcc.adapters.device.led import LedPacketBuilder
-    from trcc.core.models.led import remap_led_colors
+    from trcc.legacy.adapters.device.led import LedPacketBuilder
+    from trcc.legacy.core.models.led import remap_led_colors
 
     remapped = remap_led_colors(colors, legacy_style_id, style_sub)
     return LedPacketBuilder.build_led_packet(
@@ -81,8 +81,8 @@ def _next_bytes(
     global_on: bool = True,
     is_on: list[bool] | None = None,
 ) -> bytes:
-    from trcc.next.adapters.device.led import Led, LedPayload
-    from trcc.next.services.led_segment import remap_led_colors
+    from trcc.legacy.adapters.device.led import Led, LedPayload
+    from trcc.legacy.services.led_segment import remap_led_colors
 
     style = style_by_legacy_id()[legacy_style_id]
     remapped = remap_led_colors(colors, style, style_sub)
@@ -231,13 +231,13 @@ def test_matrix_covers_every_legacy_style() -> None:
 
     The legacy registry exposes 12 styles (AX120 … LF13); if the count
     drifts we want to know explicitly."""
-    from trcc.core.models.led import LED_STYLES
+    from trcc.legacy.core.models.led import LED_STYLES
 
     assert len(_style_dimensions()) == 12 == len(LED_STYLES)
 
 
 def test_sub_matrix_covers_every_documented_variant() -> None:
     """Same drift-detection for sub-variant coverage."""
-    from trcc.core.models.led import LED_REMAP_SUB_TABLES
+    from trcc.legacy.core.models.led import LED_REMAP_SUB_TABLES
 
     assert len(_sub_dimensions()) == len(LED_REMAP_SUB_TABLES)

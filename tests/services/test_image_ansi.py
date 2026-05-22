@@ -14,9 +14,9 @@ import unittest
 from PySide6.QtGui import QColor
 
 from tests.conftest import make_test_surface
-from trcc.core.models import HardwareMetrics, LEDMode, LEDState
-from trcc.services.image import ImageService
-from trcc.services.led import LEDService
+from trcc.legacy.core.models import HardwareMetrics, LEDMode, LEDState
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.led import LEDService
 
 # ---------------------------------------------------------------------------
 # Simulated user scenarios — any contributor can add their own

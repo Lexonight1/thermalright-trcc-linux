@@ -3,7 +3,7 @@
 import os
 import unittest
 
-from trcc.core.paths import (
+from trcc.legacy.core.paths import (
     ASSETS_DIR,
     DATA_DIR,
     RESOURCES_DIR,

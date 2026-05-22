@@ -16,11 +16,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_test_surface
 
-from trcc.core.device.lcd import LCDDevice as Device
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.overlay import OverlayService
-from trcc.services.theme_persistence import ThemePersistence
+from trcc.legacy.core.device.lcd import LCDDevice as Device
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.overlay import OverlayService
+from trcc.legacy.services.theme_persistence import ThemePersistence
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -418,7 +418,7 @@ class TestThemePersistenceExportImport:
         """import_config for JSON with a valid theme_path returns (True, ThemeInfo)."""
         import json
 
-        from trcc.core.models import ThemeInfo
+        from trcc.legacy.core.models import ThemeInfo
         # Create a real theme directory so ThemeInfo.from_directory works
         theme_dir = tmp_path / 'MyTheme'
         theme_dir.mkdir()

@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.hid_lcd import HidLcd
-from trcc.next.core.models import Kind, ProductInfo, Wire
-from trcc.next.core.protocol import get_profile
+from trcc.adapters.device.hid_lcd import HidLcd
+from trcc.core.models import Kind, ProductInfo, Wire
+from trcc.core.protocol import get_profile
 
 from .conftest import FakeBulkTransport
 

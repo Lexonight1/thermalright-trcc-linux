@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.next.adapters.system._autostart import (
+from trcc.adapters.system._autostart import (
     MacOSAutostart,
     _render_plist,
 )
@@ -44,10 +44,10 @@ def _build(
 ) -> tuple[MacOSAutostart, _Runner, Path]:
     """Construct a MacOSAutostart pointed at a tmpdir plist."""
     rec = runner if runner is not None else _Runner()
-    plist = tmp_path / "LaunchAgents" / "com.thermalright.trcc-next.plist"
+    plist = tmp_path / "LaunchAgents" / "com.thermalright.trcc.plist"
     autostart = MacOSAutostart(
         plist_path=plist,
-        program_args=program_args or ["/opt/trcc-next/bin/trcc-next", "gui"],
+        program_args=program_args or ["/opt/trcc/bin/trcc", "gui"],
         runner=rec,
         uid=501,
     )
@@ -61,12 +61,12 @@ def _build(
 
 def test_render_plist_contains_label_and_program_arguments() -> None:
     body = _render_plist(
-        ["/opt/trcc-next/bin/trcc-next", "gui"],
-        label="com.thermalright.trcc-next",
+        ["/opt/trcc/bin/trcc", "gui"],
+        label="com.thermalright.trcc",
     )
     assert "<key>Label</key>" in body
-    assert "<string>com.thermalright.trcc-next</string>" in body
-    assert "<string>/opt/trcc-next/bin/trcc-next</string>" in body
+    assert "<string>com.thermalright.trcc</string>" in body
+    assert "<string>/opt/trcc/bin/trcc</string>" in body
     assert "<string>gui</string>" in body
 
 
@@ -84,8 +84,8 @@ def test_render_plist_keepalive_false() -> None:
 
 
 def test_render_plist_preserves_python_module_invocation() -> None:
-    """When trcc-next isn't on PATH we fall back to python -m trcc.next gui."""
-    body = _render_plist(["/usr/bin/python3", "-m", "trcc.next", "gui"])
+    """When trcc isn't on PATH we fall back to python -m trcc gui."""
+    body = _render_plist(["/usr/bin/python3", "-m", "trcc", "gui"])
     assert "<string>/usr/bin/python3</string>" in body
     assert "<string>-m</string>" in body
     assert "<string>trcc.next</string>" in body
@@ -107,8 +107,8 @@ def test_enable_writes_plist_and_calls_bootstrap(tmp_path: Path) -> None:
 
     assert plist.exists()
     body = plist.read_text()
-    assert "<string>/opt/trcc-next/bin/trcc-next</string>" in body
-    # launchctl bootstrap gui/501 /tmp/.../com.thermalright.trcc-next.plist
+    assert "<string>/opt/trcc/bin/trcc</string>" in body
+    # launchctl bootstrap gui/501 /tmp/.../com.thermalright.trcc.plist
     assert runner.calls == [["launchctl", "bootstrap", "gui/501", str(plist)]]
 
 
@@ -126,7 +126,7 @@ def test_disable_calls_bootout_and_removes_plist(tmp_path: Path) -> None:
     autostart.disable()
     assert not plist.exists()
     # bootout target is the gui/<uid>/<label> domain identifier
-    assert runner.calls[-1] == ["launchctl", "bootout", "gui/501/com.thermalright.trcc-next"]
+    assert runner.calls[-1] == ["launchctl", "bootout", "gui/501/com.thermalright.trcc"]
 
 
 def test_disable_when_never_enabled_is_silent(tmp_path: Path) -> None:
@@ -164,18 +164,18 @@ def test_disable_not_loaded_returncode_is_accepted(tmp_path: Path) -> None:
 def test_resolve_macos_program_args_uses_trcc_next_when_on_path(
     monkeypatch,
 ) -> None:
-    from trcc.next.adapters.system import _autostart
+    from trcc.adapters.system import _autostart
 
     monkeypatch.setattr(
         _autostart.shutil, "which",
-        lambda name: "/opt/trcc/bin/trcc-next" if name == "trcc-next" else None,
+        lambda name: "/opt/trcc/bin/trcc" if name == "trcc" else None,
     )
     args = _autostart._resolve_macos_program_args()
-    assert args == ["/opt/trcc/bin/trcc-next", "gui"]
+    assert args == ["/opt/trcc/bin/trcc", "gui"]
 
 
 def test_resolve_macos_program_args_falls_back_to_python(monkeypatch) -> None:
-    from trcc.next.adapters.system import _autostart
+    from trcc.adapters.system import _autostart
 
     monkeypatch.setattr(_autostart.shutil, "which", lambda name: None)
     args = _autostart._resolve_macos_program_args()

@@ -27,8 +27,8 @@ import pytest
 
 # Strategy-chain modules.  ``ENUM_MODULE`` is where ``psutil`` is imported;
 # ``LHM_MODULE`` is where the LHM probe helpers live so we can patch them.
-ENUM_MODULE = 'trcc.adapters.system.windows.enumerator'
-LHM_MODULE = 'trcc.adapters.system.windows.sources.lhm'
+ENUM_MODULE = 'trcc.legacy.adapters.system.windows.enumerator'
+LHM_MODULE = 'trcc.legacy.adapters.system.windows.sources.lhm'
 
 
 # ── LHM WMI mock helpers ─────────────────────────────────────────────
@@ -87,8 +87,8 @@ def _lhm_via_di(lhm_ns: MagicMock | None):
     ``lhm_ns=None`` → ``start()`` returns ``None``, ``probe()`` returns False.
     ``lhm_ns=<mock>`` → ``start()`` short-circuits to the mock, source lights up.
     """
-    from trcc.adapters.system.windows.sources._base import WindowsSensorSource
-    from trcc.adapters.system.windows.sources.lhm import (
+    from trcc.legacy.adapters.system.windows.sources._base import WindowsSensorSource
+    from trcc.legacy.adapters.system.windows.sources.lhm import (
         LHMSource,
         _LHMSubprocess,
     )
@@ -174,7 +174,7 @@ def mock_win_nvidia(mock_io):
 
 def _make_enum():
     """Construct the strategy-chain enumerator (LHM patches applied via fixture)."""
-    from trcc.adapters.system.windows.enumerator import WindowsSensorEnumerator
+    from trcc.legacy.adapters.system.windows.enumerator import WindowsSensorEnumerator
     return WindowsSensorEnumerator()
 
 
@@ -363,7 +363,7 @@ class TestPolling:
         e.discover()
         e.start_polling(interval=0.01)
         # Capture the LHMSource that contributed (set during discover).
-        from trcc.adapters.system.windows.sources.lhm import LHMSource
+        from trcc.legacy.adapters.system.windows.sources.lhm import LHMSource
         lhm_sources = [s for s in e._live_sources if isinstance(s, LHMSource)]
         assert lhm_sources, "LHM source did not register"
         e.stop_polling()
@@ -376,7 +376,7 @@ class TestPolling:
 class TestLhmTypeMap:
 
     def test_known_types_mapped(self):
-        from trcc.adapters.system.windows.sources.lhm import _LHM_TYPE_MAP
+        from trcc.legacy.adapters.system.windows.sources.lhm import _LHM_TYPE_MAP
         assert 'Temperature' in _LHM_TYPE_MAP
         assert 'Fan' in _LHM_TYPE_MAP
         assert 'Clock' in _LHM_TYPE_MAP
@@ -384,7 +384,7 @@ class TestLhmTypeMap:
         assert 'Power' in _LHM_TYPE_MAP
 
     def test_unknown_type_not_mapped(self):
-        from trcc.adapters.system.windows.sources.lhm import _LHM_TYPE_MAP
+        from trcc.legacy.adapters.system.windows.sources.lhm import _LHM_TYPE_MAP
         assert 'Warp' not in _LHM_TYPE_MAP
 
 
@@ -418,7 +418,7 @@ class TestWmiGpuFallback:
 
     def test_returns_amd_gpu(self):
         """The reporter's exact card (RX 9070 XT) appears in the list."""
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         with self._patch_wmi([_mock_wmi_video('AMD Radeon RX 9070 XT')]):
@@ -427,7 +427,7 @@ class TestWmiGpuFallback:
 
     def test_returns_multiple_gpus_in_order(self):
         """Integrated + discrete are both listed, indexed in detection order."""
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         controllers = [
@@ -442,7 +442,7 @@ class TestWmiGpuFallback:
         ]
 
     def test_strips_whitespace_in_name(self):
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         with self._patch_wmi([_mock_wmi_video('  AMD Radeon  ')]):
@@ -451,7 +451,7 @@ class TestWmiGpuFallback:
 
     def test_skips_controllers_with_no_name(self):
         """WMI sometimes returns ghost controllers (Name=None).  Skip them."""
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         ghost = MagicMock()
@@ -463,7 +463,7 @@ class TestWmiGpuFallback:
 
     def test_returns_empty_when_wmi_pkg_missing(self):
         """No ``wmi`` package on path (e.g. running on Linux): empty list, no crash."""
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         with patch.dict('sys.modules', {'wmi': None}):
@@ -473,7 +473,7 @@ class TestWmiGpuFallback:
 
     def test_returns_empty_on_wmi_exception(self):
         """WMI subsystem can raise (e.g. COM init failure).  Don't propagate."""
-        from trcc.adapters.system.windows.enumerator import (
+        from trcc.legacy.adapters.system.windows.enumerator import (
             _wmi_video_controller_gpus,
         )
         mock_wmi_mod = MagicMock()
@@ -493,7 +493,7 @@ class TestGetGpuListFallbackOrder:
             e = _make_enum()
             e.discover()  # discovers no live sources
             # Patch the base get_gpu_list (pynvml NVIDIA path) and the WMI helper.
-            from trcc.adapters.system._base import SensorEnumeratorBase
+            from trcc.legacy.adapters.system._base import SensorEnumeratorBase
             with patch.object(
                 SensorEnumeratorBase, 'get_gpu_list', return_value=[],
             ), patch(
@@ -529,7 +529,7 @@ class TestGetGpuListFallbackOrder:
             wp.sensors_temperatures.return_value = {}
             e = _make_enum()
             e.discover()
-            from trcc.adapters.system._base import SensorEnumeratorBase
+            from trcc.legacy.adapters.system._base import SensorEnumeratorBase
             with patch.object(
                 SensorEnumeratorBase, 'get_gpu_list',
                 return_value=[('nvidia:0', 'RTX 4090 (24576 MB)')],

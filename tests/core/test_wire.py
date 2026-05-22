@@ -32,7 +32,7 @@ class TestQtRendererWireRoundTrip(unittest.TestCase):
 
     def setUp(self) -> None:
         _ensure_qapp()
-        from trcc.adapters.render.qt import QtRenderer
+        from trcc.legacy.adapters.render.qt import QtRenderer
         self.renderer: Any = QtRenderer()
 
     def test_round_trip_solid_color(self) -> None:
@@ -72,7 +72,7 @@ class TestWireEnvelope(unittest.TestCase):
     ``{"__surface__": "<base64>"}`` envelope through any Renderer."""
 
     def test_wrap_returns_envelope_dict(self) -> None:
-        from trcc.core.wire import is_surface_envelope, wrap_surface
+        from trcc.legacy.core.wire import is_surface_envelope, wrap_surface
         renderer = MagicMock()
         renderer.encode_for_wire.return_value = b"\x89PNGfake"
         env = wrap_surface(renderer, object())
@@ -83,7 +83,7 @@ class TestWireEnvelope(unittest.TestCase):
         self.assertEqual(base64.b64decode(env['__surface__']), b"\x89PNGfake")
 
     def test_unwrap_calls_decoder(self) -> None:
-        from trcc.core.wire import unwrap_surface, wrap_surface
+        from trcc.legacy.core.wire import unwrap_surface, wrap_surface
         renderer = MagicMock()
         renderer.encode_for_wire.return_value = b"raw-bytes"
         renderer.decode_from_wire.return_value = "decoded-surface-sentinel"
@@ -95,7 +95,7 @@ class TestWireEnvelope(unittest.TestCase):
         renderer.decode_from_wire.assert_called_once_with(b"raw-bytes")
 
     def test_is_surface_envelope_rejects_other_dicts(self) -> None:
-        from trcc.core.wire import is_surface_envelope
+        from trcc.legacy.core.wire import is_surface_envelope
         self.assertFalse(is_surface_envelope({}))
         self.assertFalse(is_surface_envelope({'foo': 'bar'}))
         self.assertFalse(is_surface_envelope(None))
@@ -112,31 +112,31 @@ class TestWireEnvelope(unittest.TestCase):
 class TestIPCServerSanitize(unittest.TestCase):
 
     def _server(self, renderer: Any | None) -> Any:
-        from trcc.ipc import IPCServer
+        from trcc.legacy.ipc import IPCServer
         return IPCServer(trcc=MagicMock(), renderer=renderer)
 
     def test_non_frame_topic_passes_through(self) -> None:
         # METRICS/PROGRESS/etc. payloads are already JSON-safe — no transform.
         server = self._server(renderer=None)
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         result = server._sanitize_payload(Topic.METRICS, ({'cpu': 42},))
         self.assertEqual(result, [{'cpu': 42}])
 
     def test_frame_with_no_surface_passes_through(self) -> None:
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         server = self._server(renderer=None)
         result = server._sanitize_payload(Topic.FRAME, ('/dev/sg0', None))
         self.assertEqual(result, ['/dev/sg0', None])
 
     def test_frame_with_surface_no_renderer_drops_surface(self) -> None:
         """Misconfigured server: warns once and replaces surface with None."""
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         server = self._server(renderer=None)
         result = server._sanitize_payload(Topic.FRAME, ('/dev/sg0', object()))
         self.assertEqual(result, ['/dev/sg0', None])
 
     def test_frame_with_surface_and_renderer_wraps_envelope(self) -> None:
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         renderer = MagicMock()
         renderer.encode_for_wire.return_value = b"\x89PNGfake"
         server = self._server(renderer=renderer)
@@ -147,7 +147,7 @@ class TestIPCServerSanitize(unittest.TestCase):
         self.assertIn('__surface__', result[1])
 
     def test_frame_with_renderer_raising_drops_surface_safely(self) -> None:
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         renderer = MagicMock()
         renderer.encode_for_wire.side_effect = RuntimeError("encoder broken")
         server = self._server(renderer=renderer)
@@ -164,7 +164,7 @@ class TestIPCServerSanitize(unittest.TestCase):
 class TestEventBusProxyDesanitize(unittest.TestCase):
 
     def _proxy(self, renderer: Any | None) -> Any:
-        from trcc.core.trcc_proxy import EventBusProxy
+        from trcc.legacy.core.trcc_proxy import EventBusProxy
         return EventBusProxy(socket_path=None, timeout=1.0, renderer=renderer)
 
     def test_non_envelope_items_pass_through(self) -> None:
@@ -177,7 +177,7 @@ class TestEventBusProxyDesanitize(unittest.TestCase):
         renderer.decode_from_wire.return_value = "surface-sentinel"
         proxy = self._proxy(renderer=renderer)
 
-        from trcc.core.wire import wrap_surface
+        from trcc.legacy.core.wire import wrap_surface
         env = wrap_surface(MagicMock(encode_for_wire=lambda _: b"raw"), object())
         result = proxy._desanitize_payload(['/dev/sg0', env])
 
@@ -203,15 +203,15 @@ class TestEndToEndFrameTransport(unittest.TestCase):
 
     def setUp(self) -> None:
         _ensure_qapp()
-        from trcc.adapters.render.qt import QtRenderer
+        from trcc.legacy.adapters.render.qt import QtRenderer
         self.renderer: Any = QtRenderer()
 
     def test_qimage_survives_server_to_client_round_trip(self) -> None:
         import json
 
-        from trcc.core.events import Topic
-        from trcc.core.trcc_proxy import EventBusProxy
-        from trcc.ipc import IPCServer
+        from trcc.legacy.core.events import Topic
+        from trcc.legacy.core.trcc_proxy import EventBusProxy
+        from trcc.legacy.ipc import IPCServer
 
         original = self.renderer.create_surface(48, 24, (10, 200, 250))
 

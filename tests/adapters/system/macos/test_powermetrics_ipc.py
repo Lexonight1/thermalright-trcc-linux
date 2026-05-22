@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from trcc.adapters.system.macos.powermetrics_ipc import (
+from trcc.legacy.adapters.system.macos.powermetrics_ipc import (
     fetch_powermetrics_bytes,
     fetch_powermetrics_text,
     powermetrics_socket_path,
@@ -119,8 +119,8 @@ def test_fetch_helper_error_status() -> None:
 )
 def test_powermetrics_helper_live_integration() -> None:
     """Requires installed helper, running daemon, and a normal login UID (>= 500)."""
-    from trcc.adapters.system.macos.powermetrics_extra import full_powermetrics_sampler_csv
-    from trcc.adapters.system.macos.powermetrics_plist import parse_powermetrics_plist
+    from trcc.legacy.adapters.system.macos.powermetrics_extra import full_powermetrics_sampler_csv
+    from trcc.legacy.adapters.system.macos.powermetrics_plist import parse_powermetrics_plist
 
     path = powermetrics_socket_path()
     assert path, 'TRCC_POWERMETRICS_SOCKET must not be empty for this test'

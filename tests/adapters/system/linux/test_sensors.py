@@ -12,15 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.adapters.infra.data_repository import SysUtils
-from trcc.adapters.system.linux_sensors import (
+from trcc.legacy.adapters.infra.data_repository import SysUtils
+from trcc.legacy.adapters.system.linux_sensors import (
     _HWMON_DIVISORS,
     _HWMON_TYPES,
     SensorEnumerator,
 )
-from trcc.core.models import SensorInfo
+from trcc.legacy.core.models import SensorInfo
 
-MODULE = 'trcc.adapters.system.linux_sensors'
+MODULE = 'trcc.legacy.adapters.system.linux_sensors'
 
 
 # ── Sysfs mock helpers ───────────────────────────────────────────────
@@ -150,7 +150,7 @@ class TestDiscoverNvidiaLinux:
 
 class TestReadHwmon:
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs')
     def test_read_hwmon_temp(self, mock_read):
         """hwmon temp value divided by 1000 (millidegrees → degrees)."""
         mock_read.return_value = '65000'
@@ -160,7 +160,7 @@ class TestReadHwmon:
         readings = e.read_all()
         assert abs(readings['hwmon:coretemp:temp1'] - 65.0) < 0.1
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='1500')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='1500')
     def test_read_hwmon_fan(self, _):
         e = SensorEnumerator()
         e._hwmon_paths = {'hwmon:it8688:fan1': '/sys/class/hwmon/hwmon3/fan1_input'}
@@ -168,14 +168,14 @@ class TestReadHwmon:
         readings = e.read_all()
         assert abs(readings['hwmon:it8688:fan1'] - 1500.0) < 0.1
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
     def test_missing_sysfs_value_skipped(self, _):
         e = SensorEnumerator()
         e._hwmon_paths = {'hwmon:x:temp1': '/fake'}
         readings = e.read_all()
         assert 'hwmon:x:temp1' not in readings
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='not_a_number')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='not_a_number')
     def test_invalid_sysfs_value_skipped(self, _):
         e = SensorEnumerator()
         e._hwmon_paths = {'hwmon:x:temp1': '/fake'}
@@ -185,7 +185,7 @@ class TestReadHwmon:
 
 class TestReadOne:
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='72500')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='72500')
     def test_read_one_hwmon(self, _):
         e = SensorEnumerator()
         e._hwmon_paths = {'hwmon:k10temp:temp1': '/fake'}
@@ -193,7 +193,7 @@ class TestReadOne:
         assert val is not None
         assert abs(val - 72.5) < 0.1
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
     def test_read_one_missing(self, _):
         e = SensorEnumerator()
         e._hwmon_paths = {'hwmon:k10temp:temp1': '/fake'}
@@ -205,7 +205,7 @@ class TestReadOne:
 
 class TestRapl:
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs')
     @patch(f'{MODULE}.time')
     def test_rapl_power_from_energy_delta(self, mock_time, mock_read):
         """RAPL computes watts from energy_uj delta over time."""
@@ -226,7 +226,7 @@ class TestRapl:
         e._poll_rapl(readings2)
         assert abs(readings2['rapl:package-0'] - 5.0) < 0.1
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None)
     def test_rapl_missing_sysfs(self, _):
         e = SensorEnumerator()
         e._rapl_paths = {'rapl:pkg': '/fake'}
@@ -234,7 +234,7 @@ class TestRapl:
         e._poll_rapl(readings)
         assert readings == {}
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='not_a_number')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs', return_value='not_a_number')
     def test_rapl_invalid_value(self, _):
         e = SensorEnumerator()
         e._rapl_paths = {'rapl:pkg': '/fake'}
@@ -391,7 +391,7 @@ class TestMapDefaults:
 
 class TestDiscoverRapl:
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs')
     @patch(f'{MODULE}.Path')
     def test_discovers_top_level_domains(self, mock_path_cls, mock_sysfs):
         rapl_base = MagicMock()
@@ -411,7 +411,7 @@ class TestDiscoverRapl:
         e._discover_rapl()
         assert any(s.id == 'rapl:package-0' for s in e._sensors)
 
-    @patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs')
+    @patch('trcc.legacy.adapters.infra.data_repository.SysUtils.read_sysfs')
     @patch(f'{MODULE}.Path')
     def test_skips_sub_zones(self, mock_path_cls, mock_sysfs):
         rapl_base = MagicMock()
@@ -434,7 +434,7 @@ class TestDiscoverRapl:
 class TestNvmlImport:
 
     def test_ensure_nvml_is_callable(self):
-        from trcc.adapters.system.linux_platform import _ensure_nvml
+        from trcc.legacy.adapters.system.linux_platform import _ensure_nvml
         assert callable(_ensure_nvml)
 
 

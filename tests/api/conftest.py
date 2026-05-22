@@ -27,10 +27,10 @@ def lcd_only_app(tmp_path, monkeypatch):
     from mock_platform import MockPlatform
 
     from trcc import _boot
-    from trcc.adapters.infra.data_repository import DataManager
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.adapters.infra.data_repository import DataManager
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.trcc import Trcc
 
     ensure_all_calls: list = []
     monkeypatch.setattr(
@@ -66,10 +66,10 @@ def no_device_app(tmp_path, monkeypatch):
     from mock_platform import MockPlatform
 
     from trcc import _boot
-    from trcc.adapters.infra.data_repository import DataManager
-    from trcc.adapters.render.qt import QtRenderer
-    from trcc.conf import init_settings
-    from trcc.core.trcc import Trcc
+    from trcc.legacy.adapters.infra.data_repository import DataManager
+    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc.legacy.conf import init_settings
+    from trcc.legacy.core.trcc import Trcc
 
     monkeypatch.setattr(DataManager, "ensure_all",
                         classmethod(lambda cls, *a, **kw: None))

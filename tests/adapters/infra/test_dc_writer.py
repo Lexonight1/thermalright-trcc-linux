@@ -10,8 +10,8 @@ import unittest
 from conftest import make_test_surface
 from PySide6.QtGui import QImage
 
-from trcc.adapters.infra.dc_parser import parse_dc_file
-from trcc.adapters.infra.dc_writer import (
+from trcc.legacy.adapters.infra.dc_parser import parse_dc_file
+from trcc.legacy.adapters.infra.dc_writer import (
     _hex_to_argb,
     _metric_to_hardware_ids,
     _write_string,
@@ -25,7 +25,7 @@ from trcc.adapters.infra.dc_writer import (
     write_json,
     write_tr,
 )
-from trcc.core.models import CarouselConfig, DisplayElement, ThemeConfig
+from trcc.legacy.core.models import CarouselConfig, DisplayElement, ThemeConfig
 
 
 class TestWriteString(unittest.TestCase):

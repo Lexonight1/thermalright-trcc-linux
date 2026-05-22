@@ -24,9 +24,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from trcc.next.app import App
-from trcc.next.core.ports import Renderer
-from trcc.next.core.protocol import FBL_PROFILES
+from trcc.app import App
+from trcc.core.ports import Renderer
+from trcc.core.protocol import FBL_PROFILES
 
 from .conftest import FakePlatform
 
@@ -102,7 +102,7 @@ def api_client(fake_platform: FakePlatform) -> Iterator[TestClient]:
     USB.  Future tests can pre-populate ``app.state.trcc.devices``
     before making requests when they need a connected-device scenario.
     """
-    from trcc.next.ui.api.main import build_app
+    from trcc.ui.api.main import build_app
 
     trcc = App(platform=fake_platform, renderer=_SmokeRenderer())
     api = build_app(trcc=trcc)
@@ -779,7 +779,7 @@ def test_theme_list_finds_themes_in_dir(
     """ListThemes returns each theme directory containing config.json."""
     theme_dir = tmp_path / "MyTheme"
     theme_dir.mkdir()
-    (theme_dir / "trcc-next.json").write_text(
+    (theme_dir / "trcc.json").write_text(
         '{"width": 480, "height": 480, "elements": []}',
     )
     resp = api_client.get("/theme/list", params={"directory": str(tmp_path)})

@@ -22,15 +22,15 @@ import pytest
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget
 
-from trcc.adapters.system.config import (
+from trcc.legacy.adapters.system.config import (
     CATEGORY_COLORS,
     CATEGORY_IMAGES,
     PanelConfig,
     SensorBinding,
     SysInfoConfig,
 )
-from trcc.core.models import LEDMode, LEDZoneState
-from trcc.ui.gui.uc_system_info import (
+from trcc.legacy.core.models import LEDMode, LEDZoneState
+from trcc.legacy.ui.gui.uc_system_info import (
     COLUMNS,
     PAGE_NEXT_POS,
     PAGE_PREV_POS,
@@ -126,8 +126,8 @@ class TestSystemInfoPanel:
         """Create a SystemInfoPanel with mocked Assets."""
         config = make_panel_config()
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -138,8 +138,8 @@ class TestSystemInfoPanel:
         """Create a custom (deletable) SystemInfoPanel."""
         config = make_custom_panel_config()
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -225,8 +225,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("X", "", "")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -240,8 +240,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("CPUFAN", "hwmon:nct6798:fan1", "RPM")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -255,8 +255,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("VCORE", "hwmon:nct6798:in0", "V")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -270,8 +270,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("Available", "psutil:mem_avail", "MB")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -285,8 +285,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("UP", "computed:net_up", "KB/s")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -300,8 +300,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("Read", "computed:disk_read", "MB/s")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -316,8 +316,8 @@ class TestSystemInfoPanel:
             sensors=[SensorBinding("X", "some:sensor", "units")],
         )
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             p = SystemInfoPanel(config)
@@ -397,8 +397,8 @@ class TestUCSystemInfo:
         """Create UCSystemInfo with mocked dependencies."""
         config_path = tmp_path / "system_config.json"
         with (
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_assets,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_assets,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
             patch.object(SysInfoConfig, "CONFIG_PATH", config_path),
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
@@ -503,8 +503,8 @@ class TestUCSystemInfo:
         count_before = len(sysinfo._config.panels)
         with (
             patch.object(SysInfoConfig, "save"),
-            patch("trcc.ui.gui.uc_system_info.Assets") as mock_a,
-            patch("trcc.ui.gui.uc_system_info.set_background_pixmap"),
+            patch("trcc.legacy.ui.gui.uc_system_info.Assets") as mock_a,
+            patch("trcc.legacy.ui.gui.uc_system_info.set_background_pixmap"),
         ):
             mock_a.load_pixmap.return_value = QPixmap()
             # Create a panel widget for deletion
@@ -580,7 +580,7 @@ class TestUCSystemInfo:
 
     def test_update_from_metrics_forwards_readings_to_all_panels(self, sysinfo):
         """update_from_metrics(HardwareMetrics) hands readings to every panel."""
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         readings = {"hwmon:coretemp:temp1": 70.0}
         metrics = HardwareMetrics()
         metrics.readings = readings
@@ -592,7 +592,7 @@ class TestUCSystemInfo:
 
     def test_update_from_metrics_empty_readings_is_safe(self, sysinfo):
         """Empty readings dict must not raise; every panel still gets a tick."""
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         metrics = HardwareMetrics()
         for panel in sysinfo._panels_list:
             panel.update_values = MagicMock()
@@ -640,7 +640,7 @@ class TestLEDHandler:
     @pytest.fixture
     def handler(self, qapp, mock_panel, make_led_state):
         """Create a LEDHandler with a real QWidget for QTimer parent."""
-        from trcc.ui.gui.led_handler import LEDHandler
+        from trcc.legacy.ui.gui.led_handler import LEDHandler
 
         # QTimer needs a real QObject parent, so pass QWidget as panel.
         # led=None keeps _connect_signals() a no-op; swap _panel after.
@@ -747,8 +747,8 @@ class TestLEDHandler:
         """Helper: wire LED into handler then call show()."""
         handler._led = mock_led
         with (
-            patch("trcc.services.led.LEDService") as mock_svc,
-            patch("trcc.conf.settings") as mock_settings,
+            patch("trcc.legacy.services.led.LEDService") as mock_svc,
+            patch("trcc.legacy.conf.settings") as mock_settings,
         ):
             mock_svc.resolve_style_id.return_value = style_id
             mock_svc.get_style_info.return_value = style_info
@@ -1192,7 +1192,7 @@ class TestScreencastHandler:
 
     @pytest.fixture
     def handler(self, qapp):
-        from trcc.ui.gui.trcc_app import ScreencastHandler
+        from trcc.legacy.ui.gui.trcc_app import ScreencastHandler
 
         parent = QWidget()
         on_frame = MagicMock()
@@ -1253,14 +1253,14 @@ class TestScreencastHandler:
 
     def test_toggle_on_starts_timer(self, handler):
         with patch.object(handler, "_try_start_pipewire"):
-            with patch("trcc.ui.gui.screen_capture.is_wayland", return_value=False):
+            with patch("trcc.legacy.ui.gui.screen_capture.is_wayland", return_value=False):
                 handler.toggle(True)
         assert handler.active is True
         assert handler._timer.isActive()
         handler.stop()
 
     def test_toggle_off_stops_timer(self, handler):
-        with patch("trcc.ui.gui.screen_capture.is_wayland", return_value=False):
+        with patch("trcc.legacy.ui.gui.screen_capture.is_wayland", return_value=False):
             handler.toggle(True)
         handler.toggle(False)
         assert handler.active is False
@@ -1320,11 +1320,11 @@ class TestDevicePollLEDAutoSelect:
     showed all zeros until the user manually clicked the device button.
     """
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_auto_select_led_calls_show(self, mock_settings, bare_trcc_app):
         """When _activate_device selects an LED path, handler.show() is called
         if the handler is not yet active."""
-        from trcc.ui.gui.led_handler import LEDHandler
+        from trcc.legacy.ui.gui.led_handler import LEDHandler
 
         mock_info = MagicMock()
         mock_info.path = 'led_path'
@@ -1357,7 +1357,7 @@ class TestActivateDeviceLCDGuard:
     """
 
     def _make_lcd_handler(self, device_key: str = ''):
-        from trcc.ui.gui.lcd_handler import LCDHandler
+        from trcc.legacy.ui.gui.lcd_handler import LCDHandler
 
         info = MagicMock()
         info.resolution = (320, 320)
@@ -1369,7 +1369,7 @@ class TestActivateDeviceLCDGuard:
         mock_handler.view_name = 'lcd'
         return mock_handler
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_apply_device_config_called_on_first_activation(self, mock_settings,
                                                              bare_trcc_app):
         """apply_device_config is called when device_key is empty (first activation)."""
@@ -1385,7 +1385,7 @@ class TestActivateDeviceLCDGuard:
 
         handler.apply_device_config.assert_called_once()
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_apply_device_config_skipped_when_already_initialized(self, mock_settings,
                                                                    bare_trcc_app):
         """apply_device_config is NOT called when device_key is already set (re-navigation)."""
@@ -1401,7 +1401,7 @@ class TestActivateDeviceLCDGuard:
 
         handler.apply_device_config.assert_not_called()
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_reactivate_called_when_already_initialized(self, mock_settings,
                                                          bare_trcc_app):
         """reactivate() is called instead of apply_device_config on re-navigation."""
@@ -1417,7 +1417,7 @@ class TestActivateDeviceLCDGuard:
 
         handler.reactivate.assert_called_once_with(320, 320)
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_saves_last_device_on_activate(self, mock_settings, bare_trcc_app):
         """_activate_device persists device index via Settings.save_last_device."""
         handler = self._make_lcd_handler(device_key='k')
@@ -1438,7 +1438,7 @@ class TestRebuildAllHandlersRestore:
     """_rebuild_all_handlers restores last active device from config."""
 
     def _make_lcd_handler(self, device_index: int, device_key: str = ''):
-        from trcc.ui.gui.lcd_handler import LCDHandler
+        from trcc.legacy.ui.gui.lcd_handler import LCDHandler
 
         info = MagicMock()
         info.resolution = (320, 320)
@@ -1452,7 +1452,7 @@ class TestRebuildAllHandlersRestore:
         mock_handler.view_name = 'lcd'
         return mock_handler
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_restores_last_device(self, mock_settings, bare_trcc_app):
         mock_settings.get_last_device.return_value = 1
 
@@ -1477,7 +1477,7 @@ class TestRebuildAllHandlersRestore:
         )
         assert target == 'path1'
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_falls_back_to_first_lcd(self, mock_settings, bare_trcc_app):
         mock_settings.get_last_device.return_value = 99  # Not found
 
@@ -1495,7 +1495,7 @@ class TestRebuildAllHandlersRestore:
         )
         assert target is None  # Falls back to first LCD logic
 
-    @patch('trcc.ui.gui.trcc_app.Settings')
+    @patch('trcc.legacy.ui.gui.trcc_app.Settings')
     def test_restores_inactive_lcd_themes(self, mock_settings, bare_trcc_app):
         """Inactive LCD devices get their saved theme sent to hardware on startup.
 
@@ -1542,7 +1542,7 @@ class TestHandshakeDoneGuard:
     """
 
     def _make_handler(self, device_key: str):
-        from trcc.ui.gui.lcd_handler import LCDHandler
+        from trcc.legacy.ui.gui.lcd_handler import LCDHandler
 
         device = MagicMock()
         device.path = 'lcd_path'
@@ -1556,8 +1556,8 @@ class TestHandshakeDoneGuard:
 
     def test_applies_config_on_first_handshake(self, bare_trcc_app):
         """apply_device_config is called when device_key is empty (first handshake)."""
-        from trcc.conf import Settings
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.conf import Settings
+        from trcc.legacy.core.models import HandshakeResult
 
         device, handler = self._make_handler(device_key='')
         app = bare_trcc_app
@@ -1575,7 +1575,7 @@ class TestHandshakeDoneGuard:
 
     def test_skips_config_on_duplicate_handshake(self, bare_trcc_app):
         """apply_device_config is NOT called when device_key already set (duplicate handshake)."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
 
         device, handler = self._make_handler(device_key='0:0402:3922')
         app = bare_trcc_app
@@ -1607,7 +1607,7 @@ class TestResolveDeviceIdentity:
 
     @staticmethod
     def _make_device(path: str, protocol: str, vid: int = 0x0402, pid: int = 0x3922):
-        from trcc.core.models import DeviceInfo
+        from trcc.legacy.core.models import DeviceInfo
         return DeviceInfo(
             name='LCD Display', path=path, vendor='Test', product='LCD',
             model='CZTV', vid=vid, pid=pid, device_index=0,
@@ -1617,7 +1617,7 @@ class TestResolveDeviceIdentity:
 
     def test_scsi_uses_fbl_as_pm(self, bare_trcc_app):
         """SCSI handshake: pm=0 → `pm or fbl` resolves to fbl=100 → FROZEN WARFRAME PRO."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
 
         app = bare_trcc_app
         app._handshake_pending = True
@@ -1642,7 +1642,7 @@ class TestResolveDeviceIdentity:
 
     def test_bulk_uses_pm_sub_directly(self, bare_trcc_app):
         """Bulk handshake: pm=7, sub=1 → Stream Vision (not FBL-based)."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
 
         app = bare_trcc_app
         app._handshake_pending = True
@@ -1667,7 +1667,7 @@ class TestResolveDeviceIdentity:
 
     def test_unknown_pm_keeps_original_button(self, bare_trcc_app):
         """When PM/SUB doesn't match any entry, button_image stays unchanged."""
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
 
         app = bare_trcc_app
         app._handshake_pending = True

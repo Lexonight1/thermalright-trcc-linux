@@ -86,7 +86,11 @@ class UCThemeSetting(BasePanel):
     eyedropper_requested = Signal()  # launch eyedropper color picker
     capture_requested = Signal()     # launch screen capture
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, ui_state=None):
+        # ``ui_state`` is an optional :class:`UiStateStore` for persisting
+        # global format defaults (time / date / temp_unit).  trcc_app
+        # injects its store; legacy callers leave it ``None``.
+        self._ui_state = ui_state
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
         self._setup_ui()
 
@@ -223,14 +227,18 @@ class UCThemeSetting(BasePanel):
     def _on_format_changed(self, mode, mode_sub):
         log.debug("_on_format_changed: mode=%s, mode_sub=%s", mode, mode_sub)
         self._update_selected(require_mode=mode, mode_sub=mode_sub)
-        # Persist format preference so it carries across theme changes
-        from ...conf import Settings
+        # Persist format preference so it carries across theme changes.
+        # Global format defaults are GUI-only state — stored in UiState,
+        # not app.settings.  ``_ui_state`` is injected by the window;
+        # if absent (e.g. legacy callers) we skip persistence.
+        if self._ui_state is None:
+            return
         if mode == OverlayMode.TIME:
-            Settings.save_format_pref('time_format', mode_sub)
+            self._ui_state.set_format_pref('time_format', mode_sub)
         elif mode == OverlayMode.DATE:
-            Settings.save_format_pref('date_format', mode_sub)
+            self._ui_state.set_format_pref('date_format', mode_sub)
         elif mode == OverlayMode.HARDWARE:
-            Settings.save_format_pref('temp_unit', mode_sub)
+            self._ui_state.set_format_pref('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
         self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)

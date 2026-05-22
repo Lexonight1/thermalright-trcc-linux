@@ -15,10 +15,10 @@ from typing import Any
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import ConnectDevice, PlayVideo, StopVideo
-from trcc.next.core.events import VideoStarted, VideoStopped
-from trcc.next.core.models import (
+from trcc.app import App
+from trcc.core.commands import ConnectDevice, PlayVideo, StopVideo
+from trcc.core.events import VideoStarted, VideoStopped
+from trcc.core.models import (
     FitMode,
     Kind,
     ProductInfo,
@@ -26,13 +26,13 @@ from trcc.next.core.models import (
     Theme,
     Wire,
 )
-from trcc.next.core.ports import Renderer
-from trcc.next.core.protocol import get_profile
-from trcc.next.services.display import DisplayService
-from trcc.next.services.media import MediaService, Playback
-from trcc.next.services.overlay import OverlayService
-from trcc.next.services.settings import Settings
-from trcc.next.services.theme import ThemeService
+from trcc.core.ports import Renderer
+from trcc.core.protocol import get_profile
+from trcc.services.display import DisplayService
+from trcc.services.media import MediaService, Playback
+from trcc.services.overlay import OverlayService
+from trcc.services.settings import Settings
+from trcc.services.theme import ThemeService
 
 from .conftest import FakePaths, FakePlatform
 
@@ -350,7 +350,7 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     theme_dir = tmp_home / "themes" / "static"
     theme_dir.mkdir(parents=True)
     (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-    (theme_dir / "trcc-next.json").write_text(
+    (theme_dir / "trcc.json").write_text(
         '{"name":"static","width":320,"height":320,"elements":[]}',
     )
     theme = Theme(

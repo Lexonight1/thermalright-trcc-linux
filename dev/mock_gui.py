@@ -52,7 +52,7 @@ def _parse_args() -> tuple[bool, int, str | None]:
         if arg.startswith('-v'):
             verbosity = arg.count('v')
         elif arg == '--list':
-            from trcc.core.models import FBL_TO_RESOLUTION
+            from trcc.legacy.core.models import FBL_TO_RESOLUTION
             resolutions = sorted(set(FBL_TO_RESOLUTION.values()),
                                  key=lambda r: (r[0] * r[1], r[0]))
             print("Available resolutions:")
@@ -84,7 +84,7 @@ def main() -> None:
     platform = bootstrap(report_path)
 
     # ── Qt bootstrap (must precede QtRenderer construction) ──────────────
-    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
     set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
 
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
@@ -103,14 +103,14 @@ def main() -> None:
     qapp.setFont(font)
 
     # ── Build Trcc via _boot — same composition root as production ───────
-    from trcc._boot import trcc as _boot_trcc
-    from trcc.adapters.render.qt import QtRenderer
+    from trcc.legacy._boot import trcc as _boot_trcc
+    from trcc.legacy.adapters.render.qt import QtRenderer
     renderer = QtRenderer()
     t = _boot_trcc(cast(Any, platform), renderer=renderer,
                    discover_now=True, verbosity=verbosity)
 
     # ── GUI — production TRCCApp pulls Trcc via _boot.trcc() (cached) ────
-    from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
+    from trcc.legacy.ui.gui.trcc_app import TRCCApp as _TRCCApp
     window = _TRCCApp(
         platform=cast(Any, platform),
         decorated=decorated,
@@ -119,7 +119,7 @@ def main() -> None:
     # ── Replay device list to subscribers (mirrors gui/__init__.py) ──────
     from itertools import chain
 
-    from trcc.core.events import Topic
+    from trcc.legacy.core.events import Topic
     t.events.publish(
         Topic.DEVICE_LIST,
         tuple(chain(t.lcd_devices, t.led_devices)),

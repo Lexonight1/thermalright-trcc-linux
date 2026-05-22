@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from trcc.core.led_segment import (
+from trcc.legacy.core.led_segment import (
     DISPLAYS,
     AK120Display,
     AX120Display,
@@ -26,7 +26,7 @@ from trcc.core.led_segment import (
     get_display,
     has_segment_display,
 )
-from trcc.core.models import HardwareMetrics
+from trcc.legacy.core.models import HardwareMetrics
 
 # =========================================================================
 # Base class — encoding tables
@@ -683,7 +683,7 @@ class TestLC2Display:
     def test_phase_count(self):
         assert self.d.phase_count == 1
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_weekday_progressive_fill(self, mock_dt):
         """C# progressive fill: bar[0] always on, bar[i] on if weekday > i-1."""
         # Wednesday = weekday() == 2 (Mon-start), so w=2 → bars 0,1,2 on
@@ -698,7 +698,7 @@ class TestLC2Display:
         assert mask[deco[5]] is False
         assert mask[deco[6]] is False
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_weekday_sunday_all_on(self, mock_dt):
         """Sunday (Mon-start w=6) lights all 7 bars."""
         mock_dt.now.return_value = datetime(2024, 2, 18, 12, 0)  # Sunday
@@ -706,7 +706,7 @@ class TestLC2Display:
         for idx in range(54, 61):
             assert mask[idx] is True
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_24h_format(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 15, 30)
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=True)
@@ -714,7 +714,7 @@ class TestLC2Display:
         on_tens = sum(1 for led in self.d.DIGITS[0] if mask[led])
         assert on_tens > 0
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_12h_format(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 15, 30)
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=False)
@@ -722,7 +722,7 @@ class TestLC2Display:
         for led in self.d.DIGITS[0]:
             assert mask[led] is False  # hour tens = 0 → blank
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_midnight_12h(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 0, 0)
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=False)
@@ -730,7 +730,7 @@ class TestLC2Display:
         on_tens = sum(1 for led in self.d.DIGITS[0] if mask[led])
         assert on_tens > 0  # '1' has segments
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_month_tens_partial_bc(self, mock_dt):
         """Month tens uses partial B/C (can only show '1' or blank)."""
         # December → month=12 → month tens=1 → B,C should be on
@@ -739,7 +739,7 @@ class TestLC2Display:
         assert mask[52] is True   # MONTH_TENS_BC[0] = B segment
         assert mask[53] is True   # MONTH_TENS_BC[1] = C segment
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_month_tens_blank_for_single_digit(self, mock_dt):
         """Month < 10 → month tens blank (both B,C off)."""
         # February → month=2 → month tens=0 → both off
@@ -748,7 +748,7 @@ class TestLC2Display:
         assert mask[52] is False  # MONTH_TENS_BC[0]
         assert mask[53] is False  # MONTH_TENS_BC[1]
 
-    @patch('trcc.core.led_segment.datetime')
+    @patch('trcc.legacy.core.led_segment.datetime')
     def test_colons_and_separator_always_on(self, mock_dt):
         """Time colons (0,1) and date separator (2) are always lit."""
         mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)
@@ -855,7 +855,7 @@ class TestCrossStyleConsistency:
 
 class TestLEDServiceSegmentMode:
     def _make_service(self, style_id: int = 1):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = LEDService()
         svc.configure_for_style(style_id)
         svc._seg_display = get_display(style_id)

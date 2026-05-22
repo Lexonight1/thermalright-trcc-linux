@@ -1,0 +1,611 @@
+"""Settings — user preferences, persisted to trcc.json.
+
+Filename is deliberately distinct from legacy's ``config.json`` — the
+two trees use different JSON shapes, and sharing a filename would make
+whichever wrote last clobber the other.  Users can run legacy + next/
+on the same machine without breaking either's state.
+
+Two layers:
+  * AppSettings — global (language, data refresh interval, active device).
+  * DeviceSettings (in core.models) — per-device (orientation, brightness,
+    current theme, time/date format, temp unit, overlay enabled).
+
+Settings is constructed with a Paths port; it owns config file location
+and atomic save.  Adapters / UIs read and write through the singleton
+exposed on the App hub.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from threading import RLock
+from typing import Any, Literal, cast
+
+from ..core.errors import ConfigError
+from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
+from ..core.models import DeviceSettings, FitMode, OverlayElement, TempUnit
+from ..core.ports import Paths
+
+log = logging.getLogger(__name__)
+
+
+# =========================================================================
+# AppSettings — global (non-device-specific) preferences
+# =========================================================================
+
+
+@dataclass
+class AppSettings:
+    """Global user preferences."""
+    language: str = "en"
+    refresh_interval_s: float = 2.0
+    active_device: str | None = None
+    autostart_configured: bool = False
+    ui_theme: Literal["dark", "light", "system"] = "system"
+    # Include HDD metrics in sensor broadcasts.  Off by default so spinning
+    # disks don't spin up just to report idle stats.
+    hdd_enabled: bool = False
+    # Global default temp_unit — propagates to every DeviceSettings.temp_unit
+    # via Settings.set_global_temp_unit so overlay renderers see a consistent
+    # unit across all devices. Per-device override still possible via the
+    # per-device set_temp_unit() (used by tests / non-GUI consumers).
+    temp_unit: TempUnit = "C"
+    # User-selected primary GPU (e.g. 'nvidia:0', 'amd:0', or 'intel:igpu').
+    # None = let SensorEnumerator.primary_gpu() pick automatically.
+    active_gpu: str | None = None
+
+
+# =========================================================================
+# Settings — the service
+# =========================================================================
+
+
+_CONFIG_FILE = "trcc.json"
+# One-shot migration: pre-cutover next/ persisted to ``trcc.json``.
+# Settings._load reads the old name when the new one doesn't exist; the
+# next save writes the new name and leaves the old file untouched so
+# legacy/rollback paths still work.
+_PRE_CUTOVER_CONFIG_FILE = "trcc.json"
+_LEGACY_CONFIG_FILE = "config.json"
+
+
+class Settings:
+    """Per-app and per-device settings with JSON persistence.
+
+    Thread-safe via RLock.  Atomic save (write to tmp, fsync, rename).
+    Missing / corrupt config file falls back to defaults.
+    """
+
+    def __init__(self, paths: Paths) -> None:
+        self._paths = paths
+        self._lock = RLock()
+        self._app = AppSettings()
+        self._devices: dict[str, DeviceSettings] = {}
+        self._led_devices: dict[str, LedDeviceSettings] = {}
+        self._load()
+
+    # ── AppSettings surface ───────────────────────────────────────────
+
+    @property
+    def app(self) -> AppSettings:
+        return self._app
+
+    def set_language(self, lang: str) -> None:
+        with self._lock:
+            self._app.language = lang
+            self._save()
+
+    def set_active_device(self, key: str | None) -> None:
+        with self._lock:
+            self._app.active_device = key
+            self._save()
+
+    def set_refresh_interval(self, seconds: float) -> None:
+        with self._lock:
+            self._app.refresh_interval_s = max(0.1, seconds)
+            self._save()
+
+    def set_global_temp_unit(self, unit: TempUnit) -> None:
+        """Set the global default temp_unit and propagate to every device.
+
+        Cross-cutting setter: keeps AppSettings.temp_unit and every
+        DeviceSettings.temp_unit in lockstep so overlay renderers can
+        read either layer and see the same answer.
+        """
+        with self._lock:
+            self._app.temp_unit = unit
+            for device_settings in self._devices.values():
+                device_settings.temp_unit = unit
+            self._save()
+
+    def set_active_gpu(self, gpu_key: str | None) -> None:
+        """Set the user-selected primary GPU. None = auto-pick."""
+        with self._lock:
+            self._app.active_gpu = gpu_key
+            self._save()
+
+    # ── DeviceSettings surface ────────────────────────────────────────
+
+    def for_device(self, key: str) -> DeviceSettings:
+        """Return the DeviceSettings for *key*, creating defaults if absent."""
+        with self._lock:
+            if key not in self._devices:
+                self._devices[key] = DeviceSettings()
+            return self._devices[key]
+
+    def set_orientation(self, key: str, degrees: int) -> None:
+        with self._lock:
+            self.for_device(key).orientation = degrees
+            self._save()
+
+    def set_brightness(self, key: str, percent: int) -> None:
+        with self._lock:
+            self.for_device(key).brightness = max(0, min(100, percent))
+            self._save()
+
+    def set_current_theme(self, key: str, theme_name: str | None) -> None:
+        with self._lock:
+            self.for_device(key).current_theme = theme_name
+            self._save()
+
+    def set_temp_unit(self, key: str, unit: TempUnit) -> None:
+        with self._lock:
+            self.for_device(key).temp_unit = unit
+            self._save()
+
+    def set_time_format(self, key: str, fmt: Literal["12h", "24h"]) -> None:
+        with self._lock:
+            self.for_device(key).time_format = fmt
+            self._save()
+
+    def set_date_format(self, key: str, fmt: str) -> None:
+        with self._lock:
+            self.for_device(key).date_format = fmt
+            self._save()
+
+    def set_overlay_enabled(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_device(key).overlay_enabled = enabled
+            self._save()
+
+    def set_mask_position(self, key: str,
+                          position: tuple[int, int] | None) -> None:
+        with self._lock:
+            self.for_device(key).mask_position = position
+            self._save()
+
+    def set_mask_path(self, key: str, path: str | None) -> None:
+        """Set the user-supplied mask path (overrides the theme's mask)."""
+        with self._lock:
+            self.for_device(key).mask_path = path
+            self._save()
+
+    def set_mask_visible(self, key: str, visible: bool) -> None:
+        """Toggle mask visibility for the device."""
+        with self._lock:
+            self.for_device(key).mask_visible = visible
+            self._save()
+
+    def set_fit_mode(self, key: str, mode: FitMode) -> None:
+        with self._lock:
+            self.for_device(key).fit_mode = mode
+            self._save()
+
+    def set_split_mode(self, key: str, mode: int) -> None:
+        """Set per-device Dynamic Island style (0=off, 1/2/3=A/B/C)."""
+        with self._lock:
+            self.for_device(key).split_mode = mode
+            self._save()
+
+    # ── LED-device settings ───────────────────────────────────────────
+
+    def for_led(self, key: str) -> LedDeviceSettings:
+        """Return the LedDeviceSettings for *key*, defaulting on first touch."""
+        with self._lock:
+            if key not in self._led_devices:
+                self._led_devices[key] = LedDeviceSettings()
+            return self._led_devices[key]
+
+    def set_led_mode(self, key: str, mode: LEDMode) -> None:
+        with self._lock:
+            self.for_led(key).mode = mode
+            self._save()
+
+    def set_led_color(self, key: str, color: tuple[int, int, int]) -> None:
+        with self._lock:
+            self.for_led(key).color = color
+            self._save()
+
+    def set_led_brightness(self, key: str, percent: int) -> None:
+        with self._lock:
+            self.for_led(key).brightness = max(0, min(100, percent))
+            self._save()
+
+    def set_led_global_on(self, key: str, on: bool) -> None:
+        with self._lock:
+            self.for_led(key).global_on = on
+            self._save()
+
+    def set_led_test_mode(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_led(key).test_mode = enabled
+            self._save()
+
+    def set_led_temp_source(self, key: str, source: str) -> None:
+        if source not in ("cpu", "gpu"):
+            raise ValueError(f"Invalid temp source: {source!r}; expected 'cpu' or 'gpu'")
+        with self._lock:
+            self.for_led(key).temp_source = cast(Literal["cpu", "gpu"], source)
+            self._save()
+
+    def set_led_load_source(self, key: str, source: str) -> None:
+        if source not in ("cpu", "gpu"):
+            raise ValueError(f"Invalid load source: {source!r}; expected 'cpu' or 'gpu'")
+        with self._lock:
+            self.for_led(key).load_source = cast(Literal["cpu", "gpu"], source)
+            self._save()
+
+    def set_led_zone_count(self, key: str, count: int) -> None:
+        """Resize the zones list — called by Led.connect once style is known."""
+        with self._lock:
+            settings = self.for_led(key)
+            current = len(settings.zones)
+            if count == current:
+                return
+            if count > current:
+                settings.zones.extend(
+                    LedZoneSettings() for _ in range(count - current)
+                )
+            else:
+                settings.zones = settings.zones[:count]
+            self._save()
+
+    def set_led_zone(
+        self, key: str, zone: int,
+        *,
+        mode: LEDMode | None = None,
+        color: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+        on: bool | None = None,
+    ) -> None:
+        """Update one zone's persistent state — only the given fields change."""
+        with self._lock:
+            settings = self.for_led(key)
+            if not 0 <= zone < len(settings.zones):
+                raise IndexError(
+                    f"Zone {zone} out of range for {key} "
+                    f"(have {len(settings.zones)})"
+                )
+            z = settings.zones[zone]
+            if mode is not None:
+                z.mode = mode
+            if color is not None:
+                z.color = color
+            if brightness is not None:
+                z.brightness = max(0, min(100, brightness))
+            if on is not None:
+                z.on = on
+            self._save()
+
+    def set_led_zone_sync(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_led(key).zone_sync = enabled
+            self._save()
+
+    def set_led_zone_sync_interval(self, key: str, ticks: int) -> None:
+        with self._lock:
+            self.for_led(key).zone_sync_interval_ticks = max(1, ticks)
+            self._save()
+
+    def set_led_selected_zone(self, key: str, zone: int) -> None:
+        """Pick the active zone — UIs use this when the user clicks a fan/strip."""
+        with self._lock:
+            settings = self.for_led(key)
+            if zone < 0:
+                raise ValueError(f"selected_zone must be >= 0, got {zone}")
+            settings.selected_zone = zone
+            self._save()
+
+    def set_led_segment_on(self, key: str, index: int, on: bool) -> None:
+        """Flip one segment on/off (segment-display devices only)."""
+        with self._lock:
+            settings = self.for_led(key)
+            if index < 0:
+                raise IndexError(f"segment index must be >= 0, got {index}")
+            # Grow segment_on lazily so callers don't need to know the
+            # segment count up front (style discovery may not have run yet).
+            while len(settings.segment_on) <= index:
+                settings.segment_on.append(True)
+            settings.segment_on[index] = on
+            self._save()
+
+    def set_led_clock_24h(self, key: str, is_24h: bool) -> None:
+        """Set the 12h/24h clock display format for LC2-style devices."""
+        with self._lock:
+            self.for_led(key).clock_24h = is_24h
+            self._save()
+
+    def set_led_week_start(self, key: str, sunday_first: bool) -> None:
+        """Pick week-start: ``True`` = Sunday-first, ``False`` = Monday-first."""
+        with self._lock:
+            self.for_led(key).week_sunday = sunday_first
+            self._save()
+
+    def set_led_memory_ratio(self, key: str, ratio_mode: bool) -> None:
+        """Memory display mode: ``True`` = percentage, ``False`` = GB used."""
+        with self._lock:
+            self.for_led(key).memory_ratio = ratio_mode
+            self._save()
+
+    def set_led_disk_index(self, key: str, index: int) -> None:
+        """Pick which disk's read/write stats to surface on the LED."""
+        if index < 0:
+            raise ValueError(f"disk_index must be >= 0, got {index}")
+        with self._lock:
+            self.for_led(key).disk_index = index
+            self._save()
+
+    def set_hdd_enabled(self, enabled: bool) -> None:
+        """Toggle HDD inclusion in sensor metrics broadcasts."""
+        with self._lock:
+            self._app.hdd_enabled = enabled
+            self._save()
+
+    def set_background_mode(
+        self, key: str,
+        mode: Literal["theme", "color", "transparent"],
+    ) -> None:
+        """Pick what fills the LCD behind overlays."""
+        if mode not in ("theme", "color", "transparent"):
+            raise ValueError(
+                f"background_mode must be 'theme' / 'color' / 'transparent', "
+                f"got {mode!r}",
+            )
+        with self._lock:
+            self.for_device(key).background_mode = mode
+            self._save()
+
+    def set_overlay_background(
+        self, key: str, color: tuple[int, int, int],
+    ) -> None:
+        """Set the solid-color background used when background_mode='color'."""
+        for label, value in zip("rgb", color, strict=False):
+            if not 0 <= value <= 255:
+                raise ValueError(
+                    f"{label} channel out of range (0-255): {value}",
+                )
+        with self._lock:
+            self.for_device(key).overlay_background = color
+            self._save()
+
+    # ── User overlay elements ─────────────────────────────────────────
+
+    def add_user_overlay_element(
+        self, key: str, element: OverlayElement,
+    ) -> None:
+        """Append a user-edited overlay element.
+
+        Caller is responsible for ensuring ``element.id`` is unique within
+        this device's list (the AddOverlayElement Command does the UUID
+        generation + uniqueness check).
+        """
+        with self._lock:
+            self.for_device(key).user_overlay_elements.append(element)
+            self._save()
+
+    def update_user_overlay_element(
+        self,
+        key: str,
+        element_id: str,
+        **fields: object,
+    ) -> OverlayElement:
+        """Apply ``fields`` to the element with the given id.  Returns
+        the updated element.  Raises ``KeyError`` if id is unknown."""
+        with self._lock:
+            elements = self.for_device(key).user_overlay_elements
+            for idx, e in enumerate(elements):
+                if e.id == element_id:
+                    for name, value in fields.items():
+                        if value is not None and hasattr(e, name):
+                            setattr(e, name, value)
+                    self._save()
+                    return elements[idx]
+            raise KeyError(f"Overlay element {element_id!r} not found")
+
+    def delete_user_overlay_element(
+        self, key: str, element_id: str,
+    ) -> OverlayElement:
+        """Remove the element by id and return it.
+
+        Raises ``KeyError`` if id is unknown.
+        """
+        with self._lock:
+            elements = self.for_device(key).user_overlay_elements
+            for idx, e in enumerate(elements):
+                if e.id == element_id:
+                    removed = elements.pop(idx)
+                    self._save()
+                    return removed
+            raise KeyError(f"Overlay element {element_id!r} not found")
+
+    def set_user_overlay_elements(
+        self, key: str, elements: list[OverlayElement],
+    ) -> None:
+        """Replace the user-overlay list wholesale (bulk SetOverlayConfig)."""
+        with self._lock:
+            self.for_device(key).user_overlay_elements = list(elements)
+            self._save()
+
+    # ── Slideshow ─────────────────────────────────────────────────────
+
+    def set_slideshow_enabled(self, key: str, enabled: bool) -> None:
+        with self._lock:
+            self.for_device(key).slideshow_enabled = enabled
+            self._save()
+
+    def configure_slideshow(
+        self,
+        key: str,
+        *,
+        themes: list[str] | None = None,
+        interval_s: float | None = None,
+    ) -> None:
+        """Set the slideshow theme list + interval atomically."""
+        with self._lock:
+            s = self.for_device(key)
+            if themes is not None:
+                s.slideshow_themes = list(themes)
+            if interval_s is not None:
+                s.slideshow_interval_s = max(1.0, float(interval_s))
+            self._save()
+
+    # ── Persistence ───────────────────────────────────────────────────
+
+    def _config_path(self) -> Path:
+        return self._paths.config_dir() / _CONFIG_FILE
+
+    def _load(self) -> None:
+        """Load config from disk.  Missing/corrupt → defaults, warn only.
+
+        Falls back to the pre-cutover ``trcc.json`` filename so
+        users who started on next/ before the rename keep their state;
+        the next ``_save`` writes the new ``trcc.json`` automatically.
+        """
+        path = self._config_path()
+        if not path.exists():
+            old_path = self._paths.config_dir() / _PRE_CUTOVER_CONFIG_FILE
+            if old_path.exists():
+                log.info(
+                    "Reading pre-cutover config %s; next save will write %s",
+                    old_path, path,
+                )
+                path = old_path
+            else:
+                log.debug("No config file at %s, using defaults", path)
+                return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("Failed to read %s: %s — using defaults", path, e)
+            return
+
+        app_data = raw.get("app", {})
+        with self._lock:
+            for field_name, value in app_data.items():
+                if hasattr(self._app, field_name):
+                    setattr(self._app, field_name, value)
+            for key, data in raw.get("devices", {}).items():
+                self._devices[key] = _device_settings_from_dict(data)
+            for key, data in raw.get("led_devices", {}).items():
+                self._led_devices[key] = _led_settings_from_dict(data)
+
+    def _save(self) -> None:
+        """Atomic write: tmp file → fsync → rename."""
+        path = self._config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = {
+            "app": asdict(self._app),
+            "devices": {k: asdict(v) for k, v in self._devices.items()},
+            "led_devices": {k: asdict(v) for k, v in self._led_devices.items()},
+        }
+        tmp = path.with_suffix(".json.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, default=_json_default)
+                f.flush()
+                os.fsync(f.fileno())
+            tmp.replace(path)
+        except OSError as e:
+            raise ConfigError(f"Failed to persist config to {path}: {e}") from e
+
+
+# =========================================================================
+# JSON helpers (tuples ↔ lists, misc coercions)
+# =========================================================================
+
+
+def _json_default(obj: Any) -> Any:
+    """Coerce tuples → lists (JSON has no tuple type)."""
+    if isinstance(obj, tuple):
+        return list(obj)
+    raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
+
+
+def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
+    """Build DeviceSettings from a parsed JSON dict, tolerant of extras."""
+    kwargs: dict[str, Any] = {}
+    valid_fields = {f for f in DeviceSettings.__dataclass_fields__}
+    for field_name, value in data.items():
+        if field_name in valid_fields:
+            kwargs[field_name] = value
+    # Mask position: JSON loads tuples as lists → restore tuple
+    pos = kwargs.get("mask_position")
+    if isinstance(pos, list) and len(pos) == 2:
+        kwargs["mask_position"] = (pos[0], pos[1])
+    # FitMode enum from its string value
+    fm = kwargs.get("fit_mode")
+    if isinstance(fm, str):
+        try:
+            kwargs["fit_mode"] = FitMode(fm)
+        except ValueError:
+            kwargs.pop("fit_mode")
+    # overlay_background: list[3] → tuple[r,g,b]
+    bg = kwargs.get("overlay_background")
+    if isinstance(bg, list) and len(bg) == 3:
+        kwargs["overlay_background"] = (bg[0], bg[1], bg[2])
+    # user_overlay_elements: list[dict] → list[OverlayElement]
+    raw_elements = kwargs.get("user_overlay_elements")
+    if isinstance(raw_elements, list):
+        kwargs["user_overlay_elements"] = [
+            OverlayElement.from_dict(d) if isinstance(d, dict) else d
+            for d in raw_elements
+        ]
+    return DeviceSettings(**kwargs)
+
+
+def _led_zone_from_dict(data: dict[str, Any]) -> LedZoneSettings:
+    """Build one LedZoneSettings from a parsed JSON dict."""
+    kwargs: dict[str, Any] = {}
+    valid = set(LedZoneSettings.__dataclass_fields__)
+    for k, v in data.items():
+        if k in valid:
+            kwargs[k] = v
+    if "mode" in kwargs and isinstance(kwargs["mode"], int):
+        try:
+            kwargs["mode"] = LEDMode(kwargs["mode"])
+        except ValueError:
+            kwargs.pop("mode")
+    if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
+        kwargs["color"] = tuple(kwargs["color"])
+    return LedZoneSettings(**kwargs)
+
+
+def _led_settings_from_dict(data: dict[str, Any]) -> LedDeviceSettings:
+    """Build LedDeviceSettings from a parsed JSON dict, tolerant of extras."""
+    kwargs: dict[str, Any] = {}
+    valid = set(LedDeviceSettings.__dataclass_fields__)
+    for k, v in data.items():
+        if k in valid:
+            kwargs[k] = v
+    # Mode enum from its int value
+    if "mode" in kwargs and isinstance(kwargs["mode"], int):
+        try:
+            kwargs["mode"] = LEDMode(kwargs["mode"])
+        except ValueError:
+            kwargs.pop("mode")
+    # Color tuple restoration
+    if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
+        kwargs["color"] = tuple(kwargs["color"])
+    # Zones (each is its own dataclass)
+    if isinstance(kwargs.get("zones"), list):
+        kwargs["zones"] = [_led_zone_from_dict(z) for z in kwargs["zones"]
+                           if isinstance(z, dict)]
+    return LedDeviceSettings(**kwargs)
+
+
+# Silence ruff "field imported but not used" when this module grows
+_ = field

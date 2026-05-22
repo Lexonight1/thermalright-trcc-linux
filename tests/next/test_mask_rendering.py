@@ -19,13 +19,13 @@ from typing import Any
 
 import pytest
 
-from trcc.next.core.models import Kind, ProductInfo, Theme, Wire
-from trcc.next.core.ports import Renderer
-from trcc.next.services.display import DisplayService
-from trcc.next.services.media import MediaService
-from trcc.next.services.overlay import OverlayService
-from trcc.next.services.settings import Settings
-from trcc.next.services.theme import ThemeService
+from trcc.core.models import Kind, ProductInfo, Theme, Wire
+from trcc.core.ports import Renderer
+from trcc.services.display import DisplayService
+from trcc.services.media import MediaService
+from trcc.services.overlay import OverlayService
+from trcc.services.settings import Settings
+from trcc.services.theme import ThemeService
 
 from .conftest import FakePaths
 

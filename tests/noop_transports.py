@@ -12,8 +12,8 @@ Usage:
 """
 from __future__ import annotations
 
-from trcc.adapters.device.hid import UsbTransport
-from trcc.adapters.device.scsi import ScsiTransport
+from trcc.legacy.adapters.device.hid import UsbTransport
+from trcc.legacy.adapters.device.scsi import ScsiTransport
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCSI — canned poll response, accepts writes
@@ -183,7 +183,7 @@ class NoopBulkLikeDevice:
         resolution: tuple[int, int] = (480, 480),
         model_id: int = 32,
     ) -> None:
-        from trcc.core.models import HandshakeResult
+        from trcc.legacy.core.models import HandshakeResult
         self.vid = vid
         self.pid = pid
         self.usb_address = usb_address

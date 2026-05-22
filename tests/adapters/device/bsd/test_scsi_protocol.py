@@ -5,33 +5,33 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.device.bsd.scsi_protocol'
+MODULE = 'trcc.legacy.adapters.device.bsd.scsi_protocol'
 
 
 @pytest.mark.skip(reason="Phase 9: BSDScsiProtocol class removed; BSD now uses unified ScsiProtocol with platform-injected transport via ControllerBuilder. Tests need rewriting.")
 class TestBSDScsiProtocol:
 
     def test_init(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         assert p._vid == 0x0402
         assert p._pid == 0x3922
         assert p._transport is None
 
     def test_protocol_name(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         assert p.protocol_name == "scsi"
 
     def test_repr(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         assert "BSDScsiProtocol" in repr(p)
         assert "0x0402" in repr(p)
         assert "0x3922" in repr(p)
 
     def test_get_info(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         info = p.get_info()
         assert info.protocol == "scsi"
@@ -39,7 +39,7 @@ class TestBSDScsiProtocol:
         assert "FreeBSD" in info.protocol_display
 
     def test_is_available_true_with_pyusb(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         with patch.dict('sys.modules', {
             'usb': MagicMock(),
@@ -48,7 +48,7 @@ class TestBSDScsiProtocol:
             assert p.is_available is True
 
     def test_close_releases_transport(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         mock_transport = MagicMock()
         p._transport = mock_transport
@@ -57,7 +57,7 @@ class TestBSDScsiProtocol:
         assert p._transport is None
 
     def test_close_noop_without_transport(self):
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         p.close()  # Should not raise
 
@@ -71,7 +71,7 @@ class TestBSDScsiProtocol:
         mock_transport.send_cdb.return_value = True
         mock_get_transport.return_value = mock_transport
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         result = p._do_handshake()
 
@@ -86,7 +86,7 @@ class TestBSDScsiProtocol:
     def test_handshake_returns_none_when_no_transport(self, mock_get_transport):
         mock_get_transport.return_value = None
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         assert p._do_handshake() is None
 
@@ -98,7 +98,7 @@ class TestBSDScsiProtocol:
         mock_transport.send_cdb.return_value = True
         mock_get_transport.return_value = mock_transport
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         result = p._do_handshake()
 
@@ -112,7 +112,7 @@ class TestBSDScsiProtocol:
         mock_transport.send_cdb.return_value = True
         mock_get_transport.return_value = mock_transport
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
 
         # 320x320 RGB565 = 204,800 bytes = 4 chunks
@@ -128,7 +128,7 @@ class TestBSDScsiProtocol:
         mock_transport.send_cdb.return_value = False
         mock_get_transport.return_value = mock_transport
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
 
         result = p.send_image(b'\x00' * (320 * 320 * 2), 320, 320)
@@ -138,7 +138,7 @@ class TestBSDScsiProtocol:
     def test_send_image_returns_false_without_transport(self, mock_get_transport):
         mock_get_transport.return_value = None
 
-        from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+        from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
         p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
         assert p.send_image(b'\x00' * 100, 320, 320) is False
 
@@ -148,10 +148,10 @@ class TestBSDScsiProtocol:
         mock_transport.open.return_value = True
 
         with patch(
-            'trcc.adapters.device.bsd.scsi.BSDScsiTransport',
+            'trcc.legacy.adapters.device.bsd.scsi.BSDScsiTransport',
             return_value=mock_transport,
         ) as MockTransport:
-            from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+            from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
             p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
             result = p._get_transport()
 
@@ -164,10 +164,10 @@ class TestBSDScsiProtocol:
         mock_transport.open.return_value = False
 
         with patch(
-            'trcc.adapters.device.bsd.scsi.BSDScsiTransport',
+            'trcc.legacy.adapters.device.bsd.scsi.BSDScsiTransport',
             return_value=mock_transport,
         ):
-            from trcc.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
+            from trcc.legacy.adapters.device.bsd.scsi_protocol import BSDScsiProtocol
             p = BSDScsiProtocol(vid=0x0402, pid=0x3922)
             result = p._get_transport()
 

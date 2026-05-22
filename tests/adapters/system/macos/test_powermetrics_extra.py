@@ -13,7 +13,7 @@ from tests.adapters.system.macos.test_sensors import (
     FakeSMCClient,
     MockSMC,
 )
-from trcc.adapters.system.macos.powermetrics_extra import (
+from trcc.legacy.adapters.system.macos.powermetrics_extra import (
     extra_powermetrics_sampler_csv,
     extra_powermetrics_sensor_specs,
     full_powermetrics_sampler_csv,
@@ -85,12 +85,12 @@ def mock_smc_as():
 def enum_as_with_extras(mock_io_no_nvidia, mock_smc_as):
     """Apple Silicon enumerator with SMC + extra powermetrics env."""
     with patch.dict(os.environ, {'TRCC_POWERMETRICS_EXTRA_SAMPLERS': 'thermal'}):
-        with patch('trcc.adapters.system.macos.sensors.IS_APPLE_SILICON', True), \
-             patch('trcc.adapters.system.macos.sensors.SMCClient') as mc_cls, \
-             patch('trcc.adapters.system.macos.sensors.hid_layer_ready', return_value=False), \
-             patch('trcc.adapters.system.macos.sensors.fetch_powermetrics_bytes', return_value=None), \
-             patch('trcc.adapters.system.macos.sensors.subprocess') as sub:
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+        with patch('trcc.legacy.adapters.system.macos.sensors.IS_APPLE_SILICON', True), \
+             patch('trcc.legacy.adapters.system.macos.sensors.SMCClient') as mc_cls, \
+             patch('trcc.legacy.adapters.system.macos.sensors.hid_layer_ready', return_value=False), \
+             patch('trcc.legacy.adapters.system.macos.sensors.fetch_powermetrics_bytes', return_value=None), \
+             patch('trcc.legacy.adapters.system.macos.sensors.subprocess') as sub:
+            from trcc.legacy.adapters.system.macos.sensors import MacOSSensorEnumerator
 
             mc_cls.return_value = FakeSMCClient(mock_smc_as)
 

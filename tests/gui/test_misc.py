@@ -20,15 +20,15 @@ import pytest
 from PySide6.QtGui import QImage
 
 from tests.conftest import make_test_surface
-from trcc.ui.gui.uc_about import UCAbout
-from trcc.ui.gui.uc_activity_sidebar import (
+from trcc.legacy.ui.gui.uc_about import UCAbout
+from trcc.legacy.ui.gui.uc_activity_sidebar import (
     CATEGORY_COLORS,
     SENSOR_TO_OVERLAY,
     SENSORS,
     SensorItem,
     UCActivitySidebar,
 )
-from trcc.ui.gui.uc_image_cut import (
+from trcc.legacy.ui.gui.uc_image_cut import (
     _PAN_MULTIPLIERS,
     PANEL_H,
     PANEL_W,
@@ -39,12 +39,12 @@ from trcc.ui.gui.uc_image_cut import (
     SLIDER_X_MIN,
     UCImageCut,
 )
-from trcc.ui.gui.uc_info_module import (
+from trcc.legacy.ui.gui.uc_info_module import (
     DEFAULT_SENSORS,
     SensorBox,
     UCInfoModule,
 )
-from trcc.ui.gui.uc_video_cut import (
+from trcc.legacy.ui.gui.uc_video_cut import (
     EXPORT_FPS,
     FRAME_INTERVAL_MS,
     MAX_DURATION_MS,
@@ -62,14 +62,14 @@ from trcc.ui.gui.uc_video_cut import (
 # ============================================================================
 
 _ASSETS_PATCH_TARGETS = [
-    "trcc.ui.gui.uc_image_cut.Assets",
-    "trcc.ui.gui.uc_video_cut.Assets",
-    "trcc.ui.gui.uc_about.Assets",
-    "trcc.ui.gui.uc_sensor_picker.Assets",
-    "trcc.ui.gui.uc_sensor_picker.set_background_pixmap",
-    "trcc.ui.gui.uc_about.set_background_pixmap",
-    "trcc.ui.gui.uc_about.create_image_button",
-    "trcc.ui.gui.assets.Assets",
+    "trcc.legacy.ui.gui.uc_image_cut.Assets",
+    "trcc.legacy.ui.gui.uc_video_cut.Assets",
+    "trcc.legacy.ui.gui.uc_about.Assets",
+    "trcc.legacy.ui.gui.uc_sensor_picker.Assets",
+    "trcc.legacy.ui.gui.uc_sensor_picker.set_background_pixmap",
+    "trcc.legacy.ui.gui.uc_about.set_background_pixmap",
+    "trcc.legacy.ui.gui.uc_about.create_image_button",
+    "trcc.legacy.ui.gui.assets.Assets",
 ]
 
 
@@ -354,8 +354,8 @@ class TestVideoCutConstants:
     def test_panel_size(self):
         assert UCVideoCut is not None
         # From module constants
-        from trcc.ui.gui.uc_video_cut import PANEL_H as VH
-        from trcc.ui.gui.uc_video_cut import PANEL_W as VW
+        from trcc.legacy.ui.gui.uc_video_cut import PANEL_H as VH
+        from trcc.legacy.ui.gui.uc_video_cut import PANEL_W as VW
 
         assert VW == 500
         assert VH == 702
@@ -541,7 +541,7 @@ class TestVideoCutWidget:
 # ============================================================================
 
 
-_AUTOSTART_MOD = "trcc.adapters.system.linux_platform"
+_AUTOSTART_MOD = "trcc.legacy.adapters.system.linux_platform"
 
 
 class TestAboutAutostart:
@@ -552,7 +552,7 @@ class TestAboutAutostart:
             f"{_AUTOSTART_MOD}._AUTOSTART_FILE",
             tmp_path / "nonexistent.desktop",
         )
-        from trcc.adapters.system.linux_platform import LinuxAutostartManager
+        from trcc.legacy.adapters.system.linux_platform import LinuxAutostartManager
 
         assert LinuxAutostartManager().is_enabled() is False
 
@@ -560,7 +560,7 @@ class TestAboutAutostart:
         f = tmp_path / "trcc-linux.desktop"
         f.write_text("[Desktop Entry]\nExec=trcc\n")
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", f)
-        from trcc.adapters.system.linux_platform import LinuxAutostartManager
+        from trcc.legacy.adapters.system.linux_platform import LinuxAutostartManager
 
         assert LinuxAutostartManager().is_enabled() is True
 
@@ -569,7 +569,7 @@ class TestAboutAutostart:
         autostart_file = autostart_dir / "trcc-linux.desktop"
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_DIR", autostart_dir)
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", autostart_file)
-        from trcc.adapters.system.linux_platform import LinuxAutostartManager
+        from trcc.legacy.adapters.system.linux_platform import LinuxAutostartManager
 
         LinuxAutostartManager().enable()
         assert autostart_file.exists()
@@ -581,13 +581,13 @@ class TestAboutAutostart:
         autostart_file.write_text("test")
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_DIR", autostart_dir)
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", autostart_file)
-        from trcc.adapters.system.linux_platform import LinuxAutostartManager
+        from trcc.legacy.adapters.system.linux_platform import LinuxAutostartManager
 
         LinuxAutostartManager().disable()
         assert not autostart_file.exists()
 
     def test_parse_version(self):
-        from trcc.ui.gui.uc_about import _parse_version
+        from trcc.legacy.ui.gui.uc_about import _parse_version
 
         assert _parse_version("3.0.9") == (3, 0, 9)
         assert _parse_version("6.2.1") == (6, 2, 1)
@@ -602,7 +602,7 @@ class TestAboutWidget:
         from unittest.mock import MagicMock
         mock_platform = MagicMock()
         mock_platform.autostart_enabled.return_value = False
-        with patch("trcc.ui.gui.uc_about.Thread"):
+        with patch("trcc.legacy.ui.gui.uc_about.Thread"):
             w = UCAbout(platform=mock_platform)
         return w
 
@@ -861,14 +861,14 @@ class TestSensorRow:
 
     def _make_sensor_info(self, sensor_id="hwmon:temp1", name="CPU Temp",
                           category="temperature", unit="\u00b0C", source="hwmon"):
-        from trcc.core.models import SensorInfo
+        from trcc.legacy.core.models import SensorInfo
 
         return SensorInfo(
             id=sensor_id, name=name, category=category, unit=unit, source=source,
         )
 
     def test_construction(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info()
         row = SensorRow(info)
@@ -876,7 +876,7 @@ class TestSensorRow:
         assert row._name.text() == "CPU Temp"
 
     def test_update_value_celsius(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info()
         row = SensorRow(info)
@@ -884,7 +884,7 @@ class TestSensorRow:
         assert row._value.text() == "65\u00b0C"
 
     def test_update_value_none(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info()
         row = SensorRow(info)
@@ -892,7 +892,7 @@ class TestSensorRow:
         assert row._value.text() == "--"
 
     def test_update_value_rpm(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info(unit="RPM", category="fan")
         row = SensorRow(info)
@@ -900,7 +900,7 @@ class TestSensorRow:
         assert row._value.text() == "1200RPM"
 
     def test_update_value_voltage(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info(unit="V", category="voltage")
         row = SensorRow(info)
@@ -908,7 +908,7 @@ class TestSensorRow:
         assert row._value.text() == "1.35V"
 
     def test_update_value_mhz(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info(unit="MHz", category="clock")
         row = SensorRow(info)
@@ -916,7 +916,7 @@ class TestSensorRow:
         assert row._value.text() == "3600MHz"
 
     def test_update_value_mbps(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info(unit="MB/s", category="other")
         row = SensorRow(info)
@@ -924,7 +924,7 @@ class TestSensorRow:
         assert row._value.text() == "150.7MB/s"
 
     def test_set_selected(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info()
         row = SensorRow(info)
@@ -934,7 +934,7 @@ class TestSensorRow:
         assert row._selected is False
 
     def test_clicked_signal(self):
-        from trcc.ui.gui.uc_sensor_picker import SensorRow
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorRow
 
         info = self._make_sensor_info()
         row = SensorRow(info)
@@ -960,7 +960,7 @@ class TestSensorPickerDialog:
     """Test SensorPickerDialog construction."""
 
     def _make_enumerator(self):
-        from trcc.core.models import SensorInfo
+        from trcc.legacy.core.models import SensorInfo
 
         mock_enum = MagicMock()
         mock_enum.get_sensors.return_value = [
@@ -973,7 +973,7 @@ class TestSensorPickerDialog:
         return mock_enum
 
     def test_construction(self, tmp_config):
-        from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorPickerDialog
 
         dialog = SensorPickerDialog(self._make_enumerator())
         assert dialog is not None
@@ -981,7 +981,7 @@ class TestSensorPickerDialog:
         dialog._timer.stop()
 
     def test_set_current_sensor(self, tmp_config):
-        from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorPickerDialog
 
         dialog = SensorPickerDialog(self._make_enumerator())
         dialog.set_current_sensor("hwmon:temp1")
@@ -989,14 +989,14 @@ class TestSensorPickerDialog:
         dialog._timer.stop()
 
     def test_get_selected_sensor_none_initially(self, tmp_config):
-        from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorPickerDialog
 
         dialog = SensorPickerDialog(self._make_enumerator())
         assert dialog.get_selected_sensor() is None
         dialog._timer.stop()
 
     def test_on_row_clicked(self, tmp_config):
-        from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+        from trcc.legacy.ui.gui.uc_sensor_picker import SensorPickerDialog
 
         dialog = SensorPickerDialog(self._make_enumerator())
         dialog._on_row_clicked("psutil:cpu_percent")
@@ -1014,7 +1014,7 @@ class TestUCThemeWeb:
 
     @pytest.fixture
     def widget(self, settings_with_resolution):
-        from trcc.ui.gui.uc_theme_web import UCThemeWeb
+        from trcc.legacy.ui.gui.uc_theme_web import UCThemeWeb
 
         return UCThemeWeb()
 
@@ -1090,7 +1090,7 @@ class TestUCThemeMask:
 
     @pytest.fixture
     def widget(self, settings_with_resolution):
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
 
         return UCThemeMask()
 
@@ -1119,7 +1119,7 @@ class TestUCThemeMask:
         assert "mask" in msg.lower()
 
     def test_cloud_urls(self, widget):
-        from trcc.ui.gui.uc_theme_mask import UCThemeMask
+        from trcc.legacy.ui.gui.uc_theme_mask import UCThemeMask
 
         assert "320x320" in UCThemeMask.CLOUD_URLS
         assert "480x480" in UCThemeMask.CLOUD_URLS

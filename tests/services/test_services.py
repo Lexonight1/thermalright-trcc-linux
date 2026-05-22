@@ -10,11 +10,11 @@ import pytest
 from PySide6.QtGui import QColor, QImage
 
 from tests.conftest import get_pixel, make_device_service, make_test_surface, surface_size
-from trcc.services.display import DisplayService
-from trcc.services.image import ImageService
-from trcc.services.media import MediaService
-from trcc.services.overlay import OverlayService
-from trcc.services.theme import ThemeData, ThemeService
+from trcc.legacy.services.display import DisplayService
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.media import MediaService
+from trcc.legacy.services.overlay import OverlayService
+from trcc.legacy.services.theme import ThemeData, ThemeService
 
 # =============================================================================
 # ImageService
@@ -403,17 +403,17 @@ class TestLEDServiceZonesToAnsi(unittest.TestCase):
     """Test LED zone ANSI terminal rendering."""
 
     def test_empty_returns_empty(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         self.assertEqual(LEDService.zones_to_ansi([]), '')
 
     def test_single_zone(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         result = LEDService.zones_to_ansi([(255, 0, 0)])
         self.assertIn('48;2;255;0;0', result)
         self.assertIn('\033[0m', result)
 
     def test_multiple_zones(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
         result = LEDService.zones_to_ansi(colors)
         self.assertIn('48;2;255;0;0', result)
@@ -421,7 +421,7 @@ class TestLEDServiceZonesToAnsi(unittest.TestCase):
         self.assertIn('48;2;0;0;255', result)
 
     def test_zone_count_matches(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         colors = [(i, i, i) for i in range(5)]
         result = LEDService.zones_to_ansi(colors)
         # Each zone produces one reset escape
@@ -437,7 +437,7 @@ class TestMetricsToAnsi(unittest.TestCase):
 
     def _make_metrics(self, **overrides):
         """Create HardwareMetrics with custom values."""
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         m = HardwareMetrics()
         for k, v in overrides.items():
             setattr(m, k, v)
@@ -542,8 +542,8 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def _make_led_service(self, mode='static', color=(255, 0, 0),
                           brightness=100, segment_count=64):
-        from trcc.core.models import LEDMode, LEDState
-        from trcc.services.led import LEDService
+        from trcc.legacy.core.models import LEDMode, LEDState
+        from trcc.legacy.services.led import LEDService
         state = LEDState()
         state.mode = LEDMode[mode.upper()] if isinstance(mode, str) else mode
         state.color = color
@@ -555,14 +555,14 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def test_static_red_zones(self):
         """Static red → all zones red."""
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(color=(255, 0, 0))
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
         self.assertIn('255;0;0', result)
 
     def test_static_blue_zones(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(color=(0, 0, 255))
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
@@ -570,21 +570,21 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def test_breathing_produces_output(self):
         """Breathing mode tick → valid ANSI zones."""
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(mode='breathing', color=(0, 255, 0))
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
         self.assertIn('\033[48;2;', result)
 
     def test_rainbow_produces_output(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(mode='rainbow')
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
         self.assertIn('\033[48;2;', result)
 
     def test_colorful_produces_output(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(mode='colorful')
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
@@ -592,7 +592,7 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def test_many_segments(self):
         """128-segment device → 128 zone blocks."""
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         svc = self._make_led_service(segment_count=128)
         colors = svc.tick()
         result = LEDService.zones_to_ansi(colors)
@@ -600,7 +600,7 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def test_low_brightness_applied_manually(self):
         """Brightness scaling applied to zone colors before ANSI rendering."""
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         # Simulate what send_colors does: scale by brightness
         brightness = 10
         base = (255, 255, 255)
@@ -614,14 +614,14 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
 
     def test_zones_to_ansi_all_black(self):
         """All-black zones still produce valid ANSI."""
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         colors = [(0, 0, 0)] * 10
         result = LEDService.zones_to_ansi(colors)
         self.assertEqual(result.count('\033[0m'), 10)
         self.assertIn('0;0;0', result)
 
     def test_zones_to_ansi_max_white(self):
-        from trcc.services.led import LEDService
+        from trcc.legacy.services.led import LEDService
         colors = [(255, 255, 255)] * 4
         result = LEDService.zones_to_ansi(colors)
         self.assertIn('255;255;255', result)
@@ -633,7 +633,7 @@ class TestDeviceServiceSendPilBulk(unittest.TestCase):
 
     def test_bulk_sends_jpeg(self):
         """Bulk protocol → ImageService.to_jpeg() path."""
-        from trcc.core.models import DeviceInfo
+        from trcc.legacy.core.models import DeviceInfo
         svc = make_device_service()
         dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk')
         svc.select(dev)
@@ -648,7 +648,7 @@ class TestDeviceServiceSendPilBulk(unittest.TestCase):
 
     def test_bulk_pm32_sends_rgb565(self):
         """Bulk PM=32 (FBL=100) → ImageService.to_rgb565() path."""
-        from trcc.core.models import DeviceInfo
+        from trcc.legacy.core.models import DeviceInfo
         svc = make_device_service()
         dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk',
                          resolution=(320, 320), fbl_code=100)
@@ -666,7 +666,7 @@ class TestDeviceServiceSendPilBulk(unittest.TestCase):
 
     def test_scsi_sends_rgb565(self):
         """SCSI protocol → ImageService.to_rgb565() path (not JPEG)."""
-        from trcc.core.models import DeviceInfo
+        from trcc.legacy.core.models import DeviceInfo
         svc = make_device_service()
         dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi',
                          resolution=(320, 320))
@@ -696,7 +696,7 @@ class TestDeviceService(unittest.TestCase):
         self.assertEqual(svc.devices, [])
         self.assertFalse(svc.is_busy)
 
-    @patch('trcc.services.device.DeviceService.detect')
+    @patch('trcc.legacy.services.device.DeviceService.detect')
     def test_detect_returns_list(self, mock_detect):
         mock_detect.return_value = []
         svc = make_device_service()
@@ -704,7 +704,7 @@ class TestDeviceService(unittest.TestCase):
         self.assertIsInstance(result, list)
 
     def test_select(self):
-        from trcc.core.models import DeviceInfo
+        from trcc.legacy.core.models import DeviceInfo
         svc = make_device_service()
         dev = DeviceInfo(name='test', path='/dev/sg0')
         svc.select(dev)
@@ -826,17 +826,17 @@ class TestThemeService(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_passes_filter_all(self):
-        from trcc.core.models import ThemeInfo
+        from trcc.legacy.core.models import ThemeInfo
         theme = ThemeInfo(name='test')
         self.assertTrue(ThemeService._passes_filter(theme, 'all'))
 
     def test_passes_filter_user(self):
-        from trcc.core.models import ThemeInfo
+        from trcc.legacy.core.models import ThemeInfo
         theme = ThemeInfo(name='Custom_foo')
         self.assertTrue(ThemeService._passes_filter(theme, 'user'))
 
     def test_passes_filter_default_excludes_custom(self):
-        from trcc.core.models import ThemeInfo
+        from trcc.legacy.core.models import ThemeInfo
         theme = ThemeInfo(name='Custom_foo')
         self.assertFalse(ThemeService._passes_filter(theme, 'default'))
 
@@ -872,7 +872,7 @@ class TestServicesInit(unittest.TestCase):
 
     def test_theme_data_in_models(self):
         """ThemeData is a DTO — lives in models, not services."""
-        from trcc.core.models import ThemeData
+        from trcc.legacy.core.models import ThemeData
         self.assertIsNotNone(ThemeData)
 
 

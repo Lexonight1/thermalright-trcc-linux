@@ -59,7 +59,7 @@ def _specs_from_report(report_path: str) -> list[dict]:
     sys.path.insert(0, str(_REPO_ROOT / 'tools'))
     from diagnose import parse_report  # type: ignore[import-not-found]
 
-    from trcc.core.models import LED_DEVICES
+    from trcc.legacy.core.models import LED_DEVICES
 
     text = Path(report_path).read_text()
     report = parse_report(text)
@@ -117,8 +117,8 @@ def load_device_specs(report_path: str | None = None) -> list[dict]:
 def patch_paths() -> None:
     """Redirect all trcc paths to dev/.trcc — protects ~/.trcc from
     test runs, keeps user config untouched."""
-    import trcc.conf as _conf_mod
-    import trcc.core.paths as _paths
+    import trcc.legacy.conf as _conf_mod
+    import trcc.legacy.core.paths as _paths
 
     _paths.USER_CONFIG_DIR = str(DEV_TRCC)
     _paths.USER_DATA_DIR = str(DEV_DATA)
@@ -131,7 +131,7 @@ def patch_paths() -> None:
     _conf_mod.CONFIG_PATH = str(DEV_TRCC / 'config.json')
 
     # Logging defaults to ~/.trcc/trcc.log — redirect to dev/.trcc/trcc.log
-    from trcc.adapters.infra.diagnostics import StandardLoggingConfigurator
+    from trcc.legacy.adapters.infra.diagnostics import StandardLoggingConfigurator
     StandardLoggingConfigurator.__init__.__defaults__ = (DEV_TRCC / 'trcc.log',)
 
 
@@ -145,8 +145,8 @@ def preflight_factory_registry() -> None:
     Pure construction check — no I/O. Mirrors
     tests/adapters/device/test_factory.py for pytest-less developers.
     """
-    from trcc.adapters.device.factory import DeviceProtocolFactory
-    from trcc.core.models import ALL_DEVICES, DetectedDevice, DeviceInfo
+    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
+    from trcc.legacy.core.models import ALL_DEVICES, DetectedDevice, DeviceInfo
 
     failures: list[tuple[str, str]] = []
     for (vid, pid), entry in ALL_DEVICES.items():

@@ -1,695 +1,638 @@
-"""IPC for the trccd singleton — manifold protocol over a Unix socket.
+"""IPC for the next/ daemon — manifold dispatch over a Unix socket.
 
-The daemon (`trcc daemon`) binds an `IPCServer` to its `Trcc` and serves
-clients over a Unix domain socket. Clients are `TrccProxy` instances
-returned by `_boot.trcc()` when ``TRCC_DAEMON=1``: the same call shape
-reaches the daemon's facades through one round-trip per call.
+The daemon (`trcc daemon`) owns one ``App`` and serves requests
+through ``IPCServer``.  Clients (``AppProxy`` returned by
+``_boot.trcc_next()`` when ``TRCC_NEXT_DAEMON=1``) call ``dispatch(cmd)``
+and the proxy turns each call into one socket round-trip.
 
-Wire format — manifold dispatch (one line of JSON per request)::
+Wire format — one line of JSON per request.
 
-    {"role": "lcd", "method": "set_brightness",
-     "args": [0, 75], "kwargs": {}}
+  Dispatch::
 
-The role names a facade on the bound `Trcc` (``lcd`` / ``led`` /
-``control_center``); the method is invoked as ``fn(*args, **kwargs)``.
-Wire shape mirrors the Python call shape exactly — that's what makes
-`TrccProxy` a transparent drop-in for `Trcc`. Two control shapes also
-travel on the same socket:
+      {"command": "SendColor",
+       "kwargs": {"key": "0402:3922", "r": 255, "g": 0, "b": 0}}
 
-    {"kill": true}                  # graceful daemon shutdown
-    {"subscribe": "frame"}          # long-lived event subscription
+  Control::
 
-Path / bytes arguments survive JSON via :func:`sanitize_for_wire` on the
-client and :func:`unsanitize_from_wire` on the server. Frame surfaces
-and other non-JSON values get dropped from result dicts at the boundary
-— UIs that need pixel data subscribe to the EventBus stream instead.
+      {"kill": true}
+
+The dispatcher looks ``command`` up in the Command registry, builds the
+dataclass via type-hint-driven coercion (str → Path, list → tuple, dict
+→ nested dataclass, int → Enum), invokes ``app.dispatch(cmd)``, and
+serializes the returned Result back as::
+
+      {"type": "SendResult", "ok": true,
+       "message": "Sent 204800 bytes (#ff0000)",
+       "key": "0402:3922", "bytes_sent": 204800}
+
+The serialization is reflective over ``dataclasses.fields`` so adding a
+new Command + Result is zero-touch for IPC.
+
+Bytes are encoded as ``{"__bytes__": "<base64>"}`` so binary payloads
+(``SendFrame``) survive JSON.  ``Path`` survives as ``str(path)``.
 """
 from __future__ import annotations
 
+import base64
 import dataclasses
+import inspect
 import json
 import logging
 import os
 import socket
+import time
+import types
+import typing
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .core.results import Frame, OpResult
+from . import core
+from .core import commands as _commands_module
+from .core import results as _results_module
+from .core.commands import Command
+from .core.results import Result
 
 if TYPE_CHECKING:
-    from .core.trcc import Trcc
+    from .app import App
 
 log = logging.getLogger(__name__)
 
-# Socket path: same dir as the instance lock file.
-_SOCK_NAME = "trcc-linux.sock"
-
-
-def _socket_path() -> Path:
-    return Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / _SOCK_NAME
+_SOCK_NAME = "trcc.sock"
+_BYTES_MARKER = "__bytes__"
+_DEFAULT_TIMEOUT_S = 30.0
 
 
 # =========================================================================
-# Wire-format encoding helpers — symmetric client/server boundary.
+# Socket path
 # =========================================================================
 
-_BYTES_MARKER = '__bytes__'
 
+def socket_path() -> Path:
+    """Return the canonical Unix-socket path for this user's next/ daemon."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    return Path(runtime) / _SOCK_NAME
 
-def sanitize_for_wire(value: Any) -> Any:
-    """Convert a Python value into something JSON can serialize.
 
-    Two real cases that the manifold's command surface hands us:
-
-      ``pathlib.Path``    →  ``str(path)`` — every facade method that
-                              takes a Path immediately ``str()``\\ s it
-                              internally, so the receiving end accepts
-                              str just as well.
-      ``bytes``           →  ``{"__bytes__": "<base64>"}`` — single-key
-                              marker dict that round-trips through
-                              JSON. The server reconstructs via
-                              :func:`unsanitize_from_wire`.
-
-    Plain JSON-friendly values pass through untouched. Lists and dicts
-    are recursed shallowly — covers the call shapes the facades
-    actually use without paying for arbitrary depth.
-    """
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, bytes):
-        import base64
-        return {_BYTES_MARKER: base64.b64encode(value).decode('ascii')}
-    if isinstance(value, list):
-        return [sanitize_for_wire(v) for v in value]
-    if isinstance(value, tuple):
-        return tuple(sanitize_for_wire(v) for v in value)
-    if isinstance(value, dict):
-        return {k: sanitize_for_wire(v) for k, v in value.items()}
-    return value
-
-
-def unsanitize_from_wire(value: Any) -> Any:
-    """Reverse of :func:`sanitize_for_wire` for values arriving from JSON.
-
-    Reconstructs ``bytes`` from the ``__bytes__`` marker dict. ``Path``
-    isn't reversed — the receiving facade methods accept ``str`` and
-    convert internally if they need ``Path``, so leaving the str on the
-    wire is honest about the contract.
-    """
-    if isinstance(value, dict) and len(value) == 1 and _BYTES_MARKER in value:
-        import base64
-        return base64.b64decode(value[_BYTES_MARKER])
-    if isinstance(value, list):
-        return [unsanitize_from_wire(v) for v in value]
-    if isinstance(value, dict):
-        return {k: unsanitize_from_wire(v) for k, v in value.items()}
-    return value
-
-
-def _result_to_dict(result: OpResult) -> dict[str, Any]:
-    """Serialize an OpResult (or subclass) into a JSON-safe dict.
-
-    `Frame` and any other non-JSON value is dropped — the wire format only
-    carries the success / error envelope plus simple extras (is_animated,
-    interval_ms, latest_version, etc.). UIs that need pixels subscribe to
-    the EventBus stream instead of pulling them out of dispatch results.
-    """
-    out: dict[str, Any] = {
-        "success": result.success,
-        "message": result.message,
-        "error": result.error,
-    }
-    for f in dataclasses.fields(result):
-        if f.name in {"success", "message", "error"}:
-            continue
-        v = getattr(result, f.name)
-        if isinstance(v, Frame) or v is None:
-            continue
-        try:
-            json.dumps(v)
-        except (TypeError, ValueError):
-            continue
-        out[f.name] = v
-    return out
-
-
-def _result_from_dict(data: dict[str, Any]) -> OpResult:
-    """Build a generic OpResult from a wire-format dict.
-
-    Subclass-specific extras are dropped at this boundary — the IPC
-    contract is OpResult shape (success/message/error). Richer typed
-    results travel via the EventBus stream alongside this dispatcher.
-    """
-    return OpResult(
-        success=bool(data.get("success", False)),
-        message=str(data.get("message", "")),
-        error=data.get("error"),
-    )
-
-
-def _metrics_to_dict(metrics: Any) -> dict[str, Any]:
-    """Serialize a :class:`HardwareMetrics` for the IPC wire.
-
-    ``dataclasses.asdict`` handles the typed fields; the private
-    ``_populated`` set and ``readings`` dict are sent verbatim — sets
-    serialize to lists, reconstructed on the client.
-    """
-    body = dataclasses.asdict(metrics)
-    # _populated is a set; JSON needs a list.  asdict already gives
-    # us a list for set fields, but be explicit for read clarity.
-    body['_populated'] = sorted(metrics._populated)
-    body['readings'] = dict(metrics.readings)
-    return body
-
-
-def _metrics_from_dict(body: dict[str, Any]) -> Any:
-    """Reconstruct a :class:`HardwareMetrics` from the IPC wire dict."""
-    from .core.models import HardwareMetrics
-    # Pull the side-channel fields off, then feed the remaining keys to
-    # the dataclass constructor.  Unknown keys (forward-compat) are
-    # dropped by filtering against the dataclass fields.
-    populated: set[str] = set(body.pop('_populated', ()))
-    readings: dict[str, float] = dict(body.pop('readings', {}))
-    valid = {f.name for f in dataclasses.fields(HardwareMetrics)}
-    init_kwargs = {k: v for k, v in body.items() if k in valid}
-    m = HardwareMetrics(**init_kwargs)
-    m._populated = populated
-    m.readings = readings
-    return m
-
-
-# =========================================================================
-# Server (runs in the daemon process, Qt event loop)
-# =========================================================================
-
-class IPCServer:
-    """Unix-socket server bound to a `Trcc` — manifold dispatch only.
-
-    Integrates with Qt's event loop via QSocketNotifier on the listening
-    fd. Each one-shot client is handled synchronously (accept, read,
-    dispatch, respond, close) in a single callback. Long-lived event
-    subscriptions stay open and stream JSON lines until the client
-    disconnects.
-    """
-
-    def __init__(self, *, trcc: Trcc, renderer: Any | None = None):
-        self._trcc: Trcc = trcc
-        # Renderer is needed only to sanitize ``Topic.FRAME`` event payloads
-        # (native surfaces aren't JSON-safe).  None is acceptable — frame
-        # events with surface payloads will be skipped (logged) on the wire,
-        # while every other topic flows untouched.
-        self._renderer: Any | None = renderer
-        self._sock: socket.socket | None = None
-        self._notifier: Any = None  # QSocketNotifier
-        # Long-lived event subscriber connections — each is (sub_id, sock).
-        # Tracked so shutdown() can unsubscribe + close them cleanly.
-        self._event_subs: list[tuple[int, socket.socket]] = []
-
-    def start(self) -> None:
-        """Bind and listen on Unix domain socket (Unix only)."""
-        if not hasattr(socket, 'AF_UNIX'):
-            log.debug("IPC server skipped -- AF_UNIX not available (Windows)")
-            return
-
-        path = _socket_path()
-        if path.exists():
-            path.unlink()
-
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._sock.setblocking(False)
-        self._sock.bind(str(path))
-        self._sock.listen(5)
-        os.chmod(str(path), 0o600)
-
-        from PySide6.QtCore import QSocketNotifier
-        self._notifier = QSocketNotifier(
-            self._sock.fileno(), QSocketNotifier.Type.Read)
-        self._notifier.activated.connect(self._on_connection)
-        log.info("IPC server listening on %s", path)
-
-    def shutdown(self) -> None:
-        """Close socket and clean up every long-lived subscription."""
-        for sub_id, _client in self._event_subs:
-            try:
-                self._trcc.events.unsubscribe(sub_id)
-            except Exception:
-                log.exception("shutdown: events.unsubscribe(%d) raised", sub_id)
-        for _sub_id, client in self._event_subs:
-            try:
-                client.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                log.debug("shutdown: socket.SHUT_RDWR failed (already closed)",
-                          exc_info=True)
-            try:
-                client.close()
-            except OSError:
-                log.debug("shutdown: client.close() failed (already closed)",
-                          exc_info=True)
-        self._event_subs.clear()
-
-        if self._notifier:
-            self._notifier.setEnabled(False)
-            self._notifier = None
-        if self._sock:
-            self._sock.close()
-            self._sock = None
-        path = _socket_path()
-        if path.exists():
-            path.unlink()
-        log.info("IPC server shut down")
-
-    def _on_connection(self) -> None:
-        """Accept client, classify request, dispatch.
-
-        Two modes: one-shot dispatch (close after responding) and
-        long-lived subscription (keep open, write events back until
-        the client disconnects).
-        """
-        if not self._sock:
-            return
-        try:
-            client, _ = self._sock.accept()
-        except OSError:
-            # Listen socket dropped (server shutting down or fd recycled) —
-            # silently bail out of this notifier callback.
-            log.debug("_on_connection: accept() failed", exc_info=True)
-            return
-
-        request: dict = {}
-        is_subscribe = False
-        try:
-            client.settimeout(5.0)
-            if not (data := client.recv(65536)):
-                return
-
-            parsed = json.loads(data.decode().strip())
-            if not isinstance(parsed, dict):
-                _send_error(client, "Request must be a JSON object")
-                return
-            request = parsed
-
-            # Long-lived subscription connection — keep socket open.
-            if "subscribe" in request:
-                is_subscribe = True
-                self._handle_subscribe(client, str(request["subscribe"]))
-                return
-
-            # One-shot dispatch — respond and close.
-            result = self._dispatch(request)
-            client.sendall(json.dumps(result).encode() + b"\n")
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            _send_error(client, f"Bad request: {e}")
-        except Exception as e:
-            log.warning("IPC dispatch error: %s", e)
-            _send_error(client, str(e))
-        finally:
-            # Subscription connections stay open; one-shot connections close.
-            if not is_subscribe:
-                try:
-                    client.close()
-                except OSError:
-                    log.debug("_on_connection: client.close() failed",
-                              exc_info=True)
-
-    def _handle_subscribe(self, client: socket.socket, topic: str) -> None:
-        """Register a subscription that forwards EventBus events to ``client``.
-
-        Sends a one-line ack ({success}) then keeps the socket open. Each
-        publish on ``topic`` writes a JSON line to the client. Write
-        failures (client disconnected) trigger automatic cleanup.
-        """
-        # Ack the subscription before any events flow.
-        try:
-            client.sendall(json.dumps({"success": True}).encode() + b"\n")
-        except OSError:
-            log.debug("_handle_subscribe: ack send failed (client gone?)",
-                      exc_info=True)
-            try:
-                client.close()
-            except OSError:
-                log.debug("_handle_subscribe: client.close() failed",
-                          exc_info=True)
-            return
-        # Drop the recv timeout — the connection now lives until the
-        # client disconnects.
-        client.settimeout(None)
-
-        # Forwarder: serializes the EventBus payload and writes to the
-        # client. On write failure, unsubscribes itself.
-        sub_id_holder: list[int] = []
-
-        def _forward(*payload: Any) -> None:
-            wire_payload = self._sanitize_payload(topic, payload)
-            line = json.dumps({"topic": topic, "payload": wire_payload}) + "\n"
-            try:
-                client.sendall(line.encode())
-            except OSError:
-                if not sub_id_holder:
-                    return
-                sid = sub_id_holder[0]
-                try:
-                    self._trcc.events.unsubscribe(sid)
-                except Exception:
-                    log.exception("subscribe forwarder: unsubscribe raised")
-                self._event_subs[:] = [
-                    (i, c) for (i, c) in self._event_subs if i != sid
-                ]
-                try:
-                    client.close()
-                except OSError:
-                    log.debug("subscribe forwarder: client.close() failed",
-                              exc_info=True)
-
-        sub_id = self._trcc.events.subscribe(topic, _forward)
-        sub_id_holder.append(sub_id)
-        self._event_subs.append((sub_id, client))
-        log.info("IPC subscription registered: id=%d topic=%r", sub_id, topic)
-
-    def _sanitize_payload(self, topic: str, payload: tuple) -> list:
-        """Return *payload* in JSON-safe form for transmission.
-
-        Only ``Topic.FRAME`` carries a non-JSON-safe value today: the
-        rendered surface at index 1.  When a renderer is wired in, the
-        surface is wrapped via :func:`trcc.core.wire.wrap_surface`; when
-        not, the surface slot is replaced with ``None`` and a one-shot
-        warning is logged so misconfiguration surfaces during smoke tests
-        rather than as silent dropped frames in production.
-
-        Other topics flow untouched — their payloads are already JSON-safe
-        (strings, ints, lists, dataclasses-as-dicts).
-        """
-        from .core.events import Topic
-
-        if topic != Topic.FRAME:
-            return list(payload)
-
-        # Topic.FRAME contract: (device_path: str, surface: Any | None).
-        # Only index 1 needs sanitizing; index 0 is already a string.
-        if len(payload) < 2 or payload[1] is None:
-            return list(payload)
-
-        if self._renderer is None:
-            if not getattr(self, '_warned_no_renderer', False):
-                log.warning(
-                    "FRAME event subscribed over IPC but IPCServer has no "
-                    "renderer wired — surface payloads will be dropped.  "
-                    "Pass renderer=… in the composition root to enable "
-                    "frame forwarding to TrccProxy clients.")
-                self._warned_no_renderer = True
-            return [payload[0], None, *payload[2:]]
-
-        from .core.wire import wrap_surface
-        try:
-            envelope = wrap_surface(self._renderer, payload[1])
-        except Exception:
-            log.exception("_sanitize_payload: encode_for_wire raised — "
-                          "dropping surface payload")
-            return [payload[0], None, *payload[2:]]
-        return [payload[0], envelope, *payload[2:]]
-
-    def _dispatch(self, request: dict) -> dict:
-        """Route request to the matching dispatcher.
-
-        Two wire shapes are valid:
-          - ``{"kill": true}``   — daemon-control, ack and self-shutdown
-          - ``{"role": ...}``    — manifold (multi-device by index)
-
-        Anything else is rejected.
-        """
-        if request.get("kill"):
-            return self._handle_kill()
-        if "role" in request:
-            return self._dispatch_manifold(request)
-        return {"success": False,
-                "error": f"Invalid request shape: {sorted(request)!r}"}
-
-    def _handle_kill(self) -> dict:
-        """Acknowledge a kill request, then schedule a clean shutdown.
-
-        Shutdown is deferred via a single-shot timer so the ack flushes
-        back to the client before the Qt event loop tears down. The
-        client's send_manifold_request returns the ack; the client can
-        then poll daemon_running() to confirm the daemon is gone.
-        """
-        try:
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(50, self._kill_now)
-        except Exception:
-            log.exception("kill: failed to schedule shutdown — falling through")
-            self._kill_now()
-        return {"success": True, "message": "Daemon shutting down"}
-
-    def _kill_now(self) -> None:
-        """Tear down the IPC server and quit the daemon's Qt event loop."""
-        try:
-            self.shutdown()
-        except Exception:
-            log.exception("_kill_now: server.shutdown raised")
-        try:
-            from PySide6.QtWidgets import QApplication
-            qapp = QApplication.instance()
-            if qapp is not None:
-                qapp.quit()
-        except Exception:
-            log.exception("_kill_now: qapp.quit raised")
-
-    def _dispatch_manifold(self, request: dict) -> dict:
-        """Manifold format: route by (role, method) on the bound Trcc.
-
-        Wire format::
-
-            {"role": "lcd", "method": "set_brightness",
-             "args": [0, 75], "kwargs": {}}
-
-        The role names a facade on the Trcc (``lcd`` / ``led`` /
-        ``control_center``); the method is invoked on it as
-        ``fn(*args, **kwargs)``. No translation layer — the wire shape
-        mirrors the Python call shape exactly, which is what makes
-        `TrccProxy` a transparent drop-in replacement for `Trcc`.
-        """
-        role = str(request.get("role", ""))
-        method = str(request.get("method", ""))
-        # Unsanitize so wire markers (bytes-as-base64) become real values
-        # before they hit the facade method.
-        args = tuple(unsanitize_from_wire(a) for a in request.get("args", ()))
-        kwargs = {k: unsanitize_from_wire(v)
-                  for k, v in request.get("kwargs", {}).items()}
-
-        # Trcc-level methods (discover, etc.) live under the `_meta` role.
-        # They aren't on a facade — they're on the container itself.
-        if role == "_meta":
-            return self._dispatch_meta(method, args, kwargs)
-
-        target = {
-            "lcd": self._trcc.lcd,
-            "led": self._trcc.led,
-            "control_center": self._trcc.control_center,
-        }.get(role)
-        if target is None:
-            return {"success": False, "error": f"Unknown role: {role!r}"}
-
-        if method.startswith("_"):
-            return {"success": False, "error": f"Private method: {method!r}"}
-
-        fn = getattr(target, method, None)
-        if not callable(fn):
-            return {"success": False,
-                    "error": f"Unknown method: {role}.{method}"}
-
-        try:
-            result = fn(*args, **kwargs)
-        except Exception as e:
-            log.exception("manifold dispatch %s.%s failed", role, method)
-            return {"success": False,
-                    "error": f"{type(e).__name__}: {e}"}
-
-        if not isinstance(result, OpResult):
-            return {"success": False,
-                    "error": f"{role}.{method} did not return an OpResult "
-                             f"(got {type(result).__name__})"}
-        return _result_to_dict(result)
-
-    def _dispatch_meta(self, method: str, args: tuple, kwargs: dict) -> dict:
-        """Trcc-level methods that don't belong to a single facade.
-
-        ``discover()`` — USB rescan on the daemon.
-        ``status()``   — daemon pid + uptime + device counts; used by
-                         ``/trcc/status`` and `trcc daemon status`.
-        Returns OpResult-shaped dicts so clients treat them uniformly.
-        """
-        if method == "discover":
-            try:
-                result = self._trcc.discover()
-            except Exception as e:
-                log.exception("_meta.discover failed")
-                return {"success": False,
-                        "error": f"{type(e).__name__}: {e}"}
-            return _result_to_dict(result)
-        if method == "metrics":
-            try:
-                metrics = self._trcc.os.metrics
-            except Exception as e:
-                log.exception("_meta.metrics failed")
-                return {"success": False,
-                        "error": f"{type(e).__name__}: {e}"}
-            return {"success": True, "data": _metrics_to_dict(metrics)}
-        if method == "status":
-            return self._meta_status()
-        if method == "lcd_descriptors":
-            try:
-                infos = self._trcc.lcd_descriptors()
-            except Exception as e:
-                log.exception("_meta.lcd_descriptors failed")
-                return {"success": False,
-                        "error": f"{type(e).__name__}: {e}"}
-            return {"success": True,
-                    "descriptors": [info.to_wire_dict() for info in infos]}
-        if method == "led_descriptors":
-            try:
-                infos = self._trcc.led_descriptors()
-            except Exception as e:
-                log.exception("_meta.led_descriptors failed")
-                return {"success": False,
-                        "error": f"{type(e).__name__}: {e}"}
-            return {"success": True,
-                    "descriptors": [info.to_wire_dict() for info in infos]}
-        return {"success": False,
-                "error": f"Unknown _meta method: {method}"}
-
-    def _meta_status(self) -> dict:
-        """Snapshot of the daemon's runtime state."""
-        import os as _os
-        import time as _time
-
-        from . import daemon as _daemon
-        uptime = (_time.monotonic() - _daemon._started_at
-                  if _daemon._started_at is not None else 0.0)
-        return {
-            "success": True,
-            "pid": _os.getpid(),
-            "uptime_seconds": round(uptime, 3),
-            "lcd_count": len(self._trcc.lcd_devices),
-            "led_count": len(self._trcc.led_devices),
-        }
-
-
-def _send_error(client: socket.socket, msg: str) -> None:
-    try:
-        client.sendall(json.dumps({"success": False, "error": msg}).encode() + b"\n")
-    except OSError:
-        pass
-
-
-# =========================================================================
-# Manifold-format client helpers — used by `TrccProxy` in core/trcc_proxy.py.
-# Kept here so the wire format stays in one module (server + client side).
-# =========================================================================
-
-def daemon_running(*, socket_path: Path | None = None) -> bool:
-    """Probe the daemon socket without sending a request."""
-    if not hasattr(socket, 'AF_UNIX'):
-        return False
-    path = socket_path or _socket_path()
+def daemon_running() -> bool:
+    """True iff a daemon socket exists and accepts a connection."""
+    path = socket_path()
     if not path.exists():
         return False
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1.0)
-        s.connect(str(path))
-        s.close()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            s.connect(str(path))
         return True
     except OSError:
         return False
 
 
-def open_and_send(payload: dict, *, socket_path: Path | None = None,
-                  timeout: float = 10.0) -> socket.socket:
-    """Open a Unix socket to the daemon, send one JSON line, return it open.
+# =========================================================================
+# Class registries — discovered once at import
+# =========================================================================
 
-    The returned socket is the caller's to manage. Use it for one-shot
-    request/response (read a line, close) or for long-lived streams
-    (subscribe channel, keep open). Raises ``OSError`` on connect/send
-    failure — caller decides whether to swallow into a failed Result.
+
+def _collect_classes(module: Any, base: type) -> dict[str, type]:
+    return {
+        name: cls
+        for name, cls in vars(module).items()
+        if inspect.isclass(cls) and issubclass(cls, base) and cls is not base
+    }
+
+
+COMMAND_TYPES: dict[str, type[Command[Any]]] = _collect_classes(
+    _commands_module, Command,
+)
+RESULT_TYPES: dict[str, type[Result]] = {
+    Result.__name__: Result,
+    **_collect_classes(_results_module, Result),
+}
+
+
+# =========================================================================
+# Sanitize / unsanitize — Path / bytes / Enum at the JSON boundary
+# =========================================================================
+
+
+def _to_wire(value: Any) -> Any:
+    """JSON-safe representation of arbitrary Python values."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, bytes):
+        return {_BYTES_MARKER: base64.b64encode(value).decode("ascii")}
+    if dataclasses.is_dataclass(value):
+        return {f.name: _to_wire(getattr(value, f.name))
+                for f in dataclasses.fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [_to_wire(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _to_wire(v) for k, v in value.items()}
+    # Last resort — let json.dumps complain if this isn't representable
+    return value
+
+
+def _from_wire(raw: Any) -> Any:
+    """Reverse of :func:`_to_wire` for ``bytes`` only.
+
+    Enums and dataclasses need their target type (see ``_coerce``) — this
+    walker only handles the type-blind bytes marker.
     """
-    if not hasattr(socket, 'AF_UNIX'):
-        raise OSError("AF_UNIX not available on this platform")
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(timeout)
-    try:
-        s.connect(str(socket_path or _socket_path()))
-        s.sendall(json.dumps(payload).encode() + b"\n")
-    except OSError:
-        try:
-            s.close()
-        except OSError:
-            pass
-        raise
-    return s
+    if isinstance(raw, dict) and len(raw) == 1 and _BYTES_MARKER in raw:
+        return base64.b64decode(raw[_BYTES_MARKER])
+    if isinstance(raw, list):
+        return [_from_wire(v) for v in raw]
+    if isinstance(raw, dict):
+        return {k: _from_wire(v) for k, v in raw.items()}
+    return raw
 
 
-def read_json_line(sock: socket.socket) -> dict:
-    """Read one JSON line from a socket, return the parsed dict.
+# =========================================================================
+# Type-hint-driven coercion — reconstruct dataclasses, enums, tuples
+# =========================================================================
 
-    Returns ``{}`` on EOF / empty payload. Raises ``json.JSONDecodeError``
-    on malformed JSON, ``OSError`` on transport failure, ``TimeoutError``
-    if the socket is in timeout mode and times out — same exception
-    classes :func:`one_shot_request` catches for its total-contract.
-    """
+
+def _coerce(hint: Any, raw: Any) -> Any:
+    """Convert a JSON-decoded value into the type the field expects."""
+    if raw is None:
+        return None
+    origin = typing.get_origin(hint)
+    args = typing.get_args(hint)
+
+    # ``X | None`` / ``Union[X, None]`` — try the non-None branch
+    if origin in (types.UnionType, typing.Union):
+        non_none = [a for a in args if a is not type(None)]
+        for branch in non_none:
+            try:
+                return _coerce(branch, raw)
+            except (TypeError, ValueError):
+                continue
+        return raw
+
+    if origin is list:
+        elem_type = args[0] if args else Any
+        return [_coerce(elem_type, v) for v in raw]
+
+    if origin is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(_coerce(args[0], v) for v in raw)
+        return tuple(_coerce(t, v) for t, v in zip(args, raw, strict=False))
+
+    if origin is dict:
+        key_t, val_t = args if args else (Any, Any)
+        return {_coerce(key_t, k): _coerce(val_t, v) for k, v in raw.items()}
+
+    if inspect.isclass(hint):
+        if hint is bytes and isinstance(raw, dict) and _BYTES_MARKER in raw:
+            return base64.b64decode(raw[_BYTES_MARKER])
+        if hint is Path and isinstance(raw, str):
+            return Path(raw)
+        if issubclass(hint, Enum):
+            return hint(raw)
+        if dataclasses.is_dataclass(hint) and isinstance(raw, dict):
+            return _build_dataclass(hint, raw)
+    return raw
+
+
+def _build_dataclass(cls: type, data: dict[str, Any]) -> Any:
+    """Reconstruct a dataclass instance from a JSON-decoded dict."""
+    hints = typing.get_type_hints(cls)
+    kwargs: dict[str, Any] = {}
+    for field in dataclasses.fields(cls):
+        if field.name not in data:
+            continue
+        kwargs[field.name] = _coerce(hints.get(field.name, Any), data[field.name])
+    return cls(**kwargs)
+
+
+# =========================================================================
+# Command / Result envelopes
+# =========================================================================
+
+
+def encode_command(cmd: Command[Any]) -> dict[str, Any]:
+    """Serialize a Command into a dispatch envelope."""
+    # Every concrete Command is a frozen dataclass; the runtime check
+    # narrows the type for the static checker too.
+    assert dataclasses.is_dataclass(cmd), (
+        f"{type(cmd).__name__} is not a dataclass — every Command subclass "
+        "must use @dataclass(frozen=True, slots=True)"
+    )
+    kwargs = {f.name: _to_wire(getattr(cmd, f.name))
+              for f in dataclasses.fields(cmd)}
+    return {"command": type(cmd).__name__, "kwargs": kwargs}
+
+
+def decode_command(envelope: dict[str, Any]) -> Command[Any]:
+    """Reconstruct a Command from a dispatch envelope."""
+    name = envelope.get("command")
+    if not isinstance(name, str):
+        raise ValueError("envelope missing 'command' key")
+    cls = COMMAND_TYPES.get(name)
+    if cls is None:
+        raise ValueError(f"Unknown command: {name!r}")
+    raw_kwargs = envelope.get("kwargs", {})
+    if not isinstance(raw_kwargs, dict):
+        raise ValueError("envelope 'kwargs' must be an object")
+    return _build_dataclass(cls, raw_kwargs)
+
+
+def encode_result(result: Result) -> dict[str, Any]:
+    """Serialize a Result into a response envelope (carries the class name)."""
+    body = {f.name: _to_wire(getattr(result, f.name))
+            for f in dataclasses.fields(result)}
+    return {"type": type(result).__name__, **body}
+
+
+def decode_result(envelope: dict[str, Any]) -> Result:
+    """Reconstruct a Result from a response envelope."""
+    type_name = envelope.get("type", "Result")
+    cls = RESULT_TYPES.get(str(type_name), Result)
+    body = {k: v for k, v in envelope.items() if k != "type"}
+    return _build_dataclass(cls, body)
+
+
+# =========================================================================
+# Wire transport — one-shot client + simple line-oriented server
+# =========================================================================
+
+
+def _send_json(sock: socket.socket, payload: dict[str, Any]) -> None:
+    sock.sendall(json.dumps(payload).encode() + b"\n")
+
+
+def _recv_json(sock: socket.socket, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, Any]:
+    """Read one newline-delimited JSON object from *sock*."""
     chunks: list[bytes] = []
-    while True:
+    received = 0
+    while received < max_bytes:
         chunk = sock.recv(65536)
         if not chunk:
             break
         chunks.append(chunk)
+        received += len(chunk)
         if b"\n" in chunk:
             break
-    payload = b"".join(chunks).decode().strip()
-    return json.loads(payload) if payload else {}
+    line = b"".join(chunks).split(b"\n", 1)[0]
+    if not line:
+        raise ConnectionError("peer closed without sending data")
+    decoded = json.loads(line.decode())
+    if not isinstance(decoded, dict):
+        raise ValueError("response was not a JSON object")
+    return decoded
 
 
-def one_shot_request(payload: dict, *, socket_path: Path | None = None,
-                     timeout: float = 10.0) -> dict:
-    """Send + receive one JSON line + close. Total contract.
+def one_shot_request(
+    payload: dict[str, Any],
+    *,
+    timeout: float = _DEFAULT_TIMEOUT_S,
+) -> dict[str, Any]:
+    """Send one envelope over the daemon socket, return the response."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(socket_path()))
+        _send_json(sock, payload)
+        return _recv_json(sock)
 
-    Every transport-level failure (no daemon, timeout, malformed reply)
-    is caught and returned as ``{"success": False, "error": "<details>"}``
-    — callers can treat the result as data, never an exception.
+
+# =========================================================================
+# IPCServer — bound to one App, serves requests on a Unix socket
+# =========================================================================
+
+
+class _ShutdownRequested(Exception):
+    """Internal marker — the request handler asked the server to exit."""
+
+
+class IPCServer:
+    """Threaded Unix-socket server.
+
+    One blocking accept loop runs on a background thread; each connection
+    is dispatched on its own short-lived worker thread.  Concurrent
+    Command dispatch on the shared App is serialized by ``app._lock``
+    (held inside ``app.dispatch`` once we wire it).
     """
-    try:
-        s = open_and_send(payload, socket_path=socket_path, timeout=timeout)
-    except (TimeoutError, OSError) as e:
-        return {"success": False,
-                "error": f"IPC transport: {type(e).__name__}: {e}"}
-    try:
-        response = read_json_line(s)
-    except (TimeoutError, OSError, json.JSONDecodeError) as e:
-        return {"success": False,
-                "error": f"IPC transport: {type(e).__name__}: {e}"}
-    finally:
+
+    def __init__(self, app: App) -> None:
+        self._app = app
+        self._sock: socket.socket | None = None
+        self._stop = False
+        self._workers: list[Any] = []   # threading.Thread, kept for join on shutdown
+
+    def start(self) -> None:
+        """Bind + listen.  Caller is responsible for serving (see ``serve_forever``)."""
+        if not hasattr(socket, "AF_UNIX"):
+            raise RuntimeError("AF_UNIX not available — daemon mode requires Unix")
+        path = socket_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            path.unlink()
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(str(path))
+        sock.listen(8)
+        path.chmod(0o600)
+        self._sock = sock
+        log.info("IPC server listening on %s", path)
+
+    def serve_forever(self) -> None:
+        """Accept connections until ``shutdown`` is called or a kill arrives."""
+        import threading
+        if self._sock is None:
+            raise RuntimeError("serve_forever called before start")
+        while not self._stop:
+            try:
+                client, _ = self._sock.accept()
+            except OSError:
+                # listening socket closed — that's our exit signal
+                break
+            t = threading.Thread(
+                target=self._serve_client, args=(client,),
+                daemon=True, name="trcc-ipc",
+            )
+            t.start()
+            self._workers.append(t)
+
+    def shutdown(self) -> None:
+        """Stop accepting + clean up the socket file."""
+        self._stop = True
+        if self._sock is not None:
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                log.debug("shutdown: SHUT_RDWR on listening socket failed",
+                          exc_info=True)
+            self._sock.close()
+            self._sock = None
+        path = socket_path()
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError:
+                log.debug("shutdown: socket unlink failed", exc_info=True)
+        log.info("IPC server shut down")
+
+    def _serve_client(self, client: socket.socket) -> None:
         try:
-            s.close()
+            client.settimeout(_DEFAULT_TIMEOUT_S)
+            envelope = _recv_json(client)
+            if envelope.get("kill") is True:
+                _send_json(client, {"ok": True, "message": "shutting down"})
+                self._stop = True
+                # Wake the accept() loop by closing the listening socket
+                if self._sock is not None:
+                    try:
+                        self._sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        log.debug("kill: SHUT_RDWR on listening socket failed",
+                                  exc_info=True)
+                return
+            response = self._dispatch_envelope(envelope)
+            _send_json(client, response)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            self._send_error(client, f"Bad request: {e}")
+        except ConnectionError as e:
+            log.debug("IPC client disconnected: %s", e)
+        except Exception as e:
+            log.exception("IPC dispatch error")
+            self._send_error(client, str(e))
+        finally:
+            try:
+                client.close()
+            except OSError:
+                log.debug("client close failed", exc_info=True)
+
+    def _dispatch_envelope(self, envelope: dict[str, Any]) -> dict[str, Any]:
+        try:
+            cmd = decode_command(envelope)
+        except (ValueError, TypeError) as e:
+            return {"type": "Result", "ok": False, "message": f"Decode error: {e}"}
+        try:
+            result = self._app.dispatch(cmd)
+        except Exception as e:
+            log.exception("Command %s raised", type(cmd).__name__)
+            return {"type": "Result", "ok": False,
+                    "message": f"{type(e).__name__}: {e}"}
+        return encode_result(result)
+
+    @staticmethod
+    def _send_error(client: socket.socket, message: str) -> None:
+        try:
+            _send_json(client, {"type": "Result", "ok": False, "message": message})
         except OSError:
-            pass
-    return response or {"success": False, "error": "IPC: empty response"}
+            log.debug("error response send failed", exc_info=True)
 
 
-def send_manifold_request(role: str, method: str,
-                          args: tuple, kwargs: dict,
-                          *, socket_path: Path | None = None,
-                          timeout: float = 10.0) -> dict:
-    """Send a manifold-format request to the daemon, return the response.
+# =========================================================================
+# Client wait helpers
+# =========================================================================
 
-    Wire format::
 
-        {"role": "lcd", "method": "set_brightness",
-         "args": [0, 75], "kwargs": {}}
+def wait_for_daemon(*, timeout: float, poll_s: float = 0.05) -> bool:
+    """Block until ``daemon_running()`` returns True or *timeout* elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if daemon_running():
+            return True
+        time.sleep(poll_s)
+    return False
 
-    Thin wrapper over :func:`one_shot_request` that knows the manifold
-    payload shape. Most callers should use this, not the lower-level
-    helpers — keeps the wire shape pinned to one place.
+
+# Touch core so static analyzers see why we import it (the registries
+# above need the modules loaded — this line is a documentation anchor,
+# not a runtime no-op).
+_ = core
+
+
+# =========================================================================
+# SingleInstance — per-UI single-instance + raise-existing-window helper
+# =========================================================================
+
+
+class SingleInstance:
+    """Per-UI socket-based single-instance + raise-existing-window helper.
+
+    The first launch of ``trcc gui`` binds ``~/.cache/trcc/gui.sock``
+    and listens for ``{"raise": true}`` messages.  Subsequent launches
+    fail to bind, instead connect to the existing socket, send
+    ``{"raise": true}``, and bail out — the running window's
+    :attr:`on_raise` callback fires on the Qt main thread to show /
+    activate the existing window.
+
+    Architectural note: this is separate from the daemon's
+    :class:`IPCServer` (which serves Command dispatch).  Each UI type
+    (``gui`` / ``qtgui`` / future REPL) gets its own socket so two
+    different UIs can coexist while still enforcing one of each.
+
+    Usage::
+
+        instance = SingleInstance("gui")
+        if instance is None:        # peer launch — raise sent, exit cleanly
+            return 0
+        instance.on_raise = window.raise_window
+        ...
     """
-    return one_shot_request(
-        {"role": role, "method": method,
-         "args": list(args), "kwargs": kwargs},
-        socket_path=socket_path, timeout=timeout,
-    )
+
+    # Not strictly a normal class — the constructor may return None
+    # (when a peer is already running).  Encoded via __new__.
+
+    _DIR_NAME = "trcc"
+    _RAISE_MESSAGE = b'{"raise": true}\n'
+    _CONNECT_TIMEOUT_S = 1.0
+
+    def __new__(cls, name: str) -> SingleInstance | None:  # type: ignore[misc]
+        path = _instance_socket_path(name)
+        if not hasattr(socket, "AF_UNIX"):
+            log.warning(
+                "SingleInstance(%r): AF_UNIX missing on this platform; "
+                "running unconditionally", name,
+            )
+            return super().__new__(cls)
+
+        # ── Peer alive? ──
+        if _peer_alive(path, cls._CONNECT_TIMEOUT_S):
+            try:
+                _send_raise(path, cls._RAISE_MESSAGE, cls._CONNECT_TIMEOUT_S)
+                log.info("SingleInstance(%r): peer alive, raise sent", name)
+            except OSError as e:
+                log.warning(
+                    "SingleInstance(%r): peer responded then closed; "
+                    "raise send failed (%s)", name, e,
+                )
+            return None
+
+        # ── No peer — clean any stale socket file + bind ──
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError as e:
+                log.debug("SingleInstance(%r): stale socket unlink failed: %s",
+                          name, e)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        instance = super().__new__(cls)
+        instance._bind(name, path)
+        return instance
+
+    def __init__(self, name: str) -> None:
+        # __new__ does all the work; __init__ runs again on re-entry but
+        # binding already happened.  Keep this idempotent.
+        if not hasattr(self, "_name"):
+            self._name = name
+
+    def _bind(self, name: str, path: Path) -> None:
+        """Actually listen on the socket + spawn the accept thread."""
+        import threading
+
+        self._name = name
+        self._path = path
+        self._stop = False
+        self.on_raise: typing.Callable[[], None] | None = None
+
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(str(path))
+        sock.listen(4)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            log.debug("SingleInstance(%r): chmod 600 failed", name)
+        self._sock: socket.socket | None = sock
+
+        self._thread = threading.Thread(
+            target=self._accept_loop,
+            name=f"trcc-single-instance-{name}",
+            daemon=True,
+        )
+        self._thread.start()
+        log.info("SingleInstance(%r): listening on %s", name, path)
+
+    def close(self) -> None:
+        """Stop listening and remove the socket file."""
+        sock = getattr(self, "_sock", None)
+        if sock is None:
+            return
+        self._stop = True
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            log.debug("SingleInstance.close: SHUT_RDWR failed", exc_info=True)
+        try:
+            sock.close()
+        except OSError:
+            log.debug("SingleInstance.close: socket close failed", exc_info=True)
+        self._sock = None
+        try:
+            self._path.unlink()
+        except OSError:
+            log.debug("SingleInstance.close: unlink failed", exc_info=True)
+
+    # ── Internal — accept loop ───────────────────────────────────────
+
+    def _accept_loop(self) -> None:
+        while not self._stop:
+            sock = self._sock
+            if sock is None:
+                break
+            try:
+                client, _ = sock.accept()
+            except OSError:
+                break  # closed
+            with client:
+                client.settimeout(self._CONNECT_TIMEOUT_S)
+                try:
+                    data = client.recv(256)
+                except OSError:
+                    continue
+                if not data:
+                    continue
+                try:
+                    payload = json.loads(data.decode("utf-8").strip())
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    log.debug("SingleInstance: ignoring malformed peer message")
+                    continue
+                if isinstance(payload, dict) and payload.get("raise"):
+                    cb = self.on_raise
+                    if cb is not None:
+                        try:
+                            cb()
+                        except Exception:
+                            log.exception(
+                                "SingleInstance.on_raise raised",
+                            )
+
+
+def _instance_socket_path(name: str) -> Path:
+    """Per-UI socket path (one file per UI flavour)."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        base = Path(runtime) / SingleInstance._DIR_NAME
+    else:
+        base = Path.home() / ".cache" / SingleInstance._DIR_NAME
+    return base / f"{name}.sock"
+
+
+def _peer_alive(path: Path, timeout: float) -> bool:
+    """True if a peer is currently bound + accepting on ``path``."""
+    if not path.exists():
+        return False
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(str(path))
+        sock.close()
+        return True
+    except OSError:
+        return False
+
+
+def _send_raise(path: Path, payload: bytes, timeout: float) -> None:
+    """Connect + send a raise message to an existing peer."""
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    sock.connect(str(path))
+    try:
+        sock.sendall(payload)
+    finally:
+        sock.close()

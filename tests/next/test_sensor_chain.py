@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.sensors.chain import (
+from trcc.adapters.sensors.chain import (
     CpuSourceChain,
     GpuSourceChain,
     MemorySourceChain,
 )
-from trcc.next.core.ports import CpuSource, GpuSource, MemorySource
+from trcc.core.ports import CpuSource, GpuSource, MemorySource
 
 
 class _StubCpu(CpuSource):

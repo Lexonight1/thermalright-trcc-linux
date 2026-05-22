@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.adapters.device.linux.scsi import (
+from trcc.legacy.adapters.device.linux.scsi import (
     _SG_DXFER_FROM_DEV,
     _SG_DXFER_TO_DEV,
     _SG_IO,

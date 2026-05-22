@@ -1,13 +1,13 @@
 """udev rules generator — one rule block per registered device."""
 from __future__ import annotations
 
-from trcc.next.adapters.system._udev import (
+from trcc.adapters.system._udev import (
     _WIRE_SUBSYSTEMS,
     build_modprobe_conf,
     build_udev_rules,
 )
-from trcc.next.core.models import Wire
-from trcc.next.core.registry import ALL_DEVICES
+from trcc.core.models import Wire
+from trcc.core.registry import ALL_DEVICES
 
 
 def test_every_registered_device_has_a_rule_block() -> None:

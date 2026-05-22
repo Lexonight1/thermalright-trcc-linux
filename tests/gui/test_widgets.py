@@ -32,7 +32,7 @@ from tests.conftest import make_test_surface  # noqa: E402
 # ============================================================================
 # Assets
 # ============================================================================
-from trcc.ui.gui.assets import _ASSETS_DIR, Assets  # noqa: E402
+from trcc.legacy.ui.gui.assets import _ASSETS_DIR, Assets  # noqa: E402
 
 
 class TestAssets(unittest.TestCase):
@@ -99,17 +99,17 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_linux_uses_package_dir(self):
         """LinuxSetup returns package dir directly."""
-        from trcc.adapters.system.linux_platform import LinuxPlatform
-        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
+        from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+        from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR
         result = LinuxPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
         self.assertEqual(result, _PKG_ASSETS_DIR)
 
     def test_windows_copies_to_user_dir(self):
         """WindowsSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.windows_platform import WindowsPlatform
-        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
+        from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+        from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.windows_platform.Path.home',
+            with patch('trcc.legacy.adapters.system.windows_platform.Path.home',
                        return_value=Path(tmpdir)):
                 result = WindowsPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
@@ -119,10 +119,10 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_macos_copies_to_user_dir(self):
         """MacOSSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.macos_platform import MacOSPlatform
-        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
+        from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+        from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.macos_platform.Path.home',
+            with patch('trcc.legacy.adapters.system.macos_platform.Path.home',
                        return_value=Path(tmpdir)):
                 result = MacOSPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
@@ -131,10 +131,10 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_bsd_copies_to_user_dir(self):
         """BSDSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.bsd_platform import BSDPlatform
-        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
+        from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+        from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.bsd_platform.Path.home',
+            with patch('trcc.legacy.adapters.system.bsd_platform.Path.home',
                        return_value=Path(tmpdir)):
                 result = BSDPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
@@ -143,8 +143,8 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_set_assets_dir(self):
         """set_assets_dir updates the module-level _ASSETS_DIR."""
-        from trcc.ui.gui import assets as assets_mod
-        from trcc.ui.gui.assets import set_assets_dir
+        from trcc.legacy.ui.gui import assets as assets_mod
+        from trcc.legacy.ui.gui.assets import set_assets_dir
         original = assets_mod._ASSETS_DIR
         try:
             test_path = Path('/tmp/test_assets')
@@ -158,7 +158,7 @@ class TestResolveAssetsDir(unittest.TestCase):
 # UCPreview
 # ============================================================================
 
-from trcc.ui.gui.uc_preview import UCPreview  # noqa: E402
+from trcc.legacy.ui.gui.uc_preview import UCPreview  # noqa: E402
 
 
 class TestUCPreview(unittest.TestCase):
@@ -223,7 +223,7 @@ class TestUCPreview(unittest.TestCase):
 # UCDevice
 # ============================================================================
 
-from trcc.ui.gui.uc_device import (  # noqa: E402
+from trcc.legacy.ui.gui.uc_device import (  # noqa: E402
     DEVICE_IMAGE_MAP,
     UCDevice,
     _get_device_images,
@@ -299,7 +299,7 @@ class TestUCDevice(unittest.TestCase):
 # UCThemeLocal
 # ============================================================================
 
-from trcc.ui.gui.uc_theme_local import UCThemeLocal  # noqa: E402
+from trcc.legacy.ui.gui.uc_theme_local import UCThemeLocal  # noqa: E402
 
 
 class TestUCThemeLocal(unittest.TestCase):
@@ -371,13 +371,13 @@ class TestUCThemeLocal(unittest.TestCase):
 # UCAbout helpers
 # ============================================================================
 
-from trcc.adapters.system.linux_platform import (  # noqa: E402
+from trcc.legacy.adapters.system.linux_platform import (  # noqa: E402
     LinuxAutostartManager,
     LinuxPlatform,
 )
-from trcc.ui.gui.uc_about import ensure_autostart  # noqa: E402
+from trcc.legacy.ui.gui.uc_about import ensure_autostart  # noqa: E402
 
-_AUTOSTART_MOD = 'trcc.adapters.system.linux_platform'
+_AUTOSTART_MOD = 'trcc.legacy.adapters.system.linux_platform'
 
 
 class TestAutostart(unittest.TestCase):
@@ -437,7 +437,7 @@ class TestAutostart(unittest.TestCase):
 
     def test_set_autostart_real_filesystem(self):
         """Integration test with real temp dir."""
-        import trcc.adapters.system.linux_platform as mod
+        import trcc.legacy.adapters.system.linux_platform as mod
         manager = self._manager()
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -491,8 +491,8 @@ class TestAutostart(unittest.TestCase):
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_DIR')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={})
     def test_ensure_autostart_first_launch(self, mock_load, mock_save,
                                             mock_dir, mock_file):
         mock_file.exists.return_value = False
@@ -505,8 +505,8 @@ class TestAutostart(unittest.TestCase):
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_DIR')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={'other_key': 'val'})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={'other_key': 'val'})
     def test_ensure_autostart_first_launch_preserves_config(self, mock_load,
                                                              mock_save,
                                                              mock_dir, mock_file):
@@ -519,8 +519,8 @@ class TestAutostart(unittest.TestCase):
     # --- ensure (subsequent launch) ---
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_subsequent_enabled(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = "old content"
@@ -529,8 +529,8 @@ class TestAutostart(unittest.TestCase):
         mock_save.assert_not_called()
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_subsequent_disabled(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = False
         result = ensure_autostart(self._platform())
@@ -539,8 +539,8 @@ class TestAutostart(unittest.TestCase):
     # --- refresh (path change) ---
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_refreshes_stale_path(self, mock_load, mock_save, mock_file):
         # Refresh-on-subsequent-launch goes through LinuxAutostartManager.refresh().
         # The GUI wrapper ``uc_about.ensure_autostart`` only calls
@@ -555,8 +555,8 @@ class TestAutostart(unittest.TestCase):
         mock_file.write_text.assert_called_once_with('[Desktop Entry]\nExec=/new/path\n')
 
     @patch(f'{_AUTOSTART_MOD}._AUTOSTART_FILE')
-    @patch('trcc.conf.save_config')
-    @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
+    @patch('trcc.legacy.conf.save_config')
+    @patch('trcc.legacy.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_no_refresh_when_same(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = '[Desktop Entry]\nExec=/same/path\n'
@@ -570,8 +570,8 @@ class TestAutostart(unittest.TestCase):
 # detect_language
 # ============================================================================
 
-from trcc.conf import _detect_language  # noqa: E402
-from trcc.core.models import LOCALE_TO_LANG  # noqa: E402
+from trcc.legacy.conf import _detect_language  # noqa: E402
+from trcc.legacy.core.models import LOCALE_TO_LANG  # noqa: E402
 
 
 class TestDetectLanguage(unittest.TestCase):
@@ -587,23 +587,23 @@ class TestDetectLanguage(unittest.TestCase):
         self.assertIn('zh_CN', LOCALE_TO_LANG)
         self.assertIn('de', LOCALE_TO_LANG)
 
-    @patch('trcc.conf.locale')
+    @patch('trcc.legacy.conf.locale')
     def test_english_locale(self, mock_locale):
         mock_locale.getlocale.return_value = ('en_US', 'UTF-8')
         self.assertEqual(_detect_language(), 'en')
 
-    @patch('trcc.conf.locale')
+    @patch('trcc.legacy.conf.locale')
     def test_chinese_locale(self, mock_locale):
         mock_locale.getlocale.return_value = ('zh_CN', 'UTF-8')
         self.assertEqual(_detect_language(), 'zh')
 
-    @patch('trcc.conf.locale')
+    @patch('trcc.legacy.conf.locale')
     def test_unknown_locale_defaults_to_en(self, mock_locale):
         mock_locale.getlocale.return_value = ('zz_ZZ', 'UTF-8')
         self.assertEqual(_detect_language(), 'en')
 
     @patch.dict('os.environ', {'LANG': ''})
-    @patch('trcc.conf.locale')
+    @patch('trcc.legacy.conf.locale')
     def test_none_locale_defaults_to_en(self, mock_locale):
         mock_locale.getlocale.return_value = (None, None)
         self.assertEqual(_detect_language(), 'en')

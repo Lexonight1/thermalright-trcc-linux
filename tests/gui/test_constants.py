@@ -12,7 +12,7 @@ Tests cover:
 
 import unittest
 
-from trcc.ui.gui.constants import Colors, Layout, Sizes, Styles
+from trcc.legacy.ui.gui.constants import Colors, Layout, Sizes, Styles
 
 
 class TestColors(unittest.TestCase):

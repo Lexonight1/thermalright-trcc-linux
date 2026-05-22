@@ -5,19 +5,19 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.adapters.diagnostics.debug_report import build_debug_report
-from trcc.next.adapters.diagnostics.doctor import (
+from trcc.adapters.diagnostics.debug_report import build_debug_report
+from trcc.adapters.diagnostics.doctor import (
     render_doctor_output,
     run_doctor,
 )
-from trcc.next.adapters.diagnostics.health import (
+from trcc.adapters.diagnostics.health import (
     HealthCheckResult,
     check_log_writable,
     check_python_version,
     package_install_hint,
     run_health_checks,
 )
-from trcc.next.adapters.infra.logging import configure_logging, tail_log
+from trcc.adapters.infra.logging import configure_logging, tail_log
 
 # =========================================================================
 # Logging adapter
@@ -28,7 +28,7 @@ def test_configure_logging_creates_writable_handler(tmp_path: Path) -> None:
     log_file = tmp_path / "trcc.log"
     configure_logging(log_file)
     import logging
-    logging.getLogger("trcc.next.test").warning("hello-from-test")
+    logging.getLogger("trcc.test").warning("hello-from-test")
     assert log_file.is_file()
     body = log_file.read_text(encoding="utf-8")
     assert "hello-from-test" in body
@@ -91,7 +91,7 @@ def test_run_health_checks_returns_full_report(fake_platform) -> None:
 
 def test_health_report_aggregates_severities() -> None:
     """The HealthReport.worst_severity ladder is FAIL > WARN > OK."""
-    from trcc.next.adapters.diagnostics.health import HealthReport
+    from trcc.adapters.diagnostics.health import HealthReport
 
     a = HealthCheckResult(name="a", severity="OK", message="")
     b = HealthCheckResult(name="b", severity="WARN", message="")
@@ -150,7 +150,7 @@ def test_debug_report_renders_paste_ready_text(fake_platform) -> None:
 
 
 def test_debug_report_writes_to_disk(fake_platform, tmp_path: Path) -> None:
-    from trcc.next.adapters.diagnostics.debug_report import write_debug_report
+    from trcc.adapters.diagnostics.debug_report import write_debug_report
 
     report = build_debug_report(fake_platform)
     out = tmp_path / "debug.txt"
@@ -168,12 +168,12 @@ def test_debug_report_writes_to_disk(fake_platform, tmp_path: Path) -> None:
 @pytest.fixture
 def _trcc_app(fake_platform):
     """Bare App without a renderer — diagnostics never touch DisplayService."""
-    from trcc.next.app import App
+    from trcc.app import App
     return App(fake_platform)
 
 
 def test_run_health_check_command(_trcc_app) -> None:
-    from trcc.next.core.commands import RunHealthCheck
+    from trcc.core.commands import RunHealthCheck
 
     result = _trcc_app.dispatch(RunHealthCheck())
     assert result.ok is (result.fail_count == 0)
@@ -182,7 +182,7 @@ def test_run_health_check_command(_trcc_app) -> None:
 
 
 def test_run_doctor_command(_trcc_app) -> None:
-    from trcc.next.core.commands import RunDoctor
+    from trcc.core.commands import RunDoctor
 
     result = _trcc_app.dispatch(RunDoctor())
     assert result.rendered
@@ -192,7 +192,7 @@ def test_run_doctor_command(_trcc_app) -> None:
 def test_generate_debug_report_writes_to_disk(
     _trcc_app, tmp_path: Path,
 ) -> None:
-    from trcc.next.core.commands import GenerateDebugReport
+    from trcc.core.commands import GenerateDebugReport
 
     out = tmp_path / "debug.txt"
     result = _trcc_app.dispatch(GenerateDebugReport(
@@ -204,7 +204,7 @@ def test_generate_debug_report_writes_to_disk(
 
 
 def test_generate_debug_report_in_memory_only(_trcc_app) -> None:
-    from trcc.next.core.commands import GenerateDebugReport
+    from trcc.core.commands import GenerateDebugReport
 
     result = _trcc_app.dispatch(GenerateDebugReport(output_path=None))
     assert result.ok is True

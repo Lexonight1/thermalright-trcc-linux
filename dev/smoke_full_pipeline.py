@@ -113,7 +113,7 @@ def _smoke_renderer() -> Any:
 
 
 def _build_app() -> Any:
-    from trcc.next.app import App
+    from trcc.app import App
 
     return App(platform=_platform(), renderer=_smoke_renderer())
 
@@ -128,7 +128,7 @@ def _run_steps() -> list[_Step]:
     Failures are isolated per step — a broken Command doesn't mask
     the rest.
     """
-    from trcc.next.core.commands import (
+    from trcc.core.commands import (
         DiscoverDevices,
         EnableLedTestMode,
         SetBrightness,
@@ -141,7 +141,7 @@ def _run_steps() -> list[_Step]:
         SetRefreshInterval,
         SetTempUnit,
     )
-    from trcc.next.core.events import (
+    from trcc.core.events import (
         BrightnessChanged,
         Event,
         GpuDeviceChanged,
@@ -151,7 +151,7 @@ def _run_steps() -> list[_Step]:
         RefreshIntervalChanged,
         TempUnitChanged,
     )
-    from trcc.next.core.led_models import LEDMode
+    from trcc.core.led_models import LEDMode
 
     app = _build_app()
 

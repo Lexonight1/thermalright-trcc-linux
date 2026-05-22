@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.core.i18n import (
+from trcc.core.i18n import (
     LANGUAGE_NAMES,
     TRANSLATIONS,
     language_name,
@@ -87,7 +87,7 @@ def test_language_name_falls_back_to_code() -> None:
 
 def _cli_app():
     """Late import so cli_app fixture's platform override is in place."""
-    from trcc.next.ui.cli.main import app
+    from trcc.ui.cli.main import app
     return app
 
 

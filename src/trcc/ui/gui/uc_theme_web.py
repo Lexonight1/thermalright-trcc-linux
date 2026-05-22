@@ -21,8 +21,8 @@ from pathlib import Path
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QMovie
 
+from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import CloudThemeItem
-from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from .base import BaseThumbnail, DownloadableThemeBrowser
 from .constants import Layout, Sizes
 
@@ -148,7 +148,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
 
     def set_web_directory(self, path):
         """Set the Web directory (bundled PNGs + downloaded MP4s) and load themes."""
-        log.debug("set_web_directory: %s", path)
+        log.info("uc_theme_web.set_web_directory: %s", path)
         self.web_directory = Path(path) if path else None
         self.load_themes()
 
@@ -190,7 +190,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
         self._clear_grid()
 
         if not self.web_directory:
-            log.debug("load_themes: no web_directory set")
+            log.info("uc_theme_web.load_themes: no web_directory set — empty grid")
             self._show_empty_message()
             return
 
@@ -227,8 +227,10 @@ class UCThemeWeb(DownloadableThemeBrowser):
                 is_local=is_local,
             ))
 
-        log.debug("load_themes: category=%r, %d themes (%d cached), dir=%s",
-                   self.current_category, len(themes), len(cached), self.web_directory)
+        log.info(
+            "uc_theme_web.load_themes: category=%r, %d theme(s) (%d cached) in %s",
+            self.current_category, len(themes), len(cached), self.web_directory,
+        )
         self._populate_grid(themes)
 
     def _on_item_clicked(self, item_info: CloudThemeItem):

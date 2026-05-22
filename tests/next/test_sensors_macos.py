@@ -15,7 +15,7 @@ from collections.abc import Iterable
 
 import pytest
 
-from trcc.next.adapters.sensors._smc import (
+from trcc.adapters.sensors._smc import (
     APPLE_SILICON_CPU_TEMP_KEYS,
     APPLE_SILICON_GPU_TEMP_KEYS,
     INTEL_CPU_TEMP_KEYS,
@@ -169,7 +169,7 @@ def _client_returning(readings: dict[str, float | None]) -> SmcClientPort:
 
 def _make_cpu(readings: dict[str, float | None],
               keys: Iterable[str] = INTEL_CPU_TEMP_KEYS):
-    from trcc.next.adapters.sensors.macos import SmcCpu
+    from trcc.adapters.sensors.macos import SmcCpu
     return SmcCpu(client=_client_returning(readings), keys=keys)
 
 
@@ -204,7 +204,7 @@ def test_smc_cpu_only_exposes_temp() -> None:
 
 def test_smc_cpu_returns_none_when_disconnected() -> None:
     """A client that goes offline after construction → temp() returns None."""
-    from trcc.next.adapters.sensors.macos import SmcCpu
+    from trcc.adapters.sensors.macos import SmcCpu
 
     client = _FakeSmcClient({"TC0P": 50.0})
     cpu = SmcCpu(client=client)
@@ -218,7 +218,7 @@ def test_smc_cpu_returns_none_when_disconnected() -> None:
 
 
 def _make_gpu(readings: dict[str, float | None]):
-    from trcc.next.adapters.sensors.macos import SmcGpu
+    from trcc.adapters.sensors.macos import SmcGpu
     return SmcGpu(client=_client_returning(readings), keys=INTEL_GPU_TEMP_KEYS)
 
 
@@ -252,7 +252,7 @@ def test_smc_gpu_clock_power_fan_vram_are_all_none() -> None:
 
 def test_intel_keys_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without the env flag, only Intel keys are in the rotation."""
-    from trcc.next.adapters.sensors.macos import _select_cpu_temp_keys
+    from trcc.adapters.sensors.macos import _select_cpu_temp_keys
 
     monkeypatch.delenv("TRCC_NEXT_APPLE_SILICON_SMC", raising=False)
     keys = _select_cpu_temp_keys()
@@ -262,7 +262,7 @@ def test_intel_keys_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_apple_silicon_keys_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
     """``TRCC_NEXT_APPLE_SILICON_SMC=1`` extends the rotation."""
-    from trcc.next.adapters.sensors.macos import _select_cpu_temp_keys
+    from trcc.adapters.sensors.macos import _select_cpu_temp_keys
 
     monkeypatch.setenv("TRCC_NEXT_APPLE_SILICON_SMC", "1")
     keys = _select_cpu_temp_keys()
@@ -273,7 +273,7 @@ def test_apple_silicon_keys_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_gpu_key_selection_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    from trcc.next.adapters.sensors.macos import _select_gpu_temp_keys
+    from trcc.adapters.sensors.macos import _select_gpu_temp_keys
 
     monkeypatch.delenv("TRCC_NEXT_APPLE_SILICON_SMC", raising=False)
     assert set(_select_gpu_temp_keys()) == set(INTEL_GPU_TEMP_KEYS)
@@ -288,7 +288,7 @@ def test_apple_silicon_keys_disabled_when_env_unset_or_other(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Only exact ``"1"`` enables — ``"0"`` / empty / unset all disable."""
-    from trcc.next.adapters.sensors.macos import _select_cpu_temp_keys
+    from trcc.adapters.sensors.macos import _select_cpu_temp_keys
 
     for value in ("0", "true", "yes", ""):
         monkeypatch.setenv("TRCC_NEXT_APPLE_SILICON_SMC", value)
@@ -306,7 +306,7 @@ def test_build_macos_sensors_does_not_crash_on_non_mac(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """SMC client open() returns False on Linux; chain falls through to psutil."""
-    from trcc.next.adapters.sensors import macos as factory
+    from trcc.adapters.sensors import macos as factory
 
     monkeypatch.delenv("TRCC_NEXT_APPLE_SILICON_SMC", raising=False)
     sensors = factory.build_macos_sensors()
@@ -321,10 +321,10 @@ def test_apple_silicon_log_message_when_enabled(
     """Explicit log line when AS keys are turned on — operator-visible."""
     import logging
 
-    from trcc.next.adapters.sensors import macos as factory
+    from trcc.adapters.sensors import macos as factory
 
     monkeypatch.setenv("TRCC_NEXT_APPLE_SILICON_SMC", "1")
-    with caplog.at_level(logging.INFO, logger="trcc.next.adapters.sensors.macos"):
+    with caplog.at_level(logging.INFO, logger="trcc.adapters.sensors.macos"):
         factory.build_macos_sensors()
 
     assert any("Apple Silicon keys ENABLED" in r.message for r in caplog.records)

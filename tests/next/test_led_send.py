@@ -5,15 +5,15 @@ and asserts the wire bytes reflect the per-style remap.
 """
 from __future__ import annotations
 
-from trcc.next.adapters.device.led import (
+from trcc.adapters.device.led import (
     _COLOR_SCALE,
     _HID_REPORT_SIZE,
     _MAGIC,
     Led,
     LedPayload,
 )
-from trcc.next.core.models import Kind, LedStyle, ProductInfo, Wire
-from trcc.next.services.led_segment import (
+from trcc.core.models import Kind, LedStyle, ProductInfo, Wire
+from trcc.services.led_segment import (
     LED_REMAP_TABLES,
     remap_led_colors,
 )
@@ -173,7 +173,7 @@ def test_send_all_off_is_on_zeros_every_wire_led() -> None:
 
 # Sanity: the legacy helper is exposed at the same place callers can import.
 def test_remap_module_exports() -> None:
-    from trcc.next.services import led_segment
+    from trcc.services import led_segment
     assert "remap_led_colors" in led_segment.__all__
     assert "LED_REMAP_TABLES" in led_segment.__all__
     assert "LED_REMAP_SUB_TABLES" in led_segment.__all__

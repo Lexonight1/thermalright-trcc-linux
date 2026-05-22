@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.services.theme_loader import ThemeLoader
+from trcc.legacy.services.theme_loader import ThemeLoader
 
 
 def _make_loader(
@@ -118,7 +118,7 @@ class TestLoadReferenceTheme:
         theme = _make_theme(theme_dir)
 
         with patch.object(loader, '_load_static_image', return_value='pil_img'):
-            from trcc.core.models import ThemeDir
+            from trcc.legacy.core.models import ThemeDir
             td = ThemeDir(theme_dir)
             result = loader._load_reference_theme(
                 theme, td, (320, 320), tmp_path / 'work')
@@ -137,7 +137,7 @@ class TestLoadReferenceTheme:
 
         theme = _make_theme(theme_dir)
 
-        from trcc.core.models import ThemeDir
+        from trcc.legacy.core.models import ThemeDir
         td = ThemeDir(theme_dir)
         loader._load_reference_theme(theme, td, (320, 320), tmp_path / 'work')
         assert overlay.enabled is True
@@ -155,7 +155,7 @@ class TestLoadReferenceTheme:
         (tmp_path / 'bg.mp4').write_bytes(b'video')
 
         theme = _make_theme(theme_dir)
-        from trcc.core.models import ThemeDir
+        from trcc.legacy.core.models import ThemeDir
         td = ThemeDir(theme_dir)
         result = loader._load_reference_theme(
             theme, td, (320, 320), tmp_path / 'work')
@@ -242,7 +242,7 @@ class TestApplyMask:
 
 
 class TestLoadStaticImage:
-    @patch('trcc.services.theme_loader.ImageService')
+    @patch('trcc.legacy.services.theme_loader.ImageService')
     def test_success(self, mock_is):
         mock_is.open_and_resize.return_value = 'pil_img'
         loader = _make_loader()
@@ -250,7 +250,7 @@ class TestLoadStaticImage:
         assert result == 'pil_img'
         mock_is.open_and_resize.assert_called_once()
 
-    @patch('trcc.services.theme_loader.ImageService')
+    @patch('trcc.legacy.services.theme_loader.ImageService')
     def test_failure_returns_none(self, mock_is):
         mock_is.open_and_resize.side_effect = RuntimeError("bad image")
         loader = _make_loader()

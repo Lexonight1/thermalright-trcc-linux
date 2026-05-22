@@ -16,17 +16,17 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.led import (
+from trcc.adapters.device.led import (
     _HID_REPORT_SIZE,
     _MAGIC,
     Led,
 )
-from trcc.next.core.led_protocol import (
+from trcc.core.led_protocol import (
     _PM_REGISTRY,
     PmEntry,
     resolve_pm,
 )
-from trcc.next.core.models import Kind, LedStyle, ProductInfo, Wire
+from trcc.core.models import Kind, LedStyle, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport
 

@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.adapters.repo.http import HttpFetchError
-from trcc.next.adapters.theme.cloud import CzhordeCatalog
-from trcc.next.core.ports import HttpFetcher
-from trcc.next.core.protocol import FBL_PROFILES
-from trcc.next.services.cloud_theme import CloudThemeService
+from trcc.adapters.repo.http import HttpFetchError
+from trcc.adapters.theme.cloud import CzhordeCatalog
+from trcc.core.ports import HttpFetcher
+from trcc.core.protocol import FBL_PROFILES
+from trcc.services.cloud_theme import CloudThemeService
 
 from .conftest import FakePaths
 

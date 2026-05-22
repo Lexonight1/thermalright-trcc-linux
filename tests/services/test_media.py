@@ -15,8 +15,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.core.models import PlaybackState
-from trcc.services.media import MediaService
+from trcc.legacy.core.models import PlaybackState
+from trcc.legacy.services.media import MediaService
 
 
 def _make_decoder(frame_count: int = 10, fps: float = 30.0,
@@ -34,7 +34,7 @@ def _make_decoder(frame_count: int = 10, fps: float = 30.0,
 
 def _make_service(frame_count: int = 10, fps: float = 30.0) -> MediaService:
     """Create a MediaService with mock decoders pre-wired."""
-    from trcc.core.models import FBL_PROFILES
+    from trcc.legacy.core.models import FBL_PROFILES
     video_cls = MagicMock(return_value=_make_decoder(frame_count, fps))
     zt_cls = MagicMock(return_value=_make_decoder(frame_count, fps, delays=[33] * frame_count))
     svc = MediaService(video_decoder_cls=video_cls, zt_decoder_cls=zt_cls)
@@ -126,7 +126,7 @@ class TestLoad:
 
     def test_load_zt_fallback_to_video(self, tmp_path):
         """If .zt decoder raises ValueError, falls back to video decoder."""
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         video_cls = MagicMock(return_value=_make_decoder(5, 24.0))
         zt_cls = MagicMock(side_effect=ValueError("not a valid zt"))
         svc = MediaService(video_decoder_cls=video_cls, zt_decoder_cls=zt_cls)
@@ -148,7 +148,7 @@ class TestLoad:
         assert svc.is_playing is False
 
     def test_load_failure_returns_false(self, tmp_path):
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         video_cls = MagicMock(side_effect=RuntimeError("decode error"))
         zt_cls = MagicMock()
         svc = MediaService(video_decoder_cls=video_cls, zt_decoder_cls=zt_cls)
@@ -159,7 +159,7 @@ class TestLoad:
         assert svc.load(f) is False
 
     def test_load_zero_fps_defaults_to_16(self, tmp_path):
-        from trcc.core.models import FBL_PROFILES
+        from trcc.legacy.core.models import FBL_PROFILES
         video_cls = MagicMock(return_value=_make_decoder(5, 0))
         zt_cls = MagicMock()
         svc = MediaService(video_decoder_cls=video_cls, zt_decoder_cls=zt_cls)

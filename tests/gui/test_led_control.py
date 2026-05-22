@@ -15,8 +15,8 @@ import pytest
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QPixmap
 
-from trcc.ui.gui.uc_color_wheel import UCColorWheel
-from trcc.ui.gui.uc_led_control import (
+from trcc.legacy.ui.gui.uc_color_wheel import UCColorWheel
+from trcc.legacy.ui.gui.uc_led_control import (
     BRIGHT_W,
     BRIGHT_X,
     MODE_H,
@@ -28,7 +28,7 @@ from trcc.ui.gui.uc_led_control import (
     UCInfoImage,
     UCLedControl,
 )
-from trcc.ui.gui.uc_screen_led import (
+from trcc.legacy.ui.gui.uc_screen_led import (
     _DECO,
     _POS_1,
     _POS_2,
@@ -78,10 +78,10 @@ def _patch_led_assets(qapp):
     """Patch Assets in all LED-related modules to avoid filesystem I/O."""
     defaults = _asset_mocks()
     with (
-        patch.multiple("trcc.ui.gui.uc_color_wheel.Assets", **defaults),
-        patch.multiple("trcc.ui.gui.uc_screen_led.Assets", **defaults),
-        patch.multiple("trcc.ui.gui.uc_led_control.Assets", **defaults),
-        patch("trcc.ui.gui.uc_led_control.set_background_pixmap"),
+        patch.multiple("trcc.legacy.ui.gui.uc_color_wheel.Assets", **defaults),
+        patch.multiple("trcc.legacy.ui.gui.uc_screen_led.Assets", **defaults),
+        patch.multiple("trcc.legacy.ui.gui.uc_led_control.Assets", **defaults),
+        patch("trcc.legacy.ui.gui.uc_led_control.set_background_pixmap"),
     ):
         yield
 
@@ -828,7 +828,7 @@ class TestLedControlMetrics:
 
     @staticmethod
     def _metrics(**kw):
-        from trcc.core.models import HardwareMetrics
+        from trcc.legacy.core.models import HardwareMetrics
         return HardwareMetrics(**kw)
 
     def test_update_metrics_style_1_updates_sensors(self, led_control):

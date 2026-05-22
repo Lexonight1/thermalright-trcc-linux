@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-MODULE = 'trcc.adapters.system.windows_platform'
+MODULE = 'trcc.legacy.adapters.system.windows_platform'
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ class TestGetMemoryInfo:
         sys.modules['wmi'] = mock_wmi_mod
 
         try:
-            from trcc.adapters.system.windows_platform import get_memory_info
+            from trcc.legacy.adapters.system.windows_platform import get_memory_info
             slots = get_memory_info()
             assert len(slots) == 2
             assert slots[0]['manufacturer'] == 'G.Skill'
@@ -68,7 +68,7 @@ class TestGetMemoryInfo:
 
     def test_psutil_fallback_without_wmi(self):
         """When wmi not installed, falls back to psutil total."""
-        from trcc.adapters.system.windows_platform import get_memory_info
+        from trcc.legacy.adapters.system.windows_platform import get_memory_info
 
         # wmi is not installed on Linux, so ImportError path
         slots = get_memory_info()
@@ -81,7 +81,7 @@ class TestGetDiskInfo:
 
     def test_returns_empty_without_wmi(self):
         """When wmi not installed, returns empty list."""
-        from trcc.adapters.system.windows_platform import get_disk_info
+        from trcc.legacy.adapters.system.windows_platform import get_disk_info
         disks = get_disk_info()
         assert disks == []
 
@@ -92,103 +92,103 @@ class TestGetDiskInfo:
 class TestFormatSize:
 
     def test_terabytes(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert '1.0 TB' in _format_size(1024 ** 4)
 
     def test_gigabytes(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert '16 GB' in _format_size(16 * 1024 ** 3)
 
     def test_megabytes(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert '512 MB' in _format_size(512 * 1024 ** 2)
 
     def test_bytes(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert _format_size(1024) == '1024 B'
 
     def test_none(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert _format_size(None) == ''
 
     def test_string_input(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         result = _format_size(str(16 * 1024 ** 3))
         assert '16 GB' in result
 
     def test_invalid_string(self):
-        from trcc.adapters.system.windows_platform import _format_size
+        from trcc.legacy.adapters.system.windows_platform import _format_size
         assert _format_size('not_a_number') == 'not_a_number'
 
 
 class TestMemoryFormFactor:
 
     def test_known_codes(self):
-        from trcc.adapters.system.windows_platform import _memory_form_factor
+        from trcc.legacy.adapters.system.windows_platform import _memory_form_factor
         assert _memory_form_factor(8) == 'DIMM'
         assert _memory_form_factor(12) == 'SODIMM'
 
     def test_unknown_code(self):
-        from trcc.adapters.system.windows_platform import _memory_form_factor
+        from trcc.legacy.adapters.system.windows_platform import _memory_form_factor
         assert _memory_form_factor(99) == 'Unknown'
 
     def test_none(self):
-        from trcc.adapters.system.windows_platform import _memory_form_factor
+        from trcc.legacy.adapters.system.windows_platform import _memory_form_factor
         assert _memory_form_factor(None) == 'Unknown'
 
 
 class TestMemoryType:
 
     def test_known_types(self):
-        from trcc.adapters.system.windows_platform import _memory_type
+        from trcc.legacy.adapters.system.windows_platform import _memory_type
         assert _memory_type(26) == 'DDR4'
         assert _memory_type(34) == 'DDR5'
         assert _memory_type(24) == 'DDR3'
 
     def test_unknown_type(self):
-        from trcc.adapters.system.windows_platform import _memory_type
+        from trcc.legacy.adapters.system.windows_platform import _memory_type
         assert _memory_type(99) == 'Unknown'
 
 
 class TestDiskType:
 
     def test_ssd_from_model(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'Samsung SSD 990 PRO'
         disk.MediaType = ''
         assert _disk_type(disk) == 'SSD'
 
     def test_nvme_from_model(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'WD Black NVME 1TB'
         disk.MediaType = ''
         assert _disk_type(disk) == 'SSD'
 
     def test_hdd_from_model(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'Seagate Barracuda HDD'
         disk.MediaType = ''
         assert _disk_type(disk) == 'HDD'
 
     def test_hdd_from_media_type(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'Generic Disk'
         disk.MediaType = 'Fixed hard disk media'
         assert _disk_type(disk) == 'HDD'
 
     def test_ssd_from_media_type(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'Generic Disk'
         disk.MediaType = 'Solid state drive'
         assert _disk_type(disk) == 'SSD'
 
     def test_unknown(self):
-        from trcc.adapters.system.windows_platform import _disk_type
+        from trcc.legacy.adapters.system.windows_platform import _disk_type
         disk = MagicMock()
         disk.Model = 'Generic'
         disk.MediaType = ''

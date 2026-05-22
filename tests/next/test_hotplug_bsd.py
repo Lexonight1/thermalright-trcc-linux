@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.system._hotplug import (
+from trcc.adapters.system._hotplug import (
     FreeBSDHotplugMonitor,
     _parse_devd_event,
 )
-from trcc.next.core.events import (
+from trcc.core.events import (
     DeviceAttached,
     DeviceDetached,
     EventBus,
@@ -150,7 +150,7 @@ def test_start_no_op_when_socket_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No devd running → start() logs once and returns idle."""
-    from trcc.next.adapters.system import _hotplug as hotplug_mod
+    from trcc.adapters.system import _hotplug as hotplug_mod
 
     monkeypatch.setattr(hotplug_mod, "_open_devd_socket", lambda: None)
 

@@ -93,7 +93,7 @@ def check_apply_temp_unit(trcc_fn: Callable) -> CheckResult:
 def check_api_get_metrics(_trcc_fn: Callable) -> CheckResult:
     """``GET /system/metrics`` returns full metrics dict."""
     def _go() -> str:
-        from trcc.ui.api.system import get_metrics
+        from trcc.legacy.ui.api.system import get_metrics
         d = get_metrics()
         if "cpu_temp" not in d:
             raise AssertionError(f"cpu_temp missing from {sorted(d)[:5]}")
@@ -104,7 +104,7 @@ def check_api_get_metrics(_trcc_fn: Callable) -> CheckResult:
 def check_api_get_metrics_by_category(_trcc_fn: Callable) -> CheckResult:
     """``GET /system/metrics/{category}`` filters by prefix."""
     def _go() -> str:
-        from trcc.ui.api.system import get_metrics_by_category
+        from trcc.legacy.ui.api.system import get_metrics_by_category
         d = get_metrics_by_category("cpu")
         if not all(k.startswith("cpu_") for k in d):
             raise AssertionError(f"unexpected keys: {sorted(d)}")
@@ -115,7 +115,7 @@ def check_api_get_metrics_by_category(_trcc_fn: Callable) -> CheckResult:
 def check_cli_show_info(_trcc_fn: Callable) -> CheckResult:
     """``trcc info`` (cli/_system.py:show_info) reads ``trcc.os.metrics``."""
     def _go() -> str:
-        from trcc.ui.cli._system import show_info
+        from trcc.legacy.ui.cli._system import show_info
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = show_info(preview=False)
@@ -128,7 +128,7 @@ def check_cli_show_info(_trcc_fn: Callable) -> CheckResult:
 def check_cli_test_led(_trcc_fn: Callable) -> CheckResult:
     """``trcc led test`` (cli/_led.py:test_led) reads ``trcc.os.metrics``."""
     def _go() -> str:
-        from trcc.ui.cli._led import test_led
+        from trcc.legacy.ui.cli._led import test_led
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = test_led(segments=10, duration=1, mode="static")
@@ -139,7 +139,7 @@ def check_cli_test_led(_trcc_fn: Callable) -> CheckResult:
 def check_cli_test_lcd(_trcc_fn: Callable) -> CheckResult:
     """``trcc lcd test`` (cli/_led.py:test_lcd) reads ``trcc.os.metrics``."""
     def _go() -> str:
-        from trcc.ui.cli._led import test_lcd
+        from trcc.legacy.ui.cli._led import test_lcd
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = test_lcd(cols=40)
@@ -150,7 +150,7 @@ def check_cli_test_lcd(_trcc_fn: Callable) -> CheckResult:
 def check_metrics_loop_broadcast(trcc_fn: Callable) -> CheckResult:
     """``PollingMetricsLoop._poll_metrics`` publishes ``Topic.METRICS`` from ``trcc.os.metrics``."""
     def _go() -> str:
-        from trcc.core.events import Topic
+        from trcc.legacy.core.events import Topic
         t = trcc_fn()
         captured: list = []
         sub = t.events.subscribe(
@@ -192,7 +192,7 @@ def main() -> int:
 
     # Single shared Trcc — _boot.trcc() caches the singleton so every
     # check reuses one composition root (matches production).
-    from trcc._boot import trcc as _trcc
+    from trcc.legacy._boot import trcc as _trcc
 
     failed = 0
     for check in _CHECKS:

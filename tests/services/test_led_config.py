@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from trcc.core.models import LEDMode, LEDState, LEDZoneState
-from trcc.services.led_config import (
+from trcc.legacy.core.models import LEDMode, LEDState, LEDZoneState
+from trcc.legacy.services.led_config import (
     _ALIASES,
     _PERSIST_FIELDS,
     _serialize,

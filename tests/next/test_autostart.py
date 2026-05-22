@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.next.adapters.system.linux import LinuxAutostart
+from trcc.adapters.system.linux import LinuxAutostart
 
 
 def test_is_enabled_false_when_no_file(tmp_home: Path) -> None:
@@ -19,7 +19,7 @@ def test_enable_writes_desktop_entry(tmp_home: Path) -> None:
     assert mgr.is_enabled() is True
     assert mgr.path.exists()
     assert mgr.path.parent.name == "autostart"
-    assert mgr.path.name == "trcc-next.desktop"
+    assert mgr.path.name == "trcc.desktop"
 
 
 def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
@@ -31,9 +31,9 @@ def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
     assert text.startswith("[Desktop Entry]"), "must start with spec-required header"
     assert "\nType=Application\n" in text
     assert "\nExec=" in text
-    # Exec resolves to `trcc-next gui` (preferred, if script on PATH) or
-    # `<python> -m trcc.next gui` (fallback).  Either points at next/.
-    assert "trcc-next" in text or "trcc.next" in text, (
+    # Exec resolves to `trcc gui` (preferred, if script on PATH) or
+    # `<python> -m trcc gui` (fallback).  Either points at next/.
+    assert "trcc" in text or "trcc.next" in text, (
         "Exec line should reference the next/ tree"
     )
 

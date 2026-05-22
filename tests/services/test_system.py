@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trcc.services.system import (
+from trcc.legacy.services.system import (
     SystemService,
     format_metric,
     get_instance,
@@ -280,12 +280,12 @@ class TestPanelStats:
 class TestModuleApi:
     def test_get_instance_raises_before_set(self, monkeypatch):
         # The module-level singleton is shared across tests; isolate via monkey-patch.
-        monkeypatch.setattr('trcc.services.system._instance', None)
+        monkeypatch.setattr('trcc.legacy.services.system._instance', None)
         with pytest.raises(RuntimeError, match='not initialized'):
             get_instance()
 
     def test_set_instance_starts_polling(self, monkeypatch):
-        monkeypatch.setattr('trcc.services.system._instance', None)
+        monkeypatch.setattr('trcc.legacy.services.system._instance', None)
         enum = MagicMock()
         enum.discover.return_value = []
         svc = SystemService(platform=_make_platform(enum), settings=_make_settings())
@@ -294,7 +294,7 @@ class TestModuleApi:
         assert get_instance() is svc
 
     def test_module_set_poll_interval_delegates_to_singleton(self, monkeypatch):
-        monkeypatch.setattr('trcc.services.system._instance', None)
+        monkeypatch.setattr('trcc.legacy.services.system._instance', None)
         enum = MagicMock()
         enum.discover.return_value = []
         svc = SystemService(platform=_make_platform(enum), settings=_make_settings())

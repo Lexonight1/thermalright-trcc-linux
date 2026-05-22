@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.next.app import App
-from trcc.next.core.commands import (
+from trcc.app import App
+from trcc.core.commands import (
     EnableLedTestMode,
     SetLedBrightness,
     SetLedColor,
@@ -12,8 +12,8 @@ from trcc.next.core.commands import (
     SetLedMode,
     SetLedTempSource,
 )
-from trcc.next.core.led_models import LEDMode
-from trcc.next.services.settings import Settings
+from trcc.core.led_models import LEDMode
+from trcc.services.settings import Settings
 
 from .conftest import FakePaths, FakePlatform
 
@@ -146,10 +146,10 @@ def test_led_settings_persist_across_reload(tmp_path: Path) -> None:
 
 
 def _new_runtime_with_timer(rgb_timer: int):
-    from trcc.next.core.led_models import LedRuntimeState
+    from trcc.core.led_models import LedRuntimeState
     return LedRuntimeState(rgb_timer=rgb_timer)
 
 
 def _new_runtime_with_test(*, timer: int, color: int):
-    from trcc.next.core.led_models import LedRuntimeState
+    from trcc.core.led_models import LedRuntimeState
     return LedRuntimeState(test_timer=timer, test_color=color)

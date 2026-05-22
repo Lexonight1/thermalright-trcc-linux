@@ -1,4 +1,4 @@
-"""trcc-next shell REPL — non-interactive pieces.
+"""trcc shell REPL — non-interactive pieces.
 
 The full ``run_shell`` is interactive (prompt_toolkit reads from a
 TTY), so the tests cover the pieces we can verify without driving a
@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 import typer
 
-from trcc.next.ui.cli.main import app as cli_app
-from trcc.next.ui.cli.shell import (
+from trcc.ui.cli.main import app as cli_app
+from trcc.ui.cli.shell import (
     _build_completer,
     _history_path,
     _run_typer_line,
@@ -130,7 +130,7 @@ def test_history_path_creates_directory(
     assert path.parent.is_dir()
     # Filename is stable across sessions
     assert path.name == "shell_history"
-    assert path.parent == tmp_path / ".local" / "state" / "trcc-next"
+    assert path.parent == tmp_path / ".local" / "state" / "trcc"
 
 
 def test_history_path_honors_xdg_state_home(
@@ -139,5 +139,5 @@ def test_history_path_honors_xdg_state_home(
     custom = tmp_path / "custom-xdg-state"
     monkeypatch.setenv("XDG_STATE_HOME", str(custom))
     path = _history_path()
-    assert path.parent == custom / "trcc-next"
+    assert path.parent == custom / "trcc"
     assert path.parent.is_dir()

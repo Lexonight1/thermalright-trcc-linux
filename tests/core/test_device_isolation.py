@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from trcc.core.models import (
+from trcc.legacy.core.models import (
     _PM_SUB_TO_FBL,
     _PM_TO_FBL_OVERRIDES,
     _VARIANT_REGISTRY,
@@ -23,7 +23,7 @@ from trcc.core.models import (
     get_button_image,
     pm_to_fbl,
 )
-from trcc.core.paths import has_themes
+from trcc.legacy.core.paths import has_themes
 
 DEV_DIR = Path(__file__).resolve().parents[2] / 'dev'
 DEV_DATA = DEV_DIR / '.trcc' / 'data'

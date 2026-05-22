@@ -3,8 +3,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from trcc.core.builder import ControllerBuilder
-from trcc.services.image import ImageService
+from trcc.legacy.core.builder import ControllerBuilder
+from trcc.legacy.services.image import ImageService
 
 
 def _make_builder() -> ControllerBuilder:
@@ -15,10 +15,10 @@ def _make_builder() -> ControllerBuilder:
 class TestControllerBuilderLcd(unittest.TestCase):
     """ControllerBuilder.build_device() — assembles LCD Device with DI."""
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_returns_lcd_device(self, _):
         """build_device() returns an LCD Device instance."""
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         device = _make_builder().with_renderer(ImageService.renderer()).build_device()
         self.assertIsInstance(device, Device)
         self.assertTrue(device.is_lcd)
@@ -29,32 +29,32 @@ class TestControllerBuilderLcd(unittest.TestCase):
             _make_builder().build_device()
         self.assertIn('renderer', str(ctx.exception))
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_wires_device_service(self, _):
         """Device has a wired DeviceService."""
         device = _make_builder().with_renderer(ImageService.renderer()).build_device()
         self.assertIsNotNone(device._device_svc)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_wires_display_service(self, _):
         """Device has a wired DisplayService."""
         device = _make_builder().with_renderer(ImageService.renderer()).build_device()
         self.assertIsNotNone(device._display_svc)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_wires_theme_service(self, _):
         """Device has a wired ThemeService."""
         device = _make_builder().with_renderer(ImageService.renderer()).build_device()
         self.assertIsNotNone(device._theme_svc)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_wires_renderer(self, _):
         """Device has the injected renderer."""
         renderer = ImageService.renderer()
         device = _make_builder().with_renderer(renderer).build_device()
         self.assertIs(device._renderer, renderer)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_with_data_dir_triggers_initialize(self, mock_ensure):
         """with_data_dir() causes build_device() to call device.initialize()."""
         import tempfile
@@ -67,7 +67,7 @@ class TestControllerBuilderLcd(unittest.TestCase):
             # initialize was called (ensure_all is the data download step)
             self.assertIsNotNone(device)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_build_device_without_data_dir_skips_initialize(self, mock_ensure):
         """Without with_data_dir(), initialize is not called."""
         device = _make_builder().with_renderer(ImageService.renderer()).build_device()
@@ -80,7 +80,7 @@ class TestControllerBuilderLed(unittest.TestCase):
 
     def _led_detected(self):
         """Build a DetectedDevice with protocol='led'."""
-        from trcc.core.models import DetectedDevice
+        from trcc.legacy.core.models import DetectedDevice
         return DetectedDevice(
             vid=0x0416, pid=0x8001,
             vendor_name="Winbond", product_name="LED",
@@ -89,7 +89,7 @@ class TestControllerBuilderLed(unittest.TestCase):
 
     def test_build_device_returns_led_device(self):
         """build_device(led_detected) returns an LED Device instance."""
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         device = _make_builder().build_device(self._led_detected())
         self.assertIsInstance(device, Device)
         self.assertTrue(device.is_led)
@@ -114,7 +114,7 @@ class TestControllerBuilderDeviceFromService(unittest.TestCase):
     """ControllerBuilder.device_from_service() — builds from existing DeviceService."""
 
     def test_returns_device(self):
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         svc = MagicMock()
         svc.selected = MagicMock()
         device = _make_builder().device_from_service(svc)
@@ -134,11 +134,11 @@ class TestControllerBuilderSetup(unittest.TestCase):
     """ControllerBuilder.os — platform accessed via builder.os property."""
 
     def setUp(self):
-        from trcc.adapters.system.linux_platform import LinuxPlatform
+        from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
         self._builder = ControllerBuilder(LinuxPlatform())
 
     def test_returns_os_platform(self):
-        from trcc.core.ports import Platform
+        from trcc.legacy.core.ports import Platform
         self.assertIsInstance(self._builder.os, Platform)
 
     def test_has_archive_tool_help(self):
@@ -176,10 +176,10 @@ class TestControllerBuilderFluent(unittest.TestCase):
         b = _make_builder()
         self.assertIsNone(b._data_dir)
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_full_chain(self, _):
         """Full fluent chain builds successfully."""
-        from trcc.core.device import Device
+        from trcc.legacy.core.device import Device
         device = (_make_builder()
                   .with_renderer(ImageService.renderer())
                   .build_device())
@@ -191,28 +191,28 @@ class TestControllerBuilderBootstrap(unittest.TestCase):
     """ControllerBuilder.bootstrap() — logging + setup + settings init."""
 
     def test_bootstrap_calls_logging_configurator(self):
-        with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
-              patch('trcc.conf.init_settings')):
+        with (patch('trcc.legacy.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
+              patch('trcc.legacy.conf.init_settings')):
             _make_builder().bootstrap()
         mock_log.assert_called_once()
 
     def test_bootstrap_passes_verbosity(self):
-        with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
-              patch('trcc.conf.init_settings')):
+        with (patch('trcc.legacy.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
+              patch('trcc.legacy.conf.init_settings')):
             _make_builder().bootstrap(verbosity=2)
         mock_log.assert_called_once_with(verbosity=2)
 
     def test_bootstrap_calls_configure_stdout(self):
         b = _make_builder()
-        with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
-              patch('trcc.conf.init_settings')):
+        with (patch('trcc.legacy.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
+              patch('trcc.legacy.conf.init_settings')):
             b.bootstrap()
         b.os.configure_stdout.assert_called_once()
 
     def test_bootstrap_calls_init_settings_with_os(self):
         b = _make_builder()
-        with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
-              patch('trcc.conf.init_settings') as mock_init):
+        with (patch('trcc.legacy.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
+              patch('trcc.legacy.conf.init_settings') as mock_init):
             b.bootstrap()
         mock_init.assert_called_once_with(b.os)
 
@@ -221,7 +221,7 @@ class TestControllerBuilderSystem(unittest.TestCase):
     """ControllerBuilder.build_system() — SystemService assembly."""
 
     def test_build_system_returns_system_service(self):
-        from trcc.services.system import SystemService
+        from trcc.legacy.services.system import SystemService
         system = _make_builder().build_system()
         self.assertIsInstance(system, SystemService)
 
@@ -263,11 +263,11 @@ class TestControllerBuilderExtra(unittest.TestCase):
 class TestBuilderPsutilFallback(unittest.TestCase):
     """_make_build_services_fn: psutil ImportError → lcd still builds."""
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    @patch('trcc.legacy.adapters.infra.data_repository.DataManager.ensure_all')
     def test_psutil_unavailable_still_builds_device(self, _):
         import sys
 
-        from trcc.services.image import ImageService
+        from trcc.legacy.services.image import ImageService
         renderer = ImageService.renderer()
         with patch.dict(sys.modules, {'psutil': None}):
             device = _make_builder().with_renderer(renderer).build_device()

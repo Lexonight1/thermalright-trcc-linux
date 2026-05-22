@@ -23,12 +23,15 @@ Usage (gui/__init__.py)::
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from trcc.__version__ import __version__
+
+if TYPE_CHECKING:
+    from ...app import App
 
 log = logging.getLogger(__name__)
 
@@ -128,40 +131,60 @@ class TrccSplash(QWidget):
 
 
 class BootstrapWorker(QThread):
-    """Runs ``Trcc.discover()`` in a background QThread.
+    """Runs ``DiscoverDevices`` on the App in a background QThread.
 
-    Subscribes to ``Topic.BOOTSTRAP_PROGRESS`` on the Trcc's EventBus so
-    download/extraction progress strings are forwarded as the
-    ``progress(str)`` Qt signal — safely crossing from the worker thread
-    to the main thread. ``QThread.finished`` fires automatically when
-    ``run()`` returns.
+    Legacy emitted live progress text from ``Topic.BOOTSTRAP_PROGRESS``
+    that the splash showed.  next/'s EventBus has no equivalent
+    "incremental bootstrap step" event yet; the splash stays on a
+    static "Connecting…" string until discovery finishes.  Adding a
+    ``BootstrapProgress`` event later restores the live updates.
+
+    ``QThread.finished`` fires automatically when ``run()`` returns.
     """
 
     progress: Signal = Signal(str)
     failed: Signal = Signal(str)
 
-    def __init__(self, trcc_handle: Any) -> None:
+    def __init__(self, app: App) -> None:
         super().__init__()
-        self._trcc = trcc_handle
+        self._app = app
 
     def run(self) -> None:
-        from trcc.core.events import Topic
+        """Discover + connect every attached device.
 
-        sub_id = self._trcc.events.subscribe(
-            Topic.BOOTSTRAP_PROGRESS,
-            lambda msg: self.progress.emit(str(msg)),
-        )
+        next/'s split:
+          * ``DiscoverDevices`` — enumerate the registry against live USB
+          * ``ConnectDevice(key=…)`` — attach the transport + handshake
+
+        The window's sidebar reads from ``app.devices``, which only the
+        Connect step populates.  Without this loop the GUI starts empty
+        and every subsequent dispatch on a device key errors out with
+        "Not attached: vid:pid".
+        """
+        from ...core.commands import ConnectDevice, DiscoverDevices
+
         try:
-            self._trcc.discover()
+            self.progress.emit("Discovering devices…")
+            result = self._app.dispatch(DiscoverDevices())
+            for product in result.products:
+                self.progress.emit(
+                    f"Connecting {product.vendor} {product.product}…",
+                )
+                connect_result = self._app.dispatch(
+                    ConnectDevice(key=product.key),
+                )
+                if not connect_result.ok:
+                    log.warning(
+                        "Connect %s failed: %s",
+                        product.key, connect_result.message,
+                    )
         except Exception as exc:
             log.exception("Bootstrap error")
             self.failed.emit(str(exc))
-        finally:
-            self._trcc.events.unsubscribe(sub_id)
 
 
-def run_bootstrap_with_splash(trcc_handle: Any) -> bool:
-    """Show splash, run discover() in background, close splash when done.
+def run_bootstrap_with_splash(app: App) -> bool:
+    """Show splash, run DiscoverDevices in background, close splash.
 
     Returns True on success, False if bootstrap raised an exception.
     Caller must have a live QApplication before calling this.
@@ -170,10 +193,10 @@ def run_bootstrap_with_splash(trcc_handle: Any) -> bool:
     splash.show()
     QApplication.processEvents()
 
-    worker = BootstrapWorker(trcc_handle)
+    worker = BootstrapWorker(app)
 
     error: list[str] = []
-    worker.failed.connect(lambda msg: error.append(msg))  # type: ignore[arg-type]
+    worker.failed.connect(error.append)
     worker.progress.connect(splash.update_message)
 
     loop = QEventLoop()

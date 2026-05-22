@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
-from trcc.adapters.infra.theme_cloud import (
+from trcc.legacy.adapters.infra.theme_cloud import (
     CATEGORIES,
     CATEGORY_NAMES,
     RESOLUTION_URLS,
@@ -166,7 +166,7 @@ class TestDownloaderDownload(unittest.TestCase):
         response.__exit__ = MagicMock(return_value=False)
         return response
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_theme_success(self, mock_urlopen):
         mock_urlopen.return_value = self._mock_urlopen()
 
@@ -176,7 +176,7 @@ class TestDownloaderDownload(unittest.TestCase):
             assert result is not None
             self.assertTrue(Path(result).exists())
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_theme_returns_cached(self, mock_urlopen):
         with tempfile.TemporaryDirectory() as tmp:
             dl = CloudThemeDownloader(cache_dir=tmp)
@@ -188,7 +188,7 @@ class TestDownloaderDownload(unittest.TestCase):
             self.assertEqual(result, str(cached))
             mock_urlopen.assert_not_called()
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_preview_png(self, mock_urlopen):
         mock_urlopen.return_value = self._mock_urlopen(b'\x89PNG')
 
@@ -204,7 +204,7 @@ class TestDownloaderDownload(unittest.TestCase):
             cached = Path(tmp) / 'a001.mp4'
             cached.write_bytes(b'\xFF')
 
-            with patch('trcc.adapters.infra.theme_cloud.urlopen') as mock_urlopen:
+            with patch('trcc.legacy.adapters.infra.theme_cloud.urlopen') as mock_urlopen:
                 mock_urlopen.return_value = self._mock_urlopen()
                 dl.download_theme('a001', force=True)
                 mock_urlopen.assert_called_once()
@@ -224,7 +224,7 @@ class TestDownloaderCancel(unittest.TestCase):
 
 class TestDownloaderErrorHandling(unittest.TestCase):
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_file_http_404(self, mock_urlopen):
         err = HTTPError(
             'http://test.com/a001.mp4', 404, 'Not Found', {}, None  # type: ignore[arg-type]
@@ -236,7 +236,7 @@ class TestDownloaderErrorHandling(unittest.TestCase):
             self.assertIsNone(result)
         err.close()
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_file_http_500(self, mock_urlopen):
         err = HTTPError(
             'http://test.com/a001.mp4', 500, 'Server Error', {}, None  # type: ignore[arg-type]
@@ -248,7 +248,7 @@ class TestDownloaderErrorHandling(unittest.TestCase):
             self.assertIsNone(result)
         err.close()
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_file_url_error(self, mock_urlopen):
         mock_urlopen.side_effect = URLError('Connection refused')
         with tempfile.TemporaryDirectory() as tmp:
@@ -256,7 +256,7 @@ class TestDownloaderErrorHandling(unittest.TestCase):
             result = dl.download_theme('a001')
             self.assertIsNone(result)
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_file_generic_exception(self, mock_urlopen):
         mock_urlopen.side_effect = OSError('Disk full')
         with tempfile.TemporaryDirectory() as tmp:
@@ -277,7 +277,7 @@ class TestDownloaderProgress(unittest.TestCase):
         response.__exit__ = MagicMock(return_value=False)
         return response
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_with_progress_callback(self, mock_urlopen):
         data = b'\x00' * 100
         mock_urlopen.return_value = self._mock_urlopen(data)
@@ -291,7 +291,7 @@ class TestDownloaderProgress(unittest.TestCase):
         # Last call should be 100%
         self.assertEqual(progress_calls[-1][2], 100)
 
-    @patch('trcc.adapters.infra.theme_cloud.urlopen')
+    @patch('trcc.legacy.adapters.infra.theme_cloud.urlopen')
     def test_download_no_content_length(self, mock_urlopen):
         """When content-length is missing, download still succeeds."""
         response = MagicMock()
@@ -414,7 +414,7 @@ class TestDownloadErrors(unittest.TestCase):
         from urllib.error import HTTPError
         dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
         err = HTTPError('http://test.com', 404, 'Not Found', {}, None)
-        with patch('trcc.adapters.infra.theme_cloud.urlopen', side_effect=err):
+        with patch('trcc.legacy.adapters.infra.theme_cloud.urlopen', side_effect=err):
             result = dl._download_file('http://test.com/a.mp4', Path('/tmp/out.mp4'))
         self.assertIsNone(result)
         err.close()
@@ -423,7 +423,7 @@ class TestDownloadErrors(unittest.TestCase):
         """_download_file handles URLError."""
         from urllib.error import URLError
         dl = CloudThemeDownloader(cache_dir='/tmp/test_cache')
-        with patch('trcc.adapters.infra.theme_cloud.urlopen', side_effect=URLError('DNS failed')):
+        with patch('trcc.legacy.adapters.infra.theme_cloud.urlopen', side_effect=URLError('DNS failed')):
             result = dl._download_file('http://bad.host/a.mp4', Path('/tmp/out.mp4'))
         self.assertIsNone(result)
 
@@ -436,7 +436,7 @@ class TestDownloadErrors(unittest.TestCase):
         response.__exit__ = MagicMock(return_value=False)
         response.headers = {'Content-Length': '1000'}
         response.read.return_value = b'x' * 100
-        with patch('trcc.adapters.infra.theme_cloud.urlopen', return_value=response):
+        with patch('trcc.legacy.adapters.infra.theme_cloud.urlopen', return_value=response):
             with patch.object(Path, 'exists', return_value=False):
                 result = dl._download_file('http://test.com/a.mp4', Path('/tmp/out.mp4'))
         self.assertIsNone(result)
@@ -462,7 +462,7 @@ class TestDownloadProgress(unittest.TestCase):
         def on_progress(done, total, pct):
             progress_calls.append((done, total, pct))
 
-        with patch('trcc.adapters.infra.theme_cloud.urlopen', return_value=response):
+        with patch('trcc.legacy.adapters.infra.theme_cloud.urlopen', return_value=response):
             with patch('builtins.open', unittest.mock.mock_open()):
                 with patch.object(Path, 'exists', return_value=False):
                     with patch.object(Path, 'rename'):
@@ -481,7 +481,7 @@ class TestDownloadThemeConvenience(unittest.TestCase):
 
     @patch.object(CloudThemeDownloader, 'download_theme', return_value='/tmp/a001.mp4')
     def test_convenience_function(self, mock_dl):
-        from trcc.adapters.infra.theme_cloud import download_theme
+        from trcc.legacy.adapters.infra.theme_cloud import download_theme
         result = download_theme('a001', resolution='320x320')
         self.assertEqual(result, '/tmp/a001.mp4')
 

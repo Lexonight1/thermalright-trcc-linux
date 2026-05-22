@@ -16,18 +16,18 @@ from pathlib import Path
 
 import pytest
 
-from trcc.next.app import App
-from trcc.next.core.commands import (
+from trcc.app import App
+from trcc.core.commands import (
     EnableOverlay,
     SetFitMode,
     SetSplitMode,
 )
-from trcc.next.core.events import (
+from trcc.core.events import (
     FitModeChanged,
     OverlayChanged,
     SplitModeChanged,
 )
-from trcc.next.core.models import FitMode
+from trcc.core.models import FitMode
 
 from .conftest import FakePlatform
 

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.device.bulk_lcd import BulkLcd
-from trcc.next.core.models import Kind, ProductInfo, Wire
+from trcc.adapters.device.bulk_lcd import BulkLcd
+from trcc.core.models import Kind, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport
 
@@ -220,6 +220,6 @@ def test_send_before_handshake_raises_transport_error(
     device = _make_bulk(fake_bulk)
     # transport is "open" via the fake, but profile is None — guard kicks in
 
-    from trcc.next.core.errors import TransportError
+    from trcc.core.errors import TransportError
     with pytest.raises(TransportError):
         device.send(b"\xff\xd8" + b"\x00" * 100)

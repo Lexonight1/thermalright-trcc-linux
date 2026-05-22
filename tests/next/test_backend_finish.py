@@ -6,15 +6,15 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.next.adapters.repo.github_releases import (
+from trcc.adapters.repo.github_releases import (
     GitHubReleases,
     is_newer,
     parse_version,
 )
-from trcc.next.adapters.repo.http import HttpFetchError
-from trcc.next.core.ports import HttpFetcher
-from trcc.next.services.keepalive import KeepaliveService
-from trcc.next.services.slideshow import SlideshowConfig, SlideshowService
+from trcc.adapters.repo.http import HttpFetchError
+from trcc.core.ports import HttpFetcher
+from trcc.services.keepalive import KeepaliveService
+from trcc.services.slideshow import SlideshowConfig, SlideshowService
 
 # =========================================================================
 # Version parser + GitHub adapter
@@ -165,14 +165,14 @@ def test_keepalive_seconds_since_send_increments() -> None:
 
 @pytest.fixture
 def _trcc_app(fake_platform):
-    from trcc.next.app import App
+    from trcc.app import App
     return App(fake_platform)
 
 
 def test_check_for_update_with_canned_http(_trcc_app) -> None:
     """Replace App.http via the public github_releases attribute."""
-    from trcc.next.adapters.repo.github_releases import GitHubReleases
-    from trcc.next.core.commands import CheckForUpdate
+    from trcc.adapters.repo.github_releases import GitHubReleases
+    from trcc.core.commands import CheckForUpdate
 
     url = (
         "https://api.github.com/repos/Lexonight1/"
@@ -187,8 +187,8 @@ def test_check_for_update_with_canned_http(_trcc_app) -> None:
 
 
 def test_check_for_update_network_failure(_trcc_app) -> None:
-    from trcc.next.adapters.repo.github_releases import GitHubReleases
-    from trcc.next.core.commands import CheckForUpdate
+    from trcc.adapters.repo.github_releases import GitHubReleases
+    from trcc.core.commands import CheckForUpdate
 
     _trcc_app.github_releases = GitHubReleases(http=_FakeHttp({}))
     result = _trcc_app.dispatch(CheckForUpdate())
@@ -197,7 +197,7 @@ def test_check_for_update_network_failure(_trcc_app) -> None:
 
 
 def test_run_upgrade_dry_run_returns_command(_trcc_app) -> None:
-    from trcc.next.core.commands import RunUpgrade
+    from trcc.core.commands import RunUpgrade
 
     result = _trcc_app.dispatch(RunUpgrade(dry_run=True))
     # On a system with a detected pm, command is populated; otherwise
@@ -210,7 +210,7 @@ def test_run_upgrade_dry_run_returns_command(_trcc_app) -> None:
 
 
 def test_set_slideshow_persists_state(_trcc_app) -> None:
-    from trcc.next.core.commands import SetSlideshow
+    from trcc.core.commands import SetSlideshow
 
     r = _trcc_app.dispatch(
         SetSlideshow(key="0402:3922", enabled=True),
@@ -222,7 +222,7 @@ def test_set_slideshow_persists_state(_trcc_app) -> None:
 
 
 def test_configure_slideshow_sets_themes_and_interval(_trcc_app) -> None:
-    from trcc.next.core.commands import ConfigureSlideshow
+    from trcc.core.commands import ConfigureSlideshow
 
     r = _trcc_app.dispatch(ConfigureSlideshow(
         key="0402:3922",
@@ -235,7 +235,7 @@ def test_configure_slideshow_sets_themes_and_interval(_trcc_app) -> None:
 
 
 def test_configure_slideshow_rejects_short_interval(_trcc_app) -> None:
-    from trcc.next.core.commands import ConfigureSlideshow
+    from trcc.core.commands import ConfigureSlideshow
 
     r = _trcc_app.dispatch(ConfigureSlideshow(
         key="0402:3922", interval_s=0.1,
@@ -245,7 +245,7 @@ def test_configure_slideshow_rejects_short_interval(_trcc_app) -> None:
 
 
 def test_keepalive_loop_without_cached_frame(_trcc_app) -> None:
-    from trcc.next.core.commands import KeepAliveLoop
+    from trcc.core.commands import KeepAliveLoop
 
     r = _trcc_app.dispatch(KeepAliveLoop(key="0402:3922", count=1))
     assert r.ok is False
@@ -253,7 +253,7 @@ def test_keepalive_loop_without_cached_frame(_trcc_app) -> None:
 
 
 def test_keepalive_loop_zero_count_rejected(_trcc_app) -> None:
-    from trcc.next.core.commands import KeepAliveLoop
+    from trcc.core.commands import KeepAliveLoop
 
     r = _trcc_app.dispatch(KeepAliveLoop(key="0402:3922", count=0))
     assert r.ok is False

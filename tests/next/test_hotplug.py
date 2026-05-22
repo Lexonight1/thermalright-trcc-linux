@@ -14,12 +14,12 @@ from typing import Any
 
 import pytest
 
-from trcc.next.adapters.system._hotplug import (
+from trcc.adapters.system._hotplug import (
     LinuxHotplugMonitor,
     NoopHotplugMonitor,
 )
-from trcc.next.app import App
-from trcc.next.core.events import (
+from trcc.app import App
+from trcc.core.events import (
     DeviceAttached,
     DeviceDetached,
     EventBus,
@@ -212,7 +212,7 @@ def test_linux_monitor_skips_when_pyudev_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No pyudev installed → start() logs + returns; no thread spawned."""
-    from trcc.next.adapters.system import _hotplug as hotplug_mod
+    from trcc.adapters.system import _hotplug as hotplug_mod
 
     monkeypatch.setattr(hotplug_mod, "_import_pyudev", lambda: None)
 

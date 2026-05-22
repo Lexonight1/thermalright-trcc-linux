@@ -16,9 +16,9 @@ import unittest
 
 from conftest import get_pixel, make_test_surface, surface_size
 
-from trcc.core.models import HardwareMetrics
-from trcc.services.image import ImageService
-from trcc.services.overlay import OverlayService as OverlayRenderer
+from trcc.legacy.core.models import HardwareMetrics
+from trcc.legacy.services.image import ImageService
+from trcc.legacy.services.overlay import OverlayService as OverlayRenderer
 
 _R = ImageService.renderer  # shorthand for renderer injection
 

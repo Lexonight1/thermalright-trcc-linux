@@ -30,8 +30,8 @@ def _legacy_build(
     is_on: list[bool] | None = None,
 ) -> bytes:
     """Legacy pipeline: remap → build_led_packet → wire bytes."""
-    from trcc.adapters.device.led import LedPacketBuilder
-    from trcc.core.models.led import remap_led_colors
+    from trcc.legacy.adapters.device.led import LedPacketBuilder
+    from trcc.legacy.core.models.led import remap_led_colors
 
     remapped = remap_led_colors(logical_colors, legacy_style_id, style_sub)
     return LedPacketBuilder.build_led_packet(
@@ -49,8 +49,8 @@ def _next_build(
     is_on: list[bool] | None = None,
 ) -> bytes:
     """Next/ pipeline: remap → Led._build_packet → wire bytes."""
-    from trcc.next.adapters.device.led import Led, LedPayload
-    from trcc.next.services.led_segment import remap_led_colors
+    from trcc.legacy.adapters.device.led import Led, LedPayload
+    from trcc.legacy.services.led_segment import remap_led_colors
 
     style = style_by_legacy_id()[legacy_style_id]
     remapped = remap_led_colors(logical_colors, style, style_sub)
@@ -165,12 +165,12 @@ def test_both_trees_importable_simultaneously() -> None:
     """Sanity — the entire point of the harness is that both trees
     coexist in one Python process.  This test imports the canonical
     entry points and asserts they're distinct classes."""
-    from trcc.adapters.device.led import LedPacketBuilder as LegacyBuilder
-    from trcc.next.adapters.device.led import Led as NextLed
+    from trcc.legacy.adapters.device.led import LedPacketBuilder as LegacyBuilder
+    from trcc.legacy.adapters.device.led import Led as NextLed
 
     assert LegacyBuilder is not NextLed
-    assert LegacyBuilder.__module__.startswith("trcc.adapters")
-    assert NextLed.__module__.startswith("trcc.next.adapters")
+    assert LegacyBuilder.__module__.startswith("trcc.legacy.adapters")
+    assert NextLed.__module__.startswith("trcc.legacy.adapters")
 
 
 # =========================================================================

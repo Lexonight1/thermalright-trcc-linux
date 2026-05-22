@@ -69,8 +69,8 @@ def _gradient_qimage(width: int, height: int):
 
 def _renderers():
     """Build one legacy QtRenderer + one next/ QtRenderer for this test."""
-    from trcc.adapters.render.qt import QtRenderer as LegacyQt
-    from trcc.next.adapters.render.qt import QtRenderer as NextQt
+    from trcc.legacy.adapters.render.qt import QtRenderer as LegacyQt
+    from trcc.legacy.adapters.render.qt import QtRenderer as NextQt
 
     return LegacyQt(), NextQt()
 

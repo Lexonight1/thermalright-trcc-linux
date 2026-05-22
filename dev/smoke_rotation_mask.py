@@ -64,24 +64,24 @@ def main() -> int:
     _clear_saved_device_state()
     platform = bootstrap()
 
-    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.legacy.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
     set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
 
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
 
-    from trcc._boot import trcc as _boot_trcc
-    from trcc.adapters.render.qt import QtRenderer
+    from trcc.legacy._boot import trcc as _boot_trcc
+    from trcc.legacy.adapters.render.qt import QtRenderer
     renderer = QtRenderer()
     t = _boot_trcc(cast(Any, platform), renderer=renderer, discover_now=True)
 
-    from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
+    from trcc.legacy.ui.gui.trcc_app import TRCCApp as _TRCCApp
     window = _TRCCApp(platform=cast(Any, platform), decorated=False)
 
     from itertools import chain
 
-    from trcc.core.events import Topic
+    from trcc.legacy.core.events import Topic
     t.events.publish(
         Topic.DEVICE_LIST, tuple(chain(t.lcd_devices, t.led_devices)),
     )
@@ -181,7 +181,7 @@ def main() -> int:
             _check(False, f"portrait mask dir exists: {mask_dir}")
             qapp.quit()
             return
-        from trcc.core.models import MaskInfo
+        from trcc.legacy.core.models import MaskInfo
         mask_info = MaskInfo(
             name='000a', path=mask_dir,
             preview_path=mask_dir / 'Theme.png',
@@ -224,7 +224,7 @@ def main() -> int:
         if not mask_dir.exists():
             _check(False, f"landscape mask dir exists: {mask_dir}")
             return
-        from trcc.core.models import MaskInfo
+        from trcc.legacy.core.models import MaskInfo
         mask_info = MaskInfo(
             name='001a', path=mask_dir,
             preview_path=mask_dir / 'Theme.png',
