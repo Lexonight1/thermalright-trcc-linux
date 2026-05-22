@@ -1214,6 +1214,34 @@ class ApplyMask(Command[MaskApplyResult]):
             )
         resolved = str(resolved_file.resolve())
         app.settings.set_mask_path(self.key, resolved)
+        # Auto-position the mask using its own config1.dc — legacy
+        # ``OverlayService.calculate_mask_position`` behaviour: full-size
+        # masks at (0,0); sub-screen masks read center coords from the
+        # sibling DC trailer and convert to top-left; missing/unreadable
+        # DC = center on the canvas.  Without this, sub-screen masks
+        # (most of the cloud catalog) draw at (0,0) and look invisible.
+        from ..services._dc_reader import calculate_mask_position
+        try:
+            mask_img = app.display._r.open_image(resolved_file)  # pyright: ignore[reportPrivateUsage]
+            mw, mh = app.display._r.surface_size(mask_img)  # pyright: ignore[reportPrivateUsage]
+        except Exception as e:
+            log.warning("ApplyMask: failed to size %s (%s) — position skipped",
+                        resolved_file, e)
+            mw, mh = (0, 0)
+        device = app.devices.get(self.key)
+        canvas: tuple[int, int] = (0, 0)
+        if device is not None and device.profile is not None:
+            canvas = device.profile.resolution
+        if mw > 0 and mh > 0 and canvas != (0, 0):
+            mask_dir = (
+                self.path if self.path.is_dir() else resolved_file.parent
+            )
+            px, py = calculate_mask_position(mask_dir, (mw, mh), canvas)
+            app.settings.set_mask_position(self.key, (px, py))
+            log.info(
+                "ApplyMask: %s sized %dx%d on %dx%d canvas → position (%d, %d)",
+                resolved_file.name, mw, mh, canvas[0], canvas[1], px, py,
+            )
         _invalidate_scene(app, self.key)
         app.events.publish(MaskApplied(key=self.key, path=resolved))
         # DeviceRenderObserver wired in App.__init__ subscribes to

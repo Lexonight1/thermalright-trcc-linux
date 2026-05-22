@@ -1775,7 +1775,21 @@ class TRCCApp(QMainWindow):
 
     def _update_ldd_icon(self) -> None:
         h = self._active_lcd()
-        if not h:
+        if h is None:
+            # Pre-activation default — show the highest-brightness icon
+            # instead of a blank button.  The icon updates again as
+            # soon as ``_activate_device`` runs and the handler reports
+            # its restored level.
+            from ...core.registry import BRIGHTNESS_STEPS
+            default_level = BRIGHTNESS_STEPS[-1]
+            pix = self._ldd_pixmaps.get(default_level)
+            if pix and not pix.isNull():
+                self.ldd_btn.setIcon(QIcon(pix))
+                self.ldd_btn.setIconSize(QSize(52, 24))
+                self.ldd_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
+            else:
+                self.ldd_btn.setText(f"L{default_level}")
+                self.ldd_btn.setStyleSheet(Styles.TEXT_BUTTON)
             return
         level = h.split_mode if h.ldd_is_split else h.brightness_level
         pix = self._ldd_pixmaps.get(level)

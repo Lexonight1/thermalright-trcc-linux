@@ -386,9 +386,16 @@ class DisplayService:
         # Playback override: PlayVideo Command pre-loads a video into
         # MediaService; StopVideo clears it. While a playback exists,
         # ignore the theme background entirely.
+        #
+        # Render reads the CURRENT frame without advancing — advancing
+        # is owned by the per-handler animation tick (or a future
+        # legacy-style PollingMetricsLoop tick).  Pre-fix advance() was
+        # called here AND in ``_on_video_tick`` AND on every observer-
+        # triggered RenderAndSend, so the cursor moved 2-3 steps per
+        # wall-clock tick — playback looked 2-3× too fast.
         playback = self._media.playback(info.key)
         if playback is not None and playback.frames:
-            frame: RawFrame | None = playback.advance()
+            frame: RawFrame | None = playback.current
             return self._r.from_raw_rgb24(frame) if frame else None
 
         path = self._themes.background_path(theme)
@@ -404,7 +411,7 @@ class DisplayService:
             except Exception as e:
                 log.warning("Video decode failed for %s: %s", path.name, e)
                 return None
-            frame = playback.advance()
+            frame = playback.current
             return self._r.from_raw_rgb24(frame) if frame else None
 
         if ext in _IMAGE_EXTS:

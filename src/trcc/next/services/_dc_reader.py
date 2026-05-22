@@ -453,6 +453,62 @@ def _build_dd_element(
 
 
 # =========================================================================
+# Mask position calculation — ported verbatim from legacy
+# ``OverlayService.calculate_mask_position``
+# =========================================================================
+
+
+def calculate_mask_position(
+    mask_dir: Path,
+    mask_size: tuple[int, int],
+    lcd_size: tuple[int, int],
+) -> tuple[int, int]:
+    """Compute mask top-left position from the mask's own config1.dc.
+
+    Direct port of legacy ``OverlayService.calculate_mask_position``:
+
+      * Full-size mask (≥ LCD in both dims) → ``(0, 0)``
+      * Sub-screen mask without a usable DC entry → centered
+      * Sub-screen mask WITH ``mask_position`` in its sibling
+        ``config1.dc`` → top-left from C# (XvalMB − W/2, YvalMB − H/2)
+
+    Reading the mask's own DC: the file's 0xDD trailer carries
+    ``mask_enabled`` + ``mask_position[x, y]`` (legacy: center
+    coordinates).  ``load_dc_as_theme_config`` already exposes both
+    fields in its output dict (added when ``_parse_dd`` started
+    capturing them).
+    """
+    mask_w, mask_h = mask_size
+    lcd_w, lcd_h = lcd_size
+    if mask_w >= lcd_w and mask_h >= lcd_h:
+        return (0, 0)
+    centered = ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+    dc_path = mask_dir / _DC_CONFIG_FILE_NAME
+    if not dc_path.is_file():
+        return centered
+    try:
+        cfg = load_dc_as_theme_config(dc_path)
+    except ThemeError as e:
+        log.warning("calculate_mask_position: %s unreadable (%s); centering",
+                    dc_path, e)
+        return centered
+    if not cfg.get("mask_visible"):
+        return centered
+    pos = cfg.get("mask_position")
+    if not isinstance(pos, (list, tuple)) or len(pos) != 2:
+        return centered
+    try:
+        cx, cy = int(pos[0]), int(pos[1])
+    except (TypeError, ValueError):
+        return centered
+    # DC stores CENTER coords; legacy renders at top-left = center - size/2.
+    return (cx - mask_w // 2, cy - mask_h // 2)
+
+
+_DC_CONFIG_FILE_NAME = "config1.dc"
+
+
+# =========================================================================
 # Legacy-shape adapter — for the legacy GUI port (overlay_grid widget)
 # =========================================================================
 
