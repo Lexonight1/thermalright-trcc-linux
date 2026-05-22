@@ -20,6 +20,8 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+log = logging.getLogger(__name__)
+
 _HANDLER_TAG = "_trcc_next_handler"
 _LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 _LOG_DATEFMT = "%Y-%m-%dT%H:%M:%S"
@@ -66,6 +68,12 @@ def configure_logging(
     stderr_handler.setFormatter(formatter)
     setattr(stderr_handler, _HANDLER_TAG, True)
     root.addHandler(stderr_handler)
+
+    log.info(
+        "configure_logging: file=%s level=%s rotate=%d×%d stderr=%s",
+        log_file, logging.getLevelName(level), max_bytes, backup_count,
+        logging.getLevelName(stderr_level),
+    )
 
 
 def tail_log(log_file: Path, n_lines: int = 1000) -> list[str]:

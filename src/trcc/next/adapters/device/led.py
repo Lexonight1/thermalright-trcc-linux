@@ -88,7 +88,9 @@ class Led(Device[BulkTransport]):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
+        log.info("Led %s: opening transport", self.info.key)
         if not self._transport.open():
+            log.error("Led %s: transport open failed", self.info.key)
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
         last_err: Exception | None = None
@@ -180,11 +182,14 @@ class Led(Device[BulkTransport]):
         the pre-handshake / unknown-PM cases) pass through unchanged.
         """
         if not isinstance(payload, LedPayload):
+            log.error("Led %s: send() got %s, expected LedPayload",
+                      self.info.key, type(payload).__name__)
             raise UnsupportedOperationError(
                 "Led.send() requires a LedPayload; "
                 f"got {type(payload).__name__}"
             )
         if not self._transport.is_open:
+            log.error("Led %s: send() called before connect()", self.info.key)
             raise TransportError(
                 f"Led {self.info.key} not connected — call connect() first"
             )
@@ -216,9 +221,11 @@ class Led(Device[BulkTransport]):
                 )
 
         packet = self._build_packet(payload)
+        log.debug("Led %s: sending %d-byte packet (%d colors)",
+                  self.info.key, len(packet), len(payload.colors))
 
         if not self._send_lock.acquire(blocking=False):
-            log.debug("Led.send: already sending — skipped")
+            log.debug("Led %s: already sending — skipped", self.info.key)
             return False
 
         try:
@@ -240,6 +247,7 @@ class Led(Device[BulkTransport]):
             self._send_lock.release()
 
     def disconnect(self) -> None:
+        log.info("Led %s: disconnecting", self.info.key)
         self._transport.close()
         self._handshake = None
         self._led_handshake = None

@@ -47,14 +47,22 @@ class QtScreenCapture(ScreenCapture):
         self, x: int, y: int, width: int, height: int,
     ) -> RawFrame:
         if width <= 0 or height <= 0:
+            log.error("QtScreenCapture: invalid region size %dx%d", width, height)
             raise OSError(
                 f"Invalid region size {width}x{height} — both must be > 0",
             )
 
+        log.debug("QtScreenCapture: grab region (%d,%d) %dx%d", x, y, width, height)
         pix = self._qt_grab(x, y, width, height)
         if pix is None or pix.isNull() or pix.width() <= 1:
+            log.info(
+                "QtScreenCapture: Qt native grab unusable (blank/Wayland) — "
+                "falling back to external tool",
+            )
             pix = self._external_grab(x, y, width, height)
         if pix is None or pix.isNull():
+            log.error("QtScreenCapture: all capture paths failed for (%d,%d) %dx%d",
+                      x, y, width, height)
             raise OSError(
                 "Screen capture failed — Qt returned a blank pixmap and "
                 "no fallback tool produced output.  On Wayland install "
@@ -90,23 +98,32 @@ class QtScreenCapture(ScreenCapture):
         try:
             for tool, template in attempts:
                 if shutil.which(tool) is None:
+                    log.debug("QtScreenCapture: %s not on PATH; skipping", tool)
                     continue
                 cmd = [s.replace("{out}", tmp_path) for s in template]
+                log.debug("QtScreenCapture: trying %s", " ".join(cmd))
                 try:
                     result = subprocess.run(
                         cmd, capture_output=True,
                         timeout=_EXTERNAL_TIMEOUT_S, check=False,
                     )
                 except subprocess.TimeoutExpired:
-                    log.warning("%s timed out on region capture", tool)
+                    log.warning("QtScreenCapture: %s timed out on region capture", tool)
                     continue
                 if result.returncode != 0:
+                    log.warning("QtScreenCapture: %s exited %d (stderr=%r)",
+                                tool, result.returncode,
+                                result.stderr[:200].decode("utf-8", "replace"))
                     continue
                 pix = QPixmap(tmp_path)
                 if not pix.isNull():
+                    log.info("QtScreenCapture: %s captured %dx%d",
+                             tool, pix.width(), pix.height())
                     return pix
+                log.warning("QtScreenCapture: %s output was null QPixmap", tool)
 
             # Last-ditch: full-screen grab + crop.
+            log.info("QtScreenCapture: falling back to full-screen grab + crop")
             screen = QApplication.primaryScreen()
             if screen is not None:
                 full = screen.grabWindow(0)  # type: ignore[arg-type]

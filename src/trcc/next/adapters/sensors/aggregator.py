@@ -225,15 +225,20 @@ class BaselineSensors(SensorEnumerator):
 
     def start_polling(self, interval_s: float = 2.0) -> None:
         if self._poll_thread and self._poll_thread.is_alive():
+            log.debug("sensor polling already running — start_polling ignored")
             return
         self._interval_s = max(0.5, interval_s)
         self._stop.clear()
         self._poll_thread = threading.Thread(
             target=self._poll_loop, daemon=True, name="sensor-poll")
         self._poll_thread.start()
-        log.debug("sensor polling started (interval=%.1fs)", self._interval_s)
+        log.info("sensor polling started (interval=%.1fs)", self._interval_s)
 
     def stop_polling(self) -> None:
+        if not (self._poll_thread and self._poll_thread.is_alive()):
+            log.debug("sensor polling not running — stop_polling ignored")
+            return
+        log.info("sensor polling: stopping")
         self._stop.set()
         if self._poll_thread is not None:
             self._poll_thread.join(timeout=3)

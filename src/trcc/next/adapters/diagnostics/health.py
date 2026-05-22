@@ -250,6 +250,7 @@ def check_seven_zip_present() -> HealthCheckResult:
 
 def run_health_checks(platform: Platform) -> HealthReport:
     """Run every registered check; collect results into a HealthReport."""
+    log.info("run_health_checks: starting")
     paths = platform.paths()
     checks: list[HealthCheckResult] = [
         check_python_version(),
@@ -262,7 +263,14 @@ def run_health_checks(platform: Platform) -> HealthReport:
         check_udev_rules_linux(),
         check_seven_zip_present(),
     ]
-    return HealthReport(checks=checks)
+    for c in checks:
+        log.info("  %s [%s]: %s", c.name, c.severity, c.message)
+    report = HealthReport(checks=checks)
+    log.info(
+        "run_health_checks: done — worst=%s fail=%d warn=%d",
+        report.worst_severity, report.fail_count, report.warn_count,
+    )
+    return report
 
 
 def detect_package_manager() -> str | None:

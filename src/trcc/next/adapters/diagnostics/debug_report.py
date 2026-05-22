@@ -74,6 +74,8 @@ def build_debug_report(
     log_tail_lines: int = 1000,
 ) -> DebugReport:
     """Collect every section into a DebugReport."""
+    log.info("build_debug_report: gathering sections (log_tail=%d)",
+             log_tail_lines)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     info = _collect_platform_info(platform)
@@ -106,6 +108,7 @@ def write_debug_report(report: DebugReport, output_path: Path) -> Path:
     """Render *report* to *output_path*.  Returns the path."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report.render_text(), encoding="utf-8")
+    log.info("write_debug_report: wrote %s", output_path)
     return output_path
 
 

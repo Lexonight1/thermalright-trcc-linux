@@ -73,16 +73,21 @@ class LyLcd(Device[BulkTransport]):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
+        log.info("LyLcd %s: opening transport", self.info.key)
         if not self._transport.open():
+            log.error("LyLcd %s: transport open failed", self.info.key)
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
         try:
             self._transport.write(_EP_WRITE, _HANDSHAKE_PAYLOAD, _HANDSHAKE_TIMEOUT_MS)
             resp = self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _HANDSHAKE_TIMEOUT_MS)
         except TransportError as e:
+            log.error("LyLcd %s: handshake I/O failed: %s", self.info.key, e)
             raise HandshakeError(f"LyLcd handshake I/O failed: {e}") from e
 
         if (len(resp) < 37 or resp[0] != 3 or resp[1] != 0xFF or resp[8] != 1):
+            log.error("LyLcd %s: handshake validation failed (len=%d)",
+                      self.info.key, len(resp))
             raise HandshakeError(
                 f"LyLcd handshake validation failed "
                 f"([0]={resp[0] if len(resp) > 0 else 'N/A'}, "
@@ -119,12 +124,15 @@ class LyLcd(Device[BulkTransport]):
 
     def send(self, payload: bytes) -> bool:
         if not self._transport.is_open:
+            log.error("LyLcd %s: send() called before connect()", self.info.key)
             raise TransportError(
                 f"LyLcd {self.info.key} not connected — call connect() first"
             )
 
         total_size = len(payload)
         num_chunks = total_size // _CHUNK_DATA_SIZE + 1
+        log.debug("LyLcd %s: sending %d-byte payload in %d chunks",
+                  self.info.key, total_size, num_chunks)
         last_chunk_data = total_size % _CHUNK_DATA_SIZE
 
         chunks = bytearray(num_chunks * _CHUNK_SIZE)
@@ -178,6 +186,7 @@ class LyLcd(Device[BulkTransport]):
             return False
 
     def disconnect(self) -> None:
+        log.info("LyLcd %s: disconnecting", self.info.key)
         self._transport.close()
         self._handshake = None
         self._profile = None

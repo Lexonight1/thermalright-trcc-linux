@@ -139,15 +139,19 @@ class CzhordeCatalog:
 
     def _fetch_cached(self, theme_id: str, suffix: str) -> Path:
         if not _is_safe_theme_id(theme_id):
+            log.error("CzhordeCatalog: rejected invalid theme id %r", theme_id)
             raise ValueError(f"Invalid cloud theme id: {theme_id!r}")
         res_dir = self._resolution.replace("x", "")
         cache = self._cache_dir / res_dir
         cache.mkdir(parents=True, exist_ok=True)
         target = cache / f"{theme_id}{suffix}"
         if target.is_file() and target.stat().st_size > 0:
+            log.debug("CzhordeCatalog: cache hit %s", target)
             return target
+        log.info("CzhordeCatalog: fetching %s%s (cache miss)", theme_id, suffix)
         data = self._fetch_with_fallback(theme_id, suffix)
         target.write_bytes(data)
+        log.info("CzhordeCatalog: cached %d bytes to %s", len(data), target)
         return target
 
     def _fetch_with_fallback(self, theme_id: str, suffix: str) -> bytes:
@@ -163,9 +167,10 @@ class CzhordeCatalog:
                 return self._http.fetch(url, timeout_s=60.0)
             except HttpFetchError as e:
                 last_err = e
-                log.debug("cloud fetch %s via %s failed: %s",
-                          theme_id, server, e)
+                log.warning("CzhordeCatalog: fetch %s via %s failed: %s",
+                            theme_id, server, e)
         # All servers failed.
+        log.error("CzhordeCatalog: all servers failed for %s%s", theme_id, suffix)
         assert last_err is not None
         raise last_err
 

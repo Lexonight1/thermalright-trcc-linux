@@ -94,7 +94,9 @@ class ScsiLcd(Device[ScsiTransport]):
 
     def connect(self) -> HandshakeResult:
         """Open transport, perform poll + init handshake, return FBL."""
+        log.info("ScsiLcd %s: opening transport", self.info.key)
         if not self._transport.open():
+            log.error("ScsiLcd %s: transport open failed", self.info.key)
             raise HandshakeError(
                 f"Failed to open SCSI transport for {self.info.key}"
             )
@@ -145,6 +147,7 @@ class ScsiLcd(Device[ScsiTransport]):
     def send(self, payload: bytes) -> bool:
         """Send one RGB565 frame, chunked by resolution class."""
         if not self._transport.is_open:
+            log.error("ScsiLcd %s: send() called before connect()", self.info.key)
             raise TransportError(
                 f"ScsiLcd {self.info.key} not connected — call connect() first"
             )
@@ -156,8 +159,14 @@ class ScsiLcd(Device[ScsiTransport]):
 
         data = payload
         if len(data) < total:
+            log.debug(
+                "ScsiLcd %s: payload %d < expected %d; padding with zeros",
+                self.info.key, len(data), total,
+            )
             data = data + b"\x00" * (total - len(data))
 
+        log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
+                  self.info.key, total, len(chunks))
         offset = 0
         for cmd, size in chunks:
             cdb = self._build_cdb(cmd, size)
@@ -165,12 +174,14 @@ class ScsiLcd(Device[ScsiTransport]):
                 cdb, data[offset:offset + size], _FRAME_TIMEOUT_MS,
             )
             if not ok:
-                log.warning("SCSI frame chunk failed at offset %d", offset)
+                log.warning("ScsiLcd %s: chunk write failed at offset %d (cmd=0x%x size=%d)",
+                            self.info.key, offset, cmd, size)
                 return False
             offset += size
         return True
 
     def disconnect(self) -> None:
+        log.info("ScsiLcd %s: disconnecting", self.info.key)
         self._transport.close()
         self._handshake = None
         self._profile = None

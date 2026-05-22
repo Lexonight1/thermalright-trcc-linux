@@ -67,16 +67,24 @@ class BulkLcd(Device[BulkTransport]):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
+        log.info("BulkLcd %s: opening transport", self.info.key)
         if not self._transport.open():
+            log.error("BulkLcd %s: transport open failed", self.info.key)
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
         try:
             self._transport.write(_EP_WRITE, _HANDSHAKE_PAYLOAD, _HANDSHAKE_TIMEOUT_MS)
             resp = self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _HANDSHAKE_TIMEOUT_MS)
         except TransportError as e:
+            log.error("BulkLcd %s: handshake I/O failed: %s", self.info.key, e)
             raise HandshakeError(f"BulkLcd handshake I/O failed: {e}") from e
 
         if len(resp) < 41 or resp[24] == 0:
+            log.error(
+                "BulkLcd %s: handshake validation failed (len=%d, resp[24]=%s)",
+                self.info.key, len(resp),
+                resp[24] if len(resp) > 24 else "N/A",
+            )
             raise HandshakeError(
                 f"BulkLcd handshake validation failed "
                 f"(len={len(resp)}, resp[24]={resp[24] if len(resp) > 24 else 'N/A'})"
@@ -115,6 +123,7 @@ class BulkLcd(Device[BulkTransport]):
 
     def send(self, payload: bytes) -> bool:
         if not self._transport.is_open or self._profile is None:
+            log.error("BulkLcd %s: send() called before connect()", self.info.key)
             raise TransportError(
                 f"BulkLcd {self.info.key} not connected — call connect() first"
             )
@@ -134,6 +143,9 @@ class BulkLcd(Device[BulkTransport]):
         struct.pack_into("<I", header, 60, len(payload))
 
         frame = bytes(header) + payload
+        log.debug("BulkLcd %s: sending %d-byte frame (%s, %dx%d)",
+                  self.info.key, len(frame),
+                  "JPEG" if self._profile.jpeg else "RGB565", width, height)
 
         try:
             for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
@@ -151,6 +163,7 @@ class BulkLcd(Device[BulkTransport]):
             return False
 
     def disconnect(self) -> None:
+        log.info("BulkLcd %s: disconnecting", self.info.key)
         self._transport.close()
         self._handshake = None
         self._profile = None

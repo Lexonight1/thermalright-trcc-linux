@@ -32,8 +32,11 @@ class DoctorResult:
 
 def run_doctor(platform: Platform) -> DoctorResult:
     """Run every health check; map to an exit code."""
+    log.info("run_doctor: invoking health checks via %s", type(platform).__name__)
     report = run_health_checks(platform)
     code = 1 if report.fail_count else 0
+    log.info("run_doctor: exit_code=%d (%d fail / %d warn)",
+             code, report.fail_count, report.warn_count)
     return DoctorResult(report=report, exit_code=code)
 
 

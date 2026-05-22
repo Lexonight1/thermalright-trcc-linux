@@ -102,7 +102,10 @@ class HidLcd(Device[BulkTransport]):
 
     def connect(self) -> HandshakeResult:
         """Open transport and perform the type-specific handshake."""
+        log.info("HidLcd %s (type %d): opening transport",
+                 self.info.key, self.info.device_type)
         if not self._transport.open():
+            log.error("HidLcd %s: transport open failed", self.info.key)
             raise HandshakeError(
                 f"Failed to open USB transport for {self.info.key}"
             )
@@ -154,6 +157,7 @@ class HidLcd(Device[BulkTransport]):
     def send(self, payload: bytes) -> bool:
         """Send one image frame (RGB565 or JPEG bytes, protocol-specific)."""
         if not self._transport.is_open:
+            log.error("HidLcd %s: send() called before connect()", self.info.key)
             raise HandshakeError(
                 f"HidLcd {self.info.key} not connected — call connect() first"
             )
@@ -164,8 +168,11 @@ class HidLcd(Device[BulkTransport]):
             packet = self._build_frame_type3(payload)
 
         timeout = _frame_timeout_ms(len(packet))
+        log.debug("HidLcd %s (type %d): sending %d-byte packet",
+                  self.info.key, self.info.device_type, len(packet))
         transferred = self._transport.write(_EP_WRITE, packet, timeout)
         if transferred == 0:
+            log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
             return False
 
         if self.info.device_type == 2:
@@ -174,9 +181,12 @@ class HidLcd(Device[BulkTransport]):
 
         # Type 3: read ACK
         ack = self._transport.read(_EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS)
+        if not ack:
+            log.warning("HidLcd %s: Type 3 ACK read returned empty", self.info.key)
         return len(ack) > 0
 
     def disconnect(self) -> None:
+        log.info("HidLcd %s: disconnecting", self.info.key)
         self._transport.close()
         self._handshake = None
         self._profile = None

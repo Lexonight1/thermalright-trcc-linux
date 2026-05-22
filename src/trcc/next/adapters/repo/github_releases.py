@@ -50,19 +50,24 @@ class GitHubReleases:
 
     def latest(self) -> LatestRelease:
         """Fetch the latest release.  Raises ``HttpFetchError`` on failure."""
+        log.info("GitHubReleases.latest: %s", self._url)
         body = self._http.fetch(self._url, timeout_s=15.0)
         try:
             payload = json.loads(body)
         except json.JSONDecodeError as e:
+            log.error("GitHubReleases.latest: non-JSON body (%d bytes): %s",
+                      len(body), e)
             raise HttpFetchError(
                 f"GitHub returned non-JSON for releases/latest: {e}",
             ) from e
         tag = str(payload.get("tag_name", "")).strip()
         url = str(payload.get("html_url", "")).strip()
         if not tag:
+            log.error("GitHubReleases.latest: response missing tag_name")
             raise HttpFetchError(
                 "GitHub releases/latest response had no tag_name",
             )
+        log.info("GitHubReleases.latest: tag=%s url=%s", tag, url)
         return LatestRelease(
             tag=tag, version=_strip_v_prefix(tag), html_url=url,
         )

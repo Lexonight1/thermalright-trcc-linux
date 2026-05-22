@@ -111,6 +111,7 @@ class LinuxHotplugMonitor(HotplugMonitor):
 
     def start(self, bus: EventBus) -> None:
         if self._thread is not None:
+            log.debug("LinuxHotplugMonitor: already running — start() ignored")
             return                        # idempotent — already running
 
         pyudev = _import_pyudev()
@@ -137,7 +138,9 @@ class LinuxHotplugMonitor(HotplugMonitor):
 
     def stop(self) -> None:
         if self._thread is None:
+            log.debug("LinuxHotplugMonitor: not running — stop() ignored")
             return
+        log.info("LinuxHotplugMonitor: stopping")
         self._stop_event.set()
         # The pyudev monitor poll has a timeout; the thread checks
         # _stop_event between polls and exits naturally.

@@ -44,7 +44,10 @@ def _ensure_qt_app() -> None:
         # Offscreen platform plugin = no window system needed
         import os
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        log.info("QtRenderer: bootstrapping offscreen QGuiApplication (headless mode)")
         QGuiApplication(sys.argv)
+    else:
+        log.debug("QtRenderer: reusing existing QGuiApplication")
 
 
 def _rgb_tuple_to_qcolor(color: tuple[int, ...]) -> QColor:
@@ -80,8 +83,10 @@ class QtRenderer(Renderer):
         return img
 
     def open_image(self, path: Path) -> Any:
+        log.debug("QtRenderer.open_image: %s", path)
         img = QImage(str(path))
         if img.isNull():
+            log.error("QtRenderer.open_image: QImage.isNull for %s", path)
             raise TrccError(f"Failed to load image: {path}")
         if img.format() != QImage.Format.Format_ARGB32:
             img = img.convertToFormat(QImage.Format.Format_ARGB32)
@@ -175,6 +180,8 @@ class QtRenderer(Renderer):
         cached = _FONT_CACHE.get(cache_key)
         if cached is not None:
             return cached
+        log.debug("QtRenderer: caching font (size=%d bold=%s italic=%s family=%r)",
+                  size, bold, italic, family)
         font = QFont(family) if family else QFont()
         font.setPointSize(size)
         font.setBold(bold)
@@ -222,8 +229,12 @@ class QtRenderer(Renderer):
         # Shrink-quality loop
         for q in (85, 75, 60, 45, 30):
             data = _save(q)
+            log.debug("QtRenderer.encode_jpeg: q=%d size=%d (target ≤%d)",
+                      q, len(data), max_size)
             if len(data) <= max_size:
                 return data
+        log.warning("QtRenderer.encode_jpeg: %d bytes exceeds target %d "
+                    "even at q=30", len(data), max_size)
         return data  # last attempt, may still exceed
 
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
