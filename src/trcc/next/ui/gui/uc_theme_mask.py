@@ -9,15 +9,27 @@ from __future__ import annotations
 
 import logging
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMenu
 
-from ..._boot import trcc as _trcc
-from ...core.models import CLOUD_MASK_URLS, MaskItem
-from ...core.paths import is_safe_archive_member
+from ...core.models import CLOUD_MASK_URLS, MaskItem, is_safe_archive_member
 from .base import BaseThumbnail, DownloadableThemeBrowser
+
+if TYPE_CHECKING:
+    from ...core.ports import Paths
+
+
+@dataclass(slots=True)
+class _DiscoveredMask:
+    """Filesystem-discovered mask entry — local row source for refresh_masks."""
+    name: str
+    path: Path
+    preview_path: Path
+    is_custom: bool
 
 log = logging.getLogger(__name__)
 
@@ -50,11 +62,13 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     mask_selected = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, paths: Paths | None = None):
         self.mask_directory = None
         self._resolution = ""
         self._local_masks: set[str] = set()
         self._category = 'all'
+        # Paths port for resolving user-masks dir; trcc_app injects it.
+        self._paths = paths
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -148,12 +162,13 @@ class UCThemeMask(DownloadableThemeBrowser):
     def _user_masks_dir(self) -> Path:
         """Get the user custom masks directory for current resolution."""
         w, h = self._parse_resolution()
-        return _trcc().settings.user_masks_dir(w, h)
+        if self._paths is not None:
+            return self._paths.user_masks_dir(w, h)
+        # Defensive fallback — should never hit if trcc_app injected paths.
+        return Path.home() / ".trcc-user" / "data" / "web" / f"zt{w}{h}"
 
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""
-        from ...services import ThemeService
-
         self._clear_grid()
         self._local_masks.clear()
 
@@ -161,7 +176,27 @@ class UCThemeMask(DownloadableThemeBrowser):
             self.mask_directory.mkdir(parents=True, exist_ok=True)
 
         user_dir = self._user_masks_dir()
-        discovered = ThemeService.discover_masks(self.mask_directory, user_dir)
+        # Walk both the per-resolution cloud-cache dir and the user
+        # custom-masks dir.  Each subdir with a Theme.png is one mask.
+        discovered: list = []
+        for source_dir, is_custom in [
+            (self.mask_directory, False),
+            (user_dir, True),
+        ]:
+            if not source_dir or not source_dir.is_dir():
+                continue
+            for entry in sorted(source_dir.iterdir()):
+                if not entry.is_dir():
+                    continue
+                preview = entry / "Theme.png"
+                if not preview.exists():
+                    continue
+                discovered.append(_DiscoveredMask(
+                    name=entry.name,
+                    path=entry,
+                    preview_path=preview,
+                    is_custom=is_custom,
+                ))
 
         masks: list[MaskItem] = []
         for m in discovered:

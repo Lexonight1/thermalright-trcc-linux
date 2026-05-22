@@ -679,6 +679,38 @@ class MaskItem:
     is_custom: bool = False
 
 
+# Cloud mask server URLs by resolution string.  Source: C# UCMask
+# endpoints — same hostname / path layout legacy uses.  Per-resolution
+# downloads happen lazily when the user picks a mask thumbnail.
+CLOUD_MASK_URLS: dict[str, str] = {
+    "240x240":   "http://www.czhorde.cc/tr/zt240240/",
+    "240x320":   "http://www.czhorde.cc/tr/zt240320/",
+    "320x240":   "http://www.czhorde.cc/tr/zt320240/",
+    "320x320":   "http://www.czhorde.cc/tr/zt320320/",
+    "360x360":   "http://www.czhorde.cc/tr/zt360360/",
+    "480x480":   "http://www.czhorde.cc/tr/zt480480/",
+    "480x640":   "http://www.czhorde.cc/tr/zt480640/",
+    "480x800":   "http://www.czhorde.cc/tr/zt480800/",
+    "480x854":   "http://www.czhorde.cc/tr/zt480854/",
+    "480x1280":  "http://www.czhorde.cc/tr/zt4801280/",
+    "540x960":   "http://www.czhorde.cc/tr/zt540960/",
+    "640x480":   "http://www.czhorde.cc/tr/zt640480/",
+    "720x1600":  "http://www.czhorde.cc/tr/zt7201600/",
+    "800x480":   "http://www.czhorde.cc/tr/zt800480/",
+    "854x480":   "http://www.czhorde.cc/tr/zt854480/",
+    "960x540":   "http://www.czhorde.cc/tr/zt960540/",
+    "1280x480":  "http://www.czhorde.cc/tr/zt1280480/",
+    "1600x720":  "http://www.czhorde.cc/tr/zt1600720/",
+    "1920x462":  "http://www.czhorde.cc/tr/zt1920462/",
+    "462x1920":  "http://www.czhorde.cc/tr/zt4621920/",
+}
+
+
+def is_safe_archive_member(name: str) -> bool:
+    """Reject archive members that would escape the destination (zip slip)."""
+    return not (Path(name).is_absolute() or '..' in name.split('/'))
+
+
 # ``category_keysuffix`` → overlay ``(main_count, sub_count)``.
 # Used by the activity sidebar's click-to-add-element flow.
 SENSOR_TO_OVERLAY: dict[str, tuple[int, int]] = {

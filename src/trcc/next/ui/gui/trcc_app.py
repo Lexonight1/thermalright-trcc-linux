@@ -739,10 +739,10 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
 
-        self.uc_theme_setting = UCThemeSetting()
+        self.uc_theme_setting = UCThemeSetting(ui_state=self._ui_state)
         self.panel_stack.addWidget(self.uc_theme_setting)
 
-        self.uc_theme_mask = UCThemeMask()
+        self.uc_theme_mask = UCThemeMask(paths=self._app.platform.paths())
         self._set_panel_bg(self.uc_theme_mask, Assets.THEME_MASK_BG)
         self.panel_stack.addWidget(self.uc_theme_mask)
 
@@ -758,7 +758,11 @@ class TRCCApp(QMainWindow):
 
         # About panel — gpu_list from the sensor enumerator (best-effort)
         get_gpu_list = getattr(self._sensors, "get_gpu_list", None)
-        gpu_list = get_gpu_list() if callable(get_gpu_list) else []
+        gpu_list_raw = get_gpu_list() if callable(get_gpu_list) else []
+        # Narrow to the (key, label) tuple shape UCAbout expects.
+        gpu_list: list[tuple[str, str]] = (
+            list(gpu_list_raw) if isinstance(gpu_list_raw, list) else []
+        )
         self.uc_about = UCAbout(
             parent=central, platform=self._app.platform,
             gpu_list=gpu_list, app=self._app, ui_state=self._ui_state,
