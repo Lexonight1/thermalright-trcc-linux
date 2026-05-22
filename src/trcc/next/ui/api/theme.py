@@ -14,20 +14,41 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ...core.commands import ExportTheme, ImportTheme, SaveTheme
+from ...core.commands import (
+    DeleteTheme,
+    ExportDcTheme,
+    ExportTheme,
+    ImportTheme,
+    ListCloudThemes,
+    ListThemes,
+    LoadCloudTheme,
+    SaveTheme,
+)
 from ._shared import (
     http_error_if_failed,
+    to_cloud_theme_load_response,
+    to_cloud_themes_list_response,
+    to_delete_theme_response,
+    to_theme_dc_export_response,
     to_theme_export_response,
     to_theme_import_response,
     to_theme_response,
+    to_themes_list_response,
 )
 from .schemas import (
+    CloudThemeLoadRequest,
+    CloudThemeLoadResponse,
+    CloudThemesListResponse,
+    DeleteThemeResponse,
+    ThemeDcExportRequest,
+    ThemeDcExportResponse,
     ThemeExportRequest,
     ThemeExportResponse,
     ThemeImportRequest,
     ThemeImportResponse,
     ThemeResponse,
     ThemeSaveRequest,
+    ThemesListResponse,
 )
 
 router = APIRouter(prefix="/theme", tags=["theme"])
@@ -76,3 +97,62 @@ def import_(body: ThemeImportRequest,
     )
     http_error_if_failed(result)
     return to_theme_import_response(result)
+
+
+@router.get("/list", response_model=ThemesListResponse)
+def list_(
+    request: Request,
+    directory: str | None = None,
+) -> ThemesListResponse:
+    """List themes under a directory (defaults to user_content_dir)."""
+    target = Path(directory) if directory else None
+    result = request.app.state.trcc.dispatch(ListThemes(directory=target))
+    http_error_if_failed(result)
+    return to_themes_list_response(result)
+
+
+@router.get("/cloud", response_model=CloudThemesListResponse)
+def cloud_list(
+    request: Request,
+    category: str = "all",
+) -> CloudThemesListResponse:
+    """List Thermalright cloud catalog (offline — catalog is static)."""
+    result = request.app.state.trcc.dispatch(
+        ListCloudThemes(category=category),
+    )
+    http_error_if_failed(result)
+    return to_cloud_themes_list_response(result)
+
+
+@router.post("/cloud/{key}", response_model=CloudThemeLoadResponse)
+def cloud_load(key: str, body: CloudThemeLoadRequest,
+                request: Request) -> CloudThemeLoadResponse:
+    """Download a cloud theme + apply it to *key*."""
+    result = request.app.state.trcc.dispatch(
+        LoadCloudTheme(key=key, theme_id=body.theme_id),
+    )
+    http_error_if_failed(result)
+    return to_cloud_theme_load_response(result)
+
+
+@router.post("/{name}/export-dc", response_model=ThemeDcExportResponse)
+def export_dc(name: str, body: ThemeDcExportRequest,
+              request: Request) -> ThemeDcExportResponse:
+    """Write a theme out as legacy ``config1.dc``."""
+    safe_name = _safe_basename(name)
+    result = request.app.state.trcc.dispatch(ExportDcTheme(
+        theme_name=safe_name,
+        output_path=Path(body.output_path),
+        device_key=body.device_key,
+    ))
+    http_error_if_failed(result)
+    return to_theme_dc_export_response(result)
+
+
+@router.delete("/{name}", response_model=DeleteThemeResponse)
+def delete(name: str, request: Request) -> DeleteThemeResponse:
+    """Delete a theme directory."""
+    safe_name = _safe_basename(name)
+    result = request.app.state.trcc.dispatch(DeleteTheme(name=safe_name))
+    http_error_if_failed(result)
+    return to_delete_theme_response(result)

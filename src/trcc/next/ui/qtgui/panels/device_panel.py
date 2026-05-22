@@ -9,33 +9,31 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QVBoxLayout,
-    QWidget,
 )
 
-from ....app import App
 from ....core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
+from ..base import BasePanel
 
 
-class DevicePanel(QWidget):
+class DevicePanel(BasePanel):
     """Lists detected devices and lets the user connect/disconnect each."""
 
-    def __init__(self, app: App, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._app = app
+    def _setup_ui(self) -> None:
+        self._list = QListWidget(self)
+        self._list.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection,
+        )
 
-        self._list = QListWidget()
-        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-
-        self._scan_btn = QPushButton("Scan")
+        self._scan_btn = QPushButton("Scan", self)
         self._scan_btn.clicked.connect(self._on_scan)
 
-        self._connect_btn = QPushButton("Connect")
+        self._connect_btn = QPushButton("Connect", self)
         self._connect_btn.clicked.connect(self._on_connect)
 
-        self._disconnect_btn = QPushButton("Disconnect")
+        self._disconnect_btn = QPushButton("Disconnect", self)
         self._disconnect_btn.clicked.connect(self._on_disconnect)
 
-        self._status = QLabel("No devices scanned yet.")
+        self._status = QLabel("No devices scanned yet.", self)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._scan_btn)
@@ -51,7 +49,7 @@ class DevicePanel(QWidget):
     # ── Actions ───────────────────────────────────────────────────────
 
     def _on_scan(self) -> None:
-        result = self._app.dispatch(DiscoverDevices())
+        result = self.dispatch(DiscoverDevices())
         self._list.clear()
         for product in result.products:
             item = QListWidgetItem(
@@ -74,12 +72,12 @@ class DevicePanel(QWidget):
         key = self._selected_key()
         if key is None:
             return
-        result = self._app.dispatch(ConnectDevice(key=key))
+        result = self.dispatch(ConnectDevice(key=key))
         self._status.setText(result.message)
 
     def _on_disconnect(self) -> None:
         key = self._selected_key()
         if key is None:
             return
-        result = self._app.dispatch(DisconnectDevice(key=key))
+        result = self.dispatch(DisconnectDevice(key=key))
         self._status.setText(result.message)

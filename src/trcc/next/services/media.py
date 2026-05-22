@@ -260,6 +260,8 @@ class Playback:
     frames: list[RawFrame]
     fps: int = _DEFAULT_FPS
     cursor: int = 0
+    paused: bool = False
+    loop: bool = True
 
     @property
     def frame_count(self) -> int:
@@ -270,15 +272,38 @@ class Playback:
         return self.frames[self.cursor] if self.frames else None
 
     def advance(self) -> RawFrame | None:
-        """Return the current frame and advance the cursor (wraps)."""
+        """Return the current frame and advance the cursor.
+
+        Honors ``paused`` (returns current frame without advancing) and
+        ``loop`` (when False, sticks at the last frame instead of wrapping).
+        """
         if not self.frames:
             return None
         frame = self.frames[self.cursor]
-        self.cursor = (self.cursor + 1) % len(self.frames)
+        if self.paused:
+            return frame
+        next_cursor = self.cursor + 1
+        if next_cursor >= len(self.frames):
+            self.cursor = 0 if self.loop else len(self.frames) - 1
+        else:
+            self.cursor = next_cursor
         return frame
+
+    def seek(self, frame_index: int) -> None:
+        """Jump to *frame_index* (clamped to valid range)."""
+        if not self.frames:
+            return
+        self.cursor = max(0, min(frame_index, len(self.frames) - 1))
+
+    def pause(self, paused: bool) -> None:
+        self.paused = paused
+
+    def set_loop(self, loop: bool) -> None:
+        self.loop = loop
 
     def reset(self) -> None:
         self.cursor = 0
+        self.paused = False
 
 
 class MediaService:

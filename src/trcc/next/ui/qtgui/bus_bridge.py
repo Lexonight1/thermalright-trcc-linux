@@ -19,6 +19,9 @@ from ...core.events import (
     EventBus,
     FrameSent,
     LedColorsChanged,
+    MaskApplied,
+    MaskPositionChanged,
+    MaskVisibilityChanged,
     OrientationChanged,
     SensorsUpdated,
     ThemeLoaded,
@@ -45,6 +48,9 @@ class BusBridge(QObject):
     led_colors_changed = Signal(object)
     sensors_updated = Signal(object)
     error_occurred = Signal(object)
+    mask_applied = Signal(object)
+    mask_position_changed = Signal(object)
+    mask_visibility_changed = Signal(object)
 
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
@@ -63,6 +69,9 @@ class BusBridge(QObject):
             (LedColorsChanged, self.led_colors_changed),
             (SensorsUpdated, self.sensors_updated),
             (ErrorOccurred, self.error_occurred),
+            (MaskApplied, self.mask_applied),
+            (MaskPositionChanged, self.mask_position_changed),
+            (MaskVisibilityChanged, self.mask_visibility_changed),
         )
         for event_type, signal in pairs:
             # Each subscriber captures its own signal via default argument

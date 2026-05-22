@@ -5,7 +5,16 @@ from pathlib import Path
 
 import typer
 
-from ...core.commands import ExportTheme, ImportTheme, SaveTheme
+from ...core.commands import (
+    DeleteTheme,
+    ExportDcTheme,
+    ExportTheme,
+    ImportTheme,
+    ListCloudThemes,
+    ListThemes,
+    LoadCloudTheme,
+    SaveTheme,
+)
 from ._ctx import get_app
 
 app = typer.Typer(
@@ -60,6 +69,96 @@ def import_(
     result = get_app().dispatch(
         ImportTheme(archive_path=archive_path, name=name),
     )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("list")
+def list_(
+    directory: Path | None = typer.Option(
+        None, "--dir", "-d",
+        help="Directory to scan (default: user_content_dir).",
+        exists=False, file_okay=False, dir_okay=True,
+    ),
+) -> None:
+    """List themes under a directory."""
+    result = get_app().dispatch(ListThemes(directory=directory))
+    typer.echo(result.message)
+    for theme in result.themes:
+        w, h = theme.resolution
+        typer.echo(f"  {theme.name:30} {w}x{h}  {theme.path}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("delete")
+def delete(
+    name: str = typer.Argument(
+        ..., help="Theme name (directory under user_content_dir)",
+    ),
+) -> None:
+    """Delete a theme directory."""
+    result = get_app().dispatch(DeleteTheme(name=name))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("cloud-list")
+def cloud_list(
+    category: str = typer.Option(
+        "all", "--category", "-c",
+        help="Category prefix: 'all' / 'a' / 'b' / 'c' / 'd' / 'e' / 'y'",
+    ),
+) -> None:
+    """List themes in Thermalright's hosted catalog."""
+    result = get_app().dispatch(ListCloudThemes(category=category))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+    # Print category table once when listing 'all'.
+    if category == "all":
+        for c in result.categories:
+            typer.echo(f"  [{c.prefix}] {c.name:10}  {c.count} themes")
+        typer.echo("")
+    for t in result.themes:
+        typer.echo(f"  {t.id:6}  {t.category_name}")
+
+
+@app.command("cloud-load")
+def cloud_load(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    theme_id: str = typer.Argument(..., help="Cloud theme id, e.g. a001"),
+) -> None:
+    """Download a cloud theme and load it on a device."""
+    result = get_app().dispatch(LoadCloudTheme(key=key, theme_id=theme_id))
+    typer.echo(result.message)
+    if result.theme_path:
+        typer.echo(f"  staged at: {result.theme_path}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("export-dc")
+def export_dc(
+    theme_name: str = typer.Argument(
+        ..., help="Theme name (directory under user_content_dir)",
+    ),
+    output_path: Path = typer.Argument(
+        ..., help="Where to write the config1.dc file",
+    ),
+    device_key: str = typer.Option(
+        "", "--device", "-d",
+        help="Device key to layer user overlay elements from (optional)",
+    ),
+) -> None:
+    """Write a theme out as legacy ``config1.dc`` for Windows TRCC users."""
+    result = get_app().dispatch(ExportDcTheme(
+        theme_name=theme_name,
+        output_path=output_path,
+        device_key=device_key,
+    ))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

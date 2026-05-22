@@ -6,20 +6,39 @@ from pathlib import Path
 import typer
 
 from ...core.commands import (
+    AddOverlayElement,
     ApplyMask,
+    ConfigureSlideshow,
+    DeleteOverlayElement,
     EnableOverlay,
+    FlashOverlayElement,
+    KeepAliveLoop,
+    LcdSnapshot,
+    ListBackgrounds,
+    ListMasks,
+    LoadImage,
     LoadTheme,
+    LoadVideo,
+    LoopVideo,
+    PauseVideo,
     PlayVideo,
     RenderAndSend,
+    RestoreLastTheme,
+    SeekVideo,
     SendColor,
+    SetBackgroundMode,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
     SetMaskVisible,
     SetOrientation,
+    SetOverlayBackground,
+    SetSlideshow,
     SetSplitMode,
     StopVideo,
+    UpdateOverlayElement,
     UploadBootAnimation,
+    UploadCustomMask,
 )
 from ._ctx import get_app
 
@@ -180,6 +199,62 @@ def split_mode(
         raise typer.Exit(code=1)
 
 
+@app.command("load-image")
+def load_image(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Image file (PNG / JPG / JPEG / BMP / WEBP)",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+) -> None:
+    """Show a single image on the LCD.
+
+    Stages the image as a one-file theme so the existing render pipeline
+    handles fit + brightness + rotation.  Re-runnable: subsequent loads
+    of the same image are cheap (no re-copy).
+    """
+    result = get_app().dispatch(LoadImage(key=key, path=path))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("load-video")
+def load_video(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Video file (MP4 / MOV / WEBM / MKV / AVI / ZT)",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+    start_ms: int = typer.Option(
+        0, "--start", "-s", min=0,
+        help="Clip start in milliseconds (default: 0).",
+    ),
+    end_ms: int = typer.Option(
+        None, "--end", "-e", min=1,
+        help="Clip end in milliseconds (default: probe duration, fallback 10s).",
+    ),
+    rotation: int = typer.Option(
+        0, "--rotation", "-r",
+        help="Rotation in degrees: 0 / 90 / 180 / 270.",
+    ),
+) -> None:
+    """Play a video on the LCD as a single-video theme.
+
+    Transcodes the source to a ``Theme.zt`` matching the device's native
+    resolution (.zt inputs are copied as-is), stages a one-file theme,
+    then dispatches LoadTheme.  Device must be attached so we know the
+    target resolution.
+    """
+    result = get_app().dispatch(LoadVideo(
+        key=key, path=path, start_ms=start_ms, end_ms=end_ms,
+        rotation=rotation,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @app.command("load-theme")
 def load_theme(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
@@ -224,8 +299,8 @@ def stop_video(
     typer.echo(result.message)
 
 
-@app.command("slideshow")
-def slideshow(
+@app.command("slideshow-run")
+def slideshow_run(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
     themes_dir: Path = typer.Argument(
         ..., help="Directory containing theme subdirectories",
@@ -236,11 +311,12 @@ def slideshow(
         help="Seconds between theme switches (default: 30.0)",
     ),
 ) -> None:
-    """Cycle through every theme under *themes_dir* on a fixed interval.
+    """Foreground slideshow over a directory of themes.
 
-    Blocking — runs until Ctrl-C. Each tick dispatches ``LoadTheme``
-    for the next theme in alphabetical order. Themes that fail to load
-    are skipped with a warning; the loop continues.
+    Different from ``slideshow`` / ``configure-slideshow`` (which persist
+    state).  This is a one-shot loop: blocks until Ctrl-C, swaps to the
+    next theme each tick.  Useful for demos + smoke tests; the persisted
+    flow is what production users want.
     """
     import time
 
@@ -346,3 +422,331 @@ def play(
             time.sleep(tick_s)
     except KeyboardInterrupt:
         typer.echo("\nStopped.")
+
+
+@app.command("pause-video")
+def pause_video(
+    key: str = typer.Argument(..., help="Device key"),
+    state: str = typer.Argument(..., help="'on' (pause) or 'off' (resume)"),
+) -> None:
+    """Pause or resume video playback."""
+    if state.lower() not in ("on", "off"):
+        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
+    result = get_app().dispatch(
+        PauseVideo(key=key, paused=state.lower() == "on"),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("seek-video")
+def seek_video(
+    key: str = typer.Argument(..., help="Device key"),
+    frame: int = typer.Argument(..., help="Frame index to jump to"),
+) -> None:
+    """Jump the playback cursor to a specific frame."""
+    result = get_app().dispatch(SeekVideo(key=key, frame=frame))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("loop-video")
+def loop_video(
+    key: str = typer.Argument(..., help="Device key"),
+    state: str = typer.Argument(..., help="'on' (loop) or 'off' (single-pass)"),
+) -> None:
+    """Toggle whether video wraps at the end or sticks at the last frame."""
+    if state.lower() not in ("on", "off"):
+        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
+    result = get_app().dispatch(LoopVideo(key=key, loop=state.lower() == "on"))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("upload-mask")
+def upload_mask(
+    key: str = typer.Argument(..., help="Device key"),
+    source: Path = typer.Argument(
+        ..., help="Mask image file to copy + apply",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+) -> None:
+    """Copy a mask into user_content_dir/masks and apply it to the device."""
+    result = get_app().dispatch(UploadCustomMask(key=key, source=source))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("list-masks")
+def list_masks(
+    directory: Path | None = typer.Option(
+        None, "--dir", "-d",
+        help="Directory to scan (default: user_content_dir/masks)",
+    ),
+) -> None:
+    """List mask images."""
+    result = get_app().dispatch(ListMasks(directory=directory))
+    typer.echo(result.message)
+    for entry in result.masks:
+        typer.echo(f"  {entry.name:30} {entry.path}")
+
+
+@app.command("list-backgrounds")
+def list_backgrounds(
+    directory: Path | None = typer.Option(
+        None, "--dir", "-d",
+        help="Directory to scan (default: user_content_dir/backgrounds)",
+    ),
+) -> None:
+    """List background images / videos."""
+    result = get_app().dispatch(ListBackgrounds(directory=directory))
+    typer.echo(result.message)
+    for entry in result.backgrounds:
+        typer.echo(f"  {entry.name:30} {entry.path}")
+
+
+@app.command("overlay-add")
+def overlay_add(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    type_: str = typer.Argument(
+        ..., metavar="TYPE", help="'text' / 'metric' / 'clock'",
+    ),
+    x: int = typer.Option(0, "--x", help="X position"),
+    y: int = typer.Option(0, "--y", help="Y position"),
+    text: str = typer.Option("", "--text", help="Text content (type=text)"),
+    metric: str = typer.Option("", "--metric", help="Metric id (type=metric)"),
+    fmt: str = typer.Option(
+        "{value}", "--format", help="Metric format string",
+    ),
+    source: str = typer.Option(
+        "time", "--source", help="Clock source: time / weekday / date",
+    ),
+    color: str = typer.Option("#ffffff", "--color"),
+    size: int = typer.Option(16, "--size"),
+    bold: bool = typer.Option(False, "--bold"),
+    italic: bool = typer.Option(False, "--italic"),
+    element_id: str = typer.Option(
+        "", "--id", help="Explicit element id (default: auto-generated UUID)",
+    ),
+) -> None:
+    """Add a user-edited overlay element to a device."""
+    result = get_app().dispatch(AddOverlayElement(
+        key=key, type=type_, x=x, y=y, text=text, metric=metric,
+        format=fmt, source=source, color=color, size=size,
+        bold=bold, italic=italic, element_id=element_id,
+    ))
+    typer.echo(result.message)
+    if result.ok and result.element is not None:
+        typer.echo(f"  id: {result.element.id}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("overlay-update")
+def overlay_update(
+    key: str = typer.Argument(...),
+    element_id: str = typer.Argument(..., help="ID returned by overlay-add"),
+    x: int | None = typer.Option(None, "--x"),
+    y: int | None = typer.Option(None, "--y"),
+    color: str | None = typer.Option(None, "--color"),
+    size: int | None = typer.Option(None, "--size"),
+    text: str | None = typer.Option(None, "--text"),
+    metric: str | None = typer.Option(None, "--metric"),
+    fmt: str | None = typer.Option(None, "--format"),
+    source: str | None = typer.Option(None, "--source"),
+    bold: bool | None = typer.Option(None, "--bold/--no-bold"),
+    italic: bool | None = typer.Option(None, "--italic/--no-italic"),
+) -> None:
+    """Mutate fields on an existing user-edited overlay element."""
+    result = get_app().dispatch(UpdateOverlayElement(
+        key=key, element_id=element_id,
+        x=x, y=y, color=color, size=size, text=text,
+        metric=metric, format=fmt, source=source,
+        bold=bold, italic=italic,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("overlay-delete")
+def overlay_delete(
+    key: str = typer.Argument(...),
+    element_id: str = typer.Argument(..., help="ID returned by overlay-add"),
+) -> None:
+    """Remove a user-edited overlay element by id."""
+    result = get_app().dispatch(
+        DeleteOverlayElement(key=key, element_id=element_id),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("overlay-flash")
+def overlay_flash(
+    key: str = typer.Argument(...),
+    element_id: str = typer.Argument(...),
+    duration_ms: int = typer.Option(
+        1500, "--duration", "-d", min=100, max=10000,
+        help="Flash duration in milliseconds",
+    ),
+) -> None:
+    """Briefly highlight an overlay element in the GUI."""
+    result = get_app().dispatch(FlashOverlayElement(
+        key=key, element_id=element_id, duration_ms=duration_ms,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("slideshow")
+def slideshow(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    state: str = typer.Argument(..., help="'on' / 'off'"),
+) -> None:
+    """Toggle the per-device slideshow on/off."""
+    if state.lower() not in ("on", "off"):
+        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
+    result = get_app().dispatch(
+        SetSlideshow(key=key, enabled=state.lower() == "on"),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("configure-slideshow")
+def configure_slideshow(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    themes: list[str] = typer.Argument(
+        ..., help="Theme names (directories under user_content_dir) — order matters",
+    ),
+    interval: float = typer.Option(
+        60.0, "--interval", "-i", min=1.0,
+        help="Seconds between theme swaps (default 60).",
+    ),
+) -> None:
+    """Set the slideshow theme list + interval."""
+    result = get_app().dispatch(ConfigureSlideshow(
+        key=key, themes=tuple(themes), interval_s=interval,
+    ))
+    typer.echo(result.message)
+    for t in result.themes:
+        typer.echo(f"  {t}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("keepalive")
+def keepalive(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    interval: float = typer.Option(
+        5.0, "--interval", "-i", min=0.5,
+        help="Seconds between resends (default 5).",
+    ),
+    count: int = typer.Option(
+        0, "--count", "-c", min=0,
+        help="Number of resends; 0 means loop forever (until Ctrl-C).",
+    ),
+) -> None:
+    """Periodically resend the device's last frame.
+
+    Workaround for Bulk/LY firmware that drops the displayed image when
+    the internal buffer ages out.  Render at least once before starting
+    the loop so there's a cached frame to resend.
+    """
+    import time
+
+    app_obj = get_app()
+    if count > 0:
+        result = app_obj.dispatch(KeepAliveLoop(
+            key=key, count=count, interval_s=interval,
+        ))
+        typer.echo(result.message)
+        if not result.ok:
+            raise typer.Exit(code=1)
+        return
+    typer.echo(f"Keepalive on {key} every {interval}s (Ctrl-C to stop)…")
+    try:
+        while True:
+            result = app_obj.dispatch(
+                KeepAliveLoop(key=key, count=1, interval_s=interval),
+            )
+            if not result.ok:
+                typer.echo(f"  resend failed: {result.message}", err=True)
+                raise typer.Exit(code=1)
+            time.sleep(max(0.0, interval))
+    except KeyboardInterrupt:
+        typer.echo("\nStopped.")
+
+
+@app.command("background-mode")
+def background_mode(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    mode: str = typer.Argument(
+        ..., help="'theme' / 'color' / 'transparent'",
+    ),
+) -> None:
+    """Pick what fills the LCD behind overlays."""
+    result = get_app().dispatch(SetBackgroundMode(key=key, mode=mode.lower()))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("overlay-background")
+def overlay_background(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    hex_color: str = typer.Argument(
+        ..., metavar="HEX", help="Hex color (e.g. 000000 for black)",
+    ),
+) -> None:
+    """Set the solid color used when background-mode=color."""
+    rgb = _parse_hex_color(hex_color)
+    if rgb is None:
+        typer.echo(f"Invalid hex color: {hex_color!r}", err=True)
+        raise typer.Exit(code=2)
+    result = get_app().dispatch(SetOverlayBackground(key=key, color=rgb))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("restore-theme")
+def restore_theme(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Reload the device's persisted theme — convenience after restart."""
+    result = get_app().dispatch(RestoreLastTheme(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("snapshot")
+def snapshot(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Print the persisted LCD state for a device."""
+    result = get_app().dispatch(LcdSnapshot(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+    typer.echo(f"  orientation      {result.orientation}")
+    typer.echo(f"  brightness       {result.brightness}%")
+    typer.echo(f"  current_theme    {result.current_theme}")
+    typer.echo(f"  overlay_enabled  {result.overlay_enabled}")
+    typer.echo(f"  mask_path        {result.mask_path}")
+    typer.echo(f"  mask_visible     {result.mask_visible}")
+    typer.echo(f"  mask_position    {result.mask_position}")
+    typer.echo(f"  fit_mode         {result.fit_mode}")
+    typer.echo(f"  split_mode       {result.split_mode}")
+    typer.echo(f"  time_format      {result.time_format}")
+    typer.echo(f"  date_format      {result.date_format}")
+    typer.echo(f"  temp_unit        {result.temp_unit}")

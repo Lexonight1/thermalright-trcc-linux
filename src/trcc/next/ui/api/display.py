@@ -6,38 +6,73 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import (
+    AddOverlayElement,
     ApplyMask,
+    ConfigureSlideshow,
+    DeleteOverlayElement,
     EnableOverlay,
+    FlashOverlayElement,
+    KeepAliveLoop,
+    LcdSnapshot,
+    ListBackgrounds,
+    ListMasks,
     LoadTheme,
+    LoopVideo,
+    PauseVideo,
     PlayVideo,
     RenderAndSend,
+    RestoreLastTheme,
+    SeekVideo,
     SendColor,
+    SetBackgroundMode,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
     SetMaskVisible,
     SetOrientation,
+    SetOverlayBackground,
+    SetOverlayConfig,
+    SetSlideshow,
     SetSplitMode,
     StopVideo,
+    UpdateOverlayElement,
     UploadBootAnimation,
+    UploadCustomMask,
 )
 from ._shared import (
     http_error_if_failed,
+    to_background_mode_response,
+    to_backgrounds_list_response,
     to_boot_animation_response,
     to_brightness_response,
     to_fit_mode_response,
+    to_keepalive_response,
+    to_lcd_snapshot_response,
+    to_loop_video_response,
     to_mask_apply_response,
     to_mask_position_response,
+    to_mask_upload_response,
     to_mask_visibility_response,
+    to_masks_list_response,
     to_orientation_response,
+    to_overlay_background_response,
+    to_overlay_config_response,
+    to_overlay_element_delete_response,
+    to_overlay_element_response,
     to_overlay_response,
+    to_pause_video_response,
     to_render_response,
+    to_seek_video_response,
     to_send_response,
+    to_slideshow_response,
     to_split_mode_response,
     to_theme_response,
     to_video_response,
 )
 from .schemas import (
+    BackgroundModeRequest,
+    BackgroundModeResponse,
+    BackgroundsListResponse,
     BootAnimationRequest,
     BootAnimationResponse,
     BrightnessRequest,
@@ -45,19 +80,43 @@ from .schemas import (
     ColorRequest,
     FitModeRequest,
     FitModeResponse,
+    KeepaliveRequest,
+    KeepaliveResponse,
+    LcdSnapshotResponse,
+    LoopVideoRequest,
+    LoopVideoResponse,
     MaskApplyRequest,
     MaskApplyResponse,
     MaskPositionRequest,
     MaskPositionResponse,
+    MasksListResponse,
+    MaskUploadRequest,
+    MaskUploadResponse,
     MaskVisibilityRequest,
     MaskVisibilityResponse,
     OrientationRequest,
     OrientationResponse,
+    OverlayBackgroundRequest,
+    OverlayBackgroundResponse,
+    OverlayConfigRequest,
+    OverlayConfigResponse,
+    OverlayElementAddRequest,
+    OverlayElementDeleteResponse,
+    OverlayElementResponse,
+    OverlayElementUpdateRequest,
+    OverlayFlashRequest,
     OverlayRequest,
     OverlayResponse,
+    PauseVideoRequest,
+    PauseVideoResponse,
     PlayVideoRequest,
     RenderResponse,
+    SeekVideoRequest,
+    SeekVideoResponse,
     SendResponse,
+    SlideshowConfigureRequest,
+    SlideshowResponse,
+    SlideshowToggleRequest,
     SplitModeRequest,
     SplitModeResponse,
     ThemeRequest,
@@ -274,3 +333,225 @@ def tick(key: str, request: Request) -> RenderResponse:
     result = request.app.state.trcc.dispatch(RenderAndSend(key=key))
     http_error_if_failed(result)
     return to_render_response(result)
+
+
+
+@router.post("/restore-theme", response_model=ThemeResponse)
+def restore_theme(key: str, request: Request) -> ThemeResponse:
+    """Reload the device's persisted theme."""
+    result = request.app.state.trcc.dispatch(RestoreLastTheme(key=key))
+    http_error_if_failed(result)
+    return to_theme_response(result)
+
+
+@router.get("/snapshot", response_model=LcdSnapshotResponse)
+def snapshot(key: str, request: Request) -> LcdSnapshotResponse:
+    """Return the persisted LCD state for one device."""
+    result = request.app.state.trcc.dispatch(LcdSnapshot(key=key))
+    http_error_if_failed(result)
+    return to_lcd_snapshot_response(result)
+
+
+@router.post("/slideshow", response_model=SlideshowResponse)
+def slideshow_toggle(key: str, body: SlideshowToggleRequest,
+                     request: Request) -> SlideshowResponse:
+    """Turn the device's slideshow on / off."""
+    result = request.app.state.trcc.dispatch(
+        SetSlideshow(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_slideshow_response(result)
+
+
+@router.put("/slideshow", response_model=SlideshowResponse)
+def slideshow_configure(key: str, body: SlideshowConfigureRequest,
+                        request: Request) -> SlideshowResponse:
+    """Set the theme list + interval for a device's slideshow."""
+    result = request.app.state.trcc.dispatch(ConfigureSlideshow(
+        key=key,
+        themes=tuple(body.themes) if body.themes is not None else None,
+        interval_s=body.interval_s,
+    ))
+    http_error_if_failed(result)
+    return to_slideshow_response(result)
+
+
+@router.post("/keepalive", response_model=KeepaliveResponse)
+def keepalive(key: str, body: KeepaliveRequest,
+              request: Request) -> KeepaliveResponse:
+    """Run a keepalive burst (resend the last frame N times)."""
+    result = request.app.state.trcc.dispatch(KeepAliveLoop(
+        key=key, count=body.count, interval_s=body.interval_s,
+    ))
+    http_error_if_failed(result)
+    return to_keepalive_response(result)
+
+
+@router.post("/background-mode", response_model=BackgroundModeResponse)
+def background_mode(key: str, body: BackgroundModeRequest,
+                    request: Request) -> BackgroundModeResponse:
+    """Pick what fills the LCD behind overlays (theme/color/transparent)."""
+    result = request.app.state.trcc.dispatch(
+        SetBackgroundMode(key=key, mode=body.mode),
+    )
+    http_error_if_failed(result)
+    return to_background_mode_response(result)
+
+
+@router.post("/overlay-background", response_model=OverlayBackgroundResponse)
+def overlay_background(key: str, body: OverlayBackgroundRequest,
+                       request: Request) -> OverlayBackgroundResponse:
+    """Set the solid background color used when background-mode=color."""
+    result = request.app.state.trcc.dispatch(
+        SetOverlayBackground(key=key, color=body.color),
+    )
+    http_error_if_failed(result)
+    return to_overlay_background_response(result)
+
+
+# ── Overlay element CRUD ─────────────────────────────────────────────
+
+
+@router.post("/overlay-elements", response_model=OverlayElementResponse)
+def overlay_add(key: str, body: OverlayElementAddRequest,
+                request: Request) -> OverlayElementResponse:
+    """Add a user-edited overlay element."""
+    result = request.app.state.trcc.dispatch(AddOverlayElement(
+        key=key, type=body.type, x=body.x, y=body.y,
+        color=body.color, size=body.size,
+        bold=body.bold, italic=body.italic,
+        text=body.text, metric=body.metric, format=body.format,
+        source=body.source, element_id=body.element_id,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.patch(
+    "/overlay-elements/{element_id}",
+    response_model=OverlayElementResponse,
+)
+def overlay_update(key: str, element_id: str,
+                   body: OverlayElementUpdateRequest,
+                   request: Request) -> OverlayElementResponse:
+    """Mutate fields on an existing user-edited overlay element."""
+    result = request.app.state.trcc.dispatch(UpdateOverlayElement(
+        key=key, element_id=element_id,
+        x=body.x, y=body.y, color=body.color, size=body.size,
+        bold=body.bold, italic=body.italic,
+        text=body.text, metric=body.metric, format=body.format,
+        source=body.source,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.delete(
+    "/overlay-elements/{element_id}",
+    response_model=OverlayElementDeleteResponse,
+)
+def overlay_delete(key: str, element_id: str,
+                   request: Request) -> OverlayElementDeleteResponse:
+    """Remove an overlay element by id."""
+    result = request.app.state.trcc.dispatch(
+        DeleteOverlayElement(key=key, element_id=element_id),
+    )
+    http_error_if_failed(result)
+    return to_overlay_element_delete_response(result)
+
+
+@router.post(
+    "/overlay-elements/{element_id}/flash",
+    response_model=OverlayElementResponse,
+)
+def overlay_flash(key: str, element_id: str,
+                  body: OverlayFlashRequest,
+                  request: Request) -> OverlayElementResponse:
+    """Briefly highlight an overlay element in the GUI."""
+    result = request.app.state.trcc.dispatch(FlashOverlayElement(
+        key=key, element_id=element_id, duration_ms=body.duration_ms,
+    ))
+    http_error_if_failed(result)
+    return to_overlay_element_response(result)
+
+
+@router.put(
+    "/overlay-elements",
+    response_model=OverlayConfigResponse,
+)
+def overlay_set_config(key: str, body: OverlayConfigRequest,
+                       request: Request) -> OverlayConfigResponse:
+    """Bulk replace the user-overlay element list."""
+    elements = tuple(e.model_dump() for e in body.elements)
+    result = request.app.state.trcc.dispatch(
+        SetOverlayConfig(key=key, elements=elements),
+    )
+    http_error_if_failed(result)
+    return to_overlay_config_response(result)
+
+
+@router.post("/pause-video", response_model=PauseVideoResponse)
+def pause_video(key: str, body: PauseVideoRequest,
+                request: Request) -> PauseVideoResponse:
+    """Pause / resume video playback."""
+    result = request.app.state.trcc.dispatch(
+        PauseVideo(key=key, paused=body.paused),
+    )
+    http_error_if_failed(result)
+    return to_pause_video_response(result)
+
+
+@router.post("/seek-video", response_model=SeekVideoResponse)
+def seek_video(key: str, body: SeekVideoRequest,
+               request: Request) -> SeekVideoResponse:
+    """Jump to a specific frame."""
+    result = request.app.state.trcc.dispatch(
+        SeekVideo(key=key, frame=body.frame),
+    )
+    http_error_if_failed(result)
+    return to_seek_video_response(result)
+
+
+@router.post("/loop-video", response_model=LoopVideoResponse)
+def loop_video(key: str, body: LoopVideoRequest,
+               request: Request) -> LoopVideoResponse:
+    """Toggle whether playback wraps or sticks at the last frame."""
+    result = request.app.state.trcc.dispatch(
+        LoopVideo(key=key, loop=body.loop),
+    )
+    http_error_if_failed(result)
+    return to_loop_video_response(result)
+
+
+@router.post("/upload-mask", response_model=MaskUploadResponse)
+def upload_mask(key: str, body: MaskUploadRequest,
+                request: Request) -> MaskUploadResponse:
+    """Upload a mask file (server-side path) + apply it."""
+    from pathlib import Path as _Path
+    result = request.app.state.trcc.dispatch(
+        UploadCustomMask(key=key, source=_Path(body.source)),
+    )
+    http_error_if_failed(result)
+    return to_mask_upload_response(result)
+
+
+# ── Meta routes (no device key in path) ──────────────────────────────
+
+
+meta_router = APIRouter(prefix="/display", tags=["display"])
+
+
+@meta_router.get("/masks", response_model=MasksListResponse)
+def list_masks(request: Request) -> MasksListResponse:
+    """List masks under user_content_dir/masks."""
+    result = request.app.state.trcc.dispatch(ListMasks())
+    http_error_if_failed(result)
+    return to_masks_list_response(result)
+
+
+@meta_router.get("/backgrounds", response_model=BackgroundsListResponse)
+def list_backgrounds(request: Request) -> BackgroundsListResponse:
+    """List backgrounds under user_content_dir/backgrounds."""
+    result = request.app.state.trcc.dispatch(ListBackgrounds())
+    http_error_if_failed(result)
+    return to_backgrounds_list_response(result)

@@ -12,3 +12,12 @@ Built inside-out: core → adapters → UIs.  Existing code in sibling
 packages is untouched during the build; switchover happens once feature
 parity lands.
 """
+from __future__ import annotations
+
+try:
+    from .. import __version__
+except ImportError:
+    # When run from a different tree (parity tests, etc.) the parent
+    # package may not expose its version constant.  Fall back to 0.0.0
+    # so the update-check Command can still execute.
+    __version__ = "0.0.0"

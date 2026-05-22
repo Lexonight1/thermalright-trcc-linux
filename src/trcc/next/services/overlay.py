@@ -30,6 +30,7 @@ class OverlayService:
         config: dict[str, Any],
         sensors: dict[str, float],
         clock: dict[str, str] | None = None,
+        user_elements: list[dict[str, Any]] | None = None,
     ) -> Any:
         """Render every overlay element from *config* onto *base*.
 
@@ -52,6 +53,11 @@ class OverlayService:
         "weekday": ...}`` dict produced by DisplayService via
         ``services._clock.compute_clock``.  When ``None``, clock
         elements are skipped (e.g. test fixtures that don't care).
+
+        ``user_elements`` is the user's edits on top of the theme's
+        bundled elements; rendered after them so users layer on top.
+        Same dict shape as ``config["elements"]`` (produced by
+        ``OverlayElement.to_dict``).
         """
         if not config.get("overlay_enabled", True):
             return base
@@ -62,6 +68,9 @@ class OverlayService:
 
         elements: list[dict[str, Any]] = config.get("elements", [])
         for element in elements:
+            self._draw_element(overlay, element, sensors, clock or {})
+        # User edits paint on top.
+        for element in user_elements or []:
             self._draw_element(overlay, element, sensors, clock or {})
 
         return self._r.composite(base, overlay, position=(0, 0))

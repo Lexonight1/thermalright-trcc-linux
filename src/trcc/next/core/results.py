@@ -122,6 +122,21 @@ class ThemeImportResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class ThemeListEntry:
+    """One row in a ThemesListResult — name + resolution + path."""
+    name: str
+    resolution: tuple[int, int]
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemesListResult(Result):
+    """All themes discovered under a directory."""
+    directory: str = ""
+    themes: list[ThemeListEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class VideoResult(Result):
     key: str = ""
     path: str = ""
@@ -190,3 +205,387 @@ class PlatformInfoResult(Result):
     user_content_dir: str = ""
     log_file: str = ""
     permission_warnings: list[str] = field(default_factory=list)
+
+
+# =========================================================================
+# Listings + snapshots (read-only Commands)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class LedStyleEntry:
+    """One row in a LedStylesListResult."""
+    style: str           # LedStyle.value
+    model_name: str
+    pm_byte: int
+    style_sub: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LedStylesListResult(Result):
+    styles: list[LedStyleEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class LedModesListResult(Result):
+    modes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class GpuEntry:
+    """One row in a GpusListResult."""
+    key: str
+    name: str
+    is_discrete: bool
+
+
+@dataclass(frozen=True, slots=True)
+class GpusListResult(Result):
+    gpus: list[GpuEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class LcdSnapshotResult(Result):
+    """Per-device LCD state snapshot — what's currently persisted."""
+    key: str = ""
+    orientation: int = 0
+    brightness: int = 100
+    current_theme: str | None = None
+    overlay_enabled: bool = True
+    mask_path: str | None = None
+    mask_visible: bool = True
+    mask_position: tuple[int, int] | None = None
+    fit_mode: str = "fit"
+    split_mode: int = 0
+    time_format: str = "24h"
+    date_format: str = ""
+    temp_unit: str = "C"
+
+
+@dataclass(frozen=True, slots=True)
+class LedSnapshotResult(Result):
+    """Per-device LED state snapshot — what's currently persisted."""
+    key: str = ""
+    mode: str = "STATIC"
+    color: tuple[int, int, int] = (0, 0, 0)
+    brightness: int = 100
+    global_on: bool = True
+    test_mode: bool = False
+    temp_source: str = "cpu"
+    load_source: str = "cpu"
+    zone_sync: bool = False
+    zone_sync_interval_ticks: int = 13
+    selected_zone: int = 0
+    zone_count: int = 0
+    segment_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ControlCenterSnapshotResult(Result):
+    """AppSettings snapshot."""
+    language: str = "en"
+    temp_unit: str = "C"
+    active_device: str | None = None
+    active_gpu: str | None = None
+    refresh_interval_s: float = 2.0
+    hdd_enabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class HddEnabledResult(Result):
+    enabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundModeResult(Result):
+    key: str = ""
+    mode: str = "theme"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayBackgroundResult(Result):
+    key: str = ""
+    color: tuple[int, int, int] = (0, 0, 0)
+
+
+@dataclass(frozen=True, slots=True)
+class ClockFormatResult(Result):
+    key: str = ""
+    is_24h: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class WeekStartResult(Result):
+    key: str = ""
+    sunday_first: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryRatioResult(Result):
+    key: str = ""
+    ratio_mode: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class DiskIndexResult(Result):
+    key: str = ""
+    index: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class PauseVideoResult(Result):
+    key: str = ""
+    paused: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SeekVideoResult(Result):
+    key: str = ""
+    cursor: int = 0
+    frame_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LoopVideoResult(Result):
+    key: str = ""
+    loop: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteThemeResult(Result):
+    theme_name: str = ""
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MaskUploadResult(Result):
+    key: str = ""
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class FileEntry:
+    """One row in a generic listing of files."""
+    name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class MasksListResult(Result):
+    directory: str = ""
+    masks: list[FileEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundsListResult(Result):
+    directory: str = ""
+    backgrounds: list[FileEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class FontsListResult(Result):
+    fonts: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class DiskEntry:
+    """One row in a DisksListResult."""
+    index: int
+    device: str
+    mountpoint: str
+
+
+@dataclass(frozen=True, slots=True)
+class DisksListResult(Result):
+    disks: list[DiskEntry] = field(default_factory=list)
+
+
+# Overlay element CRUD
+@dataclass(frozen=True, slots=True)
+class OverlayElementEntry:
+    """Flat view of one OverlayElement (id + type + fields)."""
+    id: str
+    type: str
+    x: int = 0
+    y: int = 0
+    color: str = "#ffffff"
+    size: int = 16
+    bold: bool = False
+    italic: bool = False
+    text: str = ""
+    metric: str = ""
+    format: str = "{value}"
+    source: str = "time"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayElementResult(Result):
+    """Single-element response (add / update / flash)."""
+    key: str = ""
+    element: OverlayElementEntry | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayElementDeleteResult(Result):
+    key: str = ""
+    element_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayConfigResult(Result):
+    """Bulk SetOverlayConfig response — full element list."""
+    key: str = ""
+    elements: list[OverlayElementEntry] = field(default_factory=list)
+
+
+# Cloud themes
+@dataclass(frozen=True, slots=True)
+class CloudCategoryEntry:
+    prefix: str
+    name: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CloudThemeEntryResult:
+    id: str
+    category: str
+    category_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class CloudThemesListResult(Result):
+    category: str = "all"
+    categories: list[CloudCategoryEntry] = field(default_factory=list)
+    themes: list[CloudThemeEntryResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class CloudThemeLoadResult(Result):
+    key: str = ""
+    theme_id: str = ""
+    theme_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageEntry:
+    """One row in a LanguagesListResult — code + native name + translated count."""
+    code: str
+    name: str
+    translated_keys: int
+
+
+@dataclass(frozen=True, slots=True)
+class LanguagesListResult(Result):
+    """Every language the i18n table can resolve."""
+    languages: list[LanguageEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeDcExportResult(Result):
+    """Wrote a theme out as legacy ``config1.dc``."""
+    theme_name: str = ""
+    output_path: str = ""
+
+
+# Diagnostics
+@dataclass(frozen=True, slots=True)
+class HealthCheckEntry:
+    name: str
+    severity: str           # OK / WARN / FAIL
+    message: str
+    fix_hint: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class HealthReportResult(Result):
+    checks: list[HealthCheckEntry] = field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    worst_severity: str = "OK"
+
+
+@dataclass(frozen=True, slots=True)
+class DoctorResultPayload(Result):
+    checks: list[HealthCheckEntry] = field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    exit_code: int = 0
+    rendered: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class DebugReportPayload(Result):
+    output_path: str = ""
+    rendered_text: str = ""
+
+
+# Update check + upgrade
+@dataclass(frozen=True, slots=True)
+class UpdateCheckResult(Result):
+    local_version: str = ""
+    latest_version: str = ""
+    latest_tag: str = ""
+    release_url: str = ""
+    update_available: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class UpgradeResult(Result):
+    """Outcome of running the OS package manager upgrade subprocess."""
+    package_manager: str = ""
+    command: list[str] = field(default_factory=list)
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+
+
+# Slideshow + keepalive
+@dataclass(frozen=True, slots=True)
+class SlideshowResult(Result):
+    key: str = ""
+    enabled: bool = False
+    interval_s: float = 60.0
+    themes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class KeepaliveResult(Result):
+    """Outcome of one KeepAliveLoop tick (or batch)."""
+    key: str = ""
+    frames_resent: int = 0
+    bytes_resent: int = 0
+
+
+# First-run + legacy migration
+@dataclass(frozen=True, slots=True)
+class FirstRunStatusResult(Result):
+    is_first_run: bool = True
+    marker_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MigrateLegacyResult(Result):
+    legacy_config_path: str = ""
+    legacy_config_exists: bool = False
+    themes_copied: list[str] = field(default_factory=list)
+    masks_copied: list[str] = field(default_factory=list)
+    settings_keys_imported: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    dry_run: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class QuickstartStepEntry:
+    name: str
+    status: str   # ok / warn / fail / skipped
+    message: str
+    next_step_hint: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class QuickstartResult(Result):
+    """Stepwise trace of the guided first-session flow."""
+    steps: list[QuickstartStepEntry] = field(default_factory=list)
+    completed_ok: bool = False
+    device_key: str = ""

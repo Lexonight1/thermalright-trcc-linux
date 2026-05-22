@@ -14,6 +14,9 @@ from .adapters.device.hid_lcd import HidLcd
 from .adapters.device.led import Led
 from .adapters.device.ly_lcd import LyLcd
 from .adapters.device.scsi_lcd import ScsiLcd
+from .adapters.repo.github_releases import GitHubReleases
+from .adapters.repo.http import UrllibHttpFetcher
+from .adapters.theme.cloud import CzhordeCatalog
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
 from .core.events import EventBus
@@ -22,11 +25,17 @@ from .core.models import Theme, Wire
 from .core.ports import Device, Platform, Renderer
 from .core.registry import find_product
 from .core.results import Result
+from .services.cloud_theme import CloudThemeService
 from .services.display import DisplayService
+from .services.first_run import FirstRunService
+from .services.keepalive import KeepaliveService
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
+from .services.migrate import LegacyMigrationService
 from .services.overlay import OverlayService
+from .services.quickstart import QuickstartService
 from .services.settings import Settings
+from .services.slideshow import SlideshowService
 from .services.theme import ThemeService
 
 log = logging.getLogger(__name__)
@@ -76,6 +85,30 @@ class App:
         # phase counters, not user prefs.
         self.led_runtime: dict[str, LedRuntimeState] = {}
         self.led_effects = LEDEffectEngine()
+        # Cloud theme catalog + service.  HTTP adapter is the only seam
+        # that talks to the network; tests inject a fake fetcher.
+        self.http = UrllibHttpFetcher()
+        self.cloud_themes = CloudThemeService(
+            catalog=CzhordeCatalog(
+                http=self.http,
+                cache_dir=platform.paths().data_dir() / "cloud_themes",
+            ),
+            paths=platform.paths(),
+        )
+        # GitHub releases adapter for `check_for_update` Command.
+        self.github_releases = GitHubReleases(http=self.http)
+        # Slideshow + keepalive — small per-device state holders.  Both
+        # are tick-driven; no background threads inside the services.
+        self.slideshow = SlideshowService()
+        self.keepalive = KeepaliveService()
+        # First-run flag + legacy migration helper.  Both are lightweight
+        # — the marker file is one stat call, the migration runs on demand.
+        self.first_run = FirstRunService(platform.paths())
+        self.migration = LegacyMigrationService(platform.paths(), self.settings)
+        # Quickstart — guided first-session orchestrator.  Sequences
+        # doctor + scan with explicit step boundaries so any UI renders
+        # the same flow.
+        self.quickstart = QuickstartService(platform)
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -154,6 +187,8 @@ class App:
         self.active_themes.pop(key, None)
         self.led_runtime.pop(key, None)
         self.media.unload(key)
+        self.keepalive.forget(key)
+        self.slideshow.reset(key)
         if self._display is not None:
             self._display.invalidate(key)
 

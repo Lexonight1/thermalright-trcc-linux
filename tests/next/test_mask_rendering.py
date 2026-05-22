@@ -99,7 +99,9 @@ class _StubOverlay(OverlayService):
     """Skip text rendering — return the canvas unchanged."""
 
     def render(self, canvas: Any, config: Any, sensors: dict[str, float],
-               clock: dict[str, str] | None = None) -> Any:
+               clock: dict[str, str] | None = None,
+               user_elements: list[dict[str, Any]] | None = None) -> Any:
+        del config, sensors, clock, user_elements
         return canvas
 
 

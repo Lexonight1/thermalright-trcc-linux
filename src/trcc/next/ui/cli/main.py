@@ -11,6 +11,7 @@ import logging
 import typer
 
 from . import config, device, display, led, system, theme
+from ._ctx import get_app
 
 app = typer.Typer(
     help="TRCC — Thermalright LCD/LED cooler control (clean-slate build).",
@@ -26,9 +27,100 @@ app.add_typer(config.app, name="config")
 app.add_typer(theme.app, name="theme")
 
 
+@app.command("quickstart")
+def quickstart(
+    yes: bool = typer.Option(
+        False, "--yes", "-y",
+        help=(
+            "If a device is found, also connect + push a green test frame.  "
+            "Default: stop after scan so you can inspect what's there."
+        ),
+    ),
+) -> None:
+    """Guided first-session flow for new users.
+
+    Runs the doctor, scans for devices, and walks you through what to
+    do next.  Pass ``--yes`` to also test-connect to the first device
+    found.  Safe to re-run any time.
+    """
+    from ...core.commands import (
+        ConnectDevice,
+        MarkFirstRunDone,
+        RunQuickstart,
+        SendColor,
+    )
+
+    app_obj = get_app()
+    result = app_obj.dispatch(RunQuickstart())
+
+    for step in result.steps:
+        marker = {"ok": "[ ok ]", "warn": "[warn]", "fail": "[fail]"}.get(
+            step.status, "[ -- ]",
+        )
+        typer.echo(f"{marker}  {step.name:8}  {step.message}")
+        if step.next_step_hint:
+            typer.echo(f"          → {step.next_step_hint}")
+
+    if not result.completed_ok:
+        # If we stopped at a FAIL, exit non-zero so scripts can branch.
+        if any(s.status == "fail" for s in result.steps):
+            raise typer.Exit(code=1)
+        return
+
+    # Quickstart got through scan.  If --yes was passed and a device
+    # exists, do the smallest possible end-to-end test: connect + green.
+    if yes:
+        scan_step = next(
+            (s for s in result.steps if s.name == "scan"), None,
+        )
+        if scan_step is None or "First:" not in scan_step.message:
+            return
+        # Pull the key out of the scan step's message (we put it there
+        # in the Service so any UI can re-parse).
+        try:
+            key = scan_step.message.split("First:")[1].strip().rstrip(".")
+        except IndexError:
+            return
+        typer.echo("")
+        typer.echo(f"Attempting handshake with {key} …")
+        connect = app_obj.dispatch(ConnectDevice(key=key))
+        typer.echo(f"  {connect.message}")
+        if not connect.ok:
+            raise typer.Exit(code=1)
+        typer.echo("Pushing test frame (solid green) — your screen should "
+                   "turn green for a moment…")
+        color = app_obj.dispatch(SendColor(key=key, r=0, g=255, b=0))
+        typer.echo(f"  {color.message}")
+        if color.ok:
+            typer.echo(
+                "\nQuickstart succeeded on real hardware.  "
+                "trcc-next is ready to use.",
+            )
+            app_obj.dispatch(MarkFirstRunDone())
+        else:
+            raise typer.Exit(code=1)
+
+
+@app.command("qtgui")
+def qtgui() -> None:
+    """Launch the Qt-native GUI (clean-slate, layout-driven).
+
+    This is the rebuild's GUI — built up over G1–G5 and used during
+    development.  See ``gui`` for the legacy Windows-style port.
+    """
+    from ..qtgui import launch
+    raise typer.Exit(code=launch())
+
+
 @app.command("gui")
 def gui() -> None:
-    """Launch the desktop GUI (PySide6)."""
+    """Launch the legacy Windows-style GUI (port in progress).
+
+    Today's shell hosts the device sidebar + a diagnostic content
+    area — enough to prove the legacy-on-next/-bus pattern end to
+    end on real hardware.  Real feature panels (LCD handler, theme
+    settings, mask, video, LED) land in subsequent passes.
+    """
     from ..gui import launch
     raise typer.Exit(code=launch())
 

@@ -308,6 +308,546 @@ def test_led_play_help(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_led_toggle_global_off(cli_runner: CliRunner, cli_app) -> None:
+    """``led toggle <key> off`` flips global_on."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "toggle", "0416:8001", "off"])
+    assert result.exit_code == 0
+    assert "off" in result.output
+
+
+def test_led_toggle_invalid_state_rejected(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``led toggle`` rejects anything other than 'on' or 'off'."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "toggle", "0416:8001", "maybe"])
+    assert result.exit_code != 0
+
+
+def test_led_zone_sync_enable(cli_runner: CliRunner, cli_app) -> None:
+    """``led zone-sync <key> on`` enables zone-sync."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "zone-sync", "0416:8001", "on"])
+    assert result.exit_code == 0
+    assert "enabled" in result.output
+
+
+def test_led_zone_sync_with_interval(cli_runner: CliRunner, cli_app) -> None:
+    """``--interval`` sets both flag + tick count."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["led", "zone-sync", "0416:8001", "on", "--interval", "20"],
+    )
+    assert result.exit_code == 0
+    assert "20 tick" in result.output
+
+
+def test_led_select_zone(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "select-zone", "0416:8001", "2"],
+    )
+    assert result.exit_code == 0
+    assert "Selected zone 2" in result.output
+
+
+def test_led_toggle_segment(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "toggle-segment", "0416:8001", "5", "off"],
+    )
+    assert result.exit_code == 0
+    assert "Segment 5" in result.output
+    assert "off" in result.output
+
+
+def test_led_list_styles(cli_runner: CliRunner, cli_app) -> None:
+    """``led list-styles`` emits the PM registry."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "list-styles"])
+    assert result.exit_code == 0
+    # PM 1 = AX120 entry in the registry
+    assert "ax120" in result.output.lower()
+
+
+def test_led_list_modes(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "list-modes"])
+    assert result.exit_code == 0
+    assert "STATIC" in result.output
+    assert "RAINBOW" in result.output
+
+
+def test_led_snapshot(cli_runner: CliRunner, cli_app) -> None:
+    """``led snapshot <key>`` prints persisted LED state."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["led", "snapshot", "0416:8001"])
+    assert result.exit_code == 0
+    assert "mode" in result.output
+    assert "brightness" in result.output
+
+
+def test_display_snapshot(cli_runner: CliRunner, cli_app) -> None:
+    """``display snapshot <key>`` prints persisted LCD state."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["display", "snapshot", "0402:3922"])
+    assert result.exit_code == 0
+    assert "orientation" in result.output
+
+
+def test_display_restore_theme_no_persisted(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``display restore-theme`` with nothing persisted exits non-zero."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "restore-theme", "0402:3922"],
+    )
+    assert result.exit_code != 0
+    assert "No persisted theme" in result.output
+
+
+def test_system_snapshot(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "snapshot"])
+    assert result.exit_code == 0
+    assert "language" in result.output
+    assert "refresh_interval" in result.output
+
+
+def test_system_list_gpus(cli_runner: CliRunner, cli_app) -> None:
+    """``system list-gpus`` runs (output depends on platform fake)."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "list-gpus"])
+    assert result.exit_code == 0
+
+
+# --- Tier 2 Commands ---------------------------------------------------------
+
+
+def test_led_clock_format_24h(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "clock-format", "0416:8001", "24h"],
+    )
+    assert result.exit_code == 0
+    assert "24h" in result.output
+
+
+def test_led_clock_format_rejects_garbage(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "clock-format", "0416:8001", "nope"],
+    )
+    assert result.exit_code != 0
+
+
+def test_led_week_start_sunday(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "week-start", "0416:8001", "sunday"],
+    )
+    assert result.exit_code == 0
+    assert "Sunday" in result.output
+
+
+def test_led_memory_ratio_absolute(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "memory-ratio", "0416:8001", "absolute"],
+    )
+    assert result.exit_code == 0
+    assert "absolute" in result.output
+
+
+def test_led_disk_index(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "disk-index", "0416:8001", "2"],
+    )
+    assert result.exit_code == 0
+    assert "2" in result.output
+
+
+def test_led_disk_index_negative_rejected(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "disk-index", "0416:8001", "-1"],
+    )
+    assert result.exit_code != 0
+
+
+def test_system_hdd_enabled_on(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "hdd-enabled", "on"])
+    assert result.exit_code == 0
+    assert "enabled" in result.output
+
+
+def test_display_background_mode_color(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "background-mode", "0402:3922", "color"],
+    )
+    assert result.exit_code == 0
+    assert "color" in result.output
+
+
+def test_display_background_mode_rejects_garbage(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "background-mode", "0402:3922", "bogus"],
+    )
+    assert result.exit_code != 0
+
+
+def test_display_overlay_background(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "overlay-background", "0402:3922", "112233"],
+    )
+    assert result.exit_code == 0
+    assert "112233" in result.output.lower()
+
+
+# --- Tier 3 -----------------------------------------------------------------
+
+
+def test_display_pause_no_playback(cli_runner: CliRunner, cli_app) -> None:
+    """``pause-video`` with no active playback exits non-zero (clean error)."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "pause-video", "0402:3922", "on"],
+    )
+    assert result.exit_code != 0
+    assert "No active video" in result.output
+
+
+def test_display_seek_negative_rejected(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """Negative frame fails — even before playback exists the Command
+    surfaces a structured error rather than crashing."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "seek-video", "0402:3922", "-1"],
+    )
+    assert result.exit_code != 0
+
+
+def test_display_loop_no_playback(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "loop-video", "0402:3922", "off"],
+    )
+    assert result.exit_code != 0
+
+
+def test_display_list_masks_empty(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``list-masks --dir`` with an empty dir exits 0 + empty count."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "list-masks", "--dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "0 mask" in result.output
+
+
+def test_display_list_backgrounds_finds_file(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``list-backgrounds`` returns files with matching extensions."""
+    del cli_app
+    (tmp_path / "bg.png").write_bytes(b"x")
+    (tmp_path / "ignored.txt").write_text("nope")
+    result = cli_runner.invoke(
+        _app(), ["display", "list-backgrounds", "--dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "bg.png" in result.output
+    assert "ignored.txt" not in result.output
+
+
+def test_display_upload_mask(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``upload-mask`` copies source to user_content_dir/masks + applies it."""
+    del cli_app
+    src = tmp_path / "custom.png"
+    # Write a tiny PNG header so the file is non-empty + has the right ext.
+    src.write_bytes(b"\x89PNG\r\n\x1a\n")
+    result = cli_runner.invoke(
+        _app(), ["display", "upload-mask", "0402:3922", str(src)],
+    )
+    assert result.exit_code == 0
+    assert "custom.png" in result.output
+
+
+def test_theme_delete_unknown(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """Deleting a non-existent theme exits non-zero."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["theme", "delete", "definitely-not-a-theme-x9z"],
+    )
+    assert result.exit_code != 0
+
+
+def test_theme_delete_round_trip(
+    cli_runner: CliRunner, cli_app, tmp_path, monkeypatch,
+) -> None:
+    """Create a theme via fs, delete via CLI."""
+    del cli_app
+    # Point the FakePlatform's user_content_dir at tmp_path via the env vars
+    # honored by tmp_home — but the cli_app fixture already redirects HOME.
+    # We use the actual current user_content_dir for the cli.
+    from trcc.next.ui.cli import _ctx
+    user_content = _ctx.get_app().platform.paths().user_content_dir()
+    user_content.mkdir(parents=True, exist_ok=True)
+    target = user_content / "Disposable"
+    target.mkdir(exist_ok=True)
+    (target / "trcc-next.json").write_text(
+        '{"width": 320, "height": 320, "elements": []}',
+    )
+    result = cli_runner.invoke(_app(), ["theme", "delete", "Disposable"])
+    assert result.exit_code == 0
+    assert not target.exists()
+
+
+def test_system_list_fonts(cli_runner: CliRunner, cli_app) -> None:
+    """``system list-fonts`` exits 0 — output depends on Qt availability."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "list-fonts"])
+    assert result.exit_code == 0
+
+
+def test_system_list_disks(cli_runner: CliRunner, cli_app) -> None:
+    """``system list-disks`` exits 0."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "list-disks"])
+    assert result.exit_code == 0
+
+
+# --- Tier 4 — overlay element CRUD ------------------------------------------
+
+
+def test_overlay_add_text_element(cli_runner: CliRunner, cli_app) -> None:
+    """``overlay-add`` round-trips a text element."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-add", "0402:3922", "text",
+         "--x", "10", "--y", "20", "--text", "hello"],
+    )
+    assert result.exit_code == 0
+    assert "Added overlay element" in result.output
+    assert "id: el_" in result.output
+
+
+def test_overlay_add_rejects_bad_type(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-add", "0402:3922", "bogus"],
+    )
+    assert result.exit_code != 0
+
+
+def test_overlay_update_unknown_id(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-update", "0402:3922", "el_nope",
+         "--x", "5"],
+    )
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
+def test_overlay_delete_unknown_id(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-delete", "0402:3922", "el_nope"],
+    )
+    assert result.exit_code != 0
+
+
+def test_overlay_round_trip_add_update_delete(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """Full add → update → delete cycle on one element."""
+    del cli_app
+    add = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-add", "0402:3922", "text",
+         "--x", "0", "--y", "0", "--text", "first", "--id", "el_test"],
+    )
+    assert add.exit_code == 0, add.output
+    upd = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-update", "0402:3922", "el_test",
+         "--text", "second"],
+    )
+    assert upd.exit_code == 0, upd.output
+    delete = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-delete", "0402:3922", "el_test"],
+    )
+    assert delete.exit_code == 0, delete.output
+
+
+def test_overlay_flash_unknown_id(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-flash", "0402:3922", "el_nope"],
+    )
+    assert result.exit_code != 0
+
+
+# --- Tier 5 — cloud themes (no network — list is static; load mocked elsewhere) ---
+
+
+def test_theme_cloud_list_all(cli_runner: CliRunner, cli_app) -> None:
+    """``theme cloud-list`` emits every category and theme id (offline)."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["theme", "cloud-list"])
+    assert result.exit_code == 0
+    # First category prefix from the static table
+    assert "Gallery" in result.output
+    assert "a001" in result.output
+
+
+def test_theme_cloud_list_filter_category(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """Filtering by category shows only that prefix."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["theme", "cloud-list", "--category", "y"],
+    )
+    assert result.exit_code == 0
+    assert "y001" in result.output
+
+
+def test_theme_cloud_list_rejects_unknown_category(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["theme", "cloud-list", "--category", "zzz"],
+    )
+    assert result.exit_code != 0
+
+
+# --- Diagnostics ------------------------------------------------------------
+
+
+def test_system_doctor_runs(cli_runner: CliRunner, cli_app) -> None:
+    """``system doctor`` exits 0 or 1 (FakePlatform → no FAIL expected)."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "doctor"])
+    assert result.exit_code in (0, 1)
+    assert "checks total" in result.output
+
+
+def test_system_health_lists_checks(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "health"])
+    assert result.exit_code == 0
+    assert "python-version" in result.output
+
+
+def test_system_debug_report_to_stdout(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "debug-report"])
+    assert result.exit_code == 0
+    assert "## Platform" in result.output
+
+
+def test_system_debug_report_to_file(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    del cli_app
+    out = tmp_path / "bundle.txt"
+    result = cli_runner.invoke(
+        _app(),
+        ["system", "debug-report", "--output", str(out), "--log-lines", "5"],
+    )
+    assert result.exit_code == 0
+    assert out.is_file()
+
+
+# --- Final backend batch ----------------------------------------------------
+
+
+def test_system_upgrade_refuses_without_yes(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """Upgrade is a sudo subprocess — refuses to run without --yes."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "upgrade"])
+    assert result.exit_code == 2
+    assert "Refusing" in result.output
+
+
+def test_system_upgrade_dry_run_emits_command(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "upgrade", "--dry-run"])
+    # Dry-run never sudos — exits 0 on systems with a detected pm,
+    # non-zero only if no pm detected.  Just check it runs.
+    assert result.exit_code in (0, 1)
+
+
+def test_display_slideshow_off(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "slideshow", "0402:3922", "off"],
+    )
+    assert result.exit_code == 0
+    assert "Slideshow off" in result.output
+
+
+def test_display_configure_slideshow(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), [
+        "display", "configure-slideshow", "0402:3922",
+        "alpha", "beta", "--interval", "20",
+    ])
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+    assert "beta" in result.output
+
+
+def test_display_keepalive_no_cached_frame(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``display keepalive --count 1`` exits non-zero when no frame cached."""
+    del cli_app
+    result = cli_runner.invoke(_app(), [
+        "display", "keepalive", "0402:3922", "--count", "1",
+    ])
+    assert result.exit_code != 0
+
+
 # =========================================================================
 # system sub-app — setup / sensors / info
 # =========================================================================
@@ -388,6 +928,36 @@ def test_theme_import_help(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_theme_list_against_empty_dir(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``theme list --dir <empty>`` exits 0 with the empty-list message."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["theme", "list", "--dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "0 theme(s)" in result.output
+
+
+def test_theme_list_finds_a_theme(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``theme list`` lists themes whose dir contains config.json."""
+    del cli_app
+    theme_dir = tmp_path / "Sample"
+    theme_dir.mkdir()
+    (theme_dir / "trcc-next.json").write_text(
+        '{"width": 320, "height": 320, "elements": []}',
+    )
+    result = cli_runner.invoke(
+        _app(), ["theme", "list", "--dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "Sample" in result.output
+    assert "320x320" in result.output
+
+
 # =========================================================================
 # Coverage sanity — sub-app registration drift detection
 # =========================================================================
@@ -411,7 +981,7 @@ def test_every_sub_app_has_commands_registered() -> None:
 
     assert len(config.app.registered_commands) >= 4
     assert len(device.app.registered_commands) >= 3
-    assert len(display.app.registered_commands) >= 14
-    assert len(led.app.registered_commands) >= 9
-    assert len(system.app.registered_commands) >= 3
-    assert len(theme.app.registered_commands) >= 3
+    assert len(display.app.registered_commands) >= 32
+    assert len(led.app.registered_commands) >= 21
+    assert len(system.app.registered_commands) >= 13
+    assert len(theme.app.registered_commands) >= 8

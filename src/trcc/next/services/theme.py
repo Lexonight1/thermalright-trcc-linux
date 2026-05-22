@@ -45,9 +45,12 @@ _BACKGROUND_CANDIDATES = (
     # next/ native names
     "background.mp4", "background.mov", "background.webm",
     "background.png", "background.jpg", "background.jpeg",
-    # Legacy theme naming (Windows TRCC)
+    "background.zt",
+    # Legacy theme naming (Windows TRCC) — Theme.zt is the JPEG-sequence
+    # archive UCVideoCut writes, opaque to anyone who doesn't speak it.
     "Theme.mp4", "Theme.mov", "Theme.webm",
     "Theme.png", "Theme.jpg", "Theme.jpeg",
+    "Theme.zt",
 )
 _MASK_CANDIDATES = (
     "mask.png", "mask.jpg", "mask.jpeg",
@@ -106,6 +109,62 @@ class ThemeService:
             except ThemeError as e:
                 log.warning("Skipping invalid theme %s: %s", entry, e)
         return themes
+
+    def export_dc(
+        self, theme_dir: Path, output_path: Path,
+        *,
+        user_overlay_elements: list[dict] | None = None,
+    ) -> Path:
+        """Write *theme_dir*'s config out as legacy ``config1.dc`` to
+        *output_path* — for sharing themes with Windows TRCC users.
+
+        Reads next/'s JSON config (or falls back to the existing
+        ``config1.dc`` if no JSON), composes with the device's user
+        overlay elements (if any), and writes a 0xDD-format DC file.
+        Returns the output path.
+        """
+        from ._dc_reader import write_dc_from_theme_config
+
+        try:
+            config = self._load_config(theme_dir)
+        except ThemeError:
+            raise
+        write_dc_from_theme_config(
+            output_path, config,
+            user_overlay_elements=user_overlay_elements,
+        )
+        return output_path
+
+    def delete(self, directory: Path, name: str) -> Path:
+        """Delete the theme ``directory / name``.
+
+        Confines deletion to *directory* — callers pass the trusted root
+        (``user_content_dir``), and we resolve+verify the target stays
+        inside it.  Raises ``ThemeError`` on traversal, missing dir, or
+        IO failure.
+        """
+        import shutil
+
+        if not name or "/" in name or "\\" in name or name in (".", ".."):
+            raise ThemeError(f"Invalid theme name: {name!r}")
+        try:
+            root = directory.resolve(strict=True)
+        except OSError as e:
+            raise ThemeError(f"Theme root unreachable: {directory}: {e}") from e
+        target = (root / name).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError as e:
+            raise ThemeError(
+                f"Theme path escapes root: {target} not under {root}",
+            ) from e
+        if not target.is_dir():
+            raise ThemeError(f"Theme {name!r} not found at {target}")
+        try:
+            shutil.rmtree(target)
+        except OSError as e:
+            raise ThemeError(f"Failed to delete {target}: {e}") from e
+        return target
 
     def background_path(self, theme: Theme) -> Path | None:
         """Return the theme's background path (video or image), or None."""

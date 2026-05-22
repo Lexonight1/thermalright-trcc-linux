@@ -36,7 +36,7 @@ from .theme import ThemeService
 log = logging.getLogger(__name__)
 
 
-_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
@@ -120,7 +120,7 @@ class DisplayService:
 
         scene = self._scenes.get(info.key)
         bg_key = self._bg_mask_key(info, theme, visual_size)
-        overlay_key = self._overlay_key(theme, visual_size, sensors, clock)
+        overlay_key = self._overlay_key(info, theme, visual_size, sensors, clock)
 
         if scene is None or scene.bg_mask_key != bg_key:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
@@ -128,7 +128,9 @@ class DisplayService:
             bg_surface = scene.bg_mask_surface
 
         if scene is None or scene.overlay_key != overlay_key:
-            overlay_surface = self._build_overlay(theme, sensors, visual_size, clock)
+            overlay_surface = self._build_overlay(
+                info, theme, sensors, visual_size, clock,
+            )
         else:
             overlay_surface = scene.overlay_surface
 
@@ -156,6 +158,64 @@ class DisplayService:
             surface = self._r.rotate(surface, 90)
 
         return self._encode_for_wire(surface, resolved_profile)
+
+    def build_preview_surface(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        sensors: dict[str, float],
+        *,
+        profile: DeviceProfile | None = None,
+    ) -> Any:
+        """Same pipeline as ``build_frame`` but returns the surface pre-encode.
+
+        Used by the GUI preview panel — gives callers a renderable
+        Renderer surface (QImage for QtRenderer) without paying for the
+        RGB565/JPEG encode step.  Honors user orientation + brightness
+        + device-side rotation so what the preview shows matches what
+        the device would receive byte-for-byte.
+        """
+        resolved_profile = self._resolve_profile(info, profile)
+        base_size = resolved_profile.resolution
+
+        s = self._settings.for_device(info.key)
+        visual_size = self._visual_size(base_size, s.orientation)
+
+        clock = compute_clock(
+            time_format=s.time_format,
+            date_format=s.date_format,
+            language=self._settings.app.language,
+        )
+
+        # Same cache lookup as build_frame so a preview tick doesn't
+        # invalidate it for the wire path.
+        scene = self._scenes.get(info.key)
+        bg_key = self._bg_mask_key(info, theme, visual_size)
+        overlay_key = self._overlay_key(info, theme, visual_size, sensors, clock)
+
+        if scene is None or scene.bg_mask_key != bg_key:
+            bg_surface = self._build_bg_mask(info, theme, visual_size)
+        else:
+            bg_surface = scene.bg_mask_surface
+        if scene is None or scene.overlay_key != overlay_key:
+            overlay_surface = self._build_overlay(
+                info, theme, sensors, visual_size, clock,
+            )
+        else:
+            overlay_surface = scene.overlay_surface
+        self._scenes[info.key] = SceneCache(
+            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
+            overlay_surface=overlay_surface, overlay_key=overlay_key,
+        )
+
+        surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        if s.brightness != 100:
+            surface = self._r.apply_brightness(surface, s.brightness)
+        if s.orientation:
+            surface = self._r.rotate(surface, 360 - s.orientation)
+        if resolved_profile.rotate:
+            surface = self._r.rotate(surface, 90)
+        return surface
 
     def build_solid_color_frame(
         self,
@@ -185,6 +245,44 @@ class DisplayService:
             surface = self._r.apply_brightness(surface, s.brightness)
 
         # Device-side rotation transposes the buffer for portrait panels.
+        if resolved.rotate:
+            surface = self._r.rotate(surface, 90)
+
+        return self._encode_for_wire(surface, resolved)
+
+    def build_screencast_frame(
+        self,
+        *,
+        info: ProductInfo,
+        frame: RawFrame,
+        profile: DeviceProfile | None = None,
+    ) -> bytes:
+        """Encode a single captured screen region for the device wire.
+
+        Used by the screencast tick: GUI grabs a region, hands the raw
+        RGB24 to this method, gets back ready-to-send bytes.  Skips the
+        theme/overlay pipeline entirely — screencasts replace the
+        background and (usually) the user runs them with
+        ``background_mode = "transparent"`` so overlay elements still
+        paint on top once we layer them in.
+
+        Honors per-device brightness + device-side rotation so the
+        live capture matches the rest of the device's behaviour.
+        """
+        resolved = self._resolve_profile(info, profile)
+        target_w, target_h = resolved.resolution
+
+        surface = self._r.from_raw_rgb24(frame)
+        if (
+            self._r.surface_size(surface) != (target_w, target_h)
+        ):
+            surface = self._r.resize(surface, target_w, target_h)
+
+        s = self._settings.for_device(info.key)
+        if s.brightness != 100:
+            surface = self._r.apply_brightness(surface, s.brightness)
+        if s.orientation:
+            surface = self._r.rotate(surface, 360 - s.orientation)
         if resolved.rotate:
             surface = self._r.rotate(surface, 90)
 
@@ -319,14 +417,24 @@ class DisplayService:
 
     def _build_overlay(
         self,
+        info: ProductInfo,
         theme: Theme,
         sensors: dict[str, float],
         visual_size: tuple[int, int],
         clock: dict[str, str],
     ) -> Any:
-        """Transparent layer with text + metric + clock elements painted on."""
+        """Transparent layer with text + metric + clock elements painted on.
+
+        Theme-bundled elements paint first; user-edited elements
+        (``DeviceSettings.user_overlay_elements``) paint on top.
+        """
         overlay_canvas = self._r.create_surface(*visual_size)
-        return self._overlay.render(overlay_canvas, theme.config, sensors, clock=clock)
+        s = self._settings.for_device(info.key)
+        user_dicts = [e.to_dict() for e in s.user_overlay_elements]
+        return self._overlay.render(
+            overlay_canvas, theme.config, sensors,
+            clock=clock, user_elements=user_dicts,
+        )
 
     # ── Cache keys ────────────────────────────────────────────────────
 
@@ -351,8 +459,9 @@ class DisplayService:
         mask_sig = (s.mask_path, s.mask_position, s.mask_visible, s.fit_mode)
         return (str(theme.path), visual_size, cursor, mask_sig)
 
-    @staticmethod
     def _overlay_key(
+        self,
+        info: ProductInfo,
         theme: Theme,
         visual_size: tuple[int, int],
         sensors: dict[str, float],
@@ -365,7 +474,17 @@ class DisplayService:
             (k, round(v, 1)) for k, v in sensors.items()
         ))
         clock_tuple = tuple(sorted(clock.items()))
-        return (id(theme.config), visual_size, sensor_tuple, clock_tuple)
+        # User-edited elements fingerprint — flip changes whenever the user
+        # adds / updates / deletes elements, so the cached overlay surface
+        # rebuilds without an explicit invalidate from each Command.
+        s = self._settings.for_device(info.key)
+        user_sig = tuple(
+            (e.id, e.type, e.x, e.y, e.color, e.size,
+             e.bold, e.italic, e.text, e.metric, e.format, e.source)
+            for e in s.user_overlay_elements
+        )
+        return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
+                user_sig)
 
     # ── Helpers ───────────────────────────────────────────────────────
 

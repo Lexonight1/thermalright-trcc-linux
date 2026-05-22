@@ -1,122 +1,165 @@
-"""LedPanel — push a uniform RGB color to an LED controller."""
+"""LedPanel — host for the LED sub-tabs.
+
+Owns the device-key picker + connection status header and hosts a
+:class:`QTabWidget` that swaps between focused sub-panels:
+
+* :class:`ColorTab`    — global colour + brightness + presets
+* :class:`ModeTab`     — pick the animation mode
+* :class:`ZoneTab`     — per-zone colour + sync (hidden for single-zone)
+* :class:`SegmentTab`  — per-segment toggles (hidden if no segments)
+* :class:`AdvancedTab` — sensor source, test mode, clock options
+
+The header watches the ``LedColorsChanged`` event so an external
+mutation (another UI, an API client) refreshes every tab without the
+user having to click Refresh.  Zone + Segment tabs decide for
+themselves whether they have content to show, so the panel asks each
+on every refresh and hides the irrelevant ones.
+
+Replaces the legacy 1390-line ``uc_led_control.py`` monolith.
+"""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QColorDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
-    QSlider,
-    QSpinBox,
+    QTabWidget,
     QVBoxLayout,
-    QWidget,
 )
 
-from ....app import App
-from ....core.commands import SetLedColors
+from ..base import BasePanel
+from ..device_picker import DevicePickerWidget
+from .led import AdvancedTab, ColorTab, ModeTab, SegmentTab, ZoneTab
 
 
-class LedPanel(QWidget):
-    """Set a uniform RGB color across N LEDs on a connected Led device.
+class LedPanel(BasePanel):
+    """Tabbed LED control surface for a single LED device key."""
 
-    Real LED layouts (per-LED colors, segment displays, effects) land
-    with the styles service — Phase 12.  This panel proves the Command
-    path works end-to-end.
-    """
+    def _setup_ui(self) -> None:
+        # ── Header: device key + status ───────────────────────────────
+        self._picker = DevicePickerWidget(
+            self.app, self._bus, kind_filter="led", parent=self,
+        )
+        self._picker.key_changed.connect(self._on_key_changed)
 
-    def __init__(self, app: App, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._app = app
-        self._color = QColor(255, 255, 255)
+        header_form = QFormLayout()
+        header_form.addRow("Device key:", self._picker)
 
-        self._key_edit = QLineEdit()
-        self._key_edit.setPlaceholderText("0416:8001")
+        header_row = QHBoxLayout()
+        header_row.addLayout(header_form, stretch=1)
 
-        self._count = QSpinBox()
-        self._count.setRange(1, 256)
-        self._count.setValue(12)
+        self._status_label = QLabel(
+            "Enter an LED device key (e.g. 0416:8001) and pick a tab.",
+            self,
+        )
+        self._status_label.setWordWrap(True)
+        self._status_label.setStyleSheet("color: #aaa;")
 
-        self._color_btn = QPushButton("Pick color…")
-        self._color_btn.clicked.connect(self._on_pick_color)
-        self._color_swatch = QLabel()
-        self._color_swatch.setFixedSize(64, 24)
-        self._update_swatch()
+        # ── Tabs ─────────────────────────────────────────────────────
+        self._tabs = QTabWidget(self)
 
-        color_row = QHBoxLayout()
-        color_row.addWidget(self._color_btn)
-        color_row.addWidget(self._color_swatch)
-        color_row.addStretch(1)
-
-        self._brightness = QSlider(Qt.Orientation.Horizontal)
-        self._brightness.setRange(0, 100)
-        self._brightness.setValue(100)
-        self._brightness_label = QLabel("100%")
-        self._brightness.valueChanged.connect(
-            lambda v: self._brightness_label.setText(f"{v}%")
+        self._color_tab = ColorTab(self.app, self._current_key, self._tabs)
+        self._mode_tab = ModeTab(self.app, self._current_key, self._tabs)
+        self._zone_tab = ZoneTab(self.app, self._current_key, self._tabs)
+        self._segment_tab = SegmentTab(self.app, self._current_key, self._tabs)
+        self._advanced_tab = AdvancedTab(
+            self.app, self._current_key, self._tabs,
         )
 
-        brightness_row = QHBoxLayout()
-        brightness_row.addWidget(self._brightness, stretch=1)
-        brightness_row.addWidget(self._brightness_label)
+        self._tabs.addTab(self._color_tab, "Colour")
+        self._tabs.addTab(self._mode_tab, "Mode")
+        # Indices used for show/hide.  Qt re-numbers when tabs are
+        # added/removed, so we always look up by widget reference.
+        self._tabs.addTab(self._zone_tab, "Zones")
+        self._tabs.addTab(self._segment_tab, "Segments")
+        self._tabs.addTab(self._advanced_tab, "Advanced")
 
-        self._apply_btn = QPushButton("Apply")
-        self._apply_btn.clicked.connect(self._on_apply)
-
-        self._off_btn = QPushButton("All off")
-        self._off_btn.clicked.connect(self._on_off)
-
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._apply_btn)
-        button_row.addWidget(self._off_btn)
-        button_row.addStretch(1)
-
-        self._status = QLabel("")
-
-        form = QFormLayout()
-        form.addRow("Device key:", self._key_edit)
-        form.addRow("LED count:", self._count)
-        form.addRow("Color:", color_row)
-        form.addRow("Brightness:", brightness_row)
-
+        # ── Compose ──────────────────────────────────────────────────
         root = QVBoxLayout(self)
-        root.addLayout(form)
-        root.addLayout(button_row)
-        root.addWidget(self._status)
-        root.addStretch(1)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(10)
+        root.addLayout(header_row)
+        root.addWidget(self._status_label)
+        root.addWidget(self._tabs, stretch=1)
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
-    def _update_swatch(self) -> None:
-        self._color_swatch.setStyleSheet(
-            f"background-color: {self._color.name()}; border: 1px solid #222"
+        # Refresh whenever the LED settings change from elsewhere (CLI,
+        # API, another GUI).  QueuedConnection is the safe default —
+        # the event might fire from a background thread.
+        self._bus.led_colors_changed.connect(
+            self._on_led_settings_changed,
+            type=Qt.ConnectionType.QueuedConnection,
         )
 
-    def _on_pick_color(self) -> None:
-        picked = QColorDialog.getColor(self._color, self, "Pick LED color")
-        if picked.isValid():
-            self._color = picked
-            self._update_swatch()
+    # ── Key plumbing ─────────────────────────────────────────────────
 
-    def _dispatch(self, global_on: bool) -> None:
-        key = self._key_edit.text().strip()
+    def _current_key(self) -> str:
+        return self._picker.current_key()
+
+    def _on_key_changed(self, _key: str = "") -> None:
+        self._refresh_all_tabs()
+
+    def _refresh_all_tabs(self) -> None:
+        key = self._current_key()
         if not key:
-            self._status.setText("Enter a device key (e.g. 0416:8001).")
+            self._status_label.setText(
+                "Pick an LED device to load its state.  Open the "
+                "Devices panel to scan if no devices are listed.",
+            )
+            self._set_optional_tabs_visible(zones=False, segments=False)
             return
-        r, g, b = self._color.red(), self._color.green(), self._color.blue()
-        colors = [(r, g, b)] * self._count.value()
-        result = self._app.dispatch(SetLedColors(
-            key=key, colors=colors,
-            global_on=global_on,
-            brightness=self._brightness.value(),
-        ))
-        self._status.setText(result.message)
+        settings = self.app.settings.for_led(key)
+        for tab in (
+            self._color_tab,
+            self._mode_tab,
+            self._zone_tab,
+            self._segment_tab,
+            self._advanced_tab,
+        ):
+            tab.refresh_from(settings)
+        # Zone + Segment tabs may have nothing to show — hide them
+        # rather than confusing the user with empty editors.
+        self._set_optional_tabs_visible(
+            zones=self._zone_tab.has_visible_content(),
+            segments=self._segment_tab.has_visible_content(),
+        )
 
-    def _on_apply(self) -> None:
-        self._dispatch(global_on=True)
+        device = self.app.devices.get(key)
+        if device is None:
+            self._status_label.setText(
+                f"{key} isn't connected yet — settings will apply when "
+                "the device shows up.  Open the Device tab to scan.",
+            )
+        else:
+            style = getattr(device.info, "led_style", None)
+            style_name = style.name if style else "no style detected"
+            self._status_label.setText(
+                f"{key} • {device.info.vendor} {device.info.product} • "
+                f"style {style_name}",
+            )
 
-    def _on_off(self) -> None:
-        self._dispatch(global_on=False)
+    def _set_optional_tabs_visible(
+        self, *, zones: bool, segments: bool,
+    ) -> None:
+        # The two optional tabs are added late so they always sit at
+        # the right of the bar.  Use widget lookups, not stored
+        # indices, since indices shift when other tabs are removed.
+        for widget, show in (
+            (self._zone_tab, zones),
+            (self._segment_tab, segments),
+        ):
+            idx = self._tabs.indexOf(widget)
+            if show and idx == -1:
+                # Re-add at a stable position — after Mode, before Advanced.
+                insert_at = self._tabs.indexOf(self._advanced_tab)
+                label = "Zones" if widget is self._zone_tab else "Segments"
+                self._tabs.insertTab(insert_at, widget, label)
+            elif not show and idx != -1:
+                self._tabs.removeTab(idx)
+
+    # ── Bus subscription ─────────────────────────────────────────────
+
+    def _on_led_settings_changed(self, event) -> None:
+        if event.key != self._current_key():
+            return
+        self._refresh_all_tabs()

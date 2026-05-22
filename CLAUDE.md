@@ -1,5 +1,31 @@
 # TRCC Linux — Claude Code Project Instructions
 
+## No progress theater (read this first, every session)
+
+The user's time is the constraint. Sounding productive is not being productive. For months on the `next/` rebuild, sessions ended with "Phase X complete" summaries that papered over what wasn't done. The user formed a picture of a near-done rebuild from those summaries. An audit later showed ~45% Command coverage, ~5% GUI, no cloud themes, no i18n, no DC writer, no screencast, no diagnostics — none of it flagged. That was lying by omission.
+
+**Status comes from artifacts, not from session summaries.**
+
+- The audit file (`/tmp/audit_comparison.txt` or current equivalent) is the scoreboard. A feature is "done" only when its row flips MISSING → WIRED *and* `next/` does what legacy does on real hardware. Words don't flip rows; verified runs do.
+- End every session with an explicit gap report in this exact shape:
+  - **Ported this session**: [list]
+  - **Verified working**: [list]
+  - **Still missing in this area**: [list]
+- If "verified working" is shorter than "ported," say so out loud.
+
+**Banned phrases** (each one covered drift in the past):
+- "Feature parity" — unless every audit row in the relevant area is WIRED
+- "The architecture is in place" — architecture isn't features; this was the biggest cover
+- "We're done with X" — requires the audit row
+- "Pattern works end-to-end" — not a proxy for "feature works"
+- "Phase X complete" — phases are defined by Claude and therefore always "complete"; use the audit row instead
+
+**No phase or milestone names.** Feature-by-feature against the audit row, nothing else.
+
+**If the user catches drift, don't soften it.** "Misleading framing" is a softer word for "lying by omission." Own it plainly the first time.
+
+Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`.
+
 ## Two Source Trees (read this first)
 
 The repo currently carries two parallel source trees on the `dev` branch:

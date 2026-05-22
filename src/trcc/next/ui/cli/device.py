@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import typer
 
-from ...core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
+from ...core.commands import (
+    ConnectDevice,
+    DisconnectDevice,
+    DiscoverDevices,
+    ResetDevice,
+)
 from ._ctx import get_app
 
 app = typer.Typer(help="Discover and connect to TRCC devices.",
@@ -45,6 +50,20 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
 def disconnect(key: str = typer.Argument(...)) -> None:
     """Close the transport and drop the device."""
     result = get_app().dispatch(DisconnectDevice(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("reset")
+def reset(key: str = typer.Argument(...)) -> None:
+    """Disconnect + clear cached state for a device.
+
+    Use this when the LCD seems stuck — drops any cached frame, theme,
+    and runtime counters.  Re-running `connect` after this starts
+    completely fresh.
+    """
+    result = get_app().dispatch(ResetDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

@@ -50,37 +50,88 @@ from .events import (
     VideoStopped,
 )
 from .led_models import LEDMode, LedRuntimeState
-from .models import FitMode
+from .models import FitMode, OverlayElement
 from .registry import find_product
 from .results import (
     AutostartResult,
+    BackgroundModeResult,
+    BackgroundsListResult,
     BootAnimationResult,
     BrightnessResult,
+    ClockFormatResult,
+    CloudCategoryEntry,
+    CloudThemeEntryResult,
+    CloudThemeLoadResult,
+    CloudThemesListResult,
     ConnectResult,
+    ControlCenterSnapshotResult,
+    DebugReportPayload,
+    DeleteThemeResult,
     DisconnectResult,
     DiscoverResult,
+    DiskEntry,
+    DiskIndexResult,
+    DisksListResult,
+    DoctorResultPayload,
+    FileEntry,
+    FirstRunStatusResult,
     FitModeResult,
+    FontsListResult,
     GpuDeviceResult,
+    GpuEntry,
+    GpusListResult,
+    HddEnabledResult,
+    HealthCheckEntry,
+    HealthReportResult,
+    KeepaliveResult,
+    LanguageEntry,
     LanguageResult,
+    LanguagesListResult,
+    LcdSnapshotResult,
     LedColorsResult,
+    LedModesListResult,
+    LedSnapshotResult,
+    LedStyleEntry,
+    LedStylesListResult,
+    LoopVideoResult,
     MaskApplyResult,
     MaskPositionResult,
+    MasksListResult,
+    MaskUploadResult,
     MaskVisibilityResult,
+    MemoryRatioResult,
+    MigrateLegacyResult,
     OrientationResult,
+    OverlayBackgroundResult,
+    OverlayConfigResult,
+    OverlayElementDeleteResult,
+    OverlayElementEntry,
+    OverlayElementResult,
     OverlayResult,
+    PauseVideoResult,
     PlatformInfoResult,
+    QuickstartResult,
+    QuickstartStepEntry,
     RefreshIntervalResult,
     RenderResult,
     Result,
+    SeekVideoResult,
     SendResult,
     SensorsResult,
     SetupResult,
+    SlideshowResult,
     SplitModeResult,
     TempUnitResult,
+    ThemeDcExportResult,
     ThemeExportResult,
     ThemeImportResult,
+    ThemeListEntry,
     ThemeResult,
+    ThemesListResult,
+    UpdateCheckResult,
+    UpgradeResult,
     VideoResult,
+    WeekStartResult,
 )
 
 if TYPE_CHECKING:
@@ -223,6 +274,7 @@ class SendFrame(Command[SendResult]):
             return SendResult(ok=False, key=self.key, message=str(e))
         bytes_sent = len(self.data) if ok else 0
         if ok:
+            app.keepalive.store(self.key, self.data)
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key,
@@ -280,6 +332,7 @@ class SendColor(Command[SendResult]):
 
         bytes_sent = len(frame) if ok else 0
         if ok:
+            app.keepalive.store(self.key, frame)
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key, bytes_sent=bytes_sent,
@@ -335,6 +388,7 @@ class RenderAndSend(Command[RenderResult]):
             )
 
         if ok:
+            app.keepalive.store(self.key, frame)
             app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
         return RenderResult(
             ok=ok, key=self.key,
@@ -559,6 +613,80 @@ class ImportTheme(Command[ThemeImportResult]):
         return ThemeImportResult(
             ok=True, theme_name=chosen_name, path=str(theme.path),
             message=f"theme imported as '{chosen_name}' at {theme.path}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListThemes(Command[ThemesListResult]):
+    """Enumerate themes under a directory (defaults to user_content_dir)."""
+    directory: Path | None = None
+
+    def execute(self, app: App) -> ThemesListResult:
+        target = self.directory or app.platform.paths().user_content_dir()
+        themes = app.themes.list(target)
+        entries = [
+            ThemeListEntry(
+                name=t.name, resolution=t.resolution, path=str(t.path),
+            )
+            for t in themes
+        ]
+        return ThemesListResult(
+            ok=True, directory=str(target), themes=entries,
+            message=f"{len(entries)} theme(s) under {target}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExportDcTheme(Command[ThemeDcExportResult]):
+    """Write a theme out as a legacy-compatible ``config1.dc`` file.
+
+    Reads the named theme under ``user_content_dir``, optionally layers in
+    a device's user overlay elements (so the exported DC reflects what
+    the user actually sees on screen), and writes ``output_path``.  Used
+    by anyone sharing a next/-managed theme back to Windows TRCC or
+    legacy Linux users.
+    """
+    theme_name: str
+    output_path: Path
+    device_key: str = ""
+
+    def execute(self, app: App) -> ThemeDcExportResult:
+        if not _is_safe_theme_name(self.theme_name):
+            return ThemeDcExportResult(
+                ok=False, theme_name=self.theme_name,
+                output_path=str(self.output_path),
+                message=f"invalid theme name {self.theme_name!r}",
+            )
+        theme_dir = (
+            app.platform.paths().user_content_dir() / self.theme_name
+        )
+        if not theme_dir.is_dir():
+            return ThemeDcExportResult(
+                ok=False, theme_name=self.theme_name,
+                output_path=str(self.output_path),
+                message=f"theme not found at {theme_dir}",
+            )
+        user_overlays: list[dict] = []
+        if self.device_key:
+            settings = app.settings.for_device(self.device_key)
+            user_overlays = [
+                e.to_dict() for e in settings.user_overlay_elements
+            ]
+        try:
+            written = app.themes.export_dc(
+                theme_dir, self.output_path,
+                user_overlay_elements=user_overlays,
+            )
+        except ThemeError as e:
+            return ThemeDcExportResult(
+                ok=False, theme_name=self.theme_name,
+                output_path=str(self.output_path),
+                message=str(e),
+            )
+        return ThemeDcExportResult(
+            ok=True, theme_name=self.theme_name,
+            output_path=str(written),
+            message=f"wrote DC theme to {written}",
         )
 
 
@@ -1318,6 +1446,39 @@ class SetLedTempSource(Command[LedColorsResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class ToggleLed(Command[LedColorsResult]):
+    """Toggle an LED device on/off — global, or one zone if ``zone`` is given.
+
+    Mirrors legacy ``LedCommands.toggle(led, on, zone=None)``.  Global
+    toggle flips ``LedDeviceSettings.global_on``; per-zone toggle flips
+    the zone's ``on`` flag (used by zone-aware styles to mute a single
+    fan/strip without disturbing the others).
+    """
+    key: str
+    on: bool
+    zone: int | None = None
+
+    def execute(self, app: App) -> LedColorsResult:
+        if self.zone is None:
+            app.settings.set_led_global_on(self.key, self.on)
+            target = "global"
+        else:
+            try:
+                app.settings.set_led_zone(self.key, self.zone, on=self.on)
+            except IndexError as e:
+                return LedColorsResult(
+                    ok=False, key=self.key, colors=[], message=str(e),
+                )
+            target = f"zone {self.zone}"
+        _publish_led_settings_changed(app, self.key)
+        state = "on" if self.on else "off"
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"LED {target} turned {state}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SetLedLoadSource(Command[LedColorsResult]):
     """Pick the sensor source for LOAD_LINKED mode (``'cpu'`` or ``'gpu'``)."""
     key: str
@@ -1334,6 +1495,965 @@ class SetLedLoadSource(Command[LedColorsResult]):
         return LedColorsResult(
             ok=True, key=self.key, colors=[],
             message=f"LED load source set to {self.source}",
+        )
+
+
+# =========================================================================
+# LED zone / segment Commands
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedZoneColor(Command[LedColorsResult]):
+    """Set one zone's persistent color — mirrors legacy zone-aware setters."""
+    key: str
+    zone: int
+    color: tuple[int, int, int]
+
+    def execute(self, app: App) -> LedColorsResult:
+        for label, value in zip("rgb", self.color, strict=False):
+            if not 0 <= value <= 255:
+                return LedColorsResult(
+                    ok=False, key=self.key, colors=[],
+                    message=f"{label} out of range (0-255): {value}",
+                )
+        try:
+            app.settings.set_led_zone(self.key, self.zone, color=self.color)
+        except IndexError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        r, g, b = self.color
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[self.color],
+            message=f"Zone {self.zone} color set to #{r:02x}{g:02x}{b:02x}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedZoneSync(Command[LedColorsResult]):
+    """Enable/disable the zone-sync carousel for a device."""
+    key: str
+    enabled: bool
+
+    def execute(self, app: App) -> LedColorsResult:
+        app.settings.set_led_zone_sync(self.key, self.enabled)
+        runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
+        runtime.zone_sync_ticks = 0
+        runtime.zone_sync_current = 0
+        _publish_led_settings_changed(app, self.key)
+        state = "enabled" if self.enabled else "disabled"
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Zone-sync {state}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedZoneSyncInterval(Command[LedColorsResult]):
+    """Set how many ticks between zone-sync rotations."""
+    key: str
+    ticks: int
+
+    def execute(self, app: App) -> LedColorsResult:
+        if self.ticks < 1:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"interval must be >= 1, got {self.ticks}",
+            )
+        app.settings.set_led_zone_sync_interval(self.key, self.ticks)
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Zone-sync interval set to {self.ticks} tick(s)",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SelectZone(Command[LedColorsResult]):
+    """Pick the active zone (UI selection state)."""
+    key: str
+    zone: int
+
+    def execute(self, app: App) -> LedColorsResult:
+        try:
+            app.settings.set_led_selected_zone(self.key, self.zone)
+        except ValueError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Selected zone {self.zone}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ToggleSegment(Command[LedColorsResult]):
+    """Flip one segment's on/off state (segment-display devices)."""
+    key: str
+    index: int
+    on: bool
+
+    def execute(self, app: App) -> LedColorsResult:
+        try:
+            app.settings.set_led_segment_on(self.key, self.index, self.on)
+        except IndexError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        state = "on" if self.on else "off"
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Segment {self.index} turned {state}",
+        )
+
+
+# =========================================================================
+# LED sub-controls (clock / week / memory / disk)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class SetClockFormat(Command[ClockFormatResult]):
+    """12h/24h clock display for LC2-style LED segment devices."""
+    key: str
+    is_24h: bool
+
+    def execute(self, app: App) -> ClockFormatResult:
+        app.settings.set_led_clock_24h(self.key, self.is_24h)
+        _publish_led_settings_changed(app, self.key)
+        fmt = "24h" if self.is_24h else "12h"
+        return ClockFormatResult(
+            ok=True, key=self.key, is_24h=self.is_24h,
+            message=f"Clock format set to {fmt}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetWeekStart(Command[WeekStartResult]):
+    """Week-start convention: ``True`` = Sunday-first, ``False`` = Monday-first."""
+    key: str
+    sunday_first: bool
+
+    def execute(self, app: App) -> WeekStartResult:
+        app.settings.set_led_week_start(self.key, self.sunday_first)
+        _publish_led_settings_changed(app, self.key)
+        which = "Sunday" if self.sunday_first else "Monday"
+        return WeekStartResult(
+            ok=True, key=self.key, sunday_first=self.sunday_first,
+            message=f"Week starts on {which}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetMemoryRatio(Command[MemoryRatioResult]):
+    """Pick the memory display mode: ratio (percentage) or absolute (GB)."""
+    key: str
+    ratio_mode: bool
+
+    def execute(self, app: App) -> MemoryRatioResult:
+        app.settings.set_led_memory_ratio(self.key, self.ratio_mode)
+        _publish_led_settings_changed(app, self.key)
+        mode = "ratio (%)" if self.ratio_mode else "absolute (GB)"
+        return MemoryRatioResult(
+            ok=True, key=self.key, ratio_mode=self.ratio_mode,
+            message=f"Memory display set to {mode}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetDiskIndex(Command[DiskIndexResult]):
+    """Pick which disk to surface read/write stats for."""
+    key: str
+    index: int
+
+    def execute(self, app: App) -> DiskIndexResult:
+        try:
+            app.settings.set_led_disk_index(self.key, self.index)
+        except ValueError as e:
+            return DiskIndexResult(
+                ok=False, key=self.key, index=self.index, message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return DiskIndexResult(
+            ok=True, key=self.key, index=self.index,
+            message=f"Disk index set to {self.index}",
+        )
+
+
+# =========================================================================
+# ControlCenter / Display Tier-2 setters
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class SetHddEnabled(Command[HddEnabledResult]):
+    """Toggle HDD metrics inclusion in sensor broadcasts."""
+    enabled: bool
+
+    def execute(self, app: App) -> HddEnabledResult:
+        app.settings.set_hdd_enabled(self.enabled)
+        state = "enabled" if self.enabled else "disabled"
+        return HddEnabledResult(
+            ok=True, enabled=self.enabled,
+            message=f"HDD metrics {state}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetBackgroundMode(Command[BackgroundModeResult]):
+    """Pick what fills the LCD behind overlays.
+
+    Modes: ``'theme'`` (theme background), ``'color'`` (solid fill),
+    ``'transparent'`` (no background, used by screencast overlay).
+    """
+    key: str
+    mode: str
+
+    def execute(self, app: App) -> BackgroundModeResult:
+        try:
+            app.settings.set_background_mode(self.key, self.mode)  # type: ignore[arg-type]
+        except ValueError as e:
+            return BackgroundModeResult(
+                ok=False, key=self.key, mode=self.mode, message=str(e),
+            )
+        # Drop the scene cache so the next tick re-renders with the new bg.
+        app.display.invalidate(self.key)
+        return BackgroundModeResult(
+            ok=True, key=self.key, mode=self.mode,
+            message=f"Background mode set to {self.mode}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetOverlayBackground(Command[OverlayBackgroundResult]):
+    """Set the solid color used when background_mode='color'."""
+    key: str
+    color: tuple[int, int, int]
+
+    def execute(self, app: App) -> OverlayBackgroundResult:
+        try:
+            app.settings.set_overlay_background(self.key, self.color)
+        except ValueError as e:
+            return OverlayBackgroundResult(
+                ok=False, key=self.key, color=self.color, message=str(e),
+            )
+        app.display.invalidate(self.key)
+        r, g, b = self.color
+        return OverlayBackgroundResult(
+            ok=True, key=self.key, color=self.color,
+            message=f"Overlay background set to #{r:02x}{g:02x}{b:02x}",
+        )
+
+
+# =========================================================================
+# Tier 4 — user overlay element CRUD
+# =========================================================================
+
+
+def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:
+    """Flat OverlayElementEntry view for Result types."""
+    return OverlayElementEntry(
+        id=e.id, type=e.type, x=e.x, y=e.y, color=e.color, size=e.size,
+        bold=e.bold, italic=e.italic, text=e.text, metric=e.metric,
+        format=e.format, source=e.source,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AddOverlayElement(Command[OverlayElementResult]):
+    """Add a user-edited element to a device's overlay layer.
+
+    ``element_id`` is auto-generated (UUID4) when omitted so callers don't
+    have to think about it.  Returned in the result so subsequent
+    Update/Delete Commands can reference it.
+    """
+    key: str
+    type: str = "text"
+    x: int = 0
+    y: int = 0
+    color: str = "#ffffff"
+    size: int = 16
+    bold: bool = False
+    italic: bool = False
+    text: str = ""
+    metric: str = ""
+    format: str = "{value}"
+    source: str = "time"
+    element_id: str = ""
+
+    def execute(self, app: App) -> OverlayElementResult:
+        if self.type not in ("text", "metric", "clock"):
+            return OverlayElementResult(
+                ok=False, key=self.key, element=None,
+                message=f"Invalid element type {self.type!r} (expected "
+                        "'text' / 'metric' / 'clock')",
+            )
+        import uuid
+        eid = self.element_id or f"el_{uuid.uuid4().hex[:8]}"
+        existing = {e.id for e in app.settings.for_device(self.key).user_overlay_elements}
+        if eid in existing:
+            return OverlayElementResult(
+                ok=False, key=self.key, element=None,
+                message=f"Overlay element id {eid!r} already exists",
+            )
+        element = OverlayElement(
+            id=eid, type=self.type,  # type: ignore[arg-type]
+            x=self.x, y=self.y, color=self.color, size=self.size,
+            bold=self.bold, italic=self.italic, text=self.text,
+            metric=self.metric, format=self.format,
+            source=self.source,  # type: ignore[arg-type]
+        )
+        app.settings.add_user_overlay_element(self.key, element)
+        app.display.invalidate(self.key)
+        app.events.publish(OverlayChanged(key=self.key, enabled=True))
+        return OverlayElementResult(
+            ok=True, key=self.key, element=_element_to_entry(element),
+            message=f"Added overlay element {eid}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateOverlayElement(Command[OverlayElementResult]):
+    """Mutate fields on an existing user-edited overlay element."""
+    key: str
+    element_id: str
+    x: int | None = None
+    y: int | None = None
+    color: str | None = None
+    size: int | None = None
+    bold: bool | None = None
+    italic: bool | None = None
+    text: str | None = None
+    metric: str | None = None
+    format: str | None = None
+    source: str | None = None
+
+    def execute(self, app: App) -> OverlayElementResult:
+        try:
+            element = app.settings.update_user_overlay_element(
+                self.key, self.element_id,
+                x=self.x, y=self.y, color=self.color, size=self.size,
+                bold=self.bold, italic=self.italic, text=self.text,
+                metric=self.metric, format=self.format, source=self.source,
+            )
+        except KeyError as e:
+            return OverlayElementResult(
+                ok=False, key=self.key, element=None, message=str(e),
+            )
+        app.display.invalidate(self.key)
+        app.events.publish(OverlayChanged(key=self.key, enabled=True))
+        return OverlayElementResult(
+            ok=True, key=self.key, element=_element_to_entry(element),
+            message=f"Updated overlay element {self.element_id}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteOverlayElement(Command[OverlayElementDeleteResult]):
+    """Remove a user-edited overlay element by id."""
+    key: str
+    element_id: str
+
+    def execute(self, app: App) -> OverlayElementDeleteResult:
+        try:
+            app.settings.delete_user_overlay_element(self.key, self.element_id)
+        except KeyError as e:
+            return OverlayElementDeleteResult(
+                ok=False, key=self.key, element_id=self.element_id,
+                message=str(e),
+            )
+        app.display.invalidate(self.key)
+        app.events.publish(OverlayChanged(key=self.key, enabled=True))
+        return OverlayElementDeleteResult(
+            ok=True, key=self.key, element_id=self.element_id,
+            message=f"Deleted overlay element {self.element_id}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FlashOverlayElement(Command[OverlayElementResult]):
+    """Briefly highlight one element so the user can locate it on screen.
+
+    Implementation note: the flash is a UI affordance, not a wire-level
+    blink.  The Command returns the element (with its current state) and
+    publishes an ``OverlayChanged`` event with ``flash_element_id`` set;
+    the GUI subscribes and animates a highlight box for ``duration_ms``.
+    Headless UIs that ignore the event get no visible effect — that's
+    correct (CLI/API users have nothing to flash *at*).
+    """
+    key: str
+    element_id: str
+    duration_ms: int = 1500
+
+    def execute(self, app: App) -> OverlayElementResult:
+        elements = app.settings.for_device(self.key).user_overlay_elements
+        for e in elements:
+            if e.id == self.element_id:
+                app.events.publish(OverlayChanged(
+                    key=self.key, enabled=True,
+                    flash_element_id=self.element_id,
+                    flash_duration_ms=self.duration_ms,
+                ))
+                return OverlayElementResult(
+                    ok=True, key=self.key, element=_element_to_entry(e),
+                    message=f"Flashing overlay element {self.element_id} "
+                            f"for {self.duration_ms}ms",
+                )
+        return OverlayElementResult(
+            ok=False, key=self.key, element=None,
+            message=f"Overlay element {self.element_id!r} not found",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetOverlayConfig(Command[OverlayConfigResult]):
+    """Replace the user-overlay layer wholesale.
+
+    Useful when the GUI ships a full edit (drag-out from a panel).
+    Each ``elements`` entry is a flat dict matching ``OverlayElement.to_dict``.
+    """
+    key: str
+    elements: tuple[dict, ...] = ()
+
+    def execute(self, app: App) -> OverlayConfigResult:
+        parsed: list[OverlayElement] = []
+        for raw in self.elements:
+            element = OverlayElement.from_dict(dict(raw))
+            if not element.id:
+                return OverlayConfigResult(
+                    ok=False, key=self.key, elements=[],
+                    message="Every element must carry an id",
+                )
+            if element.type not in ("text", "metric", "clock"):
+                return OverlayConfigResult(
+                    ok=False, key=self.key, elements=[],
+                    message=f"Invalid element type {element.type!r}",
+                )
+            parsed.append(element)
+        app.settings.set_user_overlay_elements(self.key, parsed)
+        app.display.invalidate(self.key)
+        app.events.publish(OverlayChanged(key=self.key, enabled=True))
+        return OverlayConfigResult(
+            ok=True, key=self.key,
+            elements=[_element_to_entry(e) for e in parsed],
+            message=f"Overlay set to {len(parsed)} element(s)",
+        )
+
+
+# =========================================================================
+# Tier 3 — video transport + theme/mask CRUD + assorted listings
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class PauseVideo(Command[PauseVideoResult]):
+    """Toggle the per-device video playback pause flag."""
+    key: str
+    paused: bool
+
+    def execute(self, app: App) -> PauseVideoResult:
+        playback = app.media.playback(self.key)
+        if playback is None:
+            return PauseVideoResult(
+                ok=False, key=self.key, paused=self.paused,
+                message=f"No active video playback for {self.key}",
+            )
+        playback.pause(self.paused)
+        state = "paused" if self.paused else "playing"
+        return PauseVideoResult(
+            ok=True, key=self.key, paused=self.paused,
+            message=f"Video {state}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeekVideo(Command[SeekVideoResult]):
+    """Jump the playback cursor to a specific frame."""
+    key: str
+    frame: int
+
+    def execute(self, app: App) -> SeekVideoResult:
+        playback = app.media.playback(self.key)
+        if playback is None:
+            return SeekVideoResult(
+                ok=False, key=self.key, cursor=0, frame_count=0,
+                message=f"No active video playback for {self.key}",
+            )
+        if self.frame < 0:
+            return SeekVideoResult(
+                ok=False, key=self.key,
+                cursor=playback.cursor, frame_count=playback.frame_count,
+                message=f"frame must be >= 0, got {self.frame}",
+            )
+        playback.seek(self.frame)
+        app.display.invalidate(self.key)
+        return SeekVideoResult(
+            ok=True, key=self.key,
+            cursor=playback.cursor, frame_count=playback.frame_count,
+            message=f"Seeked to frame {playback.cursor}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LoopVideo(Command[LoopVideoResult]):
+    """Toggle whether playback wraps to frame 0 or sticks at the last frame."""
+    key: str
+    loop: bool
+
+    def execute(self, app: App) -> LoopVideoResult:
+        playback = app.media.playback(self.key)
+        if playback is None:
+            return LoopVideoResult(
+                ok=False, key=self.key, loop=self.loop,
+                message=f"No active video playback for {self.key}",
+            )
+        playback.set_loop(self.loop)
+        state = "looping" if self.loop else "single-pass"
+        return LoopVideoResult(
+            ok=True, key=self.key, loop=self.loop,
+            message=f"Video set to {state}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteTheme(Command[DeleteThemeResult]):
+    """Delete a theme directory under user_content_dir."""
+    name: str
+
+    def execute(self, app: App) -> DeleteThemeResult:
+        root = app.platform.paths().user_content_dir()
+        try:
+            target = app.themes.delete(root, self.name)
+        except ThemeError as e:
+            return DeleteThemeResult(
+                ok=False, theme_name=self.name, path="",
+                message=str(e),
+            )
+        return DeleteThemeResult(
+            ok=True, theme_name=self.name, path=str(target),
+            message=f"Deleted theme {self.name!r}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UploadCustomMask(Command[MaskUploadResult]):
+    """Copy a mask image into user_content_dir/masks and apply it.
+
+    The caller passes an absolute path; we copy it into the trusted root
+    so subsequent calls reference the in-repo path.  Then we dispatch
+    ApplyMask to wire it onto the device.
+    """
+    key: str
+    source: Path
+
+    def execute(self, app: App) -> MaskUploadResult:
+        import shutil
+
+        if not self.source.is_file():
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=f"Source not a file: {self.source}",
+            )
+        masks_root = app.platform.paths().user_content_dir() / "masks"
+        try:
+            masks_root.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=f"Failed to ensure masks dir: {e}",
+            )
+        target = masks_root / self.source.name
+        try:
+            shutil.copy2(self.source, target)
+        except OSError as e:
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=f"Copy failed: {e}",
+            )
+        apply_result = ApplyMask(key=self.key, path=target).execute(app)
+        if not apply_result.ok:
+            return MaskUploadResult(
+                ok=False, key=self.key, path=str(target),
+                message=f"Uploaded but apply failed: {apply_result.message}",
+            )
+        return MaskUploadResult(
+            ok=True, key=self.key, path=str(target),
+            message=f"Mask uploaded + applied: {target.name}",
+        )
+
+
+_MASK_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
+_BG_EXTS = frozenset({
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
+    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt",
+})
+
+
+@dataclass(frozen=True, slots=True)
+class ListMasks(Command[MasksListResult]):
+    """Enumerate mask images under user_content_dir/masks."""
+    directory: Path | None = None
+
+    def execute(self, app: App) -> MasksListResult:
+        directory = (
+            self.directory
+            or app.platform.paths().user_content_dir() / "masks"
+        )
+        if not directory.is_dir():
+            return MasksListResult(
+                ok=True, directory=str(directory), masks=[],
+                message=f"No mask directory at {directory}",
+            )
+        entries = [
+            FileEntry(name=p.name, path=str(p))
+            for p in sorted(directory.iterdir())
+            if p.is_file() and p.suffix.lower() in _MASK_EXTS
+        ]
+        return MasksListResult(
+            ok=True, directory=str(directory), masks=entries,
+            message=f"{len(entries)} mask(s) under {directory}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListBackgrounds(Command[BackgroundsListResult]):
+    """Enumerate background images/videos under user_content_dir/backgrounds."""
+    directory: Path | None = None
+
+    def execute(self, app: App) -> BackgroundsListResult:
+        directory = (
+            self.directory
+            or app.platform.paths().user_content_dir() / "backgrounds"
+        )
+        if not directory.is_dir():
+            return BackgroundsListResult(
+                ok=True, directory=str(directory), backgrounds=[],
+                message=f"No backgrounds directory at {directory}",
+            )
+        entries = [
+            FileEntry(name=p.name, path=str(p))
+            for p in sorted(directory.iterdir())
+            if p.is_file() and p.suffix.lower() in _BG_EXTS
+        ]
+        return BackgroundsListResult(
+            ok=True, directory=str(directory), backgrounds=entries,
+            message=f"{len(entries)} background(s) under {directory}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListFonts(Command[FontsListResult]):
+    """List font families Qt can find on the system.
+
+    Uses ``QFontDatabase.families()`` — same source the GUI uses for
+    its font picker.  Returns an empty list (not an error) when Qt
+    isn't initialised, so headless callers can probe safely.
+    """
+
+    def execute(self, app: App) -> FontsListResult:
+        del app
+        fonts: list[str] = []
+        try:
+            from PySide6.QtGui import QFontDatabase  # type: ignore[import-not-found]
+        except ImportError:
+            return FontsListResult(
+                ok=True, fonts=[],
+                message="Qt not available — no fonts enumerable",
+            )
+        try:
+            fonts = sorted(QFontDatabase.families())
+        except RuntimeError as e:
+            return FontsListResult(
+                ok=False, fonts=[],
+                message=f"QFontDatabase error: {e}",
+            )
+        return FontsListResult(
+            ok=True, fonts=fonts,
+            message=f"{len(fonts)} font(s)",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListDisks(Command[DisksListResult]):
+    """Enumerate disks via psutil — used by SetDiskIndex callers."""
+
+    def execute(self, app: App) -> DisksListResult:
+        del app
+        disks: list[DiskEntry] = []
+        try:
+            import psutil  # type: ignore[import-untyped]
+        except ImportError:
+            return DisksListResult(
+                ok=True, disks=[],
+                message="psutil not available — no disk enumeration",
+            )
+        try:
+            partitions = psutil.disk_partitions(all=False)
+        except (OSError, RuntimeError) as e:
+            return DisksListResult(
+                ok=False, disks=[],
+                message=f"disk enumeration failed: {e}",
+            )
+        for index, p in enumerate(partitions):
+            disks.append(DiskEntry(
+                index=index, device=p.device, mountpoint=p.mountpoint,
+            ))
+        return DisksListResult(
+            ok=True, disks=disks,
+            message=f"{len(disks)} disk(s)",
+        )
+
+
+# =========================================================================
+# Listings (read-only — registries + enums)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class ListLedStyles(Command[LedStylesListResult]):
+    """Enumerate every LED style the PM registry can resolve."""
+
+    def execute(self, app: App) -> LedStylesListResult:
+        del app
+        from .led_protocol import _PM_REGISTRY
+        styles = [
+            LedStyleEntry(
+                style=entry.style.value,
+                model_name=entry.model_name,
+                pm_byte=pm,
+                style_sub=entry.style_sub,
+            )
+            for pm, entry in sorted(_PM_REGISTRY.items())
+        ]
+        return LedStylesListResult(
+            ok=True, styles=styles,
+            message=f"{len(styles)} style entry(ies)",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListLedModes(Command[LedModesListResult]):
+    """Enumerate the LEDMode enum names (STATIC, BREATHING, RAINBOW, …)."""
+
+    def execute(self, app: App) -> LedModesListResult:
+        del app
+        modes = [m.name for m in LEDMode]
+        return LedModesListResult(
+            ok=True, modes=modes,
+            message=f"{len(modes)} mode(s)",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListGpus(Command[GpusListResult]):
+    """Enumerate every GPU the sensors aggregator exposes."""
+
+    def execute(self, app: App) -> GpusListResult:
+        sensors = app.platform.sensors()
+        # The BaselineSensors aggregator stores GpuSource entries directly;
+        # not every aggregator has the same shape, so duck-type the .gpus
+        # attribute and fall back to a sensor-descriptor scan otherwise.
+        gpu_objs = getattr(sensors, "_gpus", None) or getattr(sensors, "gpus", None)
+        gpus: list[GpuEntry] = []
+        if gpu_objs is not None:
+            for g in gpu_objs:
+                gpus.append(GpuEntry(
+                    key=g.key, name=g.name, is_discrete=g.is_discrete,
+                ))
+        return GpusListResult(
+            ok=True, gpus=gpus,
+            message=f"{len(gpus)} GPU(s) detected",
+        )
+
+
+# =========================================================================
+# Snapshots (read-only state dumps)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class LcdSnapshot(Command[LcdSnapshotResult]):
+    """Per-device LCD state snapshot — what settings.for_device holds."""
+    key: str
+
+    def execute(self, app: App) -> LcdSnapshotResult:
+        s = app.settings.for_device(self.key)
+        return LcdSnapshotResult(
+            ok=True, key=self.key,
+            orientation=s.orientation,
+            brightness=s.brightness,
+            current_theme=s.current_theme,
+            overlay_enabled=s.overlay_enabled,
+            mask_path=s.mask_path,
+            mask_visible=s.mask_visible,
+            mask_position=s.mask_position,
+            fit_mode=s.fit_mode.value,
+            split_mode=s.split_mode,
+            time_format=s.time_format,
+            date_format=s.date_format,
+            temp_unit=s.temp_unit,
+            message=f"LCD snapshot for {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LedSnapshot(Command[LedSnapshotResult]):
+    """Per-device LED state snapshot."""
+    key: str
+
+    def execute(self, app: App) -> LedSnapshotResult:
+        s = app.settings.for_led(self.key)
+        return LedSnapshotResult(
+            ok=True, key=self.key,
+            mode=s.mode.name,
+            color=s.color,
+            brightness=s.brightness,
+            global_on=s.global_on,
+            test_mode=s.test_mode,
+            temp_source=s.temp_source,
+            load_source=s.load_source,
+            zone_sync=s.zone_sync,
+            zone_sync_interval_ticks=s.zone_sync_interval_ticks,
+            selected_zone=s.selected_zone,
+            zone_count=len(s.zones),
+            segment_count=len(s.segment_on),
+            message=f"LED snapshot for {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ControlCenterSnapshot(Command[ControlCenterSnapshotResult]):
+    """App-wide settings snapshot."""
+
+    def execute(self, app: App) -> ControlCenterSnapshotResult:
+        a = app.settings.app
+        return ControlCenterSnapshotResult(
+            ok=True,
+            language=a.language,
+            temp_unit=a.temp_unit,
+            active_device=a.active_device,
+            active_gpu=a.active_gpu,
+            refresh_interval_s=a.refresh_interval_s,
+            hdd_enabled=a.hdd_enabled,
+            message="App settings snapshot",
+        )
+
+
+# =========================================================================
+# Theme — restore last loaded theme
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreLastTheme(Command[ThemeResult]):
+    """Re-load the theme persisted in Settings for *key*.
+
+    Convenience wrapper around LoadTheme — looks up the last
+    ``current_theme`` for this device and re-dispatches LoadTheme so
+    the render pipeline catches up on connect or after a restart.
+    """
+    key: str
+
+    def execute(self, app: App) -> ThemeResult:
+        settings = app.settings.for_device(self.key)
+        theme_name = settings.current_theme
+        if not theme_name:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"No persisted theme for {self.key}",
+            )
+        path = app.platform.paths().user_content_dir() / theme_name
+        if not path.is_dir():
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=theme_name,
+                message=f"Persisted theme {theme_name!r} not found at {path}",
+            )
+        return LoadTheme(key=self.key, path=path).execute(app)
+
+
+# =========================================================================
+# Cloud themes — list + load (downloads + applies)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class ListCloudThemes(Command[CloudThemesListResult]):
+    """List themes available in Thermalright's hosted catalog.
+
+    Pass ``category="a"`` (or any registered prefix) to scope the list,
+    or ``"all"`` (the default) for everything.  Pure read — no network
+    until ``LoadCloudTheme`` runs, since the catalog itself is static.
+    """
+    category: str = "all"
+
+    def execute(self, app: App) -> CloudThemesListResult:
+        try:
+            themes = app.cloud_themes.list_themes(self.category)
+        except ValueError as e:
+            return CloudThemesListResult(
+                ok=False, category=self.category, message=str(e),
+            )
+        categories = [
+            CloudCategoryEntry(prefix=c.prefix, name=c.name, count=c.count)
+            for c in app.cloud_themes.categories()
+        ]
+        entries = [
+            CloudThemeEntryResult(
+                id=t.id, category=t.category, category_name=t.category_name,
+            )
+            for t in themes
+        ]
+        return CloudThemesListResult(
+            ok=True, category=self.category,
+            categories=categories, themes=entries,
+            message=f"{len(entries)} cloud theme(s) in {self.category!r}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LoadCloudTheme(Command[CloudThemeLoadResult]):
+    """Download a cloud theme and load it on a device.
+
+    Materialises the cloud MP4 into a real theme directory under
+    ``user_content_dir/cloud/<theme_id>`` (idempotent — subsequent calls
+    are no-ops if the dir already exists), then dispatches LoadTheme to
+    render the first frame.
+    """
+    key: str
+    theme_id: str
+
+    def execute(self, app: App) -> CloudThemeLoadResult:
+        from ..adapters.repo.http import HttpFetchError
+        try:
+            theme_dir = app.cloud_themes.materialise(self.theme_id)
+        except ValueError as e:
+            return CloudThemeLoadResult(
+                ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
+                message=str(e),
+            )
+        except HttpFetchError as e:
+            return CloudThemeLoadResult(
+                ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
+                message=f"Cloud download failed: {e}",
+            )
+        except OSError as e:
+            return CloudThemeLoadResult(
+                ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
+                message=f"Local IO failed: {e}",
+            )
+
+        load_result = LoadTheme(key=self.key, path=theme_dir).execute(app)
+        return CloudThemeLoadResult(
+            ok=load_result.ok,
+            key=self.key,
+            theme_id=self.theme_id,
+            theme_path=str(theme_dir),
+            message=load_result.message,
         )
 
 
@@ -1391,6 +2511,729 @@ class RunSetup(Command[SetupResult]):
             message=f"Setup completed with exit code {code}",
             exit_code=code,
             warnings=warnings,
+        )
+
+
+# =========================================================================
+# Diagnostics — health, doctor, debug report
+# =========================================================================
+
+
+def _health_entries(checks: list) -> list[HealthCheckEntry]:
+    """Map adapter HealthCheckResult → Result-layer HealthCheckEntry."""
+    return [
+        HealthCheckEntry(
+            name=c.name, severity=c.severity,
+            message=c.message, fix_hint=c.fix_hint,
+        )
+        for c in checks
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class RunHealthCheck(Command[HealthReportResult]):
+    """Run the full health check suite and return the structured report.
+
+    Cheap (every check times out fast) — safe to call from a GUI panel
+    on a refresh button.
+    """
+
+    def execute(self, app: App) -> HealthReportResult:
+        from ..adapters.diagnostics.health import run_health_checks
+        report = run_health_checks(app.platform)
+        return HealthReportResult(
+            ok=report.fail_count == 0,
+            checks=_health_entries(report.checks),
+            fail_count=report.fail_count,
+            warn_count=report.warn_count,
+            worst_severity=report.worst_severity,
+            message=(f"{report.fail_count} fail / {report.warn_count} warn"
+                     f" / {len(report.checks)} checks"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RunDoctor(Command[DoctorResultPayload]):
+    """Run health checks + render a CLI-friendly summary + exit code."""
+
+    def execute(self, app: App) -> DoctorResultPayload:
+        from ..adapters.diagnostics.doctor import (
+            render_doctor_output,
+            run_doctor,
+        )
+        doctor = run_doctor(app.platform)
+        return DoctorResultPayload(
+            ok=doctor.is_healthy,
+            checks=_health_entries(doctor.report.checks),
+            fail_count=doctor.report.fail_count,
+            warn_count=doctor.report.warn_count,
+            exit_code=doctor.exit_code,
+            rendered=render_doctor_output(doctor.report),
+            message=("Healthy" if doctor.is_healthy
+                     else f"{doctor.report.fail_count} check(s) failed"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GenerateDebugReport(Command[DebugReportPayload]):
+    """Build a debug report bundle for the user to paste into a GitHub issue.
+
+    With ``output_path`` set, the bundle lands on disk at that path and
+    the rendered text comes back in the result.  With no output_path,
+    the bundle is rendered into memory only — useful for the API to
+    return the text body directly.
+    """
+    output_path: Path | None = None
+    log_tail_lines: int = 1000
+
+    def execute(self, app: App) -> DebugReportPayload:
+        from ..adapters.diagnostics.debug_report import (
+            build_debug_report,
+            write_debug_report,
+        )
+        report = build_debug_report(
+            app.platform, log_tail_lines=self.log_tail_lines,
+        )
+        rendered = report.render_text()
+        out: str = ""
+        if self.output_path is not None:
+            try:
+                written = write_debug_report(report, self.output_path)
+            except OSError as e:
+                return DebugReportPayload(
+                    ok=False, output_path=str(self.output_path),
+                    rendered_text=rendered,
+                    message=f"Generated report but write failed: {e}",
+                )
+            out = str(written)
+        return DebugReportPayload(
+            ok=True, output_path=out, rendered_text=rendered,
+            message=(f"Wrote debug report to {out}" if out
+                     else "Generated debug report (in-memory)"),
+        )
+
+
+# =========================================================================
+# Update check + upgrade
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class RunQuickstart(Command[QuickstartResult]):
+    """Walk the new-user happy path: doctor → scan.
+
+    Each step's outcome is returned as a structured entry so any UI
+    renders the same sequence.  Stops at the first FAIL.  Doesn't
+    attempt a hardware handshake on its own — callers decide whether
+    to ``ConnectDevice`` on the first-found device based on user
+    confirmation.
+    """
+
+    def execute(self, app: App) -> QuickstartResult:
+        report = app.quickstart.run_all()
+        steps = [
+            QuickstartStepEntry(
+                name=s.name, status=s.status,
+                message=s.message, next_step_hint=s.next_step_hint,
+            )
+            for s in report.steps
+        ]
+        return QuickstartResult(
+            ok=report.completed_ok or not report.failed_step,
+            steps=steps,
+            completed_ok=report.completed_ok,
+            device_key=report.device_key_connected,
+            message=(
+                "Quickstart complete." if report.completed_ok
+                else (
+                    f"Quickstart stopped at: {report.failed_step.name}"
+                    if report.failed_step
+                    else "Quickstart finished with warnings."
+                )
+            ),
+        )
+
+
+_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
+
+
+@dataclass(frozen=True, slots=True)
+class LoadImage(Command[ThemeResult]):
+    """Show one image on the LCD as the background of a single-image theme.
+
+    Smallest path for "show me this picture" — internally materialises
+    a one-file theme directory under
+    ``user_content_dir/single-image/<filename>`` then dispatches
+    ``LoadTheme``.  Idempotent: re-running with the same image re-uses
+    the staged directory rather than re-creating it.
+
+    Errors surface as structured Results.  Acceptable extensions:
+    PNG / JPG / JPEG / BMP / WEBP.
+    """
+    key: str
+    path: Path
+
+    def execute(self, app: App) -> ThemeResult:
+        if not self.path.is_file():
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=(
+                    f"Image file not found: {self.path}.  "
+                    "Check the path and try again."
+                ),
+            )
+        if self.path.suffix.lower() not in _IMAGE_EXTS:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=(
+                    f"Unsupported image extension {self.path.suffix!r}.  "
+                    f"Supported: {', '.join(sorted(_IMAGE_EXTS))}."
+                ),
+            )
+        import json
+        import shutil
+
+        # Stage the image as a minimal next/-shape theme under a stable
+        # subdirectory so re-runs are cheap and the theme appears in
+        # `theme list` like any other.
+        target_root = app.platform.paths().user_content_dir() / "single-image"
+        try:
+            target_root.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"Cannot create single-image theme directory: {e}",
+            )
+        theme_name = self.path.stem
+        theme_dir = target_root / theme_name
+        if theme_dir.exists() and not theme_dir.is_dir():
+            theme_dir = (
+                target_root / f"{theme_name}-from-{self.path.parent.name}"
+            )
+        try:
+            theme_dir.mkdir(parents=True, exist_ok=True)
+            target_image = theme_dir / self.path.name
+            if (
+                not target_image.is_file()
+                or target_image.stat().st_size != self.path.stat().st_size
+            ):
+                shutil.copy2(self.path, target_image)
+            config_path = theme_dir / "trcc-next.json"
+            if not config_path.is_file():
+                config_path.write_text(
+                    json.dumps({
+                        "name": f"image:{theme_name}",
+                        "elements": [],
+                    }, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+        except OSError as e:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"Failed to stage image as theme: {e}",
+            )
+        return LoadTheme(key=self.key, path=theme_dir).execute(app)
+
+
+_VIDEO_EXTS_FOR_LOAD = frozenset({
+    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt",
+})
+
+
+@dataclass(frozen=True, slots=True)
+class LoadVideo(Command[ThemeResult]):
+    """Play a video on the LCD as a single-video theme.
+
+    Conceptually parallel to :class:`LoadImage`: turn an arbitrary file
+    into a one-shot theme directory + dispatch :class:`LoadTheme`.
+
+    For ``.zt`` inputs the source is copied straight in.  For real video
+    files (``.mp4``, ``.mov``, ``.webm``, etc.) the file is transcoded
+    into a ``Theme.zt`` via :class:`VideoExporter`, sized to the
+    device's native resolution and optionally clipped to ``start_ms`` →
+    ``end_ms``.
+
+    The device must be attached (so we know its native resolution).
+    Errors surface as structured Results — never exceptions to UIs.
+    """
+    key: str
+    path: Path
+    start_ms: int = 0
+    end_ms: int | None = None
+    rotation: int = 0
+
+    def execute(self, app: App) -> ThemeResult:
+        if not self.path.is_file():
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=(
+                    f"Video file not found: {self.path}.  "
+                    "Check the path and try again."
+                ),
+            )
+        if self.path.suffix.lower() not in _VIDEO_EXTS_FOR_LOAD:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=(
+                    f"Unsupported video extension {self.path.suffix!r}.  "
+                    f"Supported: {', '.join(sorted(_VIDEO_EXTS_FOR_LOAD))}."
+                ),
+            )
+
+        target_w, target_h = self._resolve_target_size(app)
+        if target_w == 0 or target_h == 0:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=(
+                    f"Don't know the target resolution for {self.key}.  "
+                    "Connect the device first (or pass a key that matches "
+                    "a row in the product registry)."
+                ),
+            )
+
+        import json
+        import shutil
+
+        target_root = app.platform.paths().user_content_dir() / "single-video"
+        try:
+            target_root.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"Cannot create single-video theme directory: {e}",
+            )
+        theme_name = self.path.stem
+        theme_dir = target_root / theme_name
+        if theme_dir.exists() and not theme_dir.is_dir():
+            theme_dir = (
+                target_root / f"{theme_name}-from-{self.path.parent.name}"
+            )
+        try:
+            theme_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"Cannot create theme directory: {e}",
+            )
+
+        # Either copy a .zt straight in or transcode the source.
+        zt_target = theme_dir / "Theme.zt"
+        if self.path.suffix.lower() == ".zt":
+            try:
+                if (
+                    not zt_target.is_file()
+                    or zt_target.stat().st_size != self.path.stat().st_size
+                ):
+                    shutil.copy2(self.path, zt_target)
+            except OSError as e:
+                return ThemeResult(
+                    ok=False, key=self.key,
+                    message=f"Failed to stage .zt as theme: {e}",
+                )
+        else:
+            from ..services.video_export import (
+                VideoExporter,
+                VideoExportError,
+                VideoExportRequest,
+                probe_duration_ms,
+            )
+            end_ms = self.end_ms
+            if end_ms is None:
+                probed = probe_duration_ms(self.path)
+                end_ms = probed if probed > 0 else self.start_ms + 10_000
+            request = VideoExportRequest(
+                source=self.path,
+                start_ms=self.start_ms,
+                end_ms=end_ms,
+                target_w=target_w,
+                target_h=target_h,
+                rotation=self.rotation,
+            )
+            try:
+                produced = VideoExporter().export_zt(request)
+            except VideoExportError as e:
+                return ThemeResult(
+                    ok=False, key=self.key,
+                    message=f"Video export failed: {e}",
+                )
+            try:
+                shutil.move(str(produced), str(zt_target))
+                # Clean up the now-empty temp dir VideoExporter created.
+                temp_parent = produced.parent
+                shutil.rmtree(temp_parent, ignore_errors=True)
+            except OSError as e:
+                return ThemeResult(
+                    ok=False, key=self.key,
+                    message=f"Failed to install Theme.zt into theme dir: {e}",
+                )
+
+        config_path = theme_dir / "trcc-next.json"
+        if not config_path.is_file():
+            try:
+                config_path.write_text(
+                    json.dumps({
+                        "name": f"video:{theme_name}",
+                        "elements": [],
+                    }, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError as e:
+                return ThemeResult(
+                    ok=False, key=self.key,
+                    message=f"Failed to write theme config: {e}",
+                )
+        return LoadTheme(key=self.key, path=theme_dir).execute(app)
+
+    def _resolve_target_size(self, app: App) -> tuple[int, int]:
+        """Prefer an attached device's profile, fall back to the registry."""
+        device = app.devices.get(self.key)
+        if device is not None:
+            if device.profile is not None:
+                return device.profile.resolution
+            if device.info.native_resolution != (0, 0):
+                return device.info.native_resolution
+        # Pre-attach: parse vid/pid and ask the registry directly so
+        # users can stage video themes ahead of plugging in the device.
+        try:
+            vid_s, pid_s = self.key.split(":")
+            vid = int(vid_s, 16)
+            pid = int(pid_s, 16)
+        except ValueError:
+            return (0, 0)
+        product = find_product(vid, pid)
+        if product is None:
+            return (0, 0)
+        return product.native_resolution
+
+
+@dataclass(frozen=True, slots=True)
+class ResetDevice(Command[DisconnectResult]):
+    """Disconnect + drop cached state for a device.
+
+    Equivalent of legacy's ``reset()`` — gives users a clean slate
+    without having to remember to call disconnect explicitly.  Re-runs
+    of ConnectDevice after this start with no cached frame or theme.
+    """
+    key: str
+
+    def execute(self, app: App) -> DisconnectResult:
+        if self.key not in app.devices:
+            return DisconnectResult(
+                ok=False, key=self.key,
+                message=f"{self.key} is not attached — nothing to reset.",
+            )
+        app.detach(self.key)
+        app.events.publish(DeviceDisconnected(key=self.key))
+        return DisconnectResult(
+            ok=True, key=self.key,
+            message=f"Reset {self.key} — caches cleared, theme dropped.",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GetFirstRunStatus(Command[FirstRunStatusResult]):
+    """Has trcc-next finished onboarding on this machine?
+
+    GUI uses this on launch to decide whether to surface a welcome
+    screen; CLI users see it via ``trcc-next system first-run-status``.
+    """
+
+    def execute(self, app: App) -> FirstRunStatusResult:
+        return FirstRunStatusResult(
+            ok=True,
+            is_first_run=app.first_run.is_first_run(),
+            marker_path=str(app.first_run.marker_path),
+            message=(
+                "Welcome — looks like this is your first run."
+                if app.first_run.is_first_run()
+                else "Setup already completed previously."
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MarkFirstRunDone(Command[FirstRunStatusResult]):
+    """Tell next/ the onboarding flow has been completed.
+
+    GUI calls this after the welcome panel; CLI users almost never
+    need to call it directly (the doctor / setup commands could choose
+    to mark it, but we keep that intentional rather than implicit).
+    """
+
+    def execute(self, app: App) -> FirstRunStatusResult:
+        app.first_run.mark_completed()
+        return FirstRunStatusResult(
+            ok=True, is_first_run=False,
+            marker_path=str(app.first_run.marker_path),
+            message="First-run marker written.",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MigrateFromLegacy(Command[MigrateLegacyResult]):
+    """Pull legacy TRCC themes / masks / settings forward into next/.
+
+    ``dry_run=True`` reports what *would* happen without copying
+    anything — recommended for the first call so users can see the
+    scope before committing.
+    """
+    dry_run: bool = True
+
+    def execute(self, app: App) -> MigrateLegacyResult:
+        report = app.migration.run(dry_run=self.dry_run)
+        return MigrateLegacyResult(
+            ok=True,
+            legacy_config_path=report.legacy_config_path,
+            legacy_config_exists=report.legacy_config_exists,
+            themes_copied=list(report.themes_copied),
+            masks_copied=list(report.masks_copied),
+            settings_keys_imported=list(report.settings_keys_imported),
+            warnings=list(report.warnings),
+            dry_run=report.dry_run,
+            message=(
+                f"Migration {'preview' if report.dry_run else 'complete'} — "
+                f"{len(report.themes_copied)} theme(s), "
+                f"{len(report.masks_copied)} mask(s), "
+                f"{len(report.settings_keys_imported)} setting(s)"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CheckForUpdate(Command[UpdateCheckResult]):
+    """Ask GitHub Releases whether a newer trcc-linux is available.
+
+    Network call — uses the App's shared HttpFetcher.  Comparison is
+    coarse semver (X.Y.Z) tolerant of v-prefix and pre-release suffixes.
+    """
+
+    def execute(self, app: App) -> UpdateCheckResult:
+        from .. import __version__ as next_version_module
+        from ..adapters.repo.github_releases import is_newer
+        from ..adapters.repo.http import HttpFetchError
+
+        local = getattr(next_version_module, "__version__", "0.0.0")
+        try:
+            latest = app.github_releases.latest()
+        except HttpFetchError as e:
+            return UpdateCheckResult(
+                ok=False, local_version=local,
+                message=f"Update check failed: {e}",
+            )
+        available = is_newer(latest.version, local)
+        msg = (
+            f"Update available: {latest.tag} (you have {local})"
+            if available
+            else f"Up to date at {local}"
+        )
+        return UpdateCheckResult(
+            ok=True,
+            local_version=local,
+            latest_version=latest.version,
+            latest_tag=latest.tag,
+            release_url=latest.html_url,
+            update_available=available,
+            message=msg,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RunUpgrade(Command[UpgradeResult]):
+    """Run the OS package-manager upgrade for trcc-linux.
+
+    Maps the detected package manager to the right command and spawns a
+    subprocess.  We never pipe untrusted input — the argv is a fixed
+    list per package manager.  ``dry_run=True`` returns the command
+    without executing it so UIs can show the user what would run.
+    """
+    dry_run: bool = False
+
+    def execute(self, app: App) -> UpgradeResult:
+        del app
+        import subprocess
+
+        from ..adapters.diagnostics.health import detect_package_manager
+
+        pm = detect_package_manager()
+        if pm is None:
+            return UpgradeResult(
+                ok=False, package_manager="",
+                message="No supported package manager detected on this system",
+            )
+        cmd = _UPGRADE_COMMANDS.get(pm)
+        if cmd is None:
+            return UpgradeResult(
+                ok=False, package_manager=pm,
+                message=f"No upgrade recipe for package manager {pm!r}",
+            )
+        if self.dry_run:
+            return UpgradeResult(
+                ok=True, package_manager=pm, command=list(cmd),
+                message=f"Would run: {' '.join(cmd)}",
+            )
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=600.0, check=False,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+            return UpgradeResult(
+                ok=False, package_manager=pm, command=list(cmd),
+                message=f"Upgrade subprocess failed: {type(e).__name__}: {e}",
+            )
+        return UpgradeResult(
+            ok=proc.returncode == 0,
+            package_manager=pm,
+            command=list(cmd),
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            exit_code=proc.returncode,
+            message=(f"Upgrade completed (exit {proc.returncode})"
+                     if proc.returncode == 0
+                     else f"Upgrade failed (exit {proc.returncode})"),
+        )
+
+
+_UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
+    "dnf":          ("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
+    "apt":          ("sudo", "apt", "upgrade", "-y", "trcc-linux"),
+    "pacman":       ("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux"),
+    "zypper":       ("sudo", "zypper", "update", "-y", "trcc-linux"),
+    "xbps-install": ("sudo", "xbps-install", "-u", "trcc-linux"),
+    "apk":          ("sudo", "apk", "upgrade", "trcc-linux"),
+}
+
+
+# =========================================================================
+# Slideshow + keepalive
+# =========================================================================
+
+
+def _slideshow_snapshot(settings, key: str) -> SlideshowResult:
+    s = settings.for_device(key)
+    return SlideshowResult(
+        ok=True, key=key,
+        enabled=s.slideshow_enabled,
+        interval_s=s.slideshow_interval_s,
+        themes=list(s.slideshow_themes),
+        message=(f"Slideshow {'on' if s.slideshow_enabled else 'off'} "
+                 f"({len(s.slideshow_themes)} theme(s), "
+                 f"every {s.slideshow_interval_s:.0f}s)"),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigureSlideshow(Command[SlideshowResult]):
+    """Set the slideshow theme list + interval for a device.
+
+    Either field can be omitted to leave it untouched.  Resets the
+    SlideshowService cursor so the next tick picks up the new list
+    from index 0.
+    """
+    key: str
+    themes: tuple[str, ...] | None = None
+    interval_s: float | None = None
+
+    def execute(self, app: App) -> SlideshowResult:
+        if self.interval_s is not None and self.interval_s < 1.0:
+            return SlideshowResult(
+                ok=False, key=self.key,
+                message=(f"interval_s must be >= 1, got {self.interval_s}"),
+            )
+        app.settings.configure_slideshow(
+            self.key,
+            themes=list(self.themes) if self.themes is not None else None,
+            interval_s=self.interval_s,
+        )
+        app.slideshow.reset(self.key)
+        return _slideshow_snapshot(app.settings, self.key)
+
+
+@dataclass(frozen=True, slots=True)
+class SetSlideshow(Command[SlideshowResult]):
+    """Toggle the slideshow on or off without changing the theme list."""
+    key: str
+    enabled: bool
+
+    def execute(self, app: App) -> SlideshowResult:
+        app.settings.set_slideshow_enabled(self.key, self.enabled)
+        if self.enabled:
+            app.slideshow.reset(self.key)
+        return _slideshow_snapshot(app.settings, self.key)
+
+
+@dataclass(frozen=True, slots=True)
+class KeepAliveLoop(Command[KeepaliveResult]):
+    """Resend the device's last frame ``count`` times with ``interval_s`` gaps.
+
+    Used for Bulk/LY firmware that loses the displayed image when the
+    internal buffer ages out.  ``count=1`` does one resend immediately
+    (useful as a tick action); larger counts run a tight loop for a
+    fixed number of iterations.
+
+    Foreground / blocking — CLI users see this as `trcc display
+    keepalive <key>` and Ctrl-C it; the daemon dispatches it on a
+    timer so it never blocks the event loop.
+    """
+    key: str
+    count: int = 1
+    interval_s: float = 5.0
+
+    def execute(self, app: App) -> KeepaliveResult:
+        import time
+
+        if self.count < 1:
+            return KeepaliveResult(
+                ok=False, key=self.key,
+                message=f"count must be >= 1, got {self.count}",
+            )
+        last = app.keepalive.last_frame(self.key)
+        if last is None:
+            return KeepaliveResult(
+                ok=False, key=self.key,
+                message=("No cached frame for keepalive — render at least "
+                         "once before starting the loop"),
+            )
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return KeepaliveResult(
+                ok=False, key=self.key, message=str(e),
+            )
+        if not device.is_connected:
+            return KeepaliveResult(
+                ok=False, key=self.key,
+                message=f"{self.key} not connected — dispatch ConnectDevice first",
+            )
+
+        frames_resent = 0
+        bytes_resent = 0
+        for i in range(self.count):
+            if i > 0:
+                time.sleep(max(0.0, self.interval_s))
+            try:
+                sent = device.send(last)
+            except TransportError as e:
+                return KeepaliveResult(
+                    ok=False, key=self.key,
+                    frames_resent=frames_resent,
+                    bytes_resent=bytes_resent,
+                    message=f"Keepalive send failed at iter {i}: {e}",
+                )
+            if not sent:
+                return KeepaliveResult(
+                    ok=False, key=self.key,
+                    frames_resent=frames_resent,
+                    bytes_resent=bytes_resent,
+                    message=f"device.send returned False at iter {i}",
+                )
+            app.keepalive.mark_sent(self.key)
+            frames_resent += 1
+            bytes_resent += len(last)
+        return KeepaliveResult(
+            ok=True, key=self.key,
+            frames_resent=frames_resent, bytes_resent=bytes_resent,
+            message=f"Resent last frame {frames_resent} time(s)",
         )
 
 
@@ -1500,21 +3343,58 @@ class SetTempUnit(Command[TempUnitResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class ListLanguages(Command[LanguagesListResult]):
+    """Enumerate every language code the i18n table supports.
+
+    Pure read — no I/O.  UIs use the returned list to populate language
+    pickers; CLI users see it via ``trcc system list-languages``.
+    """
+
+    def execute(self, app: App) -> LanguagesListResult:
+        del app
+        from .i18n import LANGUAGE_NAMES, TRANSLATIONS
+        entries: list[LanguageEntry] = []
+        for code in sorted(LANGUAGE_NAMES):
+            entries.append(LanguageEntry(
+                code=code,
+                name=LANGUAGE_NAMES[code],
+                translated_keys=len(TRANSLATIONS.get(code, {})),
+            ))
+        return LanguagesListResult(
+            ok=True, languages=entries,
+            message=f"{len(entries)} language(s) registered",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SetLanguage(Command[LanguageResult]):
-    """Set the UI language code (ISO 639-1, e.g. 'en', 'zh', 'fr')."""
+    """Set the UI language code (ISO 639-1, e.g. 'en', 'zh', 'fr').
+
+    Validates against the i18n table so unknown codes are rejected with a
+    structured error instead of silently persisting and breaking
+    ``tr()`` lookups for every subsequent string.
+    """
     language: str
 
     def execute(self, app: App) -> LanguageResult:
+        from .i18n import LANGUAGE_NAMES
         lang = self.language.strip()
         if not lang:
             return LanguageResult(
                 ok=False, language=self.language,
                 message="language code cannot be empty",
             )
+        if lang not in LANGUAGE_NAMES:
+            return LanguageResult(
+                ok=False, language=self.language,
+                message=(f"unknown language code {lang!r}; "
+                         "use `system list-languages` to see supported codes"),
+            )
         app.settings.set_language(lang)
         app.events.publish(LanguageChanged(language=lang))
         return LanguageResult(
-            ok=True, language=lang, message=f"language set to {lang}",
+            ok=True, language=lang,
+            message=f"language set to {lang} ({LANGUAGE_NAMES[lang]})",
         )
 
 

@@ -1,8 +1,12 @@
 """GUI entry — QApplication + MainWindow shell.
 
-MainWindow is a tab container holding one panel per responsibility
-(devices, display, LED).  The BusBridge connects EventBus events to
-Qt signals so widgets can update on the main thread safely.
+MainWindow is a horizontal split: an ``ActivitySidebar`` on the left and
+a ``QStackedWidget`` on the right that swaps the active panel.  Every
+panel subclasses :class:`BasePanel` so they share the same ``app`` /
+``bus`` plumbing.
+
+Adding a panel: register the widget on the stacked container with the
+same key the sidebar emits, and add an entry to ``sidebar._ENTRIES``.
 """
 from __future__ import annotations
 
@@ -13,10 +17,10 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QMainWindow,
+    QStackedWidget,
     QStatusBar,
-    QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -30,13 +34,29 @@ from ...core.events import (
     ThemeLoaded,
 )
 from .bus_bridge import BusBridge
-from .panels import DevicePanel, DisplayPanel, LedPanel
+from .panels import (
+    AboutPanel,
+    ActivitySidebar,
+    CloudThemeBrowser,
+    ConfigurationPanel,
+    DevicePanel,
+    DisplayPanel,
+    LedPanel,
+    LocalThemeBrowser,
+    MaskBrowser,
+    OverlayEditorPanel,
+    PreviewPanel,
+    ScreencastPanel,
+    StatusPanel,
+    SystemPanel,
+)
+from .splash import auto_close, show_splash
 
 log = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    """Top-level window: tabs + status bar wired to EventBus events."""
+    """Top-level window: sidebar + stacked content + status bar."""
 
     def __init__(self, app: App) -> None:
         super().__init__()
@@ -44,19 +64,51 @@ class MainWindow(QMainWindow):
         self._bus = BusBridge(app.events)
 
         self.setWindowTitle("TRCC — Thermalright LCD/LED Cooler Control (next)")
-        self.resize(800, 520)
+        self.resize(960, 640)
 
-        tabs = QTabWidget()
-        tabs.addTab(DevicePanel(app), "Devices")
-        tabs.addTab(DisplayPanel(app), "Display")
-        tabs.addTab(LedPanel(app), "LED")
+        # ── Layout: sidebar | stacked content ──
+        sidebar = ActivitySidebar(app, self._bus, self)
+        content = QStackedWidget(self)
+        content.setObjectName("trcc-content")
 
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.addWidget(tabs)
+        # Register panels.  Key matches the sidebar entry's key.
+        self._panels: dict[str, QWidget] = {
+            "devices": DevicePanel(app, self._bus, self),
+            "display": DisplayPanel(app, self._bus, self),
+            "preview": PreviewPanel(app, self._bus, self),
+            "themes":  LocalThemeBrowser(app, self._bus, self),
+            "cloud":   CloudThemeBrowser(app, self._bus, self),
+            "masks":   MaskBrowser(app, self._bus, self),
+            "overlay": OverlayEditorPanel(app, self._bus, self),
+            "screencast": ScreencastPanel(app, self._bus, self),
+            "config":  ConfigurationPanel(app, self._bus, self),
+            "led":     LedPanel(app, self._bus, self),
+            "status":  StatusPanel(app, self._bus, self),
+            "system":  SystemPanel(app, self._bus, self),
+            "about":   AboutPanel(app, self._bus, self),
+        }
+        for widget in self._panels.values():
+            content.addWidget(widget)
+        # First-run users land on System (where the doctor lives) so the
+        # welcome screen guides them; everyone else starts on Devices.
+        initial = "system" if app.first_run.is_first_run() else "devices"
+        content.setCurrentWidget(self._panels[initial])
+        sidebar.select(initial)
+        sidebar.selected.connect(
+            lambda key: content.setCurrentWidget(
+                self._panels.get(key, self._panels["devices"]),
+            ),
+        )
+
+        container = QWidget(self)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        row.addWidget(sidebar)
+        row.addWidget(content, 1)
         self.setCentralWidget(container)
 
-        status = QStatusBar()
+        status = QStatusBar(self)
         self.setStatusBar(status)
         self._status = status
 
@@ -68,9 +120,10 @@ class MainWindow(QMainWindow):
         self._bus.theme_loaded.connect(self._on_theme_loaded, type=qconn)
         self._bus.error_occurred.connect(self._on_error, type=qconn)
 
-        # Playback ticker — dispatches RenderAndSend to every device with an
-        # active theme, at AppSettings.refresh_interval_s.  Started lazily
-        # when a theme gets loaded; stops when no active themes remain.
+        # Playback ticker — dispatches RenderAndSend to every device with
+        # an active theme, at AppSettings.refresh_interval_s.  Started
+        # lazily when a theme gets loaded; stops when no active themes
+        # remain.
         self._ticker = QTimer(self)
         self._ticker.setSingleShot(False)
         self._ticker.timeout.connect(self._on_tick)
@@ -81,6 +134,11 @@ class MainWindow(QMainWindow):
         platform = self._app.platform
         msg = (f"{platform.distro_name()}  |  install: {platform.install_method()}"
                f"  |  config: {platform.paths().config_dir()}")
+        if self._app.first_run.is_first_run():
+            msg = (
+                "Welcome to TRCC.  Open System → run Doctor to check your "
+                "setup, then plug in a device and open Devices to scan."
+            )
         self._status.showMessage(msg)
 
     # ── Event handlers ────────────────────────────────────────────────
@@ -100,6 +158,7 @@ class MainWindow(QMainWindow):
 
     def _on_theme_loaded(self, event: ThemeLoaded) -> None:
         """A theme got loaded on some device — make sure the ticker is running."""
+        del event
         self._ensure_ticker_running()
 
     def _ensure_ticker_running(self) -> None:
@@ -135,6 +194,9 @@ def launch(app: App | None = None) -> int:
     if not isinstance(qapp, QApplication):
         qapp = QApplication(sys.argv)
 
+    splash = show_splash()
+    qapp.processEvents()
+
     if app is None:
         # Import QtRenderer only after QApplication exists, so its
         # bootstrap helper finds our QApplication instead of creating a
@@ -145,6 +207,7 @@ def launch(app: App | None = None) -> int:
 
     window = MainWindow(app)
     window.show()
+    auto_close(splash, after_ms=250)
     return qapp.exec()
 
 

@@ -32,7 +32,9 @@ def build_app(trcc: App | None = None) -> FastAPI:
 
     api.include_router(devices.router)
     api.include_router(display.router)
+    api.include_router(display.meta_router)
     api.include_router(led.router)
+    api.include_router(led.meta_router)
     api.include_router(system.router)
     api.include_router(config.router)
     api.include_router(theme.router)

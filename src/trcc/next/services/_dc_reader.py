@@ -1,20 +1,27 @@
-"""Read-only DC-format theme config loader (legacy compatibility shim).
+"""DC-format theme config codec (read + write, legacy compatibility).
 
 TRCC Windows + legacy Linux wrote themes as `config1.dc` — a binary
 format with a magic byte (0xDC / 0xDD), version, enable flags, 13
 font records, 13 element positions, and mask/rotation flags.
 
-next/ writes theme configs as plain JSON going forward.  This reader
-lets users load their existing DC-format themes; `ThemeService.load`
-invokes it as a fallback, converts to our JSON-compatible dict, and
-writes `trcc-next.json` alongside so the next load skips the binary
-path.  The filename is deliberately distinct from legacy's
-`config.json` — the two tools use different JSON shapes, and sharing
-a filename would make whichever wrote last clobber the other.
+next/ writes theme configs as plain JSON going forward (``trcc-next.json``).
+This codec lets users:
+  * load their existing DC-format themes (read path) — ``ThemeService.load``
+    invokes it as a fallback, converts to our JSON-compatible dict, and
+    writes ``trcc-next.json`` alongside so the next load skips the binary
+    path; and
+  * export a next/-managed theme back to legacy DC format (write path) so
+    it round-trips to Windows TRCC + legacy Linux users.
 
-Scope: the 20% of fields the overlay actually renders.  We skip the
-mask rectangle, UI mode, charsets, and style bytes that legacy surfaces
-through its full 800-LOC parser.
+Filenames are deliberately distinct from legacy's ``config.json`` — the
+two tools use different JSON shapes, and sharing a filename would make
+whichever wrote last clobber the other.
+
+Scope: the 20% of fields the overlay actually renders + everything we
+need to recreate a legacy DC the Windows app accepts.  Mask rectangle,
+UI mode, charsets, and style bytes round-trip even though next/ ignores
+some of them on read — preserving them lets the file open cleanly in
+legacy without bytes flapping.
 """
 from __future__ import annotations
 
@@ -433,3 +440,204 @@ def _build_dd_element(
         case _:
             log.debug("0xDD: unknown element mode %d; skipping", mode)
             return None
+
+
+# =========================================================================
+# Write path — emit a legacy-compatible config1.dc (0xDD format)
+# =========================================================================
+
+
+# Inverse of ``_HW_TO_SENSOR`` — sensor id -> (main_count, sub_count).
+# Lazy-built so the reader path doesn't pay for it.
+def _build_sensor_to_hw() -> dict[str, tuple[int, int]]:
+    inverse: dict[str, tuple[int, int]] = {}
+    for (main_c, sub_c), (sensor_id, _fmt) in _HW_TO_SENSOR.items():
+        inverse[sensor_id] = (main_c, sub_c)
+    return inverse
+
+
+_SENSOR_TO_HW: dict[str, tuple[int, int]] | None = None
+
+
+def _sensor_to_hw() -> dict[str, tuple[int, int]]:
+    global _SENSOR_TO_HW
+    if _SENSOR_TO_HW is None:
+        _SENSOR_TO_HW = _build_sensor_to_hw()
+    return _SENSOR_TO_HW
+
+
+_DEFAULT_FONT_NAME = "Microsoft YaHei"
+_DEFAULT_FONT_UNIT = 3      # GraphicsUnit.Point
+_DEFAULT_FONT_CHARSET = 134  # GB2312 — matches legacy Windows TRCC default
+
+
+class _Writer:
+    """Sequential binary writer mirroring legacy ``BinaryWriter``."""
+
+    __slots__ = ("buf",)
+
+    def __init__(self) -> None:
+        self.buf = bytearray()
+
+    def write_byte(self, value: int) -> None:
+        self.buf.append(value & 0xFF)
+
+    def write_bool(self, value: bool) -> None:
+        self.buf.append(1 if value else 0)
+
+    def write_int32(self, value: int) -> None:
+        self.buf.extend(struct.pack("<i", value))
+
+    def write_float(self, value: float) -> None:
+        self.buf.extend(struct.pack("<f", value))
+
+    def write_string(self, value: str) -> None:
+        """Length-prefixed UTF-8 string with the 7-bit-encoded length
+        Windows ``BinaryWriter.Write(string)`` uses."""
+        if not value:
+            self.buf.append(0)
+            return
+        encoded = value.encode("utf-8")
+        length = len(encoded)
+        if length < 0x80:
+            self.buf.append(length)
+        else:
+            # Two-byte 7-bit varint (legacy never emits more than two,
+            # since strings are font names + short text).
+            self.buf.append((length & 0x7F) | 0x80)
+            self.buf.append((length >> 7) & 0x7F)
+        self.buf.extend(encoded)
+
+
+def write_dc_from_theme_config(
+    path: Path,
+    config: dict[str, Any],
+    *,
+    user_overlay_elements: list[dict[str, Any]] | None = None,
+) -> None:
+    """Write ``config1.dc`` (0xDD format) to *path*.
+
+    Takes a next/-style theme config dict (same shape ``load_dc_as_theme_config``
+    returns) plus an optional list of user overlay elements (the
+    ``DeviceSettings.user_overlay_elements`` list, dict-form).  Theme
+    elements paint first, user elements on top — matching how
+    ``OverlayService.render`` composes them at draw time.
+
+    Always emits 0xDD even when the source was 0xDC: the cloud-theme
+    variant is the format both legacy and Windows TRCC accept for
+    user-saved themes; 0xDC is reserved for the bundled stock themes.
+    """
+    if path.parent and not path.parent.exists():
+        raise ThemeError(f"DC output directory missing: {path.parent}")
+
+    elements: list[dict[str, Any]] = list(config.get("elements", []))
+    elements.extend(user_overlay_elements or [])
+
+    w = _Writer()
+    w.write_byte(_MAGIC_DD)
+    w.write_bool(True)                        # system_info_enabled
+    w.write_int32(len(elements))
+    for element in elements:
+        _write_dd_element(w, element)
+    _write_dd_trailer(w, config)
+
+    try:
+        path.write_bytes(bytes(w.buf))
+    except OSError as e:
+        raise ThemeError(f"Cannot write {path}: {e}") from e
+
+
+def _write_dd_element(w: _Writer, element: dict[str, Any]) -> None:
+    """Serialize one overlay element into the 0xDD element block."""
+    mode, mode_sub, main_count, sub_count, custom_text = _element_to_legacy(element)
+    w.write_int32(mode)
+    w.write_int32(mode_sub)
+    w.write_int32(int(element.get("x", 0)))
+    w.write_int32(int(element.get("y", 0)))
+    w.write_int32(main_count)
+    w.write_int32(sub_count)
+    _write_dd_font(w, element)
+    w.write_string(custom_text)
+
+
+def _write_dd_font(w: _Writer, element: dict[str, Any]) -> None:
+    """Write the font + color record that follows every 0xDD element."""
+    w.write_string(str(element.get("font_name", _DEFAULT_FONT_NAME)))
+    w.write_float(float(element.get("size", 24.0)))
+    style = 0
+    if element.get("bold"):
+        style |= 0x01
+    if element.get("italic"):
+        style |= 0x02
+    w.write_byte(style)
+    w.write_byte(_DEFAULT_FONT_UNIT)
+    w.write_byte(_DEFAULT_FONT_CHARSET)
+    a, r, g, b = _hex_to_argb(str(element.get("color", "#ffffff")))
+    w.write_byte(a)
+    w.write_byte(r)
+    w.write_byte(g)
+    w.write_byte(b)
+
+
+def _write_dd_trailer(w: _Writer, config: dict[str, Any]) -> None:
+    """Append the display-options block after the element list."""
+    w.write_bool(bool(config.get("background_display", True)))
+    w.write_bool(bool(config.get("transparent_display", False)))
+    w.write_int32(int(config.get("rotation", 0)))
+    w.write_int32(int(config.get("ui_mode", 0)))
+    w.write_int32(int(config.get("display_mode", 0)))
+    w.write_bool(bool(config.get("overlay_enabled", True)))
+    overlay_rect = config.get("overlay_rect", (0, 0, 0, 0))
+    for value in overlay_rect:
+        w.write_int32(int(value))
+    w.write_bool(bool(config.get("mask_enabled", False)))
+    mask_pos = config.get("mask_position", (0, 0))
+    for value in mask_pos:
+        w.write_int32(int(value))
+
+
+def _element_to_legacy(
+    element: dict[str, Any],
+) -> tuple[int, int, int, int, str]:
+    """Map a next/ overlay element dict back to (mode, mode_sub, main, sub, text)."""
+    kind = element.get("type", "text")
+    if kind == "text":
+        return (_MODE_CUSTOM, 0, 0, 0, str(element.get("text", "")))
+    if kind == "metric":
+        sensor = str(element.get("metric", ""))
+        main_c, sub_c = _sensor_to_hw().get(sensor, (0, 0))
+        return (_MODE_HARDWARE, 0, main_c, sub_c, "")
+    if kind == "clock":
+        source = element.get("source", "time")
+        mode = {
+            "time": _MODE_TIME,
+            "weekday": _MODE_WEEKDAY,
+            "date": _MODE_DATE,
+        }.get(source, _MODE_TIME)
+        return (mode, 0, 0, 0, "")
+    # Unknown type — emit as CUSTOM with empty text so legacy at least
+    # gets an addressable slot.
+    return (_MODE_CUSTOM, 0, 0, 0, "")
+
+
+def _hex_to_argb(hex_color: str) -> tuple[int, int, int, int]:
+    """Parse '#rrggbb' or '#aarrggbb' into (A, R, G, B) 0..255."""
+    s = hex_color.lstrip("#").strip()
+    if len(s) == 6:
+        try:
+            r = int(s[0:2], 16)
+            g = int(s[2:4], 16)
+            b = int(s[4:6], 16)
+            return (255, r, g, b)
+        except ValueError:
+            return (255, 255, 255, 255)
+    if len(s) == 8:
+        try:
+            a = int(s[0:2], 16)
+            r = int(s[2:4], 16)
+            g = int(s[4:6], 16)
+            b = int(s[6:8], 16)
+            return (a, r, g, b)
+        except ValueError:
+            return (255, 255, 255, 255)
+    return (255, 255, 255, 255)

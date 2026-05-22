@@ -69,6 +69,10 @@ class FitModeChanged(Event):
 class OverlayChanged(Event):
     key: str
     enabled: bool
+    # When set, GUI subscribers temporarily highlight the named element
+    # for ``flash_duration_ms`` milliseconds.  Other UIs ignore.
+    flash_element_id: str = ""
+    flash_duration_ms: int = 0
 
 
 @dataclass(frozen=True, slots=True)

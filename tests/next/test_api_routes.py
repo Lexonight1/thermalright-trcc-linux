@@ -262,6 +262,429 @@ def test_led_set_brightness_validates_range(api_client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_led_toggle_global(api_client: TestClient) -> None:
+    """ToggleLed flips global_on through the API."""
+    resp = api_client.post(
+        "/devices/0416:8001/led/toggle",
+        json={"on": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "global" in body["message"].lower()
+
+
+def test_led_toggle_zone_out_of_range_rejected(api_client: TestClient) -> None:
+    """Negative zone numbers fail Pydantic validation."""
+    resp = api_client.post(
+        "/devices/0416:8001/led/toggle",
+        json={"on": True, "zone": -1},
+    )
+    assert resp.status_code == 422
+
+
+def test_led_zone_sync_enable(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/zone-sync",
+        json={"enabled": True},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+
+def test_led_select_zone(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/select-zone",
+        json={"zone": 3},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "3" in body["message"]
+
+
+def test_led_toggle_segment(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/toggle-segment",
+        json={"index": 7, "on": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "Segment 7" in body["message"]
+
+
+def test_led_snapshot(api_client: TestClient) -> None:
+    """LedSnapshot returns the persisted LED state."""
+    resp = api_client.get("/devices/0416:8001/led/snapshot")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["key"] == "0416:8001"
+    assert "mode" in body
+
+
+def test_led_styles_listing(api_client: TestClient) -> None:
+    """``GET /led/styles`` returns the PM registry."""
+    resp = api_client.get("/led/styles")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert len(body["styles"]) > 0
+    assert any(s["style"] == "ax120" for s in body["styles"])
+
+
+def test_led_modes_listing(api_client: TestClient) -> None:
+    resp = api_client.get("/led/modes")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "STATIC" in body["modes"]
+    assert "RAINBOW" in body["modes"]
+
+
+def test_display_snapshot(api_client: TestClient) -> None:
+    resp = api_client.get("/devices/0402:3922/display/snapshot")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["key"] == "0402:3922"
+
+
+def test_display_restore_theme_no_persisted(api_client: TestClient) -> None:
+    """RestoreLastTheme with nothing persisted returns a 400 from
+    ``http_error_if_failed`` (Result.ok=False)."""
+    resp = api_client.post("/devices/0402:3922/display/restore-theme")
+    assert resp.status_code in (400, 404)
+
+
+def test_system_list_gpus(api_client: TestClient) -> None:
+    resp = api_client.get("/system/gpus")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+
+
+def test_system_snapshot(api_client: TestClient) -> None:
+    resp = api_client.get("/system/snapshot")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "language" in body
+    assert "refresh_interval_s" in body
+
+
+# --- Tier 2 -----------------------------------------------------------------
+
+
+def test_led_clock_format(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/clock-format",
+        json={"is_24h": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["is_24h"] is False
+
+
+def test_led_week_start(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/week-start",
+        json={"sunday_first": True},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["sunday_first"] is True
+
+
+def test_led_memory_ratio(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/memory-ratio",
+        json={"ratio_mode": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["ratio_mode"] is False
+
+
+def test_led_disk_index(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/disk-index",
+        json={"index": 1},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["index"] == 1
+
+
+def test_led_disk_index_negative_rejected(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0416:8001/led/disk-index",
+        json={"index": -1},
+    )
+    assert resp.status_code == 422
+
+
+def test_system_hdd_enabled(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/system/hdd-enabled", json={"enabled": True},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["enabled"] is True
+
+
+def test_display_background_mode_color(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/background-mode",
+        json={"mode": "color"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["mode"] == "color"
+
+
+def test_display_background_mode_rejects_bad(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/background-mode",
+        json={"mode": "bogus"},
+    )
+    assert resp.status_code == 422
+
+
+def test_display_overlay_background(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/overlay-background",
+        json={"color": [17, 34, 51]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["color"] == [17, 34, 51]
+
+
+# --- Tier 3 -----------------------------------------------------------------
+
+
+def test_display_pause_video_no_playback(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/pause-video",
+        json={"paused": True},
+    )
+    assert resp.status_code in (400, 404)
+
+
+def test_display_seek_negative_rejected(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/seek-video",
+        json={"frame": -1},
+    )
+    assert resp.status_code == 422
+
+
+def test_display_loop_no_playback(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/loop-video",
+        json={"loop": False},
+    )
+    assert resp.status_code in (400, 404)
+
+
+def test_display_masks_listing_empty(api_client: TestClient) -> None:
+    """``GET /display/masks`` returns ok=True with the masks/ contents."""
+    resp = api_client.get("/display/masks")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+
+
+def test_display_backgrounds_listing_empty(api_client: TestClient) -> None:
+    resp = api_client.get("/display/backgrounds")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+
+
+def test_theme_delete_unknown(api_client: TestClient) -> None:
+    """Deleting a non-existent theme returns a structured error."""
+    resp = api_client.delete("/theme/definitely-not-real-9zq")
+    assert resp.status_code in (400, 404)
+
+
+def test_system_fonts_listing(api_client: TestClient) -> None:
+    resp = api_client.get("/system/fonts")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+
+
+def test_system_disks_listing(api_client: TestClient) -> None:
+    resp = api_client.get("/system/disks")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+
+
+# --- Tier 4 — overlay element CRUD ----------------------------------------
+
+
+def test_overlay_add_returns_id(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/overlay-elements",
+        json={"type": "text", "x": 5, "y": 10, "text": "hi"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["element"]["id"].startswith("el_")
+
+
+def test_overlay_add_rejects_bad_type(api_client: TestClient) -> None:
+    resp = api_client.post(
+        "/devices/0402:3922/display/overlay-elements",
+        json={"type": "bogus"},
+    )
+    assert resp.status_code == 422
+
+
+def test_overlay_update_unknown(api_client: TestClient) -> None:
+    resp = api_client.patch(
+        "/devices/0402:3922/display/overlay-elements/el_nope",
+        json={"x": 5},
+    )
+    assert resp.status_code in (400, 404)
+
+
+def test_overlay_delete_unknown(api_client: TestClient) -> None:
+    resp = api_client.delete(
+        "/devices/0402:3922/display/overlay-elements/el_nope",
+    )
+    assert resp.status_code in (400, 404)
+
+
+def test_overlay_round_trip(api_client: TestClient) -> None:
+    """Add → update → flash → delete one element via the API."""
+    add = api_client.post(
+        "/devices/0402:3922/display/overlay-elements",
+        json={"type": "text", "text": "hi", "element_id": "el_api"},
+    )
+    assert add.status_code == 200
+    eid = add.json()["element"]["id"]
+    upd = api_client.patch(
+        f"/devices/0402:3922/display/overlay-elements/{eid}",
+        json={"text": "bye"},
+    )
+    assert upd.status_code == 200
+    flash = api_client.post(
+        f"/devices/0402:3922/display/overlay-elements/{eid}/flash",
+        json={"duration_ms": 500},
+    )
+    assert flash.status_code == 200
+    rm = api_client.delete(
+        f"/devices/0402:3922/display/overlay-elements/{eid}",
+    )
+    assert rm.status_code == 200
+
+
+def test_overlay_set_config_bulk(api_client: TestClient) -> None:
+    """PUT replaces the element list wholesale."""
+    resp = api_client.put(
+        "/devices/0402:3922/display/overlay-elements",
+        json={"elements": [
+            {"id": "a", "type": "text", "text": "one"},
+            {"id": "b", "type": "metric", "metric": "cpu_temp"},
+        ]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert len(body["elements"]) == 2
+
+
+# --- Tier 5 — cloud themes (offline list) ----------------------------------
+
+
+def test_theme_cloud_list_returns_catalog(api_client: TestClient) -> None:
+    resp = api_client.get("/theme/cloud")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert any(c["prefix"] == "a" for c in body["categories"])
+    assert any(t["id"] == "a001" for t in body["themes"])
+
+
+def test_theme_cloud_list_unknown_category(api_client: TestClient) -> None:
+    resp = api_client.get("/theme/cloud", params={"category": "zzz"})
+    # Result.ok = False → http_error_if_failed → 400
+    assert resp.status_code in (400, 404)
+
+
+# --- i18n --------------------------------------------------------------------
+
+
+def test_list_languages_returns_full_set(api_client: TestClient) -> None:
+    """``GET /system/languages`` lists every i18n code."""
+    resp = api_client.get("/system/languages")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    codes = {lang["code"] for lang in body["languages"]}
+    assert {"en", "zh", "fr", "de", "ja"} <= codes
+
+
+def test_set_language_rejects_unknown_code(api_client: TestClient) -> None:
+    """``POST /config/language`` with an unknown ISO code returns 400."""
+    resp = api_client.post(
+        "/config/language", json={"language": "zz_unknown"},
+    )
+    assert resp.status_code in (400, 404)
+
+
+# --- Diagnostics ------------------------------------------------------------
+
+
+def test_system_health(api_client: TestClient) -> None:
+    resp = api_client.get("/system/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "checks" in body
+    assert any(c["name"] == "python-version" for c in body["checks"])
+
+
+def test_system_doctor(api_client: TestClient) -> None:
+    resp = api_client.get("/system/doctor")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "checks" in body
+    assert "rendered" in body
+
+
+def test_system_debug_report_in_memory(api_client: TestClient) -> None:
+    resp = api_client.post("/system/debug-report", json={"log_tail_lines": 50})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "## Platform" in body["rendered_text"]
+    assert body["output_path"] == ""
+
+
+def test_system_debug_report_to_path(
+    api_client: TestClient, tmp_path,
+) -> None:
+    out = tmp_path / "bundle.txt"
+    resp = api_client.post(
+        "/system/debug-report",
+        json={"output_path": str(out), "log_tail_lines": 10},
+    )
+    assert resp.status_code == 200
+    assert out.is_file()
+
+
 # =========================================================================
 # system router
 # =========================================================================
@@ -325,3 +748,35 @@ def test_theme_save_requires_key(api_client: TestClient) -> None:
         json={"key": "dead:beef", "name": "test"},
     )
     assert resp.status_code in (400, 404, 422)
+
+
+def test_theme_list_returns_empty_under_empty_dir(
+    api_client: TestClient, tmp_path: Path,
+) -> None:
+    """ListThemes against an empty directory returns ok with an empty
+    list — proves the route reaches Command dispatch + Result
+    serialization end-to-end."""
+    resp = api_client.get("/theme/list", params={"directory": str(tmp_path)})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["themes"] == []
+    assert body["directory"] == str(tmp_path)
+
+
+def test_theme_list_finds_themes_in_dir(
+    api_client: TestClient, tmp_path: Path,
+) -> None:
+    """ListThemes returns each theme directory containing config.json."""
+    theme_dir = tmp_path / "MyTheme"
+    theme_dir.mkdir()
+    (theme_dir / "trcc-next.json").write_text(
+        '{"width": 480, "height": 480, "elements": []}',
+    )
+    resp = api_client.get("/theme/list", params={"directory": str(tmp_path)})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert len(body["themes"]) == 1
+    assert body["themes"][0]["name"] == "MyTheme"
+    assert body["themes"][0]["resolution"] == [480, 480]
