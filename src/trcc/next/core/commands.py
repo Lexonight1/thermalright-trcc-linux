@@ -1220,7 +1220,10 @@ class ApplyMask(Command[MaskApplyResult]):
         # sibling DC trailer and convert to top-left; missing/unreadable
         # DC = center on the canvas.  Without this, sub-screen masks
         # (most of the cloud catalog) draw at (0,0) and look invisible.
-        from ..services._dc_reader import calculate_mask_position
+        from ..services._dc_reader import (
+            calculate_mask_position,
+            load_dc_as_theme_config,
+        )
         try:
             mask_img = app.display._r.open_image(resolved_file)  # pyright: ignore[reportPrivateUsage]
             mw, mh = app.display._r.surface_size(mask_img)  # pyright: ignore[reportPrivateUsage]
@@ -1232,16 +1235,38 @@ class ApplyMask(Command[MaskApplyResult]):
         canvas: tuple[int, int] = (0, 0)
         if device is not None and device.profile is not None:
             canvas = device.profile.resolution
+        mask_dir = (
+            self.path if self.path.is_dir() else resolved_file.parent
+        )
         if mw > 0 and mh > 0 and canvas != (0, 0):
-            mask_dir = (
-                self.path if self.path.is_dir() else resolved_file.parent
-            )
             px, py = calculate_mask_position(mask_dir, (mw, mh), canvas)
             app.settings.set_mask_position(self.key, (px, py))
             log.info(
                 "ApplyMask: %s sized %dx%d on %dx%d canvas → position (%d, %d)",
                 resolved_file.name, mw, mh, canvas[0], canvas[1], px, py,
             )
+        # Mask's own config1.dc takes over the metric overlay — legacy
+        # ``ThemeLoader.apply_mask`` clears the theme's overlay then
+        # ``load_from_dc(mask_dir/config1.dc)``.  Each mask carries its
+        # own element list with coordinates aligned to its cutouts; the
+        # theme's elements get replaced (not stacked) on apply.
+        mask_dc = mask_dir / "config1.dc"
+        theme = app.active_themes.get(self.key)
+        if theme is not None and mask_dc.is_file():
+            try:
+                dc = load_dc_as_theme_config(mask_dc)
+            except Exception as e:
+                log.warning("ApplyMask: %s DC unreadable (%s) — keeping "
+                            "theme's overlay layout", mask_dc, e)
+            else:
+                mask_elements = dc.get("elements") or []
+                if mask_elements:
+                    theme.config["elements"] = list(mask_elements)
+                    log.info(
+                        "ApplyMask: %s contributes %d overlay element(s) — "
+                        "theme overlay layout replaced",
+                        resolved_file.name, len(mask_elements),
+                    )
         _invalidate_scene(app, self.key)
         app.events.publish(MaskApplied(key=self.key, path=resolved))
         # DeviceRenderObserver wired in App.__init__ subscribes to
