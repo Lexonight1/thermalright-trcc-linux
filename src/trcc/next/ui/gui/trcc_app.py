@@ -1,10 +1,14 @@
-"""TRCCApp — thin shell main window (AppObserver).
+"""TRCCApp — legacy-look main window wired to next/ Commands.
 
-Pure GUI adapter. Knows nothing about builders, detectors, or OS adapters.
-Receives Device objects injected via on_app_event() from TrccApp (core).
+Holds an :class:`App` handle (in-process or AppProxy when
+``TRCC_NEXT_DAEMON=1``) and a :class:`BusBridge` that fans EventBus
+events into typed Qt signals.  Every device mutation goes through
+``self._app.dispatch(Command(...))`` — the window never imports
+concrete device or adapter classes.
 
-One LCDHandler or LEDHandler per connected device, keyed by USB path.
-Panel stack shows the currently selected device; all devices tick in background.
+One :class:`LCDHandler` or :class:`LEDHandler` per connected device,
+keyed by ``device.info.key`` (``"vid:pid"``).  Panel stack shows the
+currently-selected device; the rest keep ticking in the background.
 """
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QRegularExpression as QRE
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,14 +33,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from trcc.conf import Settings
-
-from ...adapters.infra.dc_writer import read_carousel
-from ...core.models import LCD_DEFAULT_BUTTON, DeviceInfo
-from ...core.ports import Platform
+from ...core.commands import (
+    ConnectDevice,
+    SetGpuDevice,
+    SetHddEnabled,
+    SetLanguage,
+    SetRefreshInterval,
+    SetTempUnit,
+)
+from ...core.models import DeviceInfo
+from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
 from .base_handler import BaseHandler
+from .bus_bridge import BusBridge
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
@@ -55,7 +65,8 @@ from .uc_theme_web import UCThemeWeb
 from .uc_video_cut import UCVideoCut
 
 if TYPE_CHECKING:
-    pass
+    from ...app import App
+    from ...ipc import IPCServer
 
 log = logging.getLogger(__name__)
 
@@ -230,22 +241,19 @@ class ScreencastHandler:
 # =============================================================================
 
 class TRCCApp(QMainWindow):
-    """Main TRCC window — pure GUI adapter, AppObserver.
+    """Main TRCC window — legacy chrome, next/ Commands underneath.
 
-    Receives Device objects injected by TrccApp via on_app_event().
-    Knows nothing about builders, detectors, or OS internals.
+    Holds:
+      _app: App                         — universal command/event hub
+      _bus: BusBridge                   — Event → Qt signal bridge
+      _ui_state: UiStateStore           — GUI-only persisted prefs
+      _handlers: dict[str, BaseHandler] — keyed by ``device.info.key``
+      _active_key: str                  — vid:pid of currently active device
 
-    One handler per device keyed by USB path:
-      _handlers: dict[str, BaseHandler]  # keyed by USB path
-
-    Panel stack shows the active device; all devices tick in background.
+    Every device write goes through ``self._app.dispatch(Command(...))``.
+    Event subscriptions go through ``self._bus.X.connect(slot, QueuedConn)``
+    so handlers always run on the Qt main thread.
     """
-
-    # Thread-safe bridge: core metrics loop → Qt main thread
-    _metrics_signal: Signal = Signal(object)
-    _frame_signal: Signal = Signal(object)          # {'path': str, 'image': Any}
-    _device_added_signal: Signal = Signal(object)   # Device
-    _device_removed_signal: Signal = Signal(object) # Device
 
     _instance: TRCCApp | None = None
 
@@ -265,58 +273,51 @@ class TRCCApp(QMainWindow):
 
     def __init__(
         self,
-        platform: Platform,
+        app: App,
         decorated: bool = False,
     ) -> None:
         super().__init__()
         from trcc.__version__ import __version__
         log.info("TRCC v%s starting", __version__)
 
-        self._platform = platform
-        self._minimize_on_close = platform.minimize_on_close()
+        self._app = app
+        self._minimize_on_close = app.platform.minimize_on_close()
+        self._sensors = app.platform.sensors()
+        self._ui_state = UiStateStore(app.platform.paths())
+        self._ui_state.load()
 
-        # Universal command facade + every shared service. ``_boot.trcc()``
-        # returns the cached process-wide Trcc (built by gui/launch with a
-        # windowed-QApp QtRenderer); all subscriptions, system service,
-        # device lists, and command facades come off it.
-        from trcc._boot import trcc as _boot_trcc
-
-        from ...services.system import SystemService
-        self._trcc = _boot_trcc()
-        sys_svc = self._trcc._system_svc
-        if sys_svc is None:
-            raise RuntimeError(
-                "TRCCApp: SystemService missing on Trcc — "
-                "gui/launch must pass it via _boot.trcc().")
-        self._system_svc: SystemService = sys_svc
-
-        # Apply saved GPU selection to sensor enumerator
-        _settings = self._trcc.settings
-        if _settings.gpu_device:
-            self._system_svc.enumerator.set_preferred_gpu(_settings.gpu_device)
+        # Apply saved GPU selection to the sensor enumerator
+        if app.settings.app.gpu_device:
+            # Best-effort — not every SensorEnumerator implementation
+            # exposes set_preferred_gpu; legacy GPU panels still work
+            # without it (next/ picks the discrete GPU by default).
+            set_pref = getattr(
+                self._sensors, "set_preferred_gpu", None,
+            )
+            if callable(set_pref):
+                set_pref(app.settings.app.gpu_device)
 
         self._decorated = decorated
-        self._drag_pos = None
+        self._drag_pos: Any = None
         self._force_quit = False
         self._minimized_to_taskbar = False
-        self._data_dir = _settings.user_data_dir
+        self._data_dir = app.platform.paths().user_content_dir()
 
         self.setWindowTitle("TRCC-Linux - Thermalright LCD Control Center")
         self.setFixedSize(Sizes.WINDOW_W, Sizes.WINDOW_H)
         if not decorated:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
 
-        # Per-device handlers keyed by USB path
+        # Per-device handlers keyed by ``device.info.key`` ("vid:pid")
         self._handlers: dict[str, BaseHandler] = {}
-        self._active_path = ''       # path of device currently shown in panel stack
+        self._active_key = ''         # vid:pid of currently active device
 
         self._handshake_pending = False
         self._cut_mode = 'background'
         self._mask_upload_filename = ''
         self._pixmap_refs: list = []
 
-        # IPC server (set by composition root after construction)
-        from ...ipc import IPCServer
+        # IPC server set by composition root after construction
         self._ipc_server: IPCServer | None = None
 
         # Build UI
@@ -329,72 +330,109 @@ class TRCCApp(QMainWindow):
         # Connect widget signals
         self._connect_view_signals()
 
-        # Thread-safe signal bridges
-        self._metrics_signal.connect(self._on_metrics_main_thread)
-        self._frame_signal.connect(self._on_frame_main_thread)
-        self._device_added_signal.connect(self._on_device_added_main_thread)
-        self._device_removed_signal.connect(self._on_device_removed_main_thread)
+        # ── EventBus → BusBridge → Qt signals (QueuedConnection ensures
+        # delivery on the Qt main thread regardless of publish thread).
+        self._bus = BusBridge(app.events)
+        qconn = Qt.ConnectionType.QueuedConnection
+        self._bus.device_connected.connect(self._on_bus_device_connected, type=qconn)
+        self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
+        self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
+        self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
+        self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
 
-        # EventBus subscriptions — publish callbacks bridge core threads to
-        # the Qt main thread via the signals above. Replaces the legacy
-        # AppObserver.on_app_event(event, data) dispatch (Phase 9).
-        from trcc.core.events import Topic
-        bus = self._trcc.events
-        bus.subscribe(Topic.DEVICE_LIST, self._on_bus_device_list)
-        bus.subscribe(Topic.DEVICE_CONNECTED, self._on_bus_device_connected)
-        bus.subscribe(Topic.DEVICE_DISCONNECTED, self._on_bus_device_disconnected)
-        bus.subscribe(Topic.FRAME, self._on_bus_frame)
-        bus.subscribe(Topic.METRICS, self._on_bus_metrics)
-        # System suspend — stop the screen capture pipeline before the
-        # device list goes empty.  Trcc handles device cleanup itself;
-        # this hook is just for UI-level resources.
-        bus.subscribe(Topic.SYSTEM_SUSPENDED, self._on_bus_system_suspended)
-
-        # Handshake signal
-        self._handshake_done = Signal(object, object)  # type: ignore[assignment]
-        # Use a QObject notifier for handshake (thread → main thread)
+        # Handshake notifier — kept for legacy code paths that spawn
+        # threads to do connect() under the hood.  next/'s ConnectDevice
+        # Command is synchronous so most callers won't use this.
         from PySide6.QtCore import QObject
         from PySide6.QtCore import Signal as _Signal
+
         class _HandshakeNotifier(QObject):
             done = _Signal(object, object)
         self._hs_notifier = _HandshakeNotifier(self)
         self._hs_notifier.done.connect(self._on_handshake_done)
 
-        # Restore temp unit
-        saved_unit = self._trcc.settings.temp_unit
+        # Restore temp unit from app settings
+        saved_unit = app.settings.app.temp_unit
         self.uc_system_info.set_temp_unit(saved_unit)
         self.uc_led_control.set_temp_unit(saved_unit)
         if saved_unit == 1:
             self.uc_about._set_temp('F')
 
         # Autostart
-        autostart_state = ensure_autostart(self._platform)
+        autostart_state = ensure_autostart(app.platform.autostart())
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
         # System tray
         self._setup_systray()
-        # Sleep handling lives on Trcc now — wired by Platform.subscribe_power()
-        # in Trcc.__init__.  Nothing to do GUI-side.
 
-    # ── EventBus bridges — invoked on the publisher thread, re-emit on
-    #    a Qt signal so handlers run on the GUI thread.  Named slots,
-    #    not lambdas (per feedback_no_lambdas).
+    # ── BusBridge subscribers (run on the Qt main thread) ───────────
 
-    def _on_bus_device_list(self, devices: Any) -> None:
-        self._device_added_signal.emit(('changed', devices))
+    def _on_bus_device_connected(self, event: Any) -> None:
+        """One device just attached/handshaked.  Add a handler."""
+        log.debug("_on_bus_device_connected: key=%s", event.key)
+        device = self._app.devices.get(event.key)
+        if device is not None:
+            self._add_handler(device)
 
-    def _on_bus_device_connected(self, device: Any) -> None:
-        self._device_added_signal.emit(('connected', device))
+    def _on_bus_device_disconnected(self, event: Any) -> None:
+        """One device just detached.  Drop its handler."""
+        log.debug("_on_bus_device_disconnected: key=%s", event.key)
+        self._remove_handler(event.key)
 
-    def _on_bus_device_disconnected(self, device: Any) -> None:
-        self._device_removed_signal.emit(device)
+    def _on_bus_frame_sent(self, event: Any) -> None:
+        """A frame just went out on the wire.
 
-    def _on_bus_frame(self, path: Any, image: Any) -> None:
-        self._frame_signal.emit({'path': path, 'image': image})
+        next/'s FrameSent doesn't carry the rendered image, so the
+        active handler re-builds the preview from the app's render
+        pipeline.  Only the active device updates the preview widget.
+        """
+        if event.key != self._active_key:
+            return
+        handler = self._handlers.get(event.key)
+        if handler is not None and hasattr(handler, "rebuild_preview"):
+            handler.rebuild_preview()
 
-    def _on_bus_metrics(self, metrics: Any) -> None:
-        self._metrics_signal.emit(metrics)
+    def _on_bus_sensors_updated(self, _event: Any) -> None:
+        """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
+        from ...core.commands import ReadSensors
+        result = self._app.dispatch(ReadSensors())
+        readings = {r.sensor_id: r.value for r in result.readings}
+        metrics = _MetricsView(readings)
+
+        if self.uc_info_module.isVisible():
+            self.uc_info_module.update_from_metrics(metrics)
+        if self.uc_system_info.isVisible():
+            self.uc_system_info.update_from_metrics(metrics)
+        if self.is_app_visible() and self.uc_activity_sidebar.isVisible():
+            self.uc_activity_sidebar.update_from_metrics(metrics)
+
+        handler = self._handlers.get(self._active_key)
+        if handler is not None:
+            handler.update_metrics(metrics)
+
+    def _on_bus_system_suspending(self, _event: Any) -> None:
+        """OS is about to suspend — stop the screencast pipeline."""
+        self._screencast.stop()
+
+    def replay_initial_devices(self) -> None:
+        """Build handlers + sidebar from ``app.devices`` after first discovery.
+
+        Called by the composition root once after the BootstrapWorker
+        finishes.  Live mutations after this come through the BusBridge.
+        """
+        for device in self._app.devices.values():
+            self._add_handler(device)
+        self._refresh_sidebar()
+        # Restore last-active device or fall back to first LCD.
+        target_key = self._ui_state.state.last_device_key
+        if target_key not in self._handlers:
+            target_key = next(
+                (k for k, h in self._handlers.items() if isinstance(h, LCDHandler)),
+                next(iter(self._handlers), ''),
+            )
+        if target_key:
+            self._activate_device(target_key)
 
     def _on_bus_system_suspended(self) -> None:
         self._screencast.stop()
@@ -420,7 +458,7 @@ class TRCCApp(QMainWindow):
         for handler in list(self._handlers.values()):
             handler.cleanup()
         self._handlers.clear()
-        self._active_path = ''
+        self._active_key = ''
 
         for device in devices:
             self._add_handler(device)
@@ -516,8 +554,8 @@ class TRCCApp(QMainWindow):
         handler.cleanup()
         log.info("%s handler removed: %s", type(handler).__name__, path)
 
-        if self._active_path == path:
-            self._active_path = ''
+        if self._active_key == path:
+            self._active_key = ''
             remaining = list(self._handlers)
             if remaining:
                 self._activate_device(remaining[0])
@@ -535,19 +573,19 @@ class TRCCApp(QMainWindow):
 
     def _activate_device(self, path: str) -> None:
         """Switch panel stack to show the given device."""
-        if path == self._active_path:
+        if path == self._active_key:
             return
         log.info("_activate_device: %s", path)
         # Deactivate previous device before switching. LCDs go into a
         # soft-pause so their video keeps playing on the device while
         # another LCD owns the GUI; LEDs/others use the full stop.
-        if self._active_path:
-            prev = self._handlers.get(self._active_path)
+        if self._active_key:
+            prev = self._handlers.get(self._active_key)
             if isinstance(prev, LCDHandler):
                 prev.set_inactive()
             elif prev is not None:
                 prev.deactivate()
-        self._active_path = path
+        self._active_key = path
         handler = self._handlers.get(path)
         if handler is None:
             log.warning("_activate_device: no handler for path=%s (known: %s)",
@@ -597,7 +635,7 @@ class TRCCApp(QMainWindow):
             self.uc_activity_sidebar.update_from_metrics(metrics)
 
         # Notify active handler for metrics-driven updates
-        handler = self._handlers.get(self._active_path)
+        handler = self._handlers.get(self._active_key)
         if handler is not None:
             handler.update_metrics(metrics)
 
@@ -610,7 +648,7 @@ class TRCCApp(QMainWindow):
         """
         path: str = payload['path']
         image: Any = payload['image']
-        if path != self._active_path:
+        if path != self._active_key:
             return
         handler = self._handlers.get(path)
         if handler is not None:
@@ -1156,7 +1194,7 @@ class TRCCApp(QMainWindow):
         log.debug("view=%s active_path=%s", view, active)
         if view not in ('form', 'led'):
             log.debug("clearing active_path (was %s)", active)
-            self._active_path = ''  # allow re-selecting same device on return
+            self._active_key = ''  # allow re-selecting same device on return
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')
@@ -1235,14 +1273,14 @@ class TRCCApp(QMainWindow):
         self.uc_device.restore_device_selection()
 
     def _active_handler(self) -> BaseHandler | None:
-        return self._handlers.get(self._active_path)
+        return self._handlers.get(self._active_key)
 
     def _active_lcd(self) -> LCDHandler | None:
-        h = self._handlers.get(self._active_path)
+        h = self._handlers.get(self._active_key)
         return h if isinstance(h, LCDHandler) else None
 
     def _active_led(self) -> LEDHandler | None:
-        h = self._handlers.get(self._active_path)
+        h = self._handlers.get(self._active_key)
         return h if isinstance(h, LEDHandler) else None
 
     # ── Handshake (LCD resolution discovery) ────────────────────────
@@ -1781,9 +1819,9 @@ class TRCCApp(QMainWindow):
         log.debug("_on_temp_unit_changed: unit=%s", unit)
         temp_unit = 1 if unit == 'F' else 0
 
-        # Persist via Trcc — same code path as CLI `trcc temp-unit` and
-        # API `PUT /app/temp-unit`. Side effects below stay GUI-only.
-        self._trcc.control_center.set_temp_unit(unit)
+        # Persist via the unified command bus — CLI / API / GUI all
+        # route through the same SetTempUnit Command.
+        self._app.dispatch(SetTempUnit(unit=temp_unit))
 
         # GUI-only: re-render each LCD handler's preview
         for handler in self._handlers.values():
@@ -1797,31 +1835,31 @@ class TRCCApp(QMainWindow):
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:
         log.debug("_on_hdd_toggle_changed: on=%s", on)
-        result = self._trcc.control_center.set_hdd_enabled(on)
-        # Same side effect as the legacy path: poll loop re-reads the flag
-        self.uc_preview.set_status(result.format())
+        result = self._app.dispatch(SetHddEnabled(enabled=on))
+        self.uc_preview.set_status(result.message)
 
     def _on_refresh_changed(self, interval: int) -> None:
         log.debug("_on_refresh_changed: interval=%s", interval)
-        result = self._trcc.control_center.set_metrics_refresh(interval)
-        # Poll loop re-reads settings.refresy_interval each tick
-        self.uc_preview.set_status(result.format())
+        result = self._app.dispatch(SetRefreshInterval(seconds=float(interval)))
+        self.uc_preview.set_status(result.message)
 
     def _on_gpu_changed(self, gpu_key: str) -> None:
         log.debug("_on_gpu_changed: gpu_key=%s", gpu_key)
-        # Single call — ``Trcc.set_gpu_device`` now propagates
-        # ``enumerator.set_preferred_gpu`` itself.
-        result = self._trcc.control_center.set_gpu_device(gpu_key)
-        self.uc_preview.set_status(result.format())
+        result = self._app.dispatch(SetGpuDevice(gpu_key=gpu_key))
+        self.uc_preview.set_status(result.message)
+        # The Command persists the choice; reflect into the live
+        # enumerator if it accepts a preference hint.
+        set_pref = getattr(self._sensors, "set_preferred_gpu", None)
+        if callable(set_pref):
+            set_pref(gpu_key)
 
     def _set_language(self, lang: str) -> None:
         log.debug("_set_language: %s", lang)
-        # ``Trcc.set_language`` propagates the new lang to every LCD's
-        # overlay (issue #141) — no GUI-side manual loop needed.
-        self._trcc.control_center.set_language(lang)
+        # SetLanguage propagates to every LCD overlay through the
+        # Command's execute(), same path as CLI/API.
+        self._app.dispatch(SetLanguage(lang=lang))
         # GUI-only follow-ups: re-render backgrounds + refresh About +
-        # LED-panel localized background.  These touch widgets, not
-        # device state, so they stay here.
+        # LED-panel localized background.
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()
