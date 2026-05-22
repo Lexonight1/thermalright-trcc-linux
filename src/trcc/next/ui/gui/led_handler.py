@@ -1,159 +1,189 @@
-"""LEDHandler — one per LED device.
+"""LEDHandler — one per LED device, wired to next/ Commands.
 
-Self-contained handler for a single LED device. Owns an LEDDevice,
-signal wiring, and GUI state sync. TRCCApp creates one LEDHandler
-per connected LED device.
+Holds the device key + App handle; every UI-initiated mutation
+dispatches through ``self._app.dispatch(SetLed*Command)``.  The
+underlying LED engine (``app.led_effects`` + per-device runtime state)
+keeps animating regardless of which handler holds the window's focus.
 
-Only the active handler updates the shared panel — `_active` bool
-gates all signal handlers via `_guard()`. Panel updates are driven
-by the metrics signal (same refresh rate as LCD overlay), not a
-separate timer.
-
-Hardware sends happen in the background metrics loop via device.tick().
+Only the active handler updates the shared :class:`UCLedControl`
+panel; ``_active`` gates every Qt slot via :meth:`_guard`.  Panel
+updates ride the metrics broadcast (same cadence as the LCD overlay
+text refresh).
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..._boot import trcc as _trcc
-from ...core.device.led import LEDDevice
-from ...core.models import LED_STYLES, DeviceInfo
+from ...core.commands import (
+    EnableLedTestMode,
+    SelectZone,
+    SetClockFormat,
+    SetDiskIndex,
+    SetLedBrightness,
+    SetLedColor,
+    SetLedMode,
+    SetLedZoneSync,
+    SetLedZoneSyncInterval,
+    SetMemoryRatio,
+    SetWeekStart,
+    ToggleLed,
+    ToggleSegment,
+)
+from ...core.led_models import LED_STYLES, LEGACY_STYLE_ID
 from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
+
+if TYPE_CHECKING:
+    from ...app import App
+    from ...core.models import ProductInfo
 
 log = logging.getLogger(__name__)
 
 
 class LEDHandler(BaseHandler):
-    """Handler for a single LED device.
+    """Per-LED-device GUI handler.
 
-    Config-driven: device object holds all state, handler is just
-    the runtime instance for UI manipulation. Active handler gets
-    panel interaction and metrics updates; inactive ones keep running
-    their last state on hardware.
+    Constructor signature matches the legacy positional shape so the
+    window's ``LEDHandler(device, uc_led_control, on_temp_unit_changed)``
+    call works untouched.  The ``app`` handle comes through the parent
+    window's ``self._app`` reference; we re-fetch it from the device's
+    bound App via :meth:`set_app`, or pass it via ``app=`` kwarg.
     """
 
-    _SAVE_INTERVAL = 20  # save config every N metrics updates
-
-    def handle_frame(self, image: Any) -> None:
-        """Receive tick result from background loop — update LED color display."""
-        display_colors = image.get('display_colors') if isinstance(image, dict) else None
-        if display_colors is not None:
-            self._panel.set_led_colors(display_colors)
+    _SAVE_INTERVAL = 20  # cycles between best-effort settings flushes
 
     def __init__(
         self,
-        led: LEDDevice,
+        device: Any,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
+        app: App | None = None,
     ) -> None:
-        super().__init__(led, 'led')
+        super().__init__(device, 'led')
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
-        self._led = led
+        # next/ Device + key (ProductInfo.key = "vid:pid")
+        self._device_key: str = device.info.key if device is not None else ''
+        # The window owns the App reference; LED handlers don't drive
+        # render ticks themselves, so we only need it for dispatching.
+        self._app: App | None = app
         self._active = False
-        self._style_id = 0
+        self._style: Any = None       # LedStyle enum
+        self._style_id_int = 0        # legacy 1..12 for uc_led_control
         self._metrics_count = 0
         self._connect_signals()
 
-    def cleanup(self) -> None:
-        """Save config and release device resources."""
-        log.info("LED: cleanup")
-        self._active = False
-        if self._led:
-            self._led.save_config()
-            self._led.cleanup()
+    # ── Public API ────────────────────────────────────────────────────
 
-    def update_metrics(self, metrics: Any) -> None:
-        """Update panel text (segment displays). Colors arrive via FRAME_RENDERED."""
-        if not (self._led and self._active):
-            return
-        self._panel.update_metrics(metrics)
-        self._metrics_count += 1
-        if self._metrics_count >= self._SAVE_INTERVAL:
-            self._metrics_count = 0
-            self._led.save_config()
-
-    # ── Public API ───────────────────────────────────────────────────
+    def set_app(self, app: App) -> None:
+        """Inject the App reference post-construction (legacy parity)."""
+        self._app = app
 
     @property
     def active(self) -> bool:
         return self._active
 
-    @property
-    def has_controller(self) -> bool:
-        return self._led is not None
-
-    @property
-    def led_port(self) -> LEDDevice | None:
-        return self._led
-
-    def show(self, device: DeviceInfo) -> None:
-        """Activate handler — initialize device, sync panel from device state."""
-        model = device.model or ''
-        led_style = device.led_style_id or LED_STYLES.by_name(model)
-
-        self._led.initialize_led(device, led_style)
-        self._style_id = led_style
-
-        style_info = LED_STYLES[led_style]
-        self._panel.initialize(
-            led_style, style_info.segment_count, style_info.zone_count,
-            model=model,
+    def show(self, info: ProductInfo | None) -> None:
+        """Activate handler — initialize panel + sync from settings."""
+        if info is None:
+            log.warning("LEDHandler.show: no ProductInfo — cannot activate")
+            return
+        led_style = getattr(info, 'led_style', None)
+        if led_style is None:
+            log.warning(
+                "LEDHandler.show: %s has no led_style — using a default",
+                info.key,
             )
-        self._panel.set_memory_ratio(self._led.state.memory_ratio)
-        self._sync_ui_from_state()
+            from ...core.models import LedStyle
+            led_style = LedStyle.AX120
 
-        self._led.set_temp_unit(_trcc().settings.temp_unit)
-
+        self._style = led_style
+        self._style_id_int = LEGACY_STYLE_ID.get(led_style, 1)
+        spec = LED_STYLES[led_style]
+        self._panel.initialize(
+            self._style_id_int,
+            spec.segment_count,
+            spec.zone_count,
+            model=spec.model_name,
+        )
+        self._sync_panel_from_settings()
         self._active = True
-        log.info("LED: show model=%s style=%d, active (metrics-driven)", model, led_style)
+        log.info(
+            "LED: show key=%s style=%s, active (metrics-driven)",
+            self._device_key, led_style,
+        )
 
     def deactivate(self) -> None:
-        """Pause handler — stop panel updates, save config. LEDDevice keeps running."""
+        """Pause panel updates; the LED engine keeps animating hardware."""
         log.info("LED: deactivate (was active=%s)", self._active)
         self._active = False
-        if self._led:
-            self._led.save_config()
+
+    def cleanup(self) -> None:
+        """Lifecycle hook called on app close.
+
+        Disconnect happens via ``app.close()`` → ``app.detach(key)``
+        at the window level; per-handler cleanup just flips the active
+        flag so any in-flight Qt signal becomes a no-op.
+        """
+        log.info("LED: cleanup")
+        self._active = False
+
+    def update_metrics(self, metrics: Any) -> None:
+        """Update panel text (segment displays) on metrics tick."""
+        if not (self._active and self._app):
+            return
+        self._panel.update_metrics(metrics)
+        self._metrics_count += 1
+        if self._metrics_count >= self._SAVE_INTERVAL:
+            self._metrics_count = 0  # next/ persists per-command; just throttle
 
     def set_temp_unit(self, unit: int) -> None:
-        if self._led:
-            log.debug("LED: temp_unit=%d", unit)
-            self._led.set_temp_unit(unit)
+        """Surface global temp_unit changes into per-device LED state.
 
-    # ── Private ──────────────────────────────────────────────────────
+        ``unit`` is the legacy int (0=C, 1=F).  next/'s SetLedTempSource
+        Command operates on "cpu" / "gpu" — the temp *unit* lives in
+        AppSettings + DeviceSettings, propagated by SetTempUnit at the
+        window level.  This stub stays for legacy callers.
+        """
+        log.debug("LED: set_temp_unit %d (window-level Command handles propagation)", unit)
 
-    def _sync_ui_from_state(self) -> None:
-        if not self._led:
+    # ── Internal — sync panel from persisted settings ────────────────
+
+    def _sync_panel_from_settings(self) -> None:
+        """Populate the panel from ``app.settings.for_led(key)``."""
+        if self._app is None:
             return
-        state = self._led.state
-        if state.zones:
-            z = state.zones[0]
-            self._panel.load_zone_state(0, z.mode.value, z.color, z.brightness, z.on)
+        s = self._app.settings.for_led(self._device_key)
+        # Zone[0] for multi-zone, else the global mode/color/brightness.
+        if s.zones:
+            z = s.zones[0]
+            self._panel.load_zone_state(
+                0, z.mode.value, z.color, z.brightness, z.on,
+            )
         else:
             self._panel.load_zone_state(
-                0, state.mode.value, state.color, state.brightness, state.global_on)
-
-        # Restore carousel/sync state (zone_sync_zones empty = single-zone device)
-        if state.zone_sync_zones:
-            interval_secs = max(1, round(state.zone_sync_interval * 150 / 1000))
+                0, s.mode.value, s.color, s.brightness, s.global_on,
+            )
+        if s.zones:
+            # zone_sync_interval_ticks → seconds via 150 ms tick base
+            interval_secs = max(1, round(s.zone_sync_interval_ticks * 150 / 1000))
             self._panel.load_sync_state(
-                state.zone_sync, state.zone_sync_zones, interval_secs)
+                s.zone_sync,
+                [True] * len(s.zones),  # all zones in carousel by default
+                interval_secs,
+            )
 
-        log.debug("LED: synced UI from state (zones=%d, sync=%s)",
-                  len(state.zones), state.zone_sync)
+    # ── Signal wiring ────────────────────────────────────────────────
 
     def _guard(self, fn):
-        """Wrap a slot so it only fires when this handler is active with a device."""
+        """Wrap a slot so it only runs while the handler is active."""
         def wrapper(*args, **kwargs):
-            if self._led and self._active:
+            if self._active and self._app is not None:
                 fn(*args, **kwargs)
         return wrapper
 
     def _connect_signals(self) -> None:
-        if not self._led:
-            return
         p = self._panel
         p.mode_changed.connect(self._guard(self._on_mode_changed))
         p.color_changed.connect(self._guard(self._on_color_changed))
@@ -164,69 +194,117 @@ class LEDHandler(BaseHandler):
         p.zone_toggled.connect(self._guard(self._on_zone_toggled))
         p.carousel_changed.connect(self._guard(self._on_carousel_changed))
         p.carousel_zone_changed.connect(self._guard(self._on_carousel_zone_changed))
-        p.carousel_interval_changed.connect(self._guard(self._on_carousel_interval_changed))
+        p.carousel_interval_changed.connect(
+            self._guard(self._on_carousel_interval_changed),
+        )
         p.clock_format_changed.connect(self._guard(self._on_clock_format_changed))
         p.week_start_changed.connect(self._guard(self._on_week_start_changed))
-        p.temp_unit_changed.connect(self._guard(self._on_temp_unit_changed))
+        p.temp_unit_changed.connect(self._guard(self._on_temp_unit_changed_slot))
         p.disk_index_changed.connect(self._guard(self._on_disk_index_changed))
         p.memory_ratio_changed.connect(self._guard(self._on_memory_ratio_changed))
         p.test_mode_changed.connect(self._guard(self._on_test_mode_changed))
 
+    # ── Command dispatch slots ───────────────────────────────────────
+
+    def _dispatch(self, cmd: Any) -> Any:
+        """Guarded dispatch — handles the ``_app is None`` case."""
+        if self._app is None:
+            return None
+        return self._app.dispatch(cmd)
+
     def _on_mode_changed(self, mode: Any) -> None:
-        self._led.update_mode(mode)
-        if self._led.state.zones:
-            self._led.update_zone_mode(self._panel.selected_zone, mode)
-        self._metrics_count = self._SAVE_INTERVAL  # force save on next update
+        from ...core.led_models import LEDMode
+        led_mode = mode if isinstance(mode, LEDMode) else LEDMode(mode)
+        self._dispatch(SetLedMode(key=self._device_key, mode=led_mode))
 
     def _on_color_changed(self, r: int, g: int, b: int) -> None:
-        self._led.update_color(r, g, b)
-        if self._led.state.zones:
-            self._led.update_zone_color(self._panel.selected_zone, r, g, b)
+        self._dispatch(SetLedColor(
+            key=self._device_key, color=(r, g, b),
+        ))
 
     def _on_brightness_changed(self, val: int) -> None:
-        self._led.update_brightness(val)
-        if self._led.state.zones:
-            self._led.update_zone_brightness(self._panel.selected_zone, val)
+        self._dispatch(SetLedBrightness(
+            key=self._device_key, percent=val,
+        ))
 
     def _on_global_toggled(self, on: bool) -> None:
-        self._led.update_global_on(on)
+        self._dispatch(ToggleLed(key=self._device_key, on=on))
 
     def _on_segment_clicked(self, idx: int) -> None:
-        if 0 <= idx < len(self._led.state.segment_on):
-            self._led.update_segment(idx, not self._led.state.segment_on[idx])
+        # ToggleSegment toggles between on/off — the Command resolves
+        # the current state internally and inverts it.
+        self._dispatch(ToggleSegment(
+            key=self._device_key, index=idx, on=True,
+        ))
 
     def _on_zone_selected(self, zone_index: int) -> None:
-        if not self._led.state.zones:
+        result = self._dispatch(SelectZone(
+            key=self._device_key, zone=zone_index,
+        ))
+        if result is None or not getattr(result, 'ok', False):
             return
-        self._led.update_selected_zone(zone_index)
-        zones = self._led.state.zones
-        if 0 <= zone_index < len(zones):
-            z = zones[zone_index]
-            self._panel.load_zone_state(zone_index, z.mode.value, z.color, z.brightness, z.on)
+        # Refresh the panel from the new zone's settings
+        self._sync_panel_from_settings()
 
     def _on_zone_toggled(self, zi: int, on: bool) -> None:
-        self._led.update_zone_on(zi, on)
+        self._dispatch(ToggleLed(
+            key=self._device_key, on=on, zone=zi,
+        ))
 
     def _on_carousel_changed(self, on: bool) -> None:
-        self._led.update_zone_sync(on)
+        self._dispatch(SetLedZoneSync(
+            key=self._device_key, enabled=on,
+        ))
 
     def _on_carousel_zone_changed(self, zi: int, sel: Any) -> None:
-        self._led.update_zone_sync_zone(zi, sel)
+        # next/'s zone-sync model: SetLedZoneColor for the picked zone
+        del zi, sel  # Phase 7 hooks per-zone include/exclude
 
     def _on_carousel_interval_changed(self, secs: int) -> None:
-        self._led.update_zone_sync_interval(secs)
+        # secs → ticks (150 ms tick base): ticks = secs * 1000 / 150
+        ticks = max(1, int(secs * 1000 / 150))
+        self._dispatch(SetLedZoneSyncInterval(
+            key=self._device_key, ticks=ticks,
+        ))
 
     def _on_clock_format_changed(self, is_24h: bool) -> None:
-        self._led.update_clock_format(is_24h)
+        self._dispatch(SetClockFormat(
+            key=self._device_key, is_24h=is_24h,
+        ))
 
     def _on_week_start_changed(self, is_sun: bool) -> None:
-        self._led.update_week_start(is_sun)
+        self._dispatch(SetWeekStart(
+            key=self._device_key, sunday_first=is_sun,
+        ))
+
+    def _on_temp_unit_changed_slot(self, unit: str) -> None:
+        # The window handles SetTempUnit globally; forward to its callback
+        # so the rest of the UI (uc_system_info etc.) updates too.
+        if callable(self._on_temp_unit_changed):
+            self._on_temp_unit_changed(unit)
 
     def _on_disk_index_changed(self, idx: int) -> None:
-        self._led.update_disk_index(idx)
+        self._dispatch(SetDiskIndex(
+            key=self._device_key, index=idx,
+        ))
 
     def _on_memory_ratio_changed(self, ratio: int) -> None:
-        self._led.update_memory_ratio(ratio)
+        # Legacy int multiplier (1/2/4); next's Command takes bool.
+        self._dispatch(SetMemoryRatio(
+            key=self._device_key, ratio_mode=(ratio != 1),
+        ))
 
     def _on_test_mode_changed(self, on: bool) -> None:
-        self._led.update_test_mode(on)
+        self._dispatch(EnableLedTestMode(
+            key=self._device_key, enabled=on,
+        ))
+
+    # ── Frame handling ───────────────────────────────────────────────
+
+    def handle_frame(self, image: Any) -> None:
+        """Receive tick result — update LED color display on the panel."""
+        if not self._active:
+            return
+        display_colors = image.get('display_colors') if isinstance(image, dict) else None
+        if display_colors is not None:
+            self._panel.set_led_colors(display_colors)
