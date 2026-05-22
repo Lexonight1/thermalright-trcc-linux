@@ -135,6 +135,65 @@ def test_loads_pre_cutover_filename(tmp_path: Path) -> None:
     assert (theme / "trcc-next.json").exists()
 
 
+def test_loads_legacy_config_json(tmp_path: Path) -> None:
+    """Themes saved by legacy Windows/Linux TRCC use ``config.json``
+    with a dict-of-elements shape under ``dc``.  Loading translates
+    each entry into next/'s element list shape."""
+    theme = tmp_path / "Custom_Legacy"
+    theme.mkdir()
+    (theme / "config.json").write_text(json.dumps({
+        "background": str(theme / "Theme.png"),
+        "mask": "",
+        "dc": {
+            "time": {
+                "x": 50, "y": 100, "color": "#80ffff",
+                "font": {"size": 32, "name": "DejaVu Sans", "style": "bold"},
+                "enabled": True, "metric": "time", "time_format": 0,
+            },
+            "cpu:temp": {
+                "x": 120, "y": 200, "color": "#ffffff",
+                "font": {"size": 24, "name": "DejaVu Sans", "style": "regular"},
+                "enabled": True, "metric": "cpu:temp", "mode_sub": 0,
+            },
+            "off_field": {
+                "x": 0, "y": 0, "color": "#000", "font": {"size": 12},
+                "enabled": False, "metric": "weekday",
+            },
+        },
+    }), encoding="utf-8")
+
+    svc = ThemeService()
+    t = svc.load(theme)
+
+    assert t.name == "Custom_Legacy"
+    elements = t.config["elements"]
+    # 2 enabled, 1 disabled → 2 elements
+    assert len(elements) == 2
+    by_marker = {
+        (e.get("type"), e.get("source") or e.get("metric")): e for e in elements
+    }
+    time_el = by_marker[("clock", "time")]
+    assert time_el["x"] == 50
+    assert time_el["y"] == 100
+    assert time_el["color"] == "#80ffff"
+    assert time_el["size"] == 32
+    assert time_el["bold"] is True
+    assert time_el["name"] == "DejaVu Sans"
+    cpu_el = by_marker[("metric", "cpu:temp")]
+    assert cpu_el["bold"] is False
+
+
+def test_list_finds_legacy_config_json_themes(tmp_path: Path) -> None:
+    """``list()`` discovers themes with legacy ``config.json``."""
+    theme = tmp_path / "LegacyOne"
+    theme.mkdir()
+    (theme / "config.json").write_text('{"dc": {}}', encoding="utf-8")
+
+    themes = ThemeService().list(tmp_path)
+
+    assert {t.name for t in themes} == {"LegacyOne"}
+
+
 def test_list_finds_pre_cutover_themes(tmp_path: Path) -> None:
     """``list()`` recognises pre-cutover ``trcc-next.json`` as a marker."""
     theme = tmp_path / "OldStill"

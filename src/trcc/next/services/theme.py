@@ -46,6 +46,11 @@ _CONFIG_FILE = "trcc.json"
 # parallel-tree period still load.  Next save under DC migration writes
 # the new name; old files are left alone for rollback.
 _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
+# Legacy per-theme JSON shape (different from next/'s).  Wrapper around
+# the legacy overlay_config dict under a ``dc`` key, plus explicit
+# ``background`` and ``mask`` path fields.  Read-only — we translate to
+# next/'s shape on load but don't write this shape back.
+_LEGACY_CONFIG_FILE = "config.json"
 _DC_CONFIG_FILE = "config1.dc"
 _BACKGROUND_CANDIDATES = (
     # next/ native names
@@ -107,11 +112,7 @@ class ThemeService:
         for entry in sorted(directory.iterdir()):
             if not entry.is_dir():
                 continue
-            if not (
-                (entry / _CONFIG_FILE).exists()
-                or (entry / _PRE_CUTOVER_CONFIG_FILE).exists()
-                or (entry / _DC_CONFIG_FILE).exists()
-            ):
+            if not _has_theme_marker(entry):
                 continue
             try:
                 themes.append(self.load(entry))
@@ -294,6 +295,23 @@ class ThemeService:
                     f"Invalid theme config {legacy_next_path}: {e}",
                 ) from e
 
+        legacy_path = path / _LEGACY_CONFIG_FILE
+        if legacy_path.exists():
+            try:
+                raw = json.loads(legacy_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                raise ThemeError(
+                    f"Invalid theme config {legacy_path}: {e}",
+                ) from e
+            if not _looks_like_legacy_theme_config(raw):
+                # Bare config.json without theme markers (``dc`` /
+                # ``background`` / ``elements``) belongs to some other
+                # tool (e.g. legacy app's global ``~/.trcc/config.json``).
+                # Skip — let DC fallback try next.
+                pass
+            else:
+                return _legacy_json_to_next_config(raw, path.name)
+
         dc_path = path / _DC_CONFIG_FILE
         if dc_path.exists():
             config = load_dc_as_theme_config(dc_path)
@@ -321,6 +339,111 @@ class ThemeService:
         width = int(config.get("width", 0))
         height = int(config.get("height", 0))
         return (width, height)
+
+
+def _has_theme_marker(entry: Path) -> bool:
+    """Cheap-then-deep check: is *entry* a theme directory?
+
+    First pass: existence of a known marker file (`trcc.json`,
+    `trcc-next.json`, `config1.dc`).  Legacy `config.json` is a
+    deeper check because the filename collides with unrelated config
+    files — we read it and require theme-shape content.
+    """
+    if (entry / _CONFIG_FILE).exists():
+        return True
+    if (entry / _PRE_CUTOVER_CONFIG_FILE).exists():
+        return True
+    if (entry / _DC_CONFIG_FILE).exists():
+        return True
+    legacy = entry / _LEGACY_CONFIG_FILE
+    if not legacy.is_file():
+        return False
+    try:
+        raw = json.loads(legacy.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return _looks_like_legacy_theme_config(raw)
+
+
+def _looks_like_legacy_theme_config(raw: dict) -> bool:
+    """True iff ``raw`` looks like a legacy theme config.json (not just
+    any JSON file that happens to be named config.json).
+
+    Legacy theme configs always carry a ``dc`` overlay dict; non-theme
+    configs (e.g. legacy app global ``config.json``) don't.  This guard
+    keeps unrelated config.json files from being mistaken for themes
+    when ``list()`` walks a directory.
+    """
+    if not isinstance(raw, dict):
+        return False
+    if isinstance(raw.get("dc"), dict):
+        return True
+    return isinstance(raw.get("elements"), list)
+
+
+def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
+    """Translate a legacy ``config.json`` into next/'s theme config shape.
+
+    Legacy shape (per the Windows TRCC + the legacy Linux tree):
+        {
+          "background": "<path>",         # ignored; auto-discovered
+          "mask": "<path>",               # ignored; user override only
+          "dc": {                         # legacy overlay_config
+              "time": {x, y, color, font:{size, name, style}, ...},
+              "date": {...},
+              "<sensor>": {...},
+              ...
+          }
+        }
+
+    Output is next/'s theme config (``elements`` list + flag fields).
+    Background discovery still walks _BACKGROUND_CANDIDATES so the
+    explicit ``background`` path field is informational only.
+    """
+    elements: list[dict] = []
+    dc = raw.get("dc")
+    if isinstance(dc, dict):
+        for _key, entry in dc.items():
+            if not isinstance(entry, dict):
+                continue
+            if not entry.get("enabled", True):
+                continue
+            translated = _legacy_entry_to_next_element(entry)
+            if translated is not None:
+                elements.append(translated)
+    return {
+        "name": theme_name,
+        "overlay_enabled": True,
+        "elements": elements,
+    }
+
+
+_LEGACY_FONT_DEFAULTS = {"name": "Microsoft YaHei", "size": 24, "style": "regular"}
+
+
+def _legacy_entry_to_next_element(entry: dict) -> dict | None:
+    """One legacy overlay-config entry → one next/-shape element dict."""
+    font_in = entry.get("font")
+    font = (
+        font_in if isinstance(font_in, dict) else _LEGACY_FONT_DEFAULTS
+    )
+    base = {
+        "x": int(entry.get("x", 0)),
+        "y": int(entry.get("y", 0)),
+        "color": entry.get("color", "#ffffff"),
+        "name": str(font.get("name", _LEGACY_FONT_DEFAULTS["name"])),
+        "size": int(font.get("size", _LEGACY_FONT_DEFAULTS["size"])),
+        "bold": font.get("style") == "bold",
+        "italic": font.get("style") == "italic",
+    }
+    metric = entry.get("metric", "")
+    if metric in ("time", "date", "weekday"):
+        return {**base, "type": "clock", "source": metric}
+    if "text" in entry:
+        return {**base, "type": "text", "text": str(entry["text"])}
+    if metric:
+        return {**base, "type": "metric", "metric": metric}
+    return None
 
 
 def _is_safe_archive_member(name: str) -> bool:
