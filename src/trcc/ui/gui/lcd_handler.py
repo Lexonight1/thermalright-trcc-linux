@@ -466,6 +466,20 @@ class LCDHandler(BaseHandler):
                 "select_cloud_theme: LoadCloudTheme failed for %s: %s",
                 theme_id, result.message,
             )
+            return
+        # Drive frame advancement — LoadCloudTheme dispatches PlayVideo
+        # which loads MediaService playback, but the per-frame
+        # ``playback.advance()`` call lives on a Qt timer the handler
+        # owns.  Without starting it here the LCD freezes on frame 0;
+        # legacy starts a 33ms timer at the equivalent point in
+        # ``_select_theme()``.
+        if not self._animation_timer.isActive():
+            interval = self._video_interval_ms()
+            self.log.info(
+                "select_cloud_theme: starting animation timer %dms (%s)",
+                interval, theme_id,
+            )
+            self._animation_timer.start(interval)
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
