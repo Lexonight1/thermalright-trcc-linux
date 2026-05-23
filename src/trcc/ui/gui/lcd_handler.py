@@ -565,14 +565,20 @@ class LCDHandler(BaseHandler):
     # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
 
     def play_pause(self) -> None:
-        self.log.debug("play_pause")
+        self.log.info("play_pause: device=%s", self._device_key)
         playback = self._app.media.playback(self._device_key)
         if playback is None:
+            self.log.warning(
+                "play_pause: no playback bound for %s — toggle dropped",
+                self._device_key,
+            )
             return
         # Toggle pause state.  next/'s Playback exposes pause(bool).
         was_paused = playback.paused
         playback.pause(not was_paused)
         playing = not playback.paused
+        self.log.info("play_pause: was_paused=%s → playing=%s",
+                      was_paused, playing)
         self._w['preview'].set_playing(playing)
         if playing:
             interval_ms = self._video_interval_ms()
@@ -581,7 +587,7 @@ class LCDHandler(BaseHandler):
             self._animation_timer.stop()
 
     def stop_video(self) -> None:
-        self.log.debug("stop_video")
+        self.log.info("stop_video: device=%s", self._device_key)
         from ...core.commands import StopVideo
         self._app.dispatch(StopVideo(key=self._device_key))
         self._animation_timer.stop()
@@ -593,12 +599,18 @@ class LCDHandler(BaseHandler):
         from ...core.commands import SeekVideo
         playback = self._app.media.playback(self._device_key)
         if playback is None:
+            self.log.warning(
+                "seek(%.3f): no playback bound for %s — dropped",
+                percent, self._device_key,
+            )
             return
         total = playback.frame_count
         frame = max(0, min(total - 1, int(percent * total)))
+        self.log.info("seek: percent=%.3f frame=%d/%d", percent, frame, total)
         self._app.dispatch(SeekVideo(key=self._device_key, frame=frame))
 
     def set_video_fit_mode(self, mode: str) -> None:
+        self.log.info("set_video_fit_mode: mode=%r", mode)
         self._app.dispatch(SetFitMode(key=self._device_key, mode=mode))
         # Re-render preview on the next FrameSent / tick
 
@@ -621,6 +633,15 @@ class LCDHandler(BaseHandler):
         from ...core.commands import RenderAndSend
         playback = self._app.media.playback(self._device_key)
         if playback is None or not playback.frames:
+            # Animation timer is firing but the playback was cleared —
+            # WARN once (state-transition); the timer should have been
+            # stopped when the playback was cleared.
+            self.log.warning(
+                "_on_video_tick: timer firing but playback=%s frames=%d — "
+                "stopping animation timer",
+                playback, len(playback.frames) if playback else 0,
+            )
+            self._animation_timer.stop()
             return
         playback.advance()
 
@@ -632,18 +653,31 @@ class LCDHandler(BaseHandler):
 
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
+            # Device dropped — frame advance still useful for preview,
+            # but no point dispatching RenderAndSend.  DEBUG per-tick.
+            self.log.debug(
+                "_on_video_tick: device %s not connected — skip send",
+                self._device_key,
+            )
             return
 
         result = self._app.dispatch(RenderAndSend(key=self._device_key))
         if not result.ok:
-            self.log.debug("_on_video_tick: render failed — %s", result.message)
+            # Render failure during animation playback is a real user-
+            # visible bug (frozen / stuttering LCD).  WARN, not DEBUG.
+            self.log.warning(
+                "_on_video_tick: render failed cursor=%d/%d — %s",
+                playback.cursor, playback.frame_count, result.message,
+            )
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
     def on_overlay_changed(self, element_data: dict) -> None:
         """Forward overlay config change from settings panel."""
-        self.log.debug("on_overlay_changed: %d elements", len(element_data) if element_data else 0)
+        self.log.info("on_overlay_changed: %d elements",
+                      len(element_data) if element_data else 0)
         if not element_data:
+            self.log.info("on_overlay_changed: empty payload — skip")
             return
         # Apply overlay change via the Command bus.  EnableOverlay
         # persists the toggle; SetOverlayConfig persists the element
@@ -663,8 +697,14 @@ class LCDHandler(BaseHandler):
 
     def handle_frame(self, image: Any) -> None:
         """Receive rendered frame from tick loop — update preview widget."""
+        # Per-tick; DEBUG.  Note when UI is gated so a frozen preview
+        # while LCD still updates is visible in the log.
         if self._ui_active:
             self._w['preview'].set_image(image)
+        else:
+            self.log.debug(
+                "handle_frame: dropped (ui_active=False, %s)", self._device_key,
+            )
 
     def rebuild_preview(self) -> None:
         """Re-render the preview from current state (FrameSent observer).
@@ -674,20 +714,40 @@ class LCDHandler(BaseHandler):
         handler owns the UI.  Idempotent — safe to call from FrameSent.
         """
         image = self._build_preview_surface()
-        if image is not None and self._ui_active:
-            self._w['preview'].set_image(image, fast=self._animation_timer.isActive())
+        if image is None:
+            self.log.debug(
+                "rebuild_preview: no surface built (theme/device pre-load?)",
+            )
+            return
+        if not self._ui_active:
+            self.log.debug(
+                "rebuild_preview: ui_active=False for %s — skip",
+                self._device_key,
+            )
+            return
+        self._w['preview'].set_image(image, fast=self._animation_timer.isActive())
 
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""
         if self._ui_active:
             self._w['preview'].set_image(image)
+        else:
+            self.log.debug(
+                "update_preview: dropped (ui_active=False, %s)", self._device_key,
+            )
 
     def update_metrics(self, metrics: Any) -> None:
         """Metrics tick: cache for video-overlay redraws on next frame."""
+        # Per-tick on every metrics broadcast; DEBUG only.
         self._state.last_metrics = metrics
+        readings = getattr(metrics, 'readings', None) or {}
+        self.log.debug(
+            "update_metrics: %s readings=%d", self._device_key, len(readings),
+        )
 
     def flash_element(self, index: int) -> None:
         """Flash/blink selected overlay element on preview."""
+        self.log.info("flash_element: index=%d", index)
         from ...core.commands import FlashOverlayElement
         self._app.dispatch(FlashOverlayElement(
             key=self._device_key, element_id=str(index), duration_ms=980,
@@ -696,19 +756,22 @@ class LCDHandler(BaseHandler):
         self._render_and_send()
 
     def _on_flash_timeout(self) -> None:
+        self.log.debug("_on_flash_timeout: re-rendering")
         self._render_and_send()
 
     # ── Display Settings ───────────────────────────────────────────
 
     def set_brightness(self, percent: int) -> None:
-        self.log.debug("set_brightness: %d%%", percent)
+        self.log.info("set_brightness: %d%% -> %d%% device=%s",
+                      self._brightness_level, percent, self._device_key)
         self._brightness_level = percent
         self._app.dispatch(SetBrightness(
             key=self._device_key, percent=percent,
         ))
 
     def set_rotation(self, degrees: int) -> None:
-        self.log.debug("set_rotation: degrees=%d", degrees)
+        self.log.info("set_rotation: degrees=%d device=%s",
+                      degrees, self._device_key)
         self._app.dispatch(SetOrientation(
             key=self._device_key, degrees=degrees,
         ))
@@ -728,7 +791,8 @@ class LCDHandler(BaseHandler):
         self._update_theme_directories()
 
     def set_split_mode(self, mode: int) -> None:
-        self.log.debug("set_split_mode: mode=%d", mode)
+        self.log.info("set_split_mode: %d -> %d device=%s",
+                      self._split_mode, mode, self._device_key)
         self._split_mode = mode
         self._app.dispatch(SetSplitMode(
             key=self._device_key, mode=mode,
@@ -738,7 +802,8 @@ class LCDHandler(BaseHandler):
 
     def on_background_toggle(self, enabled: bool) -> None:
         """Handle background display toggle."""
-        self.log.debug("on_background_toggle: enabled=%s", enabled)
+        self.log.info("on_background_toggle: enabled=%s device=%s",
+                      enabled, self._device_key)
         self._background_active = enabled
         if enabled:
             self._animation_timer.stop()
@@ -761,17 +826,25 @@ class LCDHandler(BaseHandler):
         currently registered, drop silently — screencast outlives device
         churn.
         """
+        # Per-tick path; entry stays DEBUG.
         if self._ui_active:
             self._w['preview'].set_image(image)
         device = self._app.devices.get(self._device_key)
         if device is None:
+            self.log.debug(
+                "on_screencast_frame: device %s not registered — skip send",
+                self._device_key,
+            )
             return
         try:
             data = self._app.display.build_screencast_frame(
                 info=device.info, frame=image,
             )
         except Exception as e:
-            self.log.debug("screencast encode failed: %s", e)
+            self.log.warning(
+                "on_screencast_frame: encode failed for %s: %s: %s",
+                self._device_key, type(e).__name__, e,
+            )
             return
         from ...core.commands import SendFrame
         self._app.dispatch(SendFrame(key=self._device_key, data=data))
@@ -779,11 +852,14 @@ class LCDHandler(BaseHandler):
     # ── Slideshow / Carousel ───────────────────────────────────────
 
     def _update_slideshow_state(self) -> None:
-        self.log.debug("_update_slideshow_state")
         local = self._w['theme_local']
         enabled = local.is_slideshow()
         interval_s = local.get_slideshow_interval()
         themes = local.get_slideshow_themes()
+        self.log.info(
+            "_update_slideshow_state: enabled=%s themes=%d interval=%ss",
+            enabled, len(themes), interval_s,
+        )
 
         if enabled and themes:
             self._slideshow_index = 0
@@ -805,23 +881,36 @@ class LCDHandler(BaseHandler):
 
     def on_slideshow_delegate(self) -> None:
         """Handle slideshow toggle from local theme panel."""
+        self.log.info("on_slideshow_delegate: device=%s", self._device_key)
         self._update_slideshow_state()
 
     def _on_slideshow_tick(self) -> None:
         """Auto-rotate to next theme in slideshow."""
         themes = self._w['theme_local'].get_slideshow_themes()
         if not themes:
+            self.log.warning(
+                "_on_slideshow_tick: themes list empty — stopping timer",
+            )
             self._slideshow_timer.stop()
             return
         self._slideshow_index = (self._slideshow_index + 1) % len(themes)
         theme_info = themes[self._slideshow_index]
         path = Path(theme_info.path)
+        self.log.info(
+            "_on_slideshow_tick: advance %d/%d -> %s",
+            self._slideshow_index + 1, len(themes), theme_info.name,
+        )
         if path.exists():
             self._app.dispatch(LoadTheme(
                 key=self._device_key, path=path,
             ))
             self._state.current_theme_path = path
             self._load_theme_overlay_config(path)
+        else:
+            self.log.warning(
+                "_on_slideshow_tick: theme path missing %s — skipping",
+                path,
+            )
 
     # ── Rendering ──────────────────────────────────────────────────
 
@@ -834,16 +923,28 @@ class LCDHandler(BaseHandler):
         """
         from ...core.commands import RenderAndSend
         if self._animation_timer.isActive():
+            self.log.debug(
+                "_render_and_send: skipped — animation timer owns the wire",
+            )
             return
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
+            self.log.debug(
+                "_render_and_send: device %s not connected — skip",
+                self._device_key,
+            )
             return
         result = self._app.dispatch(RenderAndSend(key=self._device_key))
         if not result.ok:
-            self.log.debug("_render_and_send: failed — %s", result.message)
+            # Static-theme render failure is user-visible.  WARN, not DEBUG.
+            self.log.warning(
+                "_render_and_send: %s render failed — %s",
+                self._device_key, result.message,
+            )
 
     def render_and_preview(self) -> Any:
         """Render overlay and update preview (no send)."""
+        self.log.info("render_and_preview: device=%s", self._device_key)
         image = self._build_preview_surface()
         if image is not None and self._ui_active:
             self._w['preview'].set_image(image)
@@ -857,9 +958,17 @@ class LCDHandler(BaseHandler):
         """
         device = self._app.devices.get(self._device_key)
         if device is None:
+            self.log.debug(
+                "_build_preview_surface: device %s gone — return None",
+                self._device_key,
+            )
             return None
         theme = self._app.active_themes.get(self._device_key)
         if theme is None:
+            self.log.debug(
+                "_build_preview_surface: %s has no active theme — return None",
+                self._device_key,
+            )
             return None
         sensors = self._app.platform.sensors().read_all()
         try:
@@ -868,7 +977,11 @@ class LCDHandler(BaseHandler):
                 profile=device.profile,
             )
         except Exception as e:
-            self.log.debug("_build_preview_surface: %s", e)
+            # Surface failures are user-visible (blank preview).  WARN.
+            self.log.warning(
+                "_build_preview_surface: %s raised — %s: %s",
+                self._device_key, type(e).__name__, e,
+            )
             return None
 
     # ── Helpers ─────────────────────────────────────────────────────
