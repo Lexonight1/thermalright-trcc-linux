@@ -123,7 +123,7 @@ def probe_video_target_zero(_platform, _device) -> ProbeResult:
     frame_size)`` raises.
     """
     from unittest.mock import patch
-    from trcc.legacy.adapters.infra.media_player import VideoDecoder
+    from trcc.adapters.infra.media_player import VideoDecoder
 
     def _fake_run(*_a, **_k):
         class _R:
@@ -152,7 +152,7 @@ def probe_video_target_zero(_platform, _device) -> ProbeResult:
 def probe_video_target_portrait(_platform, _device) -> ProbeResult:
     """Portrait target dimensions decode without crash or aspect collapse."""
     from unittest.mock import patch
-    from trcc.legacy.adapters.infra.media_player import VideoDecoder
+    from trcc.adapters.infra.media_player import VideoDecoder
 
     def _fake_run(*_a, **_k):
         class _R:
@@ -181,7 +181,7 @@ def probe_deviceinfo_usb_address(_platform, _device) -> ProbeResult:
     ``usb_address`` in Phase 2 with the conversion chokepoint locked
     in ``DeviceInfo.from_detected``.
     """
-    from trcc.legacy.core.models import DetectedDevice, DeviceInfo
+    from trcc.core.models import DetectedDevice, DeviceInfo
     detected = DetectedDevice(
         vid=0x0416, pid=0x8001,
         vendor_name="Mock", product_name="AX120",
@@ -211,7 +211,7 @@ def probe_rapl_permission(platform, _device) -> ProbeResult:
     if not _is_linux_platform(platform):
         return _skip("RAPL is Linux-only")
 
-    from trcc.legacy.adapters.system.linux_sensors import SensorEnumerator
+    from trcc.adapters.system.linux_sensors import SensorEnumerator
 
     def _denied(*_a, **_k):
         raise PermissionError(13, "Permission denied")
@@ -234,7 +234,7 @@ def probe_canvas_size_stable(_platform, device) -> ProbeResult:
     Caught #137 satoru8 territory: cache-stale on rotation/handshake
     re-reads.  v9.5.4+ fix should make every lookup deterministic.
     """
-    from trcc.legacy.core.models import fbl_to_resolution
+    from trcc.core.models import fbl_to_resolution
     a = fbl_to_resolution(device.fbl, 0)
     b = fbl_to_resolution(device.fbl, 0)
     if a != b:
@@ -347,10 +347,10 @@ def _make_protocol(device):
     # factory must import before BulkProtocol/LyProtocol — it registers all
     # protocol subclasses at the bottom of its module body, so importing the
     # subclass modules first triggers the partial-init circular ImportError.
-    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
-    from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
-    from trcc.legacy.adapters.device.ly_protocol import LyProtocol
-    from trcc.legacy.core.models import DetectedDevice, DeviceInfo, fbl_to_resolution
+    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.adapters.device.bulk_protocol import BulkProtocol
+    from trcc.adapters.device.ly_protocol import LyProtocol
+    from trcc.core.models import DetectedDevice, DeviceInfo, fbl_to_resolution
 
     proto_name = device.protocol
 
@@ -447,7 +447,7 @@ def _parse_vid_pid(spec: str) -> tuple[int, int]:
 
 
 def _select_devices(spec: str):
-    from trcc.legacy.core.models import ALL_DEVICES
+    from trcc.core.models import ALL_DEVICES
     items = sorted(ALL_DEVICES.items())
     if spec == "all":
         return [(vp, e) for vp, e in items]
@@ -515,7 +515,7 @@ def _parse_report(text: str) -> tuple[str, list[tuple[int, int]]]:
 
 def _select_devices_from_report(report_path: Path):
     """Run probes against every registered device the report mentions."""
-    from trcc.legacy.core.models import ALL_DEVICES
+    from trcc.core.models import ALL_DEVICES
 
     text = report_path.read_text(errors="replace")
     os_label, pairs = _parse_report(text)

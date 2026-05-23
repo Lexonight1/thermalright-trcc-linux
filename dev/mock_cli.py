@@ -55,10 +55,10 @@ def main() -> None:
     # Pre-seed the CLI boot cache with our MockPlatform. Any command
     # that subsequently calls `_boot.trcc()` gets the cached, mock-backed
     # Trcc — no monkey-patching, just clean DI.
-    from trcc.legacy._boot import trcc as boot_trcc
+    from trcc._boot import trcc as boot_trcc
     boot_trcc(platform)
 
-    from trcc.legacy.ui.cli import app as cli_app
+    from trcc.ui.cli import app as cli_app
     cli_app()
 
 

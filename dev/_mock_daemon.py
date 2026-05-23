@@ -52,14 +52,14 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
 
-    from trcc.legacy._boot import trcc as _boot_trcc
-    from trcc.legacy.adapters.render.qt import QtRenderer
+    from trcc._boot import trcc as _boot_trcc
+    from trcc.adapters.render.qt import QtRenderer
     renderer = QtRenderer()
     t = _boot_trcc(cast(Any, platform), renderer=renderer, discover_now=True)
 
     # IPCServer bound to the test socket, with renderer wired in for
     # Topic.FRAME envelope sanitization (10C.4).
-    from trcc.legacy.ipc import IPCServer
+    from trcc.ipc import IPCServer
     server = IPCServer(trcc=t, renderer=renderer)
     # IPCServer.start() uses _socket_path() by default — point it at our
     # tmp path explicitly via the same env-override the production
@@ -68,7 +68,7 @@ def main() -> int:
     os.environ["XDG_RUNTIME_DIR"] = str(sock_path.parent)
     sock_path.parent.mkdir(parents=True, exist_ok=True)
     # Override _SOCK_NAME indirectly by making sock_path's filename the name.
-    import trcc.legacy.ipc as _ipc
+    import trcc.ipc as _ipc
     _ipc._SOCK_NAME = sock_path.name  # type: ignore[attr-defined]
     server.start()
 

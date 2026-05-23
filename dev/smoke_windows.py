@@ -43,7 +43,7 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section('imports')
     try:
-        from trcc.legacy.adapters.system.windows_platform import WindowsPlatform  # noqa: F401
+        from trcc.adapters.system.windows_platform import WindowsPlatform  # noqa: F401
         s.ok('trcc.adapters.system.windows_platform', 'WindowsPlatform importable')
     except BaseException as exc:
         s.fail('trcc.adapters.system.windows_platform', exc)
@@ -92,7 +92,7 @@ def _probe_dlls() -> Section:
 
 def _probe_platform() -> Section:
     s = Section('platform')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     s.run('PlatformFactory.current()',
           lambda: f'returned {type(PlatformFactory.current()).__name__}')
     return s
@@ -100,7 +100,7 @@ def _probe_platform() -> Section:
 
 def _probe_devices() -> Section:
     s = Section('devices')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
         devices = list(p.detect_devices())
@@ -119,7 +119,7 @@ def _probe_devices() -> Section:
 def _probe_sensor_chain() -> Section:
     s = Section('sensor sources (strategy chain)')
     try:
-        from trcc.legacy.adapters.system.windows.sources import WindowsSensorSource
+        from trcc.adapters.system.windows.sources import WindowsSensorSource
     except BaseException as exc:
         s.fail('WindowsSensorSource import', exc)
         return s
@@ -151,7 +151,7 @@ def _probe_sensor_chain() -> Section:
 
 def _probe_enumerator() -> Section:
     s = Section('sensor enumeration')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
         enum = p._make_sensor_enumerator()
@@ -186,7 +186,7 @@ def _probe_enumerator() -> Section:
 def _probe_windows_specifics() -> Section:
     s = Section('windows-specific')
     try:
-        from trcc.legacy.adapters.system._windows_wmi import wmi_handle
+        from trcc.adapters.system._windows_wmi import wmi_handle
         h = wmi_handle()
         # Try a basic query that should always succeed.
         h.Win32_OperatingSystem()
@@ -198,7 +198,7 @@ def _probe_windows_specifics() -> Section:
 
     # LHM namespace probe (if running).
     try:
-        from trcc.legacy.adapters.system.windows.sources.lhm import _probe_wmi_namespace
+        from trcc.adapters.system.windows.sources.lhm import _probe_wmi_namespace
         ns = _probe_wmi_namespace()
         if ns is None:
             s.skip('LHM WMI namespace', 'root\\LibreHardwareMonitor not registered (LHM not running)')
@@ -209,7 +209,7 @@ def _probe_windows_specifics() -> Section:
 
     # HWiNFO MMF probe (if running).
     try:
-        from trcc.legacy.adapters.system.windows.sources.hwinfo import _HWiNFOMapping
+        from trcc.adapters.system.windows.sources.hwinfo import _HWiNFOMapping
         m = _HWiNFOMapping()
         if m.open():
             s.ok('HWiNFO SHM (Global\\HWiNFO_SENS_SM2)', 'mapped successfully')

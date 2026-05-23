@@ -41,7 +41,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 sys.path.insert(0, str(_REPO))
-sys.path.insert(0, str(_REPO / "tests"))
+sys.path.insert(0, str(_REPO / "tests" / "legacy"))
 
 from noop_transports import (  # type: ignore[import-not-found]
     NoopBulkLikeDevice,

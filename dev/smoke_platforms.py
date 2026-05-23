@@ -200,7 +200,7 @@ def check_platform_factory_registry() -> CheckResult:
 
 
 def check_platform_factory_dispatch() -> CheckResult:
-    """``PlatformFactory.current()`` returns a real Platform on the dev box.
+    """``trcc.legacy.adapters.system.PlatformFactory.current()`` returns a real Platform on the dev box.
 
     Validates the live dispatch path (``sys.platform → registry → make()``)
     that every composition root hits at startup.
@@ -254,12 +254,12 @@ def check_protocol_factory_for_info() -> CheckResult:
     verifies the type matches what the corresponding factory subclass would
     produce. Locks the dispatch-by-name contract Phase 4 depends on.
     """
-    from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
+    from trcc.adapters.device.bulk_protocol import BulkProtocol
     from trcc.legacy.adapters.device.factory import ProtocolFactory
-    from trcc.legacy.adapters.device.hid_protocol import HidProtocol
-    from trcc.legacy.adapters.device.led_protocol import LedProtocol
-    from trcc.legacy.adapters.device.ly_protocol import LyProtocol
-    from trcc.legacy.adapters.device.scsi_protocol import ScsiProtocol
+    from trcc.adapters.device.hid_protocol import HidProtocol
+    from trcc.adapters.device.led_protocol import LedProtocol
+    from trcc.adapters.device.ly_protocol import LyProtocol
+    from trcc.adapters.device.scsi_protocol import ScsiProtocol
     samples: dict[str, tuple[int, int, bool, type]] = {
         "scsi": (0x0402, 0x3922, True,  ScsiProtocol),
         "hid":  (0x0416, 0x5302, False, HidProtocol),
@@ -362,7 +362,7 @@ def check_device_factory_subclasses() -> CheckResult:
     DeviceFactory). Same idiom as the others — catches anyone forgetting the
     ``@DeviceFactory.register(kind)`` line.
     """
-    from trcc.legacy.core.device.factory import DeviceFactory
+    from trcc.core.device.factory import DeviceFactory
     expected = {"lcd", "led"}
     actual = set(DeviceFactory._registry)
     if missing := expected - actual:
@@ -375,7 +375,7 @@ def check_device_factory_subclasses() -> CheckResult:
 
 def check_device_abc_subclass_shape() -> CheckResult:
     """LCDDevice + LEDDevice implement the Device ABC (Phase 1 contract)."""
-    from trcc.legacy.core.device import Device, LCDDevice, LEDDevice
+    from trcc.core.device import Device, LCDDevice, LEDDevice
     for sub in (LCDDevice, LEDDevice):
         if not issubclass(sub, Device):
             return CheckResult("Device ABC subclasses", False,
@@ -398,7 +398,7 @@ def check_device_protocol_di() -> CheckResult:
     """
     from types import SimpleNamespace
 
-    from trcc.legacy.core.device import LCDDevice, LEDDevice
+    from trcc.core.device import LCDDevice, LEDDevice
     # SimpleNamespace gives us a real ``__dict__`` so ``LCDDevice.__init__``
     # → ``_wire_protocol_observers`` can ``setattr(protocol,
     # 'on_state_changed', …)`` without crashing on a bare ``object()``.

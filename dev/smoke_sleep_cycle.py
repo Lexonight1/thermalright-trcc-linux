@@ -31,7 +31,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / 'src'))
 sys.path.insert(0, str(_REPO))
 
-from tests.mock_platform import DEFAULT_DEVICES, MockPlatform  # type: ignore[import-not-found]
+from tests.legacy.mock_platform import DEFAULT_DEVICES, MockPlatform  # type: ignore[import-not-found]
 
 from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
 from trcc.legacy.core.events import Topic

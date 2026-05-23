@@ -40,7 +40,7 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section('imports')
     try:
-        from trcc.legacy.adapters.system.macos_platform import MacOSPlatform  # noqa: F401
+        from trcc.adapters.system.macos_platform import MacOSPlatform  # noqa: F401
         s.ok('trcc.adapters.system.macos_platform', 'MacOSPlatform importable')
     except BaseException as exc:
         s.fail('trcc.adapters.system.macos_platform', exc)
@@ -84,7 +84,7 @@ def _probe_frameworks() -> Section:
 
 def _probe_platform() -> Section:
     s = Section('platform')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     s.run('PlatformFactory.current()',
           lambda: f'returned {type(PlatformFactory.current()).__name__}')
     return s
@@ -92,7 +92,7 @@ def _probe_platform() -> Section:
 
 def _probe_devices() -> Section:
     s = Section('devices')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
         devices = list(p.detect_devices())
@@ -110,7 +110,7 @@ def _probe_devices() -> Section:
 
 def _probe_sensors() -> Section:
     s = Section('sensors')
-    from trcc.legacy.adapters.system import PlatformFactory
+    from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
         enum = p._make_sensor_enumerator()
