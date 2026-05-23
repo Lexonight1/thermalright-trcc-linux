@@ -137,8 +137,18 @@ def launch(verbosity: int = 0, decorated: bool = False,
         window.show()
 
     try:
-        return qapp.exec()
+        exit_code = qapp.exec()
     finally:
         ipc_server.shutdown()
         instance.close()
         app.close()
+        log.info("launch: cleanup complete — process exit")
+    # Belt-and-suspenders: Qt's metrics/sensor/render threads occasionally
+    # outlive ``qapp.exec()``'s return when native libraries (pynvml,
+    # psutil's ffi handles, pyusb) hold the GIL on shutdown.  A bare
+    # ``return`` then leaves the python process alive past the user's
+    # window-close.  ``os._exit`` skips atexit handlers and finalizers —
+    # we already did our cleanup in the finally above, so this is the
+    # safe place to force the kernel to reap the process.
+    import os as _os
+    _os._exit(exit_code)
