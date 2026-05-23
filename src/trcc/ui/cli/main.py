@@ -183,6 +183,41 @@ def shell() -> None:
     raise typer.Exit(code=run_shell(app))
 
 
+# =========================================================================
+# Top-level aliases for the most-used legacy diagnostic commands.  Users
+# don't have to remember which sub-typer holds them — `trcc report`,
+# `trcc detect`, `trcc doctor`, `trcc sensors` all still work.
+# =========================================================================
+
+
+@app.command("report", rich_help_panel="Diagnostics")
+def _alias_report() -> None:
+    """Alias for `trcc system debug-report` — full diagnostic dump."""
+    from .system import debug_report
+    debug_report(output=None)
+
+
+@app.command("detect", rich_help_panel="Diagnostics")
+def _alias_detect() -> None:
+    """Alias for `trcc device list` — list attached devices."""
+    from .device import list_devices
+    list_devices()
+
+
+@app.command("doctor", rich_help_panel="Diagnostics")
+def _alias_doctor() -> None:
+    """Alias for `trcc system doctor` — health checks."""
+    from .system import doctor
+    doctor()
+
+
+@app.command("sensors", rich_help_panel="Diagnostics")
+def _alias_sensors() -> None:
+    """Alias for `trcc system sensors` — print sensor readings."""
+    from .system import sensors
+    sensors()
+
+
 @app.callback()
 def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
