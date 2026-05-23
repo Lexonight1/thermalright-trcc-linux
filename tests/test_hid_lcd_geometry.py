@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.device.hid_lcd import HidLcd
+from trcc.core.errors import HandshakeError
 from trcc.core.models import Kind, ProductInfo, Wire
 from trcc.core.protocol import get_profile
 
@@ -264,3 +265,111 @@ def test_type2_cached_profile_is_canonical(fake_bulk: FakeBulkTransport) -> None
 
     expected = get_profile(58, 58)
     assert device._profile == expected
+
+
+# ── Edge cases: serial parsing, validation failures, malformed bytes ──
+
+
+def _type2_response_with_serial(pm: int, serial_hex: bytes) -> bytes:
+    """Type 2 response carrying a 16-byte serial at resp[20:36].
+
+    Marker byte resp[16] = 0x10 signals that the serial slot is
+    populated (legacy convention — without it the parser ignores
+    bytes 20-36 even if they're non-zero).
+    """
+    resp = bytearray(512)
+    resp[0:4] = _TYPE2_MAGIC
+    resp[4] = 0     # sub
+    resp[5] = pm
+    resp[12] = 0x01
+    resp[16] = 0x10
+    resp[20:36] = serial_hex[:16].ljust(16, b"\x00")
+    return bytes(resp)
+
+
+def test_type2_serial_extracted_when_marker_set(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """Type 2 handshake carries an optional 16-byte serial at resp[20:36].
+    The parser only reads it when resp[16] == 0x10 (legacy marker)."""
+    serial_bytes = bytes.fromhex("DEADBEEFCAFEBABE0102030405060708")
+    fake_bulk.read_script.append(_type2_response_with_serial(58, serial_bytes))
+    device = _make_type2(fake_bulk)
+
+    result = device.connect()
+
+    assert result.serial == "DEADBEEFCAFEBABE0102030405060708"
+
+
+def test_type2_serial_blank_without_marker(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """No marker byte → serial stays empty even if bytes 20-36 are set."""
+    resp = bytearray(_type2_response(pm=58))
+    # Populate bytes 20-36 but DON'T set the resp[16] = 0x10 marker.
+    resp[20:36] = b"\xde\xad\xbe\xef" + b"\x00" * 12
+    fake_bulk.read_script.append(bytes(resp))
+    device = _make_type2(fake_bulk)
+
+    result = device.connect()
+
+    assert result.serial == ""
+
+
+def test_type2_rejects_wrong_magic(fake_bulk: FakeBulkTransport) -> None:
+    """Validator demands resp[0:4] == DA DB DC DD.  Anything else raises."""
+    bad = bytearray(512)
+    bad[0:4] = b"\xAA\xBB\xCC\xDD"   # wrong magic
+    bad[12] = 0x01
+    fake_bulk.read_script.append(bytes(bad))
+    device = _make_type2(fake_bulk)
+
+    with pytest.raises(HandshakeError):
+        device.connect()
+
+
+def test_type3_rejects_short_response(fake_bulk: FakeBulkTransport) -> None:
+    """Type 3 validator requires len >= 14 — a truncated buffer raises."""
+    fake_bulk.read_script.append(b"\x65" + b"\x00" * 8)   # only 9 bytes
+    device = _make_type3(fake_bulk)
+
+    with pytest.raises(HandshakeError):
+        device.connect()
+
+
+def test_type3_rejects_wrong_indicator(fake_bulk: FakeBulkTransport) -> None:
+    """Type 3 validator demands resp[0] ∈ {0x65, 0x66}."""
+    resp = bytearray(1024)
+    resp[0] = 0x99   # not a valid indicator
+    fake_bulk.read_script.append(bytes(resp))
+    device = _make_type3(fake_bulk)
+
+    with pytest.raises(HandshakeError):
+        device.connect()
+
+
+def test_type3_fbl_66_variant(fake_bulk: FakeBulkTransport) -> None:
+    """Type 3 FBL=101 (resp[0]=0x66) is the 320×320 variant some Ali Corp
+    units report — different SKU, same canvas as FBL=100."""
+    fake_bulk.read_script.append(_type3_response(0x66))
+    device = _make_type3(fake_bulk)
+
+    result = device.connect()
+
+    assert result.fbl == 101
+    assert result.pm_byte == 101
+    assert result.resolution == (320, 320)
+
+
+def test_type3_serial_extracted_from_resp_10_14(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """Type 3 carries a 4-byte serial at resp[10:14]."""
+    resp = bytearray(_type3_response(0x65))
+    resp[10:14] = b"\xAB\xCD\xEF\x01"
+    fake_bulk.read_script.append(bytes(resp))
+    device = _make_type3(fake_bulk)
+
+    result = device.connect()
+
+    assert result.serial == "ABCDEF01"
