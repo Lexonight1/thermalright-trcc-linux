@@ -27,6 +27,7 @@ from ...core.commands import (
     EnableOverlay,
     ExportTheme,
     ImportTheme,
+    LoadCloudTheme,
     LoadTheme,
     RestoreLastTheme,
     SaveTheme,
@@ -428,11 +429,21 @@ class LCDHandler(BaseHandler):
                              persist, self._device_key)
 
     def select_cloud_theme(self, theme_info: Any) -> None:
-        """Handle cloud theme selection.
+        """Handle cloud theme selection — a BACKGROUND swap, not a
+        theme load.
 
-        LoadCloudTheme is the legacy code path; we route through
-        LoadTheme with the local cached video path since the cloud
-        download was triggered by the trcc_app wrapper.
+        Picking a cloud item:
+          * Swaps the video that plays behind the active theme's
+            overlay + mask (legacy ``select_cloud_theme`` behaviour).
+          * Does NOT replace the active theme.  The user's mask layout,
+            metrics, brightness, rotation all stay.
+
+        ``LoadCloudTheme`` is the command that owns the flow:
+          1. materialise the MP4 (idempotent — skip if already cached)
+          2. set ``DeviceSettings.background_path`` so the override
+             survives an app restart
+          3. dispatch ``PlayVideo`` to load MediaService playback —
+             DisplayService renders the video on every tick
         """
         self.log.info("select_cloud_theme: %s (video=%s)", theme_info.name,
                       getattr(theme_info, 'video', None))
@@ -441,12 +452,20 @@ class LCDHandler(BaseHandler):
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
 
-        if theme_info.video:
-            video_path = Path(theme_info.video)
-            self._app.dispatch(LoadTheme(
-                key=self._device_key, path=video_path,
-            ))
-            self._state.current_theme_path = video_path
+        theme_id = getattr(theme_info, 'id', None) or theme_info.name
+        if not theme_id:
+            self.log.warning(
+                "select_cloud_theme: cloud item has no id/name — refusing",
+            )
+            return
+        result = self._app.dispatch(LoadCloudTheme(
+            key=self._device_key, theme_id=theme_id,
+        ))
+        if not result.ok:
+            self.log.warning(
+                "select_cloud_theme: LoadCloudTheme failed for %s: %s",
+                theme_id, result.message,
+            )
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""

@@ -485,6 +485,16 @@ class LoadTheme(Command[ThemeResult]):
         # Persist the absolute path — names are display strings, paths
         # are the stable reference RestoreLastTheme needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
+        # Clear the cloud-background override — picking a local theme
+        # reverts to that theme's bundled background.  If the cloud bg
+        # were set, every future local-theme select would still play
+        # the old cloud video.
+        if app.settings.for_device(self.key).background_path is not None:
+            log.info(
+                "LoadTheme: clearing cloud-background override for %s "
+                "(picking local theme %r)", self.key, theme.name,
+            )
+            app.settings.set_background_path(self.key, None)
         app.active_themes[self.key] = theme
         app.display.invalidate(self.key)  # drop stale scene cache from prev theme
         app.media.unload(self.key)        # drop stale video frames
@@ -2817,12 +2827,24 @@ class ListCloudThemes(Command[CloudThemesListResult]):
 
 @dataclass(frozen=True, slots=True)
 class LoadCloudTheme(Command[CloudThemeLoadResult]):
-    """Download a cloud theme and load it on a device.
+    """Download a cloud video and apply it as the device's background.
 
-    Materialises the cloud MP4 into a per-resolution theme directory
-    under ``paths.cloud_theme_dir(w, h) / <theme_id>`` (idempotent —
-    subsequent calls are no-ops if the dir already exists), then
-    dispatches LoadTheme to render the first frame.
+    Despite the name (kept for API compat), a cloud "theme" is just a
+    video background — picking one swaps what plays behind the active
+    theme's overlay + mask, not the theme itself.  Matches legacy
+    ``select_cloud_theme``: it wraps the MP4 in ``ThemeInfo.from_video``
+    and starts an animation timer; the active overlay state stays.
+
+    Execution:
+      1. Resolve the device's render resolution.
+      2. ``CloudThemeService.materialise`` downloads the MP4 flat into
+         ``paths.cloud_theme_dir(w, h)/<id>.mp4`` and generates the
+         first-frame PNG + animated GIF previews for the GUI.
+      3. Persist the new background path on ``DeviceSettings.background_path``
+         so it survives an app restart.
+      4. Dispatch ``PlayVideo(key, path=<mp4>)`` — that's the path
+         MediaService + DisplayService already use to render a video
+         background on every tick.
     """
     key: str
     theme_id: str
@@ -2845,7 +2867,7 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
         log.info("LoadCloudTheme: materialising %s @ %dx%d",
                  self.theme_id, resolution[0], resolution[1])
         try:
-            theme_dir = app.cloud_themes.materialise(
+            mp4_path = app.cloud_themes.materialise(
                 self.theme_id, resolution,
             )
         except ValueError as e:
@@ -2870,15 +2892,24 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
                 message=f"Local IO failed: {e}",
             )
 
-        log.info("LoadCloudTheme: %s materialised at %s — dispatching LoadTheme",
-                 self.theme_id, theme_dir)
-        load_result = LoadTheme(key=self.key, path=theme_dir).execute(app)
+        log.info(
+            "LoadCloudTheme: %s ready at %s — setting background override + "
+            "dispatching PlayVideo",
+            self.theme_id, mp4_path,
+        )
+        # Persist the new background on the device — survives restart.
+        app.settings.set_background_path(self.key, str(mp4_path))
+        # MediaService.load_video populates the playback; DisplayService's
+        # ``_resolve_background`` short-circuits to ``playback.current``
+        # when a playback exists, so this is the entire "play this video
+        # as the bg" wire (overlay + mask stay untouched).
+        play_result = PlayVideo(key=self.key, path=mp4_path).execute(app)
         return CloudThemeLoadResult(
-            ok=load_result.ok,
+            ok=play_result.ok,
             key=self.key,
             theme_id=self.theme_id,
-            theme_path=str(theme_dir),
-            message=load_result.message,
+            theme_path=str(mp4_path),
+            message=play_result.message,
         )
 
 

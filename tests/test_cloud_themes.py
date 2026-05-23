@@ -124,9 +124,14 @@ def test_download_rejects_path_injection(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("resolution", TEST_RESOLUTIONS)
-def test_materialise_creates_theme_dir(
+def test_materialise_writes_flat_layout(
     tmp_path: Path, resolution: tuple[int, int],
 ) -> None:
+    """``materialise`` returns the MP4 path itself and writes flat —
+    legacy convention: ``data/web/{w}{h}/<id>.mp4`` next to the
+    preview thumbnails from the bundled 7z archive.  No per-theme
+    subdirectory, no per-theme trcc.json — those were a next/-only
+    invention that broke the GUI's grid scan."""
     w, h = resolution
     cache = tmp_path / "cache"
     cache.mkdir()
@@ -141,13 +146,16 @@ def test_materialise_creates_theme_dir(
         ),
         paths=paths,
     )
-    theme_dir = service.materialise("a004", resolution=resolution)
-    assert theme_dir.is_dir()
-    assert (theme_dir / "a004.mp4").is_file()
-    assert (theme_dir / "trcc.json").is_file()
-    # Per-resolution staging matches legacy layout (data/web/{W}{H}/).
-    assert theme_dir.parent == paths.cloud_theme_dir(w, h)
+    mp4_path = service.materialise("a004", resolution=resolution)
+    # Returns the MP4 file (not a theme dir).
+    assert mp4_path.is_file()
+    assert mp4_path.name == "a004.mp4"
+    # Flat layout under cloud_theme_dir.
+    assert mp4_path.parent == paths.cloud_theme_dir(w, h)
+    # No per-theme subdir or trcc.json — those were the bug.
+    assert not (paths.cloud_theme_dir(w, h) / "a004").exists()
+    assert not (paths.cloud_theme_dir(w, h) / "a004" / "trcc.json").exists()
     # Re-running is idempotent — no extra HTTP call, no duplicate write.
     again = service.materialise("a004", resolution=resolution)
-    assert again == theme_dir
+    assert again == mp4_path
     assert len(http.calls) == 1

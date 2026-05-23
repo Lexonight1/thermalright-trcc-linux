@@ -466,6 +466,48 @@ class DisplayService:
             )
             return self._r.from_raw_rgb24(frame) if frame else None
 
+        # Cloud-background override (DeviceSettings.background_path) —
+        # takes precedence over the active theme's own bg.  Set by
+        # LoadCloudTheme; cleared by LoadTheme on local-theme select.
+        s = self._settings.for_device(info.key)
+        if s.background_path:
+            override = Path(s.background_path)
+            if override.exists():
+                log.info(
+                    "resolve_background %s: cloud background override → %s",
+                    info.key, override,
+                )
+                path = override
+                ext = path.suffix.lower()
+                if ext in _VIDEO_EXTS:
+                    try:
+                        playback = self._media.load_video(
+                            device_key=info.key, path=path, size=visual_size,
+                        )
+                    except Exception as e:
+                        log.warning(
+                            "resolve_background %s: override video decode "
+                            "failed for %s: %s: %s",
+                            info.key, path.name, type(e).__name__, e,
+                        )
+                        return None
+                    log.info(
+                        "resolve_background %s: override video loaded "
+                        "(%d frames)", info.key, len(playback.frames),
+                    )
+                    frame = playback.current
+                    return (
+                        self._r.from_raw_rgb24(frame) if frame else None
+                    )
+                if ext in _IMAGE_EXTS:
+                    return self._r.open_image(path)
+            else:
+                log.warning(
+                    "resolve_background %s: override %s does not exist — "
+                    "falling back to theme background",
+                    info.key, override,
+                )
+
         path = self._themes.background_path(theme)
         if path is None:
             log.warning(

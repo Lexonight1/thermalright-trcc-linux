@@ -725,18 +725,35 @@ class TRCCApp(QMainWindow):
 
         # Cloud theme download path — wraps next/'s CloudThemeService so
         # the legacy UCThemeWeb widget keeps its (theme_id, resolution,
-        # cache_dir) → str|None signature.  Extraction is a no-op for
-        # next/: CloudThemeService downloads + caches in one step.
-        from ...core.commands import LoadCloudTheme
+        # cache_dir) → str|None signature.
+        #
+        # IMPORTANT: download only.  Legacy splits "download" and "select"
+        # into two events: the worker thread downloads (no playback),
+        # then ``_on_download_complete`` auto-selects the now-cached
+        # tile through the normal click handler — which routes to
+        # ``LCDHandler.select_cloud_theme`` → ``LoadCloudTheme`` →
+        # ``PlayVideo``.  If the download path itself dispatches
+        # ``LoadCloudTheme``, playback starts twice and the cached
+        # tile's QMovie thumb never gets a chance to be the trigger.
         _app_local = self._app
 
         def _download_theme(theme_id: str, resolution: str, cache_dir: str) -> str | None:
             del cache_dir  # next/ owns the cache path
-            del resolution  # next/'s catalog knows per-device resolution
-            r = _app_local.dispatch(LoadCloudTheme(
-                key=self._active_key, theme_id=theme_id,
-            ))
-            return r.message if r.ok else None
+            try:
+                w_str, h_str = resolution.split("x")
+                w, h = int(w_str), int(h_str)
+            except (ValueError, AttributeError):
+                log.warning("_download_theme: bad resolution %r", resolution)
+                return None
+            try:
+                mp4_path = _app_local.cloud_themes.materialise(
+                    theme_id, (w, h),
+                )
+            except Exception as e:
+                log.warning("_download_theme: materialise %s failed: %s: %s",
+                            theme_id, type(e).__name__, e)
+                return None
+            return str(mp4_path)
 
         def _extract_theme(archive: str, dest: str) -> None:
             del archive, dest  # CloudThemeService downloads-and-extracts atomically

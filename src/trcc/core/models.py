@@ -279,6 +279,11 @@ class DeviceSettings:
     # User-supplied mask path that overrides the active theme's mask.
     # None = use the theme's bundled mask (or no mask if the theme has none).
     mask_path: str | None = None
+    # Cloud-background override — a video path that replaces the
+    # active theme's bundled background (00.png / Theme.mp4 / etc.).
+    # Set by LoadCloudTheme, cleared by LoadTheme (picking a local
+    # theme reverts to its own background).  Survives app restart.
+    background_path: str | None = None
     # Show / hide the mask overlay regardless of which mask source is active.
     mask_visible: bool = True
     # Background mode — what fills the LCD behind overlays.  Mirrors

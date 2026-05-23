@@ -213,6 +213,19 @@ class Settings:
             self.for_device(key).mask_visible = visible
             self._save()
 
+    def set_background_path(self, key: str, path: str | None) -> None:
+        """Set the cloud-background override (video path) for a device.
+
+        Passing ``None`` clears the override — the device falls back to
+        the active theme's bundled background.  LoadCloudTheme sets it;
+        the GUI's local-theme click handler (and ``LoadTheme`` for any
+        non-cloud path) should clear it so picking a local theme reverts
+        to the theme's own background.
+        """
+        with self._lock:
+            self.for_device(key).background_path = path
+            self._save()
+
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
         with self._lock:
             self.for_device(key).fit_mode = mode
