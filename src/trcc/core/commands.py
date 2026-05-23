@@ -589,9 +589,22 @@ class LoadTheme(Command[ThemeResult]):
                 message=f"Theme '{theme.name}' saved (no Renderer attached)",
             )
 
+        # Read live sensors so the first frame the device sees after a
+        # theme load has real metric values painted, not the no-sensor
+        # warning at every overlay element.  RenderAndSend takes over
+        # from the next tick onward.
+        try:
+            sensors = app.platform.sensors().read_all()
+        except Exception as e:
+            log.warning(
+                "LoadTheme: sensors.read_all() raised %s — first frame "
+                "will paint with empty sensors; tick observer will recover",
+                e,
+            )
+            sensors = {}
         try:
             frame = app.display.build_frame(
-                info=device.info, theme=theme, sensors={},
+                info=device.info, theme=theme, sensors=sensors,
                 profile=device.profile,
             )
             sent = device.send(frame)
