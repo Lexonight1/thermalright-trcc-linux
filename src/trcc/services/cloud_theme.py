@@ -62,19 +62,29 @@ class CloudThemeService:
         the dir under ``paths.cloud_theme_dir(w, h)`` (resolution-keyed,
         matches legacy layout) with a minimal config.
         """
+        log.info("materialise: %s @ %dx%d", theme_id, *resolution)
         mp4_path = self._catalog.download_theme(theme_id)
 
         theme_dir = self._theme_dir_for(theme_id, resolution)
+        existed = theme_dir.is_dir()
         theme_dir.mkdir(parents=True, exist_ok=True)
+        log.info("materialise: theme_dir=%s (existed=%s)",
+                 theme_dir, existed)
 
         # Stage the background under the canonical name DisplayService
         # looks for (any *.mp4 in the theme dir is the background).
         target_mp4 = theme_dir / mp4_path.name
         if not target_mp4.is_file():
+            log.info("materialise: staging mp4 %s → %s",
+                     mp4_path, target_mp4)
             target_mp4.write_bytes(mp4_path.read_bytes())
+        else:
+            log.debug("materialise: %s already staged", target_mp4)
 
         config_path = theme_dir / "trcc.json"
         if not config_path.is_file():
+            log.info("materialise: writing minimal trcc.json at %s",
+                     config_path)
             config_path.write_text(
                 json.dumps(_minimal_config(theme_id), indent=2) + "\n",
                 encoding="utf-8",

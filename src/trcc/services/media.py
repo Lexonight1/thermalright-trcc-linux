@@ -292,16 +292,25 @@ class Playback:
     def seek(self, frame_index: int) -> None:
         """Jump to *frame_index* (clamped to valid range)."""
         if not self.frames:
+            log.debug("Playback.seek: no frames loaded")
             return
-        self.cursor = max(0, min(frame_index, len(self.frames) - 1))
+        clamped = max(0, min(frame_index, len(self.frames) - 1))
+        log.info("Playback.seek: cursor %d → %d", self.cursor, clamped)
+        self.cursor = clamped
 
     def pause(self, paused: bool) -> None:
+        if paused != self.paused:
+            log.info("Playback.pause: %s → %s", self.paused, paused)
         self.paused = paused
 
     def set_loop(self, loop: bool) -> None:
+        if loop != self.loop:
+            log.info("Playback.set_loop: %s → %s", self.loop, loop)
         self.loop = loop
 
     def reset(self) -> None:
+        log.info("Playback.reset: cursor=%d paused=%s → 0/False",
+                 self.cursor, self.paused)
         self.cursor = 0
         self.paused = False
 
@@ -329,11 +338,17 @@ class MediaService:
         own per-frame timing so we honour the decoder's derived ``fps``
         when the caller takes the default.
         """
+        log.info(
+            "load_video: key=%s path=%s size=%dx%d fps=%d rotate=%d",
+            device_key, path, size[0], size[1], fps, rotation_degrees,
+        )
         if path.suffix.lower() == ".zt":
             zt = ZtDecoder(path=path, size=size)
             zt.decode()
             effective_fps = fps if fps != _DEFAULT_FPS else zt.fps
             playback = Playback(frames=zt.frames, fps=effective_fps)
+            log.info("load_video: .zt decoded — %d frames @ %d fps",
+                     len(zt.frames), effective_fps)
         else:
             decoder = VideoDecoder(
                 path=path, size=size, fps=fps,
@@ -342,6 +357,10 @@ class MediaService:
             )
             decoder.decode()
             playback = Playback(frames=decoder.frames, fps=fps)
+            log.info(
+                "load_video: ffmpeg decoded %s — %d frames @ %d fps",
+                path.suffix, len(decoder.frames), fps,
+            )
         self._playbacks[device_key] = playback
         return playback
 
@@ -350,4 +369,7 @@ class MediaService:
 
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers."""
-        self._playbacks.pop(device_key, None)
+        had = self._playbacks.pop(device_key, None)
+        if had is not None:
+            log.info("unload: dropped %d-frame playback for %s",
+                     len(had.frames), device_key)
