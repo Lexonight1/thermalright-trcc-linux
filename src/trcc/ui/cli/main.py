@@ -202,6 +202,10 @@ def api(
         typer.echo(f"Pairing code: {code}  (POST /pair?code={code})")
         typer.echo("")
 
+    if host in ("0.0.0.0", "::"):
+        from ...adapters.infra.network import get_lan_ip
+        lan_ip = get_lan_ip()
+        typer.echo(f"API reachable at: http://{lan_ip}:{port}")
     serve(host=host, port=port)
 
 
