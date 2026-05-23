@@ -347,6 +347,11 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - **Downloads**: Pin to `https://github.com/Lexonight1/thermalright-trcc-linux/`. Validate content after extraction.
 - **Tests**: Full exact values, no partial substring checks. No `# nosec` in tests.
 
+## Development Environment
+- **Build on Python 3.12.** This is a portability decision, not a personal preference: Debian stable and several other LTS distros ship 3.12 as the system interpreter, and building under 3.12 keeps the project usable on every Python from 3.12 forward without per-version pain.
+- Don't use 3.13 / 3.14-only syntax or stdlib features. `pyproject.toml` says `requires-python = ">=3.10"` for the install gate, but the dev gate is **3.12** — anything newer is allowed to work but not required to.
+- Run tests / scripts with `python3.12` explicitly. `/usr/bin/python` on the dev box may point at 3.14; a 3.14-only crash (e.g. a `QFontDatabase` segfault, a `pyusb._pack_` deprecation, a typer/sudo_reexec issue) is not automatically a project bug — repro under 3.12 first.
+
 ## Known Issues
 - `pyusb 1.3.1` deprecated `_pack_` on Python 3.14 — suppressed in pytest config
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
