@@ -14,6 +14,8 @@ Two layers:
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from trcc.adapters.device.led import (
@@ -184,3 +186,96 @@ def test_led_connect_unknown_pm_falls_back_to_registry_defaults(
     assert hs.style is None
     assert hs.model_name == "LED Controller (FormLED)"
     assert any("unknown PM=99" in r.message for r in caplog.records)
+
+
+# =========================================================================
+# Probe cache — survives app restart on same power cycle
+# =========================================================================
+
+
+def test_led_probe_cache_save_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful handshake writes (pm, sub, model_name) to disk."""
+    import json as _json
+
+    from trcc.adapters.device import led as led_mod
+    cache_path = tmp_path / "led_probe_cache.json"
+    monkeypatch.setattr(led_mod, "_PROBE_CACHE_PATH", cache_path)
+
+    transport = FakeBulkTransport()
+    transport.read_script.append(_scripted_handshake_response(pm=80, sub=0))
+    led = Led(_led_info(), transport)
+    led.connect()
+
+    assert cache_path.is_file()
+    cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+    key = f"{0x0416:04x}_{0x8001:04x}"
+    assert key in cache
+    assert cache[key]["pm"] == 80
+    assert cache[key]["sub"] == 0
+    assert cache[key]["model_name"] == "LF12"
+
+
+def test_led_probe_cache_falls_back_when_handshake_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live handshake unanswered → use the disk-cached entry instead.
+
+    Simulates the "second app launch on same power cycle" case: the
+    LED firmware already answered its one-shot handshake on the first
+    launch (cache populated), so the second launch gets nothing from
+    the wire but recovers identity from the cache.
+    """
+    import json as _json
+
+    from trcc.adapters.device import led as led_mod
+
+    # Seed the cache with a known-good entry (as if a previous launch
+    # had successfully handshaken PM=80 SUB=0).
+    cache_path = tmp_path / "led_probe_cache.json"
+    cache_path.write_text(_json.dumps({
+        f"{0x0416:04x}_{0x8001:04x}": {
+            "pm": 80, "sub": 0, "model_name": "LF12",
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(led_mod, "_PROBE_CACHE_PATH", cache_path)
+
+    transport = FakeBulkTransport()
+    # Empty read_script → reads raise → all handshake retries fail.
+    led = Led(_led_info(), transport)
+
+    result = led.connect()
+
+    # Live handshake exhausted, fell through to cache — handshake_result
+    # is reconstructed from the cached identity.
+    assert result.pm_byte == 80
+    assert result.sub_byte == 0
+    hs = led.led_handshake
+    assert hs is not None
+    assert hs.pm == 80
+    assert hs.style is LedStyle.LF12
+    assert hs.model_name == "LF12"
+
+
+def test_led_probe_cache_handles_corrupt_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-JSON cache file is treated as empty — re-saved fresh on
+    next successful handshake.  Never blocks a real handshake."""
+    from trcc.adapters.device import led as led_mod
+    cache_path = tmp_path / "led_probe_cache.json"
+    cache_path.write_text("{ not json", encoding="utf-8")
+    monkeypatch.setattr(led_mod, "_PROBE_CACHE_PATH", cache_path)
+
+    transport = FakeBulkTransport()
+    transport.read_script.append(_scripted_handshake_response(pm=128, sub=0))
+    led = Led(_led_info(), transport)
+
+    result = led.connect()
+
+    assert result.pm_byte == 128
+    # Corrupt file got overwritten with the successful result.
+    import json as _json
+    cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+    assert cache[f"{0x0416:04x}_{0x8001:04x}"]["pm"] == 128

@@ -11,11 +11,13 @@ Color scaling matches FormLED.cs SendHidVal:
 """
 from __future__ import annotations
 
+import json
 import logging
 import struct
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
 from ...core.led_protocol import resolve_pm
@@ -43,6 +45,107 @@ _HANDSHAKE_RETRY_DELAY_S = 0.5
 _DELAY_PRE_INIT_S = 0.050
 _DELAY_POST_INIT_S = 0.200
 _DEFAULT_TIMEOUT_MS = 100
+
+
+# =========================================================================
+# LED probe cache — survives app restart on the same power cycle
+# =========================================================================
+# The LED firmware only responds to the HID handshake ONCE per power
+# cycle.  After that, re-running the handshake returns garbage (or
+# times out) — the device has already published its identity and won't
+# repeat itself until the next power-on.
+#
+# Without a cache, the second app launch after a successful first run
+# would get garbage and either crash or fall back to defaults.  A
+# disk-backed cache keyed by (VID, PID, usb_path) lets the second
+# launch skip the handshake and use the cached PM/SUB.
+#
+# Cache file: ``~/.trcc/led_probe_cache.json`` — matches legacy layout
+# byte-for-byte so installs that migrated from legacy keep the cached
+# entries.
+
+_PROBE_CACHE_PATH = Path.home() / ".trcc" / "led_probe_cache.json"
+
+
+def _probe_cache_key(vid: int, pid: int, usb_path: str = "") -> str:
+    """Cache key: ``<vid>_<pid>_<usb_path>`` (path optional).
+
+    The usb_path component disambiguates multiple identical-VID/PID
+    devices on different bus positions.  Caller looks up the
+    specific path first, falls back to the VID/PID-only key.
+    """
+    if usb_path:
+        return f"{vid:04x}_{pid:04x}_{usb_path}"
+    return f"{vid:04x}_{pid:04x}"
+
+
+def _probe_cache_save(
+    vid: int, pid: int,
+    pm: int, sub: int, model_name: str,
+    *, usb_path: str = "",
+) -> None:
+    """Persist a successful handshake result to the on-disk cache.
+
+    Best-effort — log on failure, never raise.  Caller (LED Device
+    connect) calls this after a successful handshake so the next
+    same-power-cycle restart skips the now-broken handshake step.
+    """
+    try:
+        _PROBE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        cache: dict[str, dict[str, object]] = {}
+        if _PROBE_CACHE_PATH.is_file():
+            try:
+                cache = json.loads(
+                    _PROBE_CACHE_PATH.read_text(encoding="utf-8"),
+                )
+            except (OSError, ValueError):
+                log.debug("probe cache: corrupt at %s, rewriting fresh",
+                          _PROBE_CACHE_PATH)
+                cache = {}
+        cache[_probe_cache_key(vid, pid, usb_path)] = {
+            "pm": pm, "sub": sub, "model_name": model_name,
+        }
+        _PROBE_CACHE_PATH.write_text(
+            json.dumps(cache, indent=2) + "\n", encoding="utf-8",
+        )
+        log.info("probe cache: saved %04x:%04x pm=%d sub=%d → %s",
+                 vid, pid, pm, sub, _PROBE_CACHE_PATH)
+    except OSError as e:
+        log.warning("probe cache: save failed for %04x:%04x: %s: %s",
+                    vid, pid, type(e).__name__, e)
+
+
+def _probe_cache_load(
+    vid: int, pid: int, *, usb_path: str = "",
+) -> tuple[int, int, str] | None:
+    """Return cached ``(pm, sub, model_name)`` for this device or None.
+
+    Looks up the usb_path-specific key first; falls back to the
+    VID/PID-only key so a device that was originally cached without
+    a bus path still resolves.
+    """
+    try:
+        if not _PROBE_CACHE_PATH.is_file():
+            return None
+        cache = json.loads(_PROBE_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.debug("probe cache: load failed: %s: %s",
+                  type(e).__name__, e)
+        return None
+    entry = cache.get(_probe_cache_key(vid, pid, usb_path))
+    if entry is None and usb_path:
+        entry = cache.get(_probe_cache_key(vid, pid))
+    if entry is None:
+        return None
+    try:
+        return (
+            int(entry["pm"]),
+            int(entry["sub"]),
+            str(entry["model_name"]),
+        )
+    except (KeyError, ValueError, TypeError):
+        log.debug("probe cache: entry malformed for %04x:%04x", vid, pid)
+        return None
 
 
 # ── Payload shape the send() caller provides ──────────────────────────
@@ -160,6 +263,14 @@ class Led(Device[BulkTransport]):
                          self._pm, self._sub,
                          style.value if style else "—",
                          model_name or "—")
+                # Cache the result so a second app launch on the same
+                # power cycle can skip the now-broken handshake.  The
+                # LED firmware only answers the HID handshake once per
+                # power-on; subsequent handshakes return garbage.
+                _probe_cache_save(
+                    self.info.vid, self.info.pid,
+                    self._pm, self._sub, model_name,
+                )
                 return result
 
             except Exception as e:
@@ -168,6 +279,39 @@ class Led(Device[BulkTransport]):
                             attempt, _HANDSHAKE_MAX_RETRIES, e)
                 if attempt < _HANDSHAKE_MAX_RETRIES:
                     time.sleep(_HANDSHAKE_RETRY_DELAY_S)
+
+        # All live handshake attempts exhausted — the firmware likely
+        # already published its identity earlier in this power cycle.
+        # Fall back to the disk cache (if any) and reconstruct the
+        # handshake result from it so the device is usable instead of
+        # crashing out.
+        cached = _probe_cache_load(self.info.vid, self.info.pid)
+        if cached is not None:
+            cpm, csub, cname = cached
+            entry = resolve_pm(cpm, csub)
+            log.warning(
+                "Led handshake: live failed after %d retries — using "
+                "disk cache (PM=%d SUB=%d model=%s, last_err=%s)",
+                _HANDSHAKE_MAX_RETRIES, cpm, csub, cname, last_err,
+            )
+            self._pm = cpm
+            self._sub = csub
+            self._led_handshake = LedHandshakeResult(
+                pm=cpm, sub_type=csub,
+                style=entry.style if entry else self.info.led_style,
+                model_name=cname,
+                style_sub=entry.style_sub if entry else 0,
+                raw_response=b"",
+            )
+            result = HandshakeResult(
+                resolution=(0, 0),
+                model_id=cpm,
+                pm_byte=cpm,
+                sub_byte=csub,
+                raw_response=b"",
+            )
+            self._handshake = result
+            return result
 
         raise HandshakeError(
             f"Led handshake failed after {_HANDSHAKE_MAX_RETRIES} attempts"
