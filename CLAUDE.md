@@ -26,16 +26,47 @@ The user's time is the constraint. Sounding productive is not being productive. 
 
 Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`.
 
-## Two Source Trees (read this first)
+## Source Tree Layout — Post-Cutover (read this first)
 
-The repo currently carries two parallel source trees on the `dev` branch:
+The cutover (commit `4fa876be`, branch `cutover/next-to-root`) promoted
+the clean-slate rebuild (formerly `src/trcc/next/`) to the project
+root.  Layout now:
 
-- **`src/trcc/`** — the **shipping / legacy code**.  Everything users install today runs this.  Full feature set (sensors, setup wizard, autostart, theme download, LED segment displays, `.zt` animations, 4-OS support, etc.).  Every architecture principle below this header describes this tree — SCSI uses `/dev/sgN` + SG_IO on Linux, `DeviceProtocolFactory` exists, `ControllerBuilder` wires things, etc.
-- **`src/trcc/next/`** — a **clean-slate rebuild** (12 commits, `c309a55`→`39b3169`).  Proof that a simpler 5-role hexagonal design (Platform / UsbTransport / Device / App / UIs) works end-to-end with one Command bus.  Architecture is complete (3 UIs, two-layer scene cache, video + mask + rotation, tickers wired).  Feature parity with legacy: NO.  Hardware-verified on real devices: NO.  See `memory/project_next_clean_slate.md` for the full status table.
+- **`src/trcc/`** — the **shipping codebase**.  This is what
+  `python -m trcc gui` runs by default.  Hexagonal architecture, one
+  Command bus, ABCs at each port.  Originally the "next/" rebuild;
+  promoted to root after the variant-override / data-install /
+  ThemeDir / 0xDC-trailer ports caught it up to legacy parity for
+  the verified SCSI 320x320 path.
+- **`src/trcc/legacy/`** — the **original implementation**, kept
+  reachable via ``TRCC_LEGACY=1``.  Frozen except for security
+  fixes; eventually deleted once every shipping device has been
+  hardware-verified on the new code.
 
-**When the user asks about "the app" or bug fixes for shipping users, work in `src/trcc/`.**  Only touch `src/trcc/next/` when the task is explicitly about the clean-slate rebuild.  Never mix imports between the two trees.
+Same shape in `tests/`: `tests/` exercises the new top-level;
+`tests/legacy/` exercises the legacy tree.  `dev/` smoke harnesses
+that test legacy import from `trcc.legacy.*`; the one that drives
+the new tree is `dev/smoke_full_pipeline.py`.
 
-Legacy architecture follows below.
+Rules:
+
+* **Default mental model**: a feature/bug lives in `src/trcc/` unless
+  explicitly told it's a legacy fix.
+* **Never invent file/path names** in the new tree.  TRCC theme dirs
+  use the strict legacy convention — `00.png` (background),
+  `01.png` (mask), `Theme.png` (panel thumbnail; NEVER rendered),
+  `config1.dc` (binary layout), `Theme.{mp4,mov,webm,zt}` (video).
+  The original rebuild fabricated names like `background.png` and
+  `mask.png` that don't exist anywhere; those got purged in
+  `8f6bb53c`.  Anything in `src/trcc/` that diverges from legacy's
+  filenames / DC byte layout / handshake parsing / variant lookup
+  is a bug until proven otherwise — fix by reading legacy and
+  copying the working shape, not by patching the fabrication.
+* **Never mix imports between the trees.**  `src/trcc/legacy/*` may
+  reach in to legacy internals but never to top-level new code (it
+  predates it); top-level new code never reaches into `legacy/`.
+* **Logging is part of the port.**  See "Logging coverage is
+  mandatory" section below.
 
 ## Architecture — Hexagonal (Ports & Adapters)
 
@@ -207,6 +238,43 @@ Response: `{"success": bool, "message": str, "error": str | None, ...extras}`. P
 - **GUI in daemon mode**: today the GUI gates `TRCC_DAEMON=1` with a clear refusal because `LCDHandler` references real `LCDDevice` instances. Phase 9 (TrccApp dissolution) wires GUI through `_boot.trcc()` and makes it a proper daemon client.
 - **Tests**: the existing test suite tests legacy `TrccApp` paths. Daemon-mode tests come back when Phase 9 settles.
 - **Donor matrix**: SCSI verified end-to-end. HID / Bulk / LY / LED through daemon are inferred-but-unverified — same `Trcc` dispatch path donors confirmed for the in-process flow, just with JSON serialization in front. Real-hardware donors close the matrix.
+
+## Logging coverage is mandatory
+
+Without logs we can't debug what we can't see.  Legacy had 828 log
+calls; the post-cutover tree had 634 (28% gap), and the gap was
+concentrated in `core/commands.py` (10 logs for 92 Commands) and the
+top-level services (overlay/display/theme: 12 logs total).  Result:
+"Theme1 doesn't show its clock" — no logs to trace where the clock
+data was lost between DC parse and the render pixel.  That was the
+cost.
+
+Rules for every new method touching user-visible state:
+
+1. **One log line on entry** of every public method on a service /
+   adapter / Command.  The boundary IS the value (see also memory
+   `feedback_thin_layer_log_every_method`).
+2. **One log line at every branch that changes outcome** — every
+   skip, every fallback, every early-return.  Don't make a future
+   debugger guess which branch fired.
+3. **Resolved values, not just intent.**  `log.info("draw_text:
+   'CPU' at (74, 200) size=24")` beats `log.info("drawing text")` —
+   the actual data is what reproduces the bug.
+4. **Per-tick noise stays at DEBUG.**  Commands fired every frame
+   (`SendFrame`, `RenderAndSend`, `ReadSensors`) set
+   ``LOG_LEVEL: ClassVar[int] = logging.DEBUG`` so a default `-v`
+   isn't drowned.  Use INFO for one-shot actions (theme load,
+   device connect, mode toggle); DEBUG for per-frame.
+5. **Warn loudly on silent skips.**  If a metric has no sensor
+   reading or a clock source is unresolved, that's a `log.warning`
+   with the available context — INCLUDING the sample keys that DID
+   resolve so the reporter can spot the typo.
+6. **Verify in the log after every behavioral change.**  Before
+   declaring a fix done, grep your own logs for the line that
+   proves it.  If the line doesn't exist, the test isn't real.
+
+This rule is non-negotiable; "code-first, logs-after" wastes hours
+on the next bug.
 
 ## Conventions
 
