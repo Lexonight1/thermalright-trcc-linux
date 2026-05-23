@@ -472,9 +472,12 @@ class LoadTheme(Command[ThemeResult]):
     path: Path
 
     def execute(self, app: App) -> ThemeResult:
+        log.info("LoadTheme: key=%s path=%s", self.key, self.path)
         try:
             theme = app.themes.load(self.path)
         except ThemeError as e:
+            log.warning("LoadTheme: theme load failed for %s: %s",
+                        self.path, e)
             app.events.publish(ErrorOccurred(message=str(e), kind="theme",
                                              key=self.key))
             return ThemeResult(ok=False, key=self.key, message=str(e))
@@ -486,6 +489,10 @@ class LoadTheme(Command[ThemeResult]):
         app.display.invalidate(self.key)  # drop stale scene cache from prev theme
         app.media.unload(self.key)        # drop stale video frames
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
+        log.info(
+            "LoadTheme: %s loaded — invalidated scene cache + cleared media "
+            "(active theme persisted)", theme.name,
+        )
 
         # If device is attached + connected + Renderer available, send an
         # immediate first frame.  Otherwise the theme is saved for the
@@ -632,7 +639,9 @@ class SaveTheme(Command[ThemeResult]):
     name: str
 
     def execute(self, app: App) -> ThemeResult:
+        log.info("SaveTheme: key=%s name=%s", self.key, self.name)
         if not _is_safe_theme_name(self.name):
+            log.warning("SaveTheme: rejected unsafe name %r", self.name)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
                 message=(f"invalid theme name {self.name!r} "
@@ -641,6 +650,8 @@ class SaveTheme(Command[ThemeResult]):
 
         theme = app.active_themes.get(self.key)
         if theme is None:
+            log.warning("SaveTheme: no active theme for %s — refusing to save",
+                        self.key)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
                 message=(f"no active theme for {self.key} — load one first"),
@@ -648,7 +659,10 @@ class SaveTheme(Command[ThemeResult]):
 
         import shutil
         target = app.platform.paths().user_content_dir() / self.name
+        log.info("SaveTheme: source=%s target=%s", theme.path, target)
         if target.exists():
+            log.warning("SaveTheme: target %s already exists — refusing",
+                        target)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
                 message=(f"target already exists: {target} "
@@ -1277,14 +1291,21 @@ class ApplyMask(Command[MaskApplyResult]):
     path: Path
 
     def execute(self, app: App) -> MaskApplyResult:
+        log.info("ApplyMask: key=%s path=%s", self.key, self.path)
         candidate = self.path
         if not candidate.exists():
+            log.warning("ApplyMask: mask path does not exist: %s", candidate)
             return MaskApplyResult(
                 ok=False, key=self.key, path=str(candidate),
                 message=f"mask file does not exist: {candidate}",
             )
         resolved_file = _resolve_mask_path(candidate)
         if resolved_file is None:
+            log.warning(
+                "ApplyMask: %s is neither a supported image nor a legacy "
+                "mask dir with %s — rejecting",
+                candidate, _LEGACY_MASK_FILENAME,
+            )
             return MaskApplyResult(
                 ok=False, key=self.key, path=str(candidate),
                 message=(f"mask path is neither a supported image file "
@@ -1292,6 +1313,7 @@ class ApplyMask(Command[MaskApplyResult]):
                          f"{_LEGACY_MASK_FILENAME}: {candidate}"),
             )
         resolved = str(resolved_file.resolve())
+        log.info("ApplyMask: resolved %s → %s", candidate, resolved)
         app.settings.set_mask_path(self.key, resolved)
         # Auto-position the mask using its own config1.dc — legacy
         # ``OverlayService.calculate_mask_position`` behaviour: full-size
@@ -2793,34 +2815,50 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
     theme_id: str
 
     def execute(self, app: App) -> CloudThemeLoadResult:
+        log.info("LoadCloudTheme: key=%s theme_id=%s", self.key, self.theme_id)
         from ..adapters.repo.http import HttpFetchError
         resolution = _resolve_resolution(app, self.key)
         if resolution is None:
+            log.warning(
+                "LoadCloudTheme: cannot resolve resolution for %s — "
+                "device not connected and no registry entry",
+                self.key,
+            )
             return CloudThemeLoadResult(
                 ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
                 message=(f"Cannot resolve resolution for {self.key} — "
                          "connect the device or register the product first"),
             )
+        log.info("LoadCloudTheme: materialising %s @ %dx%d",
+                 self.theme_id, resolution[0], resolution[1])
         try:
             theme_dir = app.cloud_themes.materialise(
                 self.theme_id, resolution,
             )
         except ValueError as e:
+            log.warning("LoadCloudTheme: ValueError materialising %s: %s",
+                        self.theme_id, e)
             return CloudThemeLoadResult(
                 ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
                 message=str(e),
             )
         except HttpFetchError as e:
+            log.warning("LoadCloudTheme: download failed for %s: %s",
+                        self.theme_id, e)
             return CloudThemeLoadResult(
                 ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
                 message=f"Cloud download failed: {e}",
             )
         except OSError as e:
+            log.warning("LoadCloudTheme: local IO failed for %s: %s: %s",
+                        self.theme_id, type(e).__name__, e)
             return CloudThemeLoadResult(
                 ok=False, key=self.key, theme_id=self.theme_id, theme_path="",
                 message=f"Local IO failed: {e}",
             )
 
+        log.info("LoadCloudTheme: %s materialised at %s — dispatching LoadTheme",
+                 self.theme_id, theme_dir)
         load_result = LoadTheme(key=self.key, path=theme_dir).execute(app)
         return CloudThemeLoadResult(
             ok=load_result.ok,

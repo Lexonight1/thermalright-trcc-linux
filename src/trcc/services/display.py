@@ -112,15 +112,38 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         visual_size = self._visual_size(base_size, s.orientation)
 
+        # Per-frame — DEBUG so `-vv` users see the build context without
+        # drowning a default INFO log.
+        log.debug(
+            "build_frame %s: theme=%r visual=%dx%d orientation=%d brightness=%d",
+            info.key, theme.name, visual_size[0], visual_size[1],
+            s.orientation, s.brightness,
+        )
+
         clock = compute_clock(
             time_format=s.time_format,
             date_format=s.date_format,
             language=self._settings.app.language,
         )
+        log.debug(
+            "build_frame %s: clock=%s (time_format=%s date_format=%s lang=%s)",
+            info.key, sorted(clock.keys()),
+            s.time_format, s.date_format,
+            self._settings.app.language,
+        )
 
         scene = self._scenes.get(info.key)
         bg_key = self._bg_mask_key(info, theme, visual_size)
         overlay_key = self._overlay_key(info, theme, visual_size, sensors, clock)
+
+        bg_hit = scene is not None and scene.bg_mask_key == bg_key
+        ovl_hit = scene is not None and scene.overlay_key == overlay_key
+        log.debug(
+            "build_frame %s: scene cache bg=%s overlay=%s",
+            info.key,
+            "HIT" if bg_hit else "MISS",
+            "HIT" if ovl_hit else "MISS",
+        )
 
         if scene is None or scene.bg_mask_key != bg_key:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
@@ -144,10 +167,14 @@ class DisplayService:
 
         # Brightness dim (before rotation — matches C# order)
         if s.brightness != 100:
+            log.debug("build_frame %s: applying brightness %d%%",
+                      info.key, s.brightness)
             surface = self._r.apply_brightness(surface, s.brightness)
 
         # User-orientation rotation
         if s.orientation:
+            log.debug("build_frame %s: user rotate %d°",
+                      info.key, 360 - s.orientation)
             surface = self._r.rotate(surface, 360 - s.orientation)
 
         # Device-side rotation: portrait panels render content in landscape
@@ -155,6 +182,8 @@ class DisplayService:
         # buffer arrangement before encoding. Matches the C# pipeline
         # ("RGB565-LE rotated" in legacy report output).
         if resolved_profile.rotate:
+            log.debug("build_frame %s: device rotate 90° (portrait panel)",
+                      info.key)
             surface = self._r.rotate(surface, 90)
 
         return self._encode_for_wire(surface, resolved_profile)
@@ -334,8 +363,20 @@ class DisplayService:
             fit_w, fit_h, off_x, off_y = _fit(
                 s.fit_mode, src_w, src_h, dst_w, dst_h,
             )
+            log.info(
+                "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
+                info.key, src_w, src_h,
+                s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
+                fit_w, fit_h, off_x, off_y,
+            )
             fitted = self._r.resize(source, fit_w, fit_h)
             canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
+        else:
+            log.warning(
+                "build_bg_mask %s: no background source resolved for theme %r — "
+                "canvas stays solid black",
+                info.key, theme.name,
+            )
 
         # Mask layer: per-device override (ApplyMask Command) takes
         # precedence over the theme's bundled mask; mask_visible=False
@@ -343,8 +384,22 @@ class DisplayService:
         mask_source = self._resolve_mask_source(s, theme)
         if mask_source is not None:
             mask = self._r.open_image(mask_source)
+            mw, mh = self._r.surface_size(mask)
             position = s.mask_position or (0, 0)
+            log.info(
+                "build_bg_mask %s: mask %s (%dx%d) at top-left (%d, %d) "
+                "[visible=%s]",
+                info.key, mask_source, mw, mh, position[0], position[1],
+                s.mask_visible,
+            )
             canvas = self._r.composite(canvas, mask, position=position)
+        else:
+            log.info(
+                "build_bg_mask %s: no mask composited (visible=%s, "
+                "override=%r, theme_mask=%r)",
+                info.key, s.mask_visible, s.mask_path,
+                self._themes.mask_path(theme),
+            )
 
         return canvas
 
@@ -359,16 +414,24 @@ class DisplayService:
         None when ``mask_visible`` is False so the caller skips the layer.
         """
         if not device_settings.mask_visible:
+            log.debug("resolve_mask_source: mask_visible=False → None")
             return None
         if device_settings.mask_path is not None:
             override = Path(device_settings.mask_path)
             if override.exists():
+                log.debug("resolve_mask_source: using override %s", override)
                 return override
             log.warning(
-                "Per-device mask %s does not exist; falling back to theme mask",
+                "resolve_mask_source: override %s does not exist — "
+                "falling back to theme bundled mask",
                 override,
             )
-        return self._themes.mask_path(theme)
+        theme_mask = self._themes.mask_path(theme)
+        log.debug(
+            "resolve_mask_source: using theme bundled mask %s",
+            theme_mask,
+        )
+        return theme_mask
 
     def _resolve_background(
         self,
@@ -396,12 +459,24 @@ class DisplayService:
         playback = self._media.playback(info.key)
         if playback is not None and playback.frames:
             frame: RawFrame | None = playback.current
+            log.debug(
+                "resolve_background %s: video playback active "
+                "(%d frames, cursor=%d)",
+                info.key, len(playback.frames), playback.cursor,
+            )
             return self._r.from_raw_rgb24(frame) if frame else None
 
         path = self._themes.background_path(theme)
         if path is None:
+            log.warning(
+                "resolve_background %s: theme %r has no background "
+                "(no 00.png or Theme.{mp4,mov,webm,zt} in %s)",
+                info.key, theme.name, theme.path,
+            )
             return None
         ext = path.suffix.lower()
+        log.info("resolve_background %s: theme %r → %s",
+                 info.key, theme.name, path)
 
         if ext in _VIDEO_EXTS:
             try:
@@ -409,15 +484,25 @@ class DisplayService:
                     device_key=info.key, path=path, size=visual_size,
                 )
             except Exception as e:
-                log.warning("Video decode failed for %s: %s", path.name, e)
+                log.warning("resolve_background %s: video decode failed for "
+                            "%s: %s: %s",
+                            info.key, path.name, type(e).__name__, e)
                 return None
+            log.info(
+                "resolve_background %s: video loaded (%d frames) from %s",
+                info.key, len(playback.frames), path,
+            )
             frame = playback.current
             return self._r.from_raw_rgb24(frame) if frame else None
 
         if ext in _IMAGE_EXTS:
             return self._r.open_image(path)
 
-        log.debug("Unrecognised background extension %r; skipping", ext)
+        log.warning(
+            "resolve_background %s: unrecognised background extension %r "
+            "at %s — skipping",
+            info.key, ext, path,
+        )
         return None
 
     # ── Layer 2: metric overlay ───────────────────────────────────────
@@ -438,6 +523,13 @@ class DisplayService:
         overlay_canvas = self._r.create_surface(*visual_size)
         s = self._settings.for_device(info.key)
         user_dicts = [e.to_dict() for e in s.user_overlay_elements]
+        theme_elements = theme.config.get("elements") or []
+        log.info(
+            "build_overlay %s: theme=%r theme_elements=%d user_elements=%d "
+            "overlay_enabled=%s",
+            info.key, theme.name, len(theme_elements), len(user_dicts),
+            theme.config.get("overlay_enabled", True),
+        )
         return self._overlay.render(
             overlay_canvas, theme.config, sensors,
             clock=clock, user_elements=user_dicts,

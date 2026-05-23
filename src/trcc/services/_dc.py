@@ -119,14 +119,27 @@ class Reader:
         if not data:
             raise ThemeError("empty DC buffer")
         magic = data[0]
+        log.info(
+            "Reader.parse: %s — magic=0x%02x bytes=%d",
+            theme_name, magic, len(data),
+        )
         if magic not in (_MAGIC_DC, _MAGIC_DD):
             raise ThemeError(f"not a DC file (magic byte 0x{magic:02x})")
         try:
             if magic == _MAGIC_DD:
-                return _parse_dd(data, theme_name)
-            return _parse_dc(data, theme_name)
+                result = _parse_dd(data, theme_name)
+            else:
+                result = _parse_dc(data, theme_name)
         except (struct.error, IndexError, UnicodeDecodeError) as e:
             raise ThemeError(str(e)) from e
+        log.info(
+            "Reader.parse: %s → %d elements, mask_visible=%s "
+            "mask_position=%s overlay_enabled=%s rotation=%s",
+            theme_name, len(result.get("elements", [])),
+            result.get("mask_visible"), result.get("mask_position"),
+            result.get("overlay_enabled"), result.get("rotation"),
+        )
+        return result
 
 
 # =========================================================================
@@ -184,15 +197,20 @@ class File:
         self.writer = writer or Writer()
 
     def read(self) -> dict[str, Any]:
+        log.info("File.read: %s", self.path)
         try:
             data = self.path.read_bytes()
         except OSError as e:
+            log.warning("File.read: cannot read %s: %s: %s",
+                        self.path, type(e).__name__, e)
             raise ThemeError(f"Cannot read {self.path}: {e}") from e
         if not data:
+            log.warning("File.read: empty file %s", self.path)
             raise ThemeError(f"Empty DC file: {self.path}")
         try:
             return self.reader.parse(data, self.path.parent.name)
         except ThemeError as e:
+            log.warning("File.read: parse failed for %s: %s", self.path, e)
             raise ThemeError(f"Invalid DC file {self.path}: {e}") from e
 
     def write(
@@ -201,7 +219,13 @@ class File:
         *,
         user_overlay_elements: list[dict[str, Any]] | None = None,
     ) -> None:
+        elements = config.get("elements") or []
+        user_n = len(user_overlay_elements or [])
+        log.info("File.write: %s — %d theme element(s) + %d user element(s)",
+                 self.path, len(elements), user_n)
         if self.path.parent and not self.path.parent.exists():
+            log.warning("File.write: output dir missing %s — refusing",
+                        self.path.parent)
             raise ThemeError(
                 f"DC output directory missing: {self.path.parent}"
             )
@@ -210,7 +234,10 @@ class File:
         )
         try:
             self.path.write_bytes(data)
+            log.info("File.write: %s — %d bytes written", self.path, len(data))
         except OSError as e:
+            log.warning("File.write: write failed for %s: %s: %s",
+                        self.path, type(e).__name__, e)
             raise ThemeError(f"Cannot write {self.path}: {e}") from e
 
 

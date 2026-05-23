@@ -89,6 +89,7 @@ class ThemeService:
         Raises ThemeError if the directory is missing, unreadable, or
         the config.json is invalid.
         """
+        log.info("load: %s", path)
         if not path.exists():
             raise ThemeError(f"Theme directory does not exist: {path}")
         if not path.is_dir():
@@ -97,6 +98,14 @@ class ThemeService:
         config = self._load_config(path)
         resolution = self._resolution_from_config(config)
         name = config.get("name") or path.name
+        n_elements = len(config.get("elements") or [])
+        log.info(
+            "load: %s → name=%r resolution=%s elements=%d "
+            "overlay_enabled=%s mask_visible=%s mask_position=%s",
+            path.name, name, resolution, n_elements,
+            config.get("overlay_enabled"), config.get("mask_visible"),
+            config.get("mask_position"),
+        )
 
         return Theme(
             path=path,
@@ -113,18 +122,24 @@ class ThemeService:
         raised — list() never fails on one bad theme.
         """
         if not directory.exists() or not directory.is_dir():
+            log.debug("list: directory missing or not a dir → %s", directory)
             return []
 
         themes: list[Theme] = []
+        skipped = 0
         for entry in sorted(directory.iterdir()):
             if not entry.is_dir():
                 continue
             if not _has_theme_marker(entry):
+                log.debug("list: %s has no theme marker — skipping", entry.name)
                 continue
             try:
                 themes.append(self.load(entry))
             except ThemeError as e:
-                log.warning("Skipping invalid theme %s: %s", entry, e)
+                log.warning("list: skipping invalid theme %s: %s", entry, e)
+                skipped += 1
+        log.info("list: %s → %d theme(s) (skipped=%d)",
+                 directory, len(themes), skipped)
         return themes
 
     def export_dc(
@@ -339,6 +354,7 @@ class ThemeService:
         """
         json_path = path / _CONFIG_FILE
         if json_path.exists():
+            log.info("_load_config: %s → reading %s", path.name, _CONFIG_FILE)
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
@@ -346,6 +362,8 @@ class ThemeService:
 
         legacy_next_path = path / _PRE_CUTOVER_CONFIG_FILE
         if legacy_next_path.exists():
+            log.info("_load_config: %s → reading pre-cutover %s",
+                     path.name, _PRE_CUTOVER_CONFIG_FILE)
             try:
                 return json.loads(legacy_next_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
@@ -366,12 +384,21 @@ class ThemeService:
                 # ``background`` / ``elements``) belongs to some other
                 # tool (e.g. legacy app's global ``~/.trcc/config.json``).
                 # Skip — let DC fallback try next.
-                pass
+                log.debug(
+                    "_load_config: %s → %s lacks theme markers, falling "
+                    "through to DC", path.name, _LEGACY_CONFIG_FILE,
+                )
             else:
+                log.info(
+                    "_load_config: %s → translating legacy %s",
+                    path.name, _LEGACY_CONFIG_FILE,
+                )
                 return _legacy_json_to_next_config(raw, path.name)
 
         dc_path = path / _DC_CONFIG_FILE
         if dc_path.exists():
+            log.info("_load_config: %s → reading %s (binary DC)",
+                     path.name, _DC_CONFIG_FILE)
             config = Dc.File(dc_path).read()
             self._try_migrate(json_path, config)
             return config
