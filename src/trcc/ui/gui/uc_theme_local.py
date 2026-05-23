@@ -39,6 +39,10 @@ class ThemeThumbnail(BaseThumbnail):
         super().__init__(item_info, parent)
         self._delete_btn = None
         self._badge_label = None
+        log.debug(
+            "ThemeThumbnail.__init__: name=%r path=%r is_user=%s",
+            item_info.name, item_info.path, item_info.is_user,
+        )
 
     def set_deletable(self, deletable: bool):
         """Show/hide delete button (top-right X) on this thumbnail."""
@@ -61,6 +65,8 @@ class ThemeThumbnail(BaseThumbnail):
 
     def _on_delete_clicked(self) -> None:
         """Delete button slot — re-emit with this thumbnail's item info."""
+        log.info("ThemeThumbnail._on_delete_clicked: name=%r",
+                 self.item_info.name)
         self.delete_clicked.emit(self.item_info)
 
     def set_slideshow_badge(self, number: int):
@@ -94,13 +100,21 @@ class ThemeThumbnail(BaseThumbnail):
 
     def set_slideshow_mode(self, enabled: bool):
         """Toggle slideshow mode for click behavior."""
+        log.debug("ThemeThumbnail.set_slideshow_mode: name=%r enabled=%s",
+                  self.item_info.name, enabled)
         self._slideshow_mode = enabled
 
     def mousePressEvent(self, event):
         """In slideshow mode, clicking lower half toggles inclusion."""
         if self._slideshow_mode and event.position().y() > 60:
+            log.info(
+                "ThemeThumbnail.mousePressEvent: %r slideshow_toggled",
+                self.item_info.name,
+            )
             self.slideshow_toggled.emit(self.item_info)
             return
+        log.info("ThemeThumbnail.mousePressEvent: %r clicked",
+                 self.item_info.name)
         self.clicked.emit(self.item_info)
 
 
@@ -133,6 +147,8 @@ class UCThemeLocal(BaseThemeBrowser):
         self._slideshow_interval = 3
         self._lunbo_array = []  # Theme names in slideshow order (max 6)
         self._all_themes = []   # Full unfiltered theme list
+        log.info("UCThemeLocal.__init__: filter=%s slideshow=False",
+                 self.MODE_ALL)
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -211,8 +227,8 @@ class UCThemeLocal(BaseThemeBrowser):
         """
         self.theme_directory = Path(path) if path else None
         self._extra_theme_directories = [Path(p) for p in extra_paths if p]
-        log.debug(
-            "uc_theme_local.set_theme_directory: primary=%s extras=%s",
+        log.info(
+            "UCThemeLocal.set_theme_directory: primary=%s extras=%s",
             self.theme_directory, self._extra_theme_directories,
         )
         self.load_themes()
@@ -221,12 +237,16 @@ class UCThemeLocal(BaseThemeBrowser):
         """Filter-button slot — reads filter mode from sender's property."""
         sender = self.sender()
         if sender is None:
+            log.debug("UCThemeLocal._on_filter_clicked: sender is None")
             return
         mode = sender.property('filter_mode')
+        log.info("UCThemeLocal._on_filter_clicked: mode=%s", mode)
         if mode is not None:
             self._set_filter(mode)
 
     def _set_filter(self, mode):
+        log.info("UCThemeLocal._set_filter: %s -> %s",
+                 self.filter_mode, mode)
         self.filter_mode = mode
         for i, btn in enumerate(self._filter_buttons):
             btn.setChecked(i == mode)
@@ -348,28 +368,44 @@ class UCThemeLocal(BaseThemeBrowser):
 
     def _on_delete_clicked(self, item_info: dict):
         """Forward delete request to parent (confirmation handled there)."""
+        log.info("UCThemeLocal._on_delete_clicked: %s",
+                 getattr(item_info, 'name', item_info))
         self.delete_requested.emit(item_info)
 
     def _on_slideshow_toggled(self, item_info: LocalThemeItem):
         """Toggle theme in/out of slideshow array (Windows lunBoArray)."""
         name = item_info.name
-        if name in self._lunbo_array:
+        was_in = name in self._lunbo_array
+        if was_in:
             self._lunbo_array.remove(name)
         elif len(self._lunbo_array) < self.MAX_SLIDESHOW:
             self._lunbo_array.append(name)
+        else:
+            log.warning(
+                "UCThemeLocal._on_slideshow_toggled: array full (max=%d) — "
+                "%r not added", self.MAX_SLIDESHOW, name,
+            )
+        log.info(
+            "UCThemeLocal._on_slideshow_toggled: %r (was_in=%s) — array=%s",
+            name, was_in, self._lunbo_array,
+        )
 
         self._apply_decorations()
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
     def _on_item_clicked(self, item_info: dict):
         """Extend base to also invoke delegate."""
-        log.debug("_on_item_clicked: %s (emitting theme_selected)", getattr(item_info, 'name', item_info))
+        log.info("UCThemeLocal._on_item_clicked: %s (emitting theme_selected)",
+                 getattr(item_info, 'name', item_info))
         super()._on_item_clicked(item_info)
         self.invoke_delegate(self.CMD_THEME_SELECTED, item_info)
 
     def _on_slideshow_clicked(self):
         """Toggle slideshow mode (Windows: buttonLunbo_Click)."""
+        old = self._slideshow
         self._slideshow = not self._slideshow
+        log.info("UCThemeLocal._on_slideshow_clicked: %s -> %s",
+                 old, self._slideshow)
         px = self._lunbo_on if self._slideshow else self._lunbo_off
         if not px.isNull():
             self.slideshow_btn.setIcon(QIcon(px))
@@ -383,9 +419,15 @@ class UCThemeLocal(BaseThemeBrowser):
         try:
             val = int(text)
         except ValueError:
+            log.warning(
+                "UCThemeLocal._on_timer_changed: %r not int — defaulting to 3",
+                text,
+            )
             val = 3
         val = max(3, val)
         self.timer_input.setText(str(val))
+        log.info("UCThemeLocal._on_timer_changed: %s -> %ss",
+                 self._slideshow_interval, val)
         self._slideshow_interval = val
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
@@ -411,8 +453,15 @@ class UCThemeLocal(BaseThemeBrowser):
     def delete_theme(self, theme_info: LocalThemeItem):
         """Delete a theme directory and refresh the list."""
         path = Path(theme_info.path)
+        log.info("UCThemeLocal.delete_theme: name=%r path=%s",
+                 theme_info.name, path)
         if path.exists() and path.is_dir():
             shutil.rmtree(path)
+        else:
+            log.warning(
+                "UCThemeLocal.delete_theme: path %s missing or not a dir",
+                path,
+            )
 
         # Remove from slideshow if present
         name = theme_info.name
