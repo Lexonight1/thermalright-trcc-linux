@@ -158,25 +158,38 @@ class ColorPickerPanel(QFrame):
         self.eyedropper_btn.clicked.connect(self.eyedropper_requested.emit)
 
     def _pick_color(self):
+        log.info("ColorPickerPanel._pick_color: opening QColorDialog")
         from PySide6.QtWidgets import QColorDialog
         color = QColorDialog.getColor(self._current_color, self, "Pick Color")
         if color.isValid():
+            log.info("ColorPickerPanel._pick_color: picked (%d,%d,%d)",
+                     color.red(), color.green(), color.blue())
             self._apply_color(color.red(), color.green(), color.blue())
+        else:
+            log.info("ColorPickerPanel._pick_color: dialog cancelled")
 
     def _on_rgb_changed(self):
         try:
             r = max(0, min(255, int(self.r_input.text())))
             g = max(0, min(255, int(self.g_input.text())))
             b = max(0, min(255, int(self.b_input.text())))
-            self._apply_color(r, g, b)
         except ValueError:
-            pass
+            log.warning(
+                "ColorPickerPanel._on_rgb_changed: parse failed for "
+                "r=%r g=%r b=%r — dropped",
+                self.r_input.text(), self.g_input.text(), self.b_input.text(),
+            )
+            return
+        log.info("ColorPickerPanel._on_rgb_changed: (%d,%d,%d)", r, g, b)
+        self._apply_color(r, g, b)
 
     def _set_color_from_swatch(self, r, g, b):
+        log.info("ColorPickerPanel._set_color_from_swatch: (%d,%d,%d)",
+                 r, g, b)
         self._apply_color(r, g, b)
 
     def _apply_color(self, r, g, b):
-        log.debug("_apply_color: r=%d, g=%d, b=%d", r, g, b)
+        log.debug("ColorPickerPanel._apply_color: r=%d, g=%d, b=%d", r, g, b)
         self._current_color = QColor(r, g, b)
         self.r_input.setText(str(r))
         self.g_input.setText(str(g))
@@ -184,9 +197,12 @@ class ColorPickerPanel(QFrame):
         self.color_changed.emit(r, g, b)
 
     def _on_position_changed(self):
-        self.position_changed.emit(self.x_spin.value(), self.y_spin.value())
+        x, y = self.x_spin.value(), self.y_spin.value()
+        log.info("ColorPickerPanel._on_position_changed: (%d,%d)", x, y)
+        self.position_changed.emit(x, y)
 
     def set_color(self, r, g, b):
+        log.debug("ColorPickerPanel.set_color: (%d,%d,%d)", r, g, b)
         self._current_color = QColor(r, g, b)
         self.r_input.setText(str(r))
         self.g_input.setText(str(g))
@@ -194,11 +210,17 @@ class ColorPickerPanel(QFrame):
 
     def set_color_hex(self, hex_color):
         """Set color from hex string like '#FF0000'."""
+        log.debug("ColorPickerPanel.set_color_hex: %s", hex_color)
         c = QColor(hex_color)
         if c.isValid():
             self.set_color(c.red(), c.green(), c.blue())
+        else:
+            log.warning(
+                "ColorPickerPanel.set_color_hex: invalid hex %r", hex_color,
+            )
 
     def set_position(self, x, y):
+        log.debug("ColorPickerPanel.set_position: (%d,%d)", x, y)
         self.x_spin.blockSignals(True)
         self.y_spin.blockSignals(True)
         self.x_spin.setValue(x)
@@ -208,6 +230,7 @@ class ColorPickerPanel(QFrame):
 
     def _pick_font(self):
         """Open font dialog (matches Windows FontDialog in UCXiTongXianShiColor)."""
+        log.info("ColorPickerPanel._pick_font: opening QFontDialog")
         from PySide6.QtWidgets import QFontDialog
         current = QFont(self._current_font_name, self._current_font_size)
         ok, font = QFontDialog.getFont(current, self, "Pick Font")
@@ -216,20 +239,32 @@ class ColorPickerPanel(QFrame):
             self._current_font_size = font.pointSize()
             # C# Font.Style: 0=Regular, 1=Bold, 2=Italic, 3=BoldItalic
             self._current_font_style = 1 if font.bold() else 0
+            log.info(
+                "ColorPickerPanel._pick_font: picked %s size=%d bold=%s",
+                font.family(), font.pointSize(), font.bold(),
+            )
             self.font_btn.setText(font.family())
             self.font_size_spin.blockSignals(True)
             self.font_size_spin.setValue(font.pointSize())
             self.font_size_spin.blockSignals(False)
             self.font_changed.emit(font.family(), font.pointSize(),
                                    self._current_font_style)
+        else:
+            log.info("ColorPickerPanel._pick_font: dialog cancelled")
 
     def _on_font_size_changed(self, size: int):
         """Handle font size spinbox change independently."""
+        log.info("ColorPickerPanel._on_font_size_changed: %d -> %d",
+                 self._current_font_size, size)
         self._current_font_size = size
         self.font_changed.emit(self._current_font_name, size,
                                self._current_font_style)
 
     def set_font_display(self, font_name, font_size, font_style=0):
+        log.debug(
+            "ColorPickerPanel.set_font_display: name=%r size=%d style=%d",
+            font_name, font_size, font_style,
+        )
         self._current_font_name = font_name
         self._current_font_size = font_size
         self._current_font_style = font_style
@@ -274,6 +309,7 @@ class AddElementPanel(QFrame):
             y += Layout.ADD_BTN_DY
 
     def _on_type_clicked(self, mode: OverlayMode):
+        log.info("AddElementPanel._on_type_clicked: mode=%s", mode.name)
         if mode == OverlayMode.HARDWARE:
             # Show activity sidebar for hardware sensor selection
             # (Windows: hardware metrics listed as separate section in add panel)

@@ -460,10 +460,15 @@ class UCScreenLED(QWidget):
         self._overlay: QPixmap | None = None
         self._led_mode = 0  # 4 = display mode (draws decoration images)
         self._deco_pixmaps: dict[str, QPixmap] = {}
+        log.info("UCScreenLED.__init__: default style_id=1 leds=%d",
+                 self._led_count)
 
     def set_style(self, style_id: int, segment_count: int) -> None:
         """Configure for a specific LED device style."""
-        log.debug("set_style id=%d segment_count=%d", style_id, segment_count)
+        log.info(
+            "UCScreenLED.set_style: %d -> %d segment_count=%d",
+            self._style_id, style_id, segment_count,
+        )
         self._style_id = style_id
         self._positions = STYLE_POSITIONS.get(style_id, _POS_1)
         self._led_count = len(self._positions)
@@ -476,6 +481,10 @@ class UCScreenLED(QWidget):
 
     def set_overlay(self, pixmap: QPixmap | None) -> None:
         """Set device overlay image (drawn LAST as foreground mask)."""
+        log.info(
+            "UCScreenLED.set_overlay: pixmap=%s",
+            "present" if pixmap and not pixmap.isNull() else "none",
+        )
         self._overlay = pixmap
         self.update()
 
@@ -484,6 +493,8 @@ class UCScreenLED(QWidget):
 
     def set_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED segment colors from controller tick."""
+        # Per-tick — DEBUG.
+        log.debug("UCScreenLED.set_colors: count=%d", len(colors))
         self._colors = list(colors[:self._led_count])
         while len(self._colors) < self._led_count:
             self._colors.append((0, 0, 0))
@@ -492,17 +503,31 @@ class UCScreenLED(QWidget):
     def set_segment_on(self, index: int, on: bool) -> None:
         """Toggle an individual segment."""
         if 0 <= index < len(self._is_on):
+            log.info("UCScreenLED.set_segment_on: index=%d on=%s",
+                     index, on)
             self._is_on[index] = on
             self.update()
+        else:
+            log.warning(
+                "UCScreenLED.set_segment_on: index %d out of range "
+                "(len=%d) — dropped", index, len(self._is_on),
+            )
 
     def set_led_mode(self, mode: int) -> None:
         """Set LED mode (4 = display mode with decoration images)."""
+        log.info("UCScreenLED.set_led_mode: %d -> %d",
+                 self._led_mode, mode)
         self._led_mode = mode
         self.update()
 
     def set_timer(self, month: int, day: int, hour: int, minute: int,
                   day_of_week: int) -> None:
         """Set LC2 clock display data for preview overlay."""
+        # Per-tick (clock display); DEBUG.
+        log.debug(
+            "UCScreenLED.set_timer: %d/%d %02d:%02d dow=%d",
+            month, day, hour, minute, day_of_week,
+        )
         self._timer_data = (month, day, hour, minute, day_of_week)
         self.update()
 
@@ -647,5 +672,9 @@ class UCScreenLED(QWidget):
         px, py = pos.x(), pos.y()
         for i, (x, y, w, h) in enumerate(self._positions):
             if x <= px <= x + w and y <= py <= y + h:
+                log.info(
+                    "UCScreenLED.mousePressEvent: segment %d hit at (%.0f,%.0f)",
+                    i, px, py,
+                )
                 self.segment_clicked.emit(i)
                 return

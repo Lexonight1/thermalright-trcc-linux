@@ -55,8 +55,10 @@ class EyedropperOverlay(BaseScreenOverlay):
         super().__init__(parent)
         self._current_color = QColor(0, 0, 0)
         self._cursor_pos = QPoint()
+        log.info("EyedropperOverlay.__init__: full-screen pick overlay built")
 
     def _emit_cancel(self):
+        log.info("EyedropperOverlay._emit_cancel: cancelled by user")
         self.cancelled.emit()
 
     def paintEvent(self, event):
@@ -82,8 +84,14 @@ class EyedropperOverlay(BaseScreenOverlay):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            log.info("EyedropperOverlay.mousePressEvent: left-click accept")
             self._accept()
         else:
+            log.info(
+                "EyedropperOverlay.mousePressEvent: button=%s cancel",
+                event.button().name if hasattr(event.button(), 'name')
+                else event.button(),
+            )
             self._cancel()
 
     def _update_color_at_cursor(self):
@@ -171,7 +179,7 @@ class EyedropperOverlay(BaseScreenOverlay):
         r, g, b = (self._current_color.red(),
                    self._current_color.green(),
                    self._current_color.blue())
-        log.debug("eyedropper color accepted: rgb(%d, %d, %d)", r, g, b)
+        log.info("EyedropperOverlay._accept: rgb(%d,%d,%d)", r, g, b)
         self.hide()
         self.color_picked.emit(r, g, b)
         self.deleteLater()

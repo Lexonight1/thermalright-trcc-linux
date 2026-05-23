@@ -115,6 +115,7 @@ class UCColorWheel(QWidget):
 
     def set_hue(self, hue: int) -> None:
         """Set the current hue without emitting a signal."""
+        log.debug("UCColorWheel.set_hue: %d -> %d", self._hue, hue % 360)
         self._hue = hue % 360
         self.update()
 
@@ -124,6 +125,9 @@ class UCColorWheel(QWidget):
         Args:
             val: 1=ON, 0=OFF.
         """
+        log.info("UCColorWheel.set_onoff: %s -> %s",
+                 "ON" if self._onoff == 1 else "OFF",
+                 "ON" if val == 1 else "OFF")
         self._onoff = val
         self._update_onoff_image()
 
@@ -188,15 +192,19 @@ class UCColorWheel(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self._is_on_ring(event.position()):
+                log.info("UCColorWheel.mousePressEvent: ring drag start")
                 self._dragging = True
                 self._update_hue_from_pos(event.position())
 
     def mouseMoveEvent(self, event):
         if self._dragging:
+            # Per-event during drag — DEBUG.
             self._update_hue_from_pos(event.position())
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+            log.info("UCColorWheel.mouseReleaseEvent: drag end hue=%d",
+                     self._hue)
             self._dragging = False
 
     def _is_on_ring(self, pos) -> bool:
@@ -234,8 +242,13 @@ class UCColorWheel(QWidget):
 
     def _toggle_onoff(self):
         """Toggle LED on/off state (C# UCColorA.buttonDSHX_Click)."""
+        was = self._onoff
         self._onoff = 0 if self._onoff == 1 else 1
-        log.debug("LED on/off toggled: %s", "ON" if self._onoff == 1 else "OFF")
+        log.info(
+            "UCColorWheel._toggle_onoff: %s -> %s",
+            "ON" if was == 1 else "OFF",
+            "ON" if self._onoff == 1 else "OFF",
+        )
         self._update_onoff_image()
         self.onoff_changed.emit(self._onoff)
 
