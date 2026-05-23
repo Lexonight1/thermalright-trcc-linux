@@ -79,9 +79,6 @@ class _DeviceState:
     lcd_size: tuple[int, int] = (0, 0)           # post-rotation (w, h)
     is_rotated: bool = False                     # 90° / 270° → True
     overlay_enabled: bool = False
-    theme_dir: Path | None = None                # resolution-specific user dir
-    web_dir: Path | None = None                  # resolution-specific cloud cache
-    masks_dir: Path | None = None                # resolution-specific mask dir
     current_theme_path: Path | None = None
     last_metrics: Any = None                     # cached for video-overlay updates
 
@@ -221,21 +218,16 @@ class LCDHandler(BaseHandler):
         self._state.canvas_size = (w, h)
         self._state.lcd_size = (w, h)
         paths = self._app.platform.paths()
-        # ``masks_dir`` here is the CLOUD mask cache the browser scans
-        # as its "primary" directory.  The panel pulls the user mask
-        # dir (``paths.user_mask_dir(w, h)``) itself via its injected
-        # Paths port and walks both — see ``uc_theme_mask.refresh_masks``.
-        # Pre-fix this was set to user_mask_dir, so the panel walked
-        # the user dir TWICE (primary + user) and missed the 120 cloud
-        # masks that live at ``data/web/zt{W}{H}``.
-        self._state.masks_dir = paths.cloud_mask_dir(w, h)
-        self._state.theme_dir = paths.theme_dir(w, h)
-        self._state.web_dir = paths.cloud_theme_dir(w, h)
+        # Theme / web / mask dirs aren't cached on _state any more —
+        # ``_update_theme_directories`` derives them per-call so portrait
+        # rotation can switch the browser to the rotated dir on demand
+        # (auto-rotation portrait).  Log the initial landscape set so
+        # the connect-time picture is preserved.
         self.log.info(
             "_refresh: theme_dir=%s web_dir=%s masks_dir(cloud)=%s "
             "user_mask_dir=%s",
-            self._state.theme_dir, self._state.web_dir,
-            self._state.masks_dir, paths.user_mask_dir(w, h),
+            paths.theme_dir(w, h), paths.cloud_theme_dir(w, h),
+            paths.cloud_mask_dir(w, h), paths.user_mask_dir(w, h),
         )
         # next/'s per-device settings live in app.settings.for_device(key)
         # — DeviceSettings dataclass.  Build a dict-shape view so the
@@ -890,17 +882,46 @@ class LCDHandler(BaseHandler):
         Reads come from ``_DeviceState`` (cached at connect / rotation),
         not the legacy ``self._device.X`` properties which next/'s
         Device port doesn't expose.
+
+        Auto-rotation portrait: when the device is rotated 90/270 AND a
+        portrait-native theme dir exists on disk (legacy convention:
+        ``data/theme{H}x{W}/``), point the browser at it.  When no
+        portrait dir is present, stay on the landscape dir — the render
+        pipeline pixel-rotates landscape art at encode time so the
+        device still gets a correctly-oriented frame.
         """
-        ow, oh = self._state.canvas_size
-        theme_dir = self._state.theme_dir
-        web_dir = self._state.web_dir
-        masks_dir = self._state.masks_dir
+        paths = self._app.platform.paths()
+        cw, ch = self._state.canvas_size
+
+        # Pick browse dims: prefer portrait when rotated AND the
+        # portrait dir actually exists.
+        ow, oh = cw, ch
+        if self._state.is_rotated:
+            rw, rh = self._state.lcd_size
+            rotated_theme_dir = paths.theme_dir(rw, rh)
+            if rotated_theme_dir and rotated_theme_dir.exists():
+                self.log.info(
+                    "_update_theme_directories: portrait theme dir "
+                    "%s exists — switching browser to %dx%d",
+                    rotated_theme_dir, rw, rh,
+                )
+                ow, oh = rw, rh
+            else:
+                self.log.info(
+                    "_update_theme_directories: rotated %dx%d but no "
+                    "portrait theme dir at %s — staying landscape "
+                    "(%dx%d); render pipeline will pixel-rotate",
+                    rw, rh, rotated_theme_dir, cw, ch,
+                )
+
+        theme_dir = paths.theme_dir(ow, oh)
+        web_dir = paths.cloud_theme_dir(ow, oh)
+        masks_dir = paths.cloud_mask_dir(ow, oh)
 
         # Also expose the legacy user-saved theme location so the
         # browser picks up Custom_* themes from
         # ``~/.trcc-user/data/theme{w}{h}/`` alongside the pkg/cloud
         # themes from ``~/.trcc/data/theme{w}{h}/``.
-        paths = self._app.platform.paths()
         user_theme_dir = paths.user_theme_dir(ow, oh)
 
         self.log.info(
