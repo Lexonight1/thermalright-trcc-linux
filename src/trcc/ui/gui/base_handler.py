@@ -30,6 +30,8 @@ class BaseHandler:
         # dispatch through the App without holding device refs.
         self._device = device
         self._view = view
+        log.info("BaseHandler.__init__: view=%r device=%s",
+                 view, type(device).__name__)
 
     @property
     def view_name(self) -> str:
@@ -44,18 +46,26 @@ class BaseHandler:
 
     def deactivate(self) -> None:
         """Pause this handler — called when the window switches devices."""
+        log.info("BaseHandler.deactivate: view=%r (no-op base)", self._view)
 
     def cleanup(self) -> None:
         """Release device resources on shutdown.  Override in subclass."""
+        log.info("BaseHandler.cleanup: view=%r (no-op base)", self._view)
 
     # ── Tick + push ───────────────────────────────────────────────────
 
     def update_metrics(self, metrics: Any) -> None:
         """Push the latest metrics snapshot to handler-local widgets."""
+        # Per-tick; DEBUG.  Subclasses override — base no-op log marks
+        # the rare case a handler didn't bother to override at all.
+        log.debug("BaseHandler.update_metrics: view=%r dropped (base no-op)",
+                  self._view)
         del metrics
 
     def handle_frame(self, image: Any) -> None:
         """Show a rendered frame in the preview.  Override per device kind."""
+        log.debug("BaseHandler.handle_frame: view=%r dropped (base no-op)",
+                  self._view)
         del image
 
     def rebuild_preview(self) -> None:
@@ -67,3 +77,5 @@ class BaseHandler:
         LEDHandler can ignore (its preview is segment colors, not a
         bitmap).
         """
+        log.debug("BaseHandler.rebuild_preview: view=%r dropped (base no-op)",
+                  self._view)

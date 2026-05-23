@@ -97,6 +97,8 @@ class SensorRow(QWidget):
 
     def set_selected(self, selected: bool):
         """Update checkbox image."""
+        log.debug("SensorRow.set_selected: %s -> %s (sensor=%s)",
+                  self._selected, selected, self.sensor.id)
         self._selected = selected
         px = self._cb_on if selected else self._cb_off
         if not px.isNull():
@@ -104,10 +106,12 @@ class SensorRow(QWidget):
 
     def _on_checkbox_clicked(self) -> None:
         """Checkbox slot — re-emit clicked with this row's sensor id."""
+        log.info("SensorRow._on_checkbox_clicked: sensor=%s", self.sensor.id)
         self.clicked.emit(self.sensor.id)
 
     def update_value(self, value: float | None):
         """Update the displayed value."""
+        # Per-tick refresh — no log (this fires every 1s for every row).
         if value is None:
             self._value.setText('--')
         else:
@@ -126,6 +130,7 @@ class SensorRow(QWidget):
                 self._value.setText(f"{value:.1f}")
 
     def mousePressEvent(self, event):
+        log.info("SensorRow.mousePressEvent: sensor=%s", self.sensor.id)
         self.clicked.emit(self.sensor.id)
 
 
@@ -138,6 +143,7 @@ class SensorPickerDialog(QDialog):
         self._selected_id: str | None = None
         self._rows: list[SensorRow] = []
         self._result_sensor: SensorInfo | None = None
+        log.info("SensorPickerDialog.__init__: opening picker dialog")
 
         self.setFixedSize(DIALOG_W, DIALOG_H)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
@@ -208,6 +214,8 @@ class SensorPickerDialog(QDialog):
         with a best-effort source inferred from the sensor_id prefix.
         """
         sensors = self._enumerator.discover()
+        log.info("SensorPickerDialog._populate_sensors: discovered %d sensors",
+                 len(sensors))
 
         # Adapt SensorReading → SensorInfo (legacy shape).  Source is
         # inferred from the sensor_id prefix when present, e.g.
@@ -261,6 +269,7 @@ class SensorPickerDialog(QDialog):
 
     def set_current_sensor(self, sensor_id: str):
         """Pre-select the currently bound sensor."""
+        log.info("SensorPickerDialog.set_current_sensor: %s", sensor_id)
         self._selected_id = sensor_id
         for row in self._rows:
             row.set_selected(row.sensor.id == sensor_id)
@@ -271,14 +280,15 @@ class SensorPickerDialog(QDialog):
 
     def _on_row_clicked(self, sensor_id: str):
         """Handle radio-button selection (only one sensor selected)."""
-        log.debug("_on_row_clicked: sensor_id=%s", sensor_id)
+        log.info("SensorPickerDialog._on_row_clicked: sensor_id=%s", sensor_id)
         self._selected_id = sensor_id
         for row in self._rows:
             row.set_selected(row.sensor.id == sensor_id)
 
     def _on_ok(self):
         """Confirm selection."""
-        log.debug("_on_ok: selected_id=%s", self._selected_id)
+        log.info("SensorPickerDialog._on_ok: selected_id=%s",
+                 self._selected_id)
         if self._selected_id:
             for row in self._rows:
                 if row.sensor.id == self._selected_id:
@@ -288,10 +298,16 @@ class SensorPickerDialog(QDialog):
 
     def _update_values(self):
         """Update all sensor values in the list."""
+        # Per-tick (1s); DEBUG.
         readings = self._enumerator.read_all()
+        log.debug(
+            "SensorPickerDialog._update_values: readings=%d rows=%d",
+            len(readings), len(self._rows),
+        )
         for row in self._rows:
             row.update_value(readings.get(row.sensor.id))
 
     def closeEvent(self, event):
+        log.info("SensorPickerDialog.closeEvent: closing")
         self._timer.stop()
         super().closeEvent(event)

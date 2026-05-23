@@ -14,6 +14,8 @@ needs the same hook).
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QObject, Signal
 
 from ...core.events import (
@@ -34,6 +36,8 @@ from ...core.events import (
     SystemSuspending,
     ThemeLoaded,
 )
+
+log = logging.getLogger(__name__)
 
 
 class BusBridge(QObject):
@@ -64,6 +68,7 @@ class BusBridge(QObject):
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
         self._bus = bus
+        log.info("BusBridge.__init__: wiring EventBus → Qt signals")
         self._wire()
 
     def _wire(self) -> None:
@@ -92,3 +97,4 @@ class BusBridge(QObject):
                 event_type,
                 lambda e, sig=signal: sig.emit(e),
             )
+        log.info("BusBridge._wire: subscribed %d event types", len(pairs))
