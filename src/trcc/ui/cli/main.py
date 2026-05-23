@@ -7,6 +7,7 @@ here; all business rules live in Commands.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import typer
 
@@ -191,10 +192,25 @@ def shell() -> None:
 
 
 @app.command("report", rich_help_panel="Diagnostics")
-def _alias_report() -> None:
+def _alias_report(
+    output: Path | None = typer.Option(
+        None, "--output", "-o",
+        help="Write the report to this path instead of stdout.",
+    ),
+    log_lines: int = typer.Option(
+        1000, "--log-lines",
+        help="How many trailing log lines to include.",
+    ),
+) -> None:
     """Alias for `trcc system debug-report` — full diagnostic dump."""
-    from .system import debug_report
-    debug_report(output=None)
+    from ...core.commands import GenerateDebugReport
+    result = get_app().dispatch(GenerateDebugReport(
+        output_path=output, log_tail_lines=log_lines,
+    ))
+    if output is None:
+        typer.echo(result.rendered_text)
+    else:
+        typer.echo(result.message)
 
 
 @app.command("detect", rich_help_panel="Diagnostics")
