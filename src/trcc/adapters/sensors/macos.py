@@ -19,7 +19,18 @@ import os
 import platform
 from collections.abc import Iterable
 
-from ...core.ports import CpuSource, GpuSource
+from ...core.ports import CpuSource, FanSource, GpuSource
+from ._macos_hid import (
+    MacosHidCpu,
+    MacosHidGpu,
+    _HidSnapshot,
+    hid_layer_ready,
+)
+from ._powermetrics import (
+    PowermetricsCpu,
+    PowermetricsGpu,
+    _PowermetricsSnapshot,
+)
 from ._smc import (
     APPLE_SILICON_CPU_TEMP_KEYS,
     APPLE_SILICON_GPU_TEMP_KEYS,
@@ -29,7 +40,7 @@ from ._smc import (
     SmcClientPort,
 )
 from .aggregator import BaselineSensors
-from .chain import CpuSourceChain
+from .chain import CpuSourceChain, GpuSourceChain
 from .nvml import discover_nvidia_gpus
 from .psutil_sources import PsutilCpu, PsutilMemory
 
@@ -199,6 +210,81 @@ class SmcGpu(GpuSource):
 
 
 # =========================================================================
+# SmcFan — one SMC fan key wrapped as a FanSource
+# =========================================================================
+
+
+_FAN_NAME_TEMPLATE = "Apple SMC Fan {index}"
+
+
+class SmcFan(FanSource):
+    """One SMC fan (``F0Ac``, ``F1Ac`` …) exposed as the FanSource port.
+
+    Apple Silicon and Intel both expose actual fan RPMs at
+    ``F{i}Ac``; the count is at ``FNum``.  Fanless models
+    (MacBook Air with M-series) report ``FNum == 0`` and this
+    source never materialises.
+    """
+
+    def __init__(
+        self,
+        index: int,
+        *,
+        client: SmcClientPort | None = None,
+    ) -> None:
+        self._index = index
+        self._client: SmcClientPort = client if client is not None else SMCClient()
+        if not self._client.connected:
+            self._client.open()
+
+    @property
+    def key(self) -> str:
+        return f"smc:fan{self._index}"
+
+    @property
+    def name(self) -> str:
+        return _FAN_NAME_TEMPLATE.format(index=self._index)
+
+    def rpm(self) -> int | None:
+        value = self._client.read_fan_rpm(f"F{self._index}Ac")
+        if value is None:
+            return None
+        return int(value)
+
+    def percent(self) -> float | None:
+        # SMC F{i}Mn (min) / F{i}Mx (max) can compute a percent; legacy
+        # didn't bother, and most Mac fan UIs report RPM directly.
+        return None
+
+
+def discover_smc_fans(client: SmcClientPort) -> list[FanSource]:
+    """Probe ``FNum`` and materialise one ``SmcFan`` per discovered fan."""
+    if not client.connected:
+        log.debug("discover_smc_fans: SMC not connected — no fans")
+        return []
+    n_fans = client.read_key_uint32("FNum")
+    if n_fans is None:
+        log.debug("discover_smc_fans: FNum returned None — no SMC fan support")
+        return []
+    if not 0 < n_fans < 16:
+        log.warning(
+            "discover_smc_fans: FNum=%d out of plausible range, skipping",
+            n_fans,
+        )
+        return []
+    fans: list[FanSource] = []
+    for i in range(n_fans):
+        sample = client.read_fan_rpm(f"F{i}Ac")
+        if sample is None:
+            log.debug("discover_smc_fans: F%dAc returned None — skipping", i)
+            continue
+        fans.append(SmcFan(i, client=client))
+        log.info("discover_smc_fans: F%dAc reads %.0f RPM — registering", i, sample)
+    log.info("discover_smc_fans: %d fans discovered", len(fans))
+    return fans
+
+
+# =========================================================================
 # Factory
 # =========================================================================
 
@@ -211,27 +297,84 @@ def _gpu_chain_key_and_name() -> tuple[str, str]:
 
 
 def build_macos_sensors() -> BaselineSensors:
-    """Compose SMC temperature on top of the psutil + NVML baseline."""
+    """Compose HID + powermetrics + SMC on top of the psutil baseline.
+
+    Source priority by metric:
+
+    ============  ==================================================
+    CPU temp      HID (Apple Silicon) → SMC (Intel) → none
+    CPU usage     psutil (universal)
+    CPU freq      powermetrics (Apple Silicon, requires helper) → psutil
+    CPU power     powermetrics (Apple Silicon, requires helper) → none
+    GPU temp      HID (Apple Silicon) → SMC (Intel) → NVML (discrete)
+    GPU usage     powermetrics (Apple Silicon) → NVML (discrete)
+    GPU clock     powermetrics (Apple Silicon) → NVML (discrete)
+    GPU power     powermetrics (Apple Silicon) → NVML (discrete)
+    Fans          SMC FNum / F{i}Ac (universal where present)
+    ============  ==================================================
+
+    Every source short-circuits to ``None`` when its backend isn't
+    present, so the chain degrades gracefully on Intel (no HID), on
+    Apple Silicon without the powermetrics helper, etc.
+
+    **Hardware unverified** — per CLAUDE.md macOS protocol, a
+    release advertising these sources should wait for a reporter to
+    confirm on real hardware before shipping.
+    """
     client = SMCClient()
     client.open()                       # idempotent; failure → fallthrough
 
-    cpu: CpuSource = CpuSourceChain([SmcCpu(client=client), PsutilCpu()])
+    hid_snap = _HidSnapshot()
+    pm_snap = _PowermetricsSnapshot()
 
-    gpus: list[GpuSource] = list(discover_nvidia_gpus())
-    # Add the SMC GPU if no NVML GPU already covers it (Apple Silicon /
-    # Intel iGPU); the aggregator's vendor-key dedup keeps duplicates
-    # out when both report.
-    gpu_key, gpu_name = _gpu_chain_key_and_name()
-    if not any(g.key == gpu_key for g in gpus):
-        gpus.append(SmcGpu(client=client, key=gpu_key, name=gpu_name))
+    cpu: CpuSource = CpuSourceChain([
+        MacosHidCpu(hid_snap),          # HID die temp (Apple Silicon)
+        SmcCpu(client=client),          # SMC keys (Intel + AS opt-in)
+        PowermetricsCpu(pm_snap),       # power + freq (Apple Silicon)
+        PsutilCpu(),                    # universal usage + freq baseline
+    ])
 
-    if _apple_silicon_enabled():
-        log.info("macOS sensors: SMC chain ready (Apple Silicon keys ENABLED via "
-                 "TRCC_NEXT_APPLE_SILICON_SMC=1)")
-    else:
-        log.info("macOS sensors: SMC chain ready (Intel keys only; set "
-                 "TRCC_NEXT_APPLE_SILICON_SMC=1 to opt in to Apple Silicon)")
+    gpus: list[GpuSource] = _build_macos_gpus(client, hid_snap, pm_snap)
+    fans = discover_smc_fans(client)
+
+    log.info(
+        "macOS sensors: hid_ready=%s gpus=%d fans=%d "
+        "(Apple Silicon SMC keys %s)",
+        hid_layer_ready(), len(gpus), len(fans),
+        "ENABLED" if _apple_silicon_enabled() else "disabled",
+    )
 
     return BaselineSensors(
-        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[],
+        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=fans,
     )
+
+
+def _build_macos_gpus(
+    client: SmcClientPort,
+    hid_snap: _HidSnapshot,
+    pm_snap: _PowermetricsSnapshot,
+) -> list[GpuSource]:
+    """One GpuSourceChain per discovered GPU.
+
+    Apple Silicon: HID temp + powermetrics usage/clock/power blended
+    into a single ``apple:0`` chain — the aggregator's vendor key
+    dedup keeps these three sources from showing as separate GPUs.
+
+    Intel Mac with discrete NVIDIA: NVML reports a ``nvidia:N``
+    chain; SMC adds an ``intel:0`` iGPU chain.
+    """
+    gpu_key, gpu_name = _gpu_chain_key_and_name()
+    if platform.machine() == "arm64":
+        apple_chain = GpuSourceChain([
+            MacosHidGpu(hid_snap),
+            PowermetricsGpu(pm_snap, model_name=gpu_name),
+        ])
+        out: list[GpuSource] = [apple_chain]
+        out.extend(discover_nvidia_gpus())   # rare on Apple Silicon
+        return out
+
+    # Intel: NVML + an SMC iGPU entry when no NVML key collides with intel:0
+    gpus: list[GpuSource] = list(discover_nvidia_gpus())
+    if not any(g.key == gpu_key for g in gpus):
+        gpus.append(SmcGpu(client=client, key=gpu_key, name=gpu_name))
+    return gpus

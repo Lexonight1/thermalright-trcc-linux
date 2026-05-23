@@ -110,6 +110,28 @@ def _datatype_to_str(data_type: int) -> str:
     return struct.pack(">I", data_type).decode("latin-1", errors="replace")
 
 
+def _decode_fan_rpm_raw(data_type: int, size: int, raw: bytes) -> float | None:
+    """Decode fan RPM from an SMC payload, robust to Apple Silicon's
+    ``flt``/``fpe2`` typing inconsistency.
+
+    Apple Silicon ``F{i}Ac`` is usually advertised as 4-byte ``flt``
+    and reads sanely as a little-endian float (~1300-3000 RPM).
+    Intel uses ``fpe2``: big-endian uint16/4.  Mistyped keys (legacy
+    firmware quirks) sometimes lie about the ``flt`` label — when
+    the parsed float is implausible, fall back to fpe2 decoding.
+    """
+    if size < 2 or len(raw) < 2:
+        return None
+    dt = _datatype_to_str(data_type).rstrip()
+    parsed = _parse_smc_bytes(data_type, raw, size)
+    if dt == "flt" and size >= 4 and 0.0 <= parsed <= 20000.0 and parsed == parsed:
+        return float(parsed)
+    fpe2 = struct.unpack(">H", raw[:2])[0] / 4.0
+    if 0.0 <= fpe2 <= 20000.0:
+        return float(fpe2)
+    return None
+
+
 def _parse_smc_bytes(data_type: int, raw: bytes, size: int) -> float:
     """Decode an SMC payload.  Mirrors iSMC ``smc/conv.go`` fixed-point + int types.
 
@@ -242,6 +264,10 @@ class SmcClientPort(Protocol):
     def close(self) -> None: ...
 
     def read_key_float(self, key: str) -> float | None: ...
+
+    def read_key_uint32(self, key: str) -> int | None: ...
+
+    def read_fan_rpm(self, key: str) -> float | None: ...
 
 
 # =========================================================================
@@ -380,15 +406,49 @@ class SMCClient:
 
     def read_key_float(self, key: str) -> float | None:
         """Read a 4-char SMC key and return its decoded float value."""
-        if not self._conn or self._iokit is None or len(key) < 4:
+        info, raw, size = self._read_key_raw(key)
+        if info is None or raw is None:
             return None
+        return _parse_smc_bytes(int(info.dataType), raw, size)
+
+    def read_key_uint32(self, key: str) -> int | None:
+        """Read a uint8/16/32 SMC key (e.g. ``FNum`` fan count)."""
+        v = self.read_key_float(key)
+        if v is None:
+            return None
+        return int(v)
+
+    def read_fan_rpm(self, key: str) -> float | None:
+        """Read an SMC fan key (e.g. ``F0Ac``) with Apple Silicon's
+        ``flt``/``fpe2`` type quirks handled.
+
+        Apple Silicon often exposes ``F{i}Ac`` as a 4-byte ``flt``
+        with a sane RPM value; Intel Macs use ``fpe2`` packed as a
+        big-endian uint16/4.  Try the parsed float first; fall back
+        to fpe2 decoding when the float is out of the plausible
+        0-20000 RPM range.
+        """
+        info, raw, _size = self._read_key_raw(key)
+        if info is None or raw is None:
+            return None
+        return _decode_fan_rpm_raw(int(info.dataType), int(info.dataSize), raw)
+
+    def _read_key_raw(
+        self, key: str,
+    ) -> tuple[_SMCKeyData_keyInfo_t | None, bytes | None, int]:
+        """Common path: key info + READ_BYTES round-trip.  Returns
+        ``(info, raw_bytes, size)`` so callers can decode according
+        to the actual SMC ``dataType``.
+        """
+        if not self._conn or self._iokit is None or len(key) < 4:
+            return None, None, 0
         key_uint = _smc_key_to_uint32(key[:4])
 
         info = _SMCKeyData_keyInfo_t()
         if self._get_key_info(key_uint, info) != _kIOReturnSuccess:
-            return None
+            return None, None, 0
         if info.dataSize == 0:
-            return None
+            return None, None, 0
 
         # READ_BYTES input only carries key + cmd + keyInfo.dataSize.
         # Echoing dataType back upsets some SMC stacks.
@@ -398,11 +458,9 @@ class SMCClient:
         inp.data8 = _SMC_CMD_READ_BYTES
         inp.keyInfo.dataSize = info.dataSize
         if self._smc_call(inp, out) != _kIOReturnSuccess:
-            return None
+            return None, None, 0
 
-        return _parse_smc_bytes(
-            int(info.dataType), bytes(out.bytes), int(info.dataSize),
-        )
+        return info, bytes(out.bytes), int(info.dataSize)
 
 
 # =========================================================================
