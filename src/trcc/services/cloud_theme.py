@@ -82,17 +82,13 @@ class CloudThemeService:
         fallback thumbnail.
         """
         log.info("materialise: %s @ %dx%d", theme_id, *resolution)
-        mp4_cache = self._catalog.download_theme(theme_id)
-
-        target_dir = self._paths.cloud_theme_dir(*resolution)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        mp4_target = target_dir / f"{theme_id}.mp4"
-        if not mp4_target.is_file():
-            log.info("materialise: staging mp4 %s → %s", mp4_cache, mp4_target)
-            mp4_target.write_bytes(mp4_cache.read_bytes())
-        else:
-            log.debug("materialise: %s already staged", mp4_target)
+        # The catalog is wired to write directly into
+        # ``paths.cloud_theme_dir(w, h)`` (see App.__init__), so
+        # ``download_theme`` returns the exact path the GUI grid
+        # scans — no duplicate copy step needed.
+        mp4_target = self._catalog.download_theme(theme_id)
+        target_dir = mp4_target.parent
+        log.info("materialise: mp4 ready at %s", mp4_target)
 
         # First-frame static PNG (overwrites the catalog's stock thumb
         # only on first generation — legacy uses the first frame so the

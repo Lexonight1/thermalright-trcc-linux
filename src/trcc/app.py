@@ -29,6 +29,8 @@ from .core.events import (
     OverlayChanged,
     SensorsUpdated,
     SplitModeChanged,
+    VideoStarted,
+    VideoStopped,
 )
 from .core.led_models import LedRuntimeState
 from .core.models import Theme, Wire
@@ -101,7 +103,12 @@ class App:
         self.cloud_themes = CloudThemeService(
             catalog=CzhordeCatalog(
                 http=self.http,
-                cache_dir=platform.paths().data_dir() / "cloud_themes",
+                # Catalog cache layout is ``cache_dir/<resolution>/<id>.mp4``
+                # — identical to ``paths.cloud_theme_dir(w, h)``.  Point
+                # the catalog at ``data/web`` directly so downloaded
+                # mp4s land where the GUI grid + ``CloudThemeService``
+                # already look (no duplicate copy under cloud_themes/).
+                cache_dir=platform.paths().data_dir() / "web",
             ),
             paths=platform.paths(),
         )
@@ -327,6 +334,11 @@ class _DeviceRenderObserver:
             BrightnessChanged, MaskApplied, MaskPositionChanged,
             MaskVisibilityChanged, OverlayChanged, FitModeChanged,
             SplitModeChanged, SensorsUpdated,
+            # Video background events trigger a render so a fresh
+            # PlayVideo / StopVideo immediately shows the new bg on
+            # the preview + device, without waiting for the next
+            # sensor tick.
+            VideoStarted, VideoStopped,
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 

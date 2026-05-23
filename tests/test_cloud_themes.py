@@ -133,9 +133,13 @@ def test_materialise_writes_flat_layout(
     subdirectory, no per-theme trcc.json — those were a next/-only
     invention that broke the GUI's grid scan."""
     w, h = resolution
-    cache = tmp_path / "cache"
-    cache.mkdir()
     paths = FakePaths(tmp_path)
+    # Production wires the catalog cache_dir at ``paths.data_dir()/web``
+    # so downloads land directly in ``paths.cloud_theme_dir(w, h)``
+    # (the same dir the GUI grid scans).  Mirror that wiring here so
+    # the test pins the no-duplicate-copy invariant.
+    cache = paths.data_dir() / "web"
+    cache.mkdir(parents=True, exist_ok=True)
     http = FakeHttp()
     http.responses[
         f"http://www.czhorde.cc/tr/bj{w}{h}/a004.mp4"
