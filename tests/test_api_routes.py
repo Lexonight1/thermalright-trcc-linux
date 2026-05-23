@@ -152,6 +152,105 @@ def test_openapi_schema_loads(api_client: TestClient) -> None:
 
 
 # =========================================================================
+# auth — token + pairing
+# =========================================================================
+
+
+def test_health_endpoint_is_unauthed(api_client: TestClient) -> None:
+    """``/health`` is reachable without any token — it's the liveness
+    probe LB / monitoring hits."""
+    from trcc.ui.api.main import configure_auth
+    configure_auth("secret-token")
+    try:
+        resp = api_client.get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert "version" in body
+    finally:
+        configure_auth(None)
+
+
+def test_request_without_token_rejected_when_auth_enforced(
+    api_client: TestClient,
+) -> None:
+    """When ``_api_token`` is set, every non-exempt path requires a
+    matching ``X-API-Token`` header.  401 otherwise."""
+    from trcc.ui.api.main import configure_auth
+    configure_auth("secret-token")
+    try:
+        resp = api_client.get("/devices")
+        assert resp.status_code == 401
+        assert resp.json() == {"detail": "Invalid token"}
+    finally:
+        configure_auth(None)
+
+
+def test_request_with_correct_token_accepted(api_client: TestClient) -> None:
+    from trcc.ui.api.main import configure_auth
+    configure_auth("secret-token")
+    try:
+        resp = api_client.get(
+            "/devices", headers={"X-API-Token": "secret-token"},
+        )
+        assert resp.status_code == 200
+    finally:
+        configure_auth(None)
+
+
+def test_request_with_wrong_token_rejected(api_client: TestClient) -> None:
+    from trcc.ui.api.main import configure_auth
+    configure_auth("secret-token")
+    try:
+        resp = api_client.get(
+            "/devices", headers={"X-API-Token": "wrong-token"},
+        )
+        assert resp.status_code == 401
+    finally:
+        configure_auth(None)
+
+
+def test_pair_disabled_without_pairing_code(api_client: TestClient) -> None:
+    """``/pair`` returns 503 when ``set_pairing_code`` wasn't called."""
+    from trcc.ui.api.main import configure_auth, set_pairing_code
+    configure_auth("secret")
+    set_pairing_code(None)
+    try:
+        resp = api_client.post("/pair", params={"code": "ABCDEF"})
+        assert resp.status_code == 503
+    finally:
+        configure_auth(None)
+
+
+def test_pair_exchanges_code_for_token(api_client: TestClient) -> None:
+    """Correct pairing code → 200 + the persistent API token."""
+    from trcc.ui.api.main import configure_auth, set_pairing_code
+    configure_auth("the-real-token")
+    set_pairing_code("ABCDEF")
+    try:
+        resp = api_client.post("/pair", params={"code": "ABCDEF"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["token"] == "the-real-token"
+    finally:
+        configure_auth(None)
+        set_pairing_code(None)
+
+
+def test_pair_rejects_wrong_code(api_client: TestClient) -> None:
+    from trcc.ui.api.main import configure_auth, set_pairing_code
+    configure_auth("the-real-token")
+    set_pairing_code("ABCDEF")
+    try:
+        resp = api_client.post("/pair", params={"code": "WRONG1"})
+        assert resp.status_code == 403
+    finally:
+        configure_auth(None)
+        set_pairing_code(None)
+
+
+# =========================================================================
 # devices router
 # =========================================================================
 

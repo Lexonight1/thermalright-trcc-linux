@@ -130,9 +130,78 @@ def gui() -> None:
 def api(
     host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind address"),
     port: int = typer.Option(8080, "--port", "-p", help="Bind port"),
+    token: str | None = typer.Option(
+        None, "--token", "-t",
+        help=(
+            "Persistent API token.  When set, every request must carry "
+            "`X-API-Token: <token>`.  When omitted with --host 127.0.0.1, "
+            "the API is unauth'd (loopback dev mode).  Omitting it with "
+            "any other --host is REJECTED — refusing to bind a public "
+            "interface without auth.  Use --token random:<n> to generate."
+        ),
+    ),
+    pair: bool = typer.Option(
+        False, "--pair",
+        help=(
+            "Show a one-time 6-char pairing code in the terminal.  "
+            "Remote devices POST it to /pair to exchange for the API "
+            "token.  Requires --token."
+        ),
+    ),
 ) -> None:
-    """Launch the REST API (FastAPI + uvicorn)."""
-    from ..api.main import serve
+    """Launch the REST API (FastAPI + uvicorn).
+
+    Three operating modes:
+
+      * ``trcc api`` — loopback only (127.0.0.1), no auth.  Dev default.
+      * ``trcc api --host 0.0.0.0 --token <secret>`` — public bind,
+        token required on every request.  Use a long random secret.
+      * ``trcc api --host 0.0.0.0 --token <secret> --pair`` — same as
+        above plus the pairing endpoint; a 6-char code is shown so a
+        remote app can fetch the token without out-of-band copy/paste.
+
+    Refusal: ``--host`` other than ``127.0.0.1`` / ``localhost`` without
+    ``--token`` exits 2 — would otherwise expose every endpoint to LAN.
+    """
+    import secrets
+
+    from ..api.main import configure_auth, serve, set_pairing_code
+
+    is_loopback = host in {"127.0.0.1", "localhost", "::1"}
+    resolved_token: str | None = token
+    if resolved_token and resolved_token.startswith("random:"):
+        try:
+            n = int(resolved_token.split(":", 1)[1])
+        except (ValueError, IndexError):
+            n = 32
+        resolved_token = secrets.token_urlsafe(max(16, n))
+        typer.echo(f"Generated random token: {resolved_token}")
+
+    if not is_loopback and not resolved_token:
+        typer.echo(
+            f"ERROR: refusing to bind {host} without --token — every "
+            "endpoint would be reachable from the LAN.  Re-run with "
+            "--token <secret> (or --token random:32 to generate one).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    configure_auth(resolved_token)
+    if pair:
+        if not resolved_token:
+            typer.echo(
+                "ERROR: --pair requires --token (the pairing endpoint "
+                "returns the token, so the token must be set).",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        code = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZ23456789")
+                       for _ in range(6))
+        set_pairing_code(code)
+        typer.echo("")
+        typer.echo(f"Pairing code: {code}  (POST /pair?code={code})")
+        typer.echo("")
+
     serve(host=host, port=port)
 
 
