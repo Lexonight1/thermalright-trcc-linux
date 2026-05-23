@@ -498,6 +498,10 @@ class LoadTheme(Command[ThemeResult]):
         # come out of the DC binary reader's trailer.  Apply each so
         # DisplayService picks them up on the next render — without
         # this, themes with masks render unmasked or at the wrong offset.
+        # Legacy themes (config.json shape) can carry an attached mask
+        # under a top-level ``mask`` key pointing to a mask subdir +
+        # ``mask_position`` (x, y) + ``mask_visible`` bool.  Same fields
+        # come out of the DC binary reader's trailer.
         embedded_mask = theme.config.get("mask")
         if isinstance(embedded_mask, str) and embedded_mask:
             mask_path = Path(embedded_mask)
@@ -510,22 +514,49 @@ class LoadTheme(Command[ThemeResult]):
                     "LoadTheme: theme %s declares mask %s but ApplyMask "
                     "failed: %s", theme.name, mask_path, apply.message,
                 )
+
+        # Theme's OWN 01.png mask: the DC trailer's mask_position is
+        # the mask CENTER on the canvas; the renderer wants the
+        # TOP-LEFT.  Same conversion ApplyMask runs — port the legacy
+        # behavior here so a freshly-loaded theme renders its bundled
+        # mask at the right spot, not stored-center-as-top-left.
+        from ..services.overlay import OverlayService
+        theme_mask = theme.path / _LEGACY_MASK_FILENAME
         pos = theme.config.get("mask_position")
-        if isinstance(pos, (list, tuple)) and len(pos) == 2:
-            try:
-                px, py = int(pos[0]), int(pos[1])
-            except (TypeError, ValueError):
-                px, py = 0, 0
-            SetMaskPosition(key=self.key, x=px, y=py).execute(app)
-            log.info("LoadTheme: mask position set to (%d, %d) for %s",
-                     px, py, theme.name)
+        if (
+            theme_mask.is_file() and isinstance(pos, (list, tuple))
+            and len(pos) == 2
+        ):
+            device = app.devices.get(self.key)
+            canvas: tuple[int, int] = (0, 0)
+            if device is not None and device.profile is not None:
+                canvas = device.profile.resolution
+            if canvas != (0, 0) and app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
+                try:
+                    img = app._renderer.open_image(theme_mask)  # pyright: ignore[reportPrivateUsage]
+                    mw, mh = app._renderer.surface_size(img)  # pyright: ignore[reportPrivateUsage]
+                except Exception as e:
+                    log.warning(
+                        "LoadTheme: failed to size %s (%s) — using stored center",
+                        theme_mask, e,
+                    )
+                    mw, mh = (0, 0)
+                if mw > 0 and mh > 0:
+                    px, py = OverlayService.calculate_mask_position(
+                        theme.path, (mw, mh), canvas,
+                    )
+                    SetMaskPosition(key=self.key, x=px, y=py).execute(app)
+                    log.info(
+                        "LoadTheme: %s mask %dx%d on %dx%d canvas → "
+                        "top-left (%d, %d) [center stored = %r]",
+                        theme.name, mw, mh, canvas[0], canvas[1], px, py,
+                        list(pos),
+                    )
         # NB: do NOT dispatch SetMaskVisible from theme.config here.
         # Legacy's ``OverlayService.theme_mask_visible`` defaults True
         # and only toggles via explicit user action — the DC trailer's
         # ``mask_visible`` field is a theme-design metadata flag
         # ("this theme had a mask"), not a runtime visibility override.
-        # Binding the two strands persists False from any DC-truncation
-        # path and the mask never re-appears.
 
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:

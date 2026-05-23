@@ -226,7 +226,15 @@ class App:
             self._display.invalidate(key)
 
     def close(self) -> None:
-        """Disconnect every attached device + stop the hotplug listener."""
+        """Disconnect every attached device + stop background threads.
+
+        The metrics_loop, hotplug listener, and any open device transports
+        all hold OS resources (threads, file descriptors, USB handles).
+        Stopping them explicitly lets the process exit cleanly when the
+        UI quits — otherwise a polling thread can keep the interpreter
+        alive past ``QApplication.quit()``.
+        """
+        self.metrics_loop.stop()
         self.stop_hotplug()
         for key in list(self.devices):
             self.detach(key)
