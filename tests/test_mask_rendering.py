@@ -140,10 +140,10 @@ def _info() -> ProductInfo:
 
 
 def _theme_with_mask(tmp_home: Path) -> Theme:
-    """Theme directory with a real mask.png file ThemeService.mask_path() sees."""
+    """Theme directory with a real 01.png file ThemeService.mask_path() sees."""
     theme_dir = tmp_home / "themes" / "with_mask"
     theme_dir.mkdir(parents=True)
-    (theme_dir / "mask.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (theme_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     return Theme(path=theme_dir, name="with_mask",
                  resolution=(320, 320), config={"elements": []})
 
@@ -224,7 +224,7 @@ def test_user_override_replaces_theme_mask(
         f"expected user override mask in open_image calls, got {opened}"
     )
     # Theme's bundled mask must NOT have been opened.
-    theme_mask = tmp_home / "themes" / "with_mask" / "mask.png"
+    theme_mask = tmp_home / "themes" / "with_mask" / "01.png"
     assert theme_mask not in opened, (
         "user override must replace, not stack with, theme mask"
     )
@@ -265,7 +265,7 @@ def test_missing_user_mask_falls_back_to_theme(
         )
 
     opened = [args[0] for name, args in renderer.calls if name == "open_image"]
-    theme_mask = tmp_home / "themes" / "with_mask" / "mask.png"
+    theme_mask = tmp_home / "themes" / "with_mask" / "01.png"
     assert theme_mask in opened
     assert any("does not exist" in r.message for r in caplog.records)
 
@@ -277,7 +277,7 @@ def test_no_mask_anywhere_skips_composite(
     display: DisplayService, renderer: RecordingRenderer,
     tmp_home: Path,
 ) -> None:
-    """Theme without a mask.png and no override → no mask composite."""
+    """Theme without a 01.png and no override → no mask composite."""
     display.build_frame(
         info=_info(), theme=_theme_without_mask(tmp_home), sensors={},
     )

@@ -174,6 +174,63 @@ class RawFrame:
     height: int
 
 
+class ThemeDir:
+    """Standard TRCC theme directory layout — pure domain value object.
+
+    Ported verbatim from legacy ``core/models/theme.py``: the names are
+    Windows-TRCC convention and ``ThemeService`` MUST use these (never
+    a "candidates list") so we don't render ``Theme.png`` — which is
+    the panel thumbnail, not the background.
+
+      td.bg       → 00.png        (rendered background)
+      td.mask     → 01.png        (mask overlay)
+      td.preview  → Theme.png     (panel thumbnail; never rendered)
+      td.dc       → config1.dc    (binary overlay layout)
+      td.zt       → Theme.zt      (legacy JPEG-sequence animation)
+      td.json     → trcc.json     (next/-native JSON config)
+      td.legacy_json → config.json (legacy JSON, read for fallback)
+    """
+
+    __slots__ = ("path",)
+
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+
+    @property
+    def bg(self) -> Path:
+        return self.path / "00.png"
+
+    @property
+    def mask(self) -> Path:
+        return self.path / "01.png"
+
+    @property
+    def preview(self) -> Path:
+        return self.path / "Theme.png"
+
+    @property
+    def dc(self) -> Path:
+        return self.path / "config1.dc"
+
+    @property
+    def json(self) -> Path:
+        return self.path / "trcc.json"
+
+    @property
+    def legacy_json(self) -> Path:
+        return self.path / "config.json"
+
+    @property
+    def zt(self) -> Path:
+        return self.path / "Theme.zt"
+
+    def __truediv__(self, other: str) -> Path:
+        return self.path / other
+
+    def __str__(self) -> str:
+        return str(self.path)
+
+
 @dataclass(frozen=True, slots=True)
 class Theme:
     """A theme loaded from disk — path + config blob."""

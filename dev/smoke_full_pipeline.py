@@ -141,7 +141,6 @@ def _run_steps() -> list[_Step]:
     the rest.
     """
     from trcc.core.commands import (
-        ConnectDevice,
         DiscoverDevices,
         EnableLedTestMode,
         SetBrightness,
@@ -156,7 +155,6 @@ def _run_steps() -> list[_Step]:
     )
     from trcc.core.events import (
         BrightnessChanged,
-        DeviceConnected,
         Event,
         GpuDeviceChanged,
         LanguageChanged,

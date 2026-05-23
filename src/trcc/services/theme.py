@@ -32,7 +32,7 @@ import zipfile
 from pathlib import Path
 
 from ..core.errors import ThemeError
-from ..core.models import Theme
+from ..core.models import Theme, ThemeDir
 from . import _dc as Dc
 
 log = logging.getLogger(__name__)
@@ -52,20 +52,13 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # next/'s shape on load but don't write this shape back.
 _LEGACY_CONFIG_FILE = "config.json"
 _DC_CONFIG_FILE = "config1.dc"
-_BACKGROUND_CANDIDATES = (
-    # next/ native names
-    "background.mp4", "background.mov", "background.webm",
-    "background.png", "background.jpg", "background.jpeg",
-    "background.zt",
-    # Legacy theme naming (Windows TRCC) — Theme.zt is the JPEG-sequence
-    # archive UCVideoCut writes, opaque to anyone who doesn't speak it.
-    "Theme.mp4", "Theme.mov", "Theme.webm",
-    "Theme.png", "Theme.jpg", "Theme.jpeg",
-    "Theme.zt",
-)
-_MASK_CANDIDATES = (
-    "mask.png", "mask.jpg", "mask.jpeg",
-    "Mask.png", "Mask.jpg", "Mask.jpeg",
+# Video-background filenames TRCC actually ships.  ``td.bg`` (00.png)
+# is the static fallback rendered when no video is present; videos
+# live alongside it as ``Theme.{mp4,mov,webm}`` or ``Theme.zt`` (the
+# JPEG-sequence archive UCVideoCut writes).  No ``background.*`` —
+# that name never existed in legacy or Windows TRCC.
+_VIDEO_CANDIDATES = (
+    "Theme.mp4", "Theme.mov", "Theme.webm", "Theme.zt",
 )
 
 
@@ -174,20 +167,35 @@ class ThemeService:
         return target
 
     def background_path(self, theme: Theme) -> Path | None:
-        """Return the theme's background path (video or image), or None."""
-        for candidate in _BACKGROUND_CANDIDATES:
-            path = theme.path / candidate
-            if path.exists():
-                return path
+        """Return the theme's background — ``00.png`` or a video file.
+
+        Strict legacy convention: the static background is always
+        ``00.png``.  Videos live alongside as ``Theme.{mp4,mov,webm,zt}``.
+        ``Theme.png`` is the panel thumbnail and MUST NOT be returned
+        here (renderer would ship the thumbnail to the device).
+        """
+        td = ThemeDir(theme.path)
+        for candidate in _VIDEO_CANDIDATES:
+            video = theme.path / candidate
+            if video.exists():
+                return video
+        if td.bg.exists():
+            return td.bg
         return None
 
     def mask_path(self, theme: Theme) -> Path | None:
-        """Return the theme's mask image path, or None if absent."""
-        for candidate in _MASK_CANDIDATES:
-            path = theme.path / candidate
-            if path.exists():
-                return path
-        return None
+        """Return the theme's mask overlay (``01.png``) or None."""
+        td = ThemeDir(theme.path)
+        return td.mask if td.mask.exists() else None
+
+    def preview_path(self, theme: Theme) -> Path | None:
+        """Return the theme's panel thumbnail (``Theme.png``) or None.
+
+        The GUI's theme browser uses this for grid tiles — distinct from
+        ``background_path`` which is what the renderer ships to the LCD.
+        """
+        td = ThemeDir(theme.path)
+        return td.preview if td.preview.exists() else None
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
         """Archive a theme directory into a deflate-compressed zip.
@@ -396,8 +404,8 @@ def _legacy_json_to_next_config(raw: dict, theme_name: str) -> dict:
     Output is next/'s theme config (``elements`` list + flag fields)
     plus a ``mask`` passthrough so ``LoadTheme`` can dispatch
     ``ApplyMask`` for themes that carry an attached mask.  Background
-    discovery still walks ``_BACKGROUND_CANDIDATES`` so the explicit
-    ``background`` path is informational only.
+    discovery uses ``ThemeDir`` (``00.png`` only) so the explicit
+    ``background`` path here is informational only.
     """
     elements: list[dict] = []
     dc = raw.get("dc")

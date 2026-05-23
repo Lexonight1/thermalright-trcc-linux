@@ -400,8 +400,10 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
                 "metric": metric_key, "format": fmt, **font,
             })
 
-    # Optional 0xDC trailer — carries overlay rect + mask flags.  Same
-    # block legacy DcParser reads after the 13 positions.
+    # Optional 0xDC trailer — carries overlay rect + mask flags + the
+    # clock/date/weekday block.  Same fields legacy DcParser reads
+    # after the 13 positions; ported verbatim to avoid silently losing
+    # the time/date/weekday elements 0xDC themes carry.
     overlay_enabled = True
     mask_visible = False
     mask_x = 0
@@ -419,6 +421,47 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         mask_x = r.read_int32()
         mask_y = r.read_int32()
     except (struct.error, IndexError):
+        pass
+
+    # Clock/date/weekday block.  Flag10 is the master enable; flag11
+    # = date, flag12 = time, flag13 = weekday.  Each carries its own
+    # font block + (x, y) coordinates.  Bare-minimum parse — emit
+    # next/-shape clock elements so OverlayService renders them on
+    # 0xDC themes the same as legacy did.
+    try:
+        flag_clock_master = r.read_bool()
+        flag_date = r.read_bool()
+        flag_time = r.read_bool()
+        date_format = r.read_int32()  # noqa: F841 — per-element format stays user-pref
+        time_format = r.read_int32()  # noqa: F841
+        date_x = r.read_int32()
+        date_y = r.read_int32()
+        time_x = r.read_int32()
+        time_y = r.read_int32()
+        date_font = _read_dd_font(r)
+        time_font = _read_dd_font(r)
+        flag_weekday = r.read_bool()
+        weekday_x = r.read_int32()
+        weekday_y = r.read_int32()
+        weekday_font = _read_dd_font(r)
+        if flag_clock_master:
+            if flag_date:
+                elements.append({
+                    "type": "clock", "source": "date",
+                    "x": date_x, "y": date_y, **date_font,
+                })
+            if flag_time:
+                elements.append({
+                    "type": "clock", "source": "time",
+                    "x": time_x, "y": time_y, **time_font,
+                })
+            if flag_weekday:
+                elements.append({
+                    "type": "clock", "source": "weekday",
+                    "x": weekday_x, "y": weekday_y, **weekday_font,
+                })
+    except (struct.error, IndexError):
+        # Trailer is optional — older 0xDC themes don't have it.
         pass
 
     return {

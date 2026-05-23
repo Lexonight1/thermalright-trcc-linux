@@ -349,7 +349,7 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     # Build a theme dir with a background image
     theme_dir = tmp_home / "themes" / "static"
     theme_dir.mkdir(parents=True)
-    (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (theme_dir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     (theme_dir / "trcc.json").write_text(
         '{"name":"static","width":320,"height":320,"elements":[]}',
     )

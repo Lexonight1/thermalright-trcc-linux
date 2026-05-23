@@ -106,16 +106,36 @@ def test_list_finds_both_formats(tmp_path: Path) -> None:
     assert "C" not in names
 
 
-def test_background_path_finds_legacy_theme_png(tmp_path: Path) -> None:
+def test_background_path_finds_00_png(tmp_path: Path) -> None:
+    """Legacy / cloud convention: 00.png IS the rendered background.
+    Theme.png is the panel thumbnail and must NEVER be a render target."""
     theme = tmp_path / "Legacy"
     theme.mkdir()
     (theme / "trcc.json").write_text('{"elements": []}')
-    (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")   # magic only
+    (theme / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")       # render target
+    (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")    # thumbnail only
 
     svc = ThemeService()
     t = svc.load(theme)
 
-    assert svc.background_path(t) == theme / "Theme.png"
+    assert svc.background_path(t) == theme / "00.png"
+    assert svc.preview_path(t) == theme / "Theme.png"
+
+
+def test_background_path_returns_none_when_only_thumbnail(
+    tmp_path: Path,
+) -> None:
+    """Theme.png alone is not enough — rendering the thumbnail would
+    ship preview-only artwork to the device."""
+    theme = tmp_path / "ThumbOnly"
+    theme.mkdir()
+    (theme / "trcc.json").write_text('{"elements": []}')
+    (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    svc = ThemeService()
+    t = svc.load(theme)
+
+    assert svc.background_path(t) is None
 
 
 def test_loads_pre_cutover_filename(tmp_path: Path) -> None:
@@ -205,17 +225,19 @@ def test_list_finds_pre_cutover_themes(tmp_path: Path) -> None:
     assert {t.name for t in themes} == {"OldStill"}
 
 
-def test_background_path_prefers_native_over_legacy(tmp_path: Path) -> None:
+def test_background_path_prefers_video_over_static(tmp_path: Path) -> None:
+    """When both Theme.mp4 (video) and 00.png (static) exist, the video
+    is the background — matches legacy ``td.video or td.bg`` preference."""
     theme = tmp_path / "Both"
     theme.mkdir()
     (theme / "trcc.json").write_text('{"elements": []}')
-    (theme / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-    (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (theme / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (theme / "Theme.mp4").write_bytes(b"\x00" * 16)
 
     svc = ThemeService()
     t = svc.load(theme)
 
-    assert svc.background_path(t) == theme / "background.png"
+    assert svc.background_path(t) == theme / "Theme.mp4"
 
 
 # Keep the unused `struct` import alive even if tests don't use it directly —
