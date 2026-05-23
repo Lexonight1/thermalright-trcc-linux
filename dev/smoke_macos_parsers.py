@@ -242,7 +242,7 @@ def main() -> int:
         except AssertionError as e:
             print(f"  ✗ FAIL: {e}")
             return 1
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  ✗ ERROR: {type(e).__name__}: {e}")
             return 1
     print("-" * 60)
