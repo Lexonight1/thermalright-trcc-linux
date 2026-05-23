@@ -93,6 +93,10 @@ class SystemInfoPanel(QWidget):
         self._color = CATEGORY_COLORS.get(config.category_id, '#888888')
         self._value_labels: list[QLabel] = []
         self._selector_btns: list[QPushButton] = []
+        log.info(
+            "SystemInfoPanel.__init__: name=%r category=%d rows=%d color=%s",
+            config.name, config.category_id, len(config.sensors), self._color,
+        )
 
         # Load background image (no tiling — matches Windows ImageLayout.None)
         img_name = CATEGORY_IMAGES.get(config.category_id, 'sysinfo_custom.png')
@@ -169,43 +173,67 @@ class SystemInfoPanel(QWidget):
         """Selector-button slot — reads row_idx from sender's property."""
         sender = self.sender()
         if sender is None:
+            log.debug("SystemInfoPanel._on_selector_clicked: sender is None")
             return
         row_idx = sender.property('row_idx')
+        log.info("SystemInfoPanel._on_selector_clicked: panel=%r row=%s",
+                 self.config.name, row_idx)
         if row_idx is not None:
             self.sensor_select_requested.emit(self, row_idx)
 
     def _on_delete_clicked(self) -> None:
         """Delete-button slot — re-emit delete_requested with this panel."""
+        log.info("SystemInfoPanel._on_delete_clicked: panel=%r", self.config.name)
         self.delete_requested.emit(self)
 
     def _on_name_edited(self) -> None:
         """editingFinished slot — emit name_changed with the new text."""
-        self.name_changed.emit(self, self._name_edit.text())
+        new_name = self._name_edit.text()
+        log.info("SystemInfoPanel._on_name_edited: %r → %r",
+                 self.config.name, new_name)
+        self.name_changed.emit(self, new_name)
 
     def update_values(self, sensor_readings: dict[str, float]):
         """Update displayed values from sensor_id → value mapping."""
+        # Per-tick — DEBUG so a default INFO run isn't drowned.
+        rendered: list[str] = []
         for i, binding in enumerate(self.config.sensors):
             if i >= len(self._value_labels):
                 break
             if not binding.sensor_id:
                 self._value_labels[i].setText('--')
+                rendered.append(f"{binding.label}=<unbound>")
                 continue
             value = sensor_readings.get(binding.sensor_id)
             if value is None:
                 self._value_labels[i].setText('--')
+                rendered.append(f"{binding.label}={binding.sensor_id}=<missing>")
             else:
-                self._value_labels[i].setText(self._format_value(value, binding.unit))
+                txt = self._format_value(value, binding.unit)
+                self._value_labels[i].setText(txt)
+                rendered.append(f"{binding.label}={binding.sensor_id}={txt}")
+        log.debug(
+            "SystemInfoPanel.update_values %r: readings=%d → %s",
+            self.config.name, len(sensor_readings), "; ".join(rendered),
+        )
 
     def set_temp_unit(self, unit: int):
         """Set temperature unit. 0=Celsius, 1=Fahrenheit."""
+        log.info("SystemInfoPanel.set_temp_unit %r: unit=%d (%s)",
+                 self.config.name, unit, "F" if unit == 1 else "C")
         self._temp_unit = unit
 
     def update_binding(self, row: int, binding: SensorBinding):
         """Update a row's sensor binding after picker selection."""
+        log.info("SystemInfoPanel.update_binding %r: row=%d → %s (%s) unit=%s",
+                 self.config.name, row, binding.label,
+                 binding.sensor_id or "<unbound>", binding.unit)
         # Row labels are baked into the PNG backgrounds
 
     def set_selected(self, selected: bool):
         """Set selection state (white border when selected)."""
+        log.debug("SystemInfoPanel.set_selected %r: %s",
+                  self.config.name, selected)
         self._selected = selected
         self.update()
 
@@ -219,6 +247,7 @@ class SystemInfoPanel(QWidget):
             painter.end()
 
     def mousePressEvent(self, event):
+        log.debug("SystemInfoPanel.mousePressEvent: panel=%r", self.config.name)
         self.clicked.emit(self)
 
     def _format_value(self, value: float, unit: str) -> str:
@@ -272,6 +301,7 @@ class UCSystemInfo(QWidget):
         self._page_label: QLabel | None = None
         self._slot_widgets: list[QWidget] = []
         self._selected_panel: SystemInfoPanel | None = None
+        log.info("UCSystemInfo.__init__: size=%dx%d", w, h)
 
         # No local timer — observers of Topic.METRICS dispatch updates via
         # update_from_metrics().  Trcc's PollingMetricsLoop is the single
@@ -281,6 +311,7 @@ class UCSystemInfo(QWidget):
 
     def _setup_ui(self):
         """Build from config, auto-map empty bindings."""
+        log.info("UCSystemInfo._setup_ui: loading sysinfo_config")
         # Background image (sidebar_sysinfo_bg.png — Windows UCSystemInfoOptions)
         # ImageLayout.None in Windows — draw once, no tiling
         _, _, w, h = Layout.SYSINFO_PANEL
@@ -290,11 +321,19 @@ class UCSystemInfo(QWidget):
         self._config.load()
         self._config.auto_map(self._enumerator)
         self._config.save()
+        log.info(
+            "UCSystemInfo._setup_ui: configured panels=%d",
+            len(self._config.panels),
+        )
 
         self._rebuild_grid()
 
     def _rebuild_grid(self):
         """Clear and rebuild all panels from the current config."""
+        log.info(
+            "UCSystemInfo._rebuild_grid: page=%d configured=%d",
+            self._page, len(self._config.panels),
+        )
         # Remove all existing panel widgets
         for panel in self._panels_list:
             panel.setParent(None)
@@ -376,6 +415,11 @@ class UCSystemInfo(QWidget):
         # Page navigation
         self._setup_page_nav(total_panels)
 
+        log.info(
+            "UCSystemInfo._rebuild_grid: rendered page=%d visible=%d total=%d",
+            self._page, len(visible_panels), total_panels,
+        )
+
         # Select first panel by default
         if self._panels_list:
             self._on_panel_clicked(self._panels_list[0])
@@ -384,6 +428,10 @@ class UCSystemInfo(QWidget):
         """Create/update page navigation buttons."""
         total_pages = max(1, (total_panels + PANELS_PER_PAGE) // PANELS_PER_PAGE)
         show_nav = total_pages > 1
+        log.info(
+            "UCSystemInfo._setup_page_nav: total_panels=%d total_pages=%d show_nav=%s",
+            total_panels, total_pages, show_nav,
+        )
 
         # Clean up old nav
         if self._page_prev:
@@ -455,17 +503,23 @@ class UCSystemInfo(QWidget):
 
     def _change_page(self, direction: int):
         """Navigate pages (-1 = prev, +1 = next)."""
+        old = self._page
         self._page += direction
+        log.info("UCSystemInfo._change_page: %d → %d (dir=%+d)",
+                 old, self._page, direction)
         self._rebuild_grid()
 
     def _on_prev_page(self) -> None:
+        log.info("UCSystemInfo._on_prev_page: page=%d", self._page)
         self._change_page(-1)
 
     def _on_next_page(self) -> None:
+        log.info("UCSystemInfo._on_next_page: page=%d", self._page)
         self._change_page(1)
 
     def _on_panel_clicked(self, panel: SystemInfoPanel):
         """Select a panel (highlight with white border)."""
+        log.info("UCSystemInfo._on_panel_clicked: %r", panel.config.name)
         if self._selected_panel:
             self._selected_panel.set_selected(False)
         panel.set_selected(True)
@@ -481,6 +535,10 @@ class UCSystemInfo(QWidget):
         current_id = ''
         if row < len(panel.config.sensors):
             current_id = panel.config.sensors[row].sensor_id
+        log.info(
+            "UCSystemInfo._on_selector_clicked: panel=%r row=%d current=%r",
+            panel.config.name, row, current_id or "<unbound>",
+        )
 
         dialog = SensorPickerDialog(self._enumerator, self)
         if current_id:
@@ -495,15 +553,26 @@ class UCSystemInfo(QWidget):
                         sensor_id=sensor.id,
                         unit=sensor.unit,
                     )
+                    log.info(
+                        "UCSystemInfo._on_selector_clicked: bound %r row=%d → %s",
+                        panel.config.name, row, sensor.id,
+                    )
                     panel.update_binding(row, panel.config.sensors[row])
                     self._config.save()
+            else:
+                log.info("UCSystemInfo._on_selector_clicked: dialog accepted but no sensor selected")
+        else:
+            log.info("UCSystemInfo._on_selector_clicked: dialog cancelled")
 
     def _handle_add_btn_press(self, _event) -> None:
         """mousePressEvent handler for the add-panel button — drops the event arg."""
+        log.info("UCSystemInfo._handle_add_btn_press: add-btn pressed")
         self._on_add_clicked()
 
     def _on_add_clicked(self):
         """Add a new custom panel."""
+        log.info("UCSystemInfo._on_add_clicked: existing=%d",
+                 len(self._config.panels))
         new_panel = PanelConfig(
             category_id=0, name="Custom",
             sensors=[
@@ -523,13 +592,21 @@ class UCSystemInfo(QWidget):
 
     def _on_delete_clicked(self, panel: SystemInfoPanel):
         """Delete a custom panel."""
+        log.info("UCSystemInfo._on_delete_clicked: %r", panel.config.name)
         if panel.config in self._config.panels:
             self._config.panels.remove(panel.config)
             self._config.save()
             self._rebuild_grid()
+        else:
+            log.warning(
+                "UCSystemInfo._on_delete_clicked: %r not in config — stale signal?",
+                panel.config.name,
+            )
 
     def _on_name_changed(self, panel: SystemInfoPanel, new_name: str):
         """Update custom panel name."""
+        log.info("UCSystemInfo._on_name_changed: %r → %r",
+                 panel.config.name, new_name)
         panel.config.name = new_name
         self._config.save()
 
@@ -540,6 +617,7 @@ class UCSystemInfo(QWidget):
         ``update_from_metrics`` dispatched by trcc_app's main-thread
         signal.  The single publisher owns the cadence — no local timer.
         """
+        log.info("UCSystemInfo.start_updates: no-op (Topic.METRICS observer)")
 
     def stop_updates(self) -> None:
         """No-op — retained for cleanup-call compatibility.
@@ -547,9 +625,12 @@ class UCSystemInfo(QWidget):
         The panel is a Topic.METRICS observer now; the single publisher
         owns the cadence and lifecycle, so there's nothing to stop here.
         """
+        log.info("UCSystemInfo.stop_updates: no-op (Topic.METRICS observer)")
 
     def set_temp_unit(self, unit: int):
         """Set temperature unit on all panels. 0=Celsius, 1=Fahrenheit."""
+        log.info("UCSystemInfo.set_temp_unit: %d → %d (panels=%d)",
+                 self._temp_unit, unit, len(self._panels_list))
         self._temp_unit = unit
         for panel in self._panels_list:
             panel.set_temp_unit(unit)
@@ -562,5 +643,23 @@ class UCSystemInfo(QWidget):
         filtering through the typed DTO.  Same source as the LCD overlay,
         same source as the LED engine.
         """
+        readings = metrics.readings
+        # Per-tick — DEBUG; warn loudly if either side is empty.
+        if not self._panels_list:
+            log.warning(
+                "UCSystemInfo.update_from_metrics: _panels_list empty — "
+                "no panels configured; readings=%d available", len(readings),
+            )
+            return
+        if not readings:
+            log.warning(
+                "UCSystemInfo.update_from_metrics: readings empty — "
+                "publisher delivered no sensor data; panels=%d",
+                len(self._panels_list),
+            )
+        log.debug(
+            "UCSystemInfo.update_from_metrics: panels=%d readings=%d keys=%s",
+            len(self._panels_list), len(readings), sorted(readings)[:10],
+        )
         for panel in self._panels_list:
-            panel.update_values(metrics.readings)
+            panel.update_values(readings)

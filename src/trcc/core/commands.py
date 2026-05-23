@@ -919,18 +919,28 @@ class PlayVideo(Command[VideoResult]):
     fps: int = 15
 
     def execute(self, app: App) -> VideoResult:
+        log.info("PlayVideo.execute: key=%s path=%s fps=%d",
+                 self.key, self.path, self.fps)
         if self.path.suffix.lower() not in _VIDEO_EXTS_OK:
+            log.warning(
+                "PlayVideo.execute: unsupported extension %r (allowed=%s)",
+                self.path.suffix, sorted(_VIDEO_EXTS_OK),
+            )
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
                 message=(f"unsupported video extension {self.path.suffix!r} "
                          f"(expected one of {sorted(_VIDEO_EXTS_OK)})"),
             )
         if not self.path.exists():
+            log.warning("PlayVideo.execute: path does not exist: %s",
+                        self.path)
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
                 message=f"video does not exist: {self.path}",
             )
         if not self.path.is_file():
+            log.warning("PlayVideo.execute: path is not a regular file: %s",
+                        self.path)
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
                 message=f"video path is not a regular file: {self.path}",
@@ -939,6 +949,8 @@ class PlayVideo(Command[VideoResult]):
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
+            log.warning("PlayVideo.execute: device %s not found: %s",
+                        self.key, e)
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
 
@@ -946,6 +958,8 @@ class PlayVideo(Command[VideoResult]):
             size = device.profile.resolution
         else:
             size = device.info.native_resolution
+        log.info("PlayVideo.execute: target_size=%dx%d (profile=%s)",
+                 size[0], size[1], device.profile is not None)
 
         try:
             playback = app.media.load_video(
@@ -953,6 +967,9 @@ class PlayVideo(Command[VideoResult]):
                 fps=self.fps,
             )
         except ThemeError as e:
+            log.warning(
+                "PlayVideo.execute: load_video raised ThemeError: %s", e,
+            )
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="video", key=self.key,
             ))
@@ -961,6 +978,10 @@ class PlayVideo(Command[VideoResult]):
 
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
+        log.info(
+            "PlayVideo.execute: playback loaded — %d frames "
+            "(VideoStarted published)", playback.frame_count,
+        )
 
         app.events.publish(VideoStarted(
             key=self.key, path=str(self.path),
@@ -3873,14 +3894,25 @@ class SetRefreshInterval(Command[RefreshIntervalResult]):
     seconds: float
 
     def execute(self, app: App) -> RefreshIntervalResult:
+        log.info("SetRefreshInterval.execute: seconds=%.2f", self.seconds)
         if not 0.1 <= self.seconds <= 60.0:
+            log.warning(
+                "SetRefreshInterval.execute: out-of-range %.2f rejected "
+                "(allowed [0.1, 60.0])", self.seconds,
+            )
             return RefreshIntervalResult(
                 ok=False, seconds=self.seconds,
                 message=(f"refresh interval must be in [0.1, 60.0] seconds, "
                          f"got {self.seconds}"),
             )
+        old = app.settings.app.refresh_interval_s
         app.settings.set_refresh_interval(self.seconds)
         app.events.publish(RefreshIntervalChanged(seconds=self.seconds))
+        log.info(
+            "SetRefreshInterval.execute: settings.app.refresh_interval_s "
+            "%.2f -> %.2f (RefreshIntervalChanged published)",
+            old, self.seconds,
+        )
         return RefreshIntervalResult(
             ok=True, seconds=self.seconds,
             message=f"refresh interval set to {self.seconds:.2f}s",

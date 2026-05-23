@@ -436,11 +436,19 @@ class TRCCApp(QMainWindow):
         # the legacy widget signatures that expect HardwareMetrics.
         metrics = cast(HardwareMetrics, _MetricsView(readings))
 
-        if self.uc_info_module.isVisible():
+        info_vis = self.uc_info_module.isVisible()
+        sysinfo_vis = self.uc_system_info.isVisible()
+        sidebar_vis = self.is_app_visible() and self.uc_activity_sidebar.isVisible()
+        log.debug(
+            "_on_bus_sensors_updated: readings=%d info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
+            len(readings), info_vis, sysinfo_vis, sidebar_vis,
+        )
+
+        if info_vis:
             self.uc_info_module.update_from_metrics(metrics)
-        if self.uc_system_info.isVisible():
+        if sysinfo_vis:
             self.uc_system_info.update_from_metrics(metrics)
-        if self.is_app_visible() and self.uc_activity_sidebar.isVisible():
+        if sidebar_vis:
             self.uc_activity_sidebar.update_from_metrics(metrics)
 
         handler = self._handlers.get(self._active_key)
@@ -1376,10 +1384,16 @@ class TRCCApp(QMainWindow):
             self.theme_name_input.setText(name)
 
     def _on_cloud_theme_clicked(self, theme_info: Any) -> None:
-        log.debug("_on_cloud_theme_clicked: %s", getattr(theme_info, 'name', theme_info))
+        log.info("_on_cloud_theme_clicked: %s",
+                 getattr(theme_info, 'name', theme_info))
         h = self._active_lcd()
-        if h:
-            h.select_cloud_theme(theme_info)
+        if h is None:
+            log.warning(
+                "_on_cloud_theme_clicked: no active LCD handler "
+                "(active_key=%r) — click dropped", self._active_key,
+            )
+            return
+        h.select_cloud_theme(theme_info)
 
     def _on_mask_clicked(self, mask_info: Any) -> None:
         log.debug("_on_mask_clicked: %s", getattr(mask_info, 'name', mask_info))
@@ -1846,8 +1860,10 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(result.message)
 
     def _on_refresh_changed(self, interval: int) -> None:
-        log.debug("_on_refresh_changed: interval=%s", interval)
+        log.info("_on_refresh_changed: interval=%ss", interval)
         result = self._app.dispatch(SetRefreshInterval(seconds=float(interval)))
+        log.info("_on_refresh_changed: dispatch result ok=%s message=%r",
+                 result.ok, result.message)
         self.uc_preview.set_status(result.message)
 
     def _on_gpu_changed(self, gpu_key: str) -> None:
