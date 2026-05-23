@@ -273,6 +273,42 @@ Rules for every new method touching user-visible state:
    declaring a fix done, grep your own logs for the line that
    proves it.  If the line doesn't exist, the test isn't real.
 
+### Coverage applies to the WHOLE app surface, not just services
+
+The rules above apply equally to every layer the user can interact
+with: services, Commands, adapters, **GUI panels (`ui/gui/*.py`,
+`ui/qtgui/*.py`)**, **CLI command bodies (`ui/cli/*.py`)**, **API
+endpoints (`ui/api/*.py`)**, the daemon, the IPC server.  A silent
+panel is a debugging blind spot — when the user reports "metrics
+don't update when I change the refresh interval," but
+`uc_about._on_refresh_changed` has no log line, **the bug is
+invisible to anyone reading the log**.  No "let me start with this
+panel" — the diligent move is **every public method on every
+panel, in one pass**.
+
+Benchmark for "covered":
+
+| Layer | What counts as covered |
+|---|---|
+| Service method | log.info on entry with resolved args |
+| Command.execute | log.info on entry; log.warning on every guard-fail branch |
+| Adapter public method | log.info on entry; log.debug per-tick |
+| GUI panel `_on_*` slot | log.info with the resolved widget state that fired it (button value, slider position, picker selection) |
+| GUI panel `set_*` mutator | log.info with old → new transition |
+| GUI panel `update_*` per-tick refresh | log.debug (per-tick noise) with the readings/keys actually rendered |
+| CLI command body | log.info on entry with args; log.warning on guard-fail |
+| API endpoint | log.info on entry with the path params (path-sanitized — never raw user input) |
+
+Anti-pattern (the half-fix that wastes a session):
+
+* Adding logs to ONE method of ONE panel because that's where you
+  last looked.  Next bug lands in a sibling method that's still
+  silent, and you're blind again.
+
+If a layer is under-logged (CLI has 1 log call for 114 methods,
+qtgui has 12 for 310, etc.), **that's a debt to clear in one pass,
+not a "we'll do it when we touch that file" deferral**.
+
 This rule is non-negotiable; "code-first, logs-after" wastes hours
 on the next bug.
 
