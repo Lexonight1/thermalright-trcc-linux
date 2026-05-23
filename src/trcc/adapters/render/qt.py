@@ -130,6 +130,10 @@ class QtRenderer(Renderer):
         xform = QTransform().rotate(degrees)
         return surface.transformed(xform, Qt.TransformationMode.SmoothTransformation)
 
+    def flip_horizontal(self, surface: Any) -> Any:
+        """Mirror surface across the vertical axis (X → -X)."""
+        return surface.mirrored(horizontal=True, vertical=False)
+
     # ── Adjustments ───────────────────────────────────────────────────
 
     def apply_brightness(self, surface: Any, percent: int) -> Any:

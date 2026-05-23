@@ -24,7 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..core.models import DeviceSettings, FitMode, ProductInfo, RawFrame, Theme
+from ..core.models import (
+    SPLIT_OVERLAY_MAP,
+    DeviceSettings,
+    FitMode,
+    ProductInfo,
+    RawFrame,
+    Theme,
+)
 from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile
 from ._clock import compute_clock
@@ -38,6 +45,41 @@ log = logging.getLogger(__name__)
 
 _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+
+
+# Devices whose canvas is widescreen split-eligible.  Currently just
+# Levita (1600x720); listed as a set so future widescreen panels are
+# a one-line addition.
+_WIDESCREEN_SPLIT_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
+    (1600, 720),
+    (720, 1600),    # rotated portrait of the same panel
+})
+
+
+def _is_widescreen_split(visual_size: tuple[int, int]) -> bool:
+    """True when ``visual_size`` is a widescreen panel that supports
+    the Dynamic Island split overlay.  Gates ``_composite_split_overlay``
+    so non-widescreen devices skip the load+composite entirely.
+    """
+    return visual_size in _WIDESCREEN_SPLIT_RESOLUTIONS
+
+
+def _cutout_is_right_side(
+    info: ProductInfo, visual_size: tuple[int, int],
+) -> bool:
+    """True when the device's PanelCutout sits past the canvas midline.
+
+    Mirrors legacy ``RenderPipeline._cutout_is_right_side`` — the
+    Levita SKU has its camera cutout on the right side of the panel,
+    so the left-side split assets need a horizontal flip.  Devices
+    without a PanelCutout (or whose cutout is left-of-midline) keep
+    the assets as-authored.
+    """
+    cutout = info.panel_cutout
+    if cutout is None:
+        return False
+    w, _ = visual_size
+    return cutout.x + cutout.w // 2 > w // 2
 
 
 # =========================================================================
@@ -80,6 +122,10 @@ class DisplayService:
         self._settings = settings
         self._media = media
         self._scenes: dict[str, SceneCache] = {}
+        # Cache of loaded split-overlay surfaces keyed by
+        # (style, rotation, mirrored).  Loaded lazily on first
+        # widescreen render so non-Levita devices pay nothing.
+        self._split_cache: dict[tuple[int, int, bool], Any] = {}
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
@@ -164,6 +210,16 @@ class DisplayService:
 
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+
+        # Split-mode overlay (Dynamic Island) — Levita / 1600x720
+        # widescreen only.  Picks an asset by (split_mode, rotation),
+        # mirrors it horizontally when the panel's cutout sits on the
+        # right side (PanelCutout from the variant override).  No-op
+        # when split_mode==0 or the LCD isn't widescreen.
+        if s.split_mode and _is_widescreen_split(visual_size):
+            surface = self._composite_split_overlay(
+                info, s.split_mode, s.orientation, visual_size, surface,
+            )
 
         # Brightness dim (before rotation — matches C# order)
         if s.brightness != 100:
@@ -658,6 +714,77 @@ class DisplayService:
         )
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
                 user_sig, mask_overlay_sig)
+
+    # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
+
+    def _composite_split_overlay(
+        self,
+        info: ProductInfo,
+        split_mode: int,
+        rotation: int,
+        visual_size: tuple[int, int],
+        surface: Any,
+    ) -> Any:
+        """Composite the Dynamic Island PNG over ``surface`` (in place).
+
+        Picks the asset by ``(split_mode, rotation)`` from
+        ``SPLIT_OVERLAY_MAP``.  Mirrors the asset horizontally when the
+        device's PanelCutout sits past the canvas midline (Levita's
+        cutout is on the right side; the assets are authored for the
+        left side).  Cached after first load so non-Levita devices
+        pay nothing and Levita devices only pay once per (style,
+        rotation, mirrored) tuple.
+        """
+        asset_name = SPLIT_OVERLAY_MAP.get((split_mode, rotation))
+        if asset_name is None:
+            log.warning(
+                "split overlay %s: no asset for (style=%d, rotation=%d)",
+                info.key, split_mode, rotation,
+            )
+            return surface
+        mirrored = _cutout_is_right_side(info, visual_size)
+        cache_key = (split_mode, rotation, mirrored)
+        overlay = self._split_cache.get(cache_key)
+        if overlay is None:
+            overlay = self._load_split_asset(asset_name)
+            if overlay is None:
+                return surface
+            if mirrored:
+                overlay = self._r.flip_horizontal(overlay)
+            self._split_cache[cache_key] = overlay
+            log.info(
+                "split overlay %s: cached (%s, mirrored=%s)",
+                info.key, asset_name, mirrored,
+            )
+        try:
+            return self._r.composite(surface, overlay, position=(0, 0))
+        except (OSError, ValueError, RuntimeError) as e:
+            log.warning("split overlay %s: composite failed: %s: %s",
+                        info.key, type(e).__name__, e)
+            return surface
+
+    def _load_split_asset(self, asset_name: str) -> Any | None:
+        """Load a split-overlay PNG from ``ui/gui/assets/``.
+
+        Returns None when the asset is missing or the renderer can't
+        open it.  Renderer.open_image already raises a tolerant
+        exception; we log + drop the overlay rather than fail the
+        whole frame build.
+        """
+        from pathlib import Path
+        asset_dir = (
+            Path(__file__).resolve().parents[1] / "ui" / "gui" / "assets"
+        )
+        path = asset_dir / asset_name
+        if not path.is_file():
+            log.warning("split overlay asset missing: %s", path)
+            return None
+        try:
+            return self._r.open_image(path)
+        except (OSError, ValueError, RuntimeError) as e:
+            log.warning("split overlay asset load failed for %s: %s: %s",
+                        path, type(e).__name__, e)
+            return None
 
     # ── Helpers ───────────────────────────────────────────────────────
 

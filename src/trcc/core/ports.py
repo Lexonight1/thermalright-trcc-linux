@@ -429,6 +429,17 @@ class Renderer(ABC):
     @abstractmethod
     def rotate(self, surface: Any, degrees: int) -> Any: ...
 
+    @abstractmethod
+    def flip_horizontal(self, surface: Any) -> Any:
+        """Return a horizontally-mirrored copy of *surface*.
+
+        Used by the split-mode (Dynamic Island) overlay path:
+        authored assets cover the left side of the canvas, so the
+        renderer flips them when the device's PanelCutout sits on
+        the right.
+        """
+        ...
+
     # ── Adjustments ───────────────────────────────────────────────────
     @abstractmethod
     def apply_brightness(self, surface: Any, percent: int) -> Any: ...

@@ -333,6 +333,9 @@ class _CliRenderer:
     def rotate(self, surface, degrees):
         return surface
 
+    def flip_horizontal(self, surface):
+        return surface
+
     def apply_brightness(self, surface, percent):
         return surface
 

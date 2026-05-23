@@ -74,6 +74,9 @@ class RecordingRenderer(Renderer):
             return _Surface(surface.h, surface.w)
         return _Surface(surface.w, surface.h)
 
+    def flip_horizontal(self, surface: Any) -> Any:
+        return surface
+
     def apply_brightness(self, surface: Any, percent: int) -> Any:
         self._record("apply_brightness", surface, percent)
         return surface

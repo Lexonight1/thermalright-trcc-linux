@@ -47,6 +47,35 @@ class FitMode(str, Enum):
 
 
 # =========================================================================
+# Split-mode overlay (Dynamic Island / 灵动岛) for 1600x720 widescreen
+# =========================================================================
+# Mirrors legacy ``core/models/protocol.py:SPLIT_OVERLAY_MAP`` exactly —
+# (style, rotation_degrees) → asset filename under
+# ``src/trcc/ui/gui/assets/``.  C# UCScreenImage.cs cycles
+# ``buttonLDD myLddVal`` 1→2→3→1 and picks the asset by (style,
+# directionB).  Only fires when the LCD's resolution is the widescreen
+# 1600x720 — DisplayService gates on that.
+
+SPLIT_OVERLAY_MAP: dict[tuple[int, int], str] = {
+    # Style A (myLddVal=1)
+    (1, 0):   "split_overlay_a.png",
+    (1, 90):  "split_overlay_a_90.png",
+    (1, 180): "split_overlay_a_180.png",
+    (1, 270): "split_overlay_a_270.png",
+    # Style B (myLddVal=2, the default Levita ships with)
+    (2, 0):   "split_overlay_b.png",
+    (2, 90):  "split_overlay_b_90.png",
+    (2, 180): "split_overlay_b_180.png",
+    (2, 270): "split_overlay_b_270.png",
+    # Style C (myLddVal=3)
+    (3, 0):   "split_overlay_c.png",
+    (3, 90):  "split_overlay_c_90.png",
+    (3, 180): "split_overlay_c_180.png",
+    (3, 270): "split_overlay_c_270.png",
+}
+
+
+# =========================================================================
 # LED styles / segment displays (categorical, enumerable)
 # =========================================================================
 
