@@ -524,14 +524,33 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         user_dicts = [e.to_dict() for e in s.user_overlay_elements]
         theme_elements = theme.config.get("elements") or []
-        log.info(
-            "build_overlay %s: theme=%r theme_elements=%d user_elements=%d "
-            "overlay_enabled=%s",
-            info.key, theme.name, len(theme_elements), len(user_dicts),
-            theme.config.get("overlay_enabled", True),
+        # Mask-supplied overlay elements (set by ApplyMask) override the
+        # active theme's elements at render time — so a mask's metric
+        # layout survives a theme swap.  Persistent on DeviceSettings,
+        # not on theme.config.
+        mask_dicts = (
+            [e.to_dict() for e in s.mask_overlay_elements]
+            if s.mask_overlay_elements is not None else None
         )
+        config_for_render = theme.config
+        if mask_dicts is not None:
+            config_for_render = {**theme.config, "elements": mask_dicts}
+            log.info(
+                "build_overlay %s: theme=%r theme_elements=%d "
+                "mask_elements=%d (mask layout OVERRIDES) "
+                "user_elements=%d overlay_enabled=%s",
+                info.key, theme.name, len(theme_elements), len(mask_dicts),
+                len(user_dicts), theme.config.get("overlay_enabled", True),
+            )
+        else:
+            log.info(
+                "build_overlay %s: theme=%r theme_elements=%d "
+                "user_elements=%d overlay_enabled=%s",
+                info.key, theme.name, len(theme_elements), len(user_dicts),
+                theme.config.get("overlay_enabled", True),
+            )
         return self._overlay.render(
-            overlay_canvas, theme.config, sensors,
+            overlay_canvas, config_for_render, sensors,
             clock=clock, user_elements=user_dicts,
         )
 
@@ -582,8 +601,21 @@ class DisplayService:
              e.bold, e.italic, e.text, e.metric, e.format, e.source)
             for e in s.user_overlay_elements
         )
+        # Mask overlay elements participate in the cache key so the
+        # overlay layer rebuilds when ApplyMask / SetMaskPath(None)
+        # change the layout — keeps the mask layout surviving theme
+        # swaps without leaking the previous mask's state.
+        mask_overlay_sig: tuple[Any, ...] = (
+            tuple(
+                (e.id, e.type, e.x, e.y, e.color, e.size,
+                 e.bold, e.italic, e.text, e.metric, e.format, e.source)
+                for e in s.mask_overlay_elements
+            )
+            if s.mask_overlay_elements is not None
+            else ()
+        )
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
-                user_sig)
+                user_sig, mask_overlay_sig)
 
     # ── Helpers ───────────────────────────────────────────────────────
 

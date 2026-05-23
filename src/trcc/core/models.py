@@ -294,6 +294,15 @@ class DeviceSettings:
     # are the user's additions / overrides created via the Add/Update/Delete
     # overlay-element Commands.  Persisted in config.json under "user_overlay".
     user_overlay_elements: list[OverlayElement] = field(default_factory=list)
+    # Mask-supplied overlay elements — when an external mask is applied
+    # (cloud mask or user upload), its ``config1.dc`` carries its own
+    # metric/clock/text layout that REPLACES the active theme's overlay
+    # elements at render time.  Stored here (not on theme.config) so the
+    # mask state survives a theme swap — picking a new background after
+    # a mask keeps the mask layout, mirroring legacy's OverlayService
+    # state being independent of the theme.  Set by ApplyMask, cleared
+    # by SetMaskPath(None).
+    mask_overlay_elements: list[OverlayElement] | None = None
     # Slideshow config — rotates through ``slideshow_themes`` every
     # ``slideshow_interval_s`` seconds while ``slideshow_enabled`` is true.
     # Cursor + timing live in SlideshowService (transient, not persisted).

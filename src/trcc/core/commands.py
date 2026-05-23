@@ -1362,10 +1362,23 @@ class ApplyMask(Command[MaskApplyResult]):
             else:
                 mask_elements = dc.get("elements") or []
                 if mask_elements:
-                    theme.config["elements"] = list(mask_elements)
+                    # Store on DeviceSettings — not theme.config — so the
+                    # mask layout survives a theme swap.  Legacy
+                    # ``OverlayService`` held overlay state independently
+                    # of the theme dict, so picking a new background
+                    # after a mask didn't drop the mask's metric layout.
+                    # Mirror that here: settings is the persistent home
+                    # for "what the user is currently rendering on top".
+                    from .models import OverlayElement
+                    mask_overlay = [
+                        OverlayElement.from_dict(el) for el in mask_elements
+                    ]
+                    app.settings.set_mask_overlay_elements(
+                        self.key, mask_overlay,
+                    )
                     log.info(
                         "ApplyMask: %s contributes %d overlay element(s) — "
-                        "theme overlay layout replaced",
+                        "stored on DeviceSettings.mask_overlay_elements",
                         resolved_file.name, len(mask_elements),
                     )
         _invalidate_scene(app, self.key)

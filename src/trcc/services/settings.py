@@ -178,9 +178,33 @@ class Settings:
             self._save()
 
     def set_mask_path(self, key: str, path: str | None) -> None:
-        """Set the user-supplied mask path (overrides the theme's mask)."""
+        """Set the user-supplied mask path (overrides the theme's mask).
+
+        Passing ``None`` also clears any mask-supplied overlay elements
+        — picking "no mask" reverts the metric layout to the active
+        theme's own elements.  Mask + its DC layout are coupled.
+        """
         with self._lock:
-            self.for_device(key).mask_path = path
+            dev = self.for_device(key)
+            dev.mask_path = path
+            if path is None:
+                dev.mask_overlay_elements = None
+            self._save()
+
+    def set_mask_overlay_elements(
+        self, key: str, elements: list[OverlayElement] | None,
+    ) -> None:
+        """Store the mask's DC overlay-element layout for a device.
+
+        ApplyMask calls this with the mask's parsed DC elements — the
+        renderer uses them as an override over ``theme.config["elements"]``
+        so the mask's metric layout survives a theme swap (cloud
+        background swap, local theme reselection, etc.).
+        """
+        with self._lock:
+            self.for_device(key).mask_overlay_elements = (
+                list(elements) if elements is not None else None
+            )
             self._save()
 
     def set_mask_visible(self, key: str, visible: bool) -> None:
@@ -563,6 +587,13 @@ def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
         kwargs["user_overlay_elements"] = [
             OverlayElement.from_dict(d) if isinstance(d, dict) else d
             for d in raw_elements
+        ]
+    # mask_overlay_elements: list[dict] | None → list[OverlayElement] | None
+    raw_mask_elements = kwargs.get("mask_overlay_elements")
+    if isinstance(raw_mask_elements, list):
+        kwargs["mask_overlay_elements"] = [
+            OverlayElement.from_dict(d) if isinstance(d, dict) else d
+            for d in raw_mask_elements
         ]
     return DeviceSettings(**kwargs)
 
