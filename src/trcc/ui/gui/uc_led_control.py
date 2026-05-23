@@ -858,6 +858,15 @@ class UCLedControl(QWidget):
         """Re-apply localized background and text labels for current lang."""
         from ..._boot import trcc_next as _trcc
         from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
+        if self._style_id not in STYLE_BY_LEGACY_ID:
+            # No LED device bound yet — _style_id is the init sentinel 0.
+            # Language change still fires this; skip until a device sets it.
+            log.debug(
+                "apply_localized_background: no LED device bound "
+                "(_style_id=%d) — skipping",
+                self._style_id,
+            )
+            return
         lang = _trcc().settings.app.language
         style = LED_STYLES[STYLE_BY_LEGACY_ID[self._style_id]]
         bg_name = Assets.get_localized(style.background_base, lang)
