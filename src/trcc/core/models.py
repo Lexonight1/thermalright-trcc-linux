@@ -4,7 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from .variants import PanelCutout
 
 # =========================================================================
 # Wire protocols and device kinds
@@ -81,6 +84,11 @@ class ProductInfo:
     Everything known about a specific VID/PID combination at compile time:
     vendor/product strings, wire protocol, native resolution, supported
     rotations, LED style if applicable.
+
+    ``button_image`` / ``panel_cutout`` carry registry-default values;
+    ``ConnectDevice`` resolves a ``VariantOverride`` after handshake and
+    swaps the field via ``dataclasses.replace`` when the device's
+    PM/SUB fingerprint identifies a more specific variant.
     """
     vid: int
     pid: int
@@ -96,6 +104,7 @@ class ProductInfo:
     led_style: LedStyle | None = None
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)
+    panel_cutout: PanelCutout | None = None  # set post-handshake
 
     @property
     def key(self) -> str:

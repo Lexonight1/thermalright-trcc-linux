@@ -157,15 +157,18 @@ class CzhordeCatalog:
     def _fetch_with_fallback(self, theme_id: str, suffix: str) -> bytes:
         """Primary first, backup on failure.
 
-        Primary gets a 15s fail-fast timeout so a stuck mirror flips
-        to the backup quickly; backup gets the full 60s.  Both servers
-        failing raises the last error.
+        Primary gets a 30s timeout — tight enough to fall through to
+        the backup when the mirror is hard-down, loose enough to
+        tolerate a moderately slow connection on the working one
+        (urllib has only one combined socket timeout, so this also
+        bounds the download itself, not just the connect).  Backup
+        keeps the full 60s.  Both servers failing raises the last error.
         """
         if self._preferred == "international":
             order: tuple[Server, Server] = ("international", "china")
         else:
             order = ("china", "international")
-        timeouts = (15.0, 60.0)
+        timeouts = (30.0, 60.0)
         last_err: HttpFetchError | None = None
         for server, timeout_s in zip(order, timeouts, strict=False):
             url = self._url_for(theme_id, suffix, server)

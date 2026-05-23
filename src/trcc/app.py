@@ -107,6 +107,15 @@ class App:
         )
         # GitHub releases adapter for `check_for_update` Command.
         self.github_releases = GitHubReleases(http=self.http)
+        # Per-resolution data installer (themes + cloud previews +
+        # masks).  Dispatched from DiscoverDevices when an attached
+        # device's resolution hasn't been seen before.
+        from .adapters.repo.data_install import DataInstaller
+        from .services.data_install import DataInstallService
+        self.data_install = DataInstallService(
+            paths=platform.paths(),
+            installer=DataInstaller(http=self.http),
+        )
         # Slideshow + keepalive — small per-device state holders.  Both
         # are tick-driven; no background threads inside the services.
         self.slideshow = SlideshowService()

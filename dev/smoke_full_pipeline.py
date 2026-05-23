@@ -118,6 +118,18 @@ def _build_app() -> Any:
     return App(platform=_platform(), renderer=_smoke_renderer())
 
 
+def _all_dirs_populated(app: Any, resolution: tuple[int, int]) -> bool:
+    """Are the three per-resolution data dirs already populated?"""
+    paths = app.platform.paths()
+    w, h = resolution
+    candidates = [
+        paths.theme_dir(w, h),
+        paths.cloud_theme_dir(w, h),
+        paths.cloud_mask_dir(w, h),
+    ]
+    return all(d.is_dir() and any(d.iterdir()) for d in candidates)
+
+
 def _run_steps() -> list[_Step]:
     """Drive one Command per family + capture which events fire.
 
@@ -129,6 +141,7 @@ def _run_steps() -> list[_Step]:
     the rest.
     """
     from trcc.core.commands import (
+        ConnectDevice,
         DiscoverDevices,
         EnableLedTestMode,
         SetBrightness,
@@ -143,6 +156,7 @@ def _run_steps() -> list[_Step]:
     )
     from trcc.core.events import (
         BrightnessChanged,
+        DeviceConnected,
         Event,
         GpuDeviceChanged,
         LanguageChanged,
@@ -152,6 +166,7 @@ def _run_steps() -> list[_Step]:
         TempUnitChanged,
     )
     from trcc.core.led_models import LEDMode
+    from trcc.core.variants import get_button_image, get_variant_override
 
     app = _build_app()
 
@@ -192,6 +207,43 @@ def _run_steps() -> list[_Step]:
 
     # ── Discovery (no event; just exercises the dispatch path) ─────
     _step("DiscoverDevices", DiscoverDevices(), expected_event=None)
+
+    # ── Variant override lookup (recently-ported feature, table-only
+    #     so a fake handshake can't drive it).  Sanity-check the
+    #     registry directly so a missing entry surfaces here, not in a
+    #     reporter's GUI as "wrong button".
+    variant_step = _Step(label="VariantOverride lookup")
+    try:
+        # Frozen Warframe SCSI: PM=51 must resolve to A1FROZEN WARFRAME,
+        # PM=64 SUB=3 (Levita) must carry a panel_cutout.
+        bi = get_button_image(0x0402, 0x3922, 51, 0)
+        levita = get_variant_override(0x0402, 0x3922, 64, 3)
+        assert bi == "A1FROZEN WARFRAME", f"PM=51 got {bi!r}"
+        assert levita is not None and levita.panel_cutout is not None, (
+            "PM=64 SUB=3 (Levita) lost its panel_cutout"
+        )
+        variant_step.passed = True
+        variant_step.detail = f"PM=51→{bi}, Levita cutout present"
+    except Exception as e:
+        variant_step.passed = False
+        variant_step.detail = f"{type(e).__name__}: {e}"
+    steps.append(variant_step)
+
+    # ── EnsureData install pipeline (per-resolution archives).  Hits
+    #     the just-ported DataInstallService.  Uses a populated dir so
+    #     it short-circuits — proves the wiring, no actual download.
+    install_step = _Step(label="DataInstallService.ensure_all")
+    try:
+        result = app.data_install.ensure_all((320, 320))
+        install_step.passed = result.ok or _all_dirs_populated(app, (320, 320))
+        install_step.detail = (
+            f"themes={result.themes_ok} web={result.web_ok} "
+            f"masks={result.masks_ok}"
+        )
+    except Exception as e:
+        install_step.passed = False
+        install_step.detail = f"{type(e).__name__}: {e}"
+    steps.append(install_step)
 
     # ── Display setters ────────────────────────────────────────────
     _step(

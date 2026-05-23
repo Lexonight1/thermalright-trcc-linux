@@ -175,11 +175,19 @@ class Command(ABC, Generic[R_co]):
 
 @dataclass(frozen=True, slots=True)
 class DiscoverDevices(Command[DiscoverResult]):
-    """List attached devices that match the product registry."""
+    """List attached devices that match the product registry.
+
+    Also kicks off a per-resolution data install for each discovered
+    product the first time we see that resolution — so the GUI's theme
+    / web preview / mask grids aren't empty on first launch.  Subsequent
+    discoveries are no-ops because ``DataInstallService`` short-circuits
+    on already-populated dirs.
+    """
 
     def execute(self, app: App) -> DiscoverResult:
         live = app.platform.scan_devices()
         products = []
+        seen_resolutions: set[tuple[int, int]] = set()
         for info in live:
             product = find_product(info.vid, info.pid)
             if product is not None:
@@ -187,6 +195,18 @@ class DiscoverDevices(Command[DiscoverResult]):
                 app.events.publish(DeviceDiscovered(
                     key=info.key, product_name=product.product,
                 ))
+                if product.native_resolution != (0, 0):
+                    seen_resolutions.add(product.native_resolution)
+        # One install pass per unique resolution.  Each install is itself
+        # idempotent (skips populated dirs), so this is safe to re-run.
+        for resolution in seen_resolutions:
+            try:
+                app.data_install.ensure_all(resolution)
+            except Exception:
+                # Data install is best-effort — GUI degrades gracefully
+                # to empty grids rather than blocking discovery.
+                log.exception("DiscoverDevices: ensure_all(%s) failed",
+                              resolution)
         return DiscoverResult(
             ok=True,
             message=f"{len(products)} device(s) found",
@@ -224,6 +244,32 @@ class ConnectDevice(Command[ConnectResult]):
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key))
             return ConnectResult(ok=False, key=self.key, message=str(e))
+
+        # Variant override: handshake reveals the PM/SUB fingerprint, which
+        # disambiguates products sharing one (VID, PID).  Patch the device's
+        # ProductInfo with the resolved button_image / panel_cutout so the
+        # GUI sidebar shows the right product picture and the renderer
+        # masks any panel cutout.  Without this, every device falls back to
+        # the registry default (A1CZTV "ransom" button).
+        from dataclasses import replace as _dc_replace
+
+        from .variants import get_variant_override
+        override = get_variant_override(
+            vid, pid, handshake.pm_byte, handshake.sub_byte,
+        )
+        if override is not None:
+            patch: dict[str, object] = {}
+            if override.button_image:
+                patch["button_image"] = override.button_image
+            if override.panel_cutout is not None:
+                patch["panel_cutout"] = override.panel_cutout
+            if patch:
+                device.info = _dc_replace(device.info, **patch)
+                log.info(
+                    "ConnectDevice %s: variant override PM=%d SUB=%d → %s",
+                    self.key, handshake.pm_byte, handshake.sub_byte,
+                    override.button_image or "(cutout-only)",
+                )
 
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
