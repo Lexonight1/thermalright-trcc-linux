@@ -458,7 +458,7 @@ class Renderer(ABC):
 
     # ── Encoding ──────────────────────────────────────────────────────
     @abstractmethod
-    def encode_rgb565(self, surface: Any) -> bytes: ...
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes: ...
 
     @abstractmethod
     def encode_jpeg(self, surface: Any, quality: int = 95,

@@ -202,26 +202,50 @@ class QtRenderer(Renderer):
 
     # ── Encoding ──────────────────────────────────────────────────────
 
-    def encode_rgb565(self, surface: Any) -> bytes:
-        """Encode QImage → RGB565 big-endian bytes (2 bytes per pixel)."""
-        img = surface.convertToFormat(QImage.Format.Format_RGB16)
-        w, h = img.width(), img.height()
-        result = bytearray(w * h * 2)
-        for y in range(h):
-            for x in range(w):
-                pixel = img.pixel(x, y)
-                r = (pixel >> 16) & 0xFF
-                g = (pixel >> 8) & 0xFF
-                b = pixel & 0xFF
-                r5 = (r >> 3) & 0x1F
-                g6 = (g >> 2) & 0x3F
-                b5 = (b >> 3) & 0x1F
-                rgb565 = (r5 << 11) | (g6 << 5) | b5
-                # big-endian
-                offset = (y * w + x) * 2
-                result[offset] = (rgb565 >> 8) & 0xFF
-                result[offset + 1] = rgb565 & 0xFF
-        return bytes(result)
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
+        """Encode QImage → RGB565 bytes (2 bytes per pixel).
+
+        Ports the legacy implementation verbatim — three steps that the
+        prior cutover encoder skipped, each of which caused visibly
+        wrong colors on the LCD:
+
+        1. Convert to ``Format_RGB32`` FIRST.  Qt's default painting
+           format is ``Format_ARGB32_Premultiplied`` (channels multiplied
+           by alpha for fast compositing).  Going straight to RGB16
+           preserves the premultiplied values — anything that was painted
+           with transparency comes out darkened/desaturated.
+        2. Use Qt's native ``Format_RGB16`` conversion + grab the raw
+           bytes — matches the device's expected RGB565 packing exactly
+           (Qt rounds the same way the device's panel expects).
+        3. Honour ``byte_order`` per the device's ``DeviceProfile.big_endian``
+           flag.  ``Format_RGB16`` writes native-endian bytes; swap if
+           the device wants the other order.
+        """
+        # Strip premultiplied alpha before quantizing.
+        if surface.format() != QImage.Format.Format_RGB32:
+            surface = surface.convertToFormat(QImage.Format.Format_RGB32)
+        rgb16 = surface.convertToFormat(QImage.Format.Format_RGB16)
+        w, h = rgb16.width(), rgb16.height()
+        bpl = rgb16.bytesPerLine()
+        raw = bytes(rgb16.constBits())
+
+        # Strip row padding if bytesPerLine > w*2.
+        if bpl == w * 2:
+            data = raw
+        else:
+            data = b"".join(raw[y * bpl:y * bpl + w * 2] for y in range(h))
+
+        # Format_RGB16 is native-endian; swap if device expects the
+        # other byte order.
+        if byte_order == ">" and sys.byteorder == "little":
+            arr = bytearray(data)
+            arr[0::2], arr[1::2] = arr[1::2], arr[0::2]
+            return bytes(arr)
+        if byte_order == "<" and sys.byteorder == "big":
+            arr = bytearray(data)
+            arr[0::2], arr[1::2] = arr[1::2], arr[0::2]
+            return bytes(arr)
+        return data
 
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:

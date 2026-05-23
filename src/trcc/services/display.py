@@ -814,7 +814,7 @@ class DisplayService:
     def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:
         if profile.jpeg:
             return self._r.encode_jpeg(surface)
-        return self._r.encode_rgb565(surface)
+        return self._r.encode_rgb565(surface, profile.byte_order)
 
 
 # =========================================================================

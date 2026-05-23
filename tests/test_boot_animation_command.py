@@ -71,7 +71,7 @@ class _AnimRenderer(Renderer):
                   italic: bool = False) -> None:
         pass
 
-    def encode_rgb565(self, surface: Any) -> bytes:
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
         # Deterministic per-surface payload so the test can identify each
         # frame on the wire.  RGB565 buffers are 2 bytes/pixel.
         return surface.tag * (surface.w * surface.h * 2 // max(1, len(surface.tag)))

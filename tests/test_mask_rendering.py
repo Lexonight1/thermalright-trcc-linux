@@ -87,7 +87,7 @@ class RecordingRenderer(Renderer):
                   italic: bool = False) -> None:
         pass
 
-    def encode_rgb565(self, surface: Any) -> bytes:
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
         return b"\x00" * (surface.w * surface.h * 2)
 
     def encode_jpeg(self, surface: Any, quality: int = 95,

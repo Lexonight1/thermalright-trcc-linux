@@ -343,7 +343,7 @@ class _CliRenderer:
                   bold=False, italic=False):
         pass
 
-    def encode_rgb565(self, surface):
+    def encode_rgb565(self, surface, byte_order=">"):
         return b"\x00\x00" * (surface.w * surface.h)
 
     def encode_jpeg(self, surface, quality=95, max_size=0):

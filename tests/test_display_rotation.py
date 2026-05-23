@@ -100,7 +100,7 @@ class RecordingRenderer(Renderer):
         self._record("draw_text", x, y, text)
 
     # ── Encoding ──────────────────────────────────────────────────────
-    def encode_rgb565(self, surface: Any) -> bytes:
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
         self._record("encode_rgb565", surface)
         return b"\x00" * (surface.w * surface.h * 2)
 

@@ -56,7 +56,7 @@ class _DrawRecorder(Renderer):
                   italic: bool = False) -> None:
         self.drawn.append((x, y, text, color, size, bold, italic))
 
-    def encode_rgb565(self, surface: Any) -> bytes:
+    def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
         return b""
 
     def encode_jpeg(self, surface: Any, quality: int = 95,
