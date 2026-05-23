@@ -29,11 +29,25 @@ import json
 import logging
 import shutil
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.errors import ThemeError
 from ..core.models import Theme, ThemeDir
 from . import _dc as Dc
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveredMask:
+    """One mask found by ``ThemeService.discover_masks``.
+
+    Matches legacy ``MaskInfo`` — pure value object, GUI maps it to
+    its own MaskItem for display.
+    """
+    name: str
+    path: Path
+    preview_path: Path
+    is_custom: bool
 
 log = logging.getLogger(__name__)
 
@@ -196,6 +210,45 @@ class ThemeService:
         """
         td = ThemeDir(theme.path)
         return td.preview if td.preview.exists() else None
+
+    @staticmethod
+    def discover_masks(
+        cloud_masks_dir: Path | None = None,
+        user_masks_dir: Path | None = None,
+    ) -> builtins.list[DiscoveredMask]:
+        """Walk user + cloud mask dirs and return their mask metadata.
+
+        Order: user masks first (custom content), then cloud-cached
+        masks.  Dedupe by name (first seen wins).  Each mask must have
+        ``Theme.png`` (preview thumbnail) OR ``01.png`` (canonical mask
+        overlay) — matches legacy's acceptance.  Port of legacy
+        ``ThemeService.discover_masks`` so the GUI inlining at
+        ``uc_theme_mask.refresh_masks`` can be replaced by a one-liner.
+        """
+        masks: builtins.list[DiscoveredMask] = []
+        seen: set[str] = set()
+
+        def _scan(directory: Path | None, is_custom: bool) -> None:
+            if directory is None or not directory.exists():
+                return
+            for item in sorted(directory.iterdir()):
+                if not item.is_dir() or item.name in seen:
+                    continue
+                td = ThemeDir(item)
+                if td.preview.exists() or td.mask.exists():
+                    seen.add(item.name)
+                    masks.append(DiscoveredMask(
+                        name=item.name,
+                        path=item,
+                        preview_path=(
+                            td.preview if td.preview.exists() else td.mask
+                        ),
+                        is_custom=is_custom,
+                    ))
+
+        _scan(user_masks_dir, is_custom=True)
+        _scan(cloud_masks_dir, is_custom=False)
+        return masks
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
         """Archive a theme directory into a deflate-compressed zip.

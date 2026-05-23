@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,15 +20,6 @@ from .base import BaseThumbnail, DownloadableThemeBrowser
 
 if TYPE_CHECKING:
     from ...core.ports import Paths
-
-
-@dataclass(slots=True)
-class _DiscoveredMask:
-    """Filesystem-discovered mask entry — local row source for refresh_masks."""
-    name: str
-    path: Path
-    preview_path: Path
-    is_custom: bool
 
 log = logging.getLogger(__name__)
 
@@ -171,49 +161,20 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""
+        from ...services.theme import ThemeService
+
         self._clear_grid()
         self._local_masks.clear()
 
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
 
-        user_dir = self._user_masks_dir()
-        # Walk both the per-resolution cloud-cache dir and the user
-        # custom-masks dir.  Each subdir with a Theme.png is one mask.
-        discovered: list = []
-        for source_dir, is_custom in [
-            (self.mask_directory, False),
-            (user_dir, True),
-        ]:
-            if not source_dir or not source_dir.is_dir():
-                continue
-            for entry in sorted(source_dir.iterdir()):
-                if not entry.is_dir():
-                    continue
-                # Accept any subdir that has either a DC config (the
-                # mask's own ``config1.dc`` carries its center coords)
-                # OR a preview image OR the canonical mask file.
-                # Preview lookup falls back through Theme.png → 01.png
-                # → first PNG so a DC-only mask still surfaces.
-                preview = entry / "Theme.png"
-                if not preview.exists():
-                    canonical = entry / "01.png"
-                    if canonical.exists():
-                        preview = canonical
-                    else:
-                        any_png = next(entry.glob("*.png"), None)
-                        if any_png is not None:
-                            preview = any_png
-                        elif (entry / "config1.dc").exists():
-                            preview = entry / "config1.dc"  # no image but valid
-                        else:
-                            continue
-                discovered.append(_DiscoveredMask(
-                    name=entry.name,
-                    path=entry,
-                    preview_path=preview,
-                    is_custom=is_custom,
-                ))
+        # Service-level discovery — matches legacy convention exactly:
+        # user masks first, dedupe by name, accept Theme.png OR 01.png.
+        discovered = ThemeService.discover_masks(
+            cloud_masks_dir=self.mask_directory,
+            user_masks_dir=self._user_masks_dir(),
+        )
 
         masks: list[MaskItem] = []
         for m in discovered:
@@ -232,7 +193,8 @@ class UCThemeMask(DownloadableThemeBrowser):
 
         log.info("uc_theme_mask.refresh_masks: %d mask(s), cat=%s, "
                  "cloud_dir=%s user_dir=%s",
-                 len(masks), self._category, self.mask_directory, user_dir)
+                 len(masks), self._category, self.mask_directory,
+                 self._user_masks_dir())
         self._populate_grid(masks)
 
     def _on_item_clicked(self, item_info: MaskItem):
