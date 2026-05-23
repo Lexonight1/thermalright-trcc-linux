@@ -7,6 +7,12 @@ names depending on the OS:
   OpenBSD   ``hw.sensors.cpuN.temp0``       (one per cpu, value ``38.50 degC``)
   NetBSD    ``machdep.cpu_temperature``     (single value — added per reporter)
 
+When ``dev.cpu`` temperature is absent (older boards, no ``coretemp``
+driver loaded), FreeBSD still exposes ACPI thermal-zone readings at
+``hw.acpi.thermal.tzN.temperature``; we parse those as a fallback so a
+CPU temperature is reported on boards where only ACPI knows the die
+temp.
+
 Only temperature is exposed here; ``psutil`` covers usage / freq across
 all three BSDs and goes in the chain right after this source.
 
@@ -39,6 +45,11 @@ _OPENBSD_RE = re.compile(
 _NETBSD_RE = re.compile(
     r"^machdep\.cpu_temperature:\s*()([\d.]+)", re.MULTILINE,
 )
+# FreeBSD-only ACPI thermal-zone fallback.  Used when dev.cpu has no
+# temperature lines (e.g. boards where ``coretemp`` is not loaded).
+_FREEBSD_ACPI_TZ_RE = re.compile(
+    r"^hw\.acpi\.thermal\.tz(\d+)\.temperature:\s*([\d.]+)", re.MULTILINE,
+)
 
 
 _BY_SYSTEM: dict[str, re.Pattern[str]] = {
@@ -46,6 +57,13 @@ _BY_SYSTEM: dict[str, re.Pattern[str]] = {
     "OpenBSD":   _OPENBSD_RE,
     "NetBSD":    _NETBSD_RE,
     "DragonFly": _FREEBSD_RE,        # DragonFlyBSD uses FreeBSD's names
+}
+
+# Per-system fallback patterns, tried only when the primary returned no
+# readings.  FreeBSD gets the ACPI thermal-zone parser.
+_FALLBACK_BY_SYSTEM: dict[str, re.Pattern[str]] = {
+    "FreeBSD":   _FREEBSD_ACPI_TZ_RE,
+    "DragonFly": _FREEBSD_ACPI_TZ_RE,
 }
 
 
@@ -69,6 +87,19 @@ def _pattern_for(system: str) -> re.Pattern[str] | None:
     return _BY_SYSTEM.get(system)
 
 
+def _hottest(output: str, pattern: re.Pattern[str]) -> float | None:
+    """Parse all matches and return the max numeric value, or None."""
+    best: float | None = None
+    for match in pattern.finditer(output):
+        try:
+            value = float(match.group(2))
+        except (TypeError, ValueError):
+            continue
+        if best is None or value > best:
+            best = value
+    return best
+
+
 class SysctlCpu(CpuSource):
     """CPU temperature via sysctl on BSD.
 
@@ -85,6 +116,7 @@ class SysctlCpu(CpuSource):
         self._run = runner
         self._system = system if system is not None else platform.system()
         self._pattern = _pattern_for(self._system)
+        self._fallback_pattern = _FALLBACK_BY_SYSTEM.get(self._system)
         if self._pattern is None:
             log.debug("SysctlCpu: no temperature pattern for system %r",
                       self._system)
@@ -98,23 +130,30 @@ class SysctlCpu(CpuSource):
 
         Parses every line matching the OS-specific regex and returns
         the maximum.  When no cores report a numeric value (sysctl
-        missing or empty output), returns None and the chain falls
-        through to the next source.
+        missing or empty output), tries the OS's fallback pattern —
+        on FreeBSD that's the ACPI thermal-zone reading at
+        ``hw.acpi.thermal.tzN.temperature`` — before giving up and
+        letting the chain fall through.
         """
         if self._pattern is None:
             return None
         output = self._run()
         if not output:
+            log.debug("SysctlCpu.temp: sysctl produced no output")
             return None
-        best: float | None = None
-        for match in self._pattern.finditer(output):
-            try:
-                value = float(match.group(2))
-            except (TypeError, ValueError):
-                continue
-            if best is None or value > best:
-                best = value
-        return best
+        best = _hottest(output, self._pattern)
+        if best is not None:
+            return best
+        if self._fallback_pattern is not None:
+            fallback = _hottest(output, self._fallback_pattern)
+            if fallback is not None:
+                log.info(
+                    "SysctlCpu.temp: primary pattern empty, using ACPI "
+                    "thermal-zone fallback (%.1f °C)", fallback,
+                )
+                return fallback
+        log.debug("SysctlCpu.temp: no readings parsed from sysctl output")
+        return None
 
     def usage(self) -> float | None:
         return None
