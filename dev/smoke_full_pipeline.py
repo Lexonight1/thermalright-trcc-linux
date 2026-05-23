@@ -61,14 +61,14 @@ class _Step:
 
 
 def _platform() -> Any:
-    """Build the FakePlatform used by tests/next/conftest.py."""
+    """Build the FakePlatform used by tests/conftest.py."""
     import tempfile
 
     sys.path.insert(0, str(_REPO_ROOT / "tests"))
-    # ``tests/next/conftest.py`` exports FakePlatform; import path
-    # works once the tests/ dir is on sys.path.  Static analyzers
-    # won't resolve it from the dev script — runtime-only.
-    from next.conftest import FakePlatform  # type: ignore[import-not-found]
+    # ``tests/conftest.py`` exports FakePlatform; import path works
+    # once the tests/ dir is on sys.path.  Static analyzers won't
+    # resolve it from the dev script — runtime-only.
+    from conftest import FakePlatform  # type: ignore[import-not-found]
 
     return FakePlatform(Path(tempfile.mkdtemp(prefix="trcc-smoke-")))
 

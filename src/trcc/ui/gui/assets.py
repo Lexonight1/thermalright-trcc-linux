@@ -215,7 +215,7 @@ class Assets:
             return base_name
 
         # Map ISO code to legacy C# suffix for asset filenames
-        from trcc.core.models import ISO_TO_LEGACY
+        from trcc.core.i18n import ISO_TO_LEGACY
         suffix = ISO_TO_LEGACY.get(lang, lang)
 
         # Split extension if present, insert lang suffix before it

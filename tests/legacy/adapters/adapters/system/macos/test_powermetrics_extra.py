@@ -6,13 +6,13 @@ import plistlib
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from tests.adapters.system.macos.test_sensors import (
     DISKUTIL_OUTPUT,
     POWERMETRICS_PLIST_BYTES,
     FakeSMCClient,
     MockSMC,
 )
+
 from trcc.legacy.adapters.system.macos.powermetrics_extra import (
     extra_powermetrics_sampler_csv,
     extra_powermetrics_sensor_specs,

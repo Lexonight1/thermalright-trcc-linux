@@ -1,4 +1,4 @@
-"""Settings file rename: ``trcc.json`` → ``trcc.json``.
+"""Settings file rename: ``trcc-next.json`` → ``trcc.json``.
 
 next/'s persistence filename baked the temporal label ``next`` into a
 file that becomes the durable shape at cutover.  The rename to
@@ -7,7 +7,7 @@ so existing users don't lose state.
 
 These tests cover:
   * fresh installs write ``trcc.json``
-  * pre-cutover ``trcc.json`` is read when no ``trcc.json`` exists
+  * pre-cutover ``trcc-next.json`` is read when no ``trcc.json`` exists
   * next save promotes state to ``trcc.json`` (and leaves the old file
     for rollback)
 """
@@ -28,14 +28,14 @@ def test_fresh_install_writes_trcc_json(tmp_path: Path) -> None:
     s.set_orientation("0402:3922", 90)
 
     assert (tmp_path / "trcc.json").is_file()
-    assert not (tmp_path / "trcc.json").exists()
+    assert not (tmp_path / "trcc-next.json").exists()
 
 
 def test_reads_pre_cutover_filename_when_only_old_exists(
     tmp_path: Path,
 ) -> None:
     """A user upgrading from pre-cutover next/ keeps their settings —
-    the loader reads ``trcc.json`` when ``trcc.json`` is absent."""
+    the loader reads ``trcc-next.json`` when ``trcc.json`` is absent."""
     paths = FakePaths(tmp_path)
     payload = {
         "app": {"language": "fr", "temp_unit": "F"},
@@ -44,7 +44,7 @@ def test_reads_pre_cutover_filename_when_only_old_exists(
         },
         "led_devices": {},
     }
-    (tmp_path / "trcc.json").write_text(
+    (tmp_path / "trcc-next.json").write_text(
         json.dumps(payload), encoding="utf-8",
     )
 
@@ -61,7 +61,7 @@ def test_next_save_promotes_to_trcc_json(tmp_path: Path) -> None:
     """After reading the pre-cutover file, the next mutation writes
     ``trcc.json`` (the new name) without touching the old file."""
     paths = FakePaths(tmp_path)
-    (tmp_path / "trcc.json").write_text(json.dumps({
+    (tmp_path / "trcc-next.json").write_text(json.dumps({
         "app": {"language": "en"},
         "devices": {"0402:3922": {"brightness": 50}},
         "led_devices": {},
@@ -72,7 +72,7 @@ def test_next_save_promotes_to_trcc_json(tmp_path: Path) -> None:
 
     # New name now holds the truth; old file kept for rollback.
     assert (tmp_path / "trcc.json").is_file()
-    assert (tmp_path / "trcc.json").is_file()
+    assert (tmp_path / "trcc-next.json").is_file()
     raw = json.loads((tmp_path / "trcc.json").read_text(encoding="utf-8"))
     assert raw["devices"]["0402:3922"]["brightness"] == 75
 
@@ -85,7 +85,7 @@ def test_prefers_trcc_json_over_pre_cutover(tmp_path: Path) -> None:
         "app": {"language": "de"},
         "devices": {}, "led_devices": {},
     }), encoding="utf-8")
-    (tmp_path / "trcc.json").write_text(json.dumps({
+    (tmp_path / "trcc-next.json").write_text(json.dumps({
         "app": {"language": "ja"},   # should be ignored
         "devices": {}, "led_devices": {},
     }), encoding="utf-8")

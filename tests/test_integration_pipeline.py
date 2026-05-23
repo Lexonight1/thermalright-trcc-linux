@@ -21,7 +21,7 @@ def smoke_results():
     """Run the dev smoke once + cache its step list for the test
     cases below.  Module-scoped — no need to rebuild App per step."""
     # Make the dev/ script importable for one process
-    dev_dir = Path(__file__).resolve().parent.parent.parent / "dev"
+    dev_dir = Path(__file__).resolve().parent.parent / "dev"
     sys.path.insert(0, str(dev_dir))
     try:
         from smoke_full_pipeline import _run_steps  # type: ignore[import-not-found]

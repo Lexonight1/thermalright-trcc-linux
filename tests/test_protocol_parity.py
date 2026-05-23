@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.legacy.core.models import protocol as legacy
 from trcc.core import protocol as nxt
+from trcc.legacy.core.models import protocol as legacy
 
 # =============================================================================
 # pm_to_fbl()

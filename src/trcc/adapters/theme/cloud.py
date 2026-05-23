@@ -155,22 +155,28 @@ class CzhordeCatalog:
         return target
 
     def _fetch_with_fallback(self, theme_id: str, suffix: str) -> bytes:
-        """Try preferred server, then the other one. Raise on both fail."""
+        """Primary first, backup on failure.
+
+        Primary gets a 15s fail-fast timeout so a stuck mirror flips
+        to the backup quickly; backup gets the full 60s.  Both servers
+        failing raises the last error.
+        """
         if self._preferred == "international":
             order: tuple[Server, Server] = ("international", "china")
         else:
             order = ("china", "international")
+        timeouts = (15.0, 60.0)
         last_err: HttpFetchError | None = None
-        for server in order:
+        for server, timeout_s in zip(order, timeouts, strict=False):
             url = self._url_for(theme_id, suffix, server)
             try:
-                return self._http.fetch(url, timeout_s=60.0)
+                return self._http.fetch(url, timeout_s=timeout_s)
             except HttpFetchError as e:
                 last_err = e
                 log.warning("CzhordeCatalog: fetch %s via %s failed: %s",
                             theme_id, server, e)
-        # All servers failed.
-        log.error("CzhordeCatalog: all servers failed for %s%s", theme_id, suffix)
+        log.error("CzhordeCatalog: all servers failed for %s%s",
+                  theme_id, suffix)
         assert last_err is not None
         raise last_err
 

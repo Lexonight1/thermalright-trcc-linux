@@ -15,7 +15,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from tests.parity._shared import style_by_legacy_id
 
 # =========================================================================
@@ -82,8 +81,9 @@ def _legacy_metrics(scenario: dict[str, float]) -> Any:
 def _next_metrics(scenario: dict[str, float]) -> Any:
     """Build a next/ ``LegacyMetricsView`` over a SensorReading dict
     that resolves the same attribute names to the same values."""
-    from trcc.legacy.core.models import SensorReading
     from trcc.legacy.services.led_segment import LegacyMetricsView
+
+    from trcc.legacy.core.models import SensorReading
 
     readings: dict[str, SensorReading] = {}
     # LegacyMetricsView translates legacy_attr → next sensor_id via a

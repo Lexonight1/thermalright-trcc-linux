@@ -19,7 +19,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import pytest
-
 from tests.parity._shared import assert_bytes_equal
 
 # =========================================================================
@@ -102,8 +101,9 @@ def _next_device(
 ) -> tuple[object, _NextRecordingTransport]:
     """Build a next/ ScsiLcd with a populated handshake."""
     from trcc.legacy.adapters.device.scsi_lcd import ScsiLcd
-    from trcc.legacy.core.models import HandshakeResult, Kind, ProductInfo, Wire
     from trcc.legacy.core.protocol import get_profile
+
+    from trcc.legacy.core.models import HandshakeResult, Kind, ProductInfo, Wire
 
     info = ProductInfo(
         vid=0x0402, pid=0x3922, vendor="ALi", product="parity",

@@ -1046,7 +1046,12 @@ def _debug_hid_lcd_interactive(dev: Any, test_frame: bool = False) -> None:
     """Interactive HID LCD handshake diagnostic."""
     from trcc.legacy.adapters.device.hid import HidHandshakeInfo, get_button_image
     from trcc.legacy.adapters.device.hid_protocol import HidProtocol
-    from trcc.legacy.core.models import FBL_TO_RESOLUTION, JPEG_MODE_FBLS, fbl_to_resolution, pm_to_fbl
+    from trcc.legacy.core.models import (
+        FBL_TO_RESOLUTION,
+        JPEG_MODE_FBLS,
+        fbl_to_resolution,
+        pm_to_fbl,
+    )
 
     protocol = HidProtocol(vid=dev.vid, pid=dev.pid, device_type=dev.device_type)
     info = protocol.handshake()

@@ -11,7 +11,6 @@ isn't working.  If this passes, the rest of Phase C scales.
 from __future__ import annotations
 
 import pytest
-
 from tests.parity._shared import (
     assert_bytes_equal,
     gradient_color_array,
@@ -49,8 +48,9 @@ def _next_build(
     is_on: list[bool] | None = None,
 ) -> bytes:
     """Next/ pipeline: remap → Led._build_packet → wire bytes."""
-    from trcc.legacy.adapters.device.led import Led, LedPayload
     from trcc.legacy.services.led_segment import remap_led_colors
+
+    from trcc.legacy.adapters.device.led import Led, LedPayload
 
     style = style_by_legacy_id()[legacy_style_id]
     remapped = remap_led_colors(logical_colors, style, style_sub)
@@ -165,8 +165,8 @@ def test_both_trees_importable_simultaneously() -> None:
     """Sanity — the entire point of the harness is that both trees
     coexist in one Python process.  This test imports the canonical
     entry points and asserts they're distinct classes."""
-    from trcc.legacy.adapters.device.led import LedPacketBuilder as LegacyBuilder
     from trcc.legacy.adapters.device.led import Led as NextLed
+    from trcc.legacy.adapters.device.led import LedPacketBuilder as LegacyBuilder
 
     assert LegacyBuilder is not NextLed
     assert LegacyBuilder.__module__.startswith("trcc.legacy.adapters")

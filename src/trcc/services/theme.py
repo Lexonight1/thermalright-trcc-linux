@@ -15,7 +15,7 @@ Config resolution:
     trcc.json     — next/'s native format.  Named distinctly from
                     legacy's `config.json` so migration never clobbers
                     a theme a legacy install also reads.  Themes
-                    written by pre-cutover next/ used `trcc.json`;
+                    written by pre-cutover next/ used `trcc-next.json`;
                     that name is still read as a fallback.
     config1.dc    — binary legacy format (read-only fallback);
                     auto-migrated to trcc.json on first load.
@@ -45,7 +45,7 @@ _CONFIG_FILE = "trcc.json"
 # Pre-cutover name — read as a fallback so themes saved during the
 # parallel-tree period still load.  Next save under DC migration writes
 # the new name; old files are left alone for rollback.
-_PRE_CUTOVER_CONFIG_FILE = "trcc.json"
+_PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # Legacy per-theme JSON shape (different from next/'s).  Wrapper around
 # the legacy overlay_config dict under a ``dc`` key, plus explicit
 # ``background`` and ``mask`` path fields.  Read-only — we translate to
@@ -271,7 +271,7 @@ class ThemeService:
         so subsequent loads skip the binary path.  Legacy's ``config.json``
         uses a different shape, so we keep filenames separate — the two
         tools can share theme directories without stepping on each other.
-        Pre-cutover next/ wrote ``trcc.json``; that name is still
+        Pre-cutover next/ wrote ``trcc-next.json``; that name is still
         read as a fallback.  Migration failure (read-only dir,
         permission, etc.) is logged but doesn't prevent the theme from
         loading.

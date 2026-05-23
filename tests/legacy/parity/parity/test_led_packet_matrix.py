@@ -12,7 +12,6 @@ domain values in tests).
 from __future__ import annotations
 
 import pytest
-
 from tests.parity._shared import (
     assert_bytes_equal,
     gradient_color_array,
@@ -81,8 +80,9 @@ def _next_bytes(
     global_on: bool = True,
     is_on: list[bool] | None = None,
 ) -> bytes:
-    from trcc.legacy.adapters.device.led import Led, LedPayload
     from trcc.legacy.services.led_segment import remap_led_colors
+
+    from trcc.legacy.adapters.device.led import Led, LedPayload
 
     style = style_by_legacy_id()[legacy_style_id]
     remapped = remap_led_colors(colors, style, style_sub)

@@ -88,7 +88,7 @@ def test_render_plist_preserves_python_module_invocation() -> None:
     body = _render_plist(["/usr/bin/python3", "-m", "trcc", "gui"])
     assert "<string>/usr/bin/python3</string>" in body
     assert "<string>-m</string>" in body
-    assert "<string>trcc.next</string>" in body
+    assert "<string>trcc</string>" in body
 
 
 # =========================================================================
@@ -180,5 +180,5 @@ def test_resolve_macos_program_args_falls_back_to_python(monkeypatch) -> None:
     monkeypatch.setattr(_autostart.shutil, "which", lambda name: None)
     args = _autostart._resolve_macos_program_args()
     assert "-m" in args
-    assert "trcc.next" in args
+    assert "trcc" in args
     assert args[-1] == "gui"

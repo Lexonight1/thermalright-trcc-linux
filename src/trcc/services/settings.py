@@ -64,11 +64,11 @@ class AppSettings:
 
 
 _CONFIG_FILE = "trcc.json"
-# One-shot migration: pre-cutover next/ persisted to ``trcc.json``.
+# One-shot migration: pre-cutover next/ persisted to ``trcc-next.json``.
 # Settings._load reads the old name when the new one doesn't exist; the
 # next save writes the new name and leaves the old file untouched so
 # legacy/rollback paths still work.
-_PRE_CUTOVER_CONFIG_FILE = "trcc.json"
+_PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 _LEGACY_CONFIG_FILE = "config.json"
 
 
@@ -470,7 +470,7 @@ class Settings:
     def _load(self) -> None:
         """Load config from disk.  Missing/corrupt → defaults, warn only.
 
-        Falls back to the pre-cutover ``trcc.json`` filename so
+        Falls back to the pre-cutover ``trcc-next.json`` filename so
         users who started on next/ before the rename keep their state;
         the next ``_save`` writes the new ``trcc.json`` automatically.
         """
