@@ -446,31 +446,77 @@ class DisplayService:
         theme: Theme,
         visual_size: tuple[int, int],
     ) -> Any:
-        """Compose fitted background + mask at visual size."""
-        canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
-        s = self._settings.for_device(info.key)
+        """Compose fitted background + mask at visual size.
 
-        # Paint the fitted background
-        source = self._resolve_background(info, theme, visual_size)
-        if source is not None:
-            src_w, src_h = self._r.surface_size(source)
-            dst_w, dst_h = visual_size
-            fit_w, fit_h, off_x, off_y = _fit(
-                s.fit_mode, src_w, src_h, dst_w, dst_h,
+        Honors ``DeviceSettings.background_mode``:
+
+          * ``'theme'`` (default) — paint the active theme's
+            background (image / video frame / cloud override) onto
+            the canvas, then composite the mask on top.
+          * ``'color'`` — fill canvas with ``overlay_background``
+            solid color, SKIP theme-bg paint, then composite mask.
+            Used when the user wants a flat colored backdrop behind
+            the overlay metrics.
+          * ``'transparent'`` — SKIP both theme-bg paint AND the
+            canvas pre-fill; canvas stays at its solid black init
+            (RGB565 has no alpha; "transparent" effectively means
+            "black, with the overlay drawn on top").  Used by the
+            screencast pipeline where the captured frame is the
+            background.
+        """
+        s = self._settings.for_device(info.key)
+        mode = s.background_mode
+
+        # Initial canvas — 'color' mode fills with the user's chosen
+        # colour; 'theme' / 'transparent' start solid black.  RGB565
+        # has no alpha on the wire so the alpha channel is moot
+        # post-encode, but we keep 255 to avoid renderer quirks where
+        # alpha=0 composite-blends to white (per
+        # render-dc-divergence-audit).
+        if mode == "color":
+            r, g, b = s.overlay_background
+            canvas = self._r.create_surface(
+                *visual_size, color=(r, g, b, 255),
             )
             log.info(
-                "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
-                info.key, src_w, src_h,
-                s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
-                fit_w, fit_h, off_x, off_y,
+                "build_bg_mask %s: mode=color fill=%s — skipping theme bg",
+                info.key, s.overlay_background,
             )
-            fitted = self._r.resize(source, fit_w, fit_h)
-            canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
         else:
-            log.warning(
-                "build_bg_mask %s: no background source resolved for theme %r — "
-                "canvas stays solid black",
-                info.key, theme.name,
+            canvas = self._r.create_surface(
+                *visual_size, color=(0, 0, 0, 255),
+            )
+
+        # Paint the fitted theme background only in 'theme' mode.
+        # 'color' has already painted; 'transparent' is intentionally
+        # left at solid black so the overlay draws on a clean canvas.
+        if mode == "theme":
+            source = self._resolve_background(info, theme, visual_size)
+            if source is not None:
+                src_w, src_h = self._r.surface_size(source)
+                dst_w, dst_h = visual_size
+                fit_w, fit_h, off_x, off_y = _fit(
+                    s.fit_mode, src_w, src_h, dst_w, dst_h,
+                )
+                log.info(
+                    "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
+                    info.key, src_w, src_h,
+                    s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
+                    fit_w, fit_h, off_x, off_y,
+                )
+                fitted = self._r.resize(source, fit_w, fit_h)
+                canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
+            else:
+                log.warning(
+                    "build_bg_mask %s: no background source resolved for theme %r — "
+                    "canvas stays solid black",
+                    info.key, theme.name,
+                )
+        elif mode == "transparent":
+            log.info(
+                "build_bg_mask %s: mode=transparent — skipping theme bg "
+                "(canvas stays solid black; overlay draws on top)",
+                info.key,
             )
 
         # Mask layer: per-device override (ApplyMask Command) takes
@@ -738,7 +784,16 @@ class DisplayService:
         # _invalidate_scene, but keying on the override path is the
         # explicit contract.
         bg_override = s.background_path
-        return (str(theme.path), bg_override, visual_size, cursor, mask_sig)
+        # ``background_mode`` + ``overlay_background`` colour also
+        # affect what _build_bg_mask paints — SetBackgroundMode and
+        # SetOverlayBackground invalidate explicitly, but keying on
+        # them here is the explicit contract (same defence-in-depth
+        # the mask_sig provides).
+        bg_mode_sig = (s.background_mode, s.overlay_background)
+        return (
+            str(theme.path), bg_override, visual_size,
+            cursor, mask_sig, bg_mode_sig,
+        )
 
     def _overlay_key(
         self,
