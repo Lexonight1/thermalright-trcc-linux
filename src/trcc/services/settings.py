@@ -1,9 +1,4 @@
-"""Settings — user preferences, persisted to trcc.json.
-
-Filename is deliberately distinct from legacy's ``config.json`` — the
-two trees use different JSON shapes, and sharing a filename would make
-whichever wrote last clobber the other.  Users can run legacy + next/
-on the same machine without breaking either's state.
+"""Settings — user preferences, persisted to ``trcc.json``.
 
 Two layers:
   * AppSettings — global (language, data refresh interval, active device).
@@ -53,6 +48,15 @@ class AppSettings:
     # unit across all devices. Per-device override still possible via the
     # per-device set_temp_unit() (used by tests / non-GUI consumers).
     temp_unit: TempUnit = "C"
+    # Global default clock formats — same cross-cutting pattern as
+    # ``temp_unit``.  Multi-LCD users expect ONE "24h" toggle that
+    # applies everywhere; ``Settings.set_global_time_format`` /
+    # ``set_global_date_format`` write here and fan out to every
+    # existing DeviceSettings.  ``Settings.for_device`` seeds new
+    # DeviceSettings instances from these globals.  Per-device
+    # override remains available via the per-device setters.
+    time_format: Literal["12h", "24h"] = "24h"
+    date_format: str = "yyyy/MM/dd"
     # User-selected primary GPU (e.g. 'nvidia:0', 'amd:0', or 'intel:igpu').
     # None = let SensorEnumerator.primary_gpu() pick automatically.
     active_gpu: str | None = None
@@ -64,12 +68,10 @@ class AppSettings:
 
 
 _CONFIG_FILE = "trcc.json"
-# One-shot migration: pre-cutover next/ persisted to ``trcc-next.json``.
-# Settings._load reads the old name when the new one doesn't exist; the
-# next save writes the new name and leaves the old file untouched so
-# legacy/rollback paths still work.
+# Pre-cutover next/ persisted to ``trcc-next.json``; ``_load`` reads
+# it as a fallback so users who started before the rename keep their
+# state.  Next ``_save`` writes the new filename.
 _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
-_LEGACY_CONFIG_FILE = "config.json"
 
 
 class Settings:
@@ -108,18 +110,64 @@ class Settings:
             self._app.refresh_interval_s = max(0.1, seconds)
             self._save()
 
-    def set_global_temp_unit(self, unit: TempUnit) -> None:
+    def device_keys(self) -> tuple[str, ...]:
+        """Return the tuple of device keys with persisted settings.
+
+        Snapshot — safe to iterate even if a concurrent call mutates
+        the underlying dict.  Used by cross-cutting Commands that need
+        to publish one per-device event after a global setter has
+        already fanned the value out.
+        """
+        with self._lock:
+            return tuple(self._devices)
+
+    def set_global_temp_unit(self, unit: TempUnit) -> tuple[str, ...]:
         """Set the global default temp_unit and propagate to every device.
 
         Cross-cutting setter: keeps AppSettings.temp_unit and every
         DeviceSettings.temp_unit in lockstep so overlay renderers can
-        read either layer and see the same answer.
+        read either layer and see the same answer.  Returns the tuple
+        of device keys that were touched so callers can publish a
+        per-device event without poking private state.
         """
         with self._lock:
             self._app.temp_unit = unit
             for device_settings in self._devices.values():
                 device_settings.temp_unit = unit
             self._save()
+            return tuple(self._devices)
+
+    def set_global_time_format(
+        self, fmt: Literal["12h", "24h"],
+    ) -> tuple[str, ...]:
+        """Set the global default clock format and propagate to every device.
+
+        Same lockstep shape as :meth:`set_global_temp_unit` — write
+        ``app.time_format`` then fan out to every existing
+        ``DeviceSettings.time_format``.  Returns the tuple of device
+        keys touched so the calling Command can publish per-device
+        events.
+        """
+        with self._lock:
+            self._app.time_format = fmt
+            for device_settings in self._devices.values():
+                device_settings.time_format = fmt
+            self._save()
+            return tuple(self._devices)
+
+    def set_global_date_format(self, fmt: str) -> tuple[str, ...]:
+        """Set the global default date pattern and propagate to every device.
+
+        Companion to :meth:`set_global_time_format`.  ``fmt`` is the
+        ICU-ish pattern (``yyyy/MM/dd``, ``dd/MM/yyyy``, etc.) that
+        ``DisplayService.compute_clock`` reads per render.
+        """
+        with self._lock:
+            self._app.date_format = fmt
+            for device_settings in self._devices.values():
+                device_settings.date_format = fmt
+            self._save()
+            return tuple(self._devices)
 
     def set_active_gpu(self, gpu_key: str | None) -> None:
         """Set the user-selected primary GPU. None = auto-pick."""
@@ -130,10 +178,22 @@ class Settings:
     # ── DeviceSettings surface ────────────────────────────────────────
 
     def for_device(self, key: str) -> DeviceSettings:
-        """Return the DeviceSettings for *key*, creating defaults if absent."""
+        """Return the DeviceSettings for *key*, creating defaults if absent.
+
+        A freshly-minted ``DeviceSettings`` inherits the global format
+        prefs (``app.time_format`` / ``app.date_format`` / ``app.temp_unit``)
+        so a newly-attached LCD picks up the user's chosen formats
+        instead of falling back to the dataclass's compile-time
+        defaults.  Existing devices keep whatever was persisted —
+        only first-touch is seeded.
+        """
         with self._lock:
             if key not in self._devices:
-                self._devices[key] = DeviceSettings()
+                self._devices[key] = DeviceSettings(
+                    time_format=self._app.time_format,
+                    date_format=self._app.date_format,
+                    temp_unit=self._app.temp_unit,
+                )
             return self._devices[key]
 
     def set_orientation(self, key: str, degrees: int) -> None:

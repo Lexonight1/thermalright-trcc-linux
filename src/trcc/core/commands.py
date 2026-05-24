@@ -2402,6 +2402,78 @@ class SetDateFormat(Command[DateFormatResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class SetGlobalTimeFormat(Command[TimeFormatResult]):
+    """Set the global default clock format for every device.
+
+    Companion to :class:`SetTimeFormat` (per-device).  Writes
+    ``AppSettings.time_format`` and fans out to every existing
+    ``DeviceSettings.time_format``; subscribers (DeviceRenderObserver)
+    re-render each LCD on the next tick because we publish one
+    :class:`TimeFormatChanged` per device key.
+
+    Per-device override remains available — call ``SetTimeFormat``
+    after this Command to deviate one LCD from the global.
+    """
+    fmt: str
+
+    def execute(self, app: App) -> TimeFormatResult:
+        log.info("SetGlobalTimeFormat.execute: fmt=%s", self.fmt)
+        if self.fmt not in ("12h", "24h"):
+            log.warning(
+                "SetGlobalTimeFormat.execute: invalid fmt %r", self.fmt,
+            )
+            return TimeFormatResult(
+                ok=False, key="", fmt=self.fmt,
+                message=f"fmt must be '12h' or '24h', got {self.fmt!r}",
+            )
+        keys = app.settings.set_global_time_format(self.fmt)  # type: ignore[arg-type]
+        for key in keys:
+            app.display.invalidate(key)
+            app.events.publish(TimeFormatChanged(key=key, fmt=self.fmt))
+        log.info(
+            "SetGlobalTimeFormat.execute: fanned out to %d device(s)",
+            len(keys),
+        )
+        return TimeFormatResult(
+            ok=True, key="", fmt=self.fmt,
+            message=(f"global time format set to {self.fmt} "
+                     f"({len(keys)} device(s) updated)"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetGlobalDateFormat(Command[DateFormatResult]):
+    """Set the global default date pattern for every device.
+
+    Companion to :class:`SetDateFormat` (per-device).  Same fan-out
+    shape as :class:`SetGlobalTimeFormat`.
+    """
+    fmt: str
+
+    def execute(self, app: App) -> DateFormatResult:
+        log.info("SetGlobalDateFormat.execute: fmt=%r", self.fmt)
+        if not self.fmt:
+            log.warning("SetGlobalDateFormat.execute: empty fmt")
+            return DateFormatResult(
+                ok=False, key="", fmt=self.fmt,
+                message="fmt must not be empty",
+            )
+        keys = app.settings.set_global_date_format(self.fmt)
+        for key in keys:
+            app.display.invalidate(key)
+            app.events.publish(DateFormatChanged(key=key, fmt=self.fmt))
+        log.info(
+            "SetGlobalDateFormat.execute: fanned out to %d device(s)",
+            len(keys),
+        )
+        return DateFormatResult(
+            ok=True, key="", fmt=self.fmt,
+            message=(f"global date format set to {self.fmt!r} "
+                     f"({len(keys)} device(s) updated)"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SetWeekStart(Command[WeekStartResult]):
     """Week-start convention: ``True`` = Sunday-first, ``False`` = Monday-first."""
     key: str

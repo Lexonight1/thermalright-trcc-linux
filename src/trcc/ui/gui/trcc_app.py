@@ -2143,34 +2143,26 @@ class TRCCApp(QMainWindow):
     def _on_format_pref_changed(self, kind: str, value: int) -> None:
         """User changed time / date / temp-unit format in the overlay editor.
 
-        UCThemeSetting already persisted the choice to ``UiStateStore``
-        (global GUI prefs).  Here we mirror the choice onto every
-        connected LCD's ``DeviceSettings.{time,date}_format`` so
-        ``DisplayService.compute_clock`` (which reads per-device)
-        picks it up on the next render.  Loops over every handler
-        rather than just the active one — legacy treated format prefs
-        as global, users with multi-LCD setups expect consistent
-        formats across all displays.
+        Dispatched as ONE global Command — :class:`SetGlobalTimeFormat`
+        or :class:`SetGlobalDateFormat` — which fans the value out to
+        every existing :class:`DeviceSettings` and publishes one
+        per-device ``*FormatChanged`` event so ``DeviceRenderObserver``
+        re-renders each LCD.  Multi-LCD users expect ONE toggle that
+        applies everywhere; the global Command is the single
+        dispatch site for that semantic.
 
         ``kind ∈ {'time', 'date', 'temp_unit'}``.  ``temp_unit`` is
-        already handled by the dedicated About-panel ``°C/°F`` toggle
-        flow (``_on_temp_unit_changed`` → ``SetTimeUnit``); ignored
+        owned by the About-panel's dedicated ``°C/°F`` toggle
+        (``_on_temp_unit_changed`` → :class:`SetTempUnit`); ignored
         here to avoid double-dispatch.
         """
-        from ...core.commands import SetDateFormat, SetTimeFormat
-        log.info(
-            "_on_format_pref_changed: kind=%s value=%d (mirroring to "
-            "%d connected LCD(s))",
-            kind, value, sum(
-                1 for h in self._handlers.values()
-                if isinstance(h, LCDHandler)
-            ),
-        )
+        from ...core.commands import SetGlobalDateFormat, SetGlobalTimeFormat
+        log.info("_on_format_pref_changed: kind=%s value=%d", kind, value)
         if kind == 'time':
-            # GUI int → DeviceSettings literal.  TIME_FORMATS dict
+            # GUI int → "12h" / "24h" literal.  TIME_FORMATS dict
             # uses 0,2=24h and 1=12h.
             fmt = "12h" if value == 1 else "24h"
-            cmd_factory = lambda key: SetTimeFormat(key=key, fmt=fmt)  # noqa: E731
+            self._app.dispatch(SetGlobalTimeFormat(fmt=fmt))
         elif kind == 'date':
             # DeviceSettings.date_format takes an ICU-ish pattern.
             # Map the GUI int codes (defined alongside DATE_FORMATS
@@ -2182,20 +2174,14 @@ class TRCCApp(QMainWindow):
                 3: "MM/dd",
                 4: "dd/MM",
             }
-            fmt = _DATE_INT_TO_PATTERN.get(value, "yyyy/MM/dd")
-            cmd_factory = lambda key: SetDateFormat(key=key, fmt=fmt)  # noqa: E731
+            self._app.dispatch(SetGlobalDateFormat(
+                fmt=_DATE_INT_TO_PATTERN.get(value, "yyyy/MM/dd"),
+            ))
         else:
-            # ``temp_unit`` is owned by About-panel's dedicated toggle;
-            # the overlay editor's temp-unit dropdown is informational
-            # / per-element override (not yet wired to a Command).
             log.debug(
                 "_on_format_pref_changed: kind=%r — no Command dispatch",
                 kind,
             )
-            return
-        for h in self._handlers.values():
-            if isinstance(h, LCDHandler):
-                self._app.dispatch(cmd_factory(h.device_key))
 
     def _on_refresh_changed(self, interval: int) -> None:
         log.info("_on_refresh_changed: interval=%ss", interval)
