@@ -25,6 +25,7 @@ from .errors import (
     TransportError,
 )
 from .events import (
+    BackgroundChanged,
     BrightnessChanged,
     DeviceConnected,
     DeviceDisconnected,
@@ -56,6 +57,7 @@ from .registry import find_product
 from .results import (
     AutostartResult,
     BackgroundModeResult,
+    BackgroundResult,
     BootAnimationResult,
     BrightnessResult,
     ClockFormatResult,
@@ -485,23 +487,20 @@ class LoadTheme(Command[ThemeResult]):
         # Persist the absolute path — names are display strings, paths
         # are the stable reference RestoreLastTheme needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
-        # Clear the cloud-background override — picking a local theme
-        # reverts to that theme's bundled background.  If the cloud bg
-        # were set, every future local-theme select would still play
-        # the old cloud video.
-        if app.settings.for_device(self.key).background_path is not None:
-            log.info(
-                "LoadTheme: clearing cloud-background override for %s "
-                "(picking local theme %r)", self.key, theme.name,
-            )
-            app.settings.set_background_path(self.key, None)
+        # Single source of truth for "stop the previous video + clear
+        # the cloud-background override + invalidate the scene cache":
+        # ``StopVideo``.  Centralising here means publishing VideoStopped
+        # for the UI handler's timer observer, clearing background_path
+        # for the next render, and unloading the playback all happen in
+        # one Command instead of three loose mutations — and a future
+        # change to "what stop means" only has to touch StopVideo.
+        StopVideo(key=self.key).execute(app)
         app.active_themes[self.key] = theme
-        app.display.invalidate(self.key)  # drop stale scene cache from prev theme
-        app.media.unload(self.key)        # drop stale video frames
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
-            "LoadTheme: %s loaded — invalidated scene cache + cleared media "
-            "(active theme persisted)", theme.name,
+            "LoadTheme: %s loaded — prior playback + cloud-bg override "
+            "cleared, scene cache invalidated, active theme persisted",
+            theme.name,
         )
 
         # If device is attached + connected + Renderer available, send an
@@ -587,6 +586,31 @@ class LoadTheme(Command[ThemeResult]):
                 ok=True, key=self.key, theme_name=theme.name,
                 theme_path=theme_path_str,
                 message=f"Theme '{theme.name}' saved (no Renderer attached)",
+            )
+
+        # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
+        # PlayVideo pipeline so the same VideoStarted event fires for
+        # local + cloud + user-loaded videos — UI handler subscribes
+        # once and starts its animation timer for any of them.  Static
+        # themes (00.png) keep the build-frame-and-send path below.
+        video_path = app.themes.video_path(theme)
+        if video_path is not None:
+            log.info(
+                "LoadTheme: %s has bundled video %s — dispatching PlayVideo",
+                theme.name, video_path.name,
+            )
+            play = PlayVideo(key=self.key, path=video_path).execute(app)
+            if not play.ok:
+                return ThemeResult(
+                    ok=False, key=self.key, theme_name=theme.name,
+                    theme_path=theme_path_str,
+                    message=f"Theme '{theme.name}': {play.message}",
+                )
+            return ThemeResult(
+                ok=True, key=self.key, theme_name=theme.name,
+                theme_path=theme_path_str,
+                message=(f"Theme '{theme.name}' loaded — playing "
+                         f"{video_path.name} ({play.frame_count} frame(s))"),
             )
 
         # Read live sensors so the first frame the device sees after a
@@ -978,14 +1002,21 @@ class PlayVideo(Command[VideoResult]):
 
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
+        # Per-frame interval derived from playback fps — handler observer
+        # uses this to start the Qt animation timer.  Clamped to >=1 ms
+        # so a degenerate fps=0 cannot stall the event loop.
+        fps = getattr(playback, "fps", 0) or 30
+        interval_ms = max(1, int(1000 / fps))
         log.info(
-            "PlayVideo.execute: playback loaded — %d frames "
-            "(VideoStarted published)", playback.frame_count,
+            "PlayVideo.execute: playback loaded — %d frames @ %d fps "
+            "(interval=%dms, VideoStarted published)",
+            playback.frame_count, fps, interval_ms,
         )
 
         app.events.publish(VideoStarted(
             key=self.key, path=str(self.path),
             frame_count=playback.frame_count,
+            interval_ms=interval_ms,
         ))
         return VideoResult(
             ok=True, key=self.key, path=str(self.path),
@@ -997,16 +1028,33 @@ class PlayVideo(Command[VideoResult]):
 
 @dataclass(frozen=True, slots=True)
 class StopVideo(Command[VideoResult]):
-    """Clear the device's playback override.
+    """Clear the device's playback override AND the persisted bg override.
 
     Idempotent — calling on a device with no playback is a no-op + ok=True
     so scripts can use it as a defensive cleanup.
+
+    Clears ``DeviceSettings.background_path`` so the next render falls
+    back to the active theme's bundled background.  Without this, the
+    next ``RenderAndSend`` (triggered by ``VideoStopped`` via
+    ``DeviceRenderObserver``) would find ``background_path`` still set,
+    take the override branch in ``DisplayService._resolve_background``,
+    and silently re-decode the same video via ``MediaService.load_video``
+    — turning "stop" into "rewind to frame 0".
     """
     key: str
 
     def execute(self, app: App) -> VideoResult:
         had_playback = app.media.playback(self.key) is not None
+        had_override = (
+            app.settings.for_device(self.key).background_path is not None
+        )
         app.media.unload(self.key)
+        if had_override:
+            log.info(
+                "StopVideo: clearing background_path override for %s",
+                self.key,
+            )
+            app.settings.set_background_path(self.key, None)
         _invalidate_scene(app, self.key)
         if had_playback:
             app.events.publish(VideoStopped(key=self.key))
@@ -1014,6 +1062,104 @@ class StopVideo(Command[VideoResult]):
             ok=True, key=self.key,
             message=(f"video stopped for {self.key}"
                      if had_playback else f"no video playing for {self.key}"),
+        )
+
+
+# Image extensions supported as a static background override.  Kept
+# narrower than ``_MASK_IMAGE_EXTS`` on purpose — the renderer pipes
+# whatever ``QtRenderer.open_image`` accepts; this is the GUI-visible
+# safelist for "pick a file as my background".
+_BG_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
+
+
+@dataclass(frozen=True, slots=True)
+class SetBackground(Command[BackgroundResult]):
+    """Apply a file as the device's persistent background override.
+
+    Sister Command to :class:`PlayVideo` — both write to
+    ``DeviceSettings.background_path``, which ``DisplayService``
+    consults BEFORE the active theme's bundled background.  Use this
+    one for STATIC IMAGES (``PlayVideo`` for animated bg) so each
+    Command is single-purpose:
+
+      * image  → store path, invalidate scene cache, publish
+        ``BackgroundChanged`` so ``DeviceRenderObserver`` schedules
+        one ``RenderAndSend`` to push the new bg onto the wire.
+      * video  → forwarded to ``PlayVideo`` so the full playback
+        pipeline (decode → ``VideoStarted`` → animation timer) is
+        the same regardless of how the path entered the system.
+
+    Stops any prior video first so the new image isn't immediately
+    overwritten by the next animation tick.
+    """
+    key: str
+    path: Path
+
+    def execute(self, app: App) -> BackgroundResult:
+        log.info(
+            "SetBackground.execute: key=%s path=%s", self.key, self.path,
+        )
+        if not self.path.exists():
+            log.warning(
+                "SetBackground.execute: path does not exist: %s", self.path,
+            )
+            return BackgroundResult(
+                ok=False, key=self.key, path=str(self.path),
+                message=f"background file does not exist: {self.path}",
+            )
+        if not self.path.is_file():
+            log.warning(
+                "SetBackground.execute: not a regular file: %s", self.path,
+            )
+            return BackgroundResult(
+                ok=False, key=self.key, path=str(self.path),
+                message=f"background path is not a regular file: {self.path}",
+            )
+
+        ext = self.path.suffix.lower()
+        if ext in _VIDEO_EXTS_OK:
+            log.info(
+                "SetBackground.execute: %s has video ext — delegating to "
+                "PlayVideo", self.path.name,
+            )
+            app.settings.set_background_path(self.key, str(self.path))
+            play = PlayVideo(key=self.key, path=self.path).execute(app)
+            return BackgroundResult(
+                ok=play.ok, key=self.key, path=str(self.path), kind="video",
+                message=play.message,
+            )
+        if ext in _BG_IMAGE_EXTS:
+            # Drop any prior video first — its animation timer would
+            # otherwise tick over the static image we're about to set.
+            # Routes through StopVideo (publishes VideoStopped, stops
+            # the handler timer), then we set the new bg path.  StopVideo
+            # would normally clear ``background_path``, but we set it
+            # right after on the same dispatch thread, so the next
+            # render reads the new value.
+            StopVideo(key=self.key).execute(app)
+            app.settings.set_background_path(self.key, str(self.path))
+            _invalidate_scene(app, self.key)
+            app.events.publish(
+                BackgroundChanged(key=self.key, path=str(self.path)),
+            )
+            log.info(
+                "SetBackground.execute: image bg %s applied (BackgroundChanged "
+                "published)", self.path.name,
+            )
+            return BackgroundResult(
+                ok=True, key=self.key, path=str(self.path), kind="image",
+                message=f"background set to {self.path.name} for {self.key}",
+            )
+        log.warning(
+            "SetBackground.execute: unsupported extension %r (image=%s, "
+            "video=%s)",
+            ext, sorted(_BG_IMAGE_EXTS), sorted(_VIDEO_EXTS_OK),
+        )
+        return BackgroundResult(
+            ok=False, key=self.key, path=str(self.path),
+            message=(f"unsupported background extension {ext!r} — "
+                     f"expected image {sorted(_BG_IMAGE_EXTS)} or "
+                     f"video {sorted(_VIDEO_EXTS_OK)}"),
         )
 
 

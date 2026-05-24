@@ -133,6 +133,15 @@ class LCDHandler(BaseHandler):
         self._pixmap_cache: dict[int, tuple[int, QPixmap]] = {}
         self._last_render_id: int | None = None
 
+        # Animation observability: log one INFO line at first tick (proves
+        # the QTimer fires) and on each silent-skip TRANSITION (so we see
+        # "device disconnected" once, not every 66 ms).  Per-tick stays
+        # DEBUG — flipping these on info-level when the timer starts is
+        # how we tell a "didn't fire" bug apart from a "fired but skipped"
+        # bug without reading the code.
+        self._animation_first_tick_logged: bool = False
+        self._animation_last_skip_reason: str | None = None
+
         # Thread-safe notifier for background data extraction → UI refresh
         self._data_notifier = _DataReadyNotifier()
         self._data_notifier.ready.connect(self._on_data_ready)
@@ -161,6 +170,34 @@ class LCDHandler(BaseHandler):
     def device_key(self) -> str:
         return self._device_key
 
+    @property
+    def current_theme_path(self) -> Path | None:
+        """Active theme directory, or ``None`` if no theme is loaded.
+
+        Tracked on ``_state`` by the load + restore flows; exposed read-
+        only so the window can query without reaching into private
+        state (DIP boundary at the handler).
+        """
+        return self._state.current_theme_path
+
+    @property
+    def lcd_size(self) -> tuple[int, int]:
+        """Active resolution for this device.
+
+        Cached on ``_state`` by ``_refresh`` from
+        ``device.profile.resolution`` (post-handshake) or the registry
+        fallback.  Window-layer code that needs the canvas dims for
+        image cutters / drag math reads this — never reaches into the
+        protocol adapter directly.
+        """
+        return self._state.lcd_size
+
+    @property
+    def has_video_playback(self) -> bool:
+        """True iff MediaService has frames bound for this device."""
+        playback = self._app.media.playback(self._device_key)
+        return playback is not None and bool(playback.frames)
+
     # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
     def apply_device_config(self, info: ProductInfo, w: int, h: int) -> None:
@@ -188,23 +225,17 @@ class LCDHandler(BaseHandler):
         when not selected.  next/'s RestoreLastTheme Command persists +
         re-loads the previously-active theme; the handler subscribes to
         the resulting frame via the global FrameSent stream.
+
+        The animation timer is started by the ``VideoStarted`` observer
+        when ``RestoreLastTheme`` → ``LoadTheme`` → ``PlayVideo`` fires,
+        so no explicit timer start here (DRY: one start site).
         """
         self._ui_active = False
         self._pixmap_cache.clear()
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
             return
-        result = self._app.dispatch(RestoreLastTheme(key=self._device_key))
-        if not result.ok:
-            return
-        playback = self._app.media.playback(self._device_key)
-        if playback is not None and not self._animation_timer.isActive():
-            interval = self._video_interval_ms()
-            self.log.info(
-                "restore_inactive_state: starting background video timer "
-                "interval=%dms", interval,
-            )
-            self._animation_timer.start(interval)
+        self._app.dispatch(RestoreLastTheme(key=self._device_key))
 
     def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current persisted settings."""
@@ -351,16 +382,14 @@ class LCDHandler(BaseHandler):
             self._load_theme_overlay_config(
                 Path(result.theme_path), persist=False,
             )
-        playback = self._app.media.playback(self._device_key)
-        if playback is not None and playback.frames:
-            self._state.current_theme_path = (
-                Path(result.theme_path) if result.theme_path else None
-            )
-            self._animation_timer.start(self._video_interval_ms())
-            if self._ui_active:
-                self._w['preview'].set_playing(True)
-                self._w['preview'].show_video_controls(True)
-        else:
+        # Track the restored theme directory so deletion / re-renders
+        # can reference it.  For video-backed themes the VideoStarted
+        # observer (``on_video_started``) takes over animating; for
+        # static themes we refresh the preview here.
+        self._state.current_theme_path = (
+            Path(result.theme_path) if result.theme_path else None
+        )
+        if self._app.media.playback(self._device_key) is None:
             self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
@@ -391,10 +420,14 @@ class LCDHandler(BaseHandler):
         self._slideshow_timer.stop()
         self._app.dispatch(EnableOverlay(key=self._device_key, enabled=False))
 
-        # Reset mode toggles (C# ReadSystemConfiguration override)
         self._background_active = False
-        self._animation_timer.stop()
-        self._app.dispatch(StopVideo(key=self._device_key))
+        # LoadTheme internally dispatches StopVideo (clears the previous
+        # playback + cloud-bg override + publishes VideoStopped which
+        # stops the timer via the bus_bridge observer) and, if the new
+        # theme has a Theme.{mp4,mov,webm,zt}, dispatches PlayVideo
+        # which publishes VideoStarted to restart the timer.  The
+        # handler does not have to coordinate that here.
+
         # Picking a new theme clears the previous mask — legacy persists
         # ``mask_id=''`` here so a follow-up render doesn't keep the old
         # mask layered on top of the new theme's bg.  Direct settings
@@ -459,19 +492,11 @@ class LCDHandler(BaseHandler):
                 theme_id, result.message,
             )
             return
-        # Drive frame advancement — LoadCloudTheme dispatches PlayVideo
-        # which loads MediaService playback, but the per-frame
-        # ``playback.advance()`` call lives on a Qt timer the handler
-        # owns.  Without starting it here the LCD freezes on frame 0;
-        # legacy starts a 33ms timer at the equivalent point in
-        # ``_select_theme()``.
-        if not self._animation_timer.isActive():
-            interval = self._video_interval_ms()
-            self.log.info(
-                "select_cloud_theme: starting animation timer %dms (%s)",
-                interval, theme_id,
-            )
-            self._animation_timer.start(interval)
+        # ``LoadCloudTheme`` → ``PlayVideo`` publishes ``VideoStarted``;
+        # the bus_bridge observer routes it back to this handler's
+        # ``on_video_started`` which starts the per-frame Qt timer.
+        # One start site, one stop site — the same way restoring a
+        # local video theme works.
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
@@ -562,6 +587,49 @@ class LCDHandler(BaseHandler):
         self._state.overlay_enabled = True
         self._render_and_send()
 
+    # ── Video lifecycle (bus_bridge observers) ─────────────────────
+
+    def on_video_started(self, event: Any) -> None:
+        """Domain event ``VideoStarted`` arrived for this device.
+
+        Single entry point for "start animating".  Anything that wants
+        a video to play — local theme load, cloud-bg select,
+        play-pause-resume on a paused playback, slideshow tick, future
+        Commands — publishes ``VideoStarted`` and lands here.
+
+        ``event.path`` is the VIDEO FILE (not the theme directory), so
+        we don't touch ``_state.current_theme_path`` here — the Command
+        that initiated the load (``LoadTheme`` / ``LoadCloudTheme``)
+        owns that field's lifecycle.
+        """
+        if event.key != self._device_key:
+            return
+        self.log.info(
+            "on_video_started: %s frames=%d interval=%dms",
+            event.path, event.frame_count, event.interval_ms,
+        )
+        self._start_animation_timer(
+            event.interval_ms, reason="video-started",
+        )
+        if self._ui_active:
+            self._w['preview'].set_playing(True)
+            self._w['preview'].show_video_controls(True)
+
+    def on_video_stopped(self, event: Any) -> None:
+        """Domain event ``VideoStopped`` arrived for this device.
+
+        Single entry point for "stop animating".  Mirrors
+        ``on_video_started`` — every stop path (StopVideo Command,
+        device disconnect cleanup, theme switch) lands here.
+        """
+        if event.key != self._device_key:
+            return
+        self.log.info("on_video_stopped: device=%s", self._device_key)
+        self._stop_animation_timer(reason="video-stopped")
+        if self._ui_active:
+            self._w['preview'].set_playing(False)
+            self._w['preview'].show_video_controls(False)
+
     # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
 
     def play_pause(self) -> None:
@@ -580,17 +648,22 @@ class LCDHandler(BaseHandler):
         self.log.info("play_pause: was_paused=%s → playing=%s",
                       was_paused, playing)
         self._w['preview'].set_playing(playing)
+        # Pause is a transient toggle on an EXISTING playback — no
+        # VideoStarted / VideoStopped is published.  Drive the Qt timer
+        # directly here through the same start/stop helpers so the
+        # observability hooks fire (entry log + first-tick reset).
         if playing:
-            interval_ms = self._video_interval_ms()
-            self._animation_timer.start(interval_ms)
+            self._start_animation_timer(
+                self._video_interval_ms(), reason="play_pause-resume",
+            )
         else:
-            self._animation_timer.stop()
+            self._stop_animation_timer(reason="play_pause-pause")
 
     def stop_video(self) -> None:
         self.log.info("stop_video: device=%s", self._device_key)
-        from ...core.commands import StopVideo
+        # StopVideo publishes VideoStopped → the bus_bridge observer
+        # routes back to ``on_video_stopped`` which stops the timer.
         self._app.dispatch(StopVideo(key=self._device_key))
-        self._animation_timer.stop()
         self._w['preview'].set_playing(False)
         self._w['preview'].show_video_controls(False)
 
@@ -615,12 +688,51 @@ class LCDHandler(BaseHandler):
         # Re-render preview on the next FrameSent / tick
 
     def _video_interval_ms(self) -> int:
-        """Return ms between frames for the active video, or 33 (≈30 fps)."""
+        """Return ms-per-frame for the active playback, 33 as fallback.
+
+        Only used by ``play_pause`` to resume an EXISTING paused
+        playback — load-new-video paths get the interval from the
+        ``VideoStarted`` event payload instead (DIP: don't query the
+        service if the event already carries the answer).
+        """
         playback = self._app.media.playback(self._device_key)
         if playback is None:
             return 33
         fps = getattr(playback, 'fps', 0) or 30
         return max(1, int(1000 / fps))
+
+    def _start_animation_timer(self, interval_ms: int, reason: str) -> None:
+        """Single entry point for starting the per-frame video timer.
+
+        Phase 4 collapses the previous three call sites (cloud theme
+        select, restore-last-theme, inactive-restore) onto a single
+        VideoStarted observer that routes here.  Centralising the start
+        site is the SRP win — it also lets the first-tick diagnostic be
+        reset in exactly one place.
+        """
+        self._animation_first_tick_logged = False
+        self._animation_last_skip_reason = None
+        self.log.info(
+            "_start_animation_timer: %dms (reason=%s) device=%s",
+            interval_ms, reason, self._device_key,
+        )
+        self._animation_timer.start(max(1, interval_ms))
+
+    def _stop_animation_timer(self, reason: str) -> None:
+        """Single entry point for stopping the per-frame video timer.
+
+        Idempotent: no log when already stopped.  Phase 4 routes the
+        VideoStopped observer here.
+        """
+        if not self._animation_timer.isActive():
+            return
+        self.log.info(
+            "_stop_animation_timer: reason=%s device=%s",
+            reason, self._device_key,
+        )
+        self._animation_timer.stop()
+        self._animation_first_tick_logged = False
+        self._animation_last_skip_reason = None
 
     def _on_video_tick(self) -> None:
         """Timer callback: advance one video frame.
@@ -629,8 +741,22 @@ class LCDHandler(BaseHandler):
         builds + encodes + sends the current cursor's frame.  Preview
         widget refreshes via the ``FrameSent`` → ``rebuild_preview``
         bridge — no per-tick image plumbing here.
+
+        Observability rule (CLAUDE.md "Logging coverage is mandatory"):
+        first tick of every animation logs at INFO; subsequent ticks at
+        DEBUG.  Silent-skip branches log at INFO on STATE TRANSITION
+        only — same skip reason in a row stays DEBUG so a disconnected
+        device doesn't spam 15 lines/s.
         """
         from ...core.commands import RenderAndSend
+
+        if not self._animation_first_tick_logged:
+            self.log.info(
+                "_on_video_tick: first tick fired for %s",
+                self._device_key,
+            )
+            self._animation_first_tick_logged = True
+
         playback = self._app.media.playback(self._device_key)
         if playback is None or not playback.frames:
             # Animation timer is firing but the playback was cleared —
@@ -641,7 +767,7 @@ class LCDHandler(BaseHandler):
                 "stopping animation timer",
                 playback, len(playback.frames) if playback else 0,
             )
-            self._animation_timer.stop()
+            self._stop_animation_timer(reason="playback-cleared")
             return
         playback.advance()
 
@@ -653,13 +779,14 @@ class LCDHandler(BaseHandler):
 
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
-            # Device dropped — frame advance still useful for preview,
-            # but no point dispatching RenderAndSend.  DEBUG per-tick.
-            self.log.debug(
-                "_on_video_tick: device %s not connected — skip send",
-                self._device_key,
+            self._log_tick_skip(
+                reason="device-not-connected",
+                detail=f"device {self._device_key} not connected — skip send",
             )
             return
+
+        # Cleared on the happy path so a subsequent disconnect re-logs.
+        self._animation_last_skip_reason = None
 
         result = self._app.dispatch(RenderAndSend(key=self._device_key))
         if not result.ok:
@@ -669,6 +796,16 @@ class LCDHandler(BaseHandler):
                 "_on_video_tick: render failed cursor=%d/%d — %s",
                 playback.cursor, playback.frame_count, result.message,
             )
+
+    def _log_tick_skip(self, *, reason: str, detail: str) -> None:
+        """Log a per-tick skip at INFO on first occurrence of *reason*,
+        DEBUG on repeats — preserves the diagnostic value while keeping
+        per-frame noise out of the log."""
+        if reason != self._animation_last_skip_reason:
+            self.log.info("_on_video_tick: %s", detail)
+            self._animation_last_skip_reason = reason
+        else:
+            self.log.debug("_on_video_tick: %s", detail)
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
@@ -801,13 +938,16 @@ class LCDHandler(BaseHandler):
     # ── Background / Screencast Toggles ────────────────────────────
 
     def on_background_toggle(self, enabled: bool) -> None:
-        """Handle background display toggle."""
+        """Handle background display toggle.
+
+        Enabling "background" mode means "show the theme's static bg,
+        not the override video".  StopVideo handles the timer through
+        VideoStopped — no direct ``_animation_timer.stop()`` here.
+        """
         self.log.info("on_background_toggle: enabled=%s device=%s",
                       enabled, self._device_key)
         self._background_active = enabled
         if enabled:
-            self._animation_timer.stop()
-            from ...core.commands import StopVideo
             self._app.dispatch(StopVideo(key=self._device_key))
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
@@ -1123,7 +1263,7 @@ class LCDHandler(BaseHandler):
 
     def _cleanup_device(self) -> None:
         """Release LCD resources via Commands."""
-        from ...core.commands import SendColor, StopVideo
+        from ...core.commands import SendColor
         self._app.dispatch(StopVideo(key=self._device_key))
         try:
             # Best-effort black-frame so the screen visibly goes blank.

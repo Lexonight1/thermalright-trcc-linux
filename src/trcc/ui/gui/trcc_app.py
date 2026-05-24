@@ -35,11 +35,16 @@ from PySide6.QtWidgets import (
 
 from ...core.commands import (
     ConnectDevice,
+    EnableOverlay,
+    PlayVideo,
+    SetBackground,
     SetGpuDevice,
     SetHddEnabled,
     SetLanguage,
+    SetMaskVisible,
     SetRefreshInterval,
     SetTempUnit,
+    StopVideo,
 )
 from ._ui_state import UiStateStore
 from .assets import Assets
@@ -367,6 +372,8 @@ class TRCCApp(QMainWindow):
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_bus_frame_sent, type=qconn)
         self._bus.sensors_updated.connect(self._on_bus_sensors_updated, type=qconn)
+        self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
+        self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
         self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
 
         # Handshake notifier — kept for legacy code paths that spawn
@@ -422,6 +429,28 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is not None and hasattr(handler, "rebuild_preview"):
             handler.rebuild_preview()
+
+    def _on_bus_video_started(self, event: Any) -> None:
+        """Route a ``VideoStarted`` event to its device's handler.
+
+        The handler owns its Qt animation timer; this bridge just hands
+        off the event so the handler can start ticking.  Multi-LCD safe
+        — the handler filters on ``event.key == self._device_key``.
+        """
+        log.info(
+            "_on_bus_video_started: key=%s frames=%d interval=%dms",
+            event.key, event.frame_count, event.interval_ms,
+        )
+        handler = self._handlers.get(event.key)
+        if handler is not None:
+            handler.on_video_started(event)
+
+    def _on_bus_video_stopped(self, event: Any) -> None:
+        """Route a ``VideoStopped`` event to its device's handler."""
+        log.info("_on_bus_video_stopped: key=%s", event.key)
+        handler = self._handlers.get(event.key)
+        if handler is not None:
+            handler.on_video_stopped(event)
 
     def _on_bus_sensors_updated(self, _event: Any) -> None:
         """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
@@ -1416,9 +1445,17 @@ class TRCCApp(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self.uc_theme_local.delete_theme(theme_info)
             h = self._active_lcd()
-            if (h and h.display.current_theme_path
-                    and str(h.display.current_theme_path) == theme_info.path):
-                h.display.current_image = None
+            # The handler tracks the active theme directory on its
+            # ``_state.current_theme_path``; if the deleted theme was
+            # the active one, invalidate the scene cache so the next
+            # render rebuilds from whatever falls back as background.
+            current = (
+                h._state.current_theme_path  # pyright: ignore[reportPrivateUsage]
+                if h is not None else None
+            )
+            if (h is not None and current is not None
+                    and str(current) == theme_info.path):
+                self._app.display.invalidate(h.device_key)
                 self.uc_preview.set_image(None)
             self.uc_preview.set_status(f"Deleted: {theme_info.name}")
 
@@ -1434,8 +1471,13 @@ class TRCCApp(QMainWindow):
                 self._on_load_video_clicked()
             case UCThemeSetting.CMD_MASK_TOGGLE | UCThemeSetting.CMD_MASK_VISIBILITY:
                 if h:
-                    h.display.set_mask_visible(info)
-                    h._render_and_send()
+                    # ``SetMaskVisible`` persists the toggle, invalidates
+                    # the scene cache, and publishes ``MaskVisibilityChanged``
+                    # — ``DeviceRenderObserver`` picks that up and schedules
+                    # a render.  No direct ``_render_and_send`` needed.
+                    self._app.dispatch(SetMaskVisible(
+                        key=h.device_key, visible=bool(info),
+                    ))
             case UCThemeSetting.CMD_MASK_UPLOAD:
                 self._on_mask_upload_clicked()
             case UCThemeSetting.CMD_MASK_POSITION:
@@ -1483,10 +1525,13 @@ class TRCCApp(QMainWindow):
         if not h:
             return
         if enabled:
+            # ``deactivate`` cancels timers; ``StopVideo`` clears
+            # playback + the persisted bg override.  The screencast
+            # session takes over the wire from here.
             h.deactivate()
-            h.display.stop()
+            self._app.dispatch(StopVideo(key=h.device_key))
             h.is_background_active = False
-            w, hw = h.display.lcd_size
+            w, hw = h.lcd_size
             self._screencast.set_lcd_size(w, hw)
         self._screencast.toggle(enabled)
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
@@ -1497,12 +1542,16 @@ class TRCCApp(QMainWindow):
         if not h:
             return
         if not enabled:
-            if h.display.has_frames:
-                h._animation_timer.stop()
-                h.display.stop()
+            # Turning the "video" mode panel OFF — clear the override
+            # video, then re-load the persisted theme so the device
+            # shows the theme's bundled bg (image, or its own video).
+            # StopVideo's VideoStopped event already stops the timer
+            # through the bus_bridge observer chain.
+            if h.has_video_playback:
+                self._app.dispatch(StopVideo(key=h.device_key))
                 self.uc_preview.set_playing(False)
                 self.uc_preview.show_video_controls(False)
-            if (last_path := h.display.current_theme_path):
+            if (last_path := h.current_theme_path):
                 h.select_theme_from_path(Path(last_path))
 
     def _on_screencast_frame(self, image: Any) -> None:
@@ -1514,42 +1563,61 @@ class TRCCApp(QMainWindow):
 
     def _on_load_video_clicked(self) -> None:
         h = self._active_lcd()
-        svc = h.display._display_svc if h else None
-        web_dir = str(svc.web_dir) if svc and svc.web_dir else ""
+        start_dir = self._video_picker_start_dir(h)
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Video", web_dir,
+            self, "Open Video", start_dir,
             "Video Files (*.mp4 *.avi *.mov *.gif);;All Files (*)")
         h = self._active_lcd()
         if path and h:
-            w, hw = h.display.lcd_size
+            w, hw = h.lcd_size
             self.uc_video_cut.set_resolution(w, hw)
             self.uc_video_cut.load_video(path)
             self._show_cutter('video')
 
     def _on_media_player_load_clicked(self) -> None:
         h = self._active_lcd()
-        svc = h.display._display_svc if h else None
-        web_dir = str(svc.web_dir) if svc and svc.web_dir else ""
+        start_dir = self._video_picker_start_dir(h)
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Video", web_dir,
+            self, "Open Video", start_dir,
             "Video Files (*.mp4 *.avi *.mkv *.mov *.gif);;All Files (*)")
         h = self._active_lcd()
         if not path or not h:
             return
         self._screencast.toggle(False)
         h.is_background_active = False
-        h._animation_timer.stop()
-        h.display.stop()
-        h.display.enable_overlay(False)
-        result = h.display.load(path)
-        if not result.get("success"):
-            self.uc_preview.set_status(f"Error: {result.get('error', 'Failed to load video')}")
+        # ``PlayVideo`` owns the full pipeline: decode, populate
+        # MediaService playback, publish ``VideoStarted`` so the
+        # handler's timer observer takes over.  Overlay-off is part of
+        # "play arbitrary video" UX — disable through the Command bus
+        # so persistence + render chain stays in sync.
+        self._app.dispatch(EnableOverlay(key=h.device_key, enabled=False))
+        result = self._app.dispatch(PlayVideo(
+            key=h.device_key, path=Path(path),
+        ))
+        if not result.ok:
+            self.uc_preview.set_status(f"Error: {result.message}")
             return
-        h.display.play()
-        h._animation_timer.start(h.display.interval)
         self.uc_preview.set_playing(True)
         self.uc_preview.show_video_controls(True)
         self.uc_preview.set_status(f"Playing: {Path(path).name}")
+
+    def _video_picker_start_dir(self, h: Any) -> str:
+        """Resolve the QFileDialog start directory for a video pick.
+
+        Defaults to the device's cloud-theme dir (where downloaded mp4s
+        live) so the user lands somewhere relevant.  Falls back to ""
+        if no active LCD or paths can't be resolved.
+        """
+        if h is None:
+            return ""
+        try:
+            w, hw = h.lcd_size
+        except (AttributeError, TypeError):
+            return ""
+        if not (w and hw):
+            return ""
+        cloud_dir = self._app.platform.paths().cloud_theme_dir(w, hw)
+        return str(cloud_dir) if cloud_dir.exists() else ""
 
     def _on_load_image_clicked(self) -> None:
         self._cut_mode = 'background'
@@ -1563,7 +1631,7 @@ class TRCCApp(QMainWindow):
             if img.isNull():
                 self.uc_preview.set_status("Error: could not load image")
             else:
-                w, hw = h.display.lcd_size
+                w, hw = h.lcd_size
                 self.uc_image_cut.load_image(img, w, hw)
                 self._show_cutter('image')
 
@@ -1581,7 +1649,7 @@ class TRCCApp(QMainWindow):
                 self._cut_mode = 'background'
             else:
                 self._mask_upload_filename = Path(path).stem
-                w, hw = h.display.lcd_size
+                w, hw = h.lcd_size
                 self.uc_image_cut.load_image(img, w, hw)
                 self._show_cutter('image')
 
@@ -1633,11 +1701,64 @@ class TRCCApp(QMainWindow):
         if self._cut_mode == 'mask':
             self._save_and_apply_custom_mask(result)
         else:
-            h.stop_video()
-            h.display.set_background(result)
-            h._render_and_send()
-            self.uc_preview.set_status("Image loaded")
+            # Persist the cropped QImage as a static bg override.
+            # Saving lives in the adapter (Qt is GUI-only); the Command
+            # operates on the resulting Path.
+            bg_path = self._save_cropped_background(h, result)
+            if bg_path is None:
+                self.uc_preview.set_status("Error: could not save background")
+            else:
+                outcome = self._app.dispatch(SetBackground(
+                    key=h.device_key, path=bg_path,
+                ))
+                if outcome.ok:
+                    self.uc_preview.set_status("Image loaded")
+                else:
+                    self.uc_preview.set_status(
+                        f"Error: {outcome.message}",
+                    )
         self._cut_mode = 'background'
+
+    def _save_cropped_background(self, h: Any, image: Any) -> Path | None:
+        """Persist the cropped image to a per-device file.
+
+        Lives in the GUI adapter because QImage is Qt-only — the
+        Command sees only the resulting Path, keeping ``core`` clean
+        of any framework dependency.
+        """
+        from PySide6.QtCore import Qt as _Qt
+        from PySide6.QtGui import QImage as _QImage
+        if not isinstance(image, _QImage) or image.isNull():
+            return None
+        try:
+            w, hw = h.lcd_size
+        except (AttributeError, TypeError):
+            return None
+        if not (w and hw):
+            return None
+        # Scope the file per device so two LCDs don't trample each
+        # other's backgrounds.  ``user_content_dir`` is the data-port
+        # owner for user-supplied content.
+        target_dir = (
+            self._app.platform.paths().user_content_dir() / "backgrounds"
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_key = h.device_key.replace(":", "_") or "default"
+        target = target_dir / f"{safe_key}.png"
+        scaled = image.convertToFormat(_QImage.Format.Format_ARGB32)
+        if scaled.width() != w or scaled.height() != hw:
+            scaled = scaled.scaled(
+                w, hw,
+                _Qt.AspectRatioMode.IgnoreAspectRatio,
+                _Qt.TransformationMode.SmoothTransformation,
+            )
+        if not scaled.save(str(target)):
+            log.warning(
+                "_save_cropped_background: QImage.save failed for %s", target,
+            )
+            return None
+        log.info("_save_cropped_background: saved %dx%d → %s", w, hw, target)
+        return target
 
     def _save_and_apply_custom_mask(self, cropped: Any) -> None:
         import re
@@ -1651,7 +1772,7 @@ class TRCCApp(QMainWindow):
             return
         if not isinstance(cropped, _QImage) or cropped.isNull():
             return
-        w, hw = h.display.lcd_size
+        w, hw = h.lcd_size
         user_dir = self._app.platform.paths().user_mask_dir(w, hw)
         user_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1700,12 +1821,18 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
-            h.display.load(Path(zt_path))
-            h.display.play()
-            h._animation_timer.start(h.display.interval)
-            self.uc_preview.set_playing(True)
-            self.uc_preview.show_video_controls(True)
-            self.uc_preview.set_status("Video loaded")
+            # ``PlayVideo`` decodes the .zt, publishes ``VideoStarted``;
+            # handler observer starts the per-frame timer.  Same path
+            # cloud + local video themes take.
+            result = self._app.dispatch(PlayVideo(
+                key=h.device_key, path=Path(zt_path),
+            ))
+            if result.ok:
+                self.uc_preview.set_playing(True)
+                self.uc_preview.show_video_controls(True)
+                self.uc_preview.set_status("Video loaded")
+            else:
+                self.uc_preview.set_status(f"Error: {result.message}")
         else:
             self.uc_preview.set_status("Video cut cancelled")
 
@@ -1723,10 +1850,12 @@ class TRCCApp(QMainWindow):
         log.debug("_on_overlay_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if h:
-            h.display.enable_overlay(enabled)
-        # Persistence: next/'s EnableOverlay Command (dispatched by the
-        # LCD handler when present) owns the persisted ``overlay_enabled``
-        # flag in app.settings.for_device(key) — no separate write here.
+            # ``EnableOverlay`` Command persists the toggle, invalidates
+            # the scene cache, and publishes ``OverlayChanged`` — same
+            # path every UI uses.  No more direct device-method calls.
+            self._app.dispatch(EnableOverlay(
+                key=h.device_key, enabled=enabled,
+            ))
 
     def _active_device_key(self) -> str:
         """Return the active device key, or '' if no active device."""
@@ -1760,7 +1889,7 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if cfg is None or not h:
             return
-        w, hw = h.display.lcd_size
+        w, hw = h.lcd_size
         new_x = max(0, min(self._drag_elem_x + (lcd_x - self._drag_origin_x), w))
         new_y = max(0, min(self._drag_elem_y + (lcd_y - self._drag_origin_y), hw))
         self.uc_theme_setting.color_panel.set_position(new_x, new_y)
@@ -1771,7 +1900,7 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if cfg is None or not h:
             return
-        w, hw = h.display.lcd_size
+        w, hw = h.lcd_size
         new_x = max(0, min(cfg.x + dx, w))
         new_y = max(0, min(cfg.y + dy, hw))
         self.uc_theme_setting.color_panel.set_position(new_x, new_y)
@@ -1842,12 +1971,10 @@ class TRCCApp(QMainWindow):
         # Persist via the unified command bus — CLI / API / GUI all
         # route through the same SetTempUnit Command.  Command takes
         # the literal "C" / "F" string, not the int code.
+        # SetTempUnit publishes ``TempUnitChanged`` and
+        # ``DeviceRenderObserver`` re-renders every connected LCD;
+        # no manual loop here (DRY: one re-render path).
         self._app.dispatch(SetTempUnit(unit=unit))
-
-        # GUI-only: re-render each LCD handler's preview
-        for handler in self._handlers.values():
-            if isinstance(handler, LCDHandler):
-                handler._render_and_send()
 
         # GUI-only widget updates
         self.uc_system_info.set_temp_unit(temp_unit)
@@ -1908,7 +2035,7 @@ class TRCCApp(QMainWindow):
         img = pixmap.toImage() if isinstance(pixmap, _QPixmap) else pixmap
         if img.isNull():
             return
-        w, hw = h.display.lcd_size
+        w, hw = h.lcd_size
         self.uc_image_cut.load_image(img, w, hw)
         self._show_cutter('image')
 

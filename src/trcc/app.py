@@ -20,6 +20,7 @@ from .adapters.theme.cloud import CzhordeCatalog
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
 from .core.events import (
+    BackgroundChanged,
     BrightnessChanged,
     EventBus,
     FitModeChanged,
@@ -29,6 +30,7 @@ from .core.events import (
     OverlayChanged,
     SensorsUpdated,
     SplitModeChanged,
+    TempUnitChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -339,6 +341,14 @@ class _DeviceRenderObserver:
             # the preview + device, without waiting for the next
             # sensor tick.
             VideoStarted, VideoStopped,
+            # Image background override (SetBackground Command) — same
+            # treatment: one render pushes the new bg to the wire.
+            BackgroundChanged,
+            # ``SetTempUnit`` mutates every LCD's overlay output (°C ↔
+            # °F).  Subscribing here means each connected device picks
+            # up the change on the very next render — UIs don't have
+            # to loop over handlers and force a re-render themselves.
+            TempUnitChanged,
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 

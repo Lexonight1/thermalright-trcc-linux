@@ -203,13 +203,26 @@ class ThemeService:
         ``Theme.png`` is the panel thumbnail and MUST NOT be returned
         here (renderer would ship the thumbnail to the device).
         """
+        video = self.video_path(theme)
+        if video is not None:
+            return video
         td = ThemeDir(theme.path)
+        if td.bg.exists():
+            return td.bg
+        return None
+
+    def video_path(self, theme: Theme) -> Path | None:
+        """Return the theme's bundled video file, or None.
+
+        Used by ``LoadTheme`` to decide whether to dispatch ``PlayVideo``
+        (animated theme) or render a single static frame (image-only
+        theme).  SRP — caller doesn't have to inspect the suffix of
+        whatever ``background_path`` returned.
+        """
         for candidate in _VIDEO_CANDIDATES:
             video = theme.path / candidate
             if video.exists():
                 return video
-        if td.bg.exists():
-            return td.bg
         return None
 
     def mask_path(self, theme: Theme) -> Path | None:

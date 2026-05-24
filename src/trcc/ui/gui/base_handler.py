@@ -79,3 +79,22 @@ class BaseHandler:
         """
         log.debug("BaseHandler.rebuild_preview: view=%r dropped (base no-op)",
                   self._view)
+
+    # ── Video bus_bridge observers ───────────────────────────────────
+    # LCDHandler overrides to drive its Qt animation timer; LEDHandler
+    # ignores (LEDs don't animate per-frame from a video).  Defined on
+    # the base so ``trcc_app.py`` can route ``VideoStarted`` /
+    # ``VideoStopped`` events without a ``hasattr`` dance — every
+    # handler subclass satisfies the same interface.
+
+    def on_video_started(self, event: Any) -> None:
+        """Domain event ``VideoStarted`` for this handler's device."""
+        log.debug("BaseHandler.on_video_started: view=%r dropped (base no-op)",
+                  self._view)
+        del event
+
+    def on_video_stopped(self, event: Any) -> None:
+        """Domain event ``VideoStopped`` for this handler's device."""
+        log.debug("BaseHandler.on_video_stopped: view=%r dropped (base no-op)",
+                  self._view)
+        del event

@@ -120,14 +120,36 @@ class ThemeImported(Event):
 
 @dataclass(frozen=True, slots=True)
 class VideoStarted(Event):
+    """Published by ``PlayVideo`` after a playback is loaded.
+
+    ``interval_ms`` is the per-frame timer interval the GUI animation
+    timer should use — derived from ``playback.fps`` server-side so UIs
+    don't have to query :class:`MediaService` themselves (DIP: handler
+    reads the event payload, not the service).
+    """
     key: str
     path: str
     frame_count: int
+    interval_ms: int
 
 
 @dataclass(frozen=True, slots=True)
 class VideoStopped(Event):
     key: str
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundChanged(Event):
+    """Published when the device's static background override changes.
+
+    Distinct from ``VideoStarted`` (which fires for video backgrounds —
+    handler observer starts the per-frame timer there).  This fires
+    only for image backgrounds set via ``SetBackground``; the
+    ``DeviceRenderObserver`` schedules a single ``RenderAndSend`` to
+    push the new bg to the device.
+    """
+    key: str
+    path: str
 
 
 @dataclass(frozen=True, slots=True)

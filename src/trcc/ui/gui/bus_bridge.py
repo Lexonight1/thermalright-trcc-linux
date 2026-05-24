@@ -35,6 +35,8 @@ from ...core.events import (
     SystemResumed,
     SystemSuspending,
     ThemeLoaded,
+    VideoStarted,
+    VideoStopped,
 )
 
 log = logging.getLogger(__name__)
@@ -62,6 +64,8 @@ class BusBridge(QObject):
     mask_applied = Signal(object)              # MaskApplied
     mask_position_changed = Signal(object)     # MaskPositionChanged
     mask_visibility_changed = Signal(object)   # MaskVisibilityChanged
+    video_started = Signal(object)             # VideoStarted
+    video_stopped = Signal(object)             # VideoStopped
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
 
@@ -86,6 +90,8 @@ class BusBridge(QObject):
             (MaskApplied, self.mask_applied),
             (MaskPositionChanged, self.mask_position_changed),
             (MaskVisibilityChanged, self.mask_visibility_changed),
+            (VideoStarted, self.video_started),
+            (VideoStopped, self.video_stopped),
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
         )

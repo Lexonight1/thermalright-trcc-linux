@@ -304,6 +304,20 @@ class BackgroundModeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class BackgroundResult(Result):
+    """Result of ``SetBackground`` — file applied as a static / video bg.
+
+    Distinct from :class:`BackgroundModeResult` (theme bg vs override
+    mode toggle) and :class:`VideoResult` (PlayVideo / StopVideo
+    lifecycle).  Carries the resolved path + the inferred kind so a
+    caller can branch on "did we just start a video".
+    """
+    key: str = ""
+    path: str = ""
+    kind: str = ""   # "image" | "video"
+
+
+@dataclass(frozen=True, slots=True)
 class OverlayBackgroundResult(Result):
     key: str = ""
     color: tuple[int, int, int] = (0, 0, 0)
