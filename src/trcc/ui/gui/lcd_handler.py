@@ -45,7 +45,7 @@ from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.models import ProductInfo
+    from ...core.models import DeviceSettings, ProductInfo
 
 log = logging.getLogger(__name__)
 
@@ -261,35 +261,13 @@ class LCDHandler(BaseHandler):
             paths.theme_dir(w, h), paths.cloud_theme_dir(w, h),
             paths.cloud_mask_dir(w, h), paths.user_mask_dir(w, h),
         )
-        # next/'s per-device settings live in app.settings.for_device(key)
-        # — DeviceSettings dataclass.  Build a dict-shape view so the
-        # legacy _restore_X methods that read cfg.get(...) keep working.
+        # Typed source: every _restore_* below reads DeviceSettings
+        # directly.  Pre-S1.2 this slot built an intermediate
+        # ``cfg: dict`` shim so the methods could keep their legacy
+        # ``cfg.get(field, default)`` shape — the shim has been removed
+        # in favour of dataclass attribute access (typed by pyright,
+        # defaults baked into DeviceSettings itself).
         ds = self._app.settings.for_device(self._device_key)
-        # Slideshow lives on flat DeviceSettings fields
-        # (slideshow_enabled / slideshow_themes / slideshow_interval_s),
-        # not on a nested ``slideshow`` sub-dict.  Earlier this slot
-        # hardcoded ``'carousel': None`` with a comment claiming
-        # "SlideshowService owns this now" — which is wrong: the
-        # SlideshowService owns the TRANSIENT cursor; the persisted
-        # config (themes / interval / enabled flag) lives on
-        # DeviceSettings.  Without populating it here, every GUI
-        # startup runs _restore_carousel with carousel=None and
-        # silently wipes the slideshow UI state.  Build the legacy-
-        # shape dict from the typed fields so _restore_carousel reads
-        # back what ConfigureSlideshow / SetSlideshow persisted.
-        carousel: dict | None = None
-        if ds.slideshow_themes or ds.slideshow_enabled:
-            carousel = {
-                'enabled': ds.slideshow_enabled,
-                'interval': int(ds.slideshow_interval_s),
-                'themes': list(ds.slideshow_themes),
-            }
-        cfg: dict = {
-            'brightness_level': ds.brightness,
-            'rotation': ds.orientation,
-            'split_mode': ds.split_mode,
-            'carousel': carousel,
-        }
 
         self._w['preview'].set_resolution(w, h)
         self._w['preview'].set_image(None)
@@ -299,14 +277,14 @@ class LCDHandler(BaseHandler):
 
         auto_loaded = self._update_theme_directories()
 
-        self._restore_brightness(cfg)
-        self._restore_rotation(cfg)
-        self._restore_split_mode(cfg, w, h)
-        self._restore_carousel(cfg)
+        self._restore_brightness(ds)
+        self._restore_rotation(ds)
+        self._restore_split_mode(ds, w, h)
+        self._restore_slideshow(ds)
 
         if auto_loaded:
             return
-        self._restore_theme_and_preview(cfg)
+        self._restore_theme_and_preview()
 
     def _on_data_ready(self) -> None:
         """Background data extraction finished — re-probe dirs and update UI."""
@@ -314,15 +292,15 @@ class LCDHandler(BaseHandler):
         auto_loaded = self._update_theme_directories()
         self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
 
-    def _restore_brightness(self, cfg: dict) -> None:
-        self._brightness_level = cfg.get('brightness_level', _DEFAULT_BRIGHTNESS_LEVEL)
+    def _restore_brightness(self, ds: DeviceSettings) -> None:
+        self._brightness_level = ds.brightness
         self.log.info("Restoring brightness: %d%%", self._brightness_level)
         self._app.dispatch(SetBrightness(
             key=self._device_key, percent=self._brightness_level,
         ))
 
-    def _restore_rotation(self, cfg: dict) -> None:
-        rotation_index = cfg.get('rotation', 0) // 90
+    def _restore_rotation(self, ds: DeviceSettings) -> None:
+        rotation_index = ds.orientation // 90
         rotation = rotation_index * 90
         self.log.debug("_restore_rotation: rotation=%d", rotation)
         self._app.dispatch(SetOrientation(
@@ -335,29 +313,36 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_resolution(ow, oh)
         self._update_theme_directories()
 
-    def _restore_split_mode(self, cfg: dict, w: int, h: int) -> None:
-        self._split_mode = cfg.get('split_mode', 2)
+    def _restore_split_mode(self, ds: DeviceSettings, w: int, h: int) -> None:
+        self._split_mode = ds.split_mode or 2
         self._ldd_is_split = (w, h) in _SPLIT_MODE_RESOLUTIONS
         self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s",
                        self._split_mode, self._ldd_is_split)
         if self._ldd_is_split:
-            if not self._split_mode:
-                self._split_mode = 2
             self._app.dispatch(SetSplitMode(
                 key=self._device_key, mode=self._split_mode,
             ))
         else:
             self._app.dispatch(SetSplitMode(key=self._device_key, mode=0))
 
-    def _restore_carousel(self, cfg: dict) -> None:
-        carousel = cfg.get('carousel')
+    def _restore_slideshow(self, ds: DeviceSettings) -> None:
+        """Restore slideshow UI state from typed DeviceSettings.
+
+        ``SlideshowService`` owns the transient rotation cursor;
+        ``DeviceSettings.slideshow_*`` owns the persisted config
+        (themes / interval / enabled flag).  This slot just pushes
+        the persisted state into the legacy local-theme panel widgets
+        so the next ``_update_slideshow_state`` reads back what
+        ``ConfigureSlideshow`` / ``SetSlideshow`` saved.
+        """
         local = self._w['theme_local']
-        if carousel and isinstance(carousel, dict):
-            local._lunbo_array = carousel.get('themes', [])
-            local._slideshow = carousel.get('enabled', False)
-            local._slideshow_interval = carousel.get('interval', 3)
-            local.timer_input.setText(str(carousel.get('interval', 3)))
-            px = local._lunbo_on if carousel.get('enabled') else local._lunbo_off
+        if ds.slideshow_themes or ds.slideshow_enabled:
+            interval = max(1, int(ds.slideshow_interval_s))
+            local._lunbo_array = list(ds.slideshow_themes)
+            local._slideshow = ds.slideshow_enabled
+            local._slideshow_interval = interval
+            local.timer_input.setText(str(interval))
+            px = local._lunbo_on if ds.slideshow_enabled else local._lunbo_off
             if not px.isNull():
                 local.slideshow_btn.setIcon(QIcon(px))
                 local.slideshow_btn.setIconSize(local.slideshow_btn.size())
@@ -369,22 +354,20 @@ class LCDHandler(BaseHandler):
             local._slideshow = False
             local._apply_decorations()
 
-    def _restore_theme_and_preview(self, cfg: dict) -> None:
+    def _restore_theme_and_preview(self) -> None:
         """Restore last theme + overlay, or clear preview if none.
 
         Dispatches RestoreLastTheme (which re-runs LoadTheme for the
         persisted theme name). Playback / animation state comes from
         :class:`MediaService`; preview redraws via ``rebuild_preview``.
-        """
-        self.log.debug("_restore_theme_and_preview: cfg keys=%s", list(cfg.keys()))
-        result = self._app.dispatch(RestoreLastTheme(key=self._device_key))
-        overlay_cfg = cfg.get('overlay', {})
-        overlay_config = overlay_cfg.get('config')
-        overlay_enabled = overlay_cfg.get('enabled', False)
-        if overlay_config:
-            self._w['theme_setting'].load_from_overlay_config(overlay_config)
-        self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
 
+        The overlay UI is rebuilt below from the resolved theme's
+        ``config1.dc`` (or ``trcc.json``) via ``_load_theme_overlay_config``
+        — pre-S1.2 this method also peeked at a ``cfg['overlay']`` dict
+        slot that ``_refresh`` never populated, so that branch was
+        dead-on-arrival and has been removed.
+        """
+        result = self._app.dispatch(RestoreLastTheme(key=self._device_key))
         if not result.ok:
             self.log.info("_restore_theme_and_preview: no saved theme — %s",
                           result.message)
