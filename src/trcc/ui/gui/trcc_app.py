@@ -44,6 +44,8 @@ from ...core.commands import (
     SetMaskVisible,
     SetRefreshInterval,
     SetTempUnit,
+    StartScreencast,
+    StopScreencast,
     StopVideo,
 )
 from ._ui_state import UiStateStore
@@ -82,6 +84,18 @@ log = logging.getLogger(__name__)
 class ScreencastHandler:
     """Mediator for screencast (screen capture → LCD).
 
+    Lifecycle is bus-driven: the handler does NOT expose a public
+    ``toggle`` for callers — instead it subscribes to BusBridge's
+    ``screencast_started`` / ``screencast_stopped`` signals (mirrored
+    from :class:`ScreencastStarted` / :class:`ScreencastStopped`
+    events).  GUI / CLI / API / daemon callers all start a session by
+    dispatching :class:`StartScreencast` through :class:`App.dispatch`,
+    which keeps the Command bus authoritative for the lifecycle.
+
+    Hot-path knobs that don't warrant a round-trip through the bus
+    (per-drag region updates, audio/border toggles, target LCD size)
+    stay as direct setters — they tune an already-running session.
+
     When audio_enabled is True, captures microphone input and draws
     a spectrum visualizer bar at the bottom of each screencast frame.
     """
@@ -105,34 +119,57 @@ class ScreencastHandler:
     def active(self) -> bool:
         return self._active
 
+    @property
+    def audio_enabled(self) -> bool:
+        return self._audio_enabled
+
+    @property
+    def params(self) -> tuple[int, int, int, int]:
+        """Current region — ``(x, y, w, h)`` in screen pixels.
+
+        Read by ``TRCCApp._on_screencast_toggle`` so it can bundle the
+        currently configured panel coordinates into the dispatched
+        :class:`StartScreencast` Command.
+        """
+        return self._x, self._y, self._w, self._h
+
+    def subscribe(self, bus: BusBridge) -> None:
+        """Connect ``ScreencastStarted`` / ``ScreencastStopped`` events
+        to the local lifecycle hooks.
+
+        Called by ``TRCCApp.__init__`` after the bridge is constructed.
+        Separate from ``__init__`` so the handler can be built before the
+        bus exists — same shape as ``LCDHandler.subscribe_to_bus``.
+        """
+        log.info("ScreencastHandler.subscribe: wiring bus screencast signals")
+        bus.screencast_started.connect(
+            self._on_bus_screencast_started,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
+        bus.screencast_stopped.connect(
+            self._on_bus_screencast_stopped,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
+
     def set_lcd_size(self, w: int, h: int) -> None:
         self._lcd_w = w
         self._lcd_h = h
 
     def set_audio_enabled(self, enabled: bool) -> None:
         """Enable/disable microphone audio visualization on screencast."""
+        log.info("ScreencastHandler.set_audio_enabled: enabled=%s", enabled)
         self._audio_enabled = enabled
-        if not enabled and self._audio is not None:
+        if self._active and enabled and self._audio is None:
+            self._start_audio()
+        elif not enabled and self._audio is not None:
             self._audio.stop()
             self._audio = None
 
-    def toggle(self, enabled: bool) -> None:
-        self._active = enabled
-        if enabled:
-            from .screen_capture import is_wayland
-            if is_wayland() and self._pipewire_cast is None:
-                self._try_start_pipewire()
-            if self._audio_enabled:
-                self._start_audio()
-            self._timer.start(150)
-        else:
-            self._timer.stop()
-            self._stop_pipewire()
-            if self._audio is not None:
-                self._audio.stop()
-                self._audio = None
-
     def stop(self) -> None:
+        """Emergency stop — used by system-suspend / window-close paths
+        that may race against the bus delivery.  Idempotent."""
+        log.info("ScreencastHandler.stop: emergency stop (active=%s)",
+                 self._active)
         self._timer.stop()
         self._active = False
 
@@ -143,6 +180,44 @@ class ScreencastHandler:
         self._border = visible
 
     def cleanup(self) -> None:
+        self._timer.stop()
+        self._stop_pipewire()
+        if self._audio is not None:
+            self._audio.stop()
+            self._audio = None
+
+    def _on_bus_screencast_started(self, event: Any) -> None:
+        """Bus subscriber — start the Qt capture timer for ``event.key``.
+
+        Daemon-mode hasn't moved screencast to a per-device dispatcher
+        yet, so a single handler still owns capture for the active LCD;
+        ``event.key`` is logged for trace and ignored for routing.
+        """
+        log.info(
+            "ScreencastHandler._on_bus_screencast_started: key=%s "
+            "region=(%d,%d %dx%d) audio=%s",
+            event.key, event.x, event.y, event.w, event.h, event.audio,
+        )
+        self._x, self._y, self._w, self._h = event.x, event.y, event.w, event.h
+        self._audio_enabled = event.audio
+        self._active = True
+
+        from .screen_capture import is_wayland
+        if is_wayland() and self._pipewire_cast is None:
+            self._try_start_pipewire()
+        if self._audio_enabled and self._audio is None:
+            self._start_audio()
+        self._timer.start(150)
+
+    def _on_bus_screencast_stopped(self, event: Any) -> None:
+        """Bus subscriber — tear down the Qt capture timer.
+
+        Idempotent: safe to receive even if there was no active session
+        (e.g. CLI client stopping a session that never had a GUI side).
+        """
+        log.info("ScreencastHandler._on_bus_screencast_stopped: key=%s",
+                 event.key)
+        self._active = False
         self._timer.stop()
         self._stop_pipewire()
         if self._audio is not None:
@@ -373,6 +448,11 @@ class TRCCApp(QMainWindow):
         # ── EventBus → BusBridge → Qt signals (QueuedConnection ensures
         # delivery on the Qt main thread regardless of publish thread).
         self._bus = BusBridge(app.events)
+        # Screencast lifecycle subscribes through the bus — TRCCApp keeps
+        # owning the handler, but Start/Stop now arrive as events so
+        # CLI / API / daemon callers drive screencast through the same
+        # Command bus as the GUI toggle.
+        self._screencast.subscribe(self._bus)
         qconn = Qt.ConnectionType.QueuedConnection
         self._bus.device_connected.connect(self._on_bus_device_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_bus_device_disconnected, type=qconn)
@@ -520,8 +600,20 @@ class TRCCApp(QMainWindow):
             handler.update_metrics(metrics)
 
     def _on_bus_system_suspending(self, _event: Any) -> None:
-        """OS is about to suspend — stop the screencast pipeline."""
-        self._screencast.stop()
+        """OS is about to suspend — stop the screencast pipeline.
+
+        Routed through ``StopScreencast`` for the active device when
+        possible so daemon/CLI/API observers see the same lifecycle
+        event the GUI just acted on.  Falls back to the local emergency
+        ``ScreencastHandler.stop`` when there's no active device handle
+        (suspend during a transient state shouldn't crash on no-handler).
+        """
+        log.info("_on_bus_system_suspending: stopping screencast")
+        h = self._active_lcd()
+        if h is not None and self._screencast.active:
+            self._app.dispatch(StopScreencast(key=h.device_key))
+        else:
+            self._screencast.stop()
 
     def replay_initial_devices(self) -> None:
         """Build handlers + sidebar from ``app.devices`` after first discovery.
@@ -1553,29 +1645,48 @@ class TRCCApp(QMainWindow):
     # ── Background / Screencast / Video Toggles ─────────────────────
 
     def _on_background_toggle(self, enabled: bool) -> None:
-        log.debug("_on_background_toggle: enabled=%s", enabled)
+        log.info("_on_background_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
-        if enabled:
-            self._screencast.toggle(False)
+        if enabled and self._screencast.active:
+            # User flipped to the theme-bg panel while a screencast was
+            # running — tear it down through the bus so daemon/CLI/API
+            # observers see the same transition the GUI just made.
+            self._app.dispatch(StopScreencast(key=h.device_key))
         h.on_background_toggle(enabled)
 
     def _on_screencast_toggle(self, enabled: bool) -> None:
-        log.debug("_on_screencast_toggle: enabled=%s", enabled)
+        log.info("_on_screencast_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
         if enabled:
-            # ``deactivate`` cancels timers; ``StopVideo`` clears
-            # playback + the persisted bg override.  The screencast
-            # session takes over the wire from here.
+            # ``deactivate`` cancels handler timers + clears its render
+            # state so the screencast pipeline owns the wire for this
+            # device.  ``StartScreencast`` itself stops any video
+            # playback (via its internal ``StopVideo``) — bundling that
+            # here would duplicate the call.
             h.deactivate()
-            self._app.dispatch(StopVideo(key=h.device_key))
             h.is_background_active = False
             w, hw = h.lcd_size
+            # LCD scaling target stays a direct setter: it's a Qt-only
+            # render hint, not a session-lifecycle fact.
             self._screencast.set_lcd_size(w, hw)
-        self._screencast.toggle(enabled)
+            x, y, sw, sh = self._screencast.params
+            result = self._app.dispatch(StartScreencast(
+                key=h.device_key, x=x, y=y, w=sw, h=sh,
+                audio=self._screencast.audio_enabled,
+            ))
+            if not result.ok:
+                log.warning(
+                    "_on_screencast_toggle: StartScreencast failed: %s",
+                    result.message,
+                )
+                self.uc_preview.set_status(f"Screencast: {result.message}")
+                return
+        else:
+            self._app.dispatch(StopScreencast(key=h.device_key))
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
 
     def _on_video_display_toggle(self, enabled: bool) -> None:
@@ -1625,7 +1736,8 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not path or not h:
             return
-        self._screencast.toggle(False)
+        if self._screencast.active:
+            self._app.dispatch(StopScreencast(key=h.device_key))
         h.is_background_active = False
         # ``PlayVideo`` owns the full pipeline: decode, populate
         # MediaService playback, publish ``VideoStarted`` so the

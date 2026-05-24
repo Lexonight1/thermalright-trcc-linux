@@ -44,6 +44,8 @@ from .events import (
     OrientationChanged,
     OverlayChanged,
     RefreshIntervalChanged,
+    ScreencastStarted,
+    ScreencastStopped,
     SplitModeChanged,
     TempUnitChanged,
     ThemeExported,
@@ -120,6 +122,7 @@ from .results import (
     RefreshIntervalResult,
     RenderResult,
     Result,
+    ScreencastResult,
     SeekVideoResult,
     SendResult,
     SensorsResult,
@@ -1165,6 +1168,103 @@ class StopVideo(Command[VideoResult]):
             ok=True, key=self.key,
             message=(f"video stopped for {self.key}"
                      if had_playback else f"no video playing for {self.key}"),
+        )
+
+
+# =========================================================================
+# Screencast
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class StartScreencast(Command[ScreencastResult]):
+    """Begin a screen-capture session for a device.
+
+    Mirrors :class:`PlayVideo` — the GUI ``ScreencastHandler`` is the
+    subscriber that actually runs the Qt capture timer; this Command
+    just publishes :class:`ScreencastStarted` so handler/CLI/API/daemon
+    callers all enter the same one-way event flow.
+
+    The Command itself is intentionally side-effect-light:
+      * it does NOT touch the wire (no SendFrame here — the handler's
+        per-frame tick drives that),
+      * it does NOT persist anything in :class:`DeviceSettings`
+        (screencast is a transient session, not a saved bg override),
+      * it stops any prior video playback so the override stack matches
+        what the user sees on the device.
+
+    Validates region geometry — refuses zero-area or negative sizes so
+    a typo in CLI args is caught at dispatch time instead of being a
+    silent no-op in the handler timer.
+    """
+    key: str
+    x: int
+    y: int
+    w: int
+    h: int
+    audio: bool = False
+
+    def execute(self, app: App) -> ScreencastResult:
+        log.info(
+            "StartScreencast.execute: key=%s region=(%d,%d %dx%d) audio=%s",
+            self.key, self.x, self.y, self.w, self.h, self.audio,
+        )
+        if self.w <= 0 or self.h <= 0:
+            log.warning(
+                "StartScreencast.execute: invalid region %dx%d for %s",
+                self.w, self.h, self.key,
+            )
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=(f"invalid screencast region {self.w}x{self.h} "
+                         f"(both dimensions must be > 0)"),
+            )
+
+        try:
+            app.get(self.key)
+        except DeviceNotFoundError as e:
+            log.warning(
+                "StartScreencast.execute: device %s not found: %s",
+                self.key, e,
+            )
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+
+        # A live video playback overlay would race the screencast tick on
+        # the same wire — stop it first so the handler owns the surface
+        # cleanly.  StopVideo is idempotent so it's safe even if no
+        # playback was loaded.
+        StopVideo(key=self.key).execute(app)
+
+        app.events.publish(ScreencastStarted(
+            key=self.key,
+            x=self.x, y=self.y, w=self.w, h=self.h,
+            audio=self.audio,
+        ))
+        return ScreencastResult(
+            ok=True, key=self.key, active=True,
+            x=self.x, y=self.y, w=self.w, h=self.h, audio=self.audio,
+            message=(f"screencast started on {self.key} "
+                     f"({self.w}x{self.h} @ {self.x},{self.y})"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StopScreencast(Command[ScreencastResult]):
+    """End the screen-capture session for a device.
+
+    Idempotent — calling on a device that has no active session returns
+    ``ok=True`` so scripts can use it as a defensive cleanup.  Publishes
+    :class:`ScreencastStopped`; the GUI ``ScreencastHandler`` reacts by
+    stopping its Qt capture timer + tearing down PipeWire/audio plumbing.
+    """
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        log.info("StopScreencast.execute: key=%s", self.key)
+        app.events.publish(ScreencastStopped(key=self.key))
+        return ScreencastResult(
+            ok=True, key=self.key, active=False,
+            message=f"screencast stopped on {self.key}",
         )
 
 

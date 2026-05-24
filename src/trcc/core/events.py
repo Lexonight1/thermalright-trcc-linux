@@ -139,6 +139,34 @@ class VideoStopped(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ScreencastStarted(Event):
+    """Published by ``StartScreencast`` after a screen-capture session is
+    requested for a device.
+
+    Mirrors :class:`VideoStarted` semantics: the GUI ``ScreencastHandler``
+    subscribes through ``BusBridge`` and only starts its capture timer
+    when this event fires — so daemon/CLI/API callers can drive
+    screencast through the same Command bus as the GUI.
+
+    ``x, y, w, h`` is the screen region (pixels).  ``audio`` toggles the
+    microphone spectrum visualiser overlay on each captured frame.
+    """
+    key: str
+    x: int
+    y: int
+    w: int
+    h: int
+    audio: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ScreencastStopped(Event):
+    """Published by ``StopScreencast`` after a device's capture session
+    is torn down.  ``ScreencastHandler`` stops its timer in response."""
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
 class BackgroundChanged(Event):
     """Published when the device's static background override changes.
 

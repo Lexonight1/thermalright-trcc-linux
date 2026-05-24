@@ -145,6 +145,26 @@ class VideoResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class ScreencastResult(Result):
+    """Result of ``StartScreencast`` / ``StopScreencast`` — lifecycle of
+    the per-device screen-capture session.
+
+    ``active`` reflects the post-Command state (True after Start, False
+    after Stop) so callers can render a status line without re-querying.
+    ``x, y, w, h`` echo the requested region; ``audio`` echoes the
+    visualiser flag — both useful for daemon/API clients reading the
+    response over the wire.
+    """
+    key: str = ""
+    active: bool = False
+    x: int = 0
+    y: int = 0
+    w: int = 0
+    h: int = 0
+    audio: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class BootAnimationResult(Result):
     """One compressed boot-animation upload to a SCSI LCD."""
     key: str = ""
