@@ -23,7 +23,14 @@ from __future__ import annotations
 import logging
 import threading
 
-from ..core.events import EventBus, RefreshIntervalChanged, SensorsUpdated
+from ..core.events import (
+    Event,
+    EventBus,
+    HddEnabledChanged,
+    RefreshIntervalChanged,
+    SensorsUpdated,
+    TempUnitChanged,
+)
 
 log = logging.getLogger(__name__)
 
@@ -52,14 +59,21 @@ class MetricsLoop:
         # stay DEBUG so 2 s cadence doesn't drown the log.  Same shape
         # Phase 0 used for ``_animation_first_tick_logged``.
         self._first_publish_logged: bool = False
-        # Subscribe to RefreshIntervalChanged so the loop reacts the
-        # moment the user adjusts the refresh-rate input — same
-        # event-driven pattern Phase 4 used for video timer control.
-        # DIP: MetricsLoop depends on the abstract event, not on
-        # SetRefreshInterval's internals.
-        app.events.subscribe(
-            RefreshIntervalChanged, self._on_refresh_interval_changed,
-        )
+        # Subscribe to every user-pref change that affects the next
+        # broadcast's content or cadence, so the loop reacts the
+        # moment the user toggles a relevant setting — same event-
+        # driven pattern Phase 4 used for video timer control.
+        # DIP: MetricsLoop depends on the abstract events, not on
+        # the Commands' internals.
+        #
+        # All three publishers route to one handler — DRY since the
+        # wake action is identical regardless of which pref changed.
+        for event_cls in (
+            RefreshIntervalChanged,  # cadence change
+            TempUnitChanged,         # broadcast values must reconvert
+            HddEnabledChanged,       # broadcast must re-filter disk:*
+        ):
+            app.events.subscribe(event_cls, self._wake_for_pref_change)
 
     @property
     def is_running(self) -> bool:
@@ -94,18 +108,22 @@ class MetricsLoop:
             self._thread = None
         log.info("MetricsLoop: stopped")
 
-    def _on_refresh_interval_changed(self, event: RefreshIntervalChanged) -> None:
-        """Wake the worker so the next iteration reads the new interval.
+    def _wake_for_pref_change(self, event: Event) -> None:
+        """Wake the worker on any user-pref change that affects the next broadcast.
 
-        ``_loop`` reads ``settings.app.refresh_interval_s`` per
-        iteration; SetRefreshInterval has already updated it.  All we
-        need is to cut the current sleep short.  Same shape Phase 4
-        used for video timer responsiveness — event-driven, no manual
-        loop.restart() call from the Command.
+        ``_loop`` reads ``settings.app.{refresh_interval_s,temp_unit,
+        hdd_enabled}`` at the top of each iteration; the relevant
+        Setter Command has already updated them.  All we need is to
+        cut the current sleep short so the next iteration sees the
+        new value and publishes a fresh ``SensorsUpdated``.
+
+        One handler for three publishers — wake action is identical;
+        the log line records WHICH pref changed so the user can
+        confirm via tail.
         """
         log.info(
-            "MetricsLoop._on_refresh_interval_changed: %.2fs — waking sleeper",
-            event.seconds,
+            "MetricsLoop._wake_for_pref_change: %s — waking sleeper",
+            event,
         )
         self._wake.set()
 

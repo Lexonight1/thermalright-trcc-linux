@@ -34,6 +34,7 @@ from .events import (
     FitModeChanged,
     FrameSent,
     GpuDeviceChanged,
+    HddEnabledChanged,
     LanguageChanged,
     LedColorsChanged,
     MaskApplied,
@@ -2206,6 +2207,11 @@ class SetHddEnabled(Command[HddEnabledResult]):
 
     def execute(self, app: App) -> HddEnabledResult:
         app.settings.set_hdd_enabled(self.enabled)
+        # Wake subscribers (MetricsLoop) so the broadcast refreshes
+        # with the new HDD-filter state immediately, not after a full
+        # refresh interval.  Same event-driven pattern SetTempUnit
+        # and SetRefreshInterval use.
+        app.events.publish(HddEnabledChanged(enabled=self.enabled))
         state = "enabled" if self.enabled else "disabled"
         return HddEnabledResult(
             ok=True, enabled=self.enabled,

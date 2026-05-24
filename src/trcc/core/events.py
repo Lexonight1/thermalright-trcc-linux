@@ -209,6 +209,18 @@ class TempUnitChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class HddEnabledChanged(Event):
+    """User toggled HDD-metrics inclusion in the broadcast.
+
+    Published by ``SetHddEnabled.execute``.  Subscribers (today only
+    ``MetricsLoop``) wake their sleep so the next personalize step
+    drops / re-includes ``disk:*`` keys immediately instead of
+    after a full refresh interval.
+    """
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class LanguageChanged(Event):
     language: str
 
