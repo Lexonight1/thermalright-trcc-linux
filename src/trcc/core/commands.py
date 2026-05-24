@@ -3100,11 +3100,22 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
 
 @dataclass(frozen=True, slots=True)
 class ReadSensors(Command[SensorsResult]):
-    """Return current sensor readings.
+    """Return current sensor readings — personalized to user prefs.
 
     Pulls descriptor metadata (label / unit / category) from
-    `discover()` and fresh values from `read_all()`, then merges the
-    two so every returned `SensorReading` carries the current value.
+    ``discover()`` and fresh values from ``read_all()``, applies user
+    prefs through :func:`metrics_personalize.personalize_readings`,
+    then merges so every returned ``SensorReading`` carries the
+    personalized value.
+
+    Same conversion + filter path as ``MetricsLoop._publish_once`` —
+    one-shot callers (CLI / API / tests / GUI view-switch one-shot)
+    receive the same shape the periodic broadcast carries.  When the
+    user disables HDD, ``disk:*`` readings are excluded entirely
+    (matches legacy's ``_populated.discard`` semantics); when the
+    user picks °F, temp readings carry °F values AND ``unit="°F"``
+    (so callers that key off ``.unit`` don't have to know temp_unit
+    separately).
 
     Polled per refresh tick — logged at DEBUG so a default INFO run
     isn't drowned.
@@ -3113,20 +3124,39 @@ class ReadSensors(Command[SensorsResult]):
     LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> SensorsResult:
+        from ..services.metrics_personalize import personalize_readings
         from .models import SensorReading
+
         enum = app.platform.sensors()
         descriptors = enum.discover()
-        current = enum.read_all()
-        readings = [
-            SensorReading(
+        raw = enum.read_all()
+        s = app.settings.app
+        personalized = personalize_readings(
+            raw,
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
+        # Filter descriptors to only those that survived
+        # personalization (HDD-disable drops disk:* keys entirely so
+        # callers don't see them at value=0).  Temperature unit
+        # override: if the sensor is a temp and the user picked °F,
+        # the value is already in °F — adjust .unit so callers that
+        # render unit suffixes don't mislabel.
+        readings: list[SensorReading] = []
+        is_fahrenheit = s.temp_unit == "F"
+        for d in descriptors:
+            if d.sensor_id not in personalized:
+                continue
+            unit = d.unit
+            if is_fahrenheit and d.sensor_id.endswith(":temp") and unit == "°C":
+                unit = "°F"
+            readings.append(SensorReading(
                 sensor_id=d.sensor_id,
                 category=d.category,
-                value=current.get(d.sensor_id, 0.0),
-                unit=d.unit,
+                value=personalized[d.sensor_id],
+                unit=unit,
                 label=d.label,
-            )
-            for d in descriptors
-        ]
+            ))
         return SensorsResult(
             ok=True,
             message=f"{len(readings)} sensor(s)",
