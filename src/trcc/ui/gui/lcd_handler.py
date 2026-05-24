@@ -264,11 +264,30 @@ class LCDHandler(BaseHandler):
         # — DeviceSettings dataclass.  Build a dict-shape view so the
         # legacy _restore_X methods that read cfg.get(...) keep working.
         ds = self._app.settings.for_device(self._device_key)
+        # Slideshow lives on flat DeviceSettings fields
+        # (slideshow_enabled / slideshow_themes / slideshow_interval_s),
+        # not on a nested ``slideshow`` sub-dict.  Earlier this slot
+        # hardcoded ``'carousel': None`` with a comment claiming
+        # "SlideshowService owns this now" — which is wrong: the
+        # SlideshowService owns the TRANSIENT cursor; the persisted
+        # config (themes / interval / enabled flag) lives on
+        # DeviceSettings.  Without populating it here, every GUI
+        # startup runs _restore_carousel with carousel=None and
+        # silently wipes the slideshow UI state.  Build the legacy-
+        # shape dict from the typed fields so _restore_carousel reads
+        # back what ConfigureSlideshow / SetSlideshow persisted.
+        carousel: dict | None = None
+        if ds.slideshow_themes or ds.slideshow_enabled:
+            carousel = {
+                'enabled': ds.slideshow_enabled,
+                'interval': int(ds.slideshow_interval_s),
+                'themes': list(ds.slideshow_themes),
+            }
         cfg: dict = {
             'brightness_level': ds.brightness,
             'rotation': ds.orientation,
             'split_mode': ds.split_mode,
-            'carousel': None,  # SlideshowService owns this now
+            'carousel': carousel,
         }
 
         self._w['preview'].set_resolution(w, h)
