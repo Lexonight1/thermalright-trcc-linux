@@ -210,16 +210,17 @@ class OverlayService:
             )
             return
         fmt = str(element.get("format", "{value}"))
-        # Temperature unit conversion — single site (SRP).  A metric
-        # is a temperature when EITHER its id ends in ``:temp`` OR the
-        # format string carries the ``°C`` symbol.  Sensor sources
-        # always deliver Celsius; converting here keeps the upstream
-        # contract simple ("all temps are °C floats").
-        if temp_unit == "F" and (metric_id.endswith(":temp") or "°C" in fmt):
-            from ..core.models import celsius_to_fahrenheit
-            value = celsius_to_fahrenheit(value)
-            fmt = fmt.replace("°C", "°F")
         text = fmt.format(value=value)
+        # Presentation-layer suffix swap only — the numeric value is
+        # ALREADY converted by ``personalize_readings`` at the
+        # broadcast / one-shot boundary (MetricsLoop / RenderAndSend /
+        # LoadTheme / ReadSensors all route through it).  Renderer
+        # just adjusts the unit symbol in the formatted text so the
+        # theme's hardcoded ``"33°C"`` reads ``"33°F"`` when the
+        # user picked °F.  No celsius_to_fahrenheit call here — that
+        # would double-convert.
+        if temp_unit == "F" and "°C" in text:
+            text = text.replace("°C", "°F")
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         log.info("draw_metric %s: %s=%s at (%d, %d)",

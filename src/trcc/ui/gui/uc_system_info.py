@@ -264,12 +264,20 @@ class SystemInfoPanel(QWidget):
         self.clicked.emit(self)
 
     def _format_value(self, value: float, unit: str) -> str:
-        """Format a sensor value with its unit."""
+        """Format a sensor value with its unit.
+
+        The ``value`` is already in the user-selected temp unit
+        (°C or °F) because the metrics broadcast / ReadSensors path
+        applies the conversion through
+        ``services.metrics_personalize.personalize_readings`` before
+        consumers see it.  This renderer only adjusts the unit SYMBOL
+        when the binding's hardcoded ``°C`` should display as ``°F``.
+        """
         if unit == '°C':
-            from ...core.models import celsius_to_fahrenheit
-            if self._temp_unit == 1:
-                return f"{celsius_to_fahrenheit(value):.0f}°F"
-            return f"{value:.0f}°C"
+            # Value is already °F if temp_unit=1 (broadcast did the
+            # conversion).  Swap the suffix without re-converting.
+            symbol = '°F' if self._temp_unit == 1 else '°C'
+            return f"{value:.0f}{symbol}"
         elif unit in ('%', 'RPM', 'W'):
             return f"{value:.0f}{unit}"
         elif unit == 'V':

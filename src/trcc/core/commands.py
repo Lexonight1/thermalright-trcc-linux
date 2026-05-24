@@ -435,7 +435,18 @@ class RenderAndSend(Command[RenderResult]):
                 message="No active theme — dispatch LoadTheme first",
             )
 
-        sensors = app.platform.sensors().read_all()
+        # Personalize raw readings here so the renderer receives the
+        # same already-converted, already-filtered dict that periodic
+        # SensorsUpdated subscribers see.  Single conversion site for
+        # the entire metrics path — matches legacy's
+        # ``PollingMetricsLoop._poll_metrics`` shape.
+        from ..services.metrics_personalize import personalize_readings
+        s = app.settings.app
+        sensors = personalize_readings(
+            app.platform.sensors().read_all(),
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
 
         try:
             frame = app.display.build_frame(
@@ -617,9 +628,18 @@ class LoadTheme(Command[ThemeResult]):
         # Read live sensors so the first frame the device sees after a
         # theme load has real metric values painted, not the no-sensor
         # warning at every overlay element.  RenderAndSend takes over
-        # from the next tick onward.
+        # from the next tick onward.  Personalize via the same helper
+        # used by MetricsLoop + ReadSensors + RenderAndSend so this
+        # one-shot first-frame matches the cadence the periodic
+        # broadcast will deliver.
+        from ..services.metrics_personalize import personalize_readings
+        s_app = app.settings.app
         try:
-            sensors = app.platform.sensors().read_all()
+            sensors = personalize_readings(
+                app.platform.sensors().read_all(),
+                temp_unit=s_app.temp_unit,
+                hdd_enabled=s_app.hdd_enabled,
+            )
         except Exception as e:
             log.warning(
                 "LoadTheme: sensors.read_all() raised %s — first frame "
