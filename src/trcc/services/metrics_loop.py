@@ -88,12 +88,28 @@ class MetricsLoop:
         # Reset diagnostic flags on every restart so a reconnect
         # (stop/start cycle) gets a fresh "first publish" line.
         self._first_publish_logged = False
+        # Kick the sensor enumerator's background poll thread so the
+        # ``_readings`` cache it returns from ``read_all()`` actually
+        # refreshes — without this, ``read_all()`` returns the same
+        # snapshot it got from its bootstrap-on-first-call poll
+        # forever, and downstream consumers see frozen values.  Legacy
+        # composition root did this from ``SystemService.start_polling``;
+        # next/ doesn't have a SystemService so MetricsLoop owns the
+        # lifecycle here.
+        interval = float(self._app.settings.app.refresh_interval_s)
+        try:
+            self._app.platform.sensors().start_polling(interval)
+        except Exception as e:
+            log.warning(
+                "MetricsLoop: sensors.start_polling(%.2fs) raised %s — "
+                "broadcasts will publish frozen values from the bootstrap "
+                "snapshot", interval, e,
+            )
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name="trcc-metrics",
         )
         self._thread.start()
-        log.info("MetricsLoop: started (interval=%.2fs)",
-                 float(self._app.settings.app.refresh_interval_s))
+        log.info("MetricsLoop: started (interval=%.2fs)", interval)
 
     def stop(self) -> None:
         if not self.is_running:
@@ -103,6 +119,12 @@ class MetricsLoop:
         self._stop.set()
         # Wake the sleeper so it sees the stop flag immediately.
         self._wake.set()
+        # Stop the sensor enumerator's poll thread alongside ours —
+        # we own its lifecycle since start().
+        try:
+            self._app.platform.sensors().stop_polling()
+        except Exception:
+            log.exception("MetricsLoop: sensors.stop_polling() raised")
         if self._thread is not None:
             self._thread.join(timeout=3)
             self._thread = None
