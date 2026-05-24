@@ -748,12 +748,16 @@ class DisplayService:
         sensors: dict[str, float],
         clock: dict[str, str],
     ) -> tuple[Any, ...]:
-        # Sensors turn into a sorted tuple of (id, rounded_value).  Rounding
-        # limits cache-busting to meaningful changes (e.g. 45.3 → 45.4 is
-        # one redraw; 45.31 → 45.32 is ignored).
-        sensor_tuple = tuple(sorted(
-            (k, round(v, 1)) for k, v in sensors.items()
-        ))
+        # Sensors turn into a sorted tuple of (id, raw value).  Earlier
+        # versions rounded to 1 decimal as a perf optimization — but
+        # CPU temps that hover within a 0.1 °C band then NEVER rebuilt
+        # the overlay between minute boundaries (clock element was the
+        # only thing busting the cache), so users saw "frozen" metric
+        # readouts.  Raw values cost ~1 overlay rebuild per metrics
+        # tick (every refresh_interval_s, default 2 s) — cheap on a
+        # 320×320 panel, and the user-visible "yes, it's reading my
+        # sensors" feedback is worth it.
+        sensor_tuple = tuple(sorted(sensors.items()))
         clock_tuple = tuple(sorted(clock.items()))
         # User-edited elements fingerprint — flip changes whenever the user
         # adds / updates / deletes elements, so the cached overlay surface

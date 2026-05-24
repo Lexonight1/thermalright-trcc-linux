@@ -27,14 +27,97 @@ from ...core.models import PanelConfig, SensorBinding
 log = logging.getLogger(__name__)
 
 
-_LEGACY_KEYS: dict[tuple[int, int], str] = {
-    (1, 0): "cpu_temp",   (1, 1): "cpu_percent", (1, 2): "cpu_freq",   (1, 3): "cpu_power",
-    (2, 0): "gpu_temp",   (2, 1): "gpu_usage",   (2, 2): "gpu_clock",  (2, 3): "gpu_power",
-    (3, 0): "mem_temp",   (3, 1): "mem_percent", (3, 2): "mem_clock",  (3, 3): "mem_available",
-    (4, 0): "disk_temp",  (4, 1): "disk_activity", (4, 2): "disk_read", (4, 3): "disk_write",
-    (5, 0): "net_up",     (5, 1): "net_down",    (5, 2): "net_total_up", (5, 3): "net_total_down"  ,
-    (6, 0): "fan_cpu",    (6, 1): "fan_gpu",     (6, 2): "fan_ssd",    (6, 3): "fan_sys2",
+# (panel.category_id, row_index) → sensor_id from the aggregator.
+#
+# Replaces the pre-cutover ``_LEGACY_KEYS`` table that matched on the
+# legacy aggregator's per-metric category strings (``"cpu_temp"`` etc.).
+# next/'s ``BaselineSensors.discover`` publishes a unified vocabulary —
+# categories collapsed to type names (``"temperature"``, ``"usage"``,
+# ``"clock"``, ``"power"``, ``"memory"``, ``"disk_io"``, …) shared
+# across subsystems, with the SUBSYSTEM encoded in the sensor id
+# (``cpu:temp`` vs ``gpu:primary:temp``).  Matching by category alone
+# can't disambiguate CPU temp from GPU temp; matching by sensor id
+# can, since IDs are globally unique.
+#
+# Rows whose target id isn't published on a given box (e.g. no SMART
+# disk temp source on this kernel) stay unbound, which the panel
+# correctly renders as ``--`` — same as the legacy behaviour.
+_PANEL_ROW_BINDINGS: dict[tuple[int, int], str] = {
+    # CPU panel (category_id=1)
+    (1, 0): "cpu:temp",
+    (1, 1): "cpu:usage",
+    (1, 2): "cpu:freq",
+    (1, 3): "cpu:power",
+    # GPU panel (category_id=2) — bind to ``gpu:primary:*`` aliases
+    # so users with multiple GPUs see the active one without manual
+    # picking.  The multi-GPU picker remains available per-row.
+    (2, 0): "gpu:primary:temp",
+    (2, 1): "gpu:primary:usage",
+    (2, 2): "gpu:primary:clock",
+    (2, 3): "gpu:primary:power",
+    # Memory panel (category_id=3) — ``memory:temp`` is rare (only DDR5
+    # SPD sensors expose it); leaves <unbound> on most boxes.
+    (3, 0): "memory:temp",
+    (3, 1): "memory:percent",
+    (3, 2): "memory:used",
+    (3, 3): "memory:available",
+    # Disk panel (category_id=4) — ``disk:0:temp`` requires SMART; aggregator
+    # currently doesn't ship a SMART source, so the row stays unbound until
+    # a SmartDisk source lands.
+    (4, 0): "disk:0:temp",
+    (4, 1): "disk:activity",
+    (4, 2): "disk:read",
+    (4, 3): "disk:write",
+    # Network panel (category_id=5)
+    (5, 0): "net:up",
+    (5, 1): "net:down",
+    (5, 2): "net:total_up",
+    (5, 3): "net:total_down",
+    # Fan panel (category_id=6) — chassis fan IDs are hwmon-derived
+    # (``fan:hwmon:nct6798:fan1:rpm``) and vary per box, so we can't
+    # name them up front.  ``fan:#N:rpm`` is an indexed-pattern target
+    # resolved in ``auto_map``: pick the Nth (zero-based) available
+    # id matching ``fan:*:rpm``, sorted by id.  Boxes with fewer
+    # chassis fans than slots leave the trailing rows <unbound>.
+    (6, 0): "fan:#0:rpm",
+    (6, 1): "fan:#1:rpm",
+    (6, 2): "fan:#2:rpm",
+    (6, 3): "fan:#3:rpm",
 }
+
+
+def _resolve_target(target: str, available: set[str]) -> str | None:
+    """Resolve a ``_PANEL_ROW_BINDINGS`` target to a concrete sensor id.
+
+    Two target shapes:
+      * Exact id (``"cpu:temp"``) — returned iff published.
+      * Indexed pattern (``"fan:#N:rpm"``) — picks the Nth (zero-based)
+        sorted id whose prefix matches everything before ``#`` and
+        whose suffix matches everything after the index segment.  Used
+        for sensors whose ids include host-specific components
+        (hwmon chip name, slot number) that aren't predictable.
+
+    Returns ``None`` when nothing matches — caller leaves the binding
+    empty and the panel renders ``--``.
+    """
+    if "#" not in target:
+        return target if target in available else None
+    prefix, _, rest = target.partition("#")
+    n_str, _, suffix_after_n = rest.partition(":")
+    try:
+        n = int(n_str)
+    except ValueError:
+        log.warning(
+            "auto_map: malformed indexed target %r — expected N digits "
+            "after '#'", target,
+        )
+        return None
+    suffix = f":{suffix_after_n}" if suffix_after_n else ""
+    matches = sorted(
+        i for i in available
+        if i.startswith(prefix) and i.endswith(suffix)
+    )
+    return matches[n] if n < len(matches) else None
 
 
 class SysInfoConfig:
@@ -104,37 +187,61 @@ class SysInfoConfig:
             log.error("Failed to save sysinfo config %s: %s", self._path, e)
 
     def auto_map(self, enumerator) -> None:
-        """Best-guess fill of empty ``sensor_id`` fields.
+        """Fill every empty ``sensor_id`` from ``_PANEL_ROW_BINDINGS``.
 
-        Walks ``enumerator.discover()`` (which returns SensorReadings
-        with normalized ``category`` strings like ``"cpu_temp"``) and
-        picks the first reading whose category matches the legacy key
-        for each ``(category_id, row_index)``.  Preserves whatever the
-        user already picked.
+        Walks ``enumerator.discover()`` to collect the set of sensor
+        ids the host actually publishes, then for each unset binding
+        looks up the canonical target id and assigns it iff the
+        aggregator emits that id.  Preserves user-customised bindings
+        (non-empty ``sensor_id`` is left alone).  Rows whose target
+        id is not available on this host stay unbound — the panel
+        renders ``--``, matching legacy behaviour.
+
+        Single-pass; idempotent — calling again on an already-mapped
+        config is a no-op.
         """
         discover = getattr(enumerator, "discover", None)
         if discover is None:
+            log.warning(
+                "auto_map: enumerator %r has no discover() — skipping",
+                type(enumerator).__name__,
+            )
             return
         try:
             readings = discover()
         except Exception as e:
-            log.debug("enumerator.discover() raised: %s", e)
+            log.warning("auto_map: discover() raised %s: %s",
+                        type(e).__name__, e)
             return
 
-        # category string → first sensor_id we see with that category
-        by_category: dict[str, str] = {}
-        for r in readings:
-            cat = getattr(r, "category", "")
-            if cat and cat not in by_category:
-                by_category[cat] = getattr(r, "sensor_id", "")
-
+        available_ids: set[str] = {
+            getattr(r, "sensor_id", "") for r in readings
+        }
+        bound = 0
+        missing: list[tuple[int, int, str]] = []
         for panel in self.panels:
             for i, binding in enumerate(panel.sensors):
                 if binding.sensor_id:
                     continue
-                legacy_key = _LEGACY_KEYS.get((panel.category_id, i))
-                if legacy_key and legacy_key in by_category:
-                    binding.sensor_id = by_category[legacy_key]
+                target = _PANEL_ROW_BINDINGS.get((panel.category_id, i))
+                if not target:
+                    continue
+                resolved = _resolve_target(target, available_ids)
+                if resolved is not None:
+                    binding.sensor_id = resolved
+                    bound += 1
+                else:
+                    missing.append((panel.category_id, i, target))
+        log.info(
+            "auto_map: bound %d row(s) across %d panel(s) "
+            "(available=%d ids, %d row(s) target sensors not on this host)",
+            bound, len(self.panels), len(available_ids), len(missing),
+        )
+        if missing:
+            log.debug(
+                "auto_map: targets not available on this host: %s",
+                ["{}/{}={}".format(*m) for m in missing],
+            )
 
     @staticmethod
     def defaults() -> list[PanelConfig]:
