@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
@@ -166,7 +166,31 @@ class LedColorsChanged(Event):
 
 @dataclass(frozen=True, slots=True)
 class SensorsUpdated(Event):
-    reading_count: int
+    """Periodic sensor broadcast — payload IS the personalized dict.
+
+    ``readings``: ``{sensor_id: value}`` already processed through
+    :func:`trcc.services.metrics_personalize.personalize_readings` —
+    temps are in ``temp_unit`` units already (°C → °F applied at
+    publish time), ``disk:*`` keys are absent when the user has HDD
+    disabled.  Subscribers read the dict as-is; no further
+    conversion needed at consumer-side.
+
+    ``temp_unit``: ``"C"`` or ``"F"``.  Tells subscribers which unit
+    the temp values are in so they can render the unit SUFFIX in
+    format strings (``"33°C"`` vs ``"33°F"``) without reading
+    settings — the broadcast self-describes its unit semantics.
+
+    ``reading_count``: kept for log size-hints + size-only consumers;
+    redundant with ``len(readings)`` but cheap.
+
+    All three fields have defaults so this dataclass can be constructed
+    positionally during the staged audit rollout (P2 commit adds the
+    fields with defaults; P3 commit populates them at publish time).
+    Once P3 lands, every publish supplies all three.
+    """
+    reading_count: int = 0
+    readings: dict[str, float] = field(default_factory=dict)
+    temp_unit: str = "C"
 
 
 @dataclass(frozen=True, slots=True)
