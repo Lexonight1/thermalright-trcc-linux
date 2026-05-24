@@ -126,6 +126,12 @@ class DisplayService:
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
         self._split_cache: dict[tuple[int, int, bool], Any] = {}
+        # Per-device scene-cache hit/miss state — used to log INFO on
+        # TRANSITION only (matches Phase-0's ``_log_tick_skip``
+        # shape).  Per-tick HIT/MISS stays at DEBUG so 15 fps doesn't
+        # flood the log; transitions surface "froze on first frame"
+        # regressions in one grep.
+        self._cache_state: dict[str, tuple[bool, bool]] = {}
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
@@ -190,6 +196,11 @@ class DisplayService:
             "HIT" if bg_hit else "MISS",
             "HIT" if ovl_hit else "MISS",
         )
+        # State-transition log at INFO — a "frozen on frame N" bug
+        # surfaces as cache flipping to all-HIT and staying there
+        # while a video is supposedly playing.  Per-tick stays DEBUG
+        # above; this only fires when the state actually changes.
+        self._log_cache_transition(info.key, bg_hit, ovl_hit)
 
         if scene is None or scene.bg_mask_key != bg_key:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
@@ -376,9 +387,37 @@ class DisplayService:
     def invalidate(self, key: str) -> None:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
         self._scenes.pop(key, None)
+        # Reset the transition tracker too, so the next build_frame for
+        # this key logs INFO when the cache state first appears
+        # post-invalidation (instead of comparing against stale state).
+        self._cache_state.pop(key, None)
 
     def invalidate_all(self) -> None:
         self._scenes.clear()
+        self._cache_state.clear()
+
+    def _log_cache_transition(self, key: str, bg_hit: bool,
+                              ovl_hit: bool) -> None:
+        """Log INFO on the first call AND every state flip per device.
+
+        Per-tick HIT/MISS already logs at DEBUG in ``build_frame``; this
+        is the load-bearing diagnostic: "video should be animating but
+        cache is steady-HIT" is the shape of every "frozen on frame N"
+        regression, and surfaces as a missing flip in this log.
+        """
+        new_state = (bg_hit, ovl_hit)
+        prev_state = self._cache_state.get(key)
+        if prev_state == new_state:
+            return
+        log.info(
+            "build_frame %s: cache state %s → bg=%s overlay=%s",
+            key,
+            "(first)" if prev_state is None
+            else f"bg={prev_state[0]} overlay={prev_state[1]}",
+            "HIT" if bg_hit else "MISS",
+            "HIT" if ovl_hit else "MISS",
+        )
+        self._cache_state[key] = new_state
 
     # ── One-off encoding (used by Commands that bypass the scene cache) ──
 
@@ -660,20 +699,41 @@ class DisplayService:
         theme: Theme,
         visual_size: tuple[int, int],
     ) -> tuple[Any, ...]:
-        path = self._themes.background_path(theme)
-        is_video = path is not None and path.suffix.lower() in _VIDEO_EXTS
-        # For video, include the current cursor so each frame busts the cache.
-        cursor = None
-        if is_video:
-            pb = self._media.playback(info.key)
-            cursor = pb.cursor if pb else 0
+        # Cursor inclusion mirrors ``_resolve_background``'s precedence:
+        # if a live playback exists for this device, the rendered bg is
+        # ``playback.current`` (per-frame), regardless of whether the
+        # active theme's bundled background is static or video.  Asking
+        # ``themes.background_path(theme)`` alone misses the cloud-bg
+        # override case (active theme = static 00.png, but a cloud
+        # video overrides on top via ``DeviceSettings.background_path``)
+        # — the cache key would stay constant across ticks, every tick
+        # would HIT, and the LCD would freeze on the first-rendered
+        # frame.  Consulting MediaService directly fixes that.
+        cursor: int | None = None
+        pb = self._media.playback(info.key)
+        if pb is not None and pb.frames:
+            cursor = pb.cursor
+        else:
+            path = self._themes.background_path(theme)
+            if path is not None and path.suffix.lower() in _VIDEO_EXTS:
+                # Defensive: video-backed theme without a loaded
+                # playback shouldn't happen post-Phase-1 (LoadTheme
+                # auto-dispatches PlayVideo), but pin cursor=0 so the
+                # key stays distinct from static-theme keys.
+                cursor = 0
         # Mask state belongs in this key so the bg+mask layer rebuilds when
         # ApplyMask / SetMaskPosition / SetMaskVisible run. The Commands
         # already explicitly invalidate, but including it defends against
         # any path that mutates Settings without going through Commands.
         s = self._settings.for_device(info.key)
         mask_sig = (s.mask_path, s.mask_position, s.mask_visible, s.fit_mode)
-        return (str(theme.path), visual_size, cursor, mask_sig)
+        # ``background_path`` participates in the key so two cloud
+        # videos played back-to-back (each starting at cursor=0) don't
+        # share a cache entry — PlayVideo already calls
+        # _invalidate_scene, but keying on the override path is the
+        # explicit contract.
+        bg_override = s.background_path
+        return (str(theme.path), bg_override, visual_size, cursor, mask_sig)
 
     def _overlay_key(
         self,
