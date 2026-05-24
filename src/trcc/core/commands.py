@@ -806,6 +806,84 @@ class ExportTheme(Command[ThemeExportResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class ExportOverlay(Command[ThemeExportResult]):
+    """Copy a theme's overlay config file to ``output_path``.
+
+    Legacy ``export_config(lcd, path)`` exported the OVERLAY CONFIG
+    ONLY — a single ``config1.dc`` (legacy binary) or
+    ``trcc.json`` (next/-native).  Next/'s :class:`ExportTheme`
+    zips the WHOLE directory (00.png + 01.png + Theme.png + …),
+    which is heavy when a user just wants to share their metric-
+    grid layout.
+
+    Pick the source file in this order:
+      1. ``theme_dir/config1.dc`` (legacy binary — most compatible
+         with Windows TRCC users sharing layouts).
+      2. ``theme_dir/trcc.json`` (next/-native JSON).
+      3. Error if neither exists.
+
+    Reuses :class:`ThemeExportResult` — the shape (theme_name +
+    archive_path) fits.  Publishes :class:`ThemeExported` for
+    consistency with the whole-theme path.
+    """
+    theme_name: str
+    output_path: Path
+
+    def execute(self, app: App) -> ThemeExportResult:
+        if not _is_safe_theme_name(self.theme_name):
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.output_path),
+                message=f"invalid theme name {self.theme_name!r}",
+            )
+
+        source_dir = app.platform.paths().user_content_dir() / self.theme_name
+        if not source_dir.is_dir():
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.output_path),
+                message=f"theme {self.theme_name!r} not found at {source_dir}",
+            )
+
+        # Prefer the legacy binary config so Windows TRCC users can
+        # import the overlay layout without next/ around.
+        candidates = (
+            source_dir / "config1.dc",
+            source_dir / "trcc.json",
+        )
+        source = next((c for c in candidates if c.is_file()), None)
+        if source is None:
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.output_path),
+                message=(f"theme {self.theme_name!r} has no overlay config "
+                         f"(no config1.dc or trcc.json in {source_dir})"),
+            )
+
+        try:
+            import shutil
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, self.output_path)
+        except OSError as e:
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.output_path),
+                message=f"failed to copy overlay config: {e}",
+            )
+
+        app.events.publish(ThemeExported(
+            theme_name=self.theme_name,
+            archive_path=str(self.output_path),
+        ))
+        return ThemeExportResult(
+            ok=True, theme_name=self.theme_name,
+            archive_path=str(self.output_path),
+            message=(f"overlay config for '{self.theme_name}' exported to "
+                     f"{self.output_path} (source: {source.name})"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ImportTheme(Command[ThemeImportResult]):
     """Unpack a theme archive into ``user_content_dir / name``.
 
