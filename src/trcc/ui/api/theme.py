@@ -39,6 +39,7 @@ from .schemas import (
     CloudThemeLoadRequest,
     CloudThemeLoadResponse,
     CloudThemesListResponse,
+    DeleteThemeRequest,
     DeleteThemeResponse,
     ThemeDcExportRequest,
     ThemeDcExportResponse,
@@ -78,7 +79,11 @@ def export(body: ThemeExportRequest,
     # we accept any writable filesystem location.  CLI users are
     # responsible for choosing where to put the .tr file.
     result = request.app.state.trcc.dispatch(
-        ExportTheme(theme_name=theme_name, archive_path=Path(body.archive_path)),
+        ExportTheme(
+            key=body.key,
+            theme_name=theme_name,
+            archive_path=Path(body.archive_path),
+        ),
     )
     http_error_if_failed(result)
     return to_theme_export_response(result)
@@ -93,7 +98,7 @@ def import_(body: ThemeImportRequest,
     if name:
         name = _safe_basename(name)
     result = request.app.state.trcc.dispatch(
-        ImportTheme(archive_path=archive, name=name),
+        ImportTheme(key=body.key, archive_path=archive, name=name),
     )
     http_error_if_failed(result)
     return to_theme_import_response(result)
@@ -167,18 +172,22 @@ def export_dc(name: str, body: ThemeDcExportRequest,
     """Write a theme out as legacy ``config1.dc``."""
     safe_name = _safe_basename(name)
     result = request.app.state.trcc.dispatch(ExportDcTheme(
+        key=body.key,
         theme_name=safe_name,
         output_path=Path(body.output_path),
-        device_key=body.device_key,
     ))
     http_error_if_failed(result)
     return to_theme_dc_export_response(result)
 
 
-@router.delete("/{name}", response_model=DeleteThemeResponse)
-def delete(name: str, request: Request) -> DeleteThemeResponse:
-    """Delete a theme directory."""
-    safe_name = _safe_basename(name)
-    result = request.app.state.trcc.dispatch(DeleteTheme(name=safe_name))
+@router.delete("", response_model=DeleteThemeResponse)
+def delete(body: DeleteThemeRequest,
+           request: Request) -> DeleteThemeResponse:
+    """Delete a theme directory at an absolute path.
+
+    Path is confined to ``user_content_dir`` server-side — see
+    :class:`DeleteTheme.execute`.
+    """
+    result = request.app.state.trcc.dispatch(DeleteTheme(path=Path(body.path)))
     http_error_if_failed(result)
     return to_delete_theme_response(result)

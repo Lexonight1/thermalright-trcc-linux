@@ -42,10 +42,24 @@ def app(tmp_home: Path) -> App:
     return App(platform=FakePlatform(tmp_home))
 
 
+# Tests pretend the device under key ``0402:3922`` is connected — that
+# product is in the registry with native_resolution (320, 320), so
+# ``_resolve_resolution`` resolves through the registry fallback without
+# the test having to construct a fake device.
+_TEST_DEVICE_KEY = "0402:3922"
+_TEST_RES = (320, 320)
+
+
 @pytest.fixture
-def user_content_dir(app: App) -> Path:
-    """The directory where saved/imported themes land."""
-    return app.platform.paths().user_content_dir()
+def user_theme_dir(app: App) -> Path:
+    """Per-resolution dir where saved/imported themes land.
+
+    Matches the layout :class:`SaveTheme` / :class:`ImportTheme` write
+    to — ``user_content_dir / data / theme{w}{h} / <name>`` for the
+    test device's 320×320 resolution.
+    """
+    w, h = _TEST_RES
+    return app.platform.paths().user_theme_dir(w, h)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -192,16 +206,16 @@ def test_import_cleans_up_when_archive_has_no_theme_config(
 
 
 def test_save_theme_duplicates_active_theme(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
     theme = ThemeService().load(source)
-    app.active_themes["0402:3922"] = theme
+    app.active_themes[_TEST_DEVICE_KEY] = theme
 
-    result = app.dispatch(SaveTheme(key="0402:3922", name="my-copy"))
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="my-copy"))
 
     assert result.ok is True
-    saved = user_content_dir / "my-copy"
+    saved = user_theme_dir / "my-copy"
     assert saved.is_dir()
     assert (saved / "trcc.json").is_file()
 
@@ -231,15 +245,15 @@ def test_save_theme_rejects_unsafe_name(
 
 
 def test_save_theme_refuses_to_overwrite(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
-    app.active_themes["0402:3922"] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
     # First save succeeds
-    app.dispatch(SaveTheme(key="0402:3922", name="dupe"))
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe"))
     # Second save with same name fails
-    result = app.dispatch(SaveTheme(key="0402:3922", name="dupe"))
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe"))
 
     assert result.ok is False
     assert "already exists" in result.message
@@ -265,14 +279,16 @@ def test_save_theme_publishes_event(
 
 
 def test_export_theme_command_writes_archive(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    user_content_dir.mkdir(parents=True, exist_ok=True)
-    _write_theme(user_content_dir, "demo")
+    user_theme_dir.mkdir(parents=True, exist_ok=True)
+    _write_theme(user_theme_dir, "demo")
     archive = tmp_home / "out.tr"
 
     result = app.dispatch(
-        ExportTheme(theme_name="demo", archive_path=archive),
+        ExportTheme(
+            key=_TEST_DEVICE_KEY, theme_name="demo", archive_path=archive,
+        ),
     )
 
     assert result.ok is True
@@ -284,7 +300,10 @@ def test_export_theme_unknown_name_returns_failure(
     app: App, tmp_home: Path,
 ) -> None:
     result = app.dispatch(
-        ExportTheme(theme_name="missing", archive_path=tmp_home / "out.tr"),
+        ExportTheme(
+            key=_TEST_DEVICE_KEY, theme_name="missing",
+            archive_path=tmp_home / "out.tr",
+        ),
     )
 
     assert result.ok is False
@@ -296,7 +315,10 @@ def test_export_theme_rejects_unsafe_name(
     app: App, tmp_home: Path, bad_name: str,
 ) -> None:
     result = app.dispatch(
-        ExportTheme(theme_name=bad_name, archive_path=tmp_home / "out.tr"),
+        ExportTheme(
+            key=_TEST_DEVICE_KEY, theme_name=bad_name,
+            archive_path=tmp_home / "out.tr",
+        ),
     )
 
     assert result.ok is False
@@ -304,15 +326,16 @@ def test_export_theme_rejects_unsafe_name(
 
 
 def test_export_theme_publishes_event(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    user_content_dir.mkdir(parents=True, exist_ok=True)
-    _write_theme(user_content_dir, "demo")
+    user_theme_dir.mkdir(parents=True, exist_ok=True)
+    _write_theme(user_theme_dir, "demo")
     events: list[ThemeExported] = []
     app.events.subscribe(ThemeExported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
 
     app.dispatch(ExportTheme(
-        theme_name="demo", archive_path=tmp_home / "out.tr",
+        key=_TEST_DEVICE_KEY, theme_name="demo",
+        archive_path=tmp_home / "out.tr",
     ))
 
     assert len(events) == 1
@@ -325,40 +348,46 @@ def test_export_theme_publishes_event(
 
 
 def test_import_theme_command_unpacks_archive(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
     archive = tmp_home / "imported.tr"
     ThemeService().export(source, archive)
 
     result = app.dispatch(
-        ImportTheme(archive_path=archive, name="my-import"),
+        ImportTheme(
+            key=_TEST_DEVICE_KEY, archive_path=archive, name="my-import",
+        ),
     )
 
     assert result.ok is True
-    target = user_content_dir / "my-import"
+    target = user_theme_dir / "my-import"
     assert target.is_dir()
     assert result.path == str(target)
 
 
 def test_import_theme_command_defaults_name_to_archive_stem(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
     archive = tmp_home / "snowflake.tr"
     ThemeService().export(source, archive)
 
-    result = app.dispatch(ImportTheme(archive_path=archive, name=""))
+    result = app.dispatch(ImportTheme(
+        key=_TEST_DEVICE_KEY, archive_path=archive, name="",
+    ))
 
     assert result.ok is True
-    assert (user_content_dir / "snowflake").is_dir()
+    assert (user_theme_dir / "snowflake").is_dir()
 
 
 def test_import_theme_unknown_archive_returns_failure(
     app: App, tmp_home: Path,
 ) -> None:
     result = app.dispatch(
-        ImportTheme(archive_path=tmp_home / "nope.tr", name="x"),
+        ImportTheme(
+            key=_TEST_DEVICE_KEY, archive_path=tmp_home / "nope.tr", name="x",
+        ),
     )
 
     assert result.ok is False
@@ -366,7 +395,7 @@ def test_import_theme_unknown_archive_returns_failure(
 
 
 def test_import_theme_publishes_event(
-    app: App, tmp_home: Path, user_content_dir: Path,
+    app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "src")
     archive = tmp_home / "src.tr"
@@ -374,7 +403,9 @@ def test_import_theme_publishes_event(
     events: list[ThemeImported] = []
     app.events.subscribe(ThemeImported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
 
-    app.dispatch(ImportTheme(archive_path=archive, name="evt"))
+    app.dispatch(ImportTheme(
+        key=_TEST_DEVICE_KEY, archive_path=archive, name="evt",
+    ))
 
     assert len(events) == 1
     assert events[0].theme_name == "evt"

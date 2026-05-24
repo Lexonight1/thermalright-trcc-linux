@@ -566,9 +566,14 @@ class LanguagesListResponse(ResultBase):
 
 
 class ThemeDcExportRequest(BaseModel):
-    """Server-side path to write the legacy DC file to."""
+    """Server-side path to write the legacy DC file to.
+
+    ``key`` is required — the device's resolution scopes the source
+    lookup and the device's user-overlay elements are layered into the
+    exported DC.
+    """
+    key: str = Field(..., min_length=1)
     output_path: str
-    device_key: str = ""
 
 
 class ThemeDcExportResponse(ResultBase):
@@ -705,7 +710,11 @@ class ThemeSaveRequest(BaseModel):
 
 
 class ThemeExportRequest(BaseModel):
-    """Export an existing theme by name to a server-side archive path."""
+    """Export an existing theme by name to a server-side archive path.
+
+    ``key`` scopes the lookup to the device's resolution dir.
+    """
+    key: str = Field(..., min_length=1)
     theme_name: str = Field(..., min_length=1)
     archive_path: str = Field(..., min_length=1)
 
@@ -713,10 +722,22 @@ class ThemeExportRequest(BaseModel):
 class ThemeImportRequest(BaseModel):
     """Import a theme from a server-side archive path.
 
+    ``key`` scopes the target to the device's resolution dir.
     ``name`` defaults to the archive filename stem when blank.
     """
+    key: str = Field(..., min_length=1)
     archive_path: str = Field(..., min_length=1)
     name: str = ""
+
+
+class DeleteThemeRequest(BaseModel):
+    """Delete a theme directory by absolute path.
+
+    Path-based to match the Command shape — the caller already has the
+    resolved path from a prior list call.  Server confines deletion to
+    ``user_content_dir`` regardless.
+    """
+    path: str = Field(..., min_length=1)
 
 
 class BootAnimationRequest(BaseModel):

@@ -542,13 +542,16 @@ class LCDHandler(BaseHandler):
 
     def export_config(self, path: Path) -> None:
         r = self._app.dispatch(ExportTheme(
+            key=self._device_key,
             theme_name=path.stem,
             archive_path=path,
         ))
         self._w['preview'].set_status(r.message)
 
     def import_config(self, path: Path) -> None:
-        r = self._app.dispatch(ImportTheme(archive_path=path))
+        r = self._app.dispatch(ImportTheme(
+            key=self._device_key, archive_path=path,
+        ))
         self._w['preview'].set_status(r.message)
         if r.ok:
             self._w['theme_local'].load_themes()

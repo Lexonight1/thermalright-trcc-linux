@@ -153,7 +153,7 @@ class LocalThemeBrowser(BasePanel):
         selected = self._selected()
         if selected is None:
             return
-        _path, name = selected
+        path, name = selected
         confirm = QMessageBox.question(
             self,
             "Delete theme?",
@@ -163,7 +163,7 @@ class LocalThemeBrowser(BasePanel):
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
-        result = self.dispatch(DeleteTheme(name=name))
+        result = self.dispatch(DeleteTheme(path=Path(path)))
         self._status.setText(result.message)
         if result.ok:
             self.refresh()

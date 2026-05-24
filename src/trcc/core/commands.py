@@ -707,8 +707,10 @@ class SaveTheme(Command[ThemeResult]):
     """Duplicate the device's active theme directory under a new name.
 
     Pure file copy via ``shutil.copytree`` from the active theme's path
-    to ``user_content_dir / name``. The new directory is a fully
-    independent theme — editing it doesn't affect the source.
+    to ``user_theme_dir(w, h) / name`` — the per-resolution layout
+    (matches legacy's ``data_dir / theme{w}{h} / name``).  The new
+    directory is a fully independent theme; editing it doesn't affect
+    the source.
     """
     key: str
     name: str
@@ -732,9 +734,24 @@ class SaveTheme(Command[ThemeResult]):
                 message=(f"no active theme for {self.key} — load one first"),
             )
 
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            log.warning(
+                "SaveTheme: cannot resolve resolution for %s "
+                "— device must be connected with a known profile",
+                self.key,
+            )
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=(f"cannot resolve resolution for {self.key} "
+                         "(connect the device first)"),
+            )
+        w, h = resolution
+
         import shutil
-        target = app.platform.paths().user_content_dir() / self.name
-        log.info("SaveTheme: source=%s target=%s", theme.path, target)
+        target = app.platform.paths().user_theme_dir(w, h) / self.name
+        log.info("SaveTheme: source=%s target=%s resolution=%dx%d",
+                 theme.path, target, w, h)
         if target.exists():
             log.warning("SaveTheme: target %s already exists — refusing",
                         target)
@@ -764,16 +781,22 @@ class SaveTheme(Command[ThemeResult]):
 
 @dataclass(frozen=True, slots=True)
 class ExportTheme(Command[ThemeExportResult]):
-    """Zip a theme under ``user_content_dir / theme_name`` to an archive path.
+    """Zip a theme under ``user_theme_dir(w, h) / theme_name`` to an archive path.
 
-    The theme_name must resolve to a directory inside ``user_content_dir``;
-    the archive_path is written wherever the caller specifies (CLI/API
+    Device-scoped — resolution comes from the device the caller named via
+    ``key``, matching legacy's ``dev.export_config(path)`` shape where the
+    device's own ``lcd_size`` supplied the per-resolution directory.
+
+    The archive_path is written wherever the caller specifies (CLI / API
     are responsible for sanitizing that path at their edge).
     """
+    key: str
     theme_name: str
     archive_path: Path
 
     def execute(self, app: App) -> ThemeExportResult:
+        log.info("ExportTheme: key=%s theme=%s archive=%s",
+                 self.key, self.theme_name, self.archive_path)
         if not _is_safe_theme_name(self.theme_name):
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -781,7 +804,22 @@ class ExportTheme(Command[ThemeExportResult]):
                 message=f"invalid theme name {self.theme_name!r}",
             )
 
-        source = app.platform.paths().user_content_dir() / self.theme_name
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            log.warning(
+                "ExportTheme: cannot resolve resolution for %s "
+                "— device must be connected with a known profile",
+                self.key,
+            )
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.archive_path),
+                message=(f"cannot resolve resolution for {self.key} "
+                         "(connect the device first)"),
+            )
+        w, h = resolution
+
+        source = app.platform.paths().user_theme_dir(w, h) / self.theme_name
         if not source.is_dir():
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -828,11 +866,17 @@ class ExportOverlay(Command[ThemeExportResult]):
     Reuses :class:`ThemeExportResult` — the shape (theme_name +
     archive_path) fits.  Publishes :class:`ThemeExported` for
     consistency with the whole-theme path.
+
+    Device-scoped — resolution comes from the device the caller named
+    via ``key``, matching legacy's ``dev.export_config(path)`` shape.
     """
+    key: str
     theme_name: str
     output_path: Path
 
     def execute(self, app: App) -> ThemeExportResult:
+        log.info("ExportOverlay: key=%s theme=%s out=%s",
+                 self.key, self.theme_name, self.output_path)
         if not _is_safe_theme_name(self.theme_name):
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -840,7 +884,21 @@ class ExportOverlay(Command[ThemeExportResult]):
                 message=f"invalid theme name {self.theme_name!r}",
             )
 
-        source_dir = app.platform.paths().user_content_dir() / self.theme_name
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            log.warning(
+                "ExportOverlay: cannot resolve resolution for %s",
+                self.key,
+            )
+            return ThemeExportResult(
+                ok=False, theme_name=self.theme_name,
+                archive_path=str(self.output_path),
+                message=(f"cannot resolve resolution for {self.key} "
+                         "(connect the device first)"),
+            )
+        w, h = resolution
+
+        source_dir = app.platform.paths().user_theme_dir(w, h) / self.theme_name
         if not source_dir.is_dir():
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
@@ -888,15 +946,23 @@ class ExportOverlay(Command[ThemeExportResult]):
 
 @dataclass(frozen=True, slots=True)
 class ImportTheme(Command[ThemeImportResult]):
-    """Unpack a theme archive into ``user_content_dir / name``.
+    """Unpack a theme archive into ``user_theme_dir(w, h) / name``.
+
+    Device-scoped — resolution comes from the device the caller named
+    via ``key``, matching legacy's ``dev.import_config(path, data_dir)``
+    shape where the device's ``lcd_size`` selected the per-resolution
+    directory.
 
     ``name`` defaults to the archive filename's stem when blank.
     Zip-slip is filtered server-side by ``ThemeService.import_``.
     """
+    key: str
     archive_path: Path
     name: str = ""
 
     def execute(self, app: App) -> ThemeImportResult:
+        log.info("ImportTheme: key=%s archive=%s name=%r",
+                 self.key, self.archive_path, self.name)
         chosen_name = self.name.strip() or self.archive_path.stem
         if not _is_safe_theme_name(chosen_name):
             return ThemeImportResult(
@@ -904,7 +970,20 @@ class ImportTheme(Command[ThemeImportResult]):
                 message=f"invalid theme name {chosen_name!r}",
             )
 
-        target = app.platform.paths().user_content_dir() / chosen_name
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            log.warning(
+                "ImportTheme: cannot resolve resolution for %s",
+                self.key,
+            )
+            return ThemeImportResult(
+                ok=False, theme_name=chosen_name, path="",
+                message=(f"cannot resolve resolution for {self.key} "
+                         "(connect the device first)"),
+            )
+        w, h = resolution
+
+        target = app.platform.paths().user_theme_dir(w, h) / chosen_name
 
         try:
             theme = app.themes.import_(self.archive_path, target)
@@ -973,25 +1052,43 @@ class ListThemes(Command[ThemesListResult]):
 class ExportDcTheme(Command[ThemeDcExportResult]):
     """Write a theme out as a legacy-compatible ``config1.dc`` file.
 
-    Reads the named theme under ``user_content_dir``, optionally layers in
-    a device's user overlay elements (so the exported DC reflects what
-    the user actually sees on screen), and writes ``output_path``.  Used
-    by anyone sharing a next/-managed theme back to Windows TRCC or
-    legacy Linux users.
+    Reads the named theme under ``user_theme_dir(w, h)``, layers in the
+    device's user overlay elements (so the exported DC reflects what the
+    user actually sees on screen), and writes ``output_path``.  Device-
+    scoped — resolution comes from ``key``, matching legacy's
+    device-driven export shape.  Used by anyone sharing a next/-managed
+    theme back to Windows TRCC or legacy Linux users.
     """
+    key: str
     theme_name: str
     output_path: Path
-    device_key: str = ""
 
     def execute(self, app: App) -> ThemeDcExportResult:
+        log.info("ExportDcTheme: key=%s theme=%s out=%s",
+                 self.key, self.theme_name, self.output_path)
         if not _is_safe_theme_name(self.theme_name):
             return ThemeDcExportResult(
                 ok=False, theme_name=self.theme_name,
                 output_path=str(self.output_path),
                 message=f"invalid theme name {self.theme_name!r}",
             )
+
+        resolution = _resolve_resolution(app, self.key)
+        if resolution is None:
+            log.warning(
+                "ExportDcTheme: cannot resolve resolution for %s",
+                self.key,
+            )
+            return ThemeDcExportResult(
+                ok=False, theme_name=self.theme_name,
+                output_path=str(self.output_path),
+                message=(f"cannot resolve resolution for {self.key} "
+                         "(connect the device first)"),
+            )
+        w, h = resolution
+
         theme_dir = (
-            app.platform.paths().user_content_dir() / self.theme_name
+            app.platform.paths().user_theme_dir(w, h) / self.theme_name
         )
         if not theme_dir.is_dir():
             return ThemeDcExportResult(
@@ -999,12 +1096,10 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
                 output_path=str(self.output_path),
                 message=f"theme not found at {theme_dir}",
             )
-        user_overlays: list[dict] = []
-        if self.device_key:
-            settings = app.settings.for_device(self.device_key)
-            user_overlays = [
-                e.to_dict() for e in settings.user_overlay_elements
-            ]
+        settings = app.settings.for_device(self.key)
+        user_overlays = [
+            e.to_dict() for e in settings.user_overlay_elements
+        ]
         try:
             written = app.themes.export_dc(
                 theme_dir, self.output_path,
@@ -2867,21 +2962,44 @@ class LoopVideo(Command[LoopVideoResult]):
 
 @dataclass(frozen=True, slots=True)
 class DeleteTheme(Command[DeleteThemeResult]):
-    """Delete a theme directory under user_content_dir."""
-    name: str
+    """Delete the theme directory at ``path``.
+
+    Path-based — matches legacy's ``delete_theme(lcd, path)`` shape: the
+    caller already resolved the theme's location (from the picker / list /
+    filesystem walk), so the Command doesn't have to re-derive it from
+    name + resolution.  Confined to the user-content tree to keep this
+    Command from accidentally wiping system data.
+    """
+    path: Path
 
     def execute(self, app: App) -> DeleteThemeResult:
+        log.info("DeleteTheme: path=%s", self.path)
         root = app.platform.paths().user_content_dir()
         try:
-            target = app.themes.delete(root, self.name)
+            target = self.path.resolve()
+            root_resolved = root.resolve()
+            target.relative_to(root_resolved)
+        except (OSError, ValueError) as e:
+            log.warning(
+                "DeleteTheme: refusing to delete %s — not under %s (%s)",
+                self.path, root, e,
+            )
+            return DeleteThemeResult(
+                ok=False, theme_name=self.path.name, path=str(self.path),
+                message=(f"refusing to delete {self.path} — "
+                         f"not inside {root}"),
+            )
+
+        try:
+            deleted = app.themes.delete(target.parent, target.name)
         except ThemeError as e:
             return DeleteThemeResult(
-                ok=False, theme_name=self.name, path="",
+                ok=False, theme_name=target.name, path=str(target),
                 message=str(e),
             )
         return DeleteThemeResult(
-            ok=True, theme_name=self.name, path=str(target),
-            message=f"Deleted theme {self.name!r}",
+            ok=True, theme_name=deleted.name, path=str(deleted),
+            message=f"Deleted theme at {deleted}",
         )
 
 
@@ -3272,14 +3390,20 @@ def _search_theme_by_name(
 
     Search order:
       1. ``theme_dir(w,h)/<name>``           — pkg + GitHub-downloaded
-      2. ``user_theme_dir(w,h)/<name>``      — legacy user-saved layout
-      3. ``user_content_dir()/<name>``       — next/ flat user saves
+      2. ``user_theme_dir(w,h)/<name>``      — user-saved layout
+      3. ``cloud_theme_dir(w,h)/<name>``     — cloud cache
       4. ``user_content_dir()/single-image/<name_after_image_prefix>``
-      5. ``cloud_theme_dir(w,h)/<name>``     — cloud cache
+         — LoadImage's flat single-image cache (different layout, not
+         a theme; only consulted for ``image:<name>`` keys)
 
     Each candidate must be a directory containing a theme config
     (``trcc.json`` or ``config1.dc``) — guarded by
     ``ThemeService`` semantics.
+
+    The pre-cutover ``user_content_dir()/<name>`` flat candidate was
+    dropped — every next/ theme writer now lands at the per-resolution
+    path.  Users with legacy flat themes on disk must run
+    ``tools/migrate_legacy_themes.py`` once to move them into place.
     """
     paths = app.platform.paths()
     resolution = _resolve_resolution(app, key)
@@ -3289,7 +3413,6 @@ def _search_theme_by_name(
         candidates.append(paths.theme_dir(w, h) / name)
         candidates.append(paths.user_theme_dir(w, h) / name)
         candidates.append(paths.cloud_theme_dir(w, h) / name)
-    candidates.append(paths.user_content_dir() / name)
     # "image:foo" → single-image/foo (LoadImage layout).
     if name.startswith("image:"):
         candidates.append(

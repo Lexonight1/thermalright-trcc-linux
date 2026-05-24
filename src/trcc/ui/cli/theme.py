@@ -39,8 +39,11 @@ def save(
 
 @app.command("export")
 def export(
+    key: str = typer.Argument(
+        ..., help="Device key (e.g. 0402:3922) whose resolution scopes the lookup",
+    ),
     theme_name: str = typer.Argument(
-        ..., help="Theme name (directory under user_content_dir)",
+        ..., help="Theme name (directory under user_theme_dir(w, h))",
     ),
     archive_path: Path = typer.Argument(
         ..., help="Destination archive path (e.g. theme.tr)",
@@ -48,7 +51,7 @@ def export(
 ) -> None:
     """Zip a theme into an archive file."""
     result = get_app().dispatch(
-        ExportTheme(theme_name=theme_name, archive_path=archive_path),
+        ExportTheme(key=key, theme_name=theme_name, archive_path=archive_path),
     )
     typer.echo(result.message)
     if not result.ok:
@@ -57,6 +60,9 @@ def export(
 
 @app.command("import")
 def import_(
+    key: str = typer.Argument(
+        ..., help="Device key (e.g. 0402:3922) whose resolution scopes the target",
+    ),
     archive_path: Path = typer.Argument(
         ..., help="Archive to unpack",
         exists=True, file_okay=True, dir_okay=False,
@@ -65,9 +71,9 @@ def import_(
         "", help="Theme name (defaults to archive filename stem)",
     ),
 ) -> None:
-    """Unpack a theme archive into user_content_dir."""
+    """Unpack a theme archive into the device's per-resolution theme dir."""
     result = get_app().dispatch(
-        ImportTheme(archive_path=archive_path, name=name),
+        ImportTheme(key=key, archive_path=archive_path, name=name),
     )
     typer.echo(result.message)
     if not result.ok:
@@ -122,12 +128,16 @@ def list_(
 
 @app.command("delete")
 def delete(
-    name: str = typer.Argument(
-        ..., help="Theme name (directory under user_content_dir)",
+    path: Path = typer.Argument(
+        ..., help="Absolute path to the theme directory to delete",
     ),
 ) -> None:
-    """Delete a theme directory."""
-    result = get_app().dispatch(DeleteTheme(name=name))
+    """Delete a theme directory.
+
+    Path-based to match legacy's ``delete_theme(lcd, path)`` — the
+    caller already has the resolved path from ``theme list`` output.
+    """
+    result = get_app().dispatch(DeleteTheme(path=path))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -170,22 +180,22 @@ def cloud_load(
 
 @app.command("export-dc")
 def export_dc(
+    key: str = typer.Argument(
+        ..., help="Device key (e.g. 0402:3922) — its resolution scopes the lookup "
+                  "and layers the user's overlay elements into the export",
+    ),
     theme_name: str = typer.Argument(
-        ..., help="Theme name (directory under user_content_dir)",
+        ..., help="Theme name (directory under user_theme_dir(w, h))",
     ),
     output_path: Path = typer.Argument(
         ..., help="Where to write the config1.dc file",
     ),
-    device_key: str = typer.Option(
-        "", "--device", "-d",
-        help="Device key to layer user overlay elements from (optional)",
-    ),
 ) -> None:
     """Write a theme out as legacy ``config1.dc`` for Windows TRCC users."""
     result = get_app().dispatch(ExportDcTheme(
+        key=key,
         theme_name=theme_name,
         output_path=output_path,
-        device_key=device_key,
     ))
     typer.echo(result.message)
     if not result.ok:

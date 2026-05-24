@@ -581,12 +581,13 @@ def test_display_upload_mask(
 
 
 def test_theme_delete_unknown(
-    cli_runner: CliRunner, cli_app,
+    cli_runner: CliRunner, cli_app, tmp_path,
 ) -> None:
     """Deleting a non-existent theme exits non-zero."""
     del cli_app
+    bogus = tmp_path / "definitely-not-a-theme-x9z"
     result = cli_runner.invoke(
-        _app(), ["theme", "delete", "definitely-not-a-theme-x9z"],
+        _app(), ["theme", "delete", str(bogus)],
     )
     assert result.exit_code != 0
 
@@ -594,20 +595,22 @@ def test_theme_delete_unknown(
 def test_theme_delete_round_trip(
     cli_runner: CliRunner, cli_app, tmp_path, monkeypatch,
 ) -> None:
-    """Create a theme via fs, delete via CLI."""
+    """Create a theme via fs (at the per-resolution path the writers
+    would have used), delete via CLI."""
     del cli_app
-    # Point the FakePlatform's user_content_dir at tmp_path via the env vars
-    # honored by tmp_home — but the cli_app fixture already redirects HOME.
-    # We use the actual current user_content_dir for the cli.
     from trcc.ui.cli import _ctx
-    user_content = _ctx.get_app().platform.paths().user_content_dir()
-    user_content.mkdir(parents=True, exist_ok=True)
-    target = user_content / "Disposable"
+    paths = _ctx.get_app().platform.paths()
+    # Mirror what SaveTheme writes: per-resolution sub-tree under
+    # user_content_dir.  CLI ``theme delete`` takes an absolute path
+    # to match legacy's ``delete_theme(lcd, path)`` shape.
+    user_theme = paths.user_theme_dir(320, 320)
+    user_theme.mkdir(parents=True, exist_ok=True)
+    target = user_theme / "Disposable"
     target.mkdir(exist_ok=True)
     (target / "trcc.json").write_text(
         '{"width": 320, "height": 320, "elements": []}',
     )
-    result = cli_runner.invoke(_app(), ["theme", "delete", "Disposable"])
+    result = cli_runner.invoke(_app(), ["theme", "delete", str(target)])
     assert result.exit_code == 0
     assert not target.exists()
 
