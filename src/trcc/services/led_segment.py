@@ -69,6 +69,14 @@ class LegacyMetricsView:
 
     # Legacy attribute name → next/ sensor_id.  Anything not in this
     # map (or absent from the dict) reads as 0.0.
+    #
+    # Disk + memory entries audited 2026-05-24 against
+    # ``BaselineSensors._io_keys`` + ``_memory_keys``: the aggregator
+    # publishes flat ``disk:read`` / ``disk:write`` / ``disk:activity``
+    # ids (no per-disk index — the aggregator's I/O source is a
+    # single ComputedIo, not per-disk SMART), and memory metrics
+    # don't include a ``memory:clock`` key at all (no canonical
+    # "memory frequency" sensor source).
     _LEGACY_TO_NEXT: ClassVar[Mapping[str, str]] = {
         # CPU
         "cpu_temp": "cpu:temp",
@@ -82,16 +90,19 @@ class LegacyMetricsView:
         "gpu_clock": "gpu:0:clock",
         "gpu_fan": "gpu:0:fan",
         "gpu_vram_used": "gpu:0:vram_used",
-        # Memory
+        # Memory — ``memory:temp`` may be published by a DDR5 SPD
+        # source; ``mem_clock`` has no canonical aggregator source
+        # (returns 0 via the unmapped-key fallback).
         "mem_used": "memory:used",
         "mem_percent": "memory:percent",
         "mem_temp": "memory:temp",
-        "mem_clock": "memory:clock",
-        # Disk (first disk)
-        "disk_temp": "disk:0:temp",
-        "disk_read": "disk:0:read",
-        "disk_write": "disk:0:write",
-        "disk_activity": "disk:0:activity",
+        # Disk (flat ids — aggregator doesn't index by disk).
+        "disk_read": "disk:read",
+        "disk_write": "disk:write",
+        "disk_activity": "disk:activity",
+        # ``disk_temp`` stays unmapped (no SMART source today;
+        # returns 0 via the unmapped-key fallback).  Add a SmartDisk
+        # source first, then bind here.
     }
 
     def __init__(self, readings: Mapping[str, SensorReading]) -> None:
