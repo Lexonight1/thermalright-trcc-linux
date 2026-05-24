@@ -27,6 +27,7 @@ from .errors import (
 from .events import (
     BackgroundChanged,
     BrightnessChanged,
+    DateFormatChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
@@ -49,6 +50,7 @@ from .events import (
     ThemeImported,
     ThemeLoaded,
     ThemeSaved,
+    TimeFormatChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -68,6 +70,7 @@ from .results import (
     CloudThemesListResult,
     ConnectResult,
     ControlCenterSnapshotResult,
+    DateFormatResult,
     DebugReportPayload,
     DeleteThemeResult,
     DisconnectResult,
@@ -130,6 +133,7 @@ from .results import (
     ThemeListEntry,
     ThemeResult,
     ThemesListResult,
+    TimeFormatResult,
     UpdateCheckResult,
     UpgradeResult,
     VideoResult,
@@ -2160,6 +2164,62 @@ class SetClockFormat(Command[ClockFormatResult]):
         return ClockFormatResult(
             ok=True, key=self.key, is_24h=self.is_24h,
             message=f"Clock format set to {fmt}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetTimeFormat(Command[TimeFormatResult]):
+    """Set the LCD-overlay clock format (12h or 24h) for a device.
+
+    Persisted on ``DeviceSettings.time_format`` and read per-render
+    by :func:`DisplayService.compute_clock`.  Publishes
+    :class:`TimeFormatChanged` so ``DeviceRenderObserver`` re-renders
+    the LCD immediately.
+
+    Distinct from :class:`SetClockFormat` (which is for LED-segment
+    LC2-style displays and writes ``led_clock_24h``).
+    """
+    key: str
+    fmt: str   # "12h" or "24h"
+
+    def execute(self, app: App) -> TimeFormatResult:
+        if self.fmt not in ("12h", "24h"):
+            return TimeFormatResult(
+                ok=False, key=self.key, fmt=self.fmt,
+                message=f"fmt must be '12h' or '24h', got {self.fmt!r}",
+            )
+        app.settings.set_time_format(self.key, self.fmt)  # type: ignore[arg-type]
+        app.display.invalidate(self.key)
+        app.events.publish(TimeFormatChanged(key=self.key, fmt=self.fmt))
+        return TimeFormatResult(
+            ok=True, key=self.key, fmt=self.fmt,
+            message=f"time format set to {self.fmt} for {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetDateFormat(Command[DateFormatResult]):
+    """Set the LCD-overlay date pattern for a device.
+
+    Pattern uses ICU-ish tokens (``yyyy/MM/dd``, ``dd.MM.yyyy``, etc.)
+    translated by ``_clock._translate_date_pattern`` to a Python
+    strftime string.  Persisted on ``DeviceSettings.date_format``.
+    """
+    key: str
+    fmt: str
+
+    def execute(self, app: App) -> DateFormatResult:
+        if not self.fmt:
+            return DateFormatResult(
+                ok=False, key=self.key, fmt=self.fmt,
+                message="fmt must not be empty",
+            )
+        app.settings.set_date_format(self.key, self.fmt)
+        app.display.invalidate(self.key)
+        app.events.publish(DateFormatChanged(key=self.key, fmt=self.fmt))
+        return DateFormatResult(
+            ok=True, key=self.key, fmt=self.fmt,
+            message=f"date format set to {self.fmt!r} for {self.key}",
         )
 
 

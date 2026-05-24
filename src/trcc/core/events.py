@@ -221,6 +221,29 @@ class HddEnabledChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class TimeFormatChanged(Event):
+    """User changed the 12h/24h clock format.
+
+    Per-device because :class:`DeviceSettings.time_format` is the
+    persisted source of truth — ``DisplayService.compute_clock``
+    reads it per render.  ``DeviceRenderObserver`` subscribes so
+    the LCD re-renders on the next tick.
+    """
+    key: str
+    fmt: str   # "12h" or "24h"
+
+
+@dataclass(frozen=True, slots=True)
+class DateFormatChanged(Event):
+    """User changed the date pattern (e.g. yyyy/MM/dd → dd.MM.yyyy).
+
+    Per-device for symmetry with :class:`TimeFormatChanged`.
+    """
+    key: str
+    fmt: str   # e.g. "yyyy/MM/dd"
+
+
+@dataclass(frozen=True, slots=True)
 class LanguageChanged(Event):
     language: str
 

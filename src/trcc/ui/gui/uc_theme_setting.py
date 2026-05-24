@@ -84,6 +84,15 @@ class UCThemeSetting(BasePanel):
     screencast_changed = Signal(bool)
     screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
     eyedropper_requested = Signal()  # launch eyedropper color picker
+    # Per-format-pref change — emitted alongside UiState persistence
+    # so trcc_app can mirror the user's choice onto every connected
+    # device's DeviceSettings via SetTimeFormat / SetDateFormat
+    # Commands.  Without this, the UiState-side update never reaches
+    # DisplayService's compute_clock which reads from per-device
+    # DeviceSettings.{time,date}_format (default "24h" / "yyyy/MM/dd"
+    # forever).  ``kind`` is "time" / "date" / "temp_unit"; ``value``
+    # is the GUI's int code, translated to a literal by the slot.
+    format_pref_changed = Signal(str, int)
     capture_requested = Signal()     # launch screen capture
 
     def __init__(self, parent=None, ui_state=None):
@@ -235,10 +244,13 @@ class UCThemeSetting(BasePanel):
             return
         if mode == OverlayMode.TIME:
             self._ui_state.set_format_pref('time_format', mode_sub)
+            self.format_pref_changed.emit('time', mode_sub)
         elif mode == OverlayMode.DATE:
             self._ui_state.set_format_pref('date_format', mode_sub)
+            self.format_pref_changed.emit('date', mode_sub)
         elif mode == OverlayMode.HARDWARE:
             self._ui_state.set_format_pref('temp_unit', mode_sub)
+            self.format_pref_changed.emit('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
         self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)

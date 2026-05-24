@@ -22,6 +22,7 @@ from .core.errors import DeviceNotFoundError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
+    DateFormatChanged,
     EventBus,
     FitModeChanged,
     MaskApplied,
@@ -31,6 +32,7 @@ from .core.events import (
     SensorsUpdated,
     SplitModeChanged,
     TempUnitChanged,
+    TimeFormatChanged,
     VideoStarted,
     VideoStopped,
 )
@@ -349,6 +351,14 @@ class _DeviceRenderObserver:
             # up the change on the very next render — UIs don't have
             # to loop over handlers and force a re-render themselves.
             TempUnitChanged,
+            # Per-device clock + date format changes — DisplayService
+            # reads DeviceSettings.{time_format,date_format} in
+            # compute_clock; the Command's invalidate already drops
+            # the scene cache, this just kicks the re-render so the
+            # user sees the change without waiting for the next
+            # sensor tick.
+            TimeFormatChanged,
+            DateFormatChanged,
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 

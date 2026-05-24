@@ -330,6 +330,24 @@ class ClockFormatResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class TimeFormatResult(Result):
+    """Result of ``SetTimeFormat`` — per-device LCD-overlay clock format.
+
+    Distinct from :class:`ClockFormatResult` (which is for LED-segment
+    LC2-style devices).  ``fmt`` is the literal "12h" / "24h".
+    """
+    key: str = ""
+    fmt: str = "24h"
+
+
+@dataclass(frozen=True, slots=True)
+class DateFormatResult(Result):
+    """Result of ``SetDateFormat`` — per-device LCD-overlay date pattern."""
+    key: str = ""
+    fmt: str = "yyyy/MM/dd"
+
+
+@dataclass(frozen=True, slots=True)
 class WeekStartResult(Result):
     key: str = ""
     sunday_first: bool = False
