@@ -80,6 +80,8 @@ class OverlayService:
         sensors: dict[str, float],
         clock: dict[str, str] | None = None,
         user_elements: list[dict[str, Any]] | None = None,
+        *,
+        temp_unit: str = "C",
     ) -> Any:
         """Render every overlay element from *config* onto *base*.
 
@@ -107,6 +109,13 @@ class OverlayService:
         bundled elements; rendered after them so users layer on top.
         Same dict shape as ``config["elements"]`` (produced by
         ``OverlayElement.to_dict``).
+
+        ``temp_unit`` is "C" (default) or "F".  When "F",
+        ``_draw_metric`` converts any temperature value
+        (``metric_id.endswith(':temp')`` OR format-string contains
+        ``°C``) from Celsius to Fahrenheit and swaps the unit symbol
+        in the formatted output.  Sensor sources always deliver °C;
+        the renderer is the single conversion site (SRP).
         """
         if not config.get("overlay_enabled", True):
             log.debug("render: overlay_enabled=False — returning base unchanged")
@@ -121,17 +130,17 @@ class OverlayService:
         clock_keys = list(clock.keys()) if clock else []
         log.info(
             "render: %dx%d, theme_elements=%d, user_elements=%d, "
-            "sensors=%d, clock_sources=%s",
+            "sensors=%d, clock_sources=%s, temp_unit=%s",
             width, height, len(elements), user_count,
-            len(sensors), clock_keys,
+            len(sensors), clock_keys, temp_unit,
         )
         for idx, element in enumerate(elements):
             self._draw_element(overlay, element, sensors, clock or {},
-                               source=f"theme[{idx}]")
+                               source=f"theme[{idx}]", temp_unit=temp_unit)
         # User edits paint on top.
         for idx, element in enumerate(user_elements or []):
             self._draw_element(overlay, element, sensors, clock or {},
-                               source=f"user[{idx}]")
+                               source=f"user[{idx}]", temp_unit=temp_unit)
 
         return self._r.composite(base, overlay, position=(0, 0))
 
@@ -145,12 +154,16 @@ class OverlayService:
         clock: dict[str, str],
         *,
         source: str = "?",
+        temp_unit: str = "C",
     ) -> None:
         kind = element.get("type")
         if kind == "text":
             self._draw_text(surface, element, source=source)
         elif kind == "metric":
-            self._draw_metric(surface, element, sensors, source=source)
+            self._draw_metric(
+                surface, element, sensors,
+                source=source, temp_unit=temp_unit,
+            )
         elif kind == "clock":
             self._draw_clock(surface, element, clock, source=source)
         else:
@@ -184,6 +197,7 @@ class OverlayService:
         sensors: dict[str, float],
         *,
         source: str = "?",
+        temp_unit: str = "C",
     ) -> None:
         metric_id = str(element.get("metric", ""))
         value: float | None = sensors.get(metric_id)
@@ -196,6 +210,15 @@ class OverlayService:
             )
             return
         fmt = str(element.get("format", "{value}"))
+        # Temperature unit conversion — single site (SRP).  A metric
+        # is a temperature when EITHER its id ends in ``:temp`` OR the
+        # format string carries the ``°C`` symbol.  Sensor sources
+        # always deliver Celsius; converting here keeps the upstream
+        # contract simple ("all temps are °C floats").
+        if temp_unit == "F" and (metric_id.endswith(":temp") or "°C" in fmt):
+            from ..core.models import celsius_to_fahrenheit
+            value = celsius_to_fahrenheit(value)
+            fmt = fmt.replace("°C", "°F")
         text = fmt.format(value=value)
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))

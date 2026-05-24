@@ -686,9 +686,14 @@ class DisplayService:
                 info.key, theme.name, len(theme_elements), len(user_dicts),
                 theme.config.get("overlay_enabled", True),
             )
+        # ``temp_unit`` flows from per-device settings — kept in sync
+        # with AppSettings.temp_unit by SetTempUnit Command.  The
+        # renderer is the single conversion site (sensor sources always
+        # deliver °C; rendering converts to °F when requested).
         return self._overlay.render(
             overlay_canvas, config_for_render, sensors,
             clock=clock, user_elements=user_dicts,
+            temp_unit=s.temp_unit,
         )
 
     # ── Cache keys ────────────────────────────────────────────────────
@@ -772,8 +777,11 @@ class DisplayService:
             if s.mask_overlay_elements is not None
             else ()
         )
+        # Temp unit participates in the key so toggling °C ↔ °F via
+        # SetTempUnit busts the overlay cache and the next render
+        # picks up the new format-string + value-conversion path.
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
-                user_sig, mask_overlay_sig)
+                user_sig, mask_overlay_sig, s.temp_unit)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
 

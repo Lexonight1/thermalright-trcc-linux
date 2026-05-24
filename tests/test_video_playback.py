@@ -293,8 +293,9 @@ class _RecordingRenderer(Renderer):
 class _StubOverlay(OverlayService):
     def render(self, canvas: Any, config: Any, sensors: dict[str, float],
                clock: dict[str, str] | None = None,
-               user_elements: list[dict[str, Any]] | None = None) -> Any:
-        del config, sensors, clock, user_elements
+               user_elements: list[dict[str, Any]] | None = None,
+               *, temp_unit: str = "C") -> Any:
+        del config, sensors, clock, user_elements, temp_unit
         return canvas
 
 

@@ -318,6 +318,12 @@ class TRCCApp(QMainWindow):
         self._minimize_on_close = app.platform.minimize_on_close()
         self._sensors = app.platform.sensors()
         self._ui_state = UiStateStore(app.platform.paths())
+        # Observability state for the metrics fan-out — first call
+        # after construction logs INFO, subsequent ticks DEBUG unless
+        # panel visibility flips (which is itself a transition worth
+        # surfacing).  Same shape Phase 0 used for the video tick.
+        self._metrics_fanout_first_logged: bool = False
+        self._last_vis_state: tuple[bool, bool, bool] = (False, False, False)
         self._ui_state.load()
 
         # Apply saved GPU selection to the sensor enumerator
@@ -454,6 +460,19 @@ class TRCCApp(QMainWindow):
 
     def _on_bus_sensors_updated(self, _event: Any) -> None:
         """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
+        self._fan_out_metrics(reason="bus")
+
+    def _fan_out_metrics(self, *, reason: str) -> None:
+        """Read sensors and forward to every visible metrics widget.
+
+        Single source of truth for the GUI's metrics fan-out — called
+        by ``_on_bus_sensors_updated`` for the periodic broadcast AND
+        by ``_show_view`` when the user opens a metrics panel (so it
+        populates immediately instead of waiting for the next tick).
+
+        ``reason`` is a short tag for the observability log line:
+        "bus" / "view-switch" / "temp-unit-changed" etc.
+        """
         from typing import cast
 
         from ...core.commands import ReadSensors
@@ -468,10 +487,26 @@ class TRCCApp(QMainWindow):
         info_vis = self.uc_info_module.isVisible()
         sysinfo_vis = self.uc_system_info.isVisible()
         sidebar_vis = self.is_app_visible() and self.uc_activity_sidebar.isVisible()
-        log.debug(
-            "_on_bus_sensors_updated: readings=%d info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
-            len(readings), info_vis, sysinfo_vis, sidebar_vis,
-        )
+        # INFO on first call after construction + on every visibility
+        # state TRANSITION (panel opens or closes).  Per-tick stays
+        # DEBUG so 2 s cadence doesn't flood.  Mirrors Phase 0's
+        # transition-only skip-log shape.
+        vis_state = (info_vis, sysinfo_vis, sidebar_vis)
+        if (not self._metrics_fanout_first_logged
+                or self._last_vis_state != vis_state):
+            log.info(
+                "_fan_out_metrics: reason=%s readings=%d "
+                "info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
+                reason, len(readings), info_vis, sysinfo_vis, sidebar_vis,
+            )
+            self._metrics_fanout_first_logged = True
+            self._last_vis_state = vis_state
+        else:
+            log.debug(
+                "_fan_out_metrics: reason=%s readings=%d "
+                "info_vis=%s sysinfo_vis=%s sidebar_vis=%s",
+                reason, len(readings), info_vis, sysinfo_vis, sidebar_vis,
+            )
 
         if info_vis:
             self.uc_info_module.update_from_metrics(metrics)
@@ -1224,8 +1259,14 @@ class TRCCApp(QMainWindow):
         self.uc_led_control.setVisible(view == 'led')
         self.uc_activity_sidebar.setVisible(False)
 
-        # uc_system_info is a Topic.METRICS observer (see _on_metrics_main_thread);
-        # visibility alone decides whether the panel renders.  No timer to start.
+        # uc_system_info populates on the periodic SensorsUpdated
+        # broadcast (every refresh_interval_s).  Without an immediate
+        # populate, the panel sits BLANK from open-click until the
+        # next bus tick — which can be tens of seconds at user-chosen
+        # intervals.  Mirror the bus fan-out one-shot so the user
+        # sees data the moment the panel appears.
+        if view == 'sysinfo':
+            self._fan_out_metrics(reason="view-switch:sysinfo")
 
     # ── Signal Wiring ───────────────────────────────────────────────
 

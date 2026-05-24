@@ -93,6 +93,10 @@ class SystemInfoPanel(QWidget):
         self._color = CATEGORY_COLORS.get(config.category_id, '#888888')
         self._value_labels: list[QLabel] = []
         self._selector_btns: list[QPushButton] = []
+        # First-populate flag — INFO on the first ``update_values``
+        # call shows which panel got data first and what readings
+        # bound, then DEBUG so 2 s cadence doesn't drown the log.
+        self._first_populate_logged: bool = False
         log.info(
             "SystemInfoPanel.__init__: name=%r category=%d rows=%d color=%s",
             config.name, config.category_id, len(config.sensors), self._color,
@@ -195,7 +199,6 @@ class SystemInfoPanel(QWidget):
 
     def update_values(self, sensor_readings: dict[str, float]):
         """Update displayed values from sensor_id → value mapping."""
-        # Per-tick — DEBUG so a default INFO run isn't drowned.
         rendered: list[str] = []
         for i, binding in enumerate(self.config.sensors):
             if i >= len(self._value_labels):
@@ -212,10 +215,20 @@ class SystemInfoPanel(QWidget):
                 txt = self._format_value(value, binding.unit)
                 self._value_labels[i].setText(txt)
                 rendered.append(f"{binding.label}={binding.sensor_id}={txt}")
-        log.debug(
-            "SystemInfoPanel.update_values %r: readings=%d → %s",
-            self.config.name, len(sensor_readings), "; ".join(rendered),
-        )
+        # First populate per panel logs INFO so we can see which
+        # panel got which readings first; subsequent ticks DEBUG.
+        if not self._first_populate_logged:
+            log.info(
+                "SystemInfoPanel.update_values %r: first populate — "
+                "readings=%d → %s",
+                self.config.name, len(sensor_readings), "; ".join(rendered),
+            )
+            self._first_populate_logged = True
+        else:
+            log.debug(
+                "SystemInfoPanel.update_values %r: readings=%d → %s",
+                self.config.name, len(sensor_readings), "; ".join(rendered),
+            )
 
     def set_temp_unit(self, unit: int):
         """Set temperature unit. 0=Celsius, 1=Fahrenheit."""
@@ -301,6 +314,10 @@ class UCSystemInfo(QWidget):
         self._page_label: QLabel | None = None
         self._slot_widgets: list[QWidget] = []
         self._selected_panel: SystemInfoPanel | None = None
+        # First-populate diagnostic flag — INFO on the first
+        # ``update_from_metrics`` call proves the panel is receiving
+        # data; subsequent ticks DEBUG to avoid flooding.
+        self._first_populate_logged: bool = False
         log.info("UCSystemInfo.__init__: size=%dx%d", w, h)
 
         # No local timer — observers of Topic.METRICS dispatch updates via
@@ -657,9 +674,19 @@ class UCSystemInfo(QWidget):
                 "publisher delivered no sensor data; panels=%d",
                 len(self._panels_list),
             )
-        log.debug(
-            "UCSystemInfo.update_from_metrics: panels=%d readings=%d keys=%s",
-            len(self._panels_list), len(readings), sorted(readings)[:10],
-        )
+        # First call proves data is reaching the widget; subsequent
+        # ticks stay DEBUG.  Same shape Phase 0 used.
+        if not self._first_populate_logged:
+            log.info(
+                "UCSystemInfo.update_from_metrics: first populate — "
+                "panels=%d readings=%d keys=%s",
+                len(self._panels_list), len(readings), sorted(readings)[:10],
+            )
+            self._first_populate_logged = True
+        else:
+            log.debug(
+                "UCSystemInfo.update_from_metrics: panels=%d readings=%d keys=%s",
+                len(self._panels_list), len(readings), sorted(readings)[:10],
+            )
         for panel in self._panels_list:
             panel.update_values(readings)
