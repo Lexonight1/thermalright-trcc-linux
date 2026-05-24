@@ -130,31 +130,59 @@ class MetricsLoop:
     def _publish_once(self, events: EventBus) -> None:
         """Trigger one sensor read + broadcast.
 
-        Reads via ``aggregator.read_all()`` so the cached dict is
-        guaranteed fresh; ``SensorsUpdated`` carries no payload itself
-        (subscribers call ``ReadSensors`` to pull the typed view they
-        want — keeps the event lightweight + lets each consumer choose
-        its preferred shape).
+        Two steps:
+
+          1. Read raw readings from ``platform.sensors().read_all()``
+             — canonical °C, all keys present.
+          2. Apply user prefs via
+             :func:`metrics_personalize.personalize_readings` (temp
+             unit conversion + HDD filter) — single conversion +
+             filter site for the entire pipeline.
+          3. Publish ``SensorsUpdated`` carrying the personalized
+             dict + temp_unit so subscribers don't re-read settings.
+
+        Matches legacy's ``PollingMetricsLoop._poll_metrics`` shape —
+        broadcast at the boundary, consumers downstream are pure
+        renderers.
         """
+        from .metrics_personalize import personalize_readings
+
         try:
             sensors = self._app.platform.sensors()
         except Exception as e:
             log.warning("MetricsLoop: platform.sensors() raised %s", e)
             return
         try:
-            readings = sensors.read_all()
+            raw = sensors.read_all()
         except Exception as e:
             log.warning("MetricsLoop: sensors.read_all() raised %s", e)
             return
-        events.publish(SensorsUpdated(reading_count=len(readings)))
+
+        s = self._app.settings.app
+        readings = personalize_readings(
+            raw,
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
+        events.publish(SensorsUpdated(
+            reading_count=len(readings),
+            readings=readings,
+            temp_unit=s.temp_unit,
+        ))
         # First publish proves the polling chain is alive; subsequent
         # publishes stay DEBUG so 2 s cadence doesn't flood.
         if not self._first_publish_logged:
             log.info(
                 "MetricsLoop: SensorsUpdated published — first tick "
-                "after start (readings=%d, sample=%s)",
-                len(readings), sorted(readings)[:5],
+                "after start (raw=%d → personalized=%d, temp_unit=%s, "
+                "hdd_enabled=%s, sample=%s)",
+                len(raw), len(readings), s.temp_unit, s.hdd_enabled,
+                sorted(readings)[:5],
             )
             self._first_publish_logged = True
         else:
-            log.debug("MetricsLoop: SensorsUpdated(%d) published", len(readings))
+            log.debug(
+                "MetricsLoop: SensorsUpdated(%d) published (raw=%d, "
+                "temp_unit=%s, hdd_enabled=%s)",
+                len(readings), len(raw), s.temp_unit, s.hdd_enabled,
+            )
