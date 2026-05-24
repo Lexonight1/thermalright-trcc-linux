@@ -361,8 +361,17 @@ class Paths(ABC):
     Resolution-aware helpers (`theme_dir`, `cloud_theme_dir`,
     `cloud_mask_dir`, `user_mask_dir`) are concrete on the ABC because
     every OS uses the same subpath layout — only the root differs.
-    Subpaths match legacy `src/trcc/core/paths.py` byte-for-byte so
-    next/ reads existing user content in place without migration.
+
+    Layout convention: ``data_dir()`` is the package + cloud-downloaded
+    content root (``~/.trcc/data/``); ``user_content_dir()`` is the
+    user-saved content root (``~/.trcc-user/``).  Both are content
+    roots — the per-resolution sub-tree shape is identical under each:
+
+        <root>/theme{w}{h}/<name>/
+        <root>/web/zt{w}{h}/<name>/
+
+    Reads beneath ``data_dir()`` and ``user_content_dir()`` are
+    symmetric; only the root differs.
     """
 
     @abstractmethod
@@ -382,8 +391,12 @@ class Paths(ABC):
         return self.data_dir() / f"theme{width}{height}"
 
     def user_theme_dir(self, width: int, height: int) -> Path:
-        """Per-resolution user-saved theme dir (legacy layout)."""
-        return self.user_content_dir() / "data" / f"theme{width}{height}"
+        """Per-resolution user-saved theme dir.
+
+        Mirrors :meth:`theme_dir` shape, rooted at
+        :meth:`user_content_dir` instead of :meth:`data_dir`.
+        """
+        return self.user_content_dir() / f"theme{width}{height}"
 
     def cloud_theme_dir(self, width: int, height: int) -> Path:
         """Cloud-catalog themes downloaded at runtime."""
@@ -394,8 +407,12 @@ class Paths(ABC):
         return self.data_dir() / "web" / f"zt{width}{height}"
 
     def user_mask_dir(self, width: int, height: int) -> Path:
-        """User-created masks — survives uninstall + redownload."""
-        return self.user_content_dir() / "data" / "web" / f"zt{width}{height}"
+        """User-created masks — survives uninstall + redownload.
+
+        Mirrors :meth:`cloud_mask_dir` shape, rooted at
+        :meth:`user_content_dir` instead of :meth:`data_dir`.
+        """
+        return self.user_content_dir() / "web" / f"zt{width}{height}"
 
 
 # =========================================================================

@@ -3,10 +3,10 @@
 
 Pre-cutover ``SaveTheme`` wrote user-saved themes flat under
 ``~/.trcc-user/Theme1/``.  Post-cutover the canonical layout is
-``~/.trcc-user/data/theme{w}{h}/Theme1/`` (matches legacy's own
-``_migrate_user_content_themes`` target).  This script does that
-one-shot move for any flat-layout themes still on disk so the GUI
-local-theme browser picks them up.
+``~/.trcc-user/theme{w}{h}/Theme1/`` (mirrors ``~/.trcc/data/`` shape:
+``user_content_dir/`` is itself the data root, no inner ``data/``
+segment).  This script does that one-shot move for any flat-layout
+themes still on disk so the GUI local-theme browser picks them up.
 
 Lives under ``tools/`` because it has a finite life: when the
 ``src/trcc/legacy/`` subtree is deleted, this file gets deleted with
@@ -21,13 +21,13 @@ Usage
 
 What it does
 ------------
-1. Scans direct child dirs of ``user_content_dir`` that aren't
-   ``data/`` (the destination subtree).
+1. Scans direct child dirs of ``user_content_dir`` that don't already
+   match the per-resolution layout (``theme{w}{h}/`` / ``web/``).
 2. For each dir with a theme marker (``00.png`` / ``Theme.png`` /
    ``config1.dc`` / ``trcc.json``), reads ``00.png`` to determine
    the theme's resolution.
 3. Moves ``user_content_dir / Theme1/`` →
-   ``user_content_dir / data / theme{w}{h} / Theme1/``.
+   ``user_content_dir / theme{w}{h} / Theme1/``.
 4. Idempotent — skips a theme whose target already exists.
 """
 
@@ -103,7 +103,7 @@ def migrate(
     *,
     dry_run: bool = False,
 ) -> int:
-    """Move every flat-layout theme into ``data/theme{w}{h}/``.
+    """Move every flat-layout theme into ``theme{w}{h}/``.
 
     Returns the exit code: 0 = ok (even if nothing to do).
     """
@@ -114,11 +114,29 @@ def migrate(
     log.info("user-content dir: %s", user_content_dir)
     log.info("dry-run:          %s", dry_run)
 
-    data_root = user_content_dir / "data"
+    # Skip already-per-resolution subtrees: ``theme{w}{h}/`` (current
+    # layout) + ``data/`` (pre-rename intermediate layout) + ``web/``.
+    # ``data/`` is recognised here so users upgrading from the brief
+    # window where the migration tool wrote the redundant ``data/``
+    # segment can re-run this script and get the right shape.
     candidates = [
         p for p in sorted(user_content_dir.iterdir())
-        if p.is_dir() and p.name != "data" and not p.name.startswith(".")
+        if p.is_dir()
+        and not p.name.startswith(".")
+        and p.name not in ("web", "data")
+        and not p.name.startswith("theme")
     ]
+    # Also scan the pre-rename ``data/`` intermediate layout if it
+    # exists, so themes parked there get pulled up into the canonical
+    # location.
+    intermediate = user_content_dir / "data"
+    if intermediate.is_dir():
+        for sub in sorted(intermediate.iterdir()):
+            # ``data/theme{w}{h}/<theme>`` — pull each <theme> up.
+            if sub.is_dir() and sub.name.startswith("theme"):
+                candidates.extend(c for c in sorted(sub.iterdir())
+                                  if c.is_dir())
+
     if not candidates:
         log.info("no flat-layout themes found — nothing to do")
         return 0
@@ -134,7 +152,7 @@ def migrate(
             skipped += 1
             continue
         w, h = resolution
-        target_root = data_root / f"theme{w}{h}"
+        target_root = user_content_dir / f"theme{w}{h}"
         target = target_root / theme_dir.name
         if target.exists():
             log.info(
@@ -155,6 +173,18 @@ def migrate(
         except OSError as e:
             log.error("failed to move %s → %s: %s", theme_dir, target, e)
             skipped += 1
+
+    # Tidy up an empty ``data/`` left behind by the pre-rename intermediate.
+    if not dry_run and intermediate.is_dir():
+        try:
+            for sub in list(intermediate.iterdir()):
+                if sub.is_dir() and not any(sub.iterdir()):
+                    sub.rmdir()
+            if not any(intermediate.iterdir()):
+                intermediate.rmdir()
+                log.info("removed empty intermediate dir %s", intermediate)
+        except OSError as e:
+            log.debug("cleanup of %s skipped: %s", intermediate, e)
 
     log.info(
         "%s%d moved, %d skipped",
