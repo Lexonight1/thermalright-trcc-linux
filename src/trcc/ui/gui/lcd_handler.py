@@ -126,7 +126,8 @@ class LCDHandler(BaseHandler):
         self._split_mode = 0
         self._ldd_is_split = False
         self._background_active = False
-        self._slideshow_index = 0
+        # Slideshow cursor lives on ``app.slideshow`` (SlideshowService);
+        # don't duplicate state here (S1.1 audit).
 
         # QPixmap cache keyed by frame index — avoids QImage→QPixmap
         # conversion on every video tick when the surface hasn't changed.
@@ -1020,14 +1021,9 @@ class LCDHandler(BaseHandler):
             enabled, len(themes), interval_s,
         )
 
-        if enabled and themes:
-            self._slideshow_index = 0
-            self._slideshow_timer.start(interval_s * 1000)
-        else:
-            self._slideshow_timer.stop()
-
-        # ConfigureSlideshow + SetSlideshow own carousel persistence
-        # through next/'s SlideshowService.
+        # ConfigureSlideshow + SetSlideshow own persistence AND reset
+        # the SlideshowService cursor.  Dispatch BEFORE starting the
+        # Qt timer so the first tick reads a freshly-reset cursor.
         from ...core.commands import ConfigureSlideshow, SetSlideshow
         self._app.dispatch(ConfigureSlideshow(
             key=self._device_key,
@@ -1038,26 +1034,70 @@ class LCDHandler(BaseHandler):
             key=self._device_key, enabled=enabled,
         ))
 
+        if enabled and themes:
+            self._slideshow_timer.start(interval_s * 1000)
+        else:
+            self._slideshow_timer.stop()
+
     def on_slideshow_delegate(self) -> None:
         """Handle slideshow toggle from local theme panel."""
         self.log.info("on_slideshow_delegate: device=%s", self._device_key)
         self._update_slideshow_state()
 
     def _on_slideshow_tick(self) -> None:
-        """Auto-rotate to next theme in slideshow."""
-        themes = self._w['theme_local'].get_slideshow_themes()
+        """Auto-rotate to next theme — SlideshowService owns the cursor.
+
+        Pre-S1.1 this maintained a local ``self._slideshow_index``
+        counter that duplicated ``SlideshowService._state[key].cursor``
+        — two sources of truth for the same rotation position.  The
+        service cursor was reset by ConfigureSlideshow but never
+        advanced by anything, leaving daemon-mode / CLI / API rotation
+        broken: only the GUI's local counter moved.
+
+        Post-S1.1 the GUI calls ``app.slideshow.advance(key, config)``
+        which returns the next theme NAME (or None when not yet due).
+        Single cursor across all surfaces.
+        """
+        from ...services.slideshow import SlideshowConfig
+        local = self._w['theme_local']
+        themes = local.get_slideshow_themes()
         if not themes:
             self.log.warning(
                 "_on_slideshow_tick: themes list empty — stopping timer",
             )
             self._slideshow_timer.stop()
             return
-        self._slideshow_index = (self._slideshow_index + 1) % len(themes)
-        theme_info = themes[self._slideshow_index]
+        # Build the canonical config from the user's panel state.
+        # Could read from app.settings.for_device(key).slideshow_*
+        # but the panel is the live UI source — these two should
+        # match post-S1.2 (which restored the panel state from
+        # DeviceSettings on startup).
+        config = SlideshowConfig(
+            enabled=True,
+            interval_s=float(local.get_slideshow_interval()),
+            themes=[t.name for t in themes],
+        )
+        next_name = self._app.slideshow.advance(self._device_key, config)
+        if next_name is None:
+            # Within the interval window — service decided not to
+            # rotate yet.  Qt timer will fire again at next interval.
+            return
+        # Resolve name → theme_info.  The slideshow stores names; the
+        # panel knows the path for each name.
+        theme_info = next(
+            (t for t in themes if t.name == next_name), None,
+        )
+        if theme_info is None:
+            self.log.warning(
+                "_on_slideshow_tick: service returned name %r but "
+                "the panel has no theme by that name — skipping",
+                next_name,
+            )
+            return
         path = Path(theme_info.path)
         self.log.info(
-            "_on_slideshow_tick: advance %d/%d -> %s",
-            self._slideshow_index + 1, len(themes), theme_info.name,
+            "_on_slideshow_tick: SlideshowService → %s (%s)",
+            next_name, path,
         )
         if path.exists():
             self._app.dispatch(LoadTheme(
