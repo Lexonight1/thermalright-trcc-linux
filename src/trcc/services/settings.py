@@ -72,6 +72,26 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 _LEGACY_CONFIG_FILE = "config.json"
 
 
+# Legacy → next/ value translations.  Legacy stored int indices for the
+# clock format prefs (UCXiTongXianShiSub.cs convention); next/'s
+# DeviceSettings.time_format / date_format are the resolved patterns
+# the renderer reads directly.  These two tables are the migration's
+# entire format-translation surface — kept here so the shape is greppable
+# next to the file constants instead of buried in a function body.
+_LEGACY_TIME_FORMAT_MAP: dict[int, str] = {
+    0: "24h",  # Windows "HH:mm" / Unix "%H:%M"
+    1: "12h",  # Windows "hh:mm" / Unix "%I:%M"
+    2: "24h",  # Same as 0 in legacy
+}
+_LEGACY_DATE_FORMAT_MAP: dict[int, str] = {
+    0: "yyyy/MM/dd",
+    1: "yyyy/MM/dd",
+    2: "dd/MM/yyyy",
+    3: "MM/dd",
+    4: "dd/MM",
+}
+
+
 class Settings:
     """Per-app and per-device settings with JSON persistence.
 
@@ -507,22 +527,52 @@ class Settings:
     def _load(self) -> None:
         """Load config from disk.  Missing/corrupt → defaults, warn only.
 
-        Falls back to the pre-cutover ``trcc-next.json`` filename so
-        users who started on next/ before the rename keep their state;
-        the next ``_save`` writes the new ``trcc.json`` automatically.
+        Read order (first hit wins):
+
+        1. ``trcc.json``        — current shipping config.
+        2. ``trcc-next.json``   — pre-cutover next/ filename.  Same
+           shape as ``trcc.json``; next ``_save`` writes the new name
+           and leaves the old file in place for rollback.
+        3. ``config.json``      — legacy tree's config.  Different shape
+           — fields get translated via :meth:`_migrate_from_legacy`.
+           Legacy file stays untouched so ``TRCC_LEGACY=1`` rollback
+           is non-destructive.
+
+        Defaults apply only when none of the three files exists.
         """
         path = self._config_path()
-        if not path.exists():
-            old_path = self._paths.config_dir() / _PRE_CUTOVER_CONFIG_FILE
-            if old_path.exists():
-                log.info(
-                    "Reading pre-cutover config %s; next save will write %s",
-                    old_path, path,
-                )
-                path = old_path
-            else:
-                log.debug("No config file at %s, using defaults", path)
-                return
+        if path.exists():
+            self._load_native(path)
+            return
+
+        pre_cutover = self._paths.config_dir() / _PRE_CUTOVER_CONFIG_FILE
+        if pre_cutover.exists():
+            log.info(
+                "Reading pre-cutover config %s; next save will write %s",
+                pre_cutover, path,
+            )
+            self._load_native(pre_cutover)
+            return
+
+        legacy = self._paths.config_dir() / _LEGACY_CONFIG_FILE
+        if legacy.exists():
+            log.info(
+                "No %s found — migrating legacy %s into in-memory settings "
+                "(legacy file left intact for rollback; next save writes %s)",
+                _CONFIG_FILE, legacy, _CONFIG_FILE,
+            )
+            self._migrate_from_legacy(legacy)
+            return
+
+        log.debug("No config file at %s, using defaults", path)
+
+    def _load_native(self, path: Path) -> None:
+        """Load a config written in next/'s own shape (``trcc.json`` or
+        the pre-cutover ``trcc-next.json``).
+
+        Split out from :meth:`_load` so the legacy-migration branch
+        doesn't have to repeat the JSON-read + field-walk dance.
+        """
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as e:
@@ -538,6 +588,106 @@ class Settings:
                 self._devices[key] = _device_settings_from_dict(data)
             for key, data in raw.get("led_devices", {}).items():
                 self._led_devices[key] = _led_settings_from_dict(data)
+
+    def _migrate_from_legacy(self, legacy_path: Path) -> None:
+        """One-shot translation: legacy ``config.json`` → in-memory state.
+
+        Pulls the user preferences legacy stored as a flat dict into
+        next/'s AppSettings + DeviceSettings shape.  Touches only fields
+        with a defined mapping — anything legacy persisted that next/
+        doesn't model is dropped silently.  Caller writes ``trcc.json``
+        on the next ``_save``; the legacy file is read-only here.
+
+        Field-by-field map (legacy → next):
+
+          * ``temp_unit``        int 0/1     → ``app.temp_unit``       "C"/"F"
+          * ``lang``             str         → ``app.language``        str
+          * ``hdd_enabled``      bool        → ``app.hdd_enabled``     bool
+          * ``refresh_interval`` int seconds → ``app.refresh_interval_s`` float
+          * ``gpu_device``       str         → ``app.active_gpu``      str | None
+                                              (empty string → None to
+                                               match next/ "auto" semantics)
+          * ``format_prefs.time_format`` int  → every DeviceSettings.time_format
+          * ``format_prefs.date_format`` int  → every DeviceSettings.date_format
+          * ``devices.{idx}.brightness_level`` → DeviceSettings.brightness
+          * ``devices.{idx}.orientation``      → DeviceSettings.orientation
+          * ``devices.{idx}.vid_pid`` (e.g. "0402_3922") rekeyed to next/'s
+            "vvvv:pppp" device-key convention.
+
+        Legacy's ``last_device`` is an int index into a per-launch device
+        list; next/'s ``app.active_device`` is a stable "vid:pid" string.
+        Indices don't translate, so the field is dropped — the GUI picks
+        the first device on next launch (same fall-through behaviour as
+        a fresh install).
+        """
+        try:
+            raw = json.loads(legacy_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning(
+                "Failed to read legacy config %s: %s — using defaults",
+                legacy_path, e,
+            )
+            return
+
+        with self._lock:
+            self._apply_legacy_app(raw)
+            self._apply_legacy_devices(raw)
+        log.info(
+            "_migrate_from_legacy: translated %d device(s), language=%s, "
+            "temp_unit=%s, hdd_enabled=%s, refresh_interval_s=%s",
+            len(self._devices), self._app.language, self._app.temp_unit,
+            self._app.hdd_enabled, self._app.refresh_interval_s,
+        )
+
+    def _apply_legacy_app(self, raw: dict[str, Any]) -> None:
+        """Map flat legacy top-level keys onto :class:`AppSettings`."""
+        if isinstance(temp_int := raw.get("temp_unit"), int):
+            self._app.temp_unit = cast(TempUnit, "F" if temp_int == 1 else "C")
+        if isinstance(lang := raw.get("lang"), str) and lang:
+            self._app.language = lang
+        if isinstance(hdd := raw.get("hdd_enabled"), bool):
+            self._app.hdd_enabled = hdd
+        if isinstance(interval := raw.get("refresh_interval"), int | float):
+            self._app.refresh_interval_s = float(interval)
+        if isinstance(gpu := raw.get("gpu_device"), str):
+            # Legacy stored "" for the auto-pick state; next/ uses None
+            # so SensorEnumerator.primary_gpu() owns the choice.
+            self._app.active_gpu = gpu or None
+
+    def _apply_legacy_devices(self, raw: dict[str, Any]) -> None:
+        """Map legacy ``devices.{idx}`` entries + ``format_prefs`` onto
+        the per-device :class:`DeviceSettings` dict, rekeying to next/'s
+        ``"vvvv:pppp"`` device key.
+        """
+        prefs = raw.get("format_prefs") or {}
+        legacy_devices = raw.get("devices") or {}
+        for _idx_key, entry in legacy_devices.items():
+            if not isinstance(entry, dict):
+                continue
+            vid_pid = entry.get("vid_pid")
+            if not isinstance(vid_pid, str) or "_" not in vid_pid:
+                continue
+            # Legacy stores "0402_3922"; next/ keys with "0402:3922".
+            device_key = vid_pid.replace("_", ":").lower()
+            settings = DeviceSettings()
+            if isinstance(brightness := entry.get("brightness_level"), int):
+                settings.brightness = brightness
+            if isinstance(orientation := entry.get("orientation"), int):
+                settings.orientation = orientation
+            if isinstance(temp_int := raw.get("temp_unit"), int):
+                settings.temp_unit = cast(
+                    TempUnit, "F" if temp_int == 1 else "C",
+                )
+            if isinstance(tf := prefs.get("time_format"), int):
+                if tf in _LEGACY_TIME_FORMAT_MAP:
+                    settings.time_format = cast(
+                        Literal["12h", "24h"],
+                        _LEGACY_TIME_FORMAT_MAP[tf],
+                    )
+            if isinstance(df := prefs.get("date_format"), int):
+                if df in _LEGACY_DATE_FORMAT_MAP:
+                    settings.date_format = _LEGACY_DATE_FORMAT_MAP[df]
+            self._devices[device_key] = settings
 
     def _save(self) -> None:
         """Atomic write: tmp file → fsync → rename."""
