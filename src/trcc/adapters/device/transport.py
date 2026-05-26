@@ -11,6 +11,7 @@ macOS/BSD fall back to userspace USB BOT.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import usb.core
@@ -34,6 +35,20 @@ log = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_MS = 100
 USB_CONFIGURATION = 1
 USB_INTERFACE = 0
+
+# Some devices expose 1–4 interfaces (vendor + HID + mass-storage) and
+# the kernel may attach drivers to ANY of them; detaching only iface 0
+# leaves a driver holding bulk endpoints we need to claim.  Legacy
+# iterates 0..3 (open_usb_device:75-107).
+_DETACH_INTERFACES = 4
+# Seconds to sleep between dev.reset() and the re-find.  Mirrors
+# legacy ``_reset_and_refind`` — short enough not to feel like a hang,
+# long enough for the kernel to re-enumerate the device.
+_RESET_SETTLE_S = 0.5
+
+# Linux errno used by pyusb wraps over libusb.
+_ERRNO_EACCES = 13   # Permission denied — udev rules missing
+_ERRNO_EBUSY = 16    # Interface claimed by another process
 
 
 # =========================================================================
@@ -69,29 +84,133 @@ class PyUsbBulkTransport(BulkTransport):
             log.error("USB device %04X:%04X not found", self._vid, self._pid)
             return False
 
-        try:
-            if self._device.is_kernel_driver_active(USB_INTERFACE):
-                self._device.detach_kernel_driver(USB_INTERFACE)
-                log.debug("Detached kernel driver from interface %d", USB_INTERFACE)
-        except Exception as e:
-            log.debug("Kernel driver detach: %s", e)
+        # 1. Detach kernel drivers from interfaces 0..3.  USB cooler
+        # firmware presents multiple interfaces (vendor + HID + mass-
+        # storage); the kernel may attach drivers to any of them, and a
+        # held driver on a sibling interface can prevent claiming our
+        # vendor one.  Legacy parity: open_usb_device:161 →
+        # _detach_kernel_drivers(dev, count=4).
+        detach_blocked = self._detach_kernel_drivers()
 
+        # 2. Apply configuration.  If the device is in an unconfigured
+        # state and set_configuration fails, dev.reset() + refind clears
+        # the stale state and lets us retry — legacy:171-178.
         try:
             cfg: Any = self._device.get_active_configuration()
             if cfg.bConfigurationValue != USB_CONFIGURATION:
                 self._device.set_configuration(USB_CONFIGURATION)
         except usb.core.USBError as e:
-            if e.errno == 13:
+            if e.errno == _ERRNO_EACCES:
                 raise PermissionError_(
                     f"USB access denied for {self._vid:04X}:{self._pid:04X} — "
-                    "check udev rules or run 'trcc setup'"
+                    "check udev rules or run 'trcc system setup'"
                 ) from e
+            log.warning(
+                "%04X:%04X: set_configuration failed (%s) — "
+                "resetting device and retrying",
+                self._vid, self._pid, e,
+            )
+            self._reset_and_refind()
             self._device.set_configuration(USB_CONFIGURATION)
 
-        usb.util.claim_interface(self._device, USB_INTERFACE)
+        # 3. Claim the vendor interface.  EBUSY at this stage means a
+        # sibling process holds it (another TRCC instance) or, on
+        # Linux, that SELinux is blocking the ioctl even though detach
+        # appeared to succeed (detach_blocked=True flags the latter).
+        # Legacy:183-191.
+        try:
+            usb.util.claim_interface(self._device, USB_INTERFACE)
+        except usb.core.USBError as e:
+            if e.errno != _ERRNO_EBUSY:
+                raise
+            if detach_blocked:
+                raise TransportError(
+                    f"USB interface busy for {self._vid:04X}:{self._pid:04X} — "
+                    "SELinux may be blocking USB ioctls.  Run "
+                    "'trcc system setup' to install the policy module, then "
+                    "unplug and replug the device.",
+                ) from e
+            raise TransportError(
+                f"USB device {self._vid:04X}:{self._pid:04X} interface is in "
+                "use by another process.  Close any other TRCC instances "
+                "and try again.",
+            ) from e
+
         self._is_open = True
         self._detect_endpoints()
         return True
+
+    def _detach_kernel_drivers(self) -> bool:
+        """Detach kernel drivers from interfaces 0..``_DETACH_INTERFACES-1``.
+
+        Returns ``True`` when a driver remained active after the detach
+        call — on Linux this typically means SELinux blocking the
+        ioctl.  Caller uses the flag to phrase the EBUSY error
+        appropriately.
+        """
+        detach_blocked = False
+        for i in range(_DETACH_INTERFACES):
+            try:
+                if not self._device.is_kernel_driver_active(i):
+                    continue
+                self._device.detach_kernel_driver(i)
+                # Verify the detach actually took.
+                if self._device.is_kernel_driver_active(i):
+                    detach_blocked = True
+                    log.warning(
+                        "%04X:%04X: kernel driver still active on iface %d "
+                        "after detach — OS may be blocking USB ioctls",
+                        self._vid, self._pid, i,
+                    )
+                else:
+                    log.debug("Detached kernel driver from iface %d", i)
+            except usb.core.USBError as e:
+                log.debug(
+                    "Could not detach kernel driver from iface %d: %s", i, e,
+                )
+                try:
+                    if self._device.is_kernel_driver_active(i):
+                        detach_blocked = True
+                except (usb.core.USBError, NotImplementedError):
+                    pass
+            except NotImplementedError:
+                # Windows / macOS pyusb backends don't implement the
+                # kernel-driver methods — silently skip; their drivers
+                # are managed by the OS (WinUSB / IOKit) outside libusb.
+                pass
+        return detach_blocked
+
+    def _reset_and_refind(self) -> None:
+        """Reset the device and re-acquire the handle.
+
+        Used when ``set_configuration`` fails — the device is likely in
+        a stale state from a prior crashed app instance.  Resetting
+        forces the kernel to re-enumerate; we then have to re-find
+        because the original handle is now invalid, and re-detach
+        kernel drivers on the new handle (the kernel will have
+        re-attached them during enumeration).
+        """
+        try:
+            self._device.reset()
+        except usb.core.USBError as e:
+            log.debug(
+                "%04X:%04X: dev.reset() raised: %s",
+                self._vid, self._pid, e,
+            )
+        time.sleep(_RESET_SETTLE_S)
+        kwargs: dict[str, Any] = {
+            'idVendor': self._vid, 'idProduct': self._pid,
+        }
+        if self._serial:
+            kwargs['serial_number'] = self._serial
+        new_device = usb.core.find(**kwargs)
+        if new_device is None:
+            raise TransportError(
+                f"USB device {self._vid:04X}:{self._pid:04X} disappeared "
+                "after reset",
+            )
+        self._device = new_device
+        self._detach_kernel_drivers()
 
     def close(self) -> None:
         if self._device is not None:
