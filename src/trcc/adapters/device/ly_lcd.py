@@ -18,7 +18,11 @@ from __future__ import annotations
 import logging
 import struct
 
-from ...core.errors import HandshakeError, TransportError
+from ...core.errors import (
+    DeviceDisconnectedError,
+    HandshakeError,
+    TransportError,
+)
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
@@ -179,11 +183,24 @@ class LyLcd(Device[BulkTransport]):
 
             # ACK read
             self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _READ_TIMEOUT_MS)
-            return True
-        except TransportError:
-            log.exception("LyLcd frame send failed (%d bytes, %d chunks)",
-                          total_size, num_chunks)
+        except Exception as e:
+            verdict = self._recovery.note_error(e)
+            if verdict == "threshold":
+                try:
+                    self._transport.close()
+                except OSError as close_err:
+                    log.debug("LyLcd %s: close raised: %s",
+                              self.info.key, close_err)
+                raise DeviceDisconnectedError(
+                    f"LyLcd {self.info.key} disconnected after "
+                    f"{self._recovery.consecutive_failures} consecutive failures",
+                ) from e
             return False
+        recovered = self._recovery.note_success()
+        if recovered:
+            log.info("LyLcd %s: send recovered after %d disconnect failure(s)",
+                     self.info.key, recovered)
+        return True
 
     def disconnect(self) -> None:
         log.info("LyLcd %s: disconnecting", self.info.key)

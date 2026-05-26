@@ -16,7 +16,11 @@ import logging
 import struct
 import time
 
-from ...core.errors import HandshakeError, UnsupportedOperationError
+from ...core.errors import (
+    DeviceDisconnectedError,
+    HandshakeError,
+    UnsupportedOperationError,
+)
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
@@ -170,20 +174,47 @@ class HidLcd(Device[BulkTransport]):
         timeout = _frame_timeout_ms(len(packet))
         log.debug("HidLcd %s (type %d): sending %d-byte packet",
                   self.info.key, self.info.device_type, len(packet))
-        transferred = self._transport.write(_EP_WRITE, packet, timeout)
-        if transferred == 0:
-            log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
+        try:
+            transferred = self._transport.write(_EP_WRITE, packet, timeout)
+            if transferred == 0:
+                log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
+                return False
+
+            if self.info.device_type == 2:
+                time.sleep(_DELAY_FRAME_TYPE2_S)
+                ok = transferred == len(packet)
+            else:
+                ack = self._transport.read(
+                    _EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
+                )
+                if not ack:
+                    log.warning(
+                        "HidLcd %s: Type 3 ACK read returned empty",
+                        self.info.key,
+                    )
+                ok = len(ack) > 0
+        except Exception as e:
+            verdict = self._recovery.note_error(e)
+            if verdict == "threshold":
+                try:
+                    self._transport.close()
+                except OSError as close_err:
+                    log.debug("HidLcd %s: close raised: %s",
+                              self.info.key, close_err)
+                raise DeviceDisconnectedError(
+                    f"HidLcd {self.info.key} disconnected after "
+                    f"{self._recovery.consecutive_failures} consecutive failures",
+                ) from e
             return False
 
-        if self.info.device_type == 2:
-            time.sleep(_DELAY_FRAME_TYPE2_S)
-            return transferred == len(packet)
-
-        # Type 3: read ACK
-        ack = self._transport.read(_EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS)
-        if not ack:
-            log.warning("HidLcd %s: Type 3 ACK read returned empty", self.info.key)
-        return len(ack) > 0
+        if ok:
+            recovered = self._recovery.note_success()
+            if recovered:
+                log.info(
+                    "HidLcd %s: send recovered after %d disconnect failure(s)",
+                    self.info.key, recovered,
+                )
+        return ok
 
     def disconnect(self) -> None:
         log.info("HidLcd %s: disconnecting", self.info.key)

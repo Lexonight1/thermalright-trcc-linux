@@ -125,6 +125,11 @@ class Device(ABC, Generic[T]):
         self.info = info
         self._transport: T = transport
         self._handshake: HandshakeResult | None = None
+        # Auto-recovery state — tracks consecutive disconnect-class
+        # send failures + rate-limits the warning log.  Reset on every
+        # successful send via ``_recovery.note_success``.
+        from .device_recovery import RecoveryTracker
+        self._recovery = RecoveryTracker(self.info.key)
 
     @abstractmethod
     def connect(self) -> HandshakeResult:

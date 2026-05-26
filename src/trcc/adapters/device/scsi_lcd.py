@@ -13,7 +13,11 @@ import struct
 import time
 import zlib
 
-from ...core.errors import HandshakeError, TransportError
+from ...core.errors import (
+    DeviceDisconnectedError,
+    HandshakeError,
+    TransportError,
+)
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import Device, ScsiTransport
 from ...core.protocol import DeviceProfile, get_profile
@@ -145,7 +149,14 @@ class ScsiLcd(Device[ScsiTransport]):
         return result
 
     def send(self, payload: bytes) -> bool:
-        """Send one RGB565 frame, chunked by resolution class."""
+        """Send one RGB565 frame, chunked by resolution class.
+
+        Wrapped with auto-recovery: a disconnect-class errno on the
+        third consecutive send closes the transport and raises
+        :class:`DeviceDisconnectedError` so the caller publishes
+        ``DeviceDisconnected``.  Single-error blips don't escalate;
+        a subsequent successful send resets the counter.
+        """
         if not self._transport.is_open:
             log.error("ScsiLcd %s: send() called before connect()", self.info.key)
             raise TransportError(
@@ -167,18 +178,48 @@ class ScsiLcd(Device[ScsiTransport]):
 
         log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
                   self.info.key, total, len(chunks))
-        offset = 0
-        for cmd, size in chunks:
-            cdb = self._build_cdb(cmd, size)
-            ok = self._transport.send_cdb(
-                cdb, data[offset:offset + size], _FRAME_TIMEOUT_MS,
-            )
-            if not ok:
-                log.warning("ScsiLcd %s: chunk write failed at offset %d (cmd=0x%x size=%d)",
-                            self.info.key, offset, cmd, size)
-                return False
-            offset += size
+        try:
+            offset = 0
+            for cmd, size in chunks:
+                cdb = self._build_cdb(cmd, size)
+                ok = self._transport.send_cdb(
+                    cdb, data[offset:offset + size], _FRAME_TIMEOUT_MS,
+                )
+                if not ok:
+                    log.warning(
+                        "ScsiLcd %s: chunk write failed at offset %d "
+                        "(cmd=0x%x size=%d)",
+                        self.info.key, offset, cmd, size,
+                    )
+                    return False
+                offset += size
+        except Exception as e:
+            verdict = self._recovery.note_error(e)
+            if verdict == "threshold":
+                self._close_transport_quietly()
+                raise DeviceDisconnectedError(
+                    f"ScsiLcd {self.info.key} disconnected after "
+                    f"{self._recovery.consecutive_failures} consecutive failures",
+                ) from e
+            return False
+        recovered = self._recovery.note_success()
+        if recovered:
+            log.info("ScsiLcd %s: send recovered after %d disconnect failure(s)",
+                     self.info.key, recovered)
         return True
+
+    def _close_transport_quietly(self) -> None:
+        """Best-effort transport close used by the recovery path.
+
+        The real :meth:`disconnect` also resets handshake/profile; that
+        state is preserved here so an immediate reconnect attempt can
+        re-use the cached identity.
+        """
+        try:
+            self._transport.close()
+        except OSError as e:
+            log.debug("ScsiLcd %s: transport close raised: %s",
+                      self.info.key, e)
 
     def disconnect(self) -> None:
         log.info("ScsiLcd %s: disconnecting", self.info.key)

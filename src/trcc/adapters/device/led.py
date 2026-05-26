@@ -19,7 +19,12 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
+from ...core.errors import (
+    DeviceDisconnectedError,
+    HandshakeError,
+    TransportError,
+    UnsupportedOperationError,
+)
 from ...core.led_protocol import resolve_pm
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
@@ -373,20 +378,35 @@ class Led(Device[BulkTransport]):
             return False
 
         try:
-            remaining = len(packet)
-            offset = 0
-            while remaining > 0:
-                chunk_size = min(remaining, _HID_REPORT_SIZE)
-                chunk = packet[offset:offset + chunk_size]
-                if len(chunk) < _HID_REPORT_SIZE:
-                    chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
-                self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
-                remaining -= chunk_size
-                offset += chunk_size
+            try:
+                remaining = len(packet)
+                offset = 0
+                while remaining > 0:
+                    chunk_size = min(remaining, _HID_REPORT_SIZE)
+                    chunk = packet[offset:offset + chunk_size]
+                    if len(chunk) < _HID_REPORT_SIZE:
+                        chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
+                    self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
+                    remaining -= chunk_size
+                    offset += chunk_size
+            except Exception as e:
+                verdict = self._recovery.note_error(e)
+                if verdict == "threshold":
+                    try:
+                        self._transport.close()
+                    except OSError as close_err:
+                        log.debug("Led %s: close raised: %s",
+                                  self.info.key, close_err)
+                    raise DeviceDisconnectedError(
+                        f"Led {self.info.key} disconnected after "
+                        f"{self._recovery.consecutive_failures} consecutive failures",
+                    ) from e
+                return False
+            recovered = self._recovery.note_success()
+            if recovered:
+                log.info("Led %s: send recovered after %d disconnect failure(s)",
+                         self.info.key, recovered)
             return True
-        except TransportError:
-            log.exception("Led send failed")
-            return False
         finally:
             self._send_lock.release()
 

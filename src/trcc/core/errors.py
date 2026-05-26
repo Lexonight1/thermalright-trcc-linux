@@ -22,6 +22,20 @@ class TransportError(TrccError):
     """Underlying USB/transport layer failed."""
 
 
+class DeviceDisconnectedError(TransportError):
+    """Send failed N consecutive times with a disconnect-class errno.
+
+    Raised by ``Device.send`` after the recovery tracker hits the
+    consecutive-disconnect threshold.  The device's transport is
+    closed before the raise so the next send attempt will get a
+    fresh handle (or fail fast if the device is genuinely gone).
+
+    Commands that catch :class:`TransportError` will catch this too
+    (it's a subclass); use ``isinstance`` to publish the more specific
+    :class:`DeviceDisconnected` event for the auto-detach path.
+    """
+
+
 class PermissionError_(TrccError):
     """Host OS denied access (missing udev rule, kernel driver, etc.)."""
 

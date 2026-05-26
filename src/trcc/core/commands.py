@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Generic, TypeVar
 
 from .errors import (
+    DeviceDisconnectedError,
     DeviceNotConnectedError,
     DeviceNotFoundError,
     HandshakeError,
@@ -340,6 +341,7 @@ class SendFrame(Command[SendResult]):
         except TransportError as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="transport",
                                              key=self.key))
+            _publish_if_disconnect(app, self.key, e)
             return SendResult(ok=False, key=self.key, message=str(e))
         bytes_sent = len(self.data) if ok else 0
         if ok:
@@ -396,6 +398,7 @@ class SendColor(Command[SendResult]):
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
             ))
+            _publish_if_disconnect(app, self.key, e)
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               message=str(e))
 
@@ -465,6 +468,7 @@ class RenderAndSend(Command[RenderResult]):
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
             ))
+            _publish_if_disconnect(app, self.key, e)
             return RenderResult(
                 ok=False, key=self.key, theme_name=theme.name,
                 message=str(e),
@@ -663,6 +667,7 @@ class LoadTheme(Command[ThemeResult]):
         except (TransportError, Exception) as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="render",
                                              key=self.key))
+            _publish_if_disconnect(app, self.key, e)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=theme.name,
                 theme_path=theme_path_str,
@@ -1621,6 +1626,25 @@ class SetBrightness(Command[BrightnessResult]):
 # ── Display tweaks (fit mode / overlay / split mode) ────────────────
 
 
+def _publish_if_disconnect(app: App, key: str, exc: BaseException) -> None:
+    """Publish ``DeviceDisconnected`` if *exc* is the auto-detach signal.
+
+    Called inside every Command's ``except TransportError`` block.
+    The exception from ``Device.send`` is :class:`DeviceDisconnectedError`
+    when the recovery tracker hit the consecutive-failure threshold —
+    transport is already closed by the device, ``is_connected`` is
+    False.  Observers (sidebar, system tray, daemon clients) listen
+    for ``DeviceDisconnected`` to re-run discovery.
+
+    Plain :class:`TransportError` (transient bus errors) does NOT
+    publish the event — the device is still attached, the caller just
+    saw one bad send.
+    """
+    if isinstance(exc, DeviceDisconnectedError):
+        log.info("auto-disconnect: %s closed after recovery threshold", key)
+        app.events.publish(DeviceDisconnected(key=key))
+
+
 def _invalidate_scene(app: App, key: str) -> None:
     """Drop the per-device scene cache if the display service is wired.
 
@@ -1976,6 +2000,7 @@ class SetLedColors(Command[LedColorsResult]):
         except TransportError as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="transport",
                                              key=self.key))
+            _publish_if_disconnect(app, self.key, e)
             return LedColorsResult(
                 ok=False, key=self.key, colors=list(self.colors),
                 message=str(e),
@@ -2126,6 +2151,7 @@ class RenderLed(Command[LedColorsResult]):
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
             ))
+            _publish_if_disconnect(app, self.key, e)
             return LedColorsResult(
                 ok=False, key=self.key, colors=colors,
                 message=str(e),
@@ -4338,6 +4364,7 @@ class KeepAliveLoop(Command[KeepaliveResult]):
             try:
                 sent = device.send(last)
             except TransportError as e:
+                _publish_if_disconnect(app, self.key, e)
                 return KeepaliveResult(
                     ok=False, key=self.key,
                     frames_resent=frames_resent,

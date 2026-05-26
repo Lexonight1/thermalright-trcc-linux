@@ -14,7 +14,11 @@ from __future__ import annotations
 import logging
 import struct
 
-from ...core.errors import HandshakeError, TransportError
+from ...core.errors import (
+    DeviceDisconnectedError,
+    HandshakeError,
+    TransportError,
+)
 from ...core.models import HandshakeResult, ProductInfo
 from ...core.ports import BulkTransport, Device
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
@@ -156,11 +160,24 @@ class BulkLcd(Device[BulkTransport]):
             # Zero-length packet on 512-byte alignment (frame delimiter)
             if len(frame) % 512 == 0:
                 self._transport.write(_EP_WRITE, b"", _WRITE_TIMEOUT_MS)
-            return True
-        except TransportError:
-            log.exception("BulkLcd frame send failed (cmd=%d, %d bytes)",
-                          cmd, len(payload))
+        except Exception as e:
+            verdict = self._recovery.note_error(e)
+            if verdict == "threshold":
+                try:
+                    self._transport.close()
+                except OSError as close_err:
+                    log.debug("BulkLcd %s: close raised: %s",
+                              self.info.key, close_err)
+                raise DeviceDisconnectedError(
+                    f"BulkLcd {self.info.key} disconnected after "
+                    f"{self._recovery.consecutive_failures} consecutive failures",
+                ) from e
             return False
+        recovered = self._recovery.note_success()
+        if recovered:
+            log.info("BulkLcd %s: send recovered after %d disconnect failure(s)",
+                     self.info.key, recovered)
+        return True
 
     def disconnect(self) -> None:
         log.info("BulkLcd %s: disconnecting", self.info.key)
