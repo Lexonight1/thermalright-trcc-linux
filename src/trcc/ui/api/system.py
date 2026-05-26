@@ -75,6 +75,37 @@ def setup(request: Request) -> SetupResponse:
     return to_setup_response(result)
 
 
+@router.get("/sensors/{category}", response_model=SensorsResponse)
+def sensors_by_category(category: str,
+                        request: Request) -> SensorsResponse:
+    """Filter the live sensor list by category prefix.
+
+    Convenience wrapper around ``GET /system/sensors``: keeps the same
+    response shape but returns only readings whose ``.category``
+    starts with the URL path component.  Useful for dashboards that
+    only want CPU readings (``/system/sensors/cpu``) without paging
+    through every GPU + disk + fan + memory entry.
+
+    Empty result is a valid response (HTTP 200 with empty list); the
+    caller distinguishes "category absent from the device" from
+    "category typo" via the readings count.
+    """
+    result = request.app.state.trcc.dispatch(ReadSensors())
+    filtered_readings = [
+        r for r in result.readings
+        if r.category.startswith(category)
+    ]
+    response = to_sensors_response(result)
+    response.readings = [
+        r for r in response.readings if r.category.startswith(category)
+    ]
+    response.message = (
+        f"{len(filtered_readings)} {category!r} reading(s) "
+        f"(filtered from {len(result.readings)})"
+    )
+    return response
+
+
 @router.get("/sensors", response_model=SensorsResponse)
 def sensors(request: Request) -> SensorsResponse:
     result = request.app.state.trcc.dispatch(ReadSensors())
