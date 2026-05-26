@@ -324,6 +324,43 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
     )
 
 
+@router.post("/send-image", response_model=ThemeResponse)
+async def send_image(
+    key: str,
+    request: Request,
+    image: UploadFile = File(...),
+) -> ThemeResponse:
+    """One-shot image-to-LCD via multipart upload.
+
+    Remote clients (web dashboard, mobile app) that have an image in
+    memory rather than on the server's filesystem can use this instead
+    of ``POST /devices/{key}/display/theme`` (which requires the file
+    to already exist server-side).  Stages the upload to
+    ``user_content_dir/uploads/`` then dispatches ``LoadImage``.
+
+    Supported formats: PNG / JPG / JPEG / BMP / WEBP — matches
+    :class:`LoadImage`.
+    """
+    paths = request.app.state.trcc.platform.paths()
+    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(image.filename or "image.png").suffix.lower() or ".png"
+    if suffix not in _CREATE_THEME_IMG_EXTS:
+        raise HTTPException(
+            400,
+            f"unsupported image extension {suffix!r}; expected one of "
+            f"{sorted(_CREATE_THEME_IMG_EXTS)}",
+        )
+    staged = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
+    with staged.open("wb") as f:
+        shutil.copyfileobj(image.file, f)
+    result = request.app.state.trcc.dispatch(
+        LoadImage(key=key, path=staged),
+    )
+    http_error_if_failed(result)
+    return to_theme_response(result)
+
+
 @router.websocket("/preview/stream")
 async def preview_stream(ws: WebSocket, key: str) -> None:
     """Stream JPEG-encoded preview frames over a WebSocket at ~5 fps.

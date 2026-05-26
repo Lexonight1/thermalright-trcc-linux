@@ -1,8 +1,10 @@
 """``/theme/*`` router — save / export / import.
 
-All three endpoints take server-side paths.  Multipart upload for
-``import`` is intentionally deferred — the API user is expected to put
-archives on the server's filesystem and reference them by path.
+Most endpoints take server-side paths so an automation script can
+reference archives that already live on the same host.  Remote
+clients without filesystem access use the multipart variants
+(``-upload`` / ``-download`` suffixes) which stage to a tempfile
+before / after the Command dispatch.
 
 Path sanitization (basename whitelist within ``user_content_dir``) is
 applied at the router edge so a malicious ``name`` can't escape into
@@ -10,9 +12,14 @@ arbitrary filesystem locations.
 """
 from __future__ import annotations
 
+import shutil
+import tempfile
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from ...core.commands import (
     DeleteTheme,
@@ -102,6 +109,78 @@ def import_(body: ThemeImportRequest,
     )
     http_error_if_failed(result)
     return to_theme_import_response(result)
+
+
+@router.post("/import-upload", response_model=ThemeImportResponse)
+async def import_upload(
+    request: Request,
+    key: str,
+    archive: UploadFile = File(...),
+    name: str = "",
+) -> ThemeImportResponse:
+    """Import a theme archive uploaded via multipart form-data.
+
+    Remote clients without filesystem access to the server use this
+    instead of ``POST /import`` (which references server-side paths).
+    The upload is staged to a tempfile, imported, and the tempfile
+    cleaned up after dispatch.
+    """
+    paths = request.app.state.trcc.platform.paths()
+    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(archive.filename or "theme.tr").suffix.lower() or ".tr"
+    staged = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
+    try:
+        with staged.open("wb") as f:
+            shutil.copyfileobj(archive.file, f)
+        chosen_name = name.strip()
+        if chosen_name:
+            chosen_name = _safe_basename(chosen_name)
+        result = request.app.state.trcc.dispatch(
+            ImportTheme(key=key, archive_path=staged, name=chosen_name),
+        )
+    finally:
+        try:
+            staged.unlink()
+        except OSError:
+            pass
+    http_error_if_failed(result)
+    return to_theme_import_response(result)
+
+
+@router.get("/{key}/{theme_name}/download")
+def download(key: str, theme_name: str, request: Request) -> FileResponse:
+    """Stream a theme archive as a multipart download.
+
+    Server-side equivalent of ``POST /export`` but bytes flow back over
+    the HTTP response instead of landing on the server filesystem.
+    The archive is built in a tempfile and ``FileResponse`` cleans it
+    up after the connection closes via a ``BackgroundTask``.
+    """
+    safe_name = _safe_basename(theme_name)
+    tmp = Path(tempfile.mkstemp(suffix=".tr", prefix="trcc-export-")[1])
+    result = request.app.state.trcc.dispatch(
+        ExportTheme(key=key, theme_name=safe_name, archive_path=tmp),
+    )
+    if not result.ok:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise HTTPException(400, result.message)
+    return FileResponse(
+        path=tmp,
+        media_type="application/octet-stream",
+        filename=f"{safe_name}.tr",
+        background=BackgroundTask(_unlink_quietly, tmp),
+    )
+
+
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 @router.get("/list", response_model=ThemesListResponse)
