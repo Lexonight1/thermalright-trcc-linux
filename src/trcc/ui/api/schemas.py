@@ -774,6 +774,35 @@ class AutostartResponse(ResultBase):
     path: str = ""
 
 
+class AppStatusEntry(BaseModel):
+    """One device in :class:`AppStatusResponse`.
+
+    Small shape — full per-device state lives under the device-specific
+    snapshot routes (``/devices/{key}/display/snapshot`` for LCD,
+    ``/devices/{key}/led/snapshot`` for LED).
+    """
+    key: str = ""
+    product: str = ""
+    connected: bool = False
+
+
+class AppStatusResponse(ResultBase):
+    """Unified ``GET /system/status`` snapshot: app prefs + device counts.
+
+    Composed from in-process state — no Command dispatched.  Clients
+    that want full per-device detail follow up with the device-specific
+    snapshot routes.  Legacy parity with ``GET /app/status``.
+    """
+    language: str = ""
+    temp_unit: str = "C"
+    hdd_enabled: bool = False
+    refresh_interval_s: float = 2.0
+    active_gpu: str | None = None
+    autostart_enabled: bool = False
+    lcd_devices: list[AppStatusEntry] = []
+    led_devices: list[AppStatusEntry] = []
+
+
 class DaemonKillResponse(ResultBase):
     """Result of a ``POST /trcc/kill`` request."""
 

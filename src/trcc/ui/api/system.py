@@ -42,6 +42,8 @@ from ._shared import (
     to_upgrade_response,
 )
 from .schemas import (
+    AppStatusEntry,
+    AppStatusResponse,
     AutostartRequest,
     AutostartResponse,
     ControlCenterSnapshotResponse,
@@ -145,6 +147,50 @@ def current_language(request: Request) -> LanguageResponse:
     """
     lang = request.app.state.trcc.settings.app.language
     return LanguageResponse(ok=True, language=lang, message=lang)
+
+
+@router.get("/status", response_model=AppStatusResponse)
+def app_status(request: Request) -> AppStatusResponse:
+    """Unified snapshot: app-level prefs + per-device attach list.
+
+    Legacy parity with ``GET /app/status`` — single round-trip for a
+    dashboard / mobile client that wants the app's full state without
+    enumerating ``/system/snapshot`` + ``/devices`` + per-device routes.
+
+    Per-device entries carry only key/product/connected; clients that
+    need full state follow up with the device-specific snapshot routes.
+    """
+    trcc = request.app.state.trcc
+    app_settings = trcc.settings.app
+    autostart_enabled = trcc.platform.autostart().is_enabled()
+
+    lcd_devices: list[AppStatusEntry] = []
+    led_devices: list[AppStatusEntry] = []
+    for device in trcc.devices.values():
+        entry = AppStatusEntry(
+            key=device.key,
+            product=device.info.product,
+            connected=device.is_connected,
+        )
+        if device.is_led:
+            led_devices.append(entry)
+        else:
+            lcd_devices.append(entry)
+
+    return AppStatusResponse(
+        ok=True,
+        language=app_settings.language,
+        temp_unit=app_settings.temp_unit,
+        hdd_enabled=app_settings.hdd_enabled,
+        refresh_interval_s=app_settings.refresh_interval_s,
+        active_gpu=app_settings.active_gpu,
+        autostart_enabled=autostart_enabled,
+        lcd_devices=lcd_devices,
+        led_devices=led_devices,
+        message=(f"{len(lcd_devices)} LCD + {len(led_devices)} LED, "
+                 f"lang={app_settings.language}, "
+                 f"temp={app_settings.temp_unit}"),
+    )
 
 
 @router.get("/autostart", response_model=AutostartResponse)
