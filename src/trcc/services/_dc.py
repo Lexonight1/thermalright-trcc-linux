@@ -371,12 +371,19 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             red = r.read_byte()
             green = r.read_byte()
             blue = r.read_byte()
+            # Preserve the raw RGB bytes regardless of alpha.  Legacy
+            # `dc_parser` / `OverlayElement.color_hex` ignored alpha
+            # and returned the colour straight from the bytes — themes
+            # commonly persist with alpha=0 + a real RGB triplet
+            # (#808080 is the most common), and forcing #ffffff there
+            # silently repaints user themes white on first read.
+            del alpha  # legacy quirk: not part of the colour key
             fonts.append({
                 "name": font_name,
                 "size": size,
                 "bold": bool(style & 0x01),
                 "italic": bool(style & 0x02),
-                "color": f"#{red:02x}{green:02x}{blue:02x}" if alpha else "#ffffff",
+                "color": f"#{red:02x}{green:02x}{blue:02x}",
             })
         except (struct.error, IndexError):
             fonts.append({
@@ -565,7 +572,9 @@ def _read_dd_font(r: _Reader) -> dict[str, Any]:
     style = r.read_byte()
     r.read_byte()
     r.read_byte()
-    alpha = r.read_byte()
+    # Alpha byte is read+discarded — see ``_parse_dc`` for why we
+    # preserve the RGB triplet regardless of alpha.
+    r.read_byte()
     red = r.read_byte()
     green = r.read_byte()
     blue = r.read_byte()
@@ -574,7 +583,7 @@ def _read_dd_font(r: _Reader) -> dict[str, Any]:
         "size": size,
         "bold": bool(style & 0x01),
         "italic": bool(style & 0x02),
-        "color": f"#{red:02x}{green:02x}{blue:02x}" if alpha else "#ffffff",
+        "color": f"#{red:02x}{green:02x}{blue:02x}",
     }
 
 
