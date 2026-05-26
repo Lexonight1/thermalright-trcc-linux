@@ -763,6 +763,23 @@ class CreateThemeResponse(ResultBase):
     resolution: str = ""
 
 
+class DaemonKillResponse(ResultBase):
+    """Result of a ``POST /trcc/kill`` request."""
+
+
+class DaemonStatusResponse(ResultBase):
+    """Snapshot of the running daemon.
+
+    ``running=False`` indicates no daemon is bound on the singleton
+    socket; in that state the other fields are zero / undefined.
+    """
+    running: bool = False
+    pid: int = 0
+    uptime_seconds: int = 0
+    lcd_count: int = 0
+    led_count: int = 0
+
+
 class VideoStatusResponse(ResultBase):
     """Current playback state for a device's video background override.
 

@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse
 from ...__version__ import __version__
 from ...app import App
 from . import config, devices, display, led, system, theme
+from . import trcc as _trcc_router
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +162,7 @@ def build_app(trcc: App | None = None) -> FastAPI:
     api.include_router(system.router)
     api.include_router(config.router)
     api.include_router(theme.router)
+    api.include_router(_trcc_router.router)
 
     @api.get("/", tags=["meta"])
     def root() -> dict:
