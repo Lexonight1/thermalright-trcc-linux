@@ -272,6 +272,19 @@ class QtRenderer(Renderer):
                     "even at q=30", len(data), max_size)
         return data  # last attempt, may still exceed
 
+    def encode_png(self, surface: Any) -> bytes:
+        """Encode QImage → PNG bytes (lossless).
+
+        Used by ``GET /devices/{key}/display/preview`` for dashboard
+        snapshots — JPEG would chew up overlay text + small CJK glyphs.
+        """
+        from PySide6.QtCore import QBuffer, QIODevice
+        qbuf = QBuffer()
+        qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
+        surface.save(qbuf, "PNG")
+        qbuf.close()
+        return bytes(qbuf.data().data())
+
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
     def from_raw_rgb24(self, frame: RawFrame) -> Any:

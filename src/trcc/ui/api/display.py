@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 
 from ...core.commands import (
     AddOverlayElement,
@@ -308,6 +309,38 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
                  f"@ {playback.fps} fps"
                  f"{' (paused)' if playback.paused else ''}"),
     )
+
+
+@router.get("/preview")
+def preview(key: str, request: Request) -> Response:
+    """Return the device's current rendered frame as a PNG image.
+
+    Goes through the same pipeline as ``RenderAndSend`` but stops at
+    the surface-encode step — useful for dashboards / mobile clients
+    that want a screenshot of what the LCD is showing.  Returns 404
+    when the device has no active theme.
+
+    Lossless PNG keeps overlay text + CJK glyphs legible; JPEG would
+    chew them up at typical 320×320 panel resolutions.
+    """
+    from ...core.errors import DeviceNotFoundError
+    trcc = request.app.state.trcc
+    try:
+        device = trcc.get(key)
+    except DeviceNotFoundError as e:
+        raise HTTPException(404, f"Device {key} not attached") from e
+    theme = trcc.active_themes.get(key)
+    if theme is None:
+        raise HTTPException(404, "No active theme — load one first")
+    sensors_full = trcc.platform.sensors().read_all()
+    surface = trcc.display.build_preview_surface(
+        info=device.info,
+        theme=theme,
+        sensors=sensors_full,
+        profile=device.profile,
+    )
+    png_bytes = trcc.display._r.encode_png(surface)
+    return Response(content=png_bytes, media_type="image/png")
 
 
 @router.post("/screencast/start", response_model=ScreencastResponse)

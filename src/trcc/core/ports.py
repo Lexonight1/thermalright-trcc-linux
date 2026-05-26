@@ -486,6 +486,20 @@ class Renderer(ABC):
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes: ...
 
+    def encode_png(self, surface: Any) -> bytes:
+        """Encode the surface as PNG bytes.
+
+        Used by ``GET /devices/{key}/display/preview`` to return a
+        dashboard-friendly frame snapshot.  Lossless so screenshots
+        + overlay text stay legible, unlike ``encode_jpeg``.
+
+        Non-abstract — concrete Renderers (only QtRenderer in next/
+        today) override; the default raises so test fakes that don't
+        exercise the preview path stay minimal.
+        """
+        del surface
+        raise NotImplementedError("encode_png not implemented on this Renderer")
+
     # ── Legacy boundary (video frames) ────────────────────────────────
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
