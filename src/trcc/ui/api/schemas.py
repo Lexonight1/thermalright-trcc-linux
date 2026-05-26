@@ -763,6 +763,17 @@ class CreateThemeResponse(ResultBase):
     resolution: str = ""
 
 
+class AutostartRequest(BaseModel):
+    """``POST /system/autostart`` body — toggle the OS autostart entry."""
+    enabled: bool
+
+
+class AutostartResponse(ResultBase):
+    """Autostart state after the request, plus the on-disk entry path."""
+    enabled: bool = False
+    path: str = ""
+
+
 class DaemonKillResponse(ResultBase):
     """Result of a ``POST /trcc/kill`` request."""
 

@@ -8,6 +8,8 @@ from fastapi import APIRouter, Request
 from ...core.commands import (
     CheckForUpdate,
     ControlCenterSnapshot,
+    DisableAutostart,
+    EnableAutostart,
     GenerateDebugReport,
     GetFirstRunStatus,
     ListDisks,
@@ -40,6 +42,8 @@ from ._shared import (
     to_upgrade_response,
 )
 from .schemas import (
+    AutostartRequest,
+    AutostartResponse,
     ControlCenterSnapshotResponse,
     DebugReportRequest,
     DebugReportResponse,
@@ -141,6 +145,38 @@ def current_language(request: Request) -> LanguageResponse:
     """
     lang = request.app.state.trcc.settings.app.language
     return LanguageResponse(ok=True, language=lang, message=lang)
+
+
+@router.get("/autostart", response_model=AutostartResponse)
+def autostart_status(request: Request) -> AutostartResponse:
+    """Snapshot the autostart entry — whether it's installed + its path."""
+    mgr = request.app.state.trcc.platform.autostart()
+    enabled = mgr.is_enabled()
+    return AutostartResponse(
+        ok=True, enabled=enabled,
+        message="autostart enabled" if enabled else "autostart disabled",
+    )
+
+
+@router.post("/autostart", response_model=AutostartResponse)
+def set_autostart(body: AutostartRequest,
+                  request: Request) -> AutostartResponse:
+    """Toggle the OS autostart entry (per-user, no sudo).
+
+    Dispatches :class:`EnableAutostart` or :class:`DisableAutostart`
+    based on ``body.enabled``.  Legacy parity with ``PUT /app/autostart``;
+    POST in next/ so the verb is conventional for state-changing
+    endpoints in this API.
+    """
+    trcc = request.app.state.trcc
+    command = EnableAutostart() if body.enabled else DisableAutostart()
+    result = trcc.dispatch(command)
+    return AutostartResponse(
+        ok=result.ok,
+        enabled=result.enabled,
+        path=result.path,
+        message=result.message,
+    )
 
 
 @router.get("/health", response_model=HealthReportResponse)
