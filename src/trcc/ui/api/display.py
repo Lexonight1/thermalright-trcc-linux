@@ -1,9 +1,12 @@
 """/devices/{key}/display router — orientation, brightness, theme."""
 from __future__ import annotations
 
+import json
+import shutil
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from ...core.commands import (
     AddOverlayElement,
@@ -15,6 +18,7 @@ from ...core.commands import (
     KeepAliveLoop,
     LcdSnapshot,
     ListMasks,
+    LoadImage,
     LoadTheme,
     LoopVideo,
     PauseVideo,
@@ -75,6 +79,7 @@ from .schemas import (
     BrightnessRequest,
     BrightnessResponse,
     ColorRequest,
+    CreateThemeResponse,
     FitModeRequest,
     FitModeResponse,
     KeepaliveRequest,
@@ -307,6 +312,153 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
     ))
     http_error_if_failed(result)
     return to_boot_animation_response(result)
+
+
+# Extensions accepted by the create-theme background upload — union of
+# what ``LoadImage`` accepts (static) + what ``PlayVideo`` accepts
+# (animated).  Kept here (not imported from ``core.commands``) so the
+# API edge can reject obviously-wrong uploads before staging them.
+_CREATE_THEME_IMG_EXTS: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
+})
+_CREATE_THEME_VID_EXTS: frozenset[str] = frozenset({
+    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt", ".gif",
+})
+
+
+@router.post("/create-theme", response_model=CreateThemeResponse)
+async def create_theme(
+    key: str,
+    request: Request,
+    background: UploadFile = File(...),
+    mask: UploadFile | None = File(None),
+    overlay: UploadFile | None = File(None),
+    loop: bool = Form(True),
+) -> CreateThemeResponse:
+    """Create + apply a custom theme from uploaded multipart files.
+
+    Mirrors legacy ``POST /display/create-theme``: accept a background
+    image OR video plus an optional mask PNG and an optional overlay
+    JSON config, then route through the existing per-device Commands
+    so the wire path stays identical to a load-from-disk flow.
+
+    Inputs (multipart/form-data):
+      * ``background`` — required.  Image (png/jpg/jpeg/bmp/webp) or
+        video (mp4/mov/webm/mkv/avi/zt/gif).  Animated → ``PlayVideo``;
+        static → ``LoadImage``.
+      * ``mask``       — optional PNG.  Applied via ``ApplyMask`` after
+        the background lands.
+      * ``overlay``    — optional JSON file with ``{"elements": [...]}``
+        shape.  Dispatched via ``SetOverlayConfig`` + ``EnableOverlay``.
+      * ``loop``       — passed to ``PlayVideo`` via ``LoopVideo`` when
+        the background is animated.
+
+    Legacy's ``metric`` form-field shorthand (``metric=cpu_temp:10,20``)
+    is NOT supported here yet — it requires the ``build_overlay_config``
+    helper that lives on the cutover close-plan as a separate item
+    (G45).  Upload an ``overlay`` JSON file instead until that lands.
+    """
+    paths = request.app.state.trcc.platform.paths()
+    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    bg_name = Path(background.filename or "background").name
+    bg_suffix = Path(bg_name).suffix.lower() or ".jpg"
+    if (bg_suffix not in _CREATE_THEME_IMG_EXTS
+            and bg_suffix not in _CREATE_THEME_VID_EXTS):
+        raise HTTPException(
+            400,
+            f"unsupported background extension {bg_suffix!r} "
+            f"(expected image {sorted(_CREATE_THEME_IMG_EXTS)} or "
+            f"video {sorted(_CREATE_THEME_VID_EXTS)})",
+        )
+    bg_path = uploads_dir / f"{uuid.uuid4().hex}{bg_suffix}"
+    with bg_path.open("wb") as f:
+        shutil.copyfileobj(background.file, f)
+
+    mask_path: Path | None = None
+    if mask is not None and mask.file is not None:
+        mask_suffix = Path(mask.filename or "mask.png").suffix.lower() or ".png"
+        if mask_suffix not in _CREATE_THEME_IMG_EXTS:
+            raise HTTPException(
+                400,
+                f"unsupported mask extension {mask_suffix!r}",
+            )
+        mask_target: Path = uploads_dir / f"{uuid.uuid4().hex}{mask_suffix}"
+        with mask_target.open("wb") as f:
+            shutil.copyfileobj(mask.file, f)
+        mask_path = mask_target
+
+    overlay_elements: tuple[dict, ...] | None = None
+    if overlay is not None and overlay.file is not None:
+        try:
+            overlay_config = json.loads(overlay.file.read())
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                400, f"invalid overlay JSON: {e}",
+            ) from e
+        if not isinstance(overlay_config, dict):
+            raise HTTPException(400, "overlay JSON must be an object")
+        raw_elements = overlay_config.get("elements", [])
+        if not isinstance(raw_elements, list):
+            raise HTTPException(
+                400,
+                "overlay JSON 'elements' must be a list of element dicts",
+            )
+        overlay_elements = tuple(
+            e for e in raw_elements if isinstance(e, dict)
+        )
+
+    animated = bg_suffix in _CREATE_THEME_VID_EXTS
+    if animated:
+        play_result = request.app.state.trcc.dispatch(
+            PlayVideo(key=key, path=bg_path),
+        )
+        http_error_if_failed(play_result)
+        if not loop:
+            request.app.state.trcc.dispatch(
+                LoopVideo(key=key, loop=False),
+            )
+    else:
+        load_result = request.app.state.trcc.dispatch(
+            LoadImage(key=key, path=bg_path),
+        )
+        http_error_if_failed(load_result)
+
+    if mask_path is not None:
+        mask_result = request.app.state.trcc.dispatch(
+            ApplyMask(key=key, path=mask_path),
+        )
+        http_error_if_failed(mask_result)
+
+    if overlay_elements is not None:
+        config_result = request.app.state.trcc.dispatch(
+            SetOverlayConfig(key=key, elements=overlay_elements),
+        )
+        http_error_if_failed(config_result)
+        request.app.state.trcc.dispatch(
+            EnableOverlay(key=key, enabled=True),
+        )
+
+    # Resolve the device's resolution for the response — same lookup
+    # ``_resolve_resolution`` does in core/commands.py, kept inline so
+    # the route doesn't reach into private helpers.
+    device = request.app.state.trcc.devices.get(key)
+    if device is not None and device.profile is not None:
+        w, h = device.profile.resolution
+    elif device is not None:
+        w, h = device.info.native_resolution
+    else:
+        w, h = 0, 0
+
+    return CreateThemeResponse(
+        ok=True,
+        key=key,
+        animated=animated,
+        resolution=f"{w}x{h}",
+        message=(f"theme created from {bg_name} "
+                 f"({'video' if animated else 'image'}, {w}x{h})"),
+    )
 
 
 @router.post("/color", response_model=SendResponse)

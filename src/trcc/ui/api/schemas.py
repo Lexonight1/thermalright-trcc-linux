@@ -740,6 +740,19 @@ class DeleteThemeRequest(BaseModel):
     path: str = Field(..., min_length=1)
 
 
+class CreateThemeResponse(ResultBase):
+    """Result of a multipart-upload create-theme request.
+
+    ``animated`` is True when the uploaded background was a supported
+    video format (mp4/mov/webm/mkv/avi/zt) and a video playback was
+    started; False for a static image.  ``resolution`` echoes the
+    device's pixel size for the caller.
+    """
+    key: str = ""
+    animated: bool = False
+    resolution: str = ""
+
+
 class BootAnimationRequest(BaseModel):
     """Boot-animation upload — a directory of frames + per-frame dwell."""
     frames_dir: str = Field(
