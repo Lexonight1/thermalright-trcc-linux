@@ -124,6 +124,7 @@ from .schemas import (
     ThemeRequest,
     ThemeResponse,
     VideoResponse,
+    VideoStatusResponse,
 )
 
 router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
@@ -274,6 +275,35 @@ def stop_video(key: str, request: Request) -> VideoResponse:
     result = request.app.state.trcc.dispatch(StopVideo(key=key))
     http_error_if_failed(result)
     return to_video_response(result)
+
+
+@router.get("/video-status", response_model=VideoStatusResponse)
+def video_status(key: str, request: Request) -> VideoStatusResponse:
+    """Current playback state for the device's video background override.
+
+    Read-only — returns ``playing=False`` (and zeros elsewhere) when
+    no playback is loaded.  Use ``play-video`` to start, ``stop-video``
+    to clear, ``pause-video`` / ``seek-video`` / ``loop-video`` to
+    control an active playback.
+    """
+    playback = request.app.state.trcc.media.playback(key)
+    if playback is None:
+        return VideoStatusResponse(
+            ok=True, key=key, playing=False,
+            message="no playback loaded",
+        )
+    return VideoStatusResponse(
+        ok=True, key=key,
+        playing=True,
+        paused=playback.paused,
+        cursor=playback.cursor,
+        frame_count=playback.frame_count,
+        fps=playback.fps,
+        loop=playback.loop,
+        message=(f"playing frame {playback.cursor}/{playback.frame_count} "
+                 f"@ {playback.fps} fps"
+                 f"{' (paused)' if playback.paused else ''}"),
+    )
 
 
 _BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({

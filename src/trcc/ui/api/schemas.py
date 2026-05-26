@@ -763,6 +763,23 @@ class CreateThemeResponse(ResultBase):
     resolution: str = ""
 
 
+class VideoStatusResponse(ResultBase):
+    """Current playback state for a device's video background override.
+
+    ``playing`` is False when there is no active playback for the
+    device; the other fields are zero / empty in that case.  Read-only —
+    state-changing routes are :class:`PlayVideo` / :class:`StopVideo` /
+    :class:`PauseVideo` / :class:`SeekVideo` / :class:`LoopVideo`.
+    """
+    key: str = ""
+    playing: bool = False
+    paused: bool = False
+    cursor: int = 0
+    frame_count: int = 0
+    fps: int = 0
+    loop: bool = False
+
+
 class BootAnimationRequest(BaseModel):
     """Boot-animation upload — a directory of frames + per-frame dwell."""
     frames_dir: str = Field(

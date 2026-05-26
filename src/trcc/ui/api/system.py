@@ -51,6 +51,7 @@ from .schemas import (
     HddEnabledRequest,
     HddEnabledResponse,
     HealthReportResponse,
+    LanguageResponse,
     LanguagesListResponse,
     SensorsResponse,
     SetupResponse,
@@ -129,6 +130,17 @@ def list_languages(request: Request) -> LanguagesListResponse:
     """Enumerate UI languages the i18n table supports."""
     result = request.app.state.trcc.dispatch(ListLanguages())
     return to_languages_list_response(result)
+
+
+@router.get("/language", response_model=LanguageResponse)
+def current_language(request: Request) -> LanguageResponse:
+    """Return the currently active UI language (ISO 639-1 code).
+
+    Read-only — set via ``POST /config/language``.  Legacy parity with
+    ``GET /i18n/language``.
+    """
+    lang = request.app.state.trcc.settings.app.language
+    return LanguageResponse(ok=True, language=lang, message=lang)
 
 
 @router.get("/health", response_model=HealthReportResponse)
