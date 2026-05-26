@@ -55,6 +55,11 @@ def launch(verbosity: int = 0, decorated: bool = False,
     from ...core.ports import Platform
     platform = Platform.detect()
 
+    # ── stdout/stderr UTF-8 (Windows cp1252 fix; no-op elsewhere) ────
+    # Must precede ``configure_logging`` so the StreamHandler attaches
+    # to an already-UTF-8 stream.
+    platform.configure_stdout()
+
     # ── Logging — rotating file at paths.log_file() + stderr WARNING+
     # Without this, only the CLI root callback's basicConfig is in
     # effect (stderr-only) and `~/.trcc/trcc.log` never gets written.

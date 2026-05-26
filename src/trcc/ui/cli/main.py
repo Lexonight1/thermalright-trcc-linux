@@ -321,9 +321,14 @@ def _root(
     from ...adapters.infra.logging import configure_logging
     from ...core.ports import Platform
 
+    platform = Platform.detect()
+    # Windows consoles default to cp1252 and crash on non-ASCII log
+    # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
+    # attaches the StreamHandler.  No-op on other OSes.
+    platform.configure_stdout()
     level = logging.DEBUG if verbose else logging.INFO
     configure_logging(
-        Platform.detect().paths().log_file(),
+        platform.paths().log_file(),
         level=level,
         stderr_level=level,
     )

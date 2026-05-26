@@ -368,6 +368,48 @@ class WindowsPlatform(Platform):
         """
         return True
 
+    def configure_stdout(self) -> None:
+        """Rewrap stdout / stderr as UTF-8 with ``errors='replace'``.
+
+        Windows consoles default to cp1252 — any non-ASCII codepoint
+        (log emoji, Chinese / Japanese / Korean device names, °, ×)
+        raises ``UnicodeEncodeError`` from the logging StreamHandler
+        and crashes the worker.  Legacy parity at
+        ``legacy/adapters/system/windows_platform.py:295``.
+
+        Idempotent: callers may invoke this twice across CLI→GUI
+        re-entry.  TextIOWrapper.reconfigure handles that natively;
+        for the older buffer-wrapping path we no-op when the encoding
+        is already UTF-8.
+        """
+        import io
+        import sys as _sys
+        for stream_name in ("stdout", "stderr"):
+            stream = getattr(_sys, stream_name, None)
+            if stream is None:
+                continue
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                try:
+                    reconfigure(encoding="utf-8", errors="replace")
+                except (OSError, ValueError) as e:
+                    log.debug(
+                        "configure_stdout: %s.reconfigure failed (%s) "
+                        "— falling back to TextIOWrapper",
+                        stream_name, e,
+                    )
+                else:
+                    continue
+            buf = getattr(stream, "buffer", None)
+            if buf is None:
+                continue
+            current_enc = (getattr(stream, "encoding", "") or "").lower()
+            if current_enc.replace("-", "") == "utf8":
+                continue
+            setattr(_sys, stream_name, io.TextIOWrapper(
+                buf, encoding="utf-8", errors="replace",
+            ))
+
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
 
     def memory_info(self) -> list[dict[str, str]]:

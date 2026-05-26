@@ -672,6 +672,16 @@ class Platform(ABC):
         """
         return False
 
+    def configure_stdout(self) -> None:
+        """Adjust the interpreter's stdout/stderr at startup if the OS
+        needs it (Windows ↔ cp1252 console).
+
+        Default no-op for Linux / macOS / BSD — their consoles already
+        speak UTF-8.  Called from every UI entry point BEFORE
+        ``configure_logging`` so the StreamHandler attaches to an
+        already-UTF-8-safe stream.
+        """
+
     def memory_info(self) -> list[dict[str, str]]:
         """Return DRAM slot descriptors for LC1-style memory displays.
 
