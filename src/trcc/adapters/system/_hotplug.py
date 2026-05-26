@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Any
 from ...core.events import (
     DeviceAttached,
     DeviceDetached,
+    SystemResumed,
+    SystemSuspending,
 )
 from ...core.ports import HotplugMonitor
 from ...core.registry import ALL_DEVICES
@@ -94,6 +96,133 @@ def _import_pyudev() -> Any | None:
     return pyudev
 
 
+def _import_dbus_glib() -> tuple[Any, Any] | None:
+    """Import dbus + GLib for the logind power listener.
+
+    Returns ``(dbus_module, glib_module)`` or ``None`` when either dep
+    is missing (sandbox without D-Bus, minimal install).  Same graceful
+    degradation pattern as :func:`_import_pyudev` — Linux without
+    dbus-python just doesn't get suspend/resume events.
+    """
+    try:
+        import dbus  # pyright: ignore[reportMissingImports]
+        import gi  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from dbus.mainloop.glib import (  # pyright: ignore[reportMissingImports]
+            DBusGMainLoop,
+        )
+        from gi.repository import (
+            GLib,  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+        )
+    except ImportError as e:
+        log.debug("logind power listener: dependency missing (%s)", e)
+        return None
+    DBusGMainLoop(set_as_default=True)
+    return dbus, GLib
+
+
+class _LinuxPowerListener:
+    """Subscribe to logind's ``PrepareForSleep`` D-Bus signal.
+
+    Composed inside :class:`LinuxHotplugMonitor` — same start/stop
+    cadence, single background thread per OS-event source.  Ports
+    ``legacy/adapters/system/linux_platform.py:920-993`` but uses
+    dbus-python + GLib mainloop instead of QtDBus (the daemon has no
+    QApplication; the GUI has its own QApplication but routing through
+    Qt would tie the daemon to a GUI dep we don't otherwise need).
+
+    Lifecycle:
+
+      * ``start(bus)`` — connect to system bus, register receiver,
+        run a GLib MainLoop in a dedicated daemon thread.
+      * ``stop()`` — quit the mainloop; the thread exits.
+      * Failures (no D-Bus, no logind, sandbox) are logged at INFO
+        and the listener silently stays inert.  Same posture as
+        pyudev unavailable.
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._loop: Any = None
+        self._bus: EventBus | None = None
+
+    def start(self, bus: EventBus) -> None:
+        if self._thread is not None:
+            log.debug("_LinuxPowerListener: already running — start() ignored")
+            return
+        deps = _import_dbus_glib()
+        if deps is None:
+            log.info(
+                "logind power listener: dbus-python or PyGObject not "
+                "installed — install with `pip install dbus-python "
+                "PyGObject` for suspend/resume events",
+            )
+            return
+        dbus, glib = deps
+        try:
+            system_bus = dbus.SystemBus()
+        except Exception as e:
+            log.info("logind power listener: system D-Bus not connected (%s)",
+                     e)
+            return
+
+        self._bus = bus
+        self._loop = glib.MainLoop()
+
+        try:
+            system_bus.add_signal_receiver(
+                self._on_prepare_for_sleep,
+                signal_name="PrepareForSleep",
+                dbus_interface="org.freedesktop.login1.Manager",
+                bus_name="org.freedesktop.login1",
+                path="/org/freedesktop/login1",
+            )
+        except Exception as e:
+            log.warning(
+                "logind power listener: signal_receiver registration "
+                "failed: %s", e,
+            )
+            self._loop = None
+            self._bus = None
+            return
+
+        self._thread = threading.Thread(
+            target=self._run_loop, daemon=True, name="trcc-power",
+        )
+        self._thread.start()
+        log.info("logind power listener: PrepareForSleep active")
+
+    def stop(self) -> None:
+        if self._thread is None:
+            log.debug("_LinuxPowerListener: not running — stop() ignored")
+            return
+        log.info("logind power listener: stopping")
+        try:
+            if self._loop is not None:
+                self._loop.quit()
+        except Exception as e:
+            log.debug("_LinuxPowerListener: loop.quit raised: %s", e)
+        self._thread.join(timeout=2.0)
+        self._thread = None
+        self._loop = None
+        self._bus = None
+
+    def _run_loop(self) -> None:
+        try:
+            self._loop.run()
+        except Exception:
+            log.exception("logind power listener: mainloop crashed")
+
+    def _on_prepare_for_sleep(self, sleeping: bool) -> None:
+        if self._bus is None:
+            return
+        if bool(sleeping):
+            log.info("logind: system suspending")
+            self._bus.publish(SystemSuspending())
+        else:
+            log.info("logind: system resumed")
+            self._bus.publish(SystemResumed())
+
+
 class LinuxHotplugMonitor(HotplugMonitor):
     """Linux udev monitor — filters to TRCC's registry-known VID/PID set.
 
@@ -110,6 +239,10 @@ class LinuxHotplugMonitor(HotplugMonitor):
         self._stop_event = threading.Event()
         self._bus: EventBus | None = None
         self._known = _KNOWN_VID_PID
+        # Power listener is composed: same start/stop lifecycle as the
+        # USB-event poll loop, so App.start() / App.close() drive both
+        # through one ``platform.hotplug()`` integration point.
+        self._power = _LinuxPowerListener()
 
     def start(self, bus: EventBus) -> None:
         if self._thread is not None:
@@ -122,6 +255,10 @@ class LinuxHotplugMonitor(HotplugMonitor):
                 "LinuxHotplugMonitor: pyudev not installed — install with "
                 "`pip install pyudev` for live USB add/remove events",
             )
+            # Still try to bring up the power listener — it has its own
+            # graceful-import-fail path and a Linux box without pyudev
+            # may still have dbus + logind.
+            self._power.start(bus)
             return
 
         self._bus = bus
@@ -138,8 +275,12 @@ class LinuxHotplugMonitor(HotplugMonitor):
         self._thread.start()
         log.info("LinuxHotplugMonitor: watching usb add/remove events")
 
+        self._power.start(bus)
+
     def stop(self) -> None:
         if self._thread is None:
+            # Power listener may still be running if pyudev was absent.
+            self._power.stop()
             log.debug("LinuxHotplugMonitor: not running — stop() ignored")
             return
         log.info("LinuxHotplugMonitor: stopping")
@@ -149,6 +290,7 @@ class LinuxHotplugMonitor(HotplugMonitor):
         self._thread.join(timeout=2.0)
         self._thread = None
         self._bus = None
+        self._power.stop()
         log.info("LinuxHotplugMonitor: stopped")
 
     @property
