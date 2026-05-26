@@ -486,11 +486,25 @@ class SingleInstance:
     def __new__(cls, name: str) -> SingleInstance | None:  # type: ignore[misc]
         path = _instance_socket_path(name)
         if not hasattr(socket, "AF_UNIX"):
-            log.warning(
-                "SingleInstance(%r): AF_UNIX missing on this platform; "
-                "running unconditionally", name,
+            # Legacy Windows fallback (build < 17063 / Windows 10 pre-1803).
+            # AF_UNIX missing means no socket-based lock; legacy used
+            # ``msvcrt.locking`` on a file and accepted no raise-existing
+            # support.  Same shape here — single-instance enforcement
+            # without window-raise, silent fallthrough on success.
+            fallback = _msvcrt_acquire(name)
+            if fallback is None:
+                log.info(
+                    "SingleInstance(%r): peer already running (msvcrt lock held)",
+                    name,
+                )
+                return None
+            instance = super().__new__(cls)
+            instance._msvcrt_handle = fallback  # type: ignore[attr-defined]
+            log.info(
+                "SingleInstance(%r): using msvcrt file lock (AF_UNIX unavailable)",
+                name,
             )
-            return super().__new__(cls)
+            return instance
 
         # ── Peer alive? ──
         if _peer_alive(path, cls._CONNECT_TIMEOUT_S):
@@ -611,6 +625,42 @@ def _instance_socket_path(name: str) -> Path:
     else:
         base = Path.home() / ".cache" / SingleInstance._DIR_NAME
     return base / f"{name}.sock"
+
+
+def _msvcrt_acquire(name: str) -> Any | None:
+    """Acquire a Windows single-instance file-lock via ``msvcrt.locking``.
+
+    Used as the fallback when ``AF_UNIX`` isn't available (Windows 8.1
+    or 10 pre-1803).  Ports legacy ``WindowsPlatform.acquire_instance_lock``
+    (windows_platform.py:269-280).  Returns the open file handle on
+    success (caller stores it for the process lifetime — the lock
+    releases when the FD closes), or ``None`` when a peer already
+    holds the lock.
+
+    No raise-existing-window support — legacy didn't have it either
+    (``raise_existing_instance`` was a ``pass``).  Modern Windows
+    (1803+) gets the full AF_UNIX path with raise.
+    """
+    try:
+        import msvcrt  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        # Not on Windows; the AF_UNIX branch would have been taken.
+        # Reaching here means an exotic platform — fail open.
+        return None
+    lock_path = (
+        Path.home() / ".cache" / SingleInstance._DIR_NAME / f"{name}.lock"
+    )
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    # The file handle must stay open for the process lifetime — closing
+    # it releases the lock — so deliberately do NOT use a with-block.
+    try:
+        fh = lock_path.open("w")
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
+        fh.write(str(os.getpid()))
+        fh.flush()
+    except OSError:
+        return None
+    return fh
 
 
 def _peer_alive(path: Path, timeout: float) -> bool:
