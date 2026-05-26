@@ -208,9 +208,149 @@ def _apply_devices(settings: Settings, raw: dict[str, Any]) -> int:
         if isinstance(orientation := entry.get("orientation"), int):
             settings.set_orientation(key, orientation)
             log.info("[%s] orientation → %d", key, orientation)
+        if isinstance(led_cfg := entry.get("led_config"), dict):
+            _apply_led_config(settings, key, led_cfg)
 
         count += 1
     return count
+
+
+# Legacy v5.0.x → current LED-config key aliases.  Matches
+# ``legacy/services/led_config.py::_ALIASES`` so users upgrading from
+# the carousel-named era don't lose their per-zone rotation state.
+_LED_LEGACY_ALIASES: dict[str, str] = {
+    "zone_carousel": "zone_sync",
+    "zone_carousel_zones": "zone_sync_zones",
+    "zone_carousel_interval": "zone_sync_interval",
+}
+
+
+def _apply_led_config(
+    settings: Settings, key: str, led_cfg: dict[str, Any],
+) -> None:
+    """Translate one device's ``led_config`` block into next/'s setters.
+
+    Mirrors ``legacy/services/led_config.py::load_led_config`` shape:
+      1. apply v5.0.x aliases (zone_carousel → zone_sync etc.) so the
+         older key names land on the canonical fields,
+      2. dispatch each scalar through the public per-LED-field setter,
+      3. resize the per-zone list to ``zones`` length then set each
+         zone's mode/color/brightness/on.
+    """
+    # Step 1 — alias rewrites (don't overwrite the canonical key if both
+    # appear; load_led_config in legacy had the same precedence).
+    for old, new in _LED_LEGACY_ALIASES.items():
+        if old in led_cfg and new not in led_cfg:
+            led_cfg[new] = led_cfg[old]
+
+    # Step 2 — scalar fields.  Legacy field names differ in three places
+    # (segments_on→segment_on, is_timer_24h→clock_24h via setter,
+    # is_week_sunday→week_sunday via setter, zone_sync_interval→
+    # zone_sync_interval_ticks via setter); next/ setters take the
+    # legacy semantic and persist under the canonical name.
+    from trcc.core.led_models import LEDMode
+
+    if isinstance(mode := led_cfg.get("mode"), int):
+        try:
+            settings.set_led_mode(key, LEDMode(mode))
+            log.info("[%s] led_mode → %d", key, mode)
+        except ValueError:
+            log.warning("[%s] led_mode %r not a valid LEDMode — skipping",
+                        key, mode)
+    if isinstance(color := led_cfg.get("color"), list) and len(color) == 3:
+        rgb = (int(color[0]), int(color[1]), int(color[2]))
+        settings.set_led_color(key, rgb)
+        log.info("[%s] led_color → %s", key, rgb)
+    if isinstance(brightness := led_cfg.get("brightness"), int):
+        settings.set_led_brightness(key, brightness)
+        log.info("[%s] led_brightness → %d", key, brightness)
+    if isinstance(global_on := led_cfg.get("global_on"), bool):
+        settings.set_led_global_on(key, global_on)
+        log.info("[%s] led_global_on → %s", key, global_on)
+    if isinstance(temp_src := led_cfg.get("temp_source"), str) and temp_src:
+        try:
+            settings.set_led_temp_source(key, temp_src)
+            log.info("[%s] led_temp_source → %s", key, temp_src)
+        except ValueError as e:
+            log.warning("[%s] %s", key, e)
+    if isinstance(load_src := led_cfg.get("load_source"), str) and load_src:
+        try:
+            settings.set_led_load_source(key, load_src)
+            log.info("[%s] led_load_source → %s", key, load_src)
+        except ValueError as e:
+            log.warning("[%s] %s", key, e)
+    if isinstance(is_24h := led_cfg.get("is_timer_24h"), bool):
+        settings.set_led_clock_24h(key, is_24h)
+        log.info("[%s] led_clock_24h → %s", key, is_24h)
+    if isinstance(sun_first := led_cfg.get("is_week_sunday"), bool):
+        settings.set_led_week_start(key, sun_first)
+        log.info("[%s] led_week_sunday → %s", key, sun_first)
+    if isinstance(disk_idx := led_cfg.get("disk_index"), int):
+        settings.set_led_disk_index(key, disk_idx)
+        log.info("[%s] led_disk_index → %d", key, disk_idx)
+    if isinstance(mem_ratio := led_cfg.get("memory_ratio"), bool):
+        settings.set_led_memory_ratio(key, mem_ratio)
+        log.info("[%s] led_memory_ratio → %s", key, mem_ratio)
+    if isinstance(zone_sync := led_cfg.get("zone_sync"), bool):
+        settings.set_led_zone_sync(key, zone_sync)
+        log.info("[%s] led_zone_sync → %s", key, zone_sync)
+    if isinstance(zsi := led_cfg.get("zone_sync_interval"), int):
+        settings.set_led_zone_sync_interval(key, zsi)
+        log.info("[%s] led_zone_sync_interval_ticks → %d", key, zsi)
+
+    # Per-segment on/off (legacy 'segments_on' → next/ 'segment_on')
+    if isinstance(segs := led_cfg.get("segments_on"), list):
+        for i, on in enumerate(segs):
+            if isinstance(on, bool):
+                settings.set_led_segment_on(key, i, on)
+        log.info("[%s] led_segment_on → %d entries", key, len(segs))
+
+    # Zone-sync inclusion mask (legacy carousel zones list).  Next/'s
+    # default ``LedDeviceSettings.zone_sync_zones`` is an empty list
+    # (zones are sized later by ``set_led_zone_count``), so write the
+    # whole legacy list in one shot — anything beyond the eventual
+    # zone count gets truncated naturally on the device side.
+    # Bouncing zone_sync through its setter re-triggers ``_save()`` so
+    # the bulk attribute write above persists even when no later setter
+    # fires (e.g. a legacy config with mask but no per-zone state).
+    if isinstance(zsz := led_cfg.get("zone_sync_zones"), list):
+        led = settings.for_led(key)
+        led.zone_sync_zones = [bool(v) for v in zsz]
+        settings.set_led_zone_sync(key, led.zone_sync)
+        log.info("[%s] zone_sync_zones → %d entries", key, len(zsz))
+
+    # Per-zone state — needs the zone count to be sized first.
+    if isinstance(zones := led_cfg.get("zones"), list) and zones:
+        settings.set_led_zone_count(key, len(zones))
+        for i, zc in enumerate(zones):
+            if not isinstance(zc, dict):
+                continue
+            zone_mode = zc.get("mode")
+            zone_color = zc.get("color")
+            zone_brightness = zc.get("brightness")
+            zone_on = zc.get("on")
+            mode_enum: LEDMode | None = None
+            if isinstance(zone_mode, int):
+                try:
+                    mode_enum = LEDMode(zone_mode)
+                except ValueError:
+                    mode_enum = None
+            rgb: tuple[int, int, int] | None = None
+            if isinstance(zone_color, list) and len(zone_color) == 3:
+                rgb = (
+                    int(zone_color[0]),
+                    int(zone_color[1]),
+                    int(zone_color[2]),
+                )
+            settings.set_led_zone(
+                key, i,
+                mode=mode_enum,
+                color=rgb,
+                brightness=(zone_brightness
+                            if isinstance(zone_brightness, int) else None),
+                on=(zone_on if isinstance(zone_on, bool) else None),
+            )
+        log.info("[%s] zones → %d entries", key, len(zones))
 
 
 def migrate(
