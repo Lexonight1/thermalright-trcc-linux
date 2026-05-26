@@ -659,12 +659,19 @@ def configure_slideshow(
 def keepalive(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
     interval: float = typer.Option(
-        5.0, "--interval", "-i", min=0.5,
-        help="Seconds between resends (default 5).",
+        0.150, "--interval", "-i", min=0.05,
+        help=("Seconds between resends.  Bulk/LY firmware reverts to "
+              "the built-in logo after ~2-3 s without a frame; default "
+              "0.150 s keeps the screen pinned."),
     ),
     count: int = typer.Option(
         0, "--count", "-c", min=0,
         help="Number of resends; 0 means loop forever (until Ctrl-C).",
+    ),
+    metric_interval: float = typer.Option(
+        1.0, "--metric-interval", min=0.0,
+        help=("Seconds between overlay re-renders (live sensor refresh).  "
+              "0 disables — last frame's metrics stay frozen on screen."),
     ),
 ) -> None:
     """Periodically resend the device's last frame.
@@ -672,30 +679,23 @@ def keepalive(
     Workaround for Bulk/LY firmware that drops the displayed image when
     the internal buffer ages out.  Render at least once before starting
     the loop so there's a cached frame to resend.
-    """
-    import time
 
-    app_obj = get_app()
-    if count > 0:
-        result = app_obj.dispatch(KeepAliveLoop(
-            key=key, count=count, interval_s=interval,
-        ))
-        typer.echo(result.message)
-        if not result.ok:
-            raise typer.Exit(code=1)
-        return
-    typer.echo(f"Keepalive on {key} every {interval}s (Ctrl-C to stop)…")
-    try:
-        while True:
-            result = app_obj.dispatch(
-                KeepAliveLoop(key=key, count=1, interval_s=interval),
-            )
-            if not result.ok:
-                typer.echo(f"  resend failed: {result.message}", err=True)
-                raise typer.Exit(code=1)
-            time.sleep(max(0.0, interval))
-    except KeyboardInterrupt:
-        typer.echo("\nStopped.")
+    ``count=0`` (default) runs open-ended and exits cleanly on Ctrl-C —
+    the Command itself owns the loop + signal handling so the CLI
+    doesn't need a user-space ``while`` wrapper.
+    """
+    if count == 0:
+        typer.echo(
+            f"Keepalive on {key} every {interval:.3f}s "
+            f"(metric refresh every {metric_interval:.1f}s, Ctrl-C to stop)…"
+        )
+    result = get_app().dispatch(KeepAliveLoop(
+        key=key, count=count,
+        interval_s=interval, metric_interval_s=metric_interval,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("background-mode")

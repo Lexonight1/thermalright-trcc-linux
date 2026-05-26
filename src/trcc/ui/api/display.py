@@ -530,7 +530,10 @@ def keepalive(key: str, body: KeepaliveRequest,
               request: Request) -> KeepaliveResponse:
     """Run a keepalive burst (resend the last frame N times)."""
     result = request.app.state.trcc.dispatch(KeepAliveLoop(
-        key=key, count=body.count, interval_s=body.interval_s,
+        key=key,
+        count=body.count,
+        interval_s=body.interval_s,
+        metric_interval_s=body.metric_interval_s,
     ))
     http_error_if_failed(result)
     return to_keepalive_response(result)

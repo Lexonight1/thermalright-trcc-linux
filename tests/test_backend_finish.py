@@ -252,10 +252,14 @@ def test_keepalive_loop_without_cached_frame(_trcc_app) -> None:
     assert "no cached frame" in r.message.lower()
 
 
-def test_keepalive_loop_zero_count_rejected(_trcc_app) -> None:
+def test_keepalive_loop_negative_count_rejected(_trcc_app) -> None:
+    """``count=0`` is the loop-forever sentinel (G18 / legacy parity);
+    only strictly-negative values get rejected with a count-related
+    message.  Without a cached frame the loop short-circuits before
+    the count branch, so we don't assert on that path here."""
     from trcc.core.commands import KeepAliveLoop
 
-    r = _trcc_app.dispatch(KeepAliveLoop(key="0402:3922", count=0))
+    r = _trcc_app.dispatch(KeepAliveLoop(key="0402:3922", count=-1))
     assert r.ok is False
     assert "count" in r.message.lower()
 

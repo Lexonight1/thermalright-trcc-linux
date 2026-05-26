@@ -653,8 +653,18 @@ class SlideshowResponse(ResultBase):
 
 
 class KeepaliveRequest(BaseModel):
-    count: int = Field(1, ge=1)
-    interval_s: float = Field(5.0, ge=0.5)
+    """Keepalive-loop parameters.
+
+    * ``count`` — ``0`` means run until interrupted (legacy parity);
+      ``>=1`` runs that many iterations.
+    * ``interval_s`` — fast-resend cadence.  Default 0.150 s is below
+      the 2-3 s firmware-revert threshold on Bulk/LY devices.
+    * ``metric_interval_s`` — how often to re-render the overlay so
+      sensor values stay current.  Set to 0 to disable refresh.
+    """
+    count: int = Field(0, ge=0)
+    interval_s: float = Field(0.150, ge=0.05)
+    metric_interval_s: float = Field(1.0, ge=0.0)
 
 
 class KeepaliveResponse(ResultBase):
