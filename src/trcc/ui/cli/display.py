@@ -9,7 +9,9 @@ from ...core.commands import (
     AddOverlayElement,
     ApplyMask,
     ConfigureSlideshow,
+    ConnectDevice,
     DeleteOverlayElement,
+    DiscoverDevices,
     EnableOverlay,
     FlashOverlayElement,
     KeepAliveLoop,
@@ -739,6 +741,66 @@ def restore_theme(
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("resume")
+def resume(
+    retries: int = typer.Option(
+        10, "--retries", min=1,
+        help="Discovery attempts before giving up (1 attempt = 2 s delay)",
+    ),
+) -> None:
+    """Send each detected device's last-used theme (headless, no GUI).
+
+    Use case: cron / systemd unit / udev hook that runs at boot or
+    after a suspend cycle.  Enumerates every TRCC-known device on the
+    bus, connects, and replays the saved theme so the displays come
+    back to their pre-boot / pre-suspend state without the GUI.
+
+    Bulk/LY devices fade after ~2-3 s without a fresh frame — pair
+    this with ``trcc display keepalive`` per device for those, or
+    ``trcc display play`` for the full render-loop.
+    """
+    import time
+
+    app_obj = get_app()
+    products: list = []
+    for attempt in range(1, retries + 1):
+        result = app_obj.dispatch(DiscoverDevices())
+        if result.ok and result.products:
+            products = result.products
+            break
+        typer.echo(
+            f"Waiting for device... ({attempt}/{retries})", err=True,
+        )
+        time.sleep(2)
+
+    if not products:
+        typer.echo("No compatible TRCC device detected.", err=True)
+        raise typer.Exit(code=1)
+
+    sent = 0
+    for product in products:
+        key = f"{product.vid:04x}:{product.pid:04x}"
+        connect_result = app_obj.dispatch(ConnectDevice(key=key))
+        if not connect_result.ok:
+            typer.echo(f"  [{key}] connect failed: {connect_result.message}",
+                       err=True)
+            continue
+        theme_result = app_obj.dispatch(RestoreLastTheme(key=key))
+        if not theme_result.ok:
+            typer.echo(f"  [{key}] {theme_result.message}", err=True)
+            continue
+        typer.echo(f"  [{key}] resumed: {theme_result.theme_name}")
+        sent += 1
+
+    if sent == 0:
+        typer.echo(
+            "No themes were sent.  Use the GUI to set a theme first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    typer.echo(f"Resumed {sent} device(s).")
 
 
 @app.command("snapshot")
