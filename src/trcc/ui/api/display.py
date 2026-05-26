@@ -1,12 +1,23 @@
 """/devices/{key}/display router — orientation, brightness, theme."""
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import Response
 
 from ...core.commands import (
@@ -131,6 +142,8 @@ from .schemas import (
     VideoResponse,
     VideoStatusResponse,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
 
@@ -309,6 +322,65 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
                  f"@ {playback.fps} fps"
                  f"{' (paused)' if playback.paused else ''}"),
     )
+
+
+@router.websocket("/preview/stream")
+async def preview_stream(ws: WebSocket, key: str) -> None:
+    """Stream JPEG-encoded preview frames over a WebSocket at ~5 fps.
+
+    Auth: clients pass the API token as a ``?token=...`` query
+    parameter (WebSocket clients can't easily set custom headers in
+    browsers; query param is the conventional workaround).  When the
+    server has no token configured (loopback dev mode), the param is
+    accepted but not enforced — same posture as the HTTP middleware.
+
+    JPEG (not PNG) for streaming: a ~5 fps PNG stream of a 320×320
+    panel would burn through bandwidth on every frame.  Lossy quality
+    is acceptable for a live dashboard preview; the one-shot
+    ``GET /preview`` endpoint stays lossless for screenshot use.
+
+    Disconnects from either side end the loop cleanly; the next
+    ``connect`` from the same client re-arms the stream.
+    """
+    import asyncio
+
+    from ...core.errors import DeviceNotFoundError
+    from .main import _api_token
+
+    # Token check FIRST — accept the WS handshake only when auth
+    # passes.  Skipping the accept on auth failure is the conventional
+    # way to send a 1008 close without exposing why.
+    if _api_token is not None:
+        token = ws.query_params.get("token", "")
+        if not hmac.compare_digest(token, _api_token):
+            await ws.close(code=1008)
+            return
+
+    trcc = ws.app.state.trcc
+    try:
+        device = trcc.get(key)
+    except DeviceNotFoundError:
+        await ws.close(code=1008)
+        return
+
+    await ws.accept()
+    frame_interval_s = 0.200  # 5 fps — see docstring
+    try:
+        while True:
+            theme = trcc.active_themes.get(key)
+            if theme is not None:
+                sensors_full = trcc.platform.sensors().read_all()
+                surface = trcc.display.build_preview_surface(
+                    info=device.info,
+                    theme=theme,
+                    sensors=sensors_full,
+                    profile=device.profile,
+                )
+                jpeg_bytes = trcc.display._r.encode_jpeg(surface)
+                await ws.send_bytes(jpeg_bytes)
+            await asyncio.sleep(frame_interval_s)
+    except WebSocketDisconnect:
+        log.debug("preview_stream %s: client disconnected", key)
 
 
 @router.get("/preview")
