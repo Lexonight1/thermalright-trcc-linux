@@ -3129,19 +3129,43 @@ class ListFonts(Command[FontsListResult]):
 
     Uses ``QFontDatabase.families()`` — same source the GUI uses for
     its font picker.  Returns an empty list (not an error) when Qt
-    isn't initialised, so headless callers can probe safely.
+    isn't installed, so headless callers can probe safely.
+
+    Headless callers (CLI / API / tests) reach this with no
+    ``QGuiApplication`` instance.  ``QFontDatabase.families()``
+    segfaults inside ``libQt6Gui`` when called before the GUI
+    application initialises the font subsystem — bypass that by
+    bringing up an offscreen ``QGuiApplication`` first, idempotently.
     """
 
     def execute(self, app: App) -> FontsListResult:
         del app
-        fonts: list[str] = []
         try:
-            from PySide6.QtGui import QFontDatabase  # type: ignore[import-not-found]
+            from PySide6.QtGui import (  # type: ignore[import-not-found]
+                QFontDatabase,
+                QGuiApplication,
+            )
         except ImportError:
             return FontsListResult(
                 ok=True, fonts=[],
                 message="Qt not available — no fonts enumerable",
             )
+
+        # libQt6Gui's font subsystem needs a QGuiApplication to be
+        # alive; without one, ``QFontDatabase.families()`` aborts the
+        # process (no Python exception to catch).  Spin one up offscreen
+        # if the caller didn't.  Idempotent — re-creating would raise.
+        if QGuiApplication.instance() is None:
+            import os
+            os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+            try:
+                QGuiApplication([])
+            except RuntimeError as e:
+                return FontsListResult(
+                    ok=False, fonts=[],
+                    message=f"QGuiApplication init failed: {e}",
+                )
+
         try:
             fonts = sorted(QFontDatabase.families())
         except RuntimeError as e:
