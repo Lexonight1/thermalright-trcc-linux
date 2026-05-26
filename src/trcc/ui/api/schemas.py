@@ -835,6 +835,26 @@ class DaemonStatusResponse(ResultBase):
     led_count: int = 0
 
 
+class ScreencastStartRequest(BaseModel):
+    """Body for ``POST /devices/{key}/display/screencast/start``."""
+    x: int = Field(..., ge=0)
+    y: int = Field(..., ge=0)
+    w: int = Field(..., gt=0)
+    h: int = Field(..., gt=0)
+    audio: bool = False
+
+
+class ScreencastResponse(ResultBase):
+    """Result of a screencast start/stop request."""
+    key: str = ""
+    active: bool = False
+    x: int = 0
+    y: int = 0
+    w: int = 0
+    h: int = 0
+    audio: bool = False
+
+
 class VideoStatusResponse(ResultBase):
     """Current playback state for a device's video background override.
 

@@ -37,6 +37,8 @@ from ...core.commands import (
     SetOverlayConfig,
     SetSlideshow,
     SetSplitMode,
+    StartScreencast,
+    StopScreencast,
     StopVideo,
     UpdateOverlayElement,
     UploadBootAnimation,
@@ -113,6 +115,8 @@ from .schemas import (
     PauseVideoResponse,
     PlayVideoRequest,
     RenderResponse,
+    ScreencastResponse,
+    ScreencastStartRequest,
     SeekVideoRequest,
     SeekVideoResponse,
     SendResponse,
@@ -303,6 +307,46 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
         message=(f"playing frame {playback.cursor}/{playback.frame_count} "
                  f"@ {playback.fps} fps"
                  f"{' (paused)' if playback.paused else ''}"),
+    )
+
+
+@router.post("/screencast/start", response_model=ScreencastResponse)
+def screencast_start(key: str, body: ScreencastStartRequest,
+                     request: Request) -> ScreencastResponse:
+    """Begin a screen-capture session for *key*.
+
+    Dispatches :class:`StartScreencast` which validates region geometry,
+    stops any active video playback, and publishes
+    :class:`ScreencastStarted` for the GUI's ``ScreencastHandler`` to
+    pick up.  Headless API callers can fire this even without a GUI
+    attached — the bus event still fires, just no consumer picks
+    it up.
+    """
+    result = request.app.state.trcc.dispatch(
+        StartScreencast(
+            key=key, x=body.x, y=body.y, w=body.w, h=body.h,
+            audio=body.audio,
+        ),
+    )
+    http_error_if_failed(result)
+    return ScreencastResponse(
+        ok=result.ok, key=result.key, active=result.active,
+        x=result.x, y=result.y, w=result.w, h=result.h,
+        audio=result.audio, message=result.message,
+    )
+
+
+@router.post("/screencast/stop", response_model=ScreencastResponse)
+def screencast_stop(key: str, request: Request) -> ScreencastResponse:
+    """End the screen-capture session for *key*.
+
+    Idempotent — returns ``ok=True`` even when no session was running.
+    """
+    result = request.app.state.trcc.dispatch(StopScreencast(key=key))
+    http_error_if_failed(result)
+    return ScreencastResponse(
+        ok=result.ok, key=result.key, active=result.active,
+        message=result.message,
     )
 
 
