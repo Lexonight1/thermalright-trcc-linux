@@ -2365,6 +2365,66 @@ class SetLedZoneColor(Command[LedColorsResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class SetLedZoneMode(Command[LedColorsResult]):
+    """Set one zone's persistent LED mode.
+
+    Per-zone variant of :class:`SetLedMode` — mirrors legacy
+    ``POST /led/zones/{zone}/mode``.  ``mode`` is the integer
+    :class:`LEDMode` value; clients that send a name should resolve
+    it at the API edge before dispatch.
+    """
+    key: str
+    zone: int
+    mode: LEDMode
+
+    def execute(self, app: App) -> LedColorsResult:
+        try:
+            app.settings.set_led_zone(self.key, self.zone, mode=self.mode)
+        except IndexError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Zone {self.zone} mode set to {self.mode.name}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLedZoneBrightness(Command[LedColorsResult]):
+    """Set one zone's persistent brightness (0-100).
+
+    Per-zone variant of :class:`SetLedBrightness` — mirrors legacy
+    ``POST /led/zones/{zone}/brightness``.  Clamped server-side via
+    :meth:`Settings.set_led_zone`.
+    """
+    key: str
+    zone: int
+    percent: int
+
+    def execute(self, app: App) -> LedColorsResult:
+        if not 0 <= self.percent <= 100:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"brightness out of range (0-100): {self.percent}",
+            )
+        try:
+            app.settings.set_led_zone(
+                self.key, self.zone, brightness=self.percent,
+            )
+        except IndexError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[], message=str(e),
+            )
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Zone {self.zone} brightness set to {self.percent}%",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SetLedZoneSync(Command[LedColorsResult]):
     """Enable/disable the zone-sync carousel for a device."""
     key: str

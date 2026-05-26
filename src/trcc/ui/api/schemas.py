@@ -248,6 +248,21 @@ class LedZoneColorRequest(BaseModel):
     color: tuple[int, int, int]
 
 
+class LedZoneModeRequest(BaseModel):
+    """Per-zone variant of :class:`LedModeRequest`."""
+    zone: int = Field(..., ge=0)
+    mode: str = Field(
+        ..., pattern="^(static|breathing|colorful|rainbow|temp_linked|load_linked)$",
+        description="Case-insensitive mode name.",
+    )
+
+
+class LedZoneBrightnessRequest(BaseModel):
+    """Per-zone variant of :class:`LedBrightnessRequest`."""
+    zone: int = Field(..., ge=0)
+    percent: int = Field(..., ge=0, le=100)
+
+
 class LedZoneSyncRequest(BaseModel):
     enabled: bool
     interval_ticks: int | None = Field(None, ge=1)

@@ -18,7 +18,9 @@ from ...core.commands import (
     SetLedLoadSource,
     SetLedMode,
     SetLedTempSource,
+    SetLedZoneBrightness,
     SetLedZoneColor,
+    SetLedZoneMode,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
     SetMemoryRatio,
@@ -57,7 +59,9 @@ from .schemas import (
     LedTestModeRequest,
     LedToggleRequest,
     LedToggleSegmentRequest,
+    LedZoneBrightnessRequest,
     LedZoneColorRequest,
+    LedZoneModeRequest,
     LedZoneSyncRequest,
     MemoryRatioRequest,
     MemoryRatioResponse,
@@ -173,6 +177,34 @@ def zone_color(key: str, body: LedZoneColorRequest,
     """Set one zone's persistent color."""
     result = request.app.state.trcc.dispatch(
         SetLedZoneColor(key=key, zone=body.zone, color=body.color),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/zone-mode", response_model=LedColorsResponse)
+def zone_mode(key: str, body: LedZoneModeRequest,
+              request: Request) -> LedColorsResponse:
+    """Set one zone's persistent LED mode."""
+    try:
+        mode = LEDMode[body.mode.upper()]
+    except KeyError as e:
+        raise HTTPException(400, f"Unknown LED mode: {body.mode!r}") from e
+    result = request.app.state.trcc.dispatch(
+        SetLedZoneMode(key=key, zone=body.zone, mode=mode),
+    )
+    http_error_if_failed(result)
+    return to_led_response(result)
+
+
+@router.post("/zone-brightness", response_model=LedColorsResponse)
+def zone_brightness(key: str, body: LedZoneBrightnessRequest,
+                    request: Request) -> LedColorsResponse:
+    """Set one zone's persistent brightness (0-100)."""
+    result = request.app.state.trcc.dispatch(
+        SetLedZoneBrightness(
+            key=key, zone=body.zone, percent=body.percent,
+        ),
     )
     http_error_if_failed(result)
     return to_led_response(result)
