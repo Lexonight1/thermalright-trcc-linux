@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
+import psutil  # pyright: ignore[reportMissingImports]
 import usb.core
 import usb.util
 
@@ -148,3 +152,155 @@ class BSDPlatform(Platform):
         if getattr(sys, "frozen", False):
             return "pyinstaller"
         return "source"
+
+    # ── Hardware probes (LED memory + disk widgets) ───────────────────
+
+    def memory_info(self) -> list[dict[str, str]]:
+        """DRAM probe via sysctl ``hw.physmem`` + psutil total fallback.
+
+        FreeBSD doesn't expose per-DIMM SPD data through sysctl, so
+        this returns a single ``Total`` entry rather than per-DIMM
+        slots (matching legacy behaviour).
+        """
+        log.info("BSDPlatform.memory_info: probing")
+        slots = _bsd_memory_info()
+        log.info("BSDPlatform.memory_info: %d slot(s)", len(slots))
+        return slots
+
+    def disk_info(self) -> list[dict[str, str]]:
+        """Physical-disk probe via ``geom disk list`` (FreeBSD only)."""
+        log.info("BSDPlatform.disk_info: probing")
+        disks = _bsd_disk_info()
+        log.info("BSDPlatform.disk_info: %d disk(s)", len(disks))
+        return disks
+
+
+# =========================================================================
+# BSD hardware-probe helpers
+# =========================================================================
+
+
+SysctlRunner = Callable[[str], str | None]
+GeomRunner = Callable[[], str]
+
+
+def _run_sysctl_n(key: str) -> str | None:
+    """``sysctl -n <key>`` → trimmed stdout, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["sysctl", "-n", key],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        log.debug("sysctl -n %s failed", key, exc_info=True)
+        return None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    return out or None
+
+
+def _run_geom_disk_list() -> str:
+    """``geom disk list`` stdout, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["geom", "disk", "list"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        log.debug("geom disk list failed", exc_info=True)
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout
+
+
+def _bsd_memory_info(
+    runner: SysctlRunner = _run_sysctl_n,
+) -> list[dict[str, str]]:
+    """Single-entry memory descriptor — BSD has no per-DIMM probe."""
+    slots: list[dict[str, str]] = []
+    physmem = runner("hw.physmem")
+    if physmem is not None:
+        try:
+            total_bytes = int(physmem)
+            total_gb = total_bytes / (1024 ** 3)
+            slots.append({
+                "manufacturer": "Unknown",
+                "part_number": "",
+                "type": "Unknown",
+                "speed": "Unknown",
+                "size": f"{total_gb:.0f} GB",
+                "form_factor": "Unknown",
+                "locator": "Total",
+            })
+        except (ValueError, TypeError):
+            pass
+
+    if not slots:
+        mem = psutil.virtual_memory()
+        slots.append({
+            "manufacturer": "Unknown",
+            "part_number": "",
+            "type": "Unknown",
+            "speed": "Unknown",
+            "size": f"{mem.total // (1024 ** 3)} GB",
+            "form_factor": "Unknown",
+            "locator": "Total",
+        })
+
+    return slots
+
+
+def _bsd_disk_info(
+    runner: GeomRunner = _run_geom_disk_list,
+) -> list[dict[str, str]]:
+    """Parse ``geom disk list`` (FreeBSD/DragonFly).
+
+    OpenBSD/NetBSD don't ship ``geom``; ``runner`` returns ``""`` and
+    we yield an empty list — caller renders ``NC``.
+    """
+    disks: list[dict[str, str]] = []
+    output = runner()
+    if not output:
+        return disks
+
+    current: dict[str, str] = {}
+    for raw in output.splitlines():
+        line = raw.strip()
+        if line.startswith("Geom name:"):
+            if current.get("name"):
+                disks.append(current)
+            current = {"name": line.split(":", 1)[1].strip()}
+        elif line.startswith("descr:"):
+            current["model"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Mediasize:"):
+            raw_val = line.split(":", 1)[1].strip()
+            match = re.search(r"\(([^)]+)\)", raw_val)
+            if match:
+                current["size"] = match.group(1)
+            else:
+                parts = raw_val.split()
+                if parts:
+                    try:
+                        b = int(parts[0])
+                        if b >= 1024 ** 4:
+                            current["size"] = f"{b / (1024 ** 4):.1f} TB"
+                        elif b >= 1024 ** 3:
+                            current["size"] = f"{b / (1024 ** 3):.0f} GB"
+                    except (ValueError, TypeError):
+                        current["size"] = raw_val
+        elif line.startswith("rotationrate:"):
+            rate = line.split(":", 1)[1].strip()
+            current["type"] = "HDD" if rate != "0" else "SSD"
+
+    if current.get("name"):
+        disks.append(current)
+
+    for d in disks:
+        d.setdefault("type", "Unknown")
+        d.setdefault("model", "")
+        d.setdefault("size", "")
+        d.setdefault("health", "Unknown")
+
+    return disks

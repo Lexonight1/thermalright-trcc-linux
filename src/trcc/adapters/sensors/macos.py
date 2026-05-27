@@ -339,7 +339,7 @@ def build_macos_sensors() -> BaselineSensors:
 
     log.info(
         "macOS sensors: hid_ready=%s gpus=%d fans=%d "
-        "(Apple Silicon SMC keys %s)",
+        "(Apple Silicon keys %s)",
         hid_layer_ready(), len(gpus), len(fans),
         "ENABLED" if _apple_silicon_enabled() else "disabled",
     )

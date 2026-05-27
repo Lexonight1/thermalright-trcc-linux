@@ -154,3 +154,140 @@ def test_build_bsd_sensors_assembles_chain(monkeypatch) -> None:
     assert cpu.usage() is not None
     # temp may be None on a dev box; just verify no exception
     cpu.temp()
+
+
+# ── OpenBSD hw.sensors fan parser ───────────────────────────────────
+
+
+_OPENBSD_FAN_OUTPUT = """\
+hw.sensors.lm0.temp0=43.00 degC
+hw.sensors.lm0.fan0:1607 RPM
+hw.sensors.lm0.fan1:892 RPM
+hw.sensors.it0.fan0:1234 RPM
+hw.sensors.ipmi0.fan0:5400 RPM
+hw.sensors.acpitz0.temp0:55.00 degC
+"""
+
+
+def test_discover_openbsd_fans_finds_all_drivers() -> None:
+    """All four fans across three drivers (lm, it, ipmi) are enumerated."""
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: _OPENBSD_FAN_OUTPUT)
+    keys = sorted(f.key for f in fans)
+    assert keys == [
+        "sysctl:ipmi0:fan0",
+        "sysctl:it0:fan0",
+        "sysctl:lm0:fan0",
+        "sysctl:lm0:fan1",
+    ]
+
+
+def test_openbsd_fan_rpm_returns_int() -> None:
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: _OPENBSD_FAN_OUTPUT)
+    by_key = {f.key: f for f in fans}
+    assert by_key["sysctl:lm0:fan0"].rpm() == 1607
+    assert by_key["sysctl:lm0:fan1"].rpm() == 892
+    assert by_key["sysctl:ipmi0:fan0"].rpm() == 5400
+
+
+def test_openbsd_fan_percent_always_none() -> None:
+    """hw.sensors framework doesn't expose PWM duty cycle."""
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: _OPENBSD_FAN_OUTPUT)
+    assert fans[0].percent() is None
+
+
+def test_openbsd_fan_name_default_label() -> None:
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: "hw.sensors.lm0.fan0:1607 RPM\n")
+    assert fans[0].name == "lm0 fan0"
+
+
+def test_discover_openbsd_fans_empty_when_no_fan_lines() -> None:
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: "hw.sensors.lm0.temp0=43.00 degC\n")
+    assert fans == []
+
+
+def test_discover_openbsd_fans_handles_empty_output() -> None:
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    fans = discover_openbsd_fans(runner=lambda: "")
+    assert fans == []
+
+
+def test_openbsd_fan_snapshot_caches_within_ttl() -> None:
+    """A poll tick re-reads sysctl once; sibling fans share the same output."""
+    from trcc.adapters.sensors._sysctl import _SysctlSnapshot, discover_openbsd_fans
+
+    calls = []
+    fake_clock = [0.0]
+
+    def runner() -> str:
+        calls.append(1)
+        return _OPENBSD_FAN_OUTPUT
+
+    snap = _SysctlSnapshot(
+        runner=runner, ttl_s=1.0, clock=lambda: fake_clock[0],
+    )
+    fans = discover_openbsd_fans(snapshot=snap)
+    # initial discovery already produced one run
+    initial_calls = len(calls)
+    # all fans read within TTL → no additional sysctl runs
+    [f.rpm() for f in fans]
+    assert len(calls) == initial_calls
+    # advance past TTL → next rpm() re-runs sysctl
+    fake_clock[0] += 2.0
+    fans[0].rpm()
+    assert len(calls) == initial_calls + 1
+
+
+def test_discover_openbsd_fans_skips_malformed_lines() -> None:
+    """Non-RPM 'fan' tokens shouldn't fabricate FanSource entries."""
+    from trcc.adapters.sensors._sysctl import discover_openbsd_fans
+
+    output = (
+        "hw.sensors.lm0.fan0:not_a_number RPM\n"
+        "hw.sensors.lm0.fan1:2000 RPM\n"
+    )
+    fans = discover_openbsd_fans(runner=lambda: output)
+    keys = [f.key for f in fans]
+    assert keys == ["sysctl:lm0:fan1"]
+
+
+def test_build_bsd_sensors_includes_fans_on_openbsd(monkeypatch) -> None:
+    """Factory wires OpenBSD fans only when platform.system() == 'OpenBSD'."""
+    from trcc.adapters.sensors import bsd as bsd_factory
+
+    monkeypatch.setattr("platform.system", lambda: "OpenBSD")
+    monkeypatch.setattr(
+        "trcc.adapters.sensors._sysctl._default_runner",
+        lambda: _OPENBSD_FAN_OUTPUT,
+    )
+    sensors = bsd_factory.build_bsd_sensors()
+    fan_keys = sorted(f.key for f in sensors.fans())
+    assert fan_keys == [
+        "sysctl:ipmi0:fan0",
+        "sysctl:it0:fan0",
+        "sysctl:lm0:fan0",
+        "sysctl:lm0:fan1",
+    ]
+
+
+def test_build_bsd_sensors_no_fans_on_freebsd(monkeypatch) -> None:
+    """FreeBSD has no universal fan sysctl — factory yields zero fans."""
+    from trcc.adapters.sensors import bsd as bsd_factory
+
+    monkeypatch.setattr("platform.system", lambda: "FreeBSD")
+    monkeypatch.setattr(
+        "trcc.adapters.sensors._sysctl._default_runner",
+        lambda: _OPENBSD_FAN_OUTPUT,  # even if output contains hw.sensors
+    )
+    sensors = bsd_factory.build_bsd_sensors()
+    assert sensors.fans() == []
