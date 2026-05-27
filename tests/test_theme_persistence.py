@@ -39,7 +39,18 @@ def _write_theme(directory: Path, name: str = "demo",
 
 @pytest.fixture
 def app(tmp_home: Path) -> App:
-    return App(platform=FakePlatform(tmp_home))
+    """App with a real QtRenderer attached.
+
+    SaveTheme's new write path re-encodes overrides through the
+    renderer (guarantees PNG bytes regardless of source extension),
+    so tests need an actual renderer.  QtRenderer bootstraps an
+    offscreen QGuiApplication on construction — headless-safe.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    a = App(platform=FakePlatform(tmp_home))
+    a.set_renderer(QtRenderer())
+    return a
 
 
 # Tests pretend the device under key ``0402:3922`` is connected — that
@@ -405,6 +416,190 @@ def test_save_theme_repoints_current_theme(
 
     expected = str((user_theme_dir / "repoint-test").resolve())
     assert app.settings.for_device(_TEST_DEVICE_KEY).current_theme == expected
+
+
+# ─────────────────────────────────────────────────────────────────────
+# SaveTheme — current-state capture (cloud bg + cloud mask overrides)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _png_bytes(red: int = 0) -> bytes:
+    """Tiny valid 1×1 PNG with R=red.  Distinct red bytes prove
+    file-content provenance in cloud-override tests."""
+    # Pre-computed 1x1 RGBA PNGs; first byte after IDAT distinguishes them
+    # well enough for test identity checks via length + leading bytes.
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QImage
+    img = QImage(1, 1, QImage.Format.Format_ARGB32)
+    img.fill((red << 16) | 0xFF000000)
+    buf = QBuffer()
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(buf.data().data())
+
+
+def _write_theme_with_real_pngs(directory: Path, name: str = "src",
+                                  width: int = 320, height: int = 320) -> Path:
+    """Theme dir with real PNGs at the canonical names (00.png / 01.png)
+    so SaveTheme's ``_write_background`` / ``_write_mask`` see them.
+    """
+    from trcc.services import _dc as Dc
+
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True)
+    config = {"name": name, "width": width, "height": height, "elements": []}
+    (theme_dir / "trcc.json").write_text(
+        json.dumps(config, indent=2), encoding="utf-8",
+    )
+    (theme_dir / "00.png").write_bytes(_png_bytes(red=0x10))
+    (theme_dir / "01.png").write_bytes(_png_bytes(red=0x20))
+    Dc.File(theme_dir / "config1.dc").write({
+        "overlay_enabled": True,
+        "elements": [{
+            "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
+            "size": 24, "bold": False, "italic": False, "source": "time",
+        }],
+    })
+    return theme_dir
+
+
+def test_save_theme_bakes_cloud_background_override(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """``DeviceSettings.background_path`` set → saved theme's 00.png is the
+    override's content, NOT the source theme's 00.png.
+
+    Reproduces the user-reported bug: select cloud background → save →
+    new theme should contain the cloud bg, not the local Theme1's bg.
+    """
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_bg = tmp_home / "cloud_pool" / "fancy_bg.png"
+    cloud_bg.parent.mkdir(parents=True)
+    cloud_bg.write_bytes(_png_bytes(red=0x99))
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-bg"))
+    assert result.ok is True
+
+    saved_bg = user_theme_dir / "with-cloud-bg" / "00.png"
+    assert saved_bg.is_file()
+    # Saved bg should NOT be the source theme's bytes
+    assert saved_bg.read_bytes() != (source / "00.png").read_bytes()
+
+
+def test_save_theme_keeps_cloud_video_at_theme_ext(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Cloud video bg → ``Theme.mp4`` copied verbatim (no re-encode)."""
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_video = tmp_home / "cloud_pool" / "loop.mp4"
+    cloud_video.parent.mkdir(parents=True)
+    fake_mp4_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(fake_mp4_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-video"))
+
+    saved_video = user_theme_dir / "with-cloud-video" / "Theme.mp4"
+    assert saved_video.is_file()
+    assert saved_video.read_bytes() == fake_mp4_bytes
+
+
+def test_save_theme_bakes_cloud_mask_override(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """``DeviceSettings.mask_path`` set → saved 01.png is the override."""
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_mask = tmp_home / "cloud_masks" / "circle.png"
+    cloud_mask.parent.mkdir(parents=True)
+    cloud_mask.write_bytes(_png_bytes(red=0xAA))
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-mask"))
+
+    saved_mask = user_theme_dir / "with-cloud-mask" / "01.png"
+    assert saved_mask.is_file()
+    assert saved_mask.read_bytes() != (source / "01.png").read_bytes()
+
+
+def test_save_theme_bakes_mask_overlay_elements_into_dc(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """``DeviceSettings.mask_overlay_elements`` set → DC elements come from
+    the mask layout (REPLACE source theme's elements), matching the
+    runtime ``_build_overlay`` precedence.
+    """
+    from trcc.core.models import OverlayElement
+    from trcc.services import _dc as Dc
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    # Mask brings its own DC layout — text element with distinctive value.
+    app.settings.set_mask_overlay_elements(
+        _TEST_DEVICE_KEY,
+        [OverlayElement(
+            id="mask_e1", type="text", x=200, y=200, color="#ff00aa",
+            size=20, bold=False, italic=False, text="MASK_LAYOUT",
+        )],
+    )
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-mask-dc"))
+
+    saved_dc = user_theme_dir / "with-mask-dc" / "config1.dc"
+    parsed = Dc.File(saved_dc).read()
+    types = [e["type"] for e in parsed["elements"]]
+    texts = [e.get("text") for e in parsed["elements"]]
+    # Source theme's clock element MUST be absent — mask DC replaces it.
+    assert "clock" not in types
+    assert "MASK_LAYOUT" in texts
+
+
+def test_save_theme_clears_all_overrides_after_save(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """All four overrides cleared after a successful save with all set."""
+    from trcc.core.models import OverlayElement
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_bg = tmp_home / "pool" / "bg.png"
+    cloud_mask = tmp_home / "pool" / "mask.png"
+    cloud_bg.parent.mkdir(parents=True)
+    cloud_bg.write_bytes(_png_bytes(red=0x33))
+    cloud_mask.write_bytes(_png_bytes(red=0x44))
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
+    app.settings.set_mask_overlay_elements(
+        _TEST_DEVICE_KEY,
+        [OverlayElement(
+            id="m1", type="text", x=1, y=1, color="#fff",
+            size=12, bold=False, italic=False, text="m",
+        )],
+    )
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="u1", type="text", x=2, y=2, color="#fff",
+            size=12, bold=False, italic=False, text="u",
+        ),
+    )
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="full-state"))
+
+    s = app.settings.for_device(_TEST_DEVICE_KEY)
+    assert s.background_path is None
+    assert s.mask_path is None
+    assert s.mask_overlay_elements is None
+    assert s.user_overlay_elements == []
+    assert s.current_theme == str((user_theme_dir / "full-state").resolve())
 
 
 # ─────────────────────────────────────────────────────────────────────

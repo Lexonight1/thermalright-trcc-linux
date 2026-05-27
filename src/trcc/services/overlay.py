@@ -175,7 +175,7 @@ class OverlayService:
         elements: list[dict[str, Any]] = config.get("elements", [])
         user_count = len(user_elements or [])
         clock_keys = list(clock.keys()) if clock else []
-        log.info(
+        log.debug(
             "render: %dx%d, theme_elements=%d, user_elements=%d, "
             "sensors=%d, clock_sources=%s, temp_unit=%s",
             width, height, len(elements), user_count,
@@ -227,7 +227,7 @@ class OverlayService:
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         size = int(element.get("size", 16))
-        log.info("draw_text %s: %r at (%d, %d) size=%d", source, text, x, y, size)
+        log.debug("draw_text %s: %r at (%d, %d) size=%d", source, text, x, y, size)
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
@@ -270,8 +270,8 @@ class OverlayService:
             text = text.replace("°C", "°F")
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
-        log.info("draw_metric %s: %s=%s at (%d, %d)",
-                 source, metric_id, text, x, y)
+        log.debug("draw_metric %s: %s=%s at (%d, %d)",
+                  source, metric_id, text, x, y)
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
@@ -300,8 +300,8 @@ class OverlayService:
             return
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
-        log.info("draw_clock %s: %s=%r at (%d, %d)",
-                 source, clock_source, text, x, y)
+        log.debug("draw_clock %s: %s=%r at (%d, %d)",
+                  source, clock_source, text, x, y)
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,

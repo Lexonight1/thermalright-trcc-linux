@@ -546,7 +546,7 @@ class DisplayService:
             canvas = self._r.create_surface(
                 *visual_size, color=(r, g, b, 255),
             )
-            log.info(
+            log.debug(
                 "build_bg_mask %s: mode=color fill=%s — skipping theme bg",
                 info.key, s.overlay_background,
             )
@@ -566,7 +566,7 @@ class DisplayService:
                 fit_w, fit_h, off_x, off_y = _fit(
                     s.fit_mode, src_w, src_h, dst_w, dst_h,
                 )
-                log.info(
+                log.debug(
                     "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
                     info.key, src_w, src_h,
                     s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
@@ -581,7 +581,7 @@ class DisplayService:
                     info.key, theme.name,
                 )
         elif mode == "transparent":
-            log.info(
+            log.debug(
                 "build_bg_mask %s: mode=transparent — skipping theme bg "
                 "(canvas stays solid black; overlay draws on top)",
                 info.key,
@@ -595,7 +595,7 @@ class DisplayService:
             mask = self._r.open_image(mask_source)
             mw, mh = self._r.surface_size(mask)
             position = s.mask_position or (0, 0)
-            log.info(
+            log.debug(
                 "build_bg_mask %s: mask %s (%dx%d) at top-left (%d, %d) "
                 "[visible=%s]",
                 info.key, mask_source, mw, mh, position[0], position[1],
@@ -603,7 +603,7 @@ class DisplayService:
             )
             canvas = self._r.composite(canvas, mask, position=position)
         else:
-            log.info(
+            log.debug(
                 "build_bg_mask %s: no mask composited (visible=%s, "
                 "override=%r, theme_mask=%r)",
                 info.key, s.mask_visible, s.mask_path,
@@ -682,7 +682,7 @@ class DisplayService:
         if s.background_path:
             override = Path(s.background_path)
             if override.exists():
-                log.info(
+                log.debug(
                     "resolve_background %s: cloud background override → %s",
                     info.key, override,
                 )
@@ -700,7 +700,7 @@ class DisplayService:
                             info.key, path.name, type(e).__name__, e,
                         )
                         return None
-                    log.info(
+                    log.debug(
                         "resolve_background %s: override video loaded "
                         "(%d frames)", info.key, len(playback.frames),
                     )
@@ -726,8 +726,8 @@ class DisplayService:
             )
             return None
         ext = path.suffix.lower()
-        log.info("resolve_background %s: theme %r → %s",
-                 info.key, theme.name, path)
+        log.debug("resolve_background %s: theme %r → %s",
+                  info.key, theme.name, path)
 
         if ext in _VIDEO_EXTS:
             try:
@@ -739,7 +739,7 @@ class DisplayService:
                             "%s: %s: %s",
                             info.key, path.name, type(e).__name__, e)
                 return None
-            log.info(
+            log.debug(
                 "resolve_background %s: video loaded (%d frames) from %s",
                 info.key, len(playback.frames), path,
             )
@@ -786,7 +786,7 @@ class DisplayService:
         config_for_render = theme.config
         if mask_dicts is not None:
             config_for_render = {**theme.config, "elements": mask_dicts}
-            log.info(
+            log.debug(
                 "build_overlay %s: theme=%r theme_elements=%d "
                 "mask_elements=%d (mask layout OVERRIDES) "
                 "user_elements=%d overlay_enabled=%s",
@@ -794,7 +794,7 @@ class DisplayService:
                 len(user_dicts), theme.config.get("overlay_enabled", True),
             )
         else:
-            log.info(
+            log.debug(
                 "build_overlay %s: theme=%r theme_elements=%d "
                 "user_elements=%d overlay_enabled=%s",
                 info.key, theme.name, len(theme_elements), len(user_dicts),

@@ -154,6 +154,7 @@ from .results import (
 
 if TYPE_CHECKING:
     from ..app import App
+    from .models import DeviceSettings, Theme
 
 log = logging.getLogger(__name__)
 
@@ -859,15 +860,42 @@ def _is_safe_theme_name(name: str) -> bool:
     return ".." not in name.split("/")
 
 
+_VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
+
+
 @dataclass(frozen=True, slots=True)
 class SaveTheme(Command[ThemeResult]):
-    """Duplicate the device's active theme directory under a new name.
+    """Save the device's CURRENT rendered state as a new theme directory.
 
-    Pure file copy via ``shutil.copytree`` from the active theme's path
-    to ``user_theme_dir(w, h) / name`` — the per-resolution layout
-    (matches legacy's ``data_dir / theme{w}{h} / name``).  The new
-    directory is a fully independent theme; editing it doesn't affect
-    the source.
+    Distinct from "duplicate the source theme" — the cloud background,
+    cloud/user mask, user overlay edits, and mask-DC layout all live
+    in :class:`DeviceSettings`, not in the active theme's directory.
+    A pure ``shutil.copytree`` of the source dir would lose every one
+    of those.  Instead the new theme is built from scratch:
+
+      * ``00.png`` / ``Theme.<ext>`` — resolved current background
+        (cloud override if set, else source theme's bg).
+      * ``01.png`` — resolved current mask (override if set, else
+        source theme's mask).
+      * ``config1.dc`` — merged config: base from source DC, elements
+        from the active mask layout if a mask override carries its
+        own DC layout (matches the runtime ``_build_overlay``
+        precedence), plus the user's overlay edits baked in via
+        ``Dc.File.write(..., user_overlay_elements=...)``.
+      * ``Theme.png`` — source thumbnail (copied if present).
+      * ``trcc.json`` — source's next/-shape metadata (copied if
+        present, so saved themes round-trip through ``ThemeService``).
+
+    After a successful save the per-device overrides
+    (``background_path`` / ``mask_path`` / ``mask_overlay_elements`` /
+    ``user_overlay_elements``) are cleared and ``current_theme`` is
+    re-pointed to the new directory.  Without this the next render
+    would re-stack the (now-baked-in) overrides on top of the saved
+    theme — double-mask, double-bg, doubled overlay text.
+
+    On any failure after ``target.mkdir`` the partially-written
+    target is removed and the original DeviceSettings are left
+    untouched so the user can retry without losing state.
     """
     key: str
     name: str
@@ -907,8 +935,17 @@ class SaveTheme(Command[ThemeResult]):
 
         import shutil
         target = app.platform.paths().user_theme_dir(w, h) / self.name
-        log.info("SaveTheme: source=%s target=%s resolution=%dx%d",
-                 theme.path, target, w, h)
+        device_settings = app.settings.for_device(self.key)
+        log.info(
+            "SaveTheme: source=%s target=%s resolution=%dx%d "
+            "bg_override=%r mask_override=%r user_elements=%d "
+            "mask_elements=%d",
+            theme.path, target, w, h,
+            device_settings.background_path,
+            device_settings.mask_path,
+            len(device_settings.user_overlay_elements),
+            len(device_settings.mask_overlay_elements or []),
+        )
         if target.exists():
             log.warning("SaveTheme: target %s already exists — refusing",
                         target)
@@ -920,60 +957,45 @@ class SaveTheme(Command[ThemeResult]):
 
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(theme.path, target)
+            target.mkdir(exist_ok=False)
         except OSError as e:
+            log.warning("SaveTheme: mkdir failed for %s: %s", target, e)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to copy theme: {e}",
+                message=f"failed to create target directory: {e}",
             )
 
-        # Bake the device's user_overlay_elements into the target's DC.
-        # Without this, the saved theme is a byte-identical copy of the
-        # source — user customisations live in DeviceSettings (per-device
-        # Settings, not in the theme's config1.dc), so they'd never
-        # round-trip when the saved theme is re-loaded.
-        device_settings = app.settings.for_device(self.key)
-        user_elements = [e.to_dict() for e in device_settings.user_overlay_elements]
-        baked = False
-        if user_elements:
-            target_dc = target / "config1.dc"
-            if target_dc.is_file():
-                try:
-                    from ..services import _dc as Dc
-                    cfg = Dc.File(target_dc).read()
-                    Dc.File(target_dc).write(
-                        cfg, user_overlay_elements=user_elements,
-                    )
-                    log.info(
-                        "SaveTheme: baked %d user overlay element(s) into %s",
-                        len(user_elements), target_dc,
-                    )
-                    baked = True
-                except ThemeError as e:
-                    log.warning(
-                        "SaveTheme: copytree ok but DC rewrite failed (%s); "
-                        "saved theme will lack user overlay edits", e,
-                    )
-
-        # When edits got baked into the new theme, user_overlay_elements
-        # in DeviceSettings would now render TWICE if left in place
-        # (once via the baked DC, once via the live settings).  Clear them
-        # and re-point ``current_theme`` to the saved theme so the next
-        # render builds from the new base.  Skip on bake-failure paths
-        # (the original edits stay in DeviceSettings as a recovery hook).
-        if baked:
-            app.settings.set_user_overlay_elements(self.key, [])
-            app.settings.set_current_theme(self.key, str(target.resolve()))
-            # Headless callers (CLI/API one-shots, tests) may run without
-            # a Renderer attached — no scene cache to invalidate then.
-            try:
-                app.display.invalidate(self.key)
-            except RuntimeError:
-                pass
-            log.info(
-                "SaveTheme: cleared user_overlay_elements + re-pointed "
-                "current_theme to %s", target,
+        try:
+            self._write_background(app, target, theme, device_settings)
+            self._write_mask(app, target, theme, device_settings)
+            self._write_dc(target, theme, device_settings)
+            self._copy_metadata_files(target, theme)
+        except (OSError, ThemeError, TrccError) as e:
+            log.exception("SaveTheme: assembly failed; rolling back %s", target)
+            shutil.rmtree(target, ignore_errors=True)
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=f"failed to assemble saved theme: {e}",
             )
+
+        # Saved theme is now fully self-contained — drop the device's
+        # overrides + user edits + re-point current_theme so the next
+        # render builds from the new base (no double-stacking).
+        app.settings.set_user_overlay_elements(self.key, [])
+        app.settings.set_mask_overlay_elements(self.key, None)
+        app.settings.set_mask_path(self.key, None)
+        app.settings.set_background_path(self.key, None)
+        app.settings.set_current_theme(self.key, str(target.resolve()))
+        # Headless callers (CLI/API one-shots, tests) may run without
+        # a Renderer attached — no scene cache to invalidate then.
+        try:
+            app.display.invalidate(self.key)
+        except RuntimeError:
+            pass
+        log.info(
+            "SaveTheme: %s — cleared overrides + re-pointed "
+            "current_theme to %s", self.name, target,
+        )
 
         app.events.publish(ThemeSaved(
             key=self.key, theme_name=self.name, path=str(target),
@@ -982,6 +1004,162 @@ class SaveTheme(Command[ThemeResult]):
             ok=True, key=self.key, theme_name=self.name,
             message=f"theme saved as '{self.name}' at {target}",
         )
+
+    # ── Per-asset writers (called by execute, error-rolled-back as a unit) ──
+
+    def _write_background(
+        self,
+        app: App,
+        target: Path,
+        theme: Theme,
+        s: DeviceSettings,
+    ) -> None:
+        """Write the resolved current background into the new theme dir.
+
+        ``DeviceSettings.background_path`` (cloud video / cloud image
+        override set by ``LoadCloudTheme`` etc.) takes precedence over
+        the source theme's bundled background.  Videos land at
+        ``Theme.<ext>`` verbatim (no re-encode — they're already in
+        the device wire format); images go through the renderer to
+        guarantee ``00.png`` is real PNG bytes regardless of the
+        source's extension.
+        """
+        import shutil
+
+        override = s.background_path
+        if override:
+            src = Path(override)
+            if src.is_file():
+                ext = src.suffix.lower()
+                if ext in _VIDEO_EXTS_FOR_SAVE:
+                    dst = target / f"Theme{ext}"
+                    shutil.copy2(src, dst)
+                    log.info("SaveTheme: bg override video → %s", dst)
+                    return
+                surface = app.renderer.open_image(src)
+                dst = target / "00.png"
+                dst.write_bytes(app.renderer.encode_png(surface))
+                log.info("SaveTheme: bg override image → %s", dst)
+                return
+            log.warning(
+                "SaveTheme: bg override %s does not exist; "
+                "falling back to source theme bg", src,
+            )
+
+        # No usable override — copy whatever the source theme has.
+        src_bg = app.themes.background_path(theme)
+        if src_bg is None:
+            log.warning("SaveTheme: source theme %r has no background",
+                        theme.name)
+            return
+        ext = src_bg.suffix.lower()
+        if ext in _VIDEO_EXTS_FOR_SAVE:
+            shutil.copy2(src_bg, target / f"Theme{ext}")
+            log.info("SaveTheme: source video bg → Theme%s", ext)
+        else:
+            shutil.copy2(src_bg, target / "00.png")
+            log.info("SaveTheme: source image bg → 00.png")
+
+    def _write_mask(
+        self,
+        app: App,
+        target: Path,
+        theme: Theme,
+        s: DeviceSettings,
+    ) -> None:
+        """Write the resolved current mask as ``target/01.png``.
+
+        ``DeviceSettings.mask_path`` (user upload or cloud mask)
+        overrides the source theme's bundled mask.  Re-encoded through
+        the renderer so the saved ``01.png`` is real PNG bytes.  No-op
+        when neither override nor source has a mask — that's a valid
+        themeable state.
+        """
+        import shutil
+
+        override = s.mask_path
+        if override:
+            src = Path(override)
+            if src.is_file():
+                surface = app.renderer.open_image(src)
+                dst = target / "01.png"
+                dst.write_bytes(app.renderer.encode_png(surface))
+                log.info("SaveTheme: mask override → %s", dst)
+                return
+            log.warning(
+                "SaveTheme: mask override %s does not exist; "
+                "falling back to source theme mask", src,
+            )
+
+        src_mask = app.themes.mask_path(theme)
+        if src_mask is None:
+            log.info("SaveTheme: no mask to save (neither override nor source)")
+            return
+        shutil.copy2(src_mask, target / "01.png")
+        log.info("SaveTheme: source mask → 01.png")
+
+    def _write_dc(
+        self,
+        target: Path,
+        theme: Theme,
+        s: DeviceSettings,
+    ) -> None:
+        """Assemble + write the new theme's ``config1.dc``.
+
+        Element precedence matches the runtime ``_build_overlay``:
+
+          * If ``mask_overlay_elements`` is set, those REPLACE the
+            source theme's elements (mask DC owns the layout).
+          * ``user_overlay_elements`` always layered on top, baked in
+            via ``Dc.File.write(..., user_overlay_elements=...)``.
+
+        Base config (overlay_enabled, rotation, mask_position,
+        background_display, transparent_display) comes from the source
+        theme's DC when present — otherwise sensible defaults.
+        """
+        from ..services import _dc as Dc
+
+        source_dc = theme.path / "config1.dc"
+        if source_dc.is_file():
+            try:
+                base_cfg = Dc.File(source_dc).read()
+            except ThemeError as e:
+                log.warning(
+                    "SaveTheme: source DC unreadable (%s); writing fresh DC", e,
+                )
+                base_cfg = {"overlay_enabled": True, "elements": []}
+        else:
+            base_cfg = {"overlay_enabled": True, "elements": []}
+
+        # Mask DC layout (when active) replaces theme elements.
+        if s.mask_overlay_elements is not None:
+            mask_dicts = [e.to_dict() for e in s.mask_overlay_elements]
+            base_cfg = {**base_cfg, "elements": mask_dicts}
+            log.info("SaveTheme: DC elements ← mask layout (%d element(s))",
+                     len(mask_dicts))
+
+        user_dicts = [e.to_dict() for e in s.user_overlay_elements]
+        if user_dicts:
+            log.info("SaveTheme: baking %d user overlay element(s)",
+                     len(user_dicts))
+
+        Dc.File(target / "config1.dc").write(
+            base_cfg, user_overlay_elements=user_dicts,
+        )
+
+    def _copy_metadata_files(self, target: Path, theme: Theme) -> None:
+        """Copy non-asset source files (``Theme.png`` thumbnail, ``trcc.json``).
+
+        These don't carry user state and aren't override-able, so the
+        saved theme inherits whatever the source has.  Skipped silently
+        when absent.
+        """
+        import shutil
+
+        for name in ("Theme.png", "trcc.json", "config.json"):
+            src = theme.path / name
+            if src.is_file():
+                shutil.copy2(src, target / name)
 
 
 @dataclass(frozen=True, slots=True)
