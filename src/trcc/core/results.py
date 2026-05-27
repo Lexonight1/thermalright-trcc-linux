@@ -56,6 +56,64 @@ class RenderResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class SensorInfoEntry:
+    """Descriptor-only view of a sensor — no value, just identity."""
+    sensor_id: str
+    category: str
+    unit: str
+    label: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SensorsListResult(Result):
+    """Result of :class:`ListSensors` — every sensor the enumerator knows.
+
+    Distinct from :class:`SensorsResult` which carries fresh values.
+    Use this for UIs that need to populate a sensor-picker dropdown
+    without paying the polling cost on every refresh.
+    """
+    sensors: list[SensorInfoEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class EnsureDataDownloadResult(Result):
+    """Forced theme/web/mask archive install for a resolution."""
+    width: int = 0
+    height: int = 0
+    themes_ok: bool = False
+    web_ok: bool = False
+    masks_ok: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ExportConfigResult(Result):
+    """Per-device JSON snapshot written to disk."""
+    key: str = ""
+    output_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ImportConfigResult(Result):
+    """Per-device JSON snapshot restored from disk."""
+    key: str = ""
+    input_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RenderDcResult(Result):
+    """Stand-alone DC render output (overlay preview, no device).
+
+    ``output_path`` is the on-disk PNG when the caller asked for a
+    file; empty string when the result came back in-memory.
+    ``element_count`` reports how many elements the DC parser found.
+    """
+    output_path: str = ""
+    width: int = 0
+    height: int = 0
+    element_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class ThemeResult(Result):
     key: str = ""
     theme_name: str = ""
@@ -214,6 +272,11 @@ class GpuDeviceResult(Result):
 @dataclass(frozen=True, slots=True)
 class RefreshIntervalResult(Result):
     seconds: float = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveDeviceResult(Result):
+    active_device: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

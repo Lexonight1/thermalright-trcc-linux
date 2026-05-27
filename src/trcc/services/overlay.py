@@ -30,6 +30,53 @@ class OverlayService:
     def __init__(self, renderer: Renderer) -> None:
         self._r = renderer
 
+    @classmethod
+    def render_dc_standalone(
+        cls,
+        *,
+        renderer: Renderer,
+        dc_path: Path,
+        width: int,
+        height: int,
+        sensors: dict[str, float] | None = None,
+        clock: dict[str, str] | None = None,
+        temp_unit: str = "C",
+    ) -> tuple[Any, int, dict[str, Any]]:
+        """Render a DC config standalone — solid-black background.
+
+        For CLI/API ``overlay`` previews of a DC file without disturbing
+        an active device.  Reads ``config1.dc`` (or the directory's
+        sibling file), creates a fresh black ``width × height`` surface,
+        composites every parsed element onto it.
+
+        Returns ``(image, element_count, parsed_dc)`` — the parsed DC
+        dict is handed back so callers can inspect rotation /
+        background_display / mask_position without re-parsing.
+
+        ``sensors`` defaults to empty (metric elements render their
+        format string with ``0.0``); ``clock`` defaults to ``None``
+        (clock elements skipped — same behaviour as ``render`` when
+        clock is missing).
+        """
+        dc_file = dc_path / _DC_CONFIG_FILE if dc_path.is_dir() else dc_path
+        parsed = Dc.File(dc_file).read()
+        config: dict[str, Any] = {
+            "overlay_enabled": True,
+            "elements": parsed.get("elements", []),
+        }
+        base = renderer.create_surface(width, height, color=(0, 0, 0))
+        image = cls(renderer).render(
+            base, config,
+            sensors=sensors or {},
+            clock=clock,
+            temp_unit=temp_unit,
+        )
+        log.info(
+            "render_dc_standalone: %s -> %dx%d, %d element(s)",
+            dc_file, width, height, len(config["elements"]),
+        )
+        return image, len(config["elements"]), parsed
+
     @staticmethod
     def calculate_mask_position(
         mask_dir: Path,

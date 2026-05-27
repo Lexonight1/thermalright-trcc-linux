@@ -15,7 +15,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 from .errors import (
     DeviceDisconnectedError,
@@ -24,6 +24,7 @@ from .errors import (
     HandshakeError,
     ThemeError,
     TransportError,
+    TrccError,
 )
 from .events import (
     BackgroundChanged,
@@ -61,6 +62,7 @@ from .led_models import LEDMode, LedRuntimeState
 from .models import FitMode, OverlayElement
 from .registry import find_product
 from .results import (
+    ActiveDeviceResult,
     AutostartResult,
     BackgroundModeResult,
     BackgroundResult,
@@ -82,6 +84,8 @@ from .results import (
     DiskIndexResult,
     DisksListResult,
     DoctorResultPayload,
+    EnsureDataDownloadResult,
+    ExportConfigResult,
     FileEntry,
     FirstRunStatusResult,
     FitModeResult,
@@ -92,6 +96,7 @@ from .results import (
     HddEnabledResult,
     HealthCheckEntry,
     HealthReportResult,
+    ImportConfigResult,
     KeepaliveResult,
     LanguageEntry,
     LanguageResult,
@@ -121,11 +126,14 @@ from .results import (
     QuickstartResult,
     QuickstartStepEntry,
     RefreshIntervalResult,
+    RenderDcResult,
     RenderResult,
     Result,
     ScreencastResult,
     SeekVideoResult,
     SendResult,
+    SensorInfoEntry,
+    SensorsListResult,
     SensorsResult,
     SetupResult,
     SlideshowResult,
@@ -408,7 +416,79 @@ class SendColor(Command[SendResult]):
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key, bytes_sent=bytes_sent,
-            message=(f"Sent {bytes_sent} bytes (#{self.r:02x}{self.g:02x}{self.b:02x})"
+            message=(f"Sent {bytes_sent} bytes "
+                     f"(#{self.r:02x}{self.g:02x}{self.b:02x})"
+                     if ok else "Send returned False"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SendImage(Command[SendResult]):
+    """Push an image file to the LCD without staging it as a theme.
+
+    Distinct from :class:`LoadImage` — that materialises a single-image
+    theme directory under ``user_content_dir/single-image/`` and
+    updates ``DeviceSettings.current_theme``.  ``SendImage`` is the
+    no-persist variant: open, resize, encode, send — once, no theme,
+    no settings mutation.  Used by API/CLI ``send-image`` uploads where
+    the caller wants ephemeral display (boot logos, splash screens,
+    quick previews).
+
+    Acceptable extensions: PNG / JPG / JPEG / BMP / WEBP.  Honors
+    per-device brightness + orientation + device-side rotation via
+    ``DisplayService.build_image_frame``.
+    """
+    key: str
+    path: Path
+
+    def execute(self, app: App) -> SendResult:
+        log.info("SendImage: key=%s path=%s", self.key, self.path)
+        if not self.path.is_file():
+            return SendResult(
+                ok=False, key=self.key, bytes_sent=0,
+                message=f"Image file not found: {self.path}",
+            )
+        if self.path.suffix.lower() not in _IMAGE_EXTS:
+            return SendResult(
+                ok=False, key=self.key, bytes_sent=0,
+                message=(
+                    f"Unsupported image extension {self.path.suffix!r}; "
+                    f"supported: {', '.join(sorted(_IMAGE_EXTS))}"
+                ),
+            )
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=str(e))
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+
+        try:
+            frame = app.display.build_image_frame(
+                info=device.info, path=self.path, profile=device.profile,
+            )
+            ok = device.send(frame)
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="transport", key=self.key,
+            ))
+            _publish_if_disconnect(app, self.key, e)
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=str(e))
+        except TrccError as e:
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=str(e))
+
+        bytes_sent = len(frame) if ok else 0
+        if ok:
+            app.keepalive.store(self.key, frame)
+            app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
+        return SendResult(
+            ok=ok, key=self.key, bytes_sent=bytes_sent,
+            message=(f"Sent {bytes_sent} bytes from {self.path.name}"
                      if ok else "Send returned False"),
         )
 
@@ -482,6 +562,78 @@ class RenderAndSend(Command[RenderResult]):
             bytes_sent=len(frame), theme_name=theme.name,
             message=(f"Rendered + sent {len(frame)} bytes"
                      if ok else "Render built frame but send returned False"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RenderDcStandalone(Command[RenderDcResult]):
+    """Render a DC config standalone — no active device, no theme load.
+
+    Used by theme-developer previews (``trcc display overlay``) and
+    API ``POST /display/render-dc`` to see what a ``config1.dc`` would
+    look like against a solid-black background at an explicit
+    resolution.  Writes the result as PNG to ``output_path`` so it's
+    inspectable in any image viewer.  ``output_path`` is required —
+    callers that want bytes-in-result subscribe to the future API
+    streaming variant instead.
+
+    Sensors come from the platform's enumerator so metric elements
+    show live values; clock elements use the current wall clock.
+    """
+    dc_path: Path
+    output_path: Path
+    width: int = 320
+    height: int = 320
+
+    def execute(self, app: App) -> RenderDcResult:
+        from ..services.overlay import OverlayService
+
+        log.info(
+            "RenderDcStandalone: dc=%s out=%s size=%dx%d",
+            self.dc_path, self.output_path, self.width, self.height,
+        )
+        if self.width <= 0 or self.height <= 0:
+            return RenderDcResult(
+                ok=False, output_path=str(self.output_path),
+                width=self.width, height=self.height,
+                message=(f"invalid render size {self.width}x{self.height} "
+                         "(both dimensions must be > 0)"),
+            )
+        try:
+            readings = {r.sensor_id: r.value for r in app.platform.sensors().discover()}
+        except Exception:
+            log.debug("RenderDcStandalone: sensor read failed", exc_info=True)
+            readings = {}
+        try:
+            image, count, _parsed = OverlayService.render_dc_standalone(
+                renderer=app.renderer,
+                dc_path=self.dc_path,
+                width=self.width, height=self.height,
+                sensors=readings,
+            )
+        except ThemeError as e:
+            return RenderDcResult(
+                ok=False, output_path=str(self.output_path),
+                width=self.width, height=self.height,
+                message=f"DC parse failed: {e}",
+            )
+        png = app.renderer.encode_png(image)
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            self.output_path.write_bytes(png)
+        except OSError as e:
+            return RenderDcResult(
+                ok=False, output_path=str(self.output_path),
+                width=self.width, height=self.height,
+                element_count=count,
+                message=f"Render OK but write failed: {e}",
+            )
+        return RenderDcResult(
+            ok=True, output_path=str(self.output_path),
+            width=self.width, height=self.height,
+            element_count=count,
+            message=(f"Rendered {count} element(s) to "
+                     f"{self.output_path} ({self.width}x{self.height})"),
         )
 
 
@@ -775,6 +927,54 @@ class SaveTheme(Command[ThemeResult]):
                 message=f"failed to copy theme: {e}",
             )
 
+        # Bake the device's user_overlay_elements into the target's DC.
+        # Without this, the saved theme is a byte-identical copy of the
+        # source — user customisations live in DeviceSettings (per-device
+        # Settings, not in the theme's config1.dc), so they'd never
+        # round-trip when the saved theme is re-loaded.
+        device_settings = app.settings.for_device(self.key)
+        user_elements = [e.to_dict() for e in device_settings.user_overlay_elements]
+        baked = False
+        if user_elements:
+            target_dc = target / "config1.dc"
+            if target_dc.is_file():
+                try:
+                    from ..services import _dc as Dc
+                    cfg = Dc.File(target_dc).read()
+                    Dc.File(target_dc).write(
+                        cfg, user_overlay_elements=user_elements,
+                    )
+                    log.info(
+                        "SaveTheme: baked %d user overlay element(s) into %s",
+                        len(user_elements), target_dc,
+                    )
+                    baked = True
+                except ThemeError as e:
+                    log.warning(
+                        "SaveTheme: copytree ok but DC rewrite failed (%s); "
+                        "saved theme will lack user overlay edits", e,
+                    )
+
+        # When edits got baked into the new theme, user_overlay_elements
+        # in DeviceSettings would now render TWICE if left in place
+        # (once via the baked DC, once via the live settings).  Clear them
+        # and re-point ``current_theme`` to the saved theme so the next
+        # render builds from the new base.  Skip on bake-failure paths
+        # (the original edits stay in DeviceSettings as a recovery hook).
+        if baked:
+            app.settings.set_user_overlay_elements(self.key, [])
+            app.settings.set_current_theme(self.key, str(target.resolve()))
+            # Headless callers (CLI/API one-shots, tests) may run without
+            # a Renderer attached — no scene cache to invalidate then.
+            try:
+                app.display.invalidate(self.key)
+            except RuntimeError:
+                pass
+            log.info(
+                "SaveTheme: cleared user_overlay_elements + re-pointed "
+                "current_theme to %s", target,
+            )
+
         app.events.publish(ThemeSaved(
             key=self.key, theme_name=self.name, path=str(target),
         ))
@@ -782,6 +982,126 @@ class SaveTheme(Command[ThemeResult]):
             ok=True, key=self.key, theme_name=self.name,
             message=f"theme saved as '{self.name}' at {target}",
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ExportConfig(Command[ExportConfigResult]):
+    """Write one device's ``DeviceSettings`` to a JSON file.
+
+    Distinct from :class:`ExportTheme`:
+      * ``ExportTheme`` zips a theme directory (background + DC +
+        masks) for sharing the theme assets.
+      * ``ExportConfig`` snapshots the user's per-device prefs (active
+        theme path, brightness, overlay edits, mask choice, fit mode,
+        format prefs, etc.) — for backup / migration between hosts.
+
+    Restore with :class:`ImportConfig`.  File format is the same shape
+    Settings persists internally; the JSON is intentionally human-
+    inspectable so reporters can paste it into issues.
+    """
+    key: str
+    output_path: Path
+
+    def execute(self, app: App) -> ExportConfigResult:
+        import json
+        log.info("ExportConfig: key=%s output=%s", self.key, self.output_path)
+        try:
+            snapshot = app.settings.snapshot_device(self.key)
+        except Exception as e:
+            log.warning("ExportConfig: snapshot failed for %s: %s", self.key, e)
+            return ExportConfigResult(
+                ok=False, key=self.key, output_path=str(self.output_path),
+                message=f"snapshot failed: {e}",
+            )
+        payload = {
+            "version": 1,
+            "key": self.key,
+            "device": snapshot,
+        }
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.output_path.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, default=_json_default_tuple)
+        except OSError as e:
+            return ExportConfigResult(
+                ok=False, key=self.key, output_path=str(self.output_path),
+                message=f"write failed: {e}",
+            )
+        return ExportConfigResult(
+            ok=True, key=self.key, output_path=str(self.output_path),
+            message=(f"exported {self.key} config to {self.output_path}"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ImportConfig(Command[ImportConfigResult]):
+    """Restore one device's ``DeviceSettings`` from an :class:`ExportConfig` JSON.
+
+    Atomic — replaces the named device's entire settings dataclass.
+    Tolerant of older snapshot versions (unknown fields ignored;
+    missing fields fall back to dataclass defaults).
+
+    Refuses to import when the file's ``key`` field doesn't match the
+    target key — prevents accidental cross-device clobber.  Pass the
+    explicit ``--force`` at the caller edge if migration across keys
+    is intentional (caller responsibility, not Command).
+    """
+    key: str
+    input_path: Path
+
+    def execute(self, app: App) -> ImportConfigResult:
+        import json
+        log.info("ImportConfig: key=%s input=%s", self.key, self.input_path)
+        if not self.input_path.is_file():
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message=f"file not found: {self.input_path}",
+            )
+        try:
+            with self.input_path.open("r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except (OSError, ValueError) as e:
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message=f"failed to parse JSON: {e}",
+            )
+        if not isinstance(payload, dict):
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message="config root must be an object",
+            )
+        snapshot_key = payload.get("key")
+        if snapshot_key and snapshot_key != self.key:
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message=(f"key mismatch: snapshot is for {snapshot_key!r}, "
+                         f"target is {self.key!r}"),
+            )
+        device_snapshot = payload.get("device")
+        if not isinstance(device_snapshot, dict):
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message="missing 'device' object in snapshot",
+            )
+        try:
+            app.settings.restore_device(self.key, device_snapshot)
+        except Exception as e:
+            log.warning("ImportConfig: restore failed for %s: %s", self.key, e)
+            return ImportConfigResult(
+                ok=False, key=self.key, input_path=str(self.input_path),
+                message=f"restore failed: {e}",
+            )
+        return ImportConfigResult(
+            ok=True, key=self.key, input_path=str(self.input_path),
+            message=f"restored {self.key} config from {self.input_path}",
+        )
+
+
+def _json_default_tuple(obj: Any) -> Any:
+    """tuple → list for JSON serialisation (no other coercions)."""
+    if isinstance(obj, tuple):
+        return list(obj)
+    raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2018,6 +2338,34 @@ class SetLedColors(Command[LedColorsResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class InitializeLed(Command[LedColorsResult]):
+    """Connect + render one initial LED frame in a single dispatch.
+
+    Convenience for the LED boot path — equivalent to ``ConnectDevice``
+    followed by ``RenderLed``, but wrapped so headless callers (CLI
+    autorestore, daemon startup) don't have to chain two Commands and
+    handle the intermediate Result.  Failures at either step surface
+    as the LED Result so the caller only inspects one shape.
+
+    Distinct from :class:`RenderLed` (assumes already-connected) and
+    :class:`ConnectDevice` (handshakes but doesn't render).  Use this
+    on app start; use the individual Commands when you need finer
+    control over each step.
+    """
+    key: str
+
+    def execute(self, app: App) -> LedColorsResult:
+        log.info("InitializeLed: key=%s", self.key)
+        connect_result = ConnectDevice(key=self.key).execute(app)
+        if not connect_result.ok:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=[],
+                message=f"connect failed: {connect_result.message}",
+            )
+        return RenderLed(key=self.key).execute(app)
+
+
+@dataclass(frozen=True, slots=True)
 class RenderLed(Command[LedColorsResult]):
     """Compute one LED frame from current settings + sensors and send it.
 
@@ -2998,6 +3346,28 @@ class PauseVideo(Command[PauseVideoResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class ToggleVideo(Command[PauseVideoResult]):
+    """Flip video playback between paused / playing — single-verb helper.
+
+    Reads the current pause state and dispatches the inverse via
+    :class:`PauseVideo`.  Useful for spacebar-style keybinds in the
+    GUI / single-button CLI scripts where the caller doesn't know
+    (or care) whether the video is currently paused.
+    """
+    key: str
+
+    def execute(self, app: App) -> PauseVideoResult:
+        playback = app.media.playback(self.key)
+        if playback is None:
+            return PauseVideoResult(
+                ok=False, key=self.key, paused=False,
+                message=f"No active video playback for {self.key}",
+            )
+        new_state = not playback.paused
+        return PauseVideo(key=self.key, paused=new_state).execute(app)
+
+
+@dataclass(frozen=True, slots=True)
 class SeekVideo(Command[SeekVideoResult]):
     """Jump the playback cursor to a specific frame."""
     key: str
@@ -3575,6 +3945,45 @@ class ListCloudThemes(Command[CloudThemesListResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class EnsureDataDownload(Command[EnsureDataDownloadResult]):
+    """Force-install the theme + cloud + mask archives for a resolution.
+
+    The DataInstaller is normally invoked implicitly by
+    :class:`DiscoverDevices` (it ensures every attached device's
+    resolution).  This Command exposes the same machinery for users
+    who want to **pre-fetch** before connecting — e.g. populating a
+    laptop's cache while still online so a headless display setup
+    works offline later.
+
+    Idempotent: archives already on disk are skipped.  Non-square
+    resolutions also install the rotated counterpart for portrait /
+    landscape switching.
+    """
+    width: int
+    height: int
+
+    def execute(self, app: App) -> EnsureDataDownloadResult:
+        log.info("EnsureDataDownload: %dx%d", self.width, self.height)
+        if self.width <= 0 or self.height <= 0:
+            return EnsureDataDownloadResult(
+                ok=False, width=self.width, height=self.height,
+                message=(f"invalid resolution {self.width}x{self.height} "
+                         "(both dimensions must be > 0)"),
+            )
+        result = app.data_install.ensure_all((self.width, self.height))
+        return EnsureDataDownloadResult(
+            ok=result.ok,
+            width=self.width, height=self.height,
+            themes_ok=result.themes_ok,
+            web_ok=result.web_ok,
+            masks_ok=result.masks_ok,
+            message=(f"{self.width}x{self.height} ready" if result.ok else
+                     f"partial install: themes={result.themes_ok} "
+                     f"web={result.web_ok} masks={result.masks_ok}"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LoadCloudTheme(Command[CloudThemeLoadResult]):
     """Download a cloud video and apply it as the device's background.
 
@@ -3730,6 +4139,37 @@ class ReadSensors(Command[SensorsResult]):
             ok=True,
             message=f"{len(readings)} sensor(s)",
             readings=readings,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ListSensors(Command[SensorsListResult]):
+    """Enumerate every sensor the platform knows — descriptors only.
+
+    Distinct from :class:`ReadSensors` which carries fresh values.
+    Use this for sensor-picker dropdowns / API discovery endpoints
+    that only need ``(sensor_id, category, unit, label)`` and don't
+    want to pay the polling cost.  No personalisation: returns the
+    raw sensor identity regardless of user prefs (hdd_enabled,
+    temp_unit) — those affect *values*, not which sensors exist.
+    """
+
+    def execute(self, app: App) -> SensorsListResult:
+        log.info("ListSensors.execute")
+        descriptors = app.platform.sensors().discover()
+        entries = [
+            SensorInfoEntry(
+                sensor_id=d.sensor_id,
+                category=d.category,
+                unit=d.unit,
+                label=d.label,
+            )
+            for d in descriptors
+        ]
+        return SensorsListResult(
+            ok=True,
+            sensors=entries,
+            message=f"{len(entries)} sensor(s) registered",
         )
 
 
@@ -4718,4 +5158,26 @@ class SetRefreshInterval(Command[RefreshIntervalResult]):
         return RefreshIntervalResult(
             ok=True, seconds=self.seconds,
             message=f"refresh interval set to {self.seconds:.2f}s",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetActiveDevice(Command[ActiveDeviceResult]):
+    """Persist the user's currently-selected device key.
+
+    Used by multi-device UIs (CLI ``device select``, GUI sidebar
+    switch) to remember which device the user last steered.  Passing
+    ``None`` clears the selection.  No device-side effect — just app
+    state.  Callers resolve any ordinal-to-key mapping at their edge
+    before dispatch.
+    """
+    key: str | None
+
+    def execute(self, app: App) -> ActiveDeviceResult:
+        log.info("SetActiveDevice.execute: key=%r", self.key)
+        app.settings.set_active_device(self.key)
+        return ActiveDeviceResult(
+            ok=True, active_device=self.key,
+            message=("active device cleared" if self.key is None
+                     else f"active device set to {self.key}"),
         )

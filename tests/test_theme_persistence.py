@@ -273,6 +273,140 @@ def test_save_theme_publishes_event(
     assert events[0].theme_name == "ok-name"
 
 
+def _write_theme_with_dc(directory: Path, name: str = "withdc",
+                          width: int = 320, height: int = 320) -> Path:
+    """Theme dir with a real ``config1.dc`` so SaveTheme's bake path fires."""
+    from trcc.services import _dc as Dc
+
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True)
+    config = {"name": name, "width": width, "height": height, "elements": []}
+    (theme_dir / "trcc.json").write_text(
+        json.dumps(config, indent=2), encoding="utf-8",
+    )
+    (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    # Original DC has one theme-bundled clock element.
+    Dc.File(theme_dir / "config1.dc").write({
+        "overlay_enabled": True,
+        "elements": [{
+            "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
+            "size": 24, "bold": False, "italic": False, "source": "time",
+        }],
+    })
+    return theme_dir
+
+
+def test_save_theme_bakes_user_overlay_elements_into_target_dc(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """SaveTheme must persist user_overlay_elements into the new theme's DC.
+
+    Without this the saved theme is a byte-identical copy of the source —
+    the user's customisations live in DeviceSettings, never in the
+    theme's config1.dc, so they don't round-trip when the saved theme
+    is re-loaded.  Reported by the user 2026-05-26 ("when i save a
+    custom theme it always saves as local theme1").
+    """
+    from trcc.core.models import OverlayElement
+    from trcc.services import _dc as Dc
+
+    # Source theme has one clock element baked into its DC.
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    # User adds a custom text element to the device's overlay layer.
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="user_text_1", type="text",
+            x=50, y=50, color="#ff8800", size=18,
+            bold=True, italic=False, text="CUSTOM",
+        ),
+    )
+
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="my-edits"))
+    assert result.ok is True
+
+    saved_dc = user_theme_dir / "my-edits" / "config1.dc"
+    assert saved_dc.is_file()
+    parsed = Dc.File(saved_dc).read()
+    elements = parsed["elements"]
+    # Original theme clock + user text element should both be present.
+    types = [e["type"] for e in elements]
+    assert "clock" in types
+    assert "text" in types
+    user_text = next(e for e in elements if e["type"] == "text")
+    assert user_text["text"] == "CUSTOM"
+    assert user_text["color"] == "#ff8800"
+    assert user_text["x"] == 50 and user_text["y"] == 50
+
+
+def test_save_theme_without_user_edits_leaves_dc_unchanged(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """No user_overlay_elements → DC bake path is a no-op."""
+    from trcc.services import _dc as Dc
+
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="no-edits"))
+
+    saved_dc = user_theme_dir / "no-edits" / "config1.dc"
+    parsed = Dc.File(saved_dc).read()
+    # Exactly the one original element, nothing baked in.
+    assert len(parsed["elements"]) == 1
+    assert parsed["elements"][0]["type"] == "clock"
+
+
+def test_save_theme_clears_user_overlay_after_bake(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Successful bake → user_overlay_elements in DeviceSettings cleared.
+
+    Otherwise the baked elements would render TWICE on next theme load
+    (once from the DC, once from live DeviceSettings).
+    """
+    from trcc.core.models import OverlayElement
+
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="ed1", type="text", x=10, y=10, color="#fff",
+            size=12, bold=False, italic=False, text="hi",
+        ),
+    )
+    assert len(app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements) == 1
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="clear-test"))
+
+    assert app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements == []
+
+
+def test_save_theme_repoints_current_theme(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Successful save → DeviceSettings.current_theme points at the saved dir."""
+    from trcc.core.models import OverlayElement
+
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="ed1", type="text", x=5, y=5, color="#fff",
+            size=10, bold=False, italic=False, text="x",
+        ),
+    )
+
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="repoint-test"))
+
+    expected = str((user_theme_dir / "repoint-test").resolve())
+    assert app.settings.for_device(_TEST_DEVICE_KEY).current_theme == expected
+
+
 # ─────────────────────────────────────────────────────────────────────
 # ExportTheme Command
 # ─────────────────────────────────────────────────────────────────────

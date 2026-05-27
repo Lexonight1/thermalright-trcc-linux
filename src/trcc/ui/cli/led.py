@@ -5,6 +5,7 @@ import typer
 
 from ...core.commands import (
     EnableLedTestMode,
+    InitializeLed,
     LedSnapshot,
     ListLedModes,
     ListLedStyles,
@@ -18,7 +19,9 @@ from ...core.commands import (
     SetLedLoadSource,
     SetLedMode,
     SetLedTempSource,
+    SetLedZoneBrightness,
     SetLedZoneColor,
+    SetLedZoneMode,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
     SetMemoryRatio,
@@ -211,6 +214,38 @@ def zone_color(
         raise typer.Exit(code=1)
 
 
+@app.command("zone-mode")
+def zone_mode(
+    key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
+    zone: int = typer.Argument(..., help="Zone index (0-based)"),
+    mode: str = typer.Argument(
+        ..., help="One of: static, breathing, colorful, rainbow, temp_linked, load_linked",
+    ),
+) -> None:
+    """Set one zone's persistent animation mode."""
+    result = get_app().dispatch(
+        SetLedZoneMode(key=key, zone=zone, mode=_parse_mode(mode)),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("zone-brightness")
+def zone_brightness(
+    key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
+    zone: int = typer.Argument(..., help="Zone index (0-based)"),
+    percent: int = typer.Argument(..., min=0, max=100, help="Brightness 0-100"),
+) -> None:
+    """Set one zone's persistent brightness."""
+    result = get_app().dispatch(
+        SetLedZoneBrightness(key=key, zone=zone, percent=percent),
+    )
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @app.command("zone-sync")
 def zone_sync(
     key: str = typer.Argument(..., help="LED device key"),
@@ -351,6 +386,48 @@ def disk_index(
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("initialize")
+def initialize(
+    key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
+) -> None:
+    """Connect + render one initial frame in a single dispatch.
+
+    Convenience for boot scripts — equivalent to ``device connect``
+    followed by ``led render``, but in one Command so the caller only
+    inspects one Result.  Use this on app start; use the individual
+    commands for finer control.
+    """
+    result = get_app().dispatch(InitializeLed(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("test-led")
+def test_led(
+    key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
+) -> None:
+    """Print an ANSI true-color preview of the LED zones in the terminal.
+
+    Reads the current zone color list from :class:`LedSnapshot` and
+    paints each zone as a coloured square — handy for visualising
+    multi-zone strips during headless debugging.
+    """
+    from ...services._ansi import zones_to_ansi
+
+    result = get_app().dispatch(LedSnapshot(key=key))
+    if not result.ok:
+        typer.echo(result.message, err=True)
+        raise typer.Exit(code=1)
+    # LedSnapshotResult has `color: tuple[int, int, int]` for the
+    # global LED + (optional) per-zone breakdown.  zones_to_ansi
+    # accepts a list; build it from whatever per-zone state exists.
+    zone_colors = getattr(result, "zone_colors", None) or [result.color]
+    typer.echo(zones_to_ansi(zone_colors))
+    typer.echo(f"  ({len(zone_colors)} zone(s), mode={result.mode}, "
+               f"brightness={result.brightness}%)")
 
 
 @app.command("snapshot")

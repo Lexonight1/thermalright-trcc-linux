@@ -24,9 +24,11 @@ from ...core.commands import (
     PauseVideo,
     PlayVideo,
     RenderAndSend,
+    RenderDcStandalone,
     RestoreLastTheme,
     SeekVideo,
     SendColor,
+    SendImage,
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
@@ -36,7 +38,10 @@ from ...core.commands import (
     SetOverlayBackground,
     SetSlideshow,
     SetSplitMode,
+    StartScreencast,
+    StopScreencast,
     StopVideo,
+    ToggleVideo,
     UpdateOverlayElement,
     UploadBootAnimation,
     UploadCustomMask,
@@ -441,6 +446,17 @@ def pause_video(
         raise typer.Exit(code=1)
 
 
+@app.command("toggle-video")
+def toggle_video(
+    key: str = typer.Argument(..., help="Device key"),
+) -> None:
+    """Flip video playback between paused / playing (single-verb helper)."""
+    result = get_app().dispatch(ToggleVideo(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @app.command("seek-video")
 def seek_video(
     key: str = typer.Argument(..., help="Device key"),
@@ -801,6 +817,186 @@ def resume(
         )
         raise typer.Exit(code=1)
     typer.echo(f"Resumed {sent} device(s).")
+
+
+@app.command("test")
+def test(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    seconds: float = typer.Option(
+        1.0, "--seconds", "-s", min=0.1,
+        help="Hold each color for this many seconds.",
+    ),
+) -> None:
+    """Color-cycle the LCD: red → green → blue → black.
+
+    Smallest end-to-end exercise of the wire chain.  Useful when
+    porting a new device class to confirm handshake → frame build →
+    USB send all work before fighting overlay/theme bugs.
+    """
+    import time
+
+    app_obj = get_app()
+    sequence = (
+        ("red",   (0xFF, 0x00, 0x00)),
+        ("green", (0x00, 0xFF, 0x00)),
+        ("blue",  (0x00, 0x00, 0xFF)),
+        ("black", (0x00, 0x00, 0x00)),
+    )
+    for name, (r, g, b) in sequence:
+        typer.echo(f"  {name}...")
+        result = app_obj.dispatch(SendColor(key=key, r=r, g=g, b=b))
+        if not result.ok:
+            typer.echo(result.message, err=True)
+            raise typer.Exit(code=1)
+        time.sleep(seconds)
+    typer.echo("Color cycle complete.")
+
+
+@app.command("test-lcd")
+def test_lcd(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    cols: int = typer.Option(
+        60, "--cols", "-c", min=10, max=200,
+        help="Width of the ANSI preview in terminal cells.",
+    ),
+) -> None:
+    """Print an ANSI true-color preview of the LCD's current render.
+
+    Same pipeline as ``display play`` but stops at the renderer
+    surface — no wire send.  Useful for headless / sshell debugging
+    where you can't see the physical device.
+    """
+    from ...services._ansi import image_to_ansi
+    from ...services._clock import compute_clock
+
+    app_obj = get_app()
+    try:
+        device = app_obj.devices[key]
+    except KeyError:
+        typer.echo(f"Device {key} not attached", err=True)
+        raise typer.Exit(code=1) from None
+
+    theme = app_obj.active_themes.get(key)
+    if theme is None:
+        typer.echo(f"No active theme on {key} — load one first", err=True)
+        raise typer.Exit(code=1)
+
+    enum = app_obj.platform.sensors()
+    sensors = enum.read_all()
+    del compute_clock  # build_preview_surface computes its own clock
+    surface = app_obj.display.build_preview_surface(
+        device.info, theme, sensors, profile=device.profile,
+    )
+    typer.echo(image_to_ansi(app_obj.renderer, surface, cols=cols))
+
+
+@app.command("send-image")
+def send_image(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    path: Path = typer.Argument(
+        ..., help="Image file (PNG/JPG/BMP/WEBP)",
+        exists=True, file_okay=True, dir_okay=False,
+    ),
+) -> None:
+    """Push an image to the LCD once — no theme staging, no persistence.
+
+    Companion to ``load-image`` (which materialises a single-image
+    theme and persists ``DeviceSettings.current_theme``).  Use this
+    when you want ephemeral display: boot logos, quick previews, API
+    upload pipelines.
+    """
+    result = get_app().dispatch(SendImage(key=key, path=path))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("overlay-render")
+def overlay_render(
+    dc_path: Path = typer.Argument(
+        ..., help="DC file or theme directory containing config1.dc",
+    ),
+    output: Path = typer.Option(
+        ..., "--output", "-o",
+        help="Output PNG path for the rendered preview.",
+    ),
+    width: int = typer.Option(
+        320, "--width", "-w", min=1, help="Render canvas width (px)",
+    ),
+    height: int = typer.Option(
+        320, "--height", "-h", min=1, help="Render canvas height (px)",
+    ),
+) -> None:
+    """Render a DC config to a PNG preview — no active device required.
+
+    Mirrors legacy ``trcc overlay`` — composites every element from
+    ``config1.dc`` onto a solid-black canvas at *width × height* and
+    writes the result as PNG.  Useful when iterating on a theme's
+    metric positions without unplugging the device or sending frames.
+    """
+    result = get_app().dispatch(RenderDcStandalone(
+        dc_path=dc_path, output_path=output,
+        width=width, height=height,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("screencast")
+def screencast(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    x: int = typer.Argument(..., help="Top-left X coordinate of capture region (px)"),
+    y: int = typer.Argument(..., help="Top-left Y coordinate of capture region (px)"),
+    w: int = typer.Argument(..., min=1, help="Capture region width (px)"),
+    h: int = typer.Argument(..., min=1, help="Capture region height (px)"),
+    audio: bool = typer.Option(
+        False, "--audio/--no-audio",
+        help="Pipe system audio alongside the video feed (Linux: PipeWire)",
+    ),
+) -> None:
+    """Stream a screen region to the LCD until interrupted.
+
+    Wraps :class:`StartScreencast` — the GUI ``ScreencastHandler``
+    subscriber drives the per-frame Qt capture timer.  Ctrl-C calls
+    :class:`StopScreencast` for clean teardown.
+    """
+    import signal
+
+    app_obj = get_app()
+    result = app_obj.dispatch(StartScreencast(
+        key=key, x=x, y=y, w=w, h=h, audio=audio,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Capturing on {key} — Ctrl-C to stop.")
+    stopped = {"flag": False}
+
+    def _handle(*_args: object) -> None:
+        stopped["flag"] = True
+
+    signal.signal(signal.SIGINT, _handle)
+    signal.signal(signal.SIGTERM, _handle)
+    while not stopped["flag"]:
+        signal.pause()
+
+    stop_result = app_obj.dispatch(StopScreencast(key=key))
+    typer.echo(stop_result.message)
+    if not stop_result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("stop-screencast")
+def stop_screencast(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Stop an active screencast started by another process (daemon/API)."""
+    result = get_app().dispatch(StopScreencast(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("snapshot")

@@ -209,6 +209,27 @@ def api(
     serve(host=host, port=port)
 
 
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind address"),
+    port: int = typer.Option(8080, "--port", "-p", help="Bind port"),
+    token: str | None = typer.Option(
+        None, "--token", "-t",
+        help="Same semantics as `trcc api --token` — see `trcc api --help`.",
+    ),
+    pair: bool = typer.Option(
+        False, "--pair",
+        help="Same semantics as `trcc api --pair` — see `trcc api --help`.",
+    ),
+) -> None:
+    """Alias for ``trcc api`` — launches the REST API + uvicorn.
+
+    The ``serve`` name matches legacy CLI ergonomics; ``api`` still
+    works for backwards-compat with existing scripts.
+    """
+    api(host=host, port=port, token=token, pair=pair)
+
+
 @app.command("daemon")
 def daemon() -> None:
     """Run the background daemon that owns USB + serves CLI/API clients.
@@ -234,8 +255,89 @@ def kill() -> None:
 
 
 @app.command("status")
-def status() -> None:
-    """Report whether the daemon is currently reachable."""
+def status(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit JSON instead of human text.",
+    ),
+) -> None:
+    """Show unified app + LCD + LED state.
+
+    Composes :class:`ControlCenterSnapshot` (app prefs) with per-device
+    :class:`LcdSnapshot` / :class:`LedSnapshot` — one round-trip for "what
+    state is everything in right now?".  Pass ``--json`` for scripts.
+    Use :command:`trcc daemon-status` for daemon reachability checks.
+    """
+    import dataclasses
+    import json
+
+    from ...core.commands import (
+        ControlCenterSnapshot,
+        DiscoverDevices,
+        LcdSnapshot,
+        LedSnapshot,
+    )
+    from ...core.models import Kind
+
+    app_obj = get_app()
+    app_snap = app_obj.dispatch(ControlCenterSnapshot())
+    discovery = app_obj.dispatch(DiscoverDevices())
+
+    lcd_keys = [p.key for p in discovery.products if p.kind != Kind.LED]
+    led_keys = [p.key for p in discovery.products if p.kind == Kind.LED]
+    lcd_snaps = [app_obj.dispatch(LcdSnapshot(key=k)) for k in lcd_keys]
+    led_snaps = [app_obj.dispatch(LedSnapshot(key=k)) for k in led_keys]
+
+    if json_output:
+        payload = {
+            "app": dataclasses.asdict(app_snap),
+            "lcd_devices": [dataclasses.asdict(s) for s in lcd_snaps],
+            "led_devices": [dataclasses.asdict(s) for s in led_snaps],
+        }
+        typer.echo(json.dumps(payload, default=str, indent=2))
+        return
+
+    typer.echo("─ App ─────────────────────────────────────────")
+    typer.echo(f"  language:         {app_snap.language}")
+    typer.echo(f"  temp unit:        {app_snap.temp_unit}")
+    typer.echo(f"  active device:    {app_snap.active_device}")
+    typer.echo(f"  active gpu:       {app_snap.active_gpu}")
+    typer.echo(f"  refresh interval: {app_snap.refresh_interval_s}s")
+
+    if not lcd_snaps and not led_snaps:
+        typer.echo("")
+        typer.echo("No devices connected.")
+        return
+
+    for i, s in enumerate(lcd_snaps):
+        typer.echo("")
+        typer.echo(f"─ LCD {i} [{lcd_keys[i]}] ─────────────────────────")
+        typer.echo(f"  orientation:      {s.orientation}")
+        typer.echo(f"  brightness:       {s.brightness}%")
+        typer.echo(f"  current theme:    {s.current_theme}")
+        typer.echo(f"  overlay enabled:  {s.overlay_enabled}")
+        typer.echo(f"  fit mode:         {s.fit_mode}")
+
+    for i, s in enumerate(led_snaps):
+        typer.echo("")
+        typer.echo(f"─ LED {i} [{led_keys[i]}] ─────────────────────────")
+        typer.echo(f"  mode:        {s.mode}")
+        typer.echo(
+            f"  color:       #{s.color[0]:02x}{s.color[1]:02x}{s.color[2]:02x}",
+        )
+        typer.echo(f"  brightness:  {s.brightness}%")
+        typer.echo(f"  global on:   {s.global_on}")
+        typer.echo(f"  zones:       {s.zone_count}")
+        typer.echo(f"  test mode:   {s.test_mode}")
+
+
+@app.command("daemon-status")
+def daemon_status() -> None:
+    """Report whether the background daemon socket is reachable.
+
+    Replaces the previous top-level ``status`` command, which conflated
+    daemon reachability with app state.  Use :command:`trcc status` for
+    the unified app + device snapshot.
+    """
     from ...ipc import daemon_running, socket_path
     if daemon_running():
         typer.echo(f"Daemon is running (socket: {socket_path()}).")

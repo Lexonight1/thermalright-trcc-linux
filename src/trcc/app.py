@@ -186,6 +186,20 @@ class App:
             )
         return self._display
 
+    @property
+    def renderer(self) -> Renderer:
+        """The injected ``Renderer`` port — for Commands that don't need DisplayService.
+
+        Stand-alone renderers (DC preview, overlay one-shots) talk to
+        the renderer directly without going through DisplayService's
+        scene cache.  Raises if no renderer is attached.
+        """
+        if self._renderer is None:
+            raise RuntimeError(
+                "Renderer unavailable — call App.set_renderer(...) first"
+            )
+        return self._renderer
+
     # ── Device lifecycle ──────────────────────────────────────────────
 
     def attach(self, vid: int, pid: int) -> Device:

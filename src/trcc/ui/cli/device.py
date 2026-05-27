@@ -8,6 +8,7 @@ from ...core.commands import (
     DisconnectDevice,
     DiscoverDevices,
     ResetDevice,
+    SetActiveDevice,
 )
 from ._ctx import get_app
 
@@ -50,6 +51,39 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
 def disconnect(key: str = typer.Argument(...)) -> None:
     """Close the transport and drop the device."""
     result = get_app().dispatch(DisconnectDevice(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("select")
+def select(
+    ordinal: int = typer.Argument(
+        ...,
+        help="1-based ordinal of the attached device to mark active "
+             "(matches `device list` output)",
+    ),
+) -> None:
+    """Persist the active-device selection by ordinal.
+
+    Multi-device hosts (e.g. two LCDs + one LED controller) need a way
+    to point CLI commands at "the one I'm steering today".  Resolves
+    the ordinal against ``device list`` and stores the resulting key
+    in ``AppSettings.active_device``.
+    """
+    app_obj = get_app()
+    listing = app_obj.dispatch(DiscoverDevices())
+    if not listing.products:
+        typer.echo("No supported devices found.")
+        raise typer.Exit(code=1)
+    if ordinal < 1 or ordinal > len(listing.products):
+        typer.echo(
+            f"ordinal {ordinal} out of range (1-{len(listing.products)} "
+            f"attached)",
+        )
+        raise typer.Exit(code=1)
+    key = listing.products[ordinal - 1].key
+    result = app_obj.dispatch(SetActiveDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

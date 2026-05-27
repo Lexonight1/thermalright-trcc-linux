@@ -89,7 +89,14 @@ def _cutout_is_right_side(
 
 @dataclass
 class SceneCache:
-    """Two surfaces + the invalidation keys that govern them."""
+    """Two surfaces + the invalidation keys that govern them.
+
+    ``frame_key`` and ``frame_bytes`` cache the final wire-encoded
+    frame so a tick where nothing changed (cache HIT on bg+overlay
+    AND identical brightness/orientation/split/rotate) can return the
+    last frame directly — skipping composite + brightness + rotate +
+    encode entirely.
+    """
 
     # bg_mask layer
     bg_mask_surface: Any
@@ -98,6 +105,11 @@ class SceneCache:
     # overlay layer
     overlay_surface: Any
     overlay_key: tuple[Any, ...]       # (config_id, visual_size, sensor_tuple)
+
+    # Final wire-bytes cache — keyed on the full pipeline inputs so a
+    # tick with no changes returns identical bytes without re-encoding.
+    frame_key: tuple[Any, ...] | None = None
+    frame_bytes: bytes | None = None
 
 
 # =========================================================================
@@ -202,6 +214,25 @@ class DisplayService:
         # above; this only fires when the state actually changes.
         self._log_cache_transition(info.key, bg_hit, ovl_hit)
 
+        # Full-pipeline cache key: when every input that affects the
+        # final wire bytes matches the last tick, return the cached
+        # bytes directly.  Lifts the legacy ``OverlayService.would_change``
+        # optimisation (skip on no-op tick) up to the byte level.
+        frame_key = (
+            bg_key, overlay_key,
+            s.brightness, s.orientation, s.split_mode,
+            resolved_profile.rotate,
+            id(resolved_profile),
+        )
+        if (
+            scene is not None
+            and scene.frame_key == frame_key
+            and scene.frame_bytes is not None
+        ):
+            log.debug("build_frame %s: full-pipeline cache HIT (%d bytes)",
+                      info.key, len(scene.frame_bytes))
+            return scene.frame_bytes
+
         if scene is None or scene.bg_mask_key != bg_key:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
         else:
@@ -213,11 +244,6 @@ class DisplayService:
             )
         else:
             overlay_surface = scene.overlay_surface
-
-        self._scenes[info.key] = SceneCache(
-            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
-            overlay_surface=overlay_surface, overlay_key=overlay_key,
-        )
 
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
@@ -253,7 +279,13 @@ class DisplayService:
                       info.key)
             surface = self._r.rotate(surface, 90)
 
-        return self._encode_for_wire(surface, resolved_profile)
+        encoded = self._encode_for_wire(surface, resolved_profile)
+        self._scenes[info.key] = SceneCache(
+            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
+            overlay_surface=overlay_surface, overlay_key=overlay_key,
+            frame_key=frame_key, frame_bytes=encoded,
+        )
+        return encoded
 
     def build_preview_surface(
         self,
@@ -372,6 +404,42 @@ class DisplayService:
         if (
             self._r.surface_size(surface) != (target_w, target_h)
         ):
+            surface = self._r.resize(surface, target_w, target_h)
+
+        s = self._settings.for_device(info.key)
+        if s.brightness != 100:
+            surface = self._r.apply_brightness(surface, s.brightness)
+        if s.orientation:
+            surface = self._r.rotate(surface, 360 - s.orientation)
+        if resolved.rotate:
+            surface = self._r.rotate(surface, 90)
+
+        return self._encode_for_wire(surface, resolved)
+
+    def build_image_frame(
+        self,
+        *,
+        info: ProductInfo,
+        path: Path,
+        profile: DeviceProfile | None = None,
+    ) -> bytes:
+        """Encode an arbitrary image file for the device wire — no persistence.
+
+        Used by :class:`SendImage` Command + ``trcc display send-image``
+        CLI to push a one-off image without staging a theme (no
+        ``user_content_dir/single-image/`` directory created; no
+        ``DeviceSettings.background_path`` mutation).  Honors per-device
+        brightness + orientation + device-side rotation so the displayed
+        image matches the rest of the LCD's state.
+
+        Raises ``TrccError`` if the image can't be opened — caller
+        catches and returns a structured Result.
+        """
+        resolved = self._resolve_profile(info, profile)
+        target_w, target_h = resolved.resolution
+
+        surface = self._r.open_image(path)
+        if self._r.surface_size(surface) != (target_w, target_h):
             surface = self._r.resize(surface, target_w, target_h)
 
         s = self._settings.for_device(info.key)

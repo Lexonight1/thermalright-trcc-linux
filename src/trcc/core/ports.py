@@ -500,6 +500,24 @@ class Renderer(ABC):
         del surface
         raise NotImplementedError("encode_png not implemented on this Renderer")
 
+    def get_pixels_rgb(
+        self, surface: Any, cols: int, rows: int,
+    ) -> list[list[tuple[int, int, int]]]:
+        """Sample the surface into a ``rows × cols`` RGB grid.
+
+        Used by ANSI terminal previews (``trcc display test-lcd``) and
+        the future "screen LED" feature (sample LCD content → LED
+        zone colors).  The grid is row-major: ``out[y][x]`` is the
+        ``(r, g, b)`` for column *x* on row *y*.
+
+        Non-abstract — test fakes that don't exercise CLI ANSI
+        previews stay minimal.
+        """
+        del surface, cols, rows
+        raise NotImplementedError(
+            "get_pixels_rgb not implemented on this Renderer",
+        )
+
     # ── Legacy boundary (video frames) ────────────────────────────────
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...

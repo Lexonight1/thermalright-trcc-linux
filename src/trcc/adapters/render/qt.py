@@ -285,6 +285,36 @@ class QtRenderer(Renderer):
         qbuf.close()
         return bytes(qbuf.data().data())
 
+    def get_pixels_rgb(
+        self, surface: Any, cols: int, rows: int,
+    ) -> list[list[tuple[int, int, int]]]:
+        """Sample QImage into a ``rows × cols`` RGB grid.
+
+        Used by ANSI terminal previews + the future "screen LED"
+        feature.  Performs a smooth scale to the target grid so each
+        cell averages the underlying region (cheaper + visually
+        better than per-pixel sampling).
+        """
+        scaled = surface.scaled(
+            cols, rows,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if scaled.format() != QImage.Format.Format_RGB32:
+            scaled = scaled.convertToFormat(QImage.Format.Format_RGB32)
+        out: list[list[tuple[int, int, int]]] = []
+        for y in range(rows):
+            row_out: list[tuple[int, int, int]] = []
+            for x in range(cols):
+                pixel = scaled.pixel(x, y)
+                # QRgb is 0xAARRGGBB on all platforms.
+                r = (pixel >> 16) & 0xFF
+                g = (pixel >> 8) & 0xFF
+                b = pixel & 0xFF
+                row_out.append((r, g, b))
+            out.append(row_out)
+        return out
+
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
     def from_raw_rgb24(self, frame: RawFrame) -> Any:
