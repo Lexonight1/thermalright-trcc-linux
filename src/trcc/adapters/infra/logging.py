@@ -15,6 +15,7 @@ stacking duplicates).
 """
 from __future__ import annotations
 
+import inspect
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
@@ -23,8 +24,52 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 _HANDLER_TAG = "_trcc_next_handler"
-_LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+# ``name`` is the module logger; ``classname`` is injected by
+# ClassContextFilter; ``funcName``/``lineno`` come free on every record.
+# Result per line: ``trcc.core.commands.device:SetBrightness.execute:208``
+# — so any log line (including a bare error) pins the exact class +
+# method + line that emitted it, with no per-method annotation.
+_LOG_FORMAT = (
+    "%(asctime)s %(levelname)-7s "
+    "%(name)s:%(classname)s%(funcName)s:%(lineno)d: %(message)s"
+)
 _LOG_DATEFMT = "%Y-%m-%dT%H:%M:%S"
+
+
+class ClassContextFilter(logging.Filter):
+    """Inject the emitting method's class name into every record.
+
+    Python's ``LogRecord`` carries ``module`` / ``funcName`` / ``lineno``
+    for free but never the class.  This filter walks up to the frame
+    that actually called the logger (matched by ``funcName`` +
+    filename, exactly as ``logging`` itself locates the caller) and
+    reads ``self`` / ``cls`` from its locals, exposing the class as
+    ``record.classname`` (``"Class."`` or ``""`` for module-level
+    functions).  The formatter prints ``Class.method:line`` on every
+    line — the single-source alternative to annotating every method by
+    hand.
+
+    Cost is one short frame-walk per *emitted* record (records below the
+    active level are never created, so disabled DEBUG costs nothing).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.classname = ""
+        frame = inspect.currentframe()
+        while frame is not None:
+            code = frame.f_code
+            if (code.co_name == record.funcName
+                    and code.co_filename == record.pathname):
+                obj = frame.f_locals.get("self")
+                if obj is not None:
+                    record.classname = f"{type(obj).__name__}."
+                else:
+                    cls = frame.f_locals.get("cls")
+                    if isinstance(cls, type):
+                        record.classname = f"{cls.__name__}."
+                break
+            frame = frame.f_back
+        return True
 
 
 def configure_logging(
@@ -53,6 +98,7 @@ def configure_logging(
             root.removeHandler(handler)
 
     formatter = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT)
+    context_filter = ClassContextFilter()
 
     file_handler = RotatingFileHandler(
         log_file, maxBytes=max_bytes, backupCount=backup_count,
@@ -60,12 +106,14 @@ def configure_logging(
     )
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(context_filter)
     setattr(file_handler, _HANDLER_TAG, True)
     root.addHandler(file_handler)
 
     stderr_handler = logging.StreamHandler(stream=sys.stderr)
     stderr_handler.setLevel(stderr_level)
     stderr_handler.setFormatter(formatter)
+    stderr_handler.addFilter(context_filter)
     setattr(stderr_handler, _HANDLER_TAG, True)
     root.addHandler(stderr_handler)
 
