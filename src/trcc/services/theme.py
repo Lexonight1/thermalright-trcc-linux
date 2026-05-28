@@ -32,6 +32,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core._safe import is_safe_zip_member
 from ..core.errors import ThemeError
 from ..core.models import Theme, ThemeDir
 from . import _dc as Dc
@@ -326,7 +327,7 @@ class ThemeService:
             with zipfile.ZipFile(archive_path, "r") as zf:
                 skipped: list[str] = []
                 for info in zf.infolist():
-                    if not _is_safe_archive_member(info.filename):
+                    if not is_safe_zip_member(info.filename):
                         skipped.append(info.filename)
                         continue
                     zf.extract(info, into_dir)
@@ -558,8 +559,3 @@ def _legacy_entry_to_next_element(entry: dict) -> dict | None:
     return None
 
 
-def _is_safe_archive_member(name: str) -> bool:
-    """Reject absolute paths + parent-traversal in zip member names."""
-    if not name:
-        return False
-    return not (Path(name).is_absolute() or ".." in name.split("/"))

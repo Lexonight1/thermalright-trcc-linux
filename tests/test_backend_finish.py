@@ -6,12 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.adapters.repo.github_releases import (
-    GitHubReleases,
-    is_newer,
-    parse_version,
-)
-from trcc.adapters.repo.http import HttpFetchError
+from trcc.adapters.repo.github_releases import GitHubReleases
+from trcc.core._version import is_newer, parse_version
+from trcc.core.errors import HttpFetchError
 from trcc.core.ports import HttpFetcher
 from trcc.services.keepalive import KeepaliveService
 from trcc.services.slideshow import SlideshowConfig, SlideshowService

@@ -33,9 +33,9 @@ import subprocess
 from pathlib import Path
 from typing import Protocol
 
-from ...core.errors import TrccError
+from ...core._safe import is_safe_zip_member
+from ...core.errors import HttpFetchError, TrccError
 from ...core.ports import HttpFetcher
-from .http import HttpFetchError
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class SevenZipExtractor:
             member = line[len("Path = "):]
             if os.path.normpath(member) == archive_norm:
                 continue
-            if not _is_safe_member(member):
+            if not is_safe_zip_member(member):
                 log.warning("Blocked unsafe archive member: %s", member)
                 return False
         try:
@@ -117,17 +117,6 @@ class SevenZipExtractor:
                     result.returncode,
                     result.stderr.decode(errors="replace"))
         return False
-
-
-def _is_safe_member(name: str) -> bool:
-    """Reject zip-slip patterns — absolute paths, ``..`` traversal."""
-    if not name:
-        return False
-    normalised = name.replace("\\", "/").strip()
-    if normalised.startswith("/") or ":" in normalised.split("/", 1)[0]:
-        return False
-    parts = normalised.split("/")
-    return ".." not in parts
 
 
 # =========================================================================

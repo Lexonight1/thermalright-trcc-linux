@@ -22,11 +22,11 @@ consumes the legacy-shape dict; pure services use the list shape.
 """
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
 
+from ...core._safe import load_json_or_default
 from ...core.errors import ThemeError
 from ...services import _dc as Dc
 
@@ -63,16 +63,8 @@ def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
             if overlay:
                 return overlay
 
-    legacy_json = theme_dir / _LEGACY_CONFIG_FILE
-    if legacy_json.is_file():
-        try:
-            raw = json.loads(legacy_json.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            log.warning(
-                "dc_as_legacy_overlay_config: %s unreadable (%s)",
-                legacy_json, e,
-            )
-            return {}
+    raw = load_json_or_default(theme_dir / _LEGACY_CONFIG_FILE, None)
+    if isinstance(raw, dict):
         dc_dict = raw.get("dc")
         if isinstance(dc_dict, dict):
             return {

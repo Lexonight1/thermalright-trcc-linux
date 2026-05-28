@@ -2143,26 +2143,26 @@ class TRCCApp(QMainWindow):
     def _on_format_pref_changed(self, kind: str, value: int) -> None:
         """User changed time / date / temp-unit format in the overlay editor.
 
-        Dispatched as ONE global Command — :class:`SetGlobalTimeFormat`
-        or :class:`SetGlobalDateFormat` — which fans the value out to
-        every existing :class:`DeviceSettings` and publishes one
+        Dispatched as ONE Command with ``key=None`` — :class:`SetTimeFormat`
+        or :class:`SetDateFormat` in global scope — which fans the value
+        out to every existing :class:`DeviceSettings` and publishes one
         per-device ``*FormatChanged`` event so ``DeviceRenderObserver``
         re-renders each LCD.  Multi-LCD users expect ONE toggle that
-        applies everywhere; the global Command is the single
-        dispatch site for that semantic.
+        applies everywhere; ``key=None`` is the single dispatch site
+        for that semantic (pass a key for a per-device override).
 
         ``kind ∈ {'time', 'date', 'temp_unit'}``.  ``temp_unit`` is
         owned by the About-panel's dedicated ``°C/°F`` toggle
         (``_on_temp_unit_changed`` → :class:`SetTempUnit`); ignored
         here to avoid double-dispatch.
         """
-        from ...core.commands import SetGlobalDateFormat, SetGlobalTimeFormat
+        from ...core.commands import SetDateFormat, SetTimeFormat
         log.info("_on_format_pref_changed: kind=%s value=%d", kind, value)
         if kind == 'time':
             # GUI int → "12h" / "24h" literal.  TIME_FORMATS dict
             # uses 0,2=24h and 1=12h.
             fmt = "12h" if value == 1 else "24h"
-            self._app.dispatch(SetGlobalTimeFormat(fmt=fmt))
+            self._app.dispatch(SetTimeFormat(fmt=fmt))
         elif kind == 'date':
             # DeviceSettings.date_format takes an ICU-ish pattern.
             # Map the GUI int codes (defined alongside DATE_FORMATS
@@ -2174,7 +2174,7 @@ class TRCCApp(QMainWindow):
                 3: "MM/dd",
                 4: "dd/MM",
             }
-            self._app.dispatch(SetGlobalDateFormat(
+            self._app.dispatch(SetDateFormat(
                 fmt=_DATE_INT_TO_PATTERN.get(value, "yyyy/MM/dd"),
             ))
         else:

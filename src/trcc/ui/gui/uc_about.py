@@ -30,6 +30,7 @@ from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QIntValidator
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolTip
 
+from ...core._version import parse_version
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
@@ -94,11 +95,6 @@ def _check_latest_release() -> tuple[str, dict[str, str]] | None:
     except (URLError, OSError, TimeoutError, ValueError) as e:
         log.debug("uc_about: GitHub release check failed: %s", e)
         return None
-
-
-def _parse_version(v: str) -> tuple[int, ...]:
-    """Parse '3.0.9' into (3, 0, 9) for comparison."""
-    return tuple(int(x) for x in v.split('.'))
 
 
 def _detect_distro() -> str:
@@ -510,7 +506,7 @@ class UCAbout(BasePanel):
     def _on_update_result(self, latest: str, assets: dict[str, str]):
         """Handle version check result (runs on main thread via signal)."""
         from trcc.__version__ import __version__
-        if _parse_version(latest) > _parse_version(__version__):
+        if parse_version(latest) > parse_version(__version__):
             self._latest_version = latest
             self._pkg_assets = assets
             self._update_tooltip = f"Version {latest} available — click to update"

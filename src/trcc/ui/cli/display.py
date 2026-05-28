@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from ...core._colors import parse_hex
 from ...core.commands import (
     AddOverlayElement,
     ApplyMask,
@@ -77,14 +78,12 @@ def set_brightness(
 
 
 def _parse_hex_color(hex_str: str) -> tuple[int, int, int] | None:
-    """Parse a 6-char hex color into ``(r, g, b)``. Accepts a leading ``#``."""
-    s = hex_str.lstrip("#").strip()
-    if len(s) != 6:
-        return None
+    """Parse a 6-char hex color into ``(r, g, b)``; ``None`` on miss."""
     try:
-        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+        r, g, b, _a = parse_hex(hex_str)
     except ValueError:
         return None
+    return (r, g, b)
 
 
 @app.command("color")

@@ -12,13 +12,10 @@ import ssl
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from ...core.errors import HttpFetchError
 from ...core.ports import HttpFetcher
 
 log = logging.getLogger(__name__)
-
-
-class HttpFetchError(RuntimeError):
-    """Raised on any transport or HTTP-level failure."""
 
 
 class UrllibHttpFetcher(HttpFetcher):

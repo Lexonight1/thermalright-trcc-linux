@@ -21,9 +21,10 @@ from ...core.errors import (
     HandshakeError,
     UnsupportedOperationError,
 )
-from ...core.models import HandshakeResult, ProductInfo
+from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
+from . import DeviceFactory
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ def _frame_timeout_ms(packet_size: int) -> int:
 # =========================================================================
 
 
+@DeviceFactory.register(Wire.HID)
 class HidLcd(Device[BulkTransport]):
     """HID-protocol LCD device (Type 2 or Type 3 firmware variants).
 

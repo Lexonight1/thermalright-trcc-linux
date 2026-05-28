@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.models import LedStyle
-from trcc.services.led_segment import (
+from trcc.core.led_protocol import (
     LED_REMAP_SUB_TABLES,
     LED_REMAP_TABLES,
     remap_led_colors,
 )
+from trcc.core.models import LedStyle
 
 # ── Table presence + length ───────────────────────────────────────────
 

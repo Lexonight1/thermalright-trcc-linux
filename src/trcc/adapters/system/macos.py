@@ -33,6 +33,7 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
+from . import PlatformFactory
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class MacOSPaths(Paths):
         return self._root / "Logs" / "trcc.log"
 
 
+@PlatformFactory.register("darwin")
 class MacOSPlatform(Platform):
     """macOS implementation of Platform — BOT-only SCSI via libusb."""
 

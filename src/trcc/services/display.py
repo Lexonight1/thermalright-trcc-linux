@@ -337,13 +337,7 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
-        if s.brightness != 100:
-            surface = self._r.apply_brightness(surface, s.brightness)
-        if s.orientation:
-            surface = self._r.rotate(surface, 360 - s.orientation)
-        if resolved_profile.rotate:
-            surface = self._r.rotate(surface, 90)
-        return surface
+        return self._apply_post_processing(surface, s, resolved_profile)
 
     def build_solid_color_frame(
         self,
@@ -407,13 +401,7 @@ class DisplayService:
             surface = self._r.resize(surface, target_w, target_h)
 
         s = self._settings.for_device(info.key)
-        if s.brightness != 100:
-            surface = self._r.apply_brightness(surface, s.brightness)
-        if s.orientation:
-            surface = self._r.rotate(surface, 360 - s.orientation)
-        if resolved.rotate:
-            surface = self._r.rotate(surface, 90)
-
+        surface = self._apply_post_processing(surface, s, resolved)
         return self._encode_for_wire(surface, resolved)
 
     def build_image_frame(
@@ -443,14 +431,31 @@ class DisplayService:
             surface = self._r.resize(surface, target_w, target_h)
 
         s = self._settings.for_device(info.key)
+        surface = self._apply_post_processing(surface, s, resolved)
+        return self._encode_for_wire(surface, resolved)
+
+    def _apply_post_processing(
+        self,
+        surface: Any,
+        s: DeviceSettings,
+        resolved: DeviceProfile,
+    ) -> Any:
+        """Apply user brightness, user orientation, and device-side rotation.
+
+        Shared tail of every frame build that respects per-device
+        settings (build_frame, build_screencast_frame, build_image_frame).
+        ``build_solid_color_frame`` intentionally calls only the
+        brightness step because user-orientation on a uniform fill is a
+        no-op and the helper's extra rotate calls would burn cycles for
+        no visible change.
+        """
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if s.orientation:
             surface = self._r.rotate(surface, 360 - s.orientation)
         if resolved.rotate:
             surface = self._r.rotate(surface, 90)
-
-        return self._encode_for_wire(surface, resolved)
+        return surface
 
     def invalidate(self, key: str) -> None:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""

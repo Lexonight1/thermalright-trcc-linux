@@ -29,6 +29,48 @@ class Kind(str, Enum):
     LED = "led"
 
 
+class Capability(str, Enum):
+    """What a device can do — the data universal Commands gate on instead
+    of ``isinstance(device, SpecificClass)``.
+
+    A device's capability set is derived from its ``Kind`` (see
+    ``CAPABILITIES_BY_KIND``).  Commands check membership, so the same
+    ``SetBrightness`` / ``SetColor`` / etc. work on any device that
+    declares the capability — and adding a new device means adding a
+    registry row with the right ``Kind``, not new Command code.
+    """
+    FRAME_RENDER = "frame_render"   # composite + send a full image frame
+    COLOR_FILL = "color_fill"       # set a solid color (LCD test / LED strip)
+    BRIGHTNESS = "brightness"       # adjust output brightness
+    OVERLAY = "overlay"             # render sensor/clock overlay elements
+    MASK = "mask"                   # apply a foreground mask
+    ORIENTATION = "orientation"     # rotate the displayed image
+    EFFECTS = "effects"             # animated LED modes (breathe, rainbow…)
+    LED_ZONES = "led_zones"         # per-zone LED color / brightness
+
+
+_LCD_CAPABILITIES = frozenset({
+    Capability.FRAME_RENDER,
+    Capability.COLOR_FILL,
+    Capability.BRIGHTNESS,
+    Capability.OVERLAY,
+    Capability.MASK,
+    Capability.ORIENTATION,
+})
+
+_LED_CAPABILITIES = frozenset({
+    Capability.COLOR_FILL,
+    Capability.BRIGHTNESS,
+    Capability.EFFECTS,
+    Capability.LED_ZONES,
+})
+
+CAPABILITIES_BY_KIND: dict[Kind, frozenset[Capability]] = {
+    Kind.LCD: _LCD_CAPABILITIES,
+    Kind.LED: _LED_CAPABILITIES,
+}
+
+
 Orientation = Literal[0, 90, 180, 270]
 NativeOrientation = Literal["landscape", "portrait"]
 TempUnit = Literal["C", "F"]
@@ -139,6 +181,16 @@ class ProductInfo:
     def key(self) -> str:
         """Stable identifier: '0402:3922'."""
         return f"{self.vid:04x}:{self.pid:04x}"
+
+    @property
+    def capabilities(self) -> frozenset[Capability]:
+        """Capabilities derived from device ``kind``.
+
+        §4 universal Commands gate on this instead of isinstance checks.
+        Keyed by ``kind`` so a standard product declares nothing extra;
+        an unknown kind yields the empty set (no Command applies).
+        """
+        return CAPABILITIES_BY_KIND.get(self.kind, frozenset())
 
 
 # =========================================================================

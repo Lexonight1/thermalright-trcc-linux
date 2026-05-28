@@ -9,11 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, TypeVar
 
-from .adapters.device.bulk_lcd import BulkLcd
-from .adapters.device.hid_lcd import HidLcd
-from .adapters.device.led import Led
-from .adapters.device.ly_lcd import LyLcd
-from .adapters.device.scsi_lcd import ScsiLcd
+from .adapters.device import DeviceFactory
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
@@ -75,15 +71,6 @@ class App:
     UIs never hold Device references directly.  They dispatch Commands
     and subscribe to events.
     """
-
-    # Wire → Device subclass.  New wire protocol = new entry.
-    _DEVICE_CLASSES: dict[Wire, type[Device]] = {
-        Wire.SCSI: ScsiLcd,
-        Wire.HID: HidLcd,
-        Wire.BULK: BulkLcd,
-        Wire.LY: LyLcd,
-        Wire.LED: Led,
-    }
 
     def __init__(self, platform: Platform,
                  renderer: Renderer | None = None) -> None:
@@ -214,11 +201,7 @@ class App:
             raise DeviceNotFoundError(
                 f"Unknown product: {vid:04x}:{pid:04x}"
             )
-        cls = self._DEVICE_CLASSES.get(info.wire)
-        if cls is None:
-            raise DeviceNotFoundError(
-                f"No Device implementation for wire={info.wire.value!r}"
-            )
+        cls = DeviceFactory.for_wire(info.wire)
         # SCSI needs a kernel-native passthrough transport; everything
         # else speaks plain USB bulk.  Platform picks the right impl.
         if info.wire is Wire.SCSI:

@@ -39,6 +39,7 @@ from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
+from . import PlatformFactory
 from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)
@@ -399,6 +400,7 @@ class LinuxScsiTransport(ScsiTransport):
 # =========================================================================
 
 
+@PlatformFactory.register("linux")
 class LinuxPlatform(Platform):
     """Linux implementation of Platform.
 

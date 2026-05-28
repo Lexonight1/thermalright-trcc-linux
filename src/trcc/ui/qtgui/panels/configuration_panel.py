@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ....core._colors import parse_hex
 from ....core.commands import (
     ConfigureSlideshow,
     EnableOverlay,
@@ -260,10 +261,8 @@ class ConfigurationPanel(BasePanel):
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Parse #rrggbb → (r, g, b); fall back to black on bad input."""
-    s = hex_color.lstrip("#").strip()
-    if len(s) != 6:
-        return (0, 0, 0)
     try:
-        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+        r, g, b, _a = parse_hex(hex_color)
     except ValueError:
         return (0, 0, 0)
+    return (r, g, b)

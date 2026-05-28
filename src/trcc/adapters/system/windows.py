@@ -33,6 +33,7 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..sensors.windows import build_windows_sensors
+from . import PlatformFactory
 
 log = logging.getLogger(__name__)
 
@@ -277,6 +278,7 @@ class WindowsScsiTransport(ScsiTransport):
 # =========================================================================
 
 
+@PlatformFactory.register("win32")
 class WindowsPlatform(Platform):
     """Windows implementation of Platform."""
 

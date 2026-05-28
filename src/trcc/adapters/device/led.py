@@ -16,7 +16,6 @@ import logging
 import struct
 import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from ...core.errors import (
@@ -25,9 +24,11 @@ from ...core.errors import (
     TransportError,
     UnsupportedOperationError,
 )
-from ...core.led_protocol import resolve_pm
-from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
+from ...core.led_models import LedPayload
+from ...core.led_protocol import remap_led_colors, resolve_pm
+from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
+from . import DeviceFactory
 
 log = logging.getLogger(__name__)
 
@@ -153,27 +154,10 @@ def _probe_cache_load(
         return None
 
 
-# ── Payload shape the send() caller provides ──────────────────────────
-
-
-@dataclass(frozen=True, slots=True)
-class LedPayload:
-    """Structured payload for Led.send().
-
-    colors:     per-LED RGB tuples (0-255).
-    is_on:      per-LED boolean mask; None means all on.
-    global_on:  master switch; False turns every LED off.
-    brightness: 0-100 multiplier applied before the FormLED 0.4x scale.
-    """
-    colors: list[tuple[int, int, int]]
-    is_on: list[bool] | None = None
-    global_on: bool = True
-    brightness: int = 100
-
-
 # ── Led Device ────────────────────────────────────────────────────────
 
 
+@DeviceFactory.register(Wire.LED)
 class Led(Device[BulkTransport]):
     """RGB LED controller over HID 64-byte reports."""
 
@@ -350,7 +334,6 @@ class Led(Device[BulkTransport]):
         # the work when style is unknown or no table applies (identity
         # passthrough).
         if self._led_handshake is not None and payload.colors:
-            from ...services.led_segment import remap_led_colors
             style = self._led_handshake.style
             style_sub = self._led_handshake.style_sub
             remapped_colors = remap_led_colors(payload.colors, style, style_sub)
@@ -451,7 +434,3 @@ class Led(Device[BulkTransport]):
                 body[i * 3 + 2] = min(255, max(0, int(b * brightness * _COLOR_SCALE)))
             # else: stays 0,0,0 (off)
         return header + bytes(body)
-
-
-# `field` kept visible for future `LedPayload` extensions
-_ = field

@@ -11,11 +11,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from .errors import UnsupportedOperationError
+
 if TYPE_CHECKING:
     from .events import EventBus
     from .models import (
         DeviceInfo,
         HandshakeResult,
+        LedHandshakeResult,
         ProductInfo,
         RawFrame,
         SensorReading,
@@ -165,6 +168,32 @@ class Device(ABC, Generic[T]):
         that build frames must fall back to ``info.native_resolution``.
         """
         return None
+
+    @property
+    def led_handshake(self) -> LedHandshakeResult | None:
+        """LED handshake result (PM byte → style + sub), or None.
+
+        Set by the LED subclass after ``connect()`` resolves the PM
+        byte.  LCD devices and pre-handshake state return None, so a
+        single ``if device.led_handshake is None`` covers both "not an
+        LED device" and "LED not yet handshaken" — callers gate on it
+        instead of ``isinstance(device, Led)``.
+        """
+        return None
+
+    def send_boot_animation(self, frames: list[bytes],
+                            delays_ds: list[int]) -> int:
+        """Upload a multi-frame boot animation to device flash.
+
+        SCSI LCDs override this; every other device declines with
+        ``UnsupportedOperationError`` (the boot-anim flash region only
+        exists on the SCSI firmware).  Callers catch the error and
+        report the SCSI-only constraint — no ``isinstance`` needed.
+        Returns the number of frames uploaded.
+        """
+        raise UnsupportedOperationError(
+            f"{self.key} does not support boot animation (SCSI-only)"
+        )
 
 
 # =========================================================================
@@ -735,30 +764,6 @@ class Platform(ABC):
         optional ``health``.  An OS with no probe yields an empty list.
         """
         return []
-
-    # ── OS-selection factory ──────────────────────────────────────────
-    _BY_OS: dict[str, tuple[str, str]] = {
-        "linux": ("trcc.adapters.system.linux", "LinuxPlatform"),
-        "win32": ("trcc.adapters.system.windows", "WindowsPlatform"),
-        "darwin": ("trcc.adapters.system.macos", "MacOSPlatform"),
-        "bsd": ("trcc.adapters.system.bsd", "BSDPlatform"),
-    }
-
-    @classmethod
-    def detect(cls) -> Platform:
-        """Pick the right Platform subclass for the running OS."""
-        import importlib
-        import sys
-
-        key = sys.platform
-        if "bsd" in key:
-            key = "bsd"
-        if key not in cls._BY_OS:
-            key = "linux"
-        module_path, class_name = cls._BY_OS[key]
-        mod = importlib.import_module(module_path)
-        return getattr(mod, class_name)()
-
 
 # =========================================================================
 # Callable type aliases (infrastructure DI)

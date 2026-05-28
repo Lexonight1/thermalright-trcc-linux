@@ -77,10 +77,10 @@ def _build_local_app(
     renderer: Renderer | None = None,
 ) -> App:
     """Construct an in-process App.  Used by ``trcc_next`` and the daemon."""
+    from .adapters.system import PlatformFactory
     from .app import App
-    from .core.ports import Platform as _Platform
 
-    real_platform = platform if platform is not None else _Platform.detect()
+    real_platform = platform if platform is not None else PlatformFactory.current()
     real_renderer = renderer
     if real_renderer is None:
         try:

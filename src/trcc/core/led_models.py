@@ -123,6 +123,30 @@ class LedRuntimeState:
 
 
 # =========================================================================
+# LedPayload — the send() shape
+# =========================================================================
+#
+# The structured payload ``Led.send()`` consumes.  A pure DTO (no I/O,
+# no protocol bytes), so it lives in core: Commands construct it, the
+# LED adapter consumes it, and neither side imports the other.
+
+
+@dataclass(frozen=True, slots=True)
+class LedPayload:
+    """Structured payload for ``Led.send()``.
+
+    colors:     per-LED RGB tuples (0-255).
+    is_on:      per-LED boolean mask; ``None`` means all on.
+    global_on:  master switch; ``False`` turns every LED off.
+    brightness: 0-100 multiplier applied before the FormLED 0.4x scale.
+    """
+    colors: list[tuple[int, int, int]]
+    is_on: list[bool] | None = None
+    global_on: bool = True
+    brightness: int = 100
+
+
+# =========================================================================
 # Style spec — per-LED-style layout metadata
 # =========================================================================
 #

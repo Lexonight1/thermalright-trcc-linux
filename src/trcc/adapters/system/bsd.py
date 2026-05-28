@@ -30,6 +30,7 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
+from . import PlatformFactory
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class BSDPaths(Paths):
         return self._root / "trcc.log"
 
 
+@PlatformFactory.register("bsd")
 class BSDPlatform(Platform):
     """FreeBSD / OpenBSD implementation of Platform — BOT-only SCSI."""
 

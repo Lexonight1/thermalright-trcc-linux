@@ -52,8 +52,8 @@ def launch(verbosity: int = 0, decorated: bool = False,
     from PySide6.QtWidgets import QApplication
 
     # ── Platform first ───────────────────────────────────────────────
-    from ...core.ports import Platform
-    platform = Platform.detect()
+    from ...adapters.system import PlatformFactory
+    platform = PlatformFactory.current()
 
     # ── stdout/stderr UTF-8 (Windows cp1252 fix; no-op elsewhere) ────
     # Must precede ``configure_logging`` so the StreamHandler attaches

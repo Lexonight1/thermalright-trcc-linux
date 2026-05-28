@@ -421,9 +421,9 @@ def _root(
     both handlers to DEBUG.
     """
     from ...adapters.infra.logging import configure_logging
-    from ...core.ports import Platform
+    from ...adapters.system import PlatformFactory
 
-    platform = Platform.detect()
+    platform = PlatformFactory.current()
     # Windows consoles default to cp1252 and crash on non-ASCII log
     # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
     # attaches the StreamHandler.  No-op on other OSes.

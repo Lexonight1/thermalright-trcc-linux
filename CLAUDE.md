@@ -163,30 +163,32 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 - Services own ALL business logic — pure Python, no Qt, no framework deps
 - Views own ONLY rendering — read from Settings/Models, call Services, display results
 
-### Three-Factory Chain (OS → Protocol → Device)
+### Two-Factory Chain (OS → Device)
 
-The composition pipeline is a chain of three factories, **same idiom** in every layer: ABC + `@<Name>Factory.register(key)` self-registering subclasses + a single classmethod chokepoint that dispatches by name. Read one, you've read all three.
+The composition pipeline is a chain of two factories, **same idiom** in every layer: a registry class + `@<Name>Factory.register(key)` self-registering subclasses + a single classmethod chokepoint that dispatches by key. Read one, you've read both.
+
+The cutover unified legacy's separate Protocol + Device layers into one `Device` ABC, so there is **no `ProtocolFactory`** — `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd`/`Led` each *are* the device that speaks their wire. A separate protocol factory would wrap nothing.
 
 | Factory | Defined in | Subclasses | Dispatch key | Chokepoint |
 |---|---|---|---|---|
-| `PlatformFactory` | `adapters/system/__init__.py` | `WindowsFactory`, `MacOSFactory`, `LinuxFactory`, `BSDFactory` | `sys.platform` | `.current()` |
-| `ProtocolFactory` | `adapters/device/factory.py` | `ScsiProtocolFactory`, `HidProtocolFactory`, `BulkProtocolFactory`, `LyProtocolFactory`, `LedProtocolFactory` | `info.protocol` (string from registry) | `.for_info(info)` |
-| `DeviceFactory` | `core/device/factory.py` | `LCDDeviceFactory`, `LEDDeviceFactory` | device kind, derived from `PROTOCOL_TRAITS[info.protocol].is_led` | `.for_info(info, builder)` |
+| `PlatformFactory` | `adapters/system/__init__.py` | `LinuxPlatform`, `WindowsPlatform`, `MacOSPlatform`, `BSDPlatform` | `sys.platform` (BSD variants → `"bsd"`) | `.current()` |
+| `DeviceFactory` | `adapters/device/__init__.py` | `ScsiLcd`, `HidLcd`, `BulkLcd`, `LyLcd`, `Led` | `info.wire` (the `Wire` enum) | `.for_wire(wire)` |
+
+Both factories live in the **adapter layer**, not core — the factory is the only place that names concrete adapter classes, so core (`Platform` / `Device` ABCs) never imports an adapter. Importing each package fires the side-effect imports of its OS / device modules, which fire the `@register` decorators, which populate the registry.
 
 **The chain** (top to bottom of the composition root):
 
 ```
-PlatformFactory.current()              ← OS dispatch     → Platform
-    Platform.detect_devices()          ← OS-specific     → list[DetectedDevice]
-        DeviceInfo.from_detected(d)    ← typed DTO chokepoint
-            ProtocolFactory.for_info(info) ← protocol by name  → DeviceProtocol
-                DeviceFactory.for_info(info, builder) ← device by kind
-                    LCDDevice(protocol=…, …)  OR  LEDDevice(protocol=…, …)
+PlatformFactory.current()           ← OS dispatch    → Platform
+    Platform.scan_devices()         ← OS-specific    → list[DeviceInfo]
+        App.attach(vid, pid)        ← composition root
+            DeviceFactory.for_wire(info.wire)  ← wire → Device subclass
+                ScsiLcd(info, transport)  (or HidLcd / BulkLcd / LyLcd / Led)
 ```
 
-**Why three factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass. New protocol = `@ProtocolFactory.register('whatever')` + subclass. New Device kind = `@DeviceFactory.register('seven_segment')` + subclass. Zero touchpoints in callers.
+**Why two factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass, one new file. New wire = `@DeviceFactory.register(Wire.WHATEVER)` + subclass, one new file. Zero touchpoints in callers (`_boot.trcc_next`, `App.attach`).
 
-**Verification**: `dev/smoke_platforms.py` asserts all three registries are populated and dispatch correctly — 42 checks total, runs on the dev box without any OS-specific tooling installed.
+**Verification**: `dev/smoke_factories.py` asserts both registries are populated and dispatch correctly — runs on the dev box without any OS-specific tooling installed.
 
 ## Daemon Mode (`TRCC_DAEMON`)
 
@@ -326,7 +328,7 @@ on the next bug.
 
 ### SOLID
 - **SRP** — services own logic, views own rendering, models own data
-- **OCP** — `@DeviceProtocolFactory.register()` for self-registering protocols. New devices = new data, not modified logic.
+- **OCP** — `@PlatformFactory.register(...)` / `@DeviceFactory.register(...)` for self-registering OS + wire subclasses. New device = new registry row, not modified logic.
 - **LSP** — no fake implementations. If a subclass can't fulfill the contract, don't inherit.
 - **ISP** — `LCDMixin` + `LEDMixin` instead of one fat `DeviceProtocol`
 - **DIP** — inject dependencies at runtime. Core never imports concrete adapters.

@@ -110,33 +110,50 @@ class CloudThemeService:
 # =========================================================================
 
 
-def _extract_first_frame_png(mp4: Path, png: Path) -> None:
-    """Write the MP4's first frame to *png*.  Best-effort — logs a
-    warning on failure and leaves any existing file in place.
+def _run_ffmpeg_or_warn(
+    cmd: list[str], *, timeout: float, label: str,
+) -> None:
+    """Run a fire-and-forget ffmpeg invocation; warn on any failure.
+
+    Shared shape behind ``_extract_first_frame_png`` and
+    ``_generate_animated_gif``.  Both want "best-effort thumbnail
+    generation; if ffmpeg is missing or fails, log and move on."
+    Neither needs the output stream.  *label* names the high-level
+    operation (e.g. ``"first-frame PNG"``) so warnings read like
+    actions, not binary invocations.
     """
-    log.info("materialise: extracting first-frame PNG → %s", png)
     try:
         result = subprocess.run(
-            ["ffmpeg", "-i", str(mp4), "-vframes", "1", "-y", str(png)],
-            capture_output=True, timeout=10,
+            cmd, capture_output=True, timeout=timeout,
             creationflags=_NO_WINDOW,
         )
     except FileNotFoundError:
         log.warning(
-            "materialise: ffmpeg not on PATH — first-frame PNG skipped "
-            "(install ffmpeg to enable rich thumbnails)",
+            "materialise: ffmpeg not on PATH — %s skipped "
+            "(install ffmpeg to enable rich thumbnails)", label,
         )
         return
+    except subprocess.TimeoutExpired:
+        log.warning("materialise: %s timed out after %ss", label, timeout)
+        return
     except (OSError, subprocess.SubprocessError) as e:
-        log.warning("materialise: ffmpeg first-frame failed for %s: %s: %s",
-                    mp4.name, type(e).__name__, e)
+        log.warning("materialise: %s failed: %s: %s",
+                    label, type(e).__name__, e)
         return
     if result.returncode != 0:
         log.warning(
-            "materialise: ffmpeg first-frame rc=%d for %s: %s",
-            result.returncode, mp4.name,
+            "materialise: %s rc=%d: %s", label, result.returncode,
             result.stderr.decode("utf-8", errors="replace")[:200],
         )
+
+
+def _extract_first_frame_png(mp4: Path, png: Path) -> None:
+    """Write the MP4's first frame to *png*.  Best-effort."""
+    log.info("materialise: extracting first-frame PNG → %s", png)
+    _run_ffmpeg_or_warn(
+        ["ffmpeg", "-i", str(mp4), "-vframes", "1", "-y", str(png)],
+        timeout=10, label=f"first-frame PNG for {mp4.name}",
+    )
 
 
 def _generate_animated_gif(mp4: Path, gif: Path) -> None:
@@ -144,31 +161,14 @@ def _generate_animated_gif(mp4: Path, gif: Path) -> None:
     Same filter chain legacy uses (``uc_theme_web._ensure_thumb_gif``).
     """
     log.info("materialise: generating animated GIF → %s", gif)
-    try:
-        result = subprocess.run(
-            [
-                "ffmpeg", "-i", str(mp4),
-                "-vf", "scale=120:120,pad=120:120,fps=8",
-                "-loop", "0", "-y", str(gif),
-            ],
-            capture_output=True, timeout=30,
-            creationflags=_NO_WINDOW,
-        )
-    except FileNotFoundError:
-        log.warning(
-            "materialise: ffmpeg not on PATH — animated GIF skipped",
-        )
-        return
-    except (OSError, subprocess.SubprocessError) as e:
-        log.warning("materialise: ffmpeg gif failed for %s: %s: %s",
-                    mp4.name, type(e).__name__, e)
-        return
-    if result.returncode != 0:
-        log.warning(
-            "materialise: ffmpeg gif rc=%d for %s: %s",
-            result.returncode, mp4.name,
-            result.stderr.decode("utf-8", errors="replace")[:200],
-        )
+    _run_ffmpeg_or_warn(
+        [
+            "ffmpeg", "-i", str(mp4),
+            "-vf", "scale=120:120,pad=120:120,fps=8",
+            "-loop", "0", "-y", str(gif),
+        ],
+        timeout=30, label=f"animated GIF for {mp4.name}",
+    )
 
 
 def _is_first_frame_png(png: Path, mp4: Path) -> bool:

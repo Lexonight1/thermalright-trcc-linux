@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import typer
 
+from ...core._colors import parse_hex
 from ...core.commands import (
     EnableLedTestMode,
     InitializeLed,
@@ -36,14 +37,12 @@ app = typer.Typer(help="RGB LED control.", no_args_is_help=True)
 
 
 def _parse_hex_color(raw: str) -> tuple[int, int, int]:
-    """Parse '#rrggbb' or 'rrggbb' → (r, g, b)."""
-    raw = raw.lstrip("#").strip()
-    if len(raw) != 6:
-        raise typer.BadParameter(f"Invalid hex color: {raw!r}")
+    """Parse '#rrggbb' or 'rrggbb' → (r, g, b); typer.BadParameter on miss."""
     try:
-        return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
+        r, g, b, _a = parse_hex(raw)
     except ValueError as e:
         raise typer.BadParameter(f"Invalid hex color: {raw!r}") from e
+    return (r, g, b)
 
 
 def _parse_mode(raw: str) -> LEDMode:

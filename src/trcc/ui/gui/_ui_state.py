@@ -20,6 +20,8 @@ import logging
 from dataclasses import asdict, dataclass, fields
 from typing import TYPE_CHECKING
 
+from ...core._safe import load_json_or_default
+
 if TYPE_CHECKING:
     from ...core.ports import Paths
 
@@ -68,17 +70,8 @@ class UiStateStore:
 
     def load(self) -> UiState:
         """Read JSON from disk; first-run returns defaults."""
-        if not self._path.exists():
-            log.debug("UiStateStore.load: no file at %s — using defaults",
-                      self._path)
-            return self._state
-        try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            log.warning(
-                "UiStateStore.load: %s unreadable (%s) — using defaults",
-                self._path, e,
-            )
+        raw = load_json_or_default(self._path, None)
+        if not isinstance(raw, dict):
             return self._state
         # Drop unknown keys + the schema marker (forward-compat upgrades).
         known = {f.name for f in fields(UiState)}

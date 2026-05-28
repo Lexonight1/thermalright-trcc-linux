@@ -703,6 +703,21 @@ def _element_to_legacy(
 
 
 def _hex_to_argb(hex_color: str) -> tuple[int, int, int, int]:
+    """Hex → ``(a, r, g, b)`` per DC's Windows-GDI ``#AARRGGBB`` convention.
+
+    Cannot share ``core/_colors.parse_hex`` because the two interpret
+    8-character hex strings differently:
+
+    * ``parse_hex`` follows CSS ``#RRGGBBAA`` (alpha last) — the modern
+      web standard most callers want.
+    * DC stores colors per Windows GDI's ``#AARRGGBB`` (alpha first),
+      because that's what Thermalright's Windows app writes.
+
+    Round-tripping a parsed DC theme through a different convention
+    silently mutates user themes (see test_color_with_alpha_round_trips).
+    The 6-char form (no alpha) defaults to opaque; bad input returns
+    opaque white, matching firmware's tolerance behaviour.
+    """
     s = hex_color.lstrip("#").strip()
     if len(s) == 6:
         try:

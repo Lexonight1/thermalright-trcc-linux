@@ -19,6 +19,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, cast
 
+from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
 from ..core.models import DeviceSettings, FitMode, OverlayElement, TempUnit
@@ -606,10 +607,8 @@ class Settings:
             else:
                 log.debug("No config file at %s, using defaults", path)
                 return
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as e:
-            log.warning("Failed to read %s: %s — using defaults", path, e)
+        raw = load_json_or_default(path, None)
+        if not isinstance(raw, dict):
             return
 
         app_data = raw.get("app", {})

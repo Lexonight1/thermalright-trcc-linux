@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from ...core.errors import HttpFetchError
 from ...core.ports import HttpFetcher
-from ..repo.http import HttpFetchError
 
 log = logging.getLogger(__name__)
 

@@ -18,9 +18,10 @@ from ...core.errors import (
     HandshakeError,
     TransportError,
 )
-from ...core.models import HandshakeResult, ProductInfo
+from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import Device, ScsiTransport
 from ...core.protocol import DeviceProfile, get_profile
+from . import DeviceFactory
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ _BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 # =========================================================================
 
 
+@DeviceFactory.register(Wire.SCSI)
 class ScsiLcd(Device[ScsiTransport]):
     """SCSI LCD device.
 

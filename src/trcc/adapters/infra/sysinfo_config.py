@@ -22,6 +22,7 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
+from ...core._safe import load_json_or_default
 from ...core.models import PanelConfig, SensorBinding, SensorReading
 
 log = logging.getLogger(__name__)
@@ -165,9 +166,9 @@ class SysInfoConfig:
             except OSError as e:
                 log.debug("Couldn't migrate legacy filename: %s", e)
 
-        if self._path.exists():
+        data = load_json_or_default(self._path, None)
+        if isinstance(data, dict):
             try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
                 panels: list[PanelConfig] = []
                 for p in data.get("panels", []):
                     sensors = [
@@ -186,8 +187,8 @@ class SysInfoConfig:
                 if panels:
                     self.panels = panels
                     return self.panels
-            except (OSError, json.JSONDecodeError, TypeError) as e:
-                log.error("Failed to load sysinfo config %s: %s", self._path, e)
+            except (TypeError, AttributeError, ValueError) as e:
+                log.error("Failed to parse sysinfo config %s: %s", self._path, e)
 
         self.panels = self.defaults()
         return self.panels

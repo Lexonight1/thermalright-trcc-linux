@@ -73,9 +73,12 @@ def set_pairing_code(code: str | None) -> None:
 def build_app(trcc: App | None = None) -> FastAPI:
     """Build the FastAPI app.  Creates a default App if none passed."""
     if trcc is None:
+        # Build through the canonical factory so the API server becomes
+        # a daemon client when TRCC_NEXT_DAEMON=1 instead of fighting
+        # the daemon for USB (audit bug B4).
+        from ..._boot import trcc_next
         from ...adapters.render.qt import QtRenderer
-        from ...core.ports import Platform
-        trcc = App(Platform.detect(), renderer=QtRenderer())
+        trcc = trcc_next(renderer=QtRenderer())
 
     api = FastAPI(
         title="TRCC API",

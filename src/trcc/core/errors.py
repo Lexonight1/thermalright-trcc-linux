@@ -50,3 +50,16 @@ class ConfigError(TrccError):
 
 class ThemeError(TrccError):
     """Theme load / parse / export failed."""
+
+
+class HttpFetchError(RuntimeError):
+    """Raised on any transport or HTTP-level fetch failure.
+
+    Subclasses ``RuntimeError`` (not ``TrccError``) deliberately: the
+    HTTP adapter and several call sites catch it as ``RuntimeError``,
+    and the broad ``except TrccError`` handlers in ``commands.py``
+    must NOT swallow network failures — those map to user-facing
+    "couldn't reach the server" messages, not generic command errors.
+    Lives in core so Commands import it without reaching into the
+    ``adapters.repo`` layer.
+    """

@@ -23,9 +23,10 @@ from ...core.errors import (
     HandshakeError,
     TransportError,
 )
-from ...core.models import HandshakeResult, ProductInfo
+from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
+from . import DeviceFactory
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ _CHUNK_DATA_SIZE = 496
 _USB_WRITE_SIZE = 4096
 
 
+@DeviceFactory.register(Wire.LY)
 class LyLcd(Device[BulkTransport]):
     """LY-series USB bulk LCD (Trofeo Vision 9.16)."""
 

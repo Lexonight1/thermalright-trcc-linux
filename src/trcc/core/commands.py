@@ -17,14 +17,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
+from ._safe import is_safe_user_name
+from ._version import is_newer
 from .errors import (
     DeviceDisconnectedError,
     DeviceNotConnectedError,
     DeviceNotFoundError,
     HandshakeError,
+    HttpFetchError,
     ThemeError,
     TransportError,
     TrccError,
+    UnsupportedOperationError,
 )
 from .events import (
     BackgroundChanged,
@@ -58,7 +62,7 @@ from .events import (
     VideoStarted,
     VideoStopped,
 )
-from .led_models import LEDMode, LedRuntimeState
+from .led_models import LEDMode, LedPayload, LedRuntimeState
 from .models import FitMode, OverlayElement
 from .registry import find_product
 from .results import (
@@ -338,13 +342,9 @@ class SendFrame(Command[SendResult]):
 
     def execute(self, app: App) -> SendResult:
         try:
-            device = app.get(self.key)
+            device = _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return SendResult(ok=False, key=self.key, message=str(e))
-        if not device.is_connected:
-            raise DeviceNotConnectedError(
-                f"{self.key} not connected — dispatch ConnectDevice first"
-            )
         try:
             ok = device.send(self.data)
         except TransportError as e:
@@ -387,14 +387,10 @@ class SendColor(Command[SendResult]):
                 )
 
         try:
-            device = app.get(self.key)
+            device = _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               message=str(e))
-        if not device.is_connected:
-            raise DeviceNotConnectedError(
-                f"{self.key} not connected — dispatch ConnectDevice first"
-            )
 
         try:
             frame = app.display.build_solid_color_frame(
@@ -458,14 +454,10 @@ class SendImage(Command[SendResult]):
                 ),
             )
         try:
-            device = app.get(self.key)
+            device = _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               message=str(e))
-        if not device.is_connected:
-            raise DeviceNotConnectedError(
-                f"{self.key} not connected — dispatch ConnectDevice first"
-            )
 
         try:
             frame = app.display.build_image_frame(
@@ -511,13 +503,9 @@ class RenderAndSend(Command[RenderResult]):
 
     def execute(self, app: App) -> RenderResult:
         try:
-            device = app.get(self.key)
+            device = _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return RenderResult(ok=False, key=self.key, message=str(e))
-        if not device.is_connected:
-            raise DeviceNotConnectedError(
-                f"{self.key} not connected — dispatch ConnectDevice first"
-            )
 
         theme = app.active_themes.get(self.key)
         if theme is None:
@@ -844,22 +832,6 @@ class LoadTheme(Command[ThemeResult]):
 # ── Theme persistence: save / export / import ────────────────────────
 
 
-def _is_safe_theme_name(name: str) -> bool:
-    """Reject theme names that could escape ``user_content_dir``.
-
-    No path separators, no ``..``, no absolute prefixes, no NUL bytes,
-    no leading dots (avoid hidden dirs).
-    """
-    if not name or len(name) > 255:
-        return False
-    if name[0] == ".":
-        return False
-    bad = {"/", "\\", "\x00"}
-    if any(ch in bad for ch in name):
-        return False
-    return ".." not in name.split("/")
-
-
 _VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
 
 
@@ -902,7 +874,7 @@ class SaveTheme(Command[ThemeResult]):
 
     def execute(self, app: App) -> ThemeResult:
         log.info("SaveTheme: key=%s name=%s", self.key, self.name)
-        if not _is_safe_theme_name(self.name):
+        if not is_safe_user_name(self.name):
             log.warning("SaveTheme: rejected unsafe name %r", self.name)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
@@ -1300,7 +1272,7 @@ class ExportTheme(Command[ThemeExportResult]):
     def execute(self, app: App) -> ThemeExportResult:
         log.info("ExportTheme: key=%s theme=%s archive=%s",
                  self.key, self.theme_name, self.archive_path)
-        if not _is_safe_theme_name(self.theme_name):
+        if not is_safe_user_name(self.theme_name):
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
                 archive_path=str(self.archive_path),
@@ -1380,7 +1352,7 @@ class ExportOverlay(Command[ThemeExportResult]):
     def execute(self, app: App) -> ThemeExportResult:
         log.info("ExportOverlay: key=%s theme=%s out=%s",
                  self.key, self.theme_name, self.output_path)
-        if not _is_safe_theme_name(self.theme_name):
+        if not is_safe_user_name(self.theme_name):
             return ThemeExportResult(
                 ok=False, theme_name=self.theme_name,
                 archive_path=str(self.output_path),
@@ -1467,7 +1439,7 @@ class ImportTheme(Command[ThemeImportResult]):
         log.info("ImportTheme: key=%s archive=%s name=%r",
                  self.key, self.archive_path, self.name)
         chosen_name = self.name.strip() or self.archive_path.stem
-        if not _is_safe_theme_name(chosen_name):
+        if not is_safe_user_name(chosen_name):
             return ThemeImportResult(
                 ok=False, theme_name=chosen_name, path="",
                 message=f"invalid theme name {chosen_name!r}",
@@ -1569,7 +1541,7 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
     def execute(self, app: App) -> ThemeDcExportResult:
         log.info("ExportDcTheme: key=%s theme=%s out=%s",
                  self.key, self.theme_name, self.output_path)
-        if not _is_safe_theme_name(self.theme_name):
+        if not is_safe_user_name(self.theme_name):
             return ThemeDcExportResult(
                 ok=False, theme_name=self.theme_name,
                 output_path=str(self.output_path),
@@ -1986,24 +1958,12 @@ class UploadBootAnimation(Command[BootAnimationResult]):
     delays_ds: list[int]
 
     def execute(self, app: App) -> BootAnimationResult:
-        from ..adapters.device.scsi_lcd import ScsiLcd
-
         try:
-            device = app.get(self.key)
+            device = _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return BootAnimationResult(
                 ok=False, key=self.key, message=str(e),
                 frames_total=len(self.frame_paths),
-            )
-        if not isinstance(device, ScsiLcd):
-            return BootAnimationResult(
-                ok=False, key=self.key,
-                message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
-                frames_total=len(self.frame_paths),
-            )
-        if not device.is_connected:
-            raise DeviceNotConnectedError(
-                f"{self.key} not connected — dispatch ConnectDevice first"
             )
         if not self.frame_paths:
             return BootAnimationResult(
@@ -2031,6 +1991,11 @@ class UploadBootAnimation(Command[BootAnimationResult]):
 
         try:
             uploaded = device.send_boot_animation(encoded, list(self.delays_ds))
+        except UnsupportedOperationError:
+            return BootAnimationResult(
+                ok=False, key=self.key, frames_total=len(self.frame_paths),
+                message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
+            )
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
@@ -2122,6 +2087,41 @@ class SetBrightness(Command[BrightnessResult]):
 
 
 # ── Display tweaks (fit mode / overlay / split mode) ────────────────
+
+
+def _require_connected_device(app: App, key: str) -> Any:
+    """Fetch a connected device by key, or raise.
+
+    Centralises the ``app.get(key) → is_connected check`` pattern that
+    every wire-touching Command must perform.  Returns the device on
+    success; otherwise raises one of two errors the caller handles
+    differently:
+
+      * :class:`DeviceNotFoundError` — device not attached at all
+        (key never seen by ``scan_devices``).  Callers catch this and
+        return their per-Command failure ``Result`` (different Result
+        shape per Command, so the helper can't construct one).
+      * :class:`DeviceNotConnectedError` — device attached but its
+        transport isn't open (handshake never ran or was reset).
+        Callers let this propagate to the dispatch wrapper, which
+        logs uniformly.
+
+    The not-connected error string is single-sourced here so an edit
+    to the wording doesn't have to land in every wire-touching Command.
+
+    Not used by every site that checks ``is_connected``: SaveTheme
+    (line ~738) and RunKeepalive (line ~5061) intentionally return a
+    per-Command Result on disconnect instead of raising; the isinstance-
+    gated Commands (UploadBootAnimation, SetLedColors, SetLedSegment)
+    do their type check before the connect check and disappear entirely
+    once capability dispatch lands (see §4 of the SOLID/DRY plan).
+    """
+    device = app.get(key)
+    if not device.is_connected:
+        raise DeviceNotConnectedError(
+            f"{key} not connected — dispatch ConnectDevice first"
+        )
+    return device
 
 
 def _publish_if_disconnect(app: App, key: str, exc: BaseException) -> None:
@@ -2468,8 +2468,6 @@ class SetLedColors(Command[LedColorsResult]):
     brightness: int = 100
 
     def execute(self, app: App) -> LedColorsResult:
-        from ..adapters.device.led import Led, LedPayload
-
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
@@ -2478,7 +2476,7 @@ class SetLedColors(Command[LedColorsResult]):
                 message=str(e),
             )
 
-        if not isinstance(device, Led):
+        if not device.is_led:
             return LedColorsResult(
                 ok=False, key=self.key, colors=list(self.colors),
                 message=f"{self.key} is not an LED device",
@@ -2573,7 +2571,6 @@ class RenderLed(Command[LedColorsResult]):
     phase: int = 0
 
     def execute(self, app: App) -> LedColorsResult:
-        from ..adapters.device.led import Led, LedPayload
         from ..services.led_segment import (
             LegacyMetricsView,
             compute_mask,
@@ -2588,7 +2585,7 @@ class RenderLed(Command[LedColorsResult]):
                 message=str(e),
             )
 
-        if not isinstance(device, Led):
+        if not device.is_led:
             return LedColorsResult(
                 ok=False, key=self.key, colors=[],
                 message=f"{self.key} is not an LED device",
@@ -3054,129 +3051,77 @@ class SetClockFormat(Command[ClockFormatResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetTimeFormat(Command[TimeFormatResult]):
-    """Set the LCD-overlay clock format (12h or 24h) for a device.
+    """Set the LCD-overlay clock format (12h or 24h).
 
-    Persisted on ``DeviceSettings.time_format`` and read per-render
-    by :func:`DisplayService.compute_clock`.  Publishes
-    :class:`TimeFormatChanged` so ``DeviceRenderObserver`` re-renders
-    the LCD immediately.
+    ``key=None`` (the default) sets the global ``AppSettings.time_format``
+    and fans out to every device; a specific ``key`` sets just that
+    device (per-device override).  Either way one
+    :class:`TimeFormatChanged` is published per affected device so
+    ``DeviceRenderObserver`` re-renders immediately.
 
-    Distinct from :class:`SetClockFormat` (which is for LED-segment
-    LC2-style displays and writes ``led_clock_24h``).
+    Distinct from :class:`SetClockFormat` (LED-segment LC2-style
+    displays, which write ``led_clock_24h``).
     """
-    key: str
     fmt: str   # "12h" or "24h"
+    key: str | None = None
 
     def execute(self, app: App) -> TimeFormatResult:
+        log.info("SetTimeFormat.execute: fmt=%s key=%s", self.fmt, self.key)
         if self.fmt not in ("12h", "24h"):
+            log.warning("SetTimeFormat.execute: invalid fmt %r", self.fmt)
             return TimeFormatResult(
-                ok=False, key=self.key, fmt=self.fmt,
+                ok=False, key=self.key or "", fmt=self.fmt,
                 message=f"fmt must be '12h' or '24h', got {self.fmt!r}",
             )
-        app.settings.set_time_format(self.key, self.fmt)  # type: ignore[arg-type]
-        app.display.invalidate(self.key)
-        app.events.publish(TimeFormatChanged(key=self.key, fmt=self.fmt))
+        if self.key is None:
+            keys = app.settings.set_global_time_format(self.fmt)  # type: ignore[arg-type]
+            scope = f"global ({len(keys)} device(s))"
+        else:
+            app.settings.set_time_format(self.key, self.fmt)  # type: ignore[arg-type]
+            keys = [self.key]
+            scope = self.key
+        for key in keys:
+            app.display.invalidate(key)
+            app.events.publish(TimeFormatChanged(key=key, fmt=self.fmt))
         return TimeFormatResult(
-            ok=True, key=self.key, fmt=self.fmt,
-            message=f"time format set to {self.fmt} for {self.key}",
+            ok=True, key=self.key or "", fmt=self.fmt,
+            message=f"time format set to {self.fmt} for {scope}",
         )
 
 
 @dataclass(frozen=True, slots=True)
 class SetDateFormat(Command[DateFormatResult]):
-    """Set the LCD-overlay date pattern for a device.
+    """Set the LCD-overlay date pattern.
 
-    Pattern uses ICU-ish tokens (``yyyy/MM/dd``, ``dd.MM.yyyy``, etc.)
-    translated by ``_clock._translate_date_pattern`` to a Python
-    strftime string.  Persisted on ``DeviceSettings.date_format``.
+    ``key=None`` (the default) sets the global default + fans out to
+    every device; a specific ``key`` sets just that device.  Pattern
+    uses ICU-ish tokens (``yyyy/MM/dd``, ``dd.MM.yyyy``) translated by
+    ``_clock._translate_date_pattern`` to a Python strftime string.
     """
-    key: str
     fmt: str
+    key: str | None = None
 
     def execute(self, app: App) -> DateFormatResult:
+        log.info("SetDateFormat.execute: fmt=%r key=%s", self.fmt, self.key)
         if not self.fmt:
+            log.warning("SetDateFormat.execute: empty fmt")
             return DateFormatResult(
-                ok=False, key=self.key, fmt=self.fmt,
+                ok=False, key=self.key or "", fmt=self.fmt,
                 message="fmt must not be empty",
             )
-        app.settings.set_date_format(self.key, self.fmt)
-        app.display.invalidate(self.key)
-        app.events.publish(DateFormatChanged(key=self.key, fmt=self.fmt))
-        return DateFormatResult(
-            ok=True, key=self.key, fmt=self.fmt,
-            message=f"date format set to {self.fmt!r} for {self.key}",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class SetGlobalTimeFormat(Command[TimeFormatResult]):
-    """Set the global default clock format for every device.
-
-    Companion to :class:`SetTimeFormat` (per-device).  Writes
-    ``AppSettings.time_format`` and fans out to every existing
-    ``DeviceSettings.time_format``; subscribers (DeviceRenderObserver)
-    re-render each LCD on the next tick because we publish one
-    :class:`TimeFormatChanged` per device key.
-
-    Per-device override remains available — call ``SetTimeFormat``
-    after this Command to deviate one LCD from the global.
-    """
-    fmt: str
-
-    def execute(self, app: App) -> TimeFormatResult:
-        log.info("SetGlobalTimeFormat.execute: fmt=%s", self.fmt)
-        if self.fmt not in ("12h", "24h"):
-            log.warning(
-                "SetGlobalTimeFormat.execute: invalid fmt %r", self.fmt,
-            )
-            return TimeFormatResult(
-                ok=False, key="", fmt=self.fmt,
-                message=f"fmt must be '12h' or '24h', got {self.fmt!r}",
-            )
-        keys = app.settings.set_global_time_format(self.fmt)  # type: ignore[arg-type]
-        for key in keys:
-            app.display.invalidate(key)
-            app.events.publish(TimeFormatChanged(key=key, fmt=self.fmt))
-        log.info(
-            "SetGlobalTimeFormat.execute: fanned out to %d device(s)",
-            len(keys),
-        )
-        return TimeFormatResult(
-            ok=True, key="", fmt=self.fmt,
-            message=(f"global time format set to {self.fmt} "
-                     f"({len(keys)} device(s) updated)"),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class SetGlobalDateFormat(Command[DateFormatResult]):
-    """Set the global default date pattern for every device.
-
-    Companion to :class:`SetDateFormat` (per-device).  Same fan-out
-    shape as :class:`SetGlobalTimeFormat`.
-    """
-    fmt: str
-
-    def execute(self, app: App) -> DateFormatResult:
-        log.info("SetGlobalDateFormat.execute: fmt=%r", self.fmt)
-        if not self.fmt:
-            log.warning("SetGlobalDateFormat.execute: empty fmt")
-            return DateFormatResult(
-                ok=False, key="", fmt=self.fmt,
-                message="fmt must not be empty",
-            )
-        keys = app.settings.set_global_date_format(self.fmt)
+        if self.key is None:
+            keys = app.settings.set_global_date_format(self.fmt)
+            scope = f"global ({len(keys)} device(s))"
+        else:
+            app.settings.set_date_format(self.key, self.fmt)
+            keys = [self.key]
+            scope = self.key
         for key in keys:
             app.display.invalidate(key)
             app.events.publish(DateFormatChanged(key=key, fmt=self.fmt))
-        log.info(
-            "SetGlobalDateFormat.execute: fanned out to %d device(s)",
-            len(keys),
-        )
         return DateFormatResult(
-            ok=True, key="", fmt=self.fmt,
-            message=(f"global date format set to {self.fmt!r} "
-                     f"({len(keys)} device(s) updated)"),
+            ok=True, key=self.key or "", fmt=self.fmt,
+            message=f"date format set to {self.fmt!r} for {scope}",
         )
 
 
@@ -4187,7 +4132,6 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
 
     def execute(self, app: App) -> CloudThemeLoadResult:
         log.info("LoadCloudTheme: key=%s theme_id=%s", self.key, self.theme_id)
-        from ..adapters.repo.http import HttpFetchError
         resolution = _resolve_resolution(app, self.key)
         if resolution is None:
             log.warning(
@@ -4837,8 +4781,6 @@ class CheckForUpdate(Command[UpdateCheckResult]):
 
     def execute(self, app: App) -> UpdateCheckResult:
         from .. import __version__ as next_version_module
-        from ..adapters.repo.github_releases import is_newer
-        from ..adapters.repo.http import HttpFetchError
 
         local = getattr(next_version_module, "__version__", "0.0.0")
         try:
