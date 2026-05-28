@@ -421,7 +421,13 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 ## Development Workflow
 
 ### Plan Before Coding
-Non-trivial changes: think through full impact, state plan, wait for confirmation, THEN implement in one pass. Never jump in and patch as you go.
+Non-trivial changes: think through full impact, state the plan, wait for confirmation, THEN implement. Never jump in and patch as you go.
+
+- **Separate the fix from the redesign.** When a bug is reported, land the *minimum* fix and verify it FIRST — do not bundle a refactor or redesign into a bug fix. A redesign is its own deliberate, separately-approved project, never smuggled in under "while I'm in here." (Cautionary: a one-line `active_themes` fix nearly got buried under a multi-file asset-library redesign — the fix is the deliverable; the redesign is a separate choice.)
+- **Large changes go in verifiable increments, not one big-bang pass.** Break the plan into phases where each is independently verified (ruff + pyright + targeted tests + run the app) and leaves the app in a working state before the next begins. Big-bang edits across many files are how half-migrated states and subtle breakage sneak in — especially when the change touches the very path you're fixing or relocates user data. Do the data-touching / behavior-changing phases last and most carefully.
+- **Foundation work is not a feature.** Plumbing (paths, ports, resolution wiring) that changes no user-visible behavior is "the plumbing is in," not "the feature works" — say which, per "No progress theater."
+- **No copy-pasta.** Reuse over duplication: read the existing/legacy implementation end-to-end, then translate the pattern *in place* (rewire imports + call sites) — never copy blocks between files or trees. Store each asset/fact once and reference it; don't duplicate it across consumers.
+- **Professional Python, hexagonal/SOLID/DRY by default.** Every change meets the bar set in the "Architecture", "Code Style", "SOLID", and "Hexagonal Purity" sections above — idiomatic Python (dataclasses, enums, dunders, `match`/`case`, type hints, context managers, generators), classes with one clear responsibility, dependencies pointing inward only (core imports no adapter), ports at the boundaries. Elegance and correctness are the bar — not "it works."
 
 ### Look at the Log Before the Code
 When the user reports a broken feature: `grep -iE "error|traceback|warning" ~/.trcc/trcc.log` FIRST. The log usually names the broken step in one line; reading code to find it wastes 20 minutes and the user's patience.
