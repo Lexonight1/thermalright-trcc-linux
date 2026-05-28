@@ -165,6 +165,33 @@ def test_uc_device_overflow_scrolls_within_fixed_area(qapp: object) -> None:
         area_w, area_h)
 
 
+def test_list_gpus_feeds_about_panel_gpu_data(gui_app: App) -> None:
+    """ListGpus surfaces the aggregator's GPUs — the data the About panel
+    feeds its GPU label/dropdown.  Was empty via the dead get_gpu_list,
+    so the panel wrongly showed 'No GPU detected'."""
+    from trcc.core.commands import ListGpus
+
+    result = gui_app.dispatch(ListGpus())
+    assert result.ok
+    assert len(result.gpus) >= 1
+    assert result.gpus[0].key and result.gpus[0].name
+
+
+def test_uc_about_gpu_widget_label_and_dropdown(qapp: object) -> None:
+    """UCAbout shows the GPU name (not 'No GPU detected') for one GPU and a
+    list-select dropdown for multiple."""
+    del qapp
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_about import UCAbout
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    one = UCAbout(gpu_list=[("nvidia:0", "RTX 4090")])
+    assert one._gpu_label.text() == "RTX 4090"
+
+    two = UCAbout(gpu_list=[("nvidia:0", "RTX 4090"), ("intel:igpu", "UHD 770")])
+    assert two._gpu_combo.count() == 2
+
+
 def test_display_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.display_panel import DisplayPanel
 

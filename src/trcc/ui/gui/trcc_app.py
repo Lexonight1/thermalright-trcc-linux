@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import (
     ConnectDevice,
     EnableOverlay,
+    ListGpus,
     PlayVideo,
     SetBackground,
     SetGpuDevice,
@@ -943,12 +944,16 @@ class TRCCApp(QMainWindow):
         self._create_title_buttons()
         self._apply_settings_backgrounds()
 
-        # About panel — gpu_list from the sensor enumerator (best-effort)
-        get_gpu_list = getattr(self._sensors, "get_gpu_list", None)
-        gpu_list_raw = get_gpu_list() if callable(get_gpu_list) else []
-        # Narrow to the (key, label) tuple shape UCAbout expects.
+        # About panel — gpu_list via the ListGpus Command (the sensor
+        # aggregator's GPUs as (key, name) tuples).  Legacy fed this from
+        # the enumerator's get_gpu_list(); the new tree's equivalent is the
+        # ListGpus Command (the new SensorEnumerator port exposes gpus(),
+        # not the legacy get_gpu_list — calling that left it always empty,
+        # so the About panel wrongly showed "No GPU detected").
+        gpus_result = self._app.dispatch(ListGpus())
         gpu_list: list[tuple[str, str]] = (
-            list(gpu_list_raw) if isinstance(gpu_list_raw, list) else []
+            [(g.key, g.name) for g in gpus_result.gpus]
+            if gpus_result.ok else []
         )
         self.uc_about = UCAbout(
             parent=central, platform=self._app.platform,
