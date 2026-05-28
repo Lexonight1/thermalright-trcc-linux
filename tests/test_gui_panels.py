@@ -132,6 +132,39 @@ def test_device_panel_constructs(gui_app: App) -> None:
     assert panel.layout() is not None
 
 
+def test_uc_device_overflow_scrolls_within_fixed_area(qapp: object) -> None:
+    """Device sidebar overflow-scrolls INSIDE its fixed region.
+
+    Many device buttons grow only the inner content (so it scrolls); the
+    scroll area's own geometry never changes, so the sidebar stays in its
+    allotted space and never pushes the sensor/about buttons.
+    """
+    del qapp
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.constants import Layout
+    from trcc.ui.gui.uc_device import UCDevice
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    _, _, area_w, area_h = Layout.DEVICE_AREA
+    panel = UCDevice()
+
+    # Scroll area pinned to the allotted region.
+    assert (panel.device_scroll.width(), panel.device_scroll.height()) == (
+        area_w, area_h)
+
+    # Short list → inner content within the viewport (no overflow).
+    panel.update_devices([{"name": "A", "path": "/a"}])
+    assert panel.device_area.minimumHeight() <= area_h
+
+    # Long list → inner content exceeds the viewport (overflow → scroll)…
+    panel.update_devices(
+        [{"name": f"D{i}", "path": f"/d{i}"} for i in range(12)])
+    assert panel.device_area.minimumHeight() > area_h
+    # …yet the scroll area itself never grew — sidebar stays in its space.
+    assert (panel.device_scroll.width(), panel.device_scroll.height()) == (
+        area_w, area_h)
+
+
 def test_display_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.display_panel import DisplayPanel
 
