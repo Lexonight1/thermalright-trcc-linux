@@ -856,6 +856,36 @@ def test_save_theme_clears_all_overrides_after_save(
     assert s.current_theme == str((user_theme_dir / "full-state").resolve())
 
 
+def test_save_theme_snapshots_preview_as_thumbnail(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """With a device present, SaveTheme writes Theme.png — a real PNG
+    snapshot of the preview composite — so the saved theme shows a grid
+    tile in the chooser, just like shipped local themes."""
+    from trcc.core.models import Kind, ProductInfo, Wire
+
+    class _StubDevice:
+        info = ProductInfo(
+            vid=0x0402, pid=0x3922, vendor="Test", product="Stub",
+            wire=Wire.SCSI, kind=Kind.LCD, native_resolution=_TEST_RES,
+            orientations=(0, 90, 180, 270), native_orientation="landscape",
+        )
+        profile = None
+        is_connected = True
+        key = _TEST_DEVICE_KEY
+
+    app.devices[_TEST_DEVICE_KEY] = _StubDevice()  # type: ignore[assignment]
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="snap")).ok
+
+    thumb = user_theme_dir / "snap" / "Theme.png"
+    assert thumb.is_file()
+    # Real PNG snapshot, not a copied source thumbnail.
+    assert thumb.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_save_then_reload_resolves_library_assets_not_source(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:

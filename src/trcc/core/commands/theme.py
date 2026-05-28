@@ -302,7 +302,9 @@ class SaveTheme(Command[ThemeResult]):
       * mask → stored image-only in the library (no ``config1.dc``); the
         manifest's inline ``elements`` own the layout, so ``ApplyMask`` on
         reload applies the mask image + position WITHOUT clobbering them.
-      * ``Theme.png`` — source thumbnail (copied if present).
+      * ``Theme.png`` — a **snapshot of the live preview composite** (the
+        GUI theme-chooser grid tile, just like shipped local themes have).
+        Never sent to the device, so baking the full composite is safe.
       * no ``config1.dc`` — ``load()`` reads ``trcc.json`` directly.
 
     After a successful save the per-device overrides
@@ -389,7 +391,7 @@ class SaveTheme(Command[ThemeResult]):
                 app, target, theme, device_settings, w, h,
             )
             self._write_manifest(target, manifest)
-            self._copy_thumbnail(target, theme)
+            self._write_thumbnail(app, target, theme)
         except (OSError, ThemeError, TrccError) as e:
             log.exception("SaveTheme: assembly failed; rolling back %s", target)
             shutil.rmtree(target, ignore_errors=True)
@@ -593,15 +595,49 @@ class SaveTheme(Command[ThemeResult]):
             manifest.get("mask"), len(manifest.get("elements") or []),
         )
 
-    @staticmethod
-    def _copy_thumbnail(target: Path, theme: Theme) -> None:
-        """Copy the source's ``Theme.png`` thumbnail (browser grid tile)."""
+    def _write_thumbnail(self, app: App, target: Path, theme: Theme) -> None:
+        """Snapshot the live preview composite as ``target/Theme.png`` — the
+        GUI theme-chooser grid tile, so a saved theme shows a real preview
+        to pick from, just like shipped local themes.
+
+        ``Theme.png`` is the chooser's preferred tile and is NEVER rendered
+        to the device, so baking the full composite (background + mask +
+        overlay) is safe.  Best-effort: needs a connected device + renderer
+        to snapshot; a headless save falls back to the source theme's
+        thumbnail.  Never raises — a thumbnail miss must not fail the save.
+        """
         import shutil
+
+        device = app.devices.get(self.key)
+        if device is not None:
+            try:
+                from ...services.metrics_personalize import personalize_readings
+                s_app = app.settings.app
+                sensors = personalize_readings(
+                    app.platform.sensors().read_all(),
+                    temp_unit=s_app.temp_unit, hdd_enabled=s_app.hdd_enabled,
+                )
+                surface = app.display.build_preview_surface(
+                    info=device.info, theme=theme, sensors=sensors,
+                    profile=device.profile,
+                )
+                (target / "Theme.png").write_bytes(
+                    app.renderer.encode_png(surface),
+                )
+                log.info("SaveTheme: preview snapshot → %s", target / "Theme.png")
+                return
+            except Exception as e:
+                log.warning("SaveTheme: preview snapshot failed (%s) — "
+                            "falling back to source thumbnail", e)
 
         src = theme.path / "Theme.png"
         if src.is_file():
             shutil.copy2(src, target / "Theme.png")
-            log.info("SaveTheme: copied thumbnail → %s", target / "Theme.png")
+            log.info("SaveTheme: copied source thumbnail → %s",
+                     target / "Theme.png")
+        else:
+            log.info("SaveTheme: no device + no source thumbnail — "
+                     "saved without a grid tile")
 
 @dataclass(frozen=True, slots=True)
 class ExportConfig(Command[ExportConfigResult]):
