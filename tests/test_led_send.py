@@ -12,11 +12,11 @@ from trcc.adapters.device.led import (
     Led,
     LedPayload,
 )
-from trcc.core.models import Kind, LedStyle, ProductInfo, Wire
-from trcc.services.led_segment import (
+from trcc.core.led_protocol import (
     LED_REMAP_TABLES,
     remap_led_colors,
 )
+from trcc.core.models import Kind, LedStyle, ProductInfo, Wire
 
 from .conftest import FakeBulkTransport
 
@@ -173,8 +173,11 @@ def test_send_all_off_is_on_zeros_every_wire_led() -> None:
 
 # Sanity: the legacy helper is exposed at the same place callers can import.
 def test_remap_module_exports() -> None:
-    from trcc.services import led_segment
-    assert "remap_led_colors" in led_segment.__all__
-    assert "LED_REMAP_TABLES" in led_segment.__all__
-    assert "LED_REMAP_SUB_TABLES" in led_segment.__all__
-    assert remap_led_colors is led_segment.remap_led_colors
+    # remap tables + function live in core/led_protocol.py (pure wire-order
+    # data) so the LED adapter imports them downward instead of reaching
+    # up into services/ (the inverse-import fixed in the SOLID/DRY pass).
+    from trcc.core import led_protocol
+    assert "remap_led_colors" in led_protocol.__all__
+    assert "LED_REMAP_TABLES" in led_protocol.__all__
+    assert "LED_REMAP_SUB_TABLES" in led_protocol.__all__
+    assert remap_led_colors is led_protocol.remap_led_colors

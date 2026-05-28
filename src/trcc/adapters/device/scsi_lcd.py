@@ -231,6 +231,10 @@ class ScsiLcd(Device[ScsiTransport]):
 
     # ── Boot animation ────────────────────────────────────────────────
 
+    @property
+    def can_boot_animate(self) -> bool:
+        return True
+
     def send_boot_animation(
         self,
         frames: list[bytes],

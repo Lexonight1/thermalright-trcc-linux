@@ -181,15 +181,25 @@ class Device(ABC, Generic[T]):
         """
         return None
 
+    @property
+    def can_boot_animate(self) -> bool:
+        """True if this device accepts a flash boot animation (SCSI only).
+
+        Lets a Command gate on capability *before* the connection check
+        (boot anim is SCSI-only regardless of connection state), instead
+        of ``isinstance(device, ScsiLcd)``.  SCSI LCDs override to True.
+        """
+        return False
+
     def send_boot_animation(self, frames: list[bytes],
                             delays_ds: list[int]) -> int:
         """Upload a multi-frame boot animation to device flash.
 
         SCSI LCDs override this; every other device declines with
         ``UnsupportedOperationError`` (the boot-anim flash region only
-        exists on the SCSI firmware).  Callers catch the error and
-        report the SCSI-only constraint — no ``isinstance`` needed.
-        Returns the number of frames uploaded.
+        exists on the SCSI firmware).  Gated by ``can_boot_animate`` at
+        the call site, so this base raise is defensive — no ``isinstance``
+        needed.  Returns the number of frames uploaded.
         """
         raise UnsupportedOperationError(
             f"{self.key} does not support boot animation (SCSI-only)"

@@ -24,9 +24,9 @@ from trcc.adapters.device.led import (
 from trcc.app import App
 from trcc.core.commands import RenderLed
 from trcc.core.errors import DeviceNotConnectedError
+from trcc.core.led_protocol import LED_REMAP_TABLES
 from trcc.core.models import LedStyle
 from trcc.services.led_segment import (
-    LED_REMAP_TABLES,
     LegacyMetricsView,
     compute_mask,
 )

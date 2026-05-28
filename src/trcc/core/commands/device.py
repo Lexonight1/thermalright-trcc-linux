@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from ..errors import (
+    DeviceNotConnectedError,
     DeviceNotFoundError,
     HandshakeError,
     ThemeError,
     TransportError,
     TrccError,
-    UnsupportedOperationError,
 )
 from ..events import (
     BackgroundChanged,
@@ -844,11 +844,23 @@ class UploadBootAnimation(Command[BootAnimationResult]):
 
     def execute(self, app: App) -> BootAnimationResult:
         try:
-            device = _require_connected_device(app, self.key)
+            device = app.get(self.key)
         except DeviceNotFoundError as e:
             return BootAnimationResult(
                 ok=False, key=self.key, message=str(e),
                 frames_total=len(self.frame_paths),
+            )
+        # Capability gate BEFORE the connection check: boot anim is
+        # SCSI-only regardless of connection state, so a HID/LED device
+        # gets the clear "not a SCSI LCD" message even when unconnected.
+        if not device.can_boot_animate:
+            return BootAnimationResult(
+                ok=False, key=self.key, frames_total=len(self.frame_paths),
+                message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
+            )
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
             )
         if not self.frame_paths:
             return BootAnimationResult(
@@ -876,11 +888,6 @@ class UploadBootAnimation(Command[BootAnimationResult]):
 
         try:
             uploaded = device.send_boot_animation(encoded, list(self.delays_ds))
-        except UnsupportedOperationError:
-            return BootAnimationResult(
-                ok=False, key=self.key, frames_total=len(self.frame_paths),
-                message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
-            )
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,

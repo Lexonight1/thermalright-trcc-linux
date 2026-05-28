@@ -310,3 +310,12 @@ def remap_led_colors(
         return colors
     black = (0, 0, 0)
     return [colors[idx] if idx < len(colors) else black for idx in table]
+
+
+__all__ = [
+    "LED_REMAP_SUB_TABLES",
+    "LED_REMAP_TABLES",
+    "PmEntry",
+    "remap_led_colors",
+    "resolve_pm",
+]
