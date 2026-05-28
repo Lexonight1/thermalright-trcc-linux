@@ -236,22 +236,28 @@ class SensorPickerDialog(QDialog):
         for s in sensor_infos:
             groups.setdefault(s.source, []).append(s)
 
-        # Source display order and names
+        # The new sensor-id prefix IS the hardware category
+        # (cpu/gpu/fan/memory/disk/net/…); legacy keyed on the source
+        # (hwmon/nvidia/…), so its fixed list never matched here and the
+        # picker rendered blank.  Render EVERY discovered hardware group —
+        # known order first, then any others — so nothing is dropped.
+        # Clock sources (time/date) aren't hardware sensors and weren't in
+        # legacy's picker, so they're skipped.
         source_labels = {
-            'hwmon': 'Hardware Monitor',
-            'nvidia': 'NVIDIA GPU',
-            'drm': 'GPU (DRM)',
-            'psutil': 'System',
-            'rapl': 'Power (RAPL)',
-            'computed': 'Computed Rates',
+            'cpu': 'CPU', 'gpu': 'GPU', 'fan': 'Fans', 'memory': 'Memory',
+            'mem': 'Memory', 'disk': 'Disk', 'net': 'Network',
         }
+        _clock = {'time', 'date'}
+        _order = ('cpu', 'gpu', 'fan', 'memory', 'mem', 'disk', 'net')
+        ordered = [s for s in _order if s in groups]
+        ordered += [s for s in sorted(groups)
+                    if s not in _order and s not in _clock]
 
-        for source in ('hwmon', 'nvidia', 'drm', 'psutil', 'rapl', 'computed'):
-            if not (group := groups.get(source, [])):
-                continue
+        for source in ordered:
+            group = groups[source]
 
             # Section header
-            header = QLabel(source_labels.get(source, source))
+            header = QLabel(source_labels.get(source, source.upper()))
             header.setFixedHeight(24)
             header.setStyleSheet(
                 "color: #B4964F; font-size: 11px; font-weight: bold; "

@@ -192,6 +192,29 @@ def test_uc_about_gpu_widget_label_and_dropdown(qapp: object) -> None:
     assert two._gpu_combo.count() == 2
 
 
+def test_sensor_picker_renders_hardware_metrics(
+    gui_app: App, qapp: object,
+) -> None:
+    """The metric chooser must render rows for the category-prefixed
+    sensors (cpu/gpu/…), not only legacy sources — else it shows blank.
+    Clock sources (time/date) are excluded, matching legacy."""
+    del qapp
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    dlg = SensorPickerDialog(gui_app.platform.sensors())
+    try:
+        ids = {r.sensor.id for r in dlg._rows}
+        assert dlg._rows  # non-empty — was blank under the hardcoded list
+        assert any(i.startswith("cpu") for i in ids)
+        assert any(i.startswith("gpu") for i in ids)
+        assert not any(i.startswith(("time", "date")) for i in ids)
+    finally:
+        dlg._timer.stop()
+        dlg.deleteLater()
+
+
 def test_display_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.display_panel import DisplayPanel
 
