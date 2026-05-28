@@ -675,7 +675,11 @@ def _write_dd_trailer(w: _Writer, config: dict[str, Any]) -> None:
     overlay_rect = config.get("overlay_rect", (0, 0, 0, 0))
     for value in overlay_rect:
         w.write_int32(int(value))
-    w.write_bool(bool(config.get("mask_enabled", False)))
+    # Read ``mask_visible`` — the key every reader + consumer uses
+    # (models / overlay / settings / api).  The old ``mask_enabled``
+    # was a dead key nothing produced, so a mask-visible theme silently
+    # re-saved as mask-hidden on every write (B1).
+    w.write_bool(bool(config.get("mask_visible", False)))
     mask_pos = config.get("mask_position", (0, 0))
     for value in mask_pos:
         w.write_int32(int(value))

@@ -122,6 +122,45 @@ def test_round_trip_clock_element(theme_dir: Path) -> None:
     assert sources == ["time", "weekday", "date"]
 
 
+def test_mask_visible_round_trips(theme_dir: Path) -> None:
+    """``mask_visible`` survives a write→read cycle.
+
+    Regression guard for B1: the writer used to read ``mask_enabled``
+    (a key nothing produces) while every reader + consumer uses
+    ``mask_visible`` — so a mask-visible theme silently re-saved as
+    mask-hidden.
+    """
+    out = theme_dir / "config1.dc"
+    write_dc_from_theme_config(out, {
+        "elements": [{"type": "text", "x": 1, "y": 1, "text": "x"}],
+        "mask_visible": True,
+        "mask_position": [12, 34],
+    })
+    parsed = load_dc_as_theme_config(out)
+    assert parsed["mask_visible"] is True
+    assert parsed["mask_position"] == [12, 34]
+
+
+def test_trailer_round_trips(theme_dir: Path) -> None:
+    """overlay_enabled + rotation + mask state survive write→read→write."""
+    out = theme_dir / "config1.dc"
+    config = {
+        "elements": [],
+        "overlay_enabled": False,
+        "rotation": 90,
+        "mask_visible": True,
+        "mask_position": [5, 7],
+    }
+    write_dc_from_theme_config(out, config)
+    first = load_dc_as_theme_config(out)
+    # second cycle: re-write what we read, re-read — must be identical
+    write_dc_from_theme_config(out, first)
+    second = load_dc_as_theme_config(out)
+    for key in ("overlay_enabled", "rotation", "mask_visible", "mask_position"):
+        assert first[key] == config[key], f"first cycle dropped {key}"
+        assert second[key] == config[key], f"second cycle dropped {key}"
+
+
 def test_user_overlay_elements_layer_on_top(theme_dir: Path) -> None:
     """User overlay elements are concatenated after theme.config['elements']."""
     out = theme_dir / "config1.dc"
