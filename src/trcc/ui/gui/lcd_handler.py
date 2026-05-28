@@ -560,11 +560,13 @@ class LCDHandler(BaseHandler):
 
     def _load_theme_overlay_config(self, theme_dir: Path,
                                     *, persist: bool = True) -> None:
-        """Load overlay config from the theme's ``config1.dc``.
+        """Load overlay config from the theme's persisted layout.
 
-        Wires the legacy GUI grid (overlay_grid) to the theme's persisted
-        layout.  The DC file is the source of truth — `RestoreLastTheme`
-        re-reads it on every device connect, so we don't replay through
+        Wires the legacy GUI grid (overlay_grid) to the theme's layout —
+        ``trcc.json`` ``elements`` for saved themes, ``config1.dc`` /
+        legacy ``config.json`` for older/packaged ones (see
+        ``dc_as_legacy_overlay_config``).  `RestoreLastTheme` re-reads it
+        on every device connect, so we don't replay through
         `SetOverlayConfig` here (that Command takes next/-shape elements
         with ids, used by the GUI editor when the user drops a new
         element, not by automatic restore).
@@ -574,7 +576,9 @@ class LCDHandler(BaseHandler):
         overlay_config = dc_as_legacy_overlay_config(theme_dir)
 
         if not overlay_config:
-            self.log.info("_load_theme_overlay_config: no DC found → overlay disabled")
+            self.log.info(
+                "_load_theme_overlay_config: no overlay layout found "
+                "→ overlay disabled")
             self._w['theme_setting'].set_overlay_enabled(False)
             self._app.dispatch(EnableOverlay(
                 key=self._device_key, enabled=False,
@@ -584,8 +588,8 @@ class LCDHandler(BaseHandler):
             return
 
         self.log.info(
-            "_load_theme_overlay_config: DC loaded, %d elements → overlay enabled",
-            len(overlay_config),
+            "_load_theme_overlay_config: layout loaded, %d elements "
+            "→ overlay enabled", len(overlay_config),
         )
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)

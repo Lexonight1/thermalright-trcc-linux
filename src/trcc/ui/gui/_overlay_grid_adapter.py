@@ -33,6 +33,7 @@ from ...services import _dc as Dc
 log = logging.getLogger(__name__)
 
 
+_JSON_CONFIG_FILE = "trcc.json"
 _DC_CONFIG_FILE = "config1.dc"
 _LEGACY_CONFIG_FILE = "config.json"
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
@@ -44,12 +45,21 @@ def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
 
     Source preference matches ``ThemeService._load_config``:
 
-      1. ``config1.dc`` -- binary, parsed via ``Dc.File.read()``
-      2. ``config.json`` (legacy) -- pass through the ``dc:`` sub-dict,
+      1. ``trcc.json`` -- next/-native; its ``elements`` list is the
+         overlay layout ``SaveTheme`` now writes (saved themes carry NO
+         ``config1.dc`` — the layout lives here).
+      2. ``config1.dc`` -- binary, parsed via ``Dc.File.read()``
+      3. ``config.json`` (legacy) -- pass through the ``dc:`` sub-dict,
          filtered by ``enabled``
 
-    Returns ``{}`` when neither file exists or both parse fail.
+    Returns ``{}`` when none exist or all parse empty.
     """
+    raw_json = load_json_or_default(theme_dir / _JSON_CONFIG_FILE, None)
+    if isinstance(raw_json, dict):
+        overlay = _theme_config_to_overlay_dict(raw_json)
+        if overlay:
+            return overlay
+
     dc_path = theme_dir / _DC_CONFIG_FILE
     if dc_path.is_file():
         try:

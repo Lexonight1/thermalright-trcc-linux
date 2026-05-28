@@ -44,6 +44,7 @@ from .services.keepalive import KeepaliveService
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
+from .services.migration import LibraryMigration
 from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
@@ -78,7 +79,7 @@ class App:
         self.devices: dict[str, Device] = {}
         self.events = EventBus()
         self.settings = Settings(platform.paths())
-        self.themes = ThemeService()
+        self.themes = ThemeService(platform.paths())
         self.media = MediaService()
         # Currently-loaded Theme per device — set by LoadTheme, read by
         # RenderAndSend ticker, cleared on DisconnectDevice.
@@ -118,10 +119,14 @@ class App:
         # are tick-driven; no background threads inside the services.
         self.slideshow = SlideshowService()
         self.keepalive = KeepaliveService()
-        # First-run flag — lightweight marker-file check.  next/'s Paths
-        # port resolves to legacy's content layout (see `core/ports.py`),
-        # so installed-user themes/masks are visible in place without an
-        # explicit migration pass.
+        # One-time library migration: early cutover builds saved user
+        # content directly under user_content_dir (`theme{w}{h}`, `web`);
+        # the current layout roots it under `data/` (mirroring the shipped
+        # `.trcc/data/` tree).  Move any old-location dirs in, merge-style
+        # and never clobbering.  `run()` is idempotent + swallows its own
+        # I/O errors, so it can't block startup.
+        LibraryMigration(platform.paths()).run()
+        # First-run flag — lightweight marker-file check.
         self.first_run = FirstRunService(platform.paths())
         # Quickstart — guided first-session orchestrator.  Sequences
         # doctor + scan with explicit step boundaries so any UI renders

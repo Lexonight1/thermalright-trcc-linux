@@ -407,15 +407,17 @@ class Paths(ABC):
     every OS uses the same subpath layout — only the root differs.
 
     Layout convention: ``data_dir()`` is the package + cloud-downloaded
-    content root (``~/.trcc/data/``); ``user_content_dir()`` is the
-    user-saved content root (``~/.trcc-user/``).  Both are content
-    roots — the per-resolution sub-tree shape is identical under each:
+    content root (``~/.trcc/data/``); ``user_data_dir()`` is the
+    user-saved content root (``~/.trcc-user/data/``).  Both carry the
+    identical per-resolution sub-tree — resolving a default vs a user
+    asset differs only by which root you start from:
 
-        <root>/theme{w}{h}/<name>/
-        <root>/web/zt{w}{h}/<name>/
+        <root>/theme{w}{h}/<name>/      (themes)
+        <root>/web/{w}{h}/              (backgrounds)
+        <root>/web/zt{w}{h}/<id>/       (masks + their config1.dc)
 
-    Reads beneath ``data_dir()`` and ``user_content_dir()`` are
-    symmetric; only the root differs.
+    ``user_content_dir()`` is the parent (``~/.trcc-user/``); user data
+    lives under its ``data/`` child so the two trees mirror exactly.
     """
 
     @abstractmethod
@@ -430,6 +432,17 @@ class Paths(ABC):
     @abstractmethod
     def log_file(self) -> Path: ...
 
+    def user_data_dir(self) -> Path:
+        """User-saved content root — mirrors :meth:`data_dir`'s ``/data``
+        layout under :meth:`user_content_dir`.
+
+        Concrete on the ABC: every OS roots user content at
+        ``user_content_dir() / "data"``, so the user sub-tree is the
+        byte-for-byte twin of the default one and resolution differs
+        only by which root you start from.
+        """
+        return self.user_content_dir() / "data"
+
     def theme_dir(self, width: int, height: int) -> Path:
         """Themes shipped with the app or downloaded from GitHub releases."""
         return self.data_dir() / f"theme{width}{height}"
@@ -437,14 +450,21 @@ class Paths(ABC):
     def user_theme_dir(self, width: int, height: int) -> Path:
         """Per-resolution user-saved theme dir.
 
-        Mirrors :meth:`theme_dir` shape, rooted at
-        :meth:`user_content_dir` instead of :meth:`data_dir`.
+        Same subpath as :meth:`theme_dir`, rooted at :meth:`user_data_dir`.
         """
-        return self.user_content_dir() / f"theme{width}{height}"
+        return self.user_data_dir() / f"theme{width}{height}"
 
     def cloud_theme_dir(self, width: int, height: int) -> Path:
-        """Cloud-catalog themes downloaded at runtime."""
+        """Cloud-catalog themes (backgrounds) downloaded at runtime."""
         return self.data_dir() / "web" / f"{width}{height}"
+
+    def user_background_dir(self, width: int, height: int) -> Path:
+        """Per-resolution user-saved backgrounds.
+
+        Same subpath as :meth:`cloud_theme_dir`, rooted at
+        :meth:`user_data_dir` — user backgrounds mirror cloud ones.
+        """
+        return self.user_data_dir() / "web" / f"{width}{height}"
 
     def cloud_mask_dir(self, width: int, height: int) -> Path:
         """Cloud-catalog masks downloaded at runtime."""
@@ -453,10 +473,10 @@ class Paths(ABC):
     def user_mask_dir(self, width: int, height: int) -> Path:
         """User-created masks — survives uninstall + redownload.
 
-        Mirrors :meth:`cloud_mask_dir` shape, rooted at
-        :meth:`user_content_dir` instead of :meth:`data_dir`.
+        Same subpath as :meth:`cloud_mask_dir`, rooted at
+        :meth:`user_data_dir` — user masks mirror cloud ones.
         """
-        return self.user_content_dir() / "web" / f"zt{width}{height}"
+        return self.user_data_dir() / "web" / f"zt{width}{height}"
 
 
 # =========================================================================

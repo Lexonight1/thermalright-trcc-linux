@@ -222,6 +222,47 @@ def test_legacy_overlay_returns_empty_when_no_dc(tmp_path: Path) -> None:
     assert dc_as_legacy_overlay_config(tmp_path) == {}
 
 
+def test_legacy_overlay_reads_trcc_json_elements(tmp_path: Path) -> None:
+    """A reference-manifest theme keeps its overlay layout in trcc.json's
+    ``elements`` (no config1.dc) — SaveTheme's new format.  The adapter
+    must surface it, else the GUI grid empties + overlay toggles off on
+    reload of a just-saved theme."""
+    import json
+    (tmp_path / "trcc.json").write_text(json.dumps({
+        "name": "t", "width": 320, "height": 320,
+        "elements": [
+            {"type": "clock", "source": "time", "x": 10, "y": 20,
+             "color": "#ffffff", "size": 24, "bold": False, "italic": False},
+            {"type": "text", "text": "HI", "x": 5, "y": 15,
+             "color": "#ff8800", "size": 18, "bold": True, "italic": False},
+        ],
+    }), encoding="utf-8")
+
+    cfg = dc_as_legacy_overlay_config(tmp_path)
+
+    assert set(cfg.keys()) == {"time", "custom_text"}
+    assert cfg["time"]["x"] == 10
+    assert cfg["time"]["metric"] == "time"
+    assert cfg["custom_text"]["text"] == "HI"
+
+
+def test_legacy_overlay_prefers_trcc_json_over_dc(tmp_path: Path) -> None:
+    """When both exist, trcc.json wins — matches ThemeService._load_config."""
+    import json
+    (tmp_path / "trcc.json").write_text(json.dumps({
+        "elements": [{"type": "text", "text": "JSON", "x": 1, "y": 2,
+                      "color": "#fff", "size": 12,
+                      "bold": False, "italic": False}],
+    }), encoding="utf-8")
+    (tmp_path / "config1.dc").write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=4, x=9, y=9, custom_text=b"DC"),
+    ]))
+
+    cfg = dc_as_legacy_overlay_config(tmp_path)
+
+    assert cfg["custom_text"]["text"] == "JSON"
+
+
 def test_legacy_overlay_skips_corrupt_dc(tmp_path: Path) -> None:
     """A DC with bad magic doesn't raise — just empty overlay."""
     (tmp_path / "config1.dc").write_bytes(b"\xff\x00\x00")

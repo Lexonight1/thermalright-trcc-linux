@@ -25,17 +25,22 @@ Rendering (turning a Theme into frame bytes) is DisplayService's job.
 from __future__ import annotations
 
 import builtins
+import hashlib
 import json
 import logging
 import shutil
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..core._safe import is_safe_zip_member
 from ..core.errors import ThemeError
 from ..core.models import Theme, ThemeDir
 from . import _dc as Dc
+
+if TYPE_CHECKING:
+    from ..core.ports import Paths
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +80,10 @@ _DC_CONFIG_FILE = "config1.dc"
 _VIDEO_CANDIDATES = (
     "Theme.mp4", "Theme.mov", "Theme.webm", "Theme.zt",
 )
+# Video container extensions we ship (derived from _VIDEO_CANDIDATES so the
+# two never drift); the background allowlist is those plus the static PNG.
+_VIDEO_EXTS = frozenset(Path(c).suffix.lower() for c in _VIDEO_CANDIDATES)
+_BG_EXTS = _VIDEO_EXTS | {".png"}
 
 
 class ThemeService:
@@ -83,6 +92,131 @@ class ThemeService:
     Pure file I/O + JSON parsing — no rendering, no device talk.  Builds
     Theme metadata that later services consume.
     """
+
+    def __init__(self, paths: Paths | None = None) -> None:
+        """*paths* enables manifest asset-reference resolution.
+
+        A reference theme names its background/mask by a path relative
+        to a data root (``web/{w}{h}/<id>``) instead of bundling the
+        bytes.  With *paths* injected, ``background_path`` / ``mask_path``
+        resolve those refs against the user library first, then the
+        default/cloud library.  When *paths* is None (unit tests that
+        only exercise self-contained themes), resolution falls back to
+        the in-directory convention.
+        """
+        self._paths = paths
+
+    def _resolve_asset_ref(self, ref: str) -> Path | None:
+        """Resolve a manifest asset reference to an absolute path.
+
+        A relative ref (``web/{w}{h}/a042.mp4``, ``web/zt{w}{h}/m007``)
+        is tried under the user data root first, then the default data
+        root — "only the parent differs".  Path traversal is rejected:
+        the resolved target must stay under the root it matched.  An
+        absolute ref is honoured as-is (legacy themes stored absolute
+        mask paths) but only when it exists.
+        """
+        if not ref:
+            return None
+        rel = Path(ref)
+        if rel.is_absolute():
+            return rel if rel.exists() else None
+        if self._paths is None:
+            return None
+        for root in (self._paths.user_data_dir(), self._paths.data_dir()):
+            candidate = root / rel
+            try:
+                resolved = candidate.resolve()
+                resolved.relative_to(root.resolve())
+            except (OSError, ValueError):
+                log.warning("_resolve_asset_ref: %r escapes %s — rejected",
+                            ref, root)
+                continue
+            if resolved.exists():
+                log.debug("_resolve_asset_ref: %r → %s", ref, resolved)
+                return resolved
+        log.debug("_resolve_asset_ref: %r unresolved under user/default roots",
+                  ref)
+        return None
+
+    # ── Library writers — the write-side mirror of _resolve_asset_ref ──
+
+    @staticmethod
+    def _content_id(data: bytes) -> str:
+        """Content-hash id for a library asset — sha256, 16 hex chars.
+
+        64 bits won't collide across a personal library, and the short
+        id keeps on-disk paths readable.  Identical bytes always hash to
+        the same id — that is what gives the writers their auto-dedup.
+        """
+        return hashlib.sha256(data).hexdigest()[:16]
+
+    def store_background(
+        self, data: bytes, ext: str, width: int, height: int,
+    ) -> str:
+        """Store a background in the user library; return its manifest ref.
+
+        Writes *data* to ``user_background_dir(w,h)/<id><ext>`` (``<id>``
+        = content hash) and returns the relative ref
+        ``web/{w}{h}/<id><ext>`` — the exact shape
+        :meth:`_resolve_asset_ref` consumes, so a stored asset round-trips
+        back through :meth:`background_path`.  Identical bytes dedup to
+        one file (write skipped when the target exists).  *ext* must name
+        a shippable background container (``.png`` or a video ext);
+        anything else raises :class:`ThemeError`.
+        """
+        if self._paths is None:
+            raise RuntimeError("store_background requires paths injection")
+        ext = ext.lower()
+        if not ext.startswith("."):
+            ext = f".{ext}"
+        if ext not in _BG_EXTS:
+            log.warning("store_background: rejected ext %r (allowed: %s)",
+                        ext, sorted(_BG_EXTS))
+            raise ThemeError(f"unsupported background extension: {ext!r}")
+        filename = f"{self._content_id(data)}{ext}"
+        dest = self._paths.user_background_dir(width, height) / filename
+        ref = f"web/{width}{height}/{filename}"
+        if dest.exists():
+            log.info("store_background: dedup hit %s → %s", filename, dest)
+            return ref
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        log.info("store_background: wrote %d byte(s) → %s (ref=%s)",
+                 len(data), dest, ref)
+        return ref
+
+    def store_mask(
+        self, image: bytes, width: int, height: int,
+        *, dc: bytes | None = None,
+    ) -> str:
+        """Store a mask (+ its DC) in the user library; return its ref.
+
+        Writes *image* to ``user_mask_dir(w,h)/<id>/01.png`` and, when
+        *dc* is given, its layout to ``.../<id>/config1.dc`` — the
+        ``{01.png, config1.dc}`` unit a mask carries.  ``<id>`` is the
+        content hash of the mask *image*: its visual identity is the
+        dedup key, while the DC is the mask's intrinsic catalog layout.
+        Returns the directory ref ``web/zt{w}{h}/<id>`` that
+        :meth:`mask_path` resolves.  Identical images dedup to one dir
+        (write skipped when its ``01.png`` exists).
+        """
+        if self._paths is None:
+            raise RuntimeError("store_mask requires paths injection")
+        asset_id = self._content_id(image)
+        dest_dir = self._paths.user_mask_dir(width, height) / asset_id
+        td = ThemeDir(dest_dir)
+        ref = f"web/zt{width}{height}/{asset_id}"
+        if td.mask.exists():
+            log.info("store_mask: dedup hit %s → %s", asset_id, dest_dir)
+            return ref
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        td.mask.write_bytes(image)
+        if dc is not None:
+            td.dc.write_bytes(dc)
+        log.info("store_mask: wrote mask=%d byte(s) dc=%s → %s (ref=%s)",
+                 len(image), "yes" if dc is not None else "no", dest_dir, ref)
+        return ref
 
     def load(self, path: Path) -> Theme:
         """Load a theme directory into a Theme dataclass.
@@ -197,13 +331,26 @@ class ThemeService:
         return target
 
     def background_path(self, theme: Theme) -> Path | None:
-        """Return the theme's background — ``00.png`` or a video file.
+        """Return the theme's background — a referenced library asset or
+        the in-dir ``00.png`` / video file.
 
-        Strict legacy convention: the static background is always
-        ``00.png``.  Videos live alongside as ``Theme.{mp4,mov,webm,zt}``.
-        ``Theme.png`` is the panel thumbnail and MUST NOT be returned
-        here (renderer would ship the thumbnail to the device).
+        Reference themes carry a ``background`` key naming a library
+        asset (resolved user-root → default-root); self-contained themes
+        keep the strict legacy convention — static background ``00.png``,
+        videos alongside as ``Theme.{mp4,mov,webm,zt}``.  ``Theme.png`` is
+        the panel thumbnail and MUST NOT be returned here (renderer would
+        ship the thumbnail to the device).
         """
+        ref = theme.config.get("background")
+        if isinstance(ref, str) and ref:
+            resolved = self._resolve_asset_ref(ref)
+            if resolved is not None:
+                log.info("background_path: %s → referenced asset %s",
+                         theme.name, resolved)
+                return resolved
+            log.warning("background_path: %s references %r but it did not "
+                        "resolve — falling back to in-dir convention",
+                        theme.name, ref)
         video = self.video_path(theme)
         if video is not None:
             return video
@@ -227,7 +374,24 @@ class ThemeService:
         return None
 
     def mask_path(self, theme: Theme) -> Path | None:
-        """Return the theme's mask overlay (``01.png``) or None."""
+        """Return the theme's mask overlay (``01.png``) or None.
+
+        Reference themes carry a ``mask`` key naming a library mask
+        directory (resolved user-root → default-root); its ``01.png`` is
+        returned.  Self-contained themes use the in-dir ``01.png``.
+        """
+        ref = theme.config.get("mask")
+        if isinstance(ref, str) and ref:
+            resolved = self._resolve_asset_ref(ref)
+            if resolved is not None:
+                td = ThemeDir(resolved if resolved.is_dir() else resolved.parent)
+                if td.mask.exists():
+                    log.info("mask_path: %s → referenced mask %s",
+                             theme.name, td.mask)
+                    return td.mask
+            log.warning("mask_path: %s references %r but it did not "
+                        "resolve — falling back to in-dir convention",
+                        theme.name, ref)
         td = ThemeDir(theme.path)
         return td.mask if td.mask.exists() else None
 
@@ -280,29 +444,78 @@ class ThemeService:
         return masks
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
-        """Archive a theme directory into a deflate-compressed zip.
+        """Archive a theme as a self-contained, shareable zip.
 
-        Layout: every file under ``theme_path`` becomes an archive entry
-        keyed by its relative path. Empty subdirectories are dropped
-        (zip stores files, not directories).
+        A saved theme references its background/mask in the user library
+        (Phase D), so a raw dir-zip would omit them.  Export DEREFERENCES:
+        the resolved background lands as ``00.png`` (or a bundled video as
+        ``Theme.<ext>``), the mask as ``01.png``, the thumbnail as
+        ``Theme.png``, and a ``trcc.json`` with the library ``background``/
+        ``mask`` ref keys STRIPPED — so the recipient loads via the in-dir
+        convention without needing the sender's library.
         """
         if not theme_path.exists():
             raise ThemeError(f"Theme directory does not exist: {theme_path}")
         if not theme_path.is_dir():
             raise ThemeError(f"Theme path is not a directory: {theme_path}")
 
+        members = self._export_members(self.load(theme_path), theme_path)
         try:
             with zipfile.ZipFile(archive_path, "w",
                                  compression=zipfile.ZIP_DEFLATED) as zf:
-                for file_path in sorted(theme_path.rglob("*")):
-                    if file_path.is_file():
-                        arcname = file_path.relative_to(theme_path)
-                        zf.write(file_path, arcname)
+                for arcname, source in sorted(members.items()):
+                    if isinstance(source, Path):
+                        zf.write(source, arcname)
+                    else:
+                        zf.writestr(arcname, source)
         except OSError as e:
             raise ThemeError(
                 f"Failed to write archive {archive_path}: {e}",
             ) from e
-        log.info("Exported %s → %s", theme_path, archive_path)
+        log.info("Exported %s → %s (%d member(s): %s)",
+                 theme_path, archive_path, len(members), sorted(members))
+
+    def _export_members(
+        self, theme: Theme, theme_path: Path,
+    ) -> dict[str, Path | bytes]:
+        """Resolve a theme into its self-contained archive members.
+
+        Maps each archive entry name to a source ``Path`` (copied
+        verbatim) or ``bytes`` (the rebuilt manifest).  Dereferences the
+        background/mask refs to library files via Phase-B resolution, so
+        the archive carries the bytes, not the refs.
+        """
+        members: dict[str, Path | bytes] = {}
+
+        bg = self.background_path(theme)
+        if bg is not None and bg.suffix.lower() in _VIDEO_EXTS:
+            members[f"Theme{bg.suffix.lower()}"] = bg
+            log.info("export: bundling video bg %s", bg.name)
+        elif bg is not None:
+            members["00.png"] = bg
+            log.info("export: dereferenced bg → 00.png (%s)", bg)
+        else:
+            log.info("export: theme %r has no background", theme.name)
+
+        mask = self.mask_path(theme)
+        if mask is not None:
+            members["01.png"] = mask
+            log.info("export: dereferenced mask → 01.png (%s)", mask)
+
+        td = ThemeDir(theme_path)
+        if td.preview.exists():
+            members["Theme.png"] = td.preview
+
+        manifest = {
+            k: v for k, v in theme.config.items()
+            if k not in ("background", "mask")
+        }
+        members["trcc.json"] = (
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        log.info("export: manifest stripped of bg/mask refs (%d key(s))",
+                 len(manifest))
+        return members
 
     def import_(self, archive_path: Path, into_dir: Path) -> Theme:
         """Unpack a theme archive into ``into_dir``.

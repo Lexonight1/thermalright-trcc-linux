@@ -184,7 +184,7 @@ def test_base_panel_requires_setup_ui() -> None:
             pass
 
 
-def test_assets_resolve_missing_returns_placeholder() -> None:
+def test_assets_resolve_missing_returns_placeholder(qapp: object) -> None:
     """Missing asset names produce a 1×1 transparent placeholder."""
     from trcc.ui.qtgui.assets import Assets
 

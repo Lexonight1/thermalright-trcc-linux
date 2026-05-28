@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from trcc.app import App
-from trcc.core.commands import ExportTheme, ImportTheme, SaveTheme
+from trcc.core.commands import ExportTheme, ImportTheme, LoadTheme, SaveTheme
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import Theme
@@ -34,6 +34,24 @@ def _write_theme(directory: Path, name: str = "demo",
         json.dumps(config, indent=2), encoding="utf-8",
     )
     (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    return theme_dir
+
+
+def _write_self_contained_theme(directory: Path, name: str = "demo",
+                                width: int = 320, height: int = 320) -> Path:
+    """A self-contained theme dir: canonical 00.png + 01.png + trcc.json.
+
+    Bytes are placeholders — the export/import path copies them verbatim
+    (never opens them), so a real image isn't needed here.
+    """
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True)
+    config = {"name": name, "width": width, "height": height, "elements": []}
+    (theme_dir / "trcc.json").write_text(
+        json.dumps(config, indent=2), encoding="utf-8",
+    )
+    (theme_dir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\nBG")
+    (theme_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\nMASK")
     return theme_dir
 
 
@@ -79,7 +97,7 @@ def user_theme_dir(app: App) -> Path:
 
 
 def test_export_writes_zip_with_expected_members(tmp_home: Path) -> None:
-    theme_dir = _write_theme(tmp_home, "demo")
+    theme_dir = _write_self_contained_theme(tmp_home, "demo")
     archive = tmp_home / "demo.tr"
 
     ThemeService().export(theme_dir, archive)
@@ -87,8 +105,48 @@ def test_export_writes_zip_with_expected_members(tmp_home: Path) -> None:
     assert archive.exists()
     with zipfile.ZipFile(archive) as zf:
         names = set(zf.namelist())
+    # Export produces a canonical self-contained theme.
     assert "trcc.json" in names
-    assert "background.png" in names
+    assert "00.png" in names
+    assert "01.png" in names
+
+
+def test_export_dereferences_reference_theme_to_self_contained(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Export resolves a reference theme's library bg + mask into the
+    archive as self-contained 00.png/01.png, so a recipient with NO
+    matching library can import + load it (the Phase-E proof)."""
+    import json as _json
+
+    # Save a reference theme — its bg + mask land in the user library.
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ref")).ok
+    saved = user_theme_dir / "ref"
+    saved_manifest = _json.loads(
+        (saved / "trcc.json").read_text(encoding="utf-8"),
+    )
+    assert "background" in saved_manifest and "mask" in saved_manifest
+    assert not (saved / "00.png").exists()
+
+    # Export → archive must be self-contained, with refs stripped.
+    archive = tmp_home / "ref.tr"
+    app.themes.export(saved, archive)
+    with zipfile.ZipFile(archive) as zf:
+        names = set(zf.namelist())
+        exported = _json.loads(zf.read("trcc.json").decode("utf-8"))
+    assert "00.png" in names
+    assert "01.png" in names
+    assert "background" not in exported
+    assert "mask" not in exported
+
+    # Import into a FRESH service with NO library — must resolve in-dir.
+    fresh = ThemeService()
+    recipient = tmp_home / "recipient"
+    imported = fresh.import_(archive, recipient)
+    assert fresh.background_path(imported) == recipient / "00.png"
+    assert fresh.mask_path(imported) == recipient / "01.png"
 
 
 def test_export_rejects_missing_source(tmp_home: Path) -> None:
@@ -107,18 +165,10 @@ def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
         ThemeService().export(file_path, tmp_home / "out.tr")
 
 
-def test_export_preserves_subdirectory_structure(tmp_home: Path) -> None:
-    """Nested files retain their relative path inside the archive."""
-    theme_dir = _write_theme(tmp_home, "nested")
-    (theme_dir / "assets").mkdir()
-    (theme_dir / "assets" / "logo.png").write_bytes(b"\x89PNG")
-
-    archive = tmp_home / "nested.tr"
-    ThemeService().export(theme_dir, archive)
-
-    with zipfile.ZipFile(archive) as zf:
-        names = set(zf.namelist())
-    assert "assets/logo.png" in names
+# NB: export no longer preserves arbitrary subdirectory files — Phase E
+# made it produce a CANONICAL self-contained theme (00.png / 01.png /
+# Theme.png / trcc.json), dereferencing library refs.  The old
+# "preserves arbitrary nested files" test was removed with that change.
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -127,7 +177,7 @@ def test_export_preserves_subdirectory_structure(tmp_home: Path) -> None:
 
 
 def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
-    source = _write_theme(tmp_home / "src", "demo")
+    source = _write_self_contained_theme(tmp_home / "src", "demo")
     archive = tmp_home / "demo.tr"
     ThemeService().export(source, archive)
 
@@ -137,7 +187,7 @@ def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
     assert theme.name == "demo"
     assert theme.resolution == (320, 320)
     assert (target / "trcc.json").is_file()
-    assert (target / "background.png").is_file()
+    assert (target / "00.png").is_file()
 
 
 def test_import_rejects_missing_archive(tmp_home: Path) -> None:
@@ -284,44 +334,229 @@ def test_save_theme_publishes_event(
     assert events[0].theme_name == "ok-name"
 
 
-def _write_theme_with_dc(directory: Path, name: str = "withdc",
-                          width: int = 320, height: int = 320) -> Path:
-    """Theme dir with a real ``config1.dc`` so SaveTheme's bake path fires."""
-    from trcc.services import _dc as Dc
+def test_reference_theme_resolves_assets_from_user_library(
+    app: App, tmp_home: Path,
+) -> None:
+    """A reference theme resolves its background + mask from the user
+    library (web/{res}, web/zt{res}), not from inside the theme dir."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    bg_dir = paths.user_background_dir(w, h)
+    bg_dir.mkdir(parents=True)
+    (bg_dir / "a042.mp4").write_bytes(b"VIDEO")
+    mask_dir = paths.user_mask_dir(w, h) / "m007"
+    mask_dir.mkdir(parents=True)
+    (mask_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\nMASK")
 
+    theme = Theme(
+        path=tmp_home / "ref-theme",
+        name="ref-theme",
+        resolution=_TEST_RES,
+        config={
+            "name": "ref-theme",
+            "background": f"web/{w}{h}/a042.mp4",
+            "mask": f"web/zt{w}{h}/m007",
+        },
+    )
+    svc = ThemeService(paths)
+    assert svc.background_path(theme) == (bg_dir / "a042.mp4").resolve()
+    assert svc.mask_path(theme) == (mask_dir / "01.png").resolve()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase C — content-hash library writers
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_store_background_round_trips_through_resolver(
+    app: App, tmp_home: Path,
+) -> None:
+    """A stored background lands under user_background_dir and a
+    reference theme naming the returned ref resolves back to it."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    svc = ThemeService(paths)
+    data = b"\x89PNG\r\n\x1a\nBACKGROUND"
+
+    ref = svc.store_background(data, ".png", w, h)
+
+    files = list(paths.user_background_dir(w, h).iterdir())
+    assert len(files) == 1
+    assert files[0].suffix == ".png"
+    assert files[0].read_bytes() == data
+    assert ref == f"web/{w}{h}/{files[0].name}"
+    theme = Theme(
+        path=tmp_home / "ref", name="ref", resolution=_TEST_RES,
+        config={"name": "ref", "background": ref},
+    )
+    assert svc.background_path(theme) == files[0].resolve()
+
+
+def test_store_background_dedups_identical_bytes(app: App) -> None:
+    """Storing identical bytes twice yields one file and the same ref."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    svc = ThemeService(paths)
+    data = b"\x89PNG\r\n\x1a\nSAME"
+
+    ref1 = svc.store_background(data, ".png", w, h)
+    ref2 = svc.store_background(data, ".png", w, h)
+
+    assert ref1 == ref2
+    assert len(list(paths.user_background_dir(w, h).iterdir())) == 1
+
+
+def test_store_background_rejects_unknown_ext(app: App) -> None:
+    """A background ext outside the shippable allowlist is refused."""
+    svc = ThemeService(app.platform.paths())
+    with pytest.raises(ThemeError):
+        svc.store_background(b"x", ".exe", *_TEST_RES)
+
+
+def test_store_mask_round_trips_through_resolver(
+    app: App, tmp_home: Path,
+) -> None:
+    """A stored mask lands at user_mask_dir/<id>/{01.png,config1.dc} and a
+    reference theme naming the returned ref resolves back to its 01.png."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    svc = ThemeService(paths)
+    image = b"\x89PNG\r\n\x1a\nMASKBYTES"
+    dc = b"\xddDCBYTES"
+
+    ref = svc.store_mask(image, w, h, dc=dc)
+
+    dirs = list(paths.user_mask_dir(w, h).iterdir())
+    assert len(dirs) == 1
+    asset_dir = dirs[0]
+    assert (asset_dir / "01.png").read_bytes() == image
+    assert (asset_dir / "config1.dc").read_bytes() == dc
+    assert ref == f"web/zt{w}{h}/{asset_dir.name}"
+    theme = Theme(
+        path=tmp_home / "ref", name="ref", resolution=_TEST_RES,
+        config={"name": "ref", "mask": ref},
+    )
+    assert svc.mask_path(theme) == (asset_dir / "01.png").resolve()
+
+
+def test_store_mask_dedups_identical_image(app: App) -> None:
+    """Identical mask images dedup to one <id> directory."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    svc = ThemeService(paths)
+    image = b"\x89PNG\r\n\x1a\nDUP"
+
+    ref1 = svc.store_mask(image, w, h)
+    ref2 = svc.store_mask(image, w, h)
+
+    assert ref1 == ref2
+    assert len(list(paths.user_mask_dir(w, h).iterdir())) == 1
+
+
+def test_library_writers_require_paths() -> None:
+    """Writers raise without a Paths port — a library write with no root
+    is a wiring bug, not a user error."""
+    svc = ThemeService()
+    with pytest.raises(RuntimeError):
+        svc.store_background(b"x", ".png", *_TEST_RES)
+    with pytest.raises(RuntimeError):
+        svc.store_mask(b"x", *_TEST_RES)
+
+
+def _write_theme_with_mask(directory: Path, name: str = "masked",
+                           width: int = 320, height: int = 320) -> Path:
+    """Source theme dir carrying its own background (00.png) + mask (01.png)."""
     theme_dir = directory / name
     theme_dir.mkdir(parents=True)
-    config = {"name": name, "width": width, "height": height, "elements": []}
+    config = {
+        "name": name, "width": width, "height": height,
+        "elements": [], "mask_visible": True,
+    }
     (theme_dir / "trcc.json").write_text(
         json.dumps(config, indent=2), encoding="utf-8",
     )
-    (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-    # Original DC has one theme-bundled clock element.
-    Dc.File(theme_dir / "config1.dc").write({
+    # Real PNGs (distinct colors) — SaveTheme re-encodes the resolved
+    # background/mask through the renderer into the library, so the source
+    # assets must be openable images, not placeholder bytes.
+    (theme_dir / "00.png").write_bytes(_png_bytes(red=0x10))
+    (theme_dir / "01.png").write_bytes(_png_bytes(red=0x20))
+    return theme_dir
+
+
+def test_save_theme_repoints_active_theme_to_saved_dir(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """After save, the live active theme must point at the SAVED dir.
+
+    Regression: SaveTheme re-pointed only the persisted current_theme
+    string, leaving app.active_themes[key] on the SOURCE theme.  The
+    next render then resolved the mask from the source instead of the
+    saved theme's, so the displayed mask "reverted" to the source
+    immediately after saving.
+    """
+    source = _write_theme_with_mask(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="saved-copy"))
+
+    assert result.ok is True
+    saved = user_theme_dir / "saved-copy"
+    active = app.active_themes[_TEST_DEVICE_KEY]
+    # The live object the renderer reads is the SAVED theme, not the source.
+    assert active.path == saved
+    assert active.path != source
+    # The saved theme references its mask in the user library (not an
+    # in-dir 01.png), and that ref resolves through the paths-injected
+    # service — never back to the source theme's mask.
+    assert not (saved / "01.png").exists()
+    w, h = _TEST_RES
+    mask = app.themes.mask_path(active)
+    assert mask is not None
+    assert mask.parent.parent == app.platform.paths().user_mask_dir(w, h)
+    assert mask != source / "01.png"
+
+
+def _write_theme_with_dc(directory: Path, name: str = "withdc",
+                          width: int = 320, height: int = 320) -> Path:
+    """Source theme carrying one bundled clock element in its layout.
+
+    The layout lives in ``trcc.json`` (next/'s rendered source of truth —
+    ``load()`` prefers it over any ``config1.dc``), so SaveTheme inlines
+    that clock into the saved manifest's ``elements``.
+    """
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True)
+    config = {
+        "name": name, "width": width, "height": height,
         "overlay_enabled": True,
         "elements": [{
             "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
             "size": 24, "bold": False, "italic": False, "source": "time",
         }],
-    })
+    }
+    (theme_dir / "trcc.json").write_text(
+        json.dumps(config, indent=2), encoding="utf-8",
+    )
+    (theme_dir / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     return theme_dir
 
 
-def test_save_theme_bakes_user_overlay_elements_into_target_dc(
+def test_save_theme_bakes_user_overlay_elements_into_manifest(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """SaveTheme must persist user_overlay_elements into the new theme's DC.
+    """SaveTheme must persist user_overlay_elements into the saved manifest.
 
-    Without this the saved theme is a byte-identical copy of the source —
-    the user's customisations live in DeviceSettings, never in the
-    theme's config1.dc, so they don't round-trip when the saved theme
-    is re-loaded.  Reported by the user 2026-05-26 ("when i save a
-    custom theme it always saves as local theme1").
+    Without this the saved theme loses the user's customisations — they
+    live in DeviceSettings, never in the theme's layout, so they don't
+    round-trip when the saved theme is re-loaded.  Reported by the user
+    2026-05-26 ("when i save a custom theme it always saves as local
+    theme1").
     """
-    from trcc.core.models import OverlayElement
-    from trcc.services import _dc as Dc
+    import json as _json
 
-    # Source theme has one clock element baked into its DC.
+    from trcc.core.models import OverlayElement
+
+    # Source theme has one clock element in its layout.
     source = _write_theme_with_dc(tmp_home, "source")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
@@ -338,36 +573,39 @@ def test_save_theme_bakes_user_overlay_elements_into_target_dc(
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="my-edits"))
     assert result.ok is True
 
-    saved_dc = user_theme_dir / "my-edits" / "config1.dc"
-    assert saved_dc.is_file()
-    parsed = Dc.File(saved_dc).read()
-    elements = parsed["elements"]
-    # Original theme clock + user text element should both be present.
+    saved = user_theme_dir / "my-edits"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    elements = manifest["elements"]
+    # Source theme clock + user text element should both be present.
     types = [e["type"] for e in elements]
     assert "clock" in types
     assert "text" in types
     user_text = next(e for e in elements if e["type"] == "text")
     assert user_text["text"] == "CUSTOM"
     assert user_text["color"] == "#ff8800"
+    # Reference format writes no DC file — load() reads trcc.json.
+    assert not (saved / "config1.dc").exists()
     assert user_text["x"] == 50 and user_text["y"] == 50
 
 
-def test_save_theme_without_user_edits_leaves_dc_unchanged(
+def test_save_theme_without_user_edits_inlines_source_layout(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """No user_overlay_elements → DC bake path is a no-op."""
-    from trcc.services import _dc as Dc
+    """No user_overlay_elements → saved manifest inlines just the source
+    layout, with nothing appended."""
+    import json as _json
 
     source = _write_theme_with_dc(tmp_home, "source")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="no-edits"))
 
-    saved_dc = user_theme_dir / "no-edits" / "config1.dc"
-    parsed = Dc.File(saved_dc).read()
-    # Exactly the one original element, nothing baked in.
-    assert len(parsed["elements"]) == 1
-    assert parsed["elements"][0]["type"] == "clock"
+    manifest = _json.loads(
+        (user_theme_dir / "no-edits" / "trcc.json").read_text(encoding="utf-8"),
+    )
+    # Exactly the one original element, nothing appended.
+    assert len(manifest["elements"]) == 1
+    assert manifest["elements"][0]["type"] == "clock"
 
 
 def test_save_theme_clears_user_overlay_after_bake(
@@ -441,37 +679,40 @@ def _png_bytes(red: int = 0) -> bytes:
 def _write_theme_with_real_pngs(directory: Path, name: str = "src",
                                   width: int = 320, height: int = 320) -> Path:
     """Theme dir with real PNGs at the canonical names (00.png / 01.png)
-    so SaveTheme's ``_write_background`` / ``_write_mask`` see them.
-    """
-    from trcc.services import _dc as Dc
+    and a one-clock layout in ``trcc.json``.
 
+    SaveTheme re-encodes the resolved background/mask into the library
+    and inlines this layout into the saved manifest.
+    """
     theme_dir = directory / name
     theme_dir.mkdir(parents=True)
-    config = {"name": name, "width": width, "height": height, "elements": []}
-    (theme_dir / "trcc.json").write_text(
-        json.dumps(config, indent=2), encoding="utf-8",
-    )
-    (theme_dir / "00.png").write_bytes(_png_bytes(red=0x10))
-    (theme_dir / "01.png").write_bytes(_png_bytes(red=0x20))
-    Dc.File(theme_dir / "config1.dc").write({
+    config = {
+        "name": name, "width": width, "height": height,
         "overlay_enabled": True,
         "elements": [{
             "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
             "size": 24, "bold": False, "italic": False, "source": "time",
         }],
-    })
+    }
+    (theme_dir / "trcc.json").write_text(
+        json.dumps(config, indent=2), encoding="utf-8",
+    )
+    (theme_dir / "00.png").write_bytes(_png_bytes(red=0x10))
+    (theme_dir / "01.png").write_bytes(_png_bytes(red=0x20))
     return theme_dir
 
 
 def test_save_theme_bakes_cloud_background_override(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.background_path`` set → saved theme's 00.png is the
-    override's content, NOT the source theme's 00.png.
+    """``DeviceSettings.background_path`` set → saved theme REFERENCES the
+    override's content in the library, NOT the source theme's bg.
 
     Reproduces the user-reported bug: select cloud background → save →
-    new theme should contain the cloud bg, not the local Theme1's bg.
+    new theme should resolve to the cloud bg, not the local Theme1's bg.
     """
+    import json as _json
+
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
@@ -483,10 +724,15 @@ def test_save_theme_bakes_cloud_background_override(
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-bg"))
     assert result.ok is True
 
-    saved_bg = user_theme_dir / "with-cloud-bg" / "00.png"
-    assert saved_bg.is_file()
-    # Saved bg should NOT be the source theme's bytes
-    assert saved_bg.read_bytes() != (source / "00.png").read_bytes()
+    saved = user_theme_dir / "with-cloud-bg"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    # Background is a library ref, not a bundled 00.png.
+    assert manifest["background"].startswith(f"web/{_TEST_RES[0]}{_TEST_RES[1]}/")
+    assert not (saved / "00.png").exists()
+    # The referenced asset resolves to the cloud override, not the source bg.
+    resolved = app.themes.background_path(app.themes.load(saved))
+    assert resolved is not None
+    assert resolved.read_bytes() != (source / "00.png").read_bytes()
 
 
 def test_save_theme_keeps_cloud_video_at_theme_ext(
@@ -512,7 +758,10 @@ def test_save_theme_keeps_cloud_video_at_theme_ext(
 def test_save_theme_bakes_cloud_mask_override(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.mask_path`` set → saved 01.png is the override."""
+    """``DeviceSettings.mask_path`` set → saved theme REFERENCES the override
+    mask in the library, NOT the source theme's mask."""
+    import json as _json
+
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
@@ -523,25 +772,30 @@ def test_save_theme_bakes_cloud_mask_override(
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-mask"))
 
-    saved_mask = user_theme_dir / "with-cloud-mask" / "01.png"
-    assert saved_mask.is_file()
-    assert saved_mask.read_bytes() != (source / "01.png").read_bytes()
+    saved = user_theme_dir / "with-cloud-mask"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["mask"].startswith(f"web/zt{_TEST_RES[0]}{_TEST_RES[1]}/")
+    assert not (saved / "01.png").exists()
+    resolved = app.themes.mask_path(app.themes.load(saved))
+    assert resolved is not None
+    assert resolved.read_bytes() != (source / "01.png").read_bytes()
 
 
-def test_save_theme_bakes_mask_overlay_elements_into_dc(
+def test_save_theme_inlines_mask_overlay_elements_into_manifest(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.mask_overlay_elements`` set → DC elements come from
-    the mask layout (REPLACE source theme's elements), matching the
+    """``DeviceSettings.mask_overlay_elements`` set → manifest elements come
+    from the mask layout (REPLACE source theme's elements), matching the
     runtime ``_build_overlay`` precedence.
     """
+    import json as _json
+
     from trcc.core.models import OverlayElement
-    from trcc.services import _dc as Dc
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
-    # Mask brings its own DC layout — text element with distinctive value.
+    # Mask brings its own layout — text element with distinctive value.
     app.settings.set_mask_overlay_elements(
         _TEST_DEVICE_KEY,
         [OverlayElement(
@@ -552,11 +806,11 @@ def test_save_theme_bakes_mask_overlay_elements_into_dc(
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-mask-dc"))
 
-    saved_dc = user_theme_dir / "with-mask-dc" / "config1.dc"
-    parsed = Dc.File(saved_dc).read()
-    types = [e["type"] for e in parsed["elements"]]
-    texts = [e.get("text") for e in parsed["elements"]]
-    # Source theme's clock element MUST be absent — mask DC replaces it.
+    saved = user_theme_dir / "with-mask-dc"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    types = [e["type"] for e in manifest["elements"]]
+    texts = [e.get("text") for e in manifest["elements"]]
+    # Source theme's clock element MUST be absent — mask layout replaces it.
     assert "clock" not in types
     assert "MASK_LAYOUT" in texts
 
@@ -600,6 +854,55 @@ def test_save_theme_clears_all_overrides_after_save(
     assert s.mask_overlay_elements is None
     assert s.user_overlay_elements == []
     assert s.current_theme == str((user_theme_dir / "full-state").resolve())
+
+
+def test_save_then_reload_resolves_library_assets_not_source(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The original-bug regression, end to end.
+
+    Save a theme whose background + mask are cloud overrides, then RELOAD
+    it from disk.  The reloaded theme must resolve its background and mask
+    from the user library (the overrides) — never reverting to the source
+    theme's bundled assets.  Also exercises the Phase-D gotcha: LoadTheme
+    must resolve the *relative* mask ref through ``ApplyMask`` (a plain
+    ``Path("web/...")`` would never load).
+    """
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_bg = tmp_home / "pool" / "bg.png"
+    cloud_mask = tmp_home / "pool" / "mask.png"
+    cloud_bg.parent.mkdir(parents=True)
+    cloud_bg.write_bytes(_png_bytes(red=0x99))
+    cloud_mask.write_bytes(_png_bytes(red=0xAA))
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="roundtrip")).ok
+    saved = user_theme_dir / "roundtrip"
+
+    # Simulate a fresh reload: forget the live theme, then load from disk.
+    del app.active_themes[_TEST_DEVICE_KEY]
+    result = app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=saved))
+    assert result.ok is True
+
+    active = app.active_themes[_TEST_DEVICE_KEY]
+    assert active.path == saved
+    paths = app.platform.paths()
+
+    # Background resolves to the library override, not the source bg.
+    bg = app.themes.background_path(active)
+    assert bg is not None
+    assert bg.parent == paths.user_background_dir(*_TEST_RES).resolve()
+    assert bg.read_bytes() != (source / "00.png").read_bytes()
+
+    # LoadTheme resolved the relative mask ref + applied it (the gotcha):
+    # DeviceSettings.mask_path now points at the library mask, not source.
+    applied_mask = app.settings.for_device(_TEST_DEVICE_KEY).mask_path
+    assert applied_mask is not None
+    assert Path(applied_mask).parent.parent == paths.user_mask_dir(*_TEST_RES).resolve()
+    assert Path(applied_mask).read_bytes() != (source / "01.png").read_bytes()
 
 
 # ─────────────────────────────────────────────────────────────────────
