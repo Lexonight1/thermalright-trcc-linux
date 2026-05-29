@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 
 from ....core.commands import (
     DeleteTheme,
+    ExportTheme,
+    ImportTheme,
     ListThemes,
     LoadImage,
     LoadTheme,
@@ -89,11 +91,25 @@ class LocalThemeBrowser(BasePanel):
         )
         self._save_btn.clicked.connect(self._on_save)
 
+        self._export_btn = QPushButton("Export…", self)
+        self._export_btn.setToolTip(
+            "Zip the selected theme to a shareable .tr archive.",
+        )
+        self._export_btn.clicked.connect(self._on_export)
+
+        self._import_btn = QPushButton("Import…", self)
+        self._import_btn.setToolTip(
+            "Unpack a .tr theme archive into your library.",
+        )
+        self._import_btn.clicked.connect(self._on_import)
+
         button_row = QHBoxLayout()
         button_row.addWidget(self._refresh_btn)
         button_row.addWidget(self._apply_btn)
         button_row.addWidget(self._delete_btn)
         button_row.addWidget(self._save_btn)
+        button_row.addWidget(self._export_btn)
+        button_row.addWidget(self._import_btn)
         button_row.addWidget(self._from_image_btn)
         button_row.addWidget(self._from_video_btn)
         button_row.addStretch(1)
@@ -215,6 +231,42 @@ class LocalThemeBrowser(BasePanel):
             log.info("_on_save: user confirmed overwrite of %r", name)
             result = self.dispatch(SaveTheme(key=key, name=name, overwrite=True))
 
+        self._status.setText(result.message)
+        if result.ok:
+            self.refresh()
+
+    def _on_export(self) -> None:
+        selected = self._selected()
+        if selected is None:
+            return
+        key = self._device_key()
+        if key is None:
+            return
+        _path, name = selected
+        dest, _ = QFileDialog.getSaveFileName(
+            self, "Export theme", f"{name}.tr",
+            "Theme archive (*.tr);;All files (*)",
+        )
+        if not dest:
+            return
+        log.info("_on_export: key=%s theme=%r dest=%s", key, name, dest)
+        result = self.dispatch(ExportTheme(
+            key=key, theme_name=name, archive_path=Path(dest),
+        ))
+        self._status.setText(result.message)
+
+    def _on_import(self) -> None:
+        key = self._device_key()
+        if key is None:
+            return
+        source, _ = QFileDialog.getOpenFileName(
+            self, "Import theme archive", "",
+            "Theme archive (*.tr *.zip);;All files (*)",
+        )
+        if not source:
+            return
+        log.info("_on_import: key=%s source=%s", key, source)
+        result = self.dispatch(ImportTheme(key=key, archive_path=Path(source)))
         self._status.setText(result.message)
         if result.ok:
             self.refresh()
