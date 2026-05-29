@@ -14,11 +14,13 @@ helper, lay out widgets without business logic.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -33,10 +35,14 @@ from PySide6.QtWidgets import (
 from ....core.commands import (
     GenerateDebugReport,
     GetPlatformInfo,
+    ListGpus,
     ReadSensors,
     RunHealthCheck,
+    SetGpuDevice,
 )
 from ..base import BasePanel
+
+log = logging.getLogger(__name__)
 
 _SENSOR_REFRESH_MS = 2000
 
@@ -50,6 +56,7 @@ class SystemPanel(BasePanel):
         outer.setSpacing(12)
 
         outer.addWidget(self._build_platform_box())
+        outer.addWidget(self._build_gpu_box())
         outer.addWidget(self._build_health_box())
         outer.addWidget(self._build_sensors_box(), 1)
         outer.addLayout(self._build_action_row())
@@ -71,6 +78,22 @@ class SystemPanel(BasePanel):
         form.addRow("Distro:", self._distro_label)
         form.addRow("Install:", self._install_label)
         form.addRow("Paths:", self._paths_label)
+        return box
+
+    def _build_gpu_box(self) -> QGroupBox:
+        box = QGroupBox("Metric source", self)
+        form = QFormLayout(box)
+        self._gpu_combo = QComboBox(box)
+        self._set_gpu_btn = QPushButton("Use this GPU", box)
+        self._set_gpu_btn.clicked.connect(self._on_set_gpu)
+        row = QHBoxLayout()
+        row.addWidget(self._gpu_combo, stretch=1)
+        row.addWidget(self._set_gpu_btn)
+        self._gpu_status = QLabel("", box)
+        self._gpu_status.setWordWrap(True)
+        form.addRow("GPU:", row)
+        form.addRow("", self._gpu_status)
+        self._populate_gpus()
         return box
 
     def _build_health_box(self) -> QGroupBox:
@@ -147,6 +170,31 @@ class SystemPanel(BasePanel):
             self._sensors_list.addItem(item)
 
     # ── Actions ───────────────────────────────────────────────────────
+
+    def _populate_gpus(self) -> None:
+        """Fill the GPU combo from ListGpus — self-healing, and degrades to
+        a disabled 'No GPU detected' when none are present (a supported
+        state, not an error)."""
+        result = self.dispatch(ListGpus())
+        self._gpu_combo.clear()
+        if not result.ok or not result.gpus:
+            self._gpu_combo.addItem("No GPU detected", userData=None)
+            self._gpu_combo.setEnabled(False)
+            self._set_gpu_btn.setEnabled(False)
+            return
+        self._gpu_combo.setEnabled(True)
+        self._set_gpu_btn.setEnabled(True)
+        for gpu in result.gpus:
+            tag = "discrete" if gpu.is_discrete else "integrated"
+            self._gpu_combo.addItem(f"{gpu.name} ({tag})", userData=gpu.key)
+
+    def _on_set_gpu(self) -> None:
+        gpu_key = self._gpu_combo.currentData()
+        if gpu_key is None:
+            return
+        log.info("_on_set_gpu: gpu_key=%s", gpu_key)
+        r = self.dispatch(SetGpuDevice(gpu_key=str(gpu_key)))
+        self._gpu_status.setText(r.message)
 
     def _save_debug_report(self) -> None:
         default_name = "trcc-debug-report.txt"
