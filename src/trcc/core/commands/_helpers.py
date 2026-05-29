@@ -213,7 +213,7 @@ def _search_theme_by_name(
     The pre-cutover ``user_content_dir()/<name>`` flat candidate was
     dropped — every next/ theme writer now lands at the per-resolution
     path.  Users with legacy flat themes on disk must run
-    ``tools/migrate_legacy_themes.py`` once to move them into place.
+    ``dev/tools/migrate_legacy_themes.py`` once to move them into place.
     """
     paths = app.platform.paths()
     resolution = _resolve_resolution(app, key)

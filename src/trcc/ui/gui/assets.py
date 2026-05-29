@@ -4,7 +4,7 @@ Centralizes all asset resolution — auto-appends .png for base names,
 handles localized variants, and provides pixmap loading.
 
 All GUI assets live in gui/assets/ and are extracted from Windows TRCC
-resources using tools/extract_resx_images.py.
+resources using dev/tools/extract_resx_images.py.
 """
 from __future__ import annotations
 
