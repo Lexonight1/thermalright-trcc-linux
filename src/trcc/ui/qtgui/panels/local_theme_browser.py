@@ -11,6 +11,7 @@ takes the same shape so this is consistent.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -28,9 +30,17 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import DeleteTheme, ListThemes, LoadImage, LoadTheme
+from ....core.commands import (
+    DeleteTheme,
+    ListThemes,
+    LoadImage,
+    LoadTheme,
+    SaveTheme,
+)
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 
 class LocalThemeBrowser(BasePanel):
@@ -72,10 +82,18 @@ class LocalThemeBrowser(BasePanel):
         )
         self._from_video_btn.clicked.connect(self._on_create_from_video)
 
+        self._save_btn = QPushButton("Save current as…", self)
+        self._save_btn.setToolTip(
+            "Save the device's current rendered state (background, mask, "
+            "overlay edits) as a new theme.",
+        )
+        self._save_btn.clicked.connect(self._on_save)
+
         button_row = QHBoxLayout()
         button_row.addWidget(self._refresh_btn)
         button_row.addWidget(self._apply_btn)
         button_row.addWidget(self._delete_btn)
+        button_row.addWidget(self._save_btn)
         button_row.addWidget(self._from_image_btn)
         button_row.addWidget(self._from_video_btn)
         button_row.addStretch(1)
@@ -164,6 +182,39 @@ class LocalThemeBrowser(BasePanel):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         result = self.dispatch(DeleteTheme(path=Path(path)))
+        self._status.setText(result.message)
+        if result.ok:
+            self.refresh()
+
+    def _on_save(self) -> None:
+        key = self._device_key()
+        if key is None:
+            return
+        name, accepted = QInputDialog.getText(
+            self, "Save theme", "Theme name:",
+        )
+        name = name.strip()
+        log.info("_on_save: key=%s name=%r accepted=%s", key, name, accepted)
+        if not accepted or not name:
+            return
+
+        result = self.dispatch(SaveTheme(key=key, name=name))
+        if not result.ok and result.target_exists:
+            log.info("_on_save: %r exists — prompting for overwrite", name)
+            confirm = QMessageBox.question(
+                self,
+                "Overwrite theme?",
+                f"A theme named {name!r} already exists.\n\nOverwrite it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                log.info("_on_save: user declined overwrite of %r", name)
+                self._status.setText("Save cancelled — choose a different name")
+                return
+            log.info("_on_save: user confirmed overwrite of %r", name)
+            result = self.dispatch(SaveTheme(key=key, name=name, overwrite=True))
+
         self._status.setText(result.message)
         if result.ok:
             self.refresh()
