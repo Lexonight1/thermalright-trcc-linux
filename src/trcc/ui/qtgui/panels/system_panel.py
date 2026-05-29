@@ -20,6 +20,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -33,7 +34,11 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import (
+    CheckForUpdate,
+    DisableAutostart,
+    EnableAutostart,
     GenerateDebugReport,
+    GetAutostartStatus,
     GetPlatformInfo,
     ListGpus,
     ReadSensors,
@@ -57,6 +62,7 @@ class SystemPanel(BasePanel):
 
         outer.addWidget(self._build_platform_box())
         outer.addWidget(self._build_gpu_box())
+        outer.addWidget(self._build_maintenance_box())
         outer.addWidget(self._build_health_box())
         outer.addWidget(self._build_sensors_box(), 1)
         outer.addLayout(self._build_action_row())
@@ -94,6 +100,23 @@ class SystemPanel(BasePanel):
         form.addRow("GPU:", row)
         form.addRow("", self._gpu_status)
         self._populate_gpus()
+        return box
+
+    def _build_maintenance_box(self) -> QGroupBox:
+        box = QGroupBox("Maintenance", self)
+        form = QFormLayout(box)
+        self._autostart_check = QCheckBox("Start TRCC on login", box)
+        self._autostart_check.toggled.connect(self._on_autostart_toggled)
+        self._update_btn = QPushButton("Check for updates", box)
+        self._update_btn.clicked.connect(self._on_check_update)
+        self._maint_status = QLabel("", box)
+        self._maint_status.setWordWrap(True)
+        self._maint_status.setTextFormat(Qt.TextFormat.RichText)
+        self._maint_status.setOpenExternalLinks(True)
+        form.addRow(self._autostart_check)
+        form.addRow(self._update_btn)
+        form.addRow(self._maint_status)
+        self._refresh_autostart()
         return box
 
     def _build_health_box(self) -> QGroupBox:
@@ -195,6 +218,33 @@ class SystemPanel(BasePanel):
         log.info("_on_set_gpu: gpu_key=%s", gpu_key)
         r = self.dispatch(SetGpuDevice(gpu_key=str(gpu_key)))
         self._gpu_status.setText(r.message)
+
+    def _refresh_autostart(self) -> None:
+        r = self.dispatch(GetAutostartStatus())
+        self._autostart_check.blockSignals(True)
+        self._autostart_check.setChecked(r.enabled)
+        self._autostart_check.blockSignals(False)
+
+    def _on_autostart_toggled(self, checked: bool) -> None:
+        log.info("_on_autostart_toggled: checked=%s", checked)
+        r = self.dispatch(EnableAutostart() if checked else DisableAutostart())
+        self._maint_status.setText(r.message)
+
+    def _on_check_update(self) -> None:
+        log.info("_on_check_update")
+        r = self.dispatch(CheckForUpdate())
+        if not r.ok:
+            self._maint_status.setText(f"Update check failed: {r.message}")
+            return
+        if r.latest_version and r.latest_version != r.local_version:
+            self._maint_status.setText(
+                f"Update available: {r.latest_version} "
+                f"(you have {r.local_version}). "
+                f'<a href="{r.release_url}">Release notes</a> — '
+                "upgrade via your package manager.",
+            )
+        else:
+            self._maint_status.setText(f"Up to date ({r.local_version}).")
 
     def _save_debug_report(self) -> None:
         default_name = "trcc-debug-report.txt"
