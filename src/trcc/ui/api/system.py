@@ -12,6 +12,7 @@ from ...core.commands import (
     EnableAutostart,
     GenerateDebugReport,
     GetFirstRunStatus,
+    GetPlatformInfo,
     ListDisks,
     ListFonts,
     ListGpus,
@@ -114,12 +115,18 @@ def sensors(request: Request) -> SensorsResponse:
 
 @router.get("/info")
 def info(request: Request) -> dict:
-    platform = request.app.state.trcc.platform
+    # Dispatch GetPlatformInfo rather than reaching into ``platform``
+    # directly — keeps the endpoint on the Command bus so it works
+    # unchanged through the daemon proxy.
+    r = request.app.state.trcc.dispatch(GetPlatformInfo())
     return {
-        "distro": platform.distro_name(),
-        "install_method": platform.install_method(),
-        "config_dir": str(platform.paths().config_dir()),
-        "permissions_warnings": platform.check_permissions(),
+        "distro": r.distro_name,
+        "install_method": r.install_method,
+        "config_dir": r.config_dir,
+        "data_dir": r.data_dir,
+        "user_content_dir": r.user_content_dir,
+        "log_file": r.log_file,
+        "permissions_warnings": r.permission_warnings,
     }
 
 
