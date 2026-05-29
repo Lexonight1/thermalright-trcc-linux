@@ -10,6 +10,7 @@ from ...core.commands import (
     DeleteTheme,
     ExportConfig,
     ExportDcTheme,
+    ExportOverlay,
     ExportTheme,
     ImportConfig,
     ImportTheme,
@@ -332,6 +333,30 @@ def export_dc(
 ) -> None:
     """Write a theme out as legacy ``config1.dc`` for Windows TRCC users."""
     result = get_app().dispatch(ExportDcTheme(
+        key=key,
+        theme_name=theme_name,
+        output_path=output_path,
+    ))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("export-overlay")
+def export_overlay(
+    key: str = typer.Argument(
+        ..., help="Device key (e.g. 0402:3922) — its resolution scopes the lookup",
+    ),
+    theme_name: str = typer.Argument(
+        ..., help="Theme name (directory under user_theme_dir(w, h))",
+    ),
+    output_path: Path = typer.Argument(
+        ..., help="Where to write the overlay layout file",
+    ),
+) -> None:
+    """Export just a theme's overlay layout (the metric grid) for sharing —
+    lighter than the whole-theme zip and distinct from the DC binary."""
+    result = get_app().dispatch(ExportOverlay(
         key=key,
         theme_name=theme_name,
         output_path=output_path,
