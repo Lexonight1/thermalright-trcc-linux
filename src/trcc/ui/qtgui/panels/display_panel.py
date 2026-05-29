@@ -1,6 +1,7 @@
-"""DisplayPanel — orientation, brightness, theme load."""
+"""DisplayPanel — orientation, brightness, theme load, video transport."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -16,9 +17,18 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import LoadTheme, SetBrightness, SetOrientation
+from ....core.commands import (
+    LoadTheme,
+    PlayVideo,
+    SetBrightness,
+    SetOrientation,
+    StopVideo,
+    ToggleVideo,
+)
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 
 class DisplayPanel(BasePanel):
@@ -57,6 +67,20 @@ class DisplayPanel(BasePanel):
         self._apply_btn = QPushButton("Apply", self)
         self._apply_btn.clicked.connect(self._on_apply)
 
+        # Video transport — immediate actions (not part of the batch Apply).
+        self._play_video_btn = QPushButton("Play video…", self)
+        self._play_video_btn.clicked.connect(self._on_play_video)
+        self._pause_video_btn = QPushButton("Pause/Resume", self)
+        self._pause_video_btn.clicked.connect(self._on_toggle_video)
+        self._stop_video_btn = QPushButton("Stop", self)
+        self._stop_video_btn.clicked.connect(self._on_stop_video)
+
+        video_row = QHBoxLayout()
+        video_row.addWidget(self._play_video_btn)
+        video_row.addWidget(self._pause_video_btn)
+        video_row.addWidget(self._stop_video_btn)
+        video_row.addStretch(1)
+
         self._status = QLabel("", self)
 
         form = QFormLayout()
@@ -68,10 +92,23 @@ class DisplayPanel(BasePanel):
         root = QVBoxLayout(self)
         root.addLayout(form)
         root.addWidget(self._apply_btn)
+        root.addWidget(QLabel("Video:", self))
+        root.addLayout(video_row)
         root.addWidget(self._status)
         root.addStretch(1)
 
     # ── Actions ───────────────────────────────────────────────────────
+
+    def _require_key(self) -> str | None:
+        """Return the picked device key, or set a prompt + return None."""
+        key = self._picker.current_key()
+        if not key:
+            self._status.setText(
+                "Pick a device first.  Open the Devices panel to scan "
+                "if no devices are listed.",
+            )
+            return None
+        return key
 
     def _on_browse_theme(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -80,13 +117,39 @@ class DisplayPanel(BasePanel):
         if path:
             self._theme_path.setText(path)
 
+    def _on_play_video(self) -> None:
+        key = self._require_key()
+        if key is None:
+            return
+        source, _ = QFileDialog.getOpenFileName(
+            self, "Pick a video to play", "",
+            "Videos (*.mp4 *.mov *.webm *.mkv *.avi *.zt);;All files (*)",
+        )
+        if not source:
+            return
+        log.info("_on_play_video: key=%s path=%s", key, source)
+        result = self.dispatch(PlayVideo(key=key, path=Path(source)))
+        self._status.setText(result.message)
+
+    def _on_toggle_video(self) -> None:
+        key = self._require_key()
+        if key is None:
+            return
+        log.info("_on_toggle_video: key=%s", key)
+        result = self.dispatch(ToggleVideo(key=key))
+        self._status.setText(result.message)
+
+    def _on_stop_video(self) -> None:
+        key = self._require_key()
+        if key is None:
+            return
+        log.info("_on_stop_video: key=%s", key)
+        result = self.dispatch(StopVideo(key=key))
+        self._status.setText(result.message)
+
     def _on_apply(self) -> None:
-        key = self._picker.current_key()
-        if not key:
-            self._status.setText(
-                "Pick a device first.  Open the Devices panel to scan "
-                "if no devices are listed.",
-            )
+        key = self._require_key()
+        if key is None:
             return
 
         messages = []
