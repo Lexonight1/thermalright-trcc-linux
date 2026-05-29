@@ -1814,12 +1814,29 @@ class TRCCApp(QMainWindow):
 
     def _on_save_clicked(self) -> None:
         name = self.theme_name_input.text().strip()
+        log.info("_on_save_clicked: name=%r", name)
         if not name:
             self.uc_preview.set_status("Enter a theme name first")
             return
         h = self._active_lcd()
-        if h:
-            h.save_theme(name)
+        if not h:
+            return
+        r = h.save_theme(name)
+        if not r.ok and r.target_exists:
+            from PySide6.QtWidgets import QMessageBox
+            log.info("_on_save_clicked: %r exists — prompting for overwrite", name)
+            reply = QMessageBox.question(
+                self, "Overwrite Theme",
+                f"A theme named '{name}' already exists.\n\nOverwrite it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                log.info("_on_save_clicked: user confirmed overwrite of %r", name)
+                h.save_theme(name, overwrite=True)
+            else:
+                log.info("_on_save_clicked: user declined overwrite of %r", name)
+                self.uc_preview.set_status(
+                    "Save cancelled — choose a different name")
 
     def _on_export_clicked(self) -> None:
         path, _ = QFileDialog.getSaveFileName(

@@ -46,6 +46,7 @@ from .base_handler import BaseHandler
 if TYPE_CHECKING:
     from ...app import App
     from ...core.models import DeviceSettings, ProductInfo
+    from ...core.results import ThemeResult
 
 log = logging.getLogger(__name__)
 
@@ -531,14 +532,16 @@ class LCDHandler(BaseHandler):
         ))
         self._render_and_send()
 
-    def save_theme(self, name: str) -> None:
+    def save_theme(self, name: str, *, overwrite: bool = False) -> ThemeResult:
+        self.log.info("save_theme: name=%s overwrite=%s", name, overwrite)
         r = self._app.dispatch(SaveTheme(
-            key=self._device_key, name=name,
+            key=self._device_key, name=name, overwrite=overwrite,
         ))
         self._w['preview'].set_status(r.message)
         if r.ok:
             # Reload local theme list so the new theme shows up
             self._w['theme_local'].load_themes()
+        return r
 
     def export_config(self, path: Path) -> None:
         r = self._app.dispatch(ExportTheme(

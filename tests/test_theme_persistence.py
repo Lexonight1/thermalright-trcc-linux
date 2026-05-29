@@ -305,19 +305,28 @@ def test_save_theme_rejects_unsafe_name(
     assert "invalid theme name" in result.message
 
 
-def test_save_theme_refuses_to_overwrite(
+def test_save_theme_flags_existing_then_overwrites(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
     # First save succeeds
-    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe"))
-    # Second save with same name fails
-    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe"))
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe")).ok
 
+    # Second save with the same name is refused — but flagged as a name
+    # collision (target_exists) so the UI can offer a one-click overwrite
+    # instead of forcing the user to invent a new name.
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe"))
     assert result.ok is False
+    assert result.target_exists is True
     assert "already exists" in result.message
+
+    # Explicit overwrite replaces the existing theme and succeeds.
+    overwritten = app.dispatch(
+        SaveTheme(key=_TEST_DEVICE_KEY, name="dupe", overwrite=True))
+    assert overwritten.ok is True
+    assert overwritten.target_exists is False
 
 
 def test_save_theme_publishes_event(

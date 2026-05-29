@@ -118,6 +118,11 @@ class ThemeResult(Result):
     key: str = ""
     theme_name: str = ""
     theme_path: str = ""
+    # SaveTheme sets this when the save was refused only because a theme
+    # of the same name already exists — the UI uses it to offer a
+    # one-click overwrite confirmation rather than making the user
+    # invent a new name.
+    target_exists: bool = False
 
 
 @dataclass(frozen=True, slots=True)

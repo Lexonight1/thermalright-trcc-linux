@@ -320,9 +320,11 @@ class SaveTheme(Command[ThemeResult]):
     """
     key: str
     name: str
+    overwrite: bool = False
 
     def execute(self, app: App) -> ThemeResult:
-        log.info("SaveTheme: key=%s name=%s", self.key, self.name)
+        log.info("SaveTheme: key=%s name=%s overwrite=%s",
+                 self.key, self.name, self.overwrite)
         if not is_safe_user_name(self.name):
             log.warning("SaveTheme: rejected unsafe name %r", self.name)
             return ThemeResult(
@@ -367,17 +369,20 @@ class SaveTheme(Command[ThemeResult]):
             len(device_settings.user_overlay_elements),
             len(device_settings.mask_overlay_elements or []),
         )
-        if target.exists():
-            log.warning("SaveTheme: target %s already exists — refusing",
-                        target)
+        if target.exists() and not self.overwrite:
+            log.info("SaveTheme: target %s exists — overwrite confirmation "
+                     "needed", target)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
-                message=(f"target already exists: {target} "
-                         "(choose a different name)"),
+                target_exists=True,
+                message=f"A theme named {self.name!r} already exists.",
             )
 
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                log.warning("SaveTheme: overwriting existing theme %s", target)
+                shutil.rmtree(target)
             target.mkdir(exist_ok=False)
         except OSError as e:
             log.warning("SaveTheme: mkdir failed for %s: %s", target, e)
