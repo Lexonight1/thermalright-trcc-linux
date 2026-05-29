@@ -16,6 +16,8 @@ return ``ok=True`` with "no change" messages.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -35,14 +37,21 @@ from ....core.commands import (
     ConfigureSlideshow,
     EnableOverlay,
     LcdSnapshot,
+    ListLanguages,
     SetBackgroundMode,
     SetFitMode,
+    SetLanguage,
     SetOverlayBackground,
+    SetRefreshInterval,
     SetSlideshow,
     SetSplitMode,
+    SetTempUnit,
+    SetTimeFormat,
 )
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 
 class ConfigurationPanel(BasePanel):
@@ -131,6 +140,37 @@ class ConfigurationPanel(BasePanel):
         sl_form.addRow("Interval:", self._slideshow_interval)
         sl_form.addRow("Themes:", self._slideshow_themes)
 
+        # ── Application group (all devices — no device key needed) ──
+        app_box = QGroupBox("Application (all devices)", self)
+        app_form = QFormLayout(app_box)
+
+        self._temp_unit = QComboBox(app_box)
+        self._temp_unit.addItem("Celsius (°C)", userData="C")
+        self._temp_unit.addItem("Fahrenheit (°F)", userData="F")
+
+        self._language = QComboBox(app_box)
+
+        self._refresh = QDoubleSpinBox(app_box)
+        self._refresh.setRange(0.1, 60.0)
+        self._refresh.setSingleStep(0.5)
+        self._refresh.setValue(5.0)
+        self._refresh.setSuffix(" s")
+
+        self._clock = QComboBox(app_box)
+        self._clock.addItem("24-hour", userData="24h")
+        self._clock.addItem("12-hour", userData="12h")
+
+        self._app_apply_btn = QPushButton("Apply app settings", app_box)
+        self._app_apply_btn.clicked.connect(self._apply_app_settings)
+
+        app_form.addRow("Temperature unit:", self._temp_unit)
+        app_form.addRow("Language:", self._language)
+        app_form.addRow("Refresh interval:", self._refresh)
+        app_form.addRow("LCD clock format:", self._clock)
+        app_form.addRow("", self._app_apply_btn)
+
+        self._populate_languages()
+
         # ── Apply ──
         self._apply_btn = QPushButton("Apply all settings", self)
         self._apply_btn.clicked.connect(self._apply)
@@ -145,6 +185,7 @@ class ConfigurationPanel(BasePanel):
         root.addWidget(display_box)
         root.addWidget(bg_box)
         root.addWidget(sl_box, stretch=1)
+        root.addWidget(app_box)
         root.addWidget(self._apply_btn)
         root.addWidget(self._status)
 
@@ -159,6 +200,38 @@ class ConfigurationPanel(BasePanel):
             )
             return None
         return key
+
+    def _populate_languages(self) -> None:
+        """Fill the language combo from the live i18n table (self-healing —
+        a newly-translated language shows up automatically)."""
+        result = self.dispatch(ListLanguages())
+        self._language.clear()
+        for entry in result.languages:
+            self._language.addItem(
+                f"{entry.name} ({entry.code})", userData=entry.code,
+            )
+
+    def _apply_app_settings(self) -> None:
+        """Apply the device-independent app settings (no device key needed)."""
+        lang = self._language.currentData()
+        log.info(
+            "_apply_app_settings: temp=%s lang=%s refresh=%.1f clock=%s",
+            self._temp_unit.currentData(), lang,
+            self._refresh.value(), self._clock.currentData(),
+        )
+        messages = [
+            self.dispatch(SetTempUnit(
+                unit=str(self._temp_unit.currentData()))).message,
+            self.dispatch(SetRefreshInterval(
+                seconds=float(self._refresh.value()))).message,
+            self.dispatch(SetTimeFormat(
+                fmt=str(self._clock.currentData()))).message,
+        ]
+        if lang is not None:
+            messages.append(
+                self.dispatch(SetLanguage(language=str(lang))).message,
+            )
+        self._status.setText("  |  ".join(messages))
 
     def _pick_bg_color(self) -> None:
         picked = QColorDialog.getColor(
