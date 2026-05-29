@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ....core.commands import (
     LoadTheme,
     PlayVideo,
+    RestoreLastTheme,
     SetBrightness,
     SetOrientation,
     StopVideo,
@@ -67,6 +68,9 @@ class DisplayPanel(BasePanel):
         self._apply_btn = QPushButton("Apply", self)
         self._apply_btn.clicked.connect(self._on_apply)
 
+        self._restore_btn = QPushButton("Restore last theme", self)
+        self._restore_btn.clicked.connect(self._on_restore_last)
+
         # Video transport — immediate actions (not part of the batch Apply).
         self._play_video_btn = QPushButton("Play video…", self)
         self._play_video_btn.clicked.connect(self._on_play_video)
@@ -92,6 +96,7 @@ class DisplayPanel(BasePanel):
         root = QVBoxLayout(self)
         root.addLayout(form)
         root.addWidget(self._apply_btn)
+        root.addWidget(self._restore_btn)
         root.addWidget(QLabel("Video:", self))
         root.addLayout(video_row)
         root.addWidget(self._status)
@@ -116,6 +121,14 @@ class DisplayPanel(BasePanel):
         )
         if path:
             self._theme_path.setText(path)
+
+    def _on_restore_last(self) -> None:
+        key = self._require_key()
+        if key is None:
+            return
+        log.info("_on_restore_last: key=%s", key)
+        result = self.dispatch(RestoreLastTheme(key=key))
+        self._status.setText(result.message)
 
     def _on_play_video(self) -> None:
         key = self._require_key()
