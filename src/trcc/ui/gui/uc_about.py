@@ -28,7 +28,15 @@ from urllib.request import urlopen
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QIntValidator
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolTip
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QToolTip,
+)
 
 from ...core._version import parse_version
 from .assets import Assets
@@ -537,6 +545,45 @@ class UCAbout(BasePanel):
         else:
             log.error("Upgrade failed: %s", result.message)
         self._upgrade_finished.emit(result.ok)
+
+    # --- Diagnostics ---
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click → 'Save diagnostic report…'.
+
+        A context menu rather than a visible button keeps the pixel-perfect
+        Windows-mirror layout untouched while still giving users (and the
+        maintainer triaging an issue) a one-click `trcc report` bundle.
+        """
+        menu = QMenu(self)
+        save_report = menu.addAction("Save diagnostic report…")
+        chosen = menu.exec(event.globalPos())
+        if chosen is save_report:
+            self._on_save_diagnostic_report()
+
+    def _on_save_diagnostic_report(self) -> None:
+        log.info("_on_save_diagnostic_report: opening save dialog")
+        if self._app is None:
+            log.error("_on_save_diagnostic_report: no App — cannot dispatch")
+            return
+        path_str, _ = QFileDialog.getSaveFileName(
+            self, "Save diagnostic report", "trcc-debug-report.txt",
+            "Text files (*.txt);;All files (*)",
+        )
+        if not path_str:
+            return
+        from ...core.commands import GenerateDebugReport
+        log.info("_on_save_diagnostic_report: writing report to %s", path_str)
+        r = self._app.dispatch(GenerateDebugReport(
+            output_path=Path(path_str), log_tail_lines=1000,
+        ))
+        center = self.mapToGlobal(self.rect().center())
+        if r.ok:
+            log.info("Diagnostic report saved: %s", r.output_path)
+            QToolTip.showText(center, f"Saved report to {r.output_path}")
+        else:
+            log.error("Diagnostic report failed: %s", r.message)
+            QToolTip.showText(center, f"Report failed: {r.message}")
 
     def _on_upgrade_done(self, success: bool):
         """Post-upgrade: show restart message or re-enable button on failure."""
