@@ -18,10 +18,13 @@ Dispatches:
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -35,13 +38,17 @@ from PySide6.QtWidgets import (
 
 from .....core.commands import (
     SelectZone,
+    SetLedZoneBrightness,
     SetLedZoneColor,
+    SetLedZoneMode,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
     ToggleLed,
 )
-from .....core.led_models import LedDeviceSettings
+from .....core.led_models import LedDeviceSettings, LEDMode
 from ._base import LedTabBase
+
+log = logging.getLogger(__name__)
 
 
 class _ZoneRow(QWidget):
@@ -53,15 +60,32 @@ class _ZoneRow(QWidget):
         on_pick,
         on_radio,
         on_toggle,
+        on_mode,
+        on_brightness,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._index = index
         self._color = QColor(255, 0, 0)
+        self._on_radio = on_radio
+        self._on_mode = on_mode
+        self._on_brightness = on_brightness
 
         self._radio = QRadioButton(f"Zone {index + 1}", self)
         self._radio.toggled.connect(self._on_radio_toggled)
-        self._on_radio = on_radio
+
+        self._mode = QComboBox(self)
+        for member in LEDMode:
+            self._mode.addItem(
+                member.name.replace("_", " ").title(), userData=int(member),
+            )
+        self._mode.currentIndexChanged.connect(self._on_mode_changed)
+
+        self._brightness = QSpinBox(self)
+        self._brightness.setRange(0, 100)
+        self._brightness.setValue(65)
+        self._brightness.setSuffix("%")
+        self._brightness.editingFinished.connect(self._on_brightness_edited)
 
         self._swatch = QLabel(self)
         self._swatch.setFixedSize(40, 22)
@@ -82,6 +106,8 @@ class _ZoneRow(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self._radio)
         row.addStretch(1)
+        row.addWidget(self._mode)
+        row.addWidget(self._brightness)
         row.addWidget(self._swatch)
         row.addWidget(self._enabled)
         row.addWidget(self._pick_btn)
@@ -111,6 +137,24 @@ class _ZoneRow(QWidget):
             f"background-color: {self._color.name()}; "
             "border: 1px solid #333;",
         )
+
+    def set_mode(self, mode: LEDMode) -> None:
+        self._mode.blockSignals(True)
+        idx = self._mode.findData(int(mode))
+        if idx >= 0:
+            self._mode.setCurrentIndex(idx)
+        self._mode.blockSignals(False)
+
+    def set_brightness(self, percent: int) -> None:
+        self._brightness.blockSignals(True)
+        self._brightness.setValue(percent)
+        self._brightness.blockSignals(False)
+
+    def _on_mode_changed(self, _index: int) -> None:
+        self._on_mode(self._index, LEDMode(int(self._mode.currentData())))
+
+    def _on_brightness_edited(self) -> None:
+        self._on_brightness(self._index, self._brightness.value())
 
 
 class ZoneTab(LedTabBase):
@@ -183,6 +227,8 @@ class ZoneTab(LedTabBase):
         for i, zone in enumerate(settings.zones):
             row = self._zone_widgets[i]
             row.set_color(*zone.color)
+            row.set_mode(zone.mode)
+            row.set_brightness(zone.brightness)
             row.set_enabled(zone.on, emit_signals=False)
             row.set_active(i == settings.selected_zone)
 
@@ -223,6 +269,8 @@ class ZoneTab(LedTabBase):
                 on_pick=self._on_pick_zone_color,
                 on_radio=self._on_zone_radio,
                 on_toggle=self._on_zone_toggle,
+                on_mode=self._on_zone_mode,
+                on_brightness=self._on_zone_brightness,
                 parent=self._zones_box,
             )
             self._zones_layout.addWidget(row)
@@ -253,6 +301,20 @@ class ZoneTab(LedTabBase):
         key = self.current_key()
         if key:
             self._dispatch(ToggleLed(key=key, on=on, zone=zone))
+
+    def _on_zone_mode(self, zone: int, mode: LEDMode) -> None:
+        key = self.current_key()
+        if not key:
+            return
+        log.info("_on_zone_mode: zone=%d mode=%s", zone, mode.name)
+        self._dispatch(SetLedZoneMode(key=key, zone=zone, mode=mode))
+
+    def _on_zone_brightness(self, zone: int, percent: int) -> None:
+        key = self.current_key()
+        if not key:
+            return
+        log.info("_on_zone_brightness: zone=%d percent=%d", zone, percent)
+        self._dispatch(SetLedZoneBrightness(key=key, zone=zone, percent=percent))
 
     def _on_sync_toggled(self, checked: bool) -> None:
         key = self.current_key()
