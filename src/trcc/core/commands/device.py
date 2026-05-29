@@ -1090,6 +1090,14 @@ class ApplyMask(Command[MaskApplyResult]):
         resolved = str(resolved_file.resolve())
         log.info("ApplyMask: resolved %s → %s", candidate, resolved)
         app.settings.set_mask_path(self.key, resolved)
+        # Applying a mask makes it visible.  Legacy kept theme_mask_visible
+        # True (Windows isDrawMbImage) and drew the mask whenever one was
+        # set; without this the png stays hidden when mask_visible was left
+        # False by a prior load — a DC-origin theme parses mask_visible=False
+        # (_dc.py), so a saved/cloud mask applies its DC layout but the image
+        # never composites ("dc shows, png doesn't").
+        app.settings.set_mask_visible(self.key, True)
+        log.info("ApplyMask: mask_visible=True for %s", self.key)
         # Auto-position the mask using its own config1.dc — legacy
         # ``OverlayService.calculate_mask_position`` behaviour: full-size
         # masks at (0,0); sub-screen masks read center coords from the

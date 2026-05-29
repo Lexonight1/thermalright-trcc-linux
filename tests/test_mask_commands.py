@@ -49,6 +49,16 @@ def test_apply_mask_accepts_valid_image(app: App, mask_png: Path) -> None:
     assert app.settings.for_device(_KEY).mask_path == str(mask_png.resolve())
 
 
+def test_apply_mask_makes_mask_visible(app: App, mask_png: Path) -> None:
+    """Applying a mask must turn it visible — legacy kept the mask drawn
+    on apply.  Without this, a saved/cloud mask applies its dc layout but
+    the png stays hidden when mask_visible was left False by a prior
+    DC-origin theme load ("dc shows, png doesn't")."""
+    app.settings.set_mask_visible(_KEY, False)   # simulate a prior hide
+    app.dispatch(ApplyMask(key=_KEY, path=mask_png))
+    assert app.settings.for_device(_KEY).mask_visible is True
+
+
 @pytest.mark.parametrize("ext", [".png", ".jpg", ".jpeg", ".bmp", ".webp"])
 def test_apply_mask_accepts_image_extensions(
     app: App, tmp_home: Path, ext: str,
