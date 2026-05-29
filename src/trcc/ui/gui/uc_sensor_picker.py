@@ -112,6 +112,7 @@ class SensorRow(QWidget):
     def update_value(self, value: float | None):
         """Update the displayed value."""
         # Per-tick refresh — no log (this fires every 1s for every row).
+        log.debug("update_value: value=%s", value)
         if value is None:
             self._value.setText('--')
         else:

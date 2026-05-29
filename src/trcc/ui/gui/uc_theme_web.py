@@ -241,6 +241,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
         every subsequent click until it finished; users perceived "stuck
         on first theme."
         """
+        log.info("_on_item_clicked")
         self._select_item(item_info)
 
         if item_info.is_local:
@@ -291,6 +292,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
 
     def _on_download_complete(self, theme_id: str, success: bool):
         """Handle download completion — refresh and auto-select."""
+        log.info("_on_download_complete: theme_id=%s success=%s", theme_id, success)
         super()._on_download_complete(theme_id, success)
         if success:
             self.load_themes()

@@ -1159,12 +1159,15 @@ class UCLedControl(QWidget):
         self.week_start_changed.emit(is_sunday)
 
     def _on_mon_clicked(self) -> None:
+        log.info("_on_mon_clicked")
         self._set_week_start(False)
 
     def _on_celsius_clicked(self) -> None:
+        log.info("_on_celsius_clicked")
         self._set_temp_unit_btn(False)
 
     def _on_fahrenheit_clicked(self) -> None:
+        log.info("_on_fahrenheit_clicked")
         self._set_temp_unit_btn(True)
 
     def _set_temp_unit_btn(self, is_fahrenheit: bool):
@@ -1217,6 +1220,7 @@ class UCLedControl(QWidget):
         Single entry point: caller doesn't need to know which style
         uses which update method. Panel owns the routing.
         """
+        log.debug("update_metrics")
         if self._style_id not in (4, 10):
             self.update_sensor_metrics(metrics)
         if self._style_id == 4:
@@ -1240,6 +1244,7 @@ class UCLedControl(QWidget):
 
     def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
         """Update UCInfoImage sensor gauges."""
+        log.debug("update_sensor_metrics")
         unit = self._temp_unit
         t = metrics.cpu_temp
         self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
@@ -1256,6 +1261,7 @@ class UCLedControl(QWidget):
 
     def update_memory_metrics(self, metrics: HardwareMetrics) -> None:
         """Update memory info labels (LC1 style 4, C# UCLEDMemoryInfo)."""
+        log.debug("update_memory_metrics")
         unit = self._temp_unit
         t = metrics.mem_temp
         if t == 0:
@@ -1341,6 +1347,7 @@ class UCLedControl(QWidget):
 
     def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:
         """Update disk info labels (LF11 style 10, C# UCLEDHarddiskInfo)."""
+        log.debug("update_lf11_disk_metrics")
         unit = self._temp_unit
         t = metrics.disk_temp
         if t == 0:

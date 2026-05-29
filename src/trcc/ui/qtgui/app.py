@@ -144,20 +144,25 @@ class MainWindow(QMainWindow):
     # ── Event handlers ────────────────────────────────────────────────
 
     def _on_connected(self, event: DeviceConnected) -> None:
+        log.info("_on_connected")
         w, h = event.resolution
         self._status.showMessage(f"Connected: {event.key} ({w}×{h})", 5000)
 
     def _on_disconnected(self, event: DeviceDisconnected) -> None:
+        log.info("_on_disconnected")
         self._status.showMessage(f"Disconnected: {event.key}", 5000)
 
     def _on_frame_sent(self, event: FrameSent) -> None:
+        log.info("_on_frame_sent")
         self._status.showMessage(f"Frame sent: {event.bytes_sent} bytes", 2000)
 
     def _on_error(self, event: ErrorOccurred) -> None:
+        log.info("_on_error")
         self._status.showMessage(f"Error [{event.kind}]: {event.message}", 8000)
 
     def _on_theme_loaded(self, event: ThemeLoaded) -> None:
         """A theme got loaded on some device — make sure the ticker is running."""
+        log.info("_on_theme_loaded")
         del event
         self._ensure_ticker_running()
 

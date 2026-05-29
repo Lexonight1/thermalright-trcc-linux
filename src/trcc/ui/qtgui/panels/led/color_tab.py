@@ -12,6 +12,8 @@ and as the zone-sync default).
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -30,6 +32,8 @@ from .....core.commands import SetLedBrightness, SetLedColor, ToggleLed
 from .....core.led_models import PRESET_COLORS, LedDeviceSettings
 from ...color_wheel import ColorWheel
 from ._base import LedTabBase
+
+log = logging.getLogger(__name__)
 
 
 class ColorTab(LedTabBase):
@@ -130,6 +134,7 @@ class ColorTab(LedTabBase):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+        log.debug("refresh_from")
         if settings is None:
             return
         self._set_color(*settings.color, emit_signals=False)
@@ -169,10 +174,12 @@ class ColorTab(LedTabBase):
 
     def _on_wheel_hue(self, hue: int) -> None:
         # Wheel always emits a saturated, fully-bright pixel.
+        log.info("_on_wheel_hue: hue=%s", hue)
         c = QColor.fromHsv(hue, 255, 255)
         self._set_color(c.red(), c.green(), c.blue(), emit_signals=False)
 
     def _on_rgb_changed(self) -> None:
+        log.info("_on_rgb_changed")
         self._set_color(
             self._r.value(), self._g.value(), self._b.value(),
             emit_signals=False,
@@ -181,6 +188,7 @@ class ColorTab(LedTabBase):
     # ── Command dispatch ──────────────────────────────────────────────
 
     def _on_apply(self) -> None:
+        log.info("_on_apply")
         key = self.current_key()
         if not key:
             return
@@ -191,11 +199,13 @@ class ColorTab(LedTabBase):
         ))
 
     def _on_global_on(self) -> None:
+        log.info("_on_global_on")
         key = self.current_key()
         if key:
             self._dispatch(ToggleLed(key=key, on=True))
 
     def _on_global_off(self) -> None:
+        log.info("_on_global_off")
         key = self.current_key()
         if key:
             self._dispatch(ToggleLed(key=key, on=False))

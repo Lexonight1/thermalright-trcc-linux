@@ -16,6 +16,8 @@ the theme server.  Check your internet connection."
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -31,6 +33,8 @@ from PySide6.QtWidgets import (
 from ....core.commands import ListCloudThemes, LoadCloudTheme
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 _ALL_CATEGORIES = "all"
 
@@ -103,9 +107,11 @@ class CloudThemeBrowser(BasePanel):
         self._fill_list_from_result(result)
 
     def _on_refresh(self) -> None:
+        log.info("_on_refresh")
         self._on_category_changed()
 
     def _on_category_changed(self) -> None:
+        log.info("_on_category_changed")
         cat = str(self._category.currentData() or _ALL_CATEGORIES)
         result = self.dispatch(ListCloudThemes(category=cat))
         self._fill_list_from_result(result)
@@ -126,6 +132,7 @@ class CloudThemeBrowser(BasePanel):
     # ── Apply ─────────────────────────────────────────────────────────
 
     def _on_apply(self) -> None:
+        log.info("_on_apply")
         item = self._list.currentItem()
         if item is None:
             self._status.setText("Pick a theme from the list first.")

@@ -511,6 +511,7 @@ class TRCCApp(QMainWindow):
         active handler re-builds the preview from the app's render
         pipeline.  Only the active device updates the preview widget.
         """
+        log.info("_on_bus_frame_sent")
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
@@ -541,6 +542,7 @@ class TRCCApp(QMainWindow):
 
     def _on_bus_sensors_updated(self, _event: Any) -> None:
         """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
+        log.info("_on_bus_sensors_updated")
         self._fan_out_metrics(reason="bus")
 
     def _fan_out_metrics(self, *, reason: str) -> None:
@@ -703,6 +705,7 @@ class TRCCApp(QMainWindow):
         Adapt from next/ ``ProductInfo`` here so the widget code stays
         untouched.
         """
+        log.debug("_refresh_sidebar")
         devices: list[dict] = []
         for idx, key in enumerate(self._handlers.keys()):
             dev = self._app.devices.get(key)
@@ -815,6 +818,7 @@ class TRCCApp(QMainWindow):
         self._tray.show()
 
     def _on_tray_activated(self, reason: Any) -> None:
+        log.info("_on_tray_activated: reason=%s", reason)
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self._toggle_visibility()
 
@@ -1297,6 +1301,7 @@ class TRCCApp(QMainWindow):
 
     def _on_mode_button_clicked(self, *_qt_args: Any) -> None:
         """Mode-button slot — reads panel_idx from sender's property."""
+        log.info("_on_mode_button_clicked")
         sender = self.sender()
         if sender is None:
             return
@@ -1316,32 +1321,40 @@ class TRCCApp(QMainWindow):
     # ── View-switch slots (named, not lambdas) ──────────────────────
 
     def _on_home_clicked(self) -> None:
+        log.info("_on_home_clicked")
         self._show_view('sysinfo')
 
     def _on_about_clicked(self) -> None:
+        log.info("_on_about_clicked")
         self._show_view('about')
 
     # ── Download status slots ───────────────────────────────────────
 
     def _on_theme_download_started(self, theme_id: str) -> None:
+        log.info("_on_theme_download_started: theme_id=%s", theme_id)
         self.uc_preview.set_status(f"Downloading: {theme_id}...")
 
     def _on_theme_download_finished(self, theme_id: str, ok: bool) -> None:
+        log.info("_on_theme_download_finished: theme_id=%s ok=%s", theme_id, ok)
         verb = 'Downloaded' if ok else 'Download failed'
         self.uc_preview.set_status(f"{verb}: {theme_id}")
 
     def _on_mask_download_started(self, mask_id: str) -> None:
+        log.info("_on_mask_download_started: mask_id=%s", mask_id)
         self.uc_preview.set_status(f"Downloading: {mask_id}...")
 
     def _on_mask_download_finished(self, mask_id: str, ok: bool) -> None:
+        log.info("_on_mask_download_finished: mask_id=%s ok=%s", mask_id, ok)
         verb = 'Downloaded' if ok else 'Failed'
         self.uc_preview.set_status(f"{verb}: {mask_id}")
 
     def _on_drag_end_noop(self) -> None:
         """No-op slot — drag-end emits the signal but we don't act on it here."""
+        log.info("_on_drag_end_noop")
 
     def _on_element_added(self, _payload: Any) -> None:
         """Hide the activity sidebar once an element has been added to the theme."""
+        log.info("_on_element_added")
         self.uc_activity_sidebar.setVisible(False)
 
     def _show_view(self, view: str) -> None:
@@ -1570,12 +1583,14 @@ class TRCCApp(QMainWindow):
             h.apply_mask(mask_info)
 
     def _on_local_delegate(self, cmd: Any, info: Any, data: Any) -> None:
+        log.info("_on_local_delegate")
         if cmd == UCThemeLocal.CMD_SLIDESHOW:
             h = self._active_lcd()
             if h:
                 h.on_slideshow_delegate()
 
     def _on_delete_theme(self, theme_info: Any) -> None:
+        log.info("_on_delete_theme")
         from PySide6.QtWidgets import QMessageBox
         reply = QMessageBox.question(
             self, "Delete Theme", f"Delete theme '{theme_info.name}'?",
@@ -1635,6 +1650,7 @@ class TRCCApp(QMainWindow):
                     h.on_overlay_changed(info if isinstance(info, dict) else {})
 
     def _on_preview_delegate(self, cmd: Any, info: Any, data: Any) -> None:
+        log.info("_on_preview_delegate")
         if not (h := self._active_lcd()):
             return
         match cmd:
@@ -1713,6 +1729,7 @@ class TRCCApp(QMainWindow):
                 h.select_theme_from_path(Path(last_path))
 
     def _on_screencast_frame(self, image: Any) -> None:
+        log.info("_on_screencast_frame")
         h = self._active_lcd()
         if h:
             h.on_screencast_frame(image)
@@ -1720,6 +1737,7 @@ class TRCCApp(QMainWindow):
     # ── File Dialogs ────────────────────────────────────────────────
 
     def _on_load_video_clicked(self) -> None:
+        log.info("_on_load_video_clicked")
         h = self._active_lcd()
         start_dir = self._video_picker_start_dir(h)
         path, _ = QFileDialog.getOpenFileName(
@@ -1733,6 +1751,7 @@ class TRCCApp(QMainWindow):
             self._show_cutter('video')
 
     def _on_media_player_load_clicked(self) -> None:
+        log.info("_on_media_player_load_clicked")
         h = self._active_lcd()
         start_dir = self._video_picker_start_dir(h)
         path, _ = QFileDialog.getOpenFileName(
@@ -1779,6 +1798,7 @@ class TRCCApp(QMainWindow):
         return str(cloud_dir) if cloud_dir.exists() else ""
 
     def _on_load_image_clicked(self) -> None:
+        log.info("_on_load_image_clicked")
         self._cut_mode = 'background'
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Image", "",
@@ -1795,6 +1815,7 @@ class TRCCApp(QMainWindow):
                 self._show_cutter('image')
 
     def _on_mask_upload_clicked(self) -> None:
+        log.info("_on_mask_upload_clicked")
         self._cut_mode = 'mask'
         path, _ = QFileDialog.getOpenFileName(
             self, "Upload Mask Image", "",
@@ -1839,6 +1860,7 @@ class TRCCApp(QMainWindow):
                     "Save cancelled — choose a different name")
 
     def _on_export_clicked(self) -> None:
+        log.info("_on_export_clicked")
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Theme", "",
             "Theme files (*.tr);;JSON (*.json);;All Files (*)")
@@ -1847,6 +1869,7 @@ class TRCCApp(QMainWindow):
             h.export_config(Path(path))
 
     def _on_import_clicked(self) -> None:
+        log.info("_on_import_clicked")
         path, _ = QFileDialog.getOpenFileName(
             self, "Import Theme", "",
             "Theme files (*.tr);;JSON (*.json);;All Files (*)")
@@ -1868,6 +1891,7 @@ class TRCCApp(QMainWindow):
         self.uc_preview.setVisible(True)
 
     def _on_image_cut_done(self, result: Any) -> None:
+        log.info("_on_image_cut_done")
         self._hide_cutters()
         h = self._active_lcd()
         if result is None or not h:
@@ -1994,6 +2018,7 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(f"Custom mask '{mask_name}' uploaded")
 
     def _on_video_cut_done(self, zt_path: Any) -> None:
+        log.info("_on_video_cut_done: zt_path=%s", zt_path)
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
@@ -2015,10 +2040,12 @@ class TRCCApp(QMainWindow):
     # ── Activity Sidebar / Overlay ───────────────────────────────────
 
     def _on_overlay_add_requested(self) -> None:
+        log.info("_on_overlay_add_requested")
         self.uc_activity_sidebar.setVisible(True)
         self.uc_activity_sidebar.raise_()
 
     def _on_sensor_element_add(self, config: Any) -> None:
+        log.info("_on_sensor_element_add")
         self.uc_theme_setting.overlay_grid.add_element(config)
         self.uc_activity_sidebar.setVisible(False)
 
@@ -2038,6 +2065,7 @@ class TRCCApp(QMainWindow):
         return self._active_key
 
     def _on_element_flash(self, index: int, config: dict) -> None:
+        log.info("_on_element_flash: index=%s", index)
         h = self._active_lcd()
         if h:
             h.flash_element(index)
@@ -2045,6 +2073,7 @@ class TRCCApp(QMainWindow):
     # ── Drag / Nudge ────────────────────────────────────────────────
 
     def _on_drag_start(self, lcd_x: int, lcd_y: int) -> None:
+        log.info("_on_drag_start: lcd_x=%s lcd_y=%s", lcd_x, lcd_y)
         grid = self.uc_theme_setting.overlay_grid
         cfg = grid.get_selected_config()
         if cfg is None:
@@ -2061,6 +2090,7 @@ class TRCCApp(QMainWindow):
         self._drag_elem_y = cfg.y
 
     def _on_drag_move(self, lcd_x: int, lcd_y: int) -> None:
+        log.info("_on_drag_move: lcd_x=%s lcd_y=%s", lcd_x, lcd_y)
         cfg = self.uc_theme_setting.overlay_grid.get_selected_config()
         h = self._active_lcd()
         if cfg is None or not h:
@@ -2072,6 +2102,7 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting._on_position_changed(new_x, new_y)
 
     def _on_nudge(self, dx: int, dy: int) -> None:
+        log.info("_on_nudge: dx=%s dy=%s", dx, dy)
         cfg = self.uc_theme_setting.overlay_grid.get_selected_config()
         h = self._active_lcd()
         if cfg is None or not h:
@@ -2092,6 +2123,7 @@ class TRCCApp(QMainWindow):
             self.uc_preview.set_status(f"Rotation: {index * 90}°")
 
     def _on_ldd_click(self) -> None:
+        log.info("_on_ldd_click")
         h = self._active_lcd()
         if not h:
             return
@@ -2234,18 +2266,21 @@ class TRCCApp(QMainWindow):
         self.uc_led_control.apply_localized_background()
 
     def _on_help_clicked(self) -> None:
+        log.info("_on_help_clicked")
         import webbrowser
         webbrowser.open(
             'https://github.com/Lexonight1/thermalright-trcc-linux'
             '/blob/main/doc/GUIDE_TROUBLESHOOTING.md')
 
     def _on_capture_requested(self) -> None:
+        log.info("_on_capture_requested")
         from .screen_capture import ScreenCaptureOverlay
         self._capture_overlay = ScreenCaptureOverlay()
         self._capture_overlay.captured.connect(self._on_screen_captured)
         self._capture_overlay.show()
 
     def _on_screen_captured(self, pixmap: Any) -> None:
+        log.info("_on_screen_captured")
         self._capture_overlay = None
         h = self._active_lcd()
         if pixmap is None or not h:
@@ -2259,6 +2294,7 @@ class TRCCApp(QMainWindow):
         self._show_cutter('image')
 
     def _on_eyedropper_requested(self) -> None:
+        log.info("_on_eyedropper_requested")
         from .eyedropper import EyedropperOverlay
         self._eyedropper_overlay = EyedropperOverlay()
         self._eyedropper_overlay.color_picked.connect(self._eyedropper_pick)

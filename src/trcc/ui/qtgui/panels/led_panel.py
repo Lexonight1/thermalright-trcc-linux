@@ -19,6 +19,8 @@ Replaces the legacy 1390-line ``uc_led_control.py`` monolith.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -31,6 +33,8 @@ from PySide6.QtWidgets import (
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 from .led import AdvancedTab, ColorTab, ModeTab, SegmentTab, ZoneTab
+
+log = logging.getLogger(__name__)
 
 
 class LedPanel(BasePanel):
@@ -97,9 +101,11 @@ class LedPanel(BasePanel):
         return self._picker.current_key()
 
     def _on_key_changed(self, _key: str = "") -> None:
+        log.info("_on_key_changed: _key=%s", _key)
         self._refresh_all_tabs()
 
     def _refresh_all_tabs(self) -> None:
+        log.debug("_refresh_all_tabs")
         key = self._current_key()
         if not key:
             self._status_label.setText(
@@ -160,6 +166,7 @@ class LedPanel(BasePanel):
     # ── Bus subscription ─────────────────────────────────────────────
 
     def _on_led_settings_changed(self, event) -> None:
+        log.info("_on_led_settings_changed")
         if event.key != self._current_key():
             return
         self._refresh_all_tabs()

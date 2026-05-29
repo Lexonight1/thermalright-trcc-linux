@@ -16,6 +16,7 @@ update the UI without a refresh click.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -43,6 +44,8 @@ from ....core.commands import (
 )
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 
 class MaskBrowser(BasePanel):
@@ -142,6 +145,7 @@ class MaskBrowser(BasePanel):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh(self) -> None:
+        log.debug("refresh")
         self._list.clear()
         key = self._picker.current_key()
         if not key:
@@ -204,6 +208,7 @@ class MaskBrowser(BasePanel):
         return product.native_resolution
 
     def _on_apply(self) -> None:
+        log.info("_on_apply")
         item = self._list.currentItem()
         if item is None:
             self._status.setText("Pick a mask from the list first.")
@@ -216,6 +221,7 @@ class MaskBrowser(BasePanel):
         self._status.setText(result.message)
 
     def _on_upload(self) -> None:
+        log.info("_on_upload")
         key = self._device_key()
         if key is None:
             return
@@ -235,6 +241,7 @@ class MaskBrowser(BasePanel):
             self.refresh()
 
     def _on_position_changed(self) -> None:
+        log.info("_on_position_changed")
         key = self._device_key()
         if key is None:
             return
@@ -244,6 +251,7 @@ class MaskBrowser(BasePanel):
         self._status.setText(result.message)
 
     def _on_visibility_changed(self, visible: bool) -> None:
+        log.info("_on_visibility_changed: visible=%s", visible)
         key = self._device_key()
         if key is None:
             return
@@ -252,6 +260,7 @@ class MaskBrowser(BasePanel):
 
     def _on_key_changed(self, _new_key: str) -> None:
         """User picked a different device — refresh list + sync widgets."""
+        log.info("_on_key_changed: _new_key=%s", _new_key)
         self.refresh()
         self._sync_from_snapshot()
 
@@ -276,10 +285,12 @@ class MaskBrowser(BasePanel):
     # ── Bus subscriptions ────────────────────────────────────────────
 
     def _on_mask_applied_event(self, event) -> None:
+        log.info("_on_mask_applied_event")
         if event.key == self._picker.current_key():
             self._sync_from_snapshot()
 
     def _on_mask_position_event(self, event) -> None:
+        log.info("_on_mask_position_event")
         if event.key != self._picker.current_key():
             return
         x, y = event.position or (0, 0)
@@ -291,6 +302,7 @@ class MaskBrowser(BasePanel):
         self._y.blockSignals(False)
 
     def _on_mask_visibility_event(self, event) -> None:
+        log.info("_on_mask_visibility_event")
         if event.key != self._picker.current_key():
             return
         self._visible.blockSignals(True)

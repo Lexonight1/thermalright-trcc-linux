@@ -127,6 +127,7 @@ class TrccSplash(QWidget):
     @Slot(str)
     def update_message(self, message: str) -> None:
         """Update status label. Connected to BootstrapWorker.progress signal."""
+        log.debug("update_message: message=%s", message)
         self._status.setText(message)
 
 

@@ -1,6 +1,8 @@
 """DevicePanel — discover / connect / disconnect devices."""
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -13,6 +15,8 @@ from PySide6.QtWidgets import (
 
 from ....core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
 from ..base import BasePanel
+
+log = logging.getLogger(__name__)
 
 
 class DevicePanel(BasePanel):
@@ -49,6 +53,7 @@ class DevicePanel(BasePanel):
     # ── Actions ───────────────────────────────────────────────────────
 
     def _on_scan(self) -> None:
+        log.info("_on_scan")
         result = self.dispatch(DiscoverDevices())
         self._list.clear()
         for product in result.products:
@@ -69,6 +74,7 @@ class DevicePanel(BasePanel):
         return str(item.data(0x0100))
 
     def _on_connect(self) -> None:
+        log.info("_on_connect")
         key = self._selected_key()
         if key is None:
             return
@@ -76,6 +82,7 @@ class DevicePanel(BasePanel):
         self._status.setText(result.message)
 
     def _on_disconnect(self) -> None:
+        log.info("_on_disconnect")
         key = self._selected_key()
         if key is None:
             return

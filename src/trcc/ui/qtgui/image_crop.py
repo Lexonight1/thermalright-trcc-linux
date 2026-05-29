@@ -308,6 +308,7 @@ class ImageCropDialog(QDialog):
         self._zoom_slider.blockSignals(False)
 
     def _on_zoom_changed(self, value: int) -> None:
+        log.info("_on_zoom_changed: value=%s", value)
         img = self._rotated_source()
         if img is None:
             return
@@ -323,6 +324,7 @@ class ImageCropDialog(QDialog):
         self._rebuild_display()
 
     def _on_pan(self, dx: int, dy: int) -> None:
+        log.info("_on_pan: dx=%s dy=%s", dx, dy)
         self._pan_x += dx * self._pan_multiplier
         self._pan_y += dy * self._pan_multiplier
         self._rebuild_display()

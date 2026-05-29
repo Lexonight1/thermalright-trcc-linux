@@ -12,12 +12,15 @@ Putting that in one place keeps the tabs themselves under ~150 lines.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QWidget
 
 from .....core.led_models import LedDeviceSettings
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .....app import App
@@ -70,4 +73,5 @@ class LedTabBase(QWidget):
         Default is a no-op; subclasses override to update widgets from
         persisted state (e.g. when the user switches device keys).
         """
+        log.debug("refresh_from")
         del settings

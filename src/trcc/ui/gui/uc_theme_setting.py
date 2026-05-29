@@ -164,6 +164,7 @@ class UCThemeSetting(BasePanel):
 
     def _on_element_selected(self, index, config: OverlayElementConfig):
         """Element was clicked — show its properties in color panel."""
+        log.info("_on_element_selected: index=%s", index)
         self.right_stack.setCurrentWidget(self.color_panel)
         self.color_panel.set_position(config.x, config.y)
         self.color_panel.set_color_hex(config.color)
@@ -175,10 +176,12 @@ class UCThemeSetting(BasePanel):
 
     def _on_add_requested(self):
         """Empty cell clicked — show add panel."""
+        log.info("_on_add_requested")
         self.right_stack.setCurrentWidget(self.add_panel)
 
     def _on_element_added(self, config):
         """New element type selected from add panel."""
+        log.info("_on_element_added")
         self.right_stack.setCurrentWidget(self.color_panel)
         self.overlay_grid.add_element(config)
         # Select the newly added element
@@ -189,6 +192,7 @@ class UCThemeSetting(BasePanel):
 
     def _on_element_deleted(self, index):
         """Element was deleted."""
+        log.info("_on_element_deleted: index=%s", index)
         self.right_stack.setCurrentWidget(self.color_panel)
 
     def _on_elements_changed(self):
@@ -253,11 +257,13 @@ class UCThemeSetting(BasePanel):
             self.format_pref_changed.emit('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
+        log.info("_on_text_changed: text=%s", text)
         self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)
 
     # --- Display mode panels ---
 
     def _on_mode_changed(self, mode_id, enabled):
+        log.info("_on_mode_changed: mode_id=%s enabled=%s", mode_id, enabled)
         if mode_id == "background":
             if enabled:
                 self.screencast_panel.set_enabled(False)
@@ -280,17 +286,21 @@ class UCThemeSetting(BasePanel):
 
     def _on_screencast_params(self, x, y, w, h):
         """Forward screencast coordinate changes."""
+        log.info("_on_screencast_params: x=%s y=%s w=%s h=%s", x, y, w, h)
         self.screencast_params_changed.emit(x, y, w, h)
 
     def _on_mask_position(self, x, y):
         """Forward mask position change to main app."""
+        log.info("_on_mask_position: x=%s y=%s", x, y)
         self.invoke_delegate(self.CMD_MASK_POSITION, (x, y))
 
     def _on_mask_visibility(self, visible):
         """Forward mask visibility toggle to main app."""
+        log.info("_on_mask_visibility: visible=%s", visible)
         self.invoke_delegate(self.CMD_MASK_VISIBILITY, visible)
 
     def _on_action_requested(self, action_name):
+        log.info("_on_action_requested: action_name=%s", action_name)
         action_map = {
             "Image": self.CMD_BACKGROUND_LOAD_IMAGE,
             "Video": self.CMD_BACKGROUND_LOAD_VIDEO,

@@ -10,6 +10,7 @@ to the tuple.  No hardcoded layouts per panel.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import (
 )
 
 from ..base import BasePanel
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +100,7 @@ class ActivitySidebar(BasePanel):
             button.setChecked(True)
 
     def _on_clicked(self, key: str) -> None:
+        log.info("_on_clicked: key=%s", key)
         self.selected.emit(key)
 
     def apply_language(self, lang: str) -> None:

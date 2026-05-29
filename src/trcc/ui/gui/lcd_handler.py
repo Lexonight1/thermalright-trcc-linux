@@ -241,6 +241,7 @@ class LCDHandler(BaseHandler):
 
     def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current persisted settings."""
+        log.debug("_refresh: w=%s h=%s", w, h)
         self.log.info("_refresh: device_key=%s resolution=%dx%d",
                       self._device_key, w, h)
         # Cache canvas + lcd size + per-resolution dirs in the shared
@@ -289,6 +290,7 @@ class LCDHandler(BaseHandler):
 
     def _on_data_ready(self) -> None:
         """Background data extraction finished — re-probe dirs and update UI."""
+        log.info("_on_data_ready")
         self.log.info("_on_data_ready: refreshing dirs and theme lists")
         auto_loaded = self._update_theme_directories()
         self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
@@ -527,6 +529,7 @@ class LCDHandler(BaseHandler):
 
     def update_mask_position(self, x: int, y: int) -> None:
         """Update mask overlay position and re-render."""
+        log.debug("update_mask_position: x=%s y=%s", x, y)
         self._app.dispatch(SetMaskPosition(
             key=self._device_key, x=x, y=y,
         ))
@@ -761,6 +764,7 @@ class LCDHandler(BaseHandler):
         only — same skip reason in a row stays DEBUG so a disconnected
         device doesn't spam 15 lines/s.
         """
+        log.info("_on_video_tick")
         from ...core.commands import RenderAndSend
 
         if not self._animation_first_tick_logged:
@@ -879,6 +883,7 @@ class LCDHandler(BaseHandler):
 
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""
+        log.debug("update_preview")
         if self._ui_active:
             self._w['preview'].set_image(image)
         else:
@@ -889,6 +894,7 @@ class LCDHandler(BaseHandler):
     def update_metrics(self, metrics: Any) -> None:
         """Metrics tick: cache for video-overlay redraws on next frame."""
         # Per-tick on every metrics broadcast; DEBUG only.
+        log.debug("update_metrics")
         self._state.last_metrics = metrics
         readings = getattr(metrics, 'readings', None) or {}
         self.log.debug(
@@ -906,6 +912,7 @@ class LCDHandler(BaseHandler):
         self._render_and_send()
 
     def _on_flash_timeout(self) -> None:
+        log.info("_on_flash_timeout")
         self.log.debug("_on_flash_timeout: re-rendering")
         self._render_and_send()
 
@@ -1051,6 +1058,7 @@ class LCDHandler(BaseHandler):
         which returns the next theme NAME (or None when not yet due).
         Single cursor across all surfaces.
         """
+        log.info("_on_slideshow_tick")
         from ...services.slideshow import SlideshowConfig
         local = self._w['theme_local']
         themes = local.get_slideshow_themes()

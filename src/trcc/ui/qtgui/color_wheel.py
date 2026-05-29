@@ -80,6 +80,7 @@ class ColorWheel(QWidget):
         return self._outer_r() * (1.0 - self._RING_THICKNESS_RATIO)
 
     def _on_ring(self, x: float, y: float) -> bool:
+        log.info("_on_ring: x=%s y=%s", x, y)
         cx, cy = self._center()
         dist = math.hypot(x - cx, y - cy)
         # Be generous on the inside (easier to click) than the outside.

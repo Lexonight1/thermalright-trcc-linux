@@ -16,6 +16,8 @@ selection survives across launches.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -27,6 +29,8 @@ from PySide6.QtWidgets import (
 from .....core.commands import SetLedMode
 from .....core.led_models import LedDeviceSettings, LEDMode
 from ._base import LedTabBase
+
+log = logging.getLogger(__name__)
 
 _MODE_LABELS: tuple[tuple[LEDMode, str, str], ...] = (
     (LEDMode.STATIC,
@@ -93,6 +97,7 @@ class ModeTab(LedTabBase):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+        log.debug("refresh_from")
         if settings is None:
             return
         radio = self._radios.get(settings.mode)
@@ -104,6 +109,7 @@ class ModeTab(LedTabBase):
     # ── Handlers ──────────────────────────────────────────────────────
 
     def _on_radio_toggled(self, mode: LEDMode, checked: bool) -> None:
+        log.info("_on_radio_toggled: mode=%s checked=%s", mode, checked)
         if not checked:
             return
         key = self.current_key()

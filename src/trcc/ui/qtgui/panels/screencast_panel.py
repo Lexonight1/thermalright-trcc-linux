@@ -155,6 +155,7 @@ class ScreencastPanel(BasePanel):
     # ── Region picking ───────────────────────────────────────────────
 
     def _on_pick_region(self) -> None:
+        log.info("_on_pick_region")
         from ..region_overlay import RegionSelectOverlay
 
         overlay = RegionSelectOverlay(self)
@@ -165,17 +166,20 @@ class ScreencastPanel(BasePanel):
     def _on_region_selected(
         self, x: int, y: int, w: int, h: int,
     ) -> None:
+        log.info("_on_region_selected: x=%s y=%s w=%s h=%s", x, y, w, h)
         self._region = (x, y, w, h)
         self._region_label.setText(
             f"{w} × {h} at ({x}, {y})",
         )
 
     def _on_region_cancelled(self) -> None:
+        log.info("_on_region_cancelled")
         self._status.setText("Region selection cancelled.")
 
     # ── FPS plumbing ─────────────────────────────────────────────────
 
     def _on_fps_changed(self, value: int) -> None:
+        log.info("_on_fps_changed: value=%s", value)
         if self._timer.isActive():
             self._timer.setInterval(self._tick_interval_ms(value))
 
@@ -185,6 +189,7 @@ class ScreencastPanel(BasePanel):
     # ── Lifecycle ────────────────────────────────────────────────────
 
     def _on_start(self) -> None:
+        log.info("_on_start")
         key = self._picker.current_key()
         if not key:
             self._status.setText(
@@ -213,6 +218,7 @@ class ScreencastPanel(BasePanel):
         )
 
     def _on_stop(self) -> None:
+        log.info("_on_stop")
         self._timer.stop()
         self._start_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
@@ -220,6 +226,7 @@ class ScreencastPanel(BasePanel):
         self._status.setText("Screencast stopped.")
 
     def _on_key_changed(self, _key: str) -> None:
+        log.info("_on_key_changed: _key=%s", _key)
         if self._timer.isActive():
             # Changing device mid-screencast: stop cleanly to avoid
             # sending to whichever device the user just deselected.

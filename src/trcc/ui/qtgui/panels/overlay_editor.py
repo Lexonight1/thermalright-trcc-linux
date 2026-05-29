@@ -15,6 +15,8 @@ can't see it" usually means the theme is drawing over the same spot
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -43,6 +45,8 @@ from ....core.commands import (
 )
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+
+log = logging.getLogger(__name__)
 
 _TYPES = ("text", "metric", "clock")
 _CLOCK_SOURCES = ("time", "weekday", "date")
@@ -105,6 +109,7 @@ class OverlayEditorPanel(BasePanel):
     # ── Refresh ───────────────────────────────────────────────────────
 
     def refresh(self) -> None:
+        log.debug("refresh")
         key = self._key()
         if key is None:
             return
@@ -160,6 +165,7 @@ class OverlayEditorPanel(BasePanel):
         return str(item.data(Qt.ItemDataRole.UserRole))
 
     def _on_add(self) -> None:
+        log.info("_on_add")
         key = self._key()
         if key is None:
             return
@@ -186,6 +192,7 @@ class OverlayEditorPanel(BasePanel):
             self.refresh()
 
     def _on_edit(self) -> None:
+        log.info("_on_edit")
         key = self._key()
         eid = self._selected_id()
         if key is None or eid is None:
@@ -217,6 +224,7 @@ class OverlayEditorPanel(BasePanel):
             self.refresh()
 
     def _on_delete(self) -> None:
+        log.info("_on_delete")
         key = self._key()
         eid = self._selected_id()
         if key is None or eid is None:
@@ -238,6 +246,7 @@ class OverlayEditorPanel(BasePanel):
             self.refresh()
 
     def _on_flash(self) -> None:
+        log.info("_on_flash")
         key = self._key()
         eid = self._selected_id()
         if key is None or eid is None:
@@ -376,6 +385,7 @@ class _ElementDialog(QDialog):
             self._source.setCurrentIndex(0)
 
     def _refresh_visibility(self) -> None:
+        log.debug("_refresh_visibility")
         kind = self._type.currentData()
         # Show only the field group relevant to the chosen type.
         self._set_row_visible(self._text, kind == "text")
@@ -406,6 +416,7 @@ class _ElementDialog(QDialog):
         overlay.show()
 
     def _on_eyedropper_picked(self, r: int, g: int, b: int) -> None:
+        log.info("_on_eyedropper_picked: r=%s g=%s b=%s", r, g, b)
         self._color = f"#{r:02x}{g:02x}{b:02x}"
         self._color_label.setText(self._color)
 

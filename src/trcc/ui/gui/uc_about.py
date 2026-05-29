@@ -361,6 +361,7 @@ class UCAbout(BasePanel):
 
     def _on_startup_clicked(self):
         """Toggle auto-start on login."""
+        log.info("_on_startup_clicked")
         self._autostart = self.startup_btn.isChecked()
         if self._platform:
             autostart = self._platform.autostart()
@@ -374,12 +375,15 @@ class UCAbout(BasePanel):
     # --- Temperature unit ---
 
     def _on_celsius_clicked(self) -> None:
+        log.info("_on_celsius_clicked")
         self._set_temp('C')
 
     def _on_fahrenheit_clicked(self) -> None:
+        log.info("_on_fahrenheit_clicked")
         self._set_temp('F')
 
     def _on_website_clicked(self) -> None:
+        log.info("_on_website_clicked")
         webbrowser.open('https://www.thermalright.com')
 
     def _start_update_check(self) -> None:
@@ -401,6 +405,7 @@ class UCAbout(BasePanel):
 
     def _on_hdd_clicked(self):
         """Toggle hard disk information reading."""
+        log.info("_on_hdd_clicked")
         self._read_hdd = self.hdd_btn.isChecked()
         self.hdd_toggle_changed.emit(self._read_hdd)
         self.invoke_delegate(self.CMD_HDD_REFRESH, self._read_hdd,
@@ -414,6 +419,7 @@ class UCAbout(BasePanel):
 
     def _on_refresh_changed(self):
         """Handle refresh interval input change (1-100 seconds)."""
+        log.info("_on_refresh_changed")
         text = self.refresh_input.text().strip()
         if not text:
             self.refresh_input.setText("1")
@@ -470,9 +476,11 @@ class UCAbout(BasePanel):
     # --- Running Mode ---
 
     def _on_single_thread_clicked(self) -> None:
+        log.info("_on_single_thread_clicked")
         self._set_thread_mode(False)
 
     def _on_multi_thread_clicked(self) -> None:
+        log.info("_on_multi_thread_clicked")
         self._set_thread_mode(True)
 
     def _set_thread_mode(self, multi: bool):
@@ -484,6 +492,7 @@ class UCAbout(BasePanel):
 
     def _on_lang_clicked(self, lang_suffix: str):
         """Handle language selection."""
+        log.info("_on_lang_clicked: lang_suffix=%s", lang_suffix)
         self.language_changed.emit(lang_suffix)
 
     # --- Software update ---
@@ -587,6 +596,7 @@ class UCAbout(BasePanel):
 
     def _on_upgrade_done(self, success: bool):
         """Post-upgrade: show restart message or re-enable button on failure."""
+        log.info("_on_upgrade_done: success=%s", success)
         if success:
             self._update_tooltip = "Updated — restart to apply"
         else:
@@ -598,6 +608,7 @@ class UCAbout(BasePanel):
 
     def _on_close(self):
         """Handle close/back button."""
+        log.info("_on_close")
         self.close_requested.emit()
 
     # --- Public API ---

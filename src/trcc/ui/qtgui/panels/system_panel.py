@@ -160,6 +160,7 @@ class SystemPanel(BasePanel):
     # ── Refreshers ────────────────────────────────────────────────────
 
     def _refresh_platform(self) -> None:
+        log.debug("_refresh_platform")
         r = self.dispatch(GetPlatformInfo())
         self._distro_label.setText(r.distro_name or "—")
         self._install_label.setText(r.install_method or "—")
@@ -170,6 +171,7 @@ class SystemPanel(BasePanel):
         )
 
     def _refresh_health(self) -> None:
+        log.debug("_refresh_health")
         r = self.dispatch(RunHealthCheck())
         self._health_summary.setText(r.message)
         details: list[str] = []
@@ -181,6 +183,7 @@ class SystemPanel(BasePanel):
         self._health_details.setText("\n".join(details))
 
     def _refresh_sensors(self) -> None:
+        log.debug("_refresh_sensors")
         r = self.dispatch(ReadSensors())
         self._sensors_list.clear()
         for reading in r.readings:
@@ -220,6 +223,7 @@ class SystemPanel(BasePanel):
         self._gpu_status.setText(r.message)
 
     def _refresh_autostart(self) -> None:
+        log.debug("_refresh_autostart")
         r = self.dispatch(GetAutostartStatus())
         self._autostart_check.blockSignals(True)
         self._autostart_check.setChecked(r.enabled)

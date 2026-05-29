@@ -98,6 +98,7 @@ class UCInfoModule(QWidget):
 
     def update_from_metrics(self, metrics) -> None:
         """Render from the unified Topic.METRICS broadcast."""
+        log.debug("update_from_metrics")
         self._apply_metrics(metrics)
 
     def stop_updates(self) -> None:

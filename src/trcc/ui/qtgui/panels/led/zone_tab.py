@@ -129,6 +129,7 @@ class _ZoneRow(QWidget):
         self._radio.blockSignals(False)
 
     def _on_radio_toggled(self, checked: bool) -> None:
+        log.info("_on_radio_toggled: checked=%s", checked)
         if checked:
             self._on_radio(self._index)
 
@@ -151,9 +152,11 @@ class _ZoneRow(QWidget):
         self._brightness.blockSignals(False)
 
     def _on_mode_changed(self, _index: int) -> None:
+        log.info("_on_mode_changed: _index=%s", _index)
         self._on_mode(self._index, LEDMode(int(self._mode.currentData())))
 
     def _on_brightness_edited(self) -> None:
+        log.info("_on_brightness_edited")
         self._on_brightness(self._index, self._brightness.value())
 
 
@@ -214,6 +217,7 @@ class ZoneTab(LedTabBase):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+        log.debug("refresh_from")
         if settings is None:
             self._show_placeholder(True)
             return
@@ -279,6 +283,7 @@ class ZoneTab(LedTabBase):
     # ── Command dispatch ──────────────────────────────────────────────
 
     def _on_pick_zone_color(self, zone: int, current: QColor) -> None:
+        log.info("_on_pick_zone_color: zone=%s", zone)
         from PySide6.QtWidgets import QColorDialog
 
         picked = QColorDialog.getColor(current, self, f"Pick zone {zone + 1} colour")
@@ -293,11 +298,13 @@ class ZoneTab(LedTabBase):
             self._zone_widgets[zone].set_color(*rgb)
 
     def _on_zone_radio(self, zone: int) -> None:
+        log.info("_on_zone_radio: zone=%s", zone)
         key = self.current_key()
         if key:
             self._dispatch(SelectZone(key=key, zone=zone))
 
     def _on_zone_toggle(self, zone: int, on: bool) -> None:
+        log.info("_on_zone_toggle: zone=%s on=%s", zone, on)
         key = self.current_key()
         if key:
             self._dispatch(ToggleLed(key=key, on=on, zone=zone))
@@ -317,11 +324,13 @@ class ZoneTab(LedTabBase):
         self._dispatch(SetLedZoneBrightness(key=key, zone=zone, percent=percent))
 
     def _on_sync_toggled(self, checked: bool) -> None:
+        log.info("_on_sync_toggled: checked=%s", checked)
         key = self.current_key()
         if key:
             self._dispatch(SetLedZoneSync(key=key, enabled=checked))
 
     def _on_interval_changed(self) -> None:
+        log.info("_on_interval_changed")
         key = self.current_key()
         if not key:
             return

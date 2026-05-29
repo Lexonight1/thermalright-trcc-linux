@@ -133,6 +133,7 @@ class LEDHandler(BaseHandler):
 
     def update_metrics(self, metrics: Any) -> None:
         """Update panel text (segment displays) on metrics tick."""
+        log.debug("update_metrics")
         if not (self._active and self._app):
             return
         self._panel.update_metrics(metrics)
@@ -217,6 +218,7 @@ class LEDHandler(BaseHandler):
         return self._app.dispatch(cmd)
 
     def _on_mode_changed(self, mode: Any) -> None:
+        log.info("_on_mode_changed: mode=%s", mode)
         from ...core.led_models import LEDMode
         led_mode = mode if isinstance(mode, LEDMode) else LEDMode(mode)
         self._dispatch(SetLedMode(key=self._device_key, mode=led_mode))
@@ -230,26 +232,31 @@ class LEDHandler(BaseHandler):
         self._dispatch(SetLedLoadSource(key=self._device_key, source=source))
 
     def _on_color_changed(self, r: int, g: int, b: int) -> None:
+        log.info("_on_color_changed: r=%s g=%s b=%s", r, g, b)
         self._dispatch(SetLedColor(
             key=self._device_key, color=(r, g, b),
         ))
 
     def _on_brightness_changed(self, val: int) -> None:
+        log.info("_on_brightness_changed: val=%s", val)
         self._dispatch(SetLedBrightness(
             key=self._device_key, percent=val,
         ))
 
     def _on_global_toggled(self, on: bool) -> None:
+        log.info("_on_global_toggled: on=%s", on)
         self._dispatch(ToggleLed(key=self._device_key, on=on))
 
     def _on_segment_clicked(self, idx: int) -> None:
         # ToggleSegment toggles between on/off — the Command resolves
         # the current state internally and inverts it.
+        log.info("_on_segment_clicked: idx=%s", idx)
         self._dispatch(ToggleSegment(
             key=self._device_key, index=idx, on=True,
         ))
 
     def _on_zone_selected(self, zone_index: int) -> None:
+        log.info("_on_zone_selected: zone_index=%s", zone_index)
         result = self._dispatch(SelectZone(
             key=self._device_key, zone=zone_index,
         ))
@@ -259,32 +266,38 @@ class LEDHandler(BaseHandler):
         self._sync_panel_from_settings()
 
     def _on_zone_toggled(self, zi: int, on: bool) -> None:
+        log.info("_on_zone_toggled: zi=%s on=%s", zi, on)
         self._dispatch(ToggleLed(
             key=self._device_key, on=on, zone=zi,
         ))
 
     def _on_carousel_changed(self, on: bool) -> None:
+        log.info("_on_carousel_changed: on=%s", on)
         self._dispatch(SetLedZoneSync(
             key=self._device_key, enabled=on,
         ))
 
     def _on_carousel_zone_changed(self, zi: int, sel: Any) -> None:
         # next/'s zone-sync model: SetLedZoneColor for the picked zone
+        log.info("_on_carousel_zone_changed: zi=%s sel=%s", zi, sel)
         del zi, sel  # Phase 7 hooks per-zone include/exclude
 
     def _on_carousel_interval_changed(self, secs: int) -> None:
         # secs → ticks (150 ms tick base): ticks = secs * 1000 / 150
+        log.info("_on_carousel_interval_changed: secs=%s", secs)
         ticks = max(1, int(secs * 1000 / 150))
         self._dispatch(SetLedZoneSyncInterval(
             key=self._device_key, ticks=ticks,
         ))
 
     def _on_clock_format_changed(self, is_24h: bool) -> None:
+        log.info("_on_clock_format_changed: is_24h=%s", is_24h)
         self._dispatch(SetClockFormat(
             key=self._device_key, is_24h=is_24h,
         ))
 
     def _on_week_start_changed(self, is_sun: bool) -> None:
+        log.info("_on_week_start_changed: is_sun=%s", is_sun)
         self._dispatch(SetWeekStart(
             key=self._device_key, sunday_first=is_sun,
         ))
@@ -292,21 +305,25 @@ class LEDHandler(BaseHandler):
     def _on_temp_unit_changed_slot(self, unit: str) -> None:
         # The window handles SetTempUnit globally; forward to its callback
         # so the rest of the UI (uc_system_info etc.) updates too.
+        log.info("_on_temp_unit_changed_slot: unit=%s", unit)
         if callable(self._on_temp_unit_changed):
             self._on_temp_unit_changed(unit)
 
     def _on_disk_index_changed(self, idx: int) -> None:
+        log.info("_on_disk_index_changed: idx=%s", idx)
         self._dispatch(SetDiskIndex(
             key=self._device_key, index=idx,
         ))
 
     def _on_memory_ratio_changed(self, ratio: int) -> None:
         # Legacy int multiplier (1/2/4); next's Command takes bool.
+        log.info("_on_memory_ratio_changed: ratio=%s", ratio)
         self._dispatch(SetMemoryRatio(
             key=self._device_key, ratio_mode=(ratio != 1),
         ))
 
     def _on_test_mode_changed(self, on: bool) -> None:
+        log.info("_on_test_mode_changed: on=%s", on)
         self._dispatch(EnableLedTestMode(
             key=self._device_key, enabled=on,
         ))

@@ -209,6 +209,7 @@ class _ExportThread(QThread):
         self.succeeded.emit(str(output))
 
     def _on_progress(self, percent: int, message: str) -> None:
+        log.info("_on_progress: percent=%s message=%s", percent, message)
         self.progress.emit(percent, message)
 
 
@@ -399,12 +400,15 @@ class VideoCropDialog(QDialog):
     # ── Signal handlers ──────────────────────────────────────────────
 
     def _on_start_changed(self, ms: int) -> None:
+        log.info("_on_start_changed: ms=%s", ms)
         self._start_label.setText(_format_ms(ms))
 
     def _on_end_changed(self, ms: int) -> None:
+        log.info("_on_end_changed: ms=%s", ms)
         self._end_label.setText(_format_ms(ms))
 
     def _on_rotate(self) -> None:
+        log.info("_on_rotate")
         self._rotation = (self._rotation + 90) % 360
         start, _ = self._timeline.clip_ms()
         self._seek_preview(start)
@@ -430,6 +434,7 @@ class VideoCropDialog(QDialog):
         self._play_timer.stop()
 
     def _on_play_tick(self) -> None:
+        log.info("_on_play_tick")
         start, end = self._timeline.clip_ms()
         if self._play_pos_ms >= end:
             self._play_pos_ms = start
@@ -439,6 +444,7 @@ class VideoCropDialog(QDialog):
     # ── Export ───────────────────────────────────────────────────────
 
     def _on_export_clicked(self) -> None:
+        log.info("_on_export_clicked")
         if self._video_path is None:
             self._info.setText("Load a video first.")
             return
@@ -469,6 +475,7 @@ class VideoCropDialog(QDialog):
         self._export_thread.start()
 
     def _on_cancel_clicked(self) -> None:
+        log.info("_on_cancel_clicked")
         if self._exporting and self._export_thread is not None:
             # Terminate is heavy-handed but ffmpeg can run for minutes;
             # the temp dir is cleaned up by VideoExporter's own except.
@@ -478,10 +485,12 @@ class VideoCropDialog(QDialog):
         self.reject()
 
     def _on_export_progress(self, percent: int, message: str) -> None:
+        log.info("_on_export_progress: percent=%s message=%s", percent, message)
         self._progress.setValue(percent)
         self._info.setText(message)
 
     def _on_export_succeeded(self, output_path_str: str) -> None:
+        log.info("_on_export_succeeded: output_path_str=%s", output_path_str)
         self._output = Path(output_path_str)
         self._info.setText(f"Exported to {output_path_str}")
         self._buttons.button(
@@ -491,6 +500,7 @@ class VideoCropDialog(QDialog):
         self.accept()
 
     def _on_export_failed(self, message: str) -> None:
+        log.info("_on_export_failed: message=%s", message)
         self._info.setText(f"Export failed: {message}")
         self._progress.setVisible(False)
         self._buttons.button(

@@ -131,6 +131,7 @@ class LocalThemeBrowser(BasePanel):
 
     def refresh(self) -> None:
         """Re-fetch the theme list for the picked device's resolution."""
+        log.debug("refresh")
         self._list.clear()
         key = self._picker.current_key()
         if not key:
@@ -173,6 +174,7 @@ class LocalThemeBrowser(BasePanel):
         return key
 
     def _on_apply(self) -> None:
+        log.info("_on_apply")
         selected = self._selected()
         if selected is None:
             return
@@ -184,6 +186,7 @@ class LocalThemeBrowser(BasePanel):
         self._status.setText(result.message)
 
     def _on_delete(self) -> None:
+        log.info("_on_delete")
         selected = self._selected()
         if selected is None:
             return
@@ -302,6 +305,7 @@ class LocalThemeBrowser(BasePanel):
         return product.native_resolution
 
     def _on_create_from_image(self) -> None:
+        log.info("_on_create_from_image")
         key = self._device_key()
         if key is None:
             return
@@ -355,6 +359,7 @@ class LocalThemeBrowser(BasePanel):
                 pass
 
     def _on_create_from_video(self) -> None:
+        log.info("_on_create_from_video")
         key = self._device_key()
         if key is None:
             return

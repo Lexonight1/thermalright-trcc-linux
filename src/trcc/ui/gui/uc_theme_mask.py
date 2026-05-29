@@ -78,6 +78,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def _on_category_clicked(self, *_qt_args) -> None:
         """Single category-button slot — reads the cat_id from sender's property."""
+        log.info("_on_category_clicked")
         sender = self.sender()
         if sender is None:
             return
@@ -104,6 +105,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def _on_custom_context_menu_requested(self, _pos) -> None:
         """Context-menu slot — reads thumb + item_info from sender."""
+        log.info("_on_custom_context_menu_requested")
         thumb = self.sender()
         if not isinstance(thumb, MaskThumbnail):
             return
@@ -205,6 +207,7 @@ class UCThemeMask(DownloadableThemeBrowser):
         fine (different files) and the UI never feels "stuck on the
         first click."
         """
+        log.info("_on_item_clicked")
         self._select_item(item_info)
 
         if item_info.is_local:

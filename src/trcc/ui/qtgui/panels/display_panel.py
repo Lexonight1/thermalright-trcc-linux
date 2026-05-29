@@ -116,6 +116,7 @@ class DisplayPanel(BasePanel):
         return key
 
     def _on_browse_theme(self) -> None:
+        log.info("_on_browse_theme")
         path = QFileDialog.getExistingDirectory(
             self, "Select theme directory", "",
         )
@@ -161,6 +162,7 @@ class DisplayPanel(BasePanel):
         self._status.setText(result.message)
 
     def _on_apply(self) -> None:
+        log.info("_on_apply")
         key = self._require_key()
         if key is None:
             return

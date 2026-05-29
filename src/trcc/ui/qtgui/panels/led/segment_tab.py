@@ -12,6 +12,8 @@ Dispatches :class:`ToggleSegment` per click.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -23,6 +25,8 @@ from PySide6.QtWidgets import (
 from .....core.commands import ToggleSegment
 from .....core.led_models import LedDeviceSettings
 from ._base import LedTabBase
+
+log = logging.getLogger(__name__)
 
 _GRID_COLUMNS = 4
 
@@ -68,6 +72,7 @@ class SegmentTab(LedTabBase):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+        log.debug("refresh_from")
         if settings is None or not settings.segment_on:
             self._show_placeholder(True)
             return
@@ -114,6 +119,7 @@ class SegmentTab(LedTabBase):
                 check.blockSignals(False)
 
     def _on_toggled(self, index: int, on: bool) -> None:
+        log.info("_on_toggled: index=%s on=%s", index, on)
         key = self.current_key()
         if key:
             self._dispatch(ToggleSegment(key=key, index=index, on=on))

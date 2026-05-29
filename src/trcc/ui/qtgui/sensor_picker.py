@@ -17,6 +17,7 @@ Emits ``selected(sensor_id, label)`` so callers can grab both the ID
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -32,6 +33,8 @@ from PySide6.QtWidgets import (
 
 from ...app import App
 from ...core.commands import ReadSensors
+
+log = logging.getLogger(__name__)
 
 _REFRESH_MS = 2000
 
@@ -108,6 +111,7 @@ class SensorPickerWidget(QWidget):
     # ── Internals ─────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
+        log.debug("_refresh")
         result = self._app.dispatch(ReadSensors())
         self._all_readings = list(result.readings)
         self._rebuild_categories()
@@ -186,14 +190,17 @@ class SensorPickerWidget(QWidget):
     # ── Signal handlers ───────────────────────────────────────────────
 
     def _on_category_changed(self, _text: str) -> None:
+        log.info("_on_category_changed: _text=%s", _text)
         self._rebuild_sensor_list()
 
     def _on_search_changed(self, _text: str) -> None:
+        log.info("_on_search_changed: _text=%s", _text)
         self._rebuild_sensor_list()
 
     def _on_sensor_changed(
         self, _current: QListWidgetItem, _previous: QListWidgetItem,
     ) -> None:
+        log.info("_on_sensor_changed")
         self._update_preview()
         self._emit_selection()
 

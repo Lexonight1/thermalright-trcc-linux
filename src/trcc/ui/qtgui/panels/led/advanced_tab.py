@@ -17,6 +17,8 @@ here.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -39,6 +41,8 @@ from .....core.commands import (
 )
 from .....core.led_models import LedDeviceSettings
 from ._base import LedTabBase
+
+log = logging.getLogger(__name__)
 
 
 class AdvancedTab(LedTabBase):
@@ -143,6 +147,7 @@ class AdvancedTab(LedTabBase):
     # ── Public ────────────────────────────────────────────────────────
 
     def refresh_from(self, settings: LedDeviceSettings | None) -> None:
+        log.debug("refresh_from")
         if settings is None:
             return
 
@@ -189,31 +194,37 @@ class AdvancedTab(LedTabBase):
     # ── Command dispatch ──────────────────────────────────────────────
 
     def _on_temp_source(self, source: str) -> None:
+        log.info("_on_temp_source: source=%s", source)
         key = self.current_key()
         if key:
             self._dispatch(SetLedTempSource(key=key, source=source))
 
     def _on_load_source(self, source: str) -> None:
+        log.info("_on_load_source: source=%s", source)
         key = self.current_key()
         if key:
             self._dispatch(SetLedLoadSource(key=key, source=source))
 
     def _on_test_mode_toggled(self, checked: bool) -> None:
+        log.info("_on_test_mode_toggled: checked=%s", checked)
         key = self.current_key()
         if key:
             self._dispatch(EnableLedTestMode(key=key, enabled=checked))
 
     def _on_clock_format(self, is_24h: bool) -> None:
+        log.info("_on_clock_format: is_24h=%s", is_24h)
         key = self.current_key()
         if key:
             self._dispatch(SetClockFormat(key=key, is_24h=is_24h))
 
     def _on_week_start(self, sunday_first: bool) -> None:
+        log.info("_on_week_start: sunday_first=%s", sunday_first)
         key = self.current_key()
         if key:
             self._dispatch(SetWeekStart(key=key, sunday_first=sunday_first))
 
     def _on_disk_index_changed(self) -> None:
+        log.info("_on_disk_index_changed")
         key = self.current_key()
         if key:
             self._dispatch(SetDiskIndex(
@@ -221,6 +232,7 @@ class AdvancedTab(LedTabBase):
             ))
 
     def _on_memory_ratio_toggled(self, ratio_mode: bool) -> None:
+        log.info("_on_memory_ratio_toggled: ratio_mode=%s", ratio_mode)
         key = self.current_key()
         if key:
             self._dispatch(SetMemoryRatio(key=key, ratio_mode=ratio_mode))

@@ -103,6 +103,7 @@ class OverlayElementWidget(QWidget):
 
     def update_metrics(self, metrics):
         """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
+        log.debug("update_metrics")
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
         metric_key = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))

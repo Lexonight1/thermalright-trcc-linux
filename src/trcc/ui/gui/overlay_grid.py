@@ -106,6 +106,7 @@ class OverlayGridPanel(QFrame):
 
     def _refresh_cells(self):
         """Sync cell widgets with _configs list."""
+        log.debug("_refresh_cells")
         for i, cell in enumerate(self._cells):
             if i < len(self._configs):
                 cell.config = self._configs[i]
@@ -190,6 +191,7 @@ class OverlayGridPanel(QFrame):
 
     def update_element(self, index, config):
         """Update config for element at index."""
+        log.debug("update_element: index=%s", index)
         if 0 <= index < len(self._configs):
             self._configs[index] = config
             self._cells[index].set_config(config)

@@ -97,6 +97,7 @@ class PreviewPanel(BasePanel):
     # ── Render ────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
+        log.debug("_refresh")
         key = self._picker.current_key()
         if not key:
             return

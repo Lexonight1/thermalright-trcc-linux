@@ -121,6 +121,7 @@ class StatusPanel(BasePanel):
     # ── Refresh ───────────────────────────────────────────────────────
 
     def _on_refresh(self) -> None:
+        log.info("_on_refresh")
         key = self._picker.current_key()
         if not key:
             self._theme_label.setText("(pick a device above)")

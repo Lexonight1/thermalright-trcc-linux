@@ -99,6 +99,7 @@ class DevicePickerWidget(QWidget):
 
     def refresh(self) -> None:
         """Dispatch :class:`DiscoverDevices`, then rebuild the list."""
+        log.debug("refresh")
         self._app.dispatch(DiscoverDevices())
         self._populate_from_app()
 
@@ -176,9 +177,11 @@ class DevicePickerWidget(QWidget):
     # ── Signal plumbing ──────────────────────────────────────────────
 
     def _on_index_changed(self, _idx: int) -> None:
+        log.info("_on_index_changed: _idx=%s", _idx)
         self.key_changed.emit(self.current_key())
 
     def _on_text_finished(self) -> None:
         # editingFinished fires for both Enter + focus loss.  Emit so
         # panels react to manually-typed keys.
+        log.info("_on_text_finished")
         self.key_changed.emit(self.current_key())
