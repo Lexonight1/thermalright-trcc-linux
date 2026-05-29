@@ -183,6 +183,16 @@ class RefreshIntervalResponse(ResultBase):
     seconds: float = 2.0
 
 
+class TimeFormatResponse(ResultBase):
+    key: str = ""
+    fmt: str = "24h"
+
+
+class DateFormatResponse(ResultBase):
+    key: str = ""
+    fmt: str = "yyyy/MM/dd"
+
+
 # =========================================================================
 # Request bodies
 # =========================================================================
@@ -907,3 +917,13 @@ class GpuDeviceRequest(BaseModel):
 
 class RefreshIntervalRequest(BaseModel):
     seconds: float = Field(..., ge=0.1, le=60.0)
+
+
+class TimeFormatRequest(BaseModel):
+    fmt: str = Field(..., pattern="^(12h|24h)$")
+    key: str | None = None
+
+
+class DateFormatRequest(BaseModel):
+    fmt: str = Field(..., min_length=1)
+    key: str | None = None

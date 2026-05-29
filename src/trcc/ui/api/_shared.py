@@ -14,6 +14,7 @@ from ...core.results import (
     CloudThemesListResult,
     ConnectResult,
     ControlCenterSnapshotResult,
+    DateFormatResult,
     DebugReportPayload,
     DeleteThemeResult,
     DisconnectResult,
@@ -67,6 +68,7 @@ from ...core.results import (
     ThemeImportResult,
     ThemeResult,
     ThemesListResult,
+    TimeFormatResult,
     UpdateCheckResult,
     UpgradeResult,
     VideoResult,
@@ -83,6 +85,7 @@ from .schemas import (
     CloudThemesListResponse,
     ConnectResponse,
     ControlCenterSnapshotResponse,
+    DateFormatResponse,
     DebugReportResponse,
     DeleteThemeResponse,
     DisconnectResponse,
@@ -144,6 +147,7 @@ from .schemas import (
     ThemeListEntrySchema,
     ThemeResponse,
     ThemesListResponse,
+    TimeFormatResponse,
     UpdateCheckResponse,
     UpgradeResponse,
     VideoResponse,
@@ -743,6 +747,18 @@ def to_gpu_device_response(result: GpuDeviceResult) -> GpuDeviceResponse:
 def to_refresh_interval_response(result: RefreshIntervalResult) -> RefreshIntervalResponse:
     return RefreshIntervalResponse(
         ok=result.ok, message=result.message, seconds=result.seconds,
+    )
+
+
+def to_time_format_response(result: TimeFormatResult) -> TimeFormatResponse:
+    return TimeFormatResponse(
+        ok=result.ok, message=result.message, key=result.key, fmt=result.fmt,
+    )
+
+
+def to_date_format_response(result: DateFormatResult) -> DateFormatResponse:
+    return DateFormatResponse(
+        ok=result.ok, message=result.message, key=result.key, fmt=result.fmt,
     )
 
 

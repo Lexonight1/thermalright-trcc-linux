@@ -846,6 +846,27 @@ def test_config_set_refresh_interval_round_trips(api_client: TestClient) -> None
     assert body["ok"] is True
 
 
+def test_config_set_time_format_round_trips(api_client: TestClient) -> None:
+    resp = api_client.post("/config/time-format", json={"fmt": "12h"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["fmt"] == "12h"
+
+
+def test_config_set_time_format_rejects_bad_value(api_client: TestClient) -> None:
+    resp = api_client.post("/config/time-format", json={"fmt": "bogus"})
+    assert resp.status_code == 422  # Pydantic pattern validation
+
+
+def test_config_set_date_format_round_trips(api_client: TestClient) -> None:
+    resp = api_client.post("/config/date-format", json={"fmt": "dd.MM.yyyy"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["fmt"] == "dd.MM.yyyy"
+
+
 # =========================================================================
 # theme router — listing only (save/export/import need real fixtures)
 # =========================================================================
