@@ -89,11 +89,10 @@ Repository = "https://github.com/Lexonight1/thermalright-trcc-linux"
 Issues = "https://github.com/Lexonight1/thermalright-trcc-linux/issues"
 
 [project.scripts]
-# `trcc` defaults to the new top-level (formerly `trcc.next`).
-# Set `TRCC_LEGACY=1` to run the legacy tree under `trcc.legacy.*`.
+# `trcc` runs the new top-level (formerly `trcc.next`).  The legacy tree
+# was moved to the `legacy` branch.
 trcc = "trcc._entry:main"
 trcc-gui = "trcc.ui.cli.main:gui"
-trcc-legacy = "trcc.legacy.ui.cli:main"
 
 [project.gui-scripts]
 trcc-lcd = "trcc.ui.cli.main:gui"
@@ -183,9 +182,6 @@ ignore = [
 # on the new top-level (formerly `src/trcc/next/`).  Note: ruff uses
 # gitignore-style globs, so `*` matches across slashes.
 [tool.ruff.lint.per-file-ignores]
-# Legacy subtree (everything under src/trcc/legacy/) — same soft-gate as
-# the old src/trcc/{adapters,core,services,ui,install}/ rules.
-"src/trcc/legacy/**/*.py" = ["PTH", "SIM115", "SIM117", "TID251"]
 # Top-level files (kept across the cutover — pre-import logging shim,
 # entry dispatcher, version, package init)
 "src/trcc/__init__.py" = ["PTH", "SIM115", "SIM117", "TID251"]
@@ -235,8 +231,6 @@ ignore = [
     "PIE807", "PIE808",
     "RUF013", "RUF015", "RUF043", "RUF059",
 ]
-# (legacy top-level files now live under src/trcc/legacy/ — covered by the
-# blanket src/trcc/legacy/**/*.py rule above)
 
 # UI layer cannot reach past the Trcc seam — every device action goes
 # through trcc.lcd / trcc.led / trcc.control_center / trcc.probe / etc.

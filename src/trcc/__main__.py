@@ -104,7 +104,7 @@ try:
         from trcc.ui.cli.main import gui
         sys.exit(gui() or 0)
     # Everything else goes through the shared entry so python -m trcc and
-    # the `trcc` console script honor TRCC_LEGACY the same way.
+    # the `trcc` console script dispatch the same way.
     from trcc._entry import main
     sys.exit(main() or 0)
 except Exception:

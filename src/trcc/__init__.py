@@ -4,9 +4,8 @@ A Linux implementation of the Thermalright LCD Control Center,
 matching the Windows TRCC 2.0.3 protocol.
 
 This package is the clean-slate rebuild (formerly ``trcc.next``)
-promoted to the project root.  The original implementation lives at
-``trcc.legacy`` and is reachable via ``TRCC_LEGACY=1`` until the
-rebuild is verified on every device.
+promoted to the project root.  The original implementation was moved
+to the ``legacy`` branch.
 
 Features:
 - LCD display control via SCSI / HID / Bulk
