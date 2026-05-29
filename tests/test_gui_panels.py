@@ -177,6 +177,29 @@ def test_list_gpus_feeds_about_panel_gpu_data(gui_app: App) -> None:
     assert result.gpus[0].key and result.gpus[0].name
 
 
+def test_list_gpus_no_gpus_does_not_crash(tmp_home: Path) -> None:
+    """ListGpus returns an empty list (not crash) when the enumerator finds
+    no GPUs — e.g. pynvml absent, a supported optional state.  Regression:
+    it did ``_gpus or sensors.gpus`` and iterated the uncalled ``.gpus``
+    METHOD → "'method' object is not iterable", crashing GUI boot."""
+    from trcc.adapters.sensors.aggregator import BaselineSensors
+    from trcc.app import App
+    from trcc.core.commands import ListGpus
+
+    from .conftest import FakeCpu, FakeMemory, FakePlatform
+
+    class _NoGpuPlatform(FakePlatform):
+        def sensors(self):  # type: ignore[override]
+            if self._sensors is None:
+                self._sensors = BaselineSensors(
+                    cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+            return self._sensors
+
+    result = App(platform=_NoGpuPlatform(tmp_home)).dispatch(ListGpus())
+    assert result.ok
+    assert result.gpus == []
+
+
 def test_uc_about_gpu_widget_label_and_dropdown(qapp: object) -> None:
     """UCAbout shows the GPU name (not 'No GPU detected') for one GPU and a
     list-select dropdown for multiple."""

@@ -235,16 +235,16 @@ class ListGpus(Command[GpusListResult]):
 
     def execute(self, app: App) -> GpusListResult:
         sensors = app.platform.sensors()
-        # The BaselineSensors aggregator stores GpuSource entries directly;
-        # not every aggregator has the same shape, so duck-type the .gpus
-        # attribute and fall back to a sensor-descriptor scan otherwise.
-        gpu_objs = getattr(sensors, "_gpus", None) or getattr(sensors, "gpus", None)
-        gpus: list[GpuEntry] = []
-        if gpu_objs is not None:
-            for g in gpu_objs:
-                gpus.append(GpuEntry(
-                    key=g.key, name=g.name, is_discrete=g.is_discrete,
-                ))
+        # `gpus()` is the SensorEnumerator port method — every enumerator
+        # implements it and returns ``list[GpuSource]`` (empty if none).
+        # The old `getattr(sensors, "_gpus") or getattr(sensors, "gpus")`
+        # grabbed the bound METHOD as the fallback whenever `_gpus` was
+        # empty, then tried to iterate it → "'method' object is not
+        # iterable" crash on any machine with no GpuSource discovered.
+        gpus = [
+            GpuEntry(key=g.key, name=g.name, is_discrete=g.is_discrete)
+            for g in sensors.gpus()
+        ]
         return GpusListResult(
             ok=True, gpus=gpus,
             message=f"{len(gpus)} GPU(s) detected",
