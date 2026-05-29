@@ -4,10 +4,12 @@ from __future__ import annotations
 import typer
 
 from ...core.commands import (
+    SetDateFormat,
     SetGpuDevice,
     SetLanguage,
     SetRefreshInterval,
     SetTempUnit,
+    SetTimeFormat,
 )
 from ._ctx import get_app
 
@@ -60,6 +62,30 @@ def refresh_interval(
 ) -> None:
     """Set the global metrics-refresh / render-and-send tick interval."""
     result = get_app().dispatch(SetRefreshInterval(seconds=seconds))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("time-format")
+def time_format(
+    fmt: str = typer.Argument(..., help="LCD clock format: '12h' or '24h'"),
+) -> None:
+    """Set the global LCD overlay clock format."""
+    result = get_app().dispatch(SetTimeFormat(fmt=fmt))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("date-format")
+def date_format(
+    fmt: str = typer.Argument(
+        ..., help="LCD date format, e.g. 'yyyy/MM/dd', 'dd.MM.yyyy', 'MM/dd/yyyy'",
+    ),
+) -> None:
+    """Set the global LCD overlay date format."""
+    result = get_app().dispatch(SetDateFormat(fmt=fmt))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
