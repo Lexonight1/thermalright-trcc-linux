@@ -22,7 +22,9 @@ from ...core.commands import (
     SetDiskIndex,
     SetLedBrightness,
     SetLedColor,
+    SetLedLoadSource,
     SetLedMode,
+    SetLedTempSource,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
     SetMemoryRatio,
@@ -203,6 +205,8 @@ class LEDHandler(BaseHandler):
         p.disk_index_changed.connect(self._guard(self._on_disk_index_changed))
         p.memory_ratio_changed.connect(self._guard(self._on_memory_ratio_changed))
         p.test_mode_changed.connect(self._guard(self._on_test_mode_changed))
+        p.temp_source_changed.connect(self._guard(self._on_temp_source_changed))
+        p.load_source_changed.connect(self._guard(self._on_load_source_changed))
 
     # ── Command dispatch slots ───────────────────────────────────────
 
@@ -216,6 +220,14 @@ class LEDHandler(BaseHandler):
         from ...core.led_models import LEDMode
         led_mode = mode if isinstance(mode, LEDMode) else LEDMode(mode)
         self._dispatch(SetLedMode(key=self._device_key, mode=led_mode))
+
+    def _on_temp_source_changed(self, source: str) -> None:
+        log.info("LED: temp source → %s", source)
+        self._dispatch(SetLedTempSource(key=self._device_key, source=source))
+
+    def _on_load_source_changed(self, source: str) -> None:
+        log.info("LED: load source → %s", source)
+        self._dispatch(SetLedLoadSource(key=self._device_key, source=source))
 
     def _on_color_changed(self, r: int, g: int, b: int) -> None:
         self._dispatch(SetLedColor(

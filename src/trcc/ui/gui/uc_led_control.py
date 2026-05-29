@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -261,6 +262,9 @@ class UCLedControl(QWidget):
     memory_ratio_changed = Signal(int)       # 1, 2, or 4
     # Test mode
     test_mode_changed = Signal(bool)         # test mode toggled
+    # Metric source for temp-/load-linked LED color modes ("cpu" / "gpu")
+    temp_source_changed = Signal(str)
+    load_source_changed = Signal(str)
 
     # Header drag area — C# FormLED uses delegate cmds 241/242/243 for
     # MouseDown/Move/Up so the user can drag the window from the header.
@@ -1350,6 +1354,31 @@ class UCLedControl(QWidget):
             f"{metrics.disk_read:.0f}MB/S")
         self._disk_labels['lf11_disk_write'].setText(
             f"{metrics.disk_write:.0f}MB/S")
+
+    # ================================================================
+    # Metric-source context menu (temp-/load-linked LED color)
+    # ================================================================
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click → pick the CPU/GPU source for temp-/load-linked
+        LED color modes.  A context menu keeps the pixel-perfect FormLED
+        layout untouched (no new buttons to place)."""
+        menu = QMenu(self)
+        temp_menu = menu.addMenu("Temperature source")
+        temp_cpu = temp_menu.addAction("CPU")
+        temp_gpu = temp_menu.addAction("GPU")
+        load_menu = menu.addMenu("Load source")
+        load_cpu = load_menu.addAction("CPU")
+        load_gpu = load_menu.addAction("GPU")
+        chosen = menu.exec(event.globalPos())
+        if chosen is temp_cpu:
+            self.temp_source_changed.emit("cpu")
+        elif chosen is temp_gpu:
+            self.temp_source_changed.emit("gpu")
+        elif chosen is load_cpu:
+            self.load_source_changed.emit("cpu")
+        elif chosen is load_gpu:
+            self.load_source_changed.emit("gpu")
 
     # ================================================================
     # Window drag (C# delegate cmds 241/242/243)
