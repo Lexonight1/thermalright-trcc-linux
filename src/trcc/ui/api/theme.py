@@ -23,8 +23,10 @@ from starlette.background import BackgroundTask
 
 from ...core.commands import (
     DeleteTheme,
+    ExportConfig,
     ExportDcTheme,
     ExportTheme,
+    ImportConfig,
     ImportTheme,
     ListCloudThemes,
     ListThemes,
@@ -36,6 +38,7 @@ from ._shared import (
     to_cloud_theme_load_response,
     to_cloud_themes_list_response,
     to_delete_theme_response,
+    to_import_config_response,
     to_theme_dc_export_response,
     to_theme_export_response,
     to_theme_import_response,
@@ -48,6 +51,7 @@ from .schemas import (
     CloudThemesListResponse,
     DeleteThemeRequest,
     DeleteThemeResponse,
+    ImportConfigResponse,
     ThemeDcExportRequest,
     ThemeDcExportResponse,
     ThemeExportRequest,
@@ -174,6 +178,65 @@ def download(key: str, theme_name: str, request: Request) -> FileResponse:
         filename=f"{safe_name}.tr",
         background=BackgroundTask(_unlink_quietly, tmp),
     )
+
+
+@router.get("/{key}/config-download")
+def config_download(key: str, request: Request) -> FileResponse:
+    """Stream a device's settings snapshot as a JSON download.
+
+    REST equivalent of the cli ``theme export-config``: bytes flow back
+    over the response instead of landing on the server filesystem.  The
+    snapshot is written to a tempfile that ``FileResponse`` cleans up
+    after the connection closes.
+    """
+    tmp = Path(tempfile.mkstemp(suffix=".json", prefix="trcc-config-")[1])
+    result = request.app.state.trcc.dispatch(
+        ExportConfig(key=key, output_path=tmp),
+    )
+    if not result.ok:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise HTTPException(400, result.message)
+    safe_key = _safe_basename(key)
+    return FileResponse(
+        path=tmp,
+        media_type="application/json",
+        filename=f"{safe_key}-config.json",
+        background=BackgroundTask(_unlink_quietly, tmp),
+    )
+
+
+@router.post("/config/import-upload", response_model=ImportConfigResponse)
+async def config_import_upload(
+    request: Request,
+    key: str,
+    config: UploadFile = File(...),
+) -> ImportConfigResponse:
+    """Restore a device's settings from an uploaded JSON snapshot.
+
+    Multipart equivalent of the cli ``theme import-config`` for remote
+    clients without server filesystem access.  The upload is staged to a
+    tempfile, imported, and the tempfile cleaned up after dispatch.
+    """
+    paths = request.app.state.trcc.platform.paths()
+    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    staged = uploads_dir / f"{uuid.uuid4().hex}.json"
+    try:
+        with staged.open("wb") as f:
+            shutil.copyfileobj(config.file, f)
+        result = request.app.state.trcc.dispatch(
+            ImportConfig(key=key, input_path=staged),
+        )
+    finally:
+        try:
+            staged.unlink()
+        except OSError:
+            pass
+    http_error_if_failed(result)
+    return to_import_config_response(result)
 
 
 def _unlink_quietly(path: Path) -> None:

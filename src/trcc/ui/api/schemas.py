@@ -193,6 +193,10 @@ class DateFormatResponse(ResultBase):
     fmt: str = "yyyy/MM/dd"
 
 
+class ImportConfigResponse(ResultBase):
+    key: str = ""
+
+
 # =========================================================================
 # Request bodies
 # =========================================================================

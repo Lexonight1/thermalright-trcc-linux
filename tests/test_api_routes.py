@@ -867,6 +867,26 @@ def test_config_set_date_format_round_trips(api_client: TestClient) -> None:
     assert body["fmt"] == "dd.MM.yyyy"
 
 
+def test_theme_config_export_import_round_trips(api_client: TestClient) -> None:
+    # Download the device's settings snapshot as JSON.
+    resp = api_client.get("/theme/0402:3922/config-download")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    payload = resp.content
+    assert payload  # non-empty JSON snapshot
+
+    # Re-import it via multipart upload (key as query param, file as multipart).
+    resp2 = api_client.post(
+        "/theme/config/import-upload",
+        params={"key": "0402:3922"},
+        files={"config": ("device-config.json", payload, "application/json")},
+    )
+    assert resp2.status_code == 200
+    body = resp2.json()
+    assert body["ok"] is True
+    assert body["key"] == "0402:3922"
+
+
 # =========================================================================
 # theme router — listing only (save/export/import need real fixtures)
 # =========================================================================

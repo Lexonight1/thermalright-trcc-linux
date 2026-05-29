@@ -30,6 +30,7 @@ from ...core.results import (
     HddEnabledResult,
     HealthCheckEntry,
     HealthReportResult,
+    ImportConfigResult,
     KeepaliveResult,
     LanguageResult,
     LanguagesListResult,
@@ -105,6 +106,7 @@ from .schemas import (
     HddEnabledResponse,
     HealthCheckEntrySchema,
     HealthReportResponse,
+    ImportConfigResponse,
     KeepaliveResponse,
     LanguageEntrySchema,
     LanguageResponse,
@@ -759,6 +761,12 @@ def to_time_format_response(result: TimeFormatResult) -> TimeFormatResponse:
 def to_date_format_response(result: DateFormatResult) -> DateFormatResponse:
     return DateFormatResponse(
         ok=result.ok, message=result.message, key=result.key, fmt=result.fmt,
+    )
+
+
+def to_import_config_response(result: ImportConfigResult) -> ImportConfigResponse:
+    return ImportConfigResponse(
+        ok=result.ok, message=result.message, key=result.key,
     )
 
 
