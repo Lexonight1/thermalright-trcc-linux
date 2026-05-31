@@ -434,7 +434,7 @@ class VideoCropDialog(QDialog):
         self._play_timer.stop()
 
     def _on_play_tick(self) -> None:
-        log.info("_on_play_tick")
+        log.debug("_on_play_tick")
         start, end = self._timeline.clip_ms()
         if self._play_pos_ms >= end:
             self._play_pos_ms = start

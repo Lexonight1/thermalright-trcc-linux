@@ -764,7 +764,6 @@ class LCDHandler(BaseHandler):
         only — same skip reason in a row stays DEBUG so a disconnected
         device doesn't spam 15 lines/s.
         """
-        log.info("_on_video_tick")
         from ...core.commands import RenderAndSend
 
         if not self._animation_first_tick_logged:
@@ -1058,7 +1057,6 @@ class LCDHandler(BaseHandler):
         which returns the next theme NAME (or None when not yet due).
         Single cursor across all surfaces.
         """
-        log.info("_on_slideshow_tick")
         from ...services.slideshow import SlideshowConfig
         local = self._w['theme_local']
         themes = local.get_slideshow_themes()
