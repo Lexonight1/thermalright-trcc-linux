@@ -1,6 +1,7 @@
 """/system router — setup, sensors, platform info."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -67,11 +68,14 @@ from .schemas import (
     UpgradeResponse,
 )
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/system", tags=["system"])
 
 
 @router.post("/setup", response_model=SetupResponse)
 def setup(request: Request) -> SetupResponse:
+    log.info("api POST /system/setup")
     result = request.app.state.trcc.dispatch(RunSetup(interactive=False))
     return to_setup_response(result)
 
@@ -91,6 +95,7 @@ def sensors_by_category(category: str,
     caller distinguishes "category absent from the device" from
     "category typo" via the readings count.
     """
+    log.info("api GET /system/sensors/{category}: category=%s", category)
     result = request.app.state.trcc.dispatch(ReadSensors())
     filtered_readings = [
         r for r in result.readings
@@ -109,12 +114,14 @@ def sensors_by_category(category: str,
 
 @router.get("/sensors", response_model=SensorsResponse)
 def sensors(request: Request) -> SensorsResponse:
+    log.info("api GET /system/sensors")
     result = request.app.state.trcc.dispatch(ReadSensors())
     return to_sensors_response(result)
 
 
 @router.get("/info")
 def info(request: Request) -> dict:
+    log.info("api GET /system/info")
     # Dispatch GetPlatformInfo rather than reaching into ``platform``
     # directly — keeps the endpoint on the Command bus so it works
     # unchanged through the daemon proxy.
@@ -133,6 +140,7 @@ def info(request: Request) -> dict:
 @router.get("/gpus", response_model=GpusListResponse)
 def list_gpus(request: Request) -> GpusListResponse:
     """List GPUs exposed by the sensors aggregator."""
+    log.info("api GET /system/gpus")
     result = request.app.state.trcc.dispatch(ListGpus())
     return to_gpus_list_response(result)
 
@@ -140,6 +148,7 @@ def list_gpus(request: Request) -> GpusListResponse:
 @router.get("/snapshot", response_model=ControlCenterSnapshotResponse)
 def snapshot(request: Request) -> ControlCenterSnapshotResponse:
     """Return the AppSettings snapshot."""
+    log.info("api GET /system/snapshot")
     result = request.app.state.trcc.dispatch(ControlCenterSnapshot())
     return to_control_center_snapshot_response(result)
 
@@ -148,6 +157,7 @@ def snapshot(request: Request) -> ControlCenterSnapshotResponse:
 def hdd_enabled(body: HddEnabledRequest,
                 request: Request) -> HddEnabledResponse:
     """Toggle inclusion of HDD metrics in sensor broadcasts."""
+    log.info("api POST /system/hdd-enabled: enabled=%s", body.enabled)
     result = request.app.state.trcc.dispatch(
         SetHddEnabled(enabled=body.enabled),
     )
@@ -158,6 +168,7 @@ def hdd_enabled(body: HddEnabledRequest,
 @router.get("/fonts", response_model=FontsListResponse)
 def list_fonts(request: Request) -> FontsListResponse:
     """List font families Qt can see."""
+    log.info("api GET /system/fonts")
     result = request.app.state.trcc.dispatch(ListFonts())
     return to_fonts_list_response(result)
 
@@ -165,6 +176,7 @@ def list_fonts(request: Request) -> FontsListResponse:
 @router.get("/disks", response_model=DisksListResponse)
 def list_disks(request: Request) -> DisksListResponse:
     """List disk partitions for the LED disk-index selector."""
+    log.info("api GET /system/disks")
     result = request.app.state.trcc.dispatch(ListDisks())
     return to_disks_list_response(result)
 
@@ -172,6 +184,7 @@ def list_disks(request: Request) -> DisksListResponse:
 @router.get("/languages", response_model=LanguagesListResponse)
 def list_languages(request: Request) -> LanguagesListResponse:
     """Enumerate UI languages the i18n table supports."""
+    log.info("api GET /system/languages")
     result = request.app.state.trcc.dispatch(ListLanguages())
     return to_languages_list_response(result)
 
@@ -183,6 +196,7 @@ def current_language(request: Request) -> LanguageResponse:
     Read-only — set via ``POST /config/language``.  Legacy parity with
     ``GET /i18n/language``.
     """
+    log.info("api GET /system/language")
     lang = request.app.state.trcc.settings.app.language
     return LanguageResponse(ok=True, language=lang, message=lang)
 
@@ -198,6 +212,7 @@ def app_status(request: Request) -> AppStatusResponse:
     Per-device entries carry only key/product/connected; clients that
     need full state follow up with the device-specific snapshot routes.
     """
+    log.info("api GET /system/status")
     trcc = request.app.state.trcc
     app_settings = trcc.settings.app
     autostart_enabled = trcc.platform.autostart().is_enabled()
@@ -234,6 +249,7 @@ def app_status(request: Request) -> AppStatusResponse:
 @router.get("/autostart", response_model=AutostartResponse)
 def autostart_status(request: Request) -> AutostartResponse:
     """Snapshot the autostart entry — whether it's installed + its path."""
+    log.info("api GET /system/autostart")
     mgr = request.app.state.trcc.platform.autostart()
     enabled = mgr.is_enabled()
     return AutostartResponse(
@@ -252,6 +268,7 @@ def set_autostart(body: AutostartRequest,
     POST in next/ so the verb is conventional for state-changing
     endpoints in this API.
     """
+    log.info("api POST /system/autostart: enabled=%s", body.enabled)
     trcc = request.app.state.trcc
     command = EnableAutostart() if body.enabled else DisableAutostart()
     result = trcc.dispatch(command)
@@ -266,6 +283,7 @@ def set_autostart(body: AutostartRequest,
 @router.get("/health", response_model=HealthReportResponse)
 def health(request: Request) -> HealthReportResponse:
     """Run the health check suite + return structured results."""
+    log.info("api GET /system/health")
     result = request.app.state.trcc.dispatch(RunHealthCheck())
     return to_health_report_response(result)
 
@@ -273,6 +291,7 @@ def health(request: Request) -> HealthReportResponse:
 @router.get("/doctor", response_model=DoctorResponse)
 def doctor(request: Request) -> DoctorResponse:
     """Same as `/health` but adds an exit code + a rendered text view."""
+    log.info("api GET /system/doctor")
     result = request.app.state.trcc.dispatch(RunDoctor())
     return to_doctor_response(result)
 
@@ -286,6 +305,10 @@ def debug_report(body: DebugReportRequest,
     server-side path; without it, the rendered text comes back in the
     response body only.
     """
+    log.info(
+        "api POST /system/debug-report: output_path=%s log_tail_lines=%s",
+        body.output_path, body.log_tail_lines,
+    )
     out = Path(body.output_path) if body.output_path else None
     result = request.app.state.trcc.dispatch(GenerateDebugReport(
         output_path=out, log_tail_lines=body.log_tail_lines,
@@ -297,6 +320,7 @@ def debug_report(body: DebugReportRequest,
 @router.get("/check-update", response_model=UpdateCheckResponse)
 def check_update(request: Request) -> UpdateCheckResponse:
     """Ask GitHub whether a newer version of trcc-linux is published."""
+    log.info("api GET /system/check-update")
     result = request.app.state.trcc.dispatch(CheckForUpdate())
     return to_update_check_response(result)
 
@@ -310,6 +334,7 @@ def upgrade(body: UpgradeRequest,
     GUIs should always probe with dry-run first and confirm before
     running with sudo.
     """
+    log.info("api POST /system/upgrade: dry_run=%s", body.dry_run)
     result = request.app.state.trcc.dispatch(
         RunUpgrade(dry_run=body.dry_run),
     )
@@ -319,6 +344,7 @@ def upgrade(body: UpgradeRequest,
 @router.get("/first-run-status", response_model=FirstRunStatusResponse)
 def first_run_status(request: Request) -> FirstRunStatusResponse:
     """Has trcc finished onboarding on this machine?"""
+    log.info("api GET /system/first-run-status")
     result = request.app.state.trcc.dispatch(GetFirstRunStatus())
     return to_first_run_status_response(result)
 
@@ -326,6 +352,7 @@ def first_run_status(request: Request) -> FirstRunStatusResponse:
 @router.post("/mark-setup-done", response_model=FirstRunStatusResponse)
 def mark_setup_done(request: Request) -> FirstRunStatusResponse:
     """Mark the first-run flow as completed."""
+    log.info("api POST /system/mark-setup-done")
     result = request.app.state.trcc.dispatch(MarkFirstRunDone())
     return to_first_run_status_response(result)
 

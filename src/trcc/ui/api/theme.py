@@ -12,6 +12,7 @@ arbitrary filesystem locations.
 """
 from __future__ import annotations
 
+import logging
 import shutil
 import tempfile
 import uuid
@@ -63,6 +64,8 @@ from .schemas import (
     ThemesListResponse,
 )
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/theme", tags=["theme"])
 
 
@@ -76,6 +79,7 @@ def _safe_basename(value: str) -> str:
 
 @router.post("/save", response_model=ThemeResponse)
 def save(body: ThemeSaveRequest, request: Request) -> ThemeResponse:
+    log.info("api POST /theme/save: key=%s name=%s", body.key, body.name)
     name = _safe_basename(body.name)
     result = request.app.state.trcc.dispatch(SaveTheme(key=body.key, name=name))
     http_error_if_failed(result)
@@ -85,6 +89,10 @@ def save(body: ThemeSaveRequest, request: Request) -> ThemeResponse:
 @router.post("/export", response_model=ThemeExportResponse)
 def export(body: ThemeExportRequest,
            request: Request) -> ThemeExportResponse:
+    log.info(
+        "api POST /theme/export: key=%s theme_name=%s archive_path=%s",
+        body.key, body.theme_name, body.archive_path,
+    )
     theme_name = _safe_basename(body.theme_name)
     # Archive path is server-controlled — clients pass an absolute path;
     # we accept any writable filesystem location.  CLI users are
@@ -104,6 +112,10 @@ def export(body: ThemeExportRequest,
 def import_(body: ThemeImportRequest,
             request: Request) -> ThemeImportResponse:
     """Import a theme archive from a server-side path."""
+    log.info(
+        "api POST /theme/import: key=%s archive_path=%s name=%s",
+        body.key, body.archive_path, body.name,
+    )
     archive = Path(body.archive_path)
     name = body.name.strip()
     if name:
@@ -129,6 +141,10 @@ async def import_upload(
     The upload is staged to a tempfile, imported, and the tempfile
     cleaned up after dispatch.
     """
+    log.info(
+        "api POST /theme/import-upload: key=%s filename=%s name=%s",
+        key, archive.filename, name,
+    )
     paths = request.app.state.trcc.platform.paths()
     uploads_dir = (paths.user_content_dir() / "uploads").resolve()
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -161,6 +177,10 @@ def download(key: str, theme_name: str, request: Request) -> FileResponse:
     The archive is built in a tempfile and ``FileResponse`` cleans it
     up after the connection closes via a ``BackgroundTask``.
     """
+    log.info(
+        "api GET /theme/{key}/{theme_name}/download: key=%s theme_name=%s",
+        key, theme_name,
+    )
     safe_name = _safe_basename(theme_name)
     tmp = Path(tempfile.mkstemp(suffix=".tr", prefix="trcc-export-")[1])
     result = request.app.state.trcc.dispatch(
@@ -189,6 +209,7 @@ def config_download(key: str, request: Request) -> FileResponse:
     snapshot is written to a tempfile that ``FileResponse`` cleans up
     after the connection closes.
     """
+    log.info("api GET /theme/{key}/config-download: key=%s", key)
     tmp = Path(tempfile.mkstemp(suffix=".json", prefix="trcc-config-")[1])
     result = request.app.state.trcc.dispatch(
         ExportConfig(key=key, output_path=tmp),
@@ -220,6 +241,10 @@ async def config_import_upload(
     clients without server filesystem access.  The upload is staged to a
     tempfile, imported, and the tempfile cleaned up after dispatch.
     """
+    log.info(
+        "api POST /theme/config/import-upload: key=%s filename=%s",
+        key, config.filename,
+    )
     paths = request.app.state.trcc.platform.paths()
     uploads_dir = (paths.user_content_dir() / "uploads").resolve()
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -260,6 +285,10 @@ def list_(
     handshake profile), or ``?width=W&height=H`` for an explicit
     override, or ``?directory=`` to scan an exact dir (escape hatch).
     """
+    log.info(
+        "api GET /theme/list: directory=%s key=%s width=%s height=%s",
+        directory, key, width, height,
+    )
     if directory:
         result = request.app.state.trcc.dispatch(
             ListThemes(directory=Path(directory)),
@@ -290,6 +319,7 @@ def cloud_list(
     category: str = "all",
 ) -> CloudThemesListResponse:
     """List Thermalright cloud catalog (offline — catalog is static)."""
+    log.info("api GET /theme/cloud: category=%s", category)
     result = request.app.state.trcc.dispatch(
         ListCloudThemes(category=category),
     )
@@ -301,6 +331,10 @@ def cloud_list(
 def cloud_load(key: str, body: CloudThemeLoadRequest,
                 request: Request) -> CloudThemeLoadResponse:
     """Download a cloud theme + apply it to *key*."""
+    log.info(
+        "api POST /theme/cloud/{key}: key=%s theme_id=%s",
+        key, body.theme_id,
+    )
     result = request.app.state.trcc.dispatch(
         LoadCloudTheme(key=key, theme_id=body.theme_id),
     )
@@ -312,6 +346,10 @@ def cloud_load(key: str, body: CloudThemeLoadRequest,
 def export_dc(name: str, body: ThemeDcExportRequest,
               request: Request) -> ThemeDcExportResponse:
     """Write a theme out as legacy ``config1.dc``."""
+    log.info(
+        "api POST /theme/{name}/export-dc: name=%s key=%s output_path=%s",
+        name, body.key, body.output_path,
+    )
     safe_name = _safe_basename(name)
     result = request.app.state.trcc.dispatch(ExportDcTheme(
         key=body.key,
@@ -330,6 +368,7 @@ def delete(body: DeleteThemeRequest,
     Path is confined to ``user_content_dir`` server-side — see
     :class:`DeleteTheme.execute`.
     """
+    log.info("api DELETE /theme: path=%s", body.path)
     result = request.app.state.trcc.dispatch(DeleteTheme(path=Path(body.path)))
     http_error_if_failed(result)
     return to_delete_theme_response(result)

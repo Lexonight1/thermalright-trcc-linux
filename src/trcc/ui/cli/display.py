@@ -1,6 +1,7 @@
 """CLI `display` group — orientation, brightness, theme, send."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -49,6 +50,8 @@ from ...core.commands import (
 )
 from ._ctx import get_app
 
+log = logging.getLogger(__name__)
+
 app = typer.Typer(help="Configure device display (theme / orientation / brightness).",
                   no_args_is_help=True)
 
@@ -59,6 +62,7 @@ def set_orientation(
     degrees: int = typer.Argument(..., help="Rotation: 0, 90, 180, or 270"),
 ) -> None:
     """Set per-device rotation."""
+    log.info("cli display set-orientation: key=%s degrees=%s", key, degrees)
     result = get_app().dispatch(SetOrientation(key=key, degrees=degrees))
     typer.echo(result.message)
     if not result.ok:
@@ -71,6 +75,7 @@ def set_brightness(
     percent: int = typer.Argument(..., help="Brightness 0–100"),
 ) -> None:
     """Set per-device display brightness."""
+    log.info("cli display set-brightness: key=%s percent=%s", key, percent)
     result = get_app().dispatch(SetBrightness(key=key, percent=percent))
     typer.echo(result.message)
     if not result.ok:
@@ -98,6 +103,7 @@ def color(
     profile + DisplayService encoder + Device.send). Useful diagnostic
     for confirming a device class works end-to-end on real hardware.
     """
+    log.info("cli display color: key=%s hex=%s", key, hex_color)
     rgb = _parse_hex_color(hex_color)
     if rgb is None:
         typer.echo(f"Invalid hex color: {hex_color!r} "
@@ -118,6 +124,7 @@ def set_fit_mode(
     ),
 ) -> None:
     """Set how the background fits the canvas."""
+    log.info("cli display set-fit-mode: key=%s mode=%s", key, mode)
     result = get_app().dispatch(SetFitMode(key=key, mode=mode.lower()))
     typer.echo(result.message)
     if not result.ok:
@@ -130,6 +137,7 @@ def overlay(
     state: str = typer.Argument(..., help="'on' or 'off'"),
 ) -> None:
     """Toggle the metric overlay layer."""
+    log.info("cli display overlay: key=%s state=%s", key, state)
     state_normalized = state.lower()
     if state_normalized in ("on", "true", "1", "yes"):
         enabled = True
@@ -153,6 +161,7 @@ def apply_mask(
     ),
 ) -> None:
     """Override the active theme's mask with a user-supplied image."""
+    log.info("cli display apply-mask: key=%s path=%s", key, path)
     result = get_app().dispatch(ApplyMask(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -166,6 +175,7 @@ def mask_position(
     y: int = typer.Argument(..., help="Y offset in pixels (≥ 0)"),
 ) -> None:
     """Position the mask overlay within the canvas."""
+    log.info("cli display mask-position: key=%s x=%s y=%s", key, x, y)
     result = get_app().dispatch(SetMaskPosition(key=key, x=x, y=y))
     typer.echo(result.message)
     if not result.ok:
@@ -178,6 +188,7 @@ def mask_visible(
     state: str = typer.Argument(..., help="'on' or 'off'"),
 ) -> None:
     """Toggle mask visibility."""
+    log.info("cli display mask-visible: key=%s state=%s", key, state)
     state_normalized = state.lower()
     if state_normalized in ("on", "true", "1", "yes", "show"):
         visible = True
@@ -198,6 +209,7 @@ def split_mode(
     mode: int = typer.Argument(..., help="0 (off), 1 (style A), 2 (B), 3 (C)"),
 ) -> None:
     """Set the Dynamic Island style (widescreen panels only)."""
+    log.info("cli display split-mode: key=%s mode=%s", key, mode)
     result = get_app().dispatch(SetSplitMode(key=key, mode=mode))
     typer.echo(result.message)
     if not result.ok:
@@ -218,6 +230,7 @@ def load_image(
     handles fit + brightness + rotation.  Re-runnable: subsequent loads
     of the same image are cheap (no re-copy).
     """
+    log.info("cli display load-image: key=%s path=%s", key, path)
     result = get_app().dispatch(LoadImage(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -251,6 +264,11 @@ def load_video(
     then dispatches LoadTheme.  Device must be attached so we know the
     target resolution.
     """
+    log.info(
+        "cli display load-video: key=%s path=%s start_ms=%s end_ms=%s "
+        "rotation=%s",
+        key, path, start_ms, end_ms, rotation,
+    )
     result = get_app().dispatch(LoadVideo(
         key=key, path=path, start_ms=start_ms, end_ms=end_ms,
         rotation=rotation,
@@ -267,6 +285,7 @@ def load_theme(
                                 exists=True, file_okay=False, dir_okay=True),
 ) -> None:
     """Load a theme: parse, persist, render+send if device is connected."""
+    log.info("cli display load-theme: key=%s path=%s", key, path)
     result = get_app().dispatch(LoadTheme(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -289,6 +308,7 @@ def play_video(
     Overrides the active theme's background until ``stop-video`` runs.
     Frames advance on each ``display play`` tick.
     """
+    log.info("cli display play-video: key=%s path=%s fps=%s", key, path, fps)
     result = get_app().dispatch(PlayVideo(key=key, path=path, fps=fps))
     typer.echo(result.message)
     if not result.ok:
@@ -300,6 +320,7 @@ def stop_video(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
 ) -> None:
     """Clear the video playback override (returns to the active theme)."""
+    log.info("cli display stop-video: key=%s", key)
     result = get_app().dispatch(StopVideo(key=key))
     typer.echo(result.message)
 
@@ -323,6 +344,10 @@ def slideshow_run(
     next theme each tick.  Useful for demos + smoke tests; the persisted
     flow is what production users want.
     """
+    log.info(
+        "cli display slideshow-run: key=%s themes_dir=%s interval=%s",
+        key, themes_dir, interval,
+    )
     import time
 
     app_obj = get_app()
@@ -376,6 +401,10 @@ def boot_anim(
     PNG / JPG / JPEG / BMP / WebP.  Each frame uses the same dwell time
     via --delay (per-frame delays via the API only).
     """
+    log.info(
+        "cli display boot-anim: key=%s frames_dir=%s delay_ds=%s",
+        key, frames_dir, delay_ds,
+    )
     frame_paths = sorted(
         p for p in frames_dir.iterdir()
         if p.is_file() and p.suffix.lower() in _IMAGE_EXTS_FOR_ANIM
@@ -409,6 +438,7 @@ def play(
     devices from timing out (static-blink fix) and advances video
     playback.  Stops cleanly on SIGINT.
     """
+    log.info("cli display play: key=%s interval=%s", key, interval)
     import time
 
     app_obj = get_app()
@@ -435,6 +465,7 @@ def pause_video(
     state: str = typer.Argument(..., help="'on' (pause) or 'off' (resume)"),
 ) -> None:
     """Pause or resume video playback."""
+    log.info("cli display pause-video: key=%s state=%s", key, state)
     if state.lower() not in ("on", "off"):
         raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
     result = get_app().dispatch(
@@ -450,6 +481,7 @@ def toggle_video(
     key: str = typer.Argument(..., help="Device key"),
 ) -> None:
     """Flip video playback between paused / playing (single-verb helper)."""
+    log.info("cli display toggle-video: key=%s", key)
     result = get_app().dispatch(ToggleVideo(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -462,6 +494,7 @@ def seek_video(
     frame: int = typer.Argument(..., help="Frame index to jump to"),
 ) -> None:
     """Jump the playback cursor to a specific frame."""
+    log.info("cli display seek-video: key=%s frame=%s", key, frame)
     result = get_app().dispatch(SeekVideo(key=key, frame=frame))
     typer.echo(result.message)
     if not result.ok:
@@ -474,6 +507,7 @@ def loop_video(
     state: str = typer.Argument(..., help="'on' (loop) or 'off' (single-pass)"),
 ) -> None:
     """Toggle whether video wraps at the end or sticks at the last frame."""
+    log.info("cli display loop-video: key=%s state=%s", key, state)
     if state.lower() not in ("on", "off"):
         raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
     result = get_app().dispatch(LoopVideo(key=key, loop=state.lower() == "on"))
@@ -491,6 +525,7 @@ def upload_mask(
     ),
 ) -> None:
     """Copy a mask into user_content_dir/masks and apply it to the device."""
+    log.info("cli display upload-mask: key=%s source=%s", key, source)
     result = get_app().dispatch(UploadCustomMask(key=key, source=source))
     typer.echo(result.message)
     if not result.ok:
@@ -515,6 +550,7 @@ def list_masks(
     (``data/web/zt{W}{H}``) and the user-created mask dir
     (``user_content_dir/data/web/zt{W}{H}``).
     """
+    log.info("cli display list-masks: key=%s directory=%s", key, directory)
     if directory is not None:
         result = get_app().dispatch(ListMasks(directory=directory))
     elif key:
@@ -563,6 +599,11 @@ def overlay_add(
     ),
 ) -> None:
     """Add a user-edited overlay element to a device."""
+    log.info(
+        "cli display overlay-add: key=%s type=%s x=%s y=%s metric=%s "
+        "element_id=%s",
+        key, type_, x, y, metric, element_id,
+    )
     result = get_app().dispatch(AddOverlayElement(
         key=key, type=type_, x=x, y=y, text=text, metric=metric,
         format=fmt, source=source, color=color, size=size,
@@ -591,6 +632,9 @@ def overlay_update(
     italic: bool | None = typer.Option(None, "--italic/--no-italic"),
 ) -> None:
     """Mutate fields on an existing user-edited overlay element."""
+    log.info(
+        "cli display overlay-update: key=%s element_id=%s", key, element_id,
+    )
     result = get_app().dispatch(UpdateOverlayElement(
         key=key, element_id=element_id,
         x=x, y=y, color=color, size=size, text=text,
@@ -608,6 +652,9 @@ def overlay_delete(
     element_id: str = typer.Argument(..., help="ID returned by overlay-add"),
 ) -> None:
     """Remove a user-edited overlay element by id."""
+    log.info(
+        "cli display overlay-delete: key=%s element_id=%s", key, element_id,
+    )
     result = get_app().dispatch(
         DeleteOverlayElement(key=key, element_id=element_id),
     )
@@ -626,6 +673,10 @@ def overlay_flash(
     ),
 ) -> None:
     """Briefly highlight an overlay element in the GUI."""
+    log.info(
+        "cli display overlay-flash: key=%s element_id=%s duration_ms=%s",
+        key, element_id, duration_ms,
+    )
     result = get_app().dispatch(FlashOverlayElement(
         key=key, element_id=element_id, duration_ms=duration_ms,
     ))
@@ -640,6 +691,7 @@ def slideshow(
     state: str = typer.Argument(..., help="'on' / 'off'"),
 ) -> None:
     """Toggle the per-device slideshow on/off."""
+    log.info("cli display slideshow: key=%s state=%s", key, state)
     if state.lower() not in ("on", "off"):
         raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
     result = get_app().dispatch(
@@ -662,6 +714,10 @@ def configure_slideshow(
     ),
 ) -> None:
     """Set the slideshow theme list + interval."""
+    log.info(
+        "cli display configure-slideshow: key=%s themes=%s interval=%s",
+        key, themes, interval,
+    )
     result = get_app().dispatch(ConfigureSlideshow(
         key=key, themes=tuple(themes), interval_s=interval,
     ))
@@ -701,6 +757,11 @@ def keepalive(
     the Command itself owns the loop + signal handling so the CLI
     doesn't need a user-space ``while`` wrapper.
     """
+    log.info(
+        "cli display keepalive: key=%s interval=%s count=%s "
+        "metric_interval=%s",
+        key, interval, count, metric_interval,
+    )
     if count == 0:
         typer.echo(
             f"Keepalive on {key} every {interval:.3f}s "
@@ -723,6 +784,7 @@ def background_mode(
     ),
 ) -> None:
     """Pick what fills the LCD behind overlays."""
+    log.info("cli display background-mode: key=%s mode=%s", key, mode)
     result = get_app().dispatch(SetBackgroundMode(key=key, mode=mode.lower()))
     typer.echo(result.message)
     if not result.ok:
@@ -737,6 +799,7 @@ def overlay_background(
     ),
 ) -> None:
     """Set the solid color used when background-mode=color."""
+    log.info("cli display overlay-background: key=%s hex=%s", key, hex_color)
     rgb = _parse_hex_color(hex_color)
     if rgb is None:
         typer.echo(f"Invalid hex color: {hex_color!r}", err=True)
@@ -752,6 +815,7 @@ def restore_theme(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
 ) -> None:
     """Reload the device's persisted theme — convenience after restart."""
+    log.info("cli display restore-theme: key=%s", key)
     result = get_app().dispatch(RestoreLastTheme(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -776,6 +840,7 @@ def resume(
     this with ``trcc display keepalive`` per device for those, or
     ``trcc display play`` for the full render-loop.
     """
+    log.info("cli display resume: retries=%s", retries)
     import time
 
     app_obj = get_app()
@@ -832,6 +897,7 @@ def test(
     porting a new device class to confirm handshake → frame build →
     USB send all work before fighting overlay/theme bugs.
     """
+    log.info("cli display test: key=%s seconds=%s", key, seconds)
     import time
 
     app_obj = get_app()
@@ -865,6 +931,7 @@ def test_lcd(
     surface — no wire send.  Useful for headless / sshell debugging
     where you can't see the physical device.
     """
+    log.info("cli display test-lcd: key=%s cols=%s", key, cols)
     from ...services._ansi import image_to_ansi
     from ...services._clock import compute_clock
 
@@ -904,6 +971,7 @@ def send_image(
     when you want ephemeral display: boot logos, quick previews, API
     upload pipelines.
     """
+    log.info("cli display send-image: key=%s path=%s", key, path)
     result = get_app().dispatch(SendImage(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -933,6 +1001,10 @@ def overlay_render(
     writes the result as PNG.  Useful when iterating on a theme's
     metric positions without unplugging the device or sending frames.
     """
+    log.info(
+        "cli display overlay-render: dc_path=%s output=%s width=%s height=%s",
+        dc_path, output, width, height,
+    )
     result = get_app().dispatch(RenderDcStandalone(
         dc_path=dc_path, output_path=output,
         width=width, height=height,
@@ -960,6 +1032,10 @@ def screencast(
     subscriber drives the per-frame Qt capture timer.  Ctrl-C calls
     :class:`StopScreencast` for clean teardown.
     """
+    log.info(
+        "cli display screencast: key=%s x=%s y=%s w=%s h=%s audio=%s",
+        key, x, y, w, h, audio,
+    )
     import signal
 
     app_obj = get_app()
@@ -992,6 +1068,7 @@ def stop_screencast(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
 ) -> None:
     """Stop an active screencast started by another process (daemon/API)."""
+    log.info("cli display stop-screencast: key=%s", key)
     result = get_app().dispatch(StopScreencast(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -1003,6 +1080,7 @@ def snapshot(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
 ) -> None:
     """Print the persisted LCD state for a device."""
+    log.info("cli display snapshot: key=%s", key)
     result = get_app().dispatch(LcdSnapshot(key=key))
     typer.echo(result.message)
     if not result.ok:

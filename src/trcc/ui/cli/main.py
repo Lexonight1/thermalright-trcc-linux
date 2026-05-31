@@ -14,6 +14,8 @@ import typer
 from . import config, device, display, led, system, theme
 from ._ctx import get_app
 
+log = logging.getLogger(__name__)
+
 app = typer.Typer(
     help="TRCC — Thermalright LCD/LED cooler control (clean-slate build).",
     no_args_is_help=True,
@@ -44,6 +46,7 @@ def quickstart(
     do next.  Pass ``--yes`` to also test-connect to the first device
     found.  Safe to re-run any time.
     """
+    log.info("cli quickstart: yes=%s", yes)
     from ...core.commands import (
         ConnectDevice,
         MarkFirstRunDone,
@@ -109,6 +112,7 @@ def qtgui() -> None:
     This is the rebuild's GUI — built up over G1–G5 and used during
     development.  See ``gui`` for the legacy Windows-style port.
     """
+    log.info("cli qtgui")
     from ..qtgui import launch
     raise typer.Exit(code=launch())
 
@@ -122,6 +126,7 @@ def gui() -> None:
     end on real hardware.  Real feature panels (LCD handler, theme
     settings, mask, video, LED) land in subsequent passes.
     """
+    log.info("cli gui")
     from ..gui import launch
     raise typer.Exit(code=launch())
 
@@ -163,6 +168,10 @@ def api(
     Refusal: ``--host`` other than ``127.0.0.1`` / ``localhost`` without
     ``--token`` exits 2 — would otherwise expose every endpoint to LAN.
     """
+    log.info(
+        "cli api: host=%s port=%s token_set=%s pair=%s",
+        host, port, token is not None, pair,
+    )
     import secrets
 
     from ..api.main import configure_auth, serve, set_pairing_code
@@ -227,6 +236,10 @@ def serve(
     The ``serve`` name matches legacy CLI ergonomics; ``api`` still
     works for backwards-compat with existing scripts.
     """
+    log.info(
+        "cli serve: host=%s port=%s token_set=%s pair=%s",
+        host, port, token is not None, pair,
+    )
     api(host=host, port=port, token=token, pair=pair)
 
 
@@ -239,6 +252,7 @@ def daemon() -> None:
     SIGTERM / SIGINT or a remote ``trcc kill``.  Sets
     ``TRCC_NEXT_DAEMON=1`` to route clients through this daemon.
     """
+    log.info("cli daemon")
     from ...daemon import run_daemon
     raise typer.Exit(code=run_daemon())
 
@@ -246,6 +260,7 @@ def daemon() -> None:
 @app.command("kill")
 def kill() -> None:
     """Ask the running daemon to shut down, return when its socket is gone."""
+    log.info("cli kill")
     from ...daemon import kill_daemon
     if kill_daemon():
         typer.echo("Daemon stopped.")
@@ -267,6 +282,7 @@ def status(
     state is everything in right now?".  Pass ``--json`` for scripts.
     Use :command:`trcc daemon-status` for daemon reachability checks.
     """
+    log.info("cli status: json_output=%s", json_output)
     import dataclasses
     import json
 
@@ -338,6 +354,7 @@ def daemon_status() -> None:
     daemon reachability with app state.  Use :command:`trcc status` for
     the unified app + device snapshot.
     """
+    log.info("cli daemon-status")
     from ...ipc import daemon_running, socket_path
     if daemon_running():
         typer.echo(f"Daemon is running (socket: {socket_path()}).")
@@ -355,6 +372,7 @@ def shell() -> None:
     In daemon mode the App is an AppProxy that round-trips each line
     to the running daemon.  Ctrl-D or ``exit`` quits.
     """
+    log.info("cli shell")
     from .shell import run_shell
     raise typer.Exit(code=run_shell(app))
 
@@ -378,6 +396,7 @@ def _alias_report(
     ),
 ) -> None:
     """Alias for `trcc system debug-report` — full diagnostic dump."""
+    log.info("cli report: output=%s log_lines=%s", output, log_lines)
     from ...core.commands import GenerateDebugReport
     result = get_app().dispatch(GenerateDebugReport(
         output_path=output, log_tail_lines=log_lines,
@@ -391,6 +410,7 @@ def _alias_report(
 @app.command("detect", rich_help_panel="Diagnostics")
 def _alias_detect() -> None:
     """Alias for `trcc device list` — list attached devices."""
+    log.info("cli detect")
     from .device import list_devices
     list_devices()
 
@@ -398,6 +418,7 @@ def _alias_detect() -> None:
 @app.command("doctor", rich_help_panel="Diagnostics")
 def _alias_doctor() -> None:
     """Alias for `trcc system doctor` — health checks."""
+    log.info("cli doctor")
     from .system import doctor
     doctor()
 
@@ -405,6 +426,7 @@ def _alias_doctor() -> None:
 @app.command("sensors", rich_help_panel="Diagnostics")
 def _alias_sensors() -> None:
     """Alias for `trcc system sensors` — print sensor readings."""
+    log.info("cli sensors")
     from .system import sensors
     sensors()
 

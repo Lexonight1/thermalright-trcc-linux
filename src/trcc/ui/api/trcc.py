@@ -39,6 +39,7 @@ def kill() -> DaemonKillResponse:
     has shut down within the timeout, ``ok=false`` otherwise.  The
     API process itself exits as part of the shutdown.
     """
+    log.info("api POST /trcc/kill")
     from ...daemon import kill_daemon
     ok = kill_daemon()
     return DaemonKillResponse(
@@ -60,6 +61,7 @@ def status(request: Request) -> DaemonStatusResponse:
     standalone API process whose own daemon isn't up — distinguishable
     by the absence of a pid.
     """
+    log.info("api GET /trcc/status")
     from ...daemon import _started_at
     from ...ipc import daemon_running
     running = daemon_running()

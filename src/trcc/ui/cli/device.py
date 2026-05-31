@@ -1,6 +1,8 @@
 """CLI `device` group — discover / connect / disconnect."""
 from __future__ import annotations
 
+import logging
+
 import typer
 
 from ...core.commands import (
@@ -12,6 +14,8 @@ from ...core.commands import (
 )
 from ._ctx import get_app
 
+log = logging.getLogger(__name__)
+
 app = typer.Typer(help="Discover and connect to TRCC devices.",
                   no_args_is_help=True)
 
@@ -19,6 +23,7 @@ app = typer.Typer(help="Discover and connect to TRCC devices.",
 @app.command("list")
 def list_devices() -> None:
     """List devices currently attached to the host."""
+    log.info("cli device list")
     result = get_app().dispatch(DiscoverDevices())
     if not result.products:
         typer.echo("No supported devices found.")
@@ -35,6 +40,7 @@ def list_devices() -> None:
 @app.command("connect")
 def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -> None:
     """Open USB transport and perform the wire-protocol handshake."""
+    log.info("cli device connect: key=%s", key)
     result = get_app().dispatch(ConnectDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -50,6 +56,7 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
 @app.command("disconnect")
 def disconnect(key: str = typer.Argument(...)) -> None:
     """Close the transport and drop the device."""
+    log.info("cli device disconnect: key=%s", key)
     result = get_app().dispatch(DisconnectDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
@@ -71,6 +78,7 @@ def select(
     the ordinal against ``device list`` and stores the resulting key
     in ``AppSettings.active_device``.
     """
+    log.info("cli device select: ordinal=%s", ordinal)
     app_obj = get_app()
     listing = app_obj.dispatch(DiscoverDevices())
     if not listing.products:
@@ -97,6 +105,7 @@ def reset(key: str = typer.Argument(...)) -> None:
     and runtime counters.  Re-running `connect` after this starts
     completely fresh.
     """
+    log.info("cli device reset: key=%s", key)
     result = get_app().dispatch(ResetDevice(key=key))
     typer.echo(result.message)
     if not result.ok:

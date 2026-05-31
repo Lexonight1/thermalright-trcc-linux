@@ -1,6 +1,7 @@
 """CLI `system` group — setup, sensors, diagnostics."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -30,6 +31,8 @@ from ...core.commands import (
 )
 from ._ctx import get_app
 
+log = logging.getLogger(__name__)
+
 app = typer.Typer(help="System-level operations (setup, sensors, info).",
                   no_args_is_help=True)
 
@@ -40,6 +43,7 @@ def setup(
                              help="Non-interactive (assume yes to prompts)"),
 ) -> None:
     """Run the OS-specific setup (udev rules on Linux, WinUSB guide on Windows)."""
+    log.info("cli system setup: yes=%s", yes)
     result = get_app().dispatch(RunSetup(interactive=not yes))
     typer.echo(result.message)
     for warning in result.warnings:
@@ -50,6 +54,7 @@ def setup(
 @app.command("sensors")
 def sensors() -> None:
     """Print current sensor readings."""
+    log.info("cli system sensors")
     result = get_app().dispatch(ReadSensors())
     if not result.readings:
         typer.echo("No sensor readings available.")
@@ -64,6 +69,7 @@ def sensors() -> None:
 @app.command("list-gpus")
 def list_gpus() -> None:
     """List GPUs exposed by the sensors aggregator."""
+    log.info("cli system list-gpus")
     result = get_app().dispatch(ListGpus())
     typer.echo(result.message)
     for g in result.gpus:
@@ -74,6 +80,7 @@ def list_gpus() -> None:
 @app.command("list-fonts")
 def list_fonts() -> None:
     """List font families Qt can see."""
+    log.info("cli system list-fonts")
     result = get_app().dispatch(ListFonts())
     typer.echo(result.message)
     for name in result.fonts:
@@ -83,6 +90,7 @@ def list_fonts() -> None:
 @app.command("list-disks")
 def list_disks() -> None:
     """List disk partitions (for use with `led disk-index`)."""
+    log.info("cli system list-disks")
     result = get_app().dispatch(ListDisks())
     typer.echo(result.message)
     for d in result.disks:
@@ -97,6 +105,7 @@ def list_sensors() -> None:
     ``system sensors`` (or ``system info --metric <prefix>``) when you
     want the current readings instead.
     """
+    log.info("cli system list-sensors")
     result = get_app().dispatch(ListSensors())
     typer.echo(result.message)
     for s in result.sensors:
@@ -108,6 +117,7 @@ def list_sensors() -> None:
 @app.command("list-languages")
 def list_languages() -> None:
     """List every UI language the i18n table supports."""
+    log.info("cli system list-languages")
     result = get_app().dispatch(ListLanguages())
     typer.echo(result.message)
     for lang in result.languages:
@@ -124,6 +134,7 @@ def lang() -> None:
     Read-only — for "what language is TRCC in right now?" without
     digging through ``snapshot``.  Use ``set-language`` to change it.
     """
+    log.info("cli system lang")
     typer.echo(get_app().settings.app.language)
 
 
@@ -135,6 +146,7 @@ def doctor() -> None:
     it.  For a copy-paste GitHub-issue dump, use `system debug-report`
     instead.
     """
+    log.info("cli system doctor")
     result = get_app().dispatch(RunDoctor())
     typer.echo(result.rendered)
     raise typer.Exit(code=result.exit_code)
@@ -155,6 +167,9 @@ def debug_report(
     ),
 ) -> None:
     """Generate a debug report bundle for GitHub issues."""
+    log.info(
+        "cli system debug-report: output=%s log_lines=%s", output, log_lines,
+    )
     result = get_app().dispatch(GenerateDebugReport(
         output_path=output, log_tail_lines=log_lines,
     ))
@@ -169,6 +184,7 @@ def debug_report(
 @app.command("check-update")
 def check_update() -> None:
     """Ask GitHub Releases whether a newer version is available."""
+    log.info("cli system check-update")
     r = get_app().dispatch(CheckForUpdate())
     typer.echo(r.message)
     if r.release_url:
@@ -189,6 +205,7 @@ def upgrade(
     ),
 ) -> None:
     """Upgrade trcc-linux via the detected package manager."""
+    log.info("cli system upgrade: yes=%s dry_run=%s", yes, dry_run)
     if not yes and not dry_run:
         typer.echo("Refusing to run upgrade without --yes (sudo subprocess).")
         typer.echo("Re-run with --dry-run to see the command, or --yes to confirm.")
@@ -206,6 +223,7 @@ def upgrade(
 @app.command("first-run-status")
 def first_run_status() -> None:
     """Show whether trcc has been set up on this machine yet."""
+    log.info("cli system first-run-status")
     r = get_app().dispatch(GetFirstRunStatus())
     typer.echo(r.message)
     typer.echo(f"  marker: {r.marker_path}")
@@ -214,6 +232,7 @@ def first_run_status() -> None:
 @app.command("mark-setup-done")
 def mark_setup_done() -> None:
     """Tell trcc the welcome flow has been completed."""
+    log.info("cli system mark-setup-done")
     r = get_app().dispatch(MarkFirstRunDone())
     typer.echo(r.message)
 
@@ -221,6 +240,7 @@ def mark_setup_done() -> None:
 @app.command("health")
 def health() -> None:
     """Quick read-only health report — same checks as `doctor`, no exit code."""
+    log.info("cli system health")
     result = get_app().dispatch(RunHealthCheck())
     typer.echo(result.message)
     for c in result.checks:
@@ -232,6 +252,7 @@ def hdd_enabled(
     state: str = typer.Argument(..., help="'on' or 'off'"),
 ) -> None:
     """Toggle inclusion of HDD metrics in sensor broadcasts."""
+    log.info("cli system hdd-enabled: state=%s", state)
     if state.lower() not in ("on", "off"):
         raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
     result = get_app().dispatch(
@@ -245,6 +266,7 @@ def hdd_enabled(
 @app.command("snapshot")
 def snapshot() -> None:
     """Print the AppSettings snapshot (language, GPU, refresh interval)."""
+    log.info("cli system snapshot")
     r = get_app().dispatch(ControlCenterSnapshot())
     typer.echo(r.message)
     typer.echo(f"  language          {r.language}")
@@ -273,6 +295,7 @@ def _show_platform_info() -> None:
 @app.command("platform-info")
 def platform_info() -> None:
     """Show platform info (distro, install method, config dir, permissions)."""
+    log.info("cli system platform-info")
     _show_platform_info()
 
 
@@ -293,6 +316,7 @@ def info(
     output; pass no args for everything.  For paths / install info /
     permissions, see :command:`trcc system platform-info`.
     """
+    log.info("cli system info: metric=%s", metric)
     result = get_app().dispatch(ReadSensors())
     typer.echo(result.message)
     needle = metric.lower() if metric else None
@@ -314,6 +338,7 @@ def hid_debug(
     resolution / model id / serial) and :class:`LcdSnapshot` to dump the
     persisted state.  Output is plain text — copy + paste-friendly.
     """
+    log.info("cli system hid-debug: key=%s", key)
     from ...core.commands import ConnectDevice, LcdSnapshot
 
     app_obj = get_app()
@@ -358,6 +383,7 @@ def led_debug(
     shot diagnostic.  Pass ``--test-colors`` to cycle the device's
     test pattern so you can confirm wire-up visually.
     """
+    log.info("cli system led-debug: key=%s test_colors=%s", key, test_colors)
     import signal
 
     from ...core.commands import ConnectDevice, EnableLedTestMode, LedSnapshot
@@ -420,6 +446,7 @@ def download(
     cache while you have network — handy for headless setups that'll
     later run offline.  Idempotent.
     """
+    log.info("cli system download: width=%s height=%s", width, height)
     result = get_app().dispatch(
         EnsureDataDownload(width=width, height=height),
     )
@@ -440,6 +467,7 @@ def list_endpoints() -> None:
     Builds the FastAPI app (no uvicorn) and walks its router so the
     output reflects what ``trcc api`` / ``trcc serve`` would serve.
     """
+    log.info("cli system list-endpoints")
     from ...ui.api.main import build_app
 
     api_app = build_app()
@@ -467,6 +495,7 @@ app.add_typer(autostart_app, name="autostart")
 @autostart_app.command("status")
 def autostart_status() -> None:
     """Show whether auto-launch-on-login is enabled."""
+    log.info("cli system autostart status")
     r = get_app().dispatch(GetAutostartStatus())
     state = "enabled" if r.enabled else "disabled"
     typer.echo(f"Autostart: {state}")
@@ -477,6 +506,7 @@ def autostart_status() -> None:
 @autostart_app.command("enable")
 def autostart_enable() -> None:
     """Install the autostart entry (per-user, no sudo required)."""
+    log.info("cli system autostart enable")
     r = get_app().dispatch(EnableAutostart())
     typer.echo(r.message)
     typer.echo(f"Path: {r.path}")
@@ -487,5 +517,6 @@ def autostart_enable() -> None:
 @autostart_app.command("disable")
 def autostart_disable() -> None:
     """Remove the autostart entry."""
+    log.info("cli system autostart disable")
     r = get_app().dispatch(DisableAutostart())
     typer.echo(r.message)

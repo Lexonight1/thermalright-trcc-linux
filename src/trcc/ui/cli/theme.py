@@ -1,6 +1,7 @@
 """CLI ``theme`` group — save / export / import themes."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -22,6 +23,8 @@ from ...core.commands import (
     UploadCustomMask,
 )
 from ._ctx import get_app
+
+log = logging.getLogger(__name__)
 
 _METRIC_USAGE = (
     "metric spec: 'metric_key:x,y[:color[:size]]' — e.g. "
@@ -75,6 +78,7 @@ def save(
     ),
 ) -> None:
     """Duplicate the device's active theme directory under a new name."""
+    log.info("cli theme save: key=%s name=%s", key, name)
     result = get_app().dispatch(SaveTheme(key=key, name=name))
     typer.echo(result.message)
     if not result.ok:
@@ -105,6 +109,10 @@ def create(
     :class:`SaveTheme` to persist the result.  Stops on the first
     failure and leaves the device in whatever state was reached.
     """
+    log.info(
+        "cli theme create: key=%s name=%s background=%s mask=%s metric=%s",
+        key, name, background, mask, metric,
+    )
     app_obj = get_app()
 
     bg_result = app_obj.dispatch(LoadImage(key=key, path=background))
@@ -152,6 +160,10 @@ def export(
     ),
 ) -> None:
     """Zip a theme into an archive file."""
+    log.info(
+        "cli theme export: key=%s theme_name=%s archive_path=%s",
+        key, theme_name, archive_path,
+    )
     result = get_app().dispatch(
         ExportTheme(key=key, theme_name=theme_name, archive_path=archive_path),
     )
@@ -174,6 +186,10 @@ def import_(
     ),
 ) -> None:
     """Unpack a theme archive into the device's per-resolution theme dir."""
+    log.info(
+        "cli theme import: key=%s archive_path=%s name=%s",
+        key, archive_path, name,
+    )
     result = get_app().dispatch(
         ImportTheme(key=key, archive_path=archive_path, name=name),
     )
@@ -202,6 +218,7 @@ def list_(
     location) so installed-user themes show up alongside fresh
     downloads.
     """
+    log.info("cli theme list: key=%s directory=%s", key, directory)
     if directory is not None:
         result = get_app().dispatch(ListThemes(directory=directory))
     elif key:
@@ -239,6 +256,7 @@ def delete(
     Path-based to match legacy's ``delete_theme(lcd, path)`` — the
     caller already has the resolved path from ``theme list`` output.
     """
+    log.info("cli theme delete: path=%s", path)
     result = get_app().dispatch(DeleteTheme(path=path))
     typer.echo(result.message)
     if not result.ok:
@@ -253,6 +271,7 @@ def cloud_list(
     ),
 ) -> None:
     """List themes in Thermalright's hosted catalog."""
+    log.info("cli theme cloud-list: category=%s", category)
     result = get_app().dispatch(ListCloudThemes(category=category))
     typer.echo(result.message)
     if not result.ok:
@@ -272,6 +291,7 @@ def cloud_load(
     theme_id: str = typer.Argument(..., help="Cloud theme id, e.g. a001"),
 ) -> None:
     """Download a cloud theme and load it on a device."""
+    log.info("cli theme cloud-load: key=%s theme_id=%s", key, theme_id)
     result = get_app().dispatch(LoadCloudTheme(key=key, theme_id=theme_id))
     typer.echo(result.message)
     if result.theme_path:
@@ -294,6 +314,9 @@ def export_config(
     Pair with :command:`trcc theme import-config` to restore on
     another host or after a wipe.
     """
+    log.info(
+        "cli theme export-config: key=%s output_path=%s", key, output_path,
+    )
     result = get_app().dispatch(
         ExportConfig(key=key, output_path=output_path),
     )
@@ -310,6 +333,9 @@ def import_config(
     ),
 ) -> None:
     """Restore one device's settings from an export-config JSON file."""
+    log.info(
+        "cli theme import-config: key=%s input_path=%s", key, input_path,
+    )
     result = get_app().dispatch(
         ImportConfig(key=key, input_path=input_path),
     )
@@ -332,6 +358,10 @@ def export_dc(
     ),
 ) -> None:
     """Write a theme out as legacy ``config1.dc`` for Windows TRCC users."""
+    log.info(
+        "cli theme export-dc: key=%s theme_name=%s output_path=%s",
+        key, theme_name, output_path,
+    )
     result = get_app().dispatch(ExportDcTheme(
         key=key,
         theme_name=theme_name,
@@ -356,6 +386,10 @@ def export_overlay(
 ) -> None:
     """Export just a theme's overlay layout (the metric grid) for sharing —
     lighter than the whole-theme zip and distinct from the DC binary."""
+    log.info(
+        "cli theme export-overlay: key=%s theme_name=%s output_path=%s",
+        key, theme_name, output_path,
+    )
     result = get_app().dispatch(ExportOverlay(
         key=key,
         theme_name=theme_name,
