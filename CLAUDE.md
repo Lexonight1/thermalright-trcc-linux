@@ -68,6 +68,35 @@ Rules:
 * **Logging is part of the port.**  See "Logging coverage is
   mandatory" section below.
 
+### Path conventions on disk
+
+Two distinct user-data trees — don't conflate them; the distinction
+is load-bearing for scaling, mutation rights, and the diagnostic loop:
+
+* `~/.trcc/data/` — **program/cloud data**.  Downloaded by the app
+  at runtime (cloud themes, cloud masks, shipped data).  **Pre-scaled
+  to the device's canvas resolution.**  Read-only from the user's POV.
+* `~/.trcc-user/data/` — **user-uploaded data**.  Saved themes +
+  custom backgrounds/masks the user authored.  Native resolution;
+  the render pipeline scales at composite time via `fit_mode`.
+
+The `PlayVideo` decode-size gate switches on
+`path.is_relative_to(paths.user_content_dir())` — user upload →
+decode native, let `fit_mode` scale; program/cloud asset → canvas
+decode (pre-scaled).  Same axis applies anywhere "should this asset
+be treated as authored-for-this-device vs authored-by-the-user".
+
+**GUI "online themes" terminology trap**: the "online themes" tab
+in the legacy-style GUI shows **MASKS**, not themes.  They live at
+`~/.trcc/data/web/zt{w}{h}/<mask_id>/` and contain `01.png` (mask
+image, normally RGBA with 60%+ opaque pixels) + a DC config with
+overlay elements.  Clicking one dispatches `ApplyMask` (not
+`LoadTheme`); `LoadTheme.execute:131` itself re-applies the mask
+when reloading, and `:209` dispatches `PlayVideo` for any bundled
+video — so a single "online theme" click can chain `ApplyMask →
+LoadTheme → ApplyMask + PlayVideo`.  That's the flow shape, not a
+bug.  Don't call them "cloud themes" in code or analysis.
+
 ## Architecture — Hexagonal (Ports & Adapters)
 
 ### Layer Map
@@ -274,6 +303,40 @@ Rules for every new method touching user-visible state:
 6. **Verify in the log after every behavioral change.**  Before
    declaring a fix done, grep your own logs for the line that
    proves it.  If the line doesn't exist, the test isn't real.
+
+### The `_on_*_tick` trap — per-tick handlers are DEBUG, never INFO
+
+Any `_on_*` method connected to a `QTimer.timeout` or to
+`make_timer(...)` fires per-frame (~15–30 Hz for animation; slower
+for slideshow / refresh).  Those entry logs go at **DEBUG**, never
+INFO — INFO becomes per-frame noise, ~900 KB of `_on_video_tick`
+spam in a 22-second session, and buries the user-action lines we
+just paid for in the same pass.
+
+Before any bulk `_on_*` logging pass, grep
+`QTimer\.timeout\.connect\(self\._on_|make_timer\(self\._on_` and
+**exempt every match** from the INFO blanket rule.  Names today:
+`_on_video_tick`, `_on_slideshow_tick`, `_on_flash_tick`,
+`_on_tick`, `_on_play_tick`, `_preview_tick`.  If a handler already
+has first-tick-INFO + subsequent-DEBUG logic (look for
+`self._..._first_tick_logged`-style flags + state-transition skip
+logic), **leave it alone** — don't prepend a blanket entry log;
+the body already does the right thing.
+
+### `configure_logging` is called exactly once
+
+The CLI root callback (`ui.cli.main:_root`) configures logging based
+on the `-v` flag.  **Subsequent calls overwrite the level.**  Launch
+entry points (`ui.gui.__init__.launch`, future qtgui equivalent,
+etc.) must NOT re-call `configure_logging` — a second call with
+`verbosity=0` silently downgrades DEBUG back to INFO and the user's
+`-v` is silently lost.  If a new entry point can legitimately be
+invoked without going through the CLI (rare; none exist today), add
+a guard: only configure if no `_trcc_next_handler`-tagged handler is
+already attached on the root logger.  When a user reports "DEBUG
+lines I expect aren't showing up", first grep the log for
+`configure_logging:` and check whether it appears more than once
+with different levels.
 
 ### Coverage applies to the WHOLE app surface, not just services
 
