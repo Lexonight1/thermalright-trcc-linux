@@ -550,6 +550,13 @@ class DisplayService:
         """
         s = self._settings.for_device(info.key)
         mode = s.background_mode
+        log.debug(
+            "_build_bg_mask: key=%s mode=%s mask_visible=%s mask_path=%s "
+            "fit=%s playback=%s",
+            info.key, mode, s.mask_visible, s.mask_path,
+            getattr(s.fit_mode, "value", s.fit_mode),
+            (self._media.playback(info.key) is not None),
+        )
 
         # Initial canvas — 'color' mode fills with the user's chosen
         # colour; 'theme' / 'transparent' start solid black.  RGB565
@@ -638,13 +645,17 @@ class DisplayService:
         Order: per-device override → theme's bundled mask → None. Returns
         None when ``mask_visible`` is False so the caller skips the layer.
         """
+        log.debug(
+            "_resolve_mask_source: mask_visible=%s mask_path=%s",
+            device_settings.mask_visible, device_settings.mask_path,
+        )
         if not device_settings.mask_visible:
-            log.debug("resolve_mask_source: mask_visible=False → None")
+            log.debug("_resolve_mask_source: mask_visible=False → None")
             return None
         if device_settings.mask_path is not None:
             override = Path(device_settings.mask_path)
             if override.exists():
-                log.debug("resolve_mask_source: using override %s", override)
+                log.debug("_resolve_mask_source: using override %s", override)
                 return override
             log.warning(
                 "resolve_mask_source: override %s does not exist — "
