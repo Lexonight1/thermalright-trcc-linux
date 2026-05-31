@@ -75,15 +75,18 @@ def stub_media(
 
     Returns the call log so tests can assert what was decoded.
     """
-    calls: list[tuple[str, Path, tuple[int, int]]] = []
+    calls: list[tuple[str, Path, tuple[int, int] | None]] = []
 
     def fake_load(self, device_key: str, path: Path,   # type: ignore[no-untyped-def]
-                  size: tuple[int, int], **kwargs):
+                  size: tuple[int, int] | None, **kwargs):
         calls.append((device_key, path, size))
-        # Synthetic playback: 3 fake frames at the requested size
+        # Synthetic playback: 3 fake frames.  Use a stand-in resolution
+        # when the caller asked for ``size=None`` (native decode) since
+        # the fake doesn't actually run ffprobe.
+        w, h = size if size is not None else (640, 480)
         frames = [
-            RawFrame(data=b"\x00" * (size[0] * size[1] * 3),
-                     width=size[0], height=size[1])
+            RawFrame(data=b"\x00" * (w * h * 3),
+                     width=w, height=h)
             for _ in range(3)
         ]
         playback = Playback(frames=frames, fps=kwargs.get("fps", 15))
@@ -116,6 +119,45 @@ def test_play_video_loads_into_media_service(
     assert stub_media[0][2] == (320, 320)   # SCSI profile resolution
     # Playback is now stored on the App
     assert connected_app.media.playback(_KEY) is not None
+
+
+def test_play_video_user_uploaded_asset_decodes_at_native(
+    connected_app: App, stub_media: list, tmp_home: Path,
+) -> None:
+    """A user-saved video under ``user_content_dir`` decodes at native
+    (``size=None``) so the render pipeline's fit-mode can scale it.
+
+    Cloud / program assets are pre-scaled to the canvas; user uploads
+    are NOT, and ffmpeg-scaling them at decode time strips the user's
+    ability to pick width / height / stretch."""
+    user_video = tmp_home / "user" / "data" / "mybg.mp4"
+    user_video.parent.mkdir(parents=True, exist_ok=True)
+    user_video.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    result = connected_app.dispatch(PlayVideo(key=_KEY, path=user_video))
+
+    assert result.ok is True
+    assert len(stub_media) == 1
+    # The whole point of the gate: size=None means "decode native".
+    assert stub_media[0][2] is None
+
+
+def test_play_video_zt_user_asset_keeps_canvas_size(
+    connected_app: App, stub_media: list, tmp_home: Path,
+) -> None:
+    """``.zt`` is a baked JPEG-sequence format — its frames are at the
+    encoded resolution and ``ZtDecoder`` resizes during decode.  The
+    user-asset gate intentionally EXCLUDES ``.zt`` so it always gets
+    canvas size, even when sitting under ``user_content_dir``."""
+    user_zt = tmp_home / "user" / "data" / "mytheme.zt"
+    user_zt.parent.mkdir(parents=True, exist_ok=True)
+    user_zt.write_bytes(b"\xdc\x00")   # .zt magic; content unused
+
+    result = connected_app.dispatch(PlayVideo(key=_KEY, path=user_zt))
+
+    assert result.ok is True
+    assert len(stub_media) == 1
+    assert stub_media[0][2] == (320, 320)
 
 
 def test_play_video_publishes_event(

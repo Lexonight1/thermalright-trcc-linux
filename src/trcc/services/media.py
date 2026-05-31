@@ -42,10 +42,16 @@ class VideoDecoder:
     `duration_s` if memory pressure matters.
     """
 
-    def __init__(self, path: Path, size: tuple[int, int],
+    def __init__(self, path: Path, size: tuple[int, int] | None,
                  fps: int = _DEFAULT_FPS,
                  rotation_degrees: int = 0,
                  duration_s: float | None = None) -> None:
+        # ``size`` is the OUTPUT scale ffmpeg is told to produce.
+        # ``None`` → decode at the source's native resolution and let
+        # the render pipeline's fit-mode scale at composite time.  Used
+        # for user-uploaded videos so the user can pick width / height /
+        # stretch.  Program/cloud assets are pre-scaled to the device's
+        # canvas, so callers pass a concrete tuple for those.
         self.path = path
         self.size = size
         self.fps = fps
@@ -63,7 +69,22 @@ class VideoDecoder:
                 "(e.g. 'dnf install ffmpeg' / 'apt install ffmpeg')"
             )
 
-        w, h = self.size
+        if self.size is None:
+            native = _probe_video_size(self.path)
+            if native is None:
+                # ffprobe failed (missing / unreadable / unknown codec).
+                # Without dims we can't chunk the raw pipe — fail loudly
+                # rather than guess.
+                raise ThemeError(
+                    f"Could not probe native size of {self.path.name} "
+                    "(ffprobe failed) — install ffprobe or pass an "
+                    "explicit decode size",
+                )
+            w, h = native
+            log.info("VideoDecoder: %s native size %dx%d (no rescale)",
+                     self.path.name, w, h)
+        else:
+            w, h = self.size
         cmd: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
         if self.rotation_degrees:
             cmd += ["-display_rotation", str(self.rotation_degrees)]
@@ -72,7 +93,13 @@ class VideoDecoder:
         cmd += [
             "-i", str(self.path),
             "-r", str(self.fps),
-            "-s", f"{w}x{h}",
+        ]
+        # Only emit -s when the caller asked for a specific output size.
+        # When ``size is None`` ffmpeg outputs the input's native frame
+        # dimensions, which we already pinned (w, h) via ffprobe.
+        if self.size is not None:
+            cmd += ["-s", f"{w}x{h}"]
+        cmd += [
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "pipe:1",
@@ -115,6 +142,43 @@ def _ffmpeg_available() -> bool:
         if (Path(dir_) / "ffmpeg.exe").exists():
             return True
     return False
+
+
+def _probe_video_size(path: Path) -> tuple[int, int] | None:
+    """Return the video's native ``(width, height)`` or ``None`` on failure.
+
+    Lets :class:`VideoDecoder` skip ffmpeg's ``-s`` flag (native decode)
+    while still knowing how to chunk the raw RGB24 pipe output.  Same
+    pattern as ``services/video_export._probe_video_duration``.
+    """
+    log.debug("_probe_video_size: path=%s", path)
+    import shutil
+    if shutil.which("ffprobe") is None:
+        log.warning("_probe_video_size: ffprobe not on PATH")
+        return None
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=p=0:s=x",
+        str(path),
+    ]
+    try:
+        out = subprocess.check_output(
+            cmd, stderr=subprocess.DEVNULL, timeout=10,
+        ).decode("utf-8", errors="replace").strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            FileNotFoundError, OSError) as e:
+        log.warning("_probe_video_size: ffprobe failed for %s: %s",
+                    path.name, e)
+        return None
+    try:
+        w_s, h_s = out.split("x", 1)
+        return int(w_s), int(h_s)
+    except (ValueError, AttributeError):
+        log.warning("_probe_video_size: bad ffprobe output %r for %s",
+                    out, path.name)
+        return None
 
 
 # =========================================================================
@@ -329,22 +393,48 @@ class MediaService:
         self._playbacks: dict[str, Playback] = {}
 
     def load_video(self, device_key: str, path: Path,
-                   size: tuple[int, int],
+                   size: tuple[int, int] | None,
                    fps: int = _DEFAULT_FPS,
                    rotation_degrees: int = 0,
                    duration_s: float | None = None) -> Playback:
         """Decode a video / .zt animation for a device, replacing any previous playback.
 
         Dispatches by suffix: ``.zt`` → :class:`ZtDecoder`, anything else
-        through ``ffmpeg`` via :class:`VideoDecoder`.  ``.zt`` carries its
+        through ``ffmpeg`` via :class:`VideoDecoder``.  ``.zt`` carries its
         own per-frame timing so we honour the decoder's derived ``fps``
         when the caller takes the default.
+
+        ``size`` is the decode-time output scale:
+
+        * ``tuple(w, h)`` — decode at that exact size (pre-scale).  Used
+          for program/cloud assets that are already authored at the
+          device's canvas resolution.
+        * ``None`` — decode at the source video's NATIVE size.  Used for
+          user-uploaded videos in ``user_content_dir`` so the render
+          pipeline's ``fit_mode`` (width / height / stretch) can scale at
+          composite time.  ``.zt`` is fixed-size by format, so ``None``
+          is only valid for ffmpeg-decoded inputs.
         """
-        log.info(
-            "load_video: key=%s path=%s size=%dx%d fps=%d rotate=%d",
-            device_key, path, size[0], size[1], fps, rotation_degrees,
-        )
+        if size is None:
+            log.info(
+                "load_video: key=%s path=%s size=native fps=%d rotate=%d",
+                device_key, path, fps, rotation_degrees,
+            )
+        else:
+            log.info(
+                "load_video: key=%s path=%s size=%dx%d fps=%d rotate=%d",
+                device_key, path, size[0], size[1], fps, rotation_degrees,
+            )
         if path.suffix.lower() == ".zt":
+            if size is None:
+                # .zt is a baked JPEG sequence — the encoded size is the
+                # frame size.  Asking for "native" decode of a .zt is a
+                # programming error (caller should pass canvas size, since
+                # .zt is authored AT canvas during VideoCropDialog save).
+                raise ThemeError(
+                    ".zt decode requires an explicit size — pass the "
+                    "device's canvas resolution",
+                )
             zt = ZtDecoder(path=path, size=size)
             zt.decode()
             effective_fps = fps if fps != _DEFAULT_FPS else zt.fps

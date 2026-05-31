@@ -557,15 +557,41 @@ class PlayVideo(Command[VideoResult]):
                                 message=str(e))
 
         if device.profile is not None:
-            size = device.profile.resolution
+            canvas_size = device.profile.resolution
         else:
-            size = device.info.native_resolution
-        log.info("PlayVideo.execute: target_size=%dx%d (profile=%s)",
-                 size[0], size[1], device.profile is not None)
+            canvas_size = device.info.native_resolution
+
+        # User-made assets in ``user_content_dir`` (``~/.trcc-user/data/``)
+        # decode at NATIVE so the render pipeline's fit-mode (width /
+        # height / stretch) actually has something to scale.  Program /
+        # cloud assets under ``data_dir`` are pre-authored at the
+        # device's canvas resolution, so they keep the canvas-size
+        # decode (no rescale work for ffmpeg, and ``.zt`` is fixed-size
+        # by format).  Anything outside both trees (ad-hoc playback of
+        # an arbitrary file) defaults to canvas-size too — the user
+        # would need to save it as a theme first to get fit-mode.
+        is_user_asset = False
+        if self.path.suffix.lower() != ".zt":
+            try:
+                user_root = app.platform.paths().user_content_dir().resolve()
+                is_user_asset = self.path.resolve().is_relative_to(user_root)
+            except (OSError, AttributeError):
+                # ``user_content_dir`` lookup or resolve failed (broken
+                # platform paths, missing dir).  Default to canvas-size
+                # decode so we never block playback over a probe failure.
+                is_user_asset = False
+        decode_size: tuple[int, int] | None = (
+            None if is_user_asset else canvas_size
+        )
+        log.info(
+            "PlayVideo.execute: target_size=%s (profile=%s, user_asset=%s)",
+            "native" if decode_size is None else f"{decode_size[0]}x{decode_size[1]}",
+            device.profile is not None, is_user_asset,
+        )
 
         try:
             playback = app.media.load_video(
-                device_key=self.key, path=self.path, size=size,
+                device_key=self.key, path=self.path, size=decode_size,
                 fps=self.fps,
             )
         except ThemeError as e:
