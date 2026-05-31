@@ -39,15 +39,18 @@ class KeepaliveService:
 
     def store(self, key: str, frame: bytes) -> None:
         """Record the bytes we just sent so we can resend later."""
+        log.debug("store: key=%s bytes=%d", key, len(frame))
         state = self._state.setdefault(key, _KeepaliveState())
         state.frame = frame
         state.last_sent_at = time.monotonic()
 
     def last_frame(self, key: str) -> bytes | None:
+        log.debug("last_frame: key=%s", key)
         state = self._state.get(key)
         return state.frame if state and state.frame else None
 
     def seconds_since_send(self, key: str) -> float | None:
+        log.debug("seconds_since_send: key=%s", key)
         state = self._state.get(key)
         if state is None or state.last_sent_at == 0.0:
             return None
@@ -55,9 +58,11 @@ class KeepaliveService:
 
     def mark_sent(self, key: str) -> None:
         """Reset the "seconds since send" timer without overwriting bytes."""
+        log.debug("mark_sent: key=%s", key)
         state = self._state.setdefault(key, _KeepaliveState())
         state.last_sent_at = time.monotonic()
 
     def forget(self, key: str) -> None:
         """Drop cached state for *key* — used on DisconnectDevice."""
+        log.info("forget: key=%s", key)
         self._state.pop(key, None)

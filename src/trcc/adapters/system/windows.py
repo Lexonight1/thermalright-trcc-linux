@@ -51,17 +51,23 @@ class WindowsPaths(Paths):
         local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData/Local")
         self._root = Path(appdata) / "trcc"
         self._user_content = Path(local) / "trcc-user"
+        log.info("WindowsPaths: root=%s user_content=%s",
+                 self._root, self._user_content)
 
     def config_dir(self) -> Path:
+        log.debug("config_dir: called")
         return self._root
 
     def data_dir(self) -> Path:
+        log.debug("data_dir: called")
         return self._root / "data"
 
     def user_content_dir(self) -> Path:
+        log.debug("user_content_dir: called")
         return self._user_content
 
     def log_file(self) -> Path:
+        log.debug("log_file: called")
         return self._root / "trcc.log"
 
 
@@ -122,6 +128,7 @@ class _SCSI_PASS_THROUGH(ctypes.Structure):
 
 def _kernel32() -> Any:
     """Access kernel32 only when needed (Windows-only attribute)."""
+    log.debug("_kernel32: called")
     return ctypes.windll.kernel32  # pyright: ignore[reportAttributeAccessIssue]
 
 
@@ -131,6 +138,7 @@ def _find_physical_drive(vid: int, pid: int) -> str | None:
     LCD devices report tiny capacity (< 1MB) because they have no real
     storage, which distinguishes them from flash drives and HDDs.
     """
+    log.info("_find_physical_drive: %04x:%04x", vid, pid)
     vid_tag = f"VID_{vid:04X}"
     pid_tag = f"PID_{pid:04X}"
     try:
@@ -160,12 +168,14 @@ class WindowsScsiTransport(ScsiTransport):
     def __init__(self, device_path: str) -> None:
         self._path = device_path
         self._handle: int | None = None
+        log.info("WindowsScsiTransport: bound to %s", device_path)
 
     @property
     def is_open(self) -> bool:
         return self._handle is not None
 
     def open(self) -> bool:
+        log.info("open: path=%s", self._path)
         if self._handle is not None:
             return True
         try:
@@ -186,6 +196,7 @@ class WindowsScsiTransport(ScsiTransport):
             return False
 
     def close(self) -> None:
+        log.info("close: path=%s", self._path)
         if self._handle is not None:
             try:
                 _kernel32().CloseHandle(self._handle)
@@ -195,6 +206,8 @@ class WindowsScsiTransport(ScsiTransport):
 
     def send_cdb(self, cdb: bytes, data: bytes,
                  timeout_ms: int = 5000) -> bool:
+        log.debug("send_cdb: cdb_len=%d data_len=%d timeout=%dms",
+                  len(cdb), len(data), timeout_ms)
         if self._handle is None:
             raise TransportError(f"WindowsScsiTransport {self._path} not open")
 
@@ -231,6 +244,8 @@ class WindowsScsiTransport(ScsiTransport):
 
     def read_cdb(self, cdb: bytes, length: int,
                  timeout_ms: int = 5000) -> bytes:
+        log.debug("read_cdb: cdb_len=%d length=%d timeout=%dms",
+                  len(cdb), length, timeout_ms)
         if self._handle is None:
             raise TransportError(f"WindowsScsiTransport {self._path} not open")
 
@@ -283,6 +298,7 @@ class WindowsPlatform(Platform):
     """Windows implementation of Platform."""
 
     def __init__(self) -> None:
+        log.info("WindowsPlatform: initialising")
         self._paths = WindowsPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
@@ -290,10 +306,12 @@ class WindowsPlatform(Platform):
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
+        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
+        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         path = _find_physical_drive(vid, pid)
         if path is None:
             raise TransportError(
@@ -304,6 +322,8 @@ class WindowsPlatform(Platform):
         return WindowsScsiTransport(path)
 
     def scan_devices(self) -> list[DeviceInfo]:
+        log.info("scan_devices: scanning %d known VID/PID pairs",
+                 len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
@@ -318,21 +338,25 @@ class WindowsPlatform(Platform):
         return found
 
     def paths(self) -> Paths:
+        log.debug("paths: called")
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
         """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
+        log.info("sensors: cached=%s", self._sensors is not None)
         if self._sensors is None:
             self._sensors = build_windows_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
+        log.info("autostart: cached=%s", self._autostart is not None)
         if self._autostart is None:
             from ._autostart import WindowsAutostart
             self._autostart = WindowsAutostart()
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
+        log.info("hotplug: cached=%s", self._hotplug is not None)
         if self._hotplug is None:
             from ._hotplug import WindowsHotplugMonitor
             self._hotplug = WindowsHotplugMonitor()
@@ -346,16 +370,20 @@ class WindowsPlatform(Platform):
         is accepted for parity with other platforms but ignored —
         diagnostic is the same either way.
         """
+        log.info("setup: interactive=%s", interactive)
         from ._winusb import install
         return install(dry_run=not interactive)
 
     def check_permissions(self) -> list[str]:
+        log.info("check_permissions: called")
         return []
 
     def distro_name(self) -> str:
+        log.info("distro_name: called")
         return "Windows"
 
     def install_method(self) -> str:
+        log.info("install_method: called")
         import sys
         if getattr(sys, "frozen", False):
             return "pyinstaller"
@@ -368,6 +396,7 @@ class WindowsPlatform(Platform):
 
         Linux/macOS/BSD inherit the base False (hide-to-tray).
         """
+        log.debug("minimize_on_close: called")
         return True
 
     def configure_stdout(self) -> None:
@@ -384,6 +413,7 @@ class WindowsPlatform(Platform):
         for the older buffer-wrapping path we no-op when the encoding
         is already UTF-8.
         """
+        log.info("configure_stdout: called")
         import io
         import sys as _sys
         for stream_name in ("stdout", "stderr"):
@@ -416,10 +446,12 @@ class WindowsPlatform(Platform):
 
     def memory_info(self) -> list[dict[str, str]]:
         """DRAM slot probe via WMI Win32_PhysicalMemory."""
+        log.info("memory_info: probing")
         return _windows_memory_info()
 
     def disk_info(self) -> list[dict[str, str]]:
         """Disk probe via WMI Win32_DiskDrive."""
+        log.info("disk_info: probing")
         return _windows_disk_info()
 
 
@@ -434,6 +466,7 @@ def _format_size_bytes(value: int | str | None) -> str:
     WMI returns int / str / None depending on the property and version
     — narrow before coercing rather than blanket try/except.
     """
+    log.debug("_format_size_bytes: value=%r", value)
     if value is None or value == 0 or value == "0":
         return ""
     if isinstance(value, int):
@@ -448,6 +481,7 @@ def _format_size_bytes(value: int | str | None) -> str:
 
 def _windows_memory_info() -> list[dict[str, str]]:
     """Win32_PhysicalMemory probe; psutil fallback for totals."""
+    log.debug("_windows_memory_info: called")
     slots: list[dict[str, str]] = []
     try:
         import wmi  # pyright: ignore[reportMissingImports]
@@ -489,6 +523,7 @@ def _windows_memory_info() -> list[dict[str, str]]:
 
 def _windows_disk_info() -> list[dict[str, str]]:
     """Win32_DiskDrive probe."""
+    log.debug("_windows_disk_info: called")
     disks: list[dict[str, str]] = []
     try:
         import wmi  # pyright: ignore[reportMissingImports]

@@ -50,12 +50,14 @@ class DataInstallService:
         self._installer = installer
 
     def ensure_themes(self, width: int, height: int) -> bool:
+        log.info("ensure_themes: %dx%d", width, height)
         return self._installer.install(
             archive_name=f"theme{width}{height}.7z",
             target_dir=self._paths.theme_dir(width, height),
         )
 
     def ensure_web(self, width: int, height: int) -> bool:
+        log.info("ensure_web: %dx%d", width, height)
         return self._installer.install(
             archive_name=f"{width}{height}.7z",
             target_dir=self._paths.cloud_theme_dir(width, height),
@@ -63,6 +65,7 @@ class DataInstallService:
         )
 
     def ensure_masks(self, width: int, height: int) -> bool:
+        log.info("ensure_masks: %dx%d", width, height)
         return self._installer.install(
             archive_name=f"zt{width}{height}.7z",
             target_dir=self._paths.cloud_mask_dir(width, height),

@@ -102,6 +102,7 @@ class AudioCapture:
 
     def get_spectrum(self) -> np.ndarray:
         """Return a copy of the current band magnitudes (0.0 – 1.0)."""
+        log.debug("get_spectrum: bands=%d", self._bands)
         with self._lock:
             return self._spectrum.copy()
 

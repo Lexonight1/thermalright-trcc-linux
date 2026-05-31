@@ -62,6 +62,7 @@ _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
 
 def _json_default_tuple(obj: Any) -> Any:
     """tuple → list for JSON serialisation (no other coercions)."""
+    log.debug("_json_default_tuple: type=%s", type(obj).__name__)
     if isinstance(obj, tuple):
         return list(obj)
     raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
@@ -94,6 +95,7 @@ def _require_connected_device(app: App, key: str) -> Any:
     do their type check before the connect check and disappear entirely
     once capability dispatch lands (see §4 of the SOLID/DRY plan).
     """
+    log.debug("_require_connected_device: key=%s", key)
     device = app.get(key)
     if not device.is_connected:
         raise DeviceNotConnectedError(
@@ -116,6 +118,8 @@ def _publish_if_disconnect(app: App, key: str, exc: BaseException) -> None:
     publish the event — the device is still attached, the caller just
     saw one bad send.
     """
+    log.debug("_publish_if_disconnect: key=%s exc=%s",
+              key, type(exc).__name__)
     if isinstance(exc, DeviceDisconnectedError):
         log.info("auto-disconnect: %s closed after recovery threshold", key)
         app.events.publish(DeviceDisconnected(key=key))
@@ -129,6 +133,7 @@ def _invalidate_scene(app: App, key: str) -> None:
     setting. Pure settings writes don't need it; this helper is the
     seam.
     """
+    log.debug("_invalidate_scene: key=%s", key)
     if app._renderer is not None:  # pyright: ignore[reportPrivateUsage]
         app.display.invalidate(key)
 
@@ -141,6 +146,7 @@ def _resolve_resolution(app: App, key: str) -> tuple[int, int] | None:
     native_resolution.  Returns ``None`` when none yield a known size
     (unknown product or malformed key).
     """
+    log.debug("_resolve_resolution: key=%s", key)
     device = app.devices.get(key)
     if device is not None:
         if device.profile is not None:
@@ -166,6 +172,7 @@ def _resolve_mask_path(path: Path) -> Path | None:
     ``01.png``).  Returns the file path renderers can ``open_image``,
     or ``None`` when neither shape matches.
     """
+    log.debug("_resolve_mask_path: path=%s", path)
     if path.is_file() and path.suffix.lower() in _MASK_IMAGE_EXTS:
         return path
     if path.is_dir():
@@ -177,11 +184,13 @@ def _resolve_mask_path(path: Path) -> Path | None:
 
 def _publish_led_settings_changed(app: App, key: str) -> None:
     """Single event for any LED settings mutation — UIs subscribe once."""
+    log.debug("_publish_led_settings_changed: key=%s", key)
     app.events.publish(LedColorsChanged(key=key, color_count=0))
 
 
 def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:
     """Flat OverlayElementEntry view for Result types."""
+    log.debug("_element_to_entry: id=%s type=%s", e.id, e.type)
     return OverlayElementEntry(
         id=e.id, type=e.type, x=e.x, y=e.y, color=e.color, size=e.size,
         bold=e.bold, italic=e.italic, text=e.text, metric=e.metric,
@@ -215,6 +224,7 @@ def _search_theme_by_name(
     path.  Users with legacy flat themes on disk must run
     ``dev/tools/migrate_legacy_themes.py`` once to move them into place.
     """
+    log.debug("_search_theme_by_name: key=%s name=%s", key, name)
     paths = app.platform.paths()
     resolution = _resolve_resolution(app, key)
     candidates: list[Path] = []
@@ -237,6 +247,7 @@ def _search_theme_by_name(
 
 def _health_entries(checks: list) -> list[HealthCheckEntry]:
     """Map adapter HealthCheckResult → Result-layer HealthCheckEntry."""
+    log.debug("_health_entries: checks=%d", len(checks))
     return [
         HealthCheckEntry(
             name=c.name, severity=c.severity,
@@ -247,6 +258,7 @@ def _health_entries(checks: list) -> list[HealthCheckEntry]:
 
 
 def _slideshow_snapshot(settings, key: str) -> SlideshowResult:
+    log.debug("_slideshow_snapshot: key=%s", key)
     s = settings.for_device(key)
     return SlideshowResult(
         ok=True, key=key,
@@ -261,5 +273,6 @@ def _slideshow_snapshot(settings, key: str) -> SlideshowResult:
 
 def _autostart_path(app: App) -> str:
     """Extract the manager's filesystem path when available."""
+    log.debug("_autostart_path: called")
     mgr = app.platform.autostart()
     return str(getattr(mgr, "path", "")) or ""

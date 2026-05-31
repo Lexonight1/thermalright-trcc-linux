@@ -15,6 +15,10 @@ were stripped because next/ GUI uses Qt layouts instead of pixel positions.
 """
 from __future__ import annotations
 
+import logging
+
+log = logging.getLogger(__name__)
+
 # fmt: off
 
 LANGUAGE_NAMES: dict[str, str] = {
@@ -2092,6 +2096,7 @@ def tr(key: str, lang: str = "en") -> str:
     have it (the key *is* English — this only happens for unregistered
     strings, which are the bug to fix rather than the data to add).
     """
+    log.debug("tr: key=%r lang=%s", key, lang)
     table = TRANSLATIONS.get(lang)
     if table is not None:
         translated = table.get(key)
@@ -2103,6 +2108,7 @@ def tr(key: str, lang: str = "en") -> str:
 
 def supported_languages() -> list[str]:
     """ISO 639-1 codes for every language with at least one translation."""
+    log.info("supported_languages: called")
     return sorted(TRANSLATIONS)
 
 
@@ -2112,6 +2118,7 @@ def language_name(lang: str) -> str:
     Returns the code itself when unknown so UIs never crash on a stale
     setting carried forward from an older release.
     """
+    log.debug("language_name: lang=%s", lang)
     return LANGUAGE_NAMES.get(lang, lang)
 
 
@@ -2158,10 +2165,13 @@ ISO_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_ISO.items()}
 
 def locale_to_lang(locale_prefix: str, default: str = "en") -> str:
     """``getlocale()`` prefix → ISO 639-1 code, falling back to *default*."""
+    log.info("locale_to_lang: locale_prefix=%s default=%s",
+             locale_prefix, default)
     return LOCALE_TO_LANG.get(locale_prefix, default)
 
 
 def iso_to_legacy_suffix(lang: str) -> str:
     """ISO code → legacy C# asset suffix.  Unknown languages map to
     themselves so callers always get a string back."""
+    log.debug("iso_to_legacy_suffix: lang=%s", lang)
     return ISO_TO_LEGACY.get(lang, lang)

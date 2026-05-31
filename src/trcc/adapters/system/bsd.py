@@ -42,17 +42,23 @@ class BSDPaths(Paths):
         home = Path.home()
         self._root = home / ".trcc"
         self._user_content = home / ".trcc-user"
+        log.info("BSDPaths: root=%s user_content=%s",
+                 self._root, self._user_content)
 
     def config_dir(self) -> Path:
+        log.debug("config_dir: called")
         return self._root
 
     def data_dir(self) -> Path:
+        log.debug("data_dir: called")
         return self._root / "data"
 
     def user_content_dir(self) -> Path:
+        log.debug("user_content_dir: called")
         return self._user_content
 
     def log_file(self) -> Path:
+        log.debug("log_file: called")
         return self._root / "trcc.log"
 
 
@@ -61,6 +67,7 @@ class BSDPlatform(Platform):
     """FreeBSD / OpenBSD implementation of Platform — BOT-only SCSI."""
 
     def __init__(self) -> None:
+        log.info("BSDPlatform: initialising")
         self._paths = BSDPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
@@ -68,14 +75,18 @@ class BSDPlatform(Platform):
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
+        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
+        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
 
     def scan_devices(self) -> list[DeviceInfo]:
+        log.info("scan_devices: scanning %d known VID/PID pairs",
+                 len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
@@ -90,16 +101,19 @@ class BSDPlatform(Platform):
         return found
 
     def paths(self) -> Paths:
+        log.debug("paths: called")
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
         """sysctl CPU temp on top of the psutil/NVML baseline."""
+        log.info("sensors: cached=%s", self._sensors is not None)
         if self._sensors is None:
             from ..sensors.bsd import build_bsd_sensors
             self._sensors = build_bsd_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
+        log.info("autostart: cached=%s", self._autostart is not None)
         if self._autostart is None:
             from ._autostart import NoopAutostart
             self._autostart = NoopAutostart()
@@ -107,6 +121,7 @@ class BSDPlatform(Platform):
 
     def hotplug(self) -> HotplugMonitor:
         """devd seqpacket socket on FreeBSD; noop on OpenBSD/NetBSD."""
+        log.info("hotplug: cached=%s", self._hotplug is not None)
         if self._hotplug is None:
             import platform as _platform
 
@@ -134,10 +149,12 @@ class BSDPlatform(Platform):
         OpenBSD has no devd; the installer logs a pointer to the right
         manual setup path and returns 0.
         """
+        log.info("setup: interactive=%s", interactive)
         from ._devd import install
         return install(dry_run=not interactive)
 
     def check_permissions(self) -> list[str]:
+        log.info("check_permissions: called")
         if os.geteuid() != 0:
             return [
                 "BSD requires root to detach the umass kernel driver — "
@@ -146,10 +163,12 @@ class BSDPlatform(Platform):
         return []
 
     def distro_name(self) -> str:
+        log.info("distro_name: called")
         import sys
         return "FreeBSD" if "freebsd" in sys.platform else "BSD"
 
     def install_method(self) -> str:
+        log.info("install_method: called")
         import sys
         if getattr(sys, "frozen", False):
             return "pyinstaller"
@@ -188,6 +207,7 @@ GeomRunner = Callable[[], str]
 
 def _run_sysctl_n(key: str) -> str | None:
     """``sysctl -n <key>`` → trimmed stdout, or None on failure."""
+    log.debug("_run_sysctl_n: key=%s", key)
     try:
         result = subprocess.run(
             ["sysctl", "-n", key],
@@ -204,6 +224,7 @@ def _run_sysctl_n(key: str) -> str | None:
 
 def _run_geom_disk_list() -> str:
     """``geom disk list`` stdout, or empty string when unavailable."""
+    log.debug("_run_geom_disk_list: called")
     try:
         result = subprocess.run(
             ["geom", "disk", "list"],
@@ -221,6 +242,7 @@ def _bsd_memory_info(
     runner: SysctlRunner = _run_sysctl_n,
 ) -> list[dict[str, str]]:
     """Single-entry memory descriptor — BSD has no per-DIMM probe."""
+    log.debug("_bsd_memory_info: called")
     slots: list[dict[str, str]] = []
     physmem = runner("hw.physmem")
     if physmem is not None:
@@ -262,6 +284,7 @@ def _bsd_disk_info(
     OpenBSD/NetBSD don't ship ``geom``; ``runner`` returns ``""`` and
     we yield an empty list — caller renders ``NC``.
     """
+    log.debug("_bsd_disk_info: called")
     disks: list[dict[str, str]] = []
     output = runner()
     if not output:

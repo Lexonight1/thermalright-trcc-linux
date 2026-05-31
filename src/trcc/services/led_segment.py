@@ -839,6 +839,8 @@ def compute_mask(
     Returns an empty list when ``style`` is None or has no segment
     display (e.g. LF13 is pure RGB).
     """
+    log.debug("compute_mask: style=%s phase=%d temp_unit=%s",
+              style, phase, temp_unit)
     if style is None:
         return []
     display = DISPLAYS.get(style)
@@ -851,6 +853,7 @@ def compute_mask(
 
 def get_display(style: LedStyle | None) -> SegmentDisplay | None:
     """Get the SegmentDisplay instance for a style, or None."""
+    log.debug("get_display: style=%s", style)
     if style is None:
         return None
     return DISPLAYS.get(style)
@@ -858,6 +861,7 @@ def get_display(style: LedStyle | None) -> SegmentDisplay | None:
 
 def has_segment_display(style: LedStyle | None) -> bool:
     """Whether this style has digit display support."""
+    log.debug("has_segment_display: style=%s", style)
     return style is not None and style in DISPLAYS
 
 

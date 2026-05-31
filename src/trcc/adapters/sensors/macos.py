@@ -259,6 +259,7 @@ class SmcFan(FanSource):
 
 def discover_smc_fans(client: SmcClientPort) -> list[FanSource]:
     """Probe ``FNum`` and materialise one ``SmcFan`` per discovered fan."""
+    log.info("discover_smc_fans: called")
     if not client.connected:
         log.debug("discover_smc_fans: SMC not connected — no fans")
         return []
@@ -291,6 +292,7 @@ def discover_smc_fans(client: SmcClientPort) -> list[FanSource]:
 
 def _gpu_chain_key_and_name() -> tuple[str, str]:
     """Pick the GpuSource key + display name based on Mac architecture."""
+    log.debug("_gpu_chain_key_and_name: called")
     if platform.machine() == "arm64":
         return "apple:0", "Apple Silicon GPU"
     return "intel:0", "Intel GPU"
@@ -321,6 +323,7 @@ def build_macos_sensors() -> BaselineSensors:
     release advertising these sources should wait for a reporter to
     confirm on real hardware before shipping.
     """
+    log.info("build_macos_sensors: called")
     client = SMCClient()
     client.open()                       # idempotent; failure → fallthrough
 
@@ -363,6 +366,7 @@ def _build_macos_gpus(
     Intel Mac with discrete NVIDIA: NVML reports a ``nvidia:N``
     chain; SMC adds an ``intel:0`` iGPU chain.
     """
+    log.debug("_build_macos_gpus: called")
     gpu_key, gpu_name = _gpu_chain_key_and_name()
     if platform.machine() == "arm64":
         apple_chain = GpuSourceChain([

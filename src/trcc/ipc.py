@@ -70,12 +70,14 @@ _DEFAULT_TIMEOUT_S = 30.0
 
 def socket_path() -> Path:
     """Return the canonical Unix-socket path for this user's next/ daemon."""
+    log.debug("socket_path: called")
     runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
     return Path(runtime) / _SOCK_NAME
 
 
 def daemon_running() -> bool:
     """True iff a daemon socket exists and accepts a connection."""
+    log.debug("daemon_running: called")
     path = socket_path()
     if not path.exists():
         return False
@@ -216,6 +218,7 @@ def _build_dataclass(cls: type, data: dict[str, Any]) -> Any:
 
 def encode_command(cmd: Command[Any]) -> dict[str, Any]:
     """Serialize a Command into a dispatch envelope."""
+    log.debug("encode_command: cmd=%s", type(cmd).__name__)
     # Every concrete Command is a frozen dataclass; the runtime check
     # narrows the type for the static checker too.
     assert dataclasses.is_dataclass(cmd), (
@@ -229,6 +232,7 @@ def encode_command(cmd: Command[Any]) -> dict[str, Any]:
 
 def decode_command(envelope: dict[str, Any]) -> Command[Any]:
     """Reconstruct a Command from a dispatch envelope."""
+    log.debug("decode_command: keys=%s", sorted(envelope))
     name = envelope.get("command")
     if not isinstance(name, str):
         raise ValueError("envelope missing 'command' key")
@@ -243,6 +247,7 @@ def decode_command(envelope: dict[str, Any]) -> Command[Any]:
 
 def encode_result(result: Result) -> dict[str, Any]:
     """Serialize a Result into a response envelope (carries the class name)."""
+    log.debug("encode_result: result=%s", type(result).__name__)
     body = {f.name: _to_wire(getattr(result, f.name))
             for f in dataclasses.fields(result)}
     return {"type": type(result).__name__, **body}
@@ -250,6 +255,7 @@ def encode_result(result: Result) -> dict[str, Any]:
 
 def decode_result(envelope: dict[str, Any]) -> Result:
     """Reconstruct a Result from a response envelope."""
+    log.debug("decode_result: keys=%s", sorted(envelope))
     type_name = envelope.get("type", "Result")
     cls = RESULT_TYPES.get(str(type_name), Result)
     body = {k: v for k, v in envelope.items() if k != "type"}
@@ -262,11 +268,13 @@ def decode_result(envelope: dict[str, Any]) -> Result:
 
 
 def _send_json(sock: socket.socket, payload: dict[str, Any]) -> None:
+    log.debug("_send_json: keys=%s", sorted(payload))
     sock.sendall(json.dumps(payload).encode() + b"\n")
 
 
 def _recv_json(sock: socket.socket, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, Any]:
     """Read one newline-delimited JSON object from *sock*."""
+    log.debug("_recv_json: max_bytes=%d", max_bytes)
     chunks: list[bytes] = []
     received = 0
     while received < max_bytes:
@@ -292,6 +300,8 @@ def one_shot_request(
     timeout: float = _DEFAULT_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Send one envelope over the daemon socket, return the response."""
+    log.info("one_shot_request: keys=%s timeout=%s",
+             sorted(payload), timeout)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(str(socket_path()))
@@ -325,6 +335,7 @@ class IPCServer:
 
     def start(self) -> None:
         """Bind + listen.  Caller is responsible for serving (see ``serve_forever``)."""
+        log.info("start: called")
         if not hasattr(socket, "AF_UNIX"):
             raise RuntimeError("AF_UNIX not available — daemon mode requires Unix")
         path = socket_path()
@@ -340,6 +351,7 @@ class IPCServer:
 
     def serve_forever(self) -> None:
         """Accept connections until ``shutdown`` is called or a kill arrives."""
+        log.info("serve_forever: called")
         import threading
         if self._sock is None:
             raise RuntimeError("serve_forever called before start")
@@ -358,6 +370,7 @@ class IPCServer:
 
     def shutdown(self) -> None:
         """Stop accepting + clean up the socket file."""
+        log.info("shutdown: called")
         self._stop = True
         if self._sock is not None:
             try:
@@ -433,6 +446,7 @@ class IPCServer:
 
 def wait_for_daemon(*, timeout: float, poll_s: float = 0.05) -> bool:
     """Block until ``daemon_running()`` returns True or *timeout* elapses."""
+    log.info("wait_for_daemon: timeout=%s poll_s=%s", timeout, poll_s)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if daemon_running():
@@ -564,6 +578,7 @@ class SingleInstance:
 
     def close(self) -> None:
         """Stop listening and remove the socket file."""
+        log.info("close: called")
         sock = getattr(self, "_sock", None)
         if sock is None:
             return

@@ -227,6 +227,7 @@ def _resolve_scsi_path(vid: int, pid: int) -> str | None:
 
     Returns the absolute /dev path, or None if no match.
     """
+    log.debug("_resolve_scsi_path: %04x:%04x", vid, pid)
     for base, name_prefix in (("/sys/class/scsi_generic", "sg"),
                               ("/sys/block", "sd")):
         base_path = Path(base)
@@ -249,6 +250,7 @@ def _resolve_scsi_path(vid: int, pid: int) -> str | None:
 
 def _walk_sysfs_for_vid_pid(start: Path) -> tuple[int, int] | None:
     """Walk up sysfs parents until we find idVendor + idProduct files."""
+    log.debug("_walk_sysfs_for_vid_pid: start=%s", start)
     path = Path(os.path.realpath(start))
     for _ in range(10):
         path = path.parent
@@ -612,6 +614,7 @@ _POLKIT_POLICY = '/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy'
 
 def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     """Build a command, wrapping in pkexec when polkit policy is installed."""
+    log.debug("_privileged_cmd: binary=%s args=%s", binary, args)
     import shutil
     if hasattr(os, 'geteuid') and os.geteuid() == 0:
         return [binary, *args]
@@ -623,6 +626,7 @@ def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
 
 def _linux_memory_info() -> list[dict[str, str]]:
     """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
+    log.debug("_linux_memory_info: called")
     import subprocess
     slots: list[dict[str, str]] = []
     try:
@@ -663,6 +667,7 @@ def _linux_memory_info() -> list[dict[str, str]]:
 
 def _linux_disk_info() -> list[dict[str, str]]:
     """Get disk info via lsblk -J + smartctl -H per disk."""
+    log.debug("_linux_disk_info: called")
     import json
     import subprocess
     disks: list[dict[str, str]] = []
@@ -693,6 +698,7 @@ def _linux_disk_info() -> list[dict[str, str]]:
 
 def _smart_health(dev_name: str) -> str | None:
     """SMART overall-health status via smartctl -H."""
+    log.debug("_smart_health: dev=%s", dev_name)
     import subprocess
     try:
         result = subprocess.run(

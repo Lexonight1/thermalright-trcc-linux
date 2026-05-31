@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 def build_windows_sensors() -> BaselineSensors:
     """Construct a BaselineSensors with the full Windows source chain."""
+    log.info("build_windows_sensors: called")
     cpu: CpuSource = CpuSourceChain([
         HwinfoCpu(),
         LhmCpu(),
@@ -48,6 +49,7 @@ def _build_windows_gpu_chains() -> list[GpuSource]:
     ``amd:0``, ``intel:0``) — each chain reads its key from the first
     source in the list, so put the strictest identity first.
     """
+    log.debug("_build_windows_gpu_chains: called")
     nvml = discover_nvidia_gpus()
     lhm = discover_lhm_gpus()
     hwinfo = discover_hwinfo_gpus()

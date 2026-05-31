@@ -39,6 +39,7 @@ def detect_gpu_vendors() -> set[str]:
     empty set on any OS without that path (macOS, Windows — those use
     their own detection via the platform's native API).
     """
+    log.info("detect_gpu_vendors: called")
     pci_base = Path("/sys/bus/pci/devices")
     if not pci_base.exists():
         return set()
@@ -75,6 +76,8 @@ def install_matching_gpu_extras(vendors: set[str],
     Returns shell-style exit code (0 = success or nothing to do).
     Pass `dry_run=True` to log what would be installed without doing it.
     """
+    log.info("install_matching_gpu_extras: vendors=%s dry_run=%s",
+             sorted(vendors), dry_run)
     needed = [spec for name, spec in _VENDOR_EXTRAS.items() if name in vendors]
     if not needed:
         log.info("No GPU-specific Python libs required for: %s", sorted(vendors))

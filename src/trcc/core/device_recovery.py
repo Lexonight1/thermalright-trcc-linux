@@ -79,6 +79,7 @@ def is_disconnect_error(exc: BaseException) -> bool:
     transport and re-opening (or failing fast if the device is
     physically gone).
     """
+    log.debug("is_disconnect_error: exc=%s", type(exc).__name__)
     cur: BaseException | None = exc
     while cur is not None:
         if getattr(cur, "errno", None) in _DISCONNECT_ERRNOS:
@@ -93,6 +94,7 @@ def permission_denied_hint() -> str:
     Surfaces in WARNING logs so users see the actionable next step
     inline with the error instead of having to dig for it.
     """
+    log.debug("permission_denied_hint: called")
     if sys.platform.startswith("linux"):
         return "run 'trcc system setup' to install udev rules"
     if sys.platform == "darwin":
@@ -145,6 +147,8 @@ class RecoveryTracker:
         Callers log a single INFO line like ``"send recovered after N
         disconnect failure(s)"`` when the return value is nonzero.
         """
+        log.debug("note_success: label=%s failures=%d",
+                  self._label, self._failures)
         previous = self._failures
         self._failures = 0
         return previous
@@ -159,6 +163,7 @@ class RecoveryTracker:
         get their own one-line hint because the user-actionable fix
         differs from a generic disconnect.
         """
+        log.debug("note_error: label=%s exc=%s", self._label, type(exc).__name__)
         if _has_usb_errno(exc, _ERRNO_EACCES):
             log.warning(
                 "%s: permission denied — %s",

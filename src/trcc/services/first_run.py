@@ -45,6 +45,7 @@ class FirstRunService:
 
     def is_first_run(self) -> bool:
         """True if the marker hasn't been written yet."""
+        log.info("is_first_run: called")
         return not self.marker_path.exists()
 
     def mark_completed(self) -> None:
@@ -53,6 +54,7 @@ class FirstRunService:
         Idempotent — second call is a no-op.  Failures are logged but
         not raised; first-run UI is a nice-to-have, not a hard gate.
         """
+        log.info("mark_completed: called")
         path = self.marker_path
         if path.exists():
             return
@@ -68,6 +70,7 @@ class FirstRunService:
         Used by ``trcc system reset-first-run`` for users who
         want to see the welcome screen again.
         """
+        log.info("reset: called")
         try:
             self.marker_path.unlink(missing_ok=True)
         except OSError as e:

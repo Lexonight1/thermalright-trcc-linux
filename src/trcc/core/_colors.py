@@ -16,6 +16,10 @@ Pure-stdlib, no project imports.
 
 from __future__ import annotations
 
+import logging
+
+log = logging.getLogger(__name__)
+
 
 def parse_hex(value: str) -> tuple[int, int, int, int]:
     """Parse ``#RRGGBB`` or ``#RRGGBBAA`` to ``(r, g, b, a)``.
@@ -26,6 +30,7 @@ def parse_hex(value: str) -> tuple[int, int, int, int]:
     their domain's preferred failure UX (``typer.BadParameter``,
     silent ``None``, ``(0, 0, 0)`` fallback, etc.).
     """
+    log.debug("parse_hex: value=%r", value)
     s = value.strip().lstrip("#")
     if len(s) == 6:
         return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)

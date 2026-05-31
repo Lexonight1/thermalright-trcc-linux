@@ -78,6 +78,7 @@ def is_safe_zip_member(name: str) -> bool:
     since Windows-authored archives sometimes emit those for files
     that POSIX consumers will then mis-split.
     """
+    log.debug("is_safe_zip_member: name=%r", name)
     if not name or not name.strip():
         return False
     if "\x00" in name:
@@ -110,6 +111,7 @@ def is_safe_user_name(name: str, *, max_length: int = 255) -> bool:
     * NUL bytes
     * Parent-directory traversal (``..`` as a path component)
     """
+    log.debug("is_safe_user_name: name=%r max_length=%d", name, max_length)
     if not name or len(name) > max_length:
         return False
     if name[0] == ".":

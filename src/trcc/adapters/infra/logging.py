@@ -131,6 +131,7 @@ def tail_log(log_file: Path, n_lines: int = 1000) -> list[str]:
     Acceptable because log rotation caps the file at ~1 MB and we only
     ever call this when generating a debug report.
     """
+    log.info("tail_log: file=%s n_lines=%d", log_file, n_lines)
     if not log_file.is_file():
         return []
     try:

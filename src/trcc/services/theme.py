@@ -290,6 +290,10 @@ class ThemeService:
         overlay elements (if any), and writes a 0xDD-format DC file.
         Returns the output path.
         """
+        log.info("export_dc: theme_dir=%s output_path=%s user_elements=%s",
+                 theme_dir, output_path,
+                 None if user_overlay_elements is None
+                 else len(user_overlay_elements))
         try:
             config = self._load_config(theme_dir)
         except ThemeError:
@@ -307,6 +311,7 @@ class ThemeService:
         inside it.  Raises ``ThemeError`` on traversal, missing dir, or
         IO failure.
         """
+        log.info("delete: directory=%s name=%s", directory, name)
         import shutil
 
         if not name or "/" in name or "\\" in name or name in (".", ".."):
@@ -367,6 +372,7 @@ class ThemeService:
         theme).  SRP — caller doesn't have to inspect the suffix of
         whatever ``background_path`` returned.
         """
+        log.debug("video_path: theme=%s", theme.name)
         for candidate in _VIDEO_CANDIDATES:
             video = theme.path / candidate
             if video.exists():
@@ -401,6 +407,7 @@ class ThemeService:
         The GUI's theme browser uses this for grid tiles — distinct from
         ``background_path`` which is what the renderer ships to the LCD.
         """
+        log.debug("preview_path: theme=%s", theme.name)
         td = ThemeDir(theme.path)
         return td.preview if td.preview.exists() else None
 
@@ -418,6 +425,8 @@ class ThemeService:
         ``ThemeService.discover_masks`` so the GUI inlining at
         ``uc_theme_mask.refresh_masks`` can be replaced by a one-liner.
         """
+        log.info("discover_masks: cloud=%s user=%s",
+                 cloud_masks_dir, user_masks_dir)
         masks: builtins.list[DiscoveredMask] = []
         seen: set[str] = set()
 
@@ -525,6 +534,7 @@ class ThemeService:
         extraction failure, the partially-written destination is
         cleaned up so users don't end up with half-extracted themes.
         """
+        log.info("import_: archive=%s into=%s", archive_path, into_dir)
         if not archive_path.exists():
             raise ThemeError(f"Archive does not exist: {archive_path}")
         if not archive_path.is_file():

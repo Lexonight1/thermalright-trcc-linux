@@ -97,16 +97,19 @@ class Settings:
         return self._app
 
     def set_language(self, lang: str) -> None:
+        log.info("set_language: lang=%s", lang)
         with self._lock:
             self._app.language = lang
             self._save()
 
     def set_active_device(self, key: str | None) -> None:
+        log.info("set_active_device: key=%s", key)
         with self._lock:
             self._app.active_device = key
             self._save()
 
     def set_refresh_interval(self, seconds: float) -> None:
+        log.info("set_refresh_interval: seconds=%s", seconds)
         with self._lock:
             self._app.refresh_interval_s = max(0.1, seconds)
             self._save()
@@ -119,6 +122,7 @@ class Settings:
         to publish one per-device event after a global setter has
         already fanned the value out.
         """
+        log.debug("device_keys: called")
         with self._lock:
             return tuple(self._devices)
 
@@ -131,6 +135,7 @@ class Settings:
         of device keys that were touched so callers can publish a
         per-device event without poking private state.
         """
+        log.info("set_global_temp_unit: unit=%s", unit)
         with self._lock:
             self._app.temp_unit = unit
             for device_settings in self._devices.values():
@@ -149,6 +154,7 @@ class Settings:
         keys touched so the calling Command can publish per-device
         events.
         """
+        log.info("set_global_time_format: fmt=%s", fmt)
         with self._lock:
             self._app.time_format = fmt
             for device_settings in self._devices.values():
@@ -163,6 +169,7 @@ class Settings:
         ICU-ish pattern (``yyyy/MM/dd``, ``dd/MM/yyyy``, etc.) that
         ``DisplayService.compute_clock`` reads per render.
         """
+        log.info("set_global_date_format: fmt=%s", fmt)
         with self._lock:
             self._app.date_format = fmt
             for device_settings in self._devices.values():
@@ -172,6 +179,7 @@ class Settings:
 
     def set_active_gpu(self, gpu_key: str | None) -> None:
         """Set the user-selected primary GPU. None = auto-pick."""
+        log.info("set_active_gpu: gpu_key=%s", gpu_key)
         with self._lock:
             self._app.active_gpu = gpu_key
             self._save()
@@ -188,6 +196,7 @@ class Settings:
         defaults.  Existing devices keep whatever was persisted —
         only first-touch is seeded.
         """
+        log.debug("for_device: key=%s", key)
         with self._lock:
             if key not in self._devices:
                 self._devices[key] = DeviceSettings(
@@ -198,42 +207,50 @@ class Settings:
             return self._devices[key]
 
     def set_orientation(self, key: str, degrees: int) -> None:
+        log.info("set_orientation: key=%s degrees=%d", key, degrees)
         with self._lock:
             self.for_device(key).orientation = degrees
             self._save()
 
     def set_brightness(self, key: str, percent: int) -> None:
+        log.info("set_brightness: key=%s percent=%d", key, percent)
         with self._lock:
             self.for_device(key).brightness = max(0, min(100, percent))
             self._save()
 
     def set_current_theme(self, key: str, theme_name: str | None) -> None:
+        log.info("set_current_theme: key=%s theme=%s", key, theme_name)
         with self._lock:
             self.for_device(key).current_theme = theme_name
             self._save()
 
     def set_temp_unit(self, key: str, unit: TempUnit) -> None:
+        log.info("set_temp_unit: key=%s unit=%s", key, unit)
         with self._lock:
             self.for_device(key).temp_unit = unit
             self._save()
 
     def set_time_format(self, key: str, fmt: Literal["12h", "24h"]) -> None:
+        log.info("set_time_format: key=%s fmt=%s", key, fmt)
         with self._lock:
             self.for_device(key).time_format = fmt
             self._save()
 
     def set_date_format(self, key: str, fmt: str) -> None:
+        log.info("set_date_format: key=%s fmt=%s", key, fmt)
         with self._lock:
             self.for_device(key).date_format = fmt
             self._save()
 
     def set_overlay_enabled(self, key: str, enabled: bool) -> None:
+        log.info("set_overlay_enabled: key=%s enabled=%s", key, enabled)
         with self._lock:
             self.for_device(key).overlay_enabled = enabled
             self._save()
 
     def set_mask_position(self, key: str,
                           position: tuple[int, int] | None) -> None:
+        log.info("set_mask_position: key=%s position=%s", key, position)
         with self._lock:
             self.for_device(key).mask_position = position
             self._save()
@@ -245,6 +262,7 @@ class Settings:
         — picking "no mask" reverts the metric layout to the active
         theme's own elements.  Mask + its DC layout are coupled.
         """
+        log.info("set_mask_path: key=%s path=%s", key, path)
         with self._lock:
             dev = self.for_device(key)
             dev.mask_path = path
@@ -262,6 +280,8 @@ class Settings:
         so the mask's metric layout survives a theme swap (cloud
         background swap, local theme reselection, etc.).
         """
+        log.info("set_mask_overlay_elements: key=%s count=%s", key,
+                 None if elements is None else len(elements))
         with self._lock:
             self.for_device(key).mask_overlay_elements = (
                 list(elements) if elements is not None else None
@@ -270,6 +290,7 @@ class Settings:
 
     def set_mask_visible(self, key: str, visible: bool) -> None:
         """Toggle mask visibility for the device."""
+        log.info("set_mask_visible: key=%s visible=%s", key, visible)
         with self._lock:
             self.for_device(key).mask_visible = visible
             self._save()
@@ -283,17 +304,20 @@ class Settings:
         non-cloud path) should clear it so picking a local theme reverts
         to the theme's own background.
         """
+        log.info("set_background_path: key=%s path=%s", key, path)
         with self._lock:
             self.for_device(key).background_path = path
             self._save()
 
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
+        log.info("set_fit_mode: key=%s mode=%s", key, mode)
         with self._lock:
             self.for_device(key).fit_mode = mode
             self._save()
 
     def set_split_mode(self, key: str, mode: int) -> None:
         """Set per-device Dynamic Island style (0=off, 1/2/3=A/B/C)."""
+        log.info("set_split_mode: key=%s mode=%d", key, mode)
         with self._lock:
             self.for_device(key).split_mode = mode
             self._save()
@@ -302,37 +326,44 @@ class Settings:
 
     def for_led(self, key: str) -> LedDeviceSettings:
         """Return the LedDeviceSettings for *key*, defaulting on first touch."""
+        log.debug("for_led: key=%s", key)
         with self._lock:
             if key not in self._led_devices:
                 self._led_devices[key] = LedDeviceSettings()
             return self._led_devices[key]
 
     def set_led_mode(self, key: str, mode: LEDMode) -> None:
+        log.info("set_led_mode: key=%s mode=%s", key, mode)
         with self._lock:
             self.for_led(key).mode = mode
             self._save()
 
     def set_led_color(self, key: str, color: tuple[int, int, int]) -> None:
+        log.info("set_led_color: key=%s color=%s", key, color)
         with self._lock:
             self.for_led(key).color = color
             self._save()
 
     def set_led_brightness(self, key: str, percent: int) -> None:
+        log.info("set_led_brightness: key=%s percent=%d", key, percent)
         with self._lock:
             self.for_led(key).brightness = max(0, min(100, percent))
             self._save()
 
     def set_led_global_on(self, key: str, on: bool) -> None:
+        log.info("set_led_global_on: key=%s on=%s", key, on)
         with self._lock:
             self.for_led(key).global_on = on
             self._save()
 
     def set_led_test_mode(self, key: str, enabled: bool) -> None:
+        log.info("set_led_test_mode: key=%s enabled=%s", key, enabled)
         with self._lock:
             self.for_led(key).test_mode = enabled
             self._save()
 
     def set_led_temp_source(self, key: str, source: str) -> None:
+        log.info("set_led_temp_source: key=%s source=%s", key, source)
         if source not in ("cpu", "gpu"):
             raise ValueError(f"Invalid temp source: {source!r}; expected 'cpu' or 'gpu'")
         with self._lock:
@@ -340,6 +371,7 @@ class Settings:
             self._save()
 
     def set_led_load_source(self, key: str, source: str) -> None:
+        log.info("set_led_load_source: key=%s source=%s", key, source)
         if source not in ("cpu", "gpu"):
             raise ValueError(f"Invalid load source: {source!r}; expected 'cpu' or 'gpu'")
         with self._lock:
@@ -348,6 +380,7 @@ class Settings:
 
     def set_led_zone_count(self, key: str, count: int) -> None:
         """Resize the zones list — called by Led.connect once style is known."""
+        log.info("set_led_zone_count: key=%s count=%d", key, count)
         with self._lock:
             settings = self.for_led(key)
             current = len(settings.zones)
@@ -370,6 +403,12 @@ class Settings:
         on: bool | None = None,
     ) -> None:
         """Update one zone's persistent state — only the given fields change."""
+        log.info("set_led_zone: key=%s zone=%d fields=%s",
+                 key, zone,
+                 {k: v for k, v in {
+                     "mode": mode, "color": color,
+                     "brightness": brightness, "on": on,
+                 }.items() if v is not None})
         with self._lock:
             settings = self.for_led(key)
             if not 0 <= zone < len(settings.zones):
@@ -389,17 +428,20 @@ class Settings:
             self._save()
 
     def set_led_zone_sync(self, key: str, enabled: bool) -> None:
+        log.info("set_led_zone_sync: key=%s enabled=%s", key, enabled)
         with self._lock:
             self.for_led(key).zone_sync = enabled
             self._save()
 
     def set_led_zone_sync_interval(self, key: str, ticks: int) -> None:
+        log.info("set_led_zone_sync_interval: key=%s ticks=%d", key, ticks)
         with self._lock:
             self.for_led(key).zone_sync_interval_ticks = max(1, ticks)
             self._save()
 
     def set_led_selected_zone(self, key: str, zone: int) -> None:
         """Pick the active zone — UIs use this when the user clicks a fan/strip."""
+        log.info("set_led_selected_zone: key=%s zone=%d", key, zone)
         with self._lock:
             settings = self.for_led(key)
             if zone < 0:
@@ -409,6 +451,7 @@ class Settings:
 
     def set_led_segment_on(self, key: str, index: int, on: bool) -> None:
         """Flip one segment on/off (segment-display devices only)."""
+        log.info("set_led_segment_on: key=%s index=%d on=%s", key, index, on)
         with self._lock:
             settings = self.for_led(key)
             if index < 0:
@@ -422,24 +465,30 @@ class Settings:
 
     def set_led_clock_24h(self, key: str, is_24h: bool) -> None:
         """Set the 12h/24h clock display format for LC2-style devices."""
+        log.info("set_led_clock_24h: key=%s is_24h=%s", key, is_24h)
         with self._lock:
             self.for_led(key).clock_24h = is_24h
             self._save()
 
     def set_led_week_start(self, key: str, sunday_first: bool) -> None:
         """Pick week-start: ``True`` = Sunday-first, ``False`` = Monday-first."""
+        log.info("set_led_week_start: key=%s sunday_first=%s",
+                 key, sunday_first)
         with self._lock:
             self.for_led(key).week_sunday = sunday_first
             self._save()
 
     def set_led_memory_ratio(self, key: str, ratio_mode: bool) -> None:
         """Memory display mode: ``True`` = percentage, ``False`` = GB used."""
+        log.info("set_led_memory_ratio: key=%s ratio_mode=%s",
+                 key, ratio_mode)
         with self._lock:
             self.for_led(key).memory_ratio = ratio_mode
             self._save()
 
     def set_led_disk_index(self, key: str, index: int) -> None:
         """Pick which disk's read/write stats to surface on the LED."""
+        log.info("set_led_disk_index: key=%s index=%d", key, index)
         if index < 0:
             raise ValueError(f"disk_index must be >= 0, got {index}")
         with self._lock:
@@ -448,6 +497,7 @@ class Settings:
 
     def set_hdd_enabled(self, enabled: bool) -> None:
         """Toggle HDD inclusion in sensor metrics broadcasts."""
+        log.info("set_hdd_enabled: enabled=%s", enabled)
         with self._lock:
             self._app.hdd_enabled = enabled
             self._save()
@@ -457,6 +507,7 @@ class Settings:
         mode: Literal["theme", "color", "transparent"],
     ) -> None:
         """Pick what fills the LCD behind overlays."""
+        log.info("set_background_mode: key=%s mode=%s", key, mode)
         if mode not in ("theme", "color", "transparent"):
             raise ValueError(
                 f"background_mode must be 'theme' / 'color' / 'transparent', "
@@ -470,6 +521,7 @@ class Settings:
         self, key: str, color: tuple[int, int, int],
     ) -> None:
         """Set the solid-color background used when background_mode='color'."""
+        log.info("set_overlay_background: key=%s color=%s", key, color)
         for label, value in zip("rgb", color, strict=False):
             if not 0 <= value <= 255:
                 raise ValueError(
@@ -490,6 +542,8 @@ class Settings:
         this device's list (the AddOverlayElement Command does the UUID
         generation + uniqueness check).
         """
+        log.info("add_user_overlay_element: key=%s id=%s type=%s",
+                 key, element.id, element.type)
         with self._lock:
             self.for_device(key).user_overlay_elements.append(element)
             self._save()
@@ -502,6 +556,8 @@ class Settings:
     ) -> OverlayElement:
         """Apply ``fields`` to the element with the given id.  Returns
         the updated element.  Raises ``KeyError`` if id is unknown."""
+        log.info("update_user_overlay_element: key=%s id=%s fields=%s",
+                 key, element_id, sorted(fields))
         with self._lock:
             elements = self.for_device(key).user_overlay_elements
             for idx, e in enumerate(elements):
@@ -520,6 +576,7 @@ class Settings:
 
         Raises ``KeyError`` if id is unknown.
         """
+        log.info("delete_user_overlay_element: key=%s id=%s", key, element_id)
         with self._lock:
             elements = self.for_device(key).user_overlay_elements
             for idx, e in enumerate(elements):
@@ -533,6 +590,8 @@ class Settings:
         self, key: str, elements: list[OverlayElement],
     ) -> None:
         """Replace the user-overlay list wholesale (bulk SetOverlayConfig)."""
+        log.info("set_user_overlay_elements: key=%s count=%d",
+                 key, len(elements))
         with self._lock:
             self.for_device(key).user_overlay_elements = list(elements)
             self._save()
@@ -546,6 +605,7 @@ class Settings:
         to lists by ``_json_default`` is applied at JSON write time.
         Caller passes the dict to ``json.dump`` with that same default.
         """
+        log.info("snapshot_device: key=%s", key)
         with self._lock:
             return asdict(self.for_device(key))
 
@@ -556,6 +616,7 @@ class Settings:
         (unknown fields ignored; missing fields fall back to dataclass
         defaults) so JSON exports survive schema evolution.
         """
+        log.info("restore_device: key=%s fields=%d", key, len(snapshot))
         with self._lock:
             self._devices[key] = _device_settings_from_dict(snapshot)
             self._save()
@@ -563,6 +624,7 @@ class Settings:
     # ── Slideshow ─────────────────────────────────────────────────────
 
     def set_slideshow_enabled(self, key: str, enabled: bool) -> None:
+        log.info("set_slideshow_enabled: key=%s enabled=%s", key, enabled)
         with self._lock:
             self.for_device(key).slideshow_enabled = enabled
             self._save()
@@ -575,6 +637,9 @@ class Settings:
         interval_s: float | None = None,
     ) -> None:
         """Set the slideshow theme list + interval atomically."""
+        log.info("configure_slideshow: key=%s themes=%s interval_s=%s",
+                 key,
+                 None if themes is None else len(themes), interval_s)
         with self._lock:
             s = self.for_device(key)
             if themes is not None:

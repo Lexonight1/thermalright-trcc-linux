@@ -46,6 +46,7 @@ def install(dry_run: bool = False) -> int:
     but Windows setup is read-only by design (driver installation
     requires UAC + a signed driver package — the user must run Zadig).
     """
+    log.info("install: dry_run=%s", dry_run)
     if not _is_windows():
         log.warning("WinUSB wizard is Windows-only — current platform: %s", sys.platform)
         return 0

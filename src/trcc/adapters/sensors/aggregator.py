@@ -138,21 +138,26 @@ class BaselineSensors(SensorEnumerator):
     # ── Structured access ──────────────────────────────────────────
 
     def cpu(self) -> CpuSource:
+        log.debug("cpu: called")
         return self._cpu
 
     def memory(self) -> MemorySource:
+        log.debug("memory: called")
         return self._memory
 
     def gpus(self) -> list[GpuSource]:
+        log.debug("gpus: count=%d", len(self._gpus))
         return list(self._gpus)
 
     def fans(self) -> list[FanSource]:
+        log.debug("fans: count=%d", len(self._fans))
         return list(self._fans)
 
     # ── Flat dict view ─────────────────────────────────────────────
 
     def discover(self) -> list[SensorReading]:
         """Return one SensorReading per normalized key with current values."""
+        log.info("discover: called")
         current = self.read_all()
         readings: list[SensorReading] = []
 
@@ -210,6 +215,7 @@ class BaselineSensors(SensorEnumerator):
         return readings
 
     def read_all(self) -> dict[str, float]:
+        log.debug("read_all: cached=%d", len(self._readings))
         with self._lock:
             if self._readings:
                 return dict(self._readings)
@@ -218,6 +224,7 @@ class BaselineSensors(SensorEnumerator):
             return dict(self._readings)
 
     def read_one(self, sensor_id: str) -> float | None:
+        log.debug("read_one: sensor_id=%s", sensor_id)
         with self._lock:
             return self._readings.get(sensor_id)
 
@@ -245,6 +252,7 @@ class BaselineSensors(SensorEnumerator):
             self._poll_thread = None
 
     def _poll_loop(self) -> None:
+        log.debug("_poll_loop: starting interval=%.1fs", self._interval_s)
         while not self._stop.is_set():
             try:
                 self._poll_once()
@@ -253,6 +261,7 @@ class BaselineSensors(SensorEnumerator):
             self._stop.wait(self._interval_s)
 
     def _poll_once(self) -> None:
+        log.debug("_poll_once: called")
         r: dict[str, float] = {}
 
         # CPU
@@ -330,6 +339,7 @@ def build_linux_sensors() -> BaselineSensors:
     Falls back to BaselineSensors if /sys/class/hwmon doesn't exist (VM,
     non-Linux accidentally calling this).
     """
+    log.info("build_linux_sensors: called")
     hwmon_devices = scan_hwmon_devices()
     psutil_cpu = PsutilCpu()
     cpu = HwmonCpu(psutil_cpu, find_cpu_temp_device(hwmon_devices))

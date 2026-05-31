@@ -49,6 +49,7 @@ def install(dry_run: bool = False) -> int:
     but macOS setup is read-only — fixing requires user action in
     System Settings or a re-launch under ``sudo``.
     """
+    log.info("install: dry_run=%s", dry_run)
     if not _is_macos():
         log.warning("macOS setup wizard is macOS-only — current platform: %s", sys.platform)
         return 0

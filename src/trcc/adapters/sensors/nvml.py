@@ -51,6 +51,7 @@ def _ensure_init() -> bool:
 
 def discover_nvidia_gpus() -> list[GpuSource]:
     """Return one NvidiaGpu per card NVML sees.  Empty if no NVIDIA / no driver."""
+    log.info("discover_nvidia_gpus: called")
     if not _ensure_init() or pynvml is None:
         return []
     gpus: list[GpuSource] = []
@@ -100,6 +101,7 @@ class NvidiaGpu(GpuSource):
         return True
 
     def temp(self) -> float | None:
+        log.debug("temp: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -110,6 +112,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def usage(self) -> float | None:
+        log.debug("usage: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -119,6 +122,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def clock(self) -> float | None:
+        log.debug("clock: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -129,6 +133,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def power(self) -> float | None:
+        log.debug("power: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -138,6 +143,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def fan(self) -> float | None:
+        log.debug("fan: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -147,6 +153,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def vram_used(self) -> float | None:
+        log.debug("vram_used: idx=%d", self._index)
         if pynvml is None:
             return None
         try:
@@ -156,6 +163,7 @@ class NvidiaGpu(GpuSource):
             return None
 
     def vram_total(self) -> float | None:
+        log.debug("vram_total: idx=%d", self._index)
         if pynvml is None:
             return None
         try:

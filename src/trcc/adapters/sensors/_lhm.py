@@ -500,6 +500,7 @@ def discover_lhm_gpus(
     independently queryable; the chain wraps them with vendor-native
     sources (NVML, etc.) for higher-quality readings.
     """
+    log.info("discover_lhm_gpus: called")
     ns = handle_factory()
     if ns is None:
         return []

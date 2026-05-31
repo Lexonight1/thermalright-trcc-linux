@@ -43,6 +43,7 @@ def run_doctor(platform: Platform) -> DoctorResult:
 def render_doctor_output(report: HealthReport) -> str:
     """Plain-text rendering for CLI use (no ANSI — terminals diverge enough
     that we leave colorization to typer.style at the call site)."""
+    log.info("render_doctor_output: checks=%d", len(report.checks))
     lines: list[str] = []
     for c in report.checks:
         lines.append(f"[{c.severity:4}] {c.name:22}  {c.message}")

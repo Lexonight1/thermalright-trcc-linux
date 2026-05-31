@@ -29,7 +29,10 @@ Source-of-truth comment from legacy ``device.py``:
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +194,8 @@ def get_variant_override(
     Returns the override or ``None`` if no entry matches; callers
     should leave the registry-default values in place when ``None``.
     """
+    log.info("get_variant_override: vid=%04x pid=%04x key=%d sub=%d",
+             vid, pid, key, sub)
     family = _VARIANT_REGISTRY.get((vid, pid))
     if family is None:
         return None
@@ -201,6 +206,8 @@ def get_button_image(
     vid: int, pid: int, key: int, sub: int = 0,
 ) -> str | None:
     """Resolve device button image from (VID, PID, PM, SUB)."""
+    log.info("get_button_image: vid=%04x pid=%04x key=%d sub=%d",
+             vid, pid, key, sub)
     override = get_variant_override(vid, pid, key, sub)
     return override.button_image if override is not None else None
 

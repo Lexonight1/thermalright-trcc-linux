@@ -6,12 +6,15 @@ concrete implementations.
 """
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .errors import UnsupportedOperationError
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .events import EventBus
@@ -441,10 +444,12 @@ class Paths(ABC):
         byte-for-byte twin of the default one and resolution differs
         only by which root you start from.
         """
+        log.debug("user_data_dir: called")
         return self.user_content_dir() / "data"
 
     def theme_dir(self, width: int, height: int) -> Path:
         """Themes shipped with the app or downloaded from GitHub releases."""
+        log.debug("theme_dir: %dx%d", width, height)
         return self.data_dir() / f"theme{width}{height}"
 
     def user_theme_dir(self, width: int, height: int) -> Path:
@@ -452,10 +457,12 @@ class Paths(ABC):
 
         Same subpath as :meth:`theme_dir`, rooted at :meth:`user_data_dir`.
         """
+        log.debug("user_theme_dir: %dx%d", width, height)
         return self.user_data_dir() / f"theme{width}{height}"
 
     def cloud_theme_dir(self, width: int, height: int) -> Path:
         """Cloud-catalog themes (backgrounds) downloaded at runtime."""
+        log.debug("cloud_theme_dir: %dx%d", width, height)
         return self.data_dir() / "web" / f"{width}{height}"
 
     def user_background_dir(self, width: int, height: int) -> Path:
@@ -464,10 +471,12 @@ class Paths(ABC):
         Same subpath as :meth:`cloud_theme_dir`, rooted at
         :meth:`user_data_dir` — user backgrounds mirror cloud ones.
         """
+        log.debug("user_background_dir: %dx%d", width, height)
         return self.user_data_dir() / "web" / f"{width}{height}"
 
     def cloud_mask_dir(self, width: int, height: int) -> Path:
         """Cloud-catalog masks downloaded at runtime."""
+        log.debug("cloud_mask_dir: %dx%d", width, height)
         return self.data_dir() / "web" / f"zt{width}{height}"
 
     def user_mask_dir(self, width: int, height: int) -> Path:
@@ -476,6 +485,7 @@ class Paths(ABC):
         Same subpath as :meth:`cloud_mask_dir`, rooted at
         :meth:`user_data_dir` — user masks mirror cloud ones.
         """
+        log.debug("user_mask_dir: %dx%d", width, height)
         return self.user_data_dir() / "web" / f"zt{width}{height}"
 
 

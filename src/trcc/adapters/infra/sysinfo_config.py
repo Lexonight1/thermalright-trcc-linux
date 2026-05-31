@@ -119,6 +119,7 @@ def _resolve_target(
     empty and falls back to its own logic (positional fill for fans,
     ``--`` rendering for other panels).
     """
+    log.debug("_resolve_target: target=%s readings=%d", target, len(readings))
     if target.startswith("fan:label:"):
         keywords = [
             kw.strip().lower()
@@ -158,6 +159,7 @@ class SysInfoConfig:
         return self._path
 
     def load(self) -> list[PanelConfig]:
+        log.info("load: path=%s", self._path)
         # Honour the legacy ``sysinfo_config.json`` filename if present.
         legacy = self._path.parent / "sysinfo_config.json"
         if legacy.exists() and not self._path.exists():
@@ -194,6 +196,7 @@ class SysInfoConfig:
         return self.panels
 
     def save(self) -> None:
+        log.info("save: path=%s panels=%d", self._path, len(self.panels))
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "version": 1,
@@ -235,6 +238,7 @@ class SysInfoConfig:
         available on this host stay unbound — the panel renders
         ``--``.
         """
+        log.info("auto_map: panels=%d", len(self.panels))
         discover = getattr(enumerator, "discover", None)
         if discover is None:
             log.warning(
@@ -318,6 +322,7 @@ class SysInfoConfig:
 
     @staticmethod
     def defaults() -> list[PanelConfig]:
+        log.info("defaults: called")
         return [
             PanelConfig(1, "CPU", [
                 SensorBinding("TEMP", "", "°C"),

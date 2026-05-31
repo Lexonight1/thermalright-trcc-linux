@@ -52,6 +52,7 @@ def _ensure_qt_app() -> None:
 
 def _rgb_tuple_to_qcolor(color: tuple[int, ...]) -> QColor:
     """(r, g, b) or (r, g, b, a) → QColor."""
+    log.debug("_rgb_tuple_to_qcolor: color=%s", color)
     if len(color) == 3:
         return QColor(color[0], color[1], color[2])
     if len(color) == 4:
@@ -75,6 +76,7 @@ class QtRenderer(Renderer):
 
     def create_surface(self, width: int, height: int,
                        color: tuple[int, ...] | None = None) -> Any:
+        log.debug("create_surface: %dx%d color=%s", width, height, color)
         img = QImage(width, height, QImage.Format.Format_ARGB32)
         if color is None:
             img.fill(Qt.GlobalColor.transparent)
@@ -93,6 +95,7 @@ class QtRenderer(Renderer):
         return img
 
     def surface_size(self, surface: Any) -> tuple[int, int]:
+        log.debug("surface_size: called")
         return (surface.width(), surface.height())
 
     # ── Compositing ───────────────────────────────────────────────────
@@ -100,6 +103,7 @@ class QtRenderer(Renderer):
     def composite(self, base: Any, overlay: Any,
                   position: tuple[int, int],
                   mask: Any | None = None) -> Any:
+        log.debug("composite: position=%s mask=%s", position, mask is not None)
         result = QImage(base)
         painter = QPainter(result)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
@@ -118,6 +122,7 @@ class QtRenderer(Renderer):
         return result
 
     def resize(self, surface: Any, width: int, height: int) -> Any:
+        log.debug("resize: width=%d height=%d", width, height)
         return surface.scaled(
             width, height,
             Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -125,6 +130,7 @@ class QtRenderer(Renderer):
         )
 
     def rotate(self, surface: Any, degrees: int) -> Any:
+        log.debug("rotate: degrees=%d", degrees)
         if degrees % 360 == 0:
             return QImage(surface)
         xform = QTransform().rotate(degrees)
@@ -132,6 +138,7 @@ class QtRenderer(Renderer):
 
     def flip_horizontal(self, surface: Any) -> Any:
         """Mirror surface across the vertical axis (X → -X)."""
+        log.debug("flip_horizontal: called")
         return surface.mirrored(horizontal=True, vertical=False)
 
     # ── Adjustments ───────────────────────────────────────────────────
@@ -154,6 +161,7 @@ class QtRenderer(Renderer):
         composite black at that alpha.  ``percent >= 100`` is a no-op
         (legacy doesn't implement brightness boost above 100% either).
         """
+        log.debug("apply_brightness: percent=%d", percent)
         if percent >= 100:
             return surface
         result = surface.copy()
@@ -174,6 +182,8 @@ class QtRenderer(Renderer):
         """Draw *text* centered on ``(x, y)`` — matches C# DrawString
         with ``RectangleF(myX - w/2, myY - h/2, w, h)``.
         """
+        log.debug("draw_text: %r at (%d, %d) size=%d color=%s",
+                  text, x, y, size, color)
         font = self._get_font(size, bold, italic)
         painter = QPainter(surface)
         painter.setPen(QPen(QColor(color)))
@@ -221,6 +231,7 @@ class QtRenderer(Renderer):
            flag.  ``Format_RGB16`` writes native-endian bytes; swap if
            the device wants the other order.
         """
+        log.debug("encode_rgb565: byte_order=%s", byte_order)
         # Strip premultiplied alpha before quantizing.
         if surface.format() != QImage.Format.Format_RGB32:
             surface = surface.convertToFormat(QImage.Format.Format_RGB32)
@@ -250,6 +261,7 @@ class QtRenderer(Renderer):
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:
         """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size."""
+        log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
         def _save(q: int) -> bytes:
             from PySide6.QtCore import QBuffer, QIODevice
             qbuf = QBuffer()
@@ -278,6 +290,7 @@ class QtRenderer(Renderer):
         Used by ``GET /devices/{key}/display/preview`` for dashboard
         snapshots — JPEG would chew up overlay text + small CJK glyphs.
         """
+        log.debug("encode_png: called")
         from PySide6.QtCore import QBuffer, QIODevice
         qbuf = QBuffer()
         qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -295,6 +308,7 @@ class QtRenderer(Renderer):
         cell averages the underlying region (cheaper + visually
         better than per-pixel sampling).
         """
+        log.debug("get_pixels_rgb: cols=%d rows=%d", cols, rows)
         scaled = surface.scaled(
             cols, rows,
             Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -318,6 +332,7 @@ class QtRenderer(Renderer):
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
     def from_raw_rgb24(self, frame: RawFrame) -> Any:
+        log.debug("from_raw_rgb24: %dx%d", frame.width, frame.height)
         qimg = QImage(
             frame.data, frame.width, frame.height,
             frame.width * 3,
@@ -330,4 +345,5 @@ class QtRenderer(Renderer):
     @staticmethod
     def to_pixmap(surface: Any) -> QPixmap:
         """Convert a QImage surface to a QPixmap (for GUI display)."""
+        log.debug("to_pixmap: called")
         return QPixmap.fromImage(surface)

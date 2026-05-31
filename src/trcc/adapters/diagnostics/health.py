@@ -71,6 +71,7 @@ class HealthReport:
 
 def check_python_version() -> HealthCheckResult:
     """Python ≥ 3.11 is the project minimum (match-statement + slots)."""
+    log.info("check_python_version: called")
     major, minor = sys.version_info[:2]
     if (major, minor) >= (3, 11):
         return HealthCheckResult(
@@ -86,6 +87,7 @@ def check_python_version() -> HealthCheckResult:
 
 def check_log_writable(paths: Paths) -> HealthCheckResult:
     """The log file's parent dir must be writable for diagnostics to land."""
+    log.info("check_log_writable: called")
     log_path = paths.log_file()
     parent = log_path.parent
     try:
@@ -106,6 +108,7 @@ def check_log_writable(paths: Paths) -> HealthCheckResult:
 
 
 def check_config_writable(paths: Paths) -> HealthCheckResult:
+    log.info("check_config_writable: called")
     config_dir = paths.config_dir()
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +129,7 @@ def check_config_writable(paths: Paths) -> HealthCheckResult:
 
 def check_devices_visible(platform: Platform) -> HealthCheckResult:
     """A device-less scan is WARN not FAIL — the user might not have plugged in yet."""
+    log.info("check_devices_visible: called")
     try:
         devices = platform.scan_devices()
     except (OSError, RuntimeError) as e:
@@ -150,6 +154,7 @@ def check_devices_visible(platform: Platform) -> HealthCheckResult:
 
 def check_sensors_enumerable(platform: Platform) -> HealthCheckResult:
     """At least one sensor (CPU temp / RAM) should be readable."""
+    log.info("check_sensors_enumerable: called")
     try:
         descriptors = platform.sensors().discover()
     except (OSError, RuntimeError) as e:
@@ -173,6 +178,7 @@ def check_sensors_enumerable(platform: Platform) -> HealthCheckResult:
 def check_ffmpeg_present() -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
+    log.info("check_ffmpeg_present: called")
     if shutil.which("ffmpeg"):
         return HealthCheckResult(
             name="ffmpeg", severity="OK",
@@ -188,6 +194,7 @@ def check_ffmpeg_present() -> HealthCheckResult:
 
 def check_qt_importable() -> HealthCheckResult:
     """PySide6 is required for the GUI; absence is WARN if headless."""
+    log.info("check_qt_importable: called")
     try:
         import PySide6  # noqa: F401
     except ImportError:
@@ -204,6 +211,7 @@ def check_qt_importable() -> HealthCheckResult:
 
 def check_udev_rules_linux() -> HealthCheckResult:
     """Linux-only: look for installed udev rules under /etc/udev/rules.d/."""
+    log.info("check_udev_rules_linux: called")
     if sys.platform != "linux":
         return HealthCheckResult(
             name="udev-rules", severity="OK",
@@ -231,6 +239,7 @@ def check_udev_rules_linux() -> HealthCheckResult:
 def check_seven_zip_present() -> HealthCheckResult:
     """``7z`` is required for theme-pack extraction.  Absence is WARN —
     user can still install themes via tarballs or the cloud catalog."""
+    log.info("check_seven_zip_present: called")
     if shutil.which("7z"):
         return HealthCheckResult(
             name="7z", severity="OK",
@@ -280,6 +289,7 @@ def detect_package_manager() -> str | None:
     install-hint generation when a check FAILs and we want to suggest a
     distro-specific install command.
     """
+    log.info("detect_package_manager: called")
     candidates = ["dnf", "apt", "pacman", "zypper", "xbps-install", "apk"]
     for binary in candidates:
         if shutil.which(binary):
@@ -299,6 +309,7 @@ _PM_INSTALL_COMMANDS: dict[str, str] = {
 
 def package_install_hint(package: str) -> str:
     """One-line install hint for a missing package, distro-specific."""
+    log.info("package_install_hint: package=%s", package)
     pm = detect_package_manager()
     template = _PM_INSTALL_COMMANDS.get(pm or "", "")
     if template:
@@ -313,6 +324,7 @@ def quick_subprocess(cmd: list[str], timeout_s: float = 2.0) -> str:
     "not available" rather than propagating.  Used by checks that want
     to ask the system "tell me your version" without crashing the doctor.
     """
+    log.debug("quick_subprocess: cmd=%s timeout=%s", cmd, timeout_s)
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout_s,

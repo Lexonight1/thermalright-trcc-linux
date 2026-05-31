@@ -260,6 +260,7 @@ def discover_openbsd_fans(
     to a shared snapshot so a poll tick runs ``sysctl -a`` once even
     with many fans.
     """
+    log.info("discover_openbsd_fans: called")
     snap = snapshot or _SysctlSnapshot(runner=runner or _default_runner)
     output = snap.output()
     seen: dict[tuple[str, int], SysctlFan] = {}

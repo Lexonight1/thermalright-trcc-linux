@@ -86,6 +86,10 @@ class VideoExporter:
         success.  We never clobber an existing path — the temp dir
         guarantees uniqueness.
         """
+        log.info("export_zt: source=%s start_ms=%d end_ms=%d "
+                 "target=%dx%d rotation=%d",
+                 request.source, request.start_ms, request.end_ms,
+                 request.target_w, request.target_h, request.rotation)
         self._validate(request)
         return self._do_export(request, progress or _noop_progress)
 
@@ -238,6 +242,7 @@ def probe_duration_ms(source: Path) -> int:
     is expected to fall back to a sane default if the probe returns 0
     (e.g. "5 seconds from the start").
     """
+    log.info("probe_duration_ms: source=%s", source)
     if shutil.which("ffprobe") is None:
         return 0
     cmd = [

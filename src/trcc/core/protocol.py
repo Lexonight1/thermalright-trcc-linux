@@ -16,7 +16,10 @@ parity locked by ``tests/next/test_protocol_parity.py``.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 # =============================================================================
 # DeviceProfile — single source of truth for FBL-derived properties
@@ -162,6 +165,7 @@ def pm_to_fbl(pm: int, sub: int = 0) -> int:
     Overrides for the few PM values where PM ≠ FBL.
     Compound (PM, SUB) key checked first for sub-dependent mappings.
     """
+    log.info("pm_to_fbl: pm=%d sub=%d", pm, sub)
     if (pm, sub) in _PM_SUB_TO_FBL:
         return _PM_SUB_TO_FBL[(pm, sub)]
     return _PM_TO_FBL_OVERRIDES.get(pm, pm)
@@ -174,6 +178,7 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
     that share the FBL. All other FBL values map 1:1 to a profile.
     Unknown FBLs fall back to the 320×320 big-endian default.
     """
+    log.info("get_profile: fbl=%d pm=%d", fbl, pm)
     profile = FBL_PROFILES.get(fbl, _DEFAULT_PROFILE)
     if fbl == 224:
         w, h = _FBL_224_BY_PM.get(pm, (854, 480))
@@ -204,6 +209,7 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
 
 def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:
     """Map FBL byte (with optional PM disambiguator) to (width, height)."""
+    log.info("fbl_to_resolution: fbl=%d pm=%d", fbl, pm)
     return get_profile(fbl, pm).resolution
 
 
@@ -217,6 +223,8 @@ def get_encode_rotation(profile: DeviceProfile, sub_byte: int,
     sub_byte overrides via encode_sub_bases (C# mySubMode dispatch).
     PM takes precedence — C# checks PingMu first for square panels.
     """
+    log.debug("get_encode_rotation: sub=%d direction=%d pm=%d",
+              sub_byte, direction, pm_byte)
     base = profile.encode_base
     for pm, pm_base in profile.encode_pm_bases:
         if pm_byte == pm:

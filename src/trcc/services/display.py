@@ -303,6 +303,8 @@ class DisplayService:
         + device-side rotation so what the preview shows matches what
         the device would receive byte-for-byte.
         """
+        log.debug("build_preview_surface: key=%s theme=%s",
+                  info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
         base_size = resolved_profile.resolution
 
@@ -357,6 +359,7 @@ class DisplayService:
         dimmed their display still sees a dimmed color test instead of
         a bright wash.
         """
+        log.info("build_solid_color_frame: key=%s color=%s", info.key, color)
         resolved = self._resolve_profile(info, profile)
         w, h = resolved.resolution
         # Surface is opaque RGB; alpha not needed for solid fill.
@@ -391,6 +394,7 @@ class DisplayService:
         Honors per-device brightness + device-side rotation so the
         live capture matches the rest of the device's behaviour.
         """
+        log.debug("build_screencast_frame: key=%s", info.key)
         resolved = self._resolve_profile(info, profile)
         target_w, target_h = resolved.resolution
 
@@ -423,6 +427,7 @@ class DisplayService:
         Raises ``TrccError`` if the image can't be opened — caller
         catches and returns a structured Result.
         """
+        log.info("build_image_frame: key=%s path=%s", info.key, path)
         resolved = self._resolve_profile(info, profile)
         target_w, target_h = resolved.resolution
 
@@ -449,6 +454,8 @@ class DisplayService:
         no-op and the helper's extra rotate calls would burn cycles for
         no visible change.
         """
+        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s",
+                  s.brightness, s.orientation, resolved.rotate)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if s.orientation:
@@ -459,6 +466,7 @@ class DisplayService:
 
     def invalidate(self, key: str) -> None:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
+        log.info("invalidate: key=%s", key)
         self._scenes.pop(key, None)
         # Reset the transition tracker too, so the next build_frame for
         # this key logs INFO when the cache state first appears
@@ -466,6 +474,7 @@ class DisplayService:
         self._cache_state.pop(key, None)
 
     def invalidate_all(self) -> None:
+        log.info("invalidate_all: scenes=%d", len(self._scenes))
         self._scenes.clear()
         self._cache_state.clear()
 
@@ -506,6 +515,8 @@ class DisplayService:
         firmware applies its own rotation, so we skip both the JPEG
         branch and the profile's portrait-rotation step.
         """
+        log.info("encode_boot_anim_frame: path=%s resolution=%dx%d",
+                 image_path, *resolution)
         surface = self._r.open_image(image_path)
         if self._r.surface_size(surface) != resolution:
             surface = self._r.resize(surface, *resolution)

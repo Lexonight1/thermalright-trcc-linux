@@ -440,6 +440,7 @@ class _HidSnapshot:
 
 def read_thermal_pairs() -> list[tuple[str, float]]:
     """Dedup-by-name thermal readings from the HID event system."""
+    log.debug("read_thermal_pairs: called")
     raw = _collect_names_values(
         _PAGE_THERMAL, _USAGE_THERMAL, _kIOHIDEventTypeTemperature,
         thermal=True, power_scale=1.0,

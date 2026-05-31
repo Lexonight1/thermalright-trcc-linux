@@ -340,10 +340,14 @@ class EventBus:
 
     def subscribe(self, event_type: type[Event], handler: Handler) -> None:
         """Register *handler* for all events of *event_type*."""
+        log.info("subscribe: event=%s handler=%s",
+                 event_type.__name__, getattr(handler, "__qualname__", handler))
         self._handlers[event_type].append(handler)
 
     def unsubscribe(self, event_type: type[Event], handler: Handler) -> None:
         """Remove a previously-registered handler.  No-op if not found."""
+        log.info("unsubscribe: event=%s handler=%s",
+                 event_type.__name__, getattr(handler, "__qualname__", handler))
         try:
             self._handlers[event_type].remove(handler)
         except ValueError:
@@ -355,6 +359,7 @@ class EventBus:
         Handler exceptions are logged but do not propagate — one bad
         subscriber shouldn't break event delivery for the rest.
         """
+        log.debug("publish: event=%s", type(event).__name__)
         for handler in list(self._handlers[type(event)]):
             try:
                 handler(event)
@@ -363,4 +368,5 @@ class EventBus:
 
     def clear(self) -> None:
         """Drop all subscriptions (used in tests)."""
+        log.info("clear: called")
         self._handlers.clear()

@@ -45,17 +45,23 @@ class MacOSPaths(Paths):
         home = Path.home()
         self._root = home / "Library" / "Application Support" / "trcc"
         self._user_content = home / "Library" / "Application Support" / "trcc-user"
+        log.info("MacOSPaths: root=%s user_content=%s",
+                 self._root, self._user_content)
 
     def config_dir(self) -> Path:
+        log.debug("config_dir: called")
         return self._root
 
     def data_dir(self) -> Path:
+        log.debug("data_dir: called")
         return self._root / "data"
 
     def user_content_dir(self) -> Path:
+        log.debug("user_content_dir: called")
         return self._user_content
 
     def log_file(self) -> Path:
+        log.debug("log_file: called")
         return self._root / "Logs" / "trcc.log"
 
 
@@ -64,6 +70,7 @@ class MacOSPlatform(Platform):
     """macOS implementation of Platform — BOT-only SCSI via libusb."""
 
     def __init__(self) -> None:
+        log.info("MacOSPlatform: initialising")
         self._paths = MacOSPaths()
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
@@ -71,15 +78,19 @@ class MacOSPlatform(Platform):
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
+        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         """SCSI via USB BOT over libusb — macOS has no kernel SCSI passthrough."""
+        log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
 
     def scan_devices(self) -> list[DeviceInfo]:
+        log.info("scan_devices: scanning %d known VID/PID pairs",
+                 len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
@@ -94,6 +105,7 @@ class MacOSPlatform(Platform):
         return found
 
     def paths(self) -> Paths:
+        log.debug("paths: called")
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
@@ -103,12 +115,14 @@ class MacOSPlatform(Platform):
         gated behind ``TRCC_NEXT_APPLE_SILICON_SMC=1`` until reporter-
         confirmed.
         """
+        log.info("sensors: cached=%s", self._sensors is not None)
         if self._sensors is None:
             from ..sensors.macos import build_macos_sensors
             self._sensors = build_macos_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
+        log.info("autostart: cached=%s", self._autostart is not None)
         if self._autostart is None:
             from ._autostart import MacOSAutostart
             self._autostart = MacOSAutostart()
@@ -122,6 +136,7 @@ class MacOSPlatform(Platform):
         pyobjc dep; polling once a second hits the same UX (≤1 s
         attach/detach latency) at zero new cost.
         """
+        log.info("hotplug: cached=%s", self._hotplug is not None)
         if self._hotplug is None:
             from ._hotplug import PollingHotplugMonitor
             self._hotplug = PollingHotplugMonitor(scan=self._scan_vid_pid_set)
@@ -134,6 +149,7 @@ class MacOSPlatform(Platform):
         callable survives across stack frames + shows up in tracebacks
         with a real name.
         """
+        log.debug("_scan_vid_pid_set: called")
         return {(d.vid, d.pid) for d in self.scan_devices()}
 
     def setup(self, interactive: bool = True) -> int:
@@ -144,10 +160,12 @@ class MacOSPlatform(Platform):
         ``sudo``, neither of which a setup wizard can install for the
         user.
         """
+        log.info("setup: interactive=%s", interactive)
         from ._macos_setup import install
         return install(dry_run=not interactive)
 
     def check_permissions(self) -> list[str]:
+        log.info("check_permissions: called")
         if os.geteuid() != 0:
             return [
                 "macOS requires root privileges to detach the mass-storage "
@@ -156,9 +174,11 @@ class MacOSPlatform(Platform):
         return []
 
     def distro_name(self) -> str:
+        log.info("distro_name: called")
         return "macOS"
 
     def install_method(self) -> str:
+        log.info("install_method: called")
         import sys
         if getattr(sys, "frozen", False):
             return "pyinstaller"
@@ -223,6 +243,7 @@ def _run_system_profiler(data_type: str) -> dict:
 
 
 def _is_apple_silicon() -> bool:
+    log.debug("_is_apple_silicon: called")
     return _platform.machine() == "arm64"
 
 
@@ -233,6 +254,7 @@ def _macos_memory_info(runner: ProfilerRunner = _run_system_profiler) -> list[di
     block.  Intel: outer items wrap ``_items`` per DIMM.  Empty list
     when the profiler returned nothing — caller falls back to psutil.
     """
+    log.debug("_macos_memory_info: called")
     slots: list[dict[str, str]] = []
     data = runner("SPMemoryDataType")
     items = data.get("SPMemoryDataType", []) if isinstance(data, dict) else []
@@ -279,6 +301,7 @@ def _macos_disk_info(runner: ProfilerRunner = _run_system_profiler) -> list[dict
     rotational → HDD, anything else → SSD (modern Macs are SSD-only,
     so SSD is the safe default).
     """
+    log.debug("_macos_disk_info: called")
     disks: list[dict[str, str]] = []
     data = runner("SPStorageDataType")
     items = data.get("SPStorageDataType", []) if isinstance(data, dict) else []

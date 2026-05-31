@@ -40,6 +40,7 @@ class NoopAutostart(AutostartManager):
     """
 
     def is_enabled(self) -> bool:
+        log.debug("is_enabled: called")
         return False
 
     def enable(self) -> None:
@@ -49,7 +50,7 @@ class NoopAutostart(AutostartManager):
         log.debug("NoopAutostart.disable: no-op on this platform")
 
     def refresh(self) -> None:
-        pass
+        log.debug("refresh: called")
 
 
 # =========================================================================
@@ -68,6 +69,7 @@ def _resolve_command() -> str:
     or pip-installed entry point), otherwise fall back to invoking
     ``python -m trcc gui`` so dev installs still autostart.
     """
+    log.debug("_resolve_command: called")
     if (exe := shutil.which("trcc")) is not None:
         # Registry values quote the path so spaces in install dirs
         # (Program Files) don't break the launch.
@@ -81,6 +83,7 @@ def _winreg_module() -> Any:
     Production code paths only hit this on Windows; tests inject a fake
     module so the protocol logic runs anywhere.
     """
+    log.debug("_winreg_module: called")
     if sys.platform != "win32":
         return None
     try:
@@ -126,6 +129,7 @@ class WindowsAutostart(AutostartManager):
         ``enable()`` rewrites it.  Defensive — never silently inherit
         a stale path.
         """
+        log.info("is_enabled: called")
         if self._registry is None:
             return False
         try:
@@ -136,6 +140,7 @@ class WindowsAutostart(AutostartManager):
         return stored == self._cmd
 
     def enable(self) -> None:
+        log.info("enable: called")
         if self._registry is None:
             log.debug("WindowsAutostart.enable: winreg unavailable; no-op")
             return
@@ -148,6 +153,7 @@ class WindowsAutostart(AutostartManager):
                  _WIN_RUN_KEY_PATH, self._value_name)
 
     def disable(self) -> None:
+        log.info("disable: called")
         if self._registry is None:
             return
         try:
@@ -189,6 +195,7 @@ _DEFAULT_PLIST_PATH = (
 
 def _resolve_macos_program_args() -> list[str]:
     """Return the argv that the LaunchAgent should run on login."""
+    log.debug("_resolve_macos_program_args: called")
     if (exe := shutil.which("trcc")) is not None:
         return [exe, "gui"]
     return [sys.executable, "-m", "trcc", "gui"]
@@ -196,6 +203,7 @@ def _resolve_macos_program_args() -> list[str]:
 
 def _render_plist(program_args: list[str], *, label: str = _MAC_LABEL) -> str:
     """Render the LaunchAgent plist body — pure-string, fully testable."""
+    log.debug("_render_plist: label=%s args=%d", label, len(program_args))
     args_xml = "\n".join(f"        <string>{arg}</string>" for arg in program_args)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -226,6 +234,7 @@ LaunchctlRunner = Any
 
 def _default_launchctl_runner(args: list[str]) -> int:
     """Run ``launchctl <args>`` and return its returncode."""
+    log.debug("_default_launchctl_runner: args=%s", args)
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=5,
                               check=False)
@@ -293,9 +302,11 @@ class MacOSAutostart(AutostartManager):
         it spawns a subprocess on every UI tick; file existence is the
         canonical install marker that legacy + iStat / Stats also use.
         """
+        log.info("is_enabled: called")
         return self._plist_path.exists()
 
     def enable(self) -> None:
+        log.info("enable: called")
         self._plist_path.parent.mkdir(parents=True, exist_ok=True)
         body = _render_plist(self._program_args, label=self._label)
         self._plist_path.write_text(body, encoding="utf-8")
@@ -308,6 +319,7 @@ class MacOSAutostart(AutostartManager):
         log.info("MacOSAutostart: enabled at %s", self._plist_path)
 
     def disable(self) -> None:
+        log.info("disable: called")
         # bootout can fail with code 5 ("not loaded") — that's also OK.
         if self._plist_path.exists():
             rc = self._runner([

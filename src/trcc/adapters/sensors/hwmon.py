@@ -100,6 +100,7 @@ class HwmonDevice:
 
 def scan_hwmon_devices() -> list[HwmonDevice]:
     """Walk /sys/class/hwmon and wrap each directory."""
+    log.info("scan_hwmon_devices: called")
     if not _HWMON_ROOT.exists():
         return []
     return [HwmonDevice(d) for d in sorted(_HWMON_ROOT.iterdir()) if d.is_dir()]
@@ -138,6 +139,7 @@ class HwmonCpu(CpuSource):
 
 def find_cpu_temp_device(devices: list[HwmonDevice]) -> HwmonDevice | None:
     """Pick the first hwmon device whose driver is a known CPU thermal."""
+    log.info("find_cpu_temp_device: devices=%d", len(devices))
     for dev in devices:
         if dev.driver in _CPU_DRIVERS:
             return dev
@@ -302,6 +304,7 @@ class IntelGpu(GpuSource):
 
 def discover_amd_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
     """Find amdgpu hwmon entries, link them to /sys/class/drm cards."""
+    log.info("discover_amd_gpus: devices=%d", len(devices))
     gpus: list[GpuSource] = []
     for i, dev in enumerate(d for d in devices if d.driver == _AMD_DRIVER):
         gpus.append(AmdGpu(i, dev, _find_drm_card_for_hwmon(dev.path)))
@@ -311,6 +314,7 @@ def discover_amd_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
 def discover_intel_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
     """Find i915/xe hwmon entries.  iGPUs often have no hwmon entry at all —
     they're still listed via DRM-only probing."""
+    log.info("discover_intel_gpus: devices=%d", len(devices))
     gpus: list[GpuSource] = []
     # hwmon-backed entries first (Arc discrete + newer i915)
     seen_drm: set[Path] = set()
@@ -358,6 +362,7 @@ class HwmonFan(FanSource):
 
 
 def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
+    log.info("discover_fans: devices=%d", len(devices))
     fans: list[FanSource] = []
     for dev in devices:
         for fan_input in sorted(dev.path.glob("fan*_input")):

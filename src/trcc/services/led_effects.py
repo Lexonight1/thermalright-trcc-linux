@@ -22,9 +22,12 @@ lets the App keep one runtime dict keyed by device.
 """
 from __future__ import annotations
 
+import logging
 from typing import ClassVar
 
 from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # ColorEngine — rainbow lookup table + gradient mapping
@@ -147,6 +150,8 @@ class LEDEffectEngine:
         Test mode short-circuits everything — diagnostic color cycle.
         Otherwise dispatch by ``settings.mode``.
         """
+        log.debug("tick: mode=%s test=%s led_count=%d",
+                  settings.mode, settings.test_mode, led_count)
         if settings.test_mode:
             return self._tick_test(runtime, led_count)
 

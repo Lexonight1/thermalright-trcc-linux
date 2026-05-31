@@ -41,6 +41,8 @@ class SlideshowConfig:
 
     def normalised(self) -> SlideshowConfig:
         """Defensive clamp — caller-controlled fields stay in sane ranges."""
+        log.debug("normalised: enabled=%s interval_s=%s themes=%d",
+                  self.enabled, self.interval_s, len(self.themes))
         return SlideshowConfig(
             enabled=self.enabled,
             interval_s=max(1.0, float(self.interval_s)),
@@ -57,6 +59,7 @@ class SlideshowService:
     def reset(self, key: str) -> None:
         """Drop the cursor for *key* — call after ConfigureSlideshow
         changes the theme list."""
+        log.info("reset: key=%s", key)
         self._state.pop(key, None)
 
     def advance(
@@ -71,6 +74,8 @@ class SlideshowService:
         Idempotent — repeated calls within the interval window all
         return None.  The cursor wraps when it walks past the last theme.
         """
+        log.debug("advance: key=%s enabled=%s themes=%d interval_s=%s",
+                  key, config.enabled, len(config.themes), config.interval_s)
         if not config.enabled or not config.themes:
             return None
         if now is None:
@@ -92,6 +97,7 @@ class SlideshowService:
     ) -> str | None:
         """Return the theme name the cursor currently points at, or None
         when the slideshow has no themes."""
+        log.debug("current: key=%s themes=%d", key, len(config.themes))
         if not config.themes:
             return None
         state = self._state.get(key)

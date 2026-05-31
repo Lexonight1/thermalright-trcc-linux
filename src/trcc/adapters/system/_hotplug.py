@@ -89,6 +89,7 @@ class NoopHotplugMonitor(HotplugMonitor):
 
 
 def _import_pyudev() -> Any | None:
+    log.debug("_import_pyudev: called")
     try:
         import pyudev  # type: ignore[import-not-found]
     except ImportError:
@@ -104,6 +105,7 @@ def _import_dbus_glib() -> tuple[Any, Any] | None:
     degradation pattern as :func:`_import_pyudev` — Linux without
     dbus-python just doesn't get suspend/resume events.
     """
+    log.debug("_import_dbus_glib: called")
     try:
         import dbus  # pyright: ignore[reportMissingImports]
         import gi  # noqa: F401  # pyright: ignore[reportMissingImports]
@@ -361,6 +363,7 @@ _WIN_DEVICE_ID_RE = re.compile(
 
 
 def _import_wmi() -> Any | None:
+    log.debug("_import_wmi: called")
     try:
         import wmi  # pyright: ignore[reportMissingImports]
     except ImportError:
@@ -502,6 +505,7 @@ def _parse_windows_device_id(device_id: str) -> tuple[str, str] | None:
     Returns ``None`` when the string isn't a USB DeviceID (PCI / HID hub
     parents arrive on the same watcher and must be ignored).
     """
+    log.debug("_parse_windows_device_id: device_id=%s", device_id)
     match = _WIN_DEVICE_ID_RE.search(device_id)
     if match is None:
         return None
@@ -535,6 +539,7 @@ def _open_devd_socket() -> Any | None:
     Returns the connected socket on success, ``None`` when the socket
     doesn't exist (non-FreeBSD or devd not running).
     """
+    log.debug("_open_devd_socket: called")
     import socket as _socket
 
     if not hasattr(_socket, "AF_UNIX"):
@@ -664,6 +669,7 @@ def _parse_devd_event(message: str) -> tuple[str, str, str] | None:
     to lowercase 4-digit form so they match the registry's ``vid:pid``
     keys without case juggling at the call site.
     """
+    log.debug("_parse_devd_event: msg_len=%d", len(message))
     event = _DEVD_USB_EVENT_RE.search(message)
     if event is None:
         return None

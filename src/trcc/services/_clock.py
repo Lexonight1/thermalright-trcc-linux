@@ -10,8 +10,11 @@ once per frame; ``OverlayService`` looks up by source name.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Literal
+
+log = logging.getLogger(__name__)
 
 ClockSource = Literal["time", "weekday", "date"]
 
@@ -76,6 +79,8 @@ def resolve_clock(
     now: datetime | None = None,
 ) -> str:
     """Resolve a single clock source to its display string."""
+    log.debug("resolve_clock: source=%s time_format=%s date_format=%s lang=%s",
+              source, time_format, date_format, language)
     moment = now or datetime.now()
     if source == "time":
         return _format_time(moment, time_format)
@@ -99,6 +104,8 @@ def compute_clock(
     OverlayService, and includes it in the overlay cache key so frames
     rebuild when the minute / day rolls over.
     """
+    log.debug("compute_clock: time_format=%s date_format=%s lang=%s",
+              time_format, date_format, language)
     moment = now or datetime.now()
     return {
         "time":    resolve_clock("time",    time_format=time_format, now=moment),

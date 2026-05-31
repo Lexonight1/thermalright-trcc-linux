@@ -110,6 +110,7 @@ def kill_daemon(*, timeout: float = 5.0) -> bool:
 
     Returns True when no daemon is reachable, False on timeout.  Idempotent.
     """
+    log.info("kill_daemon: timeout=%s", timeout)
     if not ipc.daemon_running():
         return True
     try:
@@ -135,6 +136,7 @@ def kill_daemon(*, timeout: float = 5.0) -> bool:
 
 def _install_signal_handlers(server: ipc.IPCServer) -> None:
     """SIGTERM / SIGINT flip the server's stop flag + wake the accept loop."""
+    log.debug("_install_signal_handlers: called")
     def _shutdown(signo: int, _frame: Any) -> None:
         name = signal.Signals(signo).name
         log.info("trcc daemon: received %s — shutting down", name)
@@ -151,6 +153,7 @@ def _daemon_spawn_cmd() -> list[str]:
     daemon picks up the user's installed entry point; otherwise fall back
     to ``python -m trcc daemon``.
     """
+    log.debug("_daemon_spawn_cmd: called")
     from shutil import which
     if (trcc_bin := which("trcc")) is not None:
         return [trcc_bin, "daemon"]

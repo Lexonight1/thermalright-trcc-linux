@@ -21,9 +21,12 @@ the PM → metadata lookup.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from .models import LedStyle
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # Entry shape
@@ -106,6 +109,7 @@ def resolve_pm(pm: int, sub_type: int = 0) -> PmEntry | None:
     that was always empty in the shipping codebase. Kept in the
     signature so callers don't change shape when an override lands.
     """
+    log.info("resolve_pm: pm=%d sub_type=%d", pm, sub_type)
     _ = sub_type
     return _PM_REGISTRY.get(pm)
 
@@ -301,6 +305,8 @@ def remap_led_colors(
     Sub-tables (e.g. LF25 = LF8 with sub=1) take precedence over the
     base style table when both exist.
     """
+    log.debug("remap_led_colors: style=%s sub=%d colors=%d",
+              style, style_sub, len(colors))
     if style is None:
         return colors
     table = LED_REMAP_SUB_TABLES.get((style, style_sub))

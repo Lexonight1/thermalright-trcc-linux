@@ -11,7 +11,10 @@ detect that here.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
+
+log = logging.getLogger(__name__)
 
 # Half-block character — one cell encodes two rows of pixels by colouring
 # the top half (foreground) and bottom half (background) separately.
@@ -35,6 +38,7 @@ def zones_to_ansi(colors: list[tuple[int, int, int]]) -> str:
     zone strip prints as ``[][][][][][]``.  Caller is responsible
     for a trailing newline if one's wanted.
     """
+    log.debug("zones_to_ansi: zones=%d", len(colors))
     if not colors:
         return ""
     parts = [
@@ -54,6 +58,7 @@ def image_to_ansi(
     into a single half-block character.  Result fits in ``rows//2 + 1``
     terminal lines.
     """
+    log.debug("image_to_ansi: cols=%d", cols)
     if cols <= 0:
         return ""
     # The renderer's get_pixels_rgb returns row-major output.  We need

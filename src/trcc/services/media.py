@@ -277,6 +277,8 @@ class Playback:
         Honors ``paused`` (returns current frame without advancing) and
         ``loop`` (when False, sticks at the last frame instead of wrapping).
         """
+        log.debug("advance: cursor=%d frames=%d paused=%s",
+                  self.cursor, len(self.frames), self.paused)
         if not self.frames:
             return None
         frame = self.frames[self.cursor]
@@ -365,6 +367,7 @@ class MediaService:
         return playback
 
     def playback(self, device_key: str) -> Playback | None:
+        log.debug("playback: key=%s", device_key)
         return self._playbacks.get(device_key)
 
     def unload(self, device_key: str) -> None:

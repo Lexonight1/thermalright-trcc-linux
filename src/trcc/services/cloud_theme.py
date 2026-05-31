@@ -54,9 +54,11 @@ class CloudThemeService:
     # ── Read-only catalog ─────────────────────────────────────────────
 
     def categories(self) -> tuple[CloudCategory, ...]:
+        log.info("categories: called")
         return self._catalog.categories()
 
     def list_themes(self, category: str = "all") -> list[CloudThemeEntry]:
+        log.info("list_themes: category=%s", category)
         return self._catalog.list_themes(category)
 
     # ── Network + materialisation ─────────────────────────────────────

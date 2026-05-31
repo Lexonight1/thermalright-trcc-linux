@@ -157,10 +157,12 @@ class App:
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""
+        log.info("set_renderer: renderer=%s", type(renderer).__name__)
         self._renderer = renderer
         self._wire_display(renderer)
 
     def _wire_display(self, renderer: Renderer) -> None:
+        log.debug("_wire_display: renderer=%s", type(renderer).__name__)
         self._display = DisplayService(
             renderer=renderer,
             themes=self.themes,
@@ -201,6 +203,7 @@ class App:
         Platform, then DI's it into the Device constructor.  Device
         classes never touch Platform — they only know their transport.
         """
+        log.info("attach: %04x:%04x", vid, pid)
         info = find_product(vid, pid)
         if info is None:
             raise DeviceNotFoundError(
@@ -220,6 +223,7 @@ class App:
 
     def get(self, key: str) -> Device:
         """Look up an attached device.  Raises if not attached."""
+        log.debug("get: key=%s", key)
         device = self.devices.get(key)
         if device is None:
             raise DeviceNotFoundError(f"Not attached: {key}")
@@ -227,6 +231,7 @@ class App:
 
     def detach(self, key: str) -> None:
         """Disconnect and drop a device.  Frees the scene cache + active theme."""
+        log.info("detach: key=%s", key)
         device = self.devices.pop(key, None)
         if device is not None:
             device.disconnect()
@@ -247,6 +252,7 @@ class App:
         UI quits — otherwise a polling thread can keep the interpreter
         alive past ``QApplication.quit()``.
         """
+        log.info("close: devices=%d", len(self.devices))
         self.metrics_loop.stop()
         self.stop_hotplug()
         for key in list(self.devices):
@@ -262,6 +268,7 @@ class App:
         processes (daemon, GUI) should call this once on startup;
         one-shot CLI scripts can skip it.
         """
+        log.info("start_hotplug: started=%s", self._hotplug_started)
         if self._hotplug_started:
             return
         self.platform.hotplug().start(self.events)
@@ -269,6 +276,7 @@ class App:
 
     def stop_hotplug(self) -> None:
         """Stop the hotplug listener (idempotent)."""
+        log.info("stop_hotplug: started=%s", self._hotplug_started)
         if not self._hotplug_started:
             return
         self.platform.hotplug().stop()

@@ -158,6 +158,9 @@ class Writer:
         *,
         user_overlay_elements: list[dict[str, Any]] | None = None,
     ) -> bytes:
+        log.info("serialize: theme_elements=%d user_elements=%d",
+                 len(config.get("elements", [])),
+                 len(user_overlay_elements or []))
         elements: list[dict[str, Any]] = list(config.get("elements", []))
         elements.extend(user_overlay_elements or [])
         w = _Writer()

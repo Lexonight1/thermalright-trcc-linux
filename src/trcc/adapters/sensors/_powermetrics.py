@@ -86,6 +86,7 @@ def _read_exact(sock: socket.socket, n: int) -> bytes:
 
 def fetch_via_helper(samplers: str, *, timeout: float = 12.0) -> bytes | None:
     """One plist snapshot from the privileged helper, or None on failure."""
+    log.info("fetch_via_helper: samplers=%s timeout=%s", samplers, timeout)
     path = _powermetrics_socket_path()
     if path is None:
         log.debug("powermetrics: helper disabled (TRCC_POWERMETRICS_SOCKET empty)")
@@ -121,6 +122,7 @@ def fetch_via_helper(samplers: str, *, timeout: float = 12.0) -> bytes | None:
 
 def fetch_via_subprocess(samplers: str, *, timeout: float = 12.0) -> bytes | None:
     """Fallback: run ``powermetrics`` directly (requires the process to be root)."""
+    log.info("fetch_via_subprocess: samplers=%s timeout=%s", samplers, timeout)
     if not _samplers_allowed(samplers):
         log.warning("powermetrics subprocess: unsafe samplers rejected")
         return None
@@ -215,6 +217,7 @@ def parse_powermetrics_plist(data: bytes) -> dict[str, float] | None:
     ``combined_power`` (watts); ``gpu_busy`` (percent),
     ``gpu_clock`` (MHz), ``cpu_freq`` (MHz).
     """
+    log.debug("parse_powermetrics_plist: bytes=%d", len(data))
     chunk = data.split(b"\x00", 1)[0].strip()
     if not chunk.startswith(b"<?xml") and not chunk.startswith(b"<plist"):
         return None

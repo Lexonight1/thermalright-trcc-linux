@@ -50,6 +50,7 @@ class DebugReport:
 
     def render_text(self) -> str:
         """Render the report as a single string for clipboard/file output."""
+        log.info("render_text: called")
         sections: list[str] = []
         sections.append(_header(self.timestamp))
         sections.append(_render_kv("Platform", self.platform_info))
@@ -118,6 +119,7 @@ def write_debug_report(report: DebugReport, output_path: Path) -> Path:
 
 
 def _collect_platform_info(platform: Platform) -> dict[str, str]:
+    log.debug("_collect_platform_info: called")
     return {
         "distro": platform.distro_name(),
         "install_method": platform.install_method(),
@@ -131,6 +133,7 @@ def _collect_platform_info(platform: Platform) -> dict[str, str]:
 
 
 def _collect_paths(platform: Platform) -> dict[str, str]:
+    log.debug("_collect_paths: called")
     paths = platform.paths()
     return {
         "config_dir": str(paths.config_dir()),
@@ -144,6 +147,7 @@ def _collect_devices(
     platform: Platform,
 ) -> tuple[list[dict[str, str]], str]:
     """Scan + enrich with product-registry metadata; return (rows, error)."""
+    log.debug("_collect_devices: called")
     try:
         infos = platform.scan_devices()
     except (OSError, RuntimeError) as e:
@@ -165,6 +169,7 @@ def _collect_devices(
 def _collect_sensors(
     platform: Platform,
 ) -> tuple[list[dict[str, str]], str]:
+    log.debug("_collect_sensors: called")
     try:
         enum = platform.sensors()
         descriptors = enum.discover()
@@ -184,6 +189,7 @@ def _collect_sensors(
 
 
 def _read_settings_file(path: Path) -> tuple[str, str]:
+    log.debug("_read_settings_file: path=%s", path)
     if not path.is_file():
         return "", f"No settings file at {path}"
     try:

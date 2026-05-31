@@ -359,6 +359,7 @@ def _shared(
 
 def reset_snapshot() -> None:
     """Drop the cached snapshot — tests reset between cases."""
+    log.info("reset_snapshot: called")
     global _shared_snapshot
     if _shared_snapshot is not None:
         _shared_snapshot._mapping.close()
@@ -506,6 +507,7 @@ def discover_hwinfo_gpus(
     snapshot_factory: Callable[[], _Snapshot | None] = _shared,
 ) -> list[HwinfoGpu]:
     """Enumerate GPU sensor rows from the HWiNFO snapshot."""
+    log.info("discover_hwinfo_gpus: called")
     snap = snapshot_factory()
     if snap is None:
         return []

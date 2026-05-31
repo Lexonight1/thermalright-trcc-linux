@@ -1,10 +1,13 @@
 """Domain models — frozen dataclasses + enums.  No logic, no I/O."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .variants import PanelCutout
@@ -642,6 +645,7 @@ WEEKDAYS = WEEKDAYS_BY_LANG["en"]
 
 def celsius_to_fahrenheit(celsius: float) -> float:
     """Convert °C to °F."""
+    log.debug("celsius_to_fahrenheit: celsius=%s", celsius)
     return celsius * 9 / 5 + 32
 
 
@@ -659,6 +663,7 @@ def format_metric(
     Used by the legacy-style overlay editor in next/ to render
     preview text inside each grid cell.
     """
+    log.debug("format_metric: metric=%s value=%s", metric, value)
     from datetime import datetime as _dt
 
     if metric == "date":
@@ -892,6 +897,7 @@ def panel_asset_dims(w: int, h: int) -> tuple[int, int]:
     Falls back to (320, 240) landscape or (240, 320) portrait when the
     resolution isn't in the table — matches the C# else branch.
     """
+    log.info("panel_asset_dims: %dx%d", w, h)
     if (dims := PANEL_ASSET_DIMS.get((w, h))):
         return dims
     return (240, 320) if h > w else (320, 240)
@@ -987,6 +993,7 @@ CLOUD_MASK_URLS: dict[str, str] = {
 
 def is_safe_archive_member(name: str) -> bool:
     """Reject archive members that would escape the destination (zip slip)."""
+    log.debug("is_safe_archive_member: name=%r", name)
     return not (Path(name).is_absolute() or '..' in name.split('/'))
 
 

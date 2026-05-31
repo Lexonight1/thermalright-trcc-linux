@@ -92,6 +92,8 @@ class OverlayService:
           * Sub-screen mask with ``mask_position`` in its sibling
             ``config1.dc`` -> top-left from C# (XvalMB - W/2, YvalMB - H/2)
         """
+        log.info("calculate_mask_position: mask_dir=%s mask_size=%s lcd_size=%s",
+                 mask_dir, mask_size, lcd_size)
         mask_w, mask_h = mask_size
         lcd_w, lcd_h = lcd_size
         if mask_w >= lcd_w and mask_h >= lcd_h:

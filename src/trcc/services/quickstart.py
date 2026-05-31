@@ -68,6 +68,7 @@ class QuickstartService:
 
     def run_all(self) -> QuickstartReport:
         """Walk the full sequence; stops at the first FAIL."""
+        log.info("run_all: called")
         report = QuickstartReport()
         # 1. Doctor
         if not self._run_doctor(report):

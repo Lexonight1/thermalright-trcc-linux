@@ -50,6 +50,9 @@ def trcc_next(
     owns both.  Pass them when forcing in-process construction (tests,
     composition roots).
     """
+    log.info("trcc_next: env_flag=%s platform=%s renderer=%s",
+             os.environ.get(_ENV_FLAG), platform is not None,
+             renderer is not None)
     if os.environ.get(_ENV_FLAG) == "1":
         if not hasattr(socket, "AF_UNIX"):
             log.warning(
@@ -77,6 +80,8 @@ def _build_local_app(
     renderer: Renderer | None = None,
 ) -> App:
     """Construct an in-process App.  Used by ``trcc_next`` and the daemon."""
+    log.info("_build_local_app: platform=%s renderer=%s",
+             platform is not None, renderer is not None)
     from .adapters.system import PlatformFactory
     from .app import App
 
