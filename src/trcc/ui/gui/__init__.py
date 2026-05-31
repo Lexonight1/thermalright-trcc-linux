@@ -56,18 +56,17 @@ def launch(verbosity: int = 0, decorated: bool = False,
     platform = PlatformFactory.current()
 
     # ── stdout/stderr UTF-8 (Windows cp1252 fix; no-op elsewhere) ────
-    # Must precede ``configure_logging`` so the StreamHandler attaches
-    # to an already-UTF-8 stream.
     platform.configure_stdout()
 
-    # ── Logging — rotating file at paths.log_file() + stderr WARNING+
-    # Without this, only the CLI root callback's basicConfig is in
-    # effect (stderr-only) and `~/.trcc/trcc.log` never gets written.
-    from ...adapters.infra.logging import configure_logging
-    configure_logging(
-        platform.paths().log_file(),
-        level=logging.DEBUG if verbosity >= 1 else logging.INFO,
-    )
+    # NOTE: do NOT call ``configure_logging`` here.  The CLI root
+    # callback (``ui.cli.main:_root``) ALWAYS runs before this entry
+    # point and has already wired the rotating file + stderr handlers
+    # at the level the user asked for via ``-v``.  A second call here
+    # was silently downgrading DEBUG back to INFO whenever the user
+    # ran ``python -m trcc -v gui`` — the comment that used to live
+    # here ("only basicConfig is in effect") was stale by years.
+    # If anyone calls ``launch`` from outside the CLI later, they're
+    # responsible for setting up logging first.
 
     # ── Single-instance lock + raise-existing-window ─────────────────
     from ...ipc import SingleInstance
