@@ -56,9 +56,20 @@ def run_daemon() -> int:
     _started_at = time.monotonic()
     log.info("trcc daemon starting (pid=%d)", os.getpid())
 
-    from ._boot import _build_local_app
+    # The daemon owns USB directly — it must never proxy to itself.  If the
+    # daemon-mode flag leaked into this process's env (set globally in a
+    # shell profile, or inherited from the spawning client), every
+    # ``trcc_next()`` here would try to reach a daemon socket instead of
+    # opening USB, and a startup path through it would re-spawn — a fork
+    # bomb (#162).  Strip it so this process is unambiguously the daemon.
+    from ._boot import _ENV_FLAG, _build_local_app
+    os.environ.pop(_ENV_FLAG, None)
     app = _build_local_app()
     app.start_hotplug()
+    # Without the metrics loop the daemon owns USB but never ticks — the
+    # device stays connected yet permanently blank (#148).  ``App.close()``
+    # in the finally below stops it on shutdown.
+    app.metrics_loop.start()
     server = ipc.IPCServer(app)
     server.start()
     _install_signal_handlers(server)
@@ -94,8 +105,14 @@ def ensure_daemon(*, timeout: float = 10.0) -> bool:
 
     cmd = _daemon_spawn_cmd()
     log.info("Spawning next/ daemon: %s", " ".join(cmd))
+    # Strip the daemon-mode flag from the child's env so the spawned daemon
+    # can't inherit it and try to proxy to itself — it builds the App
+    # in-process via run_daemon → _build_local_app regardless (#162).
+    from ._boot import _ENV_FLAG
+    child_env = {k: v for k, v in os.environ.items() if k != _ENV_FLAG}
     subprocess.Popen(
         cmd,
+        env=child_env,
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
