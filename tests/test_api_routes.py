@@ -323,6 +323,16 @@ def test_display_send_color_unknown_device_returns_4xx(
     assert resp.status_code in (400, 404)
 
 
+def test_display_reset_unknown_device_returns_4xx(
+    api_client: TestClient,
+) -> None:
+    """``display/reset`` (stop video + red frame) needs a connected device;
+    an unknown key surfaces a structured error envelope (the StopVideo
+    pre-step is best-effort and doesn't mask the send failure)."""
+    resp = api_client.post("/devices/dead:beef/display/reset")
+    assert resp.status_code in (400, 404)
+
+
 # =========================================================================
 # led router
 # =========================================================================

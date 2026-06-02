@@ -758,6 +758,22 @@ def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
     return to_send_response(result)
 
 
+@router.post("/reset", response_model=SendResponse)
+def reset(key: str, request: Request) -> SendResponse:
+    """Reset the display — stop any active video, then send a solid red frame.
+
+    Mirrors legacy's reset: blanks the panel to a known state regardless
+    of what was playing.  ``StopVideo`` is best-effort (idempotent when
+    nothing is playing); the red frame is the reported result.
+    """
+    log.info("api POST /devices/{key}/display/reset: key=%s", key)
+    trcc = request.app.state.trcc
+    trcc.dispatch(StopVideo(key=key))   # best-effort — ok if nothing playing
+    result = trcc.dispatch(SendColor(key=key, r=255, g=0, b=0))
+    http_error_if_failed(result)
+    return to_send_response(result)
+
+
 @router.post("/tick", response_model=RenderResponse)
 def tick(key: str, request: Request) -> RenderResponse:
     """Render the active theme with live sensors + send one frame.
