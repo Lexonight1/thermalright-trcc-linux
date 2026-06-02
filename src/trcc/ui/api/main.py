@@ -24,6 +24,7 @@ import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ...__version__ import __version__
 from ...app import App
@@ -166,6 +167,21 @@ def build_app(trcc: App | None = None) -> FastAPI:
     api.include_router(config.router)
     api.include_router(theme.router)
     api.include_router(_trcc_router.router)
+
+    # ── Static serving for cloud previews ───────────────────────────
+    # Mount data/web so the /theme/web gallery's preview_url
+    # (/static/web/{w}{h}/<id>.png — and masks under zt{w}{h}/) resolve.
+    # Created if absent so the mount succeeds before the first
+    # /theme/init download; StaticFiles serves whatever lands there.
+    try:
+        web_root = trcc.platform.paths().data_dir() / "web"
+        web_root.mkdir(parents=True, exist_ok=True)
+        api.mount(
+            "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
+        )
+        log.info("static: mounted /static/web → %s", web_root)
+    except (OSError, AttributeError) as e:
+        log.warning("static: /static/web mount skipped — %s", e)
 
     @api.get("/", tags=["meta"])
     def root() -> dict:

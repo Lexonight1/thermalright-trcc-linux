@@ -24,6 +24,7 @@ from starlette.background import BackgroundTask
 
 from ...core.commands import (
     DeleteTheme,
+    EnsureDataDownload,
     ExportConfig,
     ExportDcTheme,
     ExportTheme,
@@ -52,6 +53,7 @@ from .schemas import (
     CloudThemesListResponse,
     DeleteThemeRequest,
     DeleteThemeResponse,
+    EnsureDataResponse,
     ImportConfigResponse,
     ThemeDcExportRequest,
     ThemeDcExportResponse,
@@ -62,9 +64,22 @@ from .schemas import (
     ThemeResponse,
     ThemeSaveRequest,
     ThemesListResponse,
+    WebThemeSchema,
 )
 
 log = logging.getLogger(__name__)
+
+
+def _parse_resolution(resolution: str) -> tuple[int, int]:
+    """Parse ``"320x320"`` → ``(320, 320)``; raise 400 on bad input."""
+    try:
+        w_str, h_str = resolution.lower().split("x", 1)
+        return int(w_str), int(h_str)
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"bad resolution {resolution!r} — expected WxH (e.g. 320x320)",
+        ) from e
 
 router = APIRouter(prefix="/theme", tags=["theme"])
 
@@ -325,6 +340,60 @@ def cloud_list(
     )
     http_error_if_failed(result)
     return to_cloud_themes_list_response(result)
+
+
+@router.get("/web", response_model=list[WebThemeSchema])
+def web_gallery(
+    request: Request,
+    resolution: str,
+) -> list[WebThemeSchema]:
+    """Cloud-theme preview gallery for a resolution (e.g. ``320x320``).
+
+    Lists the downloaded ``a001.png`` previews under
+    ``data/web/{w}{h}`` — ``preview_url`` resolves against the
+    ``/static/web`` mount, ``has_video`` flags a sibling ``.mp4``.
+    Empty list when nothing is downloaded yet (call ``POST /theme/init``).
+    """
+    w, h = _parse_resolution(resolution)
+    log.info("api GET /theme/web: resolution=%dx%d", w, h)
+    web_dir = request.app.state.trcc.platform.paths().cloud_theme_dir(w, h)
+    if not web_dir.is_dir():
+        return []
+    items: list[WebThemeSchema] = []
+    for png in sorted(web_dir.glob("*.png")):
+        theme_id = png.stem
+        items.append(WebThemeSchema(
+            id=theme_id,
+            category=theme_id[0] if theme_id else "",
+            preview_url=f"/static/web/{w}{h}/{png.name}",
+            has_video=(web_dir / f"{theme_id}.mp4").is_file(),
+            download_url=f"/theme/cloud/{theme_id}",
+        ))
+    return items
+
+
+@router.post("/init", response_model=EnsureDataResponse)
+def init_data(
+    request: Request,
+    resolution: str,
+) -> EnsureDataResponse:
+    """Prefetch theme/web/mask archives for a resolution (idempotent).
+
+    For remote clients to call on startup before browsing — works with
+    no device connected.  Wraps the ``EnsureDataDownload`` command that
+    previously had no route.
+    """
+    w, h = _parse_resolution(resolution)
+    log.info("api POST /theme/init: resolution=%dx%d", w, h)
+    result = request.app.state.trcc.dispatch(
+        EnsureDataDownload(width=w, height=h),
+    )
+    return EnsureDataResponse(
+        ok=result.ok, message=result.message,
+        width=result.width, height=result.height,
+        themes_ok=result.themes_ok, web_ok=result.web_ok,
+        masks_ok=result.masks_ok,
+    )
 
 
 @router.post("/cloud/{key}", response_model=CloudThemeLoadResponse)

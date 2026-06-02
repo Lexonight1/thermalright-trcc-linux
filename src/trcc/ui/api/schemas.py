@@ -576,6 +576,28 @@ class CloudThemesListResponse(ResultBase):
     themes: list[CloudThemeEntrySchema] = []
 
 
+class WebThemeSchema(BaseModel):
+    """One cloud-theme preview on disk for a resolution.
+
+    ``preview_url`` / ``download_url`` resolve against the API itself —
+    the preview is served by the ``/static/web`` mount.
+    """
+    id: str
+    category: str
+    preview_url: str
+    has_video: bool
+    download_url: str
+
+
+class EnsureDataResponse(ResultBase):
+    """Result of a per-resolution data prefetch (``POST /theme/init``)."""
+    width: int = 0
+    height: int = 0
+    themes_ok: bool = False
+    web_ok: bool = False
+    masks_ok: bool = False
+
+
 class CloudThemeLoadRequest(BaseModel):
     theme_id: str
 

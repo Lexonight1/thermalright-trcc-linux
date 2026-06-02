@@ -745,6 +745,77 @@ def test_theme_cloud_list_unknown_category(api_client: TestClient) -> None:
     assert resp.status_code in (400, 404)
 
 
+def test_theme_web_gallery_lists_downloaded_previews(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """``GET /theme/web`` lists the ``a001.png`` previews on disk with the
+    preview/download URLs + a has_video flag from the sibling .mp4."""
+    web_dir = fake_platform.paths().cloud_theme_dir(320, 320)
+    web_dir.mkdir(parents=True, exist_ok=True)
+    (web_dir / "a001.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (web_dir / "a001.mp4").write_bytes(b"x")          # → has_video
+    (web_dir / "b002.png").write_bytes(b"\x89PNG\r\n\x1a\n")   # no video
+
+    resp = api_client.get("/theme/web", params={"resolution": "320x320"})
+    assert resp.status_code == 200
+    items = {i["id"]: i for i in resp.json()}
+    assert set(items) == {"a001", "b002"}
+    assert items["a001"]["category"] == "a"
+    assert items["a001"]["preview_url"] == "/static/web/320320/a001.png"
+    assert items["a001"]["has_video"] is True
+    assert items["b002"]["has_video"] is False
+
+
+def test_theme_web_gallery_empty_without_data(api_client: TestClient) -> None:
+    resp = api_client.get("/theme/web", params={"resolution": "640x480"})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_theme_web_gallery_bad_resolution_400(api_client: TestClient) -> None:
+    resp = api_client.get("/theme/web", params={"resolution": "nonsense"})
+    assert resp.status_code == 400
+
+
+def test_static_web_serves_a_preview_file(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """The /static/web mount serves files the gallery points at."""
+    web_dir = fake_platform.paths().cloud_theme_dir(320, 320)
+    web_dir.mkdir(parents=True, exist_ok=True)
+    (web_dir / "a001.png").write_bytes(b"\x89PNG\r\n\x1a\nDATA")
+
+    resp = api_client.get("/static/web/320320/a001.png")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"\x89PNG")
+
+
+def test_theme_init_bad_resolution_400(api_client: TestClient) -> None:
+    resp = api_client.post("/theme/init", params={"resolution": "nope"})
+    assert resp.status_code == 400
+
+
+def test_theme_init_dispatches_prefetch(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``POST /theme/init`` runs the prefetch and reports the per-archive
+    ok flags (ensure_all stubbed at the class — no network in the test)."""
+    from trcc.services.data_install import DataInstallService, EnsureDataResult
+    monkeypatch.setattr(
+        DataInstallService, "ensure_all",
+        lambda self, resolution: EnsureDataResult(
+            resolution=resolution, themes_ok=True, web_ok=True, masks_ok=True,
+        ),
+    )
+    resp = api_client.post("/theme/init", params={"resolution": "320x320"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["width"] == 320
+    assert body["height"] == 320
+    assert body["web_ok"] is True
+
+
 # --- i18n --------------------------------------------------------------------
 
 
