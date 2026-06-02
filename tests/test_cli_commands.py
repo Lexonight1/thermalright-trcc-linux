@@ -382,6 +382,9 @@ def test_led_list_styles(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
     # PM 1 = AX120 entry in the registry
     assert "ax120" in result.output.lower()
+    # Capability columns restored (segments + zones per style).
+    assert "segments=" in result.output
+    assert "zones=4" in result.output   # PA120 is the 4-zone style
 
 
 def test_led_list_modes(cli_runner: CliRunner, cli_app) -> None:

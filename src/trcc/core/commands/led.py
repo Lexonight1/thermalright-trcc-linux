@@ -720,16 +720,28 @@ class ListLedStyles(Command[LedStylesListResult]):
 
     def execute(self, app: App) -> LedStylesListResult:
         del app
+        from ...services.led_segment import get_display
         from ..led_protocol import _PM_REGISTRY
-        styles = [
-            LedStyleEntry(
+        styles = []
+        for pm, entry in sorted(_PM_REGISTRY.items()):
+            # Capability columns come from the SegmentDisplay registry:
+            # mask_size = segment count, zone_led_map length = independent
+            # zones.  Non-segment styles (no display) report 0/0.
+            display = get_display(entry.style)
+            segment_count = display.mask_size if display is not None else 0
+            zone_count = (
+                len(display.zone_led_map)
+                if display is not None and display.zone_led_map is not None
+                else 0
+            )
+            styles.append(LedStyleEntry(
                 style=entry.style.value,
                 model_name=entry.model_name,
                 pm_byte=pm,
                 style_sub=entry.style_sub,
-            )
-            for pm, entry in sorted(_PM_REGISTRY.items())
-        ]
+                segment_count=segment_count,
+                zone_count=zone_count,
+            ))
         return LedStylesListResult(
             ok=True, styles=styles,
             message=f"{len(styles)} style entry(ies)",

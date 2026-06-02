@@ -340,6 +340,7 @@ def to_led_styles_list_response(
             LedStyleEntrySchema(
                 style=s.style, model_name=s.model_name,
                 pm_byte=s.pm_byte, style_sub=s.style_sub,
+                segment_count=s.segment_count, zone_count=s.zone_count,
             )
             for s in result.styles
         ],

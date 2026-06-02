@@ -308,6 +308,8 @@ class LedStyleEntry:
     model_name: str
     pm_byte: int
     style_sub: int = 0
+    segment_count: int = 0   # SegmentDisplay.mask_size (0 = non-segment style)
+    zone_count: int = 0      # independent zones (len(zone_led_map), 0 = single)
 
 
 @dataclass(frozen=True, slots=True)

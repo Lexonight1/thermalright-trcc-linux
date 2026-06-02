@@ -450,6 +450,11 @@ def test_led_styles_listing(api_client: TestClient) -> None:
     assert body["ok"] is True
     assert len(body["styles"]) > 0
     assert any(s["style"] == "ax120" for s in body["styles"])
+    # Capability columns present on every entry; PA120 reports 4 zones.
+    assert all(
+        "segment_count" in s and "zone_count" in s for s in body["styles"]
+    )
+    assert any(s["zone_count"] == 4 for s in body["styles"])
 
 
 def test_led_modes_listing(api_client: TestClient) -> None:

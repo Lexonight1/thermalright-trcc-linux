@@ -298,6 +298,8 @@ class LedStyleEntrySchema(BaseModel):
     model_name: str
     pm_byte: int
     style_sub: int = 0
+    segment_count: int = 0
+    zone_count: int = 0
 
 
 class LedStylesListResponse(ResultBase):

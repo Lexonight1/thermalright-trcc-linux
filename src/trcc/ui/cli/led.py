@@ -339,7 +339,10 @@ def list_styles() -> None:
     typer.echo(result.message)
     for s in result.styles:
         sub = f" sub={s.style_sub}" if s.style_sub else ""
-        typer.echo(f"  PM {s.pm_byte:3d}: {s.style:6} {s.model_name}{sub}")
+        caps = f"  segments={s.segment_count} zones={s.zone_count}"
+        typer.echo(
+            f"  PM {s.pm_byte:3d}: {s.style:6} {s.model_name}{sub}{caps}",
+        )
 
 
 @app.command("list-modes")
