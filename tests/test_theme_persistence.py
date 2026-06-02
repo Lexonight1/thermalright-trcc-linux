@@ -119,7 +119,8 @@ def test_export_dereferences_reference_theme_to_self_contained(
     matching library can import + load it (the Phase-E proof)."""
     import json as _json
 
-    # Save a reference theme — its bg + mask land in the user library.
+    # Save a reference theme — its bg lands in the user library; its OWN
+    # bundled mask is copied theme-local (not cataloged).
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ref")).ok
@@ -127,8 +128,10 @@ def test_export_dereferences_reference_theme_to_self_contained(
     saved_manifest = _json.loads(
         (saved / "trcc.json").read_text(encoding="utf-8"),
     )
-    assert "background" in saved_manifest and "mask" in saved_manifest
-    assert not (saved / "00.png").exists()
+    assert "background" in saved_manifest        # bg is a library ref
+    assert "mask" not in saved_manifest          # bundled mask → theme-local
+    assert not (saved / "00.png").exists()        # bg dereferenced on export
+    assert (saved / "01.png").exists()            # mask already in the saved dir
 
     # Export → archive must be self-contained, with refs stripped.
     archive = tmp_home / "ref.tr"
@@ -514,14 +517,17 @@ def test_save_theme_repoints_active_theme_to_saved_dir(
     # The live object the renderer reads is the SAVED theme, not the source.
     assert active.path == saved
     assert active.path != source
-    # The saved theme references its mask in the user library (not an
-    # in-dir 01.png), and that ref resolves through the paths-injected
-    # service — never back to the source theme's mask.
-    assert not (saved / "01.png").exists()
+    # The source's mask is the theme's OWN bundled 01.png (not a catalog
+    # mask), so SaveTheme copies it theme-local — self-contained, and NOT
+    # duplicated into the user mask catalog (the masks browser).
+    assert (saved / "01.png").exists()
     w, h = _TEST_RES
+    umd = app.platform.paths().user_mask_dir(w, h)
+    assert not umd.exists() or not list(umd.iterdir()), \
+        "a theme-bundled mask must not be added to the user mask catalog"
     mask = app.themes.mask_path(active)
     assert mask is not None
-    assert mask.parent.parent == app.platform.paths().user_mask_dir(w, h)
+    assert mask == saved / "01.png"
     assert mask != source / "01.png"
 
 
@@ -764,29 +770,36 @@ def test_save_theme_keeps_cloud_video_at_theme_ext(
     assert saved_video.read_bytes() == fake_mp4_bytes
 
 
-def test_save_theme_bakes_cloud_mask_override(
+def test_save_theme_copies_non_catalog_mask_override_theme_local(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.mask_path`` set → saved theme REFERENCES the override
-    mask in the library, NOT the source theme's mask."""
+    """A mask override NOT in a catalog (an arbitrary file the user picked)
+    is copied theme-local on save — self-contained, never added to the user
+    mask catalog (only uploads go there), never the source theme's mask."""
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
-    cloud_mask = tmp_home / "cloud_masks" / "circle.png"
-    cloud_mask.parent.mkdir(parents=True)
-    cloud_mask.write_bytes(_png_bytes(red=0xAA))
-    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
+    override = tmp_home / "picked" / "circle.png"
+    override.parent.mkdir(parents=True)
+    override.write_bytes(_png_bytes(red=0xAA))
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(override))
 
-    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-mask"))
+    app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-override"))
 
-    saved = user_theme_dir / "with-cloud-mask"
+    saved = user_theme_dir / "with-override"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    assert manifest["mask"].startswith(f"web/zt{_TEST_RES[0]}{_TEST_RES[1]}/")
-    assert not (saved / "01.png").exists()
+    # Theme-local copy → no library ref; mask sits in the saved dir.
+    assert "mask" not in manifest
+    assert (saved / "01.png").exists()
+    # NOT added to the user mask catalog (the masks browser source).
+    umd = app.platform.paths().user_mask_dir(*_TEST_RES)
+    assert not umd.exists() or not list(umd.iterdir())
+    # Resolves to the override, never the source theme's mask.
     resolved = app.themes.mask_path(app.themes.load(saved))
     assert resolved is not None
+    assert resolved.read_bytes() == override.read_bytes()
     assert resolved.read_bytes() != (source / "01.png").read_bytes()
 
 
@@ -936,12 +949,16 @@ def test_save_then_reload_resolves_library_assets_not_source(
     assert bg.parent == paths.user_background_dir(*_TEST_RES).resolve()
     assert bg.read_bytes() != (source / "00.png").read_bytes()
 
-    # LoadTheme resolved the relative mask ref + applied it (the gotcha):
-    # DeviceSettings.mask_path now points at the library mask, not source.
-    applied_mask = app.settings.for_device(_TEST_DEVICE_KEY).mask_path
-    assert applied_mask is not None
-    assert Path(applied_mask).parent.parent == paths.user_mask_dir(*_TEST_RES).resolve()
-    assert Path(applied_mask).read_bytes() != (source / "01.png").read_bytes()
+    # The mask override is non-catalog → copied theme-local.  A theme's OWN
+    # mask renders via the theme (mask_path), not as a settings override, so
+    # after reload it resolves to the saved dir's 01.png — never the
+    # source's — and was never duplicated into the user mask catalog.
+    mask = app.themes.mask_path(active)
+    assert mask is not None
+    assert mask == saved / "01.png"
+    assert mask.read_bytes() != (source / "01.png").read_bytes()
+    umd = paths.user_mask_dir(*_TEST_RES)
+    assert not umd.exists() or not list(umd.iterdir())
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -1082,82 +1099,45 @@ def test_import_theme_publishes_event(
     assert events[0].theme_name == "evt"
 
 
-# ── Mask metrics: saved/uploaded user masks carry their config1.dc ────
+# ── Masks are REFERENCED on save, not duplicated; user masks are editable ──
 #
-# Bug: saving a theme that used a cloud mask wrote the mask into the user
-# catalog (~/.trcc-user/.../web/zt{w}{h}/<id>/01.png) WITHOUT its
-# config1.dc, so re-applying that mask from the masks browser dropped its
-# metrics.  SaveTheme + UploadCustomMask now both write the DC via the
-# shared overlay_elements_to_dc helper — in unison.
+# Saving a theme that uses a CLOUD mask must reference it (never copy it
+# into the user catalog / masks browser).  A theme's own bundled mask is
+# copied theme-local.  Only UploadCustomMask adds to the user catalog, and
+# its config1.dc is editable as the user changes the mask's metrics.
 
 
-def test_save_theme_writes_mask_dc_with_metrics(
+def test_save_theme_references_cloud_mask_without_duplicating(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """A theme saved with overlay metrics stores its mask as a complete
-    ``{01.png, config1.dc}`` catalog unit, and re-applying that mask
-    restores the metrics."""
-    from trcc.core.commands import ApplyMask
-    from trcc.core.models import OverlayElement
+    """A theme whose mask is a CLOUD mask is saved as a REFERENCE to it —
+    never copied into the user catalog (no duplicate in the masks browser)."""
+    w, h = _TEST_RES
+    cloud_id = "004b"
+    cloud_dir = app.platform.paths().cloud_mask_dir(w, h) / cloud_id
+    cloud_dir.mkdir(parents=True)
+    (cloud_dir / "01.png").write_bytes(_png_bytes(red=0x40))
+    (cloud_dir / "config1.dc").write_bytes(b"\xddCLOUDDC")
 
-    # Source theme with BOTH a mask (01.png) and a clock element, so the
-    # saved mask has metrics to carry.
-    source = tmp_home / "source"
-    source.mkdir(parents=True)
-    (source / "trcc.json").write_text(json.dumps({
-        "name": "source", "width": 320, "height": 320,
-        "overlay_enabled": True, "mask_visible": True,
-        "elements": [{
-            "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
-            "size": 24, "bold": False, "italic": False, "source": "time",
-        }],
-    }), encoding="utf-8")
-    (source / "00.png").write_bytes(_png_bytes(red=0x10))
-    (source / "01.png").write_bytes(_png_bytes(red=0x20))
+    source = _write_theme_with_dc(tmp_home, "source")    # bg + clock, no mask
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
-    app.settings.add_user_overlay_element(
-        _TEST_DEVICE_KEY,
-        OverlayElement(
-            id="u1", type="text", x=10, y=10, color="#ffffff",
-            size=18, bold=False, italic=False, text="HI",
-        ),
-    )
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_dir / "01.png"))
 
-    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="metric-mask"))
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cloud-themed"))
     assert result.ok is True
 
-    active = app.active_themes[_TEST_DEVICE_KEY]
-    mask = app.themes.mask_path(active)
-    assert mask is not None
-    mask_dir = mask.parent
-    assert (mask_dir / "config1.dc").is_file(), \
-        "saved mask must carry its config1.dc metrics"
-
-    # Re-applying the saved catalog mask repopulates the metric overlay.
-    app.settings.set_mask_overlay_elements(_TEST_DEVICE_KEY, None)
-    apply = app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY, path=mask_dir))
-    assert apply.ok is True
-    restored = app.settings.for_device(_TEST_DEVICE_KEY).mask_overlay_elements
-    assert restored, "applying the saved mask must restore its metrics"
-    types = [e.type for e in restored]
-    assert "clock" in types and "text" in types
-
-
-def test_save_theme_metricless_mask_stays_image_only(
-    app: App, tmp_home: Path, user_theme_dir: Path,
-) -> None:
-    """A theme with NO overlay elements saves its mask image-only — no
-    empty config1.dc pollutes the catalog."""
-    source = _write_theme_with_mask(tmp_home, "plain")   # elements: []
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
-
-    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="plain-copy"))
-    assert result.ok is True
-
+    saved = user_theme_dir / "cloud-themed"
+    manifest = json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest.get("mask") == f"web/zt{w}{h}/{cloud_id}", \
+        "saved theme must reference the cloud mask by ref, not copy it"
+    # No duplicate created in the user catalog (the masks browser source).
+    umd = app.platform.paths().user_mask_dir(w, h)
+    assert not umd.exists() or not list(umd.iterdir()), \
+        "cloud mask must not be duplicated into the user catalog"
+    # The reference still resolves back to the cloud mask.
     mask = app.themes.mask_path(app.active_themes[_TEST_DEVICE_KEY])
     assert mask is not None
-    assert (mask.parent / "01.png").is_file()
-    assert not (mask.parent / "config1.dc").exists()
+    assert mask.parent.name == cloud_id and mask.name == "01.png"
 
 
 def test_upload_custom_mask_captures_current_overlay_as_dc(
@@ -1188,6 +1168,26 @@ def test_upload_custom_mask_captures_current_overlay_as_dc(
         "uploaded mask must carry config1.dc from the active overlay"
 
 
+def test_upload_custom_mask_always_writes_dc_even_without_metrics(
+    app: App, tmp_home: Path,
+) -> None:
+    """Every uploaded mask carries a config1.dc from the moment of upload —
+    even with NO metrics on screen — so it's an editable {01.png, config1.dc}
+    unit from the start."""
+    from trcc.core.commands import UploadCustomMask
+
+    src = tmp_home / "blank.png"
+    src.write_bytes(_png_bytes(red=0x22))
+    # No overlay set on the device.
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    w, h = _TEST_RES
+    mask_dir = app.platform.paths().user_mask_dir(w, h) / "custom_blank"
+    assert (mask_dir / "01.png").is_file()
+    assert (mask_dir / "config1.dc").is_file(), \
+        "an uploaded mask must carry a config1.dc even with no metrics yet"
+
+
 def test_store_mask_distinct_dc_yields_distinct_dirs(app: App) -> None:
     """Same mask image with DIFFERENT DC metrics → distinct catalog dirs,
     each with its own config1.dc; identical image+DC dedups."""
@@ -1203,3 +1203,57 @@ def test_store_mask_distinct_dc_yields_distinct_dirs(app: App) -> None:
     assert ref1 != ref2, "different metrics must not collapse to one dir"
     assert ref1 == ref_same, "identical image+DC must dedup"
     assert len(list(paths.user_mask_dir(w, h).iterdir())) == 2
+
+
+def test_editing_metrics_persists_user_mask_dc(
+    app: App, tmp_home: Path,
+) -> None:
+    """Editing a metric while a USER mask is active rewrites that mask's
+    config1.dc (OverlayChanged → persist_user_mask_dc) — the user mask is an
+    editable {01.png, config1.dc} unit."""
+    from trcc.core.commands import AddOverlayElement, UploadCustomMask
+    from trcc.services import _dc as Dc
+
+    src = tmp_home / "mine.png"
+    src.write_bytes(_png_bytes(red=0x55))
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    w, h = _TEST_RES
+    mask_dc = (app.platform.paths().user_mask_dir(w, h)
+               / "custom_mine" / "config1.dc")
+    before = mask_dc.read_bytes() if mask_dc.is_file() else b""
+
+    result = app.dispatch(AddOverlayElement(
+        key=_TEST_DEVICE_KEY, type="metric", x=88, y=44,
+        metric="cpu:temp", source="metric",
+    ))
+    assert result.ok is True
+
+    assert mask_dc.is_file(), "user mask DC must exist after a metric edit"
+    assert mask_dc.read_bytes() != before, \
+        "editing metrics must rewrite the user mask's DC"
+    parsed = Dc.File(mask_dc).read()
+    metrics = [e for e in parsed.get("elements", []) if e.get("type") == "metric"]
+    assert metrics, "the edited metric must be persisted in the mask's DC"
+
+
+def test_editing_metrics_does_not_touch_cloud_mask_dc(
+    app: App, tmp_home: Path,
+) -> None:
+    """Editing metrics while a CLOUD mask is active never rewrites the
+    read-only cloud mask's config1.dc."""
+    from trcc.core.commands import AddOverlayElement, ApplyMask
+
+    w, h = _TEST_RES
+    cloud_dir = app.platform.paths().cloud_mask_dir(w, h) / "00cc"
+    cloud_dir.mkdir(parents=True)
+    (cloud_dir / "01.png").write_bytes(_png_bytes(red=0x60))
+    (cloud_dir / "config1.dc").write_bytes(b"\xddORIGINAL")
+
+    assert app.dispatch(
+        ApplyMask(key=_TEST_DEVICE_KEY, path=cloud_dir / "01.png")).ok
+    app.dispatch(AddOverlayElement(
+        key=_TEST_DEVICE_KEY, type="text", x=1, y=1, text="X"))
+
+    assert (cloud_dir / "config1.dc").read_bytes() == b"\xddORIGINAL", \
+        "a cloud mask's DC must never be rewritten by a metric edit"

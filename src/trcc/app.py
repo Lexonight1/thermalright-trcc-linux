@@ -150,10 +150,23 @@ class App:
         # see the new composite without ad-hoc dispatch in each
         # Command.  See _DeviceRenderObserver below.
         self._render_observer = _DeviceRenderObserver(self)
+        # Persist edited metric placement back to an active USER mask's
+        # config1.dc, so a user-uploaded mask stays an editable
+        # {01.png, config1.dc} unit (cloud masks are read-only — the helper
+        # no-ops for them).  See _helpers.persist_user_mask_dc.
+        self.events.subscribe(OverlayChanged, self._persist_user_mask_dc)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
         self._hotplug_started = False
+
+    def _persist_user_mask_dc(self, event: Any) -> None:
+        """On any overlay-metric edit (``OverlayChanged``), rewrite an active
+        user mask's ``config1.dc`` so its metric placement is editable +
+        durable.  ``event`` is ``Any`` to satisfy the ``Handler`` type, as
+        ``_on_visual_change`` does."""
+        from .core.commands._helpers import persist_user_mask_dc
+        persist_user_mask_dc(self, event.key)
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

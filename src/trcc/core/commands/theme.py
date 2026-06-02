@@ -470,7 +470,7 @@ class SaveTheme(Command[ThemeResult]):
         bg_ref = self._store_background(app, target, theme, s, width, height)
         if bg_ref is not None:
             manifest["background"] = bg_ref
-        mask_ref = self._store_mask(app, theme, s, width, height)
+        mask_ref = self._store_mask(app, target, theme, s, width, height)
         if mask_ref is not None:
             manifest["mask"] = mask_ref
         return manifest
@@ -558,20 +558,28 @@ class SaveTheme(Command[ThemeResult]):
     def _store_mask(
         self,
         app: App,
+        target: Path,
         theme: Theme,
         s: DeviceSettings,
         width: int,
         height: int,
     ) -> str | None:
-        """Store the resolved current mask + its DC in the library; return ref.
+        """Make the saved theme reference (not duplicate) its mask.
 
-        Stores the mask IMAGE plus a ``config1.dc`` serialised from the
-        theme's combined overlay layout (when any), so the user-catalog
-        mask is the same self-contained ``{01.png, config1.dc}`` unit a
-        cloud mask is — re-applying it from the masks browser restores its
-        metrics instead of dropping them.  ``DeviceSettings.mask_path``
-        (user/cloud override) wins over the source theme's mask.  ``None``
-        when there is no mask — a valid themeable state.
+        A mask already in a catalog — cloud (``cloud_mask_dir``) or a prior
+        user upload (``user_mask_dir``) — is REFERENCED by its existing ref
+        ``web/zt{w}{h}/<id>`` and never copied into the user catalog
+        (copying a cloud mask would duplicate it into the user's "my masks"
+        browser).  A cloud mask already ships its own ``config1.dc``, and
+        the user's edited metrics live inline in the saved manifest's
+        ``elements``, so no DC is written here.
+
+        A theme's OWN bundled mask (not in any catalog) is copied
+        theme-local into the saved dir as ``01.png`` — self-contained, yet
+        still never in the catalog.  Returns the ref for a catalog mask, or
+        ``None`` for a theme-local one (``mask_path`` then falls back to the
+        in-dir ``01.png``) and for no-mask.  ``DeviceSettings.mask_path``
+        (user/cloud override) wins over the source theme's mask.
         """
         src = self._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
@@ -580,18 +588,29 @@ class SaveTheme(Command[ThemeResult]):
             log.info("SaveTheme: no mask to save (neither override nor source)")
             return None
 
-        surface = app.renderer.open_image(src)
-        dc_bytes = overlay_elements_to_dc(
-            self._combine_elements(theme, s),
-            rotation=int(theme.config.get("rotation", 0)),
-            overlay_enabled=bool(theme.config.get("overlay_enabled", True)),
-        )
-        ref = app.themes.store_mask(
-            app.renderer.encode_png(surface), width, height, dc=dc_bytes,
-        )
-        log.info("SaveTheme: mask %s → library ref %s (dc=%s)",
-                 src.name, ref, "yes" if dc_bytes else "no")
-        return ref
+        # Catalog mask (cloud or prior upload) → reference it, never copy.
+        src_resolved = src.resolve()
+        paths = app.platform.paths()
+        for root in (paths.cloud_mask_dir(width, height),
+                     paths.user_mask_dir(width, height)):
+            if src_resolved.is_relative_to(root.resolve()):
+                ref = f"web/zt{width}{height}/{src.parent.name}"
+                log.info("SaveTheme: mask %s is a catalog mask → reference "
+                         "%s (no copy)", src.parent.name, ref)
+                return ref
+
+        # Theme's own bundled mask → copy theme-local so the saved theme is
+        # self-contained, without adding to the user mask catalog.
+        import shutil
+        dst = target / _LEGACY_MASK_FILENAME
+        try:
+            shutil.copy2(src, dst)
+        except OSError as e:
+            log.warning("SaveTheme: theme-local mask copy failed (%s) — mask "
+                        "omitted", e)
+            return None
+        log.info("SaveTheme: bundled mask %s → theme-local %s", src.name, dst)
+        return None
 
     @staticmethod
     def _write_manifest(target: Path, manifest: dict) -> None:
@@ -1192,25 +1211,23 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 ok=False, key=self.key, path="",
                 message=f"Copy failed: {e}",
             )
-        # Capture the device's CURRENT overlay as the mask's config1.dc —
-        # in unison with SaveTheme, a user mask becomes the same
-        # {01.png, config1.dc} unit a cloud mask is, so re-applying it
-        # later restores metrics.  Written BEFORE ApplyMask so the upload
-        # applies with its metrics; image-only when nothing is on screen.
+        # Every uploaded mask carries an editable config1.dc from the moment
+        # of upload (allow_empty=True) — seeded with the device's CURRENT
+        # overlay, or an empty placeholder the user then fills.  Written
+        # BEFORE ApplyMask so the upload applies with its metrics.
         settings = app.settings.for_device(self.key)
         elements: list[dict] = []
         if settings.mask_overlay_elements is not None:
             elements = [e.to_dict() for e in settings.mask_overlay_elements]
         elements += [e.to_dict() for e in settings.user_overlay_elements]
-        dc_bytes = overlay_elements_to_dc(elements)
+        dc_bytes = overlay_elements_to_dc(elements, allow_empty=True)
         if dc_bytes is not None:
             try:
                 (mask_dir / "config1.dc").write_bytes(dc_bytes)
                 log.info("UploadCustomMask: wrote config1.dc (%d byte(s)) → %s",
                          len(dc_bytes), mask_dir.name)
             except OSError as e:
-                log.warning("UploadCustomMask: config1.dc write failed (%s) — "
-                            "mask uploaded image-only", e)
+                log.warning("UploadCustomMask: config1.dc write failed (%s)", e)
         apply_result = ApplyMask(key=self.key, path=mask_file).execute(app)
         if not apply_result.ok:
             return MaskUploadResult(

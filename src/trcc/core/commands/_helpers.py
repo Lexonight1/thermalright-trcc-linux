@@ -53,19 +53,22 @@ _VIDEO_EXTS_FOR_LOAD = frozenset({
 def overlay_elements_to_dc(
     elements: list[dict[str, Any]], *,
     rotation: int = 0, overlay_enabled: bool = True,
+    allow_empty: bool = False,
 ) -> bytes | None:
     """Serialise overlay elements into ``config1.dc`` (``0xDD``) bytes.
 
     The single mask-metrics writer shared by every user-mask path:
-    ``SaveTheme`` (metrics captured from a saved theme) and
-    ``UploadCustomMask`` (metrics captured from a fresh upload) both call
-    this, so a user mask carries the same self-contained
-    ``{01.png, config1.dc}`` unit a cloud mask does — and ``ApplyMask``
-    reloads them identically.  Returns ``None`` when there are no elements
-    so a metrics-less mask stays image-only rather than carrying an empty
-    DC.
+    ``UploadCustomMask`` (a fresh upload) and ``persist_user_mask_dc`` (a
+    later metric edit) both call this, so a user mask is the same
+    self-contained ``{01.png, config1.dc}`` unit a cloud mask is — and
+    ``ApplyMask`` reloads them identically.
+
+    With *allow_empty* True an empty overlay still serialises to a valid
+    zero-element DC — user masks ALWAYS carry an editable ``config1.dc``,
+    even before any metric is placed.  With it False, an empty overlay
+    returns ``None`` (the caller can leave the mask image-only).
     """
-    if not elements:
+    if not elements and not allow_empty:
         log.debug("overlay_elements_to_dc: no elements — image-only mask")
         return None
     from ...services._dc import Writer
@@ -78,6 +81,56 @@ def overlay_elements_to_dc(
     log.info("overlay_elements_to_dc: %d element(s) → %d DC byte(s)",
              len(elements), len(dc))
     return dc
+
+
+def persist_user_mask_dc(app: App, key: str) -> None:
+    """Rewrite the active USER mask's ``config1.dc`` from the current overlay.
+
+    A user-uploaded mask (under ``user_mask_dir``) is the user's OWN
+    editable mask: when they change its metric placement, persist the new
+    layout to its ``config1.dc`` so it survives re-apply — keeping it the
+    same editable ``{01.png, config1.dc}`` unit a cloud mask is.  Subscribed
+    to ``OverlayChanged``.
+
+    No-op (returns) when there is no active mask, the resolution can't be
+    resolved, or the active mask is NOT a user-catalog mask — cloud / program
+    masks are read-only and never rewritten.  Drops a stale ``config1.dc``
+    when the overlay becomes empty so the mask stays honestly image-only.
+    """
+    settings = app.settings.for_device(key)
+    mask_path = settings.mask_path
+    if not mask_path:
+        return
+    resolution = _resolve_resolution(app, key)
+    if resolution is None:
+        log.debug("persist_user_mask_dc: no resolution for %s — skip", key)
+        return
+    mask_file = Path(mask_path)
+    user_root = app.platform.paths().user_mask_dir(*resolution)
+    try:
+        is_user_mask = mask_file.resolve().parent.parent == user_root.resolve()
+    except OSError:
+        return
+    if not is_user_mask:
+        log.debug("persist_user_mask_dc: %s is not a user-catalog mask — skip",
+                  mask_file)
+        return
+
+    elements: list[dict[str, Any]] = []
+    if settings.mask_overlay_elements is not None:
+        elements = [e.to_dict() for e in settings.mask_overlay_elements]
+    elements += [e.to_dict() for e in settings.user_overlay_elements]
+    # allow_empty=True → the user mask always keeps a config1.dc, even when
+    # every metric is removed, so it stays an editable unit.
+    dc = overlay_elements_to_dc(elements, allow_empty=True)
+    mask_dc = mask_file.parent / "config1.dc"
+    try:
+        if dc is not None:
+            mask_dc.write_bytes(dc)
+            log.info("persist_user_mask_dc: rewrote %s/config1.dc (%d byte(s))",
+                     mask_file.parent.name, len(dc))
+    except OSError as e:
+        log.warning("persist_user_mask_dc: write failed (%s)", e)
 
 
 _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
