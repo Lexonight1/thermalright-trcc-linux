@@ -3,16 +3,22 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
 from ._shared import (
     http_error_if_failed,
+    product_to_schema,
     to_connect_response,
     to_disconnect_response,
     to_discover_response,
 )
-from .schemas import ConnectResponse, DisconnectResponse, DiscoverResponse
+from .schemas import (
+    ConnectResponse,
+    DisconnectResponse,
+    DiscoverResponse,
+    ProductSchema,
+)
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +30,17 @@ def list_devices(request: Request) -> DiscoverResponse:
     log.info("api GET /devices")
     result = request.app.state.trcc.dispatch(DiscoverDevices())
     return to_discover_response(result)
+
+
+@router.get("/{key}", response_model=ProductSchema)
+def device_detail(key: str, request: Request) -> ProductSchema:
+    """Detail for one discovered device — 404 if not currently present."""
+    log.info("api GET /devices/%s", key)
+    result = request.app.state.trcc.dispatch(DiscoverDevices())
+    for product in result.products:
+        if product.key == key:
+            return product_to_schema(product)
+    raise HTTPException(status_code=404, detail=f"device {key} not found")
 
 
 @router.post("/{key}/connect", response_model=ConnectResponse)

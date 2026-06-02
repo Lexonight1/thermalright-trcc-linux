@@ -119,6 +119,19 @@ def sensors(request: Request) -> SensorsResponse:
     return to_sensors_response(result)
 
 
+@router.get("/metrics")
+def metrics(request: Request) -> dict[str, float]:
+    """Raw flat metric map: ``sensor_id`` → current (personalized) value.
+
+    ``/system/sensors`` returns the categorized list with labels/units;
+    this is the flat ``{id: value}`` shape scripts that read specific
+    keys (e.g. ``cpu:temp``) want, without paging the list.
+    """
+    log.info("api GET /system/metrics")
+    result = request.app.state.trcc.dispatch(ReadSensors())
+    return {r.sensor_id: r.value for r in result.readings}
+
+
 @router.get("/info")
 def info(request: Request) -> dict:
     log.info("api GET /system/info")

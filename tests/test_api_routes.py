@@ -817,6 +817,41 @@ def test_system_sensors_returns_readings_list(api_client: TestClient) -> None:
     assert isinstance(body["readings"], list)
 
 
+def test_system_metrics_returns_flat_dict(api_client: TestClient) -> None:
+    """``GET /system/metrics`` is the flat ``{sensor_id: value}`` shape."""
+    resp = api_client.get("/system/metrics")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, dict)
+    for value in body.values():
+        assert isinstance(value, (int, float))
+
+
+def test_device_detail_not_found_404(api_client: TestClient) -> None:
+    """``GET /devices/{key}`` for an undiscovered device is a 404."""
+    resp = api_client.get("/devices/dead:beef")
+    assert resp.status_code == 404
+
+
+def test_device_detail_returns_discovered_device(
+    api_client: TestClient,
+    fake_platform: FakePlatform,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A discovered device's detail comes back as its product schema."""
+    from trcc.core.models import DeviceInfo
+    monkeypatch.setattr(
+        fake_platform, "scan_devices",
+        lambda: [DeviceInfo(vid=0x0402, pid=0x3922)],
+    )
+    resp = api_client.get("/devices/0402:3922")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["key"] == "0402:3922"
+    assert body["vid"] == 0x0402
+    assert body["pid"] == 0x3922
+
+
 # =========================================================================
 # config router
 # =========================================================================
