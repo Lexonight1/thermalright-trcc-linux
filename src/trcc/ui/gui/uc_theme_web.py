@@ -144,7 +144,8 @@ class UCThemeWeb(DownloadableThemeBrowser):
         return CloudThemeThumbnail(item_info)
 
     def _no_items_message(self) -> str:
-        return "No cloud themes found\n\nDownload with: trcc download themes-320"
+        return ("No cloud themes found\n\nThey download automatically on "
+                "first run, or run: trcc system download <width> <height>")
 
     def set_web_directory(self, path):
         """Set the Web directory (bundled PNGs + downloaded MP4s) and load themes."""
