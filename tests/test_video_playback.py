@@ -230,6 +230,57 @@ def test_play_video_unknown_device_returns_failure(
     assert "Not attached" in result.message or "dead:beef" in result.message
 
 
+def test_play_video_single_frame_is_static_no_animation(
+    connected_app: App, monkeypatch: pytest.MonkeyPatch, video_file: Path,
+) -> None:
+    """The animated-vs-static gate: a single-frame video/gif is treated as a
+    STATIC background — BackgroundChanged fires (one render), VideoStarted
+    does NOT (so the GUI never starts the 15fps animation timer)."""
+    from trcc.core.events import BackgroundChanged
+
+    def fake_load(self, device_key, path, size, **kwargs):   # type: ignore[no-untyped-def]
+        pb = Playback(
+            frames=[RawFrame(data=b"\x00" * (320 * 320 * 3),
+                             width=320, height=320)],
+            fps=15,
+        )
+        self._playbacks[device_key] = pb
+        return pb
+
+    monkeypatch.setattr(MediaService, "load_video", fake_load)
+
+    started: list[VideoStarted] = []
+    bg: list[BackgroundChanged] = []
+    connected_app.events.subscribe(
+        VideoStarted, lambda e: started.append(e),  # type: ignore[arg-type,return-value]
+    )
+    connected_app.events.subscribe(
+        BackgroundChanged, lambda e: bg.append(e),  # type: ignore[arg-type,return-value]
+    )
+
+    result = connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+
+    assert result.ok is True
+    assert result.frame_count == 1
+    assert started == [], "single-frame bg must NOT start the animation timer"
+    assert len(bg) == 1, "single-frame bg must publish BackgroundChanged (one render)"
+
+
+def test_play_video_multi_frame_starts_animation(
+    connected_app: App, stub_media: list, video_file: Path,
+) -> None:
+    """Counterpart to the static gate: a multi-frame video DOES publish
+    VideoStarted (the stub returns 3 frames)."""
+    started: list[VideoStarted] = []
+    connected_app.events.subscribe(
+        VideoStarted, lambda e: started.append(e),  # type: ignore[arg-type,return-value]
+    )
+    result = connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+    assert result.ok is True
+    assert result.frame_count == 3
+    assert len(started) == 1, "multi-frame video must start the animation timer"
+
+
 # ── StopVideo Command ────────────────────────────────────────────────
 
 

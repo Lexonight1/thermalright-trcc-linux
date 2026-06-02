@@ -606,6 +606,27 @@ class PlayVideo(Command[VideoResult]):
 
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
+
+        # Animated-vs-static gate: ffmpeg decoded exactly one frame, so this
+        # "video"/gif is NOT animated.  Render it ONCE via BackgroundChanged
+        # and do NOT publish VideoStarted, so the GUI never starts the 15fps
+        # animation timer for a static background.  Restores the legacy
+        # PIL frame-count check (lost in the PIL→ffmpeg refactor) using
+        # ffmpeg's own decode count.
+        if playback.frame_count <= 1:
+            log.info(
+                "PlayVideo.execute: %s is a STATIC single-frame background "
+                "— rendering once, no animation timer", self.path.name,
+            )
+            app.events.publish(
+                BackgroundChanged(key=self.key, path=str(self.path)),
+            )
+            return VideoResult(
+                ok=True, key=self.key, path=str(self.path),
+                frame_count=1,
+                message=f"static background (1 frame): {self.path.name}",
+            )
+
         # Per-frame interval derived from playback fps — handler observer
         # uses this to start the Qt animation timer.  Clamped to >=1 ms
         # so a degenerate fps=0 cannot stall the event loop.
