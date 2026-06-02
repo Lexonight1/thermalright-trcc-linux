@@ -17,6 +17,7 @@ import pytest
 
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, PlayVideo, StopVideo
+from trcc.core.errors import ThemeError
 from trcc.core.events import VideoStarted, VideoStopped
 from trcc.core.models import (
     FitMode,
@@ -29,7 +30,7 @@ from trcc.core.models import (
 from trcc.core.ports import Renderer
 from trcc.core.protocol import get_profile
 from trcc.services.display import DisplayService
-from trcc.services.media import MediaService, Playback
+from trcc.services.media import MediaService, Playback, VideoDecoder
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 from trcc.services.theme import ThemeService
@@ -70,7 +71,7 @@ def connected_app(app: App, monkeypatch: pytest.MonkeyPatch) -> App:
 @pytest.fixture
 def stub_media(
     connected_app: App, monkeypatch: pytest.MonkeyPatch,
-) -> list[tuple[str, Path, tuple[int, int]]]:
+) -> list[tuple[str, Path, tuple[int, int] | None]]:
     """Replace MediaService.load_video with a no-ffmpeg stub.
 
     Returns the call log so tests can assert what was decoded.
@@ -420,6 +421,58 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     # open_image was called instead (for the PNG)
     open_calls = [c for c in renderer.calls if c[0] == "open_image"]
     assert open_calls, "Static background should be loaded via open_image"
+
+
+# ── VideoDecoder zero-dim guard ──────────────────────────────────────
+
+
+class _FakeProc:
+    """Stand-in for subprocess.run's CompletedProcess."""
+
+    returncode = 0
+    stderr = b""
+
+    def __init__(self, stdout: bytes) -> None:
+        self.stdout = stdout
+
+
+def test_video_decoder_rejects_zero_dimension(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``size=(0, h)`` must raise ThemeError, NOT ZeroDivisionError.
+
+    Without the guard, ``frame_bytes = w*h*3 == 0`` makes
+    ``len(raw) % frame_bytes`` raise ZeroDivisionError deep in decode().
+    The guard converts it to a clear, user-facing ThemeError.
+    """
+    clip = tmp_home / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr("trcc.services.media._ffmpeg_available", lambda: True)
+    monkeypatch.setattr(
+        "trcc.services.media.subprocess.run",
+        lambda *a, **k: _FakeProc(b""),
+    )
+
+    with pytest.raises(ThemeError, match="width and height must both be positive"):
+        VideoDecoder(clip, size=(0, 480)).decode()
+
+
+def test_video_decoder_accepts_valid_dimension(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A positive ``size`` decodes the expected frame count past the guard."""
+    clip = tmp_home / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr("trcc.services.media._ffmpeg_available", lambda: True)
+    monkeypatch.setattr(
+        "trcc.services.media.subprocess.run",
+        lambda *a, **k: _FakeProc(b"\x00" * (320 * 480 * 3)),
+    )
+
+    frames = VideoDecoder(clip, size=(320, 480)).decode()
+    assert len(frames) == 1
+    assert frames[0].width == 320
+    assert frames[0].height == 480
 
 
 _ = FitMode   # keep ruff happy

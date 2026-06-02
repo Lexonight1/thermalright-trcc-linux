@@ -85,6 +85,17 @@ class VideoDecoder:
                      self.path.name, w, h)
         else:
             w, h = self.size
+
+        # Guard the frame-chunking math: frame_bytes = w*h*3, and a zero
+        # dimension makes ``len(raw) % frame_bytes`` / ``// frame_bytes``
+        # raise ZeroDivisionError below.  Fail loudly with the module's
+        # own error — same "rather than guess" stance as the ffprobe path.
+        if w <= 0 or h <= 0:
+            raise ThemeError(
+                f"Invalid decode size {w}x{h} for {self.path.name} — "
+                "width and height must both be positive"
+            )
+
         cmd: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
         if self.rotation_degrees:
             cmd += ["-display_rotation", str(self.rotation_degrees)]
