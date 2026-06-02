@@ -142,7 +142,32 @@ class BaselineSensors(SensorEnumerator):
         self._poll_thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._interval_s: float = 2.0
+        # Labels whose read has already raised — warn once, then DEBUG, so a
+        # persistently-broken sensor doesn't spam a line every poll interval.
+        self._read_failures: set[str] = set()
         self._gpus.sort(key=lambda g: (not g.is_discrete, g.key))
+
+    def _read(
+        self, fn: Callable[[], float | None], label: str,
+    ) -> float | None:
+        """Call one sensor read, degrading a raising source to None.
+
+        A flaky or permission-locked sensor (e.g. root-only RAPL
+        ``energy_uj``, a wedged hwmon node) must never take the whole poll
+        — and thus the GUI launch / render tick that calls ``read_all()``
+        — down with it.  First failure per label warns; later ones are
+        DEBUG.  Issue #139 class.
+        """
+        try:
+            return fn()
+        except Exception as e:
+            if label in self._read_failures:
+                log.debug("sensor read %s still failing: %s", label, e)
+            else:
+                self._read_failures.add(label)
+                log.warning("sensor read %s failed (%s) — skipping this "
+                            "reading; further failures at DEBUG", label, e)
+            return None
 
     # ── Structured access ──────────────────────────────────────────
 
@@ -278,28 +303,31 @@ class BaselineSensors(SensorEnumerator):
         r: dict[str, float] = {}
 
         # CPU
-        _store(r, "cpu:temp", self._cpu.temp())
-        _store(r, "cpu:usage", self._cpu.usage())
-        _store(r, "cpu:freq", self._cpu.freq())
-        _store(r, "cpu:power", self._cpu.power())
+        _store(r, "cpu:temp", self._read(self._cpu.temp, "cpu:temp"))
+        _store(r, "cpu:usage", self._read(self._cpu.usage, "cpu:usage"))
+        _store(r, "cpu:freq", self._read(self._cpu.freq, "cpu:freq"))
+        _store(r, "cpu:power", self._read(self._cpu.power, "cpu:power"))
 
         # Memory
-        _store(r, "memory:used", self._memory.used())
-        _store(r, "memory:available", self._memory.available())
-        _store(r, "memory:total", self._memory.total())
-        _store(r, "memory:percent", self._memory.percent())
+        _store(r, "memory:used", self._read(self._memory.used, "memory:used"))
+        _store(r, "memory:available",
+               self._read(self._memory.available, "memory:available"))
+        _store(r, "memory:total",
+               self._read(self._memory.total, "memory:total"))
+        _store(r, "memory:percent",
+               self._read(self._memory.percent, "memory:percent"))
 
         # GPUs — one reading set per indexed position, plus vendor key alias,
         # plus primary alias pointing at the same underlying readings.
         primary = self.primary_gpu()
         for idx, gpu in enumerate(self._gpus):
-            temp = gpu.temp()
-            usage = gpu.usage()
-            clock = gpu.clock()
-            power = gpu.power()
-            fan = gpu.fan()
-            vram_used = gpu.vram_used()
-            vram_total = gpu.vram_total()
+            temp = self._read(gpu.temp, f"gpu:{idx}:temp")
+            usage = self._read(gpu.usage, f"gpu:{idx}:usage")
+            clock = self._read(gpu.clock, f"gpu:{idx}:clock")
+            power = self._read(gpu.power, f"gpu:{idx}:power")
+            fan = self._read(gpu.fan, f"gpu:{idx}:fan")
+            vram_used = self._read(gpu.vram_used, f"gpu:{idx}:vram_used")
+            vram_total = self._read(gpu.vram_total, f"gpu:{idx}:vram_total")
             for prefix in (f"gpu:{idx}", f"gpu:{gpu.key}"):
                 _store(r, f"{prefix}:temp", temp)
                 _store(r, f"{prefix}:usage", usage)
@@ -319,11 +347,21 @@ class BaselineSensors(SensorEnumerator):
 
         # Fans
         for fan in self._fans:
-            _store(r, f"fan:{fan.key}:rpm", fan.rpm())
-            _store(r, f"fan:{fan.key}:percent", fan.percent())
+            _store(r, f"fan:{fan.key}:rpm",
+                   self._read(fan.rpm, f"fan:{fan.key}:rpm"))
+            _store(r, f"fan:{fan.key}:percent",
+                   self._read(fan.percent, f"fan:{fan.key}:percent"))
 
         # IO + time
-        self._io.poll(r)
+        try:
+            self._io.poll(r)
+        except Exception as e:
+            if "io" in self._read_failures:
+                log.debug("sensor read io still failing: %s", e)
+            else:
+                self._read_failures.add("io")
+                log.warning("sensor read io failed (%s) — skipping disk/net "
+                            "stats; further failures at DEBUG", e)
         now = datetime.datetime.now()
         r["time:hour"] = float(now.hour)
         r["time:minute"] = float(now.minute)

@@ -115,6 +115,25 @@ def test_none_values_omitted_from_flat_dict() -> None:
     assert "cpu:temp" in r       # other readings unaffected
 
 
+def test_raising_source_degrades_not_crashes() -> None:
+    """A sensor read that RAISES (locked/wedged node) must degrade to a
+    missing reading — never propagate and crash the whole poll (the read
+    path feeds GUI launch + render ticks).  Issue #139 class."""
+    cpu = FakeCpu()
+
+    def boom() -> float:
+        raise PermissionError(13, "Permission denied")   # the #139 shape
+
+    cpu.power = boom            # type: ignore[method-assign]
+    s = BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[])
+
+    r = s.read_all()            # must NOT raise
+
+    assert "cpu:power" not in r     # the raising reading is dropped
+    assert "cpu:temp" in r          # siblings on the same source survive
+    assert "memory:used" in r       # other sources unaffected
+
+
 # ── RAPL CPU package power (energy-counter delta) ───────────────────
 
 
