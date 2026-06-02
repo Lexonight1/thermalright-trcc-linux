@@ -20,6 +20,7 @@ All readings are normalized at the source:
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from ...core.ports import CpuSource, FanSource, GpuSource
@@ -30,6 +31,7 @@ log = logging.getLogger(__name__)
 
 _HWMON_ROOT = Path("/sys/class/hwmon")
 _DRM_ROOT = Path("/sys/class/drm")
+_POWERCAP_ROOT = Path("/sys/class/powercap")
 
 _CPU_DRIVERS = ("coretemp", "k10temp", "zenpower")
 _AMD_DRIVER = "amdgpu"
@@ -106,16 +108,88 @@ def scan_hwmon_devices() -> list[HwmonDevice]:
     return [HwmonDevice(d) for d in sorted(_HWMON_ROOT.iterdir()) if d.is_dir()]
 
 
+# ── CPU package power (powercap RAPL energy counter) ────────────────
+
+
+class _RaplCpuPower:
+    """CPU package power from the powercap RAPL ``energy_uj`` counter.
+
+    ``energy_uj`` is a monotonic microjoule counter, so instantaneous
+    power = Δenergy / Δt.  The first read seeds the baseline and returns
+    None; subsequent reads return watts.  Sums the ``package-*`` domains
+    (multi-socket) and drops a negative delta — counter wraparound — the
+    same way legacy did.  On hardened kernels (CVE-2020-8694) the counter
+    is root-only; an unreadable file degrades to None, never a crash.
+    """
+
+    __slots__ = ("_last", "_paths")
+
+    def __init__(self) -> None:
+        self._paths = self._discover()
+        self._last: tuple[float, float] | None = None   # (sum_uj, monotonic)
+
+    @staticmethod
+    def _discover() -> list[Path]:
+        """Top-level ``package-*`` RAPL energy paths (CPU sockets)."""
+        try:
+            domains = sorted(_POWERCAP_ROOT.glob("intel-rapl:*"))
+        except OSError as e:
+            log.debug("RAPL discovery skipped: %s", e)
+            return []
+        paths: list[Path] = []
+        for domain in domains:
+            # Top-level domains only (intel-rapl:N), not subdomains
+            # (intel-rapl:N:M = core / uncore / dram).
+            if ":" in domain.name.split("intel-rapl:")[1]:
+                continue
+            # CPU package only — skip psys (platform) / dram domains.
+            name = _read_text(domain / "name") or ""
+            if not name.startswith("package"):
+                continue
+            energy = domain / "energy_uj"
+            if _read_text(energy) is not None:   # readable now → keep
+                paths.append(energy)
+            else:
+                log.debug("RAPL %s: energy_uj unreadable — skipped",
+                          domain.name)
+        log.info("RAPL CPU power: %d readable package domain(s)", len(paths))
+        return paths
+
+    def read(self) -> float | None:
+        """Watts since the last read, or None (first read / wrap / locked)."""
+        if not self._paths:
+            return None
+        total = 0.0
+        for path in self._paths:
+            val = _read_float(path)
+            if val is None:
+                return None     # became unreadable — bail this tick
+            total += val
+        now = time.monotonic()
+        watts: float | None = None
+        if self._last is not None:
+            prev_energy, prev_time = self._last
+            dt = now - prev_time
+            if dt > 0:
+                computed = (total - prev_energy) / (dt * 1_000_000)
+                if computed >= 0:        # drop counter-wraparound ticks
+                    watts = computed
+        self._last = (total, now)
+        return watts
+
+
 # ── CPU temperature (composes PsutilCpu with a hwmon temp source) ───
 
 
 class HwmonCpu(CpuSource):
-    """CPU with temp from hwmon coretemp/k10temp/zenpower + usage/freq from psutil."""
+    """CPU with temp from hwmon coretemp/k10temp/zenpower + usage/freq from
+    psutil, and package power from the powercap RAPL energy counter."""
 
     def __init__(self, psutil_cpu: PsutilCpu,
                  temp_device: HwmonDevice | None) -> None:
         self._psutil = psutil_cpu
         self._temp_device = temp_device
+        self._rapl = _RaplCpuPower()
 
     @property
     def name(self) -> str:
@@ -133,8 +207,9 @@ class HwmonCpu(CpuSource):
         return self._psutil.freq()
 
     def power(self) -> float | None:
-        # Intel RAPL / AMD package power lives outside hwmon; add later.
-        return None
+        # CPU package power via powercap RAPL — energy-delta over the poll
+        # interval (None on the first read until a baseline exists).
+        return self._rapl.read()
 
 
 def find_cpu_temp_device(devices: list[HwmonDevice]) -> HwmonDevice | None:
