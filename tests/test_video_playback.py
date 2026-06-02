@@ -526,4 +526,137 @@ def test_video_decoder_accepts_valid_dimension(
     assert frames[0].height == 480
 
 
+# ── VideoFrameCache pixel-parity gate ────────────────────────────────
+
+
+def test_video_cache_frames_byte_identical_to_direct_build(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cache path must produce byte-identical frames to the direct path.
+
+    This is the gate for wiring the VideoFrameCache into ``build_frame``:
+    ``get_surface(cursor)`` returns exactly what ``_build_bg_mask`` builds
+    for that cursor, so the encoded wire bytes are identical whether the
+    bg came from the cache or a fresh per-frame rebuild.  A real
+    ``QtRenderer`` is used so the comparison is on actual encoded bytes,
+    not stand-in surfaces; three distinct solid-colour frames prove the
+    cursor maps to the right frame (not the same one returned thrice).
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    media = MediaService()
+    # Three distinct solid-colour frames → distinct backgrounds.  Values
+    # are spread across the high bits (64 / 128 / 192) so they survive
+    # RGB565 quantisation — 0x01..0x03 would all round to black.
+    frames = [
+        RawFrame(data=bytes([64 * (i + 1)]) * (320 * 320 * 3),
+                 width=320, height=320)
+        for i in range(3)
+    ]
+    media._playbacks[_KEY] = Playback(frames=frames, fps=15)
+    playback = media._playbacks[_KEY]
+
+    display = DisplayService(
+        renderer=renderer,
+        themes=ThemeService(),
+        overlay=OverlayService(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media,
+    )
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922,
+        vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD,
+        device_type=1, fbl=100, native_resolution=(320, 320),
+        orientations=(0,),
+    )
+    theme = Theme(
+        path=tmp_home / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    profile = get_profile(100)
+
+    def render_each_cursor() -> list[bytes]:
+        out: list[bytes] = []
+        for index in range(len(frames)):
+            playback.cursor = index
+            out.append(display.build_frame(
+                info=info, theme=theme, sensors={}, profile=profile,
+            ))
+        return out
+
+    # Cache path (the new default for multi-frame video).
+    cached = render_each_cursor()
+
+    # Direct path: clear both caches, force ``_video_cache`` to opt out,
+    # re-render the same cursors through ``_build_bg_mask`` each tick.
+    display.invalidate_all()
+    monkeypatch.setattr(display, "_video_cache", lambda *a, **k: None)
+    direct = render_each_cursor()
+
+    assert cached == direct                    # byte-identical
+    assert len(set(cached)) == 3               # cursor genuinely maps per-frame
+
+
+def test_video_cache_builds_once_then_serves_lookups(
+    tmp_home: Path,
+) -> None:
+    """The CPU win: ``_build_bg_mask`` runs once per frame (at the single
+    cache build), then every later tick is a list lookup — NOT a fresh
+    rebuild.  15 ticks over a 9-frame loop must call ``_build_bg_mask``
+    exactly 9 times (the build), not 15."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    media = MediaService()
+    n_frames = 9
+    media._playbacks[_KEY] = Playback(
+        frames=[
+            RawFrame(data=bytes([64 * (i % 3 + 1)]) * (320 * 320 * 3),
+                     width=320, height=320)
+            for i in range(n_frames)
+        ],
+        fps=15,
+    )
+    playback = media._playbacks[_KEY]
+    display = DisplayService(
+        renderer=renderer,
+        themes=ThemeService(),
+        overlay=OverlayService(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media,
+    )
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922,
+        vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD,
+        device_type=1, fbl=100, native_resolution=(320, 320),
+        orientations=(0,),
+    )
+    theme = Theme(
+        path=tmp_home / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    profile = get_profile(100)
+
+    builds = 0
+    original = display._build_bg_mask
+
+    def counting_build_bg_mask(*args: Any, **kwargs: Any) -> Any:
+        nonlocal builds
+        builds += 1
+        return original(*args, **kwargs)
+
+    display._build_bg_mask = counting_build_bg_mask  # type: ignore[method-assign]
+
+    for tick in range(15):
+        playback.cursor = tick % n_frames
+        display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
+
+    # Built once (one _build_bg_mask per frame), then 15 ticks served as
+    # lookups — not 15 rebuilds.
+    assert builds == n_frames
+
+
 _ = FitMode   # keep ruff happy

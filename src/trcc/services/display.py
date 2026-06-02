@@ -39,6 +39,7 @@ from .media import MediaService
 from .overlay import OverlayService
 from .settings import Settings
 from .theme import ThemeService
+from .video_cache import VideoFrameCache
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +135,13 @@ class DisplayService:
         self._settings = settings
         self._media = media
         self._scenes: dict[str, SceneCache] = {}
+        # Per-device pre-composited animation-frame cache (bg+mask for
+        # every video frame, built once).  Decouples the animation loop
+        # from the per-frame ``_build_bg_mask`` rebuild — a tick after
+        # the first build is a list lookup, not a decode+fit+composite.
+        # Built lazily, dropped by ``invalidate`` alongside the scene
+        # cache so any Command that changes the bg+mask layer rebuilds.
+        self._video_caches: dict[str, VideoFrameCache] = {}
         # Cache of loaded split-overlay surfaces keyed by
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
@@ -234,7 +242,31 @@ class DisplayService:
             return scene.frame_bytes
 
         if scene is None or scene.bg_mask_key != bg_key:
-            bg_surface = self._build_bg_mask(info, theme, visual_size)
+            # Animated-theme fast path: a multi-frame video draws a new
+            # bg every tick (cursor is in ``bg_key`` → always a scene
+            # MISS), so the single-surface scene cache never helps it.
+            # The VideoFrameCache holds every frame's bg+mask, so a tick
+            # after the first build is a list lookup, not a fresh
+            # decode+fit+composite.  ``get_surface`` returns exactly what
+            # ``_build_bg_mask`` produced for that cursor (parity gate).
+            video_cache = self._video_cache(info, theme, visual_size)
+            if video_cache is not None:
+                pb = self._media.playback(info.key)
+                cursor = pb.cursor if pb is not None else 0
+                bg_surface = video_cache.get_surface(cursor)
+                if bg_surface is None:
+                    log.warning(
+                        "build_frame %s: video cache miss at cursor %d "
+                        "(frames=%d) — rebuilding bg directly",
+                        info.key, cursor, video_cache.frame_count,
+                    )
+                    bg_surface = self._build_bg_mask(info, theme, visual_size)
+                else:
+                    log.debug("build_frame %s: bg from video cache "
+                              "(cursor=%d/%d)", info.key, cursor,
+                              video_cache.frame_count)
+            else:
+                bg_surface = self._build_bg_mask(info, theme, visual_size)
         else:
             bg_surface = scene.bg_mask_surface
 
@@ -468,14 +500,21 @@ class DisplayService:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
         log.info("invalidate: key=%s", key)
         self._scenes.pop(key, None)
+        # Drop the animation-frame cache too — every Command that mutates
+        # the bg+mask layer (PlayVideo / ApplyMask / SetFitMode /
+        # SetBackgroundMode / LoadTheme …) already calls this, so the
+        # cache rebuilds from the new layer on the next video tick.
+        self._video_caches.pop(key, None)
         # Reset the transition tracker too, so the next build_frame for
         # this key logs INFO when the cache state first appears
         # post-invalidation (instead of comparing against stale state).
         self._cache_state.pop(key, None)
 
     def invalidate_all(self) -> None:
-        log.info("invalidate_all: scenes=%d", len(self._scenes))
+        log.info("invalidate_all: scenes=%d video_caches=%d",
+                 len(self._scenes), len(self._video_caches))
         self._scenes.clear()
+        self._video_caches.clear()
         self._cache_state.clear()
 
     def _log_cache_transition(self, key: str, bg_hit: bool,
@@ -523,6 +562,65 @@ class DisplayService:
         return self._r.encode_rgb565(surface)
 
     # ── Layer 1: background + mask ────────────────────────────────────
+
+    def _video_cache(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        visual_size: tuple[int, int],
+    ) -> VideoFrameCache | None:
+        """Lazily build (and return) the animation-frame cache for *info*.
+
+        Gated on a multi-frame video playback rendered as the theme
+        background.  For ``color`` / ``transparent`` / static-image
+        themes there's nothing per-frame to cache, so this returns None
+        and the caller keeps the single-surface scene cache.
+
+        The cache holds, per cursor, exactly what ``_build_bg_mask``
+        produces for that frame: built by seeking the playback to each
+        cursor and reusing ``_build_bg_mask`` itself — so a cached
+        surface is byte-identical to the live path (the parity gate).
+        Brightness stays at 100 (passthrough): ``build_frame`` keeps
+        applying brightness on the composited surface, so a brightness
+        change needs no rebuild — matching ``_bg_mask_key`` which omits
+        brightness.  Invalidation is explicit (``invalidate``), so once
+        an active cache exists it's valid until a layer Command drops it.
+        """
+        s = self._settings.for_device(info.key)
+        if s.background_mode != "theme":
+            return None
+        playback = self._media.playback(info.key)
+        if playback is None or len(playback.frames) <= 1:
+            return None
+
+        cache = self._video_caches.get(info.key)
+        if (
+            cache is not None
+            and cache.active
+            and cache.frame_count == len(playback.frames)
+        ):
+            return cache
+
+        log.info(
+            "_video_cache %s: building %d-frame cache (theme=%r, %dx%d)",
+            info.key, len(playback.frames), theme.name,
+            visual_size[0], visual_size[1],
+        )
+        cache = VideoFrameCache(self._r)
+        masked: list[Any] = []
+        saved_cursor = playback.cursor
+        try:
+            for index in range(len(playback.frames)):
+                playback.cursor = index
+                masked.append(self._build_bg_mask(info, theme, visual_size))
+        finally:
+            playback.cursor = saved_cursor
+        # Mask already composited per frame by ``_build_bg_mask`` → pass
+        # mask=None so the cache stores the surfaces as-is, no double
+        # composite.  brightness=100 → L3 passthrough (see docstring).
+        cache.build(masked, mask=None, mask_position=(0, 0), brightness=100)
+        self._video_caches[info.key] = cache
+        return cache
 
     def _build_bg_mask(
         self,
