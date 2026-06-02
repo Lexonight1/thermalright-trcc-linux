@@ -1,5 +1,70 @@
 # Changelog
 
+## v9.7.0
+
+Feature + performance release.  Brings the animated-theme GUI to CPU
+parity with the legacy app, restores the LED multi-zone and DDR-multiplier
+features the cutover had dropped, adds Linux CPU package-power readings,
+and broadens the REST/CLI surface — followed by an architecture-audit pass
+that fixed two real bugs and cleaned up the new code.
+
+**Performance — animated themes (24% → ~7% CPU).**  A genuinely-animated
+theme used to peg a core at ~24%.  Two changes bring it to legacy's ~6%:
+a `VideoFrameCache` pre-composites every video frame's background+mask once
+(reusing `_build_bg_mask` per cursor, byte-identical to the live path) so a
+tick after the first loop is a list lookup instead of a fresh
+decode+fit+composite; and the GUI preview now **observes the sent frame**
+instead of re-rendering the whole pipeline a second time per tick — the
+rendered surface rides the `FrameSent` event to `handler.handle_frame`, the
+legacy single-source shape.  Side benefit: the preview now shows the exact
+frame the device received (no more raw-vs-personalized sensor drift).
+
+**LED — multi-zone rendering + DDR multiplier.**  Multi-zone devices
+(PA120, LF10) rendered every zone in one global colour because the zone
+setter Commands persisted state the render path ignored.  `RenderLed` now
+fills each zone's mapped LEDs from its own mode/colour/brightness
+(`tick_multi_zone`) and advances the zone-sync carousel through the enabled
+zones.  Separately, `memory_ratio` — the DDR memory multiplier (1/2/4) the
+LC1 gauge scales its reading by — was mis-retyped to a bool during the
+cutover and frozen at the default; it's now an int again, consistent across
+the model, Commands, settings, CLI (`led memory-ratio <1|2|4>`), API, and
+both GUIs.  (LED hardware verification is reporter-pending.)
+
+**Sensors — Linux CPU package power.**  `cpu:power` was blank on Linux;
+it now reads the powercap RAPL `energy_uj` counter and reports watts as
+Δenergy/Δt (summed across package domains, wraparound dropped,
+root-only counters degrade to None).  Thread-safe across the poll +
+render threads.
+
+**API — surface expansion.**  New routes: `GET /devices/{key}` (single-
+device detail), `GET /system/metrics` (flat `{id: value}` map),
+`POST /devices/{key}/display/reset` (stop video + red frame), and the
+cloud-theme browsing trio — `GET /theme/web` (preview gallery),
+`POST /theme/init` (per-resolution prefetch), and a `/static/web` mount
+serving the preview images.  The gallery enumeration runs on the bus
+(`ListWebThemes` Command), so it works through the daemon proxy.
+
+**CLI.**  `--json` on the `display` / `led` / `system snapshot` commands
+for scripting; `led list-styles` shows per-style `segments=N zones=N`
+capability columns again; `trcc shell` prints a clear "install
+prompt_toolkit" message instead of a fatal traceback when the optional
+dependency is absent.
+
+**Fixes.**  `POST /devices/{key}/display/theme` 500'd on every call
+(`platform.user_content_dir()` AttributeError — it's on `Paths`); fixed
+with a regression test.  The RAPL reader's cross-thread `_last` race
+(garbage watts) is now lock-guarded.  A stale GUI hint pointed at a
+removed `trcc download` command.
+
+**Internal.**  Architecture-audit pass: stripped the `VideoFrameCache` to
+its used surface (the overlay/brightness layers were speculative dead
+code), shared `build_frame`/`build_preview_surface`'s layer-resolve so the
+preview uses the video cache too, moved filesystem logic out of the
+`/theme/web` route into a Command, deduplicated `parse_resolution` to
+`core.models`, replaced GUI lambdas with named slots, and added a public
+`DisplayService.encode_png/jpeg` seam so routes stop reaching the private
+renderer.
+
 ## v9.6.5
 
 Issue-driven patch release.  Closes #149 (Levita right-side notch),
