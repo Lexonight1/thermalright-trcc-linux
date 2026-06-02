@@ -659,4 +659,56 @@ def test_video_cache_builds_once_then_serves_lookups(
     assert builds == n_frames
 
 
+def test_rendered_surface_exposes_sent_frame_for_preview(
+    tmp_home: Path,
+) -> None:
+    """``build_frame`` stashes its pre-encode surface so the GUI preview can
+    reuse it instead of re-rendering the whole pipeline a second time.
+
+    Contract: None before any frame and after ``invalidate``; the exact
+    composited surface (not the encoded bytes) right after a build.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    media = MediaService()
+    media._playbacks[_KEY] = Playback(
+        frames=[RawFrame(data=bytes([90]) * (320 * 320 * 3),
+                         width=320, height=320)],
+        fps=15,
+    )
+    display = DisplayService(
+        renderer=renderer,
+        themes=ThemeService(),
+        overlay=OverlayService(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media,
+    )
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922,
+        vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD,
+        device_type=1, fbl=100, native_resolution=(320, 320),
+        orientations=(0,),
+    )
+    theme = Theme(
+        path=tmp_home / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    profile = get_profile(100)
+
+    assert display.rendered_surface(_KEY) is None      # nothing built yet
+
+    encoded = display.build_frame(
+        info=info, theme=theme, sensors={}, profile=profile,
+    )
+    surface = display.rendered_surface(_KEY)
+    assert surface is not None
+    assert not isinstance(surface, bytes)              # the surface, not the wire bytes
+    assert isinstance(encoded, bytes)                  # build_frame still returns bytes
+
+    display.invalidate(_KEY)
+    assert display.rendered_surface(_KEY) is None       # cleared with the scene
+
+
 _ = FitMode   # keep ruff happy

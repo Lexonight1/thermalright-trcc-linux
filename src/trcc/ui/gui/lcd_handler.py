@@ -849,33 +849,54 @@ class LCDHandler(BaseHandler):
         self._render_and_send()
 
     def handle_frame(self, image: Any) -> None:
-        """Receive rendered frame from tick loop — update preview widget."""
+        """Receive the rendered frame from ``FrameSent`` — show it directly.
+
+        The primary preview path (legacy's ``handler.handle_frame(image)``):
+        the surface that ``build_frame`` produced + sent is the preview
+        image, so it goes straight to the widget — no second render.
+        ``fast`` follows the animation timer so video uses the fast paint.
+        """
         # Per-tick; DEBUG.  Note when UI is gated so a frozen preview
         # while LCD still updates is visible in the log.
+        if image is None:
+            self.log.debug("handle_frame: None surface — skip")
+            return
         if self._ui_active:
-            self._w['preview'].set_image(image)
+            self._w['preview'].set_image(
+                image, fast=self._animation_timer.isActive(),
+            )
         else:
             self.log.debug(
                 "handle_frame: dropped (ui_active=False, %s)", self._device_key,
             )
 
     def rebuild_preview(self) -> None:
-        """Re-render the preview from current state (FrameSent observer).
+        """Fallback preview refresh for sends that carry no surface.
 
-        Builds a preview surface from the App's render pipeline using
-        the live theme + sensors; updates the preview widget when the
-        handler owns the UI.  Idempotent — safe to call from FrameSent.
+        The hot path (RenderAndSend / LoadTheme) now ships the rendered
+        surface in ``FrameSent`` and the bridge calls :meth:`handle_frame`
+        directly — no re-render.  This is only reached when the event has
+        no surface (SendFrame / SendColor / SendImage / keepalive): reuse
+        the last cached frame if one exists, else build a one-off surface.
+        Idempotent.
         """
-        image = self._build_preview_surface()
-        if image is None:
-            self.log.debug(
-                "rebuild_preview: no surface built (theme/device pre-load?)",
-            )
-            return
         if not self._ui_active:
             self.log.debug(
                 "rebuild_preview: ui_active=False for %s — skip",
                 self._device_key,
+            )
+            return
+        image = self._app.display.rendered_surface(self._device_key)
+        if image is None:
+            # No frame rendered yet (pre-load) — build a one-off surface.
+            self.log.debug(
+                "rebuild_preview: no cached frame for %s — building once",
+                self._device_key,
+            )
+            image = self._build_preview_surface()
+        if image is None:
+            self.log.debug(
+                "rebuild_preview: no surface built (theme/device pre-load?)",
             )
             return
         self._w['preview'].set_image(image, fast=self._animation_timer.isActive())

@@ -112,6 +112,12 @@ class SceneCache:
     frame_key: tuple[Any, ...] | None = None
     frame_bytes: bytes | None = None
 
+    # The final composited + rotated surface, captured just before the
+    # wire encode.  The GUI preview reuses THIS instead of re-running the
+    # whole pipeline a second time per tick (see ``rendered_surface``) —
+    # it's byte-for-byte what the device received.
+    preview_surface: Any = None
+
 
 # =========================================================================
 # DisplayService
@@ -316,6 +322,7 @@ class DisplayService:
             bg_mask_surface=bg_surface, bg_mask_key=bg_key,
             overlay_surface=overlay_surface, overlay_key=overlay_key,
             frame_key=frame_key, frame_bytes=encoded,
+            preview_surface=surface,
         )
         return encoded
 
@@ -494,6 +501,20 @@ class DisplayService:
             surface = self._r.rotate(surface, 360 - s.orientation)
         if resolved.rotate:
             surface = self._r.rotate(surface, 90)
+        return surface
+
+    def rendered_surface(self, key: str) -> Any | None:
+        """The last frame's pre-encode surface for *key*, or None.
+
+        The GUI preview reuses this instead of re-rendering the whole
+        pipeline a second time per tick — it's exactly what ``build_frame``
+        composited + rotated and handed to the wire encode.  None before
+        the first frame is built (pre-load) or after ``invalidate``.
+        """
+        scene = self._scenes.get(key)
+        surface = scene.preview_surface if scene is not None else None
+        log.debug("rendered_surface: key=%s available=%s",
+                  key, surface is not None)
         return surface
 
     def invalidate(self, key: str) -> None:

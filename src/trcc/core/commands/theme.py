@@ -264,7 +264,12 @@ class LoadTheme(Command[ThemeResult]):
             )
 
         if sent:
-            app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
+            # Carry the rendered surface so the preview shows the loaded
+            # theme's first frame without re-rendering it.
+            app.events.publish(FrameSent(
+                key=self.key, bytes_sent=len(frame),
+                surface=app.display.rendered_surface(self.key),
+            ))
             log.info(
                 "LoadTheme: %s rendered + sent (%d bytes) from %s",
                 theme.name, len(frame), theme_path_str,

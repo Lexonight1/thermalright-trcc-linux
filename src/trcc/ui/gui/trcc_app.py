@@ -507,15 +507,25 @@ class TRCCApp(QMainWindow):
     def _on_bus_frame_sent(self, event: Any) -> None:
         """A frame just went out on the wire.
 
-        next/'s FrameSent doesn't carry the rendered image, so the
-        active handler re-builds the preview from the app's render
-        pipeline.  Only the active device updates the preview widget.
+        ``FrameSent`` now carries the rendered surface (legacy's
+        publish-the-frame, observe-it shape), so the active handler
+        displays THAT image directly — no second render.  Only the
+        pure-bytes send paths (SendFrame / SendColor / SendImage /
+        keepalive) leave ``surface`` None; those fall back to a one-off
+        re-render.  Only the active device writes the shared preview.
         """
         log.info("_on_bus_frame_sent")
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
-        if handler is not None and hasattr(handler, "rebuild_preview"):
+        if handler is None:
+            return
+        surface = getattr(event, "surface", None)
+        if surface is not None:
+            # Legacy's ``handler.handle_frame(image)`` path — show the
+            # rendered frame directly, no second render.
+            handler.handle_frame(surface)
+        else:
             handler.rebuild_preview()
 
     def _on_bus_video_started(self, event: Any) -> None:

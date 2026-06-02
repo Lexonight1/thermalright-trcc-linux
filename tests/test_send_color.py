@@ -311,6 +311,42 @@ def test_send_color_command_drives_real_app_dispatch(
     # FrameSent event published
     assert len(frame_sent_events) == 1
     assert frame_sent_events[0].key == "0402:3922"
+    # SendColor bypasses the scene cache (solid fill), so it carries no
+    # surface — the GUI falls back to a re-render for it.
+    assert frame_sent_events[0].surface is None
+
+
+def test_render_and_send_frame_sent_carries_surface(tmp_home: Path) -> None:
+    """RenderAndSend ships the rendered surface in ``FrameSent`` so the GUI
+    preview shows THAT frame directly — legacy's publish-the-frame shape,
+    not a second render.  The carried surface is exactly what
+    ``rendered_surface`` exposes (the preview reuses one source).
+    """
+    from trcc.core.commands import RenderAndSend
+    from trcc.core.models import Theme
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+
+    # RenderAndSend needs an active theme to render.
+    app.active_themes["0402:3922"] = Theme(
+        path=tmp_home / "t", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+
+    events: list[FrameSent] = []
+    app.events.subscribe(
+        FrameSent, lambda e: events.append(e),   # type: ignore[arg-type, return-value]
+    )
+
+    result = app.dispatch(RenderAndSend(key="0402:3922"))
+    assert result.ok, result.message
+    assert len(events) == 1
+    # The surface is carried — and it's the very surface the preview reuses.
+    assert events[0].surface is not None
+    assert events[0].surface is app.display.rendered_surface("0402:3922")
 
 
 def test_send_color_validates_channel_range(tmp_home: Path) -> None:

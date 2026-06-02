@@ -422,7 +422,13 @@ class RenderAndSend(Command[RenderResult]):
 
         if ok:
             app.keepalive.store(self.key, frame)
-            app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
+            # Carry the just-rendered surface so the GUI preview shows THIS
+            # frame instead of re-rendering the whole pipeline (legacy's
+            # publish-the-frame, observe-it shape).
+            app.events.publish(FrameSent(
+                key=self.key, bytes_sent=len(frame),
+                surface=app.display.rendered_surface(self.key),
+            ))
         return RenderResult(
             ok=ok, key=self.key,
             bytes_sent=len(frame), theme_name=theme.name,

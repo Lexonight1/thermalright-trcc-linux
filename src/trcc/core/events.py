@@ -10,6 +10,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,14 @@ class DeviceDisconnected(Event):
 class FrameSent(Event):
     key: str
     bytes_sent: int
+    # The rendered pre-encode surface (Renderer-port ``Any``), carried so
+    # observers — the GUI preview above all — display the EXACT frame that
+    # went to the wire instead of re-rendering the whole pipeline a second
+    # time (legacy's ``bus.publish('frame', …, Frame(native=img))`` shape).
+    # In-process only: None on the pure-bytes send paths (SendFrame /
+    # SendColor / SendImage / keepalive) and would be None across IPC,
+    # where a remote client must fall back to a re-render.
+    surface: Any = None
 
 
 @dataclass(frozen=True, slots=True)
