@@ -18,7 +18,19 @@ their own files with thread or timeout wrappers.
 """
 from __future__ import annotations
 
+import json
+
 from typer.testing import CliRunner
+
+
+def _json_from_output(output: str) -> dict:
+    """Parse the JSON object from CLI output.
+
+    Real ``--json`` runs emit clean JSON on stdout (logs go to stderr), but
+    CliRunner mixes the INFO log lines in — the JSON object is the trailing
+    ``{...}`` block, so slice from the first brace.
+    """
+    return json.loads(output[output.index("{"):])
 
 
 def _app():
@@ -415,6 +427,42 @@ def test_system_snapshot(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
     assert "language" in result.output
     assert "refresh_interval" in result.output
+
+
+def test_led_snapshot_json(cli_runner: CliRunner, cli_app) -> None:
+    """``led snapshot <key> --json`` emits parseable JSON for scripts."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "snapshot", "0416:8001", "--json"],
+    )
+    assert result.exit_code == 0
+    data = _json_from_output(result.output)
+    assert data["ok"] is True
+    assert data["key"] == "0416:8001"
+    assert "mode" in data
+    assert "brightness" in data
+
+
+def test_display_snapshot_json(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "snapshot", "0402:3922", "--json"],
+    )
+    assert result.exit_code == 0
+    data = _json_from_output(result.output)
+    assert data["ok"] is True
+    assert "orientation" in data
+    assert "brightness" in data
+
+
+def test_system_snapshot_json(cli_runner: CliRunner, cli_app) -> None:
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "snapshot", "--json"])
+    assert result.exit_code == 0
+    data = _json_from_output(result.output)
+    assert data["ok"] is True
+    assert "language" in data
+    assert "refresh_interval_s" in data
 
 
 def test_system_list_gpus(cli_runner: CliRunner, cli_app) -> None:

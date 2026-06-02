@@ -33,7 +33,7 @@ from ...core.commands import (
     ToggleSegment,
 )
 from ...core.led_models import LEDMode
-from ._ctx import get_app
+from ._ctx import emit_json, get_app
 
 log = logging.getLogger(__name__)
 
@@ -465,10 +465,16 @@ def test_led(
 @app.command("snapshot")
 def snapshot(
     key: str = typer.Argument(..., help="LED device key"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit JSON instead of human text.",
+    ),
 ) -> None:
     """Print the persisted LED state for a device."""
-    log.info("cli led snapshot: key=%s", key)
+    log.info("cli led snapshot: key=%s json_output=%s", key, json_output)
     result = get_app().dispatch(LedSnapshot(key=key))
+    if json_output:
+        emit_json(result)
+        raise typer.Exit(code=0 if result.ok else 1)
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

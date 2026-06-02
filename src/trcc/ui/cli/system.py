@@ -29,7 +29,7 @@ from ...core.commands import (
     RunUpgrade,
     SetHddEnabled,
 )
-from ._ctx import get_app
+from ._ctx import emit_json, get_app
 
 log = logging.getLogger(__name__)
 
@@ -264,10 +264,17 @@ def hdd_enabled(
 
 
 @app.command("snapshot")
-def snapshot() -> None:
+def snapshot(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit JSON instead of human text.",
+    ),
+) -> None:
     """Print the AppSettings snapshot (language, GPU, refresh interval)."""
-    log.info("cli system snapshot")
+    log.info("cli system snapshot: json_output=%s", json_output)
     r = get_app().dispatch(ControlCenterSnapshot())
+    if json_output:
+        emit_json(r)
+        raise typer.Exit(code=0 if r.ok else 1)
     typer.echo(r.message)
     typer.echo(f"  language          {r.language}")
     typer.echo(f"  temp_unit         {r.temp_unit}")

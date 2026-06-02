@@ -7,14 +7,28 @@ over the Unix socket to the running daemon.  Resolved via the canonical
 """
 from __future__ import annotations
 
+import dataclasses
+import json
 import logging
 from functools import lru_cache
+from typing import Any
+
+import typer
 
 from ..._boot import trcc_next
 from ...app import App
 from ...core.ports import Platform, Renderer
 
 log = logging.getLogger(__name__)
+
+
+def emit_json(result: Any) -> None:
+    """Print a dataclass Result/Snapshot as indented JSON for scripts.
+
+    ``default=str`` keeps enums / Paths / tuples serialisable without a
+    custom encoder — same shape the top-level ``status --json`` emits.
+    """
+    typer.echo(json.dumps(dataclasses.asdict(result), default=str, indent=2))
 
 
 _platform_override: Platform | None = None
