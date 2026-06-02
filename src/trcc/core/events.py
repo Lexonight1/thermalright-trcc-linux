@@ -212,6 +212,13 @@ class SensorsUpdated(Event):
     disabled.  Subscribers read the dict as-is; no further
     conversion needed at consumer-side.
 
+    READ-ONLY CONTRACT: the same dict instance is delivered to every
+    subscriber on the synchronous bus, so subscribers must NOT mutate
+    it — copy first if you need to transform.  It's kept a plain
+    ``dict`` (not a frozen ``MappingProxyType``) on purpose: this
+    broadcast is JSON-serialisable for a future metrics-over-IPC
+    stream, which a proxy view would break.
+
     ``temp_unit``: ``"C"`` or ``"F"``.  Tells subscribers which unit
     the temp values are in so they can render the unit SUFFIX in
     format strings (``"33°C"`` vs ``"33°F"``) without reading

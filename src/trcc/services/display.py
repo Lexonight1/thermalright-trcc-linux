@@ -598,6 +598,20 @@ class DisplayService:
             surface = self._r.resize(surface, *resolution)
         return self._r.encode_rgb565(surface)
 
+    def encode_png(self, surface: Any) -> bytes:
+        """PNG-encode a preview surface (lossless — API preview snapshot).
+
+        A public encode seam over the Renderer so callers (the preview
+        routes) don't reach the private ``_r``.
+        """
+        log.debug("encode_png: encoding preview surface")
+        return self._r.encode_png(surface)
+
+    def encode_jpeg(self, surface: Any, quality: int = 95) -> bytes:
+        """JPEG-encode a preview surface (the WebSocket preview stream)."""
+        log.debug("encode_jpeg: quality=%d", quality)
+        return self._r.encode_jpeg(surface, quality)
+
     # ── Layer 1: background + mask ────────────────────────────────────
 
     def _video_cache(

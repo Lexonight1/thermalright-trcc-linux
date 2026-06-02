@@ -455,7 +455,7 @@ async def preview_stream(ws: WebSocket, key: str) -> None:
                     sensors=sensors_full,
                     profile=device.profile,
                 )
-                jpeg_bytes = trcc.display._r.encode_jpeg(surface)
+                jpeg_bytes = trcc.display.encode_jpeg(surface)
                 await ws.send_bytes(jpeg_bytes)
             await asyncio.sleep(frame_interval_s)
     except WebSocketDisconnect:
@@ -491,7 +491,7 @@ def preview(key: str, request: Request) -> Response:
         sensors=sensors_full,
         profile=device.profile,
     )
-    png_bytes = trcc.display._r.encode_png(surface)
+    png_bytes = trcc.display.encode_png(surface)
     return Response(content=png_bytes, media_type="image/png")
 
 
