@@ -333,6 +333,23 @@ def test_display_reset_unknown_device_returns_4xx(
     assert resp.status_code in (400, 404)
 
 
+def test_display_load_theme_reaches_lookup_not_attribute_error(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """Regression: load_theme called ``platform.user_content_dir()`` — an
+    AttributeError (that method is on Paths, not Platform), so the route
+    500'd on every call.  It must reach the theme lookup via
+    ``platform.paths().user_content_dir()``."""
+    ucd = fake_platform.paths().user_content_dir()
+    ucd.mkdir(parents=True, exist_ok=True)   # resolve(strict=True) needs it
+    resp = api_client.post(
+        "/devices/dead:beef/display/theme", json={"path": "no-such-theme"},
+    )
+    # Pre-fix: 500 (AttributeError).  Post-fix: reaches the "unknown
+    # theme" guard → 400, never a 500.
+    assert resp.status_code == 400
+
+
 # =========================================================================
 # led router
 # =========================================================================

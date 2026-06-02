@@ -1,6 +1,7 @@
 """Sensor aggregator — normalized key shape, primary GPU resolver."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,7 @@ def _rapl_with(paths: list[Path]) -> hwmon._RaplCpuPower:
     r = hwmon._RaplCpuPower.__new__(hwmon._RaplCpuPower)
     r._paths = paths
     r._last = None
+    r._lock = threading.Lock()
     return r
 
 

@@ -191,7 +191,7 @@ def load_theme(key: str, body: ThemeRequest,
     # from ``iterdir()`` — no user-controlled component flows into a
     # filesystem call.
     platform = request.app.state.trcc.platform
-    allowed_root = platform.user_content_dir().resolve(strict=True)
+    allowed_root = platform.paths().user_content_dir().resolve(strict=True)
     requested_name = Path(body.path).name
     if not requested_name:
         raise HTTPException(400, "Theme path required")

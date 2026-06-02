@@ -20,6 +20,7 @@ All readings are normalized at the source:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -120,13 +121,20 @@ class _RaplCpuPower:
     (multi-socket) and drops a negative delta — counter wraparound — the
     same way legacy did.  On hardened kernels (CVE-2020-8694) the counter
     is root-only; an unreadable file degrades to None, never a crash.
+
+    ``read()`` mutates ``_last`` and is reachable from two threads — the
+    MetricsLoop poll thread and the GUI/CLI render-tick thread both call
+    ``read_all()`` — so the read-delta-update is guarded by a lock; an
+    interleaving would otherwise pair one thread's ``now`` with another's
+    ``prev`` and report garbage watts.
     """
 
-    __slots__ = ("_last", "_paths")
+    __slots__ = ("_last", "_lock", "_paths")
 
     def __init__(self) -> None:
         self._paths = self._discover()
         self._last: tuple[float, float] | None = None   # (sum_uj, monotonic)
+        self._lock = threading.Lock()
 
     @staticmethod
     def _discover() -> list[Path]:
@@ -156,26 +164,31 @@ class _RaplCpuPower:
         return paths
 
     def read(self) -> float | None:
-        """Watts since the last read, or None (first read / wrap / locked)."""
+        """Watts since the last read, or None (first read / wrap / locked).
+
+        Thread-safe: the read-delta-update runs under ``_lock`` so
+        concurrent callers can't interleave their energy/time samples.
+        """
         if not self._paths:
             return None
-        total = 0.0
-        for path in self._paths:
-            val = _read_float(path)
-            if val is None:
-                return None     # became unreadable — bail this tick
-            total += val
-        now = time.monotonic()
-        watts: float | None = None
-        if self._last is not None:
-            prev_energy, prev_time = self._last
-            dt = now - prev_time
-            if dt > 0:
-                computed = (total - prev_energy) / (dt * 1_000_000)
-                if computed >= 0:        # drop counter-wraparound ticks
-                    watts = computed
-        self._last = (total, now)
-        return watts
+        with self._lock:
+            total = 0.0
+            for path in self._paths:
+                val = _read_float(path)
+                if val is None:
+                    return None     # became unreadable — bail this tick
+                total += val
+            now = time.monotonic()
+            watts: float | None = None
+            if self._last is not None:
+                prev_energy, prev_time = self._last
+                dt = now - prev_time
+                if dt > 0:
+                    computed = (total - prev_energy) / (dt * 1_000_000)
+                    if computed >= 0:    # drop counter-wraparound ticks
+                        watts = computed
+            self._last = (total, now)
+            return watts
 
 
 # ── CPU temperature (composes PsutilCpu with a hwmon temp source) ───
