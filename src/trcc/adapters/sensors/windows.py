@@ -13,6 +13,8 @@ chain naturally degrades.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 
 from ...core.ports import CpuSource, GpuSource
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
@@ -26,8 +28,15 @@ from .psutil_sources import PsutilCpu, PsutilMemory
 log = logging.getLogger(__name__)
 
 
-def build_windows_sensors() -> BaselineSensors:
-    """Construct a BaselineSensors with the full Windows source chain."""
+def build_windows_sensors(
+    thread_context: Callable[[], AbstractContextManager[None]] = nullcontext,
+) -> BaselineSensors:
+    """Construct a BaselineSensors with the full Windows source chain.
+
+    ``thread_context`` is the OS poll-thread setup (Windows passes its COM
+    apartment so WMI reads work off the main thread); defaults to a no-op
+    so the builder stays callable without a Platform.
+    """
     log.info("build_windows_sensors: called")
     cpu: CpuSource = CpuSourceChain([
         HwinfoCpu(),
@@ -39,6 +48,7 @@ def build_windows_sensors() -> BaselineSensors:
     log.info("Windows sensors: cpu chain ready, gpus=%d", len(gpus))
     return BaselineSensors(
         cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[],
+        thread_context=thread_context,
     )
 
 

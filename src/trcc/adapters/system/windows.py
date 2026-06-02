@@ -13,6 +13,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
@@ -289,6 +290,38 @@ class WindowsScsiTransport(ScsiTransport):
 
 
 # =========================================================================
+# COM apartment — per-thread WMI setup
+# =========================================================================
+
+
+class _ComApartment:
+    """Open a COM apartment for the current thread (for off-main-thread WMI).
+
+    A worker thread must ``CoInitialize`` before touching WMI, and COM
+    objects are apartment-bound — a handle created in one thread's
+    apartment can't be used from another.  Wrapping a worker thread's body
+    in this (via ``WindowsPlatform.worker_thread_context``) gives it its
+    own apartment so WMI sensor reads work off the main thread.
+
+    Matches ``_hotplug.WindowsHotplugMonitor._watch_loop``: ``CoInitialize``
+    on enter, no ``CoUninitialize`` — the daemon poll thread holds the
+    apartment for its lifetime and releases it on process exit.
+    ``pythoncom`` absent (non-Windows / missing dep) degrades to a no-op
+    so the manager is import-safe everywhere.
+    """
+
+    def __enter__(self) -> None:
+        try:
+            import pythoncom  # type: ignore[import-not-found,import-untyped]
+            pythoncom.CoInitialize()
+        except ImportError:
+            log.debug("_ComApartment: pythoncom unavailable — no-op")
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+# =========================================================================
 # WindowsPlatform
 # =========================================================================
 
@@ -345,8 +378,15 @@ class WindowsPlatform(Platform):
         """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
         log.info("sensors: cached=%s", self._sensors is not None)
         if self._sensors is None:
-            self._sensors = build_windows_sensors()
+            self._sensors = build_windows_sensors(
+                thread_context=self.worker_thread_context)
         return self._sensors
+
+    def worker_thread_context(self) -> AbstractContextManager[None]:
+        """Open a COM apartment for a worker thread so WMI sensor reads
+        work off the main thread (overrides the Platform no-op default)."""
+        log.debug("worker_thread_context: COM apartment")
+        return _ComApartment()
 
     def autostart(self) -> AutostartManager:
         log.info("autostart: cached=%s", self._autostart is not None)

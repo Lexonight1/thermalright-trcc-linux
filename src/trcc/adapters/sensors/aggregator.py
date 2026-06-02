@@ -22,6 +22,8 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 
 from ...core.models import SensorReading
 from ...core.ports import (
@@ -122,11 +124,18 @@ class BaselineSensors(SensorEnumerator):
                  cpu: CpuSource | None = None,
                  memory: MemorySource | None = None,
                  gpus: list[GpuSource] | None = None,
-                 fans: list[FanSource] | None = None) -> None:
+                 fans: list[FanSource] | None = None,
+                 thread_context: Callable[[], AbstractContextManager[None]]
+                     = nullcontext) -> None:
         self._cpu = cpu or PsutilCpu()
         self._memory = memory or PsutilMemory()
         self._gpus: list[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
         self._fans: list[FanSource] = fans or []
+        # Per-thread OS setup the poll thread enters before touching OS
+        # sensor APIs (Windows → COM apartment for WMI; others → no-op).
+        # Injected as a narrow callable so this OS-neutral aggregator never
+        # depends on Platform — see memory project_threadinit_com_design.
+        self._thread_context = thread_context
         self._io = ComputedIo()
         self._lock = threading.Lock()
         self._readings: dict[str, float] = {}
@@ -253,12 +262,16 @@ class BaselineSensors(SensorEnumerator):
 
     def _poll_loop(self) -> None:
         log.debug("_poll_loop: starting interval=%.1fs", self._interval_s)
-        while not self._stop.is_set():
-            try:
-                self._poll_once()
-            except Exception:
-                log.exception("sensor poll iteration failed")
-            self._stop.wait(self._interval_s)
+        # Enter the OS thread context ONCE for the poll thread's lifetime
+        # (CoInitialize on Windows; no-op elsewhere).  WMI handles created
+        # inside the loop are then born in this thread's apartment.
+        with self._thread_context():
+            while not self._stop.is_set():
+                try:
+                    self._poll_once()
+                except Exception:
+                    log.exception("sensor poll iteration failed")
+                self._stop.wait(self._interval_s)
 
     def _poll_once(self) -> None:
         log.debug("_poll_once: called")

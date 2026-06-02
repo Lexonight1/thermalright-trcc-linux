@@ -22,6 +22,7 @@ import atexit
 import logging
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -255,15 +256,34 @@ _SHARED_LHM = LhmSubprocess()
 atexit.register(_SHARED_LHM.stop)
 
 
-def _default_handle_factory() -> Any:
-    """Return the LHM WMI namespace handle, spawning if needed.
+_handle_local = threading.local()
 
-    Idempotent — the shared :class:`LhmSubprocess` caches the handle
-    after the first successful start.  Tests can either inject a
-    custom ``handle_factory`` into each source, or replace the entire
-    ``_SHARED_LHM`` for end-to-end coverage.
+
+def _default_handle_factory() -> Any:
+    """Return a per-thread LHM WMI namespace handle, spawning LHM once.
+
+    The spawn (launching ``LibreHardwareMonitor.exe``) stays process-global
+    via the shared :class:`LhmSubprocess`.  The WMI handle, however, is
+    COM-apartment-bound — a handle created on the main thread can't be read
+    from the poll thread (issue #131) — so each thread gets its OWN
+    ``wmi.WMI(namespace=...)``, cached thread-local for cheap repeat reads.
+
+    Tests inject a custom ``handle_factory`` per source, or replace the
+    entire ``_SHARED_LHM`` for end-to-end coverage.
     """
-    return _SHARED_LHM.start()
+    if _SHARED_LHM.start() is None:
+        return None
+    handle = getattr(_handle_local, "lhm_ns", None)
+    if handle is not None:
+        return handle
+    try:
+        import wmi  # pyright: ignore[reportMissingImports]
+        handle = wmi.WMI(namespace=_LHM_NAMESPACE)
+    except Exception:
+        log.debug("LHM per-thread WMI handle failed", exc_info=True)
+        handle = None
+    _handle_local.lhm_ns = handle
+    return handle
 
 
 # =========================================================================
@@ -326,17 +346,24 @@ class LhmCpu(CpuSource):
         *,
         handle_factory: Callable[[], Any] = _default_handle_factory,
     ) -> None:
-        self._ns: Any = handle_factory()
+        # Defer the handle to first read so it is born on the READING
+        # thread's apartment (the poll thread), not the construction
+        # thread's.  Cache only the apartment-agnostic CPU identifier +
+        # display name — strings travel across threads safely.
+        self._handle_factory = handle_factory
         self._name: str = "LibreHardwareMonitor (CPU)"
-        self._cache_cpu_row()
-
-    def _cache_cpu_row(self) -> None:
-        """Find + cache the CPU Hardware row's Identifier + Name."""
         self._cpu_id: str | None = None
-        if self._ns is None:
+        self._row_cached = False
+
+    def _ensure_cpu_row(self, ns: Any) -> None:
+        """Find + cache the CPU Hardware row's Identifier + Name (once)."""
+        if self._row_cached:
+            return
+        self._row_cached = True
+        if ns is None:
             return
         try:
-            for hw in self._ns.Hardware():
+            for hw in ns.Hardware():
                 if str(hw.HardwareType) == _HW_CPU:
                     self._cpu_id = str(hw.Identifier)
                     self._name = f"LHM: {hw.Name}"
@@ -346,42 +373,50 @@ class LhmCpu(CpuSource):
 
     @property
     def name(self) -> str:
+        # Resolve the hardware name lazily on the asking thread — it's a
+        # string, safe to cache cross-thread once found.
+        self._ensure_cpu_row(self._handle_factory())
         return self._name
 
-    def _cpu_row(self) -> Any | None:
-        if self._ns is None or self._cpu_id is None:
+    def _cpu_row(self, ns: Any) -> Any | None:
+        self._ensure_cpu_row(ns)
+        if ns is None or self._cpu_id is None:
             return None
         try:
-            rows = list(self._ns.Hardware(Identifier=self._cpu_id))
+            rows = list(ns.Hardware(Identifier=self._cpu_id))
         except Exception:
             return None
         return rows[0] if rows else None
 
     def temp(self) -> float | None:
         """Hottest CPU core temperature in °C."""
-        if (row := self._cpu_row()) is None:
+        ns = self._handle_factory()
+        if (row := self._cpu_row(ns)) is None:
             return None
-        return _max_value(_sensors_for(self._ns, row, _TYPE_TEMP))
+        return _max_value(_sensors_for(ns, row, _TYPE_TEMP))
 
     def usage(self) -> float | None:
         """CPU total load 0-100 — LHM names this 'CPU Total'."""
-        if (row := self._cpu_row()) is None:
+        ns = self._handle_factory()
+        if (row := self._cpu_row(ns)) is None:
             return None
-        loads = _sensors_for(self._ns, row, _TYPE_LOAD)
+        loads = _sensors_for(ns, row, _TYPE_LOAD)
         # Prefer the explicit "CPU Total" sensor; fall back to max across cores.
         return _named_value(loads, "total") or _max_value(loads)
 
     def freq(self) -> float | None:
         """Highest CPU clock in MHz."""
-        if (row := self._cpu_row()) is None:
+        ns = self._handle_factory()
+        if (row := self._cpu_row(ns)) is None:
             return None
-        return _max_value(_sensors_for(self._ns, row, _TYPE_CLOCK))
+        return _max_value(_sensors_for(ns, row, _TYPE_CLOCK))
 
     def power(self) -> float | None:
         """Package power draw in W — LHM names this 'CPU Package'."""
-        if (row := self._cpu_row()) is None:
+        ns = self._handle_factory()
+        if (row := self._cpu_row(ns)) is None:
             return None
-        powers = _sensors_for(self._ns, row, _TYPE_POWER)
+        powers = _sensors_for(ns, row, _TYPE_POWER)
         return _named_value(powers, "package") or _max_value(powers)
 
 
@@ -406,7 +441,9 @@ class LhmGpu(GpuSource):
         discrete: bool,
         handle_factory: Callable[[], Any] = _default_handle_factory,
     ) -> None:
-        self._ns: Any = handle_factory()
+        # Defer the handle to first read (born on the reading thread's
+        # apartment).  Identity is the apartment-agnostic LHM identifier.
+        self._handle_factory = handle_factory
         self._id = hardware_identifier
         self._display_name = display_name
         self._discrete = discrete
@@ -432,56 +469,63 @@ class LhmGpu(GpuSource):
     def is_discrete(self) -> bool:
         return self._discrete
 
-    def _row(self) -> Any | None:
-        if self._ns is None:
+    def _row(self, ns: Any) -> Any | None:
+        if ns is None:
             return None
         try:
-            rows = list(self._ns.Hardware(Identifier=self._id))
+            rows = list(ns.Hardware(Identifier=self._id))
         except Exception:
             return None
         return rows[0] if rows else None
 
     def temp(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
-        temps = _sensors_for(self._ns, row, _TYPE_TEMP)
+        temps = _sensors_for(ns, row, _TYPE_TEMP)
         # Prefer "GPU Core"; fall back to max across all GPU temps.
         return _named_value(temps, "core") or _max_value(temps)
 
     def usage(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
-        loads = _sensors_for(self._ns, row, _TYPE_LOAD)
+        loads = _sensors_for(ns, row, _TYPE_LOAD)
         return _named_value(loads, "core") or _max_value(loads)
 
     def clock(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
-        clocks = _sensors_for(self._ns, row, _TYPE_CLOCK)
+        clocks = _sensors_for(ns, row, _TYPE_CLOCK)
         return _named_value(clocks, "core") or _max_value(clocks)
 
     def power(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
-        return _max_value(_sensors_for(self._ns, row, _TYPE_POWER))
+        return _max_value(_sensors_for(ns, row, _TYPE_POWER))
 
     def fan(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
-        return _max_value(_sensors_for(self._ns, row, _TYPE_FAN))
+        return _max_value(_sensors_for(ns, row, _TYPE_FAN))
 
     def vram_used(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
         return _named_value(
-            _sensors_for(self._ns, row, _TYPE_SMALL_DATA), "used",
+            _sensors_for(ns, row, _TYPE_SMALL_DATA), "used",
         )
 
     def vram_total(self) -> float | None:
-        if (row := self._row()) is None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
             return None
         return _named_value(
-            _sensors_for(self._ns, row, _TYPE_SMALL_DATA), "total",
+            _sensors_for(ns, row, _TYPE_SMALL_DATA), "total",
         )
 
 

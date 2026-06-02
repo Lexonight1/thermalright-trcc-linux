@@ -17,6 +17,7 @@ non-Windows boxes.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -27,18 +28,29 @@ log = logging.getLogger(__name__)
 
 _MSACPI_NAMESPACE = "root\\wmi"
 
+# COM objects are apartment-bound — a handle created on one thread can't be
+# read from another (issue #131).  Cache the handle in thread-local so each
+# thread (the sensor-poll thread in particular) gets one born in its own
+# apartment.  The poll thread enters its COM apartment via
+# Platform.worker_thread_context() before the first read.
+_handle_local = threading.local()
+
 
 def _default_handle_factory() -> Any:
-    """Open a ``root\\wmi`` WMI handle.  Returns ``None`` when unavailable."""
+    """Per-thread ``root\\wmi`` WMI handle.  Returns ``None`` when unavailable."""
+    handle = getattr(_handle_local, "msacpi_ns", None)
+    if handle is not None:
+        return handle
     try:
         import wmi  # pyright: ignore[reportMissingImports]
+        handle = wmi.WMI(namespace=_MSACPI_NAMESPACE)
     except ImportError:
-        return None
-    try:
-        return wmi.WMI(namespace=_MSACPI_NAMESPACE)
+        handle = None
     except Exception as e:
         log.debug("MSAcpi WMI handle failed: %s", e)
-        return None
+        handle = None
+    _handle_local.msacpi_ns = handle
+    return handle
 
 
 class WmiAcpiCpu(CpuSource):
@@ -56,20 +68,26 @@ class WmiAcpiCpu(CpuSource):
         *,
         handle_factory: Callable[[], Any] = _default_handle_factory,
     ) -> None:
-        self._handle: Any = handle_factory()
+        # Defer the handle to first read so it is born on the READING
+        # thread's apartment (the poll thread), not the construction
+        # thread's.  The zone count is apartment-agnostic, cached once.
+        self._handle_factory = handle_factory
+        self._probed = False
         self._zone_count = 0
-        self._probe()
 
     @property
     def name(self) -> str:
         return self.name_default
 
-    def _probe(self) -> None:
+    def _ensure_probed(self, handle: Any) -> None:
         """Cache the zone count once — avoids re-querying on every poll."""
-        if self._handle is None:
+        if self._probed:
+            return
+        self._probed = True
+        if handle is None:
             return
         try:
-            self._zone_count = len(list(self._handle.MSAcpi_ThermalZoneTemperature()))
+            self._zone_count = len(list(handle.MSAcpi_ThermalZoneTemperature()))
         except Exception:
             log.debug("MSAcpi probe failed", exc_info=True)
             self._zone_count = 0
@@ -82,10 +100,12 @@ class WmiAcpiCpu(CpuSource):
         Multiple zones (CPU + chipset + ambient) are common; the hottest
         is the most useful single number for an overlay.
         """
-        if self._handle is None or self._zone_count == 0:
+        handle = self._handle_factory()
+        self._ensure_probed(handle)
+        if handle is None or self._zone_count == 0:
             return None
         try:
-            zones = list(self._handle.MSAcpi_ThermalZoneTemperature())
+            zones = list(handle.MSAcpi_ThermalZoneTemperature())
         except Exception:
             log.debug("MSAcpi temp read failed", exc_info=True)
             return None

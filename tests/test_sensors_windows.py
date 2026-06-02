@@ -7,6 +7,7 @@ is testable from a Linux dev box without ``wmi`` or Windows itself.
 from __future__ import annotations
 
 import struct
+import threading
 from typing import Any
 
 from trcc.adapters.sensors._hwinfo import (
@@ -26,6 +27,9 @@ from trcc.adapters.sensors._hwinfo import (
 )
 from trcc.adapters.sensors._lhm import LhmCpu, discover_lhm_gpus
 from trcc.adapters.sensors._msacpi import WmiAcpiCpu
+from trcc.adapters.sensors.aggregator import BaselineSensors
+
+from .conftest import FakeCpu, FakeMemory
 
 # =========================================================================
 # MSAcpi — thermal zones via root\wmi
@@ -387,6 +391,76 @@ def test_build_windows_sensors_constructs_chain(monkeypatch) -> None:
     assert cpu.usage() is not None      # psutil baseline
     # Temp may be None on a VM/dev box; just verify no exception
     cpu.temp()
+
+
+# =========================================================================
+# #131 regression — WMI handle must be born on the READING thread
+# =========================================================================
+
+
+def test_lhm_handle_created_lazily_on_reading_thread() -> None:
+    """The WMI handle a source reads through is created on the thread that
+    READS (the poll thread), not the construction thread.  COM objects are
+    apartment-bound; reusing a main-thread handle on the poll thread is
+    issue #131.  The deferred handle_factory proves it structurally without
+    needing real COM.
+    """
+    creating_threads: list[int] = []
+
+    def factory() -> _FakeLhmNamespace:
+        creating_threads.append(threading.get_ident())
+        return _lhm_cpu_namespace()
+
+    cpu = LhmCpu(handle_factory=factory)
+    # Construction must NOT create a handle — no eager main-thread handle.
+    assert creating_threads == [], "handle created eagerly at construction"
+
+    main_id = threading.get_ident()
+    read: dict[str, Any] = {}
+
+    def do_read() -> None:
+        read["temp"] = cpu.temp()
+        read["thread"] = threading.get_ident()
+
+    worker = threading.Thread(target=do_read)
+    worker.start()
+    worker.join(timeout=5)
+
+    assert read["temp"] == 78.0                      # the read actually ran
+    assert read["thread"] != main_id                 # on a different thread
+    # Every handle the source used was created on the reading thread.
+    assert creating_threads, "no handle created during the read"
+    assert all(t == read["thread"] for t in creating_threads)
+
+
+def test_aggregator_enters_thread_context_on_poll_thread() -> None:
+    """BaselineSensors wraps its poll loop in the injected thread context,
+    entered ON the poll thread — this is where Windows opens its COM
+    apartment so WMI reads work off the main thread.
+    """
+    entered = threading.Event()
+    record: dict[str, int] = {}
+
+    class _RecordingCtx:
+        def __enter__(self) -> None:
+            record["thread"] = threading.get_ident()
+            entered.set()
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    sensors = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        thread_context=_RecordingCtx,
+    )
+    main_id = threading.get_ident()
+    sensors.start_polling(0.5)
+    try:
+        assert entered.wait(timeout=5), "thread context never entered"
+    finally:
+        sensors.stop_polling()
+
+    assert record["thread"] != main_id    # entered on the poll thread, not main
 
 
 # ── housekeeping ─────────────────────────────────────────────────────

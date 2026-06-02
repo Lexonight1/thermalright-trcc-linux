@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -787,6 +788,27 @@ class Platform(ABC):
         ``configure_logging`` so the StreamHandler attaches to an
         already-UTF-8-safe stream.
         """
+
+    def worker_thread_context(self) -> AbstractContextManager[None]:
+        """Per-thread OS setup a background worker needs before OS API calls.
+
+        Any non-main thread that touches OS APIs wraps its body in this::
+
+            with platform.worker_thread_context():
+                <loop>
+
+        Default OSes need nothing — returns a null context.  Windows
+        overrides to open a COM apartment (``CoInitialize``) so WMI sensor
+        reads work off the main thread.
+
+        Concrete default rather than ``@abstractmethod`` so existing and
+        future Platform subclasses inherit the safe no-op and only an OS
+        that genuinely needs thread setup overrides.  (Making the whole
+        ``Platform`` ABC fully-abstract — "every OS answers every method"
+        — is a separate deliberate ABC-policy pass; see memory
+        ``project_three_axis_uniformity``.)
+        """
+        return nullcontext()
 
     def memory_info(self) -> list[dict[str, str]]:
         """Return DRAM slot descriptors for LC1-style memory displays.
