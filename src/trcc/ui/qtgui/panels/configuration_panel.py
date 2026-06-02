@@ -48,6 +48,7 @@ from ....core.commands import (
     SetTempUnit,
     SetTimeFormat,
 )
+from ....core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -151,7 +152,7 @@ class ConfigurationPanel(BasePanel):
         self._language = QComboBox(app_box)
 
         self._refresh = QDoubleSpinBox(app_box)
-        self._refresh.setRange(0.1, 60.0)
+        self._refresh.setRange(MIN_REFRESH_INTERVAL_S, MAX_REFRESH_INTERVAL_S)
         self._refresh.setSingleStep(0.5)
         self._refresh.setValue(5.0)
         self._refresh.setSuffix(" s")

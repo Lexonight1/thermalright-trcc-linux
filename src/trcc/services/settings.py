@@ -22,7 +22,14 @@ from typing import Any, Literal, cast
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
-from ..core.models import DeviceSettings, FitMode, OverlayElement, TempUnit
+from ..core.models import (
+    MAX_REFRESH_INTERVAL_S,
+    MIN_REFRESH_INTERVAL_S,
+    DeviceSettings,
+    FitMode,
+    OverlayElement,
+    TempUnit,
+)
 from ..core.ports import Paths
 
 log = logging.getLogger(__name__)
@@ -111,7 +118,11 @@ class Settings:
     def set_refresh_interval(self, seconds: float) -> None:
         log.info("set_refresh_interval: seconds=%s", seconds)
         with self._lock:
-            self._app.refresh_interval_s = max(0.1, seconds)
+            # Clamp to the GUI's data-refresh-rate range (1–100 s) so the
+            # metric poll can never run faster than the minimum.
+            self._app.refresh_interval_s = max(
+                MIN_REFRESH_INTERVAL_S, min(MAX_REFRESH_INTERVAL_S, seconds),
+            )
             self._save()
 
     def device_keys(self) -> tuple[str, ...]:

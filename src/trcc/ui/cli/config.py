@@ -64,7 +64,7 @@ def gpu(
 @app.command("refresh-interval")
 def refresh_interval(
     seconds: float = typer.Argument(
-        ..., help="Seconds between metric refreshes (0.1 to 60.0)",
+        ..., help="Seconds between metric refreshes (1 to 100)",
     ),
 ) -> None:
     """Set the global metrics-refresh / render-and-send tick interval."""

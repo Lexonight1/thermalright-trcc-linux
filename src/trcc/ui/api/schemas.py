@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from ...core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
+
 # =========================================================================
 # Response shapes
 # =========================================================================
@@ -920,7 +922,9 @@ class GpuDeviceRequest(BaseModel):
 
 
 class RefreshIntervalRequest(BaseModel):
-    seconds: float = Field(..., ge=0.1, le=60.0)
+    seconds: float = Field(
+        ..., ge=MIN_REFRESH_INTERVAL_S, le=MAX_REFRESH_INTERVAL_S,
+    )
 
 
 class TimeFormatRequest(BaseModel):

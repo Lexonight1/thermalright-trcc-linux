@@ -31,6 +31,7 @@ from ..core.events import (
     SensorsUpdated,
     TempUnitChanged,
 )
+from ..core.models import MIN_REFRESH_INTERVAL_S
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +159,10 @@ class MetricsLoop:
                 self._publish_once(events)
             except Exception:
                 log.exception("MetricsLoop: poll iteration failed")
-            interval = max(0.1, float(self._app.settings.app.refresh_interval_s))
+            interval = max(
+                MIN_REFRESH_INTERVAL_S,
+                float(self._app.settings.app.refresh_interval_s),
+            )
             # Wait on ``_wake`` (set by stop() OR by an interval
             # change).  Clear AFTER the wait so a wake-up during the
             # NEXT iteration's wait is still observed.  ``_stop`` is

@@ -7,7 +7,7 @@ Each Command is a Settings write + an EventBus publish. Validation:
     the AppSettings global default (cross-cutting setter).
   * SetLanguage rejects empty strings.
   * SetGpuDevice normalizes empty strings to ``None`` (auto-pick).
-  * SetRefreshInterval clamps to [0.1, 60.0] inclusive.
+  * SetRefreshInterval validates to [1.0, 100.0] inclusive (GUI range).
 """
 from __future__ import annotations
 
@@ -172,7 +172,7 @@ def test_set_gpu_device_publishes_event(app: App) -> None:
 # ── SetRefreshInterval ────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("seconds", [0.1, 1.0, 2.5, 30.0, 60.0])
+@pytest.mark.parametrize("seconds", [1.0, 2.5, 30.0, 60.0, 100.0])
 def test_set_refresh_interval_accepts_in_range(
     app: App, seconds: float,
 ) -> None:
@@ -182,13 +182,14 @@ def test_set_refresh_interval_accepts_in_range(
     assert app.settings.app.refresh_interval_s == pytest.approx(seconds)
 
 
-@pytest.mark.parametrize("seconds", [-1.0, 0.0, 0.05, 60.5, 100.0])
+@pytest.mark.parametrize("seconds", [-1.0, 0.0, 0.5, 0.99, 100.5, 200.0])
 def test_set_refresh_interval_rejects_out_of_range(
     app: App, seconds: float,
 ) -> None:
+    """Range is the GUI's data-refresh-rate control: [1, 100] s."""
     result = app.dispatch(SetRefreshInterval(seconds=seconds))
     assert result.ok is False
-    assert "in [0.1, 60.0]" in result.message
+    assert "in [1.0, 100.0]" in result.message
 
 
 def test_set_refresh_interval_publishes_event(app: App) -> None:

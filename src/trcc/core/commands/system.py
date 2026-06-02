@@ -20,6 +20,7 @@ from ..events import (
     TempUnitChanged,
     TimeFormatChanged,
 )
+from ..models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
 from ..results import (
     AutostartResult,
     ControlCenterSnapshotResult,
@@ -954,25 +955,29 @@ class SetGpuDevice(Command[GpuDeviceResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetRefreshInterval(Command[RefreshIntervalResult]):
-    """Set the global metrics-refresh / render-and-send tick interval.
+    """Set the global metrics-refresh interval — when metric data is polled
+    and updated (the render reads the cached snapshot between polls).
 
-    Clamped to [0.1, 60.0] seconds — anything outside that range either
-    starves the CPU (too low) or makes the LCD feel unresponsive (too
-    high).
+    Validated to the GUI's data-refresh-rate range
+    [``MIN_REFRESH_INTERVAL_S``, ``MAX_REFRESH_INTERVAL_S``] = [1, 100] s —
+    below the minimum starves the CPU (sub-second polls + sends), above the
+    maximum makes the metrics feel frozen.
     """
     seconds: float
 
     def execute(self, app: App) -> RefreshIntervalResult:
         log.info("SetRefreshInterval.execute: seconds=%.2f", self.seconds)
-        if not 0.1 <= self.seconds <= 60.0:
+        if not MIN_REFRESH_INTERVAL_S <= self.seconds <= MAX_REFRESH_INTERVAL_S:
             log.warning(
                 "SetRefreshInterval.execute: out-of-range %.2f rejected "
-                "(allowed [0.1, 60.0])", self.seconds,
+                "(allowed [%.1f, %.1f])", self.seconds,
+                MIN_REFRESH_INTERVAL_S, MAX_REFRESH_INTERVAL_S,
             )
             return RefreshIntervalResult(
                 ok=False, seconds=self.seconds,
-                message=(f"refresh interval must be in [0.1, 60.0] seconds, "
-                         f"got {self.seconds}"),
+                message=(f"refresh interval must be in "
+                         f"[{MIN_REFRESH_INTERVAL_S}, {MAX_REFRESH_INTERVAL_S}] "
+                         f"seconds, got {self.seconds}"),
             )
         old = app.settings.app.refresh_interval_s
         app.settings.set_refresh_interval(self.seconds)

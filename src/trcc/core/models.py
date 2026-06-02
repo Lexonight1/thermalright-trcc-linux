@@ -79,6 +79,15 @@ NativeOrientation = Literal["landscape", "portrait"]
 TempUnit = Literal["C", "F"]
 
 
+# Data-refresh-rate bounds — the GUI's "data refresh rate" control runs
+# 1–100 s.  The refresh interval governs how often metric data is polled +
+# updated; the render reads the cached snapshot between polls.  One source
+# of truth for the floor/ceiling shared by Settings, MetricsLoop, and the
+# sensor poll thread, so the poll can never run faster than the GUI minimum.
+MIN_REFRESH_INTERVAL_S: float = 1.0
+MAX_REFRESH_INTERVAL_S: float = 100.0
+
+
 class FitMode(str, Enum):
     """How a background image/video fits the device canvas.
 

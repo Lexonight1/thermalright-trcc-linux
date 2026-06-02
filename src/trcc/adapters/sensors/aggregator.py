@@ -25,7 +25,7 @@ import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
-from ...core.models import SensorReading
+from ...core.models import MIN_REFRESH_INTERVAL_S, SensorReading
 from ...core.ports import (
     CpuSource,
     FanSource,
@@ -243,7 +243,7 @@ class BaselineSensors(SensorEnumerator):
         if self._poll_thread and self._poll_thread.is_alive():
             log.debug("sensor polling already running — start_polling ignored")
             return
-        self._interval_s = max(0.5, interval_s)
+        self._interval_s = max(MIN_REFRESH_INTERVAL_S, interval_s)
         self._stop.clear()
         self._poll_thread = threading.Thread(
             target=self._poll_loop, daemon=True, name="sensor-poll")
