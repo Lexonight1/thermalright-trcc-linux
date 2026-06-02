@@ -192,3 +192,35 @@ def test_render_led_rejects_lcd_device_key(
     result = app.dispatch(RenderLed(key="0402:3922", color=(255, 0, 0)))
     assert not result.ok
     assert "not an LED device" in result.message
+
+
+# ── DDR memory multiplier scales the LC1 memory reading ─────────────
+
+
+class _MemMetrics:
+    """Minimal MetricsLike exposing one ``mem_clock`` value."""
+
+    def __init__(self, mem_clock: int) -> None:
+        self._v = mem_clock
+
+    def __getattr__(self, name: str) -> int:
+        return self._v if name == "mem_clock" else 0
+
+
+def test_lc1_memory_ratio_scales_displayed_value() -> None:
+    """LC1 phase 1 (mem_clock, mode 1) multiplies the reading by the DDR
+    ratio before encoding — so ×2 of V equals ×1 of 2V, and a higher
+    multiplier renders a different mask.  This is the feature restored from
+    legacy (the cutover had frozen the multiplier at the default)."""
+    half_x2 = compute_mask(
+        LedStyle.LC1, _MemMetrics(400), phase=1, temp_unit="C", memory_ratio=2,
+    )
+    full_x1 = compute_mask(
+        LedStyle.LC1, _MemMetrics(800), phase=1, temp_unit="C", memory_ratio=1,
+    )
+    assert half_x2 == full_x1          # 400×2 == 800×1 → identical digits
+
+    full_x4 = compute_mask(
+        LedStyle.LC1, _MemMetrics(800), phase=1, temp_unit="C", memory_ratio=4,
+    )
+    assert full_x4 != full_x1          # ×4 changes the rendered value

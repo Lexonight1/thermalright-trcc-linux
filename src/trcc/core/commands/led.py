@@ -268,6 +268,7 @@ class RenderLed(Command[LedColorsResult]):
             style, metrics, phase=phase,
             temp_unit=device_settings.temp_unit,
             is_24h=(device_settings.time_format == "24h"),
+            memory_ratio=effective_settings.memory_ratio,
         )
         segment_count = len(mask)
 
@@ -659,17 +660,21 @@ class SetWeekStart(Command[WeekStartResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetMemoryRatio(Command[MemoryRatioResult]):
-    """Pick the memory display mode: ratio (percentage) or absolute (GB)."""
+    """Set the DDR memory multiplier (1, 2, or 4) for the LED memory gauge."""
     key: str
-    ratio_mode: bool
+    ratio: int
 
     def execute(self, app: App) -> MemoryRatioResult:
-        app.settings.set_led_memory_ratio(self.key, self.ratio_mode)
+        if self.ratio not in (1, 2, 4):
+            return MemoryRatioResult(
+                ok=False, key=self.key, ratio=self.ratio,
+                message=f"memory ratio must be 1, 2, or 4 — got {self.ratio}",
+            )
+        app.settings.set_led_memory_ratio(self.key, self.ratio)
         _publish_led_settings_changed(app, self.key)
-        mode = "ratio (%)" if self.ratio_mode else "absolute (GB)"
         return MemoryRatioResult(
-            ok=True, key=self.key, ratio_mode=self.ratio_mode,
-            message=f"Memory display set to {mode}",
+            ok=True, key=self.key, ratio=self.ratio,
+            message=f"DDR memory multiplier set to ×{self.ratio}",
         )
 
 @dataclass(frozen=True, slots=True)

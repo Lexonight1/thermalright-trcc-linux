@@ -444,7 +444,7 @@ class WeekStartResult(Result):
 @dataclass(frozen=True, slots=True)
 class MemoryRatioResult(Result):
     key: str = ""
-    ratio_mode: bool = True
+    ratio: int = 2          # DDR multiplier (1 / 2 / 4)
 
 
 @dataclass(frozen=True, slots=True)

@@ -379,12 +379,12 @@ class WeekStartResponse(ResultBase):
 
 
 class MemoryRatioRequest(BaseModel):
-    ratio_mode: bool
+    ratio: int          # DDR multiplier: 1, 2, or 4
 
 
 class MemoryRatioResponse(ResultBase):
     key: str = ""
-    ratio_mode: bool = True
+    ratio: int = 2
 
 
 class DiskIndexRequest(BaseModel):

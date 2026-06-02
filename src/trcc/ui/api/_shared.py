@@ -429,7 +429,7 @@ def to_week_start_response(r: WeekStartResult) -> WeekStartResponse:
 
 def to_memory_ratio_response(r: MemoryRatioResult) -> MemoryRatioResponse:
     return MemoryRatioResponse(
-        ok=r.ok, message=r.message, key=r.key, ratio_mode=r.ratio_mode,
+        ok=r.ok, message=r.message, key=r.key, ratio=r.ratio,
     )
 
 

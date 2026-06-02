@@ -453,13 +453,23 @@ def test_led_week_start_sunday(cli_runner: CliRunner, cli_app) -> None:
     assert "Sunday" in result.output
 
 
-def test_led_memory_ratio_absolute(cli_runner: CliRunner, cli_app) -> None:
+def test_led_memory_ratio_ddr(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
     result = cli_runner.invoke(
-        _app(), ["led", "memory-ratio", "0416:8001", "absolute"],
+        _app(), ["led", "memory-ratio", "0416:8001", "4"],
     )
     assert result.exit_code == 0
-    assert "absolute" in result.output
+    assert "×4" in result.output
+
+
+def test_led_memory_ratio_rejects_invalid(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "memory-ratio", "0416:8001", "3"],
+    )
+    assert result.exit_code != 0
 
 
 def test_led_disk_index(cli_runner: CliRunner, cli_app) -> None:

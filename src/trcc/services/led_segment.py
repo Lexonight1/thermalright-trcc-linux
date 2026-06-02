@@ -833,14 +833,16 @@ def compute_mask(
     temp_unit: str = "C",
     is_24h: bool = True,
     week_sunday: bool = False,
+    memory_ratio: int = 2,
 ) -> list[bool]:
     """Compute LED on/off mask for any supported style.
 
     Returns an empty list when ``style`` is None or has no segment
-    display (e.g. LF13 is pure RGB).
+    display (e.g. LF13 is pure RGB).  ``memory_ratio`` is the DDR
+    multiplier (1/2/4) the memory gauge scales its reading by.
     """
-    log.debug("compute_mask: style=%s phase=%d temp_unit=%s",
-              style, phase, temp_unit)
+    log.debug("compute_mask: style=%s phase=%d temp_unit=%s memory_ratio=%d",
+              style, phase, temp_unit, memory_ratio)
     if style is None:
         return []
     display = DISPLAYS.get(style)
@@ -848,6 +850,7 @@ def compute_mask(
         return []
     return display.compute_mask(
         metrics, phase, temp_unit, is_24h=is_24h, week_sunday=week_sunday,
+        memory_ratio=memory_ratio,
     )
 
 

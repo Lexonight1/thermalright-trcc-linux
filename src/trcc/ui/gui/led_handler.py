@@ -316,11 +316,9 @@ class LEDHandler(BaseHandler):
         ))
 
     def _on_memory_ratio_changed(self, ratio: int) -> None:
-        # Legacy int multiplier (1/2/4); next's Command takes bool.
+        # DDR multiplier (1/2/4) straight from the GUI combo.
         log.info("_on_memory_ratio_changed: ratio=%s", ratio)
-        self._dispatch(SetMemoryRatio(
-            key=self._device_key, ratio_mode=(ratio != 1),
-        ))
+        self._dispatch(SetMemoryRatio(key=self._device_key, ratio=ratio))
 
     def _on_test_mode_changed(self, on: bool) -> None:
         log.info("_on_test_mode_changed: on=%s", on)

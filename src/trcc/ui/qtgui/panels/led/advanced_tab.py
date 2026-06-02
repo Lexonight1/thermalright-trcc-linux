@@ -22,6 +22,7 @@ import logging
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -134,12 +135,14 @@ class AdvancedTab(LedTabBase):
             "usually the system / primary drive.",
         )
         self._disk_index.editingFinished.connect(self._on_disk_index_changed)
-        self._memory_ratio = QCheckBox(
-            "Show memory as a percentage (otherwise GB used)", self,
+        self._memory_ratio = QComboBox(self)
+        for mult in (1, 2, 4):
+            self._memory_ratio.addItem(f"×{mult}", userData=mult)
+        self._memory_ratio.currentIndexChanged.connect(
+            self._on_memory_ratio_changed,
         )
-        self._memory_ratio.toggled.connect(self._on_memory_ratio_toggled)
         misc_form.addRow("Disk index:", self._disk_index)
-        misc_form.addRow(self._memory_ratio)
+        misc_form.addRow("DDR multiplier:", self._memory_ratio)
         root.addWidget(misc_box)
 
         root.addStretch(1)
@@ -179,7 +182,8 @@ class AdvancedTab(LedTabBase):
         self._disk_index.blockSignals(False)
 
         self._memory_ratio.blockSignals(True)
-        self._memory_ratio.setChecked(settings.memory_ratio)
+        idx = self._memory_ratio.findData(settings.memory_ratio)
+        self._memory_ratio.setCurrentIndex(idx if idx >= 0 else 1)   # default ×2
         self._memory_ratio.blockSignals(False)
 
     # ── Internals ─────────────────────────────────────────────────────
@@ -231,8 +235,9 @@ class AdvancedTab(LedTabBase):
                 key=key, index=self._disk_index.value(),
             ))
 
-    def _on_memory_ratio_toggled(self, ratio_mode: bool) -> None:
-        log.info("_on_memory_ratio_toggled: ratio_mode=%s", ratio_mode)
+    def _on_memory_ratio_changed(self, index: int) -> None:
+        ratio = self._memory_ratio.itemData(index)
+        log.info("_on_memory_ratio_changed: ratio=%s", ratio)
         key = self.current_key()
-        if key:
-            self._dispatch(SetMemoryRatio(key=key, ratio_mode=ratio_mode))
+        if key and isinstance(ratio, int):
+            self._dispatch(SetMemoryRatio(key=key, ratio=ratio))

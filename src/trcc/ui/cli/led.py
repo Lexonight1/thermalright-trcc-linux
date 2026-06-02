@@ -393,19 +393,13 @@ def week_start(
 @app.command("memory-ratio")
 def memory_ratio(
     key: str = typer.Argument(..., help="LED device key"),
-    mode: str = typer.Argument(..., help="'ratio' (percentage) or 'absolute' (GB)"),
+    ratio: int = typer.Argument(..., help="DDR multiplier: 1, 2, or 4"),
 ) -> None:
-    """Choose how memory usage is shown on the LED gauge."""
-    log.info("cli led memory-ratio: key=%s mode=%s", key, mode)
-    mode_lower = mode.lower()
-    if mode_lower not in ("ratio", "absolute", "abs", "percent", "pct", "gb"):
-        raise typer.BadParameter(
-            f"mode must be 'ratio' or 'absolute', got {mode!r}",
-        )
-    ratio_mode = mode_lower in ("ratio", "percent", "pct")
-    result = get_app().dispatch(
-        SetMemoryRatio(key=key, ratio_mode=ratio_mode),
-    )
+    """Set the DDR memory multiplier for the LED memory gauge."""
+    log.info("cli led memory-ratio: key=%s ratio=%s", key, ratio)
+    if ratio not in (1, 2, 4):
+        raise typer.BadParameter(f"ratio must be 1, 2, or 4, got {ratio}")
+    result = get_app().dispatch(SetMemoryRatio(key=key, ratio=ratio))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)

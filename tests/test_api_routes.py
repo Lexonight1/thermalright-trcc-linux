@@ -509,12 +509,12 @@ def test_led_week_start(api_client: TestClient) -> None:
 def test_led_memory_ratio(api_client: TestClient) -> None:
     resp = api_client.post(
         "/devices/0416:8001/led/memory-ratio",
-        json={"ratio_mode": False},
+        json={"ratio": 4},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["ratio_mode"] is False
+    assert body["ratio"] == 4
 
 
 def test_led_disk_index(api_client: TestClient) -> None:

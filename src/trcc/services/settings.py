@@ -489,12 +489,13 @@ class Settings:
             self.for_led(key).week_sunday = sunday_first
             self._save()
 
-    def set_led_memory_ratio(self, key: str, ratio_mode: bool) -> None:
-        """Memory display mode: ``True`` = percentage, ``False`` = GB used."""
-        log.info("set_led_memory_ratio: key=%s ratio_mode=%s",
-                 key, ratio_mode)
+    def set_led_memory_ratio(self, key: str, ratio: int) -> None:
+        """DDR memory multiplier — 1, 2, or 4 (invalid values clamp to 2)."""
+        clamped = ratio if ratio in (1, 2, 4) else 2
+        log.info("set_led_memory_ratio: key=%s ratio=%s (clamped=%s)",
+                 key, ratio, clamped)
         with self._lock:
-            self.for_led(key).memory_ratio = ratio_mode
+            self.for_led(key).memory_ratio = clamped
             self._save()
 
     def set_led_disk_index(self, key: str, index: int) -> None:
@@ -802,6 +803,14 @@ def _led_settings_from_dict(data: dict[str, Any]) -> LedDeviceSettings:
     # Color tuple restoration
     if isinstance(kwargs.get("color"), list) and len(kwargs["color"]) == 3:
         kwargs["color"] = tuple(kwargs["color"])
+    # memory_ratio is the DDR multiplier (1/2/4).  Pre-cutover configs may
+    # have saved a bool (the old percent/GB toggle) — bool or any out-of-set
+    # value coerces to the default 2.  ``isinstance(.., bool)`` first because
+    # ``True in (1, 2, 4)`` is True in Python.
+    if "memory_ratio" in kwargs:
+        mr = kwargs["memory_ratio"]
+        if isinstance(mr, bool) or mr not in (1, 2, 4):
+            kwargs["memory_ratio"] = 2
     # Zones (each is its own dataclass)
     if isinstance(kwargs.get("zones"), list):
         kwargs["zones"] = [_led_zone_from_dict(z) for z in kwargs["zones"]

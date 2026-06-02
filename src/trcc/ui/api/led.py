@@ -353,13 +353,13 @@ def week_start(key: str, body: WeekStartRequest,
 @router.post("/memory-ratio", response_model=MemoryRatioResponse)
 def memory_ratio(key: str, body: MemoryRatioRequest,
                  request: Request) -> MemoryRatioResponse:
-    """Memory display mode: ratio (%) or absolute (GB)."""
+    """Set the DDR memory multiplier (1, 2, or 4)."""
     log.info(
-        "api POST /devices/{key}/led/memory-ratio: key=%s ratio_mode=%s",
-        key, body.ratio_mode,
+        "api POST /devices/{key}/led/memory-ratio: key=%s ratio=%s",
+        key, body.ratio,
     )
     result = request.app.state.trcc.dispatch(
-        SetMemoryRatio(key=key, ratio_mode=body.ratio_mode),
+        SetMemoryRatio(key=key, ratio=body.ratio),
     )
     http_error_if_failed(result)
     return to_memory_ratio_response(result)

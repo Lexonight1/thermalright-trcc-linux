@@ -91,9 +91,11 @@ class LedDeviceSettings:
     clock_24h: bool = True
     week_sunday: bool = False
 
-    # Memory ratio mode — true: percentage (0-100), false: GB used.
-    # Display logic on devices with memory gauges reads this.
-    memory_ratio: bool = True
+    # DDR memory multiplier (1 / 2 / 4) — scales the memory value shown on
+    # the LED gauge (C# memoryRatio).  The segment renderer multiplies the
+    # raw reading by this (``value *= memory_ratio``); the GUI exposes it
+    # as a DDR selector.  Default 2 (DDR effective rate).
+    memory_ratio: int = 2
 
     # Disk index — which physical disk to surface for read/write stats.
     # 0 = system / primary disk; subsequent indices map to additional disks
