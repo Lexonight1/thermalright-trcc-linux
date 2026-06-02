@@ -15,7 +15,12 @@ from ..events import (
     HddEnabledChanged,
     LedColorsChanged,
 )
-from ..led_models import LEDMode, LedPayload, LedRuntimeState
+from ..led_models import (
+    LED_SELECT_ALL_STYLES,
+    LEDMode,
+    LedPayload,
+    LedRuntimeState,
+)
 from ..results import (
     ClockFormatResult,
     DiskIndexResult,
@@ -233,16 +238,58 @@ class RenderLed(Command[LedColorsResult]):
                          "use SetLedColors instead"),
             )
 
+        # ── Segment phase (legacy ``_seg_phase``) ──
+        # On a multi-zone device the phase that drives ``compute_mask`` is
+        # the active zone, not the caller's ``self.phase``.  Zone-sync on a
+        # circulate style (NOT a select-all style) advances the carousel
+        # through the enabled zones; otherwise the phase is the selected
+        # zone.  Single-zone devices keep ``self.phase`` (API override).
+        phase = self.phase
+        if effective_settings.zones:
+            if (effective_settings.zone_sync
+                    and style.value not in LED_SELECT_ALL_STYLES):
+                runtime.zone_sync_ticks += 1
+                if (runtime.zone_sync_ticks
+                        >= effective_settings.zone_sync_interval_ticks):
+                    runtime.zone_sync_ticks = 0
+                    runtime.zone_sync_current = app.led_effects.next_sync_zone(
+                        effective_settings.zone_sync_zones,
+                        runtime.zone_sync_current,
+                    )
+                phase = runtime.zone_sync_current
+                log.debug("RenderLed %s: zone-sync carousel phase=%d",
+                          self.key, phase)
+            else:
+                phase = effective_settings.selected_zone
+                log.debug("RenderLed %s: selected-zone phase=%d",
+                          self.key, phase)
+
         mask = compute_mask(
-            style, metrics, phase=self.phase,
+            style, metrics, phase=phase,
             temp_unit=device_settings.temp_unit,
             is_24h=(device_settings.time_format == "24h"),
         )
         segment_count = len(mask)
-        colors = app.led_effects.tick(
-            effective_settings, runtime, current,
-            led_count=segment_count,
-        )
+
+        # ── Colors ──
+        # Multi-zone styles (PA120 / LF10 — those with a ``zone_led_map``)
+        # render each zone's own mode/color/brightness onto its mapped LED
+        # indices.  All other styles fill one global color list.
+        zone_map = display.zone_led_map
+        if zone_map is not None and effective_settings.zones:
+            log.debug("RenderLed %s: multi-zone fill (%d zones)",
+                      self.key, len(zone_map))
+            colors = app.led_effects.tick_multi_zone(
+                effective_settings, runtime, current,
+                zone_map=zone_map,
+                metric_sources=display.zone_metric_sources,
+                led_count=segment_count,
+            )
+        else:
+            colors = app.led_effects.tick(
+                effective_settings, runtime, current,
+                led_count=segment_count,
+            )
 
         payload = LedPayload(
             colors=colors,

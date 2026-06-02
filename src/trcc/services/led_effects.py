@@ -160,6 +160,77 @@ class LEDEffectEngine:
             led_count, settings.temp_source, settings.load_source,
         )
 
+    # ── Multi-zone (PA120 / LF10 — styles with a zone_led_map) ────────
+
+    def tick_multi_zone(
+        self,
+        settings: LedDeviceSettings,
+        runtime: LedRuntimeState,
+        sensors: dict[str, float],
+        *,
+        zone_map: tuple[tuple[int, ...], ...],
+        metric_sources: tuple[tuple[str, str], ...] | None,
+        led_count: int,
+    ) -> list[tuple[int, int, int]]:
+        """Per-zone colors placed at each zone's physical LED indices.
+
+        Ports legacy ``LEDEffectEngine._tick_multi_zone``: every zone runs
+        its own mode + color + brightness over its mapped LED indices
+        (``SegmentDisplay.zone_led_map``).  ``metric_sources`` maps zone
+        index → (device, kind) so a sensor-linked zone reads its own
+        source.  Like legacy, each animated zone advances the shared
+        ``rgb_timer`` once (zones stay phase-synced).
+        """
+        colors: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
+        zones = settings.zones
+        log.debug("tick_multi_zone: %d zones, led_count=%d",
+                  len(zone_map), led_count)
+        for zi, led_indices in enumerate(zone_map):
+            if zi >= len(zones):
+                break
+            zone = zones[zi]
+            if not zone.on:
+                log.debug("tick_multi_zone: zone %d off — skipped", zi)
+                continue
+            src = (
+                metric_sources[zi]
+                if metric_sources is not None and zi < len(metric_sources)
+                else None
+            )
+            # Zone's device ("cpu"/"gpu") drives both temp + load sources;
+            # the zone's mode decides which one applies.  Empty → "cpu".
+            zone_source = src[0] if src and src[0] else "cpu"
+            zone_colors = self._tick_mode(
+                zone.mode, zone.color, runtime, sensors,
+                len(led_indices), zone_source, zone_source,
+            )
+            if zone.brightness < 100:
+                scale = zone.brightness / 100.0
+                zone_colors = [
+                    (int(r * scale), int(g * scale), int(b * scale))
+                    for r, g, b in zone_colors
+                ]
+            for i, idx in enumerate(led_indices):
+                if idx < led_count:
+                    colors[idx] = zone_colors[i]
+        return colors
+
+    @staticmethod
+    def next_sync_zone(zone_sync_zones: list[bool], current: int) -> int:
+        """Next enabled zone in the sync carousel, wrapping around.
+
+        Ports legacy ``_next_sync_zone``.  Returns 0 when no zone
+        participates (defensive — the caller gates on ``zone_sync``).
+        """
+        n = len(zone_sync_zones)
+        if n == 0:
+            return 0
+        for offset in range(1, n + 1):
+            candidate = (current + offset) % n
+            if zone_sync_zones[candidate]:
+                return candidate
+        return 0
+
     # ── Internal dispatch ────────────────────────────────────────────
 
     def _tick_mode(

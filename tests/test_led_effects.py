@@ -11,6 +11,7 @@ from trcc.core.led_models import (
     LedDeviceSettings,
     LEDMode,
     LedRuntimeState,
+    LedZoneSettings,
 )
 from trcc.services.led_effects import (
     ColorEngine,
@@ -236,3 +237,89 @@ def test_test_mode_rotates_color_every_10_ticks() -> None:
     assert runtime.test_timer == 0
     assert runtime.test_color == 1
     assert colors == [(1, 0, 0)]   # red — index 1 in _TEST_COLORS
+
+
+# ── Multi-zone fill (PA120 / LF10) ──────────────────────────────────
+
+
+def test_tick_multi_zone_places_each_zone_color_at_its_mapped_indices() -> None:
+    """Each zone's own color lands on its physical LED indices — the gap
+    the audit found (every zone was showing one global color)."""
+    engine = LEDEffectEngine()
+    zones = [
+        LedZoneSettings(mode=LEDMode.STATIC, color=(255, 0, 0),
+                        brightness=100, on=True),
+        LedZoneSettings(mode=LEDMode.STATIC, color=(0, 255, 0),
+                        brightness=100, on=True),
+    ]
+    settings = _settings(zones=zones)
+    # zone 0 → LEDs 0,1 ; zone 1 → LEDs 2,3
+    colors = engine.tick_multi_zone(
+        settings, LedRuntimeState(), sensors={},
+        zone_map=((0, 1), (2, 3)), metric_sources=None, led_count=4,
+    )
+    assert colors == [(255, 0, 0), (255, 0, 0), (0, 255, 0), (0, 255, 0)]
+
+
+def test_tick_multi_zone_skips_an_off_zone() -> None:
+    """An off zone leaves its LEDs dark (0,0,0); other zones still render."""
+    engine = LEDEffectEngine()
+    zones = [
+        LedZoneSettings(mode=LEDMode.STATIC, color=(255, 0, 0),
+                        brightness=100, on=True),
+        LedZoneSettings(mode=LEDMode.STATIC, color=(0, 255, 0),
+                        brightness=100, on=False),
+    ]
+    settings = _settings(zones=zones)
+    colors = engine.tick_multi_zone(
+        settings, LedRuntimeState(), sensors={},
+        zone_map=((0, 1), (2, 3)), metric_sources=None, led_count=4,
+    )
+    assert colors == [(255, 0, 0), (255, 0, 0), (0, 0, 0), (0, 0, 0)]
+
+
+def test_tick_multi_zone_scales_by_zone_brightness() -> None:
+    """Per-zone brightness scales that zone's color (legacy int truncation)."""
+    engine = LEDEffectEngine()
+    zones = [LedZoneSettings(mode=LEDMode.STATIC, color=(200, 100, 40),
+                             brightness=50, on=True)]
+    settings = _settings(zones=zones)
+    colors = engine.tick_multi_zone(
+        settings, LedRuntimeState(), sensors={},
+        zone_map=((0,),), metric_sources=None, led_count=1,
+    )
+    assert colors == [(100, 50, 20)]
+
+
+def test_tick_multi_zone_ignores_indices_past_led_count() -> None:
+    """A zone_map index >= led_count is skipped, not an IndexError."""
+    engine = LEDEffectEngine()
+    zones = [LedZoneSettings(mode=LEDMode.STATIC, color=(255, 0, 0),
+                             brightness=100, on=True)]
+    settings = _settings(zones=zones)
+    colors = engine.tick_multi_zone(
+        settings, LedRuntimeState(), sensors={},
+        zone_map=((0, 9),), metric_sources=None, led_count=2,
+    )
+    assert colors == [(255, 0, 0), (0, 0, 0)]   # index 9 dropped
+
+
+# ── Zone-sync carousel rotation ─────────────────────────────────────
+
+
+def test_next_sync_zone_rotates_skipping_disabled_zones() -> None:
+    engine = LEDEffectEngine()
+    zones = [True, False, True, True]
+    assert engine.next_sync_zone(zones, 0) == 2    # skip disabled zone 1
+    assert engine.next_sync_zone(zones, 2) == 3
+    assert engine.next_sync_zone(zones, 3) == 0    # wrap around
+
+
+def test_next_sync_zone_no_enabled_zone_returns_zero() -> None:
+    engine = LEDEffectEngine()
+    assert engine.next_sync_zone([False, False, False], 0) == 0
+
+
+def test_next_sync_zone_empty_returns_zero() -> None:
+    engine = LEDEffectEngine()
+    assert engine.next_sync_zone([], 0) == 0
