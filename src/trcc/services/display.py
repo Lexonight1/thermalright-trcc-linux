@@ -627,7 +627,7 @@ class DisplayService:
             info.key, len(playback.frames), theme.name,
             visual_size[0], visual_size[1],
         )
-        cache = VideoFrameCache(self._r)
+        cache = VideoFrameCache()
         masked: list[Any] = []
         saved_cursor = playback.cursor
         try:
@@ -636,10 +636,9 @@ class DisplayService:
                 masked.append(self._build_bg_mask(info, theme, visual_size))
         finally:
             playback.cursor = saved_cursor
-        # Mask already composited per frame by ``_build_bg_mask`` → pass
-        # mask=None so the cache stores the surfaces as-is, no double
-        # composite.  brightness=100 → L3 passthrough (see docstring).
-        cache.build(masked, mask=None, mask_position=(0, 0), brightness=100)
+        # ``_build_bg_mask`` already produced finished bg+mask surfaces per
+        # cursor — the cache just holds them for per-tick lookup.
+        cache.build(masked)
         self._video_caches[info.key] = cache
         return cache
 
