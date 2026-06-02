@@ -32,6 +32,7 @@ from ...core.commands import (
     ImportTheme,
     ListCloudThemes,
     ListThemes,
+    ListWebThemes,
     LoadCloudTheme,
     SaveTheme,
 )
@@ -356,20 +357,19 @@ def web_gallery(
     """
     w, h = _parse_resolution(resolution)
     log.info("api GET /theme/web: resolution=%dx%d", w, h)
-    web_dir = request.app.state.trcc.platform.paths().cloud_theme_dir(w, h)
-    if not web_dir.is_dir():
-        return []
-    items: list[WebThemeSchema] = []
-    for png in sorted(web_dir.glob("*.png")):
-        theme_id = png.stem
-        items.append(WebThemeSchema(
-            id=theme_id,
-            category=theme_id[0] if theme_id else "",
-            preview_url=f"/static/web/{w}{h}/{png.name}",
-            has_video=(web_dir / f"{theme_id}.mp4").is_file(),
-            download_url=f"/theme/cloud/{theme_id}",
-        ))
-    return items
+    result = request.app.state.trcc.dispatch(ListWebThemes(width=w, height=h))
+    # Domain entries → HTTP schema: the API owns the URLs (preview served
+    # by the /static/web mount; download via the cloud-load route).
+    return [
+        WebThemeSchema(
+            id=e.id,
+            category=e.category,
+            has_video=e.has_video,
+            preview_url=f"/static/web/{w}{h}/{e.id}.png",
+            download_url=f"/theme/cloud/{e.id}",
+        )
+        for e in result.entries
+    ]
 
 
 @router.post("/init", response_model=EnsureDataResponse)

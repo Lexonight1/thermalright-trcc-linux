@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 from ..core._safe import is_safe_zip_member
 from ..core.errors import ThemeError
-from ..core.models import Theme, ThemeDir
+from ..core.models import Theme, ThemeDir, WebPreviewInfo
 from . import _dc as Dc
 
 if TYPE_CHECKING:
@@ -278,6 +278,31 @@ class ThemeService:
         log.info("list: %s → %d theme(s) (skipped=%d)",
                  directory, len(themes), skipped)
         return themes
+
+    def list_web_previews(
+        self, web_dir: Path,
+    ) -> builtins.list[WebPreviewInfo]:
+        """Enumerate the downloaded cloud-theme previews under *web_dir*.
+
+        One entry per ``<id>.png`` (sorted): ``category`` is the id's first
+        letter, ``has_video`` whether a sibling ``<id>.mp4`` exists.  Empty
+        list when nothing's downloaded yet.  Pure disk enumeration — no
+        URLs (that's the caller's concern).
+        """
+        if not web_dir.is_dir():
+            log.debug("list_web_previews: %s missing → []", web_dir)
+            return []
+        previews = [
+            WebPreviewInfo(
+                id=png.stem,
+                category=png.stem[0] if png.stem else "",
+                has_video=(web_dir / f"{png.stem}.mp4").is_file(),
+            )
+            for png in sorted(web_dir.glob("*.png"))
+        ]
+        log.info("list_web_previews: %s → %d preview(s)",
+                 web_dir, len(previews))
+        return previews
 
     def export_dc(
         self, theme_dir: Path, output_path: Path,

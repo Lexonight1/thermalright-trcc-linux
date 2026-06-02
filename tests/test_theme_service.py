@@ -240,6 +240,29 @@ def test_background_path_prefers_video_over_static(tmp_path: Path) -> None:
     assert svc.background_path(t) == theme / "Theme.mp4"
 
 
+# ── list_web_previews — cloud-theme preview enumeration ──────────────
+
+
+def test_list_web_previews_enumerates_pngs(tmp_path: Path) -> None:
+    """One entry per <id>.png; category = first letter; has_video from .mp4."""
+    web = tmp_path / "web" / "320320"
+    web.mkdir(parents=True)
+    (web / "a001.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (web / "a001.mp4").write_bytes(b"v")          # → has_video
+    (web / "b002.png").write_bytes(b"\x89PNG\r\n\x1a\n")   # no video
+
+    previews = {p.id: p for p in ThemeService().list_web_previews(web)}
+
+    assert set(previews) == {"a001", "b002"}
+    assert previews["a001"].category == "a"
+    assert previews["a001"].has_video is True
+    assert previews["b002"].has_video is False
+
+
+def test_list_web_previews_missing_dir_returns_empty(tmp_path: Path) -> None:
+    assert ThemeService().list_web_previews(tmp_path / "nope") == []
+
+
 # Keep the unused `struct` import alive even if tests don't use it directly —
 # it's there for future parametrization of binary DC buffers.
 _ = struct

@@ -333,6 +333,20 @@ class Theme:
     config: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class WebPreviewInfo:
+    """One downloaded cloud-theme preview on disk (``data/web/{w}{h}/``).
+
+    Pure domain data — the ``id`` is the file stem (``a001``), ``category``
+    its first letter, ``has_video`` whether a sibling ``.mp4`` exists.
+    URL construction (preview/download links) is an adapter concern and
+    lives in the API layer, not here.
+    """
+    id: str
+    category: str
+    has_video: bool
+
+
 # =========================================================================
 # Sensor readings
 # =========================================================================

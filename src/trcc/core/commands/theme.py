@@ -40,6 +40,7 @@ from ..results import (
     ThemeListEntry,
     ThemeResult,
     ThemesListResult,
+    WebThemesListResult,
 )
 from ._base import Command
 from ._helpers import (
@@ -1050,6 +1051,28 @@ class ListThemes(Command[ThemesListResult]):
         return ThemesListResult(
             ok=True, directory=target_str, themes=entries,
             message=f"{len(entries)} theme(s) under {target_str}",
+        )
+
+@dataclass(frozen=True, slots=True)
+class ListWebThemes(Command[WebThemesListResult]):
+    """List the downloaded cloud-theme previews for a resolution.
+
+    Pure disk read of ``paths.cloud_theme_dir(w, h)`` — works with no
+    device connected.  Returns domain entries (id / category / has_video);
+    the API layer adds the preview/download URLs.  Empty until the data is
+    fetched (``EnsureDataDownload``).
+    """
+    width: int
+    height: int
+
+    def execute(self, app: App) -> WebThemesListResult:
+        log.info("ListWebThemes: %dx%d", self.width, self.height)
+        web_dir = app.platform.paths().cloud_theme_dir(self.width, self.height)
+        entries = app.themes.list_web_previews(web_dir)
+        return WebThemesListResult(
+            ok=True, width=self.width, height=self.height, entries=entries,
+            message=f"{len(entries)} cloud preview(s) for "
+                    f"{self.width}x{self.height}",
         )
 
 @dataclass(frozen=True, slots=True)

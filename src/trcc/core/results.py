@@ -13,6 +13,7 @@ from .models import (
     LedHandshakeResult,
     ProductInfo,
     SensorReading,
+    WebPreviewInfo,
 )
 
 
@@ -198,6 +199,14 @@ class ThemesListResult(Result):
     """All themes discovered under a directory."""
     directory: str = ""
     themes: list[ThemeListEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class WebThemesListResult(Result):
+    """Downloaded cloud-theme previews for a resolution."""
+    width: int = 0
+    height: int = 0
+    entries: list[WebPreviewInfo] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
