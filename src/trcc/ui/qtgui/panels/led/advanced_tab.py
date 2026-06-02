@@ -68,12 +68,8 @@ class AdvancedTab(LedTabBase):
         self._temp_group.setExclusive(True)
         self._temp_group.addButton(self._temp_cpu)
         self._temp_group.addButton(self._temp_gpu)
-        self._temp_cpu.toggled.connect(
-            lambda checked: self._on_temp_source("cpu") if checked else None,
-        )
-        self._temp_gpu.toggled.connect(
-            lambda checked: self._on_temp_source("gpu") if checked else None,
-        )
+        self._temp_cpu.toggled.connect(self._on_temp_cpu_toggled)
+        self._temp_gpu.toggled.connect(self._on_temp_gpu_toggled)
         temp_row = QHBoxLayout()
         temp_row.addWidget(self._temp_cpu)
         temp_row.addWidget(self._temp_gpu)
@@ -86,12 +82,8 @@ class AdvancedTab(LedTabBase):
         self._load_group.setExclusive(True)
         self._load_group.addButton(self._load_cpu)
         self._load_group.addButton(self._load_gpu)
-        self._load_cpu.toggled.connect(
-            lambda checked: self._on_load_source("cpu") if checked else None,
-        )
-        self._load_gpu.toggled.connect(
-            lambda checked: self._on_load_source("gpu") if checked else None,
-        )
+        self._load_cpu.toggled.connect(self._on_load_cpu_toggled)
+        self._load_gpu.toggled.connect(self._on_load_gpu_toggled)
         load_row = QHBoxLayout()
         load_row.addWidget(self._load_cpu)
         load_row.addWidget(self._load_gpu)
@@ -196,6 +188,24 @@ class AdvancedTab(LedTabBase):
             w.blockSignals(blocked)
 
     # ── Command dispatch ──────────────────────────────────────────────
+
+    # Radio buttons emit ``toggled`` for both the newly-checked and
+    # newly-unchecked button — only act on the checked one.
+    def _on_temp_cpu_toggled(self, checked: bool) -> None:
+        if checked:
+            self._on_temp_source("cpu")
+
+    def _on_temp_gpu_toggled(self, checked: bool) -> None:
+        if checked:
+            self._on_temp_source("gpu")
+
+    def _on_load_cpu_toggled(self, checked: bool) -> None:
+        if checked:
+            self._on_load_source("cpu")
+
+    def _on_load_gpu_toggled(self, checked: bool) -> None:
+        if checked:
+            self._on_load_source("gpu")
 
     def _on_temp_source(self, source: str) -> None:
         log.info("_on_temp_source: source=%s", source)

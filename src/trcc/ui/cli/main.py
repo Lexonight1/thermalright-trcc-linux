@@ -12,7 +12,7 @@ from pathlib import Path
 import typer
 
 from . import config, device, display, led, system, theme
-from ._ctx import get_app
+from ._ctx import dumps_json, get_app
 
 log = logging.getLogger(__name__)
 
@@ -284,7 +284,6 @@ def status(
     """
     log.info("cli status: json_output=%s", json_output)
     import dataclasses
-    import json
 
     from ...core.commands import (
         ControlCenterSnapshot,
@@ -309,7 +308,7 @@ def status(
             "lcd_devices": [dataclasses.asdict(s) for s in lcd_snaps],
             "led_devices": [dataclasses.asdict(s) for s in led_snaps],
         }
-        typer.echo(json.dumps(payload, default=str, indent=2))
+        typer.echo(dumps_json(payload))
         return
 
     typer.echo("─ App ─────────────────────────────────────────")

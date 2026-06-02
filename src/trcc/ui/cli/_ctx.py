@@ -22,13 +22,17 @@ from ...core.ports import Platform, Renderer
 log = logging.getLogger(__name__)
 
 
-def emit_json(result: Any) -> None:
-    """Print a dataclass Result/Snapshot as indented JSON for scripts.
+def dumps_json(payload: Any) -> str:
+    """JSON for CLI ``--json`` output — indented, ``default=str`` so enums /
+    Paths / tuples serialise without a custom encoder.  One shape for every
+    ``--json`` flag (per-result via :func:`emit_json`, composite via the
+    top-level ``status``)."""
+    return json.dumps(payload, default=str, indent=2)
 
-    ``default=str`` keeps enums / Paths / tuples serialisable without a
-    custom encoder — same shape the top-level ``status --json`` emits.
-    """
-    typer.echo(json.dumps(dataclasses.asdict(result), default=str, indent=2))
+
+def emit_json(result: Any) -> None:
+    """Print a dataclass Result/Snapshot as indented JSON for scripts."""
+    typer.echo(dumps_json(dataclasses.asdict(result)))
 
 
 _platform_override: Platform | None = None

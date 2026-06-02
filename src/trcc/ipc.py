@@ -134,8 +134,13 @@ def _to_wire(value: Any) -> Any:
         return [_to_wire(v) for v in value]
     if isinstance(value, dict):
         return {str(k): _to_wire(v) for k, v in value.items()}
-    # Last resort — let json.dumps complain if this isn't representable
-    return value
+    # Unserializable at the JSON boundary (e.g. a renderer surface on an
+    # in-process-only event field like FrameSent.surface).  Warn loudly
+    # and drop to None rather than let json.dumps crash the whole call —
+    # the receiver treats None as "not available" (the preview re-renders).
+    log.warning("_to_wire: non-serializable %s dropped to None at IPC "
+                "boundary", type(value).__name__)
+    return None
 
 
 def _from_wire(raw: Any) -> Any:

@@ -36,6 +36,7 @@ from ...core.commands import (
     LoadCloudTheme,
     SaveTheme,
 )
+from ...core.models import parse_resolution
 from ._shared import (
     http_error_if_failed,
     to_cloud_theme_load_response,
@@ -74,13 +75,9 @@ log = logging.getLogger(__name__)
 def _parse_resolution(resolution: str) -> tuple[int, int]:
     """Parse ``"320x320"`` → ``(320, 320)``; raise 400 on bad input."""
     try:
-        w_str, h_str = resolution.lower().split("x", 1)
-        return int(w_str), int(h_str)
-    except (ValueError, AttributeError) as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"bad resolution {resolution!r} — expected WxH (e.g. 320x320)",
-        ) from e
+        return parse_resolution(resolution)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 router = APIRouter(prefix="/theme", tags=["theme"])
 

@@ -918,10 +918,10 @@ class TRCCApp(QMainWindow):
 
         def _download_theme(theme_id: str, resolution: str, cache_dir: str) -> str | None:
             del cache_dir  # next/ owns the cache path
+            from ...core.models import parse_resolution
             try:
-                w_str, h_str = resolution.split("x")
-                w, h = int(w_str), int(h_str)
-            except (ValueError, AttributeError):
+                w, h = parse_resolution(resolution)
+            except ValueError:
                 log.warning("_download_theme: bad resolution %r", resolution)
                 return None
             try:

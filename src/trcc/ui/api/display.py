@@ -248,9 +248,6 @@ def apply_mask(key: str, body: MaskApplyRequest,
         "api POST /devices/{key}/display/mask: key=%s path=%s",
         key, body.path,
     )
-    from pathlib import Path
-
-    from fastapi import HTTPException
     platform = request.app.state.trcc.platform
     masks_root = (platform.paths().user_content_dir() / "masks").resolve()
     if not masks_root.is_dir():
@@ -319,9 +316,8 @@ def play_video(key: str, body: PlayVideoRequest,
         "api POST /devices/{key}/display/play-video: key=%s path=%s fps=%s",
         key, body.path, body.fps,
     )
-    from pathlib import Path as _Path
     result = request.app.state.trcc.dispatch(
-        PlayVideo(key=key, path=_Path(body.path), fps=body.fps),
+        PlayVideo(key=key, path=Path(body.path), fps=body.fps),
     )
     http_error_if_failed(result)
     return to_video_response(result)
@@ -1047,9 +1043,8 @@ def upload_mask(key: str, body: MaskUploadRequest,
         "api POST /devices/{key}/display/upload-mask: key=%s source=%s",
         key, body.source,
     )
-    from pathlib import Path as _Path
     result = request.app.state.trcc.dispatch(
-        UploadCustomMask(key=key, source=_Path(body.source)),
+        UploadCustomMask(key=key, source=Path(body.source)),
     )
     http_error_if_failed(result)
     return to_mask_upload_response(result)

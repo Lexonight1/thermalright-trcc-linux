@@ -88,6 +88,22 @@ MIN_REFRESH_INTERVAL_S: float = 1.0
 MAX_REFRESH_INTERVAL_S: float = 100.0
 
 
+def parse_resolution(resolution: str) -> tuple[int, int]:
+    """Parse a ``"320x320"`` resolution string into ``(width, height)``.
+
+    Case-insensitive on the ``x`` separator.  Raises ``ValueError`` on
+    malformed input — callers translate to their own error shape (the API
+    to a 400, the GUI to a status message).
+    """
+    try:
+        w_str, h_str = resolution.lower().split("x", 1)
+        return int(w_str), int(h_str)
+    except (ValueError, AttributeError) as e:
+        raise ValueError(
+            f"bad resolution {resolution!r} — expected WxH (e.g. 320x320)",
+        ) from e
+
+
 class FitMode(str, Enum):
     """How a background image/video fits the device canvas.
 

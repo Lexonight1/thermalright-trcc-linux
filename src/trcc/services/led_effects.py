@@ -178,8 +178,13 @@ class LEDEffectEngine:
         its own mode + color + brightness over its mapped LED indices
         (``SegmentDisplay.zone_led_map``).  ``metric_sources`` maps zone
         index → (device, kind) so a sensor-linked zone reads its own
-        source.  Like legacy, each animated zone advances the shared
-        ``rgb_timer`` once (zones stay phase-synced).
+        source.
+
+        Note the shared ``rgb_timer``: each animated zone's per-mode tick
+        advances it, so N animated zones step it N× per frame and each
+        reads a value one step past the previous zone — matching legacy's
+        multi-callback timer behaviour (animation runs proportionally
+        faster on a multi-zone device, not per-zone phase-isolated).
         """
         colors: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
         zones = settings.zones
