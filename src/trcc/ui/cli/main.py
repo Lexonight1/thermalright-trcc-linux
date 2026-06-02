@@ -373,7 +373,21 @@ def shell() -> None:
     to the running daemon.  Ctrl-D or ``exit`` quits.
     """
     log.info("cli shell")
-    from .shell import run_shell
+    try:
+        from .shell import run_shell
+    except ImportError as e:
+        # prompt_toolkit is a declared dependency but can be absent when
+        # running from a source checkout that wasn't `pip install`'d.
+        # Fail with a clear one-liner, not a CRITICAL startup traceback.
+        log.warning("shell: interactive REPL unavailable — %s", e)
+        typer.secho(
+            "The interactive shell needs the 'prompt_toolkit' package "
+            "(it ships with trcc-linux).\n"
+            "Install it with:  pip install prompt_toolkit",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        raise typer.Exit(code=1) from e
     raise typer.Exit(code=run_shell(app))
 
 
