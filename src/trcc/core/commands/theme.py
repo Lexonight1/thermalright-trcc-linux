@@ -52,6 +52,7 @@ from ._helpers import (
     _resolve_mask_path,
     _resolve_resolution,
     _search_theme_by_name,
+    overlay_elements_to_dc,
 )
 from .device import (
     ApplyMask,
@@ -562,14 +563,15 @@ class SaveTheme(Command[ThemeResult]):
         width: int,
         height: int,
     ) -> str | None:
-        """Store the resolved current mask image in the library; return ref.
+        """Store the resolved current mask + its DC in the library; return ref.
 
-        Stores the mask IMAGE only (no ``config1.dc``) — the manifest's
-        inline ``elements`` own the layout, so ``ApplyMask`` on reload
-        applies the image + position without replacing them.
-        ``DeviceSettings.mask_path`` (user/cloud override) wins over the
-        source theme's mask.  ``None`` when there is no mask — a valid
-        themeable state.
+        Stores the mask IMAGE plus a ``config1.dc`` serialised from the
+        theme's combined overlay layout (when any), so the user-catalog
+        mask is the same self-contained ``{01.png, config1.dc}`` unit a
+        cloud mask is — re-applying it from the masks browser restores its
+        metrics instead of dropping them.  ``DeviceSettings.mask_path``
+        (user/cloud override) wins over the source theme's mask.  ``None``
+        when there is no mask — a valid themeable state.
         """
         src = self._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
@@ -579,10 +581,16 @@ class SaveTheme(Command[ThemeResult]):
             return None
 
         surface = app.renderer.open_image(src)
-        ref = app.themes.store_mask(
-            app.renderer.encode_png(surface), width, height,
+        dc_bytes = overlay_elements_to_dc(
+            self._combine_elements(theme, s),
+            rotation=int(theme.config.get("rotation", 0)),
+            overlay_enabled=bool(theme.config.get("overlay_enabled", True)),
         )
-        log.info("SaveTheme: mask %s → library ref %s", src.name, ref)
+        ref = app.themes.store_mask(
+            app.renderer.encode_png(surface), width, height, dc=dc_bytes,
+        )
+        log.info("SaveTheme: mask %s → library ref %s (dc=%s)",
+                 src.name, ref, "yes" if dc_bytes else "no")
         return ref
 
     @staticmethod
@@ -1184,6 +1192,25 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 ok=False, key=self.key, path="",
                 message=f"Copy failed: {e}",
             )
+        # Capture the device's CURRENT overlay as the mask's config1.dc —
+        # in unison with SaveTheme, a user mask becomes the same
+        # {01.png, config1.dc} unit a cloud mask is, so re-applying it
+        # later restores metrics.  Written BEFORE ApplyMask so the upload
+        # applies with its metrics; image-only when nothing is on screen.
+        settings = app.settings.for_device(self.key)
+        elements: list[dict] = []
+        if settings.mask_overlay_elements is not None:
+            elements = [e.to_dict() for e in settings.mask_overlay_elements]
+        elements += [e.to_dict() for e in settings.user_overlay_elements]
+        dc_bytes = overlay_elements_to_dc(elements)
+        if dc_bytes is not None:
+            try:
+                (mask_dir / "config1.dc").write_bytes(dc_bytes)
+                log.info("UploadCustomMask: wrote config1.dc (%d byte(s)) → %s",
+                         len(dc_bytes), mask_dir.name)
+            except OSError as e:
+                log.warning("UploadCustomMask: config1.dc write failed (%s) — "
+                            "mask uploaded image-only", e)
         apply_result = ApplyMask(key=self.key, path=mask_file).execute(app)
         if not apply_result.ok:
             return MaskUploadResult(

@@ -195,15 +195,17 @@ class ThemeService:
         Writes *image* to ``user_mask_dir(w,h)/<id>/01.png`` and, when
         *dc* is given, its layout to ``.../<id>/config1.dc`` — the
         ``{01.png, config1.dc}`` unit a mask carries.  ``<id>`` is the
-        content hash of the mask *image*: its visual identity is the
-        dedup key, while the DC is the mask's intrinsic catalog layout.
-        Returns the directory ref ``web/zt{w}{h}/<id>`` that
-        :meth:`mask_path` resolves.  Identical images dedup to one dir
+        content hash of the mask *image* **plus its DC** when present, so
+        two themes that share a mask image but carry DIFFERENT metrics get
+        distinct catalog dirs each with its own ``config1.dc`` (hashing the
+        image alone would collapse them and the first DC would win).
+        Identical image + identical DC still dedup to one dir.  Returns the
+        directory ref ``web/zt{w}{h}/<id>`` that :meth:`mask_path` resolves
         (write skipped when its ``01.png`` exists).
         """
         if self._paths is None:
             raise RuntimeError("store_mask requires paths injection")
-        asset_id = self._content_id(image)
+        asset_id = self._content_id(image if dc is None else image + dc)
         dest_dir = self._paths.user_mask_dir(width, height) / asset_id
         td = ThemeDir(dest_dir)
         ref = f"web/zt{width}{height}/{asset_id}"

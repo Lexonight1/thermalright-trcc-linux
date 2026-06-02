@@ -1080,3 +1080,126 @@ def test_import_theme_publishes_event(
 
     assert len(events) == 1
     assert events[0].theme_name == "evt"
+
+
+# ── Mask metrics: saved/uploaded user masks carry their config1.dc ────
+#
+# Bug: saving a theme that used a cloud mask wrote the mask into the user
+# catalog (~/.trcc-user/.../web/zt{w}{h}/<id>/01.png) WITHOUT its
+# config1.dc, so re-applying that mask from the masks browser dropped its
+# metrics.  SaveTheme + UploadCustomMask now both write the DC via the
+# shared overlay_elements_to_dc helper — in unison.
+
+
+def test_save_theme_writes_mask_dc_with_metrics(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A theme saved with overlay metrics stores its mask as a complete
+    ``{01.png, config1.dc}`` catalog unit, and re-applying that mask
+    restores the metrics."""
+    from trcc.core.commands import ApplyMask
+    from trcc.core.models import OverlayElement
+
+    # Source theme with BOTH a mask (01.png) and a clock element, so the
+    # saved mask has metrics to carry.
+    source = tmp_home / "source"
+    source.mkdir(parents=True)
+    (source / "trcc.json").write_text(json.dumps({
+        "name": "source", "width": 320, "height": 320,
+        "overlay_enabled": True, "mask_visible": True,
+        "elements": [{
+            "type": "clock", "x": 100, "y": 100, "color": "#ffffff",
+            "size": 24, "bold": False, "italic": False, "source": "time",
+        }],
+    }), encoding="utf-8")
+    (source / "00.png").write_bytes(_png_bytes(red=0x10))
+    (source / "01.png").write_bytes(_png_bytes(red=0x20))
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="u1", type="text", x=10, y=10, color="#ffffff",
+            size=18, bold=False, italic=False, text="HI",
+        ),
+    )
+
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="metric-mask"))
+    assert result.ok is True
+
+    active = app.active_themes[_TEST_DEVICE_KEY]
+    mask = app.themes.mask_path(active)
+    assert mask is not None
+    mask_dir = mask.parent
+    assert (mask_dir / "config1.dc").is_file(), \
+        "saved mask must carry its config1.dc metrics"
+
+    # Re-applying the saved catalog mask repopulates the metric overlay.
+    app.settings.set_mask_overlay_elements(_TEST_DEVICE_KEY, None)
+    apply = app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY, path=mask_dir))
+    assert apply.ok is True
+    restored = app.settings.for_device(_TEST_DEVICE_KEY).mask_overlay_elements
+    assert restored, "applying the saved mask must restore its metrics"
+    types = [e.type for e in restored]
+    assert "clock" in types and "text" in types
+
+
+def test_save_theme_metricless_mask_stays_image_only(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A theme with NO overlay elements saves its mask image-only — no
+    empty config1.dc pollutes the catalog."""
+    source = _write_theme_with_mask(tmp_home, "plain")   # elements: []
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="plain-copy"))
+    assert result.ok is True
+
+    mask = app.themes.mask_path(app.active_themes[_TEST_DEVICE_KEY])
+    assert mask is not None
+    assert (mask.parent / "01.png").is_file()
+    assert not (mask.parent / "config1.dc").exists()
+
+
+def test_upload_custom_mask_captures_current_overlay_as_dc(
+    app: App, tmp_home: Path,
+) -> None:
+    """Uploading a mask while an overlay is active writes config1.dc — the
+    user mask carries metrics in unison with SaveTheme."""
+    from trcc.core.commands import UploadCustomMask
+    from trcc.core.models import OverlayElement
+
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(
+            id="c1", type="clock", x=20, y=20, color="#ffffff",
+            size=20, bold=False, italic=False, source="time",
+        ),
+    )
+    src = tmp_home / "mymask.png"
+    src.write_bytes(_png_bytes(red=0x33))
+
+    result = app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src))
+    assert result.ok is True
+
+    w, h = _TEST_RES
+    mask_dir = app.platform.paths().user_mask_dir(w, h) / "custom_mymask"
+    assert (mask_dir / "01.png").is_file()
+    assert (mask_dir / "config1.dc").is_file(), \
+        "uploaded mask must carry config1.dc from the active overlay"
+
+
+def test_store_mask_distinct_dc_yields_distinct_dirs(app: App) -> None:
+    """Same mask image with DIFFERENT DC metrics → distinct catalog dirs,
+    each with its own config1.dc; identical image+DC dedups."""
+    paths = app.platform.paths()
+    w, h = _TEST_RES
+    svc = ThemeService(paths)
+    image = b"\x89PNG\r\n\x1a\nSHARED"
+
+    ref1 = svc.store_mask(image, w, h, dc=b"\xddAAA")
+    ref2 = svc.store_mask(image, w, h, dc=b"\xddBBB")
+    ref_same = svc.store_mask(image, w, h, dc=b"\xddAAA")
+
+    assert ref1 != ref2, "different metrics must not collapse to one dir"
+    assert ref1 == ref_same, "identical image+DC must dedup"
+    assert len(list(paths.user_mask_dir(w, h).iterdir())) == 2

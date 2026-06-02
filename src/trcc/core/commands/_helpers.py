@@ -50,6 +50,36 @@ _VIDEO_EXTS_FOR_LOAD = frozenset({
 })
 
 
+def overlay_elements_to_dc(
+    elements: list[dict[str, Any]], *,
+    rotation: int = 0, overlay_enabled: bool = True,
+) -> bytes | None:
+    """Serialise overlay elements into ``config1.dc`` (``0xDD``) bytes.
+
+    The single mask-metrics writer shared by every user-mask path:
+    ``SaveTheme`` (metrics captured from a saved theme) and
+    ``UploadCustomMask`` (metrics captured from a fresh upload) both call
+    this, so a user mask carries the same self-contained
+    ``{01.png, config1.dc}`` unit a cloud mask does — and ``ApplyMask``
+    reloads them identically.  Returns ``None`` when there are no elements
+    so a metrics-less mask stays image-only rather than carrying an empty
+    DC.
+    """
+    if not elements:
+        log.debug("overlay_elements_to_dc: no elements — image-only mask")
+        return None
+    from ...services._dc import Writer
+    dc = Writer().serialize({
+        "elements": elements,
+        "overlay_enabled": overlay_enabled,
+        "rotation": rotation,
+        "mask_visible": True,
+    })
+    log.info("overlay_elements_to_dc: %d element(s) → %d DC byte(s)",
+             len(elements), len(dc))
+    return dc
+
+
 _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
     "dnf":          ("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
     "apt":          ("sudo", "apt", "upgrade", "-y", "trcc-linux"),
