@@ -100,6 +100,10 @@ class BasePanel(QFrame):
 
         Override in panels that have localized content.
         """
+        log.debug(
+            "%s.apply_language: lang=%r (base no-op)",
+            type(self).__name__, lang,
+        )
 
     def get_state(self) -> dict:
         """Serialize panel state for save/restore."""
@@ -107,11 +111,17 @@ class BasePanel(QFrame):
 
     def set_state(self, state: dict) -> None:
         """Restore panel state from a previously saved dict."""
+        log.debug(
+            "%s.set_state: keys=%s (base no-op)",
+            type(self).__name__, sorted(state) if isinstance(state, dict) else state,
+        )
 
     # === Concrete helpers ===
 
     def _apply_background(self, asset_name: str) -> QPixmap | None:
         """Apply a background image using set_background_pixmap."""
+        log.debug("%s._apply_background: asset=%r",
+                  type(self).__name__, asset_name)
         return set_background_pixmap(self, asset_name)
 
     def start_periodic_updates(
@@ -122,6 +132,11 @@ class BasePanel(QFrame):
         Creates a QTimer on first call. Subsequent calls restart with
         the new interval and callback.
         """
+        log.info(
+            "%s.start_periodic_updates: interval_ms=%d callback=%s",
+            type(self).__name__, interval_ms,
+            getattr(callback, '__qualname__', repr(callback)),
+        )
         if self._update_timer is None:
             self._update_timer = QTimer(self)
         else:
@@ -135,6 +150,9 @@ class BasePanel(QFrame):
 
     def stop_periodic_updates(self) -> None:
         """Stop the periodic update timer if running."""
+        log.info("%s.stop_periodic_updates: active=%s",
+                 type(self).__name__,
+                 self._update_timer is not None and self._update_timer.isActive())
         if self._update_timer is not None:
             self._update_timer.stop()
 
@@ -142,20 +160,29 @@ class BasePanel(QFrame):
 
     def set_resource_dir(self, path):
         """Set the resource directory for loading images."""
+        log.debug("%s.set_resource_dir: %s",
+                  type(self).__name__, path)
         self._resource_dir = Path(path) if path else None
 
     def load_pixmap(self, name):
         """Load a pixmap from the resource directory."""
         if not self._resource_dir:
+            log.debug("%s.load_pixmap(%r): no resource_dir bound",
+                      type(self).__name__, name)
             return None
 
         path = self._resource_dir / name
         if path.exists():
             return QPixmap(path.as_posix())
+        log.debug("%s.load_pixmap(%r): missing at %s",
+                  type(self).__name__, name, path)
         return None
 
     def invoke_delegate(self, cmd, info=None, data=None):
         """Emit delegate signal (replaces Tkinter invoke_delegate)."""
+        log.info("%s.invoke_delegate: cmd=%s info=%r",
+                 type(self).__name__, cmd,
+                 getattr(info, 'name', info))
         self.delegate.emit(cmd, info, data)
 
 
@@ -231,6 +258,8 @@ class ImageLabel(QLabel):
             pos = event.position().toPoint()
             self._dragging = True
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            log.info("ImageLabel.mousePressEvent: drag start at (%d,%d)",
+                     pos.x(), pos.y())
             self.drag_started.emit(pos.x(), pos.y())
         super().mousePressEvent(event)
 
@@ -238,6 +267,7 @@ class ImageLabel(QLabel):
         """Handle mouse drag."""
         if self._dragging:
             pos = event.position().toPoint()
+            # Per-event during drag — DEBUG.
             self.drag_moved.emit(pos.x(), pos.y())
         super().mouseMoveEvent(event)
 
@@ -246,6 +276,7 @@ class ImageLabel(QLabel):
         if self._dragging:
             self._dragging = False
             self.setCursor(Qt.CursorShape.OpenHandCursor)
+            log.info("ImageLabel.mouseReleaseEvent: drag end")
             self.drag_ended.emit()
         super().mouseReleaseEvent(event)
 
@@ -254,12 +285,16 @@ class ImageLabel(QLabel):
         step = 10 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1
         key = event.key()
         if key in (Qt.Key.Key_W, Qt.Key.Key_Up):
+            log.info("ImageLabel.keyPressEvent: nudge (0,-%d)", step)
             self.nudge.emit(0, -step)
         elif key in (Qt.Key.Key_S, Qt.Key.Key_Down):
+            log.info("ImageLabel.keyPressEvent: nudge (0,+%d)", step)
             self.nudge.emit(0, step)
         elif key in (Qt.Key.Key_A, Qt.Key.Key_Left):
+            log.info("ImageLabel.keyPressEvent: nudge (-%d,0)", step)
             self.nudge.emit(-step, 0)
         elif key in (Qt.Key.Key_D, Qt.Key.Key_Right):
+            log.info("ImageLabel.keyPressEvent: nudge (+%d,0)", step)
             self.nudge.emit(step, 0)
         else:
             super().keyPressEvent(event)
@@ -578,10 +613,17 @@ class BaseThumbnail(ClickableFrame):
                 self.setStyleSheet(Styles.thumb_normal(cls_name))
 
     def set_selected(self, selected):
+        log.debug("BaseThumbnail.set_selected: name=%r selected=%s",
+                  getattr(self.item_info, 'name', '?'), selected)
         self.selected = selected
         self._update_style()
 
     def mousePressEvent(self, event):
+        log.info(
+            "BaseThumbnail.mousePressEvent: %s name=%r (emit clicked)",
+            type(self).__name__,
+            getattr(self.item_info, 'name', self.item_info),
+        )
         self.clicked.emit(self.item_info)
         # Don't call super - we override clicked signal with different signature
 
@@ -685,6 +727,8 @@ class BaseThemeBrowser(BasePanel):
 
     def _populate_grid(self, items: list):
         """Populate grid with thumbnails for the given items."""
+        log.info("%s._populate_grid: %d items",
+                 type(self).__name__, len(items))
         self.items = items
 
         if not items:
@@ -701,6 +745,8 @@ class BaseThemeBrowser(BasePanel):
 
     def _show_empty_message(self):
         """Show empty state label."""
+        log.info("%s._show_empty_message: %r",
+                 type(self).__name__, self._no_items_message())
         label = QLabel(self._no_items_message())
         label.setStyleSheet(
             f"color: {Colors.EMPTY_TEXT}; font-size: 12px; background: transparent;"
@@ -711,6 +757,9 @@ class BaseThemeBrowser(BasePanel):
 
     def _select_item(self, item_info):
         """Update selection state and visuals (no signals emitted)."""
+        log.debug("%s._select_item: name=%r",
+                  type(self).__name__,
+                  getattr(item_info, 'name', item_info))
         self.selected_item = item_info
         for widget in self.item_widgets:
             if isinstance(widget, BaseThumbnail):
@@ -718,6 +767,9 @@ class BaseThemeBrowser(BasePanel):
 
     def _on_item_clicked(self, item_info):
         """Handle thumbnail click — select and notify."""
+        log.info("%s._on_item_clicked: name=%r (emit theme_selected)",
+                 type(self).__name__,
+                 getattr(item_info, 'name', item_info))
         self._select_item(item_info)
         self.theme_selected.emit(item_info)
 
@@ -757,19 +809,26 @@ class DownloadableThemeBrowser(BaseThemeBrowser):
             item_id: Identifier for the item being downloaded.
             download_fn: Callable that returns True on success, False on failure.
         """
+        log.info("%s._start_download: item_id=%s",
+                 type(self).__name__, item_id)
         self._downloading = True
         self.download_started.emit(item_id)
 
         def task():
             try:
                 ok = download_fn()
+                log.info("%s._start_download: %s ok=%s",
+                         type(self).__name__, item_id, ok)
                 self.download_finished.emit(item_id, ok)
             except Exception as e:
-                log.error("Download failed for %s: %s", item_id, e)
+                log.error("%s._start_download: %s raised %s: %s",
+                          type(self).__name__, item_id, type(e).__name__, e)
                 self.download_finished.emit(item_id, False)
 
         self._threading.Thread(target=task, daemon=True).start()
 
     def _on_download_complete(self, item_id: str, success: bool):
         """Handle download completion. Override to refresh + auto-select."""
+        log.info("%s._on_download_complete: item_id=%s success=%s",
+                 type(self).__name__, item_id, success)
         self._downloading = False

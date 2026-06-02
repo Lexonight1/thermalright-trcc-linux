@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 import threading
 
+log = logging.getLogger(__name__)
+
 logger = logging.getLogger(__name__)
 
 # Try importing portal/GStreamer dependencies
@@ -186,6 +188,7 @@ class PipeWireScreenCast:
 
     def _on_create_session_response(self, response, results):
         """Handle CreateSession response."""
+        log.info("_on_create_session_response")
         if response != 0:
             logger.error("CreateSession failed with response %d", response)
             self._session_failed.set()
@@ -228,6 +231,7 @@ class PipeWireScreenCast:
 
     def _on_select_sources_response(self, response, results):
         """Handle SelectSources response."""
+        log.info("_on_select_sources_response")
         if response != 0:
             logger.error("SelectSources failed with response %d", response)
             self._session_failed.set()
@@ -262,6 +266,7 @@ class PipeWireScreenCast:
 
     def _on_start_response(self, response, results):
         """Handle Start response — get PipeWire node ID and start pipeline."""
+        log.info("_on_start_response")
         if response != 0:
             logger.error("Start failed with response %d (user denied?)",
                          response)
@@ -325,6 +330,7 @@ class PipeWireScreenCast:
 
     def _on_new_sample(self, sink):
         """GStreamer callback: new frame available from PipeWire."""
+        log.info("_on_new_sample")
         sample = sink.emit('pull-sample')
         if sample is None:
             return Gst.FlowReturn.OK

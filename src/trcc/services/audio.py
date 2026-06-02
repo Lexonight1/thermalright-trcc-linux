@@ -1,4 +1,16 @@
-"""Audio capture and spectrum visualization for screencast overlay."""
+"""AudioCapture — microphone capture + spectrum bands for screencast overlay.
+
+Ports the legacy ``services.audio.AudioCapture`` into next/.  Same shape:
+
+* ``start(device=None, samplerate=44100, blocksize=1024) -> bool``
+* ``stop()``
+* ``running: bool``
+* ``get_spectrum() -> np.ndarray`` — current ``NUM_BANDS`` floats in [0, 1]
+
+Optional dependency: ``sounddevice``.  When absent, ``start()`` returns
+False without raising, and the screencast pipeline silently disables
+the spectrum visualizer.
+"""
 from __future__ import annotations
 
 import logging
@@ -9,20 +21,17 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-# Number of frequency bands for the visualizer
-NUM_BANDS = 16
-# Smoothing factor (0 = no smoothing, 1 = frozen)
-SMOOTHING = 0.6
+NUM_BANDS = 16        # bars in the spectrum visualizer
+SMOOTHING = 0.6       # exponential smoothing (0 = no smoothing, 1 = frozen)
 
 
 class AudioCapture:
-    """Captures microphone audio and computes spectrum bands.
+    """Captures microphone input and computes per-band FFT magnitudes.
 
-    Uses sounddevice to stream mic input. FFT produces frequency-domain
-    data, binned into NUM_BANDS bars for visualization.
-
-    Thread-safe: the audio callback runs on a sounddevice thread,
-    `get_spectrum()` is called from the GUI thread.
+    Thread-safe: the audio callback runs on a sounddevice thread; the
+    GUI calls ``get_spectrum()`` from the Qt main thread.  Both reads
+    and writes hold ``self._lock`` so the visualizer never sees a torn
+    update.
     """
 
     def __init__(self, bands: int = NUM_BANDS) -> None:
@@ -36,12 +45,17 @@ class AudioCapture:
     def running(self) -> bool:
         return self._running
 
-    def start(self, device: int | None = None, samplerate: int = 44100,
-              blocksize: int = 1024) -> bool:
-        """Start capturing from the default microphone.
+    def start(
+        self,
+        device: int | None = None,
+        samplerate: int = 44100,
+        blocksize: int = 1024,
+    ) -> bool:
+        """Start capturing from *device* (None = OS default mic).
 
-        Returns True if started successfully, False if sounddevice
-        is unavailable or no mic is found.
+        Returns True on success, False when ``sounddevice`` is absent
+        or the OS denies access to a microphone.  Never raises — the
+        GUI checks the bool and adjusts visualization accordingly.
         """
         if self._running:
             return True
@@ -50,7 +64,6 @@ class AudioCapture:
         except ImportError:
             log.warning("sounddevice not installed — audio visualization disabled")
             return False
-
         try:
             self._stream = sd.InputStream(
                 device=device,
@@ -61,25 +74,25 @@ class AudioCapture:
             )
             self._stream.start()
             self._running = True
-            log.info("Audio capture started (device=%s, rate=%d, block=%d)",
-                     device, samplerate, blocksize)
+            log.info(
+                "AudioCapture started (device=%s, rate=%d, block=%d)",
+                device, samplerate, blocksize,
+            )
             return True
         except Exception as e:
-            log.warning("Failed to start audio capture: %s", e)
+            log.warning("AudioCapture.start() failed: %s", e)
             self._stream = None
             return False
 
     def stop(self) -> None:
-        """Stop capturing."""
+        """Stop the stream and reset the spectrum to zeros."""
         if self._stream is not None:
             try:
                 self._stream.stop()
                 self._stream.close()
             except Exception:
-                # Best-effort stream cleanup — sounddevice may have already
-                # closed the stream. Logged at debug for -vv visibility.
                 log.debug(
-                    "audio: stream stop/close failed during cleanup",
+                    "AudioCapture: stream stop/close failed during cleanup",
                     exc_info=True,
                 )
             self._stream = None
@@ -88,23 +101,31 @@ class AudioCapture:
             self._spectrum[:] = 0
 
     def get_spectrum(self) -> np.ndarray:
-        """Return current spectrum bands (0.0–1.0 each). Thread-safe."""
+        """Return a copy of the current band magnitudes (0.0 – 1.0)."""
+        log.debug("get_spectrum: bands=%d", self._bands)
         with self._lock:
             return self._spectrum.copy()
 
-    def _audio_callback(self, indata: np.ndarray, frames: int,
-                        time_info: Any, status: Any) -> None:
-        """Called by sounddevice on the audio thread."""
-        if status:
-            log.debug("Audio status: %s", status)
+    # ── Internal — runs on sounddevice's audio thread ────────────────
 
-        # Mono signal → FFT
+    def _audio_callback(
+        self,
+        indata: np.ndarray,
+        frames: int,
+        time_info: Any,
+        status: Any,
+    ) -> None:
+        del frames, time_info  # only ``indata`` + ``status`` used
+        if status:
+            log.debug("AudioCapture: stream status: %s", status)
+
         signal = indata[:, 0]
         fft = np.abs(np.fft.rfft(signal))
 
-        # Bin into bands (logarithmic spacing for musical frequencies)
         n = len(fft)
         bands = np.zeros(self._bands, dtype=np.float32)
+        # Logarithmic frequency spacing — perceptually closer to musical
+        # bands than linear binning.
         indices = np.logspace(0, np.log10(n), self._bands + 1, dtype=int)
         indices = np.clip(indices, 0, n - 1)
         for i in range(self._bands):
@@ -113,11 +134,9 @@ class AudioCapture:
                 hi = lo + 1
             bands[i] = np.mean(fft[lo:hi])
 
-        # Normalize to 0–1 range
         peak = bands.max()
         if peak > 0:
             bands /= peak
 
-        # Smooth with previous frame
         with self._lock:
             self._spectrum = SMOOTHING * self._spectrum + (1 - SMOOTHING) * bands

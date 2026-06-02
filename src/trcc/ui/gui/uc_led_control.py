@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -29,13 +30,13 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.i18n import tr
-from ...core.models import (
+from ...core.led_models import (
     LED_MODE_LABELS,
     LED_PRESET_ASSETS,
     LED_SELECT_ALL_STYLES,
     PRESET_COLORS,
-    HardwareMetrics,
 )
+from ...core.models import HardwareMetrics
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -261,6 +262,9 @@ class UCLedControl(QWidget):
     memory_ratio_changed = Signal(int)       # 1, 2, or 4
     # Test mode
     test_mode_changed = Signal(bool)         # test mode toggled
+    # Metric source for temp-/load-linked LED color modes ("cpu" / "gpu")
+    temp_source_changed = Signal(str)
+    load_source_changed = Signal(str)
 
     # Header drag area — C# FormLED uses delegate cmds 241/242/243 for
     # MouseDown/Move/Up so the user can drag the window from the header.
@@ -326,8 +330,8 @@ class UCLedControl(QWidget):
         self._title.setVisible(False)
 
         # -- Mode buttons (text rendered via i18n, not baked into PNG) --
-        from ..._boot import trcc as _trcc
-        lang = _trcc().settings.lang
+        from ..._boot import trcc_next as _trcc
+        lang = _trcc().settings.app.language
         self._mode_buttons: list[QPushButton] = []
         for i, label_key in enumerate(MODE_LABELS):
             label = tr(label_key, lang)
@@ -784,8 +788,8 @@ class UCLedControl(QWidget):
         self._preview.set_style(style_id, segment_count)
 
         # Load device preview background (PM-specific or style default)
-        from ...core.models import LED_STYLES, PmRegistry
-        style = LED_STYLES[style_id]
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID, PmRegistry
+        style = LED_STYLES[STYLE_BY_LEGACY_ID[style_id]]
 
         # Resolve preview: check PmRegistry for model-specific image,
         # fall back to style default (Windows: FormLEDInit per-NO)
@@ -799,8 +803,8 @@ class UCLedControl(QWidget):
             self._preview.set_overlay(QPixmap(preview_pixmap))
 
         # Set panel background (localized with fallback)
-        from ..._boot import trcc as _trcc
-        bg_name = Assets.get_localized(style.background_base, _trcc().settings.lang)
+        from ..._boot import trcc_next as _trcc
+        bg_name = Assets.get_localized(style.background_base, _trcc().settings.app.language)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
 
@@ -856,10 +860,19 @@ class UCLedControl(QWidget):
 
     def apply_localized_background(self) -> None:
         """Re-apply localized background and text labels for current lang."""
-        from ..._boot import trcc as _trcc
-        from ...core.models import LED_STYLES
-        lang = _trcc().settings.lang
-        style = LED_STYLES[self._style_id]
+        from ..._boot import trcc_next as _trcc
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
+        if self._style_id not in STYLE_BY_LEGACY_ID:
+            # No LED device bound yet — _style_id is the init sentinel 0.
+            # Language change still fires this; skip until a device sets it.
+            log.debug(
+                "apply_localized_background: no LED device bound "
+                "(_style_id=%d) — skipping",
+                self._style_id,
+            )
+            return
+        lang = _trcc().settings.app.language
+        style = LED_STYLES[STYLE_BY_LEGACY_ID[self._style_id]]
         bg_name = Assets.get_localized(style.background_base, lang)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
@@ -895,8 +908,8 @@ class UCLedControl(QWidget):
         - button5-6 (led_zone_mode_5-6): styles 3, 5, 6, 11
         - buttonN1-4 (led_zone_btn_1-4): styles 4, 7, 8, 10
         """
-        from ...core.models import LED_STYLES
-        if not (assets := LED_STYLES[style_id].zone_assets):
+        from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
+        if not (assets := LED_STYLES[STYLE_BY_LEGACY_ID[style_id]].zone_assets):
             return
         for i, btn in enumerate(self._zone_buttons):
             if i < len(assets):
@@ -1146,12 +1159,15 @@ class UCLedControl(QWidget):
         self.week_start_changed.emit(is_sunday)
 
     def _on_mon_clicked(self) -> None:
+        log.info("_on_mon_clicked")
         self._set_week_start(False)
 
     def _on_celsius_clicked(self) -> None:
+        log.info("_on_celsius_clicked")
         self._set_temp_unit_btn(False)
 
     def _on_fahrenheit_clicked(self) -> None:
+        log.info("_on_fahrenheit_clicked")
         self._set_temp_unit_btn(True)
 
     def _set_temp_unit_btn(self, is_fahrenheit: bool):
@@ -1204,6 +1220,7 @@ class UCLedControl(QWidget):
         Single entry point: caller doesn't need to know which style
         uses which update method. Panel owns the routing.
         """
+        log.debug("update_metrics")
         if self._style_id not in (4, 10):
             self.update_sensor_metrics(metrics)
         if self._style_id == 4:
@@ -1227,6 +1244,7 @@ class UCLedControl(QWidget):
 
     def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
         """Update UCInfoImage sensor gauges."""
+        log.debug("update_sensor_metrics")
         unit = self._temp_unit
         t = metrics.cpu_temp
         self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
@@ -1243,6 +1261,7 @@ class UCLedControl(QWidget):
 
     def update_memory_metrics(self, metrics: HardwareMetrics) -> None:
         """Update memory info labels (LC1 style 4, C# UCLEDMemoryInfo)."""
+        log.debug("update_memory_metrics")
         unit = self._temp_unit
         t = metrics.mem_temp
         if t == 0:
@@ -1328,6 +1347,7 @@ class UCLedControl(QWidget):
 
     def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:
         """Update disk info labels (LF11 style 10, C# UCLEDHarddiskInfo)."""
+        log.debug("update_lf11_disk_metrics")
         unit = self._temp_unit
         t = metrics.disk_temp
         if t == 0:
@@ -1341,6 +1361,31 @@ class UCLedControl(QWidget):
             f"{metrics.disk_read:.0f}MB/S")
         self._disk_labels['lf11_disk_write'].setText(
             f"{metrics.disk_write:.0f}MB/S")
+
+    # ================================================================
+    # Metric-source context menu (temp-/load-linked LED color)
+    # ================================================================
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click → pick the CPU/GPU source for temp-/load-linked
+        LED color modes.  A context menu keeps the pixel-perfect FormLED
+        layout untouched (no new buttons to place)."""
+        menu = QMenu(self)
+        temp_menu = menu.addMenu("Temperature source")
+        temp_cpu = temp_menu.addAction("CPU")
+        temp_gpu = temp_menu.addAction("GPU")
+        load_menu = menu.addMenu("Load source")
+        load_cpu = load_menu.addAction("CPU")
+        load_gpu = load_menu.addAction("GPU")
+        chosen = menu.exec(event.globalPos())
+        if chosen is temp_cpu:
+            self.temp_source_changed.emit("cpu")
+        elif chosen is temp_gpu:
+            self.temp_source_changed.emit("gpu")
+        elif chosen is load_cpu:
+            self.load_source_changed.emit("cpu")
+        elif chosen is load_gpu:
+            self.load_source_changed.emit("gpu")
 
     # ================================================================
     # Window drag (C# delegate cmds 241/242/243)

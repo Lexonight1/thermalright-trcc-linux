@@ -316,8 +316,8 @@ class Layout:
     ABOUT_GPU_COMBO = (297, 456, 250, 28)
     ABOUT_CHECKBOX_SIZE = 14
 
-    # Re-export from models — single source of truth for locale→suffix mapping
-    from ...core.models import LOCALE_TO_LANG
+    # Re-export from i18n — single source of truth for locale→suffix mapping
+    from ...core.i18n import LOCALE_TO_LANG
 
 
 class Styles:

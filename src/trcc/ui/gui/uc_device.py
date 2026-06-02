@@ -12,13 +12,29 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QScrollArea, QWidget
 
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes
 
 log = logging.getLogger(__name__)
+
+# Thin dark scrollbar for the device area (overflow-y: auto).  Styling the
+# QScrollArea (a descendant) is safe — only ANCESTOR stylesheets block the
+# sidebar's QPalette background, and the viewport/content stay transparent.
+_DEVICE_SCROLL_QSS = """
+QScrollArea { border: none; background: transparent; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+QScrollBar::handle:vertical {
+    background: #444; border-radius: 4px; min-height: 24px;
+}
+QScrollBar::handle:vertical:hover { background: #666; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+"""
 
 # Map device model names to A1 image base names (without .png)
 DEVICE_IMAGE_MAP = {
@@ -181,9 +197,25 @@ class UCDevice(BasePanel):
         self.sensor_btn.setToolTip("System sensors")
         self.sensor_btn.clicked.connect(self._on_home_clicked)
 
-        # Device buttons area
-        self.device_area = QWidget(self)
-        self.device_area.setGeometry(*Layout.DEVICE_AREA)
+        # Device buttons area — scrollable (overflow-y: auto).  The scroll
+        # area has FIXED geometry (Layout.DEVICE_AREA), so a long device
+        # list scrolls INSIDE this region; the sidebar bounds never grow and
+        # the sensor/about buttons are never pushed.  Only the inner content
+        # widget grows (see _build_device_buttons).
+        self.device_scroll = QScrollArea(self)
+        self.device_scroll.setGeometry(*Layout.DEVICE_AREA)
+        self.device_scroll.setWidgetResizable(True)
+        self.device_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.device_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.device_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.device_scroll.setStyleSheet(_DEVICE_SCROLL_QSS)
+        self.device_scroll.viewport().setStyleSheet("background: transparent;")
+
+        self.device_area = QWidget()
+        self.device_area.setStyleSheet("background: transparent;")
+        self.device_scroll.setWidget(self.device_area)
 
         # "No devices" labels
         self.no_devices_label = QLabel("No devices found", self.device_area)
@@ -244,6 +276,13 @@ class UCDevice(BasePanel):
             btn.clicked.connect(lambda _=False, d=device: self._on_device_clicked(d))
             btn.show()
             self.device_buttons.append(btn)
+
+        # Grow ONLY the inner content so the fixed-size scroll area
+        # overflow-scrolls once buttons exceed the visible region; a short
+        # list leaves it at viewport height (no scrollbar, nothing pushed).
+        self.device_area.setMinimumHeight(
+            len(devices) * Sizes.DEVICE_BTN_SPACING + 10,
+        )
 
     def _detect_devices(self) -> None:
         """Detect connected LCD devices."""

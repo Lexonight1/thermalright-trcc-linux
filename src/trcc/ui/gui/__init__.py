@@ -1,16 +1,19 @@
-"""GUI composition root — wires Qt adapter.
+"""GUI composition root for next/ — wires Qt adapter.
 
-Single entry point for the graphical interface. Builds the windowed
-``QApplication`` (which Qt requires before any QWidget), constructs a
-``QtRenderer`` against it, then delegates the rest of the DI graph to
-``trcc._boot.trcc()``. ``discover_now=False`` lets the splash show
-progress while USB connect + theme extraction run in a background
-``BootstrapWorker``.
+Single entry point for the graphical interface.  Builds the windowed
+``QApplication`` (which Qt requires before any QWidget), constructs an
+``App`` via ``trcc._boot.trcc_next()``, then hands the app handle
+to ``MainWindow``.  ``discover`` runs in a background ``BootstrapWorker``
+so the splash shows immediate feedback.
+
+Composition root — this is the ONE place that imports concrete adapters
+(``Platform``, ``QtRenderer``, ``IPCServer``, ``SingleInstance``).  Every
+other file under ``next/ui/gui/`` holds an ``App`` handle and dispatches
+Commands.
 """
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import sys
 
@@ -40,119 +43,116 @@ log = logging.getLogger(__name__)
 
 def launch(verbosity: int = 0, decorated: bool = False,
            start_hidden: bool = False) -> int:
-    """Bootstrap and run the GUI application.
+    """Bootstrap and run the next/ GUI application.
 
     Returns the Qt exit code.
     """
-    # 10C.5: the daemon-mode refusal is gone.  The GUI now boots whether
-    # ``_boot.trcc()`` returns a real ``Trcc`` or a ``TrccProxy``.  Writes
-    # already go through the command bus (10C.2), descriptors round-trip
-    # over IPC (10C.1), and FRAME event payloads carry their surface as
-    # a JSON-safe envelope (10C.4).
-    #
-    # NB: descriptor-driven handler construction is still on the
-    # backlog (10C.6) — a daemon-mode GUI launches cleanly today but
-    # the device sidebar will be empty until handlers grow a (descriptor,
-    # trcc, idx) constructor instead of holding an LCDDevice reference.
-
-    # ── Platform first — needed for lock check, DPI config, autostart, etc.
-    from trcc.adapters.system import PlatformFactory
-    platform = PlatformFactory.current()
-
-    # ── Single-instance lock — acquire before any heavy setup ────────────
-    lock = platform.acquire_instance_lock()
-    if lock is None:
-        platform.raise_existing_instance()
-        return 0
-
-    # ── Qt bootstrap (windowed QApp — must precede QtRenderer construction)
-    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
-    set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
-
-    # Silence two categories of Qt noise that aren't actionable for our users:
-    #   qt.qpa.services            — generic platform-services chatter
-    #   qt.qpa.theme.gnome         — xdg-desktop-portal startup failures on
-    #                                 systems where the portal isn't running
-    #                                 (KDE/Hyprland/sway sessions, missing
-    #                                 xdg-desktop-portal-gnome package, etc.)
-    # setdefault so a debugging user can still override with their own rules.
-    os.environ.setdefault(
-        "QT_LOGGING_RULES",
-        "qt.qpa.services=false;qt.qpa.theme.gnome=false",
-    )
-    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
-    os.environ.pop("QT_QPA_PLATFORM", None)  # clear offscreen set by CLI
-
-    platform.configure_dpi()
-
     from typing import cast
 
-    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
+
+    # ── Platform first ───────────────────────────────────────────────
+    from ...adapters.system import PlatformFactory
+    platform = PlatformFactory.current()
+
+    # ── stdout/stderr UTF-8 (Windows cp1252 fix; no-op elsewhere) ────
+    platform.configure_stdout()
+
+    # NOTE: do NOT call ``configure_logging`` here.  The CLI root
+    # callback (``ui.cli.main:_root``) ALWAYS runs before this entry
+    # point and has already wired the rotating file + stderr handlers
+    # at the level the user asked for via ``-v``.  A second call here
+    # was silently downgrading DEBUG back to INFO whenever the user
+    # ran ``python -m trcc -v gui`` — the comment that used to live
+    # here ("only basicConfig is in effect") was stale by years.
+    # If anyone calls ``launch`` from outside the CLI later, they're
+    # responsible for setting up logging first.
+
+    # ── Single-instance lock + raise-existing-window ─────────────────
+    from ...ipc import SingleInstance
+    instance = SingleInstance("gui")
+    if instance is None:
+        # A peer GUI was already running; raise was sent.  Exit cleanly.
+        return 0
+
+    # ── Assets dir (packaged location) ───────────────────────────────
+    from .assets import _PKG_ASSETS_DIR, set_assets_dir
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    # ── Qt bootstrap (windowed QApp — must precede QtRenderer) ──────
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
-    qapp.setQuitOnLastWindowClosed(False)
-    qapp.setDesktopFileName("trcc-linux")
-    qapp.setProperty("_instance_lock", lock)
 
-    font = QFont("Microsoft YaHei", 10)
-    if not font.exactMatch():
-        font = QFont("Sans Serif", 10)
-    qapp.setFont(font)
+    from ..qapp import configure_qapplication
+    configure_qapplication(qapp)
 
-    # ── Build Trcc with the windowed QApp's renderer; defer discovery so
-    # the splash can show progress while USB connect + theme extraction
-    # run in BootstrapWorker.
-    from trcc._boot import trcc as _boot_trcc
-    from trcc.adapters.render.qt import QtRenderer
+    # ── Build App via the canonical factory ──────────────────────────
+    # ``trcc_next()`` returns either a real App (default) or an
+    # AppProxy (when ``TRCC_NEXT_DAEMON=1``) — both expose the same
+    # dispatch surface, so MainWindow doesn't care which it gets.
+    from ..._boot import trcc_next
+    from ...adapters.render.qt import QtRenderer
+    from ...app import App
     renderer = QtRenderer()
-    t = _boot_trcc(platform, renderer=renderer,
-                   discover_now=False, verbosity=verbosity)
+    app = cast(App, trcc_next(platform=platform, renderer=renderer))
 
-    # ── Splash + background discover ─────────────────────────────────────
-    from trcc.ui.gui.splash import run_bootstrap_with_splash
-    if not run_bootstrap_with_splash(t):
+    # ── Splash + background discover ────────────────────────────────
+    from .splash import run_bootstrap_with_splash
+    if not run_bootstrap_with_splash(app):
         return 1
 
-    # ── GUI adapter — pulls Trcc handle via _boot.trcc() (cached)  ───────
-    from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
-    window = _TRCCApp(
-        platform=platform,
-        decorated=decorated,
-    )
+    # ── Hotplug listener (live device attach/detach) ────────────────
+    app.start_hotplug()
 
-    # ── IPC server bound to Trcc — manifold dispatch for clients ────────
-    # Renderer is forwarded so Topic.FRAME events get their surface payload
-    # encoded into a JSON-safe envelope before reaching TrccProxy clients.
-    from trcc.ipc import IPCServer
-    ipc_server = IPCServer(trcc=t, renderer=renderer)
+    # ── Metrics broadcast — publishes SensorsUpdated every
+    # refresh_interval_s so system info / activity sidebar / overlay
+    # refresh all tick from one cadence.
+    app.metrics_loop.start()
+
+    # ── Main window — TRCCApp keeps the legacy chrome ──────────────
+    window = TRCCApp(app=app, decorated=decorated)
+
+    # ── IPC server bound to App — daemon-style Command dispatch ─────
+    from ...ipc import IPCServer
+    ipc_server = IPCServer(app=app)
     ipc_server.start()
     window._ipc_server = ipc_server
 
-    # ── Replay device list to the window — subscribers run in __init__,
-    # so they missed the publish that happened during discover. ─────────
-    from itertools import chain
+    # ── Wire raise-existing-window callback ─────────────────────────
+    def _raise_window() -> None:
+        window.show()
+        window.raise_()
+        window.activateWindow()
+    instance.on_raise = _raise_window
 
-    from trcc.core.events import Topic
-    t.events.publish(
-        Topic.DEVICE_LIST,
-        tuple(chain(t.lcd_devices, t.led_devices)),
-    )
-    # Metrics loop already running — `Trcc.discover()` (called by the splash
-    # QThread) starts the OS-provided MetricsLoop after device enumeration.
+    # ── Initial device replay — discover ran in the splash worker, so
+    # iterate ``app.devices`` once for the first sidebar render.  Live
+    # mutations after this come through DeviceConnected/Disconnected.
+    window.replay_initial_devices()
 
-    # ── IPC raise + signals ───────────────────────────────────────────────
-    def _on_sigint(*_args):
-        """SIGINT handler — quit the Qt event loop cleanly."""
+    # ── Signals + verbosity bookkeeping ─────────────────────────────
+    del verbosity
+
+    def _on_sigint(*_args: object) -> None:
+        """SIGINT — quit the Qt event loop cleanly."""
         qapp.quit()
     signal.signal(signal.SIGINT, _on_sigint)
-    platform.wire_ipc_raise(qapp, window)
-    # Issue #143 ("USB communication lost" after GUI exit) is handled at
-    # the kernel level — udev rule sets power/autosuspend_delay_ms=30000
-    # so the kernel autosuspends the device ~30s after our frame stream
-    # stops, and the firmware sleeps the panel cleanly. No userspace
-    # shutdown hook needed.
 
     if not start_hidden:
         window.show()
 
-    return qapp.exec()
+    try:
+        exit_code = qapp.exec()
+    finally:
+        ipc_server.shutdown()
+        instance.close()
+        app.close()
+        log.info("launch: cleanup complete — process exit")
+    # Belt-and-suspenders: Qt's metrics/sensor/render threads occasionally
+    # outlive ``qapp.exec()``'s return when native libraries (pynvml,
+    # psutil's ffi handles, pyusb) hold the GIL on shutdown.  A bare
+    # ``return`` then leaves the python process alive past the user's
+    # window-close.  ``os._exit`` skips atexit handlers and finalizers —
+    # we already did our cleanup in the finally above, so this is the
+    # safe place to force the kernel to reap the process.
+    import os as _os
+    _os._exit(exit_code)

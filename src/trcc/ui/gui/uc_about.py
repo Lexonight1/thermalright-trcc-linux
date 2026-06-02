@@ -21,32 +21,54 @@ import logging
 import shutil
 import sys
 import webbrowser
+from pathlib import Path
 from threading import Thread
+from typing import TYPE_CHECKING
 from urllib.request import urlopen
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QIntValidator
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolTip
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QToolTip,
+)
 
+from ...core._version import parse_version
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
 
+if TYPE_CHECKING:
+    from ...app import App
+    from ...core.ports import Platform
+    from ._ui_state import UiStateStore
+
 log = logging.getLogger(__name__)
 
-from trcc.core.ports import Platform  # noqa: E402
 
+def ensure_autostart(autostart) -> bool:
+    """Auto-enable autostart on first launch; reflect current state otherwise.
 
-def ensure_autostart(platform: Platform) -> bool:
-    """Auto-enable autostart on first launch; refresh on subsequent launches."""
-    from trcc.conf import load_config, save_config
-    config = load_config()
-    if not config.get('autostart_configured'):
-        platform.autostart_enable()
-        config['autostart_configured'] = True
-        save_config(config)
-        return True
-    return platform.autostart_enabled()
+    Takes the :class:`AutostartManager` from ``app.platform.autostart()``
+    so the helper doesn't need to import the concrete Platform.  The
+    "configured" first-run marker now lives on AutostartManager itself
+    (`refresh()` is idempotent), so we just call `enable()` once on
+    first launch and read `is_enabled()` thereafter.
+    """
+    if not autostart.is_enabled():
+        # First launch: enable + refresh.  Idempotent across re-runs.
+        try:
+            autostart.enable()
+            autostart.refresh()
+        except Exception:
+            # Best-effort — read-only Platforms (sandboxes, CI) raise here.
+            log.debug("ensure_autostart: enable() failed", exc_info=True)
+    return autostart.is_enabled()
 
 
 _GITHUB_LATEST = (
@@ -83,15 +105,10 @@ def _check_latest_release() -> tuple[str, dict[str, str]] | None:
         return None
 
 
-def _parse_version(v: str) -> tuple[int, ...]:
-    """Parse '3.0.9' into (3, 0, 9) for comparison."""
-    return tuple(int(x) for x in v.split('.'))
-
-
 def _detect_distro() -> str:
     """Detect the Linux distro ID (e.g. 'fedora', 'arch', 'ubuntu')."""
     try:
-        with open('/etc/os-release') as f:
+        with Path('/etc/os-release').open() as f:
             for line in f:
                 if line.startswith('ID='):
                     return line.strip().split('=', 1)[1].strip('"')
@@ -123,14 +140,16 @@ def _detect_install_method() -> str:
     return 'pip'  # fallback
 
 
-def _get_install_info() -> tuple[str, str]:
-    """Get install method and distro. Detects and saves on first call."""
-    from ...conf import Settings
-    if (info := Settings.get_install_info()):
-        return info['method'], info['distro']
+def _get_install_info(ui_state: UiStateStore | None = None) -> tuple[str, str]:
+    """Get install method + distro from UiState; detect+save on first call."""
+    if ui_state is not None:
+        cached = ui_state.get_install_info()
+        if cached is not None:
+            return cached['method'], cached['distro']
     method = _detect_install_method()
     distro = _detect_distro()
-    Settings.save_install_info(method, distro)
+    if ui_state is not None:
+        ui_state.set_install_info(method, distro)
     log.info("Recorded install info: method=%s, distro=%s", method, distro)
     return method, distro
 
@@ -161,20 +180,27 @@ class UCAbout(BasePanel):
 
     def __init__(self, parent=None, platform: Platform | None = None,
                  gpu_list: list[tuple[str, str]] | None = None,
-                 trcc=None):
+                 app: App | None = None,
+                 ui_state: UiStateStore | None = None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 
         self._platform = platform
-        self._trcc = trcc            # optional — set by TRCCApp for update flow
+        self._app = app              # next/ App for Command dispatch
+        self._ui_state = ui_state    # GUI-only persisted prefs
         self._gpu_list = gpu_list or []
         self._lang_buttons: dict[str, QPushButton] = {}  # Legacy — populated by combo in trcc_app
         self._temp_mode = 'C'
-        self._autostart = platform.autostart_enabled() if platform else False
-        from ..._boot import trcc as _boot_trcc
-        _settings = _boot_trcc().settings
-        self._read_hdd = _settings.hdd_enabled
-        self._refresh_interval = _settings.refresh_interval
-        self._gpu_device = _settings.gpu_device
+        autostart_mgr = platform.autostart() if platform else None
+        self._autostart = autostart_mgr.is_enabled() if autostart_mgr else False
+        # Initial values pulled from App settings (per Cross-cutting setter audit)
+        if app is not None:
+            self._read_hdd = app.settings.app.hdd_enabled
+            self._refresh_interval = int(app.settings.app.refresh_interval_s)
+            self._gpu_device = app.settings.app.active_gpu or ''
+        else:
+            self._read_hdd = False
+            self._refresh_interval = 2
+            self._gpu_device = ''
 
         # Load checkbox pixmaps
         sz = Layout.ABOUT_CHECKBOX_SIZE
@@ -280,7 +306,7 @@ class UCAbout(BasePanel):
         self._update_available.connect(self._on_update_result)
         self._upgrade_finished.connect(self._on_upgrade_done)
         self._latest_version: str | None = None
-        self._install_method, self._distro = _get_install_info()
+        self._install_method, self._distro = _get_install_info(self._ui_state)
 
         # Check GitHub for updates in background, then every hour
         self._update_timer = QTimer(self)
@@ -335,24 +361,29 @@ class UCAbout(BasePanel):
 
     def _on_startup_clicked(self):
         """Toggle auto-start on login."""
+        log.info("_on_startup_clicked")
         self._autostart = self.startup_btn.isChecked()
         if self._platform:
+            autostart = self._platform.autostart()
             if self._autostart:
-                self._platform.autostart_enable()
+                autostart.enable()
             else:
-                self._platform.autostart_disable()
+                autostart.disable()
         self.startup_changed.emit(self._autostart)
         self.invoke_delegate(self.CMD_STARTUP, self._autostart)
 
     # --- Temperature unit ---
 
     def _on_celsius_clicked(self) -> None:
+        log.info("_on_celsius_clicked")
         self._set_temp('C')
 
     def _on_fahrenheit_clicked(self) -> None:
+        log.info("_on_fahrenheit_clicked")
         self._set_temp('F')
 
     def _on_website_clicked(self) -> None:
+        log.info("_on_website_clicked")
         webbrowser.open('https://www.thermalright.com')
 
     def _start_update_check(self) -> None:
@@ -374,6 +405,7 @@ class UCAbout(BasePanel):
 
     def _on_hdd_clicked(self):
         """Toggle hard disk information reading."""
+        log.info("_on_hdd_clicked")
         self._read_hdd = self.hdd_btn.isChecked()
         self.hdd_toggle_changed.emit(self._read_hdd)
         self.invoke_delegate(self.CMD_HDD_REFRESH, self._read_hdd,
@@ -387,6 +419,7 @@ class UCAbout(BasePanel):
 
     def _on_refresh_changed(self):
         """Handle refresh interval input change (1-100 seconds)."""
+        log.info("_on_refresh_changed")
         text = self.refresh_input.text().strip()
         if not text:
             self.refresh_input.setText("1")
@@ -443,9 +476,11 @@ class UCAbout(BasePanel):
     # --- Running Mode ---
 
     def _on_single_thread_clicked(self) -> None:
+        log.info("_on_single_thread_clicked")
         self._set_thread_mode(False)
 
     def _on_multi_thread_clicked(self) -> None:
+        log.info("_on_multi_thread_clicked")
         self._set_thread_mode(True)
 
     def _set_thread_mode(self, multi: bool):
@@ -457,6 +492,7 @@ class UCAbout(BasePanel):
 
     def _on_lang_clicked(self, lang_suffix: str):
         """Handle language selection."""
+        log.info("_on_lang_clicked: lang_suffix=%s", lang_suffix)
         self.language_changed.emit(lang_suffix)
 
     # --- Software update ---
@@ -469,12 +505,17 @@ class UCAbout(BasePanel):
     }
 
     def _check_for_update(self):
-        """Background thread: query GitHub via Trcc (if wired) else legacy helper."""
-        if self._trcc is not None:
-            r = self._trcc.control_center.check_for_update()
-            if r.success and r.update_available and r.latest_version:
-                self._update_available.emit(r.latest_version, r.assets)
+        """Background thread: query for newer release via the App."""
+        if self._app is not None:
+            from ...core.commands import CheckForUpdate
+            r = self._app.dispatch(CheckForUpdate())
+            if (r.ok and getattr(r, 'update_available', False)
+                    and getattr(r, 'latest_version', None)):
+                # next/'s CheckForUpdateResult shape: latest_version + assets.
+                assets = getattr(r, 'assets', {}) or {}
+                self._update_available.emit(r.latest_version, assets)
             return
+        # Fallback to the direct GitHub-API helper if no App was passed.
         if (result := _check_latest_release()):
             ver, assets = result
             self._update_available.emit(ver, assets)
@@ -482,7 +523,7 @@ class UCAbout(BasePanel):
     def _on_update_result(self, latest: str, assets: dict[str, str]):
         """Handle version check result (runs on main thread via signal)."""
         from trcc.__version__ import __version__
-        if _parse_version(latest) > _parse_version(__version__):
+        if parse_version(latest) > parse_version(__version__):
             self._latest_version = latest
             self._pkg_assets = assets
             self._update_tooltip = f"Version {latest} available — click to update"
@@ -501,20 +542,61 @@ class UCAbout(BasePanel):
         Thread(target=self._run_upgrade, daemon=True).start()
 
     def _run_upgrade(self):
-        """Background thread: run upgrade via Trcc (same path as CLI/API)."""
-        if self._trcc is None:
-            log.error("_run_upgrade: no Trcc — widget constructed without it")
+        """Background thread: dispatch RunUpgrade via the App."""
+        if self._app is None:
+            log.error("_run_upgrade: no App — widget constructed without it")
             self._upgrade_finished.emit(False)
             return
-        result = self._trcc.control_center.run_upgrade()
-        if result.success:
-            log.info("%s", result.format())
+        from ...core.commands import RunUpgrade
+        result = self._app.dispatch(RunUpgrade())
+        if result.ok:
+            log.info("%s", result.message)
         else:
-            log.error("Upgrade failed: %s", result.error)
-        self._upgrade_finished.emit(result.success)
+            log.error("Upgrade failed: %s", result.message)
+        self._upgrade_finished.emit(result.ok)
+
+    # --- Diagnostics ---
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click → 'Save diagnostic report…'.
+
+        A context menu rather than a visible button keeps the pixel-perfect
+        Windows-mirror layout untouched while still giving users (and the
+        maintainer triaging an issue) a one-click `trcc report` bundle.
+        """
+        menu = QMenu(self)
+        save_report = menu.addAction("Save diagnostic report…")
+        chosen = menu.exec(event.globalPos())
+        if chosen is save_report:
+            self._on_save_diagnostic_report()
+
+    def _on_save_diagnostic_report(self) -> None:
+        log.info("_on_save_diagnostic_report: opening save dialog")
+        if self._app is None:
+            log.error("_on_save_diagnostic_report: no App — cannot dispatch")
+            return
+        path_str, _ = QFileDialog.getSaveFileName(
+            self, "Save diagnostic report", "trcc-debug-report.txt",
+            "Text files (*.txt);;All files (*)",
+        )
+        if not path_str:
+            return
+        from ...core.commands import GenerateDebugReport
+        log.info("_on_save_diagnostic_report: writing report to %s", path_str)
+        r = self._app.dispatch(GenerateDebugReport(
+            output_path=Path(path_str), log_tail_lines=1000,
+        ))
+        center = self.mapToGlobal(self.rect().center())
+        if r.ok:
+            log.info("Diagnostic report saved: %s", r.output_path)
+            QToolTip.showText(center, f"Saved report to {r.output_path}")
+        else:
+            log.error("Diagnostic report failed: %s", r.message)
+            QToolTip.showText(center, f"Report failed: {r.message}")
 
     def _on_upgrade_done(self, success: bool):
         """Post-upgrade: show restart message or re-enable button on failure."""
+        log.info("_on_upgrade_done: success=%s", success)
         if success:
             self._update_tooltip = "Updated — restart to apply"
         else:
@@ -526,6 +608,7 @@ class UCAbout(BasePanel):
 
     def _on_close(self):
         """Handle close/back button."""
+        log.info("_on_close")
         self.close_requested.emit()
 
     # --- Public API ---

@@ -686,6 +686,7 @@ class ScreenCastPanel(DisplayModePanel):
         self._update_border_icon()
 
     def _on_audio_toggle(self):
+        log.info("_on_audio_toggle")
         self._audio_on = not self._audio_on
         self._update_audio_icon()
         self.audio_toggled.emit(self._audio_on)

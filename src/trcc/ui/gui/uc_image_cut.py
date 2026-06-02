@@ -21,8 +21,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from trcc.core.models import panel_asset_dims
-
+from ...core.models import panel_asset_dims
 from .assets import Assets
 from .base import make_icon_button
 

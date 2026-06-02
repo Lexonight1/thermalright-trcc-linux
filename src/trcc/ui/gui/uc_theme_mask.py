@@ -10,14 +10,16 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMenu
 
-from ..._boot import trcc as _trcc
-from ...core.models import CLOUD_MASK_URLS, MaskItem
-from ...core.paths import is_safe_archive_member
+from ...core.models import CLOUD_MASK_URLS, MaskItem, is_safe_archive_member
 from .base import BaseThumbnail, DownloadableThemeBrowser
+
+if TYPE_CHECKING:
+    from ...core.ports import Paths
 
 log = logging.getLogger(__name__)
 
@@ -50,11 +52,13 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     mask_selected = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, paths: Paths | None = None):
         self.mask_directory = None
         self._resolution = ""
         self._local_masks: set[str] = set()
         self._category = 'all'
+        # Paths port for resolving user-masks dir; trcc_app injects it.
+        self._paths = paths
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -74,6 +78,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def _on_category_clicked(self, *_qt_args) -> None:
         """Single category-button slot — reads the cat_id from sender's property."""
+        log.info("_on_category_clicked")
         sender = self.sender()
         if sender is None:
             return
@@ -100,6 +105,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def _on_custom_context_menu_requested(self, _pos) -> None:
         """Context-menu slot — reads thumb + item_info from sender."""
+        log.info("_on_custom_context_menu_requested")
         thumb = self.sender()
         if not isinstance(thumb, MaskThumbnail):
             return
@@ -127,7 +133,7 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def set_mask_directory(self, path):
         """Set the mask directory and load masks."""
-        log.debug("set_mask_directory: %s", path)
+        log.info("uc_theme_mask.set_mask_directory: %s", path)
         self.mask_directory = Path(path) if path else None
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
@@ -148,11 +154,16 @@ class UCThemeMask(DownloadableThemeBrowser):
     def _user_masks_dir(self) -> Path:
         """Get the user custom masks directory for current resolution."""
         w, h = self._parse_resolution()
-        return _trcc().settings.user_masks_dir(w, h)
+        if self._paths is None:
+            raise RuntimeError(
+                "WebMaskBrowser was constructed without a Paths port — "
+                "trcc_app must inject one at build time."
+            )
+        return self._paths.user_mask_dir(w, h)
 
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""
-        from ...services import ThemeService
+        from ...services.theme import ThemeService
 
         self._clear_grid()
         self._local_masks.clear()
@@ -160,8 +171,12 @@ class UCThemeMask(DownloadableThemeBrowser):
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
 
-        user_dir = self._user_masks_dir()
-        discovered = ThemeService.discover_masks(self.mask_directory, user_dir)
+        # Service-level discovery — matches legacy convention exactly:
+        # user masks first, dedupe by name, accept Theme.png OR 01.png.
+        discovered = ThemeService.discover_masks(
+            cloud_masks_dir=self.mask_directory,
+            user_masks_dir=self._user_masks_dir(),
+        )
 
         masks: list[MaskItem] = []
         for m in discovered:
@@ -178,8 +193,10 @@ class UCThemeMask(DownloadableThemeBrowser):
         if self._category != 'all':
             masks = [m for m in masks if m.name and m.name[-1:] == self._category]
 
-        log.debug("refresh_masks: %d masks, cat=%s, dir=%s",
-                   len(masks), self._category, self.mask_directory)
+        log.info("uc_theme_mask.refresh_masks: %d mask(s), cat=%s, "
+                 "cloud_dir=%s user_dir=%s",
+                 len(masks), self._category, self.mask_directory,
+                 self._user_masks_dir())
         self._populate_grid(masks)
 
     def _on_item_clicked(self, item_info: MaskItem):
@@ -190,6 +207,7 @@ class UCThemeMask(DownloadableThemeBrowser):
         fine (different files) and the UI never feels "stuck on the
         first click."
         """
+        log.info("_on_item_clicked")
         self._select_item(item_info)
 
         if item_info.is_local:

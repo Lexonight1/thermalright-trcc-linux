@@ -1,0 +1,90 @@
+"""DevicePanel — discover / connect / disconnect devices."""
+from __future__ import annotations
+
+import logging
+
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+)
+
+from ....core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
+from ..base import BasePanel
+
+log = logging.getLogger(__name__)
+
+
+class DevicePanel(BasePanel):
+    """Lists detected devices and lets the user connect/disconnect each."""
+
+    def _setup_ui(self) -> None:
+        self._list = QListWidget(self)
+        self._list.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection,
+        )
+
+        self._scan_btn = QPushButton("Scan", self)
+        self._scan_btn.clicked.connect(self._on_scan)
+
+        self._connect_btn = QPushButton("Connect", self)
+        self._connect_btn.clicked.connect(self._on_connect)
+
+        self._disconnect_btn = QPushButton("Disconnect", self)
+        self._disconnect_btn.clicked.connect(self._on_disconnect)
+
+        self._status = QLabel("No devices scanned yet.", self)
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._scan_btn)
+        buttons.addWidget(self._connect_btn)
+        buttons.addWidget(self._disconnect_btn)
+        buttons.addStretch(1)
+
+        root = QVBoxLayout(self)
+        root.addLayout(buttons)
+        root.addWidget(self._list, stretch=1)
+        root.addWidget(self._status)
+
+    # ── Actions ───────────────────────────────────────────────────────
+
+    def _on_scan(self) -> None:
+        log.info("_on_scan")
+        result = self.dispatch(DiscoverDevices())
+        self._list.clear()
+        for product in result.products:
+            item = QListWidgetItem(
+                f"{product.key}  —  {product.vendor} {product.product}  "
+                f"({product.wire.value}, {product.native_resolution[0]}×"
+                f"{product.native_resolution[1]})"
+            )
+            item.setData(0x0100, product.key)  # Qt.UserRole
+            self._list.addItem(item)
+        self._status.setText(result.message)
+
+    def _selected_key(self) -> str | None:
+        item = self._list.currentItem()
+        if item is None:
+            self._status.setText("Select a device first.")
+            return None
+        return str(item.data(0x0100))
+
+    def _on_connect(self) -> None:
+        log.info("_on_connect")
+        key = self._selected_key()
+        if key is None:
+            return
+        result = self.dispatch(ConnectDevice(key=key))
+        self._status.setText(result.message)
+
+    def _on_disconnect(self) -> None:
+        log.info("_on_disconnect")
+        key = self._selected_key()
+        if key is None:
+            return
+        result = self.dispatch(DisconnectDevice(key=key))
+        self._status.setText(result.message)

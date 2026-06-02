@@ -1,82 +1,86 @@
-"""Daemon-control endpoints under ``/trcc/``.
+"""``/trcc/`` router — daemon lifecycle control.
 
 The existing ``/system`` and ``/devices`` namespaces are device- and
 metrics-shaped; daemon-control is conceptually different (lifecycle of
-the singleton process itself), so it lives under its own prefix.
+the singleton process itself), so it lives under its own prefix —
+legacy parity with ``legacy/ui/api/trcc.py``.
 
 Endpoints:
 
-  POST /trcc/kill    — stop the running daemon
-  GET  /trcc/status  — daemon pid / uptime / device counts; ``running``
-                       is False when no daemon is up.
+  POST /trcc/kill    — stop the running daemon (the API process exits
+                       cleanly; clients re-spawn it on demand via
+                       ``ensure_daemon`` if needed)
+  GET  /trcc/status  — pid / uptime / device counts.  Reads directly
+                       from the in-process state (the API server is
+                       almost always running INSIDE the daemon); no
+                       IPC hop needed for next/'s layout.
 """
 from __future__ import annotations
 
 import logging
+import os
+import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from .schemas import DaemonKillResponse, DaemonStatusResponse
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trcc", tags=["trcc"])
 
 
-@router.post("/kill")
-def kill() -> dict:
+@router.post("/kill", response_model=DaemonKillResponse)
+def kill() -> DaemonKillResponse:
     """Stop the running TRCC daemon.
 
-    Returns ``{"success": true}`` once the daemon has shut down (or
-    ``{"success": false}`` on timeout). The API server itself keeps
-    running — only the daemon process the API was proxying to dies.
-    Subsequent UI calls will auto-spawn a fresh daemon on demand.
+    Sends the shutdown signal via ``daemon.kill_daemon`` (which talks
+    to the singleton socket).  Returns ``ok=true`` once the daemon
+    has shut down within the timeout, ``ok=false`` otherwise.  The
+    API process itself exits as part of the shutdown.
     """
-    from trcc.daemon import kill_daemon
-    return {"success": kill_daemon()}
+    log.info("api POST /trcc/kill")
+    from ...daemon import kill_daemon
+    ok = kill_daemon()
+    return DaemonKillResponse(
+        ok=ok,
+        message="daemon shutdown" if ok else "daemon shutdown timed out",
+    )
 
 
-@router.get("/status")
-def status() -> dict:
+@router.get("/status", response_model=DaemonStatusResponse)
+def status(request: Request) -> DaemonStatusResponse:
     """Snapshot of the running daemon: pid, uptime, device counts.
 
-    Useful for ops (is the daemon alive?), monitoring (uptime
-    threshold), and remote phone clients that want to confirm a
-    healthy daemon before issuing commands.
+    Used by ops scripts and remote phone clients before issuing
+    commands.  When the API server is also the daemon (the common
+    layout: ``trcc api`` boots the API inside the daemon), every
+    field is populated from in-process state.
 
-    When no daemon is running, returns ``{"running": false}`` —
-    distinguishable from a successful query by the absence of pid /
-    uptime fields.
+    Returns ``running=false`` with zeros elsewhere when called from a
+    standalone API process whose own daemon isn't up — distinguishable
+    by the absence of a pid.
     """
-    from trcc.ipc import daemon_running, send_manifold_request
-    if not daemon_running():
-        return {"running": False}
-    response = send_manifold_request("_meta", "status", (), {}, timeout=2.0)
-    if not response.get("success"):
-        # Don't leak the IPC error verbatim — it can include exception
-        # types and serialized arguments from the daemon-side dispatch
-        # (`f"{type(e).__name__}: {e}"`).  Log it; return a generic
-        # signal to the HTTP client.  CodeQL py/stack-trace-exposure.
-        log.warning("daemon status query failed: %s", response.get("error"))
-        return {"running": False, "error": "daemon status unavailable"}
-    # Coerce every IPC response field to its declared type before
-    # returning to the HTTP client.  The IPC payload is server-controlled
-    # but CodeQL's data-flow analysis sees `response` as a tainted source
-    # (anything across a serialization boundary).  Explicit ``int(...)``
-    # is a recognized sanitizer for py/stack-trace-exposure and matches
-    # the OpenAPI schema we advertise.
-    def _safe_int(v: object) -> int:
-        if isinstance(v, bool):
-            return int(v)
-        if isinstance(v, (int, float, str)):
-            try:
-                return int(v)
-            except (TypeError, ValueError):
-                return 0
-        return 0
-
-    return {
-        "running": True,
-        "pid": _safe_int(response.get("pid")),
-        "uptime_seconds": _safe_int(response.get("uptime_seconds")),
-        "lcd_count": _safe_int(response.get("lcd_count")),
-        "led_count": _safe_int(response.get("led_count")),
-    }
+    log.info("api GET /trcc/status")
+    from ...daemon import _started_at
+    from ...ipc import daemon_running
+    running = daemon_running()
+    if not running:
+        return DaemonStatusResponse(
+            ok=True, running=False,
+            message="daemon not running",
+        )
+    trcc = request.app.state.trcc
+    devices = list(trcc.devices.values())
+    lcd_count = sum(1 for d in devices if not d.is_led)
+    led_count = sum(1 for d in devices if d.is_led)
+    uptime = int(time.monotonic() - _started_at) if _started_at else 0
+    return DaemonStatusResponse(
+        ok=True, running=True,
+        pid=os.getpid(),
+        uptime_seconds=uptime,
+        lcd_count=lcd_count,
+        led_count=led_count,
+        message=(f"daemon up {uptime}s, "
+                 f"{lcd_count} LCD + {led_count} LED device(s)"),
+    )

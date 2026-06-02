@@ -26,16 +26,76 @@ The user's time is the constraint. Sounding productive is not being productive. 
 
 Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`.
 
-## Two Source Trees (read this first)
+## Source Tree Layout — Post-Cutover (read this first)
 
-The repo currently carries two parallel source trees on the `dev` branch:
+The cutover (commit `4fa876be`, branch `cutover/next-to-root`) promoted
+the clean-slate rebuild (formerly `src/trcc/next/`) to the project
+root.  Layout now:
 
-- **`src/trcc/`** — the **shipping / legacy code**.  Everything users install today runs this.  Full feature set (sensors, setup wizard, autostart, theme download, LED segment displays, `.zt` animations, 4-OS support, etc.).  Every architecture principle below this header describes this tree — SCSI uses `/dev/sgN` + SG_IO on Linux, `DeviceProtocolFactory` exists, `ControllerBuilder` wires things, etc.
-- **`src/trcc/next/`** — a **clean-slate rebuild** (12 commits, `c309a55`→`39b3169`).  Proof that a simpler 5-role hexagonal design (Platform / UsbTransport / Device / App / UIs) works end-to-end with one Command bus.  Architecture is complete (3 UIs, two-layer scene cache, video + mask + rotation, tickers wired).  Feature parity with legacy: NO.  Hardware-verified on real devices: NO.  See `memory/project_next_clean_slate.md` for the full status table.
+- **`src/trcc/`** — the **shipping codebase**.  This is what
+  `python -m trcc gui` runs by default.  Hexagonal architecture, one
+  Command bus, ABCs at each port.  Originally the "next/" rebuild;
+  promoted to root after the variant-override / data-install /
+  ThemeDir / 0xDC-trailer ports caught it up to legacy parity for
+  the verified SCSI 320x320 path.
+- **`src/trcc/legacy/`** — the **original implementation**, kept
+  reachable via ``TRCC_LEGACY=1``.  Frozen except for security
+  fixes; eventually deleted once every shipping device has been
+  hardware-verified on the new code.
 
-**When the user asks about "the app" or bug fixes for shipping users, work in `src/trcc/`.**  Only touch `src/trcc/next/` when the task is explicitly about the clean-slate rebuild.  Never mix imports between the two trees.
+Same shape in `tests/`: `tests/` exercises the new top-level;
+`tests/legacy/` exercises the legacy tree.  `dev/` smoke harnesses
+that test legacy import from `trcc.legacy.*`; the one that drives
+the new tree is `dev/smoke_full_pipeline.py`.
 
-Legacy architecture follows below.
+Rules:
+
+* **Default mental model**: a feature/bug lives in `src/trcc/` unless
+  explicitly told it's a legacy fix.
+* **Never invent file/path names** in the new tree.  TRCC theme dirs
+  use the strict legacy convention — `00.png` (background),
+  `01.png` (mask), `Theme.png` (panel thumbnail; NEVER rendered),
+  `config1.dc` (binary layout), `Theme.{mp4,mov,webm,zt}` (video).
+  The original rebuild fabricated names like `background.png` and
+  `mask.png` that don't exist anywhere; those got purged in
+  `8f6bb53c`.  Anything in `src/trcc/` that diverges from legacy's
+  filenames / DC byte layout / handshake parsing / variant lookup
+  is a bug until proven otherwise — fix by reading legacy and
+  copying the working shape, not by patching the fabrication.
+* **Never mix imports between the trees.**  `src/trcc/legacy/*` may
+  reach in to legacy internals but never to top-level new code (it
+  predates it); top-level new code never reaches into `legacy/`.
+* **Logging is part of the port.**  See "Logging coverage is
+  mandatory" section below.
+
+### Path conventions on disk
+
+Two distinct user-data trees — don't conflate them; the distinction
+is load-bearing for scaling, mutation rights, and the diagnostic loop:
+
+* `~/.trcc/data/` — **program/cloud data**.  Downloaded by the app
+  at runtime (cloud themes, cloud masks, shipped data).  **Pre-scaled
+  to the device's canvas resolution.**  Read-only from the user's POV.
+* `~/.trcc-user/data/` — **user-uploaded data**.  Saved themes +
+  custom backgrounds/masks the user authored.  Native resolution;
+  the render pipeline scales at composite time via `fit_mode`.
+
+The `PlayVideo` decode-size gate switches on
+`path.is_relative_to(paths.user_content_dir())` — user upload →
+decode native, let `fit_mode` scale; program/cloud asset → canvas
+decode (pre-scaled).  Same axis applies anywhere "should this asset
+be treated as authored-for-this-device vs authored-by-the-user".
+
+**GUI "online themes" terminology trap**: the "online themes" tab
+in the legacy-style GUI shows **MASKS**, not themes.  They live at
+`~/.trcc/data/web/zt{w}{h}/<mask_id>/` and contain `01.png` (mask
+image, normally RGBA with 60%+ opaque pixels) + a DC config with
+overlay elements.  Clicking one dispatches `ApplyMask` (not
+`LoadTheme`); `LoadTheme.execute:131` itself re-applies the mask
+when reloading, and `:209` dispatches `PlayVideo` for any bundled
+video — so a single "online theme" click can chain `ApplyMask →
+LoadTheme → ApplyMask + PlayVideo`.  That's the flow shape, not a
+bug.  Don't call them "cloud themes" in code or analysis.
 
 ## Architecture — Hexagonal (Ports & Adapters)
 
@@ -132,30 +192,32 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 - Services own ALL business logic — pure Python, no Qt, no framework deps
 - Views own ONLY rendering — read from Settings/Models, call Services, display results
 
-### Three-Factory Chain (OS → Protocol → Device)
+### Two-Factory Chain (OS → Device)
 
-The composition pipeline is a chain of three factories, **same idiom** in every layer: ABC + `@<Name>Factory.register(key)` self-registering subclasses + a single classmethod chokepoint that dispatches by name. Read one, you've read all three.
+The composition pipeline is a chain of two factories, **same idiom** in every layer: a registry class + `@<Name>Factory.register(key)` self-registering subclasses + a single classmethod chokepoint that dispatches by key. Read one, you've read both.
+
+The cutover unified legacy's separate Protocol + Device layers into one `Device` ABC, so there is **no `ProtocolFactory`** — `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd`/`Led` each *are* the device that speaks their wire. A separate protocol factory would wrap nothing.
 
 | Factory | Defined in | Subclasses | Dispatch key | Chokepoint |
 |---|---|---|---|---|
-| `PlatformFactory` | `adapters/system/__init__.py` | `WindowsFactory`, `MacOSFactory`, `LinuxFactory`, `BSDFactory` | `sys.platform` | `.current()` |
-| `ProtocolFactory` | `adapters/device/factory.py` | `ScsiProtocolFactory`, `HidProtocolFactory`, `BulkProtocolFactory`, `LyProtocolFactory`, `LedProtocolFactory` | `info.protocol` (string from registry) | `.for_info(info)` |
-| `DeviceFactory` | `core/device/factory.py` | `LCDDeviceFactory`, `LEDDeviceFactory` | device kind, derived from `PROTOCOL_TRAITS[info.protocol].is_led` | `.for_info(info, builder)` |
+| `PlatformFactory` | `adapters/system/__init__.py` | `LinuxPlatform`, `WindowsPlatform`, `MacOSPlatform`, `BSDPlatform` | `sys.platform` (BSD variants → `"bsd"`) | `.current()` |
+| `DeviceFactory` | `adapters/device/__init__.py` | `ScsiLcd`, `HidLcd`, `BulkLcd`, `LyLcd`, `Led` | `info.wire` (the `Wire` enum) | `.for_wire(wire)` |
+
+Both factories live in the **adapter layer**, not core — the factory is the only place that names concrete adapter classes, so core (`Platform` / `Device` ABCs) never imports an adapter. Importing each package fires the side-effect imports of its OS / device modules, which fire the `@register` decorators, which populate the registry.
 
 **The chain** (top to bottom of the composition root):
 
 ```
-PlatformFactory.current()              ← OS dispatch     → Platform
-    Platform.detect_devices()          ← OS-specific     → list[DetectedDevice]
-        DeviceInfo.from_detected(d)    ← typed DTO chokepoint
-            ProtocolFactory.for_info(info) ← protocol by name  → DeviceProtocol
-                DeviceFactory.for_info(info, builder) ← device by kind
-                    LCDDevice(protocol=…, …)  OR  LEDDevice(protocol=…, …)
+PlatformFactory.current()           ← OS dispatch    → Platform
+    Platform.scan_devices()         ← OS-specific    → list[DeviceInfo]
+        App.attach(vid, pid)        ← composition root
+            DeviceFactory.for_wire(info.wire)  ← wire → Device subclass
+                ScsiLcd(info, transport)  (or HidLcd / BulkLcd / LyLcd / Led)
 ```
 
-**Why three factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass. New protocol = `@ProtocolFactory.register('whatever')` + subclass. New Device kind = `@DeviceFactory.register('seven_segment')` + subclass. Zero touchpoints in callers.
+**Why two factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass, one new file. New wire = `@DeviceFactory.register(Wire.WHATEVER)` + subclass, one new file. Zero touchpoints in callers (`_boot.trcc_next`, `App.attach`).
 
-**Verification**: `dev/smoke_platforms.py` asserts all three registries are populated and dispatch correctly — 42 checks total, runs on the dev box without any OS-specific tooling installed.
+**Verification**: `dev/smoke_factories.py` asserts both registries are populated and dispatch correctly — runs on the dev box without any OS-specific tooling installed.
 
 ## Daemon Mode (`TRCC_DAEMON`)
 
@@ -208,6 +270,113 @@ Response: `{"success": bool, "message": str, "error": str | None, ...extras}`. P
 - **Tests**: the existing test suite tests legacy `TrccApp` paths. Daemon-mode tests come back when Phase 9 settles.
 - **Donor matrix**: SCSI verified end-to-end. HID / Bulk / LY / LED through daemon are inferred-but-unverified — same `Trcc` dispatch path donors confirmed for the in-process flow, just with JSON serialization in front. Real-hardware donors close the matrix.
 
+## Logging coverage is mandatory
+
+Without logs we can't debug what we can't see.  Legacy had 828 log
+calls; the post-cutover tree had 634 (28% gap), and the gap was
+concentrated in `core/commands.py` (10 logs for 92 Commands) and the
+top-level services (overlay/display/theme: 12 logs total).  Result:
+"Theme1 doesn't show its clock" — no logs to trace where the clock
+data was lost between DC parse and the render pixel.  That was the
+cost.
+
+Rules for every new method touching user-visible state:
+
+1. **One log line on entry** of every public method on a service /
+   adapter / Command.  The boundary IS the value (see also memory
+   `feedback_thin_layer_log_every_method`).
+2. **One log line at every branch that changes outcome** — every
+   skip, every fallback, every early-return.  Don't make a future
+   debugger guess which branch fired.
+3. **Resolved values, not just intent.**  `log.info("draw_text:
+   'CPU' at (74, 200) size=24")` beats `log.info("drawing text")` —
+   the actual data is what reproduces the bug.
+4. **Per-tick noise stays at DEBUG.**  Commands fired every frame
+   (`SendFrame`, `RenderAndSend`, `ReadSensors`) set
+   ``LOG_LEVEL: ClassVar[int] = logging.DEBUG`` so a default `-v`
+   isn't drowned.  Use INFO for one-shot actions (theme load,
+   device connect, mode toggle); DEBUG for per-frame.
+5. **Warn loudly on silent skips.**  If a metric has no sensor
+   reading or a clock source is unresolved, that's a `log.warning`
+   with the available context — INCLUDING the sample keys that DID
+   resolve so the reporter can spot the typo.
+6. **Verify in the log after every behavioral change.**  Before
+   declaring a fix done, grep your own logs for the line that
+   proves it.  If the line doesn't exist, the test isn't real.
+
+### The `_on_*_tick` trap — per-tick handlers are DEBUG, never INFO
+
+Any `_on_*` method connected to a `QTimer.timeout` or to
+`make_timer(...)` fires per-frame (~15–30 Hz for animation; slower
+for slideshow / refresh).  Those entry logs go at **DEBUG**, never
+INFO — INFO becomes per-frame noise, ~900 KB of `_on_video_tick`
+spam in a 22-second session, and buries the user-action lines we
+just paid for in the same pass.
+
+Before any bulk `_on_*` logging pass, grep
+`QTimer\.timeout\.connect\(self\._on_|make_timer\(self\._on_` and
+**exempt every match** from the INFO blanket rule.  Names today:
+`_on_video_tick`, `_on_slideshow_tick`, `_on_flash_tick`,
+`_on_tick`, `_on_play_tick`, `_preview_tick`.  If a handler already
+has first-tick-INFO + subsequent-DEBUG logic (look for
+`self._..._first_tick_logged`-style flags + state-transition skip
+logic), **leave it alone** — don't prepend a blanket entry log;
+the body already does the right thing.
+
+### `configure_logging` is called exactly once
+
+The CLI root callback (`ui.cli.main:_root`) configures logging based
+on the `-v` flag.  **Subsequent calls overwrite the level.**  Launch
+entry points (`ui.gui.__init__.launch`, future qtgui equivalent,
+etc.) must NOT re-call `configure_logging` — a second call with
+`verbosity=0` silently downgrades DEBUG back to INFO and the user's
+`-v` is silently lost.  If a new entry point can legitimately be
+invoked without going through the CLI (rare; none exist today), add
+a guard: only configure if no `_trcc_next_handler`-tagged handler is
+already attached on the root logger.  When a user reports "DEBUG
+lines I expect aren't showing up", first grep the log for
+`configure_logging:` and check whether it appears more than once
+with different levels.
+
+### Coverage applies to the WHOLE app surface, not just services
+
+The rules above apply equally to every layer the user can interact
+with: services, Commands, adapters, **GUI panels (`ui/gui/*.py`,
+`ui/qtgui/*.py`)**, **CLI command bodies (`ui/cli/*.py`)**, **API
+endpoints (`ui/api/*.py`)**, the daemon, the IPC server.  A silent
+panel is a debugging blind spot — when the user reports "metrics
+don't update when I change the refresh interval," but
+`uc_about._on_refresh_changed` has no log line, **the bug is
+invisible to anyone reading the log**.  No "let me start with this
+panel" — the diligent move is **every public method on every
+panel, in one pass**.
+
+Benchmark for "covered":
+
+| Layer | What counts as covered |
+|---|---|
+| Service method | log.info on entry with resolved args |
+| Command.execute | log.info on entry; log.warning on every guard-fail branch |
+| Adapter public method | log.info on entry; log.debug per-tick |
+| GUI panel `_on_*` slot | log.info with the resolved widget state that fired it (button value, slider position, picker selection) |
+| GUI panel `set_*` mutator | log.info with old → new transition |
+| GUI panel `update_*` per-tick refresh | log.debug (per-tick noise) with the readings/keys actually rendered |
+| CLI command body | log.info on entry with args; log.warning on guard-fail |
+| API endpoint | log.info on entry with the path params (path-sanitized — never raw user input) |
+
+Anti-pattern (the half-fix that wastes a session):
+
+* Adding logs to ONE method of ONE panel because that's where you
+  last looked.  Next bug lands in a sibling method that's still
+  silent, and you're blind again.
+
+If a layer is under-logged (CLI has 1 log call for 114 methods,
+qtgui has 12 for 310, etc.), **that's a debt to clear in one pass,
+not a "we'll do it when we touch that file" deferral**.
+
+This rule is non-negotiable; "code-first, logs-after" wastes hours
+on the next bug.
+
 ## Conventions
 
 ### Code Style
@@ -222,7 +391,7 @@ Response: `{"success": bool, "message": str, "error": str | None, ...extras}`. P
 
 ### SOLID
 - **SRP** — services own logic, views own rendering, models own data
-- **OCP** — `@DeviceProtocolFactory.register()` for self-registering protocols. New devices = new data, not modified logic.
+- **OCP** — `@PlatformFactory.register(...)` / `@DeviceFactory.register(...)` for self-registering OS + wire subclasses. New device = new registry row, not modified logic.
 - **LSP** — no fake implementations. If a subclass can't fulfill the contract, don't inherit.
 - **ISP** — `LCDMixin` + `LEDMixin` instead of one fat `DeviceProtocol`
 - **DIP** — inject dependencies at runtime. Core never imports concrete adapters.
@@ -279,6 +448,11 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - **Downloads**: Pin to `https://github.com/Lexonight1/thermalright-trcc-linux/`. Validate content after extraction.
 - **Tests**: Full exact values, no partial substring checks. No `# nosec` in tests.
 
+## Development Environment
+- **Build on Python 3.12.** This is a portability decision, not a personal preference: Debian stable and several other LTS distros ship 3.12 as the system interpreter, and building under 3.12 keeps the project usable on every Python from 3.12 forward without per-version pain.
+- Don't use 3.13 / 3.14-only syntax or stdlib features. `pyproject.toml` says `requires-python = ">=3.10"` for the install gate, but the dev gate is **3.12** — anything newer is allowed to work but not required to.
+- Run tests / scripts with `python3.12` explicitly. `/usr/bin/python` on the dev box may point at 3.14; a 3.14-only crash (e.g. a `QFontDatabase` segfault, a `pyusb._pack_` deprecation, a typer/sudo_reexec issue) is not automatically a project bug — repro under 3.12 first.
+
 ## Known Issues
 - `pyusb 1.3.1` deprecated `_pack_` on Python 3.14 — suppressed in pytest config
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
@@ -310,7 +484,13 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 ## Development Workflow
 
 ### Plan Before Coding
-Non-trivial changes: think through full impact, state plan, wait for confirmation, THEN implement in one pass. Never jump in and patch as you go.
+Non-trivial changes: think through full impact, state the plan, wait for confirmation, THEN implement. Never jump in and patch as you go.
+
+- **Separate the fix from the redesign.** When a bug is reported, land the *minimum* fix and verify it FIRST — do not bundle a refactor or redesign into a bug fix. A redesign is its own deliberate, separately-approved project, never smuggled in under "while I'm in here." (Cautionary: a one-line `active_themes` fix nearly got buried under a multi-file asset-library redesign — the fix is the deliverable; the redesign is a separate choice.)
+- **Large changes go in verifiable increments, not one big-bang pass.** Break the plan into phases where each is independently verified (ruff + pyright + targeted tests + run the app) and leaves the app in a working state before the next begins. Big-bang edits across many files are how half-migrated states and subtle breakage sneak in — especially when the change touches the very path you're fixing or relocates user data. Do the data-touching / behavior-changing phases last and most carefully.
+- **Foundation work is not a feature.** Plumbing (paths, ports, resolution wiring) that changes no user-visible behavior is "the plumbing is in," not "the feature works" — say which, per "No progress theater."
+- **No copy-pasta.** Reuse over duplication: read the existing/legacy implementation end-to-end, then translate the pattern *in place* (rewire imports + call sites) — never copy blocks between files or trees. Store each asset/fact once and reference it; don't duplicate it across consumers.
+- **Professional Python, hexagonal/SOLID/DRY by default.** Every change meets the bar set in the "Architecture", "Code Style", "SOLID", and "Hexagonal Purity" sections above — idiomatic Python (dataclasses, enums, dunders, `match`/`case`, type hints, context managers, generators), classes with one clear responsibility, dependencies pointing inward only (core imports no adapter), ports at the boundaries. Elegance and correctness are the bar — not "it works."
 
 ### Look at the Log Before the Code
 When the user reports a broken feature: `grep -iE "error|traceback|warning" ~/.trcc/trcc.log` FIRST. The log usually names the broken step in one line; reading code to find it wastes 20 minutes and the user's patience.

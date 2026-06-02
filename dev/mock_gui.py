@@ -1,37 +1,35 @@
 #!/usr/bin/env python3
-"""Mock GUI — real TRCC GUI with fake USB devices via MockPlatform.
+"""Mock GUI — run the real next/ GUI rooted at ``dev/.trcc/``.
 
-Bootstrapped via dev/_mock_bootstrap.py: paths → preflight → MockPlatform
-patched into ControllerBuilder. Then this script does only the GUI-specific
-work (Qt setup, window, event loop). Bugs found here are real bugs.
+Mirrors ``src/trcc/ui/gui/__init__.py::launch`` step for step, with two
+differences:
 
-Device config (dev/devices.json):
-    [
-        {"type": "lcd", "resolution": "320x320", "name": "Frozen Warframe Pro",
-         "vid": "0402", "pid": "3922", "pm": 32, "sub": 1},
-        {"type": "led", "model": "AX120_DIGITAL", "name": "AX120 R3",
-         "vid": "0416", "pid": "8001"}
-    ]
+  * ``platform`` is a ``DevPlatform`` from ``_mock_bootstrap`` so paths
+    point at ``dev/.trcc/`` / ``dev/.trcc-user/`` instead of ``~/.trcc``.
+  * No ``SingleInstance`` lock + no IPC server — those collide with a
+    real install running in parallel.
+
+Real USB enumeration + real sensors run unchanged, so the GUI behaves
+exactly like a packaged install would, just isolated to a throwaway
+data root.  Bugs found here are real bugs.
 
 Usage:
     PYTHONPATH=src python3 dev/mock_gui.py
     PYTHONPATH=src python3 dev/mock_gui.py --decorated
-    PYTHONPATH=src python3 dev/mock_gui.py --report report.txt   # emulate user's setup
-    PYTHONPATH=src python3 dev/mock_gui.py --init                # generate default devices.json
-    PYTHONPATH=src python3 dev/mock_gui.py --list                # list resolutions
+    PYTHONPATH=src python3 dev/mock_gui.py -v          # DEBUG level
+    PYTHONPATH=src python3 dev/mock_gui.py --report report.txt
 """
 from __future__ import annotations
 
-import json
+import logging
 import os
 import signal
 import sys
 from pathlib import Path
 from typing import Any, cast
 
-os.environ.pop('QT_QPA_PLATFORM', None)  # use real display
-
-# Bootstrap handles sys.path, paths, preflight, MockPlatform install.
+# Bootstrap handles sys.path + paths + logging.  Import is intentionally
+# before any trcc.* import so Platform.detect picks up our paths overrides.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _mock_bootstrap import (
     DEV_DATA,
@@ -39,6 +37,8 @@ from _mock_bootstrap import (
     DEVICES_JSON,
     bootstrap,
 )
+
+log = logging.getLogger("dev.mock_gui")
 
 
 def _parse_args() -> tuple[bool, int, str | None]:
@@ -59,11 +59,6 @@ def _parse_args() -> tuple[bool, int, str | None]:
             for w, h in resolutions:
                 print(f"  {w}x{h}")
             sys.exit(0)
-        elif arg == '--init':
-            from tests.mock_platform import DEFAULT_DEVICES
-            DEVICES_JSON.write_text(json.dumps(list(DEFAULT_DEVICES), indent=2))
-            print(f"Created {DEVICES_JSON}")
-            sys.exit(0)
         elif arg == '--report':
             i += 1
             if i < len(args):
@@ -80,62 +75,63 @@ def _parse_args() -> tuple[bool, int, str | None]:
 def main() -> None:
     decorated, verbosity, report_path = _parse_args()
 
-    # Bootstrap: paths, preflight, MockPlatform installed in ControllerBuilder.
-    platform = bootstrap(report_path)
+    # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.
+    platform = bootstrap(report_path=report_path, verbosity=verbosity)
 
     # ── Qt bootstrap (must precede QtRenderer construction) ──────────────
-    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
-    set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
-
+    os.environ.pop("QT_QPA_PLATFORM", None)
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
-    os.environ.pop("QT_QPA_PLATFORM", None)
 
-    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
-    qapp.setQuitOnLastWindowClosed(True)
-    qapp.setDesktopFileName("trcc-mock")
 
-    font = QFont("Microsoft YaHei", 10)
-    if not font.exactMatch():
-        font = QFont("Sans Serif", 10)
-    qapp.setFont(font)
+    from trcc.ui.qapp import configure_qapplication
+    configure_qapplication(qapp)
 
-    # ── Build Trcc via _boot — same composition root as production ───────
-    from trcc._boot import trcc as _boot_trcc
+    # ── Assets dir + boot ────────────────────────────────────────────────
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    from trcc._boot import trcc_next
     from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
     renderer = QtRenderer()
-    t = _boot_trcc(cast(Any, platform), renderer=renderer,
-                   discover_now=True, verbosity=verbosity)
+    app = cast(App, trcc_next(platform=cast(Any, platform), renderer=renderer))
 
-    # ── GUI — production TRCCApp pulls Trcc via _boot.trcc() (cached) ────
-    from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
-    window = _TRCCApp(
-        platform=cast(Any, platform),
-        decorated=decorated,
-    )
+    # ── Splash + discover (same as production launch) ───────────────────
+    from trcc.ui.gui.splash import run_bootstrap_with_splash
+    if not run_bootstrap_with_splash(app):
+        log.error("dev/mock_gui: bootstrap splash failed; aborting")
+        sys.exit(1)
 
-    # ── Replay device list to subscribers (mirrors gui/__init__.py) ──────
-    from itertools import chain
+    # ── Live device events + metrics broadcast ──────────────────────────
+    app.start_hotplug()
+    app.metrics_loop.start()
 
-    from trcc.core.events import Topic
-    t.events.publish(
-        Topic.DEVICE_LIST,
-        tuple(chain(t.lcd_devices, t.led_devices)),
-    )
-    # Metrics loop is started by Trcc.discover() — no explicit kick-off needed.
+    # ── Window ──────────────────────────────────────────────────────────
+    from trcc.ui.gui.trcc_app import TRCCApp
+    window = TRCCApp(app=app, decorated=decorated)
+    window.replay_initial_devices()
 
-    # ── Run ──────────────────────────────────────────────────────────────
-    signal.signal(signal.SIGINT, lambda *_: qapp.quit())
+    # ── Signals ─────────────────────────────────────────────────────────
+    def _on_sigint(*_args: object) -> None:
+        qapp.quit()
+    signal.signal(signal.SIGINT, _on_sigint)
+
     window.show()
 
-    print(f"\nConfig: {DEV_TRCC / 'config.json'}")
-    print(f"Data:   {DEV_DATA}")
+    print(f"\nConfig:  {DEV_TRCC / 'config.json'}")
+    print(f"Data:    {DEV_DATA}")
     print(f"Devices: {DEVICES_JSON}")
-    print("Close window or Ctrl+C to quit.")
+    print("Close window or Ctrl+C to quit.\n")
 
-    sys.exit(qapp.exec())
+    try:
+        exit_code = qapp.exec()
+    finally:
+        app.close()
+        log.info("dev/mock_gui: cleanup complete — exit")
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':

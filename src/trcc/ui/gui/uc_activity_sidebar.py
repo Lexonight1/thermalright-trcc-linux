@@ -43,6 +43,10 @@ class SensorItem(QFrame):
         self.metric_key = metric_key
         self.unit = unit
         self.color = color
+        log.debug(
+            "SensorItem.__init__: category=%s key=%s label=%r metric_key=%s",
+            category, key_suffix, label, metric_key,
+        )
 
         self.setFixedHeight(22)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -84,6 +88,7 @@ class SensorItem(QFrame):
 
     def update_value(self, metrics):
         """Update displayed value from HardwareMetrics DTO."""
+        log.debug("update_value")
         if (value := getattr(metrics, self.metric_key, None)) is not None:
             if isinstance(value, float):
                 if value >= 1000:
@@ -97,6 +102,11 @@ class SensorItem(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            log.info(
+                "SensorItem.mousePressEvent: category=%s metric=%s "
+                "(emit overlay add)",
+                self.category, self.metric_key,
+            )
             self.clicked.emit(self._overlay_config)
 
     def enterEvent(self, event):
@@ -118,9 +128,12 @@ class UCActivitySidebar(QWidget):
         super().__init__(parent)
 
         self._sensor_items: list = []
+        log.info("UCActivitySidebar.__init__: building activity sidebar")
         self._setup_ui()
 
     def _setup_ui(self):
+        log.info("UCActivitySidebar._setup_ui: %d categories from SENSORS",
+                 len(SENSORS))
         # Dark background via palette (not stylesheet — children use QPalette)
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor('#1E1E1E'))
@@ -178,12 +191,27 @@ class UCActivitySidebar(QWidget):
 
         inner_layout.addStretch()
         scroll.setWidget(inner)
+        log.info(
+            "UCActivitySidebar._setup_ui: built %d sensor items",
+            len(self._sensor_items),
+        )
 
     def _on_sensor_clicked(self, config):
+        log.info(
+            "UCActivitySidebar._on_sensor_clicked: re-emitting "
+            "OverlayElementConfig (main=%s sub=%s)",
+            getattr(config, 'main_count', '?'),
+            getattr(config, 'sub_count', '?'),
+        )
         self.sensor_clicked.emit(config)
 
     def update_from_metrics(self, metrics) -> None:
         """Render from the unified Topic.METRICS broadcast."""
+        # Per-tick — DEBUG so a default INFO run isn't drowned.
+        log.debug(
+            "UCActivitySidebar.update_from_metrics: %d items",
+            len(self._sensor_items),
+        )
         try:
             for item in self._sensor_items:
                 item.update_value(metrics)
@@ -192,3 +220,6 @@ class UCActivitySidebar(QWidget):
 
     def stop_updates(self) -> None:
         """No-op — retained for cleanup compatibility."""
+        log.info(
+            "UCActivitySidebar.stop_updates: no-op (Topic.METRICS observer)",
+        )

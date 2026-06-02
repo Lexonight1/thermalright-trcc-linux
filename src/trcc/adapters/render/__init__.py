@@ -1,1 +1,1 @@
-"""Render adapters — concrete Renderer implementations."""
+"""Renderer adapters — concrete Renderer implementations."""

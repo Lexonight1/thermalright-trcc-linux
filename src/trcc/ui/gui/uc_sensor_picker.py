@@ -97,6 +97,8 @@ class SensorRow(QWidget):
 
     def set_selected(self, selected: bool):
         """Update checkbox image."""
+        log.debug("SensorRow.set_selected: %s -> %s (sensor=%s)",
+                  self._selected, selected, self.sensor.id)
         self._selected = selected
         px = self._cb_on if selected else self._cb_off
         if not px.isNull():
@@ -104,10 +106,13 @@ class SensorRow(QWidget):
 
     def _on_checkbox_clicked(self) -> None:
         """Checkbox slot — re-emit clicked with this row's sensor id."""
+        log.info("SensorRow._on_checkbox_clicked: sensor=%s", self.sensor.id)
         self.clicked.emit(self.sensor.id)
 
     def update_value(self, value: float | None):
         """Update the displayed value."""
+        # Per-tick refresh — no log (this fires every 1s for every row).
+        log.debug("update_value: value=%s", value)
         if value is None:
             self._value.setText('--')
         else:
@@ -126,6 +131,7 @@ class SensorRow(QWidget):
                 self._value.setText(f"{value:.1f}")
 
     def mousePressEvent(self, event):
+        log.info("SensorRow.mousePressEvent: sensor=%s", self.sensor.id)
         self.clicked.emit(self.sensor.id)
 
 
@@ -138,6 +144,7 @@ class SensorPickerDialog(QDialog):
         self._selected_id: str | None = None
         self._rows: list[SensorRow] = []
         self._result_sensor: SensorInfo | None = None
+        log.info("SensorPickerDialog.__init__: opening picker dialog")
 
         self.setFixedSize(DIALOG_W, DIALOG_H)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
@@ -200,30 +207,58 @@ class SensorPickerDialog(QDialog):
         self._update_values()  # Initial read
 
     def _populate_sensors(self):
-        """Create rows for all discovered sensors, grouped by source."""
-        sensors = self._enumerator.get_sensors()
+        """Create rows for all discovered sensors, grouped by source.
+
+        next/'s ``SensorEnumerator.discover()`` returns
+        :class:`SensorReading` (no ``source`` field — that concept lives
+        in the legacy SensorInfo).  Build SensorInfo objects on the fly
+        with a best-effort source inferred from the sensor_id prefix.
+        """
+        sensors = self._enumerator.discover()
+        log.info("SensorPickerDialog._populate_sensors: discovered %d sensors",
+                 len(sensors))
+
+        # Adapt SensorReading → SensorInfo (legacy shape).  Source is
+        # inferred from the sensor_id prefix when present, e.g.
+        # "hwmon:coretemp:temp1" → "hwmon".
+        sensor_infos: list[SensorInfo] = []
+        for r in sensors:
+            source = r.sensor_id.split(':', 1)[0] if ':' in r.sensor_id else 'system'
+            sensor_infos.append(SensorInfo(
+                id=r.sensor_id,
+                name=r.label or r.sensor_id,
+                category=r.category,
+                unit=r.unit,
+                source=source,
+            ))
 
         # Group by source
         groups: dict[str, list[SensorInfo]] = {}
-        for s in sensors:
+        for s in sensor_infos:
             groups.setdefault(s.source, []).append(s)
 
-        # Source display order and names
+        # The new sensor-id prefix IS the hardware category
+        # (cpu/gpu/fan/memory/disk/net/…); legacy keyed on the source
+        # (hwmon/nvidia/…), so its fixed list never matched here and the
+        # picker rendered blank.  Render EVERY discovered hardware group —
+        # known order first, then any others — so nothing is dropped.
+        # Clock sources (time/date) aren't hardware sensors and weren't in
+        # legacy's picker, so they're skipped.
         source_labels = {
-            'hwmon': 'Hardware Monitor',
-            'nvidia': 'NVIDIA GPU',
-            'drm': 'GPU (DRM)',
-            'psutil': 'System',
-            'rapl': 'Power (RAPL)',
-            'computed': 'Computed Rates',
+            'cpu': 'CPU', 'gpu': 'GPU', 'fan': 'Fans', 'memory': 'Memory',
+            'mem': 'Memory', 'disk': 'Disk', 'net': 'Network',
         }
+        _clock = {'time', 'date'}
+        _order = ('cpu', 'gpu', 'fan', 'memory', 'mem', 'disk', 'net')
+        ordered = [s for s in _order if s in groups]
+        ordered += [s for s in sorted(groups)
+                    if s not in _order and s not in _clock]
 
-        for source in ('hwmon', 'nvidia', 'drm', 'psutil', 'rapl', 'computed'):
-            if not (group := groups.get(source, [])):
-                continue
+        for source in ordered:
+            group = groups[source]
 
             # Section header
-            header = QLabel(source_labels.get(source, source))
+            header = QLabel(source_labels.get(source, source.upper()))
             header.setFixedHeight(24)
             header.setStyleSheet(
                 "color: #B4964F; font-size: 11px; font-weight: bold; "
@@ -241,6 +276,7 @@ class SensorPickerDialog(QDialog):
 
     def set_current_sensor(self, sensor_id: str):
         """Pre-select the currently bound sensor."""
+        log.info("SensorPickerDialog.set_current_sensor: %s", sensor_id)
         self._selected_id = sensor_id
         for row in self._rows:
             row.set_selected(row.sensor.id == sensor_id)
@@ -251,14 +287,15 @@ class SensorPickerDialog(QDialog):
 
     def _on_row_clicked(self, sensor_id: str):
         """Handle radio-button selection (only one sensor selected)."""
-        log.debug("_on_row_clicked: sensor_id=%s", sensor_id)
+        log.info("SensorPickerDialog._on_row_clicked: sensor_id=%s", sensor_id)
         self._selected_id = sensor_id
         for row in self._rows:
             row.set_selected(row.sensor.id == sensor_id)
 
     def _on_ok(self):
         """Confirm selection."""
-        log.debug("_on_ok: selected_id=%s", self._selected_id)
+        log.info("SensorPickerDialog._on_ok: selected_id=%s",
+                 self._selected_id)
         if self._selected_id:
             for row in self._rows:
                 if row.sensor.id == self._selected_id:
@@ -268,10 +305,16 @@ class SensorPickerDialog(QDialog):
 
     def _update_values(self):
         """Update all sensor values in the list."""
+        # Per-tick (1s); DEBUG.
         readings = self._enumerator.read_all()
+        log.debug(
+            "SensorPickerDialog._update_values: readings=%d rows=%d",
+            len(readings), len(self._rows),
+        )
         for row in self._rows:
             row.update_value(readings.get(row.sensor.id))
 
     def closeEvent(self, event):
+        log.info("SensorPickerDialog.closeEvent: closing")
         self._timer.stop()
         super().closeEvent(event)

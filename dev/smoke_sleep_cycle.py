@@ -31,11 +31,11 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / 'src'))
 sys.path.insert(0, str(_REPO))
 
-from tests.mock_platform import DEFAULT_DEVICES, MockPlatform  # type: ignore[import-not-found]
+from tests.legacy.mock_platform import DEFAULT_DEVICES, MockPlatform  # type: ignore[import-not-found]
 
-from trcc.adapters.device.factory import DeviceProtocolFactory
-from trcc.core.events import Topic
-from trcc.core.trcc import Trcc
+from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
+from trcc.legacy.core.events import Topic
+from trcc.legacy.core.trcc import Trcc
 
 _FAILURES: list[str] = []
 

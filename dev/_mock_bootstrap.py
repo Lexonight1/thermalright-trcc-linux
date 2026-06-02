@@ -1,34 +1,30 @@
-"""Shared bootstrap for dev/mock_{gui,cli,api}.py — debug entry points
-that run the real GUI/CLI/API against MockPlatform via clean DI.
+"""Shared bootstrap for ``dev/mock_*.py`` — runs the real next/ GUI / CLI
+/ API but rooted at ``dev/.trcc/`` instead of ``~/.trcc/`` so a dev
+session never touches the user's real config.
 
-Three responsibilities:
-  1. Patch paths so config + logs go to dev/.trcc/, not the user's ~/.trcc.
-  2. Run a factory-registry preflight on the REAL protocol lambdas
-     BEFORE MockPlatform's _register_noop_protocols overwrites them — so
-     bugs like #133 (DeviceInfo data threading) surface as a startup
-     gate, not as silent skips inside MockPlatform's noops.
-  3. Build MockPlatform and return it. Caller (mock_gui/mock_cli/mock_api)
-     pre-seeds the appropriate boot cache (`_boot.trcc(platform)` /
-     `_boot.get_trcc(platform)`) — pure DI, no monkey-patching.
+The post-cutover ``Platform`` port is the only seam we need.
+``DevPlatform`` subclasses the host's production platform (just
+``LinuxPlatform`` here — Mac/Windows/BSD can extend later) and overrides
+only ``paths()`` to point at the dev directories.  Real USB, real
+sensors, real autostart — same code paths a packaged install runs, just
+isolated to a throwaway data root.
 
-Cross-OS: only stdlib + project modules. The Linux-specific sensor
-enumerator inside MockPlatform itself is pre-existing tech debt
-(separate refactor).
+For a hardware-less smoke (CI, ergonomics dev box without a real LCD),
+plug in ``FakePlatform`` from ``tests/conftest.py`` instead — the
+shape is identical.
 """
 from __future__ import annotations
 
 import json
-import os
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from tests.mock_platform import MockPlatform
+    from trcc.core.ports import Platform
 
-# Make src/ and the repo root importable. Repo root lets `tests.mock_platform`
-# resolve as a package — same import path used by `make_platform()` so both
-# resolve to the SAME module object (critical for isinstance checks).
+# Make src/ importable without requiring the caller to set PYTHONPATH.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT))
@@ -46,168 +42,140 @@ DEV_USER.mkdir(exist_ok=True)
 
 DEVICES_JSON = _DEV_DIR / 'devices.json'  # survives .trcc wipe
 
-os.environ['TRCC_CONFIG_DIR'] = str(DEV_TRCC)
+log = logging.getLogger(__name__)
 
 
 # ─── Device spec loading ─────────────────────────────────────────────────────
 
 def _specs_from_report(report_path: str) -> list[dict]:
-    """Parse a `trcc report` file into MockPlatform device specs.
+    """Parse a ``trcc report`` file into device-spec dicts.
 
-    Lets the dev reproduce a user's exact device set from their bug report.
+    Kept for callers that want to record + replay a user's hardware set
+    — the diagnose tool already understands the file format.  Not used
+    by ``mock_gui.py`` against real hardware (Platform.scan_devices
+    returns the real attached set), only by ``mock_cli`` / ``mock_api``
+    style harnesses that want a fixed device list.
     """
     sys.path.insert(0, str(_REPO_ROOT / 'tools'))
     from diagnose import parse_report  # type: ignore[import-not-found]
 
-    from trcc.core.models import LED_DEVICES
-
     text = Path(report_path).read_text()
     report = parse_report(text)
-
     if report.os_name:
         print(f"User OS: {report.os_name}")
     if report.trcc_version:
         print(f"User trcc version: {report.trcc_version}")
-
     specs: list[dict] = []
     for dev in report.devices:
-        is_led = (dev.vid, dev.pid) in LED_DEVICES
         spec: dict[str, Any] = {
-            "type": "led" if is_led else "lcd",
             "vid": f"{dev.vid:04x}",
             "pid": f"{dev.pid:04x}",
-            "name": f"User {dev.protocol.upper()} ({dev.vid:04x}:{dev.pid:04x})",
+            "name": f"User device ({dev.vid:04x}:{dev.pid:04x})",
         }
-        if dev.pm:
-            spec["pm"] = dev.pm
-        if dev.sub:
-            spec["sub"] = dev.sub
         if dev.width and dev.height:
             spec["resolution"] = f"{dev.width}x{dev.height}"
         specs.append(spec)
-
-    if not specs:
-        print("Warning: no devices found in report — using defaults")
-        from tests.mock_platform import DEFAULT_DEVICES
-        return list(DEFAULT_DEVICES)
     return specs
 
 
 def load_device_specs(report_path: str | None = None) -> list[dict]:
-    """Resolve device specs in this priority order:
-        --report <file>  →  parsed from a user's trcc report
-        dev/devices.json →  custom specs from disk
-        DEFAULT_DEVICES  →  baked-in mix of LCDs + LEDs
+    """Resolve device specs from a report file or ``dev/devices.json``.
+
+    Returns an empty list when neither source is present — the real
+    ``Platform.scan_devices`` then enumerates whatever's attached.
     """
     if report_path:
         return _specs_from_report(report_path)
     if DEVICES_JSON.exists():
         try:
-            specs = json.loads(DEVICES_JSON.read_text())
-            if isinstance(specs, list) and specs:
-                return specs
+            raw = json.loads(DEVICES_JSON.read_text())
+            if isinstance(raw, list):
+                return raw
         except (json.JSONDecodeError, OSError) as e:
-            print(f"Warning: bad devices.json: {e} — using defaults")
-    from tests.mock_platform import DEFAULT_DEVICES
-    return list(DEFAULT_DEVICES)
+            print(f"Warning: bad devices.json: {e} — ignoring")
+    return []
 
 
-# ─── Path patching (must happen before any trcc.* import that reads them) ────
+# ─── DevPaths / DevPlatform — production Platform with paths redirected ──────
 
-def patch_paths() -> None:
-    """Redirect all trcc paths to dev/.trcc — protects ~/.trcc from
-    test runs, keeps user config untouched."""
-    import trcc.conf as _conf_mod
-    import trcc.core.paths as _paths
+def _build_dev_platform() -> Platform:
+    """Return a Platform rooted at ``dev/.trcc/`` for the host OS.
 
-    _paths.USER_CONFIG_DIR = str(DEV_TRCC)
-    _paths.USER_DATA_DIR = str(DEV_DATA)
-    _paths.DATA_DIR = str(DEV_DATA)
-    _paths.USER_CONTENT_DIR = str(DEV_USER)
-    _paths.USER_CONTENT_DATA_DIR = str(DEV_USER / 'data')
-    _paths.USER_MASKS_WEB_DIR = str(DEV_USER / 'data' / 'web')
-
-    _conf_mod.CONFIG_DIR = str(DEV_TRCC)
-    _conf_mod.CONFIG_PATH = str(DEV_TRCC / 'config.json')
-
-    # Logging defaults to ~/.trcc/trcc.log — redirect to dev/.trcc/trcc.log
-    from trcc.adapters.infra.diagnostics import StandardLoggingConfigurator
-    StandardLoggingConfigurator.__init__.__defaults__ = (DEV_TRCC / 'trcc.log',)
-
-
-# ─── Factory registry preflight (must run BEFORE MockPlatform installs) ──────
-
-def preflight_factory_registry() -> None:
-    """Verify every ALL_DEVICES entry constructs through its real factory
-    lambda. Catches DeviceInfo data-threading bugs (#133/#131) before
-    MockPlatform overwrites the registry with noops.
-
-    Pure construction check — no I/O. Mirrors
-    tests/adapters/device/test_factory.py for pytest-less developers.
+    Subclasses the production OS Platform so real USB enumeration, real
+    sensor reads, and real autostart all run against the dev box — only
+    the filesystem layout is redirected.  That keeps mock_gui useful as
+    a "drive the real GUI against my own hardware without polluting
+    ~/.trcc" tool; for hardware-less work, ``tests.conftest.FakePlatform``
+    is the right substitute (same Port).
     """
-    from trcc.adapters.device.factory import DeviceProtocolFactory
-    from trcc.core.models import ALL_DEVICES, DetectedDevice, DeviceInfo
+    from trcc.core.ports import Paths, Platform
 
-    failures: list[tuple[str, str]] = []
-    for (vid, pid), entry in ALL_DEVICES.items():
-        label = f"{entry.protocol}:{vid:04x}:{pid:04x} ({entry.model})"
-        try:
-            detected = DetectedDevice(
-                vid=vid, pid=pid,
-                vendor_name=entry.vendor, product_name=entry.product,
-                usb_path="usb:1:5",
-                scsi_device="/dev/sg0" if entry.protocol == "scsi" else None,
-                protocol=entry.protocol, device_type=entry.device_type,
-                implementation=entry.implementation,
-                button_image=entry.button_image, model=entry.model,
-            )
-            info = DeviceInfo.from_detected(detected)
-            DeviceProtocolFactory.create_protocol(info)
-        except Exception as e:
-            failures.append((label, f"{type(e).__name__}: {e}"))
+    class DevPaths(Paths):
+        """Paths port rooted at the dev tree.
 
-    if failures:
-        print("\n  [PREFLIGHT FAILED] factory registry has broken lambdas:",
-              file=sys.stderr)
-        for label, err in failures:
-            print(f"    {label} → {err}", file=sys.stderr)
-        print("\n  Real bug — mock_* would have masked it (MockPlatform "
-              "overwrites the registry with noops). Likely a missing "
-              "DeviceInfo field. Fix before launching.", file=sys.stderr)
-        sys.exit(1)
-    print(f"[preflight OK] factory registry: {len(ALL_DEVICES)} devices "
-          "construct cleanly")
+        Subpaths (``theme_dir`` / ``cloud_theme_dir`` / etc.) inherit
+        their concrete behaviour from the ABC, so we only override the
+        four roots.
+        """
+
+        def config_dir(self) -> Path:
+            return DEV_TRCC
+
+        def data_dir(self) -> Path:
+            return DEV_DATA
+
+        def user_content_dir(self) -> Path:
+            return DEV_USER
+
+        def log_file(self) -> Path:
+            return DEV_TRCC / "trcc.log"
+
+    # Pick the host's production Platform impl as the base so USB +
+    # sensors + autostart + hotplug all work the way the packaged app
+    # does.  Override only ``paths()``.
+    host = Platform.detect()
+    host_cls = type(host)
+
+    class DevPlatform(host_cls):  # type: ignore[valid-type, misc]
+        """Production host platform with paths redirected to ``dev/.trcc/``."""
+
+        _dev_paths: Paths = DevPaths()
+
+        def paths(self) -> Paths:
+            return self._dev_paths
+
+    return DevPlatform()
 
 
 # ─── Main bootstrap ──────────────────────────────────────────────────────────
 
-def bootstrap(report_path: str | None = None) -> MockPlatform:
-    """Set up the mock environment for any frontend (GUI/CLI/API):
-        1. Patch paths to dev/.trcc/.
-        2. Load device specs.
-        3. Run preflight on the real factory registry.
-        4. Build MockPlatform (which registers noop protocols on the
-           DeviceProtocolFactory at construction time).
-        5. Pre-seed the CLI/API boot caches with the mock-backed Trcc so
-           every composition root picks it up via clean DI — no
-           monkey-patching of `ControllerBuilder.for_current_os`.
+def bootstrap(report_path: str | None = None,
+              verbosity: int = 0) -> Platform:
+    """Wire up logging + paths and return a ``Platform`` rooted at
+    ``dev/.trcc/``.
 
-    Returns the MockPlatform instance for callers that need direct access.
+    The caller (``mock_gui.py`` / ``mock_cli.py`` / ``mock_api.py``)
+    drives the rest of the composition root — same shape production
+    uses, just with the dev platform instance.
     """
-    patch_paths()
-    preflight_factory_registry()
+    from trcc.adapters.infra.logging import configure_logging
 
+    platform = _build_dev_platform()
+    configure_logging(
+        platform.paths().log_file(),
+        level=logging.DEBUG if verbosity >= 1 else logging.INFO,
+    )
+    log.info(
+        "dev bootstrap: platform=%s paths.config=%s",
+        type(platform).__name__, platform.paths().config_dir(),
+    )
+
+    # Hint about spec inputs.  Only informational — scan_devices is
+    # the source of truth for what shows up in the GUI sidebar.
     specs = load_device_specs(report_path)
-    print(f"Devices: {len(specs)}")
-    for i, spec in enumerate(specs):
-        dtype = spec.get('type', 'lcd')
-        name = spec.get('name', f'Device {i}')
-        detail = spec.get('resolution', '') or spec.get('model', '')
-        print(f"  [{i}] {dtype.upper()} {name} {detail}")
-
-    from tests.mock_platform import MockPlatform
-    platform = MockPlatform(specs, root=DEV_TRCC)
-
-    return platform
-
+    if specs:
+        print(f"Hint: {len(specs)} device spec(s) loaded from "
+              f"{'--report' if report_path else 'devices.json'}; "
+              "the GUI itself enumerates real attached hardware via "
+              "Platform.scan_devices.")
     return platform

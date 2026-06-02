@@ -29,6 +29,7 @@ class SensorBox(QFrame):
         super().__init__(parent)
         self.color = color
         self.metric_key = ''
+        log.info("SensorBox.__init__: label=%r color=%s", label, color)
 
         self.setStyleSheet(
             "SensorBox { background-color: #2B2B2B; border: 1px solid #444; border-radius: 3px; }"
@@ -65,6 +66,7 @@ class UCInfoModule(QWidget):
         super().__init__(parent)
         self._temp_unit = '\u00b0C'
         self._sensor_boxes: dict = {}
+        log.info("UCInfoModule.__init__: default_sensors=%d", len(DEFAULT_SENSORS))
 
         # Dark background via palette
         palette = self.palette()
@@ -75,6 +77,8 @@ class UCInfoModule(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
+        log.info("UCInfoModule._setup_ui: building %d sensor boxes",
+                 len(DEFAULT_SENSORS))
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
@@ -87,25 +91,49 @@ class UCInfoModule(QWidget):
 
     def set_temp_unit(self, unit):
         """Set temperature display unit (0=Celsius, 1=Fahrenheit)."""
-        self._temp_unit = '\u00b0F' if unit else '\u00b0C'
+        new = '\u00b0F' if unit else '\u00b0C'
+        log.info("UCInfoModule.set_temp_unit: %r -> %r (unit=%s)",
+                 self._temp_unit, new, unit)
+        self._temp_unit = new
 
     def update_from_metrics(self, metrics) -> None:
         """Render from the unified Topic.METRICS broadcast."""
+        log.debug("update_from_metrics")
         self._apply_metrics(metrics)
 
     def stop_updates(self) -> None:
         """No-op — retained for cleanup compatibility."""
+        log.info("UCInfoModule.stop_updates: no-op (Topic.METRICS observer)")
 
     def _apply_metrics(self, metrics) -> None:
         """Apply metrics data to sensor display boxes."""
+        rendered: list[str] = []
+        missing: list[str] = []
         for key, box in self._sensor_boxes.items():
             value = getattr(metrics, key, None)
             if value is not None and isinstance(value, (int, float)):
                 if 'temp' in key:
-                    box.value_label.setText(f"{int(value)}{self._temp_unit}")
+                    txt = f"{int(value)}{self._temp_unit}"
                 elif 'usage' in key or 'percent' in key:
-                    box.value_label.setText(f"{int(value)}%")
+                    txt = f"{int(value)}%"
                 else:
-                    box.value_label.setText(str(int(value)))
+                    txt = str(int(value))
+                box.value_label.setText(txt)
+                rendered.append(f"{key}={txt}")
             else:
                 box.value_label.setText("--")
+                missing.append(key)
+        if missing:
+            # Warn loudly — a readings/canonical-field mismatch is silent
+            # otherwise.  Include a sample of available keys so reporters
+            # can spot a publisher that's only exposing raw sensor IDs.
+            available = sorted(getattr(metrics, 'readings', {}) or {})[:10]
+            log.warning(
+                "UCInfoModule._apply_metrics: %d/%d canonical keys missing=%s "
+                "(available_sample=%s)",
+                len(missing), len(self._sensor_boxes), missing, available,
+            )
+        log.debug(
+            "UCInfoModule._apply_metrics: rendered=%s",
+            "; ".join(rendered) or "<none>",
+        )

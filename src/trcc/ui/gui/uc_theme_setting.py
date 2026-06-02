@@ -84,9 +84,22 @@ class UCThemeSetting(BasePanel):
     screencast_changed = Signal(bool)
     screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
     eyedropper_requested = Signal()  # launch eyedropper color picker
+    # Per-format-pref change — emitted alongside UiState persistence
+    # so trcc_app can mirror the user's choice onto every connected
+    # device's DeviceSettings via SetTimeFormat / SetDateFormat
+    # Commands.  Without this, the UiState-side update never reaches
+    # DisplayService's compute_clock which reads from per-device
+    # DeviceSettings.{time,date}_format (default "24h" / "yyyy/MM/dd"
+    # forever).  ``kind`` is "time" / "date" / "temp_unit"; ``value``
+    # is the GUI's int code, translated to a literal by the slot.
+    format_pref_changed = Signal(str, int)
     capture_requested = Signal()     # launch screen capture
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, ui_state=None):
+        # ``ui_state`` is an optional :class:`UiStateStore` for persisting
+        # global format defaults (time / date / temp_unit).  trcc_app
+        # injects its store; legacy callers leave it ``None``.
+        self._ui_state = ui_state
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
         self._setup_ui()
 
@@ -151,6 +164,7 @@ class UCThemeSetting(BasePanel):
 
     def _on_element_selected(self, index, config: OverlayElementConfig):
         """Element was clicked — show its properties in color panel."""
+        log.info("_on_element_selected: index=%s", index)
         self.right_stack.setCurrentWidget(self.color_panel)
         self.color_panel.set_position(config.x, config.y)
         self.color_panel.set_color_hex(config.color)
@@ -162,10 +176,12 @@ class UCThemeSetting(BasePanel):
 
     def _on_add_requested(self):
         """Empty cell clicked — show add panel."""
+        log.info("_on_add_requested")
         self.right_stack.setCurrentWidget(self.add_panel)
 
     def _on_element_added(self, config):
         """New element type selected from add panel."""
+        log.info("_on_element_added")
         self.right_stack.setCurrentWidget(self.color_panel)
         self.overlay_grid.add_element(config)
         # Select the newly added element
@@ -176,6 +192,7 @@ class UCThemeSetting(BasePanel):
 
     def _on_element_deleted(self, index):
         """Element was deleted."""
+        log.info("_on_element_deleted: index=%s", index)
         self.right_stack.setCurrentWidget(self.color_panel)
 
     def _on_elements_changed(self):
@@ -223,21 +240,30 @@ class UCThemeSetting(BasePanel):
     def _on_format_changed(self, mode, mode_sub):
         log.debug("_on_format_changed: mode=%s, mode_sub=%s", mode, mode_sub)
         self._update_selected(require_mode=mode, mode_sub=mode_sub)
-        # Persist format preference so it carries across theme changes
-        from ...conf import Settings
+        # Persist format preference so it carries across theme changes.
+        # Global format defaults are GUI-only state — stored in UiState,
+        # not app.settings.  ``_ui_state`` is injected by the window;
+        # if absent (e.g. legacy callers) we skip persistence.
+        if self._ui_state is None:
+            return
         if mode == OverlayMode.TIME:
-            Settings.save_format_pref('time_format', mode_sub)
+            self._ui_state.set_format_pref('time_format', mode_sub)
+            self.format_pref_changed.emit('time', mode_sub)
         elif mode == OverlayMode.DATE:
-            Settings.save_format_pref('date_format', mode_sub)
+            self._ui_state.set_format_pref('date_format', mode_sub)
+            self.format_pref_changed.emit('date', mode_sub)
         elif mode == OverlayMode.HARDWARE:
-            Settings.save_format_pref('temp_unit', mode_sub)
+            self._ui_state.set_format_pref('temp_unit', mode_sub)
+            self.format_pref_changed.emit('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
+        log.info("_on_text_changed: text=%s", text)
         self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)
 
     # --- Display mode panels ---
 
     def _on_mode_changed(self, mode_id, enabled):
+        log.info("_on_mode_changed: mode_id=%s enabled=%s", mode_id, enabled)
         if mode_id == "background":
             if enabled:
                 self.screencast_panel.set_enabled(False)
@@ -260,17 +286,21 @@ class UCThemeSetting(BasePanel):
 
     def _on_screencast_params(self, x, y, w, h):
         """Forward screencast coordinate changes."""
+        log.info("_on_screencast_params: x=%s y=%s w=%s h=%s", x, y, w, h)
         self.screencast_params_changed.emit(x, y, w, h)
 
     def _on_mask_position(self, x, y):
         """Forward mask position change to main app."""
+        log.info("_on_mask_position: x=%s y=%s", x, y)
         self.invoke_delegate(self.CMD_MASK_POSITION, (x, y))
 
     def _on_mask_visibility(self, visible):
         """Forward mask visibility toggle to main app."""
+        log.info("_on_mask_visibility: visible=%s", visible)
         self.invoke_delegate(self.CMD_MASK_VISIBILITY, visible)
 
     def _on_action_requested(self, action_name):
+        log.info("_on_action_requested: action_name=%s", action_name)
         action_map = {
             "Image": self.CMD_BACKGROUND_LOAD_IMAGE,
             "Video": self.CMD_BACKGROUND_LOAD_VIDEO,

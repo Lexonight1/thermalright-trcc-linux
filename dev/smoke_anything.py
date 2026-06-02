@@ -1,23 +1,40 @@
 #!/usr/bin/env python3
 """Plug-in OS + device → see our bad code.
 
-Parameterized stress harness.  Pick an OS, pick a device (or ``all``),
-and the harness runs a battery of probes through the fully DI'd stack —
-Platform → ControllerBuilder → Protocol → Transport.  Each probe is a
-real-bug class we've already paid for; if any probe REPRODUCES, that's
-a code path that needs fixing.
+Parameterized stress harness and the engine behind the diagnostic loop
+(see ``memory/project_diagnostic_loop``): a user downloads the app, it
+"just works"; if it doesn't, they paste a ``trcc report`` into a GitHub
+issue, and we run ::
 
-Probes today cover (rotation/cache, geometry, video target dims, sensor
-discovery, device-info shape, lifecycle idempotency, send-before-handshake)
-and are easy to add to — drop a function in ``PROBES`` with a one-line
-description and it runs in every future invocation.
+    PYTHONPATH=src python3 dev/smoke_anything.py --from-report report.txt
+
+to reproduce the failing path against the *real* composition stack —
+``Platform`` → ``DeviceFactory.for_wire`` → ``Device`` → a scripted
+transport — and print "Bad code surfaced: <device> → <probe>: <detail>".
+
+Each probe is a real-bug class we've already paid for.  If any probe
+REPRODUCES, that's a code path that needs fixing.  Probes today cover
+video decode geometry, factory wire-coverage, sensor-read permission
+resilience, FBL geometry stability, handshake idempotency, sleep/resume
+cycles, and the Windows COM-init invariant.  Drop a function in
+``PROBES`` to add one — it runs in every future invocation.
+
+Architecture note: devices are built exactly how the composition root
+(``App.attach``) builds them — ``DeviceFactory.for_wire(info.wire)`` picks
+the class, a DI'd transport feeds it.  The only difference is the
+transport is a ``tests/conftest`` fake whose ``read_script`` we prime
+with a synthetic handshake.  Per-wire handshake shapes come from one
+``WireDriver`` Strategy dict keyed by the same ``Wire`` enum the
+production factory dispatches on — a new wire is one new row here, same
+as it is one new ``@DeviceFactory.register`` row in the adapter layer.
 
 Usage::
 
     PYTHONPATH=src python3 dev/smoke_anything.py
     PYTHONPATH=src python3 dev/smoke_anything.py --os linux --device 87ad:70db
     PYTHONPATH=src python3 dev/smoke_anything.py --device all
-    PYTHONPATH=src python3 dev/smoke_anything.py --probe video.target.zero
+    PYTHONPATH=src python3 dev/smoke_anything.py --probe video.size.zero
+    PYTHONPATH=src python3 dev/smoke_anything.py --from-report report.txt
     PYTHONPATH=src python3 dev/smoke_anything.py --list-probes
 
 Flags:
@@ -26,19 +43,24 @@ Flags:
                 Instantiates the matching Platform subclass.  If the
                 target OS can't be imported on this host (e.g. winreg
                 on Linux), the harness reports the import failure and
-                skips OS-specific probes.
+                runs with platform=None; OS-specific probes SKIP.
 
     --device    VID:PID hex pair (e.g. 87ad:70db) or ``all``  (default: all)
-                Limits the matrix to the chosen entry from ALL_DEVICES.
+                Limits the matrix to the chosen entry from the registry.
+
+    --from-report  Path to a ``trcc report`` dump.  Overrides --os and
+                --device with the system + VID:PIDs parsed from it.
 
     --probe     Probe name (see --list-probes)  (default: all)
 
-    --verbose   Print each probe's full traceback when it fails.
+    --verbose   Print each probe's full traceback when it ERRORs.
 """
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
+import re
 import sys
 import traceback
 from dataclasses import dataclass
@@ -51,6 +73,28 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "tests"))
+
+# Real composition-layer types — the harness exercises these, not a
+# parallel shim.  Imported at module scope so a missing ``src`` on the
+# path fails fast and loud rather than mid-probe.
+from trcc.core.models import ProductInfo, Wire
+from trcc.core.registry import ALL_DEVICES
+
+# Synthetic-handshake magics + sizes referenced (never copied) from the
+# device modules, so a magic-byte change there can't silently rot this
+# harness.
+from trcc.adapters.device.hid_lcd import _TYPE2_MAGIC, _TYPE3_ACK_SIZE
+from trcc.adapters.device.led import (
+    _HID_REPORT_SIZE as _LED_REPORT_SIZE,
+    _MAGIC as _LED_MAGIC,
+)
+
+# Transport fakes — the canonical ones the test suite drives connect()
+# through.  ``tests/`` is on the path above.
+from conftest import (  # type: ignore[import-not-found]
+    FakeBulkTransport,
+    FakeScsiTransport,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,17 +133,16 @@ def _make_platform(os_label: str):
     on Linux) returns (None, error_str) so the caller can fall back.
     """
     matrix = {
-        "linux": ("trcc.adapters.system.linux_platform", "LinuxPlatform"),
-        "windows": ("trcc.adapters.system.windows_platform", "WindowsPlatform"),
-        "macos": ("trcc.adapters.system.macos_platform", "MacOSPlatform"),
-        "bsd": ("trcc.adapters.system.bsd_platform", "BSDPlatform"),
+        "linux": ("trcc.adapters.system.linux", "LinuxPlatform"),
+        "windows": ("trcc.adapters.system.windows", "WindowsPlatform"),
+        "macos": ("trcc.adapters.system.macos", "MacOSPlatform"),
+        "bsd": ("trcc.adapters.system.bsd", "BSDPlatform"),
     }
     if os_label not in matrix:
         return None, f"unknown OS {os_label!r}"
 
     module_name, cls_name = matrix[os_label]
     try:
-        import importlib
         mod = importlib.import_module(module_name)
         cls = getattr(mod, cls_name)
         return cls(), None
@@ -107,293 +150,406 @@ def _make_platform(os_label: str):
         return None, f"{type(e).__name__}: {e}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Probes
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Each probe takes (platform, device_entry) and returns ProbeResult.
-# device_entry is from ALL_DEVICES — has .protocol, .fbl, .device_type, etc.
-
-def probe_video_target_zero(_platform, _device) -> ProbeResult:
-    """VideoDecoder must guard against zero-dim target_size.
-
-    Caught #136 questist: ``range() arg 3 must not be zero`` when bulk
-    handshake didn't extract PM and the device resolution collapsed to
-    a zero dimension.  ``frame_size = w * h * 3 == 0`` then ``range(...,
-    frame_size)`` raises.
-    """
-    from unittest.mock import patch
-    from trcc.adapters.infra.media_player import VideoDecoder
-
-    def _fake_run(*_a, **_k):
-        class _R:
-            returncode = 0
-            stdout = b'\x00' * (480 * 480 * 3)
-            stderr = b''
-        return _R()
-
-    try:
-        with patch('trcc.adapters.infra.media_player.subprocess.run',
-                   side_effect=_fake_run):
-            VideoDecoder("/tmp/x.mp4", target_size=(0, 480), fit_mode='fill')
-        return _bad("VideoDecoder accepted target_size=(0,480) silently — "
-                    "should raise on non-positive dimension")
-    except ValueError as e:
-        msg = str(e)
-        if "range()" in msg and "zero" in msg:
-            return _bad("range() arg 3 must not be zero — no guard on zero-dim target")
-        if "non-positive dimension" in msg or "target_size" in msg:
-            return _ok("VideoDecoder rejects zero-dim target with clear ValueError")
-        return _err(f"unexpected ValueError: {e}")
-    except Exception as e:
-        return _err(f"{type(e).__name__}: {e}")
-
-
-def probe_video_target_portrait(_platform, _device) -> ProbeResult:
-    """Portrait target dimensions decode without crash or aspect collapse."""
-    from unittest.mock import patch
-    from trcc.adapters.infra.media_player import VideoDecoder
-
-    def _fake_run(*_a, **_k):
-        class _R:
-            returncode = 0
-            stdout = b'\x00' * (320 * 480 * 3)  # one frame at 320x480
-            stderr = b''
-        return _R()
-
-    try:
-        with patch('trcc.adapters.infra.media_player.subprocess.run',
-                   side_effect=_fake_run):
-            d = VideoDecoder("/tmp/x.mp4", target_size=(320, 480), fit_mode='fill')
-        if d.frame_count == 0:
-            return _bad("portrait 320x480 decoded zero frames — pipeline drops portrait")
-        return _ok(f"portrait 320x480 → {d.frame_count} frame(s)")
-    except Exception as e:
-        return _err(f"{type(e).__name__}: {e}")
-
-
-def probe_deviceinfo_usb_address(_platform, _device) -> ProbeResult:
-    """DeviceInfo must carry a ``usb_address`` field.
-
-    Caught #131 lallemandgianni / #130 juanito54jm:
-    ``'DeviceInfo' object has no attribute 'addr'`` on v9.5.0/v9.5.2
-    (the field was missing for the LED protocol path). Renamed to
-    ``usb_address`` in Phase 2 with the conversion chokepoint locked
-    in ``DeviceInfo.from_detected``.
-    """
-    from trcc.core.models import DetectedDevice, DeviceInfo
-    detected = DetectedDevice(
-        vid=0x0416, pid=0x8001,
-        vendor_name="Mock", product_name="AX120",
-        usb_path="usb:1:5", scsi_device=None,
-        protocol="led", device_type=1,
-        implementation="hid_led", model="AX120", button_image="",
-    )
-    try:
-        info = DeviceInfo.from_detected(detected)
-        _ = info.usb_address
-        return _ok(f"DeviceInfo.usb_address = {info.usb_address}")
-    except AttributeError as e:
-        return _bad(f"AttributeError on DeviceInfo.usb_address: {e}")
-    except Exception as e:
-        return _err(f"{type(e).__name__}: {e}")
-
-
-def probe_rapl_permission(platform, _device) -> ProbeResult:
-    """Linux RAPL discovery handles PermissionError silently.
-
-    Caught #139 Zombie-hive: pipx install on Pop!_OS without
-    ``trcc setup-udev`` had ``Path.exists()`` raising PermissionError on
-    ``/sys/class/powercap/intel-rapl:*/energy_uj`` and the GUI launch
-    crashed.  Fix added try/except guards in linux_sensors._discover_rapl.
-    """
-    from unittest.mock import patch
-    if not _is_linux_platform(platform):
-        return _skip("RAPL is Linux-only")
-
-    from trcc.adapters.system.linux_sensors import SensorEnumerator
-
-    def _denied(*_a, **_k):
-        raise PermissionError(13, "Permission denied")
-
-    try:
-        enum = SensorEnumerator()
-        with patch.object(Path, 'exists', side_effect=_denied), \
-             patch.object(Path, 'glob', side_effect=_denied):
-            enum._discover_rapl()
-        return _ok("_discover_rapl swallowed PermissionError")
-    except (PermissionError, OSError) as e:
-        return _bad(f"_discover_rapl crashed on permission denial: {e}")
-    except Exception as e:
-        return _err(f"{type(e).__name__}: {e}")
-
-
-def probe_canvas_size_stable(_platform, device) -> ProbeResult:
-    """Repeated fbl_to_resolution calls return the same value.
-
-    Caught #137 satoru8 territory: cache-stale on rotation/handshake
-    re-reads.  v9.5.4+ fix should make every lookup deterministic.
-    """
-    from trcc.core.models import fbl_to_resolution
-    a = fbl_to_resolution(device.fbl, 0)
-    b = fbl_to_resolution(device.fbl, 0)
-    if a != b:
-        return _bad(f"FBL={device.fbl} drifted: {a} → {b}")
-    if a[0] == 0 or a[1] == 0:
-        return _bad(f"FBL={device.fbl} resolved to zero-dim {a}")
-    return _ok(f"FBL={device.fbl} → {a} (stable)")
-
-
-def probe_handshake_idempotent(_platform, device) -> ProbeResult:
-    """Calling handshake() twice in a row returns the same resolution."""
-    proto = _make_protocol(device)
-    if proto is None:
-        return _skip(f"protocol={device.protocol} not wired in this harness")
-    try:
-        first = proto.handshake()
-        second = proto.handshake()
-    except Exception as e:
-        return _err(f"handshake raised: {type(e).__name__}: {e}")
-    finally:
-        proto.close()
-
-    if first is None or second is None:
-        return _bad(f"handshake returned None (1st={first}, 2nd={second})")
-    if device.protocol == "led":
-        if first.model_id != second.model_id:
-            return _bad(f"LED model_id drift: {first.model_id} → {second.model_id}")
-    else:
-        if first.resolution != second.resolution:
-            return _bad(f"resolution drift: {first.resolution} → {second.resolution}")
-    return _ok("two consecutive handshakes returned identical results")
-
-
-def probe_windows_wmi_coinit(_platform, _device) -> ProbeResult:
-    """Every WMI call site initializes COM for its thread.
-
-    Caught #131 lallemandgianni: ``wmi.x_wmi_uninitialised_thread`` on
-    ``trcc detect`` because ``wmi.WMI()`` was called from a worker thread
-    without ``pythoncom.CoInitialize()`` first.  Reporter even submitted a
-    fix.  This probe statically scans every Windows-specific source file,
-    finds each ``wmi.WMI()`` call site, and asserts that
-    ``pythoncom.CoInitialize`` appears in the same module.
-    """
-    import re
-    src_root = _REPO / "src" / "trcc"
-    helper = "_windows_wmi.py"
-    bad_files: list[str] = []
-    for path in src_root.rglob("*.py"):
-        if path.name == helper:
-            continue
-        if "next" in path.parts:
-            continue  # next/ is a separate rebuild tree
-        text = path.read_text()
-        if re.search(r"\bwmi\.WMI\s*\(", text):
-            bad_files.append(path.relative_to(_REPO).as_posix())
-    if bad_files:
-        return _bad(
-            "wmi.WMI(...) called outside _windows_wmi.wmi_handle helper: "
-            + ", ".join(bad_files)
-        )
-    return _ok("all WMI calls go through _windows_wmi.wmi_handle()")
-
-
-def probe_close_then_send(_platform, device) -> ProbeResult:
-    """Close + handshake + send (sleep/resume cycle, Tee86 #144 territory)."""
-    proto = _make_protocol(device)
-    if proto is None:
-        return _skip(f"protocol={device.protocol} not wired in this harness")
-    try:
-        first = proto.handshake()
-        if first is None:
-            return _err("first handshake returned None")
-        proto.close()
-        second = proto.handshake()
-        if second is None:
-            return _bad("post-close handshake returned None")
-        if device.protocol == "led":
-            return _ok("LED close+re-handshake cycle clean (no send_data probe)")
-        w, h = second.resolution if second.resolution else (0, 0)
-        if w == 0 or h == 0:
-            return _bad(f"post-close handshake resolution {second.resolution}")
-        sent = proto.send_data(b'\x00' * (w * h * 2), w, h)
-        if not sent:
-            return _bad("post-close send_data returned False")
-        return _ok("close → handshake → send_data clean")
-    except Exception as e:
-        return _err(f"{type(e).__name__}: {e}")
-    finally:
-        proto.close()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Probe wiring helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _is_linux_platform(platform) -> bool:
     return platform is not None and "Linux" in type(platform).__name__
 
 
-def _make_protocol(device):
-    """Build a real Protocol for ``device`` with noop transports wired up.
+def _is_windows_platform(platform) -> bool:
+    return platform is not None and "Windows" in type(platform).__name__
 
-    Returns the protocol instance or None if the protocol isn't wired.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Synthetic handshake builders — byte shapes mirror the geometry tests
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# These reproduce exactly what a device reports at handshake so connect()
+# parses a real PM/FBL.  Shapes are copied from the passing geometry
+# tests (test_{scsi,hid,bulk,ly}_lcd_geometry / test_led_send), kept in
+# sync by referencing the magic constants from the device modules.
+
+_SCSI_POLL_SIZE = 0xE100
+
+
+def _scsi_handshake(fbl: int) -> bytes:
+    """SCSI poll response — FBL byte at offset 0."""
+    resp = bytearray(_SCSI_POLL_SIZE)
+    resp[0] = fbl
+    return bytes(resp)
+
+
+def _hid_type2_handshake(pm: int = 32, sub: int = 0) -> bytes:
+    """HID Type 2 ("H" variant) handshake — magic + PM/SUB, resp[12]=1."""
+    resp = bytearray(512)
+    resp[0:4] = _TYPE2_MAGIC
+    resp[4] = sub
+    resp[5] = pm
+    resp[12] = 0x01   # required by the validator
+    return bytes(resp)
+
+
+def _hid_type3_handshake(fbl_indicator: int = 0x65) -> bytes:
+    """HID Type 3 ("ALi") handshake — validator wants resp[0] in {0x65, 0x66}."""
+    resp = bytearray(1024)
+    resp[0] = fbl_indicator
+    return bytes(resp)
+
+
+def _bulk_handshake(pm: int = 32, sub: int = 0) -> bytes:
+    """USBLCDNew bulk handshake — PM at resp[24] (must be != 0), SUB at resp[36]."""
+    resp = bytearray(1024)
+    resp[24] = pm
+    resp[36] = sub
+    return bytes(resp)
+
+
+def _ly_handshake(resp20: int = 1, resp22: int = 0, resp36: int = 0) -> bytes:
+    """LY handshake — validator wants resp[0]=3, resp[1]=0xFF, resp[8]=1."""
+    resp = bytearray(64)
+    resp[0] = 3
+    resp[1] = 0xFF
+    resp[8] = 1
+    resp[20] = resp20
+    resp[22] = resp22
+    resp[36] = resp36
+    return bytes(resp)
+
+
+def _led_handshake(pm: int = 32, sub: int = 0) -> bytes:
+    """LED HID handshake — magic + PM/SUB, resp[12]=1."""
+    resp = bytearray(_LED_REPORT_SIZE)
+    resp[0:4] = _LED_MAGIC
+    resp[4] = sub
+    resp[5] = pm
+    resp[12] = 1
+    return bytes(resp)
+
+
+def _hid_type3_ack() -> bytes:
+    """HID Type 3 per-frame ACK — ``send()`` reads this off EP_READ and
+    treats any non-empty response as success.  Real hardware returns it;
+    the fake transport must too, or the send path can't be exercised."""
+    return b"\x01" * _TYPE3_ACK_SIZE
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Wire drivers — one Strategy per Wire, dispatched by the same enum the
+# production DeviceFactory uses.  Each knows how to make the right fake
+# transport and prime ONE handshake onto its read_script.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _new_scsi_transport() -> FakeScsiTransport:
+    return FakeScsiTransport()
+
+
+def _new_bulk_transport() -> FakeBulkTransport:
+    return FakeBulkTransport()
+
+
+def _prime_scsi(transport: Any, info: ProductInfo) -> None:
+    transport.read_script.append(_scsi_handshake(info.fbl or 100))
+
+
+def _prime_hid(transport: Any, info: ProductInfo) -> None:
+    resp = (_hid_type3_handshake() if info.device_type == 3
+            else _hid_type2_handshake())
+    transport.read_script.append(resp)
+
+
+def _prime_bulk(transport: Any, _info: ProductInfo) -> None:
+    transport.read_script.append(_bulk_handshake())
+
+
+def _prime_ly(transport: Any, _info: ProductInfo) -> None:
+    transport.read_script.append(_ly_handshake())
+
+
+def _prime_led(transport: Any, _info: ProductInfo) -> None:
+    transport.read_script.append(_led_handshake())
+
+
+def _noop_send_prime(_transport: Any, _info: ProductInfo) -> None:
+    """Most wires' ``send()`` only writes — nothing to script."""
+
+
+def _prime_hid_send(transport: Any, info: ProductInfo) -> None:
+    """HID Type 3 ``send()`` reads a per-frame ACK; script one."""
+    if info.device_type == 3:
+        transport.read_script.append(_hid_type3_ack())
+
+
+@dataclass(slots=True, frozen=True)
+class WireDriver:
+    """Build + prime a fake-transport handshake for one Wire family.
+
+    ``make_transport`` returns the fake the wire's ``Device`` subclass
+    reads through; ``prime`` appends exactly one synthetic handshake to
+    its ``read_script`` (call once per ``connect()``); ``prime_send``
+    appends whatever reads that wire's ``send()`` consumes (default
+    none — only HID Type 3 reads a per-frame ACK).
     """
-    from noop_transports import (  # type: ignore[import-not-found]
-        NoopBulkLikeDevice, NoopScsiTransport, NoopUsbTransport,
-        build_hid_type2_response, build_hid_type3_response,
-        build_led_response,
-    )
-    # factory must import before BulkProtocol/LyProtocol — it registers all
-    # protocol subclasses at the bottom of its module body, so importing the
-    # subclass modules first triggers the partial-init circular ImportError.
-    from trcc.adapters.device.factory import DeviceProtocolFactory
-    from trcc.adapters.device.bulk_protocol import BulkProtocol
-    from trcc.adapters.device.ly_protocol import LyProtocol
-    from trcc.core.models import DetectedDevice, DeviceInfo, fbl_to_resolution
+    make_transport: Callable[[], Any]
+    prime: Callable[[Any, ProductInfo], None]
+    prime_send: Callable[[Any, ProductInfo], None] = _noop_send_prime
 
-    proto_name = device.protocol
 
-    if proto_name == "scsi":
-        DeviceProtocolFactory.set_scsi_transport(
-            lambda *_a, **_k: NoopScsiTransport(fbl=device.fbl)
-        )
-    elif proto_name == "hid":
-        resp = (build_hid_type3_response(fbl=device.fbl)
-                if device.device_type == 3
-                else build_hid_type2_response(pm=32, sub=0))
-        DeviceProtocolFactory.create_usb_transport = staticmethod(  # type: ignore[method-assign]
-            lambda vid, pid, *, usb_address=None: NoopUsbTransport(resp)
-        )
-    elif proto_name == "led":
-        DeviceProtocolFactory.create_usb_transport = staticmethod(  # type: ignore[method-assign]
-            lambda vid, pid, *, usb_address=None: NoopUsbTransport(
-                build_led_response(pm=32, sub=0))
-        )
-    elif proto_name in ("bulk", "ly"):
-        cls = BulkProtocol if proto_name == "bulk" else LyProtocol
-        resolution = fbl_to_resolution(device.fbl, 32)
-        cls._make_device = staticmethod(  # type: ignore[method-assign]
-            lambda vid, pid, *, usb_address=None: NoopBulkLikeDevice(
-                vid, pid, usb_address=usb_address, resolution=resolution)
-        )
-    else:
+_WIRE_DRIVERS: dict[Wire, WireDriver] = {
+    Wire.SCSI: WireDriver(_new_scsi_transport, _prime_scsi),
+    Wire.HID:  WireDriver(_new_bulk_transport, _prime_hid, _prime_hid_send),
+    Wire.BULK: WireDriver(_new_bulk_transport, _prime_bulk),
+    Wire.LY:   WireDriver(_new_bulk_transport, _prime_ly),
+    Wire.LED:  WireDriver(_new_bulk_transport, _prime_led),
+}
+
+
+def _build_device(info: ProductInfo):
+    """Construct a Device the way the composition root does.
+
+    Returns ``(device, transport, driver)`` or ``None`` if the wire has
+    no driver wired in this harness.  The transport is handed back so the
+    probe can re-prime it before each ``connect()``.
+    """
+    driver = _WIRE_DRIVERS.get(info.wire)
+    if driver is None:
         return None
+    from trcc.adapters.device import DeviceFactory  # fires @register imports
 
-    DeviceProtocolFactory._protocols.clear()
+    transport = driver.make_transport()
+    device_cls = DeviceFactory.for_wire(info.wire)
+    device = device_cls(info, transport)
+    return device, transport, driver
 
-    detected = DetectedDevice(
-        vid=device.vid if hasattr(device, 'vid') else 0,
-        pid=device.pid if hasattr(device, 'pid') else 0,
-        vendor_name=device.vendor, product_name=device.product,
-        usb_path=f"usb:{0xffff & getattr(device, 'vid', 0):04x}",
-        scsi_device="/dev/sg0" if proto_name == "scsi" else None,
-        protocol=proto_name, device_type=device.device_type,
-        implementation=device.implementation,
-        model=device.model, button_image=device.button_image,
-    )
-    info = DeviceInfo.from_detected(detected)
-    return DeviceProtocolFactory.create_protocol(info)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Probes
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Each probe takes (platform, info) and returns ProbeResult.  ``info`` is
+# the ProductInfo registry entry — it carries .wire / .fbl / .device_type
+# / .key / .vid / .pid / .product directly, so no wrapper view is needed.
+
+
+def probe_video_size_zero(_platform, _info) -> ProbeResult:
+    """VideoDecoder must guard against a zero dimension in ``size``.
+
+    Caught #136 questist territory.  ``_FRAME_SIZE_RGB24(0, h) == 0`` then
+    ``len(raw) % 0`` raises ZeroDivisionError — there is no positive-dim
+    guard on ``size`` today, so this reproduces a live latent crash.
+    """
+    from unittest.mock import patch
+
+    from trcc.services.media import ThemeError, VideoDecoder
+
+    def _fake_run(*_a, **_k):
+        class _R:
+            returncode = 0
+            stdout = b""
+            stderr = b""
+        return _R()
+
+    try:
+        with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
+             patch("trcc.services.media._ffmpeg_available", return_value=True), \
+             patch.object(Path, "exists", return_value=True):
+            VideoDecoder(Path("/tmp/x.mp4"), size=(0, 480)).decode()
+        return _bad("VideoDecoder accepted size=(0,480) silently — "
+                    "no positive-dimension guard")
+    except ZeroDivisionError:
+        return _bad("ZeroDivisionError on size=(0,480): len(raw) % frame_size "
+                    "with frame_size=0 — no zero-dim guard on size")
+    except (ValueError, ThemeError) as e:
+        return _ok(f"VideoDecoder rejects zero-dim size cleanly: {e}")
+    except Exception as e:
+        return _err(f"{type(e).__name__}: {e}")
+
+
+def probe_video_size_portrait(_platform, _info) -> ProbeResult:
+    """Portrait ``size`` decodes the expected frame count without collapse."""
+    from unittest.mock import patch
+
+    from trcc.services.media import VideoDecoder
+
+    def _fake_run(*_a, **_k):
+        class _R:
+            returncode = 0
+            stdout = b"\x00" * (320 * 480 * 3)  # one 320x480 RGB24 frame
+            stderr = b""
+        return _R()
+
+    try:
+        with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
+             patch("trcc.services.media._ffmpeg_available", return_value=True), \
+             patch.object(Path, "exists", return_value=True):
+            frames = VideoDecoder(Path("/tmp/x.mp4"), size=(320, 480)).decode()
+        if len(frames) == 0:
+            return _bad("portrait 320x480 decoded zero frames — pipeline drops portrait")
+        return _ok(f"portrait 320x480 → {len(frames)} frame(s)")
+    except Exception as e:
+        return _err(f"{type(e).__name__}: {e}")
+
+
+def probe_factory_resolves(_platform, info: ProductInfo) -> ProbeResult:
+    """Every registry wire resolves to a concrete Device subclass.
+
+    The OCP invariant: a registry row's ``wire`` must dispatch through
+    ``DeviceFactory.for_wire`` to a real ``Device``.  A registry entry
+    for a wire nobody registered would crash ``App.attach`` at runtime —
+    this catches it statically across the whole registry.
+    """
+    from trcc.adapters.device import DeviceFactory
+    from trcc.core.errors import DeviceNotFoundError
+    from trcc.core.ports import Device
+
+    try:
+        cls = DeviceFactory.for_wire(info.wire)
+    except DeviceNotFoundError:
+        return _bad(f"wire={info.wire.value} has no registered Device subclass "
+                    "— App.attach would crash for this product")
+    except Exception as e:
+        return _err(f"{type(e).__name__}: {e}")
+
+    if not (isinstance(cls, type) and issubclass(cls, Device)):
+        return _bad(f"for_wire({info.wire.value}) returned non-Device {cls!r}")
+    return _ok(f"wire={info.wire.value} → {cls.__name__}")
+
+
+def probe_sensor_read_permission(platform, _info) -> ProbeResult:
+    """hwmon sysfs leaf reads survive PermissionError.
+
+    Caught #139 Zombie-hive: a pipx install without ``trcc setup-udev``
+    hit PermissionError reading ``/sys`` and the GUI launch crashed.  The
+    live guard is ``hwmon._read_text`` catching ``OSError`` (PermissionError's
+    parent); ``_read_int`` rides on top of it.  Narrowing that except would
+    reintroduce the crash.
+    """
+    from unittest.mock import patch
+
+    if not _is_linux_platform(platform):
+        return _skip("hwmon sysfs is Linux-only")
+
+    from trcc.adapters.sensors import hwmon
+
+    def _denied(*_a, **_k):
+        raise PermissionError(13, "Permission denied")
+
+    probe_path = Path("/sys/class/hwmon/hwmon0/temp1_input")
+    try:
+        with patch.object(Path, "read_text", _denied):
+            text_val = hwmon._read_text(probe_path)
+            int_val = hwmon._read_int(probe_path)
+    except (PermissionError, OSError) as e:
+        return _bad(f"hwmon leaf read crashed on PermissionError: {e}")
+    except Exception as e:
+        return _err(f"{type(e).__name__}: {e}")
+
+    if text_val is None and int_val is None:
+        return _ok("hwmon _read_text/_read_int swallow PermissionError → None")
+    return _bad(f"hwmon read returned {text_val!r}/{int_val!r} under denial "
+                "instead of None")
+
+
+def probe_canvas_size_stable(_platform, info: ProductInfo) -> ProbeResult:
+    """Repeated fbl_to_resolution calls return the same non-zero value.
+
+    Caught #137 satoru8 territory: cache-stale on rotation/handshake
+    re-reads.  Every lookup must be deterministic.
+    """
+    from trcc.core.protocol import fbl_to_resolution
+
+    if info.fbl is None:
+        return _skip(f"{info.key} has no static FBL (resolution is handshake-derived)")
+    a = fbl_to_resolution(info.fbl, 0)
+    b = fbl_to_resolution(info.fbl, 0)
+    if a != b:
+        return _bad(f"FBL={info.fbl} drifted: {a} → {b}")
+    if a[0] == 0 or a[1] == 0:
+        return _bad(f"FBL={info.fbl} resolved to zero-dim {a}")
+    return _ok(f"FBL={info.fbl} → {a} (stable)")
+
+
+def probe_handshake_idempotent(_platform, info: ProductInfo) -> ProbeResult:
+    """connect() twice in a row returns the same resolution / model_id."""
+    built = _build_device(info)
+    if built is None:
+        return _skip(f"wire={info.wire.value} not wired in this harness")
+    device, transport, driver = built
+    try:
+        driver.prime(transport, info)
+        first = device.connect()
+        driver.prime(transport, info)
+        second = device.connect()
+    except Exception as e:
+        return _err(f"connect raised: {type(e).__name__}: {e}")
+    finally:
+        device.disconnect()
+
+    if first is None or second is None:
+        return _bad(f"connect returned None (1st={first}, 2nd={second})")
+    if info.kind.value == "led":
+        if first.model_id != second.model_id:
+            return _bad(f"LED model_id drift: {first.model_id} → {second.model_id}")
+    elif first.resolution != second.resolution:
+        return _bad(f"resolution drift: {first.resolution} → {second.resolution}")
+    return _ok("two consecutive connects returned identical results")
+
+
+def probe_close_then_send(_platform, info: ProductInfo) -> ProbeResult:
+    """connect → disconnect → connect → send (sleep/resume cycle, #144 territory)."""
+    built = _build_device(info)
+    if built is None:
+        return _skip(f"wire={info.wire.value} not wired in this harness")
+    device, transport, driver = built
+    try:
+        driver.prime(transport, info)
+        first = device.connect()
+        if first is None:
+            return _err("first connect returned None")
+        device.disconnect()
+        driver.prime(transport, info)
+        second = device.connect()
+        if second is None:
+            return _bad("post-disconnect connect returned None")
+        if info.kind.value == "led":
+            return _ok("LED disconnect+re-connect cycle clean (no frame send)")
+        w, h = second.resolution if second.resolution else (0, 0)
+        if w == 0 or h == 0:
+            return _bad(f"post-disconnect resolution {second.resolution}")
+        driver.prime_send(transport, info)
+        sent = device.send(b"\x00" * (w * h * 2))
+        if not sent:
+            return _bad("post-disconnect send returned False")
+        return _ok("connect → disconnect → connect → send clean")
+    except Exception as e:
+        return _err(f"{type(e).__name__}: {e}")
+    finally:
+        device.disconnect()
+
+
+def probe_windows_wmi_coinit(platform, _info) -> ProbeResult:
+    """Every module calling ``wmi.WMI(`` also inits COM in-module (#131).
+
+    Caught #131 lallemandgianni: ``wmi.x_wmi_uninitialised_thread`` because
+    ``wmi.WMI()`` ran on a worker thread without ``pythoncom.CoInitialize()``.
+    Sensor WMI (_lhm / _msacpi) runs on the polling thread, so a call site
+    without CoInitialize in scope is the live regression shape.  Gated to
+    Windows context — it's a COM invariant, irrelevant on a Linux run.
+    """
+    if not _is_windows_platform(platform):
+        return _skip("WMI / COM init is Windows-only")
+
+    src_root = _REPO / "src" / "trcc"
+    offenders: list[str] = []
+    for path in src_root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not re.search(r"\bwmi\.WMI\s*\(", text):
+            continue
+        if "CoInitialize" not in text:
+            offenders.append(path.relative_to(_REPO).as_posix())
+    if offenders:
+        return _bad(
+            "wmi.WMI(...) called without pythoncom.CoInitialize in-module "
+            f"(#131 worker-thread risk): {', '.join(sorted(offenders))}"
+        )
+    return _ok("every wmi.WMI() call site initializes COM in its module")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -404,33 +560,33 @@ def _make_protocol(device):
 class Probe:
     name: str
     description: str
-    runner: Callable[[Any, Any], ProbeResult]
+    runner: Callable[[Any, ProductInfo], ProbeResult]
 
 
 PROBES: list[Probe] = [
-    Probe("video.target.zero",
-          "VideoDecoder guards against zero-dim target_size",
-          probe_video_target_zero),
-    Probe("video.target.portrait",
+    Probe("video.size.zero",
+          "VideoDecoder guards against a zero dimension in size",
+          probe_video_size_zero),
+    Probe("video.size.portrait",
           "VideoDecoder handles portrait dimensions",
-          probe_video_target_portrait),
-    Probe("model.deviceinfo.usb_address",
-          "DeviceInfo carries the usb_address field for non-SCSI devices",
-          probe_deviceinfo_usb_address),
-    Probe("sensors.rapl.permission",
-          "RAPL discovery survives PermissionError on /sys",
-          probe_rapl_permission),
+          probe_video_size_portrait),
+    Probe("device.factory.resolves",
+          "every registry wire resolves to a concrete Device subclass",
+          probe_factory_resolves),
+    Probe("sensors.read.permission",
+          "hwmon sysfs leaf reads survive PermissionError (#139)",
+          probe_sensor_read_permission),
     Probe("geometry.canvas_size.stable",
           "fbl_to_resolution returns deterministic results across re-reads",
           probe_canvas_size_stable),
     Probe("device.handshake.idempotent",
-          "handshake() returns same value across repeated calls",
+          "connect() returns same value across repeated calls",
           probe_handshake_idempotent),
     Probe("device.close_then_send",
-          "close → handshake → send (sleep/resume cycle)",
+          "connect → disconnect → connect → send (sleep/resume cycle)",
           probe_close_then_send),
     Probe("windows.wmi.coinit",
-          "every WMI call site has pythoncom.CoInitialize in scope (#131)",
+          "every WMI call site inits COM in-module (#131)",
           probe_windows_wmi_coinit),
 ]
 
@@ -446,11 +602,10 @@ def _parse_vid_pid(spec: str) -> tuple[int, int]:
     return int(parts[0], 16), int(parts[1], 16)
 
 
-def _select_devices(spec: str):
-    from trcc.core.models import ALL_DEVICES
+def _select_devices(spec: str) -> list[tuple[tuple[int, int], ProductInfo]]:
     items = sorted(ALL_DEVICES.items())
     if spec == "all":
-        return [(vp, e) for vp, e in items]
+        return list(items)
     vid, pid = _parse_vid_pid(spec)
     if (vid, pid) not in ALL_DEVICES:
         raise SystemExit(
@@ -463,62 +618,50 @@ def _select_devices(spec: str):
 # ─────────────────────────────────────────────────────────────────────────────
 # trcc report parser
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Distro string → which Platform subclass to ask the harness to instantiate.
-# Match by substring; first hit wins.  "linux" is the catch-all default.
-_DISTRO_TO_OS: tuple[tuple[str, str], ...] = (
-    ("windows",  "windows"),
-    ("macos",    "macos"),
-    ("darwin",   "macos"),
-    ("freebsd",  "bsd"),
-    ("openbsd",  "bsd"),
-    ("netbsd",   "bsd"),
-    ("dragonfly", "bsd"),
-)
+#
+# debug_report.py emits a ``## Platform`` block of ``key  value`` rows
+# (system / distro / python / …) and a ``## Devices`` block of
+# ``vid:pid  product  wire=…`` rows.  We read the ``system`` field
+# (py_platform.system(): Linux / Windows / Darwin / FreeBSD) for the OS
+# and every registry-known VID:PID for the device matrix.
 
 
-def _parse_report(text: str) -> tuple[str, list[tuple[int, int]]]:
-    """Pull (os_label, [(vid, pid), ...]) out of a ``trcc report`` dump.
+def _os_from_report(text: str) -> str:
+    """Map the report's ``system`` / ``distro`` fields to an OS label."""
+    system_match = re.search(r"^\s*system\s+(.+)$", text, re.MULTILINE)
+    distro_match = re.search(r"^\s*distro\s+(.+)$", text, re.MULTILINE)
+    haystack = " ".join(
+        m.group(1).strip().lower()
+        for m in (system_match, distro_match) if m
+    )
+    if "windows" in haystack:
+        return "windows"
+    if "darwin" in haystack or "macos" in haystack:
+        return "macos"
+    if "bsd" in haystack:
+        return "bsd"
+    return "linux"
 
-    The diagnostics tool emits a Version section with ``Distro:`` and an
-    ``lsusb (filtered)`` section like::
 
-        Bus 002 Device 003: ID 87ad:70db ChiZhu Tech ...
-
-    We grab the first Distro line and every VID:PID-shaped pair we see.
-    Anything ambiguous defaults to ``linux``.
-    """
-    import re
-
-    distro_match = re.search(r"Distro:\s*(.+)", text)
-    distro = (distro_match.group(1).strip().lower() if distro_match else "")
-    os_label = "linux"
-    for needle, label in _DISTRO_TO_OS:
-        if needle in distro:
-            os_label = label
-            break
-
-    # VID:PID — accept ``ID 87ad:70db`` (lsusb form) and bare ``87ad:70db`` lines.
+def _vid_pids_from_report(text: str) -> list[tuple[int, int]]:
+    """Every distinct VID:PID-shaped pair in the report, in first-seen order."""
     pairs: list[tuple[int, int]] = []
     seen: set[tuple[int, int]] = set()
     for match in re.finditer(r"\b([0-9a-fA-F]{4}):([0-9a-fA-F]{4})\b", text):
-        try:
-            vp = (int(match.group(1), 16), int(match.group(2), 16))
-        except ValueError:
-            continue
+        vp = (int(match.group(1), 16), int(match.group(2), 16))
         if vp not in seen:
             seen.add(vp)
             pairs.append(vp)
+    return pairs
 
-    return os_label, pairs
 
-
-def _select_devices_from_report(report_path: Path):
+def _select_devices_from_report(
+    report_path: Path,
+) -> tuple[str, list[tuple[tuple[int, int], ProductInfo]]]:
     """Run probes against every registered device the report mentions."""
-    from trcc.core.models import ALL_DEVICES
-
     text = report_path.read_text(errors="replace")
-    os_label, pairs = _parse_report(text)
+    os_label = _os_from_report(text)
+    pairs = _vid_pids_from_report(text)
     matched = [(vp, ALL_DEVICES[vp]) for vp in pairs if vp in ALL_DEVICES]
 
     if not matched:
@@ -561,7 +704,7 @@ def main() -> int:
                    help="VID:PID hex pair (e.g. 87ad:70db) or 'all'")
     p.add_argument("--from-report", type=Path, default=None,
                    help="path to a `trcc report` dump — overrides --os and "
-                        "--device with the Distro and VID:PIDs found inside")
+                        "--device with the system and VID:PIDs found inside")
     p.add_argument("--probe", default=None,
                    help="run only the named probe (see --list-probes)")
     p.add_argument("--list-probes", action="store_true")
@@ -574,7 +717,8 @@ def main() -> int:
     if args.from_report:
         os_label, devices = _select_devices_from_report(args.from_report)
         print(f"{_BOLD}from-report:{_RESET} {args.from_report}")
-        print(f"  → os={os_label}, devices={[f'{v:04x}:{p:04x}' for (v, p), _ in devices]}\n")
+        print(f"  → os={os_label}, devices="
+              f"{[f'{v:04x}:{p:04x}' for (v, p), _ in devices]}\n")
     else:
         os_label = args.os
         devices = _select_devices(args.device)
@@ -595,19 +739,13 @@ def main() -> int:
     counts = {PASS: 0, BAD: 0, ERROR: 0, SKIP: 0}
     bad_rows: list[tuple[str, str, str]] = []
 
-    for (vid, pid), entry in devices:
-        # Each probe wants device.vid/.pid too — slot them on (frozen-friendly
-        # since DeviceProfile is whatever the registry returns).
-        device = entry  # noqa: F841 — alias for readability
-        device_label = f"{vid:04x}:{pid:04x} {entry.product} ({entry.protocol.upper()})"
+    for (vid, pid), info in devices:
+        device_label = f"{vid:04x}:{pid:04x} {info.product} ({info.wire.value.upper()})"
         print(f"{_BOLD}Device:{_RESET} {device_label}")
-
-        # Inject vid/pid onto entry view for probes (read-only access).
-        device_view = _DeviceView(entry, vid, pid)
 
         for probe in probes:
             try:
-                result = probe.runner(platform, device_view)
+                result = probe.runner(platform, info)
             except Exception as e:
                 detail = f"{type(e).__name__}: {e}"
                 if args.verbose:
@@ -633,31 +771,6 @@ def main() -> int:
             print(f"  • {dev} → {probe_name}: {detail}")
     print("=" * 76)
     return 1 if counts[BAD] else 0
-
-
-@dataclass(slots=True, frozen=True)
-class _DeviceView:
-    """Wraps a DeviceProfile entry with vid/pid attached for probes."""
-    _entry: Any
-    vid: int
-    pid: int
-
-    @property
-    def protocol(self): return self._entry.protocol
-    @property
-    def fbl(self): return self._entry.fbl
-    @property
-    def device_type(self): return self._entry.device_type
-    @property
-    def vendor(self): return self._entry.vendor
-    @property
-    def product(self): return self._entry.product
-    @property
-    def implementation(self): return self._entry.implementation
-    @property
-    def model(self): return self._entry.model
-    @property
-    def button_image(self): return self._entry.button_image
 
 
 if __name__ == "__main__":

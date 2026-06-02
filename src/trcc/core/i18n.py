@@ -1,36 +1,26 @@
-"""Internationalization strings for TRCC-Linux GUI.
+"""Internationalization — language codes + translation tables + tr() lookup.
 
-Standard i18n pattern: TRANSLATIONS[lang_code][english_string] → translated string.
-tr('English text', lang) looks up the translation, falling back to English.
+Standard i18n pattern: ``TRANSLATIONS[lang][english_key] -> translated``,
+with English itself living in the table for symmetry and ``tr()`` falling
+back to English when a key is missing in another language (and to the key
+itself when English also lacks it — the key string is itself English).
 
-All 38 language codes use ISO 639-1 (v8.3.10+):
-    'zh' = Simplified Chinese, 'zh_TW' = Traditional Chinese,
-    'en' = English, 'de' = German, 'ru' = Russian, 'fr' = French,
-    'pt' = Portuguese, 'ja' = Japanese, 'es' = Spanish, 'ko' = Korean,
-    'it' = Italian, 'nl' = Dutch, 'pl' = Polish, 'tr' = Turkish,
-    'ar' = Arabic, 'hi' = Hindi, 'th' = Thai, 'vi' = Vietnamese,
-    'id' = Indonesian, 'cs' = Czech, 'sv' = Swedish, 'da' = Danish,
-    'no' = Norwegian, 'fi' = Finnish, 'hu' = Hungarian, 'ro' = Romanian,
-    'uk' = Ukrainian, 'el' = Greek, 'he' = Hebrew, 'ms' = Malay,
-    'bn' = Bengali, 'ur' = Urdu, 'fa' = Farsi, 'tl' = Tagalog,
-    'ta' = Tamil, 'pa' = Punjabi, 'sw' = Swahili, 'my' = Burmese
+All 38 language codes use ISO 639-1.  Add a language: add a new entry to
+``LANGUAGE_NAMES`` (native spelling, used by language pickers) and a new
+sub-dict to ``TRANSLATIONS`` (just the keys you've translated; missing keys
+fall back to English automatically).
 
-Coordinate tuples: (x, y, w, h, font_pt) — estimated from PNG pixel positions.
-    Panel dimensions for reference:
-    - Display mode panels (mask/bg/video/screencast): 351x100
-    - Overlay grid: 472x430
-    - Parameter panel: 230x374
-    - Theme browsers (local/online/gallery): 732x652
-    - Main view (CZTV): 1274x800
-    - Shortcuts: 230x430
+Data ported wholesale from legacy ``core/i18n.py`` — GUI coordinate tuples
+were stripped because next/ GUI uses Qt layouts instead of pixel positions.
 """
 from __future__ import annotations
 
+import logging
+
+log = logging.getLogger(__name__)
+
 # fmt: off
 
-# ---------------------------------------------------------------------------
-# Human-readable language names (for dropdown selector)
-# ---------------------------------------------------------------------------
 LANGUAGE_NAMES: dict[str, str] = {
     'zh': '简体中文',
     'zh_TW': '繁體中文',
@@ -72,9 +62,13 @@ LANGUAGE_NAMES: dict[str, str] = {
     'my': 'မြန်မာ',
 }
 
-# ---------------------------------------------------------------------------
-# Coordinate tuples — (x, y, w, h, font_pt)
-# ---------------------------------------------------------------------------
+
+# =========================================================================
+# Pixel-position constants (legacy GUI parity)
+# =========================================================================
+# Each tuple is (x, y, w, h, font_pt).  Used by next/ui/gui/trcc_app.py to
+# paint translated text on top of baked-PNG backgrounds at the Windows
+# TRCC coordinates.  Data only — no logic.
 
 # Gold title bar (P0CZTV / app_main_bg) — spans full width
 TITLE_BAR_POS = (30, 29, 250, 40, 28)
@@ -140,10 +134,10 @@ ABOUT_LANG_POS = (56, 413, 220, 22, 14)
 ABOUT_GPU_POS = (56, 460, 220, 22, 14)
 ABOUT_VERSION_POS = (1043, 741, 200, 22, 12)
 
-# ---------------------------------------------------------------------------
-# TRANSLATIONS — {lang_code: {english_string: translated_string}}
-# English keys are the canonical identifiers used by tr().
-# ---------------------------------------------------------------------------
+
+# =========================================================================
+# Translation tables — ``TRANSLATIONS[lang_code][english_key]``
+# =========================================================================
 TRANSLATIONS: dict[str, dict[str, str]] = {
     'zh': {
         'Layer Mask': '布局蒙板',
@@ -2089,18 +2083,95 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 # fmt: on
 
 
-def tr(key: str, lang: str) -> str:
-    """Look up a translation by English key, falling back to English."""
-    lang_table = TRANSLATIONS.get(lang)
-    if lang_table:
-        val = lang_table.get(key)
-        if val:
-            return val
-    # Fall back to English
-    en = TRANSLATIONS.get('en')
-    if en:
-        val = en.get(key)
-        if val:
-            return val
-    # Last resort: return the key itself (it IS English)
-    return key
+# =========================================================================
+# Lookup
+# =========================================================================
+
+
+def tr(key: str, lang: str = "en") -> str:
+    """Look up an English key in *lang*'s table.
+
+    Falls back to English when *lang* is missing or the key isn't
+    translated; falls back to the key itself if even English doesn't
+    have it (the key *is* English — this only happens for unregistered
+    strings, which are the bug to fix rather than the data to add).
+    """
+    log.debug("tr: key=%r lang=%s", key, lang)
+    table = TRANSLATIONS.get(lang)
+    if table is not None:
+        translated = table.get(key)
+        if translated:
+            return translated
+    english = TRANSLATIONS.get("en", {})
+    return english.get(key, key)
+
+
+def supported_languages() -> list[str]:
+    """ISO 639-1 codes for every language with at least one translation."""
+    log.info("supported_languages: called")
+    return sorted(TRANSLATIONS)
+
+
+def language_name(lang: str) -> str:
+    """Native-script name for a language code (e.g. 'zh' -> '简体中文').
+
+    Returns the code itself when unknown so UIs never crash on a stale
+    setting carried forward from an older release.
+    """
+    log.debug("language_name: lang=%s", lang)
+    return LANGUAGE_NAMES.get(lang, lang)
+
+
+# =========================================================================
+# Locale / asset-suffix maps (single source of truth)
+# =========================================================================
+
+
+# System locale prefix → ISO 639-1 language code.  Used by anything that
+# wants to derive the user's preferred UI language from
+# ``locale.getlocale()[0]`` (e.g. ``"zh_CN.UTF-8"`` → ``"zh"``).
+LOCALE_TO_LANG: dict[str, str] = {
+    "zh_CN": "zh",
+    "zh_TW": "zh_TW",
+    "en":    "en",
+    "de":    "de",
+    "es":    "es",
+    "fr":    "fr",
+    "pt":    "pt",
+    "ru":    "ru",
+    "ja":    "ja",
+    "ko":    "ko",
+}
+
+
+# Legacy C# asset suffix → ISO 639-1.  The Windows app shipped localized
+# PNGs with single-letter suffixes (e.g. ``P0CZTVd.png`` = German).  Used
+# by ``ui/gui/assets.py`` to translate ISO codes back into the suffix on
+# disk when looking up localized assets.
+LEGACY_TO_ISO: dict[str, str] = {
+    "":   "zh",
+    "tc": "zh_TW",
+    "d":  "de",
+    "e":  "ru",
+    "f":  "fr",
+    "p":  "pt",
+    "r":  "ja",
+    "x":  "es",
+    "h":  "ko",
+    "en": "en",
+}
+ISO_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_ISO.items()}
+
+
+def locale_to_lang(locale_prefix: str, default: str = "en") -> str:
+    """``getlocale()`` prefix → ISO 639-1 code, falling back to *default*."""
+    log.info("locale_to_lang: locale_prefix=%s default=%s",
+             locale_prefix, default)
+    return LOCALE_TO_LANG.get(locale_prefix, default)
+
+
+def iso_to_legacy_suffix(lang: str) -> str:
+    """ISO code → legacy C# asset suffix.  Unknown languages map to
+    themselves so callers always get a string back."""
+    log.debug("iso_to_legacy_suffix: lang=%s", lang)
+    return ISO_TO_LEGACY.get(lang, lang)

@@ -89,16 +89,13 @@ Repository = "https://github.com/Lexonight1/thermalright-trcc-linux"
 Issues = "https://github.com/Lexonight1/thermalright-trcc-linux/issues"
 
 [project.scripts]
-# `trcc` honors the TRCC_NEXT env var — unset = legacy, set = next/.
+# `trcc` runs the new top-level (formerly `trcc.next`).  The legacy tree
+# was moved to the `legacy` branch.
 trcc = "trcc._entry:main"
-trcc-gui = "trcc.ui.cli:gui"
-trcc-detect = "trcc.ui.cli:detect"
-trcc-test = "trcc.ui.cli:test_display"
-# Direct opt-in to next/ (doesn't touch TRCC_NEXT).
-trcc-next = "trcc.next.ui.cli.main:main"
+trcc-gui = "trcc.ui.cli.main:gui"
 
 [project.gui-scripts]
-trcc-lcd = "trcc.ui.cli:gui"
+trcc-lcd = "trcc.ui.cli.main:gui"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -179,24 +176,29 @@ ignore = [
     "B027",   # empty-method-without-abstract — Template Method default no-op hooks (configure_dpi, auto_setup, …) are intentional
 ]
 
-# Per-directory rules — legacy `src/trcc/` is scheduled for deletion in
-# Phase E (cutover to `src/trcc/next/`).  Retrofitting pathlib there is
-# debt-thrown-out, so PTH stays strict in `next/` only.  Note: ruff uses
-# gitignore-style globs, so `*` matches across slashes — we must list each
-# legacy subtree by name and skip top-level files (no PTH violations there).
+# Per-directory rules — legacy code lives under `src/trcc/legacy/` after
+# the cutover (formerly `src/trcc/{adapters,core,services,ui,...}`).
+# Retrofitting pathlib + SIM there is debt-thrown-out; PTH stays strict
+# on the new top-level (formerly `src/trcc/next/`).  Note: ruff uses
+# gitignore-style globs, so `*` matches across slashes.
 [tool.ruff.lint.per-file-ignores]
-# Legacy subtrees — PTH/SIM117/SIM115 retrofits would be discarded at Phase E cutover.
-# TID251 (banned-api: trcc.adapters.device) is UI-only — exempt non-UI src trees that
-# legitimately compose adapters.
-"src/trcc/adapters/**/*.py" = ["PTH", "SIM115", "SIM117", "TID251"]
-"src/trcc/core/**/*.py" = ["PTH", "SIM115", "SIM117", "TID251"]
-"src/trcc/install/**/*.py" = ["PTH", "SIM115", "SIM117", "TID251"]
-"src/trcc/services/**/*.py" = ["PTH", "SIM115", "SIM117", "TID251"]
-"src/trcc/ui/**/*.py" = ["PTH", "SIM115", "SIM117"]   # ← TID251 ENFORCED here
-# Legacy top-level files
+# Top-level files (kept across the cutover — pre-import logging shim,
+# entry dispatcher, version, package init)
 "src/trcc/__init__.py" = ["PTH", "SIM115", "SIM117", "TID251"]
 "src/trcc/__main__.py" = ["PTH", "SIM115", "SIM117", "TID251"]
 "src/trcc/__version__.py" = ["PTH", "SIM115", "SIM117", "TID251"]
+"src/trcc/_entry.py" = ["PTH", "SIM115", "SIM117", "TID251"]
+# New top-level (former next/) — TID251 enforced in ui/, exempt for
+# non-UI trees that legitimately compose adapters.
+"src/trcc/adapters/**/*.py" = ["TID251"]
+"src/trcc/core/**/*.py" = ["TID251"]
+"src/trcc/services/**/*.py" = ["TID251"]
+"src/trcc/app.py" = ["TID251"]      # composition root wires adapters
+"src/trcc/_boot.py" = ["TID251"]    # composition root
+"src/trcc/proxy.py" = ["TID251"]    # daemon proxy boundary
+"src/trcc/ipc.py" = ["TID251"]      # daemon IPC server
+"src/trcc/daemon.py" = ["TID251"]   # daemon process entry
+"src/trcc/ui/**/*.py" = []   # ← TID251 ENFORCED here
 # Tests — same rationale as legacy src; the d4e1b287 ruff expansion
 # (UP/B/SIM/PIE/RUF/FA/PTH) and 8ef3264c PEP 585/604 sweep didn't touch
 # tests/.  Soft-gate covers the families that fire there:
@@ -229,9 +231,6 @@ ignore = [
     "PIE807", "PIE808",
     "RUF013", "RUF015", "RUF043", "RUF059",
 ]
-"src/trcc/_entry.py" = ["PTH", "SIM115", "SIM117"]
-"src/trcc/conf.py" = ["PTH", "SIM115", "SIM117"]
-"src/trcc/ipc.py" = ["PTH", "SIM115", "SIM117"]
 
 # UI layer cannot reach past the Trcc seam — every device action goes
 # through trcc.lcd / trcc.led / trcc.control_center / trcc.probe / etc.

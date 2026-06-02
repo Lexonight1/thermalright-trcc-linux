@@ -30,17 +30,17 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from trcc.adapters.system import PlatformFactory
-from trcc.adapters.system.bsd_platform import BSDPlatform
-from trcc.adapters.system.linux_platform import LinuxPlatform
-from trcc.adapters.system.macos_platform import MacOSPlatform
-from trcc.adapters.system.windows_platform import WindowsPlatform
-from trcc.core.models import (
+from trcc.legacy.adapters.system import PlatformFactory
+from trcc.legacy.adapters.system.bsd_platform import BSDPlatform
+from trcc.legacy.adapters.system.linux_platform import LinuxPlatform
+from trcc.legacy.adapters.system.macos_platform import MacOSPlatform
+from trcc.legacy.adapters.system.windows_platform import WindowsPlatform
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     DetectedDevice,
     DeviceInfo,
 )
-from trcc.core.ports import Platform
+from trcc.legacy.core.ports import Platform
 
 
 # ── Result type — visual report at end ──────────────────────────────────
@@ -200,7 +200,7 @@ def check_platform_factory_registry() -> CheckResult:
 
 
 def check_platform_factory_dispatch() -> CheckResult:
-    """``PlatformFactory.current()`` returns a real Platform on the dev box.
+    """``trcc.legacy.adapters.system.PlatformFactory.current()`` returns a real Platform on the dev box.
 
     Validates the live dispatch path (``sys.platform → registry → make()``)
     that every composition root hits at startup.
@@ -218,7 +218,7 @@ def check_platform_factory_dispatch() -> CheckResult:
 
 def check_factory_registry_complete() -> CheckResult:
     """All 5 protocols (scsi, hid, bulk, ly, led) are factory-registered."""
-    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
     expected = {"scsi", "hid", "bulk", "ly", "led"}
     actual = set(DeviceProtocolFactory._PROTOCOL_REGISTRY)
     if missing := expected - actual:
@@ -235,7 +235,7 @@ def check_protocol_factory_subclasses() -> CheckResult:
     Catches anyone forgetting the ``@ProtocolFactory.register(name)`` line
     on a new protocol or removing one by accident.
     """
-    from trcc.adapters.device.factory import ProtocolFactory
+    from trcc.legacy.adapters.device.factory import ProtocolFactory
     expected = {"scsi", "hid", "bulk", "ly", "led"}
     actual = set(ProtocolFactory._registry)
     if missing := expected - actual:
@@ -255,7 +255,7 @@ def check_protocol_factory_for_info() -> CheckResult:
     produce. Locks the dispatch-by-name contract Phase 4 depends on.
     """
     from trcc.adapters.device.bulk_protocol import BulkProtocol
-    from trcc.adapters.device.factory import ProtocolFactory
+    from trcc.legacy.adapters.device.factory import ProtocolFactory
     from trcc.adapters.device.hid_protocol import HidProtocol
     from trcc.adapters.device.led_protocol import LedProtocol
     from trcc.adapters.device.ly_protocol import LyProtocol
@@ -293,7 +293,7 @@ def check_factory_lambdas_accept_deviceinfo() -> CheckResult:
     lambda reaches for a missing field would crash here, before any user
     plugs in a real device.
     """
-    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
 
     # Use the canonical conversion chokepoint so the DeviceInfo carries
     # ``usb_address`` exactly as a real detector would produce.

@@ -41,7 +41,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 sys.path.insert(0, str(_REPO))
-sys.path.insert(0, str(_REPO / "tests"))
+sys.path.insert(0, str(_REPO / "tests" / "legacy"))
 
 from noop_transports import (  # type: ignore[import-not-found]
     NoopBulkLikeDevice,
@@ -55,10 +55,10 @@ from noop_transports import (  # type: ignore[import-not-found]
 # factory must import first — it registers all protocol subclasses at the
 # bottom of its module body.  Pulling BulkProtocol/LyProtocol directly from
 # their modules before factory loads triggers a circular import.
-from trcc.adapters.device.factory import DeviceProtocolFactory
-from trcc.adapters.device.bulk_protocol import BulkProtocol
-from trcc.adapters.device.ly_protocol import LyProtocol
-from trcc.core.models import (
+from trcc.legacy.adapters.device.factory import DeviceProtocolFactory
+from trcc.legacy.adapters.device.bulk_protocol import BulkProtocol
+from trcc.legacy.adapters.device.ly_protocol import LyProtocol
+from trcc.legacy.core.models import (
     ALL_DEVICES,
     DetectedDevice,
     DeviceInfo,
@@ -100,7 +100,7 @@ def _wire_bulk_like(protocol_cls, fbl: int) -> None:
     transport-factory injection point used for SCSI/HID/LED doesn't reach
     them.  The cleanest seam is the protocol's ``_make_device`` staticmethod.
     """
-    from trcc.core.models import fbl_to_resolution
+    from trcc.legacy.core.models import fbl_to_resolution
     resolution = fbl_to_resolution(fbl, 32)
 
     def _factory(vid, pid, *, usb_address=None):

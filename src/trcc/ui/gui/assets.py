@@ -4,7 +4,7 @@ Centralizes all asset resolution — auto-appends .png for base names,
 handles localized variants, and provides pixmap loading.
 
 All GUI assets live in gui/assets/ and are extracted from Windows TRCC
-resources using tools/extract_resx_images.py.
+resources using dev/tools/extract_resx_images.py.
 """
 from __future__ import annotations
 
@@ -215,7 +215,7 @@ class Assets:
             return base_name
 
         # Map ISO code to legacy C# suffix for asset filenames
-        from trcc.core.models import ISO_TO_LEGACY
+        from trcc.core.i18n import ISO_TO_LEGACY
         suffix = ISO_TO_LEGACY.get(lang, lang)
 
         # Split extension if present, insert lang suffix before it

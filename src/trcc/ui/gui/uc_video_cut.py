@@ -9,10 +9,10 @@ and Theme.zt export.
 from __future__ import annotations
 
 import logging
-import os
 import struct
 import subprocess
 import tempfile
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import (
@@ -27,9 +27,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
-from trcc.core.models import panel_asset_dims
-from trcc.core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
-
+from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
+from ...core.models import panel_asset_dims
 from .assets import Assets
 from .base import make_icon_button
 
@@ -110,9 +109,9 @@ class ExportWorker(QThread):
             self.error.emit(str(e))
 
     def _do_export(self):
-        temp_dir = tempfile.mkdtemp(prefix='trcc_videocut_')
-        frames_dir = os.path.join(temp_dir, 'frames')
-        os.makedirs(frames_dir, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix='trcc_videocut_'))
+        frames_dir = temp_dir / 'frames'
+        frames_dir.mkdir(parents=True, exist_ok=True)
 
         duration_ms = self.end_ms - self.start_ms
         start_s = self.start_ms / 1000.0
@@ -136,7 +135,7 @@ class ExportWorker(QThread):
         if vf_filters:
             cmd.extend(['-vf', ','.join(vf_filters)])
         cmd.extend(['-f', 'image2', '-q:v', '5',
-                    os.path.join(frames_dir, '%04d.jpg')])
+                    str(frames_dir / '%04d.jpg')])
 
         self.progress.emit(5, "Extracting frames...")
         result = subprocess.run(cmd, capture_output=True, timeout=600,
@@ -146,32 +145,28 @@ class ExportWorker(QThread):
             return
 
         # Collect JPEG files (ffmpeg wrote them directly)
-        jpg_files = sorted(
-            f for f in os.listdir(frames_dir) if f.endswith('.jpg')
-        )
-        if not jpg_files:
+        jpg_paths = sorted(frames_dir.glob('*.jpg'))
+        if not jpg_paths:
             self.error.emit("No frames extracted")
             return
 
-        total = len(jpg_files)
+        total = len(jpg_paths)
         self.progress.emit(20, f"Packaging {total} frames...")
         jpeg_data_list = []
 
-        for i, jpg_name in enumerate(jpg_files):
-            jpg_path = os.path.join(frames_dir, jpg_name)
-            with open(jpg_path, 'rb') as fh:
-                jpeg_data_list.append(fh.read())
-            os.remove(jpg_path)
+        for i, jpg_path in enumerate(jpg_paths):
+            jpeg_data_list.append(jpg_path.read_bytes())
+            jpg_path.unlink()
             pct = 20 + int(60 * (i + 1) / total)
             if i % 10 == 0:
                 self.progress.emit(pct, f"Packaging {i+1}/{total}...")
 
         # Write Theme.zt
         self.progress.emit(85, "Writing Theme.zt...")
-        output_path = os.path.join(temp_dir, 'Theme.zt')
+        output_path = temp_dir / 'Theme.zt'
         frame_count = len(jpeg_data_list)
 
-        with open(output_path, 'wb') as f:
+        with output_path.open('wb') as f:
             # Magic byte
             f.write(struct.pack('B', 0xDC))
             # Frame count
@@ -186,11 +181,11 @@ class ExportWorker(QThread):
                 f.write(jpeg_bytes)
 
         self.progress.emit(100, "Done!")
-        self.finished.emit(output_path)
+        self.finished.emit(str(output_path))
 
         # Clean up frames dir (Theme.zt stays)
         try:
-            os.rmdir(frames_dir)
+            frames_dir.rmdir()
         except OSError:
             pass
 

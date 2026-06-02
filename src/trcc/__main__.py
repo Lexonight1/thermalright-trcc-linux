@@ -35,15 +35,19 @@ else:
     _rotating_handler_cls = logging.handlers.RotatingFileHandler
 
 
+_early_handler = _rotating_handler_cls(
+    _log_path, maxBytes=1_000_000, backupCount=3,
+    encoding='utf-8', errors='replace',
+)
+# Tag the early shim so ``adapters.infra.logging.configure_logging`` knows
+# to swap it out when it runs.  Without the tag, both handlers stay
+# attached and every log line gets written twice.
+_early_handler._trcc_next_handler = True  # type: ignore[attr-defined]
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(name)s.%(funcName)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        _rotating_handler_cls(
-            _log_path, maxBytes=1_000_000, backupCount=3,
-            encoding='utf-8', errors='replace'),
-    ],
+    handlers=[_early_handler],
 )
 log = logging.getLogger('trcc.main')
 log.info("Starting TRCC — platform=%s, executable=%s", sys.platform, sys.executable)
@@ -97,10 +101,10 @@ if sys.platform == 'win32':
 try:
     # Auto-launch GUI when invoked as trcc-gui.exe (windowed PyInstaller build)
     if os.path.basename(sys.executable).lower().startswith('trcc-gui'):
-        from trcc.ui.cli import gui
+        from trcc.ui.cli.main import gui
         sys.exit(gui() or 0)
     # Everything else goes through the shared entry so python -m trcc and
-    # the `trcc` console script honor TRCC_NEXT the same way.
+    # the `trcc` console script dispatch the same way.
     from trcc._entry import main
     sys.exit(main() or 0)
 except Exception:

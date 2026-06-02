@@ -1,86 +1,84 @@
-"""Video frame cache — lazy per-frame surface adjustment.
+"""VideoFrameCache — per-device cache of pre-composited animation frames.
 
-Two-layer cache:
-  L2: Frames + theme mask (pre-composited at load time, immutable)
-  L3: Brightness+rotation-adjusted native surfaces per frame.
-      Fills lazily during the first playback loop — each frame is
-      adjusted once on first access and reused every subsequent loop.
+Decouples the background animation loop (frame rate) from the metric
+overlay (refresh rate).  The expensive per-frame work — raw→surface, mask
+composite, brightness dim — is done once and cached, so a tick after the
+first loop is a lookup + one overlay composite + encode, instead of the
+full pipeline 15×/sec.
 
-Per-tick pipeline (in DisplayService.video_tick):
-  1. get_surface(index)  → L3 brightness+rotation surface
-  2. composite text_overlay  (same surface for ALL frames — rendered once
-     per metrics refresh interval, not once per frame)
-  3. encode_for_device   → bytes  (one encode per tick, not per rebuild)
-  4. send to USB
+Two layers + one overlay slot (translated from legacy ``VideoFrameCache``
+onto the current ``Renderer`` port — no copy):
 
-Text overlay (from OverlayService.render_text_only) is stored once via
-update_text_overlay() — called at most once per refresh interval.
-No background threads, no 147-frame encode loop on metrics change.
+  L2  ``_masked``    — each frame composited with the theme mask.  Built
+                       once; immutable until rebuilt.
+  L3  ``_adjusted``  — brightness-dimmed surfaces, filled LAZILY on first
+                       access.  After one full playback loop every
+                       ``get_surface`` is a list lookup.
+  overlay            — the metric overlay surface, stored once per refresh
+                       interval via :meth:`update_overlay` and composited
+                       on top of every frame at tick time.
+
+The caller (DisplayService) owns fit/scale + device rotation + encoding —
+this cache only holds canvas-sized surfaces and the cheap per-frame
+brightness layer, matching the legacy split (rotation/encode stay at the
+device boundary so a rotation change needs no rebuild).
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from ..core.models import RawFrame
+from ..core.ports import Renderer
+
 log = logging.getLogger(__name__)
 
 
 class VideoFrameCache:
-    """Video frame cache with lazy per-frame L3 surface adjustment.
+    """Cache of bg+mask+brightness frame surfaces + one metric overlay."""
 
-    L2 (video + mask) is built once at load time.
-    L3 (brightness+rotation-adjusted surfaces) fills during the first
-    playback loop. After one full loop, every get_surface() call is a
-    pure list lookup — no compositing, no per-frame work.
+    __slots__ = (
+        "_active",
+        "_adjusted",
+        "_brightness",
+        "_masked",
+        "_overlay",
+        "_overlay_key",
+        "_r",
+    )
 
-    Text overlay is managed separately: stored once per metrics refresh
-    via update_text_overlay(), composited by DisplayService at tick time.
-    """
-
-    def __init__(self) -> None:
-        # L2: video frames + mask composite (immutable after build)
-        self._masked_frames: list[Any] = []
-
-        # Text overlay — two slots mirror the L3 pattern:
-        #   _text_overlay_raw  : un-dimmed source from OverlayService
-        #   _text_overlay      : dimmed at current brightness, what we composite
-        # Symmetric with bg+mask handling (_masked_frames raw → _l3_surfaces
-        # dimmed). Both layers stay in sync so dimming is consistent across
-        # bg + mask + text — fixes static-vs-video brightness inconsistency.
-        self._text_overlay_raw: Any | None = None
-        self._text_overlay: Any | None = None
-        self._text_key: tuple | None = None
-
-        # Brightness state (rotation/encode_angle are NOT cached — they're
-        # derived from current device state at tick time so a rotation
-        # change takes effect on the next frame, no rebuild required).
+    def __init__(self, renderer: Renderer) -> None:
+        self._r = renderer
+        # L2: bg-frame composited with the mask (immutable after build).
+        self._masked: list[Any] = []
+        # L3: brightness-dimmed surfaces, filled lazily on first access.
+        self._adjusted: list[Any | None] = []
         self._brightness: int = 100
-
-        # L3: per-frame brightness-adjusted native surfaces (source coord
-        # space).  Rotation/encode_angle are applied downstream by
-        # `DisplayService._produce_and_emit` — Observer/SSoT pattern.
-        self._l3_surfaces: list[Any | None] = []
-        self._l3_brightness: int = 100
-
+        # The metric overlay surface — rendered once per refresh interval.
+        self._overlay: Any | None = None
+        self._overlay_key: tuple[Any, ...] | None = None
         self._active: bool = False
 
-    # -- Properties --------------------------------------------------------
+    # ── State ──────────────────────────────────────────────────────────
 
     @property
     def active(self) -> bool:
-        return self._active and bool(self._masked_frames)
+        """True once :meth:`build` has stored at least one frame."""
+        return self._active and bool(self._masked)
 
     @property
-    def text_overlay(self) -> Any | None:
-        """Current text overlay surface, or None if overlay disabled."""
-        return self._text_overlay
+    def frame_count(self) -> int:
+        return len(self._masked)
 
     @property
-    def has_text(self) -> bool:
-        """True if a text overlay surface is currently stored."""
-        return self._text_overlay is not None
+    def overlay(self) -> Any | None:
+        return self._overlay
 
-    # -- Full build (video load) -------------------------------------------
+    @property
+    def has_overlay(self) -> bool:
+        return self._overlay is not None
+
+    # ── Build (once per video load / theme / fit change) ───────────────
 
     def build(
         self,
@@ -89,165 +87,99 @@ class VideoFrameCache:
         mask_position: tuple[int, int],
         brightness: int,
     ) -> None:
-        """Build L2 cache. Safe to call from a background thread.
+        """Build L2 — each frame composited with the mask.  L3 fills lazily.
 
-        Rotation, encoding-format, and encode_angle are NO LONGER cached —
-        they live on the device/display state and are read fresh by
-        `DisplayService._produce_and_emit` at tick time.  Cache concerns
-        itself only with the expensive bit (mask compositing) and a tiny
-        per-frame brightness layer.
+        ``frames`` may be :class:`RawFrame` (from a Playback) or renderer
+        surfaces, and must already be at the device canvas size (the caller
+        owns fit/scale).  An empty list invalidates the cache.
         """
         if not frames:
+            self.invalidate()
             return
 
-        from .image import ImageService
-        r = ImageService.renderer()
-
-        # Convert frames to native surfaces if needed
-        from ..core.ports import RawFrame
-        first = frames[0]
-        if isinstance(first, RawFrame):
-            frames = [r.from_raw_rgb24(f) for f in frames]
+        surfaces = (
+            [self._r.from_raw_rgb24(f) for f in frames]
+            if isinstance(frames[0], RawFrame)
+            else list(frames)
+        )
+        if mask is not None:
+            self._masked = [
+                self._r.composite(s, mask, position=mask_position)
+                for s in surfaces
+            ]
+        else:
+            self._masked = list(surfaces)
 
         self._brightness = brightness
-
-        self._build_layer2(frames, mask, mask_position)
-        self._reset_l3()
+        self._adjusted = [None] * len(self._masked)
         self._active = True
-        log.info("VideoFrameCache: built %d frames", len(self._masked_frames))
+        log.info(
+            "VideoFrameCache.build: %d frame(s), mask=%s, brightness=%d",
+            len(self._masked), mask is not None, brightness,
+        )
 
-    # -- Text overlay update (once per refresh interval) ------------------
+    def set_brightness(self, brightness: int) -> None:
+        """Change brightness — L3 refills lazily on next access."""
+        if brightness == self._brightness:
+            return
+        log.info("VideoFrameCache.set_brightness: %d → %d (L3 reset)",
+                 self._brightness, brightness)
+        self._brightness = brightness
+        self._adjusted = [None] * len(self._masked)
 
-    def update_text_overlay(self, surface: Any | None, key: tuple | None) -> bool:
-        """Store a new text overlay surface. Returns True if text changed.
+    # ── Overlay (≤ once per refresh interval) ──────────────────────────
 
-        Called at most once per metrics refresh interval — O(1), no frame loop.
-        The dimmed surface is composited by DisplayService at tick time, so
-        the text matches the brightness applied to bg+mask in L3.
+    def update_overlay(
+        self, surface: Any | None, key: tuple[Any, ...] | None,
+    ) -> bool:
+        """Store the metric overlay surface.  Returns True if it changed.
+
+        Keyed so an unchanged metrics tick is a no-op — the same surface
+        is reused across every frame until the readings actually change.
         """
-        if key == self._text_key:
+        if key == self._overlay_key:
             return False
-        self._text_overlay_raw = surface
-        self._text_key = key
-        self._refresh_dimmed_text()
+        self._overlay = surface
+        self._overlay_key = key
+        log.info("VideoFrameCache.update_overlay: changed (key=%s)", key)
         return True
 
-    def clear_text_overlay(self) -> None:
-        """Clear text overlay (overlay disabled)."""
-        self._text_overlay_raw = None
-        self._text_overlay = None
-        self._text_key = None
-
-    # -- Partial rebuilds (brightness / rotation change) ------------------
-
-    def rebuild_from_brightness(self, brightness: int) -> None:
-        """Update brightness. L3 slots refill naturally on next access.
-
-        Also re-dims the cached text overlay so bg + mask + text all share
-        the same brightness (matches the static path's behaviour where
-        overlay is baked first and ``_apply_adjustments`` dims the union).
-        """
-        if not self._masked_frames:
-            return
-        self._brightness = brightness
-        self._reset_l3()
-        self._refresh_dimmed_text()
-
-    def _refresh_dimmed_text(self) -> None:
-        """Apply current brightness to raw text overlay → cached dimmed surface.
-
-        Called from ``update_text_overlay`` (text changed) and
-        ``rebuild_from_brightness`` (brightness changed). Single chokepoint
-        so the cached dimmed text and the L3 brightness can never drift.
-        Passes through (zero copy) at brightness >= 100 — the common case.
-        """
-        if self._text_overlay_raw is None:
-            self._text_overlay = None
-            return
-        if self._brightness >= 100:
-            self._text_overlay = self._text_overlay_raw
-            return
-        from .image import ImageService
-        r = ImageService.renderer()
-        surface = r.copy_surface(self._text_overlay_raw)
-        self._text_overlay = ImageService.apply_brightness(surface, self._brightness)
-
-    def rebuild_from_rotation(self, _rotation: int) -> None:
-        """No-op since rotation moved to encode boundary (Observer SSoT).
-
-        Kept as a stable surface for callers; rotation now flows through
-        `DisplayService._encode_angle()` per tick — no cache rebuild needed.
-        """
-        return
-
-    # -- Per-tick access ---------------------------------------------------
+    # ── Per-tick access ────────────────────────────────────────────────
 
     def get_surface(self, index: int) -> Any | None:
-        """Return brightness+rotation-adjusted surface for frame index.
+        """Brightness-adjusted bg+mask surface for ``index``.
 
-        Text overlay is NOT composited here — DisplayService does it per tick
-        so the same text surface is reused across all 147 frames without
-        any frame loop.
-
-        Returns None if index is out of range or cache is not built.
+        O(1) after the first loop: the dim is applied once per frame and
+        cached.  Returns None for an out-of-range index or unbuilt cache.
+        Passes through (no dim) at brightness ≥ 100 — the common case.
         """
-        if not (0 <= index < len(self._masked_frames)):
+        if not (0 <= index < len(self._masked)):
             return None
-        self._ensure_surface(index)
-        return self._l3_surfaces[index]
+        if self._adjusted[index] is None:
+            base = self._masked[index]
+            self._adjusted[index] = (
+                base if self._brightness >= 100
+                else self._r.apply_brightness(base, self._brightness)
+            )
+        return self._adjusted[index]
 
-    # -- Private -----------------------------------------------------------
-
-    def _ensure_surface(self, index: int) -> None:
-        """Apply brightness to L2 frame → L3 surface if not cached.
-
-        Rotation is NOT applied here — `encode_for_device` is the sole
-        rotator on the encode boundary so every element (bg + mask + text)
-        ends up with the same rotation count.  Layer-3 stays in source
-        coord space; text overlay composited at tick time aligns naturally.
+    def composited(self, index: int) -> Any | None:
+        """Final pre-encode surface: the cached bg+mask+brightness frame with
+        the stored overlay composited on top.  ``composite`` returns a fresh
+        surface, so the cached frame is never mutated.  None if unbuilt.
         """
-        if self._brightness != self._l3_brightness:
-            self._reset_l3()
+        base = self.get_surface(index)
+        if base is None:
+            return None
+        if self._overlay is None:
+            return base
+        return self._r.composite(base, self._overlay, position=(0, 0))
 
-        if self._l3_surfaces[index] is not None:
-            return  # L3 hit — pure list lookup
-
-        from .image import ImageService
-
-        if self._brightness < 100:
-            r = ImageService.renderer()
-            surface = r.copy_surface(self._masked_frames[index])
-            surface = ImageService.apply_brightness(surface, self._brightness)
-        else:
-            surface = self._masked_frames[index]
-
-        self._l3_surfaces[index] = surface
-
-    def _reset_l3(self) -> None:
-        """Clear all L3 slots. They refill lazily during the next loop."""
-        n = len(self._masked_frames)
-        self._l3_surfaces = [None] * n
-        self._l3_brightness = self._brightness
-
-    def _build_layer2(
-        self,
-        frames: list[Any],
-        mask: Any | None,
-        mask_position: tuple[int, int],
-    ) -> None:
-        """Composite mask onto each video frame → _masked_frames.
-
-        If no mask, L2 references frames directly (zero copy).
-        """
-        if mask is None:
-            self._masked_frames = list(frames)
-            return
-
-        from .image import ImageService
-        r = ImageService.renderer()
-        mask_rgba = r.convert_to_rgba(mask)
-        self._masked_frames = []
-        for frame in frames:
-            composited = r.copy_surface(frame)
-            composited = r.composite(composited, mask_rgba, mask_position)
-            self._masked_frames.append(composited)
+    def invalidate(self) -> None:
+        """Drop every layer — next build rebuilds from scratch."""
+        log.debug("VideoFrameCache.invalidate")
+        self._masked = []
+        self._adjusted = []
+        self._overlay = None
+        self._overlay_key = None
+        self._active = False

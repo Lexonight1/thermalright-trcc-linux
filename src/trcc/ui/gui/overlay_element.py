@@ -86,19 +86,24 @@ class OverlayElementWidget(QWidget):
 
     def set_config(self, config):
         """Set element config or None to clear."""
-        log.debug("element[%d] set_config mode=%s", self.index,
-                  config.mode if config else None)
+        log.info(
+            "OverlayElementWidget.set_config: index=%d mode=%s",
+            self.index, config.mode.name if config else None,
+        )
         self.config = config
         self._live_value = ''
         self._live_unit = ''
         self.update()
 
     def set_selected(self, selected):
+        log.debug("OverlayElementWidget.set_selected: index=%d %s",
+                  self.index, selected)
         self._selected = selected
         self.update()
 
     def update_metrics(self, metrics):
         """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
+        log.debug("update_metrics")
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
         metric_key = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))
@@ -205,16 +210,30 @@ class OverlayElementWidget(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            log.info("OverlayElementWidget.mousePressEvent: index=%d clicked",
+                     self.index)
             self.clicked.emit(self.index)
 
     def mouseDoubleClickEvent(self, event):
         if self.config:
+            log.info(
+                "OverlayElementWidget.mouseDoubleClickEvent: index=%d "
+                "(double_clicked / delete)", self.index,
+            )
             self.double_clicked.emit(self.index)
 
     def contextMenuEvent(self, event):
         if self.config:
+            log.info(
+                "OverlayElementWidget.contextMenuEvent: index=%d "
+                "(opening delete menu)", self.index,
+            )
             menu = QMenu(self)
             delete_action = menu.addAction("Delete")
             action = menu.exec(event.globalPos())
             if action == delete_action:
+                log.info(
+                    "OverlayElementWidget.contextMenuEvent: index=%d "
+                    "delete confirmed", self.index,
+                )
                 self.double_clicked.emit(self.index)

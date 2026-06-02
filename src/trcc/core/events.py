@@ -1,170 +1,381 @@
-"""EventBus — async notification surface for the universal TRCC command layer.
+"""EventBus + Event hierarchy.
 
-Commands emit events (frame ready, metrics updated, device connect/disconnect,
-data ready, update available). Each UI bridges events to its own plumbing:
-GUI → Qt signals, API → WebSocket messages, CLI → stdout streams.
-
-Framework-neutral: no Qt, no asyncio. Thread-safe via a single lock so
-background-thread publishes (video tick, sensor poll, USB hotplug) deliver
-safely to subscribers.
-
-Event names are strings by convention — keep them flat and stable.
-
-Lifecycle / streaming::
-
-    'frame'                  → (device_idx: int, frame: Frame)
-    'progress'               → (device_idx: int, percent, current, total)
-    'metrics'                → dict   (HardwareMetrics.__dict__ or adjacent)
-    'device.connected'       → DeviceInfo
-    'device.disconnected'    → DeviceInfo
-    'data.ready'             → None   (theme/web/mask archives extracted)
-    'update.available'       → UpdateResult
-
-LCD state changes (multi-UI sync — published by `LCDCommands` after
-each successful mutation)::
-
-    'lcd.brightness'         → (lcd: int, percent: int)
-    'lcd.rotation'           → (lcd: int, degrees: int)
-    'lcd.split_mode'         → (lcd: int, mode: int)
-    'lcd.fit_mode'           → (lcd: int, mode: str)
-    'lcd.theme'              → (lcd: int, name: str, kind: 'local'|'cloud')
-    'lcd.mask'               → (lcd: int, name: str)
-    'lcd.overlay_enabled'    → (lcd: int, enabled: bool)
-    'lcd.overlay'            → (lcd: int, config: dict)
-
-LED state changes (published by `LEDCommands`)::
-
-    'led.color'              → (led: int, r: int, g: int, b: int, zone: int | None)
-    'led.mode'               → (led: int, mode, zone: int | None)
-    'led.brightness'         → (led: int, percent: int, zone: int | None)
-    'led.toggled'            → (led: int, on: bool, zone: int | None)
-    'led.zone_sync'          → (led: int, enabled: bool, interval_s: int | None)
-    'led.clock'              → (led: int, is_24h: bool)
-    'led.sensor'             → (led: int, source: str)
-
-App-level state changes (published by `ControlCenterCommands`)::
-
-    'control_center.autostart'  → enabled: bool
-    'control_center.temp_unit'  → unit: 'C' | 'F'
-    'control_center.language'   → lang: str
-    'control_center.hdd'        → enabled: bool
-    'control_center.refresh'    → seconds: int
-    'control_center.gpu'        → gpu_key: str
+Devices and services publish events; UIs subscribe.  The bus is
+synchronous by default — adapters bridge to their own async mechanism
+(Qt signals for GUI, SSE/WebSocket for API).
 """
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from collections.abc import Callable
-from threading import Lock
-from typing import Any, Final
+from dataclasses import dataclass, field
+from typing import Any
 
 log = logging.getLogger(__name__)
 
 
-class Topic:
-    """Canonical event topic strings — every publisher and subscriber uses these.
+# =========================================================================
+# Event hierarchy
+# =========================================================================
 
-    Using a class with class attributes (rather than an Enum) keeps the
-    wire format trivially serializable: each topic IS the string the
-    daemon sees on the socket. Cosmic Python's "favor explicit
-    registration through a simple dict" applied at the topic layer.
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """Base event."""
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceDiscovered(Event):
+    key: str
+    product_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceConnected(Event):
+    key: str
+    resolution: tuple[int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceDisconnected(Event):
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
+class FrameSent(Event):
+    key: str
+    bytes_sent: int
+    # The rendered pre-encode surface (Renderer-port ``Any``), carried so
+    # observers — the GUI preview above all — display the EXACT frame that
+    # went to the wire instead of re-rendering the whole pipeline a second
+    # time (legacy's ``bus.publish('frame', …, Frame(native=img))`` shape).
+    # In-process only: None on the pure-bytes send paths (SendFrame /
+    # SendColor / SendImage / keepalive) and would be None across IPC,
+    # where a remote client must fall back to a re-render.
+    surface: Any = None
+
+
+@dataclass(frozen=True, slots=True)
+class OrientationChanged(Event):
+    key: str
+    degrees: int
+
+
+@dataclass(frozen=True, slots=True)
+class BrightnessChanged(Event):
+    key: str
+    percent: int
+
+
+@dataclass(frozen=True, slots=True)
+class FitModeChanged(Event):
+    key: str
+    mode: str   # FitMode value: "width" | "height" | "stretch"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayChanged(Event):
+    key: str
+    enabled: bool
+    # When set, GUI subscribers temporarily highlight the named element
+    # for ``flash_duration_ms`` milliseconds.  Other UIs ignore.
+    flash_element_id: str = ""
+    flash_duration_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SplitModeChanged(Event):
+    key: str
+    mode: int
+
+
+@dataclass(frozen=True, slots=True)
+class MaskApplied(Event):
+    key: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class MaskPositionChanged(Event):
+    key: str
+    position: tuple[int, int] | None
+
+
+@dataclass(frozen=True, slots=True)
+class MaskVisibilityChanged(Event):
+    key: str
+    visible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeSaved(Event):
+    key: str
+    theme_name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeExported(Event):
+    theme_name: str
+    archive_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeImported(Event):
+    theme_name: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class VideoStarted(Event):
+    """Published by ``PlayVideo`` after a playback is loaded.
+
+    ``interval_ms`` is the per-frame timer interval the GUI animation
+    timer should use — derived from ``playback.fps`` server-side so UIs
+    don't have to query :class:`MediaService` themselves (DIP: handler
+    reads the event payload, not the service).
     """
+    key: str
+    path: str
+    frame_count: int
+    interval_ms: int
 
-    # Device lifecycle
-    DEVICE_LIST: Final = 'device.list'                  # payload: tuple of devices
-    DEVICE_CONNECTED: Final = 'device.connected'        # payload: device
-    DEVICE_DISCONNECTED: Final = 'device.disconnected'  # payload: device
 
-    # Streaming. Tick / streaming hot path uses ``device_path`` (str) as the
-    # identifier — wire-friendly and unambiguous across LCD + LED.
-    FRAME: Final = 'frame'                              # payload: (device_path, Frame|tick_result)
-    PROGRESS: Final = 'progress'                        # payload: (device_path, pct, cur, tot)
-    METRICS: Final = 'metrics'                          # payload: HardwareMetrics
+@dataclass(frozen=True, slots=True)
+class VideoStopped(Event):
+    key: str
 
-    # Bootstrap progress
-    BOOTSTRAP_PROGRESS: Final = 'bootstrap.progress'    # payload: str message
-    DATA_READY: Final = 'data.ready'                    # payload: None
 
-    # System power events (Trcc publishes from Platform.subscribe_power callback)
-    SYSTEM_SUSPENDED: Final = 'system.suspended'        # payload: None — fires before device cleanup
-    SYSTEM_RESUMED: Final = 'system.resumed'            # payload: None — fires after rediscover
+@dataclass(frozen=True, slots=True)
+class ScreencastStarted(Event):
+    """Published by ``StartScreencast`` after a screen-capture session is
+    requested for a device.
 
-    # LCD state changes (LCDCommands publishes after each successful mutation)
-    LCD_BRIGHTNESS: Final = 'lcd.brightness'
-    LCD_ROTATION: Final = 'lcd.rotation'
-    LCD_SPLIT_MODE: Final = 'lcd.split_mode'
-    LCD_FIT_MODE: Final = 'lcd.fit_mode'
-    LCD_THEME: Final = 'lcd.theme'
-    LCD_MASK: Final = 'lcd.mask'
-    LCD_OVERLAY_ENABLED: Final = 'lcd.overlay_enabled'
-    LCD_OVERLAY: Final = 'lcd.overlay'
+    Mirrors :class:`VideoStarted` semantics: the GUI ``ScreencastHandler``
+    subscribes through ``BusBridge`` and only starts its capture timer
+    when this event fires — so daemon/CLI/API callers can drive
+    screencast through the same Command bus as the GUI.
 
-    # LED state changes (LEDCommands publishes)
-    LED_COLOR: Final = 'led.color'
-    LED_MODE: Final = 'led.mode'
-    LED_BRIGHTNESS: Final = 'led.brightness'
-    LED_TOGGLED: Final = 'led.toggled'
-    LED_ZONE_SYNC: Final = 'led.zone_sync'
-    LED_CLOCK: Final = 'led.clock'
-    LED_SENSOR: Final = 'led.sensor'
+    ``x, y, w, h`` is the screen region (pixels).  ``audio`` toggles the
+    microphone spectrum visualiser overlay on each captured frame.
+    """
+    key: str
+    x: int
+    y: int
+    w: int
+    h: int
+    audio: bool
 
-    # App-level (ControlCenterCommands publishes)
-    CONTROL_CENTER_AUTOSTART: Final = 'control_center.autostart'
-    CONTROL_CENTER_TEMP_UNIT: Final = 'control_center.temp_unit'
-    CONTROL_CENTER_LANGUAGE: Final = 'control_center.language'
-    CONTROL_CENTER_HDD: Final = 'control_center.hdd'
-    CONTROL_CENTER_REFRESH: Final = 'control_center.refresh'
-    CONTROL_CENTER_GPU: Final = 'control_center.gpu'
+
+@dataclass(frozen=True, slots=True)
+class ScreencastStopped(Event):
+    """Published by ``StopScreencast`` after a device's capture session
+    is torn down.  ``ScreencastHandler`` stops its timer in response."""
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundChanged(Event):
+    """Published when the device's static background override changes.
+
+    Distinct from ``VideoStarted`` (which fires for video backgrounds —
+    handler observer starts the per-frame timer there).  This fires
+    only for image backgrounds set via ``SetBackground``; the
+    ``DeviceRenderObserver`` schedules a single ``RenderAndSend`` to
+    push the new bg to the device.
+    """
+    key: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeLoaded(Event):
+    key: str
+    theme_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class LedColorsChanged(Event):
+    key: str
+    color_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class SensorsUpdated(Event):
+    """Periodic sensor broadcast — payload IS the personalized dict.
+
+    ``readings``: ``{sensor_id: value}`` already processed through
+    :func:`trcc.services.metrics_personalize.personalize_readings` —
+    temps are in ``temp_unit`` units already (°C → °F applied at
+    publish time), ``disk:*`` keys are absent when the user has HDD
+    disabled.  Subscribers read the dict as-is; no further
+    conversion needed at consumer-side.
+
+    ``temp_unit``: ``"C"`` or ``"F"``.  Tells subscribers which unit
+    the temp values are in so they can render the unit SUFFIX in
+    format strings (``"33°C"`` vs ``"33°F"``) without reading
+    settings — the broadcast self-describes its unit semantics.
+
+    ``reading_count``: kept for log size-hints + size-only consumers;
+    redundant with ``len(readings)`` but cheap.
+
+    All three fields have defaults so this dataclass can be constructed
+    positionally during the staged audit rollout (P2 commit adds the
+    fields with defaults; P3 commit populates them at publish time).
+    Once P3 lands, every publish supplies all three.
+    """
+    reading_count: int = 0
+    readings: dict[str, float] = field(default_factory=dict)
+    temp_unit: str = "C"
+
+
+@dataclass(frozen=True, slots=True)
+class ErrorOccurred(Event):
+    message: str
+    kind: str = "general"
+    key: str = ""
+
+
+# ── Control-center settings changes (no device key — app-global) ─────
+
+
+@dataclass(frozen=True, slots=True)
+class TempUnitChanged(Event):
+    unit: str   # "C" or "F"
+
+
+@dataclass(frozen=True, slots=True)
+class HddEnabledChanged(Event):
+    """User toggled HDD-metrics inclusion in the broadcast.
+
+    Published by ``SetHddEnabled.execute``.  Subscribers (today only
+    ``MetricsLoop``) wake their sleep so the next personalize step
+    drops / re-includes ``disk:*`` keys immediately instead of
+    after a full refresh interval.
+    """
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TimeFormatChanged(Event):
+    """User changed the 12h/24h clock format.
+
+    Per-device because :class:`DeviceSettings.time_format` is the
+    persisted source of truth — ``DisplayService.compute_clock``
+    reads it per render.  ``DeviceRenderObserver`` subscribes so
+    the LCD re-renders on the next tick.
+    """
+    key: str
+    fmt: str   # "12h" or "24h"
+
+
+@dataclass(frozen=True, slots=True)
+class DateFormatChanged(Event):
+    """User changed the date pattern (e.g. yyyy/MM/dd → dd.MM.yyyy).
+
+    Per-device for symmetry with :class:`TimeFormatChanged`.
+    """
+    key: str
+    fmt: str   # e.g. "yyyy/MM/dd"
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageChanged(Event):
+    language: str
+
+
+@dataclass(frozen=True, slots=True)
+class GpuDeviceChanged(Event):
+    gpu_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshIntervalChanged(Event):
+    seconds: float
+
+
+# ── Hotplug / power transitions ──────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceAttached(Event):
+    """A registry-known device just appeared on the bus.  Pre-handshake."""
+    key: str
+    vid: int
+    pid: int
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceDetached(Event):
+    """A registry-known device just left the bus.  Distinct from
+    :class:`DeviceDisconnected` (which is dispatched by explicit
+    Command).  UIs that hold a per-device handle should release on this.
+    """
+    key: str
+    vid: int
+    pid: int
+
+
+@dataclass(frozen=True, slots=True)
+class SystemSuspending(Event):
+    """The OS is about to suspend.  Power-aware adapters should
+    quiesce I/O — devices behave erratically over suspend cycles."""
+
+
+@dataclass(frozen=True, slots=True)
+class SystemResumed(Event):
+    """The OS just resumed from suspend.  Re-discover + reconnect."""
+
+
+# =========================================================================
+# Bus
+# =========================================================================
+
+
+Handler = Callable[[Event], None]
 
 
 class EventBus:
-    """Minimal publish/subscribe bus.
+    """In-process event bus.
 
-    Callbacks run on the thread that calls `publish()`. UI adapters that
-    need thread-hop (e.g., GUI → main thread) must do it themselves.
-    A failing callback logs + continues; one broken subscriber never
-    blocks the rest.
+    Handlers are called synchronously on publish.  Adapters that need
+    thread-safe delivery (e.g. GUI) subscribe a bridge handler that
+    re-emits on their own queue or signal.
     """
 
     def __init__(self) -> None:
-        self._subs: dict[int, tuple[str, Callable[..., Any]]] = {}
-        self._next_id: int = 0
-        self._lock = Lock()
+        self._handlers: defaultdict[type[Event], list[Handler]] = defaultdict(list)
 
-    def subscribe(self, event: str, callback: Callable[..., Any]) -> int:
-        """Register a callback for `event`. Returns a subscription id."""
-        with self._lock:
-            sub_id = self._next_id
-            self._next_id += 1
-            self._subs[sub_id] = (event, callback)
-        log.debug("subscribe: id=%d event=%r", sub_id, event)
-        return sub_id
+    def subscribe(self, event_type: type[Event], handler: Handler) -> None:
+        """Register *handler* for all events of *event_type*."""
+        log.info("subscribe: event=%s handler=%s",
+                 event_type.__name__, getattr(handler, "__qualname__", handler))
+        self._handlers[event_type].append(handler)
 
-    def unsubscribe(self, sub_id: int) -> None:
-        """Remove a subscription. No-op if already gone."""
-        with self._lock:
-            removed = self._subs.pop(sub_id, None)
-        if removed is not None:
-            log.debug("unsubscribe: id=%d event=%r", sub_id, removed[0])
+    def unsubscribe(self, event_type: type[Event], handler: Handler) -> None:
+        """Remove a previously-registered handler.  No-op if not found."""
+        log.info("unsubscribe: event=%s handler=%s",
+                 event_type.__name__, getattr(handler, "__qualname__", handler))
+        try:
+            self._handlers[event_type].remove(handler)
+        except ValueError:
+            pass
 
-    def publish(self, event: str, *payload: Any) -> None:
-        """Notify all subscribers of `event`. Payload is passed positionally."""
-        with self._lock:
-            targets = [
-                cb for _sid, (ev, cb) in self._subs.items() if ev == event
-            ]
-        if not targets:
-            return
-        log.debug("publish: event=%r subscribers=%d", event, len(targets))
-        for cb in targets:
+    def publish(self, event: Event) -> None:
+        """Fan out *event* to every handler subscribed to its type.
+
+        Handler exceptions are logged but do not propagate — one bad
+        subscriber shouldn't break event delivery for the rest.
+        """
+        log.debug("publish: event=%s", type(event).__name__)
+        for handler in list(self._handlers[type(event)]):
             try:
-                cb(*payload)
+                handler(event)
             except Exception:
-                log.exception("EventBus subscriber for %r raised", event)
+                log.exception("EventBus handler failed for %s", type(event).__name__)
 
     def clear(self) -> None:
-        """Drop every subscription — used during cleanup/teardown."""
-        with self._lock:
-            self._subs.clear()
-            self._next_id = 0
-        log.debug("clear: all subscriptions removed")
+        """Drop all subscriptions (used in tests)."""
+        log.info("clear: called")
+        self._handlers.clear()

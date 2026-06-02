@@ -1,195 +1,232 @@
-"""Metrics loop implementations — the underlying command stream.
+"""MetricsLoop — periodic sensor broadcast.
 
-`PollingMetricsLoop` is the thread-based default used by every OS today.
-It ticks every connected device at 50ms (animation / video frames),
-polls sensors at the user's ``settings.refresh_interval`` (Hardware
-metrics), and publishes the results through ``trcc.events``.
+Legacy ran a ``PollingMetricsLoop`` thread that every
+``refresh_interval_s`` polled the OS sensors and published
+``Topic.METRICS`` so subscribers (system info widget, activity
+sidebar, LCD overlay, LED render) saw fresh readings on a single
+cadence.
 
-`NullMetricsLoop` is the test / proxy stand-in: it satisfies the
-contract without spinning a thread.  ``TrccProxy`` uses it because the
-real loop runs in the daemon process; unit tests use it when a fixture
-doesn't want sensor I/O.
+next/ ships the per-OS sensor enumerator (``platform.sensors()``)
+and the ``SensorsUpdated`` event class, but the bridge that turns
+"the aggregator's dict refreshed" into "fire ``SensorsUpdated`` on
+the bus" was missing.  Result: ``bus_bridge.sensors_updated.connect``
+subscribers in the GUI (``TRCCApp._on_bus_sensors_updated`` →
+``uc_system_info`` / ``uc_activity_sidebar``) waited forever for an
+event that never arrived.
 
-Both implement ``core.ports.MetricsLoop``.  Per-OS native variants
-(WMI event-based on Windows, IOReportSubscribe on macOS) plug in via
-``Platform.build_metrics_loop()`` without touching this module.
+This service is the missing chokepoint.  Owns one daemon thread.
+Reads ``settings.app.refresh_interval_s`` per iteration so a control-
+center change to "Refresh every Ns" takes effect on the next sleep.
 """
 from __future__ import annotations
 
 import logging
 import threading
-from itertools import chain
-from typing import TYPE_CHECKING, Any
 
-from ..core.events import Topic
-from ..core.ports import MetricsLoop
-
-if TYPE_CHECKING:
-    from ..core.trcc import Trcc
+from ..core.events import (
+    Event,
+    EventBus,
+    HddEnabledChanged,
+    RefreshIntervalChanged,
+    SensorsUpdated,
+    TempUnitChanged,
+)
+from ..core.models import MIN_REFRESH_INTERVAL_S
 
 log = logging.getLogger(__name__)
 
-# Animation tick rate — 50ms gives 20 FPS for video and overlay updates.
-_TICK_INTERVAL = 0.05
 
+class MetricsLoop:
+    """Background poller that publishes ``SensorsUpdated`` on the bus.
 
-class PollingMetricsLoop(MetricsLoop):
-    """Thread-based polling loop — the OS-agnostic default.
-
-    Two cadences run in one daemon thread:
-
-      * **Tick** (every 50ms): drive ``device.tick()`` for every connected
-        LCD and LED device; publish ``Topic.FRAME`` for any frame
-        produced.  Playing LCDs also get their overlay-text cache
-        refreshed with the latest metrics.
-      * **Poll** (every ``settings.refresh_interval`` seconds): read
-        ``trcc.os.metrics``, apply the user's temp unit + HDD-disable
-        toggle, push to every device's ``update_metrics()``, publish
-        ``Topic.METRICS``.
-
-    The cadence ratio is recomputed each iteration, so settings changes
-    take effect on the next tick.  ``wake()`` short-circuits the wait
-    so callers can force an immediate poll after a control-center mutation.
+    Single subscriber pattern from the caller side:
+    ``app.events.subscribe(SensorsUpdated, on_metrics)`` once, and
+    the loop fans out to every widget that bridges from the event.
     """
 
-    def __init__(self, trcc: Trcc) -> None:
-        self._trcc = trcc
+    def __init__(self, app: App) -> None:  # type: ignore[name-defined]  # noqa: F821
+        self._app = app
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        # ``_wake`` is set BOTH for stop AND for "interval changed"
+        # so a SetRefreshInterval dispatched mid-sleep cuts the wait
+        # short and the next loop iteration picks up the new value.
+        # Loop discriminates via ``_stop`` after waking.  Without
+        # this, an interval change has up to one full OLD-cycle of
+        # latency before the new cadence kicks in.
         self._wake = threading.Event()
+        # First-publish flag — INFO on first SensorsUpdated of each
+        # ``start()`` cycle proves the loop is alive; subsequent ticks
+        # stay DEBUG so 2 s cadence doesn't drown the log.  Same shape
+        # Phase 0 used for ``_animation_first_tick_logged``.
+        self._first_publish_logged: bool = False
+        # Subscribe to every user-pref change that affects the next
+        # broadcast's content or cadence, so the loop reacts the
+        # moment the user toggles a relevant setting — same event-
+        # driven pattern Phase 4 used for video timer control.
+        # DIP: MetricsLoop depends on the abstract events, not on
+        # the Commands' internals.
+        #
+        # All three publishers route to one handler — DRY since the
+        # wake action is identical regardless of which pref changed.
+        for event_cls in (
+            RefreshIntervalChanged,  # cadence change
+            TempUnitChanged,         # broadcast values must reconvert
+            HddEnabledChanged,       # broadcast must re-filter disk:*
+        ):
+            app.events.subscribe(event_cls, self._wake_for_pref_change)
 
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        # Metrics flow through ``trcc.os.metrics`` now — no SystemService
-        # dependency.  Each tick the platform constructs a fresh OS-specific
-        # :class:`Metrics` whose ``__init__`` composes its read methods.
-        self.stop()
+        if self.is_running:
+            log.debug("MetricsLoop.start: already running")
+            return
         self._stop.clear()
+        self._wake.clear()
+        # Reset diagnostic flags on every restart so a reconnect
+        # (stop/start cycle) gets a fresh "first publish" line.
+        self._first_publish_logged = False
+        # Kick the sensor enumerator's background poll thread so the
+        # ``_readings`` cache it returns from ``read_all()`` actually
+        # refreshes — without this, ``read_all()`` returns the same
+        # snapshot it got from its bootstrap-on-first-call poll
+        # forever, and downstream consumers see frozen values.  Legacy
+        # composition root did this from ``SystemService.start_polling``;
+        # next/ doesn't have a SystemService so MetricsLoop owns the
+        # lifecycle here.
+        interval = float(self._app.settings.app.refresh_interval_s)
+        try:
+            self._app.platform.sensors().start_polling(interval)
+        except Exception as e:
+            log.warning(
+                "MetricsLoop: sensors.start_polling(%.2fs) raised %s — "
+                "broadcasts will publish frozen values from the bootstrap "
+                "snapshot", interval, e,
+            )
         self._thread = threading.Thread(
-            target=self._loop, daemon=True, name='trcc-metrics')
+            target=self._loop, daemon=True, name="trcc-metrics",
+        )
         self._thread.start()
-        log.info(
-            'PollingMetricsLoop started (tick=%.0fms, poll=settings.refresh_interval)',
-            _TICK_INTERVAL * 1000)
+        log.info("MetricsLoop: started (interval=%.2fs)", interval)
 
     def stop(self) -> None:
-        was_running = self._thread is not None and self._thread.is_alive()
+        if not self.is_running:
+            log.debug("MetricsLoop.stop: not running")
+            return
+        log.info("MetricsLoop: stopping")
         self._stop.set()
+        # Wake the sleeper so it sees the stop flag immediately.
         self._wake.set()
-        if self._thread and self._thread.is_alive():
+        # Stop the sensor enumerator's poll thread alongside ours —
+        # we own its lifecycle since start().
+        try:
+            self._app.platform.sensors().stop_polling()
+        except Exception:
+            log.exception("MetricsLoop: sensors.stop_polling() raised")
+        if self._thread is not None:
             self._thread.join(timeout=3)
-        self._thread = None
-        self._wake.clear()
-        self._stop.clear()
-        if was_running:
-            log.info('PollingMetricsLoop stopped')
+            self._thread = None
+        log.info("MetricsLoop: stopped")
 
-    def wake(self) -> None:
+    def _wake_for_pref_change(self, event: Event) -> None:
+        """Wake the worker on any user-pref change that affects the next broadcast.
+
+        ``_loop`` reads ``settings.app.{refresh_interval_s,temp_unit,
+        hdd_enabled}`` at the top of each iteration; the relevant
+        Setter Command has already updated them.  All we need is to
+        cut the current sleep short so the next iteration sees the
+        new value and publishes a fresh ``SensorsUpdated``.
+
+        One handler for three publishers — wake action is identical;
+        the log line records WHICH pref changed so the user can
+        confirm via tail.
+        """
+        log.info(
+            "MetricsLoop._wake_for_pref_change: %s — waking sleeper",
+            event,
+        )
         self._wake.set()
+
+    # ── Worker ────────────────────────────────────────────────────────
 
     def _loop(self) -> None:
-        from ..core.models import HardwareMetrics
-
-        trcc = self._trcc
-        tick_count = 0
+        events: EventBus = self._app.events
         while not self._stop.is_set():
             try:
-                _settings = trcc.settings
-                poll_interval = max(1, _settings.refresh_interval)
-                metrics_every = max(1, int(poll_interval / _TICK_INTERVAL))
-
-                if tick_count % metrics_every == 0:
-                    self._poll_metrics(HardwareMetrics, _settings)
-
-                self._tick_lcd_devices()
-                self._tick_led_devices()
+                self._publish_once(events)
             except Exception:
-                log.exception('Tick loop error')
-
-            tick_count += 1
-            self._wake.wait(_TICK_INTERVAL)
+                log.exception("MetricsLoop: poll iteration failed")
+            interval = max(
+                MIN_REFRESH_INTERVAL_S,
+                float(self._app.settings.app.refresh_interval_s),
+            )
+            # Wait on ``_wake`` (set by stop() OR by an interval
+            # change).  Clear AFTER the wait so a wake-up during the
+            # NEXT iteration's wait is still observed.  ``_stop`` is
+            # the authoritative shutdown flag — check it at the top
+            # of the while loop.
+            self._wake.wait(interval)
             self._wake.clear()
 
-    def _poll_metrics(self, HardwareMetrics: Any, _settings: Any) -> None:
-        """Tick the metrics broadcast — single OS-owned read, then fan out.
+    def _publish_once(self, events: EventBus) -> None:
+        """Trigger one sensor read + broadcast.
 
-        ``trcc.os.metrics`` is the canonical entrypoint: each OS subclass's
-        :class:`Metrics` __init__ composes whatever sources it needs (one
-        on Linux, many on Windows/macOS).  The result is HardwareMetrics
-        ready to broadcast — no SystemService middle layer needed.
+        Two steps:
+
+          1. Read raw readings from ``platform.sensors().read_all()``
+             — canonical °C, all keys present.
+          2. Apply user prefs via
+             :func:`metrics_personalize.personalize_readings` (temp
+             unit conversion + HDD filter) — single conversion +
+             filter site for the entire pipeline.
+          3. Publish ``SensorsUpdated`` carrying the personalized
+             dict + temp_unit so subscribers don't re-read settings.
+
+        Matches legacy's ``PollingMetricsLoop._poll_metrics`` shape —
+        broadcast at the boundary, consumers downstream are pure
+        renderers.
         """
-        trcc = self._trcc
+        from .metrics_personalize import personalize_readings
+
         try:
-            metrics = HardwareMetrics.with_temp_unit(
-                trcc.os.metrics, _settings.temp_unit)
-            # HDD-disable setting — zero disk metrics when the user
-            # opted out (matches C# isHDD toggle).
-            if not _settings.hdd_enabled:
-                metrics.disk_temp = 0.0
-                metrics.disk_activity = 0.0
-                metrics.disk_read = 0.0
-                metrics.disk_write = 0.0
-                metrics._populated.discard('disk_temp')
-                metrics._populated.discard('disk_activity')
-                metrics._populated.discard('disk_read')
-                metrics._populated.discard('disk_write')
-            trcc.set_current_metrics(metrics)
-            for device in tuple(chain(trcc.lcd_devices, trcc.led_devices)):
-                try:
-                    device.update_metrics(metrics)
-                except Exception:
-                    log.exception('Metrics update error')
-            trcc.events.publish(Topic.METRICS, metrics)
-        except Exception:
-            log.exception('Metrics poll error')
+            sensors = self._app.platform.sensors()
+        except Exception as e:
+            log.warning("MetricsLoop: platform.sensors() raised %s", e)
+            return
+        try:
+            raw = sensors.read_all()
+        except Exception as e:
+            log.warning("MetricsLoop: sensors.read_all() raised %s", e)
+            return
 
-    def _tick_lcd_devices(self) -> None:
-        trcc = self._trcc
-        for device in tuple(trcc.lcd_devices):
-            path = getattr(device, 'device_path', '?') or '?'
-            try:
-                if (result := device.tick()) is not None:
-                    trcc.events.publish(Topic.FRAME, path, result)
-                elif device.playing:
-                    device.update_video_cache_text(trcc.current_metrics)
-            except Exception:
-                log.exception('LCD tick error: %s', path)
-
-    def _tick_led_devices(self) -> None:
-        trcc = self._trcc
-        for device in tuple(trcc.led_devices):
-            info = device.device_info
-            path = (getattr(info, 'path', '?') if info else '?') or '?'
-            try:
-                if (result := device.tick()) is not None:
-                    trcc.events.publish(Topic.FRAME, path, result)
-            except Exception:
-                log.exception('LED tick error: %s', path)
-
-
-class NullMetricsLoop(MetricsLoop):
-    """No-op loop — for tests + proxy clients that don't own the tick.
-
-    Composition roots that build a :class:`TrccProxy` (daemon-mode
-    clients) inject this because the real loop runs in the daemon
-    process.  Unit tests that don't need sensor I/O can override
-    ``Platform.build_metrics_loop`` to return this.
-
-    All methods are silent no-ops; ``is_running`` always reports False.
-    """
-
-    @property
-    def is_running(self) -> bool:
-        return False
-
-    def start(self) -> None:
-        log.debug('NullMetricsLoop.start: no-op')
-
-    def stop(self) -> None:
-        log.debug('NullMetricsLoop.stop: no-op')
-
-    def wake(self) -> None:
-        log.debug('NullMetricsLoop.wake: no-op')
+        s = self._app.settings.app
+        readings = personalize_readings(
+            raw,
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
+        events.publish(SensorsUpdated(
+            reading_count=len(readings),
+            readings=readings,
+            temp_unit=s.temp_unit,
+        ))
+        # First publish proves the polling chain is alive; subsequent
+        # publishes stay DEBUG so 2 s cadence doesn't flood.
+        if not self._first_publish_logged:
+            log.info(
+                "MetricsLoop: SensorsUpdated published — first tick "
+                "after start (raw=%d → personalized=%d, temp_unit=%s, "
+                "hdd_enabled=%s, sample=%s)",
+                len(raw), len(readings), s.temp_unit, s.hdd_enabled,
+                sorted(readings)[:5],
+            )
+            self._first_publish_logged = True
+        else:
+            log.debug(
+                "MetricsLoop: SensorsUpdated(%d) published (raw=%d, "
+                "temp_unit=%s, hdd_enabled=%s)",
+                len(readings), len(raw), s.temp_unit, s.hdd_enabled,
+            )
