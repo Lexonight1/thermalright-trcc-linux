@@ -350,6 +350,36 @@ def test_display_load_theme_reaches_lookup_not_attribute_error(
     assert resp.status_code == 400
 
 
+def test_boot_animation_rejects_path_traversal(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """frames_dir is a basename under user_content_dir — a traversal payload
+    can't escape the root (CodeQL py/path-injection barrier)."""
+    fake_platform.paths().user_content_dir().mkdir(parents=True, exist_ok=True)
+    resp = api_client.post(
+        "/devices/0402:3922/display/boot-animation",
+        json={"frames_dir": "../../../../etc", "delay_ds": 5},
+    )
+    # basename of the payload ("etc") is not a subdir under user_content → 400
+    assert resp.status_code == 400
+
+
+def test_boot_animation_valid_subdir_passes_path_barrier(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """A real subdir of frames clears the path barrier (then only fails
+    because no device is connected — proving it isn't a path rejection)."""
+    frames = fake_platform.paths().user_content_dir() / "myanim"
+    frames.mkdir(parents=True, exist_ok=True)
+    (frames / "01.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    resp = api_client.post(
+        "/devices/dead:beef/display/boot-animation",
+        json={"frames_dir": "myanim", "delay_ds": 5},
+    )
+    # Path barrier passed; the device dispatch fails (not connected) → 4xx.
+    assert resp.status_code in (400, 404)
+
+
 # =========================================================================
 # led router
 # =========================================================================

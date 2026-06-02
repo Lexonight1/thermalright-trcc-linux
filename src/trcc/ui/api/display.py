@@ -551,19 +551,33 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
                           request: Request) -> BootAnimationResponse:
     """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
 
-    *frames_dir* must point to an existing directory; we enumerate it
-    via iterdir() and dispatch only image files we found.  No user-
-    supplied path component flows into a filesystem call beyond the
-    initial directory resolution.
+    *frames_dir* is a subdirectory **name** under the user-content
+    directory (not an arbitrary path — this is a network endpoint).  We
+    enumerate the trusted root by basename so the directory passed to a
+    filesystem call comes entirely from ``iterdir()``; no user-controlled
+    path component reaches the FS (CodeQL py/path-injection barrier, same
+    shape as ``load_theme``).
     """
     log.info(
         "api POST /devices/{key}/display/boot-animation: key=%s "
         "frames_dir=%s delay_ds=%s",
         key, body.frames_dir, body.delay_ds,
     )
-    frames_path = Path(body.frames_dir).resolve()
-    if not frames_path.is_dir():
-        raise HTTPException(400, f"frames_dir is not a directory: {body.frames_dir!r}")
+    allowed_root = (
+        request.app.state.trcc.platform.paths().user_content_dir()
+        .resolve(strict=True)
+    )
+    requested_name = Path(body.frames_dir).name
+    if not requested_name:
+        raise HTTPException(400, "frames_dir required")
+    subdirs = {p.name: p for p in allowed_root.iterdir() if p.is_dir()}
+    frames_path = subdirs.get(requested_name)
+    if frames_path is None:
+        raise HTTPException(
+            400,
+            f"frames_dir not found under the user content directory: "
+            f"{requested_name!r}",
+        )
 
     frame_paths = sorted(
         p for p in frames_path.iterdir()
