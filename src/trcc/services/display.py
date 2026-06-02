@@ -247,41 +247,10 @@ class DisplayService:
                       info.key, len(scene.frame_bytes))
             return scene.frame_bytes
 
-        if scene is None or scene.bg_mask_key != bg_key:
-            # Animated-theme fast path: a multi-frame video draws a new
-            # bg every tick (cursor is in ``bg_key`` → always a scene
-            # MISS), so the single-surface scene cache never helps it.
-            # The VideoFrameCache holds every frame's bg+mask, so a tick
-            # after the first build is a list lookup, not a fresh
-            # decode+fit+composite.  ``get_surface`` returns exactly what
-            # ``_build_bg_mask`` produced for that cursor (parity gate).
-            video_cache = self._video_cache(info, theme, visual_size)
-            if video_cache is not None:
-                pb = self._media.playback(info.key)
-                cursor = pb.cursor if pb is not None else 0
-                bg_surface = video_cache.get_surface(cursor)
-                if bg_surface is None:
-                    log.warning(
-                        "build_frame %s: video cache miss at cursor %d "
-                        "(frames=%d) — rebuilding bg directly",
-                        info.key, cursor, video_cache.frame_count,
-                    )
-                    bg_surface = self._build_bg_mask(info, theme, visual_size)
-                else:
-                    log.debug("build_frame %s: bg from video cache "
-                              "(cursor=%d/%d)", info.key, cursor,
-                              video_cache.frame_count)
-            else:
-                bg_surface = self._build_bg_mask(info, theme, visual_size)
-        else:
-            bg_surface = scene.bg_mask_surface
-
-        if scene is None or scene.overlay_key != overlay_key:
-            overlay_surface = self._build_overlay(
-                info, theme, sensors, visual_size, clock,
-            )
-        else:
-            overlay_surface = scene.overlay_surface
+        bg_surface, overlay_surface = self._resolve_bg_overlay(
+            info, theme, sensors, visual_size, clock,
+            scene, bg_key, overlay_key,
+        )
 
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
@@ -362,16 +331,12 @@ class DisplayService:
         bg_key = self._bg_mask_key(info, theme, visual_size)
         overlay_key = self._overlay_key(info, theme, visual_size, sensors, clock)
 
-        if scene is None or scene.bg_mask_key != bg_key:
-            bg_surface = self._build_bg_mask(info, theme, visual_size)
-        else:
-            bg_surface = scene.bg_mask_surface
-        if scene is None or scene.overlay_key != overlay_key:
-            overlay_surface = self._build_overlay(
-                info, theme, sensors, visual_size, clock,
-            )
-        else:
-            overlay_surface = scene.overlay_surface
+        # Shared resolve — same video-cache fast path build_frame uses, so a
+        # video theme's preview is a cache lookup, not a fresh per-tick decode.
+        bg_surface, overlay_surface = self._resolve_bg_overlay(
+            info, theme, sensors, visual_size, clock,
+            scene, bg_key, overlay_key,
+        )
         self._scenes[info.key] = SceneCache(
             bg_mask_surface=bg_surface, bg_mask_key=bg_key,
             overlay_surface=overlay_surface, overlay_key=overlay_key,
@@ -379,6 +344,57 @@ class DisplayService:
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
         return self._apply_post_processing(surface, s, resolved_profile)
+
+    def _resolve_bg_overlay(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        sensors: dict[str, float],
+        visual_size: tuple[int, int],
+        clock: dict[str, str],
+        scene: SceneCache | None,
+        bg_key: tuple[Any, ...],
+        overlay_key: tuple[Any, ...],
+    ) -> tuple[Any, Any]:
+        """Resolve the (bg+mask, overlay) surfaces for a tick.
+
+        Shared by ``build_frame`` (wire) and ``build_preview_surface``
+        (GUI) so both go through the same caches — most importantly the
+        VideoFrameCache: a multi-frame video draws a new bg every tick
+        (the cursor is in ``bg_key`` → always a single-surface scene
+        MISS), so without the frame cache every tick re-ran the full
+        decode+fit+composite.  ``get_surface`` returns exactly what
+        ``_build_bg_mask`` produced for that cursor (the parity gate).
+        """
+        if scene is not None and scene.bg_mask_key == bg_key:
+            bg_surface = scene.bg_mask_surface
+        else:
+            video_cache = self._video_cache(info, theme, visual_size)
+            if video_cache is not None:
+                pb = self._media.playback(info.key)
+                cursor = pb.cursor if pb is not None else 0
+                bg_surface = video_cache.get_surface(cursor)
+                if bg_surface is None:
+                    log.warning(
+                        "resolve_bg_overlay %s: video cache miss at cursor "
+                        "%d (frames=%d) — rebuilding bg directly",
+                        info.key, cursor, video_cache.frame_count,
+                    )
+                    bg_surface = self._build_bg_mask(info, theme, visual_size)
+                else:
+                    log.debug("resolve_bg_overlay %s: bg from video cache "
+                              "(cursor=%d/%d)", info.key, cursor,
+                              video_cache.frame_count)
+            else:
+                bg_surface = self._build_bg_mask(info, theme, visual_size)
+
+        if scene is not None and scene.overlay_key == overlay_key:
+            overlay_surface = scene.overlay_surface
+        else:
+            overlay_surface = self._build_overlay(
+                info, theme, sensors, visual_size, clock,
+            )
+        return bg_surface, overlay_surface
 
     def build_solid_color_frame(
         self,

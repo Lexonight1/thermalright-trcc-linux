@@ -659,6 +659,65 @@ def test_video_cache_builds_once_then_serves_lookups(
     assert builds == n_frames
 
 
+def test_build_preview_surface_uses_the_video_cache(tmp_home: Path) -> None:
+    """The GUI preview path goes through the same VideoFrameCache as the wire
+    path — so a video theme's preview is a cache lookup, not a fresh
+    per-tick decode.  15 preview calls over a 9-frame loop call
+    ``_build_bg_mask`` exactly 9 times (the single cache build)."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    media = MediaService()
+    n_frames = 9
+    media._playbacks[_KEY] = Playback(
+        frames=[
+            RawFrame(data=bytes([64 * (i % 3 + 1)]) * (320 * 320 * 3),
+                     width=320, height=320)
+            for i in range(n_frames)
+        ],
+        fps=15,
+    )
+    playback = media._playbacks[_KEY]
+    display = DisplayService(
+        renderer=renderer,
+        themes=ThemeService(),
+        overlay=OverlayService(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media,
+    )
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922,
+        vendor="ALi Corp", product="LCD",
+        wire=Wire.SCSI, kind=Kind.LCD,
+        device_type=1, fbl=100, native_resolution=(320, 320),
+        orientations=(0,),
+    )
+    theme = Theme(
+        path=tmp_home / "theme", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    profile = get_profile(100)
+
+    builds = 0
+    original = display._build_bg_mask
+
+    def counting_build_bg_mask(*args: Any, **kwargs: Any) -> Any:
+        nonlocal builds
+        builds += 1
+        return original(*args, **kwargs)
+
+    display._build_bg_mask = counting_build_bg_mask  # type: ignore[method-assign]
+
+    for tick in range(15):
+        playback.cursor = tick % n_frames
+        surface = display.build_preview_surface(
+            info=info, theme=theme, sensors={}, profile=profile,
+        )
+        assert surface is not None
+
+    assert builds == n_frames   # the cache, not 15 fresh decodes
+
+
 def test_rendered_surface_exposes_sent_frame_for_preview(
     tmp_home: Path,
 ) -> None:
