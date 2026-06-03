@@ -50,6 +50,17 @@ _WRITE_CHUNK_SIZE = 16 * 1024
 # PM values that use raw RGB565 (cmd=3); everything else uses JPEG (cmd=2).
 _RGB565_PMS: set[int] = {32}
 
+# Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  C#
+# FormCZTVInit (myDeviceMode==2) overrides it only for this known PM set
+# (plus PM=1 with SUB 48/49); every other PM stays 480x480.  pm_to_fbl()
+# returns the PM itself for unrecognised values, which get_profile would
+# misread as a 320x320 panel — so unknown bulk PMs must clamp to FBL 72.
+# Mirrors legacy ``_bulk_resolution``. (#169)
+_BULK_BASE_FBL = 72
+_BULK_KNOWN_PMS: frozenset[int] = frozenset(
+    {5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 50, 63, 64, 65, 66, 68, 69}
+)
+
 
 @DeviceFactory.register(Wire.BULK)
 class BulkLcd(Device[BulkTransport]):
@@ -101,8 +112,20 @@ class BulkLcd(Device[BulkTransport]):
 
         # Build the cached profile. Resolution comes from the FBL tables
         # (mirrors legacy ``_bulk_resolution``); the jpeg flag is the
-        # Bulk-specific override (USBLCDNew → JPEG except PM=32).
-        fbl = pm_to_fbl(self._pm, self._sub)
+        # Bulk-specific override (USBLCDNew → JPEG except PM=32).  Unknown
+        # bulk PMs stay on the 480x480 base rather than letting pm_to_fbl
+        # echo the PM into get_profile as a bogus FBL (C# parity, #169).
+        if self._pm in _BULK_KNOWN_PMS or (
+            self._pm == 1 and self._sub in (48, 49)
+        ):
+            fbl = pm_to_fbl(self._pm, self._sub)
+        else:
+            log.info(
+                "BulkLcd %s: PM=%d SUB=%d not a known bulk model — "
+                "defaulting to FBL %d (480x480)",
+                self.info.key, self._pm, self._sub, _BULK_BASE_FBL,
+            )
+            fbl = _BULK_BASE_FBL
         base = get_profile(fbl, self._pm)
         self._profile = DeviceProfile(
             width=base.width, height=base.height,

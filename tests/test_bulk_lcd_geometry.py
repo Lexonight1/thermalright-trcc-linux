@@ -56,8 +56,9 @@ def _make_bulk(transport: FakeBulkTransport, *,
     (32, (320, 320), 100),
     # PM=64 → FBL=114 → 1600×720 widescreen
     (64, (1600, 720), 114),
-    # PM unknown by FBL table falls back to default 320×320 big-endian
-    (200, (320, 320), 200),
+    # PM unknown to the bulk FBL table → C# FormCZTVInit (myDeviceMode==2)
+    # default FBL=72 (480×480).  NOT the PM echoed as a bogus FBL. (#169)
+    (200, (480, 480), 72),
 ])
 def test_handshake_derives_resolution_from_pm(
     fake_bulk: FakeBulkTransport,
@@ -75,6 +76,42 @@ def test_handshake_derives_resolution_from_pm(
     assert result.pm_byte == pm
     assert device._profile is not None
     assert device._profile.resolution == expected_resolution
+
+
+@pytest.mark.parametrize("pm,sub", [
+    (1, 0), (1, 1), (1, 47), (2, 0), (4, 0), (200, 0), (255, 9),
+])
+def test_unknown_bulk_pm_defaults_to_480(
+    fake_bulk: FakeBulkTransport, pm: int, sub: int,
+) -> None:
+    """A PM (or PM=1 SUB) the C# FormCZTVInit table doesn't recognise stays
+    on the 480×480 base FBL=72 — never the 320×320 that pm_to_fbl's PM-echo
+    fallback would have produced. Mirrors the official app's default. (#169)"""
+    fake_bulk.read_script.append(_bulk_response(pm, sub))
+    device = _make_bulk(fake_bulk)
+
+    result = device.connect()
+
+    assert result.resolution == (480, 480), (
+        f"PM={pm} SUB={sub}: expected 480×480 default, got {result.resolution}"
+    )
+    assert result.fbl == 72
+
+
+@pytest.mark.parametrize("pm,sub,expected", [
+    (1, 48, (1600, 720)),   # known SUB override survives the guard
+    (1, 49, (1920, 462)),
+])
+def test_pm1_known_sub_still_overrides(
+    fake_bulk: FakeBulkTransport, pm: int, sub: int,
+    expected: tuple[int, int],
+) -> None:
+    """PM=1 with SUB 48/49 must still resolve its widescreen override — the
+    unknown-PM guard only catches the unrecognised SUBs. (#169)"""
+    fake_bulk.read_script.append(_bulk_response(pm, sub))
+    device = _make_bulk(fake_bulk)
+
+    assert device.connect().resolution == expected
 
 
 # ── Bulk-specific JPEG/RGB565 override ───────────────────────────────
