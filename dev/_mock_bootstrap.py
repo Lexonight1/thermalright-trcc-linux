@@ -108,7 +108,7 @@ def _build_dev_platform() -> Platform:
     ~/.trcc" tool; for hardware-less work, ``tests.conftest.FakePlatform``
     is the right substitute (same Port).
     """
-    from trcc.core.ports import Paths, Platform
+    from trcc.core.ports import Paths
 
     class DevPaths(Paths):
         """Paths port rooted at the dev tree.
@@ -132,8 +132,10 @@ def _build_dev_platform() -> Platform:
 
     # Pick the host's production Platform impl as the base so USB +
     # sensors + autostart + hotplug all work the way the packaged app
-    # does.  Override only ``paths()``.
-    host = Platform.detect()
+    # does.  Override only ``paths()``.  Mirrors production launch
+    # (ui/gui/__init__.launch + _boot) which builds via PlatformFactory.
+    from trcc.adapters.system import PlatformFactory
+    host = PlatformFactory.current()
     host_cls = type(host)
 
     class DevPlatform(host_cls):  # type: ignore[valid-type, misc]

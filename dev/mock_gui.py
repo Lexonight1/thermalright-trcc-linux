@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, cast
 
 # Bootstrap handles sys.path + paths + logging.  Import is intentionally
-# before any trcc.* import so Platform.detect picks up our paths overrides.
+# before any trcc.* import so the dev paths override resolves first.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _mock_bootstrap import (
     DEV_DATA,
