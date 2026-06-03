@@ -21,7 +21,12 @@ from ...core.errors import (
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
-from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
+from ...core.protocol import (
+    DeviceProfile,
+    get_profile,
+    pm_to_fbl,
+    resolve_encode_base,
+)
 from . import DeviceFactory
 
 log = logging.getLogger(__name__)
@@ -127,10 +132,18 @@ class BulkLcd(Device[BulkTransport]):
             )
             fbl = _BULK_BASE_FBL
         base = get_profile(fbl, self._pm)
+        # Resolve the device-only encode baseline now that PM is known — e.g.
+        # the FW360 Ultra (PM=6) mounts 180° rotated and needs its wire frame
+        # pre-rotated so it reads upright on the glass. (#137)
+        encode_baseline = resolve_encode_base(base, self._pm)
+        if encode_baseline:
+            log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
+                     self.info.key, self._pm, encode_baseline)
         self._profile = DeviceProfile(
             width=base.width, height=base.height,
             jpeg=(self._pm not in _RGB565_PMS),
             big_endian=base.big_endian, rotate=base.rotate,
+            encode_baseline=encode_baseline,
             encode_base=base.encode_base, encode_invert=base.encode_invert,
             encode_sub_bases=base.encode_sub_bases,
             encode_pm_bases=base.encode_pm_bases,

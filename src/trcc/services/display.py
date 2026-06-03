@@ -1182,6 +1182,14 @@ class DisplayService:
         return DeviceProfile(width=w, height=h, jpeg=False, rotate=False)
 
     def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:
+        # Device-only encode baseline: panels with a fixed hardware-mount
+        # rotation (FW360 PM=6 → 180°) need their WIRE frame pre-rotated so the
+        # glass reads upright.  This is the single chokepoint every send path
+        # funnels through; the preview path never calls it, so the GUI preview
+        # stays upright — exactly the reporter's ask.  rotate() returns a new
+        # surface, so the caller's stored preview_surface is untouched. (#137)
+        if profile.encode_baseline:
+            surface = self._r.rotate(surface, profile.encode_baseline)
         if profile.jpeg:
             return self._r.encode_jpeg(surface)
         return self._r.encode_rgb565(surface, profile.byte_order)

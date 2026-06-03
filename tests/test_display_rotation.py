@@ -373,3 +373,52 @@ def test_fit_mode_setting_reaches_renderer(
     # Just verify build_frame runs to completion without crashing on fit.
     result = display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
     assert isinstance(result, bytes)
+
+
+# ── 7. device-only encode baseline (#137 — FW360 upside down) ─────────
+
+
+def _bulk_480_info() -> ProductInfo:
+    return ProductInfo(
+        vid=0x87AD, pid=0x70DB,
+        vendor="ChiZhu Tech", product="FW360 Ultra",
+        wire=Wire.BULK, kind=Kind.LCD,
+        device_type=4, fbl=72, native_resolution=(480, 480),
+        orientations=(0, 90, 180, 270),
+    )
+
+
+def test_encode_baseline_rotates_wire_only_not_preview(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A profile.encode_baseline (FW360 PM=6 → 180°) pre-rotates the WIRE frame
+    so the panel reads upright, while the stored preview_surface stays the
+    pre-baseline surface — the GUI preview is unaffected. (#137)"""
+    info = _bulk_480_info()
+    profile = DeviceProfile(480, 480, encode_baseline=180)
+
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+
+    # The baseline rotation hit the wire-encode path.
+    rotate_180 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 180]
+    assert rotate_180, "expected a rotate(surface, 180) in the wire-encode path"
+
+    # preview_surface is the INPUT to that rotate (captured before encode),
+    # never its 180°-rotated output — proves the baseline is device-only.
+    baseline_input = rotate_180[-1][1][0]
+    scene = display._scenes[info.key]
+    assert scene.preview_surface is baseline_input
+
+
+def test_zero_encode_baseline_does_not_rotate_wire(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A profile with no baseline (every non-FW360 device) must not add a
+    180° rotation — guarantees zero behavior change off the #137 path."""
+    info = _bulk_480_info()
+    profile = DeviceProfile(480, 480, encode_baseline=0)
+
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+
+    rotate_180 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 180]
+    assert rotate_180 == [], f"unexpected baseline rotation: {rotate_180}"

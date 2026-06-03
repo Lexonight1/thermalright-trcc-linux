@@ -114,6 +114,26 @@ def test_pm1_known_sub_still_overrides(
     assert device.connect().resolution == expected
 
 
+@pytest.mark.parametrize("pm,expected_baseline", [
+    (6, 180),   # FW360 Ultra mounts 180° rotated — needs a device baseline (#137)
+    (1, 0),     # other PMs carry no hardware-mount baseline
+    (5, 0),
+    (64, 0),
+])
+def test_pm_resolves_encode_baseline(
+    fake_bulk: FakeBulkTransport, pm: int, expected_baseline: int,
+) -> None:
+    """PM=6 (FW360, 480×480) resolves a 180° device-only encode baseline so the
+    wire frame is pre-rotated to read upright on the glass; every other PM
+    resolves 0 (no change). (#137)"""
+    fake_bulk.read_script.append(_bulk_response(pm))
+    device = _make_bulk(fake_bulk)
+    device.connect()
+
+    assert device.profile is not None
+    assert device.profile.encode_baseline == expected_baseline
+
+
 # ── Bulk-specific JPEG/RGB565 override ───────────────────────────────
 
 

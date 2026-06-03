@@ -39,16 +39,21 @@ class DeviceProfile:
     jpeg: bool = False           # JPEG encoding (vs RGB565)
     big_endian: bool = False     # RGB565 byte order (> vs <)
     rotate: bool = False         # Pre-rotate 90° CW for non-square portrait panels
-    # Device-side encode rotation (C# RotateImg in ImageToJpg).
-    # Formula: angle = (base + direction * sign) % 360
-    # sign = -1 if encode_invert else +1. sub_byte / pm_byte override base.
+    # Resolved device-only encode rotation, applied to the WIRE frame only (not
+    # the preview) in _encode_for_wire.  Resolved at handshake from
+    # encode_pm_bases via resolve_encode_base() once the PM byte is known.  0 =
+    # no baseline.  (#137 — FW360 Ultra PM=6 mounts 180° rotated.)
+    encode_baseline: int = 0
+    # encode_pm_bases is the LIVE source for encode_baseline: a PM (PingMu)
+    # keyed hardware-mount rotation (e.g. PM=6 → 180° for the FW360 Ultra).
+    encode_pm_bases: tuple[tuple[int, int], ...] = ()   # ((pm, base), ...) LIVE
+    # encode_base / encode_invert / encode_sub_bases are recorded-but-UNWIRED:
+    # the C# unified per-resolution model (angle = base + direction*sign).  Our
+    # rotate-flag pipeline already covers widescreen rotation, so they are NOT
+    # applied — wiring them needs widescreen hardware verification.
     encode_base: int = 0
-    encode_invert: bool = True   # True = (base - dir), most devices
-    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...)
-    # PM-byte (PingMu) keyed override. C# 480x480 + 320x320 dispatches on
-    # myDevicePingMu (e.g. PM=6 → 180° hardware-mount baseline for FW360
-    # Ultra). Different from encode_sub_bases — that's mySubMode.
-    encode_pm_bases: tuple[tuple[int, int], ...] = ()   # ((pm, base), ...)
+    encode_invert: bool = True   # (unwired — see above)
+    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...) unwired
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -213,27 +218,20 @@ def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:
     return get_profile(fbl, pm).resolution
 
 
-def get_encode_rotation(profile: DeviceProfile, sub_byte: int,
-                         direction: int, pm_byte: int = 0) -> int:
-    """Compute device-side encode rotation angle (C# RotateImg in ImageToJpg).
+def resolve_encode_base(profile: DeviceProfile, pm_byte: int) -> int:
+    """Resolve a panel's device-only encode baseline by PM (PingMu) byte.
 
-    Every C# angle table follows: angle = (base + direction * sign) % 360.
-    sign is per-resolution (-1 if encode_invert, +1 otherwise).
-    pm_byte overrides base via encode_pm_bases (C# myDevicePingMu dispatch);
-    sub_byte overrides via encode_sub_bases (C# mySubMode dispatch).
-    PM takes precedence — C# checks PingMu first for square panels.
+    Square panels carry a fixed hardware-mount rotation keyed on PM — e.g. the
+    FW360 Ultra (PM=6) mounts 180° rotated, so its wire frame must be
+    pre-rotated 180° to read upright on the glass.  Returns the matching
+    ``encode_pm_bases`` angle, else 0.
+
+    Resolved once at handshake (where PM is known) into
+    ``DeviceProfile.encode_baseline`` and applied device-only in
+    ``_encode_for_wire`` — the GUI preview is never rotated.  (#137)
     """
-    log.debug("get_encode_rotation: sub=%d direction=%d pm=%d",
-              sub_byte, direction, pm_byte)
-    base = profile.encode_base
-    for pm, pm_base in profile.encode_pm_bases:
+    for pm, base in profile.encode_pm_bases:
         if pm_byte == pm:
-            base = pm_base
-            break
-    else:
-        for sub, sub_base in profile.encode_sub_bases:
-            if sub_byte == sub:
-                base = sub_base
-                break
-    sign = -1 if profile.encode_invert else 1
-    return (base + direction * sign) % 360
+            log.debug("resolve_encode_base: pm=%d → %d°", pm_byte, base)
+            return base
+    return 0
