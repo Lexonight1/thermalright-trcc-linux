@@ -253,9 +253,11 @@ class LinuxHotplugMonitor(HotplugMonitor):
 
         pyudev = _import_pyudev()
         if pyudev is None:
-            log.info(
-                "LinuxHotplugMonitor: pyudev not installed — install with "
-                "`pip install pyudev` for live USB add/remove events",
+            log.warning(
+                "LinuxHotplugMonitor: pyudev not installed — HOTPLUG DISABLED. "
+                "Devices plugged in after launch (and devices missed at the "
+                "boot discover) will not connect. Install python3-pyudev "
+                "(or `pip install pyudev`) to enable live USB detection.",
             )
             # Still try to bring up the power listener — it has its own
             # graceful-import-fail path and a Linux box without pyudev

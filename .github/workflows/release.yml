@@ -140,6 +140,7 @@ jobs:
           Requires:   python3-numpy
           Requires:   python3-psutil
           Requires:   python3-pyusb
+          Requires:   python3-pyudev
           Requires:   python3-click
           Requires:   python3-typer
           Requires:   python3-fastapi
@@ -251,7 +252,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-click, python3-typer, python3-fastapi, python3-uvicorn, python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
+          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-click, python3-typer, python3-fastapi, python3-uvicorn, python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
           Recommends: p7zip-full, ffmpeg, python3-pynvml, python3-dbus, python3-hidapi
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
@@ -411,6 +412,7 @@ jobs:
           depend = python-numpy
           depend = python-psutil
           depend = python-pyusb
+          depend = python-pyudev
           depend = python-click
           depend = python-typer
           depend = python-fastapi
