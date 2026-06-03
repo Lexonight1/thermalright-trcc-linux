@@ -452,3 +452,30 @@ def test_device_attached_is_idempotent(tmp_home: Path) -> None:
     # response is scripted) nor swaps the live device object.
     app.events.publish(DeviceAttached(key="0402:3922", vid=0x0402, pid=0x3922))
     assert app.devices["0402:3922"] is device
+
+
+# ── Post-handshake data download (#136 Phase 1) ──────────────────────
+
+
+def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
+    """ConnectDevice installs theme/cloud/mask data for the HANDSHAKE-resolved
+    resolution. Non-square bulk panels report native_resolution=(0,0) and only
+    learn their real size at handshake, so this is the only place their data
+    (both orientations, via ensure_all) gets installed. Port of legacy's
+    _ensure_data_background(device, w, h). (#136)"""
+    from trcc.core.commands import ConnectDevice
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))   # FBL 100 → 320×320
+    app = App(platform=platform, renderer=RecordingRenderer())
+
+    installed: list[tuple[int, int]] = []
+
+    class _SpyInstall:
+        def ensure_all(self, resolution: tuple[int, int]) -> None:
+            installed.append(resolution)
+
+    app.data_install = _SpyInstall()   # type: ignore[assignment]
+
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+    assert installed == [(320, 320)]   # the handshake-resolved resolution

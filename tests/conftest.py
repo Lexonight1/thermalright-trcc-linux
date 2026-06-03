@@ -289,6 +289,25 @@ def fake_scsi() -> FakeScsiTransport:
     return FakeScsiTransport()
 
 
+@pytest.fixture(autouse=True)
+def _stub_data_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test downloads theme archives over the network.
+
+    Both ``DiscoverDevices`` and (now) ``ConnectDevice`` call
+    ``DataInstallService.ensure_all``, which would otherwise run the real
+    ``UrllibHttpFetcher``.  Stub it at the class so every test is offline-safe;
+    tests that assert on the call replace ``app.data_install`` locally.
+    """
+    from trcc.services.data_install import DataInstallService, EnsureDataResult
+
+    def _noop(_self: object, resolution: tuple[int, int]) -> EnsureDataResult:
+        return EnsureDataResult(
+            resolution=resolution, themes_ok=True, web_ok=True, masks_ok=True,
+        )
+
+    monkeypatch.setattr(DataInstallService, "ensure_all", _noop)
+
+
 # =========================================================================
 # CLI fixtures — typer.testing.CliRunner + _ctx App override
 # =========================================================================

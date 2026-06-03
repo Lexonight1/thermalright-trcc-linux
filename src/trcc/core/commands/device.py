@@ -182,6 +182,22 @@ class ConnectDevice(Command[ConnectResult]):
                     override.button_image or "(cutout-only)",
                 )
 
+        # Install theme/cloud/mask data for the HANDSHAKE-resolved resolution.
+        # Non-square bulk panels report native_resolution=(0,0) and only learn
+        # their real size here, so DiscoverDevices' static-resolution pass
+        # skipped them — they'd have no data on disk.  ensure_all installs BOTH
+        # orientations for non-square panels (so portrait themes/masks exist),
+        # is idempotent, and is the port of legacy's
+        # ``_ensure_data_background(device, w, h)``.  Best-effort: a download
+        # failure must not block the connect. (#136)
+        w, h = handshake.resolution
+        if w and h:
+            try:
+                app.data_install.ensure_all((w, h))
+            except Exception:
+                log.exception("ConnectDevice %s: ensure_all(%dx%d) failed",
+                              self.key, w, h)
+
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
         ))
