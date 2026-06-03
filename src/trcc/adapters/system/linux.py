@@ -13,7 +13,6 @@ Key pieces:
 from __future__ import annotations
 
 import ctypes
-import fcntl
 import logging
 import os
 from pathlib import Path
@@ -312,6 +311,8 @@ class LinuxScsiTransport(ScsiTransport):
         self._write_bufs.clear()
 
     def send_cdb(self, cdb: bytes, data: bytes,
+        import fcntl  # lazy import: not available on non-Linux platforms
+
                  timeout_ms: int = 5000) -> bool:
         """SCSI CDB + data-out via single SG_IO ioctl.  True on status 0."""
         log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
