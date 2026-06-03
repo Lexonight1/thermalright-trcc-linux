@@ -161,6 +161,25 @@ class DisplayService:
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
+    def _compose_geometry(
+        self, profile: DeviceProfile, theme: Theme,
+    ) -> tuple[tuple[int, int], bool]:
+        """Return ``(base compose size, is_portrait_compose)`` for this frame.
+
+        A non-square ``rotate=True`` panel is physically portrait.  When the
+        active theme is portrait-authored (``theme.resolution`` taller than
+        wide) the canvas composes at portrait dims so the content isn't
+        stretched into the landscape canvas, and the device 90° rotate is
+        skipped (the portrait composition already matches the portrait wire
+        buffer).  Landscape themes (and themes with no declared size) keep
+        composing landscape + rotate — content-matched, so the working
+        widescreen panels are unchanged. (#136)
+        """
+        w, h = profile.resolution
+        tw, th = theme.resolution
+        portrait = bool(profile.rotate and w != h and tw > 0 and th > tw)
+        return ((h, w) if portrait else (w, h)), portrait
+
     def build_frame(
         self,
         info: ProductInfo,
@@ -185,7 +204,7 @@ class DisplayService:
         canvas = ``info.native_resolution``, no device rotation, RGB565.
         """
         resolved_profile = self._resolve_profile(info, profile)
-        base_size = resolved_profile.resolution
+        base_size, portrait = self._compose_geometry(resolved_profile, theme)
 
         s = self._settings.for_device(info.key)
         visual_size = self._visual_size(base_size, s.orientation)
@@ -280,8 +299,10 @@ class DisplayService:
         # Device-side rotation: portrait panels render content in landscape
         # for composition, then rotate 90° to match the device's portrait
         # buffer arrangement before encoding. Matches the C# pipeline
-        # ("RGB565-LE rotated" in legacy report output).
-        if resolved_profile.rotate:
+        # ("RGB565-LE rotated" in legacy report output).  Skipped when we
+        # already composed the canvas at portrait dims for a portrait theme
+        # (the composition matches the portrait wire buffer directly). (#136)
+        if resolved_profile.rotate and not portrait:
             log.debug("build_frame %s: device rotate 90° (portrait panel)",
                       info.key)
             surface = self._r.rotate(surface, 90)
@@ -314,7 +335,7 @@ class DisplayService:
         log.debug("build_preview_surface: key=%s theme=%s",
                   info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
-        base_size = resolved_profile.resolution
+        base_size, portrait = self._compose_geometry(resolved_profile, theme)
 
         s = self._settings.for_device(info.key)
         visual_size = self._visual_size(base_size, s.orientation)
@@ -343,7 +364,9 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
-        return self._apply_post_processing(surface, s, resolved_profile)
+        return self._apply_post_processing(
+            surface, s, resolved_profile, compose_portrait=portrait,
+        )
 
     def _resolve_bg_overlay(
         self,
@@ -499,6 +522,8 @@ class DisplayService:
         surface: Any,
         s: DeviceSettings,
         resolved: DeviceProfile,
+        *,
+        compose_portrait: bool = False,
     ) -> Any:
         """Apply user brightness, user orientation, and device-side rotation.
 
@@ -507,15 +532,17 @@ class DisplayService:
         ``build_solid_color_frame`` intentionally calls only the
         brightness step because user-orientation on a uniform fill is a
         no-op and the helper's extra rotate calls would burn cycles for
-        no visible change.
+        no visible change.  ``compose_portrait`` skips the device 90° rotate
+        when the canvas was already composed at portrait dims (#136).
         """
-        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s",
-                  s.brightness, s.orientation, resolved.rotate)
+        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s "
+                  "compose_portrait=%s",
+                  s.brightness, s.orientation, resolved.rotate, compose_portrait)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if s.orientation:
             surface = self._r.rotate(surface, 360 - s.orientation)
-        if resolved.rotate:
+        if resolved.rotate and not compose_portrait:
             surface = self._r.rotate(surface, 90)
         return surface
 

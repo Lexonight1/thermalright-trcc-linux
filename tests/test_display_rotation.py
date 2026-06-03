@@ -422,3 +422,81 @@ def test_zero_encode_baseline_does_not_rotate_wire(
 
     rotate_180 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 180]
     assert rotate_180 == [], f"unexpected baseline rotation: {rotate_180}"
+
+
+# ── 8. content-matched portrait composition (#136 — Vision Max stretch) ─
+
+
+def _theme_sized(w: int, h: int) -> Theme:
+    return Theme(
+        path=Path("/dev/null/themes/t"), name="t",
+        resolution=(w, h),
+        config={"elements": [], "width": w, "height": h},
+    )
+
+
+def _wide_info() -> ProductInfo:
+    # 87AD:70DB bulk; profile (FBL 224 → 854×480 rotate=True) is passed in.
+    return ProductInfo(
+        vid=0x87AD, pid=0x70DB,
+        vendor="ChiZhu Tech", product="Vision Max 120",
+        wire=Wire.BULK, kind=Kind.LCD,
+        device_type=4, fbl=224, native_resolution=(0, 0),
+        orientations=(0, 90, 180, 270),
+    )
+
+
+def test_portrait_theme_composes_portrait_and_skips_device_rotate(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A portrait-authored theme on a non-square rotate=True panel composes at
+    portrait dims (no stretch) and skips the device 90° rotate — the portrait
+    canvas already matches the portrait wire buffer. (#136)"""
+    profile = get_profile(224)
+    assert profile.rotate and profile.resolution == (854, 480)
+
+    display.build_frame(
+        info=_wide_info(), theme=_theme_sized(480, 854), sensors={},
+        profile=profile,
+    )
+
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (480, 854) in canvases, f"expected a 480×854 canvas, got {canvases}"
+    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
+    assert rot90 == [], f"portrait compose must skip the device rotate, got {rot90}"
+
+
+def test_landscape_theme_still_composes_landscape_and_rotates(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A landscape theme on the SAME panel keeps composing landscape + the
+    device 90° rotate — content-matched, so the working widescreen path is
+    unchanged. (#136)"""
+    profile = get_profile(224)
+
+    display.build_frame(
+        info=_wide_info(), theme=_theme_sized(854, 480), sensors={},
+        profile=profile,
+    )
+
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (854, 480) in canvases, f"expected an 854×480 canvas, got {canvases}"
+    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
+    assert rot90, "landscape compose must still apply the device rotate"
+
+
+def test_unsized_theme_defaults_to_landscape(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A theme with no declared size (0,0) falls back to landscape compose +
+    rotate — the safe default. (#136)"""
+    profile = get_profile(224)
+
+    display.build_frame(
+        info=_wide_info(), theme=_theme_sized(0, 0), sensors={}, profile=profile,
+    )
+
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (854, 480) in canvases
+    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
+    assert rot90, "unsized theme must keep the landscape default"
