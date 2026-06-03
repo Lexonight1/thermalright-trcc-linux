@@ -19,6 +19,7 @@ from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
     DateFormatChanged,
+    DeviceAttached,
     EventBus,
     FitModeChanged,
     MaskApplied,
@@ -155,6 +156,12 @@ class App:
         # {01.png, config1.dc} unit (cloud masks are read-only — the helper
         # no-ops for them).  See _helpers.persist_user_mask_dc.
         self.events.subscribe(OverlayChanged, self._persist_user_mask_dc)
+        # Hotplug bridge: connect a device the moment it appears.  The monitor
+        # only PUBLISHES DeviceAttached — without this subscriber the splash
+        # discover is the only connect path, so a device plugged in after
+        # launch (or present-but-not-ready during the boot discover) never
+        # connects (#139).  Core-level so CLI / API / GUI / daemon all benefit.
+        self.events.subscribe(DeviceAttached, self._on_device_attached)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -167,6 +174,21 @@ class App:
         ``_on_visual_change`` does."""
         from .core.commands._helpers import persist_user_mask_dc
         persist_user_mask_dc(self, event.key)
+
+    def _on_device_attached(self, event: Any) -> None:
+        """Hotplug ``DeviceAttached`` → connect the device.
+
+        Runs on the hotplug poll thread (same off-main-thread pattern the
+        splash ``BootstrapWorker`` already uses for ``ConnectDevice``).  Guarded
+        idempotent so coldplug replays + duplicate adds are no-ops.  On success
+        ``ConnectDevice`` emits ``DeviceConnected``, which UIs already observe.
+        """
+        if event.key in self.devices:
+            log.debug("_on_device_attached: %s already connected", event.key)
+            return
+        log.info("_on_device_attached: connecting %s", event.key)
+        from .core.commands import ConnectDevice
+        self.dispatch(ConnectDevice(key=event.key))
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

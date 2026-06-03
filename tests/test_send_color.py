@@ -417,3 +417,38 @@ def _scsi_poll_response(fbl: int, *, size: int = 0xE100) -> bytes:
     resp = bytearray(size)
     resp[0] = fbl
     return bytes(resp)
+
+
+# ── Hotplug bridge: DeviceAttached → ConnectDevice (#139) ─────────────
+
+
+def test_device_attached_event_connects_device(tmp_home: Path) -> None:
+    """Publishing DeviceAttached on the bus connects the device — the hotplug
+    bridge the cutover was missing (a device plugged in after launch, or
+    missed at the boot discover, never connected without it). (#139)"""
+    from trcc.core.events import DeviceAttached
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+
+    assert "0402:3922" not in app.devices
+    app.events.publish(DeviceAttached(key="0402:3922", vid=0x0402, pid=0x3922))
+    assert "0402:3922" in app.devices    # bridge fired ConnectDevice
+
+
+def test_device_attached_is_idempotent(tmp_home: Path) -> None:
+    """A DeviceAttached for an already-connected device is a no-op — coldplug
+    replays + duplicate adds must not reconnect or replace the device. (#139)"""
+    from trcc.core.events import DeviceAttached
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+
+    app.events.publish(DeviceAttached(key="0402:3922", vid=0x0402, pid=0x3922))
+    device = app.devices["0402:3922"]
+    # Second event — guarded, so it neither re-handshakes (no second poll
+    # response is scripted) nor swaps the live device object.
+    app.events.publish(DeviceAttached(key="0402:3922", vid=0x0402, pid=0x3922))
+    assert app.devices["0402:3922"] is device

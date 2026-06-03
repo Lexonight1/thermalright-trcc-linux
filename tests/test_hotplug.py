@@ -121,13 +121,25 @@ class _FakePyudevMonitor:
         return self._events.pop(0)
 
 
+class _FakePyudevContext:
+    """Stand-in for pyudev.Context — list_devices yields the coldplug set."""
+
+    def __init__(self, present: list[Any] | None = None) -> None:
+        self._present = list(present or [])
+
+    def list_devices(self, **kwargs: Any) -> list[Any]:
+        del kwargs            # tests only ever filter by subsystem="usb"
+        return self._present
+
+
 def _run_linux_monitor_with_events(
-    events: list[Any],
+    events: list[Any], present: list[Any] | None = None,
 ) -> tuple[EventBus, list[Any]]:
     """Drive a LinuxHotplugMonitor through one batch of fake events.
 
-    Returns (bus, captured_events) where captured_events is the list of
-    every event published on the bus during the run.
+    ``present`` is the coldplug set (devices already enumerated when the
+    monitor starts).  Returns (bus, captured_events) where captured_events is
+    the list of every event published on the bus during the run.
     """
     bus = EventBus()
     captured: list[Any] = []
@@ -136,12 +148,13 @@ def _run_linux_monitor_with_events(
 
     monitor = LinuxHotplugMonitor()
     fake = _FakePyudevMonitor(events)
+    ctx = _FakePyudevContext(present)
 
     # Run the poll loop on a thread, populated with our scripted events,
     # and stop it once the events drain (poll returns None continuously).
     monitor._bus = bus
     poll_thread = threading.Thread(
-        target=monitor._poll_loop, args=(fake,), daemon=True,
+        target=monitor._poll_loop, args=(fake, ctx), daemon=True,
     )
     monitor._thread = poll_thread
     poll_thread.start()
@@ -180,6 +193,29 @@ def test_linux_monitor_publishes_detach_for_known_device() -> None:
     assert len(captured) == 1
     assert isinstance(captured[0], DeviceDetached)
     assert captured[0].key == "0402:3922"
+
+
+def test_linux_monitor_coldplugs_present_device_on_start() -> None:
+    """A registry-known device already present when the monitor starts is
+    announced via DeviceAttached (coldplug) with no add event — the boot-race
+    half of #139.  Deduped to one announcement per key."""
+    present = [
+        _FakePyudevDevice("add", "0402", "3922"),  # the usb_device node
+        _FakePyudevDevice("add", "0402", "3922"),  # a sibling interface node
+    ]
+    _bus, captured = _run_linux_monitor_with_events([], present=present)
+
+    assert len(captured) == 1
+    assert isinstance(captured[0], DeviceAttached)
+    assert captured[0].key == "0402:3922"
+
+
+def test_linux_monitor_coldplug_skips_unknown_devices() -> None:
+    """Coldplug only announces registry-known devices."""
+    present = [_FakePyudevDevice("add", "dead", "beef")]
+    _bus, captured = _run_linux_monitor_with_events([], present=present)
+
+    assert captured == []
 
 
 def test_linux_monitor_ignores_unknown_vid_pid() -> None:

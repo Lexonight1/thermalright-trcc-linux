@@ -271,7 +271,7 @@ class LinuxHotplugMonitor(HotplugMonitor):
         monitor.filter_by(subsystem="usb")
 
         self._thread = threading.Thread(
-            target=self._poll_loop, args=(monitor,),
+            target=self._poll_loop, args=(monitor, context),
             daemon=True, name="trcc-hotplug",
         )
         self._thread.start()
@@ -303,7 +303,7 @@ class LinuxHotplugMonitor(HotplugMonitor):
 
     # ── Internal: poll loop ──────────────────────────────────────────
 
-    def _poll_loop(self, monitor: Any) -> None:
+    def _poll_loop(self, monitor: Any, context: Any) -> None:
         """Drain pyudev events until ``stop`` is called.
 
         ``poll(timeout=…)`` returns ``None`` on timeout so we get a
@@ -316,6 +316,14 @@ class LinuxHotplugMonitor(HotplugMonitor):
             log.exception("LinuxHotplugMonitor: pyudev monitor.start failed")
             return
 
+        # Coldplug: a device already enumerated before the monitor started
+        # emits no "add" event, so a device the boot discover missed (present
+        # but not handshake-ready) would never connect. Replay present
+        # registry-known devices as DeviceAttached on this thread — the App's
+        # connect bridge skips already-connected ones and revives the rest
+        # (#139). macOS/Windows/BSD monitors want the same coldplug — TODO.
+        self._coldplug(context)
+
         while not self._stop_event.is_set():
             try:
                 device = monitor.poll(timeout=0.5)
@@ -326,19 +334,28 @@ class LinuxHotplugMonitor(HotplugMonitor):
                 continue
             self._dispatch_device_event(device)
 
-    def _dispatch_device_event(self, device: Any) -> None:
-        """Translate one pyudev event into a bus event if it matches."""
-        action = device.action
+    def _device_key(self, device: Any) -> tuple[str, str] | None:
+        """Lowercase ``(vid, pid)`` for a registry-known USB device, else None.
+
+        Shared by event dispatch and the coldplug pass so both read the udev
+        properties + registry filter identically.
+        """
         vid = (device.get("ID_VENDOR_ID") or "").lower()
         pid = (device.get("ID_MODEL_ID") or "").lower()
-        if not vid or not pid:
-            return
-        if (vid, pid) not in self._known:
-            return
+        if not vid or not pid or (vid, pid) not in self._known:
+            return None
+        return (vid, pid)
+
+    def _dispatch_device_event(self, device: Any) -> None:
+        """Translate one pyudev event into a bus event if it matches."""
         if self._bus is None:
             return
-
+        ids = self._device_key(device)
+        if ids is None:
+            return
+        vid, pid = ids
         key = f"{vid}:{pid}"
+        action = device.action
         if action == "add":
             log.info("Hotplug add: %s", key)
             self._bus.publish(DeviceAttached(key=key, vid=int(vid, 16),
@@ -348,6 +365,32 @@ class LinuxHotplugMonitor(HotplugMonitor):
             self._bus.publish(DeviceDetached(key=key, vid=int(vid, 16),
                                              pid=int(pid, 16)))
         # other actions (change, bind, …) are intentionally ignored
+
+    def _coldplug(self, context: Any) -> None:
+        """Publish DeviceAttached for registry-known USB devices already present.
+
+        One usb_device can appear under several udev nodes; dedupe by key so a
+        device is announced once.  Failures are logged, not fatal — a missing
+        coldplug just leaves us at the live-events-only behavior.
+        """
+        if self._bus is None:
+            return
+        seen: set[str] = set()
+        try:
+            for device in context.list_devices(subsystem="usb"):
+                ids = self._device_key(device)
+                if ids is None:
+                    continue
+                vid, pid = ids
+                key = f"{vid}:{pid}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                log.info("Hotplug coldplug: %s", key)
+                self._bus.publish(DeviceAttached(key=key, vid=int(vid, 16),
+                                                 pid=int(pid, 16)))
+        except Exception:
+            log.exception("LinuxHotplugMonitor: coldplug enumeration failed")
 
 
 # =========================================================================
