@@ -24,7 +24,23 @@ The user's time is the constraint. Sounding productive is not being productive. 
 
 **If the user catches drift, don't soften it.** "Misleading framing" is a softer word for "lying by omission." Own it plainly the first time.
 
-Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`.
+**"Reporter-gated" is the new progress theater.** Before declaring a
+device/feature "can't bench-verify, needs the reporter," ask: did legacy ship
+the tooling to verify it (a mock, a fake platform, a harness in `tests/` or
+`dev/`)? In the 2026-06-03 session "reporter-gated" became my cover for not
+having looked — legacy had a multi-device `MockPlatform` + `dev/devices.json`
+that simulates ANY device fleet in the real GUI with zero hardware (the cutover
+dropped it; restoring it is the way to verify #136/#137/widescreen panels).
+
+**Legacy audits are INVENTORIES, not greps.** A keyword `git grep v9.6.5 …`
+that finds nothing is NOT evidence the cutover kept a feature — the thing you
+didn't think to grep for is exactly what got dropped. For any "did the cutover
+keep X?" question, READ the legacy module(s) end-to-end and enumerate their
+capabilities; end with an explicit "legacy had A,B,C,D; cutover kept A,B; C,D
+dropped — evidence:lines." Greps repeatedly missed whole dropped subsystems
+(geometry/portrait, the hotplug→connect bridge, the multi-device mock).
+
+Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`, `memory/feedback_legacy_audit_grep_not_inventory.md`.
 
 ## Source Tree Layout — Post-Cutover (read this first)
 
@@ -461,6 +477,27 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - Optional imports (`hid`, `dbus`, `gi`, `pynvml`) need `# pyright: ignore[reportMissingImports]`
 - C# asset suffixes are legacy — `Assets.get_localized()` maps ISO 639-1 → legacy suffixes via `ISO_TO_LEGACY`
 - **Issue #87**: Python 3.14 typer crash in `sudo_reexec` — FIXED: dispatches via `python -c` (direct function call), bypasses typer.
+- **`pyudev` is a REQUIRED Linux dependency** (not graceful-optional): hotplug —
+  live device attach/detach AND the boot-time coldplug — is built on it.
+  Without it the udev monitor can't start and a device plugged in after launch
+  (or missed at the boot discover) never connects. Declared in `pyproject.toml`
+  (`sys_platform=='linux'`) + the deb/rpm/Arch/Nix specs. The graceful-`None`
+  fallback stays only for environments that strip libudev, and now logs a
+  WARNING naming the consequence.
+- **`mock_gui` only shows REAL plugged-in hardware** — the cutover dropped
+  legacy's multi-device `MockPlatform` (`tests/mock_platform.py`) +
+  `dev/devices.json`. `tests/conftest.FakePlatform.scan_devices()` returns `[]`.
+  To verify device-specific render/geometry work (#136 portrait panels, #137,
+  widescreen) without hardware, the multi-device mock must be restored (a real
+  `MockPlatform(specs)` with scripted per-device handshakes, wired into
+  `dev/_mock_bootstrap`). Until then, don't claim those are visually verified.
+- **Non-square (`rotate=True`) panels = a partially-restored subsystem.** The
+  cutover fragmented legacy's geometry/portrait pipeline (#136). Restored so far:
+  data-download-on-handshake-resolution, content-matched portrait composition,
+  preview-bezel reorientation. Still pending: re-centralizing the geometry DTO
+  (`is_rotated`/`canvas_size`/`encode_angle`) and removing the dead
+  `native_orientation` field (API-schema-only consumer). See
+  `memory/project_geometry_subsystem_and_mock.md`.
 
 ## GitHub Issues
 - Never use "Fixes #N" in commit messages — GitHub auto-closes on push to default branch
