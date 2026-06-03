@@ -312,8 +312,7 @@ class LCDHandler(BaseHandler):
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
-        ow, oh = self._state.canvas_size
-        self._w['preview'].set_resolution(ow, oh)
+        self._sync_preview_size()   # composed orientation, not pre-rotation (#136)
         self._update_theme_directories()
 
     def _restore_split_mode(self, ds: DeviceSettings, w: int, h: int) -> None:
@@ -452,6 +451,8 @@ class LCDHandler(BaseHandler):
             key=self._device_key, path=path,
         ))
         self._state.current_theme_path = path if result.ok else None
+        if result.ok:
+            self._sync_preview_size()   # bezel matches portrait/landscape theme (#136)
         if overlay_config:
             self._load_theme_overlay_config(path, persist=persist)
 
@@ -870,6 +871,33 @@ class LCDHandler(BaseHandler):
                 "handle_frame: dropped (ui_active=False, %s)", self._device_key,
             )
 
+    def _composed_preview_size(self) -> tuple[int, int]:
+        """Preview bezel/label dims for the active theme.
+
+        Portrait when a portrait theme is composed on a non-square rotate=True
+        panel, else the device size swapped for user rotation — so the preview
+        frame asset + label match what the panel shows.  Falls back to the
+        cached canvas size (pre-handshake / no theme). (#136 phase 3)
+        """
+        device = self._app.devices.get(self._device_key)
+        theme = self._app.active_themes.get(self._device_key)
+        ds = self._app.settings.for_device(self._device_key)
+        if device is not None and device.profile is not None and theme is not None:
+            return self._app.display.composed_canvas_size(
+                device.info, theme, device.profile, ds.orientation,
+            )
+        cw, ch = self._state.canvas_size
+        swap = cw != ch and ds.orientation in (90, 270)
+        return (ch, cw) if swap else (cw, ch)
+
+    def _sync_preview_size(self) -> None:
+        """Resize the preview bezel/label to the active theme's composed
+        orientation.  Cheap arithmetic; only the asset reload inside
+        ``set_resolution`` is real work, and that only matters on change. (#136)"""
+        ow, oh = self._composed_preview_size()
+        self.log.debug("_sync_preview_size: %dx%d", ow, oh)
+        self._w['preview'].set_resolution(ow, oh)
+
     def rebuild_preview(self) -> None:
         """Fallback preview refresh for sends that carry no surface.
 
@@ -964,7 +992,7 @@ class LCDHandler(BaseHandler):
             "set_rotation: rotation=%d output=%dx%d rotated=%s",
             degrees, ow, oh, self._state.is_rotated,
         )
-        self._w['preview'].set_resolution(ow, oh)
+        self._sync_preview_size()   # composed orientation, portrait-theme aware (#136)
         self._update_theme_directories()
 
     def set_split_mode(self, mode: int) -> None:

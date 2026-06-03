@@ -180,6 +180,18 @@ class DisplayService:
         portrait = bool(profile.rotate and w != h and tw > 0 and th > tw)
         return ((h, w) if portrait else (w, h)), portrait
 
+    def composed_canvas_size(
+        self, info: ProductInfo, theme: Theme,
+        profile: DeviceProfile | None, orientation: int,
+    ) -> tuple[int, int]:
+        """The render canvas size for the active theme, incl. portrait
+        composition + user orientation.  The GUI sizes its preview bezel from
+        this so the frame asset + label match what the panel shows (#136).
+        """
+        resolved = self._resolve_profile(info, profile)
+        base_size, _ = self._compose_geometry(resolved, theme)
+        return self._visual_size(base_size, orientation)
+
     def build_frame(
         self,
         info: ProductInfo,

@@ -500,3 +500,19 @@ def test_unsized_theme_defaults_to_landscape(
     assert (854, 480) in canvases
     rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
     assert rot90, "unsized theme must keep the landscape default"
+
+
+def test_composed_canvas_size_drives_preview_orientation(
+    display: DisplayService,
+) -> None:
+    """composed_canvas_size (used by the GUI to size the preview bezel) returns
+    portrait dims for a portrait theme, landscape for landscape, and swaps for
+    user rotation. (#136 phase 3)"""
+    info = _wide_info()
+    profile = get_profile(224)   # 854×480, rotate=True
+
+    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 0) == (480, 854)
+    assert display.composed_canvas_size(info, _theme_sized(854, 480), profile, 0) == (854, 480)
+    assert display.composed_canvas_size(info, _theme_sized(0, 0), profile, 0) == (854, 480)
+    # user rotation 90 swaps the composed canvas
+    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 90) == (854, 480)
