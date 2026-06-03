@@ -13,7 +13,6 @@ Key pieces:
 from __future__ import annotations
 
 import ctypes
-import fcntl
 import logging
 import os
 from pathlib import Path
@@ -331,6 +330,7 @@ class LinuxScsiTransport(ScsiTransport):
             ctypes.memmove(data_buf, data, len(data))
         hdr.timeout = timeout_ms
         ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
+        import fcntl  # Linux-only stdlib — lazy so linux.py imports on Windows (#166)
         fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
@@ -369,6 +369,7 @@ class LinuxScsiTransport(ScsiTransport):
 
         ioctl_buf = ctypes.create_string_buffer(_SG_HDR_SIZE)
         ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
+        import fcntl  # Linux-only stdlib — lazy so linux.py imports on Windows (#166)
         fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
         ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
 
