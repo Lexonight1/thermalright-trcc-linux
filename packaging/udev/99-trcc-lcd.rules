@@ -4,54 +4,60 @@
 # Each device has two rules:
 #   1. MODE="0666" on the relevant subsystem(s) so non-root users can
 #      open the device handle (libusb / hidraw / scsi_generic).
-#   2. autosuspend_delay_ms=10000 on the USB device so the kernel
-#      autosuspends ~10s after our process exits (firmware sleeps
-#      the panel cleanly — same end state as Windows selective
-#      suspend).  This replaces v9.2.10's autosuspend=-1 pin (which
-#      caused issue #143's "USB communication lost" on app exit).
+#   2. power/control="auto" + autosuspend_delay_ms=10000 on the USB
+#      device so the kernel autosuspends ~10s after our frame stream
+#      stops; the firmware sleeps the panel in response to the USB
+#      suspend — same mechanism the Windows app relies on (it just stops
+#      sending frames and lets the device selective-suspend).  control=
+#      "auto" is REQUIRED: usb-storage defaults it to "on", which blocks
+#      autosuspend entirely, so the delay alone never fires (#143).  This
+#      replaces v9.2.10's autosuspend=-1 pin (the never-suspend pin that
+#      caused the original "USB communication lost" on app exit).
 #      10s = 5x our default 2s metrics-refresh tick → no spurious
 #      suspend during normal use, snappy panel-sleep on close.
+# MUST stay in sync with adapters/system/_udev.py (setup-udev) — same rule,
+# two sources; drifting them re-breaks panel sleep.
 
 # Thermalright LCD Display (SCSI)
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0402", ATTR{idProduct}=="3922", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0402", ATTR{idProduct}=="3922", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond LCD Display (SCSI)
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5406", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5406", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond USBDISPLAY (HID Type 2)
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5302", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5302", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond LED Controller (HID)
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="8001", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="8001", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="8001", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="8001", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond USBDISPLAY LY (Bulk)
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5408", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5408", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5408", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Winbond USBDISPLAY LY1 (Bulk)
 SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5409", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5409", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0416", ATTR{idProduct}=="5409", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # ALi Corp LCD Display (HID Type 3)
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5303", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5303", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # ALi Corp LCD Display (HID Type 3)
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0418", ATTRS{idProduct}=="5304", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # ChiZhu Tech GrandVision 360 AIO (Bulk)
 SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # Thermalright LCD Display (SCSI)
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87cd", ATTR{idProduct}=="70db", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87cd", ATTR{idProduct}=="70db", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"

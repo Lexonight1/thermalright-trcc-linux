@@ -14,8 +14,12 @@ Per-wire subsystem mapping:
     BULK   | usb
     LY     | usb
 
-Every device also gets the USB `power/autosuspend=-1` attribute so the
-kernel never puts the device to sleep (which would drop our handle).
+Every device also gets `power/control="auto"` +
+`power/autosuspend_delay_ms="10000"` so the kernel autosuspends the device
+~10s after our frame stream stops; the firmware sleeps the panel in response
+to the USB suspend (the mechanism the Windows app relies on — #143).  This
+MUST match packaging/udev/99-trcc-lcd.rules — the two are the same rule from
+two sources and drifting them re-breaks panel sleep.
 
 For SCSI devices we additionally write /etc/modprobe.d/trcc-lcd.conf
 forcing `usb-storage` Bulk-Only (not UAS) so /dev/sgN is reliably
@@ -78,7 +82,8 @@ def build_udev_rules() -> str:
             f'ACTION=="add", SUBSYSTEM=="usb", '
             f'ATTR{{idVendor}}=="{vid:04x}", '
             f'ATTR{{idProduct}}=="{pid:04x}", '
-            f'ATTR{{power/autosuspend}}="-1"'
+            f'ATTR{{power/control}}="auto", '
+            f'ATTR{{power/autosuspend_delay_ms}}="10000"'
         )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
