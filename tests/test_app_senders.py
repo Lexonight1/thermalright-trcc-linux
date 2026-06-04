@@ -6,6 +6,7 @@ deterministic ``SyncSendScheduler`` (no threads).  See ``doc/SEND_FOUNDATION.md`
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from tests.mock_platform import MockPlatform
@@ -51,6 +52,24 @@ def test_app_send_routes_to_sender(tmp_path: Path) -> None:
         # wait=False: queued, returns True; no sender → False.
         assert app.send(_SCSI, b"\x00\x00", wait=False) is True
         assert app.send("ffff:ffff", b"x", wait=False) is False
+    finally:
+        app.close()
+
+
+def test_detach_joins_worker_before_transport_close(tmp_path: Path) -> None:
+    # Real ThreadSendScheduler: detach must stop+join the worker BEFORE closing
+    # the transport, so no keepalive write lands after disconnect.
+    app = App(MockPlatform([_SPECS[0]], tmp_path))   # the volatile Bulk panel
+    try:
+        assert app.dispatch(ConnectDevice(key=_BULK)).ok
+        app.send(_BULK, b"\x00" * 16, wait=True)     # cache a frame; keepalive runs
+        transport = app.devices[_BULK]._transport
+        time.sleep(0.05)                             # let a keepalive or two fire
+        app.dispatch(DisconnectDevice(key=_BULK))     # → stop+join, then close
+        writes_at_detach = len(transport.writes)
+        time.sleep(0.35)                             # >2 keepalive intervals
+        assert len(transport.writes) == writes_at_detach   # worker stopped, no race
+        assert _BULK not in app.senders
     finally:
         app.close()
 

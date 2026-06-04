@@ -46,9 +46,11 @@ the latest-wins slot.
 | 7 | Boot-anim (`send_boot_animation`, SCSI-only) holds the wire via `app.exclusive_wire(key)` context manager (no lambda — `DeviceSender.exclusive()` + `_wire_lock`). Screencast needed no change — it already sends per-frame through `app.send` | **DONE** 2026-06-04 — `device_sender.exclusive()`, `app.exclusive_wire`, boot-anim wrapped; `test_exclusive_blocks_worker_writes`; suite 1245 | ✓ |
 | 9 | Sender publishes on fire-and-forget failure: injected `on_failure` (named callback, no EventBus dep) → `App._on_sender_failure` publishes `ErrorOccurred` + `DeviceDisconnected` (for `DeviceDisconnectedError`), mirroring the Command `except`. Keepalive guarded on `is_connected` to stop the flood once recovery closes the device. (Per-frame retry + 3-strike `RecoveryTracker` already in the Device adapters.) | **DONE** 2026-06-04 — `device_sender` `on_failure`/`_fail`; `app._on_sender_failure`; 2 tests; suite 1247 | ✓ |
 | 8 | Per-tick `RenderAndSend` (metrics observer + video tick) → `app.send(wait=False)`: producers never block on USB; I/O leaves the producer thread. Failures surface via #9 | **DONE** 2026-06-04 — one line; suite 1247; keepalive smoke + mock GUI clean | ✓ |
-| 10 | Disconnect-during-send: teardown drains/joins so it can't race an in-flight write | TODO | shutdown test |
-| 11 | Daemon + CLI + GUI all create senders via `ConnectDevice` — uniform, no per-UI wiring | TODO | daemon smoke |
-| 12 | `dev/smoke_keepalive.py` + update ~7 send-touching tests | TODO | green |
+| 10 | Disconnect-during-send: `detach` calls `stop_sender` (scheduler joins the worker thread) **before** `device.disconnect()`, so an in-flight write completes before the transport closes — no race | **DONE** 2026-06-04 — ordering in `App.detach`; `test_detach_joins_worker_before_transport_close` (no post-detach writes) | ✓ |
+| 11 | Daemon + CLI + GUI all create senders via the `ConnectDevice` chokepoint (daemon: `start_hotplug` → `DeviceAttached` → `_on_device_attached` → `ConnectDevice` → `start_sender`); `App.close` shuts the scheduler. Uniform, no per-UI wiring | **DONE** 2026-06-04 — verified by design (single chokepoint) + daemon path read | ✓ |
+| 12 | `dev/smoke_keepalive.py` + send-touching tests updated (render_led helper, backend_finish, device_sender, app_senders) | **DONE** 2026-06-04 — suite 1248; no "no sender" warnings in logs | ✓ |
+
+**Phase 1 complete (12/12).** The freeze is fixed; the per-device send-worker actor owns every wire write, serializes by construction, keepalives volatile wires, surfaces failures, and runs uniformly across GUI/CLI/API/daemon.
 
 ## Phase 2 — deferred, tracked (each has a trigger; do NOT drop)
 
