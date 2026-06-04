@@ -76,7 +76,6 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         device_type=2,
         native_resolution=(240, 320),
         orientations=(0, 90, 180, 270),
-        native_orientation="portrait",
     ),
 
     # --- HID LCD Type 3 ("ALi" variant, F5 prefix) ---------------------

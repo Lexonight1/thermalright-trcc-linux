@@ -52,7 +52,6 @@ def test_reset_device_when_attached(_trcc_app, fake_platform) -> None:
         wire=Wire.BULK, kind=Kind.LCD,
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),
-        native_orientation="landscape",
     )
     # Inject a fake device into app.devices directly so we can test the
     # detach + state-clear path without a real handshake.

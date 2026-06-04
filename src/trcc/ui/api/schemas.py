@@ -25,7 +25,6 @@ class ProductSchema(BaseModel):
     kind: str
     native_resolution: tuple[int, int]
     orientations: tuple[int, ...]
-    native_orientation: str
 
 
 class HandshakeSchema(BaseModel):

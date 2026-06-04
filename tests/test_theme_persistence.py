@@ -890,7 +890,7 @@ def test_save_theme_snapshots_preview_as_thumbnail(
         info = ProductInfo(
             vid=0x0402, pid=0x3922, vendor="Test", product="Stub",
             wire=Wire.SCSI, kind=Kind.LCD, native_resolution=_TEST_RES,
-            orientations=(0, 90, 180, 270), native_orientation="landscape",
+            orientations=(0, 90, 180, 270),
         )
         profile = None
         is_connected = True

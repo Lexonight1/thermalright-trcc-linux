@@ -75,7 +75,6 @@ CAPABILITIES_BY_KIND: dict[Kind, frozenset[Capability]] = {
 
 
 Orientation = Literal[0, 90, 180, 270]
-NativeOrientation = Literal["landscape", "portrait"]
 TempUnit = Literal["C", "F"]
 
 
@@ -199,7 +198,6 @@ class ProductInfo:
     fbl: int | None = None
     native_resolution: tuple[int, int] = (0, 0)
     orientations: tuple[int, ...] = (0,)
-    native_orientation: NativeOrientation = "landscape"
     led_style: LedStyle | None = None
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)

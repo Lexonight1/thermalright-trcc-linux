@@ -168,7 +168,6 @@ def product_to_schema(p: ProductInfo) -> ProductSchema:
         wire=p.wire.value, kind=p.kind.value,
         native_resolution=p.native_resolution,
         orientations=p.orientations,
-        native_orientation=p.native_orientation,
     )
 
 
