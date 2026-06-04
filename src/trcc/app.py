@@ -35,10 +35,11 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.models import Theme, Wire
-from .core.ports import Device, Platform, Renderer
+from .core.ports import Device, Platform, Renderer, SendScheduler
 from .core.registry import find_product
 from .core.results import Result
 from .services.cloud_theme import CloudThemeService
+from .services.device_sender import DeviceSender
 from .services.display import DisplayService
 from .services.first_run import FirstRunService
 from .services.keepalive import KeepaliveService
@@ -75,7 +76,8 @@ class App:
     """
 
     def __init__(self, platform: Platform,
-                 renderer: Renderer | None = None) -> None:
+                 renderer: Renderer | None = None,
+                 send_scheduler: SendScheduler | None = None) -> None:
         self.platform = platform
         self.devices: dict[str, Device] = {}
         self.events = EventBus()
@@ -120,6 +122,17 @@ class App:
         # are tick-driven; no background threads inside the services.
         self.slideshow = SlideshowService()
         self.keepalive = KeepaliveService()
+        # Per-device send workers (actors) — one owns each device's wire,
+        # serializing every write + keepalive-resending volatile (Bulk/LY)
+        # firmware.  Created on connect, dropped on disconnect.  The
+        # scheduler (execution) is injected so tests drive it deterministically
+        # (``SyncSendScheduler``); production defaults to a thread per device.
+        # See ``doc/SEND_FOUNDATION.md``.
+        self.senders: dict[str, DeviceSender] = {}
+        if send_scheduler is None:
+            from .adapters.infra.send_scheduler import ThreadSendScheduler
+            send_scheduler = ThreadSendScheduler()
+        self._send_scheduler: SendScheduler = send_scheduler
         # One-time library migration: early cutover builds saved user
         # content directly under user_content_dir (`theme{w}{h}`, `web`);
         # the current layout roots it under `data/` (mirroring the shipped
@@ -267,6 +280,9 @@ class App:
     def detach(self, key: str) -> None:
         """Disconnect and drop a device.  Frees the scene cache + active theme."""
         log.info("detach: key=%s", key)
+        # Stop the send worker BEFORE closing the transport so no in-flight
+        # write races the disconnect (the scheduler joins the thread).
+        self.stop_sender(key)
         device = self.devices.pop(key, None)
         if device is not None:
             device.disconnect()
@@ -292,6 +308,47 @@ class App:
         self.stop_hotplug()
         for key in list(self.devices):
             self.detach(key)
+        self._send_scheduler.shutdown()
+
+    # ── Send workers ──────────────────────────────────────────────────
+
+    def start_sender(self, key: str) -> None:
+        """Create + start the per-device send worker (idempotent).
+
+        Called after a successful ``ConnectDevice`` handshake.  The worker
+        owns the device's wire from here until ``stop_sender``.
+        """
+        device = self.devices.get(key)
+        if device is None:
+            log.warning("start_sender: %s not attached", key)
+            return
+        if key in self.senders:
+            return
+        sender = DeviceSender(device, volatile=device.needs_keepalive)
+        self.senders[key] = sender
+        self._send_scheduler.add(sender)
+        log.info("start_sender: %s volatile=%s", key, device.needs_keepalive)
+
+    def stop_sender(self, key: str) -> None:
+        """Stop + drop the send worker for *key* (idempotent)."""
+        sender = self.senders.pop(key, None)
+        if sender is None:
+            return
+        log.info("stop_sender: %s", key)
+        self._send_scheduler.remove(key)
+
+    def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
+        """Submit a frame to a device's send worker.
+
+        The single funnel for every wire write.  ``wait=True`` (default)
+        blocks for the device's success bool — one-shot CLI/API sends;
+        ``wait=False`` is fire-and-forget for the per-frame hot path.
+        """
+        sender = self.senders.get(key)
+        if sender is None:
+            log.warning("send: no sender for %s (not connected?)", key)
+            return False
+        return sender.submit(payload, wait=wait)
 
     # ── Hotplug ───────────────────────────────────────────────────────
 

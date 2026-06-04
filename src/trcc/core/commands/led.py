@@ -81,7 +81,7 @@ class SetLedColors(Command[LedColorsResult]):
             brightness=self.brightness,
         )
         try:
-            ok = device.send(payload)
+            ok = app.send(self.key, payload)
         except TransportError as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="transport",
                                              key=self.key))
@@ -299,7 +299,7 @@ class RenderLed(Command[LedColorsResult]):
             brightness=effective_settings.brightness,
         )
         try:
-            ok = device.send(payload)
+            ok = app.send(self.key, payload)
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,

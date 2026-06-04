@@ -762,7 +762,7 @@ class KeepAliveLoop(Command[KeepaliveResult]):
 
                 # Fast path: resend the cached bytes, no re-encode.
                 try:
-                    sent = device.send(last)
+                    sent = app.send(self.key, last)
                 except TransportError as e:
                     _publish_if_disconnect(app, self.key, e)
                     return KeepaliveResult(

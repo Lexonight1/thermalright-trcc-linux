@@ -198,6 +198,10 @@ class ConnectDevice(Command[ConnectResult]):
                 log.exception("ConnectDevice %s: ensure_all(%dx%d) failed",
                               self.key, w, h)
 
+        # Hand the wire to a per-device send worker — it owns every write
+        # from here (serialization + Bulk/LY keepalive) until disconnect.
+        app.start_sender(self.key)
+
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
         ))
@@ -238,11 +242,11 @@ class SendFrame(Command[SendResult]):
 
     def execute(self, app: App) -> SendResult:
         try:
-            device = _require_connected_device(app, self.key)
+            _require_connected_device(app, self.key)
         except DeviceNotFoundError as e:
             return SendResult(ok=False, key=self.key, message=str(e))
         try:
-            ok = device.send(self.data)
+            ok = app.send(self.key, self.data)
         except TransportError as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="transport",
                                              key=self.key))
@@ -293,7 +297,7 @@ class SendColor(Command[SendResult]):
                 color=(self.r, self.g, self.b),
                 profile=device.profile,
             )
-            ok = device.send(frame)
+            ok = app.send(self.key, frame)
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
@@ -357,7 +361,7 @@ class SendImage(Command[SendResult]):
             frame = app.display.build_image_frame(
                 info=device.info, path=self.path, profile=device.profile,
             )
-            ok = device.send(frame)
+            ok = app.send(self.key, frame)
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,
@@ -425,7 +429,7 @@ class RenderAndSend(Command[RenderResult]):
                 info=device.info, theme=theme, sensors=sensors,
                 profile=device.profile,
             )
-            ok = device.send(frame)
+            ok = app.send(self.key, frame)
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,

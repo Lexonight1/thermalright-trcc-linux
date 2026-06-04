@@ -26,6 +26,13 @@ class Wire(str, Enum):
     LED = "led"
 
 
+# Wires whose firmware does NOT latch a frame — it reverts to the built-in
+# Thermalright logo after ~2-3 s unless frames keep arriving.  The per-device
+# send worker keepalive-resends the last frame for these.  SCSI/HID latch;
+# LED has no screen.  (Legacy ``run_static_loop`` covered exactly Bulk + LY.)
+VOLATILE_FRAME_WIRES: frozenset[Wire] = frozenset({Wire.BULK, Wire.LY})
+
+
 class Kind(str, Enum):
     """High-level device kind visible to UIs."""
     LCD = "lcd"

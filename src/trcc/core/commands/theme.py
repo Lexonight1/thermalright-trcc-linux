@@ -253,7 +253,7 @@ class LoadTheme(Command[ThemeResult]):
                 info=device.info, theme=theme, sensors=sensors,
                 profile=device.profile,
             )
-            sent = device.send(frame)
+            sent = app.send(self.key, frame)
         except (TransportError, Exception) as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="render",
                                              key=self.key))

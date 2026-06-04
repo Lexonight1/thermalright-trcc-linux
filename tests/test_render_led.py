@@ -60,6 +60,10 @@ def _attach_and_connect(app: App, platform: FakePlatform, pm: int) -> None:
     platform.bulk.read_script.append(_scripted_handshake(pm))
     app.attach(_LED_VID, _LED_PID)
     app.get(_LED_KEY).connect()
+    # Production connects via ConnectDevice, which starts the send worker;
+    # this helper shortcuts the handshake, so start the worker explicitly so
+    # ``app.send`` (the rerouted write path) has a sender to submit to.
+    app.start_sender(_LED_KEY)
     # Drop the handshake writes so post-render assertions see only send().
     platform.bulk.writes.clear()
 

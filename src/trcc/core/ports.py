@@ -164,6 +164,13 @@ class Device(ABC, Generic[T]):
         return self.info.key
 
     @property
+    def needs_keepalive(self) -> bool:
+        """True if this device's firmware drops frames and needs a periodic
+        resend (Bulk/LY).  Drives the send worker's keepalive."""
+        from .models import VOLATILE_FRAME_WIRES
+        return self.info.wire in VOLATILE_FRAME_WIRES
+
+    @property
     def profile(self) -> DeviceProfile | None:
         """Handshake-derived geometry + encoding profile.
 
@@ -832,3 +839,72 @@ class Platform(ABC):
 # =========================================================================
 
 DetectDevicesFn = Callable[[], list["DeviceInfo"]]
+
+
+# =========================================================================
+# Send scheduling — policy/execution split for the per-device send worker
+# =========================================================================
+#
+# A device's USB wire has exactly one owner: a ``SendTask`` per device that
+# serializes every write.  The *policy* (what to write, when to keepalive)
+# lives in the task; the *execution* (thread / pool / manual tick) lives in a
+# ``SendScheduler``.  Injecting the scheduler keeps the task pure of threading
+# and lets tests drive it deterministically (``SyncSendScheduler``) with no
+# sleeps.  See ``doc/SEND_FOUNDATION.md``.
+
+
+class SendTask(ABC):
+    """One unit of work a :class:`SendScheduler` drives on its own cadence.
+
+    The scheduler loops ``wait(delay) → run_once(now)`` forever; producers
+    (any thread) wake the task via the concrete object's own ``submit``.  A
+    single scheduler thread per task makes the task the *sole* caller of the
+    device write — serialization by construction, no wire lock needed.
+    """
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable identifier (the device key) — used by the scheduler registry."""
+
+    @abstractmethod
+    def wait(self, timeout: float) -> None:
+        """Block until woken by a producer or *timeout* seconds elapse.
+
+        Thread-efficiency only — a correct scheduler may also just call
+        :meth:`run_once` on a fixed cadence and skip this.
+        """
+
+    @abstractmethod
+    def wake(self) -> None:
+        """Interrupt a pending :meth:`wait` — used by the scheduler at teardown
+        so a long-idle task leaves ``wait`` promptly instead of blocking the
+        join."""
+
+    @abstractmethod
+    def run_once(self, now: float) -> float:
+        """Perform any pending + keepalive work for *now* (monotonic seconds).
+
+        Returns the maximum seconds to wait before the next ``run_once``.
+        """
+
+
+class SendScheduler(ABC):
+    """Drives :class:`SendTask` instances.  One impl per execution model.
+
+    Concrete: ``ThreadSendScheduler`` (a daemon thread per task) for
+    production, ``SyncSendScheduler`` (manual ``tick``) for deterministic
+    tests.  Injected at the composition root so the task never names a thread.
+    """
+
+    @abstractmethod
+    def add(self, task: SendTask) -> None:
+        """Start driving *task*."""
+
+    @abstractmethod
+    def remove(self, key: str) -> None:
+        """Stop driving the task with *key* and release its resources."""
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Stop driving every task (app teardown)."""
