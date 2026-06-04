@@ -398,6 +398,46 @@ class LinuxScsiTransport(ScsiTransport):
         return (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)
 
 
+def _install_desktop_entry() -> int:
+    """Copy the bundled .desktop file into the user's applications directory.
+
+    Uses ``importlib.resources`` to locate ``trcc/assets/trcc-linux.desktop``
+    so the file is discoverable whether trcc was installed via pip, source, or
+    a frozen bundle. Falls back silently if the resource is not found (e.g.
+    an un-packaged dev checkout).
+    """
+    # XDG app launchers are per-user - root never needs one, and
+    # install.sh already copies the .desktop for the real user.
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        log.debug("_install_desktop_entry: running as root - skipping")
+        return 0
+
+    try:
+        from importlib.resources import files  # type: ignore[attr-defined]
+    except ImportError:  # pragma: no cover (Python < 3.9)
+        log.debug("_install_desktop_entry: importlib.resources.files unavailable")
+        return 0
+
+    try:
+        ref = files("trcc.assets") / "trcc-linux.desktop"
+        if not ref.is_file():
+            log.debug(
+                "_install_desktop_entry: trcc/assets/trcc-linux.desktop not found"
+            )
+            return 0
+
+        desktop_dir = Path.home() / ".local" / "share" / "applications"
+        desktop_dir.mkdir(parents=True, exist_ok=True)
+        dest = desktop_dir / "trcc-linux.desktop"
+        dest.write_bytes(ref.read_bytes())
+        dest.chmod(0o644)
+        log.info("_install_desktop_entry: installed %s", dest)
+        return 0
+    except Exception as e:
+        log.warning("_install_desktop_entry: failed - %s", e)
+        return 1
+
+
 # =========================================================================
 # LinuxPlatform
 # =========================================================================
@@ -509,12 +549,15 @@ class LinuxPlatform(Platform):
     def setup(self, interactive: bool = True) -> int:
         """Run one-time Linux setup.
 
-        Two things happen here and neither can silently no-op:
-          1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
+        Three things happen here and none can silently no-op:
+          1. udev rules - write /etc/udev/rules.d/99-trcc-lcd.rules for
              every device in the registry + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
           2. GPU Python extras — detect GPU vendors via PCI sysfs and
              pip install matching libs (e.g., nvidia-ml-py for NVIDIA).
+          3. Desktop entry - copy ``trcc-linux.desktop`` to
+             ``~/.local/share/applications/`` so the app appears in the
+             desktop environment's launcher menu.
 
         Non-interactive mode prints what would be done and returns 0
         without touching the system.
@@ -532,7 +575,8 @@ class LinuxPlatform(Platform):
         vendors = detect_gpu_vendors()
         log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
         rc_gpu = install_matching_gpu_extras(vendors, dry_run=False)
-        return rc_udev or rc_gpu
+        rc_desktop = _install_desktop_entry()
+        return rc_udev or rc_gpu or rc_desktop
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""

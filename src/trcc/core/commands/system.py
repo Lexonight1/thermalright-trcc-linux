@@ -368,8 +368,9 @@ class RunSetup(Command[SetupResult]):
     interactive: bool = True
 
     def execute(self, app: App) -> SetupResult:
-        warnings = app.platform.check_permissions()
+        pre_warnings = app.platform.check_permissions()
         code = app.platform.setup(interactive=self.interactive)
+        warnings = app.platform.check_permissions() if code == 0 else pre_warnings
         return SetupResult(
             ok=code == 0,
             message=f"Setup completed with exit code {code}",

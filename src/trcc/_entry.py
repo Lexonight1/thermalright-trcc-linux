@@ -13,5 +13,10 @@ from __future__ import annotations
 
 def main() -> int | None:
     """Dispatch to the new top-level CLI."""
+    import sys
+    if "--version" in sys.argv or "-v" in sys.argv:
+        from trcc import __version__
+        print(__version__)
+        return 0
     from trcc.ui.cli.main import main as _next_main
     return _next_main()
