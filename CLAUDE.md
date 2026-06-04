@@ -40,7 +40,23 @@ capabilities; end with an explicit "legacy had A,B,C,D; cutover kept A,B; C,D
 dropped — evidence:lines." Greps repeatedly missed whole dropped subsystems
 (geometry/portrait, the hotplug→connect bridge, the multi-device mock).
 
-Related: `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`, `memory/feedback_legacy_audit_grep_not_inventory.md`.
+**Grep is for LOCATING code, never for CONCLUDING about it.** This generalizes
+the inventory rule to EVERY claim — "wired", "dead", "done", "verified", "N
+files clean". Finding a symbol/handler/connection proves it EXISTS, not that it
+WORKS: the bug is almost always what the wired code DOES with the data at a
+boundary, not a missing connection. To claim "X is wired/works", trace the data
+through every hop — signal → handler → command.execute → service → render — and
+confirm each hop passes the right SHAPE to the next; stop at the first hop you
+haven't read. To claim "X is dead/safe to delete", read every consumer's BODY.
+2026-06-04, one session: called drag-drop "gone" (it was wired on a child
+widget), `native_orientation` "dead" (grep), "537 DCs parse clean" (checked
+positions, never text content — the actual bug), and the GUI settings panel
+"wired" (the command it dispatches writes edits to the wrong render layer so
+nothing applies). User: "you are just grepping words without understanding what
+the functions actually do … tired of going in fucking circles." See
+`memory/feedback_grep_is_not_understanding.md`.
+
+Related: `memory/feedback_grep_is_not_understanding.md`, `memory/feedback_no_progress_theater.md`, `memory/feedback_no_bs.md`, `memory/feedback_always_be_honest_about_fixes.md`, `memory/feedback_legacy_audit_grep_not_inventory.md`.
 
 ## Source Tree Layout — Post-Cutover (read this first)
 
@@ -470,6 +486,20 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - Run tests / scripts with `python3.12` explicitly. `/usr/bin/python` on the dev box may point at 3.14; a 3.14-only crash (e.g. a `QFontDatabase` segfault, a `pyusb._pack_` deprecation, a typer/sudo_reexec issue) is not automatically a project bug — repro under 3.12 first.
 
 ## Known Issues
+- **GUI overlay/settings edits don't apply + overlays render duplicated** (UNFIXED).
+  The cutover DELETED legacy's in-place overlay edit (`update_overlay_element`,
+  v9.6.5 `core/lcd_commands.py:281`). The GUI edit chain is FULLY WIRED (uc_theme_setting
+  signals → `_update_selected` → `CMD_OVERLAY_CHANGED` → `LCDHandler.on_overlay_changed`;
+  drag uses the same path via `trcc_app._on_drag_move`) — **drag-drop is NOT gone**.
+  But it dispatches `SetOverlayConfig` (`core/commands/device.py:1491`) which stores
+  edits in a SEPARATE user layer (`settings.set_user_overlay_elements`), and
+  `build_frame` (`services/display.py:986-1023`) renders BOTH the theme's elements AND
+  the user layer on top → every edited element draws TWICE (original unmoved + edited
+  copy). Reads as "nothing changes" + garbled overlays. Fix = port in-place edit OR make
+  the user layer REPLACE not ADD; confirm the grid is seeded from theme elements first.
+  Also: theme font `微软雅黑` falls back to Noto Sans (legacy `_fc_match` dropped — wrong
+  typeface). DC parser is CORRECT. See `memory/project_gui_overlay_edit_bug.md` +
+  `memory/feedback_grep_is_not_understanding.md`.
 - `pyusb 1.3.1` deprecated `_pack_` on Python 3.14 — suppressed in pytest config
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
 - CI runs as root — mock `subprocess.run` in non-root tests
