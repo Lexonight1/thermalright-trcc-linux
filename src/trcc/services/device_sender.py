@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -50,6 +50,7 @@ class DeviceSender(SendTask):
         "_last",
         "_last_sent_at",
         "_lock",
+        "_on_failure",
         "_pending",
         "_volatile",
         "_waiter",
@@ -60,9 +61,15 @@ class DeviceSender(SendTask):
     def __init__(
         self, device: Device, *, volatile: bool,
         keepalive_interval: float = _DEFAULT_KEEPALIVE_S,
+        on_failure: Callable[[str, BaseException | None], None] | None = None,
     ) -> None:
         self._device = device
         self._volatile = volatile
+        # Notified when a fire-and-forget write (keepalive / wait=False frame)
+        # fails — no waiter to raise to, so the App publishes the disconnect /
+        # error event the Command ``except`` would have (DIP: a named callback,
+        # the sender stays free of EventBus/Command deps).
+        self._on_failure = on_failure
         self._interval = keepalive_interval
         self._lock = threading.Lock()
         # Serializes the worker's wire writes against ``exclusive()`` holders
@@ -121,25 +128,41 @@ class DeviceSender(SendTask):
                     waiter[1]["exc"] = exc      # re-raised in submit()
                     waiter[0].set()
                 else:
-                    log.exception(
-                        "DeviceSender %s: send raised (fire-and-forget frame)",
-                        self._device.key,
-                    )
+                    self._fail(exc, reason="frame")     # fire-and-forget
             else:
                 if waiter is not None:
                     waiter[1]["ok"] = ok
                     waiter[0].set()
-        elif self._volatile:
+                elif not ok:
+                    self._fail(None, reason="frame")
+        elif self._volatile and self._device.is_connected:
             with self._lock:
                 last, last_at = self._last, self._last_sent_at
             if last is not None and (now - last_at) >= self._interval:
                 try:
-                    self._raw_write(last, now, reason="keepalive")
-                except Exception:
-                    log.exception("DeviceSender %s: keepalive send raised",
-                                  self._device.key)
+                    if not self._raw_write(last, now, reason="keepalive"):
+                        self._fail(None, reason="keepalive")
+                except Exception as exc:
+                    self._fail(exc, reason="keepalive")
 
         return self._interval if self._volatile else _IDLE_WAIT_S
+
+    def _fail(self, exc: BaseException | None, *, reason: str) -> None:
+        """A fire-and-forget write failed (no waiter to raise to) — surface it.
+
+        Logs, then notifies the injected ``on_failure`` so the App publishes
+        ErrorOccurred + DeviceDisconnected, mirroring the Command except path.
+        The keepalive ``is_connected`` guard above stops the ~150 ms flood once
+        the device's recovery threshold has closed it.
+        """
+        if exc is not None:
+            log.warning("DeviceSender %s: %s write failed: %s",
+                        self._device.key, reason, exc)
+        else:
+            log.warning("DeviceSender %s: %s write returned False",
+                        self._device.key, reason)
+        if self._on_failure is not None:
+            self._on_failure(self._device.key, exc)
 
     # ── Producer side ────────────────────────────────────────────────────
 

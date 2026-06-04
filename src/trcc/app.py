@@ -15,12 +15,14 @@ from .adapters.repo.github_releases import GitHubReleases
 from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
 from .core.commands import Command
-from .core.errors import DeviceNotFoundError
+from .core.errors import DeviceDisconnectedError, DeviceNotFoundError
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
     DateFormatChanged,
     DeviceAttached,
+    DeviceDisconnected,
+    ErrorOccurred,
     EventBus,
     FitModeChanged,
     MaskApplied,
@@ -322,10 +324,28 @@ class App:
             return
         if key in self.senders:
             return
-        sender = DeviceSender(device, volatile=device.needs_keepalive)
+        sender = DeviceSender(
+            device, volatile=device.needs_keepalive,
+            on_failure=self._on_sender_failure,
+        )
         self.senders[key] = sender
         self._send_scheduler.add(sender)
         log.info("start_sender: %s volatile=%s", key, device.needs_keepalive)
+
+    def _on_sender_failure(self, key: str, exc: BaseException | None) -> None:
+        """A worker's fire-and-forget write failed — publish the same events a
+        Command's ``except TransportError`` would (the producer that submitted
+        it isn't waiting, so the sender routes the failure here)."""
+        if exc is None:
+            log.warning("_on_sender_failure: %s write returned False", key)
+            return
+        self.events.publish(ErrorOccurred(
+            message=str(exc), kind="transport", key=key,
+        ))
+        if isinstance(exc, DeviceDisconnectedError):
+            log.info("_on_sender_failure: %s auto-disconnect (recovery threshold)",
+                     key)
+            self.events.publish(DeviceDisconnected(key=key))
 
     def stop_sender(self, key: str) -> None:
         """Stop + drop the send worker for *key* (idempotent)."""

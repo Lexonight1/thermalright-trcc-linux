@@ -23,6 +23,7 @@ class FakeDevice:
 
     def __init__(self, key: str = "dead:beef") -> None:
         self.key = key
+        self.is_connected = True
         self.sent: list[bytes] = []
         self.fail = False
         self._in_send = 0
@@ -201,6 +202,37 @@ def test_submit_wait_propagates_device_exception() -> None:
             sender.submit(b"X", wait=True, timeout=2.0)
     finally:
         sched.shutdown()
+
+
+def test_fire_and_forget_failure_calls_on_failure() -> None:
+    # No waiter to raise to (wait=False), so the failure routes to on_failure.
+    dev = FakeDevice()
+    dev.fail = True
+    calls: list[tuple[str, BaseException | None]] = []
+
+    def on_fail(key: str, exc: BaseException | None) -> None:
+        calls.append((key, exc))
+
+    sender = DeviceSender(dev, volatile=True, on_failure=on_fail)
+    sender.submit(b"F")          # wait=False
+    sender.run_once(0.0)         # device.send returns False → on_failure(None)
+    assert calls == [("dead:beef", None)]
+
+
+def test_keepalive_failure_routes_to_on_failure() -> None:
+    dev = FakeDevice()
+    calls: list[tuple[str, BaseException | None]] = []
+
+    def on_fail(key: str, exc: BaseException | None) -> None:
+        calls.append((key, exc))
+
+    sender = DeviceSender(dev, volatile=True, keepalive_interval=0.1,
+                          on_failure=on_fail)
+    sender.submit(b"F")
+    sender.run_once(0.0)         # cache the frame OK
+    dev.fail = True
+    sender.run_once(0.1)         # keepalive resend fails → on_failure
+    assert calls == [("dead:beef", None)]
 
 
 def test_exclusive_blocks_worker_writes() -> None:
