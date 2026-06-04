@@ -484,19 +484,24 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
   (`sys_platform=='linux'`) + the deb/rpm/Arch/Nix specs. The graceful-`None`
   fallback stays only for environments that strip libudev, and now logs a
   WARNING naming the consequence.
-- **`mock_gui` only shows REAL plugged-in hardware** — the cutover dropped
-  legacy's multi-device `MockPlatform` (`tests/mock_platform.py`) +
-  `dev/devices.json`. `tests/conftest.FakePlatform.scan_devices()` returns `[]`.
-  To verify device-specific render/geometry work (#136 portrait panels, #137,
-  widescreen) without hardware, the multi-device mock must be restored (a real
-  `MockPlatform(specs)` with scripted per-device handshakes, wired into
-  `dev/_mock_bootstrap`). Until then, don't claim those are visually verified.
-- **Non-square (`rotate=True`) panels = a partially-restored subsystem.** The
-  cutover fragmented legacy's geometry/portrait pipeline (#136). Restored so far:
-  data-download-on-handshake-resolution, content-matched portrait composition,
-  preview-bezel reorientation. Still pending: re-centralizing the geometry DTO
-  (`is_rotated`/`canvas_size`/`encode_angle`) and removing the dead
-  `native_orientation` field (API-schema-only consumer). See
+- **Multi-device mock — RESTORED 2026-06-04** (`20cb97b9`). `tests/mock_platform.py`
+  `MockPlatform(specs, root)` (extends conftest `FakePlatform`) scripts per-device
+  SCSI/Bulk/LED handshakes so `dev/mock_gui.py` simulates any fleet with zero
+  hardware; `dev/_mock_bootstrap` selects it when `dev/devices.json` (local,
+  gitignored) yields specs, else the real `DevPlatform`. `dev/smoke_portrait_854480.py`
+  is the self-contained verifier. **Still NOT scripted**: HID + LY wires
+  (warn-and-skip); add their handshake byte formats before simulating those panels.
+- **Non-square (`rotate=True`) panels — geometry/portrait now mock-verified.** The
+  cutover fragmented legacy's geometry pipeline (#136); restored + verified:
+  data-download-on-handshake, content-matched portrait composition (portrait
+  theme → `visual=480x854`, device 90° skipped; landscape → `854x480`),
+  preview-bezel reorientation. The geometry-DTO "re-centralize" was a phantom
+  (already done via `DeviceProfile` + `DisplayService`); dead `native_orientation`
+  removed (`39516d47`). **Still pending — Tier-1 wire-output gap**: the device
+  encode-rotation table (`encode_base`/`encode_invert`/`encode_sub_bases`) is
+  recorded-but-UNWIRED — a blanket `rotate→90°` replaced legacy's
+  `get_encode_rotation` on the 4 widescreen JPEG panels (FBL 114/128/192/224);
+  re-wiring is hardware/mock-gated (verify #169 Trofeo first). See
   `memory/project_geometry_subsystem_and_mock.md`.
 
 ## GitHub Issues
