@@ -162,22 +162,28 @@ def bootstrap(report_path: str | None = None,
     """
     from trcc.adapters.infra.logging import configure_logging
 
-    platform = _build_dev_platform()
+    # Specs present → simulate that fleet with scripted USB (MockPlatform).
+    # No specs → drive real attached hardware (DevPlatform).  The mock is the
+    # tool to GUI-verify device-specific render/geometry (#136 portrait panels,
+    # widescreen, LED) with zero hardware; the real path stays the default so
+    # the harness still works against a plugged-in cooler.
+    specs = load_device_specs(report_path)
+    if specs:
+        from tests.mock_platform import MockPlatform
+        platform: Platform = MockPlatform(specs, DEV_TRCC)
+    else:
+        platform = _build_dev_platform()
+
     configure_logging(
         platform.paths().log_file(),
         level=logging.DEBUG if verbosity >= 1 else logging.INFO,
     )
     log.info(
-        "dev bootstrap: platform=%s paths.config=%s",
-        type(platform).__name__, platform.paths().config_dir(),
+        "dev bootstrap: platform=%s paths.config=%s specs=%d",
+        type(platform).__name__, platform.paths().config_dir(), len(specs),
     )
-
-    # Hint about spec inputs.  Only informational — scan_devices is
-    # the source of truth for what shows up in the GUI sidebar.
-    specs = load_device_specs(report_path)
     if specs:
-        print(f"Hint: {len(specs)} device spec(s) loaded from "
-              f"{'--report' if report_path else 'devices.json'}; "
-              "the GUI itself enumerates real attached hardware via "
-              "Platform.scan_devices.")
+        print(f"Mock fleet: {len(specs)} device spec(s) from "
+              f"{'--report' if report_path else 'devices.json'} — "
+              "scripted via MockPlatform (no hardware needed).")
     return platform

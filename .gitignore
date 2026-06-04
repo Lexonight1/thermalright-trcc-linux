@@ -92,6 +92,7 @@ src/trcc/data/ui_*.json
 !/dev/_mock_bootstrap.py
 !/dev/_mock_daemon.py
 !/dev/smoke_rotation_mask.py
+!/dev/smoke_portrait_854480.py
 !/dev/smoke_daemon_gui.py
 !/dev/smoke_sleep_cycle.py
 !/dev/smoke_linux.py
