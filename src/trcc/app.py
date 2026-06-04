@@ -7,6 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, TypeVar
 
 from .adapters.device import DeviceFactory
@@ -42,7 +43,6 @@ from .services.cloud_theme import CloudThemeService
 from .services.device_sender import DeviceSender
 from .services.display import DisplayService
 from .services.first_run import FirstRunService
-from .services.keepalive import KeepaliveService
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
@@ -118,13 +118,12 @@ class App:
             paths=platform.paths(),
             installer=DataInstaller(http=self.http),
         )
-        # Slideshow + keepalive — small per-device state holders.  Both
-        # are tick-driven; no background threads inside the services.
+        # Per-device slideshow cursor — tick-driven, no background thread.
         self.slideshow = SlideshowService()
-        self.keepalive = KeepaliveService()
         # Per-device send workers (actors) — one owns each device's wire,
         # serializing every write + keepalive-resending volatile (Bulk/LY)
-        # firmware.  Created on connect, dropped on disconnect.  The
+        # firmware (absorbing the former KeepaliveService cache).  Created on
+        # connect, dropped on disconnect.  The
         # scheduler (execution) is injected so tests drive it deterministically
         # (``SyncSendScheduler``); production defaults to a thread per device.
         # See ``doc/SEND_FOUNDATION.md``.
@@ -289,7 +288,6 @@ class App:
         self.active_themes.pop(key, None)
         self.led_runtime.pop(key, None)
         self.media.unload(key)
-        self.keepalive.forget(key)
         self.slideshow.reset(key)
         if self._display is not None:
             self._display.invalidate(key)
@@ -349,6 +347,16 @@ class App:
             log.warning("send: no sender for %s (not connected?)", key)
             return False
         return sender.submit(payload, wait=wait)
+
+    def exclusive_wire(self, key: str) -> AbstractContextManager[None]:
+        """Context manager holding a device's wire exclusively for a
+        multi-frame upload (boot animation), so the worker's frame/keepalive
+        writes can't interleave.  ``nullcontext`` when there's no sender."""
+        sender = self.senders.get(key)
+        if sender is None:
+            log.debug("exclusive_wire: no sender for %s — nullcontext", key)
+            return nullcontext()
+        return sender.exclusive()
 
     # ── Hotplug ───────────────────────────────────────────────────────
 

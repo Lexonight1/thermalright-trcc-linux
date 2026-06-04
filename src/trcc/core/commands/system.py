@@ -10,7 +10,6 @@ from .._version import is_newer
 from ..errors import (
     DeviceNotFoundError,
     HttpFetchError,
-    TransportError,
 )
 from ..events import (
     DateFormatChanged,
@@ -58,11 +57,7 @@ from ._helpers import (
     _UPGRADE_COMMANDS,
     _autostart_path,
     _health_entries,
-    _publish_if_disconnect,
     _slideshow_snapshot,
-)
-from .device import (
-    RenderAndSend,
 )
 
 if TYPE_CHECKING:
@@ -665,33 +660,22 @@ class SetSlideshow(Command[SlideshowResult]):
 
 @dataclass(frozen=True, slots=True)
 class KeepAliveLoop(Command[KeepaliveResult]):
-    """Keep a Bulk/LY device's screen pinned by re-sending frames on a tick.
+    """Confirm or hold a device's screen keepalive.
 
-    Bulk and LY firmware revert to the built-in Thermalright logo after
-    ~2-3 s without a fresh frame.  This Command runs the resend loop
-    legacy used to ship as ``DisplayService.run_static_loop`` so
-    static themes survive on those devices.
+    Bulk/LY firmware reverts to the logo after ~2-3 s without a fresh frame.
+    The per-device send worker now keepalive-resends the cached frame
+    automatically (intrinsic, ~150 ms) for as long as the App lives, so this
+    Command no longer runs the resend loop itself — it verifies a frame is
+    cached + the device connected, then:
 
-    Two cadences:
+      * ``count >= 1`` — returns immediately ("keepalive active"); the worker
+        is already doing the work.  (API / one-shot.)
+      * ``count == 0`` — blocks until ``KeyboardInterrupt`` so a headless CLI
+        process (and its worker) stays alive.  ``trcc display keepalive <key>``.
 
-      * ``interval_s`` (default 0.150 s) — how often to resend.  Below
-        the 2-3 s firmware-revert threshold by an order of magnitude.
-        Cheap because we resend the cached bytes from
-        :class:`KeepaliveService`; no image re-encoding.
-      * ``metric_interval_s`` (default 1.0 s) — how often to refresh
-        the overlay metrics by dispatching :class:`RenderAndSend`.
-        Without this, CPU/GPU temp on a static theme would freeze at
-        the value captured when keepalive started.
-
-    ``count`` selects loop shape:
-
-      * ``count == 0`` — open-ended; loops until ``KeyboardInterrupt``
-        (legacy parity).
-      * ``count >= 1`` — fixed iterations; useful as a tick action
-        (daemon dispatches with ``count=1`` per tick).
-
-    Foreground / blocking — CLI users see this as ``trcc display
-    keepalive <key>`` and Ctrl-C it.
+    ``interval_s`` now only sets the block-loop sleep granularity;
+    ``metric_interval_s`` is accepted for API compatibility but unused — the
+    metrics observer already re-renders on its own cadence.
     """
     key: str
     count: int = 0
@@ -706,93 +690,37 @@ class KeepAliveLoop(Command[KeepaliveResult]):
                 ok=False, key=self.key,
                 message=f"count must be >= 0, got {self.count}",
             )
-        last = app.keepalive.last_frame(self.key)
-        if last is None:
+        sender = app.senders.get(self.key)
+        if sender is None or sender.last() is None:
             return KeepaliveResult(
                 ok=False, key=self.key,
                 message=("No cached frame for keepalive — render at least "
-                         "once before starting the loop"),
+                         "once first"),
             )
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
-            return KeepaliveResult(
-                ok=False, key=self.key, message=str(e),
-            )
+            return KeepaliveResult(ok=False, key=self.key, message=str(e))
         if not device.is_connected:
             return KeepaliveResult(
                 ok=False, key=self.key,
                 message=f"{self.key} not connected — dispatch ConnectDevice first",
             )
 
-        frames_resent = 0
-        bytes_resent = 0
-        last_metric_at = time.monotonic()
-        i = 0
-        try:
-            while self.count == 0 or i < self.count:
-                if i > 0:
-                    time.sleep(max(0.0, self.interval_s))
-
-                # Periodic metric refresh — re-render through the
-                # full pipeline so overlay values update with live
-                # sensor readings; the new frame goes into the
-                # keepalive cache via RenderAndSend's existing
-                # ``app.keepalive.store`` call.
-                now = time.monotonic()
-                if (self.metric_interval_s > 0
-                        and now - last_metric_at >= self.metric_interval_s):
-                    render_result = RenderAndSend(key=self.key).execute(app)
-                    last_metric_at = now
-                    if render_result.ok:
-                        last = app.keepalive.last_frame(self.key) or last
-                        frames_resent += 1
-                        bytes_resent += render_result.bytes_sent
-                        i += 1
-                        continue
-                    # RenderAndSend already published ErrorOccurred /
-                    # DeviceDisconnected; treat as keepalive failure.
-                    return KeepaliveResult(
-                        ok=False, key=self.key,
-                        frames_resent=frames_resent,
-                        bytes_resent=bytes_resent,
-                        message=(f"Keepalive RenderAndSend failed at iter {i}: "
-                                 f"{render_result.message}"),
-                    )
-
-                # Fast path: resend the cached bytes, no re-encode.
-                try:
-                    sent = app.send(self.key, last)
-                except TransportError as e:
-                    _publish_if_disconnect(app, self.key, e)
-                    return KeepaliveResult(
-                        ok=False, key=self.key,
-                        frames_resent=frames_resent,
-                        bytes_resent=bytes_resent,
-                        message=f"Keepalive send failed at iter {i}: {e}",
-                    )
-                if not sent:
-                    return KeepaliveResult(
-                        ok=False, key=self.key,
-                        frames_resent=frames_resent,
-                        bytes_resent=bytes_resent,
-                        message=f"device.send returned False at iter {i}",
-                    )
-                app.keepalive.mark_sent(self.key)
-                frames_resent += 1
-                bytes_resent += len(last)
-                i += 1
-        except KeyboardInterrupt:
+        if self.count >= 1:
             return KeepaliveResult(
                 ok=True, key=self.key,
-                frames_resent=frames_resent, bytes_resent=bytes_resent,
-                message=f"Keepalive interrupted after {frames_resent} frame(s)",
+                message="Keepalive active — the send worker resends the frame",
             )
-        return KeepaliveResult(
-            ok=True, key=self.key,
-            frames_resent=frames_resent, bytes_resent=bytes_resent,
-            message=f"Resent last frame {frames_resent} time(s)",
-        )
+        # Foreground CLI form: the worker keeps the screen alive; we just keep
+        # the process (and thus the worker) running until Ctrl-C.
+        try:
+            while True:
+                time.sleep(max(0.05, self.interval_s))
+        except KeyboardInterrupt:
+            return KeepaliveResult(
+                ok=True, key=self.key, message="Keepalive stopped",
+            )
 
 @dataclass(frozen=True, slots=True)
 class GetPlatformInfo(Command[PlatformInfoResult]):

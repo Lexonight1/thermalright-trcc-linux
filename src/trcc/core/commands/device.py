@@ -254,7 +254,6 @@ class SendFrame(Command[SendResult]):
             return SendResult(ok=False, key=self.key, message=str(e))
         bytes_sent = len(self.data) if ok else 0
         if ok:
-            app.keepalive.store(self.key, self.data)
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key,
@@ -308,7 +307,6 @@ class SendColor(Command[SendResult]):
 
         bytes_sent = len(frame) if ok else 0
         if ok:
-            app.keepalive.store(self.key, frame)
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key, bytes_sent=bytes_sent,
@@ -375,7 +373,6 @@ class SendImage(Command[SendResult]):
 
         bytes_sent = len(frame) if ok else 0
         if ok:
-            app.keepalive.store(self.key, frame)
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
             ok=ok, key=self.key, bytes_sent=bytes_sent,
@@ -441,7 +438,6 @@ class RenderAndSend(Command[RenderResult]):
             )
 
         if ok:
-            app.keepalive.store(self.key, frame)
             # Carry the just-rendered surface so the GUI preview shows THIS
             # frame instead of re-rendering the whole pipeline (legacy's
             # publish-the-frame, observe-it shape).
@@ -960,7 +956,12 @@ class UploadBootAnimation(Command[BootAnimationResult]):
                 )
 
         try:
-            uploaded = device.send_boot_animation(encoded, list(self.delays_ds))
+            # Hold the wire exclusively — a multi-frame boot-anim upload must
+            # not interleave with the send worker's frame/keepalive writes.
+            with app.exclusive_wire(self.key):
+                uploaded = device.send_boot_animation(
+                    encoded, list(self.delays_ds),
+                )
         except TransportError as e:
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="transport", key=self.key,

@@ -10,7 +10,6 @@ from trcc.adapters.repo.github_releases import GitHubReleases
 from trcc.core._version import is_newer, parse_version
 from trcc.core.errors import HttpFetchError
 from trcc.core.ports import HttpFetcher
-from trcc.services.keepalive import KeepaliveService
 from trcc.services.slideshow import SlideshowConfig, SlideshowService
 
 # =========================================================================
@@ -129,30 +128,9 @@ def test_slideshow_reset_drops_cursor() -> None:
 
 
 # =========================================================================
-# Keepalive service
+# Keepalive: the cache + resend now live in DeviceSender — see
+# tests/test_device_sender.py.  (KeepaliveService absorbed, foundation #6.)
 # =========================================================================
-
-
-def test_keepalive_stores_and_retrieves() -> None:
-    svc = KeepaliveService()
-    svc.store("k", b"frame-bytes")
-    assert svc.last_frame("k") == b"frame-bytes"
-
-
-def test_keepalive_forget_clears_cache() -> None:
-    svc = KeepaliveService()
-    svc.store("k", b"x")
-    svc.forget("k")
-    assert svc.last_frame("k") is None
-
-
-def test_keepalive_seconds_since_send_increments() -> None:
-    svc = KeepaliveService()
-    assert svc.seconds_since_send("k") is None
-    svc.store("k", b"x")
-    elapsed = svc.seconds_since_send("k")
-    assert elapsed is not None
-    assert elapsed >= 0.0
 
 
 # =========================================================================

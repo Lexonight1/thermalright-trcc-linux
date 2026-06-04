@@ -203,6 +203,24 @@ def test_submit_wait_propagates_device_exception() -> None:
         sched.shutdown()
 
 
+def test_exclusive_blocks_worker_writes() -> None:
+    # A multi-frame upload (boot anim) holds the wire exclusively; the
+    # keepalive worker must not interleave a write into it.
+    dev = FakeDevice()
+    sender = DeviceSender(dev, volatile=True, keepalive_interval=0.005)
+    sched = ThreadSendScheduler()
+    sched.add(sender)
+    try:
+        sender.submit(b"F")          # establish a frame to keepalive
+        time.sleep(0.03)             # let the worker start keepaliving
+        with sender.exclusive():
+            for i in range(30):      # simulate the upload's direct wire writes
+                dev.send(f"boot-{i}".encode())
+        assert dev.max_concurrent == 1
+    finally:
+        sched.shutdown()
+
+
 def test_thread_scheduler_shutdown_is_prompt_for_idle_nonvolatile() -> None:
     # Non-volatile task waits ~forever; wake() must let shutdown join fast.
     dev = FakeDevice()

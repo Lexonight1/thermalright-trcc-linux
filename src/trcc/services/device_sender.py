@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from ..core.ports import SendTask
@@ -52,6 +54,7 @@ class DeviceSender(SendTask):
         "_volatile",
         "_waiter",
         "_wake",
+        "_wire_lock",
     )
 
     def __init__(
@@ -62,6 +65,9 @@ class DeviceSender(SendTask):
         self._volatile = volatile
         self._interval = keepalive_interval
         self._lock = threading.Lock()
+        # Serializes the worker's wire writes against ``exclusive()`` holders
+        # (multi-frame uploads like boot animation) so they never interleave.
+        self._wire_lock = threading.Lock()
         self._wake = threading.Event()
         self._pending: Any = None
         self._has_pending = False
@@ -184,6 +190,19 @@ class DeviceSender(SendTask):
         with self._lock:
             return self._last
 
+    @contextmanager
+    def exclusive(self) -> Iterator[None]:
+        """Hold the wire exclusively for a multi-frame upload (boot animation).
+
+        Blocks the worker's frame/keepalive writes for the duration so they
+        can't interleave the upload's chunks.  Cheap — only boot-anim /
+        screencast-setup paths contend for it.
+        """
+        log.debug("DeviceSender %s: exclusive wire — acquiring", self._device.key)
+        with self._wire_lock:
+            yield
+        log.debug("DeviceSender %s: exclusive wire — released", self._device.key)
+
     # ── Internal ─────────────────────────────────────────────────────────
 
     def _raw_write(self, payload: Any, now: float, *, reason: str) -> bool:
@@ -194,7 +213,8 @@ class DeviceSender(SendTask):
         """
         # DEBUG: per-frame (keepalive ~150 ms) — never INFO (flood).
         log.debug("DeviceSender %s: write (%s)", self._device.key, reason)
-        ok = self._device.send(payload)
+        with self._wire_lock:
+            ok = self._device.send(payload)
         if ok:
             with self._lock:
                 self._last = payload
