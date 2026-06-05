@@ -378,6 +378,51 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     assert out["metric"] == "cpu:temp"
 
 
+def test_overlay_editor_adopts_theme_layout_and_edits_in_place(
+    gui_app: App, tmp_path: object,
+) -> None:
+    """qtgui parity with the legacy GUI: the editor works on the ONE overlay
+    layout, seeded from the active theme, and edits replace in place.
+
+    Regression lock for the cutover's additive model: editing used to add a
+    duplicate on top of the theme.  Now opening the editor adopts the theme's
+    elements into the editable user layer and an edit mutates them in place —
+    one element in, one element out, moved.
+    """
+    from pathlib import Path
+
+    from trcc.core.commands import UpdateOverlayElement
+    from trcc.core.models import Theme
+    from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
+
+    key = "0402:3922"
+    gui_app.active_themes[key] = Theme(
+        path=Path(str(tmp_path)), name="t", resolution=(320, 320),
+        config={"overlay_enabled": True, "elements": [
+            {"type": "text", "x": 10, "y": 10, "text": "CPU",
+             "color": "#ffffff", "size": 16},
+        ]},
+    )
+
+    panel = OverlayEditorPanel(gui_app, _bus(gui_app))
+    panel._picker.set_key(key)
+    panel.refresh()
+
+    # Opening adopted the theme's one element into the editable user layer.
+    user = gui_app.settings.for_device(key).user_overlay_elements
+    assert len(user) == 1, "editor must adopt the theme's layout, not start blank"
+    assert user[0].text == "CPU"
+    adopted_id = user[0].id
+
+    # Editing moves it IN PLACE — still exactly one element, now relocated.
+    gui_app.dispatch(
+        UpdateOverlayElement(key=key, element_id=adopted_id, x=99, y=99),
+    )
+    after = gui_app.settings.for_device(key).user_overlay_elements
+    assert len(after) == 1, "edit must replace in place, not duplicate"
+    assert (after[0].x, after[0].y) == (99, 99)
+
+
 def test_configuration_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 

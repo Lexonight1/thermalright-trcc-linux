@@ -8,10 +8,12 @@ User flow (designed for non-technical readers):
 * Double-click a row (or click Edit) to modify; Delete removes;
   Flash briefly highlights the element on a connected device's screen.
 
-Layering reminder shown in the status bar: theme-bundled elements
-always paint first, then user elements on top.  So "I added text but
-can't see it" usually means the theme is drawing over the same spot
-— move the user element with Edit.
+Single-layout model (matches the legacy GUI): the device renders ONE
+overlay layout (``resolve_overlay_elements``: user edits > applied mask
+> theme), never theme + user stacked.  When you open the editor it adopts
+the active theme/mask layout into the editable user layer, so the rows you
+see ARE what's on screen — editing one element changes it in place, it
+does not add a duplicate on top of the theme.
 """
 from __future__ import annotations
 
@@ -41,8 +43,10 @@ from ....core.commands import (
     DeleteOverlayElement,
     FlashOverlayElement,
     LcdSnapshot,
+    SetOverlayConfig,
     UpdateOverlayElement,
 )
+from ....services.overlay import resolve_overlay_elements
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -91,9 +95,8 @@ class OverlayEditorPanel(BasePanel):
         button_row.addStretch(1)
 
         self._status = QLabel(
-            "Overlay elements paint on top of the theme.  "
-            "If you can't see an element, the theme is probably covering it — "
-            "edit the position to move it.",
+            "Edit the device's overlay layout.  The rows below are exactly "
+            "what's on screen — editing one moves/changes it in place.",
             self,
         )
         self._status.setWordWrap(True)
@@ -113,11 +116,19 @@ class OverlayEditorPanel(BasePanel):
         key = self._key()
         if key is None:
             return
-        # LcdSnapshot has user_overlay info via DeviceSettings, but the
-        # snapshot Result doesn't surface the element list (it's a long
-        # list and would bloat snapshots).  Read directly from Settings
-        # — clean read, no side effects.
+        # Single-layout model: the editable user layer IS the device's whole
+        # overlay layout.  If the user hasn't edited yet, adopt the active
+        # theme/mask layout into it so the rows shown are what renders and an
+        # incremental Add/Edit/Delete operates on the full layout (the render
+        # draws the user layer as a REPLACEMENT, not on top of the theme).
         settings = self.app.settings.for_device(key)
+        if not settings.user_overlay_elements:
+            seed = self._effective_layout(key, settings)
+            if seed:
+                log.info("refresh: adopting active layout into editable "
+                         "user layer for %s (%d element(s))", key, len(seed))
+                self.dispatch(SetOverlayConfig(key=key, elements=tuple(seed)))
+                settings = self.app.settings.for_device(key)
         self._list.clear()
         for element in settings.user_overlay_elements:
             text = self._format_element_row(element)
@@ -126,13 +137,34 @@ class OverlayEditorPanel(BasePanel):
             self._list.addItem(item)
         if not settings.user_overlay_elements:
             self._status.setText(
-                f"No overlay elements on {key} yet.  "
+                f"No overlay layout on {key} yet.  "
                 "Click 'Add element…' to start.",
             )
         else:
             self._status.setText(
                 f"{len(settings.user_overlay_elements)} element(s) on {key}.",
             )
+
+    def _effective_layout(self, key: str, settings) -> list[dict]:
+        """The device's current overlay layout as id-carrying dicts.
+
+        Resolves user > mask > theme (the same precedence the renderer uses),
+        and assigns a stable id to any theme element that lacks one — every
+        element needs an id for ``SetOverlayConfig`` / Update / Delete.
+        """
+        theme = self.app.active_themes.get(key)
+        theme_config = theme.config if theme is not None else {}
+        elements = resolve_overlay_elements(
+            theme_config, settings.mask_overlay_elements,
+            settings.user_overlay_elements,
+        )
+        out: list[dict] = []
+        for i, el in enumerate(elements):
+            d = dict(el)
+            if not d.get("id"):
+                d["id"] = f"el_{i}"
+            out.append(d)
+        return out
 
     @staticmethod
     def _format_element_row(element) -> str:
