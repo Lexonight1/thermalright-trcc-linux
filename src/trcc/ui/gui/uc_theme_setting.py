@@ -216,16 +216,25 @@ class UCThemeSetting(BasePanel):
         """
         idx = self.overlay_grid.get_selected_index()
         cfg = self.overlay_grid.get_selected_config()
-        log.debug("_update_selected: idx=%s, cfg=%s, require_mode=%s, fields=%s",
-                  idx, cfg.mode if cfg else None, require_mode, fields)
         if cfg is None:
+            log.info("_update_selected: NO element selected — %s ignored "
+                     "(click a box in the grid first)", fields)
             return
         if require_mode is not None and cfg.mode != require_mode:
-            log.debug("_update_selected: mode mismatch %s != %s, skipping",
-                      cfg.mode, require_mode)
+            log.info("_update_selected: selected element is %s, not %s — "
+                     "%s skipped", cfg.mode.name, require_mode.name, fields)
             return
+        before = {k: getattr(cfg, k, None) for k in fields}
         for k, v in fields.items():
             setattr(cfg, k, v)
+        # The transition the user actually wants to see in the log, e.g.
+        # "element[0] HARDWARE 'CPU' (hw 0/1): color #808080 → #ff0000".
+        label = cfg.text or f"hw {cfg.main_count}/{cfg.sub_count}"
+        log.info(
+            "_update_selected: element[%s] %s %r: %s",
+            idx, cfg.mode.name, label,
+            ", ".join(f"{k} {before[k]} → {v}" for k, v in fields.items()),
+        )
         self.overlay_grid.update_element(idx, cfg)
         self._on_elements_changed()
 
