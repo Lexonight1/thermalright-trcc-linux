@@ -79,9 +79,17 @@ class LoadTheme(Command[ThemeResult]):
     """
     key: str
     path: Path
+    # Explicit user theme switch (default) establishes the theme's own
+    # overlay layout + mask: any live user edits are dropped and the theme's
+    # bundled mask is re-applied, so the new theme starts clean.  RestoreLast-
+    # Theme passes ``reset_overlay=False`` — a reconnect / restart keeps the
+    # user's persisted edits and last-applied mask (all restored from
+    # config.json) instead of reverting to the theme's bundled layout.
+    reset_overlay: bool = True
 
     def execute(self, app: App) -> ThemeResult:
-        log.info("LoadTheme: key=%s path=%s", self.key, self.path)
+        log.info("LoadTheme: key=%s path=%s reset_overlay=%s",
+                 self.key, self.path, self.reset_overlay)
         try:
             theme = app.themes.load(self.path)
         except ThemeError as e:
@@ -110,6 +118,19 @@ class LoadTheme(Command[ThemeResult]):
             theme.name,
         )
 
+        # Explicit switch establishes the theme's own overlay layout: drop
+        # any live user edits so the render shows THIS theme's elements (or
+        # its mask's, applied just below), not edits made against the theme
+        # the user just left.  Skipped on restore (reset_overlay=False) so a
+        # reconnect keeps the persisted edits.  The user layer is the single
+        # live-edit source resolved by ``resolve_overlay_elements``.
+        if self.reset_overlay and app.settings.for_device(
+            self.key
+        ).user_overlay_elements:
+            log.info("LoadTheme: clearing live user overlay edits for %s "
+                     "(explicit theme switch)", self.key)
+            app.settings.set_user_overlay_elements(self.key, [])
+
         # If device is attached + connected + Renderer available, send an
         # immediate first frame.  Otherwise the theme is saved for the
         # next connect / tick.
@@ -124,7 +145,10 @@ class LoadTheme(Command[ThemeResult]):
         # layout, when the theme has one, lives in the theme's own inline
         # ``elements`` — ApplyMask won't clobber it unless the resolved
         # mask dir carries its own ``config1.dc``.
-        embedded_mask = theme.config.get("mask")
+        # On restore (reset_overlay=False) the user's last-applied mask is
+        # already persisted — do NOT re-apply the theme's bundled mask, which
+        # would override it (and ApplyMask would wipe the restored edits).
+        embedded_mask = theme.config.get("mask") if self.reset_overlay else None
         if isinstance(embedded_mask, str) and embedded_mask:
             resolved_mask = app.themes.mask_path(theme)
             if resolved_mask is not None:
@@ -153,7 +177,8 @@ class LoadTheme(Command[ThemeResult]):
         theme_mask = theme.path / _LEGACY_MASK_FILENAME
         pos = theme.config.get("mask_position")
         if (
-            theme_mask.is_file() and isinstance(pos, (list, tuple))
+            self.reset_overlay
+            and theme_mask.is_file() and isinstance(pos, (list, tuple))
             and len(pos) == 2
         ):
             device = app.devices.get(self.key)
@@ -485,21 +510,25 @@ class SaveTheme(Command[ThemeResult]):
     def _combine_elements(theme: Theme, s: DeviceSettings) -> list[dict]:
         """Bake the final overlay layout the saved theme should render.
 
-        Same precedence the old ``config1.dc`` bake used: an active mask
-        layout (``mask_overlay_elements``) REPLACES the theme's own
-        elements; the user's overlay edits are then appended on top.
-        Inlined into ``trcc.json`` so ``load()`` reads them directly —
-        no binary DC round-trip.
+        Uses the SAME single-layout resolver as the renderer
+        (``resolve_overlay_elements``: user edits > applied mask > theme),
+        so the saved theme inlines EXACTLY what was on screen — one layout,
+        never theme + user stacked.  Inlined into ``trcc.json`` so ``load()``
+        reads it directly, no binary DC round-trip.  (Legacy baked the
+        single ``self.config`` it was rendering, for the same reason.)
         """
-        if s.mask_overlay_elements is not None:
-            base = [e.to_dict() for e in s.mask_overlay_elements]
-            log.info("SaveTheme: elements ← mask layout (%d)", len(base))
-        else:
-            base = list(theme.config.get("elements") or [])
-        user = [e.to_dict() for e in s.user_overlay_elements]
-        if user:
-            log.info("SaveTheme: appending %d user overlay element(s)", len(user))
-        return base + user
+        from ...services.overlay import resolve_overlay_elements
+
+        elements = resolve_overlay_elements(
+            theme.config, s.mask_overlay_elements, s.user_overlay_elements,
+        )
+        log.info(
+            "SaveTheme: baking %d overlay element(s) [source=%s]",
+            len(elements),
+            "user" if s.user_overlay_elements
+            else "mask" if s.mask_overlay_elements is not None else "theme",
+        )
+        return elements
 
     @staticmethod
     def _pick_asset(
@@ -1347,9 +1376,14 @@ class RestoreLastTheme(Command[ThemeResult]):
             )
 
         # Absolute or already-resolvable path → use it directly.
+        # reset_overlay=False: a reconnect/restart restores the device's
+        # persisted overlay edits + last-applied mask, it does not revert to
+        # the theme's bundled layout (that's an explicit-switch behavior).
         candidate = Path(stored)
         if candidate.is_dir():
-            return LoadTheme(key=self.key, path=candidate).execute(app)
+            return LoadTheme(
+                key=self.key, path=candidate, reset_overlay=False,
+            ).execute(app)
 
         # Legacy bare-name value — search the known theme roots.
         resolved = _search_theme_by_name(app, self.key, stored)
@@ -1359,7 +1393,9 @@ class RestoreLastTheme(Command[ThemeResult]):
                 message=(f"Persisted theme {stored!r} not found in any "
                          "known theme root for this device"),
             )
-        return LoadTheme(key=self.key, path=resolved).execute(app)
+        return LoadTheme(
+            key=self.key, path=resolved, reset_overlay=False,
+        ).execute(app)
 
 @dataclass(frozen=True, slots=True)
 class ListCloudThemes(Command[CloudThemesListResult]):

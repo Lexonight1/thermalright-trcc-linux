@@ -1175,6 +1175,17 @@ class ApplyMask(Command[MaskApplyResult]):
         # never composites ("dc shows, png doesn't").
         app.settings.set_mask_visible(self.key, True)
         log.info("ApplyMask: mask_visible=True for %s", self.key)
+        # A mask is a new overlay-layout source — drop any live user edits
+        # so the mask's own layout (set below) shows instead of being
+        # shadowed by edits made against the previous layout.  Mirrors
+        # legacy ``apply_mask``, which cleared the theme's overlay before
+        # loading the mask's config1.dc.  Safe on every caller: LoadTheme's
+        # internal ApplyMask runs after LoadTheme already cleared the layer,
+        # and RestoreLastTheme never calls ApplyMask.
+        if app.settings.for_device(self.key).user_overlay_elements:
+            log.info("ApplyMask: clearing live user overlay edits for %s "
+                     "(mask is the new layout source)", self.key)
+            app.settings.set_user_overlay_elements(self.key, [])
         # Auto-position the mask using its own config1.dc — legacy
         # ``OverlayService.calculate_mask_position`` behaviour: full-size
         # masks at (0,0); sub-screen masks read center coords from the

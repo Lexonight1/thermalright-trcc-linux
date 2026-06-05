@@ -13,7 +13,13 @@ from pathlib import Path
 import pytest
 
 from trcc.app import App
-from trcc.core.commands import ExportTheme, ImportTheme, LoadTheme, SaveTheme
+from trcc.core.commands import (
+    ExportTheme,
+    ImportTheme,
+    LoadTheme,
+    RestoreLastTheme,
+    SaveTheme,
+)
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import Theme
@@ -556,34 +562,36 @@ def _write_theme_with_dc(directory: Path, name: str = "withdc",
     return theme_dir
 
 
-def test_save_theme_bakes_user_overlay_elements_into_manifest(
+def test_save_theme_bakes_user_overlay_layout_into_manifest(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """SaveTheme must persist user_overlay_elements into the saved manifest.
+    """SaveTheme bakes the user's overlay layout, matching what's rendered.
 
-    Without this the saved theme loses the user's customisations — they
-    live in DeviceSettings, never in the theme's layout, so they don't
-    round-trip when the saved theme is re-loaded.  Reported by the user
-    2026-05-26 ("when i save a custom theme it always saves as local
-    theme1").
+    Single-layout model (see ``resolve_overlay_elements``): when the user
+    has edits, the user layer IS the full overlay layout — the GUI grid is
+    seeded from the theme's elements, so an edit produces a complete layout,
+    not an "extra" on top.  SaveTheme must inline EXACTLY that layout (what
+    was on screen), with no element duplicated by stacking theme + user.
+    Originally reported 2026-05-26 ("custom theme always saves as theme1");
+    this lock updated 2026-06-05 when render switched theme+user stacking →
+    single-layout replace.
     """
     import json as _json
 
     from trcc.core.models import OverlayElement
 
-    # Source theme has one clock element in its layout.
-    source = _write_theme_with_dc(tmp_home, "source")
+    source = _write_theme_with_dc(tmp_home, "source")  # bundled clock
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
-    # User adds a custom text element to the device's overlay layer.
-    app.settings.add_user_overlay_element(
-        _TEST_DEVICE_KEY,
+    # The GUI grid seeds from the theme then dispatches the full grid, so
+    # the user layer carries the theme's clock (kept) PLUS the new text.
+    app.settings.set_user_overlay_elements(_TEST_DEVICE_KEY, [
+        OverlayElement(id="clk", type="clock", x=100, y=100, source="time"),
         OverlayElement(
-            id="user_text_1", type="text",
-            x=50, y=50, color="#ff8800", size=18,
-            bold=True, italic=False, text="CUSTOM",
+            id="user_text_1", type="text", x=50, y=50, color="#ff8800",
+            size=18, bold=True, italic=False, text="CUSTOM",
         ),
-    )
+    ])
 
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="my-edits"))
     assert result.ok is True
@@ -591,16 +599,16 @@ def test_save_theme_bakes_user_overlay_elements_into_manifest(
     saved = user_theme_dir / "my-edits"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
     elements = manifest["elements"]
-    # Source theme clock + user text element should both be present.
-    types = [e["type"] for e in elements]
-    assert "clock" in types
-    assert "text" in types
+    # Exactly the user's two-element layout — clock kept, text added, NO
+    # duplicate clock from stacking the theme's own elements underneath.
+    types = sorted(e["type"] for e in elements)
+    assert types == ["clock", "text"], f"expected one clock + one text, got {types}"
     user_text = next(e for e in elements if e["type"] == "text")
     assert user_text["text"] == "CUSTOM"
     assert user_text["color"] == "#ff8800"
+    assert user_text["x"] == 50 and user_text["y"] == 50
     # Reference format writes no DC file — load() reads trcc.json.
     assert not (saved / "config1.dc").exists()
-    assert user_text["x"] == 50 and user_text["y"] == 50
 
 
 def test_save_theme_without_user_edits_inlines_source_layout(
@@ -647,6 +655,42 @@ def test_save_theme_clears_user_overlay_after_bake(
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="clear-test"))
 
     assert app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements == []
+
+
+def test_explicit_load_clears_user_edits_restore_preserves(
+    app: App, tmp_home: Path,
+) -> None:
+    """Source-change semantics for the single overlay-layout model.
+
+    An explicit ``LoadTheme`` (the user picking a theme) drops live edits so
+    the new theme shows its own layout.  ``RestoreLastTheme`` (reconnect /
+    restart) re-runs LoadTheme with ``reset_overlay=False`` and must PRESERVE
+    the persisted edits — legacy restored the saved overlay config on connect.
+    """
+    from trcc.core.models import OverlayElement
+
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(id="edit1", type="text", x=5, y=5, text="X"),
+    )
+
+    # Explicit switch → edits cleared.
+    app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source))
+    assert app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements == []
+
+    # New edit, then a reconnect-style restore → edit survives.
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(id="edit2", type="text", x=6, y=6, text="Y"),
+    )
+    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    preserved = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    assert [e.id for e in preserved] == ["edit2"], (
+        "RestoreLastTheme (reconnect) must keep the user's persisted edits"
+    )
 
 
 def test_save_theme_repoints_current_theme(
