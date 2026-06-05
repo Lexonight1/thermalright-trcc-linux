@@ -462,6 +462,45 @@ def test_overlay_grid_loads_metric_and_edits_persist(
     assert metric.color == "#112233"
 
 
+def test_color_change_emits_list_payload_to_delegate(
+    gui_app: App, qapp: object,
+) -> None:
+    """A colour edit must reach the delegate as a non-empty next/ element
+    LIST carrying the new colour.
+
+    The delegate forwarder in trcc_app gates CMD_OVERLAY_CHANGED on
+    ``isinstance(info, (dict, list))``; when ``_on_elements_changed`` switched
+    to the list shape, a dict-only gate silently dropped the payload to ``{}``
+    so colour/drag never reached on_overlay_changed.  This drives the real
+    UCThemeSetting → delegate hop (the one a direct SetOverlayConfig test
+    bypasses).
+    """
+    del gui_app, qapp
+    from trcc.ui.gui.uc_theme_setting import UCThemeSetting
+
+    panel = UCThemeSetting()
+    captured: list[tuple[int, object]] = []
+    panel.delegate.connect(lambda cmd, info, data: captured.append((cmd, info)))
+
+    panel.set_overlay_enabled(True)
+    panel.load_from_overlay_config({
+        "custom_0": {"text": "HI", "x": 5, "y": 5, "color": "#ffffff",
+                     "enabled": True},
+    })
+    panel.overlay_grid.select_element(0)
+    panel._on_color_changed(0x11, 0x22, 0x33)
+
+    overlay_emits = [
+        info for cmd, info in captured
+        if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED
+    ]
+    assert overlay_emits, "colour change emitted no CMD_OVERLAY_CHANGED"
+    payload = overlay_emits[-1]
+    # Must be a LIST (the gate forwards list/dict; anything else → {} → dropped)
+    assert isinstance(payload, list) and payload, f"payload not a list: {payload!r}"
+    assert payload[0]["color"] == "#112233"
+
+
 def test_configuration_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 

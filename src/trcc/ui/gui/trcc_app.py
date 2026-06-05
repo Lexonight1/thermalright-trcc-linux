@@ -1657,7 +1657,13 @@ class TRCCApp(QMainWindow):
                 self._on_video_display_toggle(info)
             case UCThemeSetting.CMD_OVERLAY_CHANGED:
                 if h:
-                    h.on_overlay_changed(info if isinstance(info, dict) else {})
+                    # ``_on_elements_changed`` now dispatches the next/ element
+                    # LIST (id + flat font); ``on_overlay_changed`` accepts
+                    # list or dict.  Gating on dict-only here silently dropped
+                    # every edit (colour/drag) — the list fell to ``{}``.
+                    h.on_overlay_changed(
+                        info if isinstance(info, (dict, list)) else {},
+                    )
 
     def _on_preview_delegate(self, cmd: Any, info: Any, data: Any) -> None:
         log.info("_on_preview_delegate")
