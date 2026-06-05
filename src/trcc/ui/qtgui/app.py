@@ -195,6 +195,10 @@ def launch(app: App | None = None) -> int:
     widgets — we instantiate it *before* anything that might implicitly
     create a headless QGuiApplication (notably QtRenderer).
     """
+    # Silence the desktop-portal warnings before Qt initialises (no-op if
+    # the QApplication already exists — env is read at first construction).
+    from ..qapp import configure_qt_environment
+    configure_qt_environment()
     qapp = QApplication.instance()
     if not isinstance(qapp, QApplication):
         qapp = QApplication(sys.argv)

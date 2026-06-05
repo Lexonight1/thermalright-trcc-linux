@@ -28,9 +28,16 @@ from PySide6.QtWidgets import QApplication
 log = logging.getLogger(__name__)
 
 
-def configure_qapplication(qapp: QApplication) -> None:
-    """Apply the shared Qt-application settings.  Idempotent."""
-    # ── Environment (must be set before any QApplication call) ───────
+def configure_qt_environment() -> None:
+    """Set the Qt env vars — call this BEFORE constructing QApplication.
+
+    Qt reads ``QT_LOGGING_RULES`` (and the HighDPI / platform vars) while
+    the QApplication is being built, so setting them afterwards is too late:
+    on systems without ``xdg-desktop-portal`` the portal warnings
+    (``qt.qpa.theme.gnome`` / ``qt.qpa.services`` DBus 'NameHasNoOwner')
+    would already have hit stderr.  ``setdefault`` lets a user override via
+    the environment (e.g. ``QT_LOGGING_RULES=*=true`` to see everything).
+    """
     os.environ.setdefault(
         "QT_LOGGING_RULES",
         "qt.qpa.services=false;qt.qpa.theme.gnome=false",
@@ -40,6 +47,13 @@ def configure_qapplication(qapp: QApplication) -> None:
     # so subsequent windowed launches show real chrome.
     os.environ.pop("QT_QPA_PLATFORM", None)
 
+
+def configure_qapplication(qapp: QApplication) -> None:
+    """Apply the shared QApplication-level settings.  Idempotent.
+
+    Env vars are set separately by :func:`configure_qt_environment`, which
+    callers MUST invoke BEFORE building the QApplication (see its docstring).
+    """
     # ── QApplication-level ───────────────────────────────────────────
     qapp.setQuitOnLastWindowClosed(False)
     qapp.setDesktopFileName("trcc-linux")

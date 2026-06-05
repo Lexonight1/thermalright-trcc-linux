@@ -80,9 +80,11 @@ def launch(verbosity: int = 0, decorated: bool = False,
     set_assets_dir(_PKG_ASSETS_DIR)
 
     # ── Qt bootstrap (windowed QApp — must precede QtRenderer) ──────
+    # Env (QT_LOGGING_RULES etc.) MUST be set before QApplication so the
+    # desktop-portal warnings are silenced at startup, not after.
+    from ..qapp import configure_qapplication, configure_qt_environment
+    configure_qt_environment()
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
-
-    from ..qapp import configure_qapplication
     configure_qapplication(qapp)
 
     # ── Build App via the canonical factory ──────────────────────────
