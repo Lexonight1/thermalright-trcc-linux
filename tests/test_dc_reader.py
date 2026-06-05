@@ -178,6 +178,34 @@ def test_parses_all_enabled_into_elements(tmp_path: Path) -> None:
     assert (custom["x"], custom["y"]) == (0, 0)
 
 
+def test_metric_labels_are_device_names_never_units(tmp_path: Path) -> None:
+    """Every metric LABEL text is the device name (CPU/GPU), never a unit.
+
+    The 0xDC format does not store these label strings — the reader supplies
+    them from ``_SLOT_MAP`` to match what the Windows app draws by convention.
+    Legacy (dc_parser.py:519-531) labelled every cpu_* slot "CPU" and every
+    gpu_* slot "GPU"; the unit (%, MHz, °C) belongs in the metric VALUE
+    format, never as a label.  The cutover mis-transcribed four label slots
+    to their unit ("%"/"MHz"), so a theme's CPU-usage label rendered "%"
+    instead of "CPU" (reported with screenshots 2026-06-05).  Lock the table.
+    """
+    f = tmp_path / "Theme1" / "config1.dc"
+    f.parent.mkdir()
+    f.write_bytes(_build_dc())  # all metrics enabled
+
+    cfg = load_dc_as_theme_config(f)
+    labels = {
+        e["text"] for e in cfg["elements"]
+        if e["type"] == "text" and e.get("text") != "HELLO"  # exclude custom
+    }
+    assert labels == {"CPU", "GPU"}, (
+        f"metric labels must be device names only, got {sorted(labels)}"
+    )
+    # No label may be a bare unit — the exact regression that shipped.
+    for bad in ("%", "MHz", "°C"):
+        assert bad not in labels, f"label {bad!r} is a unit, not a device name"
+
+
 def test_respects_disabled_flags(tmp_path: Path) -> None:
     """With all flags off, no metric elements should be emitted."""
     f = tmp_path / "off.dc"

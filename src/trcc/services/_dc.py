@@ -48,15 +48,15 @@ _SLOT_MAP: list[tuple[str, str | None, str, str]] = [
     ("cpu_temp",          "cpu:temp",         "CPU",   "{value:.0f}°C"),
     ("cpu_temp_label",    None,               "CPU",   ""),
     ("cpu_freq",          "cpu:freq",         "CPU",   "{value:.0f} MHz"),
-    ("cpu_freq_label",    None,               "MHz",   ""),
+    ("cpu_freq_label",    None,               "CPU",   ""),
     ("cpu_usage",         "cpu:usage",        "CPU",   "{value:.0f}%"),
-    ("cpu_usage_label",   None,               "%",     ""),
+    ("cpu_usage_label",   None,               "CPU",   ""),
     ("gpu_temp",          "gpu:primary:temp", "GPU",   "{value:.0f}°C"),
     ("gpu_temp_label",    None,               "GPU",   ""),
     ("gpu_clock",         "gpu:primary:clock","GPU",   "{value:.0f} MHz"),
-    ("gpu_clock_label",   None,               "MHz",   ""),
+    ("gpu_clock_label",   None,               "GPU",   ""),
     ("gpu_usage",         "gpu:primary:usage","GPU",   "{value:.0f}%"),
-    ("gpu_usage_label",   None,               "%",     ""),
+    ("gpu_usage_label",   None,               "GPU",   ""),
 ]
 
 _HW_TO_SENSOR: dict[tuple[int, int], tuple[str, str]] = {
