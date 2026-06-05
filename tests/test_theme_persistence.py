@@ -664,7 +664,7 @@ def test_explicit_load_clears_user_edits_restore_preserves(
 
     An explicit ``LoadTheme`` (the user picking a theme) drops live edits so
     the new theme shows its own layout.  ``RestoreLastTheme`` (reconnect /
-    restart) re-runs LoadTheme with ``reset_overlay=False`` and must PRESERVE
+    restart) re-runs LoadTheme with ``reset_overrides=False`` and must PRESERVE
     the persisted edits — legacy restored the saved overlay config on connect.
     """
     from trcc.core.models import OverlayElement
@@ -691,6 +691,34 @@ def test_explicit_load_clears_user_edits_restore_preserves(
     assert [e.id for e in preserved] == ["edit2"], (
         "RestoreLastTheme (reconnect) must keep the user's persisted edits"
     )
+
+
+def test_restore_keeps_cloud_background_explicit_load_clears_it(
+    app: App, tmp_home: Path,
+) -> None:
+    """A restore (reconnect / view-switch keep-alive) keeps the user's cloud
+    background; an explicit LoadTheme reverts to the theme's bundled one.
+
+    Reported 2026-06-05: switching to the System-Info tab reverted the chosen
+    background.  The view-switch ran RestoreLastTheme → LoadTheme → StopVideo,
+    which cleared background_path.  StopVideo now runs only on an explicit load
+    (reset_overrides=True).
+    """
+    source = _write_theme_with_dc(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
+    app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/cloud/a078.mp4")
+
+    # Restore (reset_overrides=False) — the cloud background survives.
+    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    assert (app.settings.for_device(_TEST_DEVICE_KEY).background_path
+            == "/some/cloud/a078.mp4"), (
+        "RestoreLastTheme must NOT clear the user's cloud background"
+    )
+
+    # Explicit load (default reset_overrides=True) reverts to the theme's bg.
+    app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source))
+    assert app.settings.for_device(_TEST_DEVICE_KEY).background_path is None
 
 
 def test_save_theme_repoints_current_theme(

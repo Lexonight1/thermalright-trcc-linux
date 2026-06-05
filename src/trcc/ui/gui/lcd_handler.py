@@ -212,13 +212,15 @@ class LCDHandler(BaseHandler):
         self._ui_active = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{info.key}")
-        self._refresh(w, h)
+        # First connect: load the persisted theme onto the device.
+        self._refresh(w, h, first_load=True)
 
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
         self.log.info("reactivate: %dx%d", w, h)
         self._ui_active = True
-        self._refresh(w, h)
+        # Re-select: read what the device is already showing; do NOT re-load.
+        self._refresh(w, h, first_load=False)
 
     def restore_inactive_state(self) -> None:
         """Restore last theme for an inactive LCD without touching shared widgets.
@@ -239,8 +241,15 @@ class LCDHandler(BaseHandler):
             return
         self._app.dispatch(RestoreLastTheme(key=self._device_key))
 
-    def _refresh(self, w: int, h: int) -> None:
-        """Update widgets from the device's current persisted settings."""
+    def _refresh(self, w: int, h: int, *, first_load: bool = False) -> None:
+        """Update widgets from the device's current persisted settings.
+
+        ``first_load`` distinguishes the two callers: first connect
+        (``apply_device_config``) must LOAD the persisted theme onto the
+        device; a re-select (``reactivate``) must only READ what the device
+        is already showing — re-loading would clear the user's overrides
+        (cloud background, overlay edits) and disturb the running device.
+        """
         log.debug("_refresh: w=%s h=%s", w, h)
         self.log.info("_refresh: device_key=%s resolution=%dx%d",
                       self._device_key, w, h)
@@ -286,7 +295,7 @@ class LCDHandler(BaseHandler):
 
         if auto_loaded:
             return
-        self._restore_theme_and_preview()
+        self._restore_theme_and_preview(first_load=first_load)
 
     def _on_data_ready(self) -> None:
         """Background data extraction finished — re-probe dirs and update UI."""
@@ -356,19 +365,42 @@ class LCDHandler(BaseHandler):
             local._slideshow = False
             local._apply_decorations()
 
-    def _restore_theme_and_preview(self) -> None:
-        """Restore last theme + overlay, or clear preview if none.
+    def _restore_theme_and_preview(self, *, first_load: bool = False) -> None:
+        """Show the device's theme + overlay in the GUI.
 
-        Dispatches RestoreLastTheme (which re-runs LoadTheme for the
-        persisted theme name). Playback / animation state comes from
-        :class:`MediaService`; preview redraws via ``rebuild_preview``.
-
-        The overlay UI is rebuilt below from the resolved theme's
-        ``config1.dc`` (or ``trcc.json``) via ``_load_theme_overlay_config``
-        — pre-S1.2 this method also peeked at a ``cfg['overlay']`` dict
-        slot that ``_refresh`` never populated, so that branch was
-        dead-on-arrival and has been removed.
+        On a re-select (``first_load=False``) this READS what the device is
+        already rendering — the cached current frame via
+        ``display.rendered_surface`` (``rebuild_preview``) plus the overlay
+        editor repopulated from the active theme — and dispatches NOTHING to
+        the device.  Re-loading there (the old behaviour) ran RestoreLastTheme
+        → LoadTheme → StopVideo, which cleared the user's cloud background +
+        overlay overrides and disturbed the running device just because the
+        GUI changed tabs.  Only first connect (``first_load=True``) loads the
+        persisted theme onto the device.
         """
+        if not first_load:
+            current = self._app.settings.for_device(
+                self._device_key,
+            ).current_theme
+            if not current:
+                self._w['preview'].set_image(None)
+                return
+            self.log.info(
+                "_restore_theme_and_preview: re-select — reading current "
+                "frame for %s (theme=%s), no re-load", self._device_key,
+                current,
+            )
+            self._state.current_theme_path = Path(current)
+            # Repopulate the overlay editor from the active theme (GUI only —
+            # no EnableOverlay / render / send to the device).
+            overlay_config = dc_as_legacy_overlay_config(Path(current))
+            self._w['theme_setting'].set_overlay_enabled(bool(overlay_config))
+            if overlay_config:
+                self._w['theme_setting'].load_from_overlay_config(overlay_config)
+            # Show what the device is already rendering — no re-render/send.
+            self.rebuild_preview()
+            return
+
         result = self._app.dispatch(RestoreLastTheme(key=self._device_key))
         if not result.ok:
             self.log.info("_restore_theme_and_preview: no saved theme — %s",

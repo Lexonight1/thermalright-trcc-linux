@@ -79,17 +79,18 @@ class LoadTheme(Command[ThemeResult]):
     """
     key: str
     path: Path
-    # Explicit user theme switch (default) establishes the theme's own
-    # overlay layout + mask: any live user edits are dropped and the theme's
-    # bundled mask is re-applied, so the new theme starts clean.  RestoreLast-
-    # Theme passes ``reset_overlay=False`` — a reconnect / restart keeps the
-    # user's persisted edits and last-applied mask (all restored from
-    # config.json) instead of reverting to the theme's bundled layout.
-    reset_overlay: bool = True
+    # Explicit user theme switch (default) establishes the theme's own state
+    # and DROPS the device's overrides — live overlay edits, the applied mask,
+    # AND the cloud-background / video override — so the new theme starts
+    # clean from its bundled assets.  RestoreLastTheme passes
+    # ``reset_overrides=False`` — a reconnect / restart / view-switch keep-
+    # alive PRESERVES those overrides (all persisted in config.json) instead
+    # of reverting to the theme's bundled layout/background.
+    reset_overrides: bool = True
 
     def execute(self, app: App) -> ThemeResult:
-        log.info("LoadTheme: key=%s path=%s reset_overlay=%s",
-                 self.key, self.path, self.reset_overlay)
+        log.info("LoadTheme: key=%s path=%s reset_overrides=%s",
+                 self.key, self.path, self.reset_overrides)
         try:
             theme = app.themes.load(self.path)
         except ThemeError as e:
@@ -102,14 +103,15 @@ class LoadTheme(Command[ThemeResult]):
         # Persist the absolute path — names are display strings, paths
         # are the stable reference RestoreLastTheme needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
-        # Single source of truth for "stop the previous video + clear
-        # the cloud-background override + invalidate the scene cache":
-        # ``StopVideo``.  Centralising here means publishing VideoStopped
-        # for the UI handler's timer observer, clearing background_path
-        # for the next render, and unloading the playback all happen in
-        # one Command instead of three loose mutations — and a future
-        # change to "what stop means" only has to touch StopVideo.
-        StopVideo(key=self.key).execute(app)
+        # Single source of truth for "stop the previous video + clear the
+        # cloud-background override + invalidate the scene cache": ``StopVideo``
+        # (publishes VideoStopped, clears background_path, unloads playback).
+        # ONLY on an explicit load — on a restore (reconnect / view-switch
+        # keep-alive) the user's current cloud background + playback must
+        # survive, otherwise picking the System-Info tab silently reverted the
+        # background to the theme's bundled one (StopVideo cleared the override).
+        if self.reset_overrides:
+            StopVideo(key=self.key).execute(app)
         app.active_themes[self.key] = theme
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
@@ -121,10 +123,10 @@ class LoadTheme(Command[ThemeResult]):
         # Explicit switch establishes the theme's own overlay layout: drop
         # any live user edits so the render shows THIS theme's elements (or
         # its mask's, applied just below), not edits made against the theme
-        # the user just left.  Skipped on restore (reset_overlay=False) so a
+        # the user just left.  Skipped on restore (reset_overrides=False) so a
         # reconnect keeps the persisted edits.  The user layer is the single
         # live-edit source resolved by ``resolve_overlay_elements``.
-        if self.reset_overlay and app.settings.for_device(
+        if self.reset_overrides and app.settings.for_device(
             self.key
         ).user_overlay_elements:
             log.info("LoadTheme: clearing live user overlay edits for %s "
@@ -145,10 +147,10 @@ class LoadTheme(Command[ThemeResult]):
         # layout, when the theme has one, lives in the theme's own inline
         # ``elements`` — ApplyMask won't clobber it unless the resolved
         # mask dir carries its own ``config1.dc``.
-        # On restore (reset_overlay=False) the user's last-applied mask is
+        # On restore (reset_overrides=False) the user's last-applied mask is
         # already persisted — do NOT re-apply the theme's bundled mask, which
         # would override it (and ApplyMask would wipe the restored edits).
-        embedded_mask = theme.config.get("mask") if self.reset_overlay else None
+        embedded_mask = theme.config.get("mask") if self.reset_overrides else None
         if isinstance(embedded_mask, str) and embedded_mask:
             resolved_mask = app.themes.mask_path(theme)
             if resolved_mask is not None:
@@ -177,7 +179,7 @@ class LoadTheme(Command[ThemeResult]):
         theme_mask = theme.path / _LEGACY_MASK_FILENAME
         pos = theme.config.get("mask_position")
         if (
-            self.reset_overlay
+            self.reset_overrides
             and theme_mask.is_file() and isinstance(pos, (list, tuple))
             and len(pos) == 2
         ):
@@ -1376,13 +1378,13 @@ class RestoreLastTheme(Command[ThemeResult]):
             )
 
         # Absolute or already-resolvable path → use it directly.
-        # reset_overlay=False: a reconnect/restart restores the device's
+        # reset_overrides=False: a reconnect/restart restores the device's
         # persisted overlay edits + last-applied mask, it does not revert to
         # the theme's bundled layout (that's an explicit-switch behavior).
         candidate = Path(stored)
         if candidate.is_dir():
             return LoadTheme(
-                key=self.key, path=candidate, reset_overlay=False,
+                key=self.key, path=candidate, reset_overrides=False,
             ).execute(app)
 
         # Legacy bare-name value — search the known theme roots.
@@ -1394,7 +1396,7 @@ class RestoreLastTheme(Command[ThemeResult]):
                          "known theme root for this device"),
             )
         return LoadTheme(
-            key=self.key, path=resolved, reset_overlay=False,
+            key=self.key, path=resolved, reset_overrides=False,
         ).execute(app)
 
 @dataclass(frozen=True, slots=True)
