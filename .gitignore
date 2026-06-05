@@ -106,6 +106,8 @@ src/trcc/data/ui_*.json
 !/dev/_smoke_runtime.py
 !/dev/parity_smoke.py
 !/dev/smoke_full_pipeline.py
+!/dev/dc_differential.py
+!/dev/_dc_legacy_dump.py
 /dev_*
 # Dev scripts at root
 /test_*.py
