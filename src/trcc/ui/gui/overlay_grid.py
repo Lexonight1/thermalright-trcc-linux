@@ -13,10 +13,10 @@ from PySide6.QtWidgets import QFrame, QPushButton
 
 from ...core.models import (
     HARDWARE_METRICS,
-    METRIC_TO_IDS,
     OverlayElementConfig,
     OverlayMode,
 )
+from ...services import _dc as Dc
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
@@ -268,6 +268,18 @@ class OverlayGridPanel(QFrame):
 
         return overlay_config
 
+    def to_next_elements(self) -> list[dict]:
+        """Grid → next/ ``OverlayElement`` dicts for the Command bus.
+
+        The shape ``SetOverlayConfig`` accepts (id + flat font + type).  This
+        is what edits dispatch; ``to_overlay_config`` (legacy keyed shape)
+        stays for any local-state consumers.
+        """
+        from ._overlay_grid_adapter import configs_to_next_elements
+        if not self._overlay_enabled:
+            return []
+        return configs_to_next_elements(self._configs)
+
     def load_from_overlay_config(self, overlay_config):
         """Load from OverlayRenderer config format."""
         configs: list[OverlayElementConfig] = []
@@ -301,13 +313,16 @@ class OverlayGridPanel(QFrame):
             elif 'text' in cfg:
                 elem.mode = OverlayMode.CUSTOM
                 elem.text = cfg['text']
-            elif metric in METRIC_TO_IDS:
-                mc, sc = METRIC_TO_IDS[metric]
+            elif (hw := Dc.metric_to_hardware(metric)) is not None:
+                # next/ metric ids ("cpu:temp"), not legacy names — without
+                # this lookup every metric element was dropped from the grid,
+                # so metrics couldn't be selected or dragged.
+                elem.main_count, elem.sub_count = hw
                 elem.mode = OverlayMode.HARDWARE
-                elem.main_count = mc
-                elem.sub_count = sc
                 elem.mode_sub = cfg.get('temp_unit', 0)
             else:
+                log.warning("load_from_overlay_config: unmapped metric %r — "
+                            "skipping element", metric)
                 continue
             configs.append(elem)
 

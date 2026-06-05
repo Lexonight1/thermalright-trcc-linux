@@ -99,6 +99,26 @@ def _sensor_to_hw() -> dict[str, tuple[int, int]]:
     return _SENSOR_TO_HW
 
 
+def hardware_metric(main: int, sub: int) -> tuple[str, str] | None:
+    """``(main_count, sub_count)`` hardware code → ``(sensor_id, format)``.
+
+    The single source the DC reader and the GUI overlay editor share for
+    "what sensor + default format does this hardware element render", so
+    the two never drift on metric ids (``cpu:temp``) or format strings.
+    Returns ``None`` for an unmapped code.
+    """
+    return _HW_TO_SENSOR.get((main, sub))
+
+
+def metric_to_hardware(sensor: str) -> tuple[int, int] | None:
+    """Inverse of :func:`hardware_metric`: ``sensor_id`` → ``(main, sub)``.
+
+    Used when loading a next/ metric element back into the legacy-style
+    overlay grid (which keys hardware elements by ``main``/``sub`` count).
+    """
+    return _sensor_to_hw().get(sensor)
+
+
 # =========================================================================
 # Reader — bytes → dict
 # =========================================================================

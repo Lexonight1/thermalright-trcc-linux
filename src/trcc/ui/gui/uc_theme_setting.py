@@ -196,11 +196,16 @@ class UCThemeSetting(BasePanel):
         self.right_stack.setCurrentWidget(self.color_panel)
 
     def _on_elements_changed(self):
-        """Any change to elements list — notify parent via delegate."""
-        config = self.overlay_grid.to_overlay_config()
-        log.debug("_on_elements_changed: %d elements, invoking CMD_OVERLAY_CHANGED",
-                  len(config) if config else 0)
-        self.invoke_delegate(self.CMD_OVERLAY_CHANGED, config)
+        """Any change to elements list — notify parent via delegate.
+
+        Dispatches the next/ ``OverlayElement`` shape (id + flat font + type)
+        so ``SetOverlayConfig`` accepts it; the legacy keyed shape carried no
+        id and was rejected, so colour/font/drag edits never persisted.
+        """
+        elements = self.overlay_grid.to_next_elements()
+        log.info("_on_elements_changed: %d element(s) → CMD_OVERLAY_CHANGED",
+                 len(elements))
+        self.invoke_delegate(self.CMD_OVERLAY_CHANGED, elements)
 
     def _update_selected(self, require_mode: OverlayMode | None = None, **fields):
         """Update selected overlay element config fields and propagate.

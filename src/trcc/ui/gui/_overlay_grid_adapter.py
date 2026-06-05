@@ -39,6 +39,64 @@ _LEGACY_CONFIG_FILE = "config.json"
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
 
 
+def configs_to_next_elements(configs: list[Any]) -> list[dict[str, Any]]:
+    """Grid ``OverlayElementConfig`` list → next/ ``OverlayElement`` dicts.
+
+    The shape ``SetOverlayConfig`` / ``OverlayElement.from_dict`` consume: a
+    stable ``id`` (grid order — the whole layout is dispatched as a single
+    replacement, so positional ids are sufficient and stable per dispatch),
+    FLAT font fields (``size``/``bold``/``italic``), and ``type`` +
+    ``metric``/``source``/``format`` resolved per :class:`OverlayMode`.
+
+    This is the edit/save direction.  Without it the grid emitted the legacy
+    keyed shape (nested ``font``, ``metric: "time"``, and crucially no
+    ``id``), so ``SetOverlayConfig`` rejected every edit — colour, font, and
+    drag never persisted.  ``(main, sub)`` → ``(sensor_id, format)`` reuses
+    the DC codec's table so the editor never drifts from the reader.
+    """
+    from ...core.models import DATE_FORMATS, TIME_FORMATS, OverlayMode
+
+    out: list[dict[str, Any]] = []
+    for i, cfg in enumerate(configs):
+        base: dict[str, Any] = {
+            "id": f"el_{i}",
+            "x": cfg.x, "y": cfg.y,
+            "color": cfg.color,
+            "size": cfg.font_size,
+            "bold": cfg.font_style == 1,
+            "italic": cfg.font_style == 2,
+        }
+        match cfg.mode:
+            case OverlayMode.CUSTOM:
+                out.append({**base, "type": "text", "text": cfg.text})
+            case OverlayMode.TIME:
+                out.append({**base, "type": "clock", "source": "time",
+                            "format": TIME_FORMATS.get(cfg.mode_sub,
+                                                       TIME_FORMATS[0])})
+            case OverlayMode.DATE:
+                out.append({**base, "type": "clock", "source": "date",
+                            "format": DATE_FORMATS.get(cfg.mode_sub,
+                                                       DATE_FORMATS[0])})
+            case OverlayMode.WEEKDAY:
+                out.append({**base, "type": "clock", "source": "weekday"})
+            case OverlayMode.HARDWARE:
+                entry = Dc.hardware_metric(cfg.main_count, cfg.sub_count)
+                if entry is None:
+                    log.warning("configs_to_next_elements: unmapped hardware "
+                                "(%s, %s) — skipping", cfg.main_count,
+                                cfg.sub_count)
+                    continue
+                sensor, fmt = entry
+                out.append({**base, "type": "metric",
+                            "metric": sensor, "format": fmt})
+            case _:
+                log.warning("configs_to_next_elements: unknown mode %s — "
+                            "skipping", cfg.mode)
+    log.debug("configs_to_next_elements: %d config(s) → %d next/ element(s)",
+              len(configs), len(out))
+    return out
+
+
 def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
     """Read a theme's overlay config and return the legacy GUI's
     ``overlay_grid`` dict shape.

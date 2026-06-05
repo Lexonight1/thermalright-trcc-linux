@@ -423,6 +423,45 @@ def test_overlay_editor_adopts_theme_layout_and_edits_in_place(
     assert (after[0].x, after[0].y) == (99, 99)
 
 
+def test_overlay_grid_loads_metric_and_edits_persist(
+    gui_app: App, qapp: object,
+) -> None:
+    """Legacy-style grid: metrics load (not dropped) and edits persist.
+
+    Before the fix the grid mapped metrics by legacy name so next/-id
+    metrics (cpu:temp) were dropped on load (couldn't be dragged), and its
+    edit payload carried no id so SetOverlayConfig rejected it (colour/drag
+    never applied).  This drives the real widget + Command bus end to end.
+    """
+    del qapp
+    from trcc.core.commands import SetOverlayConfig
+    from trcc.ui.gui.overlay_grid import OverlayGridPanel
+
+    grid = OverlayGridPanel()
+    grid.set_overlay_enabled(True)
+    grid.load_from_overlay_config({
+        "cpu_temp": {"metric": "cpu:temp", "x": 74, "y": 250,
+                     "color": "#112233", "enabled": True,
+                     "font": {"size": 24}},
+        "custom_0": {"text": "HI", "x": 5, "y": 5, "color": "#abcdef",
+                     "enabled": True},
+    })
+
+    # Metric element reached the editable grid (was dropped before the fix).
+    assert len(grid.get_all_configs()) == 2
+
+    # The edit dispatch shape is accepted, and the colour persists.
+    key = "0402:3922"
+    result = gui_app.dispatch(
+        SetOverlayConfig(key=key, elements=tuple(grid.to_next_elements())),
+    )
+    assert result.ok, result.message
+    stored = gui_app.settings.for_device(key).user_overlay_elements
+    metric = next(e for e in stored if e.type == "metric")
+    assert metric.metric == "cpu:temp"
+    assert metric.color == "#112233"
+
+
 def test_configuration_panel_constructs(gui_app: App) -> None:
     from trcc.ui.qtgui.panels.configuration_panel import ConfigurationPanel
 
