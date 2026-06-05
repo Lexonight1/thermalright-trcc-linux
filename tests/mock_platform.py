@@ -31,7 +31,7 @@ from pathlib import Path
 
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.core.models import DeviceInfo, Wire
-from trcc.core.ports import BulkTransport, ScsiTransport
+from trcc.core.ports import BulkTransport, ScsiTransport, SensorEnumerator
 from trcc.core.registry import find_product
 
 from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport
@@ -130,6 +130,22 @@ class MockPlatform(FakePlatform):
         }
         log.info("MockPlatform: %d spec(s) loaded, root=%s",
                  len(self._specs), root)
+
+    def sensors(self) -> SensorEnumerator:
+        """REAL host sensors — the mock fakes ONLY the USB handshake.
+
+        The whole point of the multi-device mock is "a vid/pid + a scripted
+        handshake stands in for the panel"; everything else is the live
+        application.  So the overlay + System-Info show THIS dev computer's
+        actual CPU/GPU/memory/fan metrics, not the deterministic fakes
+        ``FakePlatform`` hands to unit tests.  Built the same way the real
+        ``LinuxPlatform.sensors`` builds it (``build_linux_sensors``).
+        """
+        if self._sensors is None:
+            from trcc.adapters.sensors.aggregator import build_linux_sensors
+            log.info("MockPlatform.sensors: REAL host sensors (dev box)")
+            self._sensors = build_linux_sensors()
+        return self._sensors
 
     def scan_devices(self) -> list[DeviceInfo]:
         """Surface one ``DeviceInfo`` per spec that resolves in the registry."""
