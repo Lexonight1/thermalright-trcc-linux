@@ -30,6 +30,14 @@ def _canon_metric(m: str) -> str:
     return _CANON.get(m, m.replace(":primary", "").replace(":", "_"))
 
 
+# Legacy stores the date format as an index (mode_sub); current attaches the
+# resolved strftime pattern to the element.  Map the index → pattern so the
+# differential compares the SAME thing (mirrors core.models.DATE_FORMATS).
+_DATE_IDX_TO_STRFTIME = {
+    0: "%Y/%m/%d", 1: "%Y/%m/%d", 2: "%d/%m/%Y", 3: "%m/%d", 4: "%d/%m",
+}
+
+
 def _canonical(entry: dict) -> dict:
     x, y = entry.get("x", 0), entry.get("y", 0)
     color = (entry.get("color") or "").lower()
@@ -38,11 +46,15 @@ def _canonical(entry: dict) -> dict:
                 "x": x, "y": y, "color": color}
     metric = entry.get("metric")
     if metric == "time":
+        # Current intentionally keeps time on the global path (resolve_clock's
+        # 12h output is not a bare strftime) — mark None so the diff doesn't
+        # flag a deliberate decision.
         return {"kind": "clock", "id": "time",
-                "fmt": entry.get("time_format"), "x": x, "y": y, "color": color}
+                "fmt": None, "x": x, "y": y, "color": color}
     if metric == "date":
         return {"kind": "clock", "id": "date",
-                "fmt": entry.get("date_format"), "x": x, "y": y, "color": color}
+                "fmt": _DATE_IDX_TO_STRFTIME.get(entry.get("date_format", 0)),
+                "x": x, "y": y, "color": color}
     if metric == "weekday":
         return {"kind": "clock", "id": "weekday", "fmt": None,
                 "x": x, "y": y, "color": color}

@@ -499,6 +499,10 @@ class OverlayElement:
             out["format"] = self.format
         elif self.type == "clock":
             out["source"] = self.source
+            # A date element carries the theme's strftime pattern (e.g.
+            # "%m/%d"); render honours it.  The metric default "{value}"
+            # is meaningless for a clock and ignored by the renderer.
+            out["format"] = self.format
         return out
 
     @classmethod

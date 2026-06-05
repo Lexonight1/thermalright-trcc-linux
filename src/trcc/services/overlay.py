@@ -18,6 +18,7 @@ from ..core.errors import ThemeError
 from ..core.models import OverlayElement
 from ..core.ports import Renderer
 from . import _dc as Dc
+from ._clock import resolve_clock
 
 log = logging.getLogger(__name__)
 
@@ -329,7 +330,16 @@ class OverlayService:
         source: str = "?",
     ) -> None:
         clock_source = str(element.get("source", ""))
-        text = clock.get(clock_source, "")
+        # A date element may carry the theme's own strftime pattern (from the
+        # DC, or a grid edit) — honour it instead of the global default.
+        # ``"%" in fmt`` distinguishes a real pattern ("%m/%d") from the
+        # metric default "{value}".  Time/weekday keep the precomputed dict
+        # (localised weekday, 12h handling that isn't a bare strftime).
+        elem_fmt = str(element.get("format", ""))
+        if clock_source == "date" and "%" in elem_fmt:
+            text = resolve_clock("date", date_format=elem_fmt)
+        else:
+            text = clock.get(clock_source, "")
         if not text:
             log.warning(
                 "draw_clock %s: source %r unresolved — skipping "

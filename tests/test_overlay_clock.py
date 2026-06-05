@@ -90,6 +90,55 @@ def test_clock_element_renders_resolved_time() -> None:
     assert rec.drawn == [(10, 20, "14:58", "#ffaa00", 32, False, False)]
 
 
+def test_date_element_honours_its_own_format_over_the_global() -> None:
+    """A date element carrying the theme's strftime pattern renders with it.
+
+    The DC stores the format the theme was designed for (e.g. MM/dd); the
+    cutover discarded it and forced the global ``yyyy/MM/dd``.  Now the date
+    element carries ``"%m/%d"`` and the renderer resolves it live, ignoring
+    the (wrong-format) precomputed dict entry.  Reported with screenshots:
+    full ``2026/06/05`` where ``MM/dd`` was intended.
+    """
+    from datetime import datetime
+
+    rec = _DrawRecorder()
+    service = OverlayService(rec)
+    base = rec.create_surface(320, 320)
+
+    service.render(
+        base,
+        _config([
+            {"type": "clock", "source": "date", "format": "%m/%d",
+             "x": 0, "y": 0},
+        ]),
+        sensors={},
+        clock={"date": "2026/06/05"},
+    )
+
+    assert rec.drawn[0][2] == datetime.now().strftime("%m/%d")
+    assert rec.drawn[0][2] != "2026/06/05"
+
+
+def test_date_element_without_pattern_uses_global_dict() -> None:
+    """No real strftime pattern (e.g. the metric default "{value}") → fall
+    back to the precomputed global clock dict, unchanged."""
+    rec = _DrawRecorder()
+    service = OverlayService(rec)
+    base = rec.create_surface(320, 320)
+
+    service.render(
+        base,
+        _config([
+            {"type": "clock", "source": "date", "format": "{value}",
+             "x": 0, "y": 0},
+        ]),
+        sensors={},
+        clock={"date": "2026/06/05"},
+    )
+
+    assert rec.drawn[0][2] == "2026/06/05"
+
+
 def test_clock_element_renders_resolved_date_and_weekday() -> None:
     rec = _DrawRecorder()
     service = OverlayService(rec)

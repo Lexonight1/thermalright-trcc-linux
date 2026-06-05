@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
+from ..core.models import DATE_FORMATS
 
 log = logging.getLogger(__name__)
 
@@ -489,8 +490,13 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         flag_clock_master = r.read_bool()
         flag_date = r.read_bool()
         flag_time = r.read_bool()
-        date_format = r.read_int32()  # noqa: F841 — per-element format stays user-pref
-        time_format = r.read_int32()  # noqa: F841
+        # The DC stores the date/time format the theme was DESIGNED for —
+        # honour it (legacy kept it as the element's mode_sub) instead of
+        # forcing the global yyyy/MM/dd default.  Date maps cleanly to a
+        # strftime pattern; time keeps the global path (its 12h handling is
+        # not a bare strftime — see resolve_clock).
+        date_format_idx = r.read_int32()
+        time_format_idx = r.read_int32()  # noqa: F841 — time stays global
         date_x = r.read_int32()
         date_y = r.read_int32()
         time_x = r.read_int32()
@@ -505,6 +511,8 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             if flag_date:
                 elements.append({
                     "type": "clock", "source": "date",
+                    "format": DATE_FORMATS.get(date_format_idx,
+                                               DATE_FORMATS[0]),
                     "x": date_x, "y": date_y, **date_font,
                 })
             if flag_time:
@@ -641,7 +649,8 @@ def _build_dd_element(
         case 2:
             return {**base, "type": "clock", "source": "weekday"}
         case 3:
-            return {**base, "type": "clock", "source": "date"}
+            return {**base, "type": "clock", "source": "date",
+                    "format": DATE_FORMATS.get(mode_sub, DATE_FORMATS[0])}
         case _:
             log.debug("0xDD: unknown element mode %d; skipping", mode)
             return None

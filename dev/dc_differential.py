@@ -112,8 +112,8 @@ def main() -> int:
         if fmt_drift:
             cat["clock_format_discarded"] += 1
             samples.setdefault("clock_format_discarded", []).append(
-                f"{Path(path).parent.name}: legacy fmt="
-                f"{[lfmt[k] for k in fmt_drift]} vs current None")
+                f"{Path(path).parent.name}: legacy={[lfmt[k] for k in fmt_drift]} "
+                f"current={[cfmt[k] for k in fmt_drift]}")
         if only_legacy or only_current:
             kinds = {e[0] for e in only_legacy} | {e[0] for e in only_current}
             tag = "element_" + "_".join(sorted(kinds)) + "_mismatch"
