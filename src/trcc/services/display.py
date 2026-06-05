@@ -36,7 +36,7 @@ from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile
 from ._clock import compute_clock
 from .media import MediaService
-from .overlay import OverlayService
+from .overlay import OverlayService, resolve_overlay_elements
 from .settings import Settings
 from .theme import ThemeService
 from .video_cache import VideoFrameCache
@@ -987,41 +987,37 @@ class DisplayService:
         """
         overlay_canvas = self._r.create_surface(*visual_size)
         s = self._settings.for_device(info.key)
-        user_dicts = [e.to_dict() for e in s.user_overlay_elements]
-        theme_elements = theme.config.get("elements") or []
-        # Mask-supplied overlay elements (set by ApplyMask) override the
-        # active theme's elements at render time — so a mask's metric
-        # layout survives a theme swap.  Persistent on DeviceSettings,
-        # not on theme.config.
-        mask_dicts = (
-            [e.to_dict() for e in s.mask_overlay_elements]
-            if s.mask_overlay_elements is not None else None
+        # ONE effective overlay layout (legacy's single ``self.config``),
+        # resolved by precedence user > mask > theme — each REPLACES, never
+        # stacks.  The result becomes the render config's ``elements`` and
+        # NO separate user layer is passed, so every element draws exactly
+        # once (the cutover's additive theme+user path drew each twice).
+        elements = resolve_overlay_elements(
+            theme.config, s.mask_overlay_elements, s.user_overlay_elements,
         )
-        config_for_render = theme.config
-        if mask_dicts is not None:
-            config_for_render = {**theme.config, "elements": mask_dicts}
-            log.debug(
-                "build_overlay %s: theme=%r theme_elements=%d "
-                "mask_elements=%d (mask layout OVERRIDES) "
-                "user_elements=%d overlay_enabled=%s",
-                info.key, theme.name, len(theme_elements), len(mask_dicts),
-                len(user_dicts), theme.config.get("overlay_enabled", True),
-            )
-        else:
-            log.debug(
-                "build_overlay %s: theme=%r theme_elements=%d "
-                "user_elements=%d overlay_enabled=%s",
-                info.key, theme.name, len(theme_elements), len(user_dicts),
-                theme.config.get("overlay_enabled", True),
-            )
+        config_for_render = {**theme.config, "elements": elements}
+        layout = (
+            "user" if s.user_overlay_elements
+            else "mask" if s.mask_overlay_elements is not None
+            else "theme"
+        )
+        log.debug(
+            "build_overlay %s: theme=%r layout=%s (%d element(s)) "
+            "[theme=%d mask=%s user=%d] overlay_enabled=%s",
+            info.key, theme.name, layout, len(elements),
+            len(theme.config.get("elements") or []),
+            (len(s.mask_overlay_elements)
+             if s.mask_overlay_elements is not None else None),
+            len(s.user_overlay_elements),
+            theme.config.get("overlay_enabled", True),
+        )
         # ``temp_unit`` flows from per-device settings — kept in sync
         # with AppSettings.temp_unit by SetTempUnit Command.  The
         # renderer is the single conversion site (sensor sources always
         # deliver °C; rendering converts to °F when requested).
         return self._overlay.render(
             overlay_canvas, config_for_render, sensors,
-            clock=clock, user_elements=user_dicts,
-            temp_unit=s.temp_unit,
+            clock=clock, temp_unit=s.temp_unit,
         )
 
     # ── Cache keys ────────────────────────────────────────────────────

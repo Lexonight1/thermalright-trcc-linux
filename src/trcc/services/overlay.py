@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
+from ..core.models import OverlayElement
 from ..core.ports import Renderer
 from . import _dc as Dc
 
@@ -22,6 +23,46 @@ log = logging.getLogger(__name__)
 
 
 _DC_CONFIG_FILE = "config1.dc"
+
+
+def resolve_overlay_elements(
+    theme_config: dict[str, Any],
+    mask_elements: list[OverlayElement] | None,
+    user_elements: list[OverlayElement],
+) -> list[dict[str, Any]]:
+    """The ONE effective overlay layout for a device, by precedence.
+
+    Legacy held a single ``self.config`` and ``set_config`` REPLACED it;
+    ``_restore_mask_and_overlay`` resolved it as mask > saved-user > theme.
+    The cutover split that one config into three persisted sources — the
+    user's edits, an applied mask's layout, and the theme's bundled
+    elements — that were wrongly STACKED at render time (every element
+    drew twice).  This restores legacy's single-layout semantics: exactly
+    one source wins and is drawn, never added on top of another.
+
+    Precedence (each REPLACES, never adds):
+
+    * ``user_elements`` (the device's live edits) win when present.  A
+      source change — explicit theme switch (``LoadTheme``) or mask apply
+      (``ApplyMask``) — clears them, so a stale layout never bleeds into a
+      new theme.  Combined with that clear, "user first" is observably
+      identical to legacy's "mask > saved-user": after applying a mask the
+      user layer is empty, so the mask wins until the user edits again.
+    * ``mask_elements`` (an applied mask's own layout, set by ``ApplyMask``
+      from the mask's ``config1.dc``) override the theme so the mask's
+      metric placement survives a theme swap.
+    * ``theme_config["elements"]`` — the theme's bundled layout — is the
+      default when neither override is present.
+
+    Returns flat dicts (``OverlayElement.to_dict`` shape, which the theme's
+    own elements already use) so every consumer — render, the DC writer,
+    theme save/export — shares one definition of "what is on screen".
+    """
+    if user_elements:
+        return [e.to_dict() for e in user_elements]
+    if mask_elements is not None:
+        return [e.to_dict() for e in mask_elements]
+    return list(theme_config.get("elements") or [])
 
 
 class OverlayService:
@@ -128,7 +169,6 @@ class OverlayService:
         config: dict[str, Any],
         sensors: dict[str, float],
         clock: dict[str, str] | None = None,
-        user_elements: list[dict[str, Any]] | None = None,
         *,
         temp_unit: str = "C",
     ) -> Any:
@@ -149,15 +189,17 @@ class OverlayService:
               ]
             }
 
+        ``config["elements"]`` is the ONE effective overlay layout the
+        caller has already resolved (see ``resolve_overlay_elements``):
+        exactly one source — the user's live edits, an applied mask, or the
+        theme's bundled elements — REPLACES the others.  There is
+        deliberately no separate user layer here; rendering theme + user as
+        two stacked passes is what drew every edited element twice.
+
         ``clock`` is a pre-resolved ``{"time": "14:58", "date": ...,
         "weekday": ...}`` dict produced by DisplayService via
         ``services._clock.compute_clock``.  When ``None``, clock
         elements are skipped (e.g. test fixtures that don't care).
-
-        ``user_elements`` is the user's edits on top of the theme's
-        bundled elements; rendered after them so users layer on top.
-        Same dict shape as ``config["elements"]`` (produced by
-        ``OverlayElement.to_dict``).
 
         ``temp_unit`` is "C" (default) or "F".  When "F",
         ``_draw_metric`` converts any temperature value
@@ -175,21 +217,16 @@ class OverlayService:
         overlay = self._r.create_surface(width, height)
 
         elements: list[dict[str, Any]] = config.get("elements", [])
-        user_count = len(user_elements or [])
         clock_keys = list(clock.keys()) if clock else []
         log.debug(
-            "render: %dx%d, theme_elements=%d, user_elements=%d, "
-            "sensors=%d, clock_sources=%s, temp_unit=%s",
-            width, height, len(elements), user_count,
+            "render: %dx%d, elements=%d, sensors=%d, clock_sources=%s, "
+            "temp_unit=%s",
+            width, height, len(elements),
             len(sensors), clock_keys, temp_unit,
         )
         for idx, element in enumerate(elements):
             self._draw_element(overlay, element, sensors, clock or {},
-                               source=f"theme[{idx}]", temp_unit=temp_unit)
-        # User edits paint on top.
-        for idx, element in enumerate(user_elements or []):
-            self._draw_element(overlay, element, sensors, clock or {},
-                               source=f"user[{idx}]", temp_unit=temp_unit)
+                               source=f"element[{idx}]", temp_unit=temp_unit)
 
         return self._r.composite(base, overlay, position=(0, 0))
 

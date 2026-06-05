@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from trcc.core.models import Kind, ProductInfo, Theme, Wire
+from trcc.core.models import Kind, OverlayElement, ProductInfo, Theme, Wire
 from trcc.core.ports import Renderer
 from trcc.services.display import DisplayService
 from trcc.services.media import MediaService
@@ -85,7 +85,7 @@ class RecordingRenderer(Renderer):
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
                   italic: bool = False) -> None:
-        pass
+        self._record("draw_text", x, y, text, color, size, bold, italic)
 
     def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:
         return b"\x00" * (surface.w * surface.h * 2)
@@ -103,9 +103,8 @@ class _StubOverlay(OverlayService):
 
     def render(self, canvas: Any, config: Any, sensors: dict[str, float],
                clock: dict[str, str] | None = None,
-               user_elements: list[dict[str, Any]] | None = None,
                *, temp_unit: str = "C") -> Any:
-        del config, sensors, clock, user_elements, temp_unit
+        del config, sensors, clock, temp_unit
         return canvas
 
 
@@ -317,3 +316,77 @@ def test_mask_state_change_rebuilds_bg_layer(
     assert second_count > first_count, (
         "mask state change must invalidate bg+mask cache and re-open the mask"
     )
+
+
+# ── 6. Overlay edits REPLACE the theme layout — no double-draw ────────
+#
+# Regression lock for the cutover's additive theme+user render: editing an
+# overlay element used to draw it twice (original theme position + edited
+# copy), so edits "didn't apply" and overlays looked duplicated.  The fix
+# resolves ONE effective layout (resolve_overlay_elements) and draws it
+# once.  These tests use the REAL OverlayService and count draw_text calls.
+
+
+def _display_real(
+    renderer: RecordingRenderer, settings: Settings,
+) -> DisplayService:
+    """DisplayService wired with the REAL OverlayService (draws text)."""
+    return DisplayService(
+        renderer=renderer,
+        themes=ThemeService(),
+        overlay=OverlayService(renderer),
+        settings=settings,
+        media=MediaService(),
+    )
+
+
+def _theme_with_one_label(tmp_home: Path) -> Theme:
+    theme_dir = tmp_home / "themes" / "labelled"
+    theme_dir.mkdir(parents=True)
+    return Theme(
+        path=theme_dir, name="labelled", resolution=(320, 320),
+        config={"overlay_enabled": True, "elements": [
+            {"id": "t0", "type": "text", "x": 10, "y": 10,
+             "text": "CPU", "color": "#ffffff", "size": 16},
+        ]},
+    )
+
+
+def _text_draws(renderer: RecordingRenderer) -> list[tuple[int, int, str]]:
+    return [
+        (args[0], args[1], args[2])
+        for name, args in renderer.calls if name == "draw_text"
+    ]
+
+
+def test_theme_only_draws_each_element_once(
+    renderer: RecordingRenderer, settings: Settings, tmp_home: Path,
+) -> None:
+    """With no user edits the theme's one label draws exactly once."""
+    _display_real(renderer, settings).build_frame(
+        info=_info(), theme=_theme_with_one_label(tmp_home), sensors={},
+    )
+    assert _text_draws(renderer) == [(10, 10, "CPU")]
+
+
+def test_user_edit_replaces_theme_element_no_duplicate(
+    renderer: RecordingRenderer, settings: Settings, tmp_home: Path,
+) -> None:
+    """Editing the label (moved to (50,50)) draws ONLY the edited copy.
+
+    The original theme position (10,10) must NOT also be drawn — that double
+    draw was the reported bug ("edits don't apply, overlays duplicated").
+    """
+    # The GUI grid is seeded from the theme then dispatches the full grid,
+    # so the user layer carries the same element id, moved.
+    settings.set_user_overlay_elements(_KEY, [
+        OverlayElement(id="t0", type="text", x=50, y=50, text="CPU"),
+    ])
+    _display_real(renderer, settings).build_frame(
+        info=_info(), theme=_theme_with_one_label(tmp_home), sensors={},
+    )
+    draws = _text_draws(renderer)
+    assert draws == [(50, 50, "CPU")], (
+        f"edit must replace, not stack — got {draws}"
+    )
+    assert (10, 10, "CPU") not in draws, "original theme position double-drawn"
