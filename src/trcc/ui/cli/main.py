@@ -446,14 +446,27 @@ def _alias_sensors() -> None:
 
 @app.callback()
 def _root(
-    verbose: bool = typer.Option(False, "--verbose", "-v",
-                                 help="Enable DEBUG-level logging"),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True,
+        help="Terminal log verbosity: -v shows INFO, -vv shows DEBUG. "
+             "Without it the terminal stays quiet (warnings + errors only); "
+             "the rotating log file always keeps the detail.",
+    ),
 ) -> None:
     """Root callback — sets up logging for every subcommand.
 
     Writes to the rotating file at ``paths.log_file()`` (legacy parity:
-    ``~/.trcc/trcc.log``) AND mirrors WARNING+ to stderr.  ``-v`` flips
-    both handlers to DEBUG.
+    ``~/.trcc/trcc.log``) and mirrors a level to stderr that rises with
+    each ``-v``:
+
+    | flag   | terminal (stderr) | file        |
+    |--------|-------------------|-------------|
+    | (none) | WARNING+          | INFO+       |
+    | ``-v`` | INFO+             | DEBUG+      |
+    | ``-vv``| DEBUG+            | DEBUG+      |
+
+    So per-action INFO lines (theme load, overlay edit, …) land in the
+    file by default but only reach the terminal with ``-v``.
     """
     from ...adapters.infra.logging import configure_logging
     from ...adapters.system import PlatformFactory
@@ -463,11 +476,17 @@ def _root(
     # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
     # attaches the StreamHandler.  No-op on other OSes.
     platform.configure_stdout()
-    level = logging.DEBUG if verbose else logging.INFO
+    # File keeps detail; the terminal level rises one step per -v.
+    file_level = logging.DEBUG if verbose else logging.INFO
+    stderr_level = (
+        logging.DEBUG if verbose >= 2
+        else logging.INFO if verbose == 1
+        else logging.WARNING
+    )
     configure_logging(
         platform.paths().log_file(),
-        level=level,
-        stderr_level=level,
+        level=file_level,
+        stderr_level=stderr_level,
     )
 
 
