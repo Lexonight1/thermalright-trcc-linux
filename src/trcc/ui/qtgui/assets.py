@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPainter, QPixmap
 
 log = logging.getLogger(__name__)
 
@@ -30,14 +30,16 @@ log = logging.getLogger(__name__)
 # Default asset directory
 # =========================================================================
 
-# next/ ships assets under ``src/trcc/assets/gui`` (same on-disk location
-# as legacy).  Installed packages can override via ``set_assets_dir``.
+# qtgui owns its OWN copy of the chrome under ``src/trcc/assets/qtgui`` —
+# separate from gui's ``ui/gui/assets`` so the two GUIs are fully independent.
+# Every asset loaded from here is greyscaled (see ``_pixmap``).  Installed
+# packages can override the root via ``set_assets_dir``.
 def _default_assets_dir() -> Path:
     trcc_mod = sys.modules.get("trcc")
     trcc_file = getattr(trcc_mod, "__file__", None) if trcc_mod else None
     if trcc_file is None:
-        return Path.cwd() / "assets" / "gui"
-    return Path(trcc_file).resolve().parent / "assets" / "gui"
+        return Path.cwd() / "assets" / "qtgui"
+    return Path(trcc_file).resolve().parent / "assets" / "qtgui"
 
 
 _PKG_ASSETS_DIR = _default_assets_dir()
@@ -68,7 +70,13 @@ def _resolve(name: str) -> Path:
 
 @lru_cache(maxsize=512)
 def _pixmap(name: str) -> QPixmap:
-    """Load + cache a pixmap by name; placeholder if missing."""
+    """Load + cache a pixmap by name; placeholder if missing.
+
+    Every asset is GREYSCALED on load (alpha preserved) so qtgui looks like
+    the gui — same chrome, same layout — but in a neutral grey skin instead of
+    the legacy full-colour proprietary look.  Live device renders never pass
+    through here, so the actual frame shown to the device keeps its true colour.
+    """
     path = _resolve(name)
     if not path.is_file():
         log.debug("AssetService: missing asset %r at %s", name, path)
@@ -77,7 +85,26 @@ def _pixmap(name: str) -> QPixmap:
     if pixmap.isNull():
         log.debug("AssetService: failed to load %r as pixmap", name)
         return _placeholder()
-    return pixmap
+    return _greyscale(pixmap)
+
+
+def _greyscale(pixmap: QPixmap) -> QPixmap:
+    """Desaturate a pixmap to grey, preserving its alpha channel.
+
+    ``Format_Grayscale8`` is opaque, so the original alpha is re-applied via a
+    ``DestinationIn`` composite — transparent chrome stays transparent.
+    """
+    src = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    grey = src.convertToFormat(QImage.Format.Format_Grayscale8).convertToFormat(
+        QImage.Format.Format_ARGB32,
+    )
+    painter = QPainter(grey)
+    painter.setCompositionMode(
+        QPainter.CompositionMode.CompositionMode_DestinationIn,
+    )
+    painter.drawImage(0, 0, src)
+    painter.end()
+    return QPixmap.fromImage(grey)
 
 
 def _placeholder() -> QPixmap:
