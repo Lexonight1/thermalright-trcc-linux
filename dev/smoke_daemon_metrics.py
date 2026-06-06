@@ -29,9 +29,9 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from trcc.core.models import HardwareMetrics  # noqa: E402
-from trcc.legacy.core.trcc_proxy import TrccProxy  # noqa: E402
-from trcc.legacy.ipc import _socket_path, daemon_running  # noqa: E402
+from trcc.core.models import HardwareMetrics
+from trcc.legacy.core.trcc_proxy import TrccProxy
+from trcc.legacy.ipc import _socket_path, daemon_running
 
 
 @dataclass(slots=True)

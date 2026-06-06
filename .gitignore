@@ -77,37 +77,16 @@ src/trcc/data/settings.json
 src/trcc/data/ui_*.json
 
 # ──────────────────────────────────────────────
-# Dev / reference files (not for distribution)
+# Dev / reference files
 # ──────────────────────────────────────────────
-# Block /dev/* per-file so the !-negations below can re-include
-# the shared mock harness. (`/dev/` directory-level rule wouldn't
-# allow re-include — git can't unignore a file under an ignored
-# directory.)
-/dev/*
-# Mock harness IS shared tooling — every developer benefits from
-# the same MockPlatform-backed CLI / API / GUI entry points.
-!/dev/mock_cli.py
-!/dev/mock_api.py
-!/dev/mock_gui.py
-!/dev/_mock_bootstrap.py
-!/dev/_mock_daemon.py
-!/dev/smoke_rotation_mask.py
-!/dev/smoke_portrait_854480.py
-!/dev/smoke_keepalive.py
-!/dev/smoke_daemon_gui.py
-!/dev/smoke_sleep_cycle.py
-!/dev/smoke_linux.py
-!/dev/smoke_windows.py
-!/dev/smoke_macos.py
-!/dev/smoke_macos_parsers.py
-!/dev/smoke_platforms.py
-!/dev/smoke_variant_resolution.py
-!/dev/smoke_bsd.py
-!/dev/_smoke_runtime.py
-!/dev/parity_smoke.py
-!/dev/smoke_full_pipeline.py
-!/dev/dc_differential.py
-!/dev/_dc_legacy_dump.py
+# dev/ is SHARED contributor tooling — track it ALL by default so a new dev
+# script is never silently hidden behind a whitelist.  Ignore ONLY the runtime
+# artifacts the mock writes (dev/.trcc*, bytecode) and each developer's LOCAL
+# fleet config (devices.json — seed it from the committed devices.json.example).
+/dev/.trcc/
+/dev/.trcc-user/
+/dev/__pycache__/
+/dev/devices.json
 /dev_*
 # Dev scripts at root
 /test_*.py
