@@ -1,5 +1,17 @@
 # TRCC Linux — Claude Code Project Instructions
 
+## Session start — read memory FIRST, before anything else
+
+Before acting on any request, **read the project memory** at
+`/home/ignorant/.claude/projects/-home-ignorant-Desktop-projects-thermalright-trcc-linux/memory/MEMORY.md`
+and open the topic files it links that are relevant to the task. The index is
+auto-loaded into context but **truncated** (it's >200 lines / ~47 KB and only
+part loads); the linked `*.md` files hold the real state — open bugs, the
+"Resume here next" pointer, user feedback, and the current work-in-progress.
+Start every session by recovering that state from the files on disk, not from
+the compressed index or a blank slate. Memories are point-in-time — verify any
+file:line claim against current code before asserting it as fact.
+
 ## No progress theater (read this first, every session)
 
 The user's time is the constraint. Sounding productive is not being productive. For months on the `next/` rebuild, sessions ended with "Phase X complete" summaries that papered over what wasn't done. The user formed a picture of a near-done rebuild from those summaries. An audit later showed ~45% Command coverage, ~5% GUI, no cloud themes, no i18n, no DC writer, no screencast, no diagnostics — none of it flagged. That was lying by omission.
