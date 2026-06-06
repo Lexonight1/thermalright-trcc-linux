@@ -337,6 +337,7 @@ class LCDHandler(BaseHandler):
         self._app.dispatch(SetOrientation(
             key=self._device_key, degrees=rotation,
         ))
+        self._sync_rotation_state(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
@@ -1025,19 +1026,27 @@ class LCDHandler(BaseHandler):
             key=self._device_key, percent=percent,
         ))
 
+    def _sync_rotation_state(self, degrees: int) -> None:
+        """Reflect a rotation in the cached ``_state`` (is_rotated + lcd_size).
+
+        BOTH the interactive ``set_rotation`` and the startup
+        ``_restore_rotation`` must call this — dispatching ``SetOrientation``
+        alone only rotates the DEVICE, not the GUI's cached geometry that
+        ``_update_theme_directories`` / ``_sync_preview_size`` read.  Without
+        it a persisted portrait orientation restores on the device but the
+        catalogs + preview stay landscape.
+        """
+        self._state.is_rotated = degrees in (90, 270)
+        cw, ch = self._state.canvas_size
+        self._state.lcd_size = (ch, cw) if self._state.is_rotated else (cw, ch)
+
     def set_rotation(self, degrees: int) -> None:
         self.log.info("set_rotation: degrees=%d device=%s",
                       degrees, self._device_key)
         self._app.dispatch(SetOrientation(
             key=self._device_key, degrees=degrees,
         ))
-        # Refresh cached state — rotation changes lcd_size + is_rotated.
-        self._state.is_rotated = degrees in (90, 270)
-        cw, ch = self._state.canvas_size
-        if self._state.is_rotated:
-            self._state.lcd_size = (ch, cw)
-        else:
-            self._state.lcd_size = (cw, ch)
+        self._sync_rotation_state(degrees)
         ow, oh = self._state.lcd_size
         self.log.info(
             "set_rotation: rotation=%d output=%dx%d rotated=%s",
@@ -1294,51 +1303,54 @@ class LCDHandler(BaseHandler):
         not the legacy ``self._device.X`` properties which next/'s
         Device port doesn't expose.
 
-        Auto-rotation portrait: when the device is rotated 90/270 AND a
-        portrait-native theme dir exists on disk (legacy convention:
-        ``data/theme{H}x{W}/``), point the browser at it.  When no
-        portrait dir is present, stay on the landscape dir — the render
-        pipeline pixel-rotates landscape art at encode time so the
-        device still gets a correctly-oriented frame.
+        Auto-rotation portrait: when the device is rotated 90/270 the
+        cloud-theme / mask / cutter catalogs + the preview resolution ALL
+        follow the rotated (portrait) dims — unconditionally, the way
+        legacy let the device own dir resolution.  The portrait cloud/mask
+        dirs are fetched at handshake regardless of whether a LOCAL portrait
+        theme dir was shipped, so gating the whole switch on the local dir
+        (the cutover bug) left every catalog stuck in landscape.  Only the
+        LOCAL theme browser falls back to the landscape dir when no portrait
+        theme dir is on disk — the render pipeline pixel-rotates that
+        landscape art at encode time so the device still gets a correctly
+        oriented frame.
         """
         paths = self._app.platform.paths()
         cw, ch = self._state.canvas_size
 
-        # Pick browse dims: prefer portrait when rotated AND the
-        # portrait dir actually exists.
-        ow, oh = cw, ch
+        # Catalog dims: rotated (portrait) dims when rotated, else canvas.
+        # These drive the cloud-theme / mask / cutter catalogs + the
+        # preview resolution — unconditionally, mirroring legacy's
+        # device-owned dir resolution.
         if self._state.is_rotated:
-            rw, rh = self._state.lcd_size
-            rotated_theme_dir = paths.theme_dir(rw, rh)
-            if rotated_theme_dir and rotated_theme_dir.exists():
-                self.log.info(
-                    "_update_theme_directories: portrait theme dir "
-                    "%s exists — switching browser to %dx%d",
-                    rotated_theme_dir, rw, rh,
-                )
-                ow, oh = rw, rh
-            else:
-                self.log.info(
-                    "_update_theme_directories: rotated %dx%d but no "
-                    "portrait theme dir at %s — staying landscape "
-                    "(%dx%d); render pipeline will pixel-rotate",
-                    rw, rh, rotated_theme_dir, cw, ch,
-                )
+            bw, bh = self._state.lcd_size
+        else:
+            bw, bh = cw, ch
 
-        theme_dir = paths.theme_dir(ow, oh)
-        web_dir = paths.cloud_theme_dir(ow, oh)
-        masks_dir = paths.cloud_mask_dir(ow, oh)
+        web_dir = paths.cloud_theme_dir(bw, bh)
+        masks_dir = paths.cloud_mask_dir(bw, bh)
 
-        # Also expose the legacy user-saved theme location so the
-        # browser picks up Custom_* themes from
-        # ``~/.trcc-user/data/theme{w}{h}/`` alongside the pkg/cloud
-        # themes from ``~/.trcc/data/theme{w}{h}/``.
-        user_theme_dir = paths.user_theme_dir(ow, oh)
+        # Local theme browser: prefer the portrait-native theme dir; fall
+        # back to the landscape dir when no portrait theme dir is on disk
+        # (render pixel-rotates landscape art).  The user-saved theme
+        # location (``~/.trcc-user/data/theme{w}{h}/``) tracks the same dims
+        # so Custom_* themes show alongside the pkg/cloud themes.
+        theme_dir = paths.theme_dir(bw, bh)
+        user_theme_dir = paths.user_theme_dir(bw, bh)
+        if self._state.is_rotated and not (theme_dir and theme_dir.exists()):
+            self.log.info(
+                "_update_theme_directories: no portrait theme dir at %s — "
+                "local browser falls back to landscape %dx%d "
+                "(render pixel-rotates); cloud/mask catalogs stay portrait %dx%d",
+                theme_dir, cw, ch, bw, bh,
+            )
+            theme_dir = paths.theme_dir(cw, ch)
+            user_theme_dir = paths.user_theme_dir(cw, ch)
 
         self.log.info(
-            "_update_theme_directories: output=%dx%d theme_dir=%s "
+            "_update_theme_directories: catalog=%dx%d theme_dir=%s "
             "user_theme_dir=%s web_dir=%s masks_dir=%s rotated=%s",
-            ow, oh, theme_dir, user_theme_dir, web_dir, masks_dir,
+            bw, bh, theme_dir, user_theme_dir, web_dir, masks_dir,
             self._state.is_rotated,
         )
 
@@ -1348,12 +1360,12 @@ class LCDHandler(BaseHandler):
             self._w['theme_local'].set_theme_directory(user_theme_dir)
         if web_dir:
             self._w['theme_web'].set_web_directory(web_dir)
-        self._w['theme_web'].set_resolution(f'{ow}x{oh}')
+        self._w['theme_web'].set_resolution(f'{bw}x{bh}')
         if masks_dir:
             self._w['theme_mask'].set_mask_directory(masks_dir)
-        self._w['theme_mask'].set_resolution(f'{ow}x{oh}')
-        self._w['image_cut'].set_resolution(ow, oh)
-        self._w['video_cut'].set_resolution(ow, oh)
+        self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
+        self._w['image_cut'].set_resolution(bw, bh)
+        self._w['video_cut'].set_resolution(bw, bh)
 
         # First-install auto-load: pick the first theme in the dir if
         # the device has nothing rendered yet AND no saved theme name.
