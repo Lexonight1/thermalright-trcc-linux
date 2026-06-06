@@ -770,7 +770,7 @@ class TRCCApp(QMainWindow):
                     if (w, h) == (0, 0):
                         log.debug("_activate_device: LCD %s no canvas yet — handshake", key)
                         self._start_handshake(device)
-                    elif not handler.device_key:
+                    elif not handler.is_configured:
                         log.debug("_activate_device: LCD %s first-time config %dx%d", key, w, h)
                         handler.apply_device_config(device.info, w, h)
                         self._update_ldd_icon()
@@ -1526,8 +1526,8 @@ class TRCCApp(QMainWindow):
 
         handler = self._handlers.get(key)
         if isinstance(handler, LCDHandler):
-            log.debug("_on_handshake_done: handler device_key=%r", handler.device_key)
-            if not handler.device_key:
+            log.debug("_on_handshake_done: handler is_configured=%r", handler.is_configured)
+            if not handler.is_configured:
                 handler.apply_device_config(live.info, w, h)
                 self._update_ldd_icon()
                 if self._ui_state.state.show_info_module:

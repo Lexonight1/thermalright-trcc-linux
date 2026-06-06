@@ -121,6 +121,14 @@ class LCDHandler(BaseHandler):
         # only the active handler writes to it.
         self._ui_active = False
 
+        # First-load gate.  ``_device_key`` is set above (it's the dispatch
+        # key, always truthy) so it CANNOT double as the "have I loaded the
+        # persisted theme yet" flag — ``apply_device_config`` sets this True
+        # on first connect; ``_activate_device`` / ``_on_handshake_done``
+        # branch on it to pick load (apply_device_config, first_load=True)
+        # vs read-only reactivate.
+        self._configured = False
+
         # Per-device cache + counters
         self._state = _DeviceState()
         self._brightness_level = _DEFAULT_BRIGHTNESS_LEVEL
@@ -173,6 +181,16 @@ class LCDHandler(BaseHandler):
         return self._device_key
 
     @property
+    def is_configured(self) -> bool:
+        """True once ``apply_device_config`` has loaded the persisted theme.
+
+        Distinguishes first activation (must LOAD) from re-selection (must
+        only READ).  ``device_key`` is set at construction, so it can't
+        serve as this flag.
+        """
+        return self._configured
+
+    @property
     def current_theme_path(self) -> Path | None:
         """Active theme directory, or ``None`` if no theme is loaded.
 
@@ -210,6 +228,7 @@ class LCDHandler(BaseHandler):
         """
         self.log.info("apply_device_config: %s %dx%d", info.key, w, h)
         self._ui_active = True
+        self._configured = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{info.key}")
         # First connect: load the persisted theme onto the device.
