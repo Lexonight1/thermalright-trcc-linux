@@ -644,6 +644,30 @@ class TRCCApp(QMainWindow):
                 (k for k, h in self._handlers.items() if isinstance(h, LCDHandler)),
                 next(iter(self._handlers), ''),
             )
+
+        # Render EVERY connected LCD, not just the active one — on real hardware
+        # every cooler's screen shows its content simultaneously, so the mock
+        # must too (and a reporter's device only renders here if it's loaded).
+        # Configure the non-target LCDs first (full load incl. first-install
+        # auto-load → active_themes → renders + metrics), then mark them inactive
+        # so they keep rendering to the wire without owning the shared preview.
+        # The target activates LAST so its frame ends up in the shared widgets.
+        for key, handler in self._handlers.items():
+            if key == target_key or not isinstance(handler, LCDHandler):
+                continue
+            if handler.is_configured:
+                continue
+            device = self._app.devices.get(key)
+            if device is None or not device.is_connected or device.profile is None:
+                continue
+            w, h = device.profile.resolution
+            if (w, h) == (0, 0):
+                continue
+            log.info("replay_initial_devices: configuring inactive LCD %s %dx%d",
+                     key, w, h)
+            handler.apply_device_config(device.info, w, h)
+            handler.set_inactive()
+
         if target_key:
             self._activate_device(target_key)
 
