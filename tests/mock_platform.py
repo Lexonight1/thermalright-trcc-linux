@@ -29,9 +29,16 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from trcc.adapters.device.hid_lcd import (
+    _TYPE2_MAGIC,
+    _TYPE2_RESPONSE_SIZE,
+    _TYPE3_RESPONSE_SIZE,
+)
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
-from trcc.core.models import DeviceInfo, Wire
+from trcc.adapters.device.ly_lcd import _PID_LY
+from trcc.core.models import DeviceInfo, ProductInfo, Wire
 from trcc.core.ports import BulkTransport, ScsiTransport, SensorEnumerator
+from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
 
 from .conftest import FakeBulkTransport, FakePlatform, FakeScsiTransport
@@ -71,6 +78,115 @@ def led_handshake_reply(pm: int, sub: int = 0) -> bytes:
     resp[5] = pm
     resp[12] = 1
     return bytes(resp)
+
+
+def hid_type2_reply(pm: int, sub: int = 0) -> bytes:
+    """HID Type-2 reply — magic [0:4], SUB [4], PM [5], cmd ACK [12].
+
+    Mirrors ``HidLcd._validate_response_type2`` (magic + ``[12]==0x01``) +
+    ``_parse_response_type2`` (``pm=[5] sub=[4]``).  No serial block —
+    ``[16]`` stays 0 so ``has_serial`` is False.
+    """
+    resp = bytearray(_TYPE2_RESPONSE_SIZE)
+    resp[0:4] = _TYPE2_MAGIC
+    resp[4] = sub
+    resp[5] = pm
+    resp[12] = 0x01
+    return bytes(resp)
+
+
+def hid_type3_reply(fbl: int) -> bytes:
+    """HID Type-3 reply — FBL encoded at ``[0]`` (= ``fbl + 1``).
+
+    Mirrors ``HidLcd._validate_response_type3`` (``[0] ∈ {0x65, 0x66}``,
+    i.e. FBL 100/101) + ``_parse_response_type3`` (``fbl = [0] - 1``).
+    """
+    resp = bytearray(_TYPE3_RESPONSE_SIZE)
+    resp[0] = (fbl + 1) & 0xFF
+    return bytes(resp)
+
+
+def ly_reply(pm: int, sub: int = 0, *, is_ly1: bool = False,
+             size: int = 64) -> bytes:
+    """LY / LY1 reply — header ``[0]=3 [1]=0xFF [8]=1``; PM/SUB inverted.
+
+    Mirrors ``LyLcd.connect``: the LY pid derives ``pm = 64 + [20]`` and
+    ``sub = [22] + 1``; LY1 derives ``pm = 50 + [36]`` and ``sub = [22]``.
+    We invert so ``connect()`` recovers the model's PM/SUB.  (For
+    ``pm - 64 <= 3`` the device clamps to ``pm = 65`` — its real behaviour,
+    mirrored faithfully.)
+    """
+    resp = bytearray(size)
+    resp[0] = 3
+    resp[1] = 0xFF
+    resp[8] = 1
+    if is_ly1:
+        resp[36] = max(0, pm - 50) & 0xFF
+        resp[22] = sub & 0xFF
+    else:
+        resp[20] = max(0, pm - 64) & 0xFF
+        resp[22] = max(0, sub - 1) & 0xFF
+    return bytes(resp)
+
+
+def mock_handshake(product: ProductInfo, *, pm: int, sub: int, fbl: int) -> bytes:
+    """The bytes ``<device>.connect()`` reads back — derived from our models.
+
+    One source of truth that mirrors every adapter's handshake parser, so a
+    vid/pid (→ ``ProductInfo``) plus the registry's ``fbl`` is enough to
+    simulate ANY device's handshake with zero hardware.  ``pm`` defaults to
+    ``fbl`` at the call site (the ``pm_to_fbl`` PM==FBL convention); only the
+    few PM≠FBL panels (or FBL-224 widescreen disambiguation) need a
+    ``devices.json`` override.
+    """
+    wire = product.wire
+    if wire is Wire.SCSI:
+        return scsi_poll_reply(fbl)
+    if wire is Wire.LED:
+        return led_handshake_reply(pm, sub)
+    if wire is Wire.HID:
+        return (hid_type2_reply(pm, sub) if product.device_type == 2
+                else hid_type3_reply(fbl))
+    if wire is Wire.LY:
+        return ly_reply(pm, sub, is_ly1=(product.pid != _PID_LY))
+    return bulk_handshake_reply(pm, sub)  # BULK + synthesized fallback
+
+
+# ── Model-driven geometry resolver (faithful native_resolution) ──────────────
+
+
+def resolve_handshake_geometry(product: ProductInfo) -> tuple[int, int, int]:
+    """``(pm, sub, fbl)`` whose model profile reproduces ``native_resolution``.
+
+    Faithful by construction: the simulated device resolves through
+    ``connect()``'s own ``pm_to_fbl`` / ``get_profile`` to its registry-declared
+    geometry.  We honour the recorded ``fbl`` (the device's identity — a
+    320×320 panel must report FBL 100, not the FBL-0 default that brute PM
+    search would pick) and only scan PM-space to DISAMBIGUATE the shared FBL
+    192/224 codes or to recover the PM for a panel that records no ``fbl``
+    (e.g. HID Type 2, whose 240×320 is FBL 50/51/53's 320×240 + rotate).
+
+    Returns the recorded ``fbl`` with ``pm==fbl`` when nothing matches (LED
+    segment displays report ``native_resolution=(0, 0)`` and resolve here).
+    """
+    native = product.native_resolution
+    want = product.fbl
+    prot_log = logging.getLogger("trcc.core.protocol")
+    prev = prot_log.level
+    prot_log.setLevel(logging.WARNING)  # silence the per-candidate INFO lines
+    try:
+        for pm in range(256):
+            fbl = pm_to_fbl(pm)
+            if want is not None and fbl != want:
+                continue
+            prof = get_profile(fbl, pm)
+            w, h = prof.resolution
+            if (w, h) == native or (prof.rotate and (h, w) == native):
+                return pm, 0, fbl
+    finally:
+        prot_log.setLevel(prev)
+    fbl = want or 100
+    return fbl, 0, fbl
 
 
 # ── Device spec ──────────────────────────────────────────────────────────────
@@ -165,49 +281,56 @@ class MockPlatform(FakePlatform):
                      spec.name, spec.vid, spec.pid, product.wire.value)
         return out
 
+    def _resolve_handshake(self, vid: int, pid: int) -> bytes:
+        """Model-driven handshake reply for a device — every wire, one source.
+
+        Geometry is resolved FAITHFULLY from the registry ``ProductInfo``: the
+        ``(pm, sub, fbl)`` is the one whose model profile reproduces the
+        device's ``native_resolution`` (see :func:`resolve_handshake_geometry`),
+        so a ``devices.json`` entry needs only a vid/pid.  ``pm`` / ``sub`` /
+        ``fbl`` in the spec override that default for a panel the model
+        under-specifies.
+        """
+        product = find_product(vid, pid)
+        if product is None:
+            log.warning(
+                "MockPlatform: %04x:%04x not in registry — empty handshake "
+                "(add it to core/registry.py to simulate it)", vid, pid,
+            )
+            return b""
+        spec = self._by_key.get((vid, pid))
+        pm, sub, fbl = resolve_handshake_geometry(product)
+        if spec is not None:
+            if spec.fbl is not None:
+                fbl = spec.fbl
+            if spec.pm:
+                pm = spec.pm
+            if spec.sub:
+                sub = spec.sub
+        reply = mock_handshake(product, pm=pm, sub=sub, fbl=fbl)
+        log.info(
+            "MockPlatform handshake: %04x:%04x wire=%s type=%d pm=%d sub=%d "
+            "fbl=%d (%d bytes)",
+            vid, pid, product.wire.value, product.device_type,
+            pm, sub, fbl, len(reply),
+        )
+        return reply
+
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
-        """Fresh SCSI transport scripted so ``connect()`` resolves the FBL."""
-        spec = self._by_key.get((vid, pid))
-        product = find_product(vid, pid)
-        fbl = (
-            (spec.fbl if spec and spec.fbl is not None else None)
-            or (product.fbl if product else None)
-            or 100
-        )
+        """Fresh SCSI transport pre-loaded with the model-driven reply."""
         transport = FakeScsiTransport()
-        transport.read_script.append(scsi_poll_reply(fbl))
-        log.info("MockPlatform.open_scsi: %04x:%04x scripted fbl=%d",
-                 vid, pid, fbl)
+        transport.read_script.append(self._resolve_handshake(vid, pid))
         return transport
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
-        """Fresh bulk transport scripted per wire.
+        """Fresh bulk transport for every non-SCSI wire (BULK/HID/LY/LED).
 
-        ``App.attach`` routes every non-SCSI wire (BULK / HID / LY / LED)
-        through ``open_bulk``, so the reply shape is chosen by the registry
-        wire.  HID / LY handshakes have their own formats — not scripted yet;
-        they get a warning so an unsupported spec degrades loudly.
+        ``App.attach`` routes them all through here; ``mock_handshake`` picks
+        the reply shape by the registry wire + device_type, so every wire is
+        now simulated (no more warn-and-skip for HID / LY).
         """
-        spec = self._by_key.get((vid, pid))
-        product = find_product(vid, pid)
-        wire = product.wire if product else None
-        pm = spec.pm if spec else 0
-        sub = spec.sub if spec else 0
         transport = FakeBulkTransport()
-        if wire is Wire.LED:
-            transport.read_script.append(led_handshake_reply(pm, sub))
-            log.info("MockPlatform.open_bulk: %04x:%04x LED scripted pm=%d sub=%d",
-                     vid, pid, pm, sub)
-        elif wire is Wire.HID or wire is Wire.LY:
-            log.warning(
-                "MockPlatform.open_bulk: %04x:%04x wire=%s not scripted yet — "
-                "handshake will fail; only SCSI/BULK/LED are simulated so far",
-                vid, pid, wire.value,
-            )
-        else:  # BULK (and the synthesized fallback)
-            transport.read_script.append(bulk_handshake_reply(pm, sub))
-            log.info("MockPlatform.open_bulk: %04x:%04x BULK scripted pm=%d sub=%d",
-                     vid, pid, pm, sub)
+        transport.read_script.append(self._resolve_handshake(vid, pid))
         return transport
