@@ -7,7 +7,7 @@ touching USB / SG_IO / ioctl.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import pytest
 
@@ -306,6 +306,29 @@ def _stub_data_install(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr(DataInstallService, "ensure_all", _noop)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _qapplication() -> Iterator[object]:
+    """One full QApplication per session (per xdist worker), made BEFORE any test.
+
+    ``QtRenderer._ensure_qt_app`` creates a bare ``QGuiApplication`` when no app
+    exists — fine for offscreen QPainter rendering, but a ``QGuiApplication``
+    cannot host ``QWidget``s and Qt forbids a second app instance.  So if a
+    renderer-building test ran before a GUI-panel test in the same worker, the
+    panel's QWidget construction ABORTED ("Cannot create a QWidget without
+    QApplication") — an order-dependent flake under ``pytest -n`` (xdist).
+
+    Creating the QApplication first (idempotent) removes the ordering
+    dependency: every test shares one QApplication, which also satisfies
+    offscreen rendering (QApplication is-a QGuiApplication).
+    """
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    yield app
+    # No quit() — other Qt tests share this process; tearing down breaks them.
 
 
 # =========================================================================
