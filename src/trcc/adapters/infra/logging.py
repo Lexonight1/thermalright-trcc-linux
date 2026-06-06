@@ -5,6 +5,10 @@ block with a focused configurator that:
 
 * writes to ``Paths.log_file()`` with rotation at 1 MB × 5 backups so
   long-lived daemons don't fill the disk;
+* also writes a sibling ``<stem>.latest.log`` truncated fresh on every
+  process start, so "what did THIS launch do" is always the whole file
+  with no rotation/offset math — the rotating log keeps cross-run
+  history, the latest log isolates the current run;
 * mirrors WARNING+ to stderr so terminal users see issues without
   digging into the log file;
 * uses a single timestamped format every TRCC logger inherits.
@@ -78,6 +82,7 @@ def configure_logging(
     level: int = logging.INFO,
     max_bytes: int = 1_000_000,
     backup_count: int = 5,
+    latest_max_bytes: int = 10_000_000,
     stderr_level: int = logging.WARNING,
 ) -> None:
     """Wire the root logger to log_file + stderr.  Idempotent.
@@ -110,6 +115,24 @@ def configure_logging(
     setattr(file_handler, _HANDLER_TAG, True)
     root.addHandler(file_handler)
 
+    # Per-run log: a SECOND file truncated fresh on open (mode="w").
+    # ``configure_logging`` runs once per process (CLI root callback /
+    # launch entry point), so the truncate happens exactly once per app
+    # init and the file holds this run alone.  Still a RotatingFileHandler
+    # so a long-lived ``-v`` session (video DEBUG can emit ~30–90 lines/s)
+    # can't grow the file without bound — it rolls at ``latest_max_bytes``
+    # keeping one backup (worst case 2× the cap on disk).
+    latest_file = log_file.with_name(f"{log_file.stem}.latest{log_file.suffix}")
+    latest_handler = RotatingFileHandler(
+        latest_file, mode="w", maxBytes=latest_max_bytes, backupCount=1,
+        encoding="utf-8",
+    )
+    latest_handler.setLevel(level)
+    latest_handler.setFormatter(formatter)
+    latest_handler.addFilter(context_filter)
+    setattr(latest_handler, _HANDLER_TAG, True)
+    root.addHandler(latest_handler)
+
     stderr_handler = logging.StreamHandler(stream=sys.stderr)
     stderr_handler.setLevel(stderr_level)
     stderr_handler.setFormatter(formatter)
@@ -118,9 +141,9 @@ def configure_logging(
     root.addHandler(stderr_handler)
 
     log.info(
-        "configure_logging: file=%s level=%s rotate=%d×%d stderr=%s",
-        log_file, logging.getLevelName(level), max_bytes, backup_count,
-        logging.getLevelName(stderr_level),
+        "configure_logging: file=%s latest=%s level=%s rotate=%d×%d stderr=%s",
+        log_file, latest_file, logging.getLevelName(level),
+        max_bytes, backup_count, logging.getLevelName(stderr_level),
     )
 
 
