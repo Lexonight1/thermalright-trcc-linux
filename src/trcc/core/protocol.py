@@ -235,3 +235,37 @@ def resolve_encode_base(profile: DeviceProfile, pm_byte: int) -> int:
             log.debug("resolve_encode_base: pm=%d → %d°", pm_byte, base)
             return base
     return 0
+
+
+def resolve_encode_sub(profile: DeviceProfile, sub_byte: int) -> int:
+    """Resolve a widescreen panel's encode base, applying any sub-byte override.
+
+    The widescreen JPEG panels override their base wire rotation per sub-byte —
+    the C# ``ImageToJpg`` ``mySubMode`` branch (e.g. FBL 224 sub=2 → base 180°,
+    FBL 128 sub=2 → 90°).  Returns the matching ``encode_sub_bases`` override,
+    else the static ``encode_base``.  Resolved once at handshake (where SUB is
+    known) and folded into ``DeviceProfile.encode_base`` so the render-time
+    :func:`resolve_encode_angle` only needs the user orientation.
+    """
+    for sub, base in profile.encode_sub_bases:
+        if sub_byte == sub:
+            log.debug("resolve_encode_sub: sub=%d → base %d°", sub_byte, base)
+            return base
+    return profile.encode_base
+
+
+def resolve_encode_angle(profile: DeviceProfile, orientation: int) -> int:
+    """Wire rotation for a widescreen panel = base ± the user orientation.
+
+    Ports the C# ``ImageToJpg`` ``directionB`` switch:
+    ``send = (encode_base + (orientation if not invert else -orientation)) % 360``.
+    ``encode_base`` must already carry any sub-byte override (folded at handshake
+    via :func:`resolve_encode_sub`); ``encode_invert`` is the per-resolution sign.
+    Replaces the cutover's blanket ``rotate→90°``.  FBL 224 (854×480) at
+    orientation 0 → 0° (landscape, unrotated); at 90° → 90°. (#169)
+    """
+    signed = orientation if not profile.encode_invert else -orientation
+    angle = (profile.encode_base + signed) % 360
+    log.debug("resolve_encode_angle: base=%d invert=%s orient=%d → %d°",
+              profile.encode_base, profile.encode_invert, orientation, angle)
+    return angle

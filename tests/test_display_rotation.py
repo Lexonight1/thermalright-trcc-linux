@@ -4,8 +4,9 @@ Locks the post-profile pipeline behaviour:
 
   1. ``profile.resolution`` drives the render canvas size (not
      ``info.native_resolution``).
-  2. ``profile.rotate=True`` triggers an extra 90° rotation before encode
-     — the missing "RGB565-LE rotated" step legacy used to do.
+  2. ``profile.rotate=True`` rotates before encode: simple RGB565 panels
+     (320×240) get a blanket 90°; widescreen JPEG panels (854×480 …) use the
+     per-resolution encode table (C# ImageToJpg directionB switch). (#136/#169)
   3. ``profile.jpeg=True`` dispatches to encode_jpeg; False → encode_rgb565.
   4. When ``profile=None`` is passed (LED, pre-handshake, legacy callers),
      behaviour matches the pre-profile path: native_resolution + RGB565
@@ -466,12 +467,13 @@ def test_portrait_theme_composes_portrait_and_skips_device_rotate(
     assert rot90 == [], f"portrait compose must skip the device rotate, got {rot90}"
 
 
-def test_landscape_theme_still_composes_landscape_and_rotates(
+def test_landscape_widescreen_orientation0_composes_landscape_unrotated(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """A landscape theme on the SAME panel keeps composing landscape + the
-    device 90° rotate — content-matched, so the working widescreen path is
-    unchanged. (#136)"""
+    """A landscape theme on a widescreen JPEG panel composes landscape and — at
+    orientation 0 — sends it UNROTATED.  The C# ImageToJpg 854×480 default maps
+    directionB 0 → 0° (encode_invert=False, base 0), so the cutover's blanket
+    90° was wrong.  This is the LF19 portrait-vs-landscape fix. (#169)"""
     profile = get_profile(224)
 
     display.build_frame(
@@ -481,15 +483,37 @@ def test_landscape_theme_still_composes_landscape_and_rotates(
 
     canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
     assert (854, 480) in canvases, f"expected an 854×480 canvas, got {canvases}"
-    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
-    assert rot90, "landscape compose must still apply the device rotate"
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [], (
+        f"orientation 0 widescreen must send landscape unrotated, got {rotations}"
+    )
+
+
+def test_landscape_widescreen_orientation90_rotates_per_encode_table(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """At orientation 90 the same panel rotates per the encode TABLE, not a
+    blanket 90°.  C# ImageToJpg 854×480 default: directionB 90 → 90°.  Proves
+    the table is wired (and folds the user orientation). (#169)"""
+    info = _wide_info()
+    profile = get_profile(224)
+    display._settings.for_device(info.key).orientation = 90
+
+    display.build_frame(
+        info=info, theme=_theme_sized(854, 480), sensors={}, profile=profile,
+    )
+
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [90], (
+        f"orientation 90 widescreen → single encode rotate 90°, got {rotations}"
+    )
 
 
 def test_unsized_theme_defaults_to_landscape(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """A theme with no declared size (0,0) falls back to landscape compose +
-    rotate — the safe default. (#136)"""
+    """A theme with no declared size (0,0) falls back to landscape compose; at
+    orientation 0 the widescreen encode table sends it unrotated (0°). (#136/#169)"""
     profile = get_profile(224)
 
     display.build_frame(
@@ -498,8 +522,10 @@ def test_unsized_theme_defaults_to_landscape(
 
     canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
     assert (854, 480) in canvases
-    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
-    assert rot90, "unsized theme must keep the landscape default"
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [], (
+        f"unsized landscape at orientation 0 sends unrotated, got {rotations}"
+    )
 
 
 def test_composed_canvas_size_drives_preview_orientation(

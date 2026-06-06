@@ -33,7 +33,7 @@ from ..core.models import (
     Theme,
 )
 from ..core.ports import Renderer
-from ..core.protocol import DeviceProfile, get_profile
+from ..core.protocol import DeviceProfile, get_profile, resolve_encode_angle
 from ._clock import compute_clock
 from .media import MediaService
 from .overlay import OverlayService, resolve_overlay_elements
@@ -302,19 +302,42 @@ class DisplayService:
                       info.key, s.brightness)
             surface = self._r.apply_brightness(surface, s.brightness)
 
-        # User-orientation rotation
-        if s.orientation:
+        # Widescreen JPEG panels (the C# isBiliPingmu set — 854×480, 1280×480,
+        # 1600×720, 1920×462) compose landscape and fold the user orientation
+        # into a per-resolution encode TABLE — a single wire angle, not a
+        # user-rotation + blanket device 90°.  Discriminated by ``jpeg``: the
+        # widescreen set is all JPEG; the simple RGB565 rotate panels (320×240)
+        # are not, and keep the blanket 90° below.  Portrait-composed themes
+        # (portrait=True) already match the portrait wire buffer, so neither
+        # device rotation applies to them. (#136/#169)
+        fold_into_encode = (
+            resolved_profile.rotate and not portrait and resolved_profile.jpeg
+        )
+        blanket_device_rotate = (
+            resolved_profile.rotate and not portrait
+            and not resolved_profile.jpeg
+        )
+
+        # User-orientation rotation (square panels + simple RGB565 rotate panels)
+        if s.orientation and not fold_into_encode:
             log.debug("build_frame %s: user rotate %d°",
                       info.key, 360 - s.orientation)
             surface = self._r.rotate(surface, 360 - s.orientation)
 
-        # Device-side rotation: portrait panels render content in landscape
-        # for composition, then rotate 90° to match the device's portrait
-        # buffer arrangement before encoding. Matches the C# pipeline
-        # ("RGB565-LE rotated" in legacy report output).  Skipped when we
-        # already composed the canvas at portrait dims for a portrait theme
-        # (the composition matches the portrait wire buffer directly). (#136)
-        if resolved_profile.rotate and not portrait:
+        # Device encode rotation — widescreen JPEG panels map the user
+        # orientation (and the sub-byte base, folded at handshake) to a single
+        # wire angle via the encode table (C# ImageToJpg directionB switch).
+        # Replaces the cutover's blanket 90°: FBL 224 (854×480) at orientation
+        # 0 → 0° (landscape, unrotated). (#169)
+        if fold_into_encode:
+            angle = resolve_encode_angle(resolved_profile, s.orientation)
+            if angle:
+                log.debug("build_frame %s: device encode rotate %d°",
+                          info.key, angle)
+                surface = self._r.rotate(surface, angle)
+        # Simple RGB565 rotate panels keep the blanket device 90° — content
+        # composes landscape, the device buffer is portrait. (#136)
+        elif blanket_device_rotate:
             log.debug("build_frame %s: device rotate 90° (portrait panel)",
                       info.key)
             surface = self._r.rotate(surface, 90)

@@ -26,6 +26,7 @@ from ...core.protocol import (
     get_profile,
     pm_to_fbl,
     resolve_encode_base,
+    resolve_encode_sub,
 )
 from . import DeviceFactory
 
@@ -139,13 +140,17 @@ class BulkLcd(Device[BulkTransport]):
         if encode_baseline:
             log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
                      self.info.key, self._pm, encode_baseline)
+        # Fold the sub-byte override into encode_base now that SUB is known, so
+        # the render-time resolve_encode_angle only needs the user orientation
+        # (C# ImageToJpg mySubMode branch — e.g. FBL 224 sub=2 → 180°). (#169)
+        encode_base = resolve_encode_sub(base, self._sub)
         self._profile = DeviceProfile(
             width=base.width, height=base.height,
             jpeg=(self._pm not in _RGB565_PMS),
             big_endian=base.big_endian, rotate=base.rotate,
             encode_baseline=encode_baseline,
-            encode_base=base.encode_base, encode_invert=base.encode_invert,
-            encode_sub_bases=base.encode_sub_bases,
+            encode_base=encode_base, encode_invert=base.encode_invert,
+            encode_sub_bases=(),  # folded into encode_base above
             encode_pm_bases=base.encode_pm_bases,
         )
 

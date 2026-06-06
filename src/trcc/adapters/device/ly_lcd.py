@@ -15,6 +15,7 @@ ThreadSendDeviceDataLY / ThreadSendDeviceDataLY1.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 
@@ -25,7 +26,12 @@ from ...core.errors import (
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
-from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
+from ...core.protocol import (
+    DeviceProfile,
+    get_profile,
+    pm_to_fbl,
+    resolve_encode_sub,
+)
 from . import DeviceFactory
 
 log = logging.getLogger(__name__)
@@ -113,7 +119,15 @@ class LyLcd(Device[BulkTransport]):
             self._sub = resp[22] if len(resp) > 22 else 0
 
         fbl = pm_to_fbl(self._pm, self._sub)
-        self._profile = get_profile(fbl, self._pm)
+        # Fold the sub-byte override into encode_base now that SUB is known so
+        # render-time resolve_encode_angle only needs the user orientation
+        # (C# ImageToJpg mySubMode branch — FBL 192 sub 2/3/4 → 0°). (#169)
+        base = get_profile(fbl, self._pm)
+        self._profile = dataclasses.replace(
+            base,
+            encode_base=resolve_encode_sub(base, self._sub),
+            encode_sub_bases=(),
+        )
 
         result = HandshakeResult(
             resolution=self._profile.resolution,
