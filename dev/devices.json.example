@@ -1,0 +1,25 @@
+[
+  {
+    "name": "SCSI 320x320 — vid:pid only; geometry comes free from the registry",
+    "vid": "0402",
+    "pid": "3922"
+  },
+  {
+    "name": "HID Type 2 240x320 — also vid:pid only; ANY registered device works",
+    "vid": "0416",
+    "pid": "5302"
+  },
+  {
+    "name": "Bulk widescreen — pm/sub OVERRIDE the registry default (854x480 via PM=11)",
+    "vid": "87ad",
+    "pid": "70db",
+    "pm": 11,
+    "sub": 5
+  },
+  {
+    "name": "LED controller (AX120 Digital) — style resolved from PM",
+    "vid": "0416",
+    "pid": "8001",
+    "pm": 1
+  }
+]

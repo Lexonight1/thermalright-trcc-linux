@@ -102,6 +102,53 @@ def load_device_specs(report_path: str | None = None) -> list[dict]:
     return []
 
 
+# ─── Device catalog (the REAL device space — variants, not bare vid:pid) ─────
+
+def device_catalog() -> list[tuple[list[tuple[int, int]], int, int | None, str, tuple[int, int]]]:
+    """Every cooler variant the app knows: ``(vids, pm, sub, model, (w, h))``.
+
+    The true device space is the per-(PM, SUB) ``VariantOverride`` table, NOT
+    the handful of USB vid:pid rows — one vid:pid (e.g. the bulk 0x87AD:0x70DB)
+    fronts dozens of distinct coolers that the handshake PM/SUB fingerprint
+    tells apart.  The 4 bulk vid:pids share one PM table, so it's listed once
+    with all its vid:pids in ``vids``.  ``model`` is the registry button-image
+    name; the resolution is resolved through the same model path connect() uses.
+    """
+    from trcc.core.protocol import get_profile, pm_to_fbl
+    from trcc.core.variants import _VARIANT_REGISTRY
+
+    by_table: dict[int, tuple[dict, list[tuple[int, int]]]] = {}
+    for (vid, pid), table in _VARIANT_REGISTRY.items():
+        by_table.setdefault(id(table), (table, []))[1].append((vid, pid))
+
+    rows: list[tuple[list[tuple[int, int]], int, int | None, str, tuple[int, int]]] = []
+    for table, vids in by_table.values():
+        for pm in sorted(table):
+            for sub, override in table[pm].items():
+                resolved_sub = sub if sub is not None else 0
+                res = get_profile(pm_to_fbl(pm, resolved_sub), pm).resolution
+                rows.append((vids, pm, sub, override.button_image, res))
+    return rows
+
+
+def all_variant_specs() -> list[dict]:
+    """One ``devices.json`` spec per cooler variant — simulate the WHOLE catalog.
+
+    Bulk variants are emitted once (under their first shared vid:pid) so the
+    fleet has no 4x duplicate models.
+    """
+    specs: list[dict] = []
+    for vids, pm, sub, model, _res in device_catalog():
+        vid, pid = vids[0]
+        spec: dict[str, Any] = {
+            "vid": f"{vid:04x}", "pid": f"{pid:04x}", "pm": pm, "name": model,
+        }
+        if sub is not None:
+            spec["sub"] = sub
+        specs.append(spec)
+    return specs
+
+
 # ─── DevPaths / DevPlatform — production Platform with paths redirected ──────
 
 def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
@@ -202,22 +249,29 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
 # ─── Main bootstrap ──────────────────────────────────────────────────────────
 
 def bootstrap(report_path: str | None = None,
-              verbosity: int = 0) -> Platform:
+              verbosity: int = 0, all_devices: bool = False) -> Platform:
     """Wire up logging + paths and return a ``Platform`` rooted at
     ``dev/.trcc/``.
 
     The caller (``mock_gui.py`` / ``mock_cli.py`` / ``mock_api.py``)
     drives the rest of the composition root — same shape production
     uses, just with the dev platform instance.
+
+    ``all_devices`` simulates the WHOLE variant catalog (every cooler model)
+    instead of reading ``devices.json`` — the "show me every device the app
+    supports" fleet.
     """
     from trcc.adapters.infra.logging import configure_logging
 
+    # all_devices → the whole catalog; else specs from devices.json/report.
     # Specs present → simulate that fleet with scripted USB on a real host base
     # (DevMockPlatform).  No specs → drive real attached hardware (DevPlatform).
     # The mock is the tool to GUI-verify device-specific render/geometry (#136
     # portrait panels, widescreen, LED) with zero hardware; the real path stays
     # the default so the harness still works against a plugged-in cooler.
-    specs = load_device_specs(report_path)
+    source = "--all catalog" if all_devices else (
+        "--report" if report_path else "devices.json")
+    specs = all_variant_specs() if all_devices else load_device_specs(report_path)
     platform = _build_dev_platform(specs or None)
 
     configure_logging(
@@ -229,7 +283,6 @@ def bootstrap(report_path: str | None = None,
         type(platform).__name__, platform.paths().config_dir(), len(specs),
     )
     if specs:
-        print(f"Mock fleet: {len(specs)} device spec(s) from "
-              f"{'--report' if report_path else 'devices.json'} — "
+        print(f"Mock fleet: {len(specs)} device spec(s) from {source} — "
               "scripted on a real host platform (no hardware needed).")
     return platform
