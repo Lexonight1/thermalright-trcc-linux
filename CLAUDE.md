@@ -486,20 +486,35 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - Run tests / scripts with `python3.12` explicitly. `/usr/bin/python` on the dev box may point at 3.14; a 3.14-only crash (e.g. a `QFontDatabase` segfault, a `pyusb._pack_` deprecation, a typer/sudo_reexec issue) is not automatically a project bug — repro under 3.12 first.
 
 ## Known Issues
-- **GUI overlay/settings edits don't apply + overlays render duplicated** (UNFIXED).
-  The cutover DELETED legacy's in-place overlay edit (`update_overlay_element`,
-  v9.6.5 `core/lcd_commands.py:281`). The GUI edit chain is FULLY WIRED (uc_theme_setting
-  signals → `_update_selected` → `CMD_OVERLAY_CHANGED` → `LCDHandler.on_overlay_changed`;
-  drag uses the same path via `trcc_app._on_drag_move`) — **drag-drop is NOT gone**.
-  But it dispatches `SetOverlayConfig` (`core/commands/device.py:1491`) which stores
-  edits in a SEPARATE user layer (`settings.set_user_overlay_elements`), and
-  `build_frame` (`services/display.py:986-1023`) renders BOTH the theme's elements AND
-  the user layer on top → every edited element draws TWICE (original unmoved + edited
-  copy). Reads as "nothing changes" + garbled overlays. Fix = port in-place edit OR make
-  the user layer REPLACE not ADD; confirm the grid is seeded from theme elements first.
-  Also: theme font `微软雅黑` falls back to Noto Sans (legacy `_fc_match` dropped — wrong
-  typeface). DC parser is CORRECT. See `memory/project_gui_overlay_edit_bug.md` +
-  `memory/feedback_grep_is_not_understanding.md`.
+- **GUI overlay/settings edits don't apply + overlays render duplicated — FIXED
+  + render-verified 2026-06-06.** The double-draw is gone: `build_frame`
+  (`services/display.py`) now renders ONE effective layout via
+  `resolve_overlay_elements(theme_config, mask, user)` (`services/overlay.py`) —
+  precedence user > mask > theme, each REPLACES (never adds). The old additive
+  `user_elements=` pass was removed. Verified at the render level through the real
+  `OverlayService` + `DisplayService.build_frame`: an edit draws each element
+  exactly ONCE, applies at the new position, no ghost at the old (8 resolver unit
+  tests in `test_overlay_resolve.py` + a draw-count check). The reported symptom
+  is resolved.
+  **Font typeface — FIXED 2026-06-06.** Overlay text rendered in Noto Sans, not
+  the themes' Microsoft YaHei. Root cause traced: the bundled YaHei TTCs
+  (`assets/fonts/MSYH.TTC`/`MSYHBD.TTC`) were never registered with Qt, AND
+  `OverlayService` doesn't pass a per-element family — overlay text draws in the
+  app DEFAULT font (`_get_font` resolves `QFont()`). Fix in
+  `adapters/render/qt.py::_register_bundled_fonts` (called from `_ensure_qt_app`,
+  the GUI + headless render chokepoint): glob-register every `assets/fonts/` file,
+  then set the app default font to `Microsoft YaHei` resolved from the UNION of the
+  user's system/downloaded fonts + the bundled copy (user's install wins, bundled
+  fills the gap). Verified: `_get_font(...).family() == "Microsoft YaHei"`. NOTE:
+  per-element theme font names are still NOT plumbed to `draw_text` (a separate
+  latent feature, not the reported typeface bug — all themes use YaHei).
+  **Still open in this area** (separate, secondary): DEFERRED additive sites in
+  EXPORT/MASK-AUTHORING (`export_dc`/`ThemeDcExport`, `persist_user_mask_dc`,
+  `UploadMask` seed, the DC codec `user_overlay_elements=` param) still append user
+  onto `config["elements"]` — the render + SaveTheme paths are fixed, these
+  export/mask paths aren't (they need a different empty-vs-theme fallback; clean fix
+  = remove the codec param, resolve effective elements at the command layer). DC
+  parser is CORRECT. See `memory/project_gui_overlay_edit_bug.md`.
 - `pyusb 1.3.1` deprecated `_pack_` on Python 3.14 — suppressed in pytest config
 - `pip install .` can use cached wheel — use `pip install --force-reinstall --no-deps .`
 - CI runs as root — mock `subprocess.run` in non-root tests
