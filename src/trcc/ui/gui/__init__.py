@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from typing import Any
 
 from .base import BasePanel, ImageLabel
 from .trcc_app import TRCCApp
@@ -36,6 +37,8 @@ __all__ = [
     'UCThemeMask',
     'UCThemeSetting',
     'UCThemeWeb',
+    'launch',
+    'run_gui',
 ]
 
 log = logging.getLogger(__name__)
@@ -43,37 +46,59 @@ log = logging.getLogger(__name__)
 
 def launch(verbosity: int = 0, decorated: bool = False,
            start_hidden: bool = False) -> int:
-    """Bootstrap and run the next/ GUI application.
+    """Bootstrap and run the shipping GUI.  Returns the Qt exit code.
 
-    Returns the Qt exit code.
+    Thin wrapper over :func:`run_gui` — builds the real host platform and
+    runs the full composition with the production seams on (single-instance
+    lock, IPC server, ``os._exit`` reap).
+
+    ``verbosity`` is unused: the CLI root callback (``ui.cli.main:_root``)
+    ALWAYS runs first and has already configured logging at the requested
+    level.  Re-configuring here would silently downgrade DEBUG back to INFO.
+    """
+    del verbosity
+    from ...adapters.system import PlatformFactory
+    platform = PlatformFactory.current()
+    return run_gui(platform, decorated=decorated, start_hidden=start_hidden)
+
+
+def run_gui(platform: Any, *, decorated: bool = False,
+            start_hidden: bool = False, single_instance: bool = True,
+            ipc: bool = True, force_exit: bool = True) -> int:
+    """Run the GUI composition for a given ``platform``.  Returns exit code.
+
+    The ONE shared composition root for every GUI entry point — shipping
+    ``launch`` and ``dev/mock_gui`` both call this, so the dev mock exercises
+    the SAME code the real app runs (the whole reason to mock: real code
+    paths surface real bugs).  Callers differ only in what ``platform`` they
+    build and these seams:
+
+      * ``single_instance`` — acquire the cross-process GUI lock (off for the
+        dev mock so it never collides with a real install).
+      * ``ipc`` — bind the daemon-style IPC server (off for the dev mock to
+        avoid socket collision).
+      * ``force_exit`` — ``os._exit`` to reap native threads (psutil / pyusb /
+        pynvml can outlive ``qapp.exec()``); the dev mock returns normally.
+
+    Logging is NOT configured here — that stays the caller's job (CLI root
+    callback for shipping, ``dev/_mock_bootstrap`` for the mock), so the
+    "configure_logging exactly once" invariant holds.
     """
     from typing import cast
 
     from PySide6.QtWidgets import QApplication
 
-    # ── Platform first ───────────────────────────────────────────────
-    from ...adapters.system import PlatformFactory
-    platform = PlatformFactory.current()
-
     # ── stdout/stderr UTF-8 (Windows cp1252 fix; no-op elsewhere) ────
     platform.configure_stdout()
 
-    # NOTE: do NOT call ``configure_logging`` here.  The CLI root
-    # callback (``ui.cli.main:_root``) ALWAYS runs before this entry
-    # point and has already wired the rotating file + stderr handlers
-    # at the level the user asked for via ``-v``.  A second call here
-    # was silently downgrading DEBUG back to INFO whenever the user
-    # ran ``python -m trcc -v gui`` — the comment that used to live
-    # here ("only basicConfig is in effect") was stale by years.
-    # If anyone calls ``launch`` from outside the CLI later, they're
-    # responsible for setting up logging first.
-
     # ── Single-instance lock + raise-existing-window ─────────────────
-    from ...ipc import SingleInstance
-    instance = SingleInstance("gui")
-    if instance is None:
-        # A peer GUI was already running; raise was sent.  Exit cleanly.
-        return 0
+    instance = None
+    if single_instance:
+        from ...ipc import SingleInstance
+        instance = SingleInstance("gui")
+        if instance is None:
+            # A peer GUI was already running; raise was sent.  Exit cleanly.
+            return 0
 
     # ── Assets dir (packaged location) ───────────────────────────────
     from .assets import _PKG_ASSETS_DIR, set_assets_dir
@@ -87,10 +112,7 @@ def launch(verbosity: int = 0, decorated: bool = False,
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
     configure_qapplication(qapp)
 
-    # ── Build App via the canonical factory ──────────────────────────
-    # ``trcc_next()`` returns either a real App (default) or an
-    # AppProxy (when ``TRCC_NEXT_DAEMON=1``) — both expose the same
-    # dispatch surface, so MainWindow doesn't care which it gets.
+    # ── Build App via the canonical factory (renderer follows QApp) ──
     from ..._boot import trcc_next
     from ...adapters.render.qt import QtRenderer
     from ...app import App
@@ -102,37 +124,34 @@ def launch(verbosity: int = 0, decorated: bool = False,
     if not run_bootstrap_with_splash(app):
         return 1
 
-    # ── Hotplug listener (live device attach/detach) ────────────────
+    # ── Hotplug listener + metrics broadcast (one cadence drives the
+    # system-info / activity sidebar / overlay refresh) ─────────────
     app.start_hotplug()
-
-    # ── Metrics broadcast — publishes SensorsUpdated every
-    # refresh_interval_s so system info / activity sidebar / overlay
-    # refresh all tick from one cadence.
     app.metrics_loop.start()
 
     # ── Main window — TRCCApp keeps the legacy chrome ──────────────
     window = TRCCApp(app=app, decorated=decorated)
 
     # ── IPC server bound to App — daemon-style Command dispatch ─────
-    from ...ipc import IPCServer
-    ipc_server = IPCServer(app=app)
-    ipc_server.start()
-    window._ipc_server = ipc_server
+    ipc_server = None
+    if ipc:
+        from ...ipc import IPCServer
+        ipc_server = IPCServer(app=app)
+        ipc_server.start()
+        window._ipc_server = ipc_server
 
     # ── Wire raise-existing-window callback ─────────────────────────
-    def _raise_window() -> None:
-        window.show()
-        window.raise_()
-        window.activateWindow()
-    instance.on_raise = _raise_window
+    if instance is not None:
+        def _raise_window() -> None:
+            window.show()
+            window.raise_()
+            window.activateWindow()
+        instance.on_raise = _raise_window
 
     # ── Initial device replay — discover ran in the splash worker, so
     # iterate ``app.devices`` once for the first sidebar render.  Live
     # mutations after this come through DeviceConnected/Disconnected.
     window.replay_initial_devices()
-
-    # ── Signals + verbosity bookkeeping ─────────────────────────────
-    del verbosity
 
     def _on_sigint(*_args: object) -> None:
         """SIGINT — quit the Qt event loop cleanly."""
@@ -145,16 +164,20 @@ def launch(verbosity: int = 0, decorated: bool = False,
     try:
         exit_code = qapp.exec()
     finally:
-        ipc_server.shutdown()
-        instance.close()
+        if ipc_server is not None:
+            ipc_server.shutdown()
+        if instance is not None:
+            instance.close()
         app.close()
-        log.info("launch: cleanup complete — process exit")
+        log.info("run_gui: cleanup complete — process exit")
+
     # Belt-and-suspenders: Qt's metrics/sensor/render threads occasionally
     # outlive ``qapp.exec()``'s return when native libraries (pynvml,
-    # psutil's ffi handles, pyusb) hold the GIL on shutdown.  A bare
-    # ``return`` then leaves the python process alive past the user's
-    # window-close.  ``os._exit`` skips atexit handlers and finalizers —
-    # we already did our cleanup in the finally above, so this is the
-    # safe place to force the kernel to reap the process.
-    import os as _os
-    _os._exit(exit_code)
+    # psutil's ffi handles, pyusb) hold the GIL on shutdown.  ``os._exit``
+    # skips atexit handlers and finalizers — we already did our cleanup in
+    # the finally above, so this is the safe place to force the kernel to
+    # reap the process.  The dev mock returns normally (``force_exit=False``).
+    if force_exit:
+        import os as _os
+        _os._exit(exit_code)
+    return exit_code
