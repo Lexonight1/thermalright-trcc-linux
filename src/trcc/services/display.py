@@ -995,7 +995,17 @@ class DisplayService:
         elements = resolve_overlay_elements(
             theme.config, s.mask_overlay_elements, s.user_overlay_elements,
         )
-        config_for_render = {**theme.config, "elements": elements}
+        # The DEVICE'S overlay-enabled state is the single authority (the
+        # user/GUI toggle ``DeviceSettings.overlay_enabled``, default True) —
+        # NOT the theme's baked DC flag.  Otherwise a theme authored
+        # ``overlay_enabled=False`` (e.g. many 854x480 themes) suppresses the
+        # overlay forever: the device observes the metrics and the user wants
+        # them, but they never render.  Any device on any OS observes the same
+        # metrics and shows them when its own overlay is on.
+        config_for_render = {
+            **theme.config, "elements": elements,
+            "overlay_enabled": s.overlay_enabled,
+        }
         layout = (
             "user" if s.user_overlay_elements
             else "mask" if s.mask_overlay_elements is not None
