@@ -22,7 +22,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from trcc.core.ports import Platform
+    from trcc.core.models import DeviceInfo
+    from trcc.core.ports import (
+        BulkTransport,
+        HotplugMonitor,
+        Platform,
+        ScsiTransport,
+    )
 
 # Make src/ importable without requiring the caller to set PYTHONPATH.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -98,15 +104,20 @@ def load_device_specs(report_path: str | None = None) -> list[dict]:
 
 # ─── DevPaths / DevPlatform — production Platform with paths redirected ──────
 
-def _build_dev_platform() -> Platform:
+def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
     """Return a Platform rooted at ``dev/.trcc/`` for the host OS.
 
-    Subclasses the production OS Platform so real USB enumeration, real
-    sensor reads, and real autostart all run against the dev box — only
-    the filesystem layout is redirected.  That keeps mock_gui useful as
-    a "drive the real GUI against my own hardware without polluting
-    ~/.trcc" tool; for hardware-less work, ``tests.conftest.FakePlatform``
-    is the right substitute (same Port).
+    Always subclasses the production host Platform so sensors, autostart,
+    setup, distro detection — everything except the filesystem layout — run
+    as the real packaged app does.
+
+    * No ``specs`` → ``DevPlatform``: real USB enumeration + real hotplug too.
+      "Drive the real GUI against my own hardware without polluting ~/.trcc."
+    * ``specs`` → ``DevMockPlatform``: additionally overrides ONLY the USB
+      seam (``scan_devices`` + scripted ``open_scsi``/``open_bulk``) and forces
+      Noop hotplug (a simulated fleet has no live attach).  Sensors/autostart/
+      setup/distro stay the real host code, so the mock IS the real app with
+      three methods swapped — which is exactly why it surfaces real bugs.
     """
     from trcc.core.ports import Paths
 
@@ -130,23 +141,62 @@ def _build_dev_platform() -> Platform:
         def log_file(self) -> Path:
             return DEV_TRCC / "trcc.log"
 
-    # Pick the host's production Platform impl as the base so USB +
-    # sensors + autostart + hotplug all work the way the packaged app
-    # does.  Override only ``paths()``.  Mirrors production launch
-    # (ui/gui/__init__.launch + _boot) which builds via PlatformFactory.
+    # Pick the host's production Platform impl as the base so sensors +
+    # autostart + setup + distro all work the way the packaged app does.
+    # Mirrors production launch (ui/gui/__init__.run_gui + _boot).
     from trcc.adapters.system import PlatformFactory
     host = PlatformFactory.current()
-    host_cls = type(host)
+    # ``Any`` so pyright accepts the runtime-computed concrete base class
+    # (it can't see that ``type(host)`` is a concrete LinuxPlatform, not the
+    # abstract ``Platform``).
+    host_cls: Any = type(host)
+    dev_paths = DevPaths()
 
-    class DevPlatform(host_cls):  # type: ignore[valid-type, misc]
-        """Production host platform with paths redirected to ``dev/.trcc/``."""
+    if not specs:
+        class DevPlatform(host_cls):
+            """Production host platform with paths redirected to ``dev/.trcc/``."""
 
-        _dev_paths: Paths = DevPaths()
+            def paths(self) -> Paths:
+                return dev_paths
+
+        return DevPlatform()
+
+    # Simulated fleet — extend the real host, override ONLY the USB seam.
+    # The scripted scan/handshake logic is shared with the unit-test mock
+    # (tests.mock_platform) so there is exactly one source for it.
+    from tests.mock_platform import (
+        DeviceSpec,
+        scan_device_infos,
+        scripted_bulk_transport,
+        scripted_scsi_transport,
+    )
+    parsed = [DeviceSpec.parse(s) for s in specs]
+    by_key = {sp.key: sp for sp in parsed}
+
+    class DevMockPlatform(host_cls):
+        """Real host platform with the USB seam swapped for a scripted fleet."""
 
         def paths(self) -> Paths:
-            return self._dev_paths
+            return dev_paths
 
-    return DevPlatform()
+        def hotplug(self) -> HotplugMonitor:
+            from trcc.adapters.system._hotplug import NoopHotplugMonitor
+            return NoopHotplugMonitor(reason="DevMockPlatform simulated fleet")
+
+        def scan_devices(self) -> list[DeviceInfo]:
+            return scan_device_infos(parsed)
+
+        def open_scsi(self, vid: int, pid: int,
+                      serial: str | None = None) -> ScsiTransport:
+            return scripted_scsi_transport(by_key, vid, pid)
+
+        def open_bulk(self, vid: int, pid: int,
+                      serial: str | None = None) -> BulkTransport:
+            return scripted_bulk_transport(by_key, vid, pid)
+
+    log.info("DevMockPlatform: %d simulated device(s) on real %s base",
+             len(parsed), host_cls.__name__)
+    return DevMockPlatform()
 
 
 # ─── Main bootstrap ──────────────────────────────────────────────────────────
@@ -162,17 +212,13 @@ def bootstrap(report_path: str | None = None,
     """
     from trcc.adapters.infra.logging import configure_logging
 
-    # Specs present → simulate that fleet with scripted USB (MockPlatform).
-    # No specs → drive real attached hardware (DevPlatform).  The mock is the
-    # tool to GUI-verify device-specific render/geometry (#136 portrait panels,
-    # widescreen, LED) with zero hardware; the real path stays the default so
-    # the harness still works against a plugged-in cooler.
+    # Specs present → simulate that fleet with scripted USB on a real host base
+    # (DevMockPlatform).  No specs → drive real attached hardware (DevPlatform).
+    # The mock is the tool to GUI-verify device-specific render/geometry (#136
+    # portrait panels, widescreen, LED) with zero hardware; the real path stays
+    # the default so the harness still works against a plugged-in cooler.
     specs = load_device_specs(report_path)
-    if specs:
-        from tests.mock_platform import MockPlatform
-        platform: Platform = MockPlatform(specs, DEV_TRCC)
-    else:
-        platform = _build_dev_platform()
+    platform = _build_dev_platform(specs or None)
 
     configure_logging(
         platform.paths().log_file(),
@@ -185,5 +231,5 @@ def bootstrap(report_path: str | None = None,
     if specs:
         print(f"Mock fleet: {len(specs)} device spec(s) from "
               f"{'--report' if report_path else 'devices.json'} — "
-              "scripted via MockPlatform (no hardware needed).")
+              "scripted on a real host platform (no hardware needed).")
     return platform

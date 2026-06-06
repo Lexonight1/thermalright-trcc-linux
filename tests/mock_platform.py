@@ -228,6 +228,80 @@ class DeviceSpec:
         return (self.vid, self.pid)
 
 
+# ── Scripted-USB surface (shared: tests' MockPlatform + dev's DevMockPlatform) ─
+#
+# Plain functions so BOTH the FakePlatform-based test mock and the real-host-
+# based dev mock call the SAME scan/handshake code — the only difference between
+# them is the base class they extend, never this logic.
+
+
+def scan_device_infos(specs: list[DeviceSpec]) -> list[DeviceInfo]:
+    """One ``DeviceInfo`` per spec that resolves in the registry."""
+    out: list[DeviceInfo] = []
+    for spec in specs:
+        product = find_product(spec.vid, spec.pid)
+        if product is None:
+            log.warning(
+                "mock scan: %04x:%04x (%s) not in registry — skipping; add it "
+                "to core/registry.py to simulate it",
+                spec.vid, spec.pid, spec.name,
+            )
+            continue
+        out.append(DeviceInfo(vid=spec.vid, pid=spec.pid))
+        log.info("mock scan: + %s [%04x:%04x] wire=%s",
+                 spec.name, spec.vid, spec.pid, product.wire.value)
+    return out
+
+
+def scripted_handshake_bytes(
+    by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+) -> bytes:
+    """Model-driven handshake reply for one device — every wire, one source.
+
+    Geometry resolves FAITHFULLY from the registry ``ProductInfo`` via
+    :func:`resolve_handshake_geometry`; a ``devices.json`` spec may override
+    ``pm`` / ``sub`` / ``fbl`` for a panel the model under-specifies.
+    """
+    product = find_product(vid, pid)
+    if product is None:
+        log.warning("mock handshake: %04x:%04x not in registry — empty reply",
+                    vid, pid)
+        return b""
+    spec = by_key.get((vid, pid))
+    pm, sub, fbl = resolve_handshake_geometry(product)
+    if spec is not None:
+        if spec.fbl is not None:
+            fbl = spec.fbl
+        if spec.pm:
+            pm = spec.pm
+        if spec.sub:
+            sub = spec.sub
+    reply = mock_handshake(product, pm=pm, sub=sub, fbl=fbl)
+    log.info(
+        "mock handshake: %04x:%04x wire=%s type=%d pm=%d sub=%d fbl=%d (%d bytes)",
+        vid, pid, product.wire.value, product.device_type, pm, sub, fbl, len(reply),
+    )
+    return reply
+
+
+def scripted_scsi_transport(
+    by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+) -> FakeScsiTransport:
+    """Fresh SCSI transport pre-loaded with the model-driven reply."""
+    transport = FakeScsiTransport()
+    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid))
+    return transport
+
+
+def scripted_bulk_transport(
+    by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+) -> FakeBulkTransport:
+    """Fresh bulk transport (every non-SCSI wire: BULK/HID/LY/LED)."""
+    transport = FakeBulkTransport()
+    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid))
+    return transport
+
+
 # ── MockPlatform ─────────────────────────────────────────────────────────────
 
 
@@ -266,71 +340,12 @@ class MockPlatform(FakePlatform):
     def scan_devices(self) -> list[DeviceInfo]:
         """Surface one ``DeviceInfo`` per spec that resolves in the registry."""
         log.info("MockPlatform.scan_devices: %d spec(s)", len(self._specs))
-        out: list[DeviceInfo] = []
-        for spec in self._specs:
-            product = find_product(spec.vid, spec.pid)
-            if product is None:
-                log.warning(
-                    "MockPlatform.scan_devices: %04x:%04x (%s) not in registry "
-                    "— skipping; add it to core/registry.py to simulate it",
-                    spec.vid, spec.pid, spec.name,
-                )
-                continue
-            out.append(DeviceInfo(vid=spec.vid, pid=spec.pid))
-            log.info("MockPlatform.scan_devices: + %s [%04x:%04x] wire=%s",
-                     spec.name, spec.vid, spec.pid, product.wire.value)
-        return out
-
-    def _resolve_handshake(self, vid: int, pid: int) -> bytes:
-        """Model-driven handshake reply for a device — every wire, one source.
-
-        Geometry is resolved FAITHFULLY from the registry ``ProductInfo``: the
-        ``(pm, sub, fbl)`` is the one whose model profile reproduces the
-        device's ``native_resolution`` (see :func:`resolve_handshake_geometry`),
-        so a ``devices.json`` entry needs only a vid/pid.  ``pm`` / ``sub`` /
-        ``fbl`` in the spec override that default for a panel the model
-        under-specifies.
-        """
-        product = find_product(vid, pid)
-        if product is None:
-            log.warning(
-                "MockPlatform: %04x:%04x not in registry — empty handshake "
-                "(add it to core/registry.py to simulate it)", vid, pid,
-            )
-            return b""
-        spec = self._by_key.get((vid, pid))
-        pm, sub, fbl = resolve_handshake_geometry(product)
-        if spec is not None:
-            if spec.fbl is not None:
-                fbl = spec.fbl
-            if spec.pm:
-                pm = spec.pm
-            if spec.sub:
-                sub = spec.sub
-        reply = mock_handshake(product, pm=pm, sub=sub, fbl=fbl)
-        log.info(
-            "MockPlatform handshake: %04x:%04x wire=%s type=%d pm=%d sub=%d "
-            "fbl=%d (%d bytes)",
-            vid, pid, product.wire.value, product.device_type,
-            pm, sub, fbl, len(reply),
-        )
-        return reply
+        return scan_device_infos(self._specs)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
-        """Fresh SCSI transport pre-loaded with the model-driven reply."""
-        transport = FakeScsiTransport()
-        transport.read_script.append(self._resolve_handshake(vid, pid))
-        return transport
+        return scripted_scsi_transport(self._by_key, vid, pid)
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
-        """Fresh bulk transport for every non-SCSI wire (BULK/HID/LY/LED).
-
-        ``App.attach`` routes them all through here; ``mock_handshake`` picks
-        the reply shape by the registry wire + device_type, so every wire is
-        now simulated (no more warn-and-skip for HID / LY).
-        """
-        transport = FakeBulkTransport()
-        transport.read_script.append(self._resolve_handshake(vid, pid))
-        return transport
+        return scripted_bulk_transport(self._by_key, vid, pid)
