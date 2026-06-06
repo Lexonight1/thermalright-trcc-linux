@@ -493,11 +493,20 @@ class TRCCApp(QMainWindow):
     # ── BusBridge subscribers (run on the Qt main thread) ───────────
 
     def _on_bus_device_connected(self, event: Any) -> None:
-        """One device just attached/handshaked.  Add a handler."""
+        """One device just attached/handshaked (hotplug after startup).
+
+        Add a handler, REFRESH THE SIDEBAR so the new device's button appears
+        (real-world usage: a user plugs a cooler in while the app runs), and
+        configure it inactive so it renders its content immediately — same as
+        the initial fleet.
+        """
         log.debug("_on_bus_device_connected: key=%s", event.key)
         device = self._app.devices.get(event.key)
-        if device is not None:
-            self._add_handler(device)
+        if device is None:
+            return
+        self._add_handler(device)
+        self._refresh_sidebar()
+        self._configure_inactive_lcd(event.key)
 
     def _on_bus_device_disconnected(self, event: Any) -> None:
         """One device just detached.  Drop its handler."""
@@ -652,24 +661,35 @@ class TRCCApp(QMainWindow):
         # auto-load → active_themes → renders + metrics), then mark them inactive
         # so they keep rendering to the wire without owning the shared preview.
         # The target activates LAST so its frame ends up in the shared widgets.
-        for key, handler in self._handlers.items():
-            if key == target_key or not isinstance(handler, LCDHandler):
-                continue
-            if handler.is_configured:
-                continue
-            device = self._app.devices.get(key)
-            if device is None or not device.is_connected or device.profile is None:
-                continue
-            w, h = device.profile.resolution
-            if (w, h) == (0, 0):
-                continue
-            log.info("replay_initial_devices: configuring inactive LCD %s %dx%d",
-                     key, w, h)
-            handler.apply_device_config(device.info, w, h)
-            handler.set_inactive()
+        for key in list(self._handlers):
+            if key != target_key:
+                self._configure_inactive_lcd(key)
 
         if target_key:
             self._activate_device(target_key)
+
+    def _configure_inactive_lcd(self, key: str) -> None:
+        """Load + render a connected LCD without it owning the shared preview.
+
+        Used for non-target devices at startup AND for late (hotplug) connects,
+        so EVERY connected cooler renders its content — matching real hardware
+        where every screen shows at once.  No-op for non-LCD or already-
+        configured handlers.  ``set_inactive`` keeps it rendering to the wire
+        but drops ``_ui_active`` so it never fights the active device for the
+        shared preview widgets.
+        """
+        handler = self._handlers.get(key)
+        if not isinstance(handler, LCDHandler) or handler.is_configured:
+            return
+        device = self._app.devices.get(key)
+        if device is None or not device.is_connected or device.profile is None:
+            return
+        w, h = device.profile.resolution
+        if (w, h) == (0, 0):
+            return
+        log.info("configure_inactive_lcd: %s %dx%d", key, w, h)
+        handler.apply_device_config(device.info, w, h)
+        handler.set_inactive()
 
     # ── Handler lifecycle ───────────────────────────────────────────
 

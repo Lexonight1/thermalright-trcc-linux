@@ -34,7 +34,7 @@ from ..events import (
     VideoStarted,
     VideoStopped,
 )
-from ..models import FitMode, OverlayElement
+from ..models import FitMode, OverlayElement, Wire
 from ..registry import find_product
 from ..results import (
     ActiveDeviceResult,
@@ -180,6 +180,20 @@ class ConnectDevice(Command[ConnectResult]):
                     "ConnectDevice %s: variant override PM=%d SUB=%d → %s",
                     self.key, handshake.pm_byte, handshake.sub_byte,
                     override.button_image or "(cutout-only)",
+                )
+
+        # LED style: enrich ``led_style`` from the same handshake fingerprint.
+        # The registry leaves it None ("resolved at runtime from PM byte"), so
+        # without this the LED handler reads None and falls back to a default
+        # style.  resolve_pm lives in core, so this stays inside the hexagon.
+        if device.info.wire is Wire.LED and device.info.led_style is None:
+            from ..led_protocol import resolve_pm
+            led_entry = resolve_pm(handshake.pm_byte, handshake.sub_byte)
+            if led_entry is not None and led_entry.style is not None:
+                device.info = _dc_replace(device.info, led_style=led_entry.style)
+                log.info(
+                    "ConnectDevice %s: LED style PM=%d → %s",
+                    self.key, handshake.pm_byte, led_entry.style.value,
                 )
 
         # Install theme/cloud/mask data for the HANDSHAKE-resolved resolution.
