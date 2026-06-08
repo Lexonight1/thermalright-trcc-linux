@@ -37,6 +37,12 @@ from ...core.led_models import (
     PRESET_COLORS,
 )
 from ...core.models import HardwareMetrics
+from ..presentation.led_metrics_format import (
+    clock_fields,
+    format_disk_labels,
+    format_memory_labels,
+    format_sensor_gauges,
+)
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -1242,57 +1248,26 @@ class UCLedControl(QWidget):
     def _update_clock(self) -> None:
         """LC2 clock display — reads own timer state, no external args."""
         import datetime
-        now = datetime.datetime.now()
-        hour = now.hour
-        if not self._is_timer_24h and hour > 12:
-            hour -= 12
-        dow = now.weekday()
-        if self._is_week_sunday:
-            dow = (dow + 1) % 7
-        self._preview.set_timer(now.month, now.day, hour, now.minute, dow)
+        fields = clock_fields(
+            datetime.datetime.now(), self._is_timer_24h, self._is_week_sunday,
+        )
+        self._preview.set_timer(*fields)
 
     def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
         """Update UCInfoImage sensor gauges."""
         log.debug("update_sensor_metrics")
-        unit = self._temp_unit
-        t = metrics.cpu_temp
-        self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
-        self._info_images['cpu_clock'].set_value(
-            metrics.cpu_freq, f"{metrics.cpu_freq:.0f}", "MHz")
-        self._info_images['cpu_usage'].set_value(
-            metrics.cpu_percent, f"{metrics.cpu_percent:.0f}", "%")
-        t = metrics.gpu_temp
-        self._info_images['gpu_temp'].set_value(t, f"{t:.0f}", unit)
-        self._info_images['gpu_clock'].set_value(
-            metrics.gpu_clock, f"{metrics.gpu_clock:.0f}", "MHz")
-        self._info_images['gpu_usage'].set_value(
-            metrics.gpu_usage, f"{metrics.gpu_usage:.0f}", "%")
+        for key, (value, text, unit) in format_sensor_gauges(
+            metrics, self._temp_unit,
+        ).items():
+            self._info_images[key].set_value(value, text, unit)
 
     def update_memory_metrics(self, metrics: HardwareMetrics) -> None:
         """Update memory info labels (LC1 style 4, C# UCLEDMemoryInfo)."""
         log.debug("update_memory_metrics")
-        unit = self._temp_unit
-        t = metrics.mem_temp
-        if t == 0:
-            self._mem_labels['mem_temp'].setText("NC")
-        else:
-            self._mem_labels['mem_temp'].setText(
-                f"{t:.0f}\u2103" if unit == "\u00b0C" else f"{t:.0f}\u2109")
-        mhz = metrics.mem_clock
-        self._mem_labels['mem_clock'].setText(
-            f"{mhz:.0f}MHz" if mhz else "NC")
-        effective = mhz * self._memory_ratio
-        self._mem_labels['mem_mts'].setText(
-            f"{effective:.0f}MT/S" if mhz else "NC")
-        # C# shows MemUsed/1000 in GB — derive from available + percent
-        if metrics.mem_percent > 0 and metrics.mem_available > 0:
-            total = metrics.mem_available / (1.0 - metrics.mem_percent / 100.0)
-            used_gb = (total - metrics.mem_available) / 1000.0
-            self._mem_labels['mem_used'].setText(f"{used_gb:.1f}GB")
-        else:
-            self._mem_labels['mem_used'].setText("NC")
-        ratio = self._memory_ratio
-        self._mem_labels['mem_ratio'].setText(f"{ratio}X")
+        for key, text in format_memory_labels(
+            metrics, self._temp_unit, self._memory_ratio,
+        ).items():
+            self._mem_labels[key].setText(text)
 
     def _populate_memory_identity(self) -> None:
         """Populate memory timing labels from DRAM SPD info."""
@@ -1357,19 +1332,8 @@ class UCLedControl(QWidget):
     def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:
         """Update disk info labels (LF11 style 10, C# UCLEDHarddiskInfo)."""
         log.debug("update_lf11_disk_metrics")
-        unit = self._temp_unit
-        t = metrics.disk_temp
-        if t == 0:
-            self._disk_labels['lf11_disk_temp'].setText("NC")
-        else:
-            self._disk_labels['lf11_disk_temp'].setText(
-                f"{t:.0f}\u2103" if unit == "\u00b0C" else f"{t:.0f}\u2109")
-        self._disk_labels['lf11_disk_usage'].setText(
-            f"{metrics.disk_activity:.0f}%")
-        self._disk_labels['lf11_disk_read'].setText(
-            f"{metrics.disk_read:.0f}MB/S")
-        self._disk_labels['lf11_disk_write'].setText(
-            f"{metrics.disk_write:.0f}MB/S")
+        for key, text in format_disk_labels(metrics, self._temp_unit).items():
+            self._disk_labels[key].setText(text)
 
     # ================================================================
     # Metric-source context menu (temp-/load-linked LED color)
