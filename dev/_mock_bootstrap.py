@@ -78,6 +78,13 @@ def _specs_from_report(report_path: str) -> list[dict]:
             "pid": f"{dev.pid:04x}",
             "name": f"User device ({dev.vid:04x}:{dev.pid:04x})",
         }
+        # The report records the device's handshake reply bytes (PM + sub_byte),
+        # not just vid:pid — carry them so the mock reproduces the EXACT device,
+        # not just its USB id.
+        if getattr(dev, "pm", 0):
+            spec["pm"] = dev.pm
+        if getattr(dev, "sub", 0):
+            spec["sub"] = dev.sub
         if dev.width and dev.height:
             spec["resolution"] = f"{dev.width}x{dev.height}"
         specs.append(spec)
@@ -213,7 +220,6 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
     # (tests.mock_platform) so there is exactly one source for it.
     from tests.mock_platform import (
         DeviceSpec,
-        scan_device_infos,
         scripted_bulk_transport,
         scripted_scsi_transport,
     )
@@ -223,6 +229,12 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
     class DevMockPlatform(host_cls):
         """Real host platform with the USB seam swapped for a scripted fleet."""
 
+        def __init__(self) -> None:
+            super().__init__()
+            # Exact handshake reply the dev console pins per vid:pid.  Read at
+            # open_*() time, so a set_active_reply() + reconnect re-presents.
+            self._reply_override: dict[tuple[int, int], tuple[int, int, int]] = {}
+
         def paths(self) -> Paths:
             return dev_paths
 
@@ -231,15 +243,31 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
             return NoopHotplugMonitor(reason="DevMockPlatform simulated fleet")
 
         def scan_devices(self) -> list[DeviceInfo]:
-            return scan_device_infos(parsed)
+            # Dev rule: NO auto-handshake.  The splash discovers nothing, so the
+            # GUI boots blank + fast (no 119-device handshake storm); the dev
+            # variant panel's button clicks are the ONLY thing that attaches +
+            # handshakes a device (via ConnectDevice).  The scripted transports
+            # below still serve those click-driven handshakes.
+            return []
+
+        def set_active_reply(self, vid: int, pid: int, *,
+                             pm: int, sub: int, fbl: int) -> None:
+            """Pin the exact handshake reply a vid:pid returns on next connect.
+
+            The dev console calls this, then re-runs ConnectDevice so the app
+            re-handshakes against the injected reply and re-presents.
+            """
+            self._reply_override[(vid, pid)] = (pm, sub, fbl)
+            log.info("DevMockPlatform.set_active_reply: %04x:%04x pm=%d sub=%d fbl=%d",
+                     vid, pid, pm, sub, fbl)
 
         def open_scsi(self, vid: int, pid: int,
                       serial: str | None = None) -> ScsiTransport:
-            return scripted_scsi_transport(by_key, vid, pid)
+            return scripted_scsi_transport(by_key, vid, pid, self._reply_override)
 
         def open_bulk(self, vid: int, pid: int,
                       serial: str | None = None) -> BulkTransport:
-            return scripted_bulk_transport(by_key, vid, pid)
+            return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
              len(parsed), host_cls.__name__)
@@ -249,7 +277,8 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
 # ─── Main bootstrap ──────────────────────────────────────────────────────────
 
 def bootstrap(report_path: str | None = None,
-              verbosity: int = 0, all_devices: bool = False) -> Platform:
+              verbosity: int = 0, all_devices: bool = False,
+              specs: list[dict] | None = None) -> Platform:
     """Wire up logging + paths and return a ``Platform`` rooted at
     ``dev/.trcc/``.
 
@@ -257,21 +286,25 @@ def bootstrap(report_path: str | None = None,
     drives the rest of the composition root — same shape production
     uses, just with the dev platform instance.
 
-    ``all_devices`` simulates the WHOLE variant catalog (every cooler model)
-    instead of reading ``devices.json`` — the "show me every device the app
-    supports" fleet.
+    Spec source precedence: an explicit ``specs`` list (e.g. the ``device=``
+    CLI form) wins; then ``all_devices`` (the WHOLE variant catalog); then a
+    ``--report`` file; then ``dev/devices.json``.
     """
     from trcc.adapters.infra.logging import configure_logging
 
-    # all_devices → the whole catalog; else specs from devices.json/report.
     # Specs present → simulate that fleet with scripted USB on a real host base
     # (DevMockPlatform).  No specs → drive real attached hardware (DevPlatform).
     # The mock is the tool to GUI-verify device-specific render/geometry (#136
     # portrait panels, widescreen, LED) with zero hardware; the real path stays
     # the default so the harness still works against a plugged-in cooler.
-    source = "--all catalog" if all_devices else (
-        "--report" if report_path else "devices.json")
-    specs = all_variant_specs() if all_devices else load_device_specs(report_path)
+    if specs:
+        source = "device= CLI"
+    elif all_devices:
+        source = "--all catalog"
+        specs = all_variant_specs()
+    else:
+        source = "--report" if report_path else "devices.json"
+        specs = load_device_specs(report_path)
     platform = _build_dev_platform(specs or None)
 
     configure_logging(

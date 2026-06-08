@@ -253,29 +253,41 @@ def scan_device_infos(specs: list[DeviceSpec]) -> list[DeviceInfo]:
     return out
 
 
+# Exact (pm, sub, fbl) the dev console pins for a vid:pid — bypasses the
+# geometry/spec fallback so an injected reply (incl. zero bytes) is honoured
+# verbatim.  Keyed by (vid, pid); empty/absent → normal scripted behaviour.
+ReplyOverride = dict[tuple[int, int], tuple[int, int, int]]
+
+
 def scripted_handshake_bytes(
     by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+    override: ReplyOverride | None = None,
 ) -> bytes:
     """Model-driven handshake reply for one device — every wire, one source.
 
-    Geometry resolves FAITHFULLY from the registry ``ProductInfo`` via
-    :func:`resolve_handshake_geometry`; a ``devices.json`` spec may override
-    ``pm`` / ``sub`` / ``fbl`` for a panel the model under-specifies.
+    Resolution order: a dev-console ``override`` (exact ``pm``/``sub``/``fbl``,
+    used verbatim) wins; else geometry resolves FAITHFULLY from the registry
+    ``ProductInfo`` via :func:`resolve_handshake_geometry`, with a
+    ``devices.json`` spec optionally overriding ``pm`` / ``sub`` / ``fbl`` for a
+    panel the model under-specifies.
     """
     product = find_product(vid, pid)
     if product is None:
         log.warning("mock handshake: %04x:%04x not in registry — empty reply",
                     vid, pid)
         return b""
-    spec = by_key.get((vid, pid))
-    pm, sub, fbl = resolve_handshake_geometry(product)
-    if spec is not None:
-        if spec.fbl is not None:
-            fbl = spec.fbl
-        if spec.pm:
-            pm = spec.pm
-        if spec.sub:
-            sub = spec.sub
+    if override and (vid, pid) in override:
+        pm, sub, fbl = override[(vid, pid)]
+    else:
+        spec = by_key.get((vid, pid))
+        pm, sub, fbl = resolve_handshake_geometry(product)
+        if spec is not None:
+            if spec.fbl is not None:
+                fbl = spec.fbl
+            if spec.pm:
+                pm = spec.pm
+            if spec.sub:
+                sub = spec.sub
     reply = mock_handshake(product, pm=pm, sub=sub, fbl=fbl)
     log.info(
         "mock handshake: %04x:%04x wire=%s type=%d pm=%d sub=%d fbl=%d (%d bytes)",
@@ -286,19 +298,21 @@ def scripted_handshake_bytes(
 
 def scripted_scsi_transport(
     by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+    override: ReplyOverride | None = None,
 ) -> FakeScsiTransport:
     """Fresh SCSI transport pre-loaded with the model-driven reply."""
     transport = FakeScsiTransport()
-    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid))
+    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid, override))
     return transport
 
 
 def scripted_bulk_transport(
     by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
+    override: ReplyOverride | None = None,
 ) -> FakeBulkTransport:
     """Fresh bulk transport (every non-SCSI wire: BULK/HID/LY/LED)."""
     transport = FakeBulkTransport()
-    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid))
+    transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid, override))
     return transport
 
 
@@ -318,8 +332,20 @@ class MockPlatform(FakePlatform):
         self._by_key: dict[tuple[int, int], DeviceSpec] = {
             s.key: s for s in self._specs
         }
+        self._reply_override: ReplyOverride = {}
         log.info("MockPlatform: %d spec(s) loaded, root=%s",
                  len(self._specs), root)
+
+    def set_active_reply(self, vid: int, pid: int, *,
+                         pm: int, sub: int, fbl: int) -> None:
+        """Pin the exact handshake reply a vid:pid returns on the next connect.
+
+        The dev console calls this, then re-runs ConnectDevice so the app
+        re-handshakes against the injected reply and re-presents.
+        """
+        self._reply_override[(vid, pid)] = (pm, sub, fbl)
+        log.info("MockPlatform.set_active_reply: %04x:%04x pm=%d sub=%d fbl=%d",
+                 vid, pid, pm, sub, fbl)
 
     def sensors(self) -> SensorEnumerator:
         """REAL host sensors — the mock fakes ONLY the USB handshake.
@@ -344,8 +370,8 @@ class MockPlatform(FakePlatform):
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
-        return scripted_scsi_transport(self._by_key, vid, pid)
+        return scripted_scsi_transport(self._by_key, vid, pid, self._reply_override)
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
-        return scripted_bulk_transport(self._by_key, vid, pid)
+        return scripted_bulk_transport(self._by_key, vid, pid, self._reply_override)

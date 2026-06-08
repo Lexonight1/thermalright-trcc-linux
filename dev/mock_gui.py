@@ -19,8 +19,12 @@ Usage:
     PYTHONPATH=src python3 dev/mock_gui.py --list-devices # print the catalog + exit
     PYTHONPATH=src python3 dev/mock_gui.py --decorated    # native window chrome
     PYTHONPATH=src python3 dev/mock_gui.py -v             # DEBUG level (-vv = more)
-    PYTHONPATH=src python3 dev/mock_gui.py --report r.txt # fleet from a trcc report
     PYTHONPATH=src python3 dev/mock_gui.py --list         # available resolutions
+
+  Reproduce a reported device (no hardware needed) — a trcc report records the
+  vid:pid AND the handshake reply bytes (PM + sub_byte):
+    PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt   # their exact fleet
+    PYTHONPATH=src python3 dev/mock_gui.py device=0416:5302 pm=9 sub=2 # one device by hand
 """
 from __future__ import annotations
 
@@ -78,11 +82,22 @@ def _print_help() -> None:
     print(__doc__ or "")
 
 
-def _parse_args() -> tuple[bool, int, str | None, bool]:
+def _device_spec_from_token(token: str) -> dict:
+    """``device=VID:PID`` → a one-device spec.  Reply bytes (pm/sub/fbl) are
+    filled in by the following ``pm=`` / ``sub=`` / ``fbl=`` tokens."""
+    if ':' not in token:
+        print(f"Error: device={token} — expected VID:PID, e.g. device=0416:5302")
+        sys.exit(1)
+    vid, pid = token.split(':', 1)
+    return {"vid": vid, "pid": pid, "name": f"reported device {vid}:{pid}"}
+
+
+def _parse_args() -> tuple[bool, int, str | None, bool, dict | None]:
     decorated = False
     verbosity = 0
     report_path: str | None = None
     all_devices = False
+    device_spec: dict | None = None
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -109,12 +124,25 @@ def _parse_args() -> tuple[bool, int, str | None, bool]:
                 sys.exit(1)
         elif arg == '--decorated':
             decorated = True
+        elif arg.startswith('device='):
+            device_spec = _device_spec_from_token(arg.split('=', 1)[1])
+        elif arg.startswith(('pm=', 'sub=', 'fbl=')):
+            if device_spec is None:
+                print(f"Error: {arg} needs a device first, "
+                      f"e.g. device=0416:5302 {arg}")
+                sys.exit(1)
+            key, val = arg.split('=', 1)
+            try:
+                device_spec[key] = int(val, 0)   # accepts 9 or 0x09
+            except ValueError:
+                print(f"Error: {arg} — {val!r} is not a number")
+                sys.exit(1)
         i += 1
-    return decorated, verbosity, report_path, all_devices
+    return decorated, verbosity, report_path, all_devices, device_spec
 
 
 def main() -> None:
-    decorated, verbosity, report_path, all_devices = _parse_args()
+    decorated, verbosity, report_path, all_devices, device_spec = _parse_args()
 
     # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.  This is the
     # ONLY thing the mock does differently — substitute the dev platform and
@@ -122,7 +150,8 @@ def main() -> None:
     # app never runs here).  Everything else is the REAL composition so the
     # mock exercises real code paths and surfaces real bugs.
     platform = bootstrap(report_path=report_path, verbosity=verbosity,
-                         all_devices=all_devices)
+                         all_devices=all_devices,
+                         specs=[device_spec] if device_spec else None)
 
     print(f"\nConfig:  {DEV_TRCC / 'config.json'}")
     print(f"Data:    {DEV_DATA}")
@@ -131,12 +160,26 @@ def main() -> None:
 
     # Run the SAME composition root the shipping GUI runs, with the dev seams
     # off: no single-instance lock + no IPC server (would collide with a real
-    # install), and return normally instead of os._exit.
+    # install), and return normally instead of os._exit.  on_ready mounts the
+    # developer console once the window is built (guarded to a mock fleet).
     from trcc.ui.gui import run_gui
     sys.exit(run_gui(
         cast(Any, platform), decorated=decorated,
         single_instance=False, ipc=False, force_exit=False,
+        on_ready=_mount_dev_console,
     ))
+
+
+def _mount_dev_console(window: Any) -> None:
+    """Build the dev variant panel + kick off the all-data prefetch.
+
+    Dev behaves as if EVERY device is connected: all theme/mask/web data is
+    downloaded once into dev/.trcc/data/ (bigger than the shipping app — normal
+    for a dev build), and the variant panel lets you summon any of them.
+    """
+    import dev_console
+    window._dev_console = dev_console.mount(window)
+    dev_console.ensure_all_data(window._app)
 
 
 if __name__ == '__main__':

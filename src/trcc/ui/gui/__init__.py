@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from collections.abc import Callable
 from typing import Any
 
 from .base import BasePanel, ImageLabel
@@ -64,7 +65,8 @@ def launch(verbosity: int = 0, decorated: bool = False,
 
 def run_gui(platform: Any, *, decorated: bool = False,
             start_hidden: bool = False, single_instance: bool = True,
-            ipc: bool = True, force_exit: bool = True) -> int:
+            ipc: bool = True, force_exit: bool = True,
+            on_ready: Callable[[Any], None] | None = None) -> int:
     """Run the GUI composition for a given ``platform``.  Returns exit code.
 
     The ONE shared composition root for every GUI entry point — shipping
@@ -152,6 +154,12 @@ def run_gui(platform: Any, *, decorated: bool = False,
     # iterate ``app.devices`` once for the first sidebar render.  Live
     # mutations after this come through DeviceConnected/Disconnected.
     window.replay_initial_devices()
+
+    # Optional post-build hook — a behaviour-neutral extension point (default
+    # None).  The dev mock GUI uses it to mount its developer console; shipping
+    # callers pass nothing.
+    if on_ready is not None:
+        on_ready(window)
 
     def _on_sigint(*_args: object) -> None:
         """SIGINT — quit the Qt event loop cleanly."""
