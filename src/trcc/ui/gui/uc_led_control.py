@@ -43,6 +43,7 @@ from ..presentation.led_metrics_format import (
     format_memory_labels,
     format_sensor_gauges,
 )
+from ..presentation.led_zone_model import LedZoneModel
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -291,9 +292,9 @@ class UCLedControl(QWidget):
         self._zone_count = 1
         self._style_id = 0
 
-        # Zone state
-        self._selected_zone = 0
-        self._carousel_mode = False
+        # Zone/carousel interaction state lives in a toolkit-free model;
+        # this panel mirrors model.enabled onto its buttons.
+        self._zones = LedZoneModel()
 
         # Window drag state (C# delegate cmds 241/242/243)
         self._drag_pos = None
@@ -835,11 +836,10 @@ class UCLedControl(QWidget):
         self._carousel_interval.setVisible(False)
         self._display_selection_label.setVisible(has_zones)
         self._circulate_label.setVisible(has_zones)
-        self._selected_zone = 0
-        self._carousel_mode = False
+        self._zones.configure(zone_count, self._is_select_all_style)
         self._carousel_btn.setChecked(False)
-        if zone_count > 1 and self._zone_buttons:
-            self._zone_buttons[0].setChecked(True)
+        if zone_count > 1:
+            self._sync_zone_buttons()
 
         # Show/hide device-specific info panels (mutually exclusive)
         is_lc2 = (style_id == 9)
@@ -1025,64 +1025,48 @@ class UCLedControl(QWidget):
 
     # -- Zone selection --
 
-    def _on_zone_clicked(self, zone_index: int):
-        """Handle zone button click.
+    def _sync_zone_buttons(self) -> None:
+        """Mirror the zone model's ``enabled`` flags onto the buttons.
 
-        Select all (styles 2/7): all buttons stay checked, clicks ignored.
-        Carousel ON: multi-select (toggle zone in/out of rotation).
+        Buttons fire ``clicked`` (not ``toggled``) into ``_on_zone_clicked``,
+        so ``setChecked`` here never re-enters the handler.
+        """
+        enabled = self._zones.enabled
+        for i, btn in enumerate(self._zone_buttons):
+            btn.setChecked(enabled[i] if i < len(enabled) else False)
+
+    def _on_zone_clicked(self, zone_index: int):
+        """Handle zone button click — the model owns the rule, the View mirrors.
+
+        Select all (styles 2/7): all stay enabled, clicks ignored.
+        Carousel ON: multi-select (toggle in/out, last zone protected).
         Carousel OFF: radio-select (one zone at a time).
         """
-        log.debug("_on_zone_clicked: zone_index=%s carousel=%s", zone_index, self._carousel_mode)
-        if self._is_select_all_style and self._carousel_mode:
-            # Select all: keep all buttons checked, ignore click (C# early return)
-            for btn in self._zone_buttons[:self._zone_count]:
-                btn.setChecked(True)
+        log.debug("_on_zone_clicked: zone_index=%s carousel=%s",
+                  zone_index, self._zones.carousel)
+        emit = self._zones.click_zone(zone_index)
+        self._sync_zone_buttons()
+        if emit is None:
             return
-        if self._carousel_mode:
-            # Multi-select: toggle zone in/out of rotation (C# button1-4_Click).
-            # Guard: can't disable the last remaining zone.
-            btn = self._zone_buttons[zone_index]
-            if btn.isChecked():
-                self.carousel_zone_changed.emit(zone_index, True)
-            else:
-                others = sum(1 for i in range(self._zone_count)
-                             if i != zone_index
-                             and self._zone_buttons[i].isChecked())
-                if others > 0:
-                    self.carousel_zone_changed.emit(zone_index, False)
-                else:
-                    btn.setChecked(True)  # Keep last zone enabled
-        else:
-            # Radio-select: one zone at a time
-            self._selected_zone = zone_index
-            for i, btn in enumerate(self._zone_buttons):
-                btn.setChecked(i == zone_index)
-            self.zone_selected.emit(zone_index)
+        if emit.kind == "zone_selected":
+            self.zone_selected.emit(emit.zone)
+        elif emit.kind == "carousel_zone":
+            self.carousel_zone_changed.emit(emit.zone, emit.on)
 
     def _on_sync_toggled(self, carousel: bool):
         """Handle carousel/select-all checkbox toggle (C# buttonLB_Click).
 
         Styles 2/7: "Select all" — all zone buttons checked, no interval.
         Other styles: "Circulate" — multi-select zones with timer interval.
+        The model recomputes enabled flags; the View owns interval visibility.
         """
         log.debug("_on_sync_toggled: carousel=%s", carousel)
-        self._carousel_mode = carousel
+        self._zones.toggle_carousel(carousel)
         if self._is_select_all_style:
-            # Select all: check all zone buttons, never show interval
             self._carousel_interval.setVisible(False)
-            if carousel:
-                for btn in self._zone_buttons[:self._zone_count]:
-                    btn.setChecked(True)
-            else:
-                for i, btn in enumerate(self._zone_buttons):
-                    btn.setChecked(i == self._selected_zone)
         else:
-            # Circulate: show interval input when active
-            self._carousel_interval.setVisible(
-                carousel and self._zone_count > 1)
-            if not carousel:
-                for i, btn in enumerate(self._zone_buttons):
-                    btn.setChecked(i == self._selected_zone)
+            self._carousel_interval.setVisible(carousel and self._zone_count > 1)
+        self._sync_zone_buttons()
         self.carousel_changed.emit(carousel)
 
     def _on_carousel_interval_changed(self, text: str = ""):
@@ -1137,12 +1121,8 @@ class UCLedControl(QWidget):
         self._carousel_btn.blockSignals(True)
         self._carousel_btn.setChecked(enabled)
         self._carousel_btn.blockSignals(False)
-        self._carousel_mode = enabled
-
-        # Set zone button checked states to match zone_sync_zones
-        for i, btn in enumerate(self._zone_buttons):
-            if i < len(zones):
-                btn.setChecked(zones[i])
+        self._zones.load_sync(enabled, zones)
+        self._sync_zone_buttons()
 
         # Show interval for circulate styles (not select-all)
         if not self._is_select_all_style:
@@ -1153,11 +1133,11 @@ class UCLedControl(QWidget):
 
     @property
     def selected_zone(self) -> int:
-        return self._selected_zone
+        return self._zones.selected
 
     @property
     def carousel_mode(self) -> bool:
-        return self._carousel_mode
+        return self._zones.carousel
 
     # -- LC2 clock handlers --
 
