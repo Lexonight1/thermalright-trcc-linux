@@ -32,6 +32,8 @@ from ..results import (
     FontsListResult,
     GpuDeviceResult,
     GpuEntry,
+    GpuReaderInstallResult,
+    GpuReaderStatusResult,
     GpusListResult,
     HealthReportResult,
     KeepaliveResult,
@@ -54,6 +56,7 @@ from ..results import (
 )
 from ._base import Command
 from ._helpers import (
+    _GPU_READER_INSTALL_COMMANDS,
     _UPGRADE_COMMANDS,
     _autostart_path,
     _health_entries,
@@ -619,6 +622,106 @@ class RunUpgrade(Command[UpgradeResult]):
                      if proc.returncode == 0
                      else f"Upgrade failed (exit {proc.returncode})"),
         )
+
+@dataclass(frozen=True, slots=True)
+class GetGpuReaderStatus(Command[GpuReaderStatusResult]):
+    """Report whether the NVIDIA sensor reader (pynvml) should be offered for install.
+
+    The GUI dispatches this at startup: if ``offer_install`` is True (an
+    NVIDIA GPU is present but pynvml isn't installed) it surfaces a consent
+    prompt to install it.  ``init_failed`` (reader present, ``nvmlInit``
+    failed) is the version-mismatch/reboot case — NOT installable, so not
+    offered (the doctor's WARN already guides the user to reboot/reload).
+    Pure read; safe to call headless.
+    """
+
+    def execute(self, app: App) -> GpuReaderStatusResult:
+        del app
+        from ...adapters.diagnostics.health import nvidia_gpu_present
+        from ...adapters.sensors.nvml import nvml_init_state
+        reader_available, initialized, _ = nvml_init_state()
+        present = nvidia_gpu_present()
+        offer = present and not reader_available
+        init_failed = present and reader_available and not initialized
+        log.info(
+            "GetGpuReaderStatus.execute: nvidia_present=%s reader=%s "
+            "initialized=%s offer_install=%s",
+            present, reader_available, initialized, offer,
+        )
+        return GpuReaderStatusResult(
+            ok=True,
+            nvidia_present=present,
+            reader_installed=reader_available,
+            init_failed=init_failed,
+            offer_install=offer,
+            message=(
+                "NVIDIA GPU present, reader missing — install offered"
+                if offer else
+                "NVIDIA reader present"
+                if reader_available else
+                "No NVIDIA GPU detected"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class InstallGpuReader(Command[GpuReaderInstallResult]):
+    """Install the NVIDIA NVML python reader (pynvml) via the package manager.
+
+    Mirrors :class:`RunUpgrade` — detect the PM, map to a fixed ``pkexec``
+    argv (never interpolate input), run it.  GUI-triggered after explicit
+    user consent.  pynvml was imported (and failed) at process start, so the
+    newly-installed reader only takes effect on the next launch — the message
+    says so rather than pretending it comes live.  ``dry_run=True`` returns
+    the command without executing it so UIs/tests can preview.
+    """
+    dry_run: bool = False
+
+    def execute(self, app: App) -> GpuReaderInstallResult:
+        del app
+        import subprocess
+
+        from ...adapters.diagnostics.health import detect_package_manager
+
+        log.info("InstallGpuReader.execute: dry_run=%s", self.dry_run)
+        pm = detect_package_manager()
+        if pm is None:
+            log.warning("InstallGpuReader.execute: no package manager detected")
+            return GpuReaderInstallResult(
+                ok=False, message="No supported package manager detected on this system",
+            )
+        cmd = _GPU_READER_INSTALL_COMMANDS.get(pm)
+        if cmd is None:
+            log.warning("InstallGpuReader.execute: no recipe for pm=%r", pm)
+            return GpuReaderInstallResult(
+                ok=False, package_manager=pm,
+                message=(f"No auto-install recipe for {pm!r} — install the NVML "
+                         "python bindings (pynvml / nvidia-ml-py) manually"),
+            )
+        if self.dry_run:
+            return GpuReaderInstallResult(
+                ok=True, package_manager=pm, command=list(cmd),
+                message=f"Would run: {' '.join(cmd)}",
+            )
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=600.0, check=False,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+            log.exception("InstallGpuReader.execute: subprocess failed")
+            return GpuReaderInstallResult(
+                ok=False, package_manager=pm, command=list(cmd),
+                message=f"Install subprocess failed: {type(e).__name__}: {e}",
+            )
+        ok = proc.returncode == 0
+        log.info("InstallGpuReader.execute: pm=%s exit=%d", pm, proc.returncode)
+        return GpuReaderInstallResult(
+            ok=ok, package_manager=pm, command=list(cmd), exit_code=proc.returncode,
+            message=("GPU sensor reader installed — restart trcc to enable GPU metrics"
+                     if ok else
+                     f"Install failed (exit {proc.returncode})"),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ConfigureSlideshow(Command[SlideshowResult]):

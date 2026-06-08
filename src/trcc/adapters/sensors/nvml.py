@@ -27,11 +27,38 @@ except ImportError:
 
 _init_lock = threading.Lock()
 _initialized = False
+_init_error: str | None = None
+_warned_init_failure = False
+
+# Canonical fix for an NVML version mismatch (driver updated without reboot) —
+# referenced by both the runtime warning and the doctor's GPU check.
+NVML_RELOAD_HINT = (
+    "reboot, or reload the driver module: sudo modprobe -r nvidia_uvm "
+    "nvidia_drm nvidia_modeset nvidia && sudo modprobe nvidia"
+)
+
+
+def _is_transient_nvml_error(e: Exception) -> bool:
+    """DRIVER_NOT_LOADED — the GPU may power on after startup (autostart);
+    safe to retry quietly.  Any other code won't fix itself on retry."""
+    code = getattr(e, "value", None)
+    not_loaded = getattr(pynvml, "NVML_ERROR_DRIVER_NOT_LOADED", 9)
+    return code == not_loaded
+
+
+def _nvml_fix_hint(e: Exception) -> str:
+    """Actionable one-liner for a non-transient NVML init failure."""
+    code = getattr(e, "value", None)
+    mismatch = getattr(pynvml, "NVML_ERROR_LIB_RM_VERSION_MISMATCH", 18)
+    if code == mismatch:
+        return ("kernel NVIDIA module and userspace libnvidia-ml are out of "
+                "sync (driver updated without reboot) — " + NVML_RELOAD_HINT)
+    return "Check the NVIDIA driver is installed and matches the running kernel"
 
 
 def _ensure_init() -> bool:
     """Lazy NVML init — retries until driver is loaded."""
-    global _initialized
+    global _initialized, _init_error, _warned_init_failure
     if _initialized:
         return True
     if not _AVAILABLE or pynvml is None:
@@ -42,11 +69,37 @@ def _ensure_init() -> bool:
         try:
             pynvml.nvmlInit()
             _initialized = True
+            _init_error = None
             log.info("NVML initialized — NVIDIA GPU sensors available")
             return True
         except Exception as e:
-            log.debug("NVML not ready: %s", e)
+            _init_error = str(e)
+            # DRIVER_NOT_LOADED is the normal "GPU autostart" case — stay quiet
+            # and retry.  A version mismatch (driver updated, no reboot) or any
+            # other error won't resolve on retry, so warn ONCE at WARNING with
+            # the fix — otherwise it's invisible at the default log level and
+            # the GPU silently never reports (gpu:[]).
+            if _is_transient_nvml_error(e):
+                log.debug("NVML not ready (transient): %s", e)
+            elif not _warned_init_failure:
+                _warned_init_failure = True
+                log.warning(
+                    "NVIDIA GPU present but NVML init failed: %s — %s",
+                    e, _nvml_fix_hint(e),
+                )
             return False
+
+
+def nvml_init_state() -> tuple[bool, bool, str | None]:
+    """``(reader_available, initialized, last_error)`` for the doctor check.
+
+    ``reader_available`` — pynvml importable.  ``initialized`` — ``nvmlInit``
+    has succeeded.  ``last_error`` — the most recent init failure message (or
+    ``None`` once initialized).  Triggers an idempotent init attempt so a
+    late-loaded driver is reflected.
+    """
+    _ensure_init()
+    return _AVAILABLE, _initialized, _init_error
 
 
 def discover_nvidia_gpus() -> list[GpuSource]:

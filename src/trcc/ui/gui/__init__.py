@@ -168,6 +168,14 @@ def run_gui(platform: Any, *, decorated: bool = False,
 
     if not start_hidden:
         window.show()
+        # Foolproof GPU sensors: if an NVIDIA card is present but its reader
+        # isn't installed, offer a one-click install (consented).  Guarded so
+        # an optional prompt can never block startup.
+        from .gpu_reader_prompt import maybe_offer_gpu_reader_install
+        try:
+            maybe_offer_gpu_reader_install(app, window)
+        except Exception:
+            log.exception("GPU reader install prompt failed — continuing")
 
     try:
         exit_code = qapp.exec()

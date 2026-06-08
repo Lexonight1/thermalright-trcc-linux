@@ -57,6 +57,17 @@ def test_reads_pre_cutover_filename_when_only_old_exists(
     assert dev.brightness == 25
 
 
+def test_gpu_reader_declined_flag_round_trips(tmp_path: Path) -> None:
+    """The "Not now" GPU-reader choice persists and reloads."""
+    paths = FakePaths(tmp_path)
+    s = Settings(paths)
+    assert s.app.gpu_reader_install_declined is False  # default
+    s.set_gpu_reader_install_declined(True)
+
+    reloaded = Settings(paths)
+    assert reloaded.app.gpu_reader_install_declined is True
+
+
 def test_next_save_promotes_to_trcc_json(tmp_path: Path) -> None:
     """After reading the pre-cutover file, the next mutation writes
     ``trcc.json`` (the new name) without touching the old file."""

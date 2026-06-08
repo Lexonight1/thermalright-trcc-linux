@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Literal
 
 from ...core.ports import Paths, Platform
+from ..sensors.nvml import NVML_RELOAD_HINT, nvml_init_state
 
 log = logging.getLogger(__name__)
 
@@ -175,6 +176,68 @@ def check_sensors_enumerable(platform: Platform) -> HealthCheckResult:
     )
 
 
+def nvidia_gpu_present() -> bool:
+    """Cheap probe: is a discrete NVIDIA (PCI vendor ``0x10de``) GPU present?
+
+    Reads ``/sys/bus/pci/devices/*/vendor`` — no subprocess, and works even
+    when the driver / pynvml are absent.  That's the point: detect the card
+    independently of the reader so we can advise *installing* the reader.
+    Non-Linux falls back to the driver proc node.
+    """
+    if sys.platform != "linux":
+        return Path("/proc/driver/nvidia/version").exists()
+    pci_root = Path("/sys/bus/pci/devices")
+    if not pci_root.is_dir():
+        return False
+    for dev in pci_root.iterdir():
+        try:
+            if dev.joinpath("vendor").read_text().strip().lower() != "0x10de":
+                continue
+            # PCI class 0x03xxxx == display controller (skip non-GPU NVIDIA
+            # functions like the bundled HDMI-audio device).
+            if dev.joinpath("class").read_text().strip().lower().startswith("0x03"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def check_gpu_sensors(platform: Platform) -> HealthCheckResult:
+    """NVIDIA GPU present but no metrics → guide the user to the fix.
+
+    The foolproof-install check: a discrete NVIDIA card with empty GPU
+    readings is almost always (a) the pynvml reader not installed, or (b) an
+    NVML version mismatch after a driver update without reboot.  Both are
+    actionable, so this WARNs (not FAILs) with a distro-specific hint.  No
+    NVIDIA card → OK (AMD reads via hwmon, no extra package needed).
+    """
+    log.info("check_gpu_sensors: called")
+    reader_available, initialized, last_error = nvml_init_state()
+    if initialized:
+        return HealthCheckResult(
+            name="gpu-sensors", severity="OK",
+            message="NVIDIA GPU sensors available (NVML initialized)",
+        )
+    if not nvidia_gpu_present():
+        return HealthCheckResult(
+            name="gpu-sensors", severity="OK",
+            message="No discrete NVIDIA GPU detected (NVML check not applicable)",
+        )
+    if not reader_available:
+        return HealthCheckResult(
+            name="gpu-sensors", severity="WARN",
+            message="NVIDIA GPU detected but the pynvml reader is not installed "
+                    "— GPU metrics will be empty",
+            fix_hint=package_install_hint("python3-pynvml")
+                     + " (the trcc-linux package should pull this in)",
+        )
+    return HealthCheckResult(
+        name="gpu-sensors", severity="WARN",
+        message=f"NVIDIA GPU detected but NVML init failed: {last_error}",
+        fix_hint=NVML_RELOAD_HINT,
+    )
+
+
 def check_ffmpeg_present() -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
@@ -267,6 +330,7 @@ def run_health_checks(platform: Platform) -> HealthReport:
         check_config_writable(paths),
         check_devices_visible(platform),
         check_sensors_enumerable(platform),
+        check_gpu_sensors(platform),
         check_ffmpeg_present(),
         check_qt_importable(),
         check_udev_rules_linux(),

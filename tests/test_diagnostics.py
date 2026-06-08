@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.diagnostics import health as health_mod
 from trcc.adapters.diagnostics.debug_report import build_debug_report
 from trcc.adapters.diagnostics.doctor import (
     render_doctor_output,
@@ -12,6 +13,7 @@ from trcc.adapters.diagnostics.doctor import (
 )
 from trcc.adapters.diagnostics.health import (
     HealthCheckResult,
+    check_gpu_sensors,
     check_log_writable,
     check_python_version,
     package_install_hint,
@@ -83,7 +85,7 @@ def test_run_health_checks_returns_full_report(fake_platform) -> None:
     # Sanity — every registered check shows up
     expected = {
         "python-version", "log-writable", "config-writable",
-        "devices-visible", "sensors-enumerable", "ffmpeg",
+        "devices-visible", "sensors-enumerable", "gpu-sensors", "ffmpeg",
         "pyside6", "udev-rules", "7z",
     }
     assert expected <= names
@@ -99,6 +101,48 @@ def test_health_report_aggregates_severities() -> None:
     assert HealthReport(checks=[a]).worst_severity == "OK"
     assert HealthReport(checks=[a, b]).worst_severity == "WARN"
     assert HealthReport(checks=[a, b, c]).worst_severity == "FAIL"
+
+
+def test_gpu_check_ok_when_nvml_initialized(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (True, True, None))
+    result = check_gpu_sensors(fake_platform)
+    assert result.severity == "OK"
+    assert "NVML initialized" in result.message
+
+
+def test_gpu_check_ok_when_no_nvidia_card(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (False, False, None))
+    monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: False)
+    result = check_gpu_sensors(fake_platform)
+    assert result.severity == "OK"
+    assert "No discrete NVIDIA GPU" in result.message
+
+
+def test_gpu_check_warns_when_reader_missing(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (False, False, None))
+    monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
+    result = check_gpu_sensors(fake_platform)
+    assert result.severity == "WARN"
+    assert "pynvml reader is not installed" in result.message
+    assert "python3-pynvml" in result.fix_hint
+
+
+def test_gpu_check_warns_with_reload_hint_on_init_failure(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    err = "NVMLError_LibRmVersionMismatch: RM has detected an NVML/RM version mismatch"
+    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (True, False, err))
+    monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
+    result = check_gpu_sensors(fake_platform)
+    assert result.severity == "WARN"
+    assert err in result.message
+    assert "modprobe" in result.fix_hint
 
 
 def test_package_install_hint_returns_a_string() -> None:
@@ -210,3 +254,97 @@ def test_generate_debug_report_in_memory_only(_trcc_app) -> None:
     assert result.ok is True
     assert result.output_path == ""
     assert "Platform" in result.rendered_text
+
+
+# =========================================================================
+# GPU reader install (app detects + installs)
+# =========================================================================
+
+
+def _patch_gpu_probes(
+    monkeypatch: pytest.MonkeyPatch, *, present: bool, state: tuple,
+) -> None:
+    """Patch the SOURCE modules — the Command imports these function-locally,
+    so the source attribute is what the lookup resolves at call time."""
+    monkeypatch.setattr(
+        "trcc.adapters.sensors.nvml.nvml_init_state", lambda: state,
+    )
+    monkeypatch.setattr(
+        "trcc.adapters.diagnostics.health.nvidia_gpu_present", lambda: present,
+    )
+
+
+def test_get_gpu_reader_status_offers_install_when_reader_missing(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import GetGpuReaderStatus
+
+    _patch_gpu_probes(monkeypatch, present=True, state=(False, False, None))
+    result = _trcc_app.dispatch(GetGpuReaderStatus())
+    assert result.offer_install is True
+    assert result.nvidia_present is True
+    assert result.reader_installed is False
+    assert result.init_failed is False
+
+
+def test_get_gpu_reader_status_no_offer_when_no_card(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import GetGpuReaderStatus
+
+    _patch_gpu_probes(monkeypatch, present=False, state=(False, False, None))
+    result = _trcc_app.dispatch(GetGpuReaderStatus())
+    assert result.offer_install is False
+    assert result.nvidia_present is False
+
+
+def test_get_gpu_reader_status_no_offer_on_version_mismatch(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reader present but nvmlInit failed → reboot case, not an install offer."""
+    from trcc.core.commands import GetGpuReaderStatus
+
+    _patch_gpu_probes(monkeypatch, present=True, state=(True, False, "mismatch"))
+    result = _trcc_app.dispatch(GetGpuReaderStatus())
+    assert result.offer_install is False
+    assert result.init_failed is True
+
+
+def test_install_gpu_reader_dry_run_builds_pkexec_command(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import InstallGpuReader
+
+    monkeypatch.setattr(
+        "trcc.adapters.diagnostics.health.detect_package_manager", lambda: "dnf",
+    )
+    result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
+    assert result.ok is True
+    assert result.package_manager == "dnf"
+    assert result.command == ["pkexec", "dnf", "install", "-y", "python3-pynvml"]
+
+
+def test_install_gpu_reader_no_recipe_falls_back_to_guide(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import InstallGpuReader
+
+    monkeypatch.setattr(
+        "trcc.adapters.diagnostics.health.detect_package_manager", lambda: "apk",
+    )
+    result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
+    assert result.ok is False
+    assert "manually" in result.message
+
+
+def test_install_gpu_reader_no_package_manager(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from trcc.core.commands import InstallGpuReader
+
+    monkeypatch.setattr(
+        "trcc.adapters.diagnostics.health.detect_package_manager", lambda: None,
+    )
+    result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
+    assert result.ok is False
+    assert "No supported package manager" in result.message

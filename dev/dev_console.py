@@ -70,24 +70,25 @@ class VariantPanel(QWidget):
         super().__init__(parent)
         self._window = window
         self._dicts = _variant_dicts()
+        # The variant list REPLACES the real device-button area: hide the
+        # sidebar's own device scroll so its buttons (current and any summoned
+        # later — they're its children) can't show behind the scrollable list.
+        window.uc_device.device_scroll.hide()
+        # Paint our own opaque background (a plain QWidget ignores a stylesheet
+        # background without this), so nothing shows through between buttons.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._geometry_from_sidebar()
         self._setup_ui()
         self.show()
-        self.raise_()                    # z-order: on top of uc_device's sidebar
-        # Re-raise once the window finishes laying out, so nothing covers it.
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self.raise_)
+        self.raise_()
         log.info("VariantPanel: %d variants, geometry=%s",
                  len(self._dicts), self.geometry().getRect())
 
     def _geometry_from_sidebar(self) -> None:
-        """Below the System-sensors button, above the control-centre button."""
+        """Occupy the device-button area exactly — we hid the real device
+        buttons, so the scrollable variant list sits where they used to be."""
         from trcc.ui.gui.constants import Layout
-        _sx, sy, _sw, sh = Layout.SENSOR_BTN        # (25, 100, 140, 50)
-        _ax, ay, _aw, _ah = Layout.ABOUT_BTN        # (25, 730, 140, 50)
-        top = sy + sh
-        width = Layout.SIDEBAR[2]                    # (0, 0, 180, 800) → 180
-        self.setGeometry(0, top, width, ay - top)
+        self.setGeometry(*Layout.DEVICE_AREA)        # (0, 160, 180, 560)
 
     def _setup_ui(self) -> None:
         from trcc.ui.gui.assets import Assets

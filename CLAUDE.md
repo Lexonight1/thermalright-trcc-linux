@@ -13,12 +13,21 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **Metrics unification (NEXT, has a `--` bug behind it)** — summoned LED/DIGITAL
+  coolers show `--` for live metrics because the `_MetricsView` shim in `trcc_app.py`
+  mismaps `metrics.cpu_temp`→`readings['cpu_temp']`=None (keys are `cpu:temp`). Fix:
+  give the Platform-owned `SensorEnumerator` a `snapshot()->HardwareMetrics`, publish
+  the typed object on `SensorsUpdated`, delete the shim; widen sources to plural
+  (multi-CPU/GPU/DIMM servers) + collapse policy. **A-vs-B decision pending.** See
+  `memory/project_metrics_unification.md`.
+- **GPU detect/install — BUILT this session, ALL UNCOMMITTED** (tested, 1484 suite
+  green). App installs the NVIDIA reader iff a card is found (consented pkexec).
+  Plus dev-console scroll-bleed fix (also uncommitted). Commit/push the backlog (+
+  unpushed `5e9182ed`/`c19d3e09`) — confirm with user first. See
+  `memory/project_dev_variant_console.md`.
 - **Presentation Model refactor** — increments 1–4 done; **5 (`DevicePresentationModel`
   from the 1447-line `lcd_handler`) and 6 (`WorkspaceModel` from the window) remain.**
   See `memory/project_presentation_model_refactor.md`.
-- **Dev variant console** — committed `5e9182ed` (NOT pushed); plus the foolproof
-  GPU/install follow-ups (doctor `check_gpu_sensors` + packaging gaps). See
-  `memory/project_dev_variant_console.md`.
 - **Thermalright shipped a NEW software version** — a fresh workstream: get the new
   decompile, diff vs the `v2.1.4_decompiled` reference, enumerate new devices /
   handshake / protocol / features. The dev variant console is the tool to validate

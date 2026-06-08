@@ -666,6 +666,29 @@ class UpgradeResult(Result):
     exit_code: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class GpuReaderStatusResult(Result):
+    """Whether the NVIDIA sensor reader (pynvml) should be offered for install.
+
+    ``offer_install`` is the actionable signal the GUI keys off — an NVIDIA
+    GPU is present but the reader isn't installed.  ``init_failed`` (reader
+    present, ``nvmlInit`` failed) is the version-mismatch/reboot case, which
+    is NOT installable and so not offered.
+    """
+    nvidia_present: bool = False
+    reader_installed: bool = False
+    init_failed: bool = False
+    offer_install: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GpuReaderInstallResult(Result):
+    """Outcome of installing the NVIDIA sensor reader via the package manager."""
+    package_manager: str = ""
+    command: list[str] = field(default_factory=list)
+    exit_code: int = 0
+
+
 # Slideshow + keepalive
 @dataclass(frozen=True, slots=True)
 class SlideshowResult(Result):
