@@ -21,6 +21,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
 from ...core.models import LocalThemeItem
+from ..presentation.slideshow_model import SlideshowModel
 from .assets import Assets
 from .base import BaseThemeBrowser, BaseThumbnail
 from .constants import Layout, Styles
@@ -143,9 +144,10 @@ class UCThemeLocal(BaseThemeBrowser):
     def __init__(self, parent=None):
         self.filter_mode = self.MODE_ALL
         self.theme_directory = None
-        self._slideshow = False
-        self._slideshow_interval = 3
-        self._lunbo_array = []  # Theme names in slideshow order (max 6)
+        # Slideshow interaction state lives in a toolkit-free model; this
+        # panel renders it (badges, button icon) and exposes a public API
+        # so the handler never reaches into private attrs.
+        self._slideshow_model = SlideshowModel()
         self._all_themes = []   # Full unfiltered theme list
         log.info("UCThemeLocal.__init__: filter=%s slideshow=False",
                  self.MODE_ALL)
@@ -342,9 +344,10 @@ class UCThemeLocal(BaseThemeBrowser):
 
             info = widget.item_info
             idx = info.index
+            slideshow_on = self._slideshow_model.enabled
 
             # Delete buttons: not shown in slideshow mode (Windows behavior)
-            if not self._slideshow:
+            if not slideshow_on:
                 # Windows: MODE_ALL/DEFAULT shows delete only on index >= 5
                 # MODE_USER shows delete on ALL themes
                 if self.filter_mode == self.MODE_USER or idx >= 5:
@@ -355,14 +358,10 @@ class UCThemeLocal(BaseThemeBrowser):
                 widget.set_deletable(False)
 
             # Slideshow badges
-            widget.set_slideshow_mode(self._slideshow)
-            if self._slideshow:
-                name = info.name
-                if name in self._lunbo_array:
-                    pos = self._lunbo_array.index(name) + 1
-                    widget.set_slideshow_badge(pos)
-                else:
-                    widget.set_slideshow_badge(0)  # Empty circle
+            widget.set_slideshow_mode(slideshow_on)
+            if slideshow_on:
+                widget.set_slideshow_badge(
+                    self._slideshow_model.badge_position(info.name))
             else:
                 widget.clear_slideshow_badge()
 
@@ -375,21 +374,11 @@ class UCThemeLocal(BaseThemeBrowser):
     def _on_slideshow_toggled(self, item_info: LocalThemeItem):
         """Toggle theme in/out of slideshow array (Windows lunBoArray)."""
         name = item_info.name
-        was_in = name in self._lunbo_array
-        if was_in:
-            self._lunbo_array.remove(name)
-        elif len(self._lunbo_array) < self.MAX_SLIDESHOW:
-            self._lunbo_array.append(name)
-        else:
-            log.warning(
-                "UCThemeLocal._on_slideshow_toggled: array full (max=%d) — "
-                "%r not added", self.MAX_SLIDESHOW, name,
-            )
+        now_in = self._slideshow_model.toggle_theme(name)
         log.info(
-            "UCThemeLocal._on_slideshow_toggled: %r (was_in=%s) — array=%s",
-            name, was_in, self._lunbo_array,
+            "UCThemeLocal._on_slideshow_toggled: %r (now_in=%s) — array=%s",
+            name, now_in, self._slideshow_model.themes,
         )
-
         self._apply_decorations()
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
@@ -400,47 +389,55 @@ class UCThemeLocal(BaseThemeBrowser):
         super()._on_item_clicked(item_info)
         self.invoke_delegate(self.CMD_THEME_SELECTED, item_info)
 
-    def _on_slideshow_clicked(self):
-        """Toggle slideshow mode (Windows: buttonLunbo_Click)."""
-        old = self._slideshow
-        self._slideshow = not self._slideshow
-        log.info("UCThemeLocal._on_slideshow_clicked: %s -> %s",
-                 old, self._slideshow)
-        px = self._lunbo_on if self._slideshow else self._lunbo_off
+    def _update_slideshow_button_icon(self) -> None:
+        """Swap the slideshow button pixmap to match the model's enabled flag."""
+        px = self._lunbo_on if self._slideshow_model.enabled else self._lunbo_off
         if not px.isNull():
             self.slideshow_btn.setIcon(QIcon(px))
             self.slideshow_btn.setIconSize(self.slideshow_btn.size())
+
+    def _on_slideshow_clicked(self):
+        """Toggle slideshow mode (Windows: buttonLunbo_Click)."""
+        enabled = self._slideshow_model.toggle_enabled()
+        log.info("UCThemeLocal._on_slideshow_clicked: -> %s", enabled)
+        self._update_slideshow_button_icon()
         self._apply_decorations()
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
     def _on_timer_changed(self):
         """Validate and apply slideshow interval (Windows: min 3 seconds)."""
-        text = self.timer_input.text().strip()
-        try:
-            val = int(text)
-        except ValueError:
-            log.warning(
-                "UCThemeLocal._on_timer_changed: %r not int — defaulting to 3",
-                text,
-            )
-            val = 3
-        val = max(3, val)
+        val = self._slideshow_model.set_interval(self.timer_input.text().strip())
         self.timer_input.setText(str(val))
-        log.info("UCThemeLocal._on_timer_changed: %s -> %ss",
-                 self._slideshow_interval, val)
-        self._slideshow_interval = val
+        log.info("UCThemeLocal._on_timer_changed: -> %ss", val)
         self.invoke_delegate(self.CMD_SLIDESHOW)
 
+    def set_slideshow_state(self, themes: list[str], enabled: bool,
+                            interval: int) -> None:
+        """Restore slideshow UI from persisted state.
+
+        Public entry the handler calls instead of reaching into private
+        attrs (``local._lunbo_array = …`` etc.).  Caller supplies an
+        already-validated interval.
+        """
+        log.info(
+            "UCThemeLocal.set_slideshow_state: themes=%d enabled=%s interval=%s",
+            len(themes), enabled, interval,
+        )
+        self._slideshow_model.restore(themes, enabled, interval)
+        self.timer_input.setText(str(interval))
+        self._update_slideshow_button_icon()
+        self._apply_decorations()
+
     def is_slideshow(self):
-        return self._slideshow
+        return self._slideshow_model.enabled
 
     def get_slideshow_interval(self):
-        return self._slideshow_interval
+        return self._slideshow_model.interval
 
     def get_slideshow_themes(self) -> list[LocalThemeItem]:
         """Get list of theme items in slideshow order."""
         result = []
-        for name in self._lunbo_array:
+        for name in self._slideshow_model.themes:
             for t in self._all_themes:
                 if t.name == name:
                     result.append(t)
@@ -464,8 +461,6 @@ class UCThemeLocal(BaseThemeBrowser):
             )
 
         # Remove from slideshow if present
-        name = theme_info.name
-        if name in self._lunbo_array:
-            self._lunbo_array.remove(name)
+        self._slideshow_model.remove_theme(theme_info.name)
 
         self.load_themes()

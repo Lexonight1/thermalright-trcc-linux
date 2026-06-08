@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, QTimer, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QPixmap
 
 from ...core.commands import (
     ApplyMask,
@@ -369,21 +369,15 @@ class LCDHandler(BaseHandler):
         local = self._w['theme_local']
         if ds.slideshow_themes or ds.slideshow_enabled:
             interval = max(1, int(ds.slideshow_interval_s))
-            local._lunbo_array = list(ds.slideshow_themes)
-            local._slideshow = ds.slideshow_enabled
-            local._slideshow_interval = interval
-            local.timer_input.setText(str(interval))
-            px = local._lunbo_on if ds.slideshow_enabled else local._lunbo_off
-            if not px.isNull():
-                local.slideshow_btn.setIcon(QIcon(px))
-                local.slideshow_btn.setIconSize(local.slideshow_btn.size())
-            local._apply_decorations()
+            # Public API on the panel (backed by its SlideshowModel) — no
+            # reaching into private attrs.
+            local.set_slideshow_state(
+                list(ds.slideshow_themes), ds.slideshow_enabled, interval,
+            )
             self._update_slideshow_state()
         else:
             self._slideshow_timer.stop()
-            local._lunbo_array = []
-            local._slideshow = False
-            local._apply_decorations()
+            local.set_slideshow_state([], False, local.get_slideshow_interval())
 
     def _restore_theme_and_preview(self, *, first_load: bool = False) -> None:
         """Show the device's theme + overlay in the GUI.
