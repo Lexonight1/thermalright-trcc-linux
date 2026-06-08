@@ -33,6 +33,7 @@ from ...core.models import (
     SensorBinding,
 )
 from ...core.ports import SensorEnumerator
+from ..presentation.sensor_display import format_sensor_value
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Layout
@@ -212,7 +213,7 @@ class SystemInfoPanel(QWidget):
                 self._value_labels[i].setText('--')
                 rendered.append(f"{binding.label}={binding.sensor_id}=<missing>")
             else:
-                txt = self._format_value(value, binding.unit)
+                txt = format_sensor_value(value, binding.unit, self._temp_unit)
                 self._value_labels[i].setText(txt)
                 rendered.append(f"{binding.label}={binding.sensor_id}={txt}")
         # First populate per panel logs INFO so we can see which
@@ -262,32 +263,6 @@ class SystemInfoPanel(QWidget):
     def mousePressEvent(self, event):
         log.debug("SystemInfoPanel.mousePressEvent: panel=%r", self.config.name)
         self.clicked.emit(self)
-
-    def _format_value(self, value: float, unit: str) -> str:
-        """Format a sensor value with its unit.
-
-        The ``value`` is already in the user-selected temp unit
-        (°C or °F) because the metrics broadcast / ReadSensors path
-        applies the conversion through
-        ``services.metrics_personalize.personalize_readings`` before
-        consumers see it.  This renderer only adjusts the unit SYMBOL
-        when the binding's hardcoded ``°C`` should display as ``°F``.
-        """
-        if unit == '°C':
-            # Value is already °F if temp_unit=1 (broadcast did the
-            # conversion).  Swap the suffix without re-converting.
-            symbol = '°F' if self._temp_unit == 1 else '°C'
-            return f"{value:.0f}{symbol}"
-        elif unit in ('%', 'RPM', 'W'):
-            return f"{value:.0f}{unit}"
-        elif unit == 'V':
-            return f"{value:.2f}V"
-        elif unit in ('MHz',):
-            return f"{value:.0f}MHz"
-        elif unit in ('MB', 'MB/s', 'KB/s'):
-            return f"{value:.1f}{unit}"
-        else:
-            return f"{value:.1f}"
 
 
 class UCSystemInfo(QWidget):

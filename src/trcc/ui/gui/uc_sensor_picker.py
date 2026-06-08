@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from ...core.models import SensorInfo
 from ...core.ports import SensorEnumerator
+from ..presentation.sensor_display import format_sensor_value, group_sensors
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Styles
@@ -116,19 +117,7 @@ class SensorRow(QWidget):
         if value is None:
             self._value.setText('--')
         else:
-            unit = self.sensor.unit
-            if unit == '°C':
-                self._value.setText(f"{value:.0f}°C")
-            elif unit in ('%', 'RPM', 'W'):
-                self._value.setText(f"{value:.0f}{unit}")
-            elif unit == 'V':
-                self._value.setText(f"{value:.2f}V")
-            elif unit in ('MHz',):
-                self._value.setText(f"{value:.0f}MHz")
-            elif unit in ('MB', 'MB/s', 'KB/s'):
-                self._value.setText(f"{value:.1f}{unit}")
-            else:
-                self._value.setText(f"{value:.1f}")
+            self._value.setText(format_sensor_value(value, self.sensor.unit))
 
     def mousePressEvent(self, event):
         log.info("SensorRow.mousePressEvent: sensor=%s", self.sensor.id)
@@ -209,56 +198,15 @@ class SensorPickerDialog(QDialog):
     def _populate_sensors(self):
         """Create rows for all discovered sensors, grouped by source.
 
-        next/'s ``SensorEnumerator.discover()`` returns
-        :class:`SensorReading` (no ``source`` field — that concept lives
-        in the legacy SensorInfo).  Build SensorInfo objects on the fly
-        with a best-effort source inferred from the sensor_id prefix.
+        Adaptation + grouping + ordering live in the Qt-free
+        :func:`group_sensors`; this just renders the headers + rows.
         """
         sensors = self._enumerator.discover()
         log.info("SensorPickerDialog._populate_sensors: discovered %d sensors",
                  len(sensors))
 
-        # Adapt SensorReading → SensorInfo (legacy shape).  Source is
-        # inferred from the sensor_id prefix when present, e.g.
-        # "hwmon:coretemp:temp1" → "hwmon".
-        sensor_infos: list[SensorInfo] = []
-        for r in sensors:
-            source = r.sensor_id.split(':', 1)[0] if ':' in r.sensor_id else 'system'
-            sensor_infos.append(SensorInfo(
-                id=r.sensor_id,
-                name=r.label or r.sensor_id,
-                category=r.category,
-                unit=r.unit,
-                source=source,
-            ))
-
-        # Group by source
-        groups: dict[str, list[SensorInfo]] = {}
-        for s in sensor_infos:
-            groups.setdefault(s.source, []).append(s)
-
-        # The new sensor-id prefix IS the hardware category
-        # (cpu/gpu/fan/memory/disk/net/…); legacy keyed on the source
-        # (hwmon/nvidia/…), so its fixed list never matched here and the
-        # picker rendered blank.  Render EVERY discovered hardware group —
-        # known order first, then any others — so nothing is dropped.
-        # Clock sources (time/date) aren't hardware sensors and weren't in
-        # legacy's picker, so they're skipped.
-        source_labels = {
-            'cpu': 'CPU', 'gpu': 'GPU', 'fan': 'Fans', 'memory': 'Memory',
-            'mem': 'Memory', 'disk': 'Disk', 'net': 'Network',
-        }
-        _clock = {'time', 'date'}
-        _order = ('cpu', 'gpu', 'fan', 'memory', 'mem', 'disk', 'net')
-        ordered = [s for s in _order if s in groups]
-        ordered += [s for s in sorted(groups)
-                    if s not in _order and s not in _clock]
-
-        for source in ordered:
-            group = groups[source]
-
-            # Section header
-            header = QLabel(source_labels.get(source, source.upper()))
+        for header_label, group in group_sensors(sensors):
+            header = QLabel(header_label)
             header.setFixedHeight(24)
             header.setStyleSheet(
                 "color: #B4964F; font-size: 11px; font-weight: bold; "
