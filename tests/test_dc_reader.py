@@ -13,7 +13,7 @@ import pytest
 
 from trcc.core.errors import ThemeError
 from trcc.services import _dc as Dc
-from trcc.ui.gui._overlay_grid_adapter import dc_as_legacy_overlay_config
+from trcc.ui.presentation.overlay_serialization import dc_as_legacy_overlay_config
 
 
 def load_dc_as_theme_config(path):

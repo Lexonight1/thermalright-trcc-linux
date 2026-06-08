@@ -40,7 +40,7 @@ from ...core.commands import (
     StopVideo,
     UploadCustomMask,
 )
-from ._overlay_grid_adapter import dc_as_legacy_overlay_config
+from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:

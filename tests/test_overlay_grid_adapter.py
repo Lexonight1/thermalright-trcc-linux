@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from trcc.core.models import OverlayElement, OverlayElementConfig, OverlayMode
 from trcc.services import _dc as Dc
-from trcc.ui.gui._overlay_grid_adapter import configs_to_next_elements
+from trcc.ui.presentation.overlay_serialization import configs_to_next_elements
 
 
 def test_hardware_metric_accessors_round_trip() -> None:

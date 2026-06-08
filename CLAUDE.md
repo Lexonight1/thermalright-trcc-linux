@@ -451,7 +451,16 @@ on the next bug.
 ### Testing
 - **Tests prove code correctness, not that the app works.** After any refactor, run the real app (`PYTHONPATH=src python -m trcc gui`) and `dev/mock_gui.py`. Check `~/.trcc/trcc.log` and `dev/.trcc/trcc.log` for errors. A green test suite means nothing if the device can't handshake.
 - `pytest` with `PYTHONPATH=src`; run: `PYTHONPATH=src pytest tests/ -n 8 -x -q`
-- Tests mirror `src/trcc/` hexagonal layers (`tests/{core,services,adapters/{device,infra,system},cli,api,gui}/`)
+- **We ship BOTH `pytest` and `pytest-qt` — use them.** Default to **pure
+  `pytest`, no Qt**: Presentation Models (`ui/presentation/`), services, core,
+  and any toolkit-free interaction logic must be tested without constructing a
+  `QApplication` — that's the whole point of extracting them. Reach for
+  **`pytest-qt` (`qtbot`)** ONLY at the thin View↔PM binding seam — where you
+  must wait on a real Qt signal (`qtbot.waitSignal`) or simulate input
+  (`qtbot.mouseClick`). Don't hand-roll a bare `QApplication` fixture to fake
+  what `qtbot` already gives you. `pytest-qt` is a declared test dependency in
+  `pyproject.toml`; keep it declared (never rely on an ambient install).
+- Tests mirror `src/trcc/` hexagonal layers (`tests/{core,services,adapters/{device,infra,system},cli,api,gui,ui/presentation}/`)
 - Refactoring changes mock targets → use `conftest.py` fixtures/helpers, not 50+ inline updates
 - Model-parametrized tests: `FBL_PROFILES`, `LED_STYLES`, `ALL_DEVICES` are single source of truth — `@pytest.mark.parametrize` over them. Never hardcode domain values in tests.
 - `ruff check .` + `pyright` must pass before any commit (0 errors, 0 warnings)

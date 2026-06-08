@@ -11,12 +11,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QPushButton
 
-from ...core.models import (
-    HARDWARE_METRICS,
-    OverlayElementConfig,
-    OverlayMode,
+from ...core.models import OverlayElementConfig
+from ..presentation.overlay_model import OverlayModel
+from ..presentation.overlay_serialization import (
+    configs_to_next_elements,
+    configs_to_overlay_config,
+    overlay_config_to_configs,
 )
-from ...services import _dc as Dc
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
@@ -48,9 +49,9 @@ class OverlayGridPanel(QFrame):
             Sizes.OVERLAY_GRID_W, Sizes.OVERLAY_GRID_H,
             fallback_style=f"background-color: {Colors.BASE_BG}; border-radius: 5px;")
 
-        self._configs: list[OverlayElementConfig] = []
-        self._selected_index = -1
-        self._overlay_enabled = True
+        # Interaction state lives in the toolkit-free Presentation Model;
+        # this panel is a thin View that delegates + renders + emits signals.
+        self._model = OverlayModel()
         self._cells = []           # OverlayElementWidget instances (always 42)
 
         self._setup_toggle()
@@ -85,8 +86,8 @@ class OverlayGridPanel(QFrame):
         self._toggle_btn.clicked.connect(self._on_toggle)
 
     def _on_toggle(self, checked):
-        log.debug("_on_toggle: overlay_enabled=%s→%s", self._overlay_enabled, checked)
-        self._overlay_enabled = checked
+        log.debug("_on_toggle: overlay_enabled=%s→%s", self._model.enabled, checked)
+        self._model.set_enabled(checked)
         self.toggle_changed.emit(checked)
         self.elements_changed.emit()
 
@@ -105,86 +106,72 @@ class OverlayGridPanel(QFrame):
                 self._cells.append(cell)
 
     def _refresh_cells(self):
-        """Sync cell widgets with _configs list."""
+        """Sync cell widgets with the model's element list."""
         log.debug("_refresh_cells")
+        configs = self._model.all_configs()
+        selected = self._model.selected_index
         for i, cell in enumerate(self._cells):
-            if i < len(self._configs):
-                cell.config = self._configs[i]
-            else:
-                cell.config = None
-            cell.set_selected(i == self._selected_index)
+            cell.config = configs[i] if i < len(configs) else None
+            cell.set_selected(i == selected)
             cell.update()
 
     def _on_cell_clicked(self, index):
-        log.debug("_on_cell_clicked: index=%s (configs=%s)", index, len(self._configs))
+        count = len(self._model)
+        log.debug("_on_cell_clicked: index=%s (configs=%s)", index, count)
         # Deselect previous
-        if 0 <= self._selected_index < len(self._cells):
-            self._cells[self._selected_index].set_selected(False)
+        previous = self._model.selected_index
+        if 0 <= previous < len(self._cells):
+            self._cells[previous].set_selected(False)
 
-        if index < len(self._configs):
+        if index < count:
             # Clicked an existing element — select it
-            self._selected_index = index
+            config = self._model.select(index)
             self._cells[index].set_selected(True)
-            self.element_selected.emit(index, self._configs[index])
-        elif index == len(self._configs) and len(self._configs) < self.MAX_ELEMENTS:
+            self.element_selected.emit(index, config)
+        elif index == count and count < self.MAX_ELEMENTS:
             # Clicked the "+" slot — request add
-            self._selected_index = -1
+            self._model.clear_selection()
             self.add_requested.emit()
         else:
-            self._selected_index = -1
+            self._model.clear_selection()
 
     def _on_cell_double_clicked(self, index):
         log.debug("_on_cell_double_clicked: index=%s", index)
-        if index < len(self._configs):
+        if index < len(self._model):
             self.delete_element(index)
 
     def select_element(self, index: int) -> None:
         """Programmatically select an element by index."""
-        if index < 0 or index >= len(self._configs):
+        if index < 0 or index >= len(self._model):
             return
         self._on_cell_clicked(index)
 
     def find_nearest_element(self, x: int, y: int) -> int:
         """Find index of element nearest to (x, y). Returns -1 if none."""
-        if not self._configs:
-            return -1
-        best_idx = -1
-        best_dist = float('inf')
-        for i, cfg in enumerate(self._configs):
-            d = (cfg.x - x) ** 2 + (cfg.y - y) ** 2
-            if d < best_dist:
-                best_dist = d
-                best_idx = i
-        return best_idx
+        return self._model.find_nearest(x, y)
 
     # --- Public API ---
 
     @property
     def overlay_enabled(self):
-        return self._overlay_enabled
+        return self._model.enabled
 
     def set_overlay_enabled(self, enabled: bool):
         """Programmatically set overlay enabled state (no signal emitted)."""
-        self._overlay_enabled = enabled
+        self._model.set_enabled(enabled)
         self._toggle_btn.blockSignals(True)
         self._toggle_btn.setChecked(enabled)
         self._toggle_btn.blockSignals(False)
 
     def add_element(self, config):
         """Add an element to the grid."""
-        if len(self._configs) >= self.MAX_ELEMENTS:
-            return
-        self._configs.append(config)
-        self._selected_index = len(self._configs) - 1
-        self._refresh_cells()
-        self.elements_changed.emit()
+        if self._model.add(config):
+            self._refresh_cells()
+            self.elements_changed.emit()
 
     def delete_element(self, index):
         """Delete element at index."""
-        if 0 <= index < len(self._configs):
-            self._configs.pop(index)
-            if self._selected_index >= len(self._configs):
-                self._selected_index = len(self._configs) - 1
+        if self._model.delete(index):
             self._refresh_cells()
             self.element_deleted.emit(index)
             self.elements_changed.emit()
@@ -192,81 +179,32 @@ class OverlayGridPanel(QFrame):
     def update_element(self, index, config):
         """Update config for element at index."""
         log.debug("update_element: index=%s", index)
-        if 0 <= index < len(self._configs):
-            self._configs[index] = config
+        if self._model.update(index, config):
             self._cells[index].set_config(config)
             self._cells[index].update()
 
     def get_selected_index(self):
-        return self._selected_index
+        return self._model.selected_index
 
     def get_selected_config(self):
-        if 0 <= self._selected_index < len(self._configs):
-            return self._configs[self._selected_index]
-        return None
+        return self._model.selected_config
 
     def get_all_configs(self) -> list[OverlayElementConfig]:
         """Get all element configs."""
-        return list(self._configs)
+        return self._model.all_configs()
 
     def load_configs(self, configs: list[OverlayElementConfig]):
         """Load element configs from list."""
-        from dataclasses import replace
-        self._configs = [replace(c) for c in configs[:self.MAX_ELEMENTS]]
-        self._selected_index = -1
+        self._model.load(configs)
         self._refresh_cells()
 
     def clear_all(self):
-        self._configs.clear()
-        self._selected_index = -1
+        self._model.clear()
         self._refresh_cells()
 
     def to_overlay_config(self):
         """Convert to OverlayRenderer config format."""
-        if not self._overlay_enabled:
-            return {}
-
-        overlay_config = {}
-
-        for i, cfg in enumerate(self._configs):
-            entry = {
-                'x': cfg.x,
-                'y': cfg.y,
-                'color': cfg.color,
-                'font': {
-                    'size': cfg.font_size,
-                    'style': 'bold' if cfg.font_style == 1 else 'regular',
-                    'name': cfg.font_name,
-                },
-                'enabled': True,
-            }
-
-            if cfg.mode == OverlayMode.TIME:
-                entry['metric'] = 'time'
-                entry['time_format'] = cfg.mode_sub
-                key = f'time_{i}'
-            elif cfg.mode == OverlayMode.DATE:
-                entry['metric'] = 'date'
-                entry['date_format'] = cfg.mode_sub
-                key = f'date_{i}'
-            elif cfg.mode == OverlayMode.WEEKDAY:
-                entry['metric'] = 'weekday'
-                key = f'weekday_{i}'
-            elif cfg.mode == OverlayMode.CUSTOM:
-                entry['text'] = cfg.text
-                key = f'custom_{i}'
-            elif cfg.mode == OverlayMode.HARDWARE:
-                entry['metric'] = HARDWARE_METRICS.get(
-                    (cfg.main_count, cfg.sub_count),
-                    f'hw_{cfg.main_count}_{cfg.sub_count}')
-                entry['temp_unit'] = cfg.mode_sub
-                key = f'hw_{cfg.main_count}_{cfg.sub_count}_{i}'
-            else:
-                continue
-
-            overlay_config[key] = entry
-
-        return overlay_config
+        return configs_to_overlay_config(self._model.all_configs(), self._model.enabled)
 
     def to_next_elements(self) -> list[dict]:
         """Grid → next/ ``OverlayElement`` dicts for the Command bus.
@@ -275,55 +213,10 @@ class OverlayGridPanel(QFrame):
         is what edits dispatch; ``to_overlay_config`` (legacy keyed shape)
         stays for any local-state consumers.
         """
-        from ._overlay_grid_adapter import configs_to_next_elements
-        if not self._overlay_enabled:
+        if not self._model.enabled:
             return []
-        return configs_to_next_elements(self._configs)
+        return configs_to_next_elements(self._model.all_configs())
 
     def load_from_overlay_config(self, overlay_config):
         """Load from OverlayRenderer config format."""
-        configs: list[OverlayElementConfig] = []
-        for _key, cfg in overlay_config.items():
-            if not isinstance(cfg, dict) or not cfg.get('enabled', True):
-                continue
-
-            font = cfg.get('font', {})
-            font_size = font.get('size', 36) if isinstance(font, dict) else 36
-            font_style = (1 if font.get('style') == 'bold' else 0) if isinstance(font, dict) else 0
-            font_name = font.get('name', 'Microsoft YaHei') if isinstance(font, dict) else 'Microsoft YaHei'
-
-            elem = OverlayElementConfig(
-                x=cfg.get('x', 100),
-                y=cfg.get('y', 100),
-                color=cfg.get('color', '#FFFFFF'),
-                font_size=font_size,
-                font_style=font_style,
-                font_name=font_name,
-            )
-
-            metric = cfg.get('metric', '')
-            if metric == 'time':
-                elem.mode = OverlayMode.TIME
-                elem.mode_sub = cfg.get('time_format', 0)
-            elif metric == 'date':
-                elem.mode = OverlayMode.DATE
-                elem.mode_sub = cfg.get('date_format', 0)
-            elif metric == 'weekday':
-                elem.mode = OverlayMode.WEEKDAY
-            elif 'text' in cfg:
-                elem.mode = OverlayMode.CUSTOM
-                elem.text = cfg['text']
-            elif (hw := Dc.metric_to_hardware(metric)) is not None:
-                # next/ metric ids ("cpu:temp"), not legacy names — without
-                # this lookup every metric element was dropped from the grid,
-                # so metrics couldn't be selected or dragged.
-                elem.main_count, elem.sub_count = hw
-                elem.mode = OverlayMode.HARDWARE
-                elem.mode_sub = cfg.get('temp_unit', 0)
-            else:
-                log.warning("load_from_overlay_config: unmapped metric %r — "
-                            "skipping element", metric)
-                continue
-            configs.append(elem)
-
-        self.load_configs(configs)
+        self.load_configs(overlay_config_to_configs(overlay_config))
