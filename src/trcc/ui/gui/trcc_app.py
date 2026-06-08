@@ -1029,8 +1029,10 @@ class TRCCApp(QMainWindow):
         self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
         self.uc_system_info.setVisible(False)
 
-        # LED panel — Platform port supplies the memory/disk probes
-        self.uc_led_control = UCLedControl(central)
+        # LED panel — Platform port supplies the memory/disk probes.
+        # Language is injected (composition root) so the panel never reaches
+        # into _boot for global settings.
+        self.uc_led_control = UCLedControl(central, self._app.settings.app.language)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
         self.uc_led_control.set_hardware_fns(
@@ -2323,7 +2325,7 @@ class TRCCApp(QMainWindow):
         # LED-panel localized background.
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
-        self.uc_led_control.apply_localized_background()
+        self.uc_led_control.set_language(lang)
 
     def _on_help_clicked(self) -> None:
         log.info("_on_help_clicked")

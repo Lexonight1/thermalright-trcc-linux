@@ -272,9 +272,14 @@ class UCLedControl(QWidget):
     # above the UCScreenLED preview (Y=128) and mode buttons (Y=227).
     _DRAG_MAX_Y = 200
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language: str = "en"):
         super().__init__(parent)
         self.setFixedSize(PANEL_WIDTH, PANEL_HEIGHT)
+
+        # Current app language — injected by the window (the composition root)
+        # so the panel never reaches into _boot for global settings.  Kept
+        # current via set_language() on every language change.
+        self._language = language
 
         self._current_mode = 0
         self._zone_count = 1
@@ -330,8 +335,7 @@ class UCLedControl(QWidget):
         self._title.setVisible(False)
 
         # -- Mode buttons (text rendered via i18n, not baked into PNG) --
-        from ..._boot import trcc_next as _trcc
-        lang = _trcc().settings.app.language
+        lang = self._language
         self._mode_buttons: list[QPushButton] = []
         for i, label_key in enumerate(MODE_LABELS):
             label = tr(label_key, lang)
@@ -803,8 +807,7 @@ class UCLedControl(QWidget):
             self._preview.set_overlay(QPixmap(preview_pixmap))
 
         # Set panel background (localized with fallback)
-        from ..._boot import trcc_next as _trcc
-        bg_name = Assets.get_localized(style.background_base, _trcc().settings.app.language)
+        bg_name = Assets.get_localized(style.background_base, self._language)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
 
@@ -858,9 +861,15 @@ class UCLedControl(QWidget):
         """Update status text."""
         self._status.setText(text)
 
+    def set_language(self, lang: str) -> None:
+        """Update the current language (injected by the window) and re-apply
+        localized background + text.  Replaces the old _boot reach-in."""
+        log.debug("set_language: %s", lang)
+        self._language = lang
+        self.apply_localized_background()
+
     def apply_localized_background(self) -> None:
         """Re-apply localized background and text labels for current lang."""
-        from ..._boot import trcc_next as _trcc
         from ...core.led_models import LED_STYLES, STYLE_BY_LEGACY_ID
         if self._style_id not in STYLE_BY_LEGACY_ID:
             # No LED device bound yet — _style_id is the init sentinel 0.
@@ -871,7 +880,7 @@ class UCLedControl(QWidget):
                 self._style_id,
             )
             return
-        lang = _trcc().settings.app.language
+        lang = self._language
         style = LED_STYLES[STYLE_BY_LEGACY_ID[self._style_id]]
         bg_name = Assets.get_localized(style.background_base, lang)
         if Assets.get(bg_name):
