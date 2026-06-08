@@ -12,6 +12,20 @@ Start every session by recovering that state from the files on disk, not from
 the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
+**Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **Presentation Model refactor** — increments 1–4 done; **5 (`DevicePresentationModel`
+  from the 1447-line `lcd_handler`) and 6 (`WorkspaceModel` from the window) remain.**
+  See `memory/project_presentation_model_refactor.md`.
+- **Dev variant console** — committed `5e9182ed` (NOT pushed); plus the foolproof
+  GPU/install follow-ups (doctor `check_gpu_sensors` + packaging gaps). See
+  `memory/project_dev_variant_console.md`.
+- **Thermalright shipped a NEW software version** — a fresh workstream: get the new
+  decompile, diff vs the `v2.1.4_decompiled` reference, enumerate new devices /
+  handshake / protocol / features. The dev variant console is the tool to validate
+  any new devices from it (inject their handshake reply, eyeball the presentation).
+  The C# decompile path in this doc (`v2.1.4`) is now potentially stale — confirm
+  the newest decompile before treating it as the protocol source of truth.
+
 ## No progress theater (read this first, every session)
 
 The user's time is the constraint. Sounding productive is not being productive. For months on the `next/` rebuild, sessions ended with "Phase X complete" summaries that papered over what wasn't done. The user formed a picture of a near-done rebuild from those summaries. An audit later showed ~45% Command coverage, ~5% GUI, no cloud themes, no i18n, no DC writer, no screencast, no diagnostics — none of it flagged. That was lying by omission.
