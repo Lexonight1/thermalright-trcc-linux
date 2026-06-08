@@ -878,8 +878,12 @@ class LCDHandler(BaseHandler):
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 
-    def on_overlay_changed(self, element_data: dict) -> None:
-        """Forward overlay config change from settings panel."""
+    def on_overlay_changed(self, element_data: dict | list) -> None:
+        """Forward overlay config change from settings panel.
+
+        Accepts the next/ element LIST (the grid's current dispatch shape) or
+        the legacy keyed dict; the body normalizes both below.
+        """
         self.log.info("on_overlay_changed: %d elements",
                       len(element_data) if element_data else 0)
         if not element_data:
