@@ -1235,10 +1235,13 @@ class UCLedControl(QWidget):
 
     def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
         """Update UCInfoImage sensor gauges."""
-        log.debug("update_sensor_metrics")
-        for key, (value, text, unit) in format_sensor_gauges(
-            metrics, self._temp_unit,
-        ).items():
+        gauges = format_sensor_gauges(metrics, self._temp_unit)
+        # Per-tick → DEBUG, but log the RESOLVED values actually pushed to the
+        # gauges (not just intent) so "M1-M6 show --" is traceable to either a
+        # dead metrics object or a dead widget. (CLAUDE.md: log resolved values.)
+        log.debug("update_sensor_metrics: %s",
+                  {k: t for k, (_v, t, _u) in gauges.items()})
+        for key, (value, text, unit) in gauges.items():
             self._info_images[key].set_value(value, text, unit)
 
     def update_memory_metrics(self, metrics: HardwareMetrics) -> None:
