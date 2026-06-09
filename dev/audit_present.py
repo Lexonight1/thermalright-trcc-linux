@@ -198,9 +198,28 @@ def _run_audit(window: Any) -> None:
         qapp.quit()
 
 
+def _catalog_specs() -> list[dict]:
+    """One spec per distinct catalog vid:pid — forces a ``DevMockPlatform``
+    (which has ``set_active_reply``) regardless of whether a local, gitignored
+    ``dev/devices.json`` exists, so the audit is self-contained under CI.  The
+    dev rule keeps ``scan_devices() == []``, so this auto-connects nothing —
+    each variant is summoned explicitly via its own reply."""
+    from _mock_bootstrap import device_catalog
+
+    seen: set[tuple[int, int]] = set()
+    specs: list[dict] = []
+    for vids, *_rest in device_catalog():
+        vid, pid = vids[0]
+        if (vid, pid) not in seen:
+            seen.add((vid, pid))
+            specs.append({"vid": f"{vid:04x}", "pid": f"{pid:04x}"})
+    return specs
+
+
 def main() -> None:
     verbosity = sys.argv.count("-v")
-    platform = bootstrap(verbosity=verbosity, all_devices=False, specs=None)
+    platform = bootstrap(verbosity=verbosity, all_devices=False,
+                         specs=_catalog_specs())
 
     from trcc.ui.gui import run_gui
     run_gui(cast(Any, platform), decorated=False, single_instance=False,
