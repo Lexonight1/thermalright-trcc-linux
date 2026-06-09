@@ -75,7 +75,7 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
           48: _v('A1LM22'), 49: _v('A1LF14'), None: _v('A1GRAND VISION')},
     3:   {None: _v('A1CORE VISION')},
     4:   {1: _v('A1HYPER VISION'), 2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
-          4: _v('A1LF10V'), 5: _v('A1LM19SE')},
+          4: _v('A1LF10V'), 5: _v('A1LM19SE'), 6: _v('A1LF014')},   # 2.1.6: +sub6
     5:   {None: _v('A1Mjolnir VISION')},
     6:   {1: _v('frozen_warframe_ultra'), 2: _v('A1FROZEN VISION V2')},
     7:   {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
@@ -88,14 +88,19 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     14:  {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
     15:  {2: _v('A1LC8'), None: _v('A1LC7')},
     16:  {None: _v('A1CZ2')},
-    17:  {1: _v('A1PC1'), 2: _v('A1LC9'), 5: _v('A1PC1'), None: _v('A1PC1')},
+    # 2.1.6 ADDUserButton case 17: sub1|5→PC1, sub2→LC8, sub3→LC10, else PC1.
+    # CHANGED vs our prior table (sub2 was LC9 — LC9 is 0416:5302 pm59, not here).
+    17:  {1: _v('A1PC1'), 2: _v('A1LC8'), 3: _v('A1LC10'), 5: _v('A1PC1'),
+          None: _v('A1PC1')},
+    18:  {1: _v('A1LC8'), 2: _v('A1LC10'), None: _v('A1PC1')},   # 2.1.6: new pm
+    19:  {None: _v('A1LF19')},                                   # 2.1.6: new pm
     32:  {0: _v('A1ELITE VISION'), 1: _v('A1FROZEN WARFRAME PRO'),
           None: _v('A1ELITE VISION')},
     50:  {None: _v('A1FROZEN WARFRAME')},
     51:  {None: _v('A1FROZEN WARFRAME')},
     53:  {1: _v('A1LF21'), 2: _v('A1LF22'), None: _v('A1LF20')},
     63:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
-          3: _v('A1LM30')},
+          3: _v('A1LM30'), 4: _v('A1RX1')},   # 2.1.6: +sub4
     # PM=64 SUB=3: Levita (new product) handshakes identically to LM30
     # — same chipset, same wire bytes.  C# v2.1.4 doesn't have a Levita
     # case yet so it labels the button "A1LM30"; we keep that label and
@@ -103,9 +108,12 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     # users enable split_mode on.
     64:  {0: _v('A1FROZEN WARFRAME PRO'), 1: _v('A1LM22'), 2: _v('A1LM27'),
           3: VariantOverride(button_image='A1LM30',
-                             panel_cutout=PanelCutout(x=1520, y=0, w=80, h=720))},
+                             panel_cutout=PanelCutout(x=1520, y=0, w=80, h=720)),
+          4: _v('A1RX1')},   # 2.1.6: +sub4
+    # 2.1.6 ADDUserButton case 65 sub4: A1LD11 (was A1LD10 in our prior table).
+    # (case 66's LD11 branch is dead code — `else if(sub<=4)` precedes it.)
     65:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'),
-          3: _v('A1LD7'), 4: _v('A1LD10'), 5: _v('A1LD7')},
+          3: _v('A1LD7'), 4: _v('A1LD11'), 5: _v('A1LD7')},
     66:  {0: _v('A1ELITE VISION'), 1: _v('A1LF14'), 2: _v('A1LF14'),
           3: _v('A1LD7'), 4: _v('A1LD7')},
     68:  {None: _v('A1LM24')},
@@ -150,8 +158,10 @@ _VARIANT_REGISTRY: dict[
         51:  {None: _v('A1FROZEN WARFRAME')},
         52:  {None: _v('A1BA120 VISION')},
         53:  {None: _v('A1LF20')},
-        54:  {None: _v('A1LC5')},
+        54:  {2: _v('A1LC13'), None: _v('A1LC5')},   # 2.1.6: +sub2
         58:  {0: _v('A1FROZEN WARFRAME SE'), None: _v('A1LM26')},
+        59:  {0: _v('A1LC7'), 1: _v('A1LC7'), None: _v('A1LC9')},  # 2.1.6: new pm
+        60:  {None: _v('A1LC15')},                                 # 2.1.6: new pm
         100: {None: _v('A1FROZEN WARFRAME PRO')},
         101: {None: _v('A1ELITE VISION')},
         128: {None: _v('A1LM24')},
