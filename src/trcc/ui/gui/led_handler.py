@@ -46,11 +46,10 @@ log = logging.getLogger(__name__)
 class LEDHandler(BaseHandler):
     """Per-LED-device GUI handler.
 
-    Constructor signature matches the legacy positional shape so the
-    window's ``LEDHandler(device, uc_led_control, on_temp_unit_changed)``
-    call works untouched.  The ``app`` handle comes through the parent
-    window's ``self._app`` reference; we re-fetch it from the device's
-    bound App via :meth:`set_app`, or pass it via ``app=`` kwarg.
+    Built through ``TRCCApp._build_handler`` (the single handler chokepoint),
+    which always injects ``app=self._app``.  ``app`` is REQUIRED: a None handle
+    silently disabled every metrics tick (``update_metrics`` gates on it), which
+    was the LED ``--`` bug — so we fail loudly at the composition root instead.
     """
 
     _SAVE_INTERVAL = 20  # cycles between best-effort settings flushes
@@ -63,13 +62,16 @@ class LEDHandler(BaseHandler):
         app: App | None = None,
     ) -> None:
         super().__init__(device, 'led')
+        if app is None:
+            raise RuntimeError(
+                "LEDHandler requires an App handle — the composition root must "
+                "pass one (a None handle silently disables metric updates)"
+            )
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
         # next/ Device + key (ProductInfo.key = "vid:pid")
         self._device_key: str = device.info.key if device is not None else ''
-        # The window owns the App reference; LED handlers don't drive
-        # render ticks themselves, so we only need it for dispatching.
-        self._app: App | None = app
+        self._app: App = app
         self._active = False
         self._style: Any = None       # LedStyle enum
         self._style_id_int = 0        # legacy 1..12 for uc_led_control
@@ -77,10 +79,6 @@ class LEDHandler(BaseHandler):
         self._connect_signals()
 
     # ── Public API ────────────────────────────────────────────────────
-
-    def set_app(self, app: App) -> None:
-        """Inject the App reference post-construction (legacy parity)."""
-        self._app = app
 
     @property
     def active(self) -> bool:
@@ -330,8 +328,10 @@ class LEDHandler(BaseHandler):
 
     def handle_frame(self, image: Any) -> None:
         """Receive tick result — update LED color display on the panel."""
+        display_colors = image.get('display_colors') if isinstance(image, dict) else None
+        log.debug("handle_frame: active=%s colors=%s",
+                  self._active, len(display_colors) if display_colors else None)
         if not self._active:
             return
-        display_colors = image.get('display_colors') if isinstance(image, dict) else None
         if display_colors is not None:
             self._panel.set_led_colors(display_colors)

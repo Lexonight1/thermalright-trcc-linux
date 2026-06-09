@@ -12,6 +12,7 @@ from ..errors import (
 )
 from ..events import (
     ErrorOccurred,
+    FrameSent,
     HddEnabledChanged,
     LedColorsChanged,
 )
@@ -313,6 +314,12 @@ class RenderLed(Command[LedColorsResult]):
         if ok:
             app.events.publish(LedColorsChanged(
                 key=self.key, color_count=len(colors),
+            ))
+            # Same preview path as LCD: publish the rendered output on
+            # FrameSent so the GUI preview shows exactly what went to the
+            # device (LCD carries a surface; LED carries the colors).
+            app.events.publish(FrameSent(
+                key=self.key, bytes_sent=len(colors), display_colors=colors,
             ))
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,

@@ -49,7 +49,8 @@ from ...core.commands import (
     StopScreencast,
     StopVideo,
 )
-from ...core.models import HardwareMetrics
+from ...core.models import HardwareMetrics, Kind
+from ..presentation import presentation_for
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -505,11 +506,15 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(event.key)
         if handler is None:
             return
+        # One preview path for both kinds: LCD frames carry a ``surface``,
+        # LED renders carry ``display_colors`` — both flow through the same
+        # FrameSent → handle_frame seam (the device's render IS the preview).
         surface = getattr(event, "surface", None)
+        colors = getattr(event, "display_colors", None)
         if surface is not None:
-            # Legacy's ``handler.handle_frame(image)`` path — show the
-            # rendered frame directly, no second render.
             handler.handle_frame(surface)
+        elif colors:
+            handler.handle_frame({"display_colors": list(colors)})
         else:
             handler.rebuild_preview()
 
@@ -684,31 +689,43 @@ class TRCCApp(QMainWindow):
         key = info.key
         if key in self._handlers:
             return
+        self._handlers[key] = self._build_handler(device)
 
-        if device.is_led:
-            handler = LEDHandler(
-                device, self.uc_led_control, self._on_temp_unit_changed,
-            )
-            self._handlers[key] = handler
+    def _build_handler(self, device: Any) -> BaseHandler:
+        """Construct the handler for one device — the single build chokepoint.
+
+        The device's ``ProductInfo`` (resolved from vid/pid + handshake) drives
+        which view it presents via the shared :func:`presentation_for` backbone,
+        and this is the ONE place handlers are constructed — so ``self._app``
+        and the View's panels are injected the same way for every kind.  No
+        per-kind branch can silently forget a dependency (the LED metrics ``--``
+        bug was exactly a missing ``app=`` on a divergent branch).  Presentation
+        is unchanged: each kind gets the same handler + panels it always did.
+        """
+        key = device.info.key
+        presentation = presentation_for(device.info)
+        if presentation.kind is Kind.LED:
             log.info("LED handler added: %s", key)
-        else:
-            widgets = {
-                'preview': self.uc_preview,
-                'theme_setting': self.uc_theme_setting,
-                'theme_local': self.uc_theme_local,
-                'theme_web': self.uc_theme_web,
-                'theme_mask': self.uc_theme_mask,
-                'image_cut': self.uc_image_cut,
-                'video_cut': self.uc_video_cut,
-                'rotation_combo': self.rotation_combo,
-            }
-            lcd_handler = LCDHandler(
-                device, widgets, self._make_timer, self._data_dir,
-                is_visible_fn=self.is_app_visible,
-                app=self._app, lcd_idx=key,
+            return LEDHandler(
+                device, self.uc_led_control, self._on_temp_unit_changed,
+                app=self._app,
             )
-            self._handlers[key] = lcd_handler
-            log.info("LCD handler added: %s", key)
+        widgets = {
+            'preview': self.uc_preview,
+            'theme_setting': self.uc_theme_setting,
+            'theme_local': self.uc_theme_local,
+            'theme_web': self.uc_theme_web,
+            'theme_mask': self.uc_theme_mask,
+            'image_cut': self.uc_image_cut,
+            'video_cut': self.uc_video_cut,
+            'rotation_combo': self.rotation_combo,
+        }
+        log.info("LCD handler added: %s", key)
+        return LCDHandler(
+            device, widgets, self._make_timer, self._data_dir,
+            is_visible_fn=self.is_app_visible,
+            app=self._app, lcd_idx=key,
+        )
 
         self._refresh_sidebar()
 

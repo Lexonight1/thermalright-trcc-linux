@@ -60,13 +60,12 @@ class Finding:
         return not self.failures
 
 
-def _summon_and_check(window: Any, d: dict, snapshot: Any, unit: str) -> Finding:
+def _summon_and_check(window: Any, d: dict, snapshot: Any) -> Finding:
     """Run the real VariantPanel summon for one variant + assert it shows properly."""
     from trcc.core.commands import ConnectDevice
     from trcc.core.models import Wire
     from trcc.ui.gui.lcd_handler import LCDHandler
     from trcc.ui.gui.led_handler import LEDHandler
-    from trcc.ui.presentation.led_metrics_format import format_sensor_gauges
 
     app = window._app
     vid, pid, pm, sub, fbl = d["vid"], d["pid"], d["pm"], d["sub"], d["fbl"]
@@ -109,23 +108,28 @@ def _summon_and_check(window: Any, d: dict, snapshot: Any, unit: str) -> Finding
             if not (res and res[0] > 0 and res[1] > 0):
                 f.failures.append(f"canvas: invalid resolution {res}")
 
-        # 4. metrics — a real OS snapshot fans out to the active handler without
-        #    error and renders real values (the `--` bug class).
+        # 4. metrics — a real OS snapshot fans out to the active handler and the
+        #    panel WIDGET renders real values.  Read the actual gauge ``_text``
+        #    (what the user sees), NOT format_sensor_gauges — checking the
+        #    recompute was the false-pass that let the `app=None` bug through.
         window._last_metrics = snapshot
         try:
             window._fan_out_metrics(reason=f"audit:{f.model}")
-        except Exception as e:  # the None-crash bug would land here
+        except Exception as e:
             f.failures.append(f"metrics: fan-out raised {type(e).__name__}: {e}")
             return f
-        # _temp_label renders "NC" for a genuinely-absent (0.0) temp — correct —
-        # so assert the always-readable usage/clock fields are numeric (only when
-        # CPU is actually live, else the check is vacuous).
+        # LED segment panels carry the M1-M6 gauges; assert the always-readable
+        # usage/clock fields show a live number (only when CPU is live, else
+        # the check is vacuous — a genuinely-absent temp renders "NC", correct).
         if is_led and snapshot.cpu_percent > 0:
-            g = format_sensor_gauges(snapshot, unit)
+            imgs = getattr(getattr(handler, "_panel", None), "_info_images", {})
+            if not imgs:
+                f.failures.append("metrics: LED panel has no _info_images")
             for gk in ("cpu_usage", "cpu_clock"):
-                if not _NUMERIC.match(g[gk][1]):
+                txt = getattr(imgs.get(gk), "_text", None)
+                if not (txt and _NUMERIC.match(txt)):
                     f.failures.append(
-                        f"metrics: {gk} placeholder {g[gk][1]!r} despite live CPU")
+                        f"metrics: gauge {gk} _text={txt!r} (panel not populated)")
     except Exception as e:
         f.failures.append(f"EXC during summon: {type(e).__name__}: {e}")
         log.exception("audit: %s (%s) raised", f.model, key)
@@ -160,7 +164,6 @@ def _run_audit(window: Any) -> None:
         app.platform.sensors().snapshot(),
         temp_unit=s.temp_unit, hdd_enabled=s.hdd_enabled,
     )
-    unit = "°F" if s.temp_unit == "F" else "°C"
     live = (snapshot.cpu_percent > 0 or snapshot.cpu_temp > 0)
     log.info("audit: live sensors=%s (cpu %.0f%% %.0f°, gpu %.0f° %.0fMHz)",
              "yes" if live else "NO", snapshot.cpu_percent, snapshot.cpu_temp,
@@ -169,7 +172,7 @@ def _run_audit(window: Any) -> None:
     variants = _variant_dicts()
     findings: list[Finding] = []
     for i, d in enumerate(variants):
-        f = _summon_and_check(window, d, snapshot, unit)
+        f = _summon_and_check(window, d, snapshot)
         findings.append(f)
         # Flushed per-variant so progress + any hang is visible even if the run
         # is killed before the summary prints.

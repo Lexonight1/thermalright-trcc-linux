@@ -12,6 +12,7 @@ Qt-free they are unit-testable with plain ``pytest`` (no ``QApplication``).
 """
 from __future__ import annotations
 
+from .device_presentation import DevicePresentation, presentation_for
 from .overlay_model import OverlayModel
 
-__all__ = ["OverlayModel"]
+__all__ = ["DevicePresentation", "OverlayModel", "presentation_for"]

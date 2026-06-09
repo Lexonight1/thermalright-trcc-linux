@@ -56,6 +56,11 @@ class FrameSent(Event):
     # SendColor / SendImage / keepalive) and would be None across IPC,
     # where a remote client must fall back to a re-render.
     surface: Any = None
+    # LED twin of ``surface``: an LED render has no image, it has per-LED
+    # colors.  Carried on the SAME event so LED uses the SAME preview path as
+    # LCD (one render → FrameSent → handle_frame → preview), not a parallel
+    # one.  Empty for LCD / pure-bytes sends.
+    display_colors: list = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

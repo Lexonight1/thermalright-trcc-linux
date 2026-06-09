@@ -462,8 +462,9 @@ class _DeviceRenderObserver:
         self._app = app
         # Lazy import — RenderAndSend lives in core.commands, which
         # already imports from app.py via TYPE_CHECKING.
-        from .core.commands import RenderAndSend
+        from .core.commands import RenderAndSend, RenderLed
         self._RenderAndSend = RenderAndSend
+        self._RenderLed = RenderLed
         for event_cls in (
             BrightnessChanged, MaskApplied, MaskPositionChanged,
             MaskVisibilityChanged, OverlayChanged, FitModeChanged,
@@ -507,23 +508,34 @@ class _DeviceRenderObserver:
         if evt_key:
             keys = [evt_key]
         else:
+            # Device-wide event (SensorsUpdated): re-render every connected
+            # device — LCDs with a theme, AND LED devices (their segment
+            # display IS the live metric, no theme involved).  LED was
+            # dropped from this list at the cutover, which is why LED panels
+            # stopped updating on sensor ticks.
             keys = [
                 k for k, d in self._app.devices.items()
-                if d.is_connected and k in self._app.active_themes
+                if d.is_connected
+                and (d.is_led or k in self._app.active_themes)
             ]
         for key in keys:
             device = self._app.devices.get(key)
-            theme = self._app.active_themes.get(key)
-            if (
-                device is None or not device.is_connected
-                or theme is None
-            ):
+            if device is None or not device.is_connected:
+                continue
+            # LED: segments are computed straight from live sensors — no
+            # theme.  RenderLed sends to the device AND drives the preview.
+            if device.is_led:
                 log.debug(
-                    "DeviceRenderObserver: skip %s for %s "
-                    "(connected=%s theme=%s)",
+                    "DeviceRenderObserver: %s for %s → RenderLed",
                     type(event).__name__, key,
-                    device is not None and device.is_connected,
-                    theme is not None,
+                )
+                self._app.dispatch(self._RenderLed(key=key))
+                continue
+            theme = self._app.active_themes.get(key)
+            if theme is None:
+                log.debug(
+                    "DeviceRenderObserver: skip %s for %s (no theme)",
+                    type(event).__name__, key,
                 )
                 continue
             log.debug(
