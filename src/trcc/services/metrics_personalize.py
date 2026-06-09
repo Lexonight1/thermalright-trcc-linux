@@ -25,9 +25,14 @@ this work at the same architectural location.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
+from typing import TYPE_CHECKING
 
 from ..core.models import TempUnit, celsius_to_fahrenheit
+
+if TYPE_CHECKING:
+    from ..core.models import HardwareMetrics
 
 log = logging.getLogger(__name__)
 
@@ -78,3 +83,54 @@ def personalize_readings(
             value = celsius_to_fahrenheit(value)
         out[key] = value
     return out
+
+
+def personalize_metrics(
+    metrics: HardwareMetrics,
+    *,
+    temp_unit: TempUnit = "C",
+    hdd_enabled: bool = True,
+) -> HardwareMetrics:
+    """Apply user prefs to a typed :class:`HardwareMetrics` snapshot.
+
+    The typed sibling of :func:`personalize_readings`, for the object
+    :meth:`SensorEnumerator.snapshot` produces:
+
+      1. **Temperature conversion.** When ``temp_unit == "F"``, every
+         temperature field (scalar ``*_temp`` + per-unit ``cpus``/``gpus``
+         temps) is converted °C→°F.  A field of ``0.0`` means "no
+         reading" (``snapshot`` coalesces absent sensors to 0.0) and is
+         LEFT as 0.0 — the LED/segment formatters render that as ``NC``,
+         so converting it to ``32`` would fabricate a reading.
+
+      2. **HDD filter.** When ``hdd_enabled is False``, the ``disk_*``
+         scalar fields are zeroed and ``disk:*`` keys dropped from the
+         embedded ``readings`` dict (via :func:`personalize_readings`).
+
+    Returns a NEW object; ``metrics`` is not mutated.
+    """
+    log.debug("personalize_metrics: temp_unit=%s hdd_enabled=%s cpus=%d gpus=%d",
+              temp_unit, hdd_enabled, len(metrics.cpus), len(metrics.gpus))
+    to_f = temp_unit == "F"
+
+    def conv(celsius: float) -> float:
+        # 0.0 == "no reading" — never fabricate 32°F from an absent sensor.
+        return celsius_to_fahrenheit(celsius) if (to_f and celsius) else celsius
+
+    cpus = [dataclasses.replace(c, temp=conv(c.temp)) for c in metrics.cpus]
+    gpus = [dataclasses.replace(g, temp=conv(g.temp)) for g in metrics.gpus]
+    readings = personalize_readings(
+        metrics.readings, temp_unit=temp_unit, hdd_enabled=hdd_enabled)
+    return dataclasses.replace(
+        metrics,
+        cpu_temp=conv(metrics.cpu_temp),
+        gpu_temp=conv(metrics.gpu_temp),
+        mem_temp=conv(metrics.mem_temp),
+        disk_temp=conv(metrics.disk_temp) if hdd_enabled else 0.0,
+        disk_activity=metrics.disk_activity if hdd_enabled else 0.0,
+        disk_read=metrics.disk_read if hdd_enabled else 0.0,
+        disk_write=metrics.disk_write if hdd_enabled else 0.0,
+        cpus=cpus,
+        gpus=gpus,
+        readings=readings,
+    )

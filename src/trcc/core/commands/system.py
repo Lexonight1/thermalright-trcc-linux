@@ -296,7 +296,10 @@ class ReadSensors(Command[SensorsResult]):
     LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> SensorsResult:
-        from ...services.metrics_personalize import personalize_readings
+        from ...services.metrics_personalize import (
+            personalize_metrics,
+            personalize_readings,
+        )
         from ..models import SensorReading
 
         enum = app.platform.sensors()
@@ -305,6 +308,14 @@ class ReadSensors(Command[SensorsResult]):
         s = app.settings.app
         personalized = personalize_readings(
             raw,
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
+        # Typed snapshot from the SAME enumerator, personalized the same
+        # way — one-shot callers (GUI view-switch) get the typed object
+        # the periodic broadcast carries, so periodic + one-shot agree.
+        metrics = personalize_metrics(
+            enum.snapshot(),
             temp_unit=s.temp_unit,
             hdd_enabled=s.hdd_enabled,
         )
@@ -333,6 +344,7 @@ class ReadSensors(Command[SensorsResult]):
             ok=True,
             message=f"{len(readings)} sensor(s)",
             readings=readings,
+            metrics=metrics,
         )
 
 @dataclass(frozen=True, slots=True)

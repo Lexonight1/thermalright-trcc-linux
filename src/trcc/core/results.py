@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from .models import (
     DeviceInfo,
     HandshakeResult,
+    HardwareMetrics,
     LedHandshakeResult,
     ProductInfo,
     SensorReading,
@@ -253,6 +254,12 @@ class LedColorsResult(Result):
 @dataclass(frozen=True, slots=True)
 class SensorsResult(Result):
     readings: list[SensorReading] = field(default_factory=list)
+    # Typed snapshot, personalized to user prefs — the GUI reads this
+    # directly (no fragile sensor_id→attr remap).  ALWAYS a real object:
+    # the OS metrics dispatcher always produces a snapshot (empty default
+    # only for the construct-without-args/test path), so consumers never
+    # branch on absence.
+    metrics: HardwareMetrics = field(default_factory=HardwareMetrics)
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,6 +11,81 @@ from trcc.adapters.sensors.aggregator import BaselineSensors
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
 
+# ── snapshot() — typed HardwareMetrics, collapse policy ──────────────
+
+
+def test_snapshot_single_cpu_scalars_equal_source() -> None:
+    # The n=1 identity: collapse is max()/avg/sum over the cpus list, and
+    # for ONE element each reduces to that element — like ``x ** 1 == x``.
+    # So today's single-source snapshot yields scalars identical to a
+    # direct cpu().<metric>() read; the plural shape changes nothing until
+    # sources widen.  This is what makes option A provably safe.
+    cpu = FakeCpu()
+    m = _sensors_with().snapshot()
+    assert m.cpu_temp == cpu.temp() == 42.0
+    assert m.cpu_percent == cpu.usage() == 15.0
+    assert m.cpu_freq == cpu.freq() == 3200.0
+    assert m.cpu_power == cpu.power() == 65.0
+    # Plural list present, single-element, faithful to the source.
+    assert len(m.cpus) == 1
+    assert (m.cpus[0].name, m.cpus[0].temp, m.cpus[0].usage,
+            m.cpus[0].freq, m.cpus[0].power) == ("Fake CPU", 42.0, 15.0,
+                                                 3200.0, 65.0)
+
+
+def test_snapshot_plural_gpus_listed_scalar_collapses_to_primary() -> None:
+    integrated = FakeGpu(0, discrete=False, vendor="intel")
+    discrete = FakeGpu(1, discrete=True, vendor="nvidia")
+    discrete.values["temp"] = 70.0          # distinguish from integrated 55
+    s = _sensors_with(gpus=[integrated, discrete])
+    m = s.snapshot()
+    # Both GPUs faithfully listed (aggregator sorts discrete-first).
+    assert len(m.gpus) == 2
+    assert {g.temp for g in m.gpus} == {55.0, 70.0}
+    # Scalar collapses to the PRIMARY (discrete) card, not the iGPU.
+    assert m.gpu_temp == 70.0
+    assert m.gpu_usage == 30.0
+    assert m.gpu_clock == 1800.0
+
+
+def test_snapshot_absent_gpu_yields_zero_scalars_empty_list() -> None:
+    m = _sensors_with(gpus=[]).snapshot()
+    assert m.gpus == []
+    assert m.gpu_temp == 0.0
+    assert m.gpu_usage == 0.0
+    assert m.gpu_clock == 0.0
+
+
+def test_snapshot_folds_io_from_readings_and_embeds_dict() -> None:
+    s = _sensors_with()
+    m = s.snapshot()
+    # disk/net have no typed source — snapshot folds them from read_all().
+    assert m.disk_read == m.readings.get("disk:read", 0.0)
+    assert m.net_up == m.readings.get("net:up", 0.0)
+    # Full flat dict embedded for the system-info dashboard.
+    assert "cpu:temp" in m.readings and "memory:percent" in m.readings
+
+
+def test_snapshot_degrades_raising_source_not_throws() -> None:
+    """A RAISING sensor (RAPL energy_uj PermissionError — the #139 class) must
+    NOT take down snapshot().  If it did, the per-tick SensorsUpdated publish
+    would die and every metric in the UI would blank to `--`.  The raising
+    reading degrades to 0.0; its siblings on the same source survive."""
+    cpu = FakeCpu()
+
+    def boom() -> float:
+        raise PermissionError(13, "Permission denied")   # the #139 shape
+
+    cpu.power = boom            # type: ignore[method-assign]
+    s = BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[])
+
+    m = s.snapshot()            # must NOT raise
+
+    assert m.cpu_power == 0.0   # the raising reading degraded
+    assert m.cpu_temp == 42.0   # siblings on the same source unaffected
+    assert m.cpu_percent == 15.0
+    assert m.cpus[0].power == 0.0
+
 
 def _sensors_with(gpus=None) -> BaselineSensors:
     return BaselineSensors(

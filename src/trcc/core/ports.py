@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from .models import (
         DeviceInfo,
         HandshakeResult,
+        HardwareMetrics,
         LedHandshakeResult,
         ProductInfo,
         RawFrame,
@@ -355,6 +356,30 @@ class FanSource(ABC):
 # =========================================================================
 
 
+def _or_zero(value: float | None) -> float:
+    """None-coalesce a possibly-absent sensor reading to 0.0."""
+    return 0.0 if value is None else float(value)
+
+
+def _safe(fn: Callable[[], float | None]) -> float:
+    """Read one sensor for the snapshot, degrading a RAISING source to 0.0.
+
+    Mirrors :meth:`BaselineSensors._read`: a flaky or permission-locked
+    sensor (root-only RAPL ``energy_uj``, a wedged hwmon node, an NVML
+    driver/userspace mismatch) must never take down ``snapshot()`` — which
+    would take down the per-tick ``SensorsUpdated`` publish and blank every
+    metric in the UI.  ``_or_zero`` alone only handles ``None``; a raise
+    needs catching too.  The same sources are read via the guarded
+    ``read_all`` path on the same tick (which warn-once-logs the failure),
+    so this stays at DEBUG to avoid a duplicate warning.
+    """
+    try:
+        return _or_zero(fn())
+    except Exception as e:
+        log.debug("snapshot: sensor read failed (%s) — degrading to 0.0", e)
+        return 0.0
+
+
 class SensorEnumerator(ABC):
     """OS-level sensor root.  Each OS has one implementation.
 
@@ -384,6 +409,69 @@ class SensorEnumerator(ABC):
             if gpu.is_discrete:
                 return gpu
         return gpus[0] if gpus else None
+
+    def snapshot(self) -> HardwareMetrics:
+        """Typed metrics snapshot — one fresh object per tick, raw °C.
+
+        Concrete template method: reads the TYPED sources directly
+        (``cpu()`` / ``primary_gpu()`` / ``memory()``) so the metrics a
+        cooler displays never go through a fragile ``sensor_id``→attr
+        string table, and folds disk/net (computed-IO, no typed source)
+        in from ``read_all()``.  Every OS inherits this unchanged.
+
+        Returns RAW canonical units (°C); callers apply user prefs via
+        :func:`trcc.services.metrics_personalize.personalize_metrics`.
+        ``cpus``/``gpus`` carry every detected unit (single-element on
+        consumer hardware); the scalar fields collapse them — ``cpu_temp``
+        is the hottest socket, ``cpu_percent`` the average — so the one
+        number a cooler shows stays correct when sources widen to plural.
+        """
+        from .models import CpuMetrics, GpuMetrics, HardwareMetrics
+
+        readings = self.read_all()
+        cpu = self.cpu()
+        # _safe (not _or_zero(fn())): a raising source degrades to 0.0 instead of
+        # taking down snapshot() → the SensorsUpdated publish → every UI metric.
+        cpus = [CpuMetrics(
+            name=cpu.name,
+            temp=_safe(cpu.temp), usage=_safe(cpu.usage),
+            freq=_safe(cpu.freq), power=_safe(cpu.power),
+        )]
+        gpus = [GpuMetrics(
+            name=g.name,
+            temp=_safe(g.temp), usage=_safe(g.usage),
+            clock=_safe(g.clock), power=_safe(g.power),
+        ) for g in self.gpus()]
+        primary = self.primary_gpu()
+        mem = self.memory()
+        metrics = HardwareMetrics(
+            cpu_temp=max((c.temp for c in cpus), default=0.0),
+            cpu_percent=(sum(c.usage for c in cpus) / len(cpus)) if cpus else 0.0,
+            cpu_freq=max((c.freq for c in cpus), default=0.0),
+            cpu_power=sum(c.power for c in cpus),
+            gpu_temp=_safe(primary.temp) if primary else 0.0,
+            gpu_usage=_safe(primary.usage) if primary else 0.0,
+            gpu_clock=_safe(primary.clock) if primary else 0.0,
+            gpu_power=_safe(primary.power) if primary else 0.0,
+            mem_percent=_safe(mem.percent),
+            mem_available=_safe(mem.available),
+            disk_activity=readings.get("disk:activity", 0.0),
+            disk_read=readings.get("disk:read", 0.0),
+            disk_write=readings.get("disk:write", 0.0),
+            net_up=readings.get("net:up", 0.0),
+            net_down=readings.get("net:down", 0.0),
+            net_total_up=readings.get("net:total_up", 0.0),
+            net_total_down=readings.get("net:total_down", 0.0),
+            readings=readings,
+            cpus=cpus,
+            gpus=gpus,
+        )
+        log.debug(
+            "snapshot: cpus=%d gpus=%d cpu_temp=%.1f cpu_pct=%.1f "
+            "gpu_temp=%.1f", len(cpus), len(gpus),
+            metrics.cpu_temp, metrics.cpu_percent, metrics.gpu_temp,
+        )
+        return metrics
 
     # ── Flat dict view (for overlay lookups) ────────────────────────
     @abstractmethod

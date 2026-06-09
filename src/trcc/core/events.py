@@ -12,6 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .models import HardwareMetrics
+
 log = logging.getLogger(__name__)
 
 
@@ -227,14 +229,22 @@ class SensorsUpdated(Event):
     ``reading_count``: kept for log size-hints + size-only consumers;
     redundant with ``len(readings)`` but cheap.
 
-    All three fields have defaults so this dataclass can be constructed
-    positionally during the staged audit rollout (P2 commit adds the
-    fields with defaults; P3 commit populates them at publish time).
-    Once P3 lands, every publish supplies all three.
+    ``metrics``: the typed :class:`HardwareMetrics` snapshot the OS
+    dispatcher produced this tick, personalized to the same prefs.  The
+    app observes it directly — see the field comment below.
+
+    All fields have defaults so the event can be constructed without a
+    full payload (tests / staged rollout); the live publisher supplies
+    them all.
     """
     reading_count: int = 0
     readings: dict[str, float] = field(default_factory=dict)
     temp_unit: str = "C"
+    # Typed snapshot the OS dispatcher produces this tick, personalized to
+    # the same prefs as ``readings``.  The app OBSERVES this — it never
+    # re-polls; subscribers read ``metrics.cpu_temp`` directly.  ALWAYS a
+    # real object (empty default only for the construct-without-args path).
+    metrics: HardwareMetrics = field(default_factory=HardwareMetrics)
 
 
 @dataclass(frozen=True, slots=True)

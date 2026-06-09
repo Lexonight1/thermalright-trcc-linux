@@ -13,7 +13,11 @@ Pure-function tests — no fixtures, no mocks.  Covers:
 """
 from __future__ import annotations
 
-from trcc.services.metrics_personalize import personalize_readings
+from trcc.core.models import CpuMetrics, GpuMetrics, HardwareMetrics
+from trcc.services.metrics_personalize import (
+    personalize_metrics,
+    personalize_readings,
+)
 
 
 def test_defaults_pass_through_unchanged() -> None:
@@ -134,3 +138,74 @@ def test_suffix_match_for_temp_is_exact() -> None:
     assert out["cpu:temp"] == 122.0
     assert out["cpu:tempo"] == 50.0           # not converted
     assert out["disk:0:temp"] == 122.0        # ends in :temp
+
+
+# ── personalize_metrics — the typed sibling ──────────────────────────
+
+
+def test_metrics_default_pass_through() -> None:
+    m = HardwareMetrics(cpu_temp=33.0, gpu_temp=30.0, cpu_percent=50.0)
+    out = personalize_metrics(m)
+    assert out.cpu_temp == 33.0
+    assert out.gpu_temp == 30.0
+    assert out.cpu_percent == 50.0
+    assert out is not m  # new object
+
+
+def test_metrics_fahrenheit_converts_every_temp_field() -> None:
+    m = HardwareMetrics(
+        cpu_temp=50.0, gpu_temp=100.0, mem_temp=40.0, disk_temp=25.0,
+        cpu_percent=50.0,  # non-temp untouched
+        cpus=[CpuMetrics(temp=50.0, usage=50.0)],
+        gpus=[GpuMetrics(temp=100.0, usage=2.0)],
+    )
+    out = personalize_metrics(m, temp_unit="F")
+    assert out.cpu_temp == 122.0
+    assert out.gpu_temp == 212.0
+    assert out.mem_temp == 104.0
+    assert out.disk_temp == 77.0
+    assert out.cpu_percent == 50.0            # non-temp untouched
+    assert out.cpus[0].temp == 122.0          # per-unit converted
+    assert out.gpus[0].temp == 212.0
+    assert out.cpus[0].usage == 50.0          # per-unit non-temp untouched
+
+
+def test_metrics_zero_temp_is_no_reading_not_32f() -> None:
+    # 0.0 == "no reading" (snapshot coalesces absent sensors to 0.0).
+    # Converting it to 32°F would fabricate a reading the formatters
+    # render instead of "NC".  It must stay 0.0.
+    m = HardwareMetrics(
+        cpu_temp=0.0, gpu_temp=0.0, mem_temp=0.0,
+        cpus=[CpuMetrics(temp=0.0)], gpus=[GpuMetrics(temp=0.0)],
+    )
+    out = personalize_metrics(m, temp_unit="F")
+    assert out.cpu_temp == 0.0
+    assert out.gpu_temp == 0.0
+    assert out.mem_temp == 0.0
+    assert out.cpus[0].temp == 0.0
+    assert out.gpus[0].temp == 0.0
+
+
+def test_metrics_hdd_disabled_zeroes_disk_and_filters_readings() -> None:
+    m = HardwareMetrics(
+        disk_temp=42.0, disk_activity=18.0, disk_read=99.0, disk_write=5.0,
+        cpu_temp=40.0,
+        readings={"disk:read": 99.0, "cpu:temp": 40.0},
+    )
+    out = personalize_metrics(m, hdd_enabled=False)
+    assert out.disk_temp == 0.0
+    assert out.disk_activity == 0.0
+    assert out.disk_read == 0.0
+    assert out.disk_write == 0.0
+    assert out.cpu_temp == 40.0               # non-disk survives
+    assert "disk:read" not in out.readings    # dict filtered too
+    assert out.readings["cpu:temp"] == 40.0
+
+
+def test_metrics_input_not_mutated() -> None:
+    m = HardwareMetrics(cpu_temp=50.0, cpus=[CpuMetrics(temp=50.0)],
+                        readings={"cpu:temp": 50.0})
+    personalize_metrics(m, temp_unit="F", hdd_enabled=False)
+    assert m.cpu_temp == 50.0
+    assert m.cpus[0].temp == 50.0
+    assert m.readings == {"cpu:temp": 50.0}

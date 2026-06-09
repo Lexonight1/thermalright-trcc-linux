@@ -49,6 +49,7 @@ from ...core.commands import (
     StopScreencast,
     StopVideo,
 )
+from ...core.models import HardwareMetrics
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -317,36 +318,6 @@ class ScreencastHandler:
 
 
 # =============================================================================
-# _MetricsView — duck-typed HardwareMetrics adapter
-# =============================================================================
-# The legacy GUI widgets read ``metrics.cpu_temp``, ``metrics.gpu_usage``,
-# etc., plus ``metrics.readings`` (dict[sensor_id, value]) for the
-# system_info dashboard.  In next/ we have only the readings dict from
-# ``ReadSensors``; this adapter exposes both shapes from one dict.
-# =============================================================================
-
-
-class _MetricsView:
-    """Read-only view onto a ``readings`` dict + ``.<sensor_id>`` attrs.
-
-    ``getattr(view, "cpu_temp")`` returns the corresponding reading or
-    ``None``; ``view.readings`` returns the underlying dict so legacy
-    widgets that read it directly (uc_system_info) still work.
-    """
-
-    __slots__ = ("readings",)
-
-    def __init__(self, readings: dict[str, float]) -> None:
-        self.readings = readings
-
-    def __getattr__(self, name: str) -> float | None:
-        # Called only when the attribute isn't on __slots__ — read from
-        # readings dict and fall back to None to match legacy widgets'
-        # "missing sensor" handling.
-        return self.readings.get(name)
-
-
-# =============================================================================
 # TRCCApp — Main Window / AppObserver
 # =============================================================================
 
@@ -400,6 +371,11 @@ class TRCCApp(QMainWindow):
         # surfacing).  Same shape Phase 0 used for the video tick.
         self._metrics_fanout_first_logged: bool = False
         self._last_vis_state: tuple[bool, bool, bool] = (False, False, False)
+        # Last metrics snapshot OBSERVED from the OS dispatcher
+        # (``SensorsUpdated`` at the refresh-rate cadence).  The GUI never
+        # re-polls; a view-switch re-fans-out this cached object so a panel
+        # opened between ticks populates immediately.
+        self._last_metrics: HardwareMetrics = HardwareMetrics()
         self._ui_state.load()
 
         # Apply saved GPU selection to the sensor enumerator
@@ -559,32 +535,33 @@ class TRCCApp(QMainWindow):
         if handler is not None:
             handler.on_video_stopped(event)
 
-    def _on_bus_sensors_updated(self, _event: Any) -> None:
-        """Sensors broadcast — dispatch ReadSensors + fan out to widgets."""
+    def _on_bus_sensors_updated(self, event: Any) -> None:
+        """Sensors broadcast — observe the OS snapshot + fan out to widgets.
+
+        The OS dispatcher (``MetricsLoop`` at the refresh-rate interval)
+        already produced + personalized the typed ``HardwareMetrics``; the
+        GUI just OBSERVES it.  Cache it so a view-switch between ticks can
+        re-render the last reading without re-polling.
+        """
         log.info("_on_bus_sensors_updated")
+        self._last_metrics = event.metrics
         self._fan_out_metrics(reason="bus")
 
     def _fan_out_metrics(self, *, reason: str) -> None:
-        """Read sensors and forward to every visible metrics widget.
+        """Forward the last observed metrics to every visible widget.
 
-        Single source of truth for the GUI's metrics fan-out — called
-        by ``_on_bus_sensors_updated`` for the periodic broadcast AND
+        Single source of truth for the GUI's metrics fan-out — called by
+        ``_on_bus_sensors_updated`` right after caching the broadcast AND
         by ``_show_view`` when the user opens a metrics panel (so it
-        populates immediately instead of waiting for the next tick).
+        populates immediately from the cached snapshot instead of waiting
+        for the next tick).  Never re-polls — the OS dispatcher owns the
+        reads; the GUI observes.
 
         ``reason`` is a short tag for the observability log line:
         "bus" / "view-switch" / "temp-unit-changed" etc.
         """
-        from typing import cast
-
-        from ...core.commands import ReadSensors
-        from ...core.models import HardwareMetrics
-        result = self._app.dispatch(ReadSensors())
-        readings = {r.sensor_id: r.value for r in result.readings}
-        # _MetricsView duck-types HardwareMetrics — readings dict +
-        # ``.<sensor_id>`` attribute access.  Cast satisfies pyright on
-        # the legacy widget signatures that expect HardwareMetrics.
-        metrics = cast(HardwareMetrics, _MetricsView(readings))
+        metrics = self._last_metrics
+        readings = metrics.readings
 
         info_vis = self.uc_info_module.isVisible()
         sysinfo_vis = self.uc_system_info.isVisible()

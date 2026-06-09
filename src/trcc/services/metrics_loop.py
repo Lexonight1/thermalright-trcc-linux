@@ -189,7 +189,10 @@ class MetricsLoop:
         broadcast at the boundary, consumers downstream are pure
         renderers.
         """
-        from .metrics_personalize import personalize_readings
+        from .metrics_personalize import (
+            personalize_metrics,
+            personalize_readings,
+        )
 
         try:
             sensors = self._app.platform.sensors()
@@ -208,10 +211,19 @@ class MetricsLoop:
             temp_unit=s.temp_unit,
             hdd_enabled=s.hdd_enabled,
         )
+        # Typed snapshot from the same enumerator, personalized the same
+        # way — the OS dispatcher's per-tick metrics object the GUI
+        # observes at this refresh interval (no GUI-side re-poll).
+        metrics = personalize_metrics(
+            sensors.snapshot(),
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
         events.publish(SensorsUpdated(
             reading_count=len(readings),
             readings=readings,
             temp_unit=s.temp_unit,
+            metrics=metrics,
         ))
         # First publish proves the polling chain is alive; subsequent
         # publishes stay DEBUG so 2 s cadence doesn't flood.

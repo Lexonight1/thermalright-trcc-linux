@@ -964,16 +964,46 @@ SUBPROCESS_NO_WINDOW: int = getattr(_subprocess, 'CREATE_NO_WINDOW', 0)
 # =========================================================================
 
 
+@dataclass(frozen=True, slots=True)
+class CpuMetrics:
+    """One CPU package's readings — plural-ready element of HardwareMetrics.
+
+    A dual-socket server has several of these; today's single-``cpu()``
+    source yields exactly one.  Plain floats only — JSON-serialisable for
+    the SensorsUpdated-over-IPC stream (no source objects).
+    """
+    name: str = ""
+    temp: float = 0.0
+    usage: float = 0.0
+    freq: float = 0.0
+    power: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class GpuMetrics:
+    """One GPU's readings — plural-ready element of HardwareMetrics."""
+    name: str = ""
+    temp: float = 0.0
+    usage: float = 0.0
+    clock: float = 0.0
+    power: float = 0.0
+
+
 @dataclass(slots=True)
 class HardwareMetrics:
     """Typed DTO for system sensor readings — legacy GUI widget shape.
 
-    next/'s sensor pipeline uses :class:`SensorReading` lists; the GUI's
-    ``_MetricsView`` adapter exposes both shapes from a single readings
-    dict.  This dataclass exists so widgets like ``UCSystemInfo`` and
-    ``UCInfoModule`` can keep their ``metrics.cpu_temp`` attribute reads
-    type-checking, even though the GUI builds them on the fly from a
-    ``ReadSensors`` result.
+    Built once per tick by :meth:`SensorEnumerator.snapshot` from the
+    typed sensor sources (no fragile ``sensor_id``→attr string table).
+    Widgets read ``metrics.cpu_temp`` etc.; the ``readings`` dict carries
+    the full flat view for the system-info dashboard.
+
+    **Plural-ready (servers/workstations).**  ``cpus``/``gpus`` carry every
+    detected unit (single-element on consumer hardware today); the scalar
+    device fields below COLLAPSE them by policy — ``cpu_temp`` is the
+    hottest socket, ``cpu_percent`` the average — so a cooler that shows one
+    "CPU" number stays correct when sources widen to plural.  Widening the
+    source ABC later fills the lists without touching any consumer.
     """
     cpu_temp: float = 0.0
     cpu_percent: float = 0.0
@@ -1000,6 +1030,10 @@ class HardwareMetrics:
     fan_ssd: float = 0.0
     fan_sys2: float = 0.0
     readings: dict[str, float] = field(default_factory=dict)
+    # Plural sources, faithful per-unit (single-element today; the scalar
+    # fields above are their collapse).  See class docstring.
+    cpus: list[CpuMetrics] = field(default_factory=list)
+    gpus: list[GpuMetrics] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
