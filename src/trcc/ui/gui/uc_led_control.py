@@ -859,9 +859,11 @@ class UCLedControl(QWidget):
         elif is_lf11:
             self._populate_disk_identity()
 
-    def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
+    def set_led_colors(self, colors: list[tuple[int, int, int]], mask: list[bool] | None = None) -> None:
         """Update LED preview from controller tick."""
         self._preview.set_colors(colors)
+        if mask is not None:
+            self._preview.set_mask(mask)
 
     def set_status(self, text: str) -> None:
         """Update status text."""

@@ -500,6 +500,13 @@ class UCScreenLED(QWidget):
             self._colors.append((0, 0, 0))
         self.update()
 
+    def set_mask(self, mask: list[bool]) -> None:
+        """Update LED on/off mask from controller tick."""
+        self._is_on = list(mask[:len(self._is_on)])
+        while len(self._is_on) < len(self._positions):
+            self._is_on.append(False)
+        self.update()
+
     def set_segment_on(self, index: int, on: bool) -> None:
         """Toggle an individual segment."""
         if 0 <= index < len(self._is_on):
@@ -637,6 +644,8 @@ class UCScreenLED(QWidget):
         for i, pos in enumerate(self._positions):
             if i >= len(self._colors):
                 break
+            if i < len(self._is_on) and not self._is_on[i]:
+                continue
             r, g, b = self._colors[i]
             if r == 0 and g == 0 and b == 0:
                 continue

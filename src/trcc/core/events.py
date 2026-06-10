@@ -61,6 +61,10 @@ class FrameSent(Event):
     # LCD (one render → FrameSent → handle_frame → preview), not a parallel
     # one.  Empty for LCD / pure-bytes sends.
     display_colors: list = field(default_factory=list)
+    # LED segment mask (list of bool) — determines which LEDs are
+    # lit vs off.  Carried alongside display_colors so the GUI preview
+    # accurately mirrors the physical hardware for segment-display styles.
+    mask: list = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

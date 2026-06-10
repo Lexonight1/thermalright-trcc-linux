@@ -320,6 +320,7 @@ class RenderLed(Command[LedColorsResult]):
             # device (LCD carries a surface; LED carries the colors).
             app.events.publish(FrameSent(
                 key=self.key, bytes_sent=len(colors), display_colors=colors,
+                mask=list(mask),
             ))
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,

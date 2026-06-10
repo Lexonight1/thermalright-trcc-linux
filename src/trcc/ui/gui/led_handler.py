@@ -329,9 +329,10 @@ class LEDHandler(BaseHandler):
     def handle_frame(self, image: Any) -> None:
         """Receive tick result — update LED color display on the panel."""
         display_colors = image.get('display_colors') if isinstance(image, dict) else None
+        display_mask = image.get('mask') if isinstance(image, dict) else None
         log.debug("handle_frame: active=%s colors=%s",
                   self._active, len(display_colors) if display_colors else None)
         if not self._active:
             return
         if display_colors is not None:
-            self._panel.set_led_colors(display_colors)
+            self._panel.set_led_colors(display_colors, display_mask)

@@ -511,10 +511,11 @@ class TRCCApp(QMainWindow):
         # FrameSent → handle_frame seam (the device's render IS the preview).
         surface = getattr(event, "surface", None)
         colors = getattr(event, "display_colors", None)
+        mask = getattr(event, "mask", None)
         if surface is not None:
             handler.handle_frame(surface)
         elif colors:
-            handler.handle_frame({"display_colors": list(colors)})
+            handler.handle_frame({"display_colors": list(colors), "mask": list(mask) if mask else None})
         else:
             handler.rebuild_preview()
 
