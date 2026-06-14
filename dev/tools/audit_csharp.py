@@ -2,23 +2,31 @@
 """Audit a decompiled Thermalright TRCC version against our Python port.
 
 Thermalright ships updates regularly; this turns "audit the new version" into one
-re-runnable command. Given the version's extracted ``.resx`` (Forms + Resources,
-from ``ilspycmd -p``) and its installer (the ``Data/USBLCD`` data tree), it diffs
-each dimension against our registries and reports **new / missing / dropped**:
+re-runnable command that tells you exactly what's new and what to pull. Inputs:
 
-    devices       device-button assets (A1<model>) vs core.variants button_image
-    assets        every A1<model>(+hover) vs src/trcc/assets/ files
-    data          installer Theme{res}/Web trees vs src/trcc/data/*.7z
-    resolutions   data-tree resolutions vs core.protocol FBL_PROFILES
+    --resx       extracted .resx (Forms + Resources, from ``ilspycmd -p <exe>``)
+    --installer  the installer .exe (its ``Data/USBLCD`` data tree, read via 7z)
+    --cs         the single-file decompile (``ilspycmd <exe>``) for the
+                 resolution-fingerprint parser
+
+It diffs each dimension against our registries and reports new / missing:
+
+    devices       device-button models (A1<model>) vs core.variants button_image
+    assets        device buttons + chrome vs src/trcc/assets/ files
+    data          installer Theme{res} archives vs src/trcc/data/*.7z
+    resolutions   the C# ``is{W}x{H}`` universe + the (mode,pm,sub,fbl) handshake
+                  fingerprint that selects each (parsed from ``FormCZTVInit`` /
+                  ``AddhidDeviceList``) vs our RESOLVED device catalog
     panels        Form*.resx families vs our ui/gui panels (known map)
 
-Clean programmatic diffs only — the pm/sub handshake *fingerprints* (which byte
-maps to which new device) still need a C#-switch parser; that's a future add and
-is called out in the report, not silently skipped.
+…then a WHAT TO PULL checklist: the exact extract/pack commands + variant rows
+for every genuinely-new device, resolution, and asset.  The tool REPORTS;
+device data still gets dev-console validation before it lands in variants.py.
 
     PYTHONPATH=src python3 dev/tools/audit_csharp.py
     PYTHONPATH=src python3 dev/tools/audit_csharp.py --resx /tmp/trcc216_proj \
-        --installer "/home/ignorant/Downloads/TRCC 2.1.6-Setup/TRCC 2.1.6-Setup.exe"
+        --installer "/home/ignorant/Downloads/TRCC 2.1.6-Setup/TRCC 2.1.6-Setup.exe" \
+        --cs /tmp/trcc216_src/TRCC.decompiled.cs
 """
 from __future__ import annotations
 
@@ -86,6 +94,18 @@ def _resx_device_models(resx_dir: Path) -> set[str]:
     return devices
 
 
+def _resx_a1_raw(resx_dir: Path) -> set[str]:
+    """Raw ``A1<...>`` resource names across all .resx — no hover-folding.
+
+    Lets the actionable summary tell a real device button (base art present)
+    from a hover-only orphan (e.g. 2.1.6 ships ``A1LF17a`` but no ``A1LF17``).
+    """
+    names: set[str] = set()
+    for rx in resx_dir.glob("*.resx"):
+        names |= set(re.findall(r'<data name="(A1[^"]+)"', rx.read_text(errors="ignore")))
+    return names
+
+
 def _our_device_models() -> set[str]:
     from trcc.core.variants import _VARIANT_REGISTRY
     return {ov.button_image
@@ -123,9 +143,107 @@ def _our_data_resolutions() -> set[str]:
     return {p.stem[len("theme"):] for p in DATA.glob("theme*.7z")}
 
 
-def _our_profile_resolutions() -> set[str]:
-    from trcc.core.protocol import FBL_PROFILES
-    return {f"{w}{h}" for p in FBL_PROFILES.values() for (w, h) in [p.resolution]}
+# ── C# resolution-fingerprint parser (FormCZTVInit / AddhidDeviceList) ──────
+
+def _function_bodies(text: str, name: str) -> list[str]:
+    """Brace-matched bodies of EVERY ``<returntype> name(...) { ... }``.
+
+    The decompile carries one ``FormCZTVInit`` per device-family class (e.g. the
+    2560×720 Trofeo form + the main LCD form), so we scan and merge all of them.
+    """
+    bodies: list[str] = []
+    for m in re.finditer(rf"\b\w[\w<>]*\s+{re.escape(name)}\s*\(", text):
+        start = text.find("{", m.end())
+        if start < 0:
+            continue
+        depth = 0
+        for j in range(start, len(text)):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    bodies.append(text[start:j + 1])
+                    break
+    return bodies
+
+
+def _csharp_resolutions(cs: Path) -> set[tuple[int, int]]:
+    """Every panel resolution the C# supports — the ``is{W}x{H}`` flag universe."""
+    text = cs.read_text(errors="ignore")
+    return {(int(w), int(h)) for w, h in re.findall(r"\bis(\d+)x(\d+)\b", text)}
+
+
+def _norm_guard(cond: str) -> str:
+    """Tidy a C# guard into a readable fingerprint string."""
+    cond = re.sub(r"\s+", " ", cond).strip()
+    return (cond.replace("myDeviceMode", "mode")
+                .replace("myDevicePingMu", "pm")
+                .replace("pmSub", "sub"))
+
+
+def _resolution_fingerprints(cs: Path) -> dict[tuple[int, int], list[str]]:
+    """(w,h) → the C# guard(s) that select it, parsed from ``FormCZTVInit``.
+
+    The chain is regular: an ``if/else if (guard)`` block whose body sets
+    ``is{W}x{H} = true``, plus direct ``is{W}x{H} = fbl == N;`` assignments.
+    Line-scan tracks the current guard so the resolution maps to its fingerprint.
+    """
+    out: dict[tuple[int, int], list[str]] = {}
+    guard_re = re.compile(r"(?:else\s+)?if\s*\((.+)\)\s*$")
+    direct_re = re.compile(r"is(\d+)x(\d+)\s*=\s*(fbl == \d+)\s*;")
+    flag_re = re.compile(r"is(\d+)x(\d+)\s*=\s*true")
+
+    def _add(res: tuple[int, int], guard: str) -> None:
+        out.setdefault(res, [])
+        if guard not in out[res]:
+            out[res].append(guard)
+
+    for body in _function_bodies(cs.read_text(errors="ignore"), "FormCZTVInit"):
+        cur = ""
+        for raw in body.splitlines():
+            s = raw.strip()
+            if (g := guard_re.match(s)):
+                cur = _norm_guard(g.group(1))
+            elif (d := direct_re.search(s)):
+                _add((int(d.group(1)), int(d.group(2))), d.group(3))
+            elif (f := flag_re.search(s)) and cur:
+                _add((int(f.group(1)), int(f.group(2))), cur)
+    return out
+
+
+def _handshake_convention(cs: Path) -> str:
+    """The (pm, sub) byte positions from ``AddhidDeviceList`` — for the report.
+
+    Surfaces it per-release so a future byte-layout change is visible, not
+    silently assumed.
+    """
+    m = re.search(r"ADDUserButton\(ID,\s*receive\[(\d+)\],\s*receive\[(\d+)\]\)",
+                  cs.read_text(errors="ignore"))
+    return (f"pm=receive[{m.group(1)}], sub=receive[{m.group(2)}]"
+            if m else "(AddhidDeviceList pattern not found)")
+
+
+def _our_catalog_resolutions() -> set[tuple[int, int]]:
+    """Resolutions a real device in our catalog actually resolves to.
+
+    The accurate check (bare FBL_PROFILES misses pm-override-derived sizes):
+    every (pm, sub) in the variant registry run through the real resolver, plus
+    any fixed native_resolution from registry devices with no variant table.
+    """
+    from trcc.core.protocol import get_profile, pm_to_fbl
+    from trcc.core.registry import ALL_DEVICES
+    from trcc.core.variants import _VARIANT_REGISTRY
+    out: set[tuple[int, int]] = set()
+    for table in _VARIANT_REGISTRY.values():
+        for pm, subs in table.items():
+            for sub in subs:
+                s = sub if sub is not None else 0
+                out.add(get_profile(pm_to_fbl(pm, s), pm).resolution)
+    for product in ALL_DEVICES.values():
+        if product.native_resolution != (0, 0):
+            out.add(product.native_resolution)
+    return out
 
 
 def _show(label: str, only_new: set, only_ours: set) -> None:
@@ -141,8 +259,11 @@ def main() -> None:
     ap.add_argument("--resx", default="/tmp/trcc216_proj")
     ap.add_argument("--installer",
                     default="/home/ignorant/Downloads/TRCC 2.1.6-Setup/TRCC 2.1.6-Setup.exe")
+    ap.add_argument("--cs", default="/tmp/trcc216_src/TRCC.decompiled.cs",
+                    help="single-file .cs decompile (ilspycmd <exe>) for the "
+                         "resolution-fingerprint parser")
     a = ap.parse_args()
-    resx_dir, setup = Path(a.resx), Path(a.installer)
+    resx_dir, setup, cs = Path(a.resx), Path(a.installer), Path(a.cs)
     if not resx_dir.is_dir():
         sys.exit(f"resx dir not found: {resx_dir} (run ilspycmd -p first)")
 
@@ -176,10 +297,30 @@ def main() -> None:
         _h("DATA (per-resolution archives)")
         inst_res = _installer_resolutions(setup)
         _show("data resolutions", inst_res - _our_data_resolutions(), set())
-        _h("RESOLUTIONS (vs FBL_PROFILES)")
-        _show("profile resolutions", inst_res - _our_profile_resolutions(), set())
     else:
-        print(f"\n(installer not found at {setup} — skipping data/resolution diff)")
+        print(f"\n(installer not found at {setup} — skipping data archive diff)")
+
+    res_gap: list[tuple[int, int]] = []
+    res_fps: dict[tuple[int, int], list[str]] = {}
+    if cs.is_file():
+        _h("RESOLUTIONS (C# is{W}x{H} universe vs our resolved device catalog)")
+        cs_res = _csharp_resolutions(cs)
+        ours = _our_catalog_resolutions()
+        res_fps = _resolution_fingerprints(cs)
+        res_gap = sorted(cs_res - ours)
+        print(f"  handshake fingerprint: {_handshake_convention(cs)}")
+        print(f"  C# supports {len(cs_res)} panel resolutions; "
+              f"{len(res_gap)} not produced by any device in our catalog:")
+        for w, h in res_gap:
+            guards = res_fps.get((w, h)) or [f"(direct fbl assign — grep is{w}x{h})"]
+            print(f"    + {w}x{h}   ⟵ {'  |  '.join(guards)}")
+        only_ours = sorted(ours - cs_res)
+        if only_ours:
+            print(f"  ({len(only_ours)} ours-only — derived rotations / legacy: "
+                  + ", ".join(f"{w}x{h}" for w, h in only_ours) + ")")
+    else:
+        print(f"\n(.cs decompile not found at {cs} — skipping resolution diff; "
+              f"run `ilspycmd <exe>` and pass --cs)")
 
     _h("PANELS (Form*.resx → our analogue)")
     forms = sorted(f.stem.replace("TRCC.", "") for f in resx_dir.glob("*.resx")
@@ -189,9 +330,30 @@ def main() -> None:
         mark = "MISSING" if have is None else ("?" if have == "?" else "have")
         print(f"  [{mark:7}] {f:32} {have or ''}")
 
-    _h("NOT AUTOMATED YET")
-    print("  pm/sub handshake fingerprints (which byte → which new device):")
-    print("  needs a parser of ADDUserButton in the .cs decompile (v2).")
+    _h("WHAT TO PULL (actionable — validate each on the dev console before landing)")
+    todo = False
+    resx_a1_raw = _resx_a1_raw(resx_dir)
+    pullable = [m for m in missing if m in resx_a1_raw]    # base art exists → extractable
+    orphans = [m for m in missing if m not in resx_a1_raw]  # hover-only, no base
+    if pullable:
+        todo = True
+        names = ",".join(f"{m},{m}a" for m in pullable)
+        print("  • button images for new device models:")
+        print("      python dev/tools/extract_resx_images.py \\")
+        print(f"          --resx {resx_dir}/TRCC.Properties.Resources.resx --names {names}")
+    if orphans:
+        print(f"  • skipped {len(orphans)} hover-only orphan(s) with no base art in the "
+              f"resx (not used by any variant): {', '.join(orphans)}")
+    if res_gap:
+        todo = True
+        print("  • new panel resolution(s) — add a profile row + pull data:")
+        for w, h in res_gap:
+            fp = (res_fps.get((w, h)) or ["(grep is%dx%d)" % (w, h)])[0]
+            print(f"      {w}x{h}: variant fingerprint  ⟵ {fp}")
+            print(f"             data:  python dev/tools/pack_theme_archives.py {w}{h}"
+                  f"   (from installer Data/USBLCD/Theme{w}{h}, Web/{w}{h}, Web/zt{w}{h})")
+    if not todo:
+        print("  nothing — devices, assets, and resolutions are all covered. ✓")
 
 
 if __name__ == "__main__":
