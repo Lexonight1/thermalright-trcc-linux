@@ -32,21 +32,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from .models import PanelCutout
+
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class PanelCutout:
-    """Rectangular cutout on the panel (e.g. smartphone-display camera notch).
-
-    Hardware fact — registry data, not user preference.  Populated on a
-    ``VariantOverride`` when the panel has an obstructed region the
-    render pipeline should mask.
-    """
-    x: int
-    y: int
-    w: int
-    h: int
 
 
 @dataclass(frozen=True, slots=True)
