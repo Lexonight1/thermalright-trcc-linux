@@ -77,3 +77,61 @@ def test_every_zone_asset_resolves_to_a_bundled_png() -> None:
         if not (_PKG_ASSETS_DIR / f"{name}.png").exists()
     })
     assert not missing, f"zone-button assets with no bundled .png: {missing}"
+
+
+# ── CPU/GPU sensor-source toggle (temp-/load-linked modes) ───────────────
+
+def _ax120(qtbot):
+    """An initialized panel for a sensor-capable style (AX120)."""
+    from trcc.core.led_models import LED_STYLES, LEGACY_STYLE_ID, LedStyle
+    spec = LED_STYLES[LedStyle.AX120]
+    panel = _panel(qtbot)
+    panel.initialize(LEGACY_STYLE_ID[LedStyle.AX120], spec.segment_count,
+                     spec.zone_count, model=spec.model_name)
+    return panel
+
+
+def test_source_toggle_visible_only_in_linked_modes(qtbot) -> None:
+    from trcc.core.led_models import LEDMode
+    panel = _ax120(qtbot)
+
+    panel._on_mode_clicked(int(LEDMode.STATIC))
+    assert not panel._source_cpu.isVisibleTo(panel), "source shown in STATIC mode"
+
+    panel._on_mode_clicked(int(LEDMode.TEMP_LINKED))
+    assert panel._source_cpu.isVisibleTo(panel) and panel._source_gpu.isVisibleTo(panel), \
+        "source toggle hidden in TEMP_LINKED mode"
+
+
+def test_source_toggle_dispatches_temp_then_load_via_signal(qtbot) -> None:
+    """Picking a radio emits the universal source signal for the active mode —
+    the same signal the handler turns into SetLedTempSource / SetLedLoadSource."""
+    from trcc.core.led_models import LEDMode
+    panel = _ax120(qtbot)
+
+    panel._on_mode_clicked(int(LEDMode.TEMP_LINKED))
+    temp: list[str] = []
+    panel.temp_source_changed.connect(temp.append)
+    panel._source_gpu.setChecked(True)
+    assert temp == ["gpu"]
+
+    panel._on_mode_clicked(int(LEDMode.LOAD_LINKED))
+    load: list[str] = []
+    panel.load_source_changed.connect(load.append)
+    panel._source_gpu.setChecked(True)
+    assert load == ["gpu"]
+
+
+def test_set_sources_reflects_state_without_emitting(qtbot) -> None:
+    """Handler→panel sync (set_sources) updates the radios but must NOT emit
+    (else loading settings would re-dispatch a command)."""
+    from trcc.core.led_models import LEDMode
+    panel = _ax120(qtbot)
+    panel._on_mode_clicked(int(LEDMode.TEMP_LINKED))
+
+    emitted: list[str] = []
+    panel.temp_source_changed.connect(emitted.append)
+    panel.set_sources(temp_source="gpu", load_source="cpu")
+
+    assert panel._source_gpu.isChecked()
+    assert emitted == [], "set_sources must not emit"
