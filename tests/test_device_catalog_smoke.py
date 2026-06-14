@@ -105,3 +105,28 @@ def test_device_variant_handshakes_and_resolves_geometry(
 def test_catalog_is_non_trivial() -> None:
     """Guard: the catalog actually enumerated the fleet (not silently empty)."""
     assert len(_CATALOG) >= 100, f"only {len(_CATALOG)} variants enumerated"
+
+
+def test_every_variant_button_image_has_an_asset() -> None:
+    """Every ``button_image`` in the registry must resolve to a bundled .png.
+
+    Without this, a C# sync that adds a device (e.g. 2.1.6's LC10/LC13/LC15/
+    LF014/LD11/RX1) silently ships a model whose sidebar button falls back to
+    the generic image — invisible until a reporter notices.  Assets carry both
+    a spaced and an underscored name historically, so accept either form.
+    """
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR
+
+    names = {
+        ov.button_image
+        for table in _VARIANT_REGISTRY.values()
+        for sub_map in table.values()
+        for ov in sub_map.values()
+        if ov.button_image
+    }
+    missing = sorted(
+        n for n in names
+        if not (_PKG_ASSETS_DIR / f"{n}.png").exists()
+        and not (_PKG_ASSETS_DIR / f"{n.replace(' ', '_')}.png").exists()
+    )
+    assert not missing, f"button_image(s) with no bundled asset .png: {missing}"
