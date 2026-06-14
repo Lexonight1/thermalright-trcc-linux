@@ -7,7 +7,7 @@ structured report a reporter can paste into a GitHub issue.
 
 What it actually does on Linux:
 - Imports + instantiates ``LinuxPlatform``
-- Calls ``detect_devices()`` and reports count (SKIP-style if 0)
+- Calls ``scan_devices()`` and reports count (SKIP-style if 0)
 - Builds the sensor enumerator, runs ``discover()`` + ``read_all()``
 - Verifies hwmon directory exists, RAPL readable, pyusb importable,
   optional pynvml works if an NVIDIA GPU is present
@@ -40,10 +40,10 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section('imports')
     try:
-        from trcc.adapters.system.linux_platform import LinuxPlatform  # noqa: F401
-        s.ok('trcc.adapters.system.linux_platform', 'LinuxPlatform importable')
+        from trcc.adapters.system.linux import LinuxPlatform  # noqa: F401
+        s.ok('trcc.adapters.system.linux', 'LinuxPlatform importable')
     except BaseException as exc:
-        s.fail('trcc.adapters.system.linux_platform', exc)
+        s.fail('trcc.adapters.system.linux', exc)
 
     for mod, note in [
         ('pyusb', 'libusb backend for raw USB'),
@@ -77,16 +77,16 @@ def _probe_devices() -> Section:
     from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
-        devices = list(p.detect_devices())
+        devices = list(p.scan_devices())
     except BaseException as exc:
-        s.fail('detect_devices()', exc)
+        s.fail('scan_devices()', exc)
         return s
     if len(devices) == 0:
-        s.skip('detect_devices()',
+        s.skip('scan_devices()',
                'returned [] — no Thermalright device plugged in (expected without hardware)')
     else:
         names = ', '.join(f'{d.vid:04x}:{d.pid:04x}' for d in devices)
-        s.ok('detect_devices()', f'found {len(devices)} device(s): {names}')
+        s.ok('scan_devices()', f'found {len(devices)} device(s): {names}')
     return s
 
 
@@ -95,11 +95,11 @@ def _probe_sensors() -> Section:
     from trcc.adapters.system import PlatformFactory
     p = PlatformFactory.current()
     try:
-        enum = p._make_sensor_enumerator()
-        s.ok('make_sensor_enumerator()',
+        enum = p.sensors()
+        s.ok('sensors()',
              f'returned {type(enum).__name__}')
     except BaseException as exc:
-        s.fail('make_sensor_enumerator()', exc)
+        s.fail('sensors()', exc)
         return s
 
     try:
@@ -107,10 +107,11 @@ def _probe_sensors() -> Section:
         if len(infos) == 0:
             s.warn('discover()', 'returned [] — no sensors found')
         else:
-            sources = sorted({info.source for info in infos})
+            categories = sorted({info.category for info in infos})
             s.ok('discover()',
-                 f'{len(infos)} sensors across {len(sources)} source(s): '
-                 f'{", ".join(sources)}')
+                 f'{len(infos)} sensors across {len(categories)} categor'
+                 f'{"y" if len(categories) == 1 else "ies"}: '
+                 f'{", ".join(categories)}')
     except BaseException as exc:
         s.fail('discover()', exc)
         return s
@@ -126,25 +127,20 @@ def _probe_sensors() -> Section:
         s.fail('read_all()', exc)
         return s
 
-    # Common metric expectations
-    mapping = enum.map_defaults()
-    for key, label in [
-        ('cpu_percent', 'CPU usage'),
-        ('mem_percent', 'Memory usage'),
-        ('cpu_temp',    'CPU temperature'),
+    # Common metric expectations — the canonical sensor ids the aggregator
+    # publishes (read_all() is keyed by these dotted ids).
+    for sensor_id, label in [
+        ('cpu:usage',      'CPU usage'),
+        ('memory:percent', 'Memory usage'),
+        ('cpu:temp',       'CPU temperature'),
     ]:
-        sensor_id = mapping.get(key, '')
-        if sensor_id == '':
-            level = s.skip if key == 'cpu_temp' else s.warn
-            level(f'metric:{key}',
-                  f'{label} — no sensor mapped (lm-sensors / hwmon module loaded?)')
+        value = readings.get(sensor_id, None)
+        if value is None:
+            level = s.skip if sensor_id == 'cpu:temp' else s.warn
+            level(f'metric:{sensor_id}',
+                  f'{label} — no live reading (lm-sensors / hwmon module loaded?)')
         else:
-            value = readings.get(sensor_id, None)
-            if value is None:
-                s.warn(f'metric:{key}',
-                       f'mapped to {sensor_id} but no live reading')
-            else:
-                s.ok(f'metric:{key}', f'{label} = {value:.1f} (via {sensor_id})')
+            s.ok(f'metric:{sensor_id}', f'{label} = {value:.1f} (via {sensor_id})')
     return s
 
 

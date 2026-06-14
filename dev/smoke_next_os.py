@@ -11,7 +11,7 @@ What it covers:
 
 * Imports — every per-OS Platform / SensorSource pair loads without
   raising.
-* :meth:`Platform.detect` returns the right concrete class on the
+* :meth:`PlatformFactory.current` returns the right concrete class on the
   current OS (no silent fallback to a stub).
 * App boots end-to-end against the real Platform (no FakePlatform).
 * ``DiscoverDevices`` returns a list (count is informational —
@@ -127,12 +127,12 @@ def _probe_gui_imports() -> Section:
 
 
 def _probe_factory() -> Section:
-    """``Platform.detect()`` must return the right class for sys.platform."""
-    s = Section("Platform.detect()")
+    """``PlatformFactory.current()`` must return the right class for sys.platform."""
+    s = Section("PlatformFactory.current()")
     try:
-        from trcc.core.ports import Platform
+        from trcc.adapters.system import PlatformFactory
     except BaseException as exc:
-        s.fail("Platform import", exc)
+        s.fail("PlatformFactory import", exc)
         return s
 
     expected_substring = {
@@ -145,11 +145,11 @@ def _probe_factory() -> Section:
     }
 
     try:
-        platform_obj = Platform.detect()
+        platform_obj = PlatformFactory.current()
         cls_name = type(platform_obj).__name__
-        s.ok("detect()", f"returned {cls_name}")
+        s.ok("current()", f"returned {cls_name}")
     except BaseException as exc:
-        s.fail("detect()", exc)
+        s.fail("current()", exc)
         return s
 
     for prefix, want in expected_substring.items():
@@ -182,14 +182,14 @@ def _probe_app_boot() -> Section:
     try:
         from trcc.adapters.render.qt import QtRenderer
         from trcc.app import App
+        from trcc.adapters.system import PlatformFactory
         from trcc.core.commands import DiscoverDevices, ReadSensors
-        from trcc.core.ports import Platform
     except BaseException as exc:
         s.fail("imports", exc)
         return s
 
     try:
-        platform_obj = Platform.detect()
+        platform_obj = PlatformFactory.current()
         renderer = QtRenderer()
         app = App(platform=platform_obj, renderer=renderer)
     except BaseException as exc:
@@ -233,8 +233,8 @@ def _probe_paths() -> Section:
     """``platform.paths()`` must point at a writable, OS-appropriate location."""
     s = Section("Paths")
     try:
-        from trcc.core.ports import Platform
-        platform_obj = Platform.detect()
+        from trcc.adapters.system import PlatformFactory
+        platform_obj = PlatformFactory.current()
         paths = platform_obj.paths()
     except BaseException as exc:
         s.fail("paths()", exc)
