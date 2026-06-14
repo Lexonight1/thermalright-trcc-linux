@@ -17,14 +17,13 @@ import logging
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFrame,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
-    QRadioButton,
     QSlider,
     QSpinBox,
     QWidget,
@@ -292,11 +291,6 @@ class UCLedControl(QWidget):
         self._current_mode = 0
         self._zone_count = 1
         self._style_id = 0
-        # CPU/GPU sensor source for the temp-/load-linked color modes — mirrors
-        # DeviceSettings; the visible toggle reads/writes these, the View emits
-        # the universal SetLedTempSource / SetLedLoadSource commands.
-        self._temp_source = "cpu"
-        self._load_source = "cpu"
 
         # Zone/carousel interaction state lives in a toolkit-free model;
         # this panel mirrors model.enabled onto its buttons.
@@ -577,35 +571,6 @@ class UCLedControl(QWidget):
         self._carousel_interval.textChanged.connect(
             self._on_carousel_interval_changed)
         self._carousel_interval.setVisible(False)
-
-        # -- Sensor source toggle (CPU/GPU) — only TEMP_LINKED / LOAD_LINKED --
-        # The temp-/load-linked color modes pull their gradient from a sensor;
-        # this picks CPU vs GPU.  It was previously only reachable via a hidden
-        # right-click menu (kept as a shortcut); this is the visible control,
-        # shown next to the temperature legend exactly when the source applies.
-        self._source_label = QLabel("Source", self)
-        self._source_label.setGeometry(TEMP_LEGEND_X, TEMP_LEGEND_Y - 22, 56, 18)
-        self._source_label.setStyleSheet(
-            "color: #ccc; font-size: 11px; background: transparent;")
-        self._source_label.setVisible(False)
-
-        self._source_cpu = QRadioButton("CPU", self)
-        self._source_cpu.setGeometry(TEMP_LEGEND_X + 56, TEMP_LEGEND_Y - 22, 54, 18)
-        self._source_gpu = QRadioButton("GPU", self)
-        self._source_gpu.setGeometry(TEMP_LEGEND_X + 112, TEMP_LEGEND_Y - 22, 54, 18)
-        for rb in (self._source_cpu, self._source_gpu):
-            rb.setStyleSheet(
-                "QRadioButton { color: #ccc; font-size: 11px; "
-                "background: transparent; }")
-            rb.setVisible(False)
-        self._source_group = QButtonGroup(self)
-        self._source_group.addButton(self._source_cpu)
-        self._source_group.addButton(self._source_gpu)
-        self._source_cpu.setChecked(True)
-        self._source_cpu.toggled.connect(
-            lambda on: self._on_source_toggled("cpu") if on else None)
-        self._source_gpu.toggled.connect(
-            lambda on: self._on_source_toggled("gpu") if on else None)
 
         # ============================================================
         # LC2 clock widgets (style 9 — hidden by default)
@@ -894,8 +859,6 @@ class UCLedControl(QWidget):
         elif is_lf11:
             self._populate_disk_identity()
 
-        self._update_source_visibility()
-
     def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""
         self._preview.set_colors(colors)
@@ -1001,60 +964,7 @@ class UCLedControl(QWidget):
         for i, btn in enumerate(self._mode_buttons):
             btn.setChecked(i == index)
         self._preview.set_led_mode(index)
-        self._update_source_visibility()
         self.mode_changed.emit(index)
-
-    # ── CPU/GPU sensor source (temp-/load-linked modes) ──────────────────
-
-    @staticmethod
-    def _is_linked_mode(mode: int) -> bool:
-        from ...core.led_models import LEDMode
-        return mode in (int(LEDMode.TEMP_LINKED), int(LEDMode.LOAD_LINKED))
-
-    def set_sources(self, temp_source: str, load_source: str) -> None:
-        """Reflect persisted CPU/GPU sources (called by the handler on load)."""
-        log.debug("set_sources: temp=%s load=%s", temp_source, load_source)
-        self._temp_source = temp_source
-        self._load_source = load_source
-        self._sync_source_buttons()
-
-    def _sync_source_buttons(self) -> None:
-        """Mirror the active mode's source onto the radios without emitting."""
-        from ...core.led_models import LEDMode
-        active = (self._temp_source
-                  if self._current_mode == int(LEDMode.TEMP_LINKED)
-                  else self._load_source)
-        for rb, val in ((self._source_cpu, "cpu"), (self._source_gpu, "gpu")):
-            rb.blockSignals(True)
-            rb.setChecked(active == val)
-            rb.blockSignals(False)
-
-    def _update_source_visibility(self) -> None:
-        """Show the CPU/GPU source row + temp legend only in the linked modes
-        (the source/gradient are meaningless otherwise)."""
-        from ...core.led_models import LEDMode
-        linked = self._is_linked_mode(self._current_mode)
-        for w in (self._source_label, self._source_cpu, self._source_gpu,
-                  self._temp_legend, self._temp_legend_labels):
-            w.setVisible(linked)
-        if linked:
-            self._source_label.setText(
-                "Temp src" if self._current_mode == int(LEDMode.TEMP_LINKED)
-                else "Load src")
-            self._sync_source_buttons()
-
-    def _on_source_toggled(self, source: str) -> None:
-        """A CPU/GPU radio was picked → dispatch via the universal Command path
-        (temp_source_changed / load_source_changed → SetLed*Source)."""
-        from ...core.led_models import LEDMode
-        log.info("_on_source_toggled: source=%s mode=%s",
-                 source, self._current_mode)
-        if self._current_mode == int(LEDMode.TEMP_LINKED):
-            self._temp_source = source
-            self.temp_source_changed.emit(source)
-        elif self._current_mode == int(LEDMode.LOAD_LINKED):
-            self._load_source = source
-            self.load_source_changed.emit(source)
 
     def _on_hue_changed(self, hue: int):
         """Handle color wheel hue selection -> update RGB sliders."""
@@ -1190,7 +1100,6 @@ class UCLedControl(QWidget):
         for i, btn in enumerate(self._mode_buttons):
             btn.setChecked(i == mode)
         self._current_mode = mode
-        self._update_source_visibility()
 
         for slider in self._rgb_sliders:
             slider.blockSignals(False)
@@ -1408,6 +1317,31 @@ class UCLedControl(QWidget):
         log.debug("update_lf11_disk_metrics")
         for key, text in format_disk_labels(metrics, self._temp_unit).items():
             self._disk_labels[key].setText(text)
+
+    # ================================================================
+    # Metric-source context menu (temp-/load-linked LED color)
+    # ================================================================
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click → pick the CPU/GPU source for temp-/load-linked
+        LED color modes.  A context menu keeps the pixel-perfect FormLED
+        layout untouched (no new buttons to place)."""
+        menu = QMenu(self)
+        temp_menu = menu.addMenu("Temperature source")
+        temp_cpu = temp_menu.addAction("CPU")
+        temp_gpu = temp_menu.addAction("GPU")
+        load_menu = menu.addMenu("Load source")
+        load_cpu = load_menu.addAction("CPU")
+        load_gpu = load_menu.addAction("GPU")
+        chosen = menu.exec(event.globalPos())
+        if chosen is temp_cpu:
+            self.temp_source_changed.emit("cpu")
+        elif chosen is temp_gpu:
+            self.temp_source_changed.emit("gpu")
+        elif chosen is load_cpu:
+            self.load_source_changed.emit("cpu")
+        elif chosen is load_gpu:
+            self.load_source_changed.emit("gpu")
 
     # ================================================================
     # Window drag (C# delegate cmds 241/242/243)

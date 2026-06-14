@@ -156,8 +156,6 @@ class LEDHandler(BaseHandler):
         if self._app is None:
             return
         s = self._app.settings.for_led(self._device_key)
-        # CPU/GPU sensor source for the temp-/load-linked color modes.
-        self._panel.set_sources(s.temp_source, s.load_source)
         # Zone[0] for multi-zone, else the global mode/color/brightness.
         if s.zones:
             z = s.zones[0]
