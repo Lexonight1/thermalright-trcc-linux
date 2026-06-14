@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import AbstractContextManager, nullcontext
+from pathlib import Path
 from typing import Any, TypeVar
 
 from .adapters.device import DeviceFactory
@@ -28,6 +29,7 @@ from .core.events import (
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
+    OrientationChanged,
     OverlayChanged,
     SensorsUpdated,
     SplitModeChanged,
@@ -176,6 +178,15 @@ class App:
         # launch (or present-but-not-ready during the boot discover) never
         # connects (#139).  Core-level so CLI / API / GUI / daemon all benefit.
         self.events.subscribe(DeviceAttached, self._on_device_attached)
+        # Rotation reload: when a device's orientation flips, reload its
+        # active theme + mask from the orientation-keyed resolution dir
+        # (theme1280480 ↔ theme4801280, web/zt1280480 ↔ web/zt4801280).
+        # Ports the C# rotation handler (UpDateUCComboBox1: SetThemeInfo_ThemeML
+        # → ReadFileTheme → Theme_Click reloads the theme from the rotated dir).
+        # The cutover dropped this — rotation only switched the GUI browser, so
+        # an active theme/mask stayed pinned to the landscape dir.  Core-level so
+        # CLI / API / GUI / daemon all benefit.
+        self.events.subscribe(OrientationChanged, self._on_orientation_changed)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -203,6 +214,65 @@ class App:
         log.info("_on_device_attached: connecting %s", event.key)
         from .core.commands import ConnectDevice
         self.dispatch(ConnectDevice(key=event.key))
+
+    def _on_orientation_changed(self, event: Any) -> None:
+        """``OrientationChanged`` → reload the active theme + mask from the
+        orientation-keyed resolution dir.
+
+        Non-square panels store theme / web-mask catalogs per oriented
+        resolution (``theme1280480`` vs ``theme4801280``, ``web/zt1280480`` vs
+        ``web/zt4801280``).  On rotation the active content must follow — the
+        port of the C# ``UpDateUCComboBox1`` reload.  Theme first, then the
+        user mask (so an explicitly-applied mask wins over the theme's bundled
+        one).  Each reload is best-effort + skipped when no rotated variant is
+        on disk (the renderer pixel-rotates the landscape art as fallback,
+        matching C# ``isFanZhuan``).  ``event`` is ``Any`` to satisfy the
+        ``Handler`` type, as the other subscribers do.
+        """
+        key = event.key
+        device = self.devices.get(key)
+        if device is None or device.profile is None:
+            log.debug("_on_orientation_changed: %s not connected — skip", key)
+            return
+        w, h = device.profile.resolution
+        bw, bh = (h, w) if event.degrees in (90, 270) else (w, h)
+        paths = self.platform.paths()
+        s = self.settings.for_device(key)
+        log.info("_on_orientation_changed: %s degrees=%d catalog=%dx%d",
+                 key, event.degrees, bw, bh)
+
+        from .core.commands import ApplyMask, LoadTheme
+
+        # Active theme → reload from the rotated-resolution theme dir.
+        # ``current_theme`` is the loaded theme's absolute path (LoadTheme
+        # stores ``str(theme.path.resolve())``); the same-named dir under the
+        # rotated resolution is the variant to reload.
+        if s.current_theme:
+            cur = Path(s.current_theme)
+            for base in (paths.theme_dir(bw, bh), paths.user_theme_dir(bw, bh)):
+                cand = base / cur.name
+                if cand.exists():
+                    if cand != cur:
+                        log.info("_on_orientation_changed: reload theme %s → %s",
+                                 cur.name, cand)
+                        self.dispatch(LoadTheme(key=key, path=cand))
+                    break  # this resolution's dir matched — done either way
+
+        # Active user mask → re-resolve to the rotated zt dir (after the theme,
+        # so it overrides the theme's bundled mask).  Only cloud zt masks have
+        # per-orientation variants; user-uploaded masks are native-res and stay.
+        mp = s.mask_path
+        if mp and s.mask_visible:
+            mask_path = Path(mp)
+            web_root = paths.data_dir() / "web"
+            zt_parent = mask_path.parent.parent  # .../web/zt{w}{h}
+            if (zt_parent.parent == web_root
+                    and zt_parent.name.startswith("zt")):
+                cand = paths.cloud_mask_dir(bw, bh) / mask_path.parent.name
+                if cand.exists() and cand != mask_path.parent:
+                    log.info("_on_orientation_changed: reload mask %s → %s",
+                             mask_path.parent.name, cand)
+                    self.dispatch(ApplyMask(key=key, path=cand))
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""
