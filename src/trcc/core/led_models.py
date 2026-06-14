@@ -209,29 +209,62 @@ STYLE_BY_LEGACY_ID: dict[int, LedStyle] = {
 }
 
 
+# Zone-button image pairs (normal, active) per C# button group.  The cutover
+# dropped this mapping — legacy held it in a computed ``zone_assets`` property
+# (``_ZONE_STYLE_ASSETS``); here it lives as data on the spec.  Without it
+# ``uc_led_control._apply_zone_images`` early-returns and the zone buttons
+# render blank ("buttons don't show below it").  Names verified on disk.
+_ZONE_BTN_MODE14: tuple[tuple[str, str], ...] = (
+    ("led_zone_mode_1", "led_zone_mode_1_active"),
+    ("led_zone_mode_2", "led_zone_mode_2_active"),
+    ("led_zone_mode_3", "led_zone_mode_3_active"),
+    ("led_zone_mode_4", "led_zone_mode_4_active"),
+)
+_ZONE_BTN_MODE56: tuple[tuple[str, str], ...] = (
+    ("led_zone_mode_5", "led_zone_mode_5_active"),
+    ("led_zone_mode_6", "led_zone_mode_6_active"),
+)
+_ZONE_BTN_N: tuple[tuple[str, str], ...] = (
+    ("led_zone_btn_1", "led_zone_btn_1_active"),
+    ("led_zone_btn_2", "led_zone_btn_2_active"),
+    ("led_zone_btn_3", "led_zone_btn_3_active"),
+    ("led_zone_btn_4", "led_zone_btn_4_active"),
+)
+
+
 LED_STYLES: dict[LedStyle, LedStyleSpec] = {
     LedStyle.AX120: LedStyleSpec(30,  10, 4, "AX120_DIGITAL",
-                                 "led_preview_ax120", "led_bg_segment"),
+                                 "led_preview_ax120", "led_bg_segment",
+                                 zone_assets=_ZONE_BTN_MODE14),
     LedStyle.PA120: LedStyleSpec(84,  18, 4, "PA120_DIGITAL",
-                                 "led_preview_pa120", "led_bg_segment_4zone"),
+                                 "led_preview_pa120", "led_bg_segment_4zone",
+                                 zone_assets=_ZONE_BTN_MODE14),
     LedStyle.AK120: LedStyleSpec(64,  10, 2, "AK120_DIGITAL",
-                                 "led_preview_ak120", "led_bg_segment"),
+                                 "led_preview_ak120", "led_bg_segment",
+                                 zone_assets=_ZONE_BTN_MODE56),
     LedStyle.LC1:   LedStyleSpec(31,  14, 3, "LC1",
-                                 "led_preview_lc1",   "led_bg_lc1"),
+                                 "led_preview_lc1",   "led_bg_lc1",
+                                 zone_assets=_ZONE_BTN_N),
     LedStyle.LF8:   LedStyleSpec(93,  23, 2, "LF8",
-                                 "led_preview_lf8",   "led_bg_lf8"),
+                                 "led_preview_lf8",   "led_bg_lf8",
+                                 zone_assets=_ZONE_BTN_MODE56),
     LedStyle.LF12:  LedStyleSpec(124, 72, 2, "LF12",
-                                 "led_preview_lf12",  "led_bg_lf12"),
+                                 "led_preview_lf12",  "led_bg_lf12",
+                                 zone_assets=_ZONE_BTN_MODE56),
     LedStyle.LF10:  LedStyleSpec(116, 12, 3, "LF10",
-                                 "led_preview_lf10",  "led_bg_lf10"),
+                                 "led_preview_lf10",  "led_bg_lf10",
+                                 zone_assets=_ZONE_BTN_N),
     LedStyle.CZ1:   LedStyleSpec(18,  13, 4, "CZ1",
-                                 "led_preview_cz1",   "led_bg_cz1"),
+                                 "led_preview_cz1",   "led_bg_cz1",
+                                 zone_assets=_ZONE_BTN_N),
     LedStyle.LC2:   LedStyleSpec(61,  31, 0, "LC2",
                                  "led_preview_lc2",   "led_bg_lc2"),
     LedStyle.LF11:  LedStyleSpec(38,  17, 4, "LF11",
-                                 "led_preview_lf11",  "led_bg_lf11"),
+                                 "led_preview_lf11",  "led_bg_lf11",
+                                 zone_assets=_ZONE_BTN_N),
     LedStyle.LF15:  LedStyleSpec(93,  72, 2, "LF15",
-                                 "led_preview_lf15",  "led_bg_lf15"),
+                                 "led_preview_lf15",  "led_bg_lf15",
+                                 zone_assets=_ZONE_BTN_MODE56),
     LedStyle.LF13:  LedStyleSpec(62,  62, 0, "LF13",
                                  "led_preview_lf13",  "led_bg_lf13"),
 }
