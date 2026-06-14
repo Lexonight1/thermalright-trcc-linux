@@ -44,9 +44,12 @@ def test_multizone_panel_zone_buttons_render(style, qtbot) -> None:
         assert "background-image" in btn.styleSheet(), (
             f"{style.name} zone[{i}] rendered BLANK — no zone image applied"
         )
-    # "Circulate" carousel is the multi-zone control row.
+    # "Circulate" carousel is the multi-zone control row — visible AND drawn
+    # (it uses the shared checkbox image, not a blank flat button).
     assert panel._carousel_btn.isVisibleTo(panel), \
         f"{style.name} carousel/Circulate not visible"
+    assert "background-image" in panel._carousel_btn.styleSheet(), \
+        f"{style.name} carousel/Circulate rendered blank — no checkbox image"
 
 
 @pytest.mark.parametrize("style", _NOZONE, ids=lambda s: s.name)
