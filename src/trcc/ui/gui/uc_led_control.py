@@ -43,6 +43,7 @@ from ..presentation.led_metrics_format import (
     format_memory_labels,
     format_sensor_gauges,
 )
+from ..presentation.led_panel import led_panel_for
 from ..presentation.led_zone_model import LedZoneModel
 from .assets import Assets
 from .base import set_background_pixmap
@@ -841,22 +842,20 @@ class UCLedControl(QWidget):
         if zone_count > 1:
             self._sync_zone_buttons()
 
-        # Show/hide device-specific info panels (mutually exclusive)
-        is_lc2 = (style_id == 9)
-        is_lc1 = (style_id == 4)
-        is_lf11 = (style_id == 10)
-        # C# shows ucInfoImage1-6 for ALL styles except LC1 (4) and LF11 (10)
-        show_sensors = style_id not in (4, 10)
-
-        self._set_lc2_visibility(is_lc2)
-        self._set_sensor_visibility(show_sensors)
-        self._set_mem_visibility(is_lc1)
-        self._set_disk_visibility(is_lf11)
+        # Section visibility from the toolkit-free panel model (C#-sourced via
+        # audit_csharp's FormLEDInit extraction) — one contract, no scattered
+        # ``style_id in (...)`` checks.  Sections are mutually exclusive: the
+        # memory/disk panels replace the sensor gauges; LC2 adds the clock.
+        panel = led_panel_for(style_id)
+        self._set_sensor_visibility(panel.show_sensor_gauges)
+        self._set_mem_visibility(panel.show_memory_panel)
+        self._set_disk_visibility(panel.show_disk_panel)
+        self._set_lc2_visibility(panel.show_clock_panel)
 
         # Populate static hardware identity info (once per device switch)
-        if is_lc1:
+        if panel.show_memory_panel:
             self._populate_memory_identity()
-        elif is_lf11:
+        elif panel.show_disk_panel:
             self._populate_disk_identity()
 
     def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:

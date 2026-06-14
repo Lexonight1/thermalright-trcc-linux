@@ -66,6 +66,28 @@ def test_singlezone_panel_hides_zone_buttons(style, qtbot) -> None:
         f"{style.name} should show no carousel"
 
 
+@pytest.mark.parametrize("style", list(LED_STYLES), ids=lambda s: s.name)
+def test_panel_sections_match_led_panel_model(style, qtbot) -> None:
+    """initialize() renders section visibility from led_panel_for(style) — the
+    rendered panel matches the model (gauges / memory / disk / clock)."""
+    from trcc.ui.presentation.led_panel import led_panel_for
+    spec = LED_STYLES[style]
+    sid = LEGACY_STYLE_ID[style]
+    panel = _panel(qtbot)
+    panel.initialize(sid, spec.segment_count, spec.zone_count,
+                     model=spec.model_name)
+    m = led_panel_for(sid)
+
+    gauges = any(w.isVisibleTo(panel) for w in panel._info_images.values())
+    assert gauges == m.show_sensor_gauges, f"{style.name} gauges"
+    assert panel._mem_bg.isVisibleTo(panel) == m.show_memory_panel, \
+        f"{style.name} memory"
+    assert panel._disk_bg.isVisibleTo(panel) == m.show_disk_panel, \
+        f"{style.name} disk"
+    assert panel._lc2_label.isVisibleTo(panel) == m.show_clock_panel, \
+        f"{style.name} clock"
+
+
 def test_every_zone_asset_resolves_to_a_bundled_png() -> None:
     """Fast data guard (no Qt): every referenced zone image is bundled."""
     from trcc.ui.gui.assets import _PKG_ASSETS_DIR
