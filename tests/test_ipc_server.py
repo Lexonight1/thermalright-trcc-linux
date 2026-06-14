@@ -174,6 +174,31 @@ def test_proxy_dispatch_discover_devices(
     assert result.products == []
 
 
+def test_proxy_dispatch_discover_devices_with_products(
+    running_server: tuple[ipc.IPCServer, App],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full-wire regression guard (859634af): a discovered ProductInfo must
+    cross the socket intact.  The empty-fleet test above never serializes a
+    ProductInfo, so it missed the decode-side ``get_type_hints(ProductInfo)``
+    crash.  Stage a registry device so DiscoverDevices returns non-empty
+    products and assert they survive the round-trip."""
+    from trcc.core.models import DeviceInfo
+
+    _server, app = running_server
+    monkeypatch.setattr(
+        app.platform, "scan_devices",
+        lambda: [DeviceInfo(vid=0x0402, pid=0x3922)],
+    )
+
+    proxy = AppProxy(timeout=2.0)
+    result = proxy.dispatch(DiscoverDevices())
+
+    assert isinstance(result, DiscoverResult)
+    assert result.ok is True
+    assert any(p.vid == 0x0402 and p.pid == 0x3922 for p in result.products)
+
+
 def test_proxy_dispatch_full_chain_connect_then_send_color(
     running_server: tuple[ipc.IPCServer, App],
     monkeypatch: pytest.MonkeyPatch,
