@@ -125,10 +125,10 @@ def _build_real_app():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from trcc.adapters.render.qt import QtRenderer
+    from trcc.adapters.system import PlatformFactory
     from trcc.app import App
-    from trcc.core.ports import Platform
 
-    platform = Platform.detect()
+    platform = PlatformFactory.current()
     renderer = QtRenderer()
     app = App(platform=platform, renderer=renderer)
     return app
