@@ -25,11 +25,8 @@ from trcc.app import App
 from trcc.core.commands import RenderLed
 from trcc.core.errors import DeviceNotConnectedError
 from trcc.core.led_protocol import LED_REMAP_TABLES
-from trcc.core.models import LedStyle
-from trcc.services.led_segment import (
-    LegacyMetricsView,
-    compute_mask,
-)
+from trcc.core.models import HardwareMetrics, LedStyle
+from trcc.services.led_segment import compute_mask
 
 from .conftest import FakePlatform
 
@@ -84,22 +81,12 @@ def test_render_led_lights_segment_mask_for_pa120(
     assert result.colors == [color] * 84
     assert "84 LEDs" in result.message
 
-    # Recompute the expected mask the same way the Command does, then
-    # apply the wire-remap to land on the per-physical-LED expectation.
-    descriptors = fake_platform.sensors().discover()
-    current = fake_platform.sensors().read_all()
-    from trcc.core.models import SensorReading
-    readings = {
-        d.sensor_id: SensorReading(
-            sensor_id=d.sensor_id, category=d.category,
-            value=current.get(d.sensor_id, 0.0),
-            unit=d.unit, label=d.label,
-        )
-        for d in descriptors
-    }
+    # Recompute the expected mask the same way the Command does — from the
+    # same typed snapshot — then apply the wire-remap to land on the
+    # per-physical-LED expectation.
+    metrics = fake_platform.sensors().snapshot()
     expected_mask = compute_mask(
-        LedStyle.PA120, LegacyMetricsView(readings),
-        phase=0, temp_unit="C",
+        LedStyle.PA120, metrics, phase=0, temp_unit="C",
     )
     assert len(expected_mask) == 84
     assert any(expected_mask), "PA120 mask should not be entirely off"
@@ -201,30 +188,23 @@ def test_render_led_rejects_lcd_device_key(
 # ── DDR memory multiplier scales the LC1 memory reading ─────────────
 
 
-class _MemMetrics:
-    """Minimal MetricsLike exposing one ``mem_clock`` value."""
-
-    def __init__(self, mem_clock: int) -> None:
-        self._v = mem_clock
-
-    def __getattr__(self, name: str) -> int:
-        return self._v if name == "mem_clock" else 0
-
-
 def test_lc1_memory_ratio_scales_displayed_value() -> None:
     """LC1 phase 1 (mem_clock, mode 1) multiplies the reading by the DDR
     ratio before encoding — so ×2 of V equals ×1 of 2V, and a higher
     multiplier renders a different mask.  This is the feature restored from
     legacy (the cutover had frozen the multiplier at the default)."""
     half_x2 = compute_mask(
-        LedStyle.LC1, _MemMetrics(400), phase=1, temp_unit="C", memory_ratio=2,
+        LedStyle.LC1, HardwareMetrics(mem_clock=400), phase=1, temp_unit="C",
+        memory_ratio=2,
     )
     full_x1 = compute_mask(
-        LedStyle.LC1, _MemMetrics(800), phase=1, temp_unit="C", memory_ratio=1,
+        LedStyle.LC1, HardwareMetrics(mem_clock=800), phase=1, temp_unit="C",
+        memory_ratio=1,
     )
     assert half_x2 == full_x1          # 400×2 == 800×1 → identical digits
 
     full_x4 = compute_mask(
-        LedStyle.LC1, _MemMetrics(800), phase=1, temp_unit="C", memory_ratio=4,
+        LedStyle.LC1, HardwareMetrics(mem_clock=800), phase=1, temp_unit="C",
+        memory_ratio=4,
     )
     assert full_x4 != full_x1          # ×4 changes the rendered value

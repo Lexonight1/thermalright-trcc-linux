@@ -159,11 +159,7 @@ class RenderLed(Command[LedColorsResult]):
     phase: int = 0
 
     def execute(self, app: App) -> LedColorsResult:
-        from ...services.led_segment import (
-            LegacyMetricsView,
-            compute_mask,
-            get_display,
-        )
+        from ...services.led_segment import compute_mask, get_display
 
         try:
             device = app.get(self.key)
@@ -200,22 +196,19 @@ class RenderLed(Command[LedColorsResult]):
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         device_settings = app.settings.for_device(self.key)
 
-        # Build the flat sensor dict the engine consumes.  Two shapes
-        # coexist: the dotted IDs we already produce for SensorReading,
-        # and the legacy view used by compute_mask().
+        # One metrics source for the whole frame — the same typed snapshot
+        # the GUI gauges observe (no second, divergent view).  compute_mask
+        # reads its attributes (metrics.cpu_temp, …); the effects engine
+        # reads the flat dict for per-zone color sources.
         enum = app.platform.sensors()
-        descriptors = enum.discover()
         current = enum.read_all()
-        from ..models import SensorReading
-        readings = {
-            d.sensor_id: SensorReading(
-                sensor_id=d.sensor_id, category=d.category,
-                value=current.get(d.sensor_id, 0.0),
-                unit=d.unit, label=d.label,
-            )
-            for d in descriptors
-        }
-        metrics = LegacyMetricsView(readings)
+        metrics = enum.snapshot()
+        log.debug(
+            "RenderLed %s: snapshot cpu_temp=%.0f cpu_pct=%.0f "
+            "gpu_temp=%.0f gpu_usage=%.0f", self.key,
+            metrics.cpu_temp, metrics.cpu_percent,
+            metrics.gpu_temp, metrics.gpu_usage,
+        )
 
         # If the caller passed an explicit color, treat it as a STATIC
         # diagnostic at full brightness (same shape RenderLed has always
@@ -318,8 +311,14 @@ class RenderLed(Command[LedColorsResult]):
             # Same preview path as LCD: publish the rendered output on
             # FrameSent so the GUI preview shows exactly what went to the
             # device (LCD carries a surface; LED carries the colors).
+            # Apply the on/off mask the device gets via is_on — otherwise
+            # the preview colors EVERY segment and reads as "888" instead
+            # of the lit digits.  Empty mask (pure-RGB styles) shows all.
+            shown = ([c if on else (0, 0, 0)
+                      for c, on in zip(colors, mask, strict=True)]
+                     if mask else colors)
             app.events.publish(FrameSent(
-                key=self.key, bytes_sent=len(colors), display_colors=colors,
+                key=self.key, bytes_sent=len(colors), display_colors=shown,
             ))
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,

@@ -455,6 +455,8 @@ class SensorEnumerator(ABC):
             gpu_power=_safe(primary.power) if primary else 0.0,
             mem_percent=_safe(mem.percent),
             mem_available=_safe(mem.available),
+            mem_used=readings.get("memory:used", 0.0),
+            mem_temp=readings.get("memory:temp", 0.0),
             disk_activity=readings.get("disk:activity", 0.0),
             disk_read=readings.get("disk:read", 0.0),
             disk_write=readings.get("disk:write", 0.0),

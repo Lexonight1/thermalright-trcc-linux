@@ -960,7 +960,8 @@ SUBPROCESS_NO_WINDOW: int = getattr(_subprocess, 'CREATE_NO_WINDOW', 0)
 
 
 # =========================================================================
-# Hardware metrics DTOs (legacy GUI widgets expect ``metrics.X`` access)
+# Hardware metrics DTOs — GUI widgets and LED segment displays read
+# ``metrics.X`` (cpu_temp, gpu_usage, …) directly off this object.
 # =========================================================================
 
 
@@ -991,12 +992,14 @@ class GpuMetrics:
 
 @dataclass(slots=True)
 class HardwareMetrics:
-    """Typed DTO for system sensor readings — legacy GUI widget shape.
+    """Typed DTO for system sensor readings — the one metrics object every
+    consumer observes.
 
     Built once per tick by :meth:`SensorEnumerator.snapshot` from the
     typed sensor sources (no fragile ``sensor_id``→attr string table).
-    Widgets read ``metrics.cpu_temp`` etc.; the ``readings`` dict carries
-    the full flat view for the system-info dashboard.
+    GUI gauges and LED segment displays both read ``metrics.cpu_temp``
+    etc. straight off this object; the ``readings`` dict carries the full
+    flat view for the system-info dashboard.
 
     **Plural-ready (servers/workstations).**  ``cpus``/``gpus`` carry every
     detected unit (single-element on consumer hardware today); the scalar
@@ -1017,6 +1020,7 @@ class HardwareMetrics:
     mem_percent: float = 0.0
     mem_clock: float = 0.0
     mem_available: float = 0.0
+    mem_used: float = 0.0
     disk_temp: float = 0.0
     disk_activity: float = 0.0
     disk_read: float = 0.0

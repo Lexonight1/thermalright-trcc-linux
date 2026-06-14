@@ -1,4 +1,4 @@
-"""Segment-display renderers for LED styles 1-11 (port of legacy `core/led_segment.py`).
+"""Segment-display renderers for LED styles 1-11.
 
 Each style class declares its layout as class-level data (mask size,
 phase count, digit-LED indices) and implements ``compute_mask()`` that
@@ -18,108 +18,20 @@ Class hierarchy::
     ├── LC2Display      — style 9:  61 LEDs, clock display
     └── LF11Display     — style 10: 38 LEDs, 4-phase sensor
 
-Metric input is a ``MetricsLike`` — any object exposing the legacy
-attribute names (``cpu_temp``, ``gpu_usage``, …) via ``getattr``.  Use
-``LegacyMetricsView`` to wrap next/'s ``dict[str, SensorReading]``.
+Metric input is the :class:`~trcc.core.models.HardwareMetrics` snapshot —
+the same object the GUI gauges observe; the displays read its attributes
+(``metrics.cpu_temp`` …) directly.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from datetime import datetime
-from typing import (
-    Any,
-    ClassVar,
-    Protocol,
-)
+from typing import Any
 
-from ..core.models import LedStyle, SensorReading
+from ..core.models import HardwareMetrics, LedStyle
 
 log = logging.getLogger(__name__)
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Metric source — any object exposing legacy attribute names.
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class MetricsLike(Protocol):
-    """Anything exposing ``cpu_temp`` / ``gpu_usage`` / … via attribute lookup.
-
-    The segment displays only ever ``getattr(m, key, 0)``, so a minimal
-    duck type is enough — the legacy ``HardwareMetrics`` dataclass and
-    next/'s :class:`LegacyMetricsView` both satisfy it.
-    """
-
-    def __getattr__(self, name: str) -> float: ...
-
-
-class LegacyMetricsView:
-    """Wrap next/'s ``dict[str, SensorReading]`` so legacy attribute
-    lookups (``cpu_temp``, ``gpu_usage``, …) just work.
-
-    The 11 :class:`SegmentDisplay` subclasses port verbatim from legacy
-    because every metric access goes through ``getattr(m, name, 0)``,
-    which lands in ``__getattr__`` here and translates to a colon-
-    namespaced sensor_id lookup against the underlying dict.
-    """
-
-    __slots__ = ("_readings",)
-
-    # Legacy attribute name → next/ sensor_id.  Anything not in this
-    # map (or absent from the dict) reads as 0.0.
-    #
-    # Disk + memory entries audited 2026-05-24 against
-    # ``BaselineSensors._io_keys`` + ``_memory_keys``: the aggregator
-    # publishes flat ``disk:read`` / ``disk:write`` / ``disk:activity``
-    # ids (no per-disk index — the aggregator's I/O source is a
-    # single ComputedIo, not per-disk SMART), and memory metrics
-    # don't include a ``memory:clock`` key at all (no canonical
-    # "memory frequency" sensor source).
-    _LEGACY_TO_NEXT: ClassVar[Mapping[str, str]] = {
-        # CPU
-        "cpu_temp": "cpu:temp",
-        "cpu_percent": "cpu:usage",
-        "cpu_power": "cpu:power",
-        "cpu_freq": "cpu:freq",
-        # GPU (uses GPU 0; multi-GPU selection is a separate concern)
-        "gpu_temp": "gpu:0:temp",
-        "gpu_usage": "gpu:0:usage",
-        "gpu_power": "gpu:0:power",
-        "gpu_clock": "gpu:0:clock",
-        "gpu_fan": "gpu:0:fan",
-        "gpu_vram_used": "gpu:0:vram_used",
-        # Memory — ``memory:temp`` may be published by a DDR5 SPD
-        # source; ``mem_clock`` has no canonical aggregator source
-        # (returns 0 via the unmapped-key fallback).
-        "mem_used": "memory:used",
-        "mem_percent": "memory:percent",
-        "mem_temp": "memory:temp",
-        # Disk (flat ids — aggregator doesn't index by disk).
-        "disk_read": "disk:read",
-        "disk_write": "disk:write",
-        "disk_activity": "disk:activity",
-        # ``disk_temp`` stays unmapped (no SMART source today;
-        # returns 0 via the unmapped-key fallback).  Add a SmartDisk
-        # source first, then bind here.
-    }
-
-    def __init__(self, readings: Mapping[str, SensorReading]) -> None:
-        self._readings = readings
-
-    def __getattr__(self, name: str) -> float:
-        # __getattr__ only fires when normal lookup fails, so it's safe
-        # to do dict work here without recursion concerns.
-        sensor_id = self._LEGACY_TO_NEXT.get(name)
-        if sensor_id is None:
-            return 0.0
-        if (reading := self._readings.get(sensor_id)) is None:
-            return 0.0
-        return float(reading.value)
-
-    def __repr__(self) -> str:
-        return f"LegacyMetricsView({len(self._readings)} readings)"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -186,7 +98,7 @@ class SegmentDisplay:
 
     def compute_mask(
         self,
-        metrics: MetricsLike,
+        metrics: HardwareMetrics,
         phase: int = 0,
         temp_unit: str = "C",
         **kw: Any,
@@ -339,7 +251,7 @@ class AX120Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 30
         for idx in self.ALWAYS_ON:
@@ -403,7 +315,7 @@ class PA120Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 84
         for idx in (self.CPU1, self.CPU2, self.GPU1, self.GPU2, self.BFB, self.BFB1):
@@ -461,7 +373,7 @@ class AK120Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 64
         mask[self.WATT] = mask[self.BFB] = True
@@ -514,7 +426,7 @@ class LC1Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 31
         sub_style = kw.get("sub_style", 0)
@@ -571,7 +483,7 @@ class LF8Display(SegmentDisplay):
     )
 
     def _compute_digits(
-        self, metrics: MetricsLike, phase: int, temp_unit: str, mask: list[bool],
+        self, metrics: HardwareMetrics, phase: int, temp_unit: str, mask: list[bool],
     ) -> None:
         """Shared digit computation for LF8 and LF12."""
         mask[self.WATT] = mask[self.MHZ] = mask[self.BFB] = True
@@ -593,7 +505,7 @@ class LF8Display(SegmentDisplay):
         )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * self.mask_size
         self._compute_digits(metrics, phase, temp_unit, mask)
@@ -610,7 +522,7 @@ class LF12Display(LF8Display):
     DECORATION = tuple(range(93, 124))
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 124
         self._compute_digits(metrics, phase, temp_unit, mask)
@@ -644,7 +556,7 @@ class LF10Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 116
         mask[self.CPU1] = mask[self.GPU1] = True
@@ -686,7 +598,7 @@ class CZ1Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 18
         metric_key, indicator_on = self.PHASES[phase % 4]
@@ -721,7 +633,7 @@ class LC2Display(SegmentDisplay):
     DECORATION = tuple(range(54, 61))
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 61
         is_24h = kw.get("is_24h", True)
@@ -784,7 +696,7 @@ class LF11Display(SegmentDisplay):
     )
 
     def compute_mask(
-        self, metrics: MetricsLike, phase: int = 0, temp_unit: str = "C", **kw: Any,
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
     ) -> list[bool]:
         mask = [False] * 38
         metric_key, mode = self.PHASES[phase % 4]
@@ -828,7 +740,7 @@ DISPLAYS: dict[LedStyle, SegmentDisplay] = {
 
 def compute_mask(
     style: LedStyle | None,
-    metrics: MetricsLike,
+    metrics: HardwareMetrics,
     phase: int = 0,
     temp_unit: str = "C",
     is_24h: bool = True,
@@ -841,17 +753,25 @@ def compute_mask(
     display (e.g. LF13 is pure RGB).  ``memory_ratio`` is the DDR
     multiplier (1/2/4) the memory gauge scales its reading by.
     """
-    log.debug("compute_mask: style=%s phase=%d temp_unit=%s memory_ratio=%d",
-              style, phase, temp_unit, memory_ratio)
+    log.debug("compute_mask: style=%s phase=%d temp_unit=%s memory_ratio=%d "
+              "cpu_temp=%.0f cpu_pct=%.0f gpu_temp=%.0f gpu_usage=%.0f",
+              style, phase, temp_unit, memory_ratio,
+              getattr(metrics, "cpu_temp", 0.0),
+              getattr(metrics, "cpu_percent", 0.0),
+              getattr(metrics, "gpu_temp", 0.0),
+              getattr(metrics, "gpu_usage", 0.0))
     if style is None:
         return []
     display = DISPLAYS.get(style)
     if display is None:
         return []
-    return display.compute_mask(
+    mask = display.compute_mask(
         metrics, phase, temp_unit, is_24h=is_24h, week_sunday=week_sunday,
         memory_ratio=memory_ratio,
     )
+    log.debug("compute_mask: style=%s -> %d/%d segments lit",
+              style, sum(mask), len(mask))
+    return mask
 
 
 def get_display(style: LedStyle | None) -> SegmentDisplay | None:
@@ -879,8 +799,6 @@ __all__ = [
     "LF10Display",
     "LF11Display",
     "LF12Display",
-    "LegacyMetricsView",
-    "MetricsLike",
     "PA120Display",
     "SegmentDisplay",
     "compute_mask",
