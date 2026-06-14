@@ -7,7 +7,8 @@ behaviors against the current architecture:
 
   TEST 1  geometry   — ``DisplayService.composed_canvas_size`` swaps
                        854x480 ↔ 480x854 with user orientation (the GUI
-                       preview-bezel contract); the rotated render path runs.
+                       preview-bezel contract), and the rendered device buffer
+                       pixel-rotates (content differs 0° vs 90°).
   TEST 2  theme      — on ``SetOrientation`` the active theme reloads from the
                        rotated-resolution dir (theme854480 → theme480854).
   TEST 3  mask       — on ``SetOrientation`` an active web/zt mask reloads to
@@ -57,13 +58,21 @@ def _check(cond: bool, label: str, detail: str = "") -> None:
 
 
 def _seed_theme(name: str, width: int, height: int) -> Path:
-    """Seed ``theme{width}{height}/<name>`` (00.png + config drives resolution)."""
-    from PySide6.QtGui import QColor, QImage
+    """Seed ``theme{width}{height}/<name>`` (00.png + config drives resolution).
+
+    The background is asymmetric (top half vs bottom half) so a 90° pixel
+    rotation visibly changes the composited surface — TEST 1 relies on that to
+    prove the preview actually pixel-rotates, not just resizes.
+    """
+    from PySide6.QtGui import QColor, QImage, QPainter
 
     d = DEV_DATA / f"theme{width}{height}" / name
     d.mkdir(parents=True, exist_ok=True)
     img = QImage(width, height, QImage.Format.Format_ARGB32)
     img.fill(QColor(20, 30, 60))
+    painter = QPainter(img)
+    painter.fillRect(0, 0, width, height // 2, QColor(220, 40, 40))   # top half red
+    painter.end()
     img.save(str(d / "00.png"))
     (d / "trcc.json").write_text(json.dumps({
         "name": name, "width": width, "height": height,
@@ -120,14 +129,28 @@ def main() -> int:
     app.dispatch(LoadTheme(key=_KEY, path=land_theme))
     theme = app.active_themes[_KEY]
 
-    # ── TEST 1: geometry swap (pure contract — no observer needed) ─────────
-    print("\nTEST 1: composed_canvas_size geometry")
+    # ── TEST 1: geometry swap + image pixel-rotation ──────────────────────
+    # composed_canvas_size is the GUI preview-bezel contract (logical canvas,
+    # pre device-rotate).  build_preview_surface(profile) is the device buffer
+    # the GUI/wire actually render — for this rotate=True panel it's portrait
+    # (480x854) at every orientation; what changes with orientation is the
+    # pixel CONTENT.  So we assert the buffer size AND that the content rotates.
+    print("\nTEST 1: geometry + image pixel-rotation")
     c0 = app.display.composed_canvas_size(info, theme, profile, 0)
     c90 = app.display.composed_canvas_size(info, theme, profile, 90)
-    _check(c0 == (854, 480), "landscape orientation → (854, 480)", str(c0))
-    _check(c90 == (480, 854), "90° orientation → (480, 854)", str(c90))
-    surf = app.display.build_preview_surface(info, theme, {})
-    _check(surf is not None, "rotated render path produces a preview surface")
+    _check(c0 == (854, 480), "composed canvas landscape → (854, 480)", str(c0))
+    _check(c90 == (480, 854), "composed canvas 90° → (480, 854)", str(c90))
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    s0 = app.display.build_preview_surface(info, theme, {}, profile=profile)
+    app.dispatch(SetOrientation(key=_KEY, degrees=90))
+    s90 = app.display.build_preview_surface(info, theme, {}, profile=profile)
+    d0 = app.display._r.surface_size(s0)
+    d90 = app.display._r.surface_size(s90)
+    _check(d0 == (480, 854) and d90 == (480, 854),
+           "device-buffer surface is (480, 854) both orientations",
+           f"{d0} / {d90}")
+    _check(s0 != s90, "preview pixel-rotates: content differs 0° vs 90°")
 
     # ── TEST 2: theme reloads to the rotated-resolution dir on rotation ────
     print("\nTEST 2: theme reload on rotation")
