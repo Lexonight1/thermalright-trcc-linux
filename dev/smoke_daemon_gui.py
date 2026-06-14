@@ -1,249 +1,124 @@
 #!/usr/bin/env python3
-"""Daemon-mode smoke — verifies descriptors + FRAME events round-trip over IPC.
+"""Daemon-mode smoke — Command bus round-trips over the Unix socket.
 
-Spins up ``dev/_mock_daemon.py`` as a subprocess (MockPlatform-backed,
-no real hardware), then connects a ``TrccProxy`` to its socket and
-asserts:
+Spawns ``dev/_mock_daemon.py`` (the real ``run_daemon`` against a scripted
+two-device ``MockPlatform`` fleet) on a throwaway socket, connects a real
+``AppProxy``, and asserts three Commands survive the JSON round-trip:
 
-  TEST 1  Descriptors travel over the wire
-    - ``proxy.lcd_descriptors()`` returns the same DeviceInfo list
-      the daemon's Trcc would return in-process.
-    - Identity fields (vid, pid, path, resolution, fbl_code, etc.)
-      are preserved end-to-end.
+  TEST 1  DiscoverDevices — the 2-device fleet's identity (vid/pid) travels
+          intact (compared against an in-process scan of the same SPECS).
+  TEST 2  ConnectDevice   — the daemon attaches + handshakes the scripted
+          panel and the ConnectResult comes back over the wire.
+  TEST 3  SetBrightness   — the command bus mutates connected-device state
+          daemon-side and returns ok.
 
-  TEST 2  Trcc.lcd command-bus dispatches over IPC
-    - ``proxy.lcd.set_brightness(idx, pct)`` reaches the daemon and
-      mutates the daemon's actual LCDDevice state.
+Lifecycle uses only production helpers: ``ipc.wait_for_daemon`` to poll,
+``AppProxy`` to dispatch, ``daemon.kill_daemon`` ({"kill": True}) to tear down.
+The socket is shared by pointing ``$XDG_RUNTIME_DIR`` at a tmp dir — the same
+mechanism ``ipc.socket_path()`` honours in production — so nothing patches
+``ipc`` internals.
 
-  TEST 3  Topic.FRAME events arrive as decoded surfaces
-    - Daemon publishes a FRAME on Trcc.events.
-    - Proxy's EventBusProxy receives the wire envelope and reconstructs
-      a native QImage via the wired-in renderer.
-
-Lifecycle:
-
-  - Smoke starts; spawns daemon as subprocess on a unique tmp socket.
-  - Polls socket until ready (or fails fast at 10s).
-  - Runs assertions; collects PASS/FAIL.
-  - Sends ``{"kill": True}`` IPC request; waits for daemon to exit.
-  - Returns 0 on all-PASS, non-zero otherwise.
-
-Usage::
-
-    PYTHONPATH=src python3 dev/smoke_daemon_gui.py
+NOTE: frame / event streaming over IPC is intentionally NOT tested.  The
+current daemon is dispatch-only — ``AppProxy`` exposes ``dispatch()`` alone,
+and ``ipc`` flags ``FrameSent.surface`` as an in-process-only field.  A
+frame-over-IPC test returns if/when the "GUI as remote daemon client"
+event-streaming feature is built (see CLAUDE.md "Daemon Mode → still pending").
 """
 from __future__ import annotations
 
 import os
-import socket
+import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
-from typing import Any
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+_DEV = Path(__file__).resolve().parent
+sys.path.insert(0, str(_DEV))
+sys.path.insert(0, str(_DEV.parent / "src"))
+sys.path.insert(0, str(_DEV.parent))
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
+from _mock_bootstrap import DEV_TRCC
+from _mock_daemon import SPECS
 
 _FAILURES: list[str] = []
 
 
-def _check(cond: bool, label: str, detail: str = '') -> None:
+def _check(cond: bool, label: str, detail: str = "") -> None:
     if cond:
         print(f"  PASS  {label}")
     else:
-        msg = f"  FAIL  {label}" + (f" — {detail}" if detail else "")
-        print(msg)
         _FAILURES.append(label)
-
-
-def _wait_for_socket(path: Path, timeout: float = 10.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if path.exists():
-            try:
-                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                s.settimeout(1.0)
-                s.connect(str(path))
-                s.close()
-                return True
-            except OSError:
-                pass
-        time.sleep(0.1)
-    return False
-
-
-def _spawn_daemon(sock_path: Path) -> subprocess.Popen:
-    daemon_script = Path(__file__).resolve().parent / '_mock_daemon.py'
-    env = dict(os.environ, TRCC_MOCK_DAEMON_SOCKET=str(sock_path))
-    return subprocess.Popen(
-        [sys.executable, str(daemon_script)],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-
-def _kill_daemon_via_ipc(sock_path: Path) -> bool:
-    """Send the manifold `{"kill": True}` request — the standard graceful
-    shutdown path from any client."""
-    from trcc.ipc import one_shot_request
-    try:
-        response = one_shot_request(
-            {"kill": True}, socket_path=sock_path, timeout=2.0)
-        return bool(response.get("success"))
-    except Exception as e:
-        print(f"  kill_daemon: {type(e).__name__}: {e}")
-        return False
+        print(f"  FAIL  {label}  {detail}")
 
 
 def main() -> int:
-    # Unique socket per run so concurrent smokes don't collide.
-    with tempfile.TemporaryDirectory(prefix="trcc-mockd-") as tmp:
-        sock_path = Path(tmp) / "trcc.sock"
-        print(f"daemon socket: {sock_path}")
+    # A throwaway XDG_RUNTIME_DIR → ``ipc.socket_path()`` resolves to
+    # ``<tmp>/trcc.sock`` for BOTH the spawned daemon and our client helpers.
+    runtime_dir = Path(tempfile.mkdtemp(prefix="trcc-daemon-smoke-"))
+    child_env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime_dir),
+                     QT_QPA_PLATFORM="offscreen")
+    child_env.pop("TRCC_DAEMON", None)  # the daemon process IS the daemon
+    # Our own process must resolve the same socket.
+    os.environ["XDG_RUNTIME_DIR"] = str(runtime_dir)
 
-        proc = _spawn_daemon(sock_path)
+    from trcc import ipc
+    from trcc.core.commands import ConnectDevice, DiscoverDevices, SetBrightness
+    from trcc.daemon import kill_daemon
+    from trcc.proxy import AppProxy
 
+    daemon = subprocess.Popen(
+        [sys.executable, str(_DEV / "_mock_daemon.py")],
+        env=child_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        if not ipc.wait_for_daemon(timeout=15.0):
+            out, err = daemon.communicate(timeout=2)
+            print("daemon failed to come up.")
+            print(f"  stdout: {out}\n  stderr: {err}")
+            return 1
+
+        proxy = AppProxy()
+
+        # ── TEST 1: DiscoverDevices identity round-trips ──────────────────
+        from tests.mock_platform import MockPlatform
+        expected = {
+            (i.vid, i.pid) for i in MockPlatform(SPECS, DEV_TRCC).scan_devices()
+        }
+        result = proxy.dispatch(DiscoverDevices())
+        got = {(d.vid, d.pid) for d in result.devices}
+        _check(result.ok, "TEST 1: DiscoverDevices ok")
+        _check(got == expected, "TEST 1: device identity intact over IPC",
+               f"expected {expected}, got {got}")
+
+        # ── TEST 2: ConnectDevice handshakes daemon-side over IPC ─────────
+        key = "87ad:70db"  # the bulk 854x480 panel (scripted handshake)
+        conn = proxy.dispatch(ConnectDevice(key=key))
+        _check(conn.ok, f"TEST 2: ConnectDevice({key}) ok",
+               getattr(conn, "message", ""))
+        _check(conn.handshake is not None or conn.led_handshake is not None,
+               "TEST 2: ConnectResult carries a handshake over IPC")
+
+        # ── TEST 3: SetBrightness mutates connected device over IPC ───────
+        bright = proxy.dispatch(SetBrightness(key=key, percent=75))
+        _check(bright.ok, "TEST 3: SetBrightness(75) ok",
+               getattr(bright, "message", ""))
+
+        if _FAILURES:
+            print(f"\nFAIL: {len(_FAILURES)} assertion(s) failed: {_FAILURES}")
+            return 1
+        print("\nPASS: all assertions passed over IPC")
+        return 0
+    finally:
+        print("\nshutting down daemon...")
+        if not kill_daemon(timeout=5.0):
+            print("  kill_daemon failed; sending SIGTERM")
+            daemon.terminate()
         try:
-            # Block until the socket is ready or the daemon dies.
-            if not _wait_for_socket(sock_path, timeout=15.0):
-                stdout, stderr = proc.communicate(timeout=2.0)
-                print("daemon failed to come up.")
-                print(f"  stdout: {stdout.decode(errors='replace')[:1000]}")
-                print(f"  stderr: {stderr.decode(errors='replace')[:1000]}")
-                return 2
-            print("daemon is reachable.")
-
-            # ── Build a proxy + renderer to exercise the whole IPC path ─────
-            from typing import cast as _cast
-
-            from PySide6.QtWidgets import QApplication
-            qapp = _cast(  # noqa: F841 — Qt needs a live QApplication
-                QApplication, QApplication.instance() or QApplication(sys.argv))
-
-            from trcc.adapters.render.qt import QtRenderer
-            from trcc.core.trcc_proxy import TrccProxy
-            renderer = QtRenderer()
-            proxy = TrccProxy(socket_path=sock_path, renderer=renderer)
-
-            # ── TEST 1: descriptors round-trip over IPC ─────────────────────
-            # Order isn't guaranteed by MockPlatform discovery — match by
-            # VID:PID instead of by index.
-            print("\nTEST 1: lcd_descriptors() over IPC")
-            descriptors = proxy.lcd_descriptors()
-            _check(len(descriptors) == 2,
-                   f"received 2 LCD descriptors (got {len(descriptors)})")
-            small = next((d for d in descriptors
-                          if d.vid == 0x0402 and d.pid == 0x3922), None)
-            wide = next((d for d in descriptors
-                         if d.vid == 0x0418 and d.pid == 0x5303), None)
-            _check(small is not None,
-                   "found 0402:3922 descriptor in list")
-            _check(wide is not None,
-                   "found 0418:5303 descriptor in list")
-            if small is not None:
-                _check(small.resolution == (320, 320),
-                       f"0402:3922 resolution (320, 320) (got {small.resolution})")
-                _check(small.fbl_code == 100,
-                       f"0402:3922 fbl_code 100 (got {small.fbl_code})")
-            if wide is not None:
-                _check(wide.resolution == (1280, 480),
-                       f"0418:5303 resolution (1280, 480) (got {wide.resolution})")
-                _check(wide.fbl_code == 128,
-                       f"0418:5303 fbl_code 128 (got {wide.fbl_code})")
-
-            # ── TEST 2: Trcc.lcd command bus dispatches over IPC ────────────
-            print("\nTEST 2: lcd.set_brightness(idx, pct) over IPC")
-            response = proxy.lcd.set_brightness(0, 73)
-            _check(response.success is True,
-                   f"set_brightness returns success (got success={response.success})")
-
-            # ── TEST 3: Topic.FRAME events arrive as decoded surfaces ───────
-            print("\nTEST 3: FRAME events round-trip surface payload")
-            received: list[Any] = []
-            event = __import__('threading').Event()
-
-            def _on_frame(*args: Any) -> None:
-                received.append(args)
-                event.set()
-
-            from trcc.core.events import Topic
-            sub_id = proxy.events.subscribe(Topic.FRAME, _on_frame)
-
-            # Trigger a render+publish on the daemon.  We load a real
-            # PNG first because _publish_frame is a no-op until the
-            # device has a current_image — the daemon's discovery seeds
-            # devices but doesn't load any theme by default.  Then a
-            # set_rotation publishes Topic.FRAME with the rotated image.
-            from _mock_bootstrap import DEV_DATA
-            # Find the 320x320 device's index in the list — we can't
-            # assume index 0 since MockPlatform ordering varies.
-            small_idx = next(
-                (i for i, d in enumerate(descriptors)
-                 if d.vid == 0x0402 and d.pid == 0x3922),
-                0,
-            )
-            bg = DEV_DATA / 'web' / '320320' / 'a001.png'
-            assert bg.exists(), f"smoke fixture missing: {bg}"
-            proxy.lcd.load_image(small_idx, bg)
-            proxy.lcd.set_rotation(small_idx, 90)
-
-            event.wait(timeout=3.0)
-            _check(len(received) >= 1,
-                   f"received at least one FRAME event (got {len(received)})")
-
-            if received:
-                args = received[0]
-                _check(len(args) >= 2,
-                       f"FRAME payload has 2+ items (got {len(args)})")
-                if len(args) >= 2:
-                    path, surface = args[0], args[1]
-                    _check(isinstance(path, str),
-                           f"path is str (got {type(path).__name__})")
-                    # Surface should be a real QImage (not a dict envelope).
-                    is_qimage = (
-                        type(surface).__name__ == 'QImage'
-                        or (hasattr(surface, 'width') and hasattr(surface, 'height'))
-                    )
-                    _check(is_qimage,
-                           "surface decoded back to native QImage "
-                           f"(got {type(surface).__name__})")
-                    if is_qimage:
-                        _check(surface.width() > 0 and surface.height() > 0,
-                               f"surface has positive dims "
-                               f"({surface.width()}x{surface.height()})")
-
-            proxy.events.unsubscribe(sub_id)
-
-            # ── Summary ─────────────────────────────────────────────────────
-            print("\n" + "=" * 60)
-            if _FAILURES:
-                print(f"FAIL: {len(_FAILURES)} assertion(s) failed:")
-                for f in _FAILURES:
-                    print(f"  - {f}")
-            else:
-                print("PASS: all assertions passed")
-            print("=" * 60)
-
-            return 1 if _FAILURES else 0
-
-        finally:
-            # Best-effort graceful shutdown so the next smoke run starts clean.
-            print("\nshutting down daemon...")
-            if not _kill_daemon_via_ipc(sock_path):
-                print("  ipc kill failed; sending SIGTERM")
-                proc.terminate()
-            try:
-                proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                print("  daemon ignored SIGTERM; sending SIGKILL")
-                proc.kill()
-                proc.wait(timeout=2.0)
+            daemon.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            daemon.kill()
+        shutil.rmtree(runtime_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

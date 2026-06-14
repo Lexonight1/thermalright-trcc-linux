@@ -38,7 +38,10 @@ def test_run_daemon_starts_metrics_loop_and_pops_flag(
     monkeypatch.setattr(ipc, "daemon_running", lambda: False)
 
     app = mock.MagicMock()
-    monkeypatch.setattr("trcc._boot._build_local_app", lambda: app)
+    monkeypatch.setattr(
+        "trcc._boot._build_local_app",
+        lambda *, platform=None, renderer=None: app,
+    )
     server = mock.MagicMock()
     monkeypatch.setattr(ipc, "IPCServer", lambda a: server)
     monkeypatch.setattr(daemon, "_install_signal_handlers", lambda s: None)
@@ -49,3 +52,31 @@ def test_run_daemon_starts_metrics_loop_and_pops_flag(
     app.metrics_loop.start.assert_called_once()   # #148
     app.close.assert_called_once()                # teardown (stops the loop)
     assert _ENV_FLAG not in os.environ            # #162 — flag popped
+
+
+def test_run_daemon_injects_platform_and_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The DI seam: an injected ``platform`` / ``renderer`` flows straight to
+    ``_build_local_app`` (so ``dev/_mock_daemon`` runs the real daemon entry
+    against a scripted Platform instead of hand-rolling bring-up)."""
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    captured: dict[str, object] = {}
+    app = mock.MagicMock()
+
+    def _capture(*, platform=None, renderer=None):
+        captured["platform"] = platform
+        captured["renderer"] = renderer
+        return app
+
+    monkeypatch.setattr("trcc._boot._build_local_app", _capture)
+    monkeypatch.setattr(ipc, "IPCServer", lambda a: mock.MagicMock())
+    monkeypatch.setattr(daemon, "_install_signal_handlers", lambda s: None)
+
+    sentinel_platform = mock.MagicMock()
+    sentinel_renderer = mock.MagicMock()
+    rc = daemon.run_daemon(platform=sentinel_platform, renderer=sentinel_renderer)
+
+    assert rc == 0
+    assert captured["platform"] is sentinel_platform
+    assert captured["renderer"] is sentinel_renderer

@@ -24,9 +24,12 @@ import signal
 import subprocess
 import sys
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import ipc
+
+if TYPE_CHECKING:
+    from .core.ports import Platform, Renderer
 
 log = logging.getLogger(__name__)
 
@@ -41,11 +44,20 @@ _started_at: float | None = None
 # =========================================================================
 
 
-def run_daemon() -> int:
+def run_daemon(
+    platform: Platform | None = None,
+    renderer: Renderer | None = None,
+) -> int:
     """Bind the socket, build the App, serve until shutdown.
 
     Returns a Unix exit code — 0 on clean shutdown, 1 if another daemon
     was already running and we declined to start.
+
+    ``platform`` / ``renderer`` are optional injection seams (default
+    ``None`` → auto-detect, the production path): the same DI shape
+    ``_boot.trcc`` / ``_build_local_app`` expose, so a harness can run the
+    *real* daemon entry against a scripted ``Platform`` (``dev/_mock_daemon``)
+    instead of hand-rolling bring-up.
     """
     if ipc.daemon_running():
         log.warning("trcc daemon: another daemon already owns %s",
@@ -64,7 +76,7 @@ def run_daemon() -> int:
     # bomb (#162).  Strip it so this process is unambiguously the daemon.
     from ._boot import _ENV_FLAG, _build_local_app
     os.environ.pop(_ENV_FLAG, None)
-    app = _build_local_app()
+    app = _build_local_app(platform=platform, renderer=renderer)
     app.start_hotplug()
     # Without the metrics loop the daemon owns USB but never ticks — the
     # device stays connected yet permanently blank (#148).  ``App.close()``
