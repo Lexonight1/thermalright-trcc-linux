@@ -298,6 +298,38 @@ def _led_panel_composition(cs: Path) -> list[dict]:
     return [r for r in rows if r["style"] is not None or r["preview"]]
 
 
+def _lcd_panel_composition(cs: Path) -> dict[tuple[int, int], dict]:
+    """Per-resolution LCD panel attributes from C# ``FormCZTVInit``.
+
+    The LCD form is one form for every LCD device; the per-device panel
+    variation is **widescreen** — a ``isBiliPingmu`` "bilibili screen" panel that
+    spins up the projection/screen-image form + a ``P0预览弹窗{res}`` preview
+    popup (854x480, 1280x480, 1920x462/440, 960x540, …) — vs a **standard**
+    square/portrait preview (320x320, 480x480, …).  Keyed on the resolution the
+    handshake resolves to, so the gui picks the right LCD preview/panel.
+    """
+    out: dict[tuple[int, int], dict] = {}
+    for body in _function_bodies(cs.read_text(errors="ignore"), "FormCZTVInit"):
+        res: tuple[int, int] | None = None
+        wide = False
+        popup: str | None = None
+        for raw in body.splitlines():
+            s = raw.strip()
+            if s.startswith(("if ", "else if ", "else if(", "if(")):
+                if res is not None:               # close the previous branch
+                    out[res] = {"widescreen": wide, "popup": popup}
+                res, wide, popup = None, False, None
+            if (m := re.search(r"is(\d+)x(\d+) = true", s)):
+                res = (int(m.group(1)), int(m.group(2)))
+            if "isBiliPingmu = true" in s:
+                wide = True
+            if (m := re.search(r"P0预览弹窗([0-9A-Za-z]+)", s)):
+                popup = m.group(1)
+        if res is not None:
+            out[res] = {"widescreen": wide, "popup": popup}
+    return out
+
+
 def _show(label: str, only_new: set, only_ours: set) -> None:
     print(f"  {label}: {len(only_new)} new in 2.1.6, {len(only_ours)} only-ours")
     for n in sorted(only_new):
@@ -392,6 +424,21 @@ def main() -> None:
         print(f"  ({len(comp)} device blocks; style defaults to 1 when unset; "
               f"sensor gauges default, LC1→memory, LF11→disk, LC2→week/clock — "
               f"to drive LedPanelModel)")
+
+        _h("PANELS — LCD composition (C# FormCZTVInit, by handshake fingerprint)")
+        lcd = _lcd_panel_composition(cs)
+        print(f"  {'handshake fingerprint':<46} {'res':>9}  panel")
+        for res in sorted(lcd):
+            w, h = res
+            attrs = lcd[res]
+            kind = ("widescreen/projection" if attrs["widescreen"]
+                    else "standard preview")
+            popup = f"  popup={attrs['popup']}" if attrs["popup"] else ""
+            guards = res_fps.get(res) or ["(direct fbl assign)"]
+            print(f"  {'  |  '.join(guards):<46} {f'{w}x{h}':>9}  {kind}{popup}")
+        print(f"  ({len(lcd)} LCD resolutions, keyed on the handshake "
+              f"(mode,pm,sub,fbl) → resolution → panel kind, to drive the LCD "
+              f"panel model)")
 
     _h("PANELS (Form*.resx → our analogue)")
     forms = sorted(f.stem.replace("TRCC.", "") for f in resx_dir.glob("*.resx")
