@@ -2,8 +2,8 @@
 
 Routes to one of two backends based on the environment::
 
-    TRCC_NEXT_DAEMON unset     → real App, in-process
-    TRCC_NEXT_DAEMON=1         → AppProxy, talks to daemon over Unix socket
+    TRCC_DAEMON unset     → real App, in-process
+    TRCC_DAEMON=1         → AppProxy, talks to daemon over Unix socket
                                  (auto-spawns the daemon if not running)
 
 On Windows < build 17063 ``AF_UNIX`` is not available; the factory
@@ -27,10 +27,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-_ENV_FLAG = "TRCC_NEXT_DAEMON"
+_ENV_FLAG = "TRCC_DAEMON"
 
 
-def trcc_next(
+def trcc(
     *,
     platform: Platform | None = None,
     renderer: Renderer | None = None,
@@ -39,9 +39,9 @@ def trcc_next(
 
     Three modes:
 
-      * ``TRCC_NEXT_DAEMON=1`` + ``AF_UNIX`` available → ``AppProxy``
+      * ``TRCC_DAEMON=1`` + ``AF_UNIX`` available → ``AppProxy``
         (auto-spawn daemon on first request).
-      * ``TRCC_NEXT_DAEMON=1`` on a platform without ``AF_UNIX`` →
+      * ``TRCC_DAEMON=1`` on a platform without ``AF_UNIX`` →
         warn once and fall back to in-process.
       * Default → in-process ``App`` built from ``platform`` /
         ``renderer`` (auto-detected when omitted).
@@ -50,7 +50,7 @@ def trcc_next(
     owns both.  Pass them when forcing in-process construction (tests,
     composition roots).
     """
-    log.info("trcc_next: env_flag=%s platform=%s renderer=%s",
+    log.info("trcc: env_flag=%s platform=%s renderer=%s",
              os.environ.get(_ENV_FLAG), platform is not None,
              renderer is not None)
     if os.environ.get(_ENV_FLAG) == "1":
@@ -79,7 +79,7 @@ def _build_local_app(
     platform: Platform | None = None,
     renderer: Renderer | None = None,
 ) -> App:
-    """Construct an in-process App.  Used by ``trcc_next`` and the daemon."""
+    """Construct an in-process App.  Used by ``trcc`` and the daemon."""
     log.info("_build_local_app: platform=%s renderer=%s",
              platform is not None, renderer is not None)
     from .adapters.system import PlatformFactory

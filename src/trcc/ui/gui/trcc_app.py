@@ -1,7 +1,7 @@
 """TRCCApp — legacy-look main window wired to next/ Commands.
 
 Holds an :class:`App` handle (in-process or AppProxy when
-``TRCC_NEXT_DAEMON=1``) and a :class:`BusBridge` that fans EventBus
+``TRCC_DAEMON=1``) and a :class:`BusBridge` that fans EventBus
 events into typed Qt signals.  Every device mutation goes through
 ``self._app.dispatch(Command(...))`` — the window never imports
 concrete device or adapter classes.

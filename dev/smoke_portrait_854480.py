@@ -81,12 +81,12 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
 
-    from trcc._boot import trcc_next
+    from trcc._boot import trcc
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
     from trcc.core.commands import ConnectDevice, LoadTheme
 
-    app = cast(App, trcc_next(platform=cast(Any, platform), renderer=QtRenderer()))
+    app = cast(App, trcc(platform=cast(Any, platform), renderer=QtRenderer()))
 
     # Attach + connect the scripted 854x480 panel through the real adapters.
     app.attach(_VID, _PID)

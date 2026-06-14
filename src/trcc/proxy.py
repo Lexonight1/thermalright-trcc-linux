@@ -1,7 +1,7 @@
 """AppProxy — client-side drop-in for ``App`` that talks to the daemon.
 
 UIs hold a typed ``App`` and never distinguish; in daemon mode the
-``_boot.trcc_next()`` factory hands them an ``AppProxy`` instead.  Only
+``_boot.trcc()`` factory hands them an ``AppProxy`` instead.  Only
 ``dispatch(cmd) -> Result`` is real — every call serializes the Command,
 sends it over the Unix socket, and reconstructs the typed Result.
 
@@ -32,7 +32,7 @@ class AppProxy:
     """Forwards every ``dispatch(cmd)`` call to a running daemon.
 
     Construction is cheap (no socket connection until the first
-    dispatch) so import-time use of ``_boot.trcc_next()`` doesn't pay
+    dispatch) so import-time use of ``_boot.trcc()`` doesn't pay
     a round-trip per invocation.
     """
 

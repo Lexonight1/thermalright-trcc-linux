@@ -2,7 +2,7 @@
 
 Single entry point for the graphical interface.  Builds the windowed
 ``QApplication`` (which Qt requires before any QWidget), constructs an
-``App`` via ``trcc._boot.trcc_next()``, then hands the app handle
+``App`` via ``trcc._boot.trcc()``, then hands the app handle
 to ``MainWindow``.  ``discover`` runs in a background ``BootstrapWorker``
 so the splash shows immediate feedback.
 
@@ -115,11 +115,11 @@ def run_gui(platform: Any, *, decorated: bool = False,
     configure_qapplication(qapp)
 
     # ── Build App via the canonical factory (renderer follows QApp) ──
-    from ..._boot import trcc_next
+    from ..._boot import trcc
     from ...adapters.render.qt import QtRenderer
     from ...app import App
     renderer = QtRenderer()
-    app = cast(App, trcc_next(platform=platform, renderer=renderer))
+    app = cast(App, trcc(platform=platform, renderer=renderer))
 
     # ── Splash + background discover ────────────────────────────────
     from .splash import run_bootstrap_with_splash

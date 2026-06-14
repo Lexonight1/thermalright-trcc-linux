@@ -13,8 +13,8 @@ from trcc._boot import _ENV_FLAG
 def test_ensure_daemon_strips_daemon_flag_from_child_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#162: the spawned daemon must NOT inherit ``TRCC_NEXT_DAEMON`` — if it
-    did, its own ``trcc_next()`` would try to proxy to a socket that isn't
+    """#162: the spawned daemon must NOT inherit ``TRCC_DAEMON`` — if it
+    did, its own ``trcc()`` would try to proxy to a socket that isn't
     bound yet and re-spawn, a fork bomb."""
     monkeypatch.setenv(_ENV_FLAG, "1")
     monkeypatch.setattr(ipc, "daemon_running", lambda: False)

@@ -13,7 +13,7 @@ Lifecycle::
     trcc> display color 0402:3922 ff0000
     trcc> ^D            # or `exit`
 
-In daemon mode (``TRCC_NEXT_DAEMON=1``) the cached App is the
+In daemon mode (``TRCC_DAEMON=1``) the cached App is the
 ``AppProxy`` so every line round-trips to the daemon.  In default mode
 the App is in-process and reused across commands so handshakes don't
 repeat per invocation.

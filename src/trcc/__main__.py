@@ -42,7 +42,7 @@ _early_handler = _rotating_handler_cls(
 # Tag the early shim so ``adapters.infra.logging.configure_logging`` knows
 # to swap it out when it runs.  Without the tag, both handlers stay
 # attached and every log line gets written twice.
-_early_handler._trcc_next_handler = True  # type: ignore[attr-defined]
+_early_handler._trcc_handler = True  # type: ignore[attr-defined]
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(name)s.%(funcName)s: %(message)s',

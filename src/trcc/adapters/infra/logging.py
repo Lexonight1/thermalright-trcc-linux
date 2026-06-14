@@ -27,7 +27,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-_HANDLER_TAG = "_trcc_next_handler"
+_HANDLER_TAG = "_trcc_handler"
 # ``name`` is the module logger; ``classname`` is injected by
 # ClassContextFilter; ``funcName``/``lineno`` come free on every record.
 # Result per line: ``trcc.core.commands.device:SetBrightness.execute:208``

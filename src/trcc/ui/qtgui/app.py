@@ -210,11 +210,11 @@ def launch(app: App | None = None) -> int:
         # Import QtRenderer only after QApplication exists, so its
         # bootstrap helper finds our QApplication instead of creating a
         # bare QGuiApplication.  Build through the canonical factory so
-        # this UI becomes a daemon client when TRCC_NEXT_DAEMON=1
+        # this UI becomes a daemon client when TRCC_DAEMON=1
         # instead of fighting the daemon for USB (audit bug B4).
-        from ..._boot import trcc_next
+        from ..._boot import trcc
         from ...adapters.render.qt import QtRenderer
-        app = trcc_next(renderer=QtRenderer())
+        app = trcc(renderer=QtRenderer())
 
     window = MainWindow(app)
     window.show()

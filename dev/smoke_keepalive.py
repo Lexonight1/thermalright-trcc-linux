@@ -51,12 +51,12 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
 
-    from trcc._boot import trcc_next
+    from trcc._boot import trcc
     from trcc.adapters.render.qt import QtRenderer
     from trcc.app import App
     from trcc.core.commands import ConnectDevice, SendColor
 
-    app = cast(App, trcc_next(platform=cast(Any, platform), renderer=QtRenderer()))
+    app = cast(App, trcc(platform=cast(Any, platform), renderer=QtRenderer()))
     try:
         for key in (_BULK, _SCSI):
             assert app.dispatch(ConnectDevice(key=key)).ok, f"connect {key}"

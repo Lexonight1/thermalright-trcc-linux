@@ -2,7 +2,7 @@
 
 The daemon (`trcc daemon`) owns one ``App`` and serves requests
 through ``IPCServer``.  Clients (``AppProxy`` returned by
-``_boot.trcc_next()`` when ``TRCC_NEXT_DAEMON=1``) call ``dispatch(cmd)``
+``_boot.trcc()`` when ``TRCC_DAEMON=1``) call ``dispatch(cmd)``
 and the proxy turns each call into one socket round-trip.
 
 Wire format — one line of JSON per request.

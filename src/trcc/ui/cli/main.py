@@ -250,7 +250,7 @@ def daemon() -> None:
     One process per user.  Binds a Unix socket at
     ``$XDG_RUNTIME_DIR/trcc.sock`` and serves Commands until
     SIGTERM / SIGINT or a remote ``trcc kill``.  Sets
-    ``TRCC_NEXT_DAEMON=1`` to route clients through this daemon.
+    ``TRCC_DAEMON=1`` to route clients through this daemon.
     """
     log.info("cli daemon")
     from ...daemon import run_daemon

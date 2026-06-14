@@ -1,9 +1,9 @@
 """Shared CLI context — App singleton + lightweight helpers.
 
-In daemon mode (``TRCC_NEXT_DAEMON=1``) the App is actually an
+In daemon mode (``TRCC_DAEMON=1``) the App is actually an
 ``AppProxy`` — same ``dispatch(cmd) -> Result`` surface, calls travel
 over the Unix socket to the running daemon.  Resolved via the canonical
-``_boot.trcc_next()`` factory.
+``_boot.trcc()`` factory.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from typing import Any
 
 import typer
 
-from ..._boot import trcc_next
+from ..._boot import trcc
 from ...app import App
 from ...core.ports import Platform, Renderer
 
@@ -58,7 +58,7 @@ def get_app() -> App:
     """Lazy App singleton used by every CLI command handler.
 
     Returns an in-process ``App`` (default) or an ``AppProxy`` when
-    ``TRCC_NEXT_DAEMON=1`` is set — UIs don't distinguish, both expose
+    ``TRCC_DAEMON=1`` is set — UIs don't distinguish, both expose
     ``dispatch(cmd) -> Result``.
     """
-    return trcc_next(platform=_platform_override, renderer=_renderer_override)
+    return trcc(platform=_platform_override, renderer=_renderer_override)

@@ -13,7 +13,7 @@ Lifecycle::
     4. Install SIGTERM / SIGINT handlers that flip the server's stop flag.
     5. Block in ``serve_forever`` until the loop exits.
 
-Opt-in today (``TRCC_NEXT_DAEMON=1``).  No Qt event loop — next/'s App
+Opt-in today (``TRCC_DAEMON=1``).  No Qt event loop — next/'s App
 is framework-blind, so the daemon is a plain Python process.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ def run_daemon() -> int:
     # The daemon owns USB directly — it must never proxy to itself.  If the
     # daemon-mode flag leaked into this process's env (set globally in a
     # shell profile, or inherited from the spawning client), every
-    # ``trcc_next()`` here would try to reach a daemon socket instead of
+    # ``trcc()`` here would try to reach a daemon socket instead of
     # opening USB, and a startup path through it would re-spawn — a fork
     # bomb (#162).  Strip it so this process is unambiguously the daemon.
     from ._boot import _ENV_FLAG, _build_local_app
