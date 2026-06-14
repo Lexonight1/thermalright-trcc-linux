@@ -169,22 +169,21 @@ bug.  Don't call them "cloud themes" in code or analysis.
 ## Architecture — Hexagonal (Ports & Adapters)
 
 ### Layer Map
-- **Models** (`core/models.py`): Pure dataclasses, enums, domain constants — zero logic, zero I/O, zero framework deps
-- **Services** (`services/`): Core hexagon — all business logic, pure Python. `ImageService` delegates to active `Renderer`. `OverlayService` uses injected Renderer for compositing/text.
-- **Paths** (`core/paths.py`): Fallback path constants (`DATA_DIR`, `USER_DATA_DIR`). Primary resolution via `PlatformSetup` adapter injected into `Settings`. Zero project imports.
-- **Devices** (`core/lcd_device.py`, `core/led_device.py`): Application-layer facades. Strict DI — `RuntimeError` if deps not injected. Zero adapter imports. Delegate to services, return result dicts.
-- **Builder** (`core/builder.py`): `ControllerBuilder` — fluent builder, assembles devices with DI. Composition root: imports adapters to inject into services.
-- **Views** (`gui/`): PySide6 GUI adapter. `TRCCApp` (thin shell) + `LCDHandler`/`LEDHandler` (one per device).
-- **CLI** (`cli/`): Typer CLI adapter (package: `__init__.py` + 8 submodules). Thin wrappers over `LCDDevice`/`LEDDevice`.
-- **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 7 submodules). 78 endpoints. WebSocket preview stream + cloud themes + export. Uses `LCDDevice`/`LEDDevice` from core/.
-- **Config** (`conf.py`): `Settings` singleton. `init_settings(platform)` called by composition roots. Single source of truth for mutable app state.
-- **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `PlatformFactory.current()` + `DeviceFactory.for_wire()`)
-- **Protocols**: All protocols implement `send_data()` — SCSI (LCD frames), HID (handshake/resolution), LED (RGB effects + segment displays)
-- **Platform** (`core/ports.py`): `OSConfig` dataclass + `Platform` class. OS is data (config), not architecture (class hierarchy). One `Platform` object DI'd everywhere via `builder.os`.
-- **OS files** (`adapters/system/{os}_platform.py`): Each exports an `OSConfig` instance (`LINUX_OS`, `WINDOWS_OS`, etc.) + OS-specific functions. ~200 lines each, not 1300.
-- **Sensors** (`adapters/system/_base.py`): One `SensorEnumerator` with plugin discovery — tries hwmon, LHM, SMC, sysctl, psutil, pynvml. Each plugin self-guards at runtime.
-- **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg)
-- **On-demand download**: Theme/Web/Mask archives fetched from GitHub at runtime via `data_repository.py`
+- **Models** (`core/models.py`): Pure dataclasses, enums, domain constants — zero logic, zero I/O, zero framework deps.
+- **Services** (`services/`): Core hexagon — all business logic, pure Python. `DisplayService` (`services/display.py`) delegates to the active `Renderer`; `OverlayService` uses the injected Renderer for compositing/text.
+- **Paths** (`core/ports.py`): `Paths` ABC — per-OS subpaths (theme/web/mask/user dirs) derived from `data_dir`/`config_dir`/`user_content_dir`. Each `Platform` returns its concrete `Paths`. Zero adapter imports.
+- **Devices** (`core/ports.py` ABCs + `adapters/device/`): one unified `Device` ABC. Wire adapters `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd` (`adapters/device/{scsi,hid,bulk,ly}_lcd.py`) + `Led` (`led.py`), each *is* the device that speaks its wire. Built by `DeviceFactory.for_wire(info.wire)`.
+- **Composition root** (`_boot.py` + `app.py`): `_boot.trcc()` builds the in-process `App` (or an `AppProxy` in daemon mode). `App` owns the services, the `EventBus`, and the one Command bus (`app.dispatch`). Replaces the old `ControllerBuilder`.
+- **Views** (`ui/gui/`): PySide6 GUI adapter. `TRCCApp` (`ui/gui/trcc_app.py`, thin shell) + `LCDHandler`/`LEDHandler` (one per device). `ui/qtgui/` is the in-progress native-skin rebuild.
+- **CLI** (`ui/cli/`): Typer CLI adapter (package). Thin wrappers that build Commands and `app.dispatch(...)` them.
+- **API** (`ui/api/`): FastAPI REST adapter (package). ~105 routes incl. WebSocket preview stream + cloud themes + export. Dispatches Commands on the App.
+- **Config** (`services/settings.py`): `Settings` — mutable app + per-device state (resolution, language, orientation, format prefs, mask/theme), persisted to `config.json`. Reached via `app.settings`; widgets read it, never store copies.
+- **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `PlatformFactory.current()` + `DeviceFactory.for_wire()`).
+- **Wires**: each device adapter speaks its protocol — SCSI (LCD frames), HID (handshake/resolution), Bulk, LY, LED (RGB effects + segment displays). See "Two-Factory Chain" + the ABC tables below.
+- **Platform** (`core/ports.py` + `adapters/system/`): `Platform` ABC in core; per-OS subclass in `adapters/system/{linux,windows,macos,bsd}.py`, dispatched by `PlatformFactory.current()` (`sys.platform`). DI'd everywhere as `app.platform`.
+- **Sensors** (`adapters/sensors/`): `SensorEnumerator` (ABC in `core/ports.py`) built per-OS by the aggregator (`adapters/sensors/aggregator.py`) — hwmon, LHM, SMC, sysctl, psutil, pynvml plugins, each self-guarding at runtime. `snapshot()` yields the typed `HardwareMetrics` every consumer observes.
+- **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg), plus `ci.yml`/`tests.yml`/`codeql.yml`.
+- **On-demand download**: Theme/Web/Mask archives fetched from GitHub at runtime by `DataInstallService` (`services/data_install.py`) via the repo adapters (`adapters/repo/`: `github_releases.py`, `http.py`).
 
 ### Design Patterns (Used in This Project)
 - **Singleton**: `conf.settings` — app-wide state. Widgets read from singleton, never store copies.
