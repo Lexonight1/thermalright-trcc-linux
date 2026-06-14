@@ -99,27 +99,32 @@ The cutover (commit `4fa876be`, branch `cutover/next-to-root`) promoted
 the clean-slate rebuild (formerly `src/trcc/next/`) to the project
 root.  Layout now:
 
-- **`src/trcc/`** — the **shipping codebase**.  This is what
-  `python -m trcc gui` runs by default.  Hexagonal architecture, one
-  Command bus, ABCs at each port.  Originally the "next/" rebuild;
-  promoted to root after the variant-override / data-install /
-  ThemeDir / 0xDC-trailer ports caught it up to legacy parity for
-  the verified SCSI 320x320 path.
-- **`src/trcc/legacy/`** — the **original implementation**, kept
-  reachable via ``TRCC_LEGACY=1``.  Frozen except for security
-  fixes; eventually deleted once every shipping device has been
-  hardware-verified on the new code.
+- **`src/trcc/`** — the **shipping codebase** and the *only* tree on
+  `main`.  This is what `python -m trcc gui` runs.  Hexagonal
+  architecture, one Command bus, ABCs at each port.  Originally the
+  "next/" rebuild; promoted to root after the variant-override /
+  data-install / ThemeDir / 0xDC-trailer ports caught it up to legacy
+  parity for the verified SCSI 320x320 path.
+- **The legacy tree was MOVED OFF `main`** (commit `73f4122d`) onto the
+  `legacy` branch — `src/trcc/legacy/` and `tests/legacy/` no longer
+  exist on `main`, and the `TRCC_LEGACY=1` escape hatch is gone from the
+  entry point (`_entry.py` dispatches straight to the new tree).  To
+  consult the original implementation, `git show legacy:<path>` or check
+  out the `legacy` branch — don't expect `trcc.legacy.*` to import on
+  `main` (any harness that does is dead; the obsolete ones were pruned in
+  `7d9fe0f9`).
 
-Same shape in `tests/`: `tests/` exercises the new top-level;
-`tests/legacy/` exercises the legacy tree.  `dev/` smoke harnesses
-that test legacy import from `trcc.legacy.*`; the one that drives
-the new tree is `dev/smoke_full_pipeline.py`.
+`tests/` exercises the shipping tree.  `dev/` smoke harnesses drive it
+too — `dev/smoke_full_pipeline.py` is the broad one; `dev/tools/
+diagnose_metrics.py` verifies the live metrics→render→preview chain on a
+summoned mock device.
 
 Rules:
 
-* **Default mental model**: a feature/bug lives in `src/trcc/` unless
-  explicitly told it's a legacy fix.
-* **Never invent file/path names** in the new tree.  TRCC theme dirs
+* **Default mental model**: every feature/bug lives in `src/trcc/`.
+  "Legacy" now means the `legacy` branch or the C# decompile, consulted
+  as a *reference*, never imported.
+* **Never invent file/path names** in the shipping tree.  TRCC theme dirs
   use the strict legacy convention — `00.png` (background),
   `01.png` (mask), `Theme.png` (panel thumbnail; NEVER rendered),
   `config1.dc` (binary layout), `Theme.{mp4,mov,webm,zt}` (video).
@@ -127,11 +132,8 @@ Rules:
   `mask.png` that don't exist anywhere; those got purged in
   `8f6bb53c`.  Anything in `src/trcc/` that diverges from legacy's
   filenames / DC byte layout / handshake parsing / variant lookup
-  is a bug until proven otherwise — fix by reading legacy and
-  copying the working shape, not by patching the fabrication.
-* **Never mix imports between the trees.**  `src/trcc/legacy/*` may
-  reach in to legacy internals but never to top-level new code (it
-  predates it); top-level new code never reaches into `legacy/`.
+  is a bug until proven otherwise — fix by reading the legacy branch /
+  decompile and copying the working shape, not by patching the fabrication.
 * **Logging is part of the port.**  See "Logging coverage is
   mandatory" section below.
 
@@ -282,7 +284,7 @@ PlatformFactory.current()           ← OS dispatch    → Platform
                 ScsiLcd(info, transport)  (or HidLcd / BulkLcd / LyLcd / Led)
 ```
 
-**Why two factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass, one new file. New wire = `@DeviceFactory.register(Wire.WHATEVER)` + subclass, one new file. Zero touchpoints in callers (`_boot.trcc_next`, `App.attach`).
+**Why two factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass, one new file. New wire = `@DeviceFactory.register(Wire.WHATEVER)` + subclass, one new file. Zero touchpoints in callers (`_boot.trcc`, `App.attach`).
 
 **Verification**: `dev/smoke_factories.py` asserts both registries are populated and dispatch correctly — runs on the dev box without any OS-specific tooling installed.
 
@@ -296,30 +298,46 @@ Opt-in singleton background process that owns USB and serves CLI / API / GUI cli
 
 ```python
 from trcc._boot import trcc
-result = trcc().lcd.set_brightness(0, 75)   # CLI / API / GUI all do this
+result = trcc().dispatch(SendColor(key="0402:3922", r=255, g=0, b=0))  # CLI / API / GUI all do this
 ```
+
+The one dispatch surface is the **Command bus** — `app.dispatch(SomeCommand(...))`.
+There is no `.lcd` / `.led` role facade (that was the legacy `Trcc` object); UIs
+build Commands and dispatch them.
 
 What `trcc()` returns depends on environment:
 
 | Environment | Returns | Behaviour |
 |---|---|---|
-| `TRCC_DAEMON` unset | real `Trcc` | reuses `TrccApp._instance._trcc` if a composition root has run, else builds standalone with offscreen `QtRenderer` |
-| `TRCC_DAEMON=1` + `AF_UNIX` available | `TrccProxy` | auto-spawns daemon via `daemon.ensure_daemon()`, calls travel over the socket |
-| `TRCC_DAEMON=1` on Windows < 17063 | real `Trcc` | silent fallback, no error |
+| `TRCC_DAEMON` unset | real `App` | in-process `App` built from the passed `platform` / `renderer` (both auto-detected — `PlatformFactory.current()` / `QtRenderer` — when omitted) |
+| `TRCC_DAEMON=1` + `AF_UNIX` available | `AppProxy` | auto-spawns daemon via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
+| `TRCC_DAEMON=1` on Windows < 17063 | real `App` | silent in-process fallback (no `AF_UNIX`), no error |
 
-`TrccProxy` is a **structural drop-in** for `Trcc` — same `.lcd` / `.led` / `.control_center` / `.events` surface, same call shape. UIs hold `Trcc` (typed) and never distinguish.
+`AppProxy` (`proxy.py`) is a drop-in for **`App.dispatch(cmd)` only** — it
+serializes the Command, round-trips it, and returns the Result. Any *other*
+attribute access raises `AttributeError` ("daemon mode only exposes
+dispatch(cmd)") — to query App state remotely, send a Command, never reach for
+a field.
 
-### Wire format (manifold)
+### Wire format
 
-Every dispatched call serializes as:
+One line of JSON per request, reflective over `dataclasses.fields` (adding a
+Command + Result is zero-touch for IPC). Dispatch:
 
 ```json
-{"role": "lcd", "method": "set_brightness", "args": [0, 75], "kwargs": {}}
+{"command": "SendColor", "kwargs": {"key": "0402:3922", "r": 255, "g": 0, "b": 0}}
 ```
 
-Response: `{"success": bool, "message": str, "error": str | None, ...extras}`. Path / bytes args are sanitized at the proxy boundary (`Path → str`, `bytes → {"__bytes__": "<base64>"}`) and reconstructed server-side. Daemon's `IPCServer._dispatch_manifold` looks up the role on the bound `Trcc`, calls `getattr(target, method)(*args, **kwargs)`, returns the `OpResult`.
+The dispatcher (`IPCServer._dispatch_envelope`) looks `command` up in the
+Command registry, builds the dataclass via type-hint coercion (str → Path,
+list → tuple, dict → nested dataclass, int → Enum), calls `app.dispatch(cmd)`,
+and serializes the Result back:
 
-`{"kill": true}` and `{"subscribe": "<topic>"}` are two extra wire shapes for daemon control + long-lived event subscriptions.
+```json
+{"type": "SendResult", "ok": true, "message": "Sent 204800 bytes (#ff0000)", "key": "0402:3922", "bytes_sent": 204800}
+```
+
+`{"kill": true}` is the one control shape (daemon shutdown).
 
 ### Lifecycle
 
@@ -333,9 +351,19 @@ Response: `{"success": bool, "message": str, "error": str | None, ...extras}`. P
 
 ### What's still pending
 
-- **GUI in daemon mode**: today the GUI gates `TRCC_DAEMON=1` with a clear refusal because `LCDHandler` references real `LCDDevice` instances. Phase 9 (TrccApp dissolution) wires GUI through `_boot.trcc()` and makes it a proper daemon client.
-- **Tests**: the existing test suite tests legacy `TrccApp` paths. Daemon-mode tests come back when Phase 9 settles.
-- **Donor matrix**: SCSI verified end-to-end. HID / Bulk / LY / LED through daemon are inferred-but-unverified — same `Trcc` dispatch path donors confirmed for the in-process flow, just with JSON serialization in front. Real-hardware donors close the matrix.
+- **GUI as a remote daemon *client***: `run_gui` already builds its `App` through
+  `_boot.trcc()` and can bind the daemon-style `IPCServer` (the `ipc=` param) so
+  it *hosts* Command dispatch over the socket. What's unverified is the GUI
+  running purely as a *client* of a separate daemon process (holding an
+  `AppProxy` instead of a local `App`) across every wire.
+- **Daemon round-trip tests**: the suite (1500+) runs on the shipping tree; the
+  in-process Command paths are well covered, but dedicated socket round-trip
+  tests (encode → daemon → `app.dispatch` → encode_result → decode) are still
+  thin.
+- **Donor matrix**: SCSI verified end-to-end. HID / Bulk / LY / LED through the
+  daemon are inferred-but-unverified — same `App.dispatch` path confirmed for the
+  in-process flow, just with JSON serialization in front. Real-hardware donors
+  close the matrix.
 
 ## Logging coverage is mandatory
 
@@ -399,7 +427,7 @@ etc.) must NOT re-call `configure_logging` — a second call with
 `verbosity=0` silently downgrades DEBUG back to INFO and the user's
 `-v` is silently lost.  If a new entry point can legitimately be
 invoked without going through the CLI (rare; none exist today), add
-a guard: only configure if no `_trcc_next_handler`-tagged handler is
+a guard: only configure if no `_trcc_handler`-tagged handler is
 already attached on the root logger.  When a user reports "DEBUG
 lines I expect aren't showing up", first grep the log for
 `configure_logging:` and check whether it appears more than once
