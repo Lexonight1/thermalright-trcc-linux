@@ -246,6 +246,58 @@ def _our_catalog_resolutions() -> set[tuple[int, int]]:
     return out
 
 
+def _led_panel_composition(cs: Path) -> list[dict]:
+    """Per-device LED panel composition parsed from the C# ``FormLEDInit``.
+
+    FormLEDInit(NO, …) is keyed on the handshake device family ``NO``; each block
+    sets the segment style (``nowLedStyle``), the segment preview image
+    (``Resources.D<model>``), and the section visibility — sensor gauges
+    (``ucInfoImage1-6``, shown by default), the LC1 memory panel
+    (``ucledMemoryInfo1``), the LF11 disk panel (``ucledHarddiskInfo1``), and the
+    LC2 week/clock buttons (``buttonWeek*``).  This is the C#'s authoritative
+    "what does this LED device's panel show", to drive the in-code panel model.
+    """
+    rows: list[dict] = []
+    cur: dict | None = None
+    for body in _function_bodies(cs.read_text(errors="ignore"), "FormLEDInit"):
+        for raw in body.splitlines():
+            s = raw.strip()
+            nos = [int(n) for n in re.findall(r"NO ==\s*(\d+)", s)]
+            rng = re.findall(r"NO\s*(>=|<=|>|<)\s*(\d+)", s)
+            case = re.match(r"case\s+(\d+)\s*:", s)
+            if nos or case or (rng and s.startswith(("if", "else"))):
+                if cur is not None:               # a new NO / range / case block
+                    rows.append(cur)
+                if nos:
+                    label = ",".join(str(n) for n in nos)
+                elif case:
+                    label = case.group(1)
+                else:
+                    label = " ".join(f"NO{op}{n}" for op, n in rng)
+                cur = {"no": label, "style": None,
+                       "preview": None, "sensors": True, "memory": False,
+                       "disk": False, "week": False}
+                continue
+            if cur is None:
+                continue
+            if (m := re.search(r"nowLedStyle = (\d+)", s)):
+                cur["style"] = int(m.group(1))
+            if (m := re.search(r"Resources\.(D[A-Za-z0-9_]+)", s)) and not cur["preview"]:
+                cur["preview"] = m.group(1)
+            if re.search(r"ucInfoImage\d\)\.Hide\(\)", s):
+                cur["sensors"] = False
+            if "ucledMemoryInfo1).Show()" in s:
+                cur["memory"] = True
+            if "ucledHarddiskInfo1).Show()" in s:
+                cur["disk"] = True
+            if re.search(r"buttonWeek\d\)\.Show\(\)", s):
+                cur["week"] = True
+    if cur is not None:
+        rows.append(cur)
+    # Keep only blocks that actually configured a panel (have a style/preview).
+    return [r for r in rows if r["style"] is not None or r["preview"]]
+
+
 def _show(label: str, only_new: set, only_ours: set) -> None:
     print(f"  {label}: {len(only_new)} new in 2.1.6, {len(only_ours)} only-ours")
     for n in sorted(only_new):
@@ -321,6 +373,25 @@ def main() -> None:
     else:
         print(f"\n(.cs decompile not found at {cs} — skipping resolution diff; "
               f"run `ilspycmd <exe>` and pass --cs)")
+
+    if cs.is_file():
+        _h("PANELS — LED composition (C# FormLEDInit, by handshake NO → style)")
+        comp = _led_panel_composition(cs)
+        print(f"  {'NO':>12}  {'style':>5}  {'preview':<22} sections")
+        for r in comp:
+            secs = ["gauges" if r["sensors"] else "-gauges"]
+            if r["memory"]:
+                secs.append("memory")
+            if r["disk"]:
+                secs.append("disk")
+            if r["week"]:
+                secs.append("week/clock")
+            style = r["style"] if r["style"] is not None else 1   # C# field default
+            preview = r["preview"] or "?"
+            print(f"  {r['no']:>12}  {style:>5}  {preview:<22} {' '.join(secs)}")
+        print(f"  ({len(comp)} device blocks; style defaults to 1 when unset; "
+              f"sensor gauges default, LC1→memory, LF11→disk, LC2→week/clock — "
+              f"to drive LedPanelModel)")
 
     _h("PANELS (Form*.resx → our analogue)")
     forms = sorted(f.stem.replace("TRCC.", "") for f in resx_dir.glob("*.resx")
