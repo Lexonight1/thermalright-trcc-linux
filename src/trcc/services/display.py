@@ -330,8 +330,11 @@ class DisplayService:
             and not resolved_profile.jpeg
         )
 
-        # User-orientation rotation (square panels + simple RGB565 rotate panels)
-        if s.orientation and not fold_into_encode:
+        # User-orientation rotation (square panels + simple RGB565 rotate panels).
+        # Portrait-composed themes/masks are authored portrait — the orientation
+        # is already baked into the content — so they must NOT be re-rotated by
+        # the user orientation (that put already-portrait content 90° off). (#136)
+        if s.orientation and not fold_into_encode and not portrait:
             log.debug("build_frame %s: user rotate %d°",
                       info.key, 360 - s.orientation)
             surface = self._r.rotate(surface, 360 - s.orientation)
@@ -587,7 +590,9 @@ class DisplayService:
                   s.brightness, s.orientation, resolved.rotate, compose_portrait)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
-        if s.orientation:
+        # Portrait-composed content is authored portrait (orientation baked in)
+        # → skip BOTH the user-orientation and device rotates. (#136)
+        if s.orientation and not compose_portrait:
             surface = self._r.rotate(surface, 360 - s.orientation)
         if resolved.rotate and not compose_portrait:
             surface = self._r.rotate(surface, 90)

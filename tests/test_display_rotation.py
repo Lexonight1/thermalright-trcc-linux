@@ -467,6 +467,28 @@ def test_portrait_theme_composes_portrait_and_skips_device_rotate(
     assert rot90 == [], f"portrait compose must skip the device rotate, got {rot90}"
 
 
+def test_portrait_theme_at_orientation90_is_not_rotated(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A portrait-authored theme on a non-square panel, with the device rotated
+    to 90°, must NOT be rotated: the content is already portrait (the mask/theme
+    has the orientation baked in).  Re-rotating it put it 90° off — the reported
+    bug. (#136)"""
+    info = _wide_info()
+    profile = get_profile(224)                       # 854×480, rotate=True
+    display._settings.for_device(info.key).orientation = 90
+
+    display.build_frame(
+        info=info, theme=_theme_sized(480, 854), sensors={}, profile=profile,
+    )
+
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [], (
+        f"portrait content has orientation baked in — must not rotate, "
+        f"got {rotations}"
+    )
+
+
 def test_landscape_widescreen_orientation0_composes_landscape_unrotated(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
