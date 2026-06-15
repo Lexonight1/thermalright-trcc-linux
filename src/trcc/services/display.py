@@ -189,8 +189,20 @@ class DisplayService:
         this so the frame asset + label match what the panel shows (#136).
         """
         resolved = self._resolve_profile(info, profile)
-        base_size, _ = self._compose_geometry(resolved, theme)
-        return self._visual_size(base_size, orientation)
+        base_size, portrait = self._compose_geometry(resolved, theme)
+        visual = self._visual_size(base_size, orientation)
+        # On-change (preview sizing), not per-frame — INFO so the orientation
+        # decision is visible at the default level.  Shows WHY portrait vs
+        # landscape: the panel's native size + rotate flag, the theme's
+        # content-composed base, and the user's rotation.
+        log.info(
+            "composed_canvas_size %s: native=%s rotate=%s theme=%r "
+            "base=%dx%d portrait-compose=%s orientation=%d → visual=%dx%d",
+            info.key, resolved.resolution, resolved.rotate, theme.name,
+            base_size[0], base_size[1], portrait, orientation,
+            visual[0], visual[1],
+        )
+        return visual
 
     def build_frame(
         self,

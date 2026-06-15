@@ -945,7 +945,9 @@ class LCDHandler(BaseHandler):
         orientation.  Cheap arithmetic; only the asset reload inside
         ``set_resolution`` is real work, and that only matters on change. (#136)"""
         ow, oh = self._composed_preview_size()
-        self.log.debug("_sync_preview_size: %dx%d", ow, oh)
+        ds = self._app.settings.for_device(self._device_key)
+        self.log.info("_sync_preview_size: orientation=%d → preview %dx%d",
+                      ds.orientation, ow, oh)
         self._w['preview'].set_resolution(ow, oh)
 
     def rebuild_preview(self) -> None:

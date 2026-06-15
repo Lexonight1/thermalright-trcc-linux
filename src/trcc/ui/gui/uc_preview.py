@@ -238,14 +238,18 @@ class UCPreview(BasePanel):
             set_background_pixmap(self.frame_container, pixmap_or_path)
 
     def set_resolution(self, width, height):
-        log.debug("preview.set_resolution: %dx%d → %dx%d",
-                  getattr(self, '_lcd_width', 0), getattr(self, '_lcd_height', 0),
-                  width, height)
         self._lcd_width = width
         self._lcd_height = height
         self._offset_info = lcd_panel_for((width, height)).offset_info
 
         left, top, w, h, frame_name = self._offset_info
+        # On-change (not per-frame) — INFO so the chosen bezel + LCD-area
+        # placement is visible at the default level: this is the preview that
+        # must match the device orientation.
+        log.info(
+            "preview.set_resolution: lcd=%dx%d → bezel=%s area=%dx%d@(%d,%d)",
+            width, height, frame_name, w, h, left, top,
+        )
         self.preview_label.setFixedSize(w, h)
         self.preview_label._width = w
         self.preview_label._height = h
