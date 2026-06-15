@@ -298,6 +298,26 @@ def _led_panel_composition(cs: Path) -> list[dict]:
     return [r for r in rows if r["style"] is not None or r["preview"]]
 
 
+def _led_zone_styles(cs: Path) -> set[int]:
+    """LED styles the C# treats as RGB-ZONE (per-zone colour) vs metric-PAGE.
+
+    ``ucColor1Delegate`` writes per-zone colour only under the gate
+    ``if (nowLedStyle == 2 || nowLedStyle == 7)`` — every other style uses a
+    single global colour and its ``button1-4`` row selects which metric *page*
+    the single numeric display shows instead.  This returns that gate's style
+    set: the authoritative ZONE classification driving the in-code display
+    model (``ui.presentation.led_display``).
+    """
+    for body in _function_bodies(cs.read_text(errors="ignore"), "ucColor1Delegate"):
+        for raw in body.splitlines():
+            s = raw.strip()
+            if s.startswith(("if", "else if")) and "nowLedStyle ==" in s:
+                nums = {int(n) for n in re.findall(r"nowLedStyle ==\s*(\d+)", s)}
+                if nums:
+                    return nums
+    return set()
+
+
 def _lcd_panel_composition(cs: Path) -> dict[tuple[int, int], dict]:
     """Per-resolution LCD panel attributes from C# ``FormCZTVInit``.
 
