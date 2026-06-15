@@ -88,6 +88,25 @@ def test_panel_sections_match_led_panel_model(style, qtbot) -> None:
         f"{style.name} clock"
 
 
+@pytest.mark.parametrize("style", list(LED_STYLES), ids=lambda s: s.name)
+def test_page_selector_buttons_are_metric_labeled(style, qtbot) -> None:
+    """On PAGE styles the 'Display Selection' buttons tooltip their metric, so
+    the metric selector is discoverable (the fix for clicking the read-only
+    gauges instead)."""
+    from trcc.ui.presentation.led_display import LedSelector, led_display_for
+    spec = LED_STYLES[style]
+    sid = LEGACY_STYLE_ID[style]
+    disp = led_display_for(sid)
+    panel = _panel(qtbot)
+    panel.initialize(sid, spec.segment_count, spec.zone_count,
+                     model=spec.model_name)
+
+    if disp.selector is LedSelector.PAGE:
+        for i, label in enumerate(disp.page_labels):
+            assert panel._zone_buttons[i].toolTip() == label, \
+                f"{style.name} page button {i} not labeled {label!r}"
+
+
 def test_every_zone_asset_resolves_to_a_bundled_png() -> None:
     """Fast data guard (no Qt): every referenced zone image is bundled."""
     from trcc.ui.gui.assets import _PKG_ASSETS_DIR

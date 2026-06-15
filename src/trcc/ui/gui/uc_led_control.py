@@ -37,6 +37,7 @@ from ...core.led_models import (
     PRESET_COLORS,
 )
 from ...core.models import HardwareMetrics
+from ..presentation.led_display import LedSelector, led_display_for
 from ..presentation.led_metrics_format import (
     clock_fields,
     format_disk_labels,
@@ -842,6 +843,13 @@ class UCLedControl(QWidget):
         if zone_count > 1:
             self._sync_zone_buttons()
 
+        # Selector-button labels from the display model (C#-sourced).  On PAGE
+        # styles the "Display Selection" buttons pick which metric the single
+        # display shows — tooltip each with its metric so the selector is
+        # discoverable (this is what users were missing, clicking the read-only
+        # gauges instead).  ZONE styles (PA120/LF10) keep the generic tooltip.
+        self._apply_selector_labels(style_id)
+
         # Section visibility from the toolkit-free panel model (C#-sourced via
         # audit_csharp's FormLEDInit extraction) — one contract, no scattered
         # ``style_id in (...)`` checks.  Sections are mutually exclusive: the
@@ -857,6 +865,24 @@ class UCLedControl(QWidget):
             self._populate_memory_identity()
         elif panel.show_disk_panel:
             self._populate_disk_identity()
+
+    def _apply_selector_labels(self, style_id: int) -> None:
+        """Tooltip the selector buttons with the metric each page shows.
+
+        PAGE styles (C# LunBo) → per-metric tooltips so the user knows the
+        "Display Selection" row picks what the device displays.  ZONE styles
+        keep their default tooltip.
+        """
+        disp = led_display_for(style_id)
+        if disp.selector is not LedSelector.PAGE:
+            return
+        log.info("_apply_selector_labels: style=%d pages=%s",
+                 style_id, disp.page_labels)
+        for i, btn in enumerate(self._zone_buttons):
+            if i < len(disp.page_labels):
+                btn.setToolTip(disp.page_labels[i])
+        self._display_selection_label.setToolTip(
+            "Pick which metric the LED display shows")
 
     def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""
