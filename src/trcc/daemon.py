@@ -82,6 +82,7 @@ def run_daemon(
     # device stays connected yet permanently blank (#148).  ``App.close()``
     # in the finally below stops it on shutdown.
     app.metrics_loop.start()
+    app.led_animation_loop.start()   # fast LED effect/carousel animation
     server = ipc.IPCServer(app)
     server.start()
     _install_signal_handlers(server)

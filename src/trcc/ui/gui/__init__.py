@@ -130,6 +130,9 @@ def run_gui(platform: Any, *, decorated: bool = False,
     # system-info / activity sidebar / overlay refresh) ─────────────
     app.start_hotplug()
     app.metrics_loop.start()
+    # Fast LED effect/carousel animation (breathing/colour-cycle/rainbow) —
+    # the slow sensor cadence can't animate them.
+    app.led_animation_loop.start()
 
     # ── Main window — TRCCApp keeps the legacy chrome ──────────────
     window = TRCCApp(app=app, decorated=decorated)

@@ -48,6 +48,7 @@ from .services.cloud_theme import CloudThemeService
 from .services.device_sender import DeviceSender
 from .services.display import DisplayService
 from .services.first_run import FirstRunService
+from .services.led_animation_loop import LedAnimationLoop
 from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
@@ -157,6 +158,10 @@ class App:
         # calls ``app.metrics_loop.start()`` so headless CLI one-shots
         # don't pay for a polling thread.
         self.metrics_loop = MetricsLoop(self)
+        # Fast (~150 ms) LED effect/carousel animation tick.  Separate from the
+        # slow sensor broadcast — breathing/colour-cycle/rainbow/carousel need
+        # the C#-cadence to actually animate.  Same opt-in start as metrics_loop.
+        self.led_animation_loop = LedAnimationLoop(self)
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -376,6 +381,7 @@ class App:
         """
         log.info("close: devices=%d", len(self.devices))
         self.metrics_loop.stop()
+        self.led_animation_loop.stop()
         self.stop_hotplug()
         for key in list(self.devices):
             self.detach(key)
