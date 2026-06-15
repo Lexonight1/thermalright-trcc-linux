@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
 
+from ..presentation.lcd_panel import lcd_panel_for
 from .assets import Assets
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -27,49 +28,9 @@ class UCPreview(BasePanel):
     Frame image provides decorative border around the LCD preview.
     """
 
-    # Resolution offsets (left, top, width, height, frame_image)
-    # UCScreenImage.cs:SetMyUCScreenImage() — isBiliPingmu=true (proportional preview)
-    # Format: (left, top, width, height, frame_image)
-    # All entries fit within the 500x500 UCScreenImageBK container.
-    RESOLUTION_OFFSETS = {
-        # Square / small — 1:1 native size
-        (240, 240): (130, 130, 240, 240, 'preview_240x240.png'),
-        (320, 320): (90, 90, 320, 320, 'preview_320x320.png'),
-        (360, 360): (70, 70, 360, 360, 'preview_360x360_round.png'),
-        (480, 480): (10, 10, 480, 480, 'preview_480x480.png'),
-        # Rectangular — 1:1 native size
-        (240, 320): (130, 90, 240, 320, 'preview_240x320.png'),
-        (320, 240): (90, 130, 320, 240, 'preview_320x240.png'),
-        (240, 400): (130, 50, 240, 400, 'preview_240x400.png'),
-        (400, 240): (50, 130, 400, 240, 'preview_400x240.png'),
-        (180, 480): (160, 10, 180, 480, 'preview_180x480.png'),
-        (480, 180): (10, 160, 480, 180, 'preview_480x180.png'),
-        (270, 480): (115, 10, 270, 480, 'preview_270x480.png'),
-        (480, 270): (10, 115, 480, 270, 'preview_480x270.png'),
-        # Widescreen — scaled to fit 500x500 (isBiliPingmu=true)
-        (640, 480): (90, 130, 320, 240, 'preview_320x240.png'),
-        (480, 640): (130, 90, 240, 320, 'preview_240x320.png'),
-        (640, 172): (90, 207, 320, 86, 'preview_320x86.png'),
-        (172, 640): (207, 90, 86, 320, 'preview_86x320.png'),
-        (800, 480): (50, 130, 400, 240, 'preview_400x240.png'),
-        (480, 800): (130, 50, 240, 400, 'preview_240x400.png'),
-        (854, 480): (36, 130, 427, 240, 'preview_427x240.png'),
-        (480, 854): (130, 36, 240, 427, 'preview_240x427.png'),
-        (960, 540): (10, 115, 480, 270, 'preview_480x270.png'),
-        (540, 960): (115, 10, 270, 480, 'preview_270x480.png'),
-        (960, 320): (10, 170, 480, 160, 'preview_480x160.png'),
-        (320, 960): (170, 10, 160, 480, 'preview_160x480.png'),
-        (1280, 480): (10, 160, 480, 180, 'preview_480x180.png'),
-        (480, 1280): (160, 10, 180, 480, 'preview_180x480.png'),
-        (1600, 720): (50, 160, 400, 180, 'preview_400x180.png'),
-        (720, 1600): (160, 50, 180, 400, 'preview_180x400.png'),
-        (1920, 440): (10, 195, 480, 110, 'preview_480x110.png'),
-        (440, 1920): (195, 10, 110, 480, 'preview_110x480.png'),
-        (1920, 462): (10, 192, 480, 116, 'preview_480x116.png'),
-        (462, 1920): (192, 10, 116, 480, 'preview_116x480.png'),
-    }
-
-    DEFAULT_OFFSET = (90, 90, 320, 320, 'preview_320x320.png')
+    # Resolution → preview placement + widescreen kind now lives in the
+    # toolkit-free presentation model (``ui.presentation.lcd_panel``), shared
+    # with the qtgui preview.  See ``lcd_panel_for``.
 
     # Commands
     CMD_ROTATION_CHANGED = 1
@@ -92,9 +53,7 @@ class UCPreview(BasePanel):
 
         self._lcd_width = width
         self._lcd_height = height
-        self._offset_info = self.RESOLUTION_OFFSETS.get(
-            (width, height), self.DEFAULT_OFFSET
-        )
+        self._offset_info = lcd_panel_for((width, height)).offset_info
 
         self._setup_ui()
 
@@ -284,9 +243,7 @@ class UCPreview(BasePanel):
                   width, height)
         self._lcd_width = width
         self._lcd_height = height
-        self._offset_info = self.RESOLUTION_OFFSETS.get(
-            (width, height), self.DEFAULT_OFFSET
-        )
+        self._offset_info = lcd_panel_for((width, height)).offset_info
 
         left, top, w, h, frame_name = self._offset_info
         self.preview_label.setFixedSize(w, h)
