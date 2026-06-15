@@ -53,6 +53,7 @@ from ._helpers import (
     _resolve_mask_path,
     _resolve_resolution,
     _search_theme_by_name,
+    oriented_theme_path,
     overlay_elements_to_dc,
 )
 from .device import (
@@ -1377,12 +1378,18 @@ class RestoreLastTheme(Command[ThemeResult]):
                 message=f"No persisted theme for {self.key}",
             )
 
-        # Absolute or already-resolvable path → use it directly.
+        # Absolute or already-resolvable path → use it directly, BUT re-rooted
+        # to the device's current orientation dir: a non-square panel restored
+        # at 90°/270° must load the portrait-catalog variant (theme480854), not
+        # the stored landscape path (theme854480), or the preview/dirs go
+        # portrait while the theme stays landscape (#136).  Orientation is
+        # already restored (``_restore_rotation``) before this runs.
         # reset_overrides=False: a reconnect/restart restores the device's
         # persisted overlay edits + last-applied mask, it does not revert to
         # the theme's bundled layout (that's an explicit-switch behavior).
         candidate = Path(stored)
         if candidate.is_dir():
+            candidate = oriented_theme_path(app, self.key, candidate)
             return LoadTheme(
                 key=self.key, path=candidate, reset_overrides=False,
             ).execute(app)

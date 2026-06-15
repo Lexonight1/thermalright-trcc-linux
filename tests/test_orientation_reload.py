@@ -66,6 +66,43 @@ def _data(app: App) -> Path:
     return app.platform.paths().data_dir()
 
 
+# ── oriented_theme_path — shared resolver (RestoreLastTheme + rotation) ──
+
+def test_oriented_theme_path_picks_portrait_for_rotated_degrees(app: App) -> None:
+    """Landscape stored path + explicit 90/270 degrees → portrait variant
+    (the RestoreLastTheme connect-restore fix path)."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
+    port = _seed(_data(app) / "theme4801280" / _NAME, "00.png")
+    assert oriented_theme_path(app, _KEY, land, degrees=270) == port
+
+
+def test_oriented_theme_path_reads_settings_orientation_when_unset(
+    app: App,
+) -> None:
+    """No explicit degrees → uses the device's persisted orientation, so
+    RestoreLastTheme (after _restore_rotation) picks the matching dir."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
+    port = _seed(_data(app) / "theme4801280" / _NAME, "00.png")
+    app.settings.set_orientation(_KEY, 90)
+    assert oriented_theme_path(app, _KEY, land) == port
+
+
+def test_oriented_theme_path_landscape_at_zero(app: App) -> None:
+    from trcc.core.commands._helpers import oriented_theme_path
+    land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
+    _seed(_data(app) / "theme4801280" / _NAME, "00.png")
+    assert oriented_theme_path(app, _KEY, land, degrees=0) == land
+
+
+def test_oriented_theme_path_falls_back_when_variant_absent(app: App) -> None:
+    """No portrait dir on disk → keep the stored path (renderer pixel-rotates)."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
+    assert oriented_theme_path(app, _KEY, land, degrees=270) == land
+
+
 # ── mask reload ─────────────────────────────────────────────────────────
 
 

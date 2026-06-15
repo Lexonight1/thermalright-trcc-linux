@@ -248,21 +248,18 @@ class App:
                  key, event.degrees, bw, bh)
 
         from .core.commands import ApplyMask, LoadTheme
+        from .core.commands._helpers import oriented_theme_path
 
-        # Active theme → reload from the rotated-resolution theme dir.
-        # ``current_theme`` is the loaded theme's absolute path (LoadTheme
-        # stores ``str(theme.path.resolve())``); the same-named dir under the
-        # rotated resolution is the variant to reload.
+        # Active theme → reload from the rotated-resolution theme dir.  Shared
+        # resolver with RestoreLastTheme so connect-restore + runtime rotation
+        # agree on the oriented variant (#136).
         if s.current_theme:
             cur = Path(s.current_theme)
-            for base in (paths.theme_dir(bw, bh), paths.user_theme_dir(bw, bh)):
-                cand = base / cur.name
-                if cand.exists():
-                    if cand != cur:
-                        log.info("_on_orientation_changed: reload theme %s → %s",
-                                 cur.name, cand)
-                        self.dispatch(LoadTheme(key=key, path=cand))
-                    break  # this resolution's dir matched — done either way
+            cand = oriented_theme_path(self, key, cur, degrees=event.degrees)
+            if cand != cur:
+                log.info("_on_orientation_changed: reload theme %s → %s",
+                         cur.name, cand)
+                self.dispatch(LoadTheme(key=key, path=cand))
 
         # Active user mask → re-resolve to the rotated zt dir (after the theme,
         # so it overrides the theme's bundled mask).  Only cloud zt masks have

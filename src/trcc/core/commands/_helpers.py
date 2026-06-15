@@ -28,6 +28,40 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def oriented_theme_path(
+    app: App, key: str, stored: Path, degrees: int | None = None,
+) -> Path:
+    """Re-root a stored theme path to the device's orientation dir.
+
+    Non-square panels keep per-oriented theme catalogs (``theme854480`` vs
+    ``theme480854``).  ``current_theme`` is an absolute path into ONE of them;
+    at a different orientation the same-named theme in the matching dir is the
+    variant to load — otherwise a portrait-rotated device shows the landscape
+    theme on a portrait canvas (and vice versa).  Falls back to ``stored`` when
+    no oriented variant is on disk (the renderer pixel-rotates the art).
+
+    ``degrees`` is the authoritative orientation; pass it from an
+    ``OrientationChanged`` event (``App._on_orientation_changed``) where
+    ``settings`` may not be updated yet.  Omit it (the restore path,
+    ``RestoreLastTheme``) to read the already-persisted ``settings`` value.
+    Shared so connect-restore + runtime rotation resolve the oriented dir
+    identically.
+    """
+    device = app.devices.get(key)
+    if device is None or device.profile is None:
+        return stored
+    w, h = device.profile.resolution
+    if degrees is None:
+        degrees = app.settings.for_device(key).orientation
+    bw, bh = (h, w) if degrees in (90, 270) else (w, h)
+    paths = app.platform.paths()
+    for base in (paths.theme_dir(bw, bh), paths.user_theme_dir(bw, bh)):
+        cand = base / stored.name
+        if cand.exists():
+            return cand
+    return stored
+
+
 _VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
 
 
