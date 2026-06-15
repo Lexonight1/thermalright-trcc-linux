@@ -22,6 +22,7 @@ from collections.abc import Iterator
 import pytest
 
 from trcc.app import App
+from trcc.core.led_models import LED_STYLES
 
 from .conftest import FakePlatform
 
@@ -252,6 +253,27 @@ def test_led_panel_constructs(gui_app: App) -> None:
     panel = LedPanel(gui_app, _bus(gui_app))
     assert panel is not None
     assert panel.layout() is not None
+
+
+@pytest.mark.parametrize("style", list(LED_STYLES), ids=lambda s: s.name)
+def test_qtgui_advanced_tab_sections_match_panel_model(gui_app: App, style) -> None:
+    """qtgui AdvancedTab shows only the sub-sections led_panel_for(style)
+    declares — the same C#-sourced composition the gui renders from."""
+    from trcc.core.led_models import LEGACY_STYLE_ID
+    from trcc.ui.presentation.led_panel import led_panel_for
+    from trcc.ui.qtgui.panels.led.advanced_tab import AdvancedTab
+
+    tab = AdvancedTab(gui_app, lambda: "")
+    m = led_panel_for(LEGACY_STYLE_ID[style])
+    tab.apply_panel(m)
+
+    assert tab._sources_box.isVisibleTo(tab) == m.show_sensor_gauges, \
+        f"{style.name} sensor linkage"
+    assert tab._clock_box.isVisibleTo(tab) == m.show_clock_panel, \
+        f"{style.name} clock"
+    assert tab._misc_box.isVisibleTo(tab) == (
+        m.show_memory_panel or m.show_disk_panel
+    ), f"{style.name} memory/disk"
 
 
 def test_about_panel_constructs(gui_app: App) -> None:

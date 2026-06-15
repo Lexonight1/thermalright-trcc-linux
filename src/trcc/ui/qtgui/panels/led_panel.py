@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ....core.led_models import LEGACY_STYLE_ID
+from ...presentation.led_panel import led_panel_for
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 from .led import AdvancedTab, ColorTab, ModeTab, SegmentTab, ZoneTab
@@ -113,6 +115,7 @@ class LedPanel(BasePanel):
                 "Devices panel to scan if no devices are listed.",
             )
             self._set_optional_tabs_visible(zones=False, segments=False)
+            self._advanced_tab.apply_panel(led_panel_for(1))   # plain default
             return
         settings = self.app.settings.for_led(key)
         for tab in (
@@ -131,13 +134,19 @@ class LedPanel(BasePanel):
         )
 
         device = self.app.devices.get(key)
+        style = getattr(device.info, "led_style", None) if device else None
+        # Gate the Advanced tab's sub-sections to this device's LED style —
+        # the same C#-sourced composition the gui renders from.  Unknown
+        # style falls back to a plain panel (gauges only).
+        sid = LEGACY_STYLE_ID.get(style) if style else None
+        self._advanced_tab.apply_panel(led_panel_for(sid if sid is not None else 1))
+
         if device is None:
             self._status_label.setText(
                 f"{key} isn't connected yet — settings will apply when "
                 "the device shows up.  Open the Device tab to scan.",
             )
         else:
-            style = getattr(device.info, "led_style", None)
             style_name = style.name if style else "no style detected"
             self._status_label.setText(
                 f"{key} • {device.info.vendor} {device.info.product} • "

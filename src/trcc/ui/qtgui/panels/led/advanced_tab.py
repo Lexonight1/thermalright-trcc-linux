@@ -41,6 +41,7 @@ from .....core.commands import (
     SetWeekStart,
 )
 from .....core.led_models import LedDeviceSettings
+from ....presentation.led_panel import LedPanelModel
 from ._base import LedTabBase
 
 log = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class AdvancedTab(LedTabBase):
         root.setSpacing(10)
 
         # ── Sensor-linked sources ────────────────────────────────────
-        sources_box = QGroupBox("Sensor linkage", self)
+        self._sources_box = sources_box = QGroupBox("Sensor linkage", self)
         sources_form = QFormLayout(sources_box)
 
         self._temp_cpu = QRadioButton("CPU", self)
@@ -107,7 +108,7 @@ class AdvancedTab(LedTabBase):
         root.addWidget(test_box)
 
         # ── Clock options ────────────────────────────────────────────
-        clock_box = QGroupBox("Clock + calendar (LC2)", self)
+        self._clock_box = clock_box = QGroupBox("Clock + calendar (LC2)", self)
         clock_form = QFormLayout(clock_box)
         self._clock_24h = QCheckBox("24-hour clock", self)
         self._clock_24h.toggled.connect(self._on_clock_format)
@@ -118,7 +119,7 @@ class AdvancedTab(LedTabBase):
         root.addWidget(clock_box)
 
         # ── Memory + disk (segment devices) ──────────────────────────
-        misc_box = QGroupBox("Memory + disk (segment devices)", self)
+        self._misc_box = misc_box = QGroupBox("Memory + disk (segment devices)", self)
         misc_form = QFormLayout(misc_box)
         self._disk_index = QSpinBox(self)
         self._disk_index.setRange(0, 31)
@@ -177,6 +178,25 @@ class AdvancedTab(LedTabBase):
         idx = self._memory_ratio.findData(settings.memory_ratio)
         self._memory_ratio.setCurrentIndex(idx if idx >= 0 else 1)   # default ×2
         self._memory_ratio.blockSignals(False)
+
+    def apply_panel(self, panel: LedPanelModel) -> None:
+        """Show only the sub-sections this device's LED style actually uses.
+
+        Mirrors the gui's ``led_panel_for`` gating (the shared C#-sourced
+        composition model): sensor linkage rides with the M1-M6 gauges, the
+        clock box is LC2-only, the memory/disk box is for the LC1/LF11 segment
+        devices.  The diagnostic/test box stays for every device.
+        """
+        log.info(
+            "apply_panel: style=%s sensors=%s clock=%s memory=%s disk=%s",
+            panel.style_id, panel.show_sensor_gauges, panel.show_clock_panel,
+            panel.show_memory_panel, panel.show_disk_panel,
+        )
+        self._sources_box.setVisible(panel.show_sensor_gauges)
+        self._clock_box.setVisible(panel.show_clock_panel)
+        self._misc_box.setVisible(
+            panel.show_memory_panel or panel.show_disk_panel,
+        )
 
     # ── Internals ─────────────────────────────────────────────────────
 
