@@ -550,17 +550,52 @@ def test_unsized_theme_defaults_to_landscape(
     )
 
 
+@pytest.mark.parametrize(
+    "theme_wh, orientation, expected",
+    [
+        # Portrait theme (per-orientation catalog) — pre-oriented, NEVER swaps.
+        ((480, 854), 0, (480, 854)),
+        ((480, 854), 90, (480, 854)),
+        ((480, 854), 180, (480, 854)),
+        ((480, 854), 270, (480, 854)),
+        # Landscape theme — composes landscape, swaps for 90/270.
+        ((854, 480), 0, (854, 480)),
+        ((854, 480), 90, (480, 854)),
+        ((854, 480), 180, (854, 480)),
+        ((854, 480), 270, (480, 854)),
+        # Unsized theme — landscape default + swap.
+        ((0, 0), 0, (854, 480)),
+        ((0, 0), 90, (480, 854)),
+    ],
+)
+def test_canvas_geometry_table(
+    display: DisplayService, theme_wh, orientation, expected,
+) -> None:
+    """One source (composed_canvas_size / _compose_geometry) resolves the canvas
+    for every (theme orientation × user orientation) on a rotate=True panel.
+    Portrait content is pre-oriented (no swap); landscape swaps. (#136)"""
+    profile = get_profile(224)   # 854×480, rotate=True
+    got = display.composed_canvas_size(
+        _wide_info(), _theme_sized(*theme_wh), profile, orientation,
+    )
+    assert got == expected
+
+
 def test_composed_canvas_size_drives_preview_orientation(
     display: DisplayService,
 ) -> None:
-    """composed_canvas_size (used by the GUI to size the preview bezel) returns
-    portrait dims for a portrait theme, landscape for landscape, and swaps for
-    user rotation. (#136 phase 3)"""
+    """composed_canvas_size (the GUI preview-bezel size) returns portrait dims
+    for a portrait theme and landscape for landscape.  A portrait theme is
+    loaded from the per-orientation catalog at 90/270 — its content is already
+    portrait, so the canvas stays portrait (NOT swapped back to landscape; that
+    was the bug). (#136)"""
     info = _wide_info()
     profile = get_profile(224)   # 854×480, rotate=True
 
     assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 0) == (480, 854)
     assert display.composed_canvas_size(info, _theme_sized(854, 480), profile, 0) == (854, 480)
     assert display.composed_canvas_size(info, _theme_sized(0, 0), profile, 0) == (854, 480)
-    # user rotation 90 swaps the composed canvas
-    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 90) == (854, 480)
+    # Portrait content is pre-oriented → canvas stays portrait at 90 (not swapped).
+    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 90) == (480, 854)
+    # A landscape theme forced to a rotated panel DOES swap (content not pre-oriented).
+    assert display.composed_canvas_size(info, _theme_sized(854, 480), profile, 90) == (480, 854)

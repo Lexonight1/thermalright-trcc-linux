@@ -162,23 +162,30 @@ class DisplayService:
     # ── Top-level pipeline ────────────────────────────────────────────
 
     def _compose_geometry(
-        self, profile: DeviceProfile, theme: Theme,
+        self, profile: DeviceProfile, theme: Theme, orientation: int,
     ) -> tuple[tuple[int, int], bool]:
-        """Return ``(base compose size, is_portrait_compose)`` for this frame.
+        """The orientation-resolved render/preview canvas + portrait flag.
 
-        A non-square ``rotate=True`` panel is physically portrait.  When the
-        active theme is portrait-authored (``theme.resolution`` taller than
-        wide) the canvas composes at portrait dims so the content isn't
-        stretched into the landscape canvas, and the device 90° rotate is
-        skipped (the portrait composition already matches the portrait wire
-        buffer).  Landscape themes (and themes with no declared size) keep
-        composing landscape + rotate — content-matched, so the working
-        widescreen panels are unchanged. (#136)
+        SINGLE source of the frame canvas so every consumer agrees (build_frame
+        render, composed_canvas_size preview bezel, build_preview_surface).
+        Two cases:
+
+        * **Portrait-composed** — a portrait-authored theme on a non-square
+          ``rotate=True`` panel.  Its per-orientation catalog content is ALREADY
+          in the final visual orientation ("the orientation is in the masks"),
+          so the canvas IS the portrait base and the user-orientation swap is
+          NOT applied — applying it flipped portrait content back to landscape
+          (wrong preview bezel + 90°-off render).  The rotation gates skip it
+          too (see build_frame / _apply_post_processing). (#136)
+        * **Otherwise** — compose native/landscape and swap for the user
+          orientation; square + widescreen panels unchanged.
         """
         w, h = profile.resolution
         tw, th = theme.resolution
         portrait = bool(profile.rotate and w != h and tw > 0 and th > tw)
-        return ((h, w) if portrait else (w, h)), portrait
+        if portrait:
+            return (h, w), True
+        return self._visual_size((w, h), orientation), False
 
     def composed_canvas_size(
         self, info: ProductInfo, theme: Theme,
@@ -189,20 +196,17 @@ class DisplayService:
         this so the frame asset + label match what the panel shows (#136).
         """
         resolved = self._resolve_profile(info, profile)
-        base_size, portrait = self._compose_geometry(resolved, theme)
-        visual = self._visual_size(base_size, orientation)
+        canvas, portrait = self._compose_geometry(resolved, theme, orientation)
         # On-change (preview sizing), not per-frame — INFO so the orientation
-        # decision is visible at the default level.  Shows WHY portrait vs
-        # landscape: the panel's native size + rotate flag, the theme's
-        # content-composed base, and the user's rotation.
+        # decision is visible at the default level: panel native size + rotate
+        # flag, the portrait-compose decision, the user orientation, → canvas.
         log.info(
             "composed_canvas_size %s: native=%s rotate=%s theme=%r "
-            "base=%dx%d portrait-compose=%s orientation=%d → visual=%dx%d",
+            "portrait-compose=%s orientation=%d → canvas=%dx%d",
             info.key, resolved.resolution, resolved.rotate, theme.name,
-            base_size[0], base_size[1], portrait, orientation,
-            visual[0], visual[1],
+            portrait, orientation, canvas[0], canvas[1],
         )
-        return visual
+        return canvas
 
     def build_frame(
         self,
@@ -228,10 +232,10 @@ class DisplayService:
         canvas = ``info.native_resolution``, no device rotation, RGB565.
         """
         resolved_profile = self._resolve_profile(info, profile)
-        base_size, portrait = self._compose_geometry(resolved_profile, theme)
-
         s = self._settings.for_device(info.key)
-        visual_size = self._visual_size(base_size, s.orientation)
+        visual_size, portrait = self._compose_geometry(
+            resolved_profile, theme, s.orientation,
+        )
 
         # Per-frame — DEBUG so `-vv` users see the build context without
         # drowning a default INFO log.
@@ -385,10 +389,10 @@ class DisplayService:
         log.debug("build_preview_surface: key=%s theme=%s",
                   info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
-        base_size, portrait = self._compose_geometry(resolved_profile, theme)
-
         s = self._settings.for_device(info.key)
-        visual_size = self._visual_size(base_size, s.orientation)
+        visual_size, portrait = self._compose_geometry(
+            resolved_profile, theme, s.orientation,
+        )
 
         clock = compute_clock(
             time_format=s.time_format,
