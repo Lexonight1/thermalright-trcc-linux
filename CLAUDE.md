@@ -13,6 +13,16 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **OWED: eyeball the 2026-06-15 fixes in `dev/mock_gui.py`** (all PUSHED @ `0b965ff2`; logic +
+  headless verified, human look not done). mock_gui == the device (C# encodes ONE image for preview
+  AND wire). Check: (1) **LED effects** — `device=0416:8001 pm=1` breathe/colour-cycle/rainbow
+  actually animate (new `LedAnimationLoop` ~150ms) + the metric-page selector (pm=1/128/129); (2)
+  **LCD portrait** — `device=87ad:70db pm=11 sub=5`, rotate 0/90/180/270: portrait content upright in
+  a portrait bezel, NOT rotated (orientation-driven `_compose_geometry`, supersedes #169 encode-table
+  at 90); (3) **cloud backgrounds** now download per-resolution+orientation (`web/<res>`) and SHOW.
+  PROCESS: the C# is the source of truth for device geometry/behaviour — `SetMyUCScreenImage`/
+  `ImageToJpg`/`themeDirection` (one image for preview+wire; per-orientation catalogs); don't ask the
+  user to resolve what the C# answers, and PLAN intricate geometry rather than spot-patch.
 - **Metrics unification (NEXT, has a `--` bug behind it)** — summoned LED/DIGITAL
   coolers show `--` for live metrics because the `_MetricsView` shim in `trcc_app.py`
   mismaps `metrics.cpu_temp`→`readings['cpu_temp']`=None (keys are `cpu:temp`). Fix:
