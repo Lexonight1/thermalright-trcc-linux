@@ -82,6 +82,11 @@ class DataInstallService:
         masks_ok = self.ensure_masks(w, h)
         if w != h:
             log.info("ensure_all: non-square — also installing %dx%d", h, w)
+            # Themes too, not just web+masks — a rotated panel loads its
+            # background/theme from the oriented dir (theme480854), so without
+            # this the portrait orientation had no theme catalog and fell back
+            # to the landscape one.
+            self.ensure_themes(h, w)
             self.ensure_web(h, w)
             self.ensure_masks(h, w)
         result = EnsureDataResult(
