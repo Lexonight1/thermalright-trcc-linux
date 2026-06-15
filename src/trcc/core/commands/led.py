@@ -233,13 +233,17 @@ class RenderLed(Command[LedColorsResult]):
             )
 
         # ── Segment phase (legacy ``_seg_phase``) ──
-        # On a multi-zone device the phase that drives ``compute_mask`` is
-        # the active zone, not the caller's ``self.phase``.  Zone-sync on a
-        # circulate style (NOT a select-all style) advances the carousel
-        # through the enabled zones; otherwise the phase is the selected
-        # zone.  Single-zone devices keep ``self.phase`` (API override).
+        # ``phase`` chooses which metric *page* a multi-page segment display
+        # shows (C# LunBo) — CPU temp / CPU % / GPU temp / GPU %, etc.  The
+        # selector buttons persist the choice as ``selected_zone``; with the
+        # page carousel on (and not a select-all style) it rotates the enabled
+        # pages instead.  This is gated on the display actually having more than
+        # one page (``phase_count > 1``) — NOT on ``zones`` being populated,
+        # which it never is for page-style devices (that was the bug: selecting
+        # a metric set ``selected_zone`` but the render ignored it and stayed
+        # stuck on page 0).  Single-page displays keep ``self.phase``.
         phase = self.phase
-        if effective_settings.zones:
+        if display.phase_count > 1:
             if (effective_settings.zone_sync
                     and style.value not in LED_SELECT_ALL_STYLES):
                 runtime.zone_sync_ticks += 1

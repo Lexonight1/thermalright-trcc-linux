@@ -112,6 +112,40 @@ def test_render_led_lights_segment_mask_for_pa120(
             )
 
 
+def test_selected_metric_page_reaches_the_wire(
+    fake_platform: FakePlatform,
+) -> None:
+    """Selecting a metric page (``SelectZone``) must change what the multi-page
+    display shows.  Regression guard for the bug where ``selected_zone`` was set
+    but the render ignored it (gated on the never-populated ``zones`` list) and
+    stayed stuck on page 0 — clicking a metric did nothing on the device."""
+    from trcc.core.commands import SelectZone
+    from trcc.core.led_protocol import LED_REMAP_TABLES
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
+    metrics = fake_platform.sensors().snapshot()
+    table = LED_REMAP_TABLES.get(LedStyle.AX120)
+
+    def _wire_lit() -> set[int]:
+        sent = _decode_body(fake_platform.bulk.writes, 30)
+        return {table[p] if table else p
+                for p, c in enumerate(sent) if c != (0, 0, 0)}
+
+    for page in range(4):
+        expected = {i for i, on in enumerate(
+            compute_mask(LedStyle.AX120, metrics, phase=page, temp_unit="C"))
+            if on}
+        app.dispatch(SelectZone(key=_LED_KEY, zone=page))
+        fake_platform.bulk.writes.clear()
+        app.dispatch(RenderLed(key=_LED_KEY))
+        assert _wire_lit() == expected, (
+            f"page {page} selected but the wire shows a different metric"
+        )
+
+
 def test_led_settings_changed_re_renders_immediately(
     fake_platform: FakePlatform,
 ) -> None:
