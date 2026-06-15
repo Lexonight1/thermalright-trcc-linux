@@ -162,27 +162,33 @@ class DisplayService:
     # ── Top-level pipeline ────────────────────────────────────────────
 
     def _compose_geometry(
-        self, profile: DeviceProfile, theme: Theme, orientation: int,
+        self, profile: DeviceProfile, orientation: int,
     ) -> tuple[tuple[int, int], bool]:
         """The orientation-resolved render/preview canvas + portrait flag.
 
         SINGLE source of the frame canvas so every consumer agrees (build_frame
         render, composed_canvas_size preview bezel, build_preview_surface).
-        Two cases:
 
-        * **Portrait-composed** — a portrait-authored theme on a non-square
-          ``rotate=True`` panel.  Its per-orientation catalog content is ALREADY
-          in the final visual orientation ("the orientation is in the masks"),
-          so the canvas IS the portrait base and the user-orientation swap is
-          NOT applied — applying it flipped portrait content back to landscape
-          (wrong preview bezel + 90°-off render).  The rotation gates skip it
-          too (see build_frame / _apply_post_processing). (#136)
-        * **Otherwise** — compose native/landscape and swap for the user
-          orientation; square + widescreen panels unchanged.
+        Orientation-driven, matching the C# ``themeDirection`` model: a
+        non-square ``rotate=True`` panel keeps per-orientation theme/mask
+        catalogs (``theme854480`` ↔ ``theme480854``), and the active content is
+        loaded from the one matching the current orientation
+        (``oriented_theme_path`` / ``_on_orientation_changed``).  So at 90/270
+        the content is ALREADY portrait ("the orientation is in the masks") —
+        it composes at the swapped (portrait) size and takes **no further
+        rotation** (the rotation gates also skip ``portrait``).  At 0/180 it's
+        the landscape catalog.  Replaces the old ``theme.resolution`` content-
+        match (DC themes declare no size, so that never fired).
+
+        Equivalence note: the simple RGB565 rotate panels previously did
+        ``rotate(360-orientation)`` then ``rotate(90)`` at 90/270 — a net 360°
+        (identity) on the same swapped canvas, so dropping both rotations here
+        is the same visual result.  Only the widescreen JPEG panels (which had a
+        net +90° via the encode table) actually change — that was the bug.
+        Square / non-rotate panels keep the user-orientation swap. (#136/#169)
         """
         w, h = profile.resolution
-        tw, th = theme.resolution
-        portrait = bool(profile.rotate and w != h and tw > 0 and th > tw)
+        portrait = bool(profile.rotate and w != h and orientation in (90, 270))
         if portrait:
             return (h, w), True
         return self._visual_size((w, h), orientation), False
@@ -196,7 +202,7 @@ class DisplayService:
         this so the frame asset + label match what the panel shows (#136).
         """
         resolved = self._resolve_profile(info, profile)
-        canvas, portrait = self._compose_geometry(resolved, theme, orientation)
+        canvas, portrait = self._compose_geometry(resolved, orientation)
         # On-change (preview sizing), not per-frame — INFO so the orientation
         # decision is visible at the default level: panel native size + rotate
         # flag, the portrait-compose decision, the user orientation, → canvas.
@@ -234,7 +240,7 @@ class DisplayService:
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         visual_size, portrait = self._compose_geometry(
-            resolved_profile, theme, s.orientation,
+            resolved_profile, s.orientation,
         )
 
         # Per-frame — DEBUG so `-vv` users see the build context without
@@ -391,7 +397,7 @@ class DisplayService:
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         visual_size, portrait = self._compose_geometry(
-            resolved_profile, theme, s.orientation,
+            resolved_profile, s.orientation,
         )
 
         clock = compute_clock(

@@ -334,14 +334,15 @@ def test_profile_none_with_info_fbl_uses_registry_lookup(
 # ── 5. Order: user-orientation rotation precedes device rotation ──────
 
 
-def test_user_orientation_rotation_precedes_device_rotation(
+def test_simple_rotate_panel_at_90_applies_no_rotation(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """Rotation order: user orientation first, then device rotation.
+    """A non-square RGB565 rotate panel at orientation 90 composes portrait (the
+    per-orientation catalog) and applies NO rotation.
 
-    A rotate=True profile + user orientation=90 must produce two rotate
-    calls in this exact order: (270, then 90). Reversing breaks the
-    legacy "fit → overlay → dim → rotate → encode" sequence.
+    This is EQUIVALENT to the previous behaviour, which did rotate(360-90=270)
+    then rotate(90) — a net 360° (identity) on the same swapped canvas.  The
+    orientation-driven model just expresses that as zero rotations.  (#136)
     """
     info = _hid_type2_info()
     profile = get_profile(58)
@@ -350,12 +351,10 @@ def test_user_orientation_rotation_precedes_device_rotation(
 
     display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
 
-    rotate_calls = [c[1] for c in renderer.calls if c[0] == "rotate"]
-    # First rotation: user orientation (360 - 90 = 270)
-    # Second rotation: device (90)
-    rotation_angles = [args[1] for args in rotate_calls]
-    assert rotation_angles == [270, 90], (
-        f"Expected [user=270, device=90], got {rotation_angles}"
+    rotation_angles = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotation_angles == [], (
+        f"orientation 90 portrait catalog → no rotation (was net-360 identity), "
+        f"got {rotation_angles}"
     )
 
 
@@ -447,18 +446,20 @@ def _wide_info() -> ProductInfo:
     )
 
 
-def test_portrait_theme_composes_portrait_and_skips_device_rotate(
+def test_rotate_panel_at_90_composes_portrait_and_skips_device_rotate(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """A portrait-authored theme on a non-square rotate=True panel composes at
-    portrait dims (no stretch) and skips the device 90° rotate — the portrait
-    canvas already matches the portrait wire buffer. (#136)"""
+    """On a non-square rotate=True panel the canvas follows the ORIENTATION (the
+    per-orientation catalog), not the theme's declared size: at 90 it composes
+    portrait (480×854) and skips the device rotate — the portrait content is
+    pre-oriented.  Theme size is irrelevant (DC themes declare none). (#136)"""
+    info = _wide_info()
     profile = get_profile(224)
     assert profile.rotate and profile.resolution == (854, 480)
+    display._settings.for_device(info.key).orientation = 90
 
     display.build_frame(
-        info=_wide_info(), theme=_theme_sized(480, 854), sensors={},
-        profile=profile,
+        info=info, theme=_theme_sized(0, 0), sensors={}, profile=profile,
     )
 
     canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
@@ -470,16 +471,16 @@ def test_portrait_theme_composes_portrait_and_skips_device_rotate(
 def test_portrait_theme_at_orientation90_is_not_rotated(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """A portrait-authored theme on a non-square panel, with the device rotated
-    to 90°, must NOT be rotated: the content is already portrait (the mask/theme
-    has the orientation baked in).  Re-rotating it put it 90° off — the reported
-    bug. (#136)"""
+    """At orientation 90 a non-square panel loads the portrait catalog — the
+    content is pre-oriented ("orientation is in the masks"), so NO rotation.
+    Orientation-driven, so this holds even for an unsized DC theme; re-rotating
+    it put it 90° off — the reported bug. (#136)"""
     info = _wide_info()
     profile = get_profile(224)                       # 854×480, rotate=True
     display._settings.for_device(info.key).orientation = 90
 
     display.build_frame(
-        info=info, theme=_theme_sized(480, 854), sensors={}, profile=profile,
+        info=info, theme=_theme_sized(0, 0), sensors={}, profile=profile,
     )
 
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
@@ -511,23 +512,27 @@ def test_landscape_widescreen_orientation0_composes_landscape_unrotated(
     )
 
 
-def test_landscape_widescreen_orientation90_rotates_per_encode_table(
+def test_widescreen_orientation90_loads_portrait_catalog_no_rotate(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """At orientation 90 the same panel rotates per the encode TABLE, not a
-    blanket 90°.  C# ImageToJpg 854×480 default: directionB 90 → 90°.  Proves
-    the table is wired (and folds the user orientation). (#169)"""
+    """At orientation 90 the widescreen panel loads the PORTRAIT catalog — the
+    content is pre-oriented, so it sends UNROTATED (no encode-table rotate).
+
+    This SUPERSEDES the earlier #169 assumption (encode-table directionB 90 →
+    90°), which was unverified ("verify Trofeo first"): the real device + the C#
+    ``themeDirection`` model load the oriented theme/mask and don't re-rotate it.
+    Orientation is the single source — applied once, in the catalog. (#136/#169)"""
     info = _wide_info()
     profile = get_profile(224)
     display._settings.for_device(info.key).orientation = 90
 
     display.build_frame(
-        info=info, theme=_theme_sized(854, 480), sensors={}, profile=profile,
+        info=info, theme=_theme_sized(0, 0), sensors={}, profile=profile,
     )
 
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
-    assert rotations == [90], (
-        f"orientation 90 widescreen → single encode rotate 90°, got {rotations}"
+    assert rotations == [], (
+        f"orientation 90 → portrait catalog, pre-oriented, no rotate; got {rotations}"
     )
 
 
@@ -550,52 +555,23 @@ def test_unsized_theme_defaults_to_landscape(
     )
 
 
-@pytest.mark.parametrize(
-    "theme_wh, orientation, expected",
-    [
-        # Portrait theme (per-orientation catalog) — pre-oriented, NEVER swaps.
-        ((480, 854), 0, (480, 854)),
-        ((480, 854), 90, (480, 854)),
-        ((480, 854), 180, (480, 854)),
-        ((480, 854), 270, (480, 854)),
-        # Landscape theme — composes landscape, swaps for 90/270.
-        ((854, 480), 0, (854, 480)),
-        ((854, 480), 90, (480, 854)),
-        ((854, 480), 180, (854, 480)),
-        ((854, 480), 270, (480, 854)),
-        # Unsized theme — landscape default + swap.
-        ((0, 0), 0, (854, 480)),
-        ((0, 0), 90, (480, 854)),
-    ],
-)
-def test_canvas_geometry_table(
+@pytest.mark.parametrize("orientation, expected", [
+    (0, (854, 480)),     # landscape catalog
+    (90, (480, 854)),    # portrait catalog
+    (180, (854, 480)),   # landscape catalog
+    (270, (480, 854)),   # portrait catalog
+])
+@pytest.mark.parametrize("theme_wh", [(480, 854), (854, 480), (0, 0)])
+def test_canvas_geometry_is_orientation_driven(
     display: DisplayService, theme_wh, orientation, expected,
 ) -> None:
-    """One source (composed_canvas_size / _compose_geometry) resolves the canvas
-    for every (theme orientation × user orientation) on a rotate=True panel.
-    Portrait content is pre-oriented (no swap); landscape swaps. (#136)"""
+    """The render/preview canvas follows the ORIENTATION (the per-orientation
+    catalog the content was loaded from), independent of the theme's declared
+    size — DC themes declare none, so orientation is the single signal.  90/270
+    → portrait, 0/180 → landscape.  This is the GUI preview-bezel size too
+    (composed_canvas_size). (#136/#169)"""
     profile = get_profile(224)   # 854×480, rotate=True
     got = display.composed_canvas_size(
         _wide_info(), _theme_sized(*theme_wh), profile, orientation,
     )
-    assert got == expected
-
-
-def test_composed_canvas_size_drives_preview_orientation(
-    display: DisplayService,
-) -> None:
-    """composed_canvas_size (the GUI preview-bezel size) returns portrait dims
-    for a portrait theme and landscape for landscape.  A portrait theme is
-    loaded from the per-orientation catalog at 90/270 — its content is already
-    portrait, so the canvas stays portrait (NOT swapped back to landscape; that
-    was the bug). (#136)"""
-    info = _wide_info()
-    profile = get_profile(224)   # 854×480, rotate=True
-
-    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 0) == (480, 854)
-    assert display.composed_canvas_size(info, _theme_sized(854, 480), profile, 0) == (854, 480)
-    assert display.composed_canvas_size(info, _theme_sized(0, 0), profile, 0) == (854, 480)
-    # Portrait content is pre-oriented → canvas stays portrait at 90 (not swapped).
-    assert display.composed_canvas_size(info, _theme_sized(480, 854), profile, 90) == (480, 854)
-    # A landscape theme forced to a rotated panel DOES swap (content not pre-oriented).
-    assert display.composed_canvas_size(info, _theme_sized(854, 480), profile, 90) == (480, 854)
+    assert got == expected, f"orientation={orientation} theme={theme_wh}: got {got}"
