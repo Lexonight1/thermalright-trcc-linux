@@ -84,11 +84,14 @@ class CloudThemeService:
         fallback thumbnail.
         """
         log.info("materialise: %s @ %dx%d", theme_id, *resolution)
-        # The catalog is wired to write directly into
-        # ``paths.cloud_theme_dir(w, h)`` (see App.__init__), so
-        # ``download_theme`` returns the exact path the GUI grid
-        # scans — no duplicate copy step needed.
-        mp4_target = self._catalog.download_theme(theme_id)
+        # The catalog writes into ``cache_dir/<resolution>`` (= the device's
+        # ``paths.cloud_theme_dir(w, h)``), so pass the DEVICE resolution — not
+        # the catalog's construction-time default — or every theme lands in one
+        # folder (320320) and no device finds its background.  Returns the exact
+        # path the GUI grid scans — no duplicate copy step needed.
+        mp4_target = self._catalog.download_theme(
+            theme_id, f"{resolution[0]}x{resolution[1]}",
+        )
         target_dir = mp4_target.parent
         log.info("materialise: mp4 ready at %s", mp4_target)
 

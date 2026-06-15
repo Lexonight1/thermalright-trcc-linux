@@ -85,6 +85,31 @@ def test_download_theme_caches_to_disk(tmp_path: Path) -> None:
     assert len(http.calls) == 1
 
 
+def test_download_theme_uses_per_call_resolution_for_folder_and_url(
+    tmp_path: Path,
+) -> None:
+    """A per-call ``resolution`` overrides the construction default for BOTH the
+    cache folder and the download URL — so each device caches in its own
+    ``<res>`` dir (matches C# GetWebBackgroundImageDirectory/HttpDirectory).
+    The bug: the fixed 320x320 default dumped every device's themes into
+    web/320320 and the URL fetched the 320x320 variant, so no non-320 device
+    found its background."""
+    http = FakeHttp()
+    payload = b"\x01" * 128
+    http.responses["http://www.czhorde.cc/tr/bj480854/a001.mp4"] = payload
+    catalog = CzhordeCatalog(
+        http=http, cache_dir=tmp_path, resolution="320x320",  # default ignored
+    )
+
+    target = catalog.download_theme("a001", "480x854")
+
+    assert target == tmp_path / "480854" / "a001.mp4", target
+    assert target.read_bytes() == payload
+    assert http.calls == ["http://www.czhorde.cc/tr/bj480854/a001.mp4"]
+    # The 320x320 default folder must NOT have been used.
+    assert not (tmp_path / "320320").exists()
+
+
 def test_download_falls_back_to_secondary_server(tmp_path: Path) -> None:
     http = FakeHttp()
     http.errors["http://www.czhorde.cc/tr/bj320320/a002.mp4"] = "503"

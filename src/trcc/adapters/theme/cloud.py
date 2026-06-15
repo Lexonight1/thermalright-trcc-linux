@@ -122,39 +122,52 @@ class CzhordeCatalog:
 
     # ── Network ───────────────────────────────────────────────────────
 
-    def download_theme(self, theme_id: str) -> Path:
-        """Fetch ``<theme_id>.mp4`` (cached) and return its local path."""
-        return self._fetch_cached(theme_id, ".mp4")
+    def download_theme(
+        self, theme_id: str, resolution: str | None = None,
+    ) -> Path:
+        """Fetch ``<theme_id>.mp4`` (cached) and return its local path.
 
-    def download_preview(self, theme_id: str) -> Path:
+        ``resolution`` (``"WxH"``) selects BOTH the per-resolution cache folder
+        AND the per-resolution download URL — so each device's themes cache in
+        their own ``web/<res>`` dir.  Defaults to the construction-time
+        resolution only when a caller doesn't know the device's (rare).
+        """
+        return self._fetch_cached(theme_id, ".mp4", resolution or self._resolution)
+
+    def download_preview(
+        self, theme_id: str, resolution: str | None = None,
+    ) -> Path:
         """Fetch ``<theme_id>.png`` (cached) and return its local path.
 
         Some entries don't have a PNG — caller catches HttpFetchError
         and falls back to extracting a still from the MP4 (or shows a
         placeholder).
         """
-        return self._fetch_cached(theme_id, ".png")
+        return self._fetch_cached(theme_id, ".png", resolution or self._resolution)
 
     # ── Internals ─────────────────────────────────────────────────────
 
-    def _fetch_cached(self, theme_id: str, suffix: str) -> Path:
+    def _fetch_cached(self, theme_id: str, suffix: str, resolution: str) -> Path:
         if not _is_safe_theme_id(theme_id):
             log.error("CzhordeCatalog: rejected invalid theme id %r", theme_id)
             raise ValueError(f"Invalid cloud theme id: {theme_id!r}")
-        res_dir = self._resolution.replace("x", "")
+        res_dir = resolution.replace("x", "")
         cache = self._cache_dir / res_dir
         cache.mkdir(parents=True, exist_ok=True)
         target = cache / f"{theme_id}{suffix}"
         if target.is_file() and target.stat().st_size > 0:
             log.debug("CzhordeCatalog: cache hit %s", target)
             return target
-        log.info("CzhordeCatalog: fetching %s%s (cache miss)", theme_id, suffix)
-        data = self._fetch_with_fallback(theme_id, suffix)
+        log.info("CzhordeCatalog: fetching %s%s @ %s (cache miss)",
+                 theme_id, suffix, resolution)
+        data = self._fetch_with_fallback(theme_id, suffix, resolution)
         target.write_bytes(data)
         log.info("CzhordeCatalog: cached %d bytes to %s", len(data), target)
         return target
 
-    def _fetch_with_fallback(self, theme_id: str, suffix: str) -> bytes:
+    def _fetch_with_fallback(
+        self, theme_id: str, suffix: str, resolution: str,
+    ) -> bytes:
         """Primary first, backup on failure.
 
         Primary gets a 30s timeout — tight enough to fall through to
@@ -171,7 +184,7 @@ class CzhordeCatalog:
         timeouts = (30.0, 60.0)
         last_err: HttpFetchError | None = None
         for server, timeout_s in zip(order, timeouts, strict=False):
-            url = self._url_for(theme_id, suffix, server)
+            url = self._url_for(theme_id, suffix, server, resolution)
             try:
                 return self._http.fetch(url, timeout_s=timeout_s)
             except HttpFetchError as e:
@@ -183,9 +196,11 @@ class CzhordeCatalog:
         assert last_err is not None
         raise last_err
 
-    def _url_for(self, theme_id: str, suffix: str, server: Server) -> str:
+    def _url_for(
+        self, theme_id: str, suffix: str, server: Server, resolution: str,
+    ) -> str:
         base = _SERVERS[server]
-        res_dir = self._resolution.replace("x", "")
+        res_dir = resolution.replace("x", "")
         base_url = base.replace("{resolution}", res_dir)
         return f"{base_url}{theme_id}{suffix}"
 
