@@ -12,6 +12,7 @@ from ..errors import (
 from ..events import (
     DeviceDisconnected,
     LedColorsChanged,
+    LedSettingsChanged,
 )
 from ..models import OverlayElement
 from ..registry import find_product
@@ -280,9 +281,15 @@ def _resolve_mask_path(path: Path) -> Path | None:
 
 
 def _publish_led_settings_changed(app: App, key: str) -> None:
-    """Single event for any LED settings mutation — UIs subscribe once."""
+    """Single event for any LED settings mutation — UIs subscribe once.
+
+    Publishes both ``LedColorsChanged`` (UI panels refresh their widgets) and
+    ``LedSettingsChanged`` (the render observer re-renders the device + preview
+    immediately, instead of waiting for the next sensor tick).
+    """
     log.debug("_publish_led_settings_changed: key=%s", key)
     app.events.publish(LedColorsChanged(key=key, color_count=0))
+    app.events.publish(LedSettingsChanged(key=key))
 
 
 def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:

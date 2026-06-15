@@ -209,6 +209,16 @@ class LedColorsChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class LedSettingsChanged(Event):
+    """A user (or remote client) mutated an LED device's settings — mode,
+    colour, selected metric page/zone, carousel, etc.  Distinct from
+    ``LedColorsChanged`` (which a *render* also emits) so the render observer
+    can re-render on it without looping.  Published by
+    ``_publish_led_settings_changed``; never by ``RenderLed``."""
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
 class SensorsUpdated(Event):
     """Periodic sensor broadcast — payload IS the personalized dict.
 

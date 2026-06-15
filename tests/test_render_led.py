@@ -112,6 +112,27 @@ def test_render_led_lights_segment_mask_for_pa120(
             )
 
 
+def test_led_settings_changed_re_renders_immediately(
+    fake_platform: FakePlatform,
+) -> None:
+    """A LED settings mutation publishes ``LedSettingsChanged``; the render
+    observer must re-render the device right away (a wire write), not wait for
+    the next sensor tick.  Guards the Increment-3 wiring."""
+    from trcc.core.events import LedSettingsChanged
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=16)     # PA120
+    fake_platform.bulk.writes.clear()
+
+    app.events.publish(LedSettingsChanged(key=_LED_KEY))
+
+    assert fake_platform.bulk.writes, (
+        "LedSettingsChanged should trigger an immediate RenderLed (wire write)"
+    )
+
+
 def test_render_led_remap_reorders_lit_positions(
     fake_platform: FakePlatform,
 ) -> None:

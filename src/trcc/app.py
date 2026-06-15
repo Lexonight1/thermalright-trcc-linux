@@ -26,6 +26,7 @@ from .core.events import (
     ErrorOccurred,
     EventBus,
     FitModeChanged,
+    LedSettingsChanged,
     MaskApplied,
     MaskPositionChanged,
     MaskVisibilityChanged,
@@ -560,6 +561,12 @@ class _DeviceRenderObserver:
             # sensor tick.
             TimeFormatChanged,
             DateFormatChanged,
+            # Any LED settings mutation (mode, colour, selected metric
+            # page/zone, carousel) — re-render the device + preview right
+            # away instead of waiting for the next sensor tick.  RenderLed
+            # publishes LedColorsChanged, NOT LedSettingsChanged, so this
+            # can't feed back into itself.
+            LedSettingsChanged,
         ):
             app.events.subscribe(event_cls, self._on_visual_change)
 
