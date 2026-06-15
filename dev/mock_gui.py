@@ -163,11 +163,44 @@ def main() -> None:
     # install), and return normally instead of os._exit.  on_ready mounts the
     # developer console once the window is built (guarded to a mock fleet).
     from trcc.ui.gui import run_gui
+
+    def _on_ready(window: Any) -> None:
+        _mount_dev_console(window)
+        # A CLI ``device=VID:PID pm=… sub=…`` means "show me THIS device" —
+        # auto-connect it (the dev mock boots blank otherwise; scan_devices
+        # returns []).  Mirrors the dev variant panel's click path.
+        if device_spec is not None:
+            _auto_connect(window._app, device_spec)
+
     sys.exit(run_gui(
         cast(Any, platform), decorated=decorated,
         single_instance=False, ipc=False, force_exit=False,
-        on_ready=_mount_dev_console,
+        on_ready=_on_ready,
     ))
+
+
+def _auto_connect(app: Any, spec: dict) -> None:
+    """Connect a CLI ``device=`` spec immediately — the same way the dev
+    variant panel does on a click: pin the handshake reply, then
+    ``ConnectDevice`` (which self-attaches via ``find_product``).  So
+    ``device=87ad:70db pm=11 sub=5`` presents that device instead of a blank
+    boot."""
+    platform = app.platform
+    if not hasattr(platform, "set_active_reply"):
+        log.warning("_auto_connect: platform has no set_active_reply — skip")
+        return
+    from trcc.core.commands import ConnectDevice
+    from trcc.core.protocol import pm_to_fbl
+    vid = int(str(spec["vid"]), 16)
+    pid = int(str(spec["pid"]), 16)
+    pm = int(spec.get("pm", 0))
+    sub = int(spec.get("sub", 0))
+    fbl = int(spec.get("fbl", pm_to_fbl(pm, sub)))
+    key = f"{vid:04x}:{pid:04x}"
+    platform.set_active_reply(vid, pid, pm=pm, sub=sub, fbl=fbl)
+    result = app.dispatch(ConnectDevice(key=key))
+    log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d → ok=%s",
+             key, pm, sub, fbl, getattr(result, "ok", None))
 
 
 def _mount_dev_console(window: Any) -> None:
