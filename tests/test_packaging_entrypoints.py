@@ -57,3 +57,26 @@ def test_release_packaging_matches_entry_points() -> None:
     assert not missing, (
         f"[project.scripts] entries not packaged in release.yml: {sorted(missing)}"
     )
+
+
+def test_release_docker_comments_have_no_quote_breakers() -> None:
+    """Shell comments inside the single-quoted ``docker ... bash -c '...'`` blocks
+    must not contain apostrophes or backticks.
+
+    An apostrophe (e.g. ``isn't``) prematurely CLOSES the single-quoted block, so
+    the host shell then runs the next word as a command — the second latent bug
+    the entry-point fix uncovered (``line 28: on: command not found``, DEB build
+    exit 127).  A backtick becomes command substitution once the quote is broken.
+    These blocks are apostrophe-free by construction, so any in a deeply-indented
+    shell comment is a release-time break — caught here on every push.
+    """
+    text = _RELEASE_YML.read_text(encoding="utf-8")
+    offenders = [
+        (i, line.strip())
+        for i, line in enumerate(text.splitlines(), 1)
+        if re.match(r"\s{8,}#", line) and ("'" in line or "`" in line)
+    ]
+    assert not offenders, (
+        "apostrophe/backtick in a shell comment inside a single-quoted docker "
+        f"block — breaks quoting at release time: {offenders}"
+    )

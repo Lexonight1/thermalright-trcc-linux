@@ -219,9 +219,9 @@ jobs:
           # Relocate the installed modules to the version-agnostic
           # /usr/lib/python3/dist-packages. installer + pip land them under a
           # version-specific dir (python3.X/{dist,site}-packages) matching the
-          # BUILD container's interpreter; on a target whose python3 is a
+          # the build container interpreter; on a target whose python3 is a
           # different minor (e.g. Ubuntu 26.04 ships 3.14, this builds on 3.12)
-          # that path isn't on sys.path and `import trcc` fails. The
+          # that path is not on sys.path and import trcc fails. The
           # unversioned dist-packages dir is on sys.path for every Debian/Ubuntu
           # python3. #157
           DEST="$PKG/usr/lib/python3/dist-packages"
