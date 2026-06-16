@@ -30,16 +30,18 @@ log = logging.getLogger(__name__)
 # Default asset directory
 # =========================================================================
 
-# qtgui owns its OWN copy of the chrome under ``src/trcc/assets/qtgui`` —
-# separate from gui's ``ui/gui/assets`` so the two GUIs are fully independent.
-# Every asset loaded from here is greyscaled (see ``_pixmap``).  Installed
-# packages can override the root via ``set_assets_dir``.
+# qtgui SHARES gui's asset tree (``ui/gui/assets``) — one colour copy, no
+# duplicate monochrome set is shipped.  Every asset loaded here is greyscaled at
+# runtime (see ``_pixmap``), so qtgui renders the same chrome in a neutral grey
+# skin while the user's machine does the greyscale on demand — lazily, only for
+# the assets it actually displays, and cached.  Installed packages can override
+# the root via ``set_assets_dir``.
 def _default_assets_dir() -> Path:
     trcc_mod = sys.modules.get("trcc")
     trcc_file = getattr(trcc_mod, "__file__", None) if trcc_mod else None
     if trcc_file is None:
-        return Path.cwd() / "assets" / "qtgui"
-    return Path(trcc_file).resolve().parent / "assets" / "qtgui"
+        return Path.cwd() / "ui" / "gui" / "assets"
+    return Path(trcc_file).resolve().parent / "ui" / "gui" / "assets"
 
 
 _PKG_ASSETS_DIR = _default_assets_dir()

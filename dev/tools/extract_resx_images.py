@@ -31,8 +31,9 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _ASSET_DIRS = (
+    # One colour asset tree.  qtgui shares it and greyscales at runtime, so we
+    # no longer write a separate monochrome copy.
     _PROJECT_ROOT / "src" / "trcc" / "ui" / "gui" / "assets",
-    _PROJECT_ROOT / "src" / "trcc" / "assets" / "qtgui",
 )
 
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"

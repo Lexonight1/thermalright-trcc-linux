@@ -26,7 +26,13 @@ from pathlib import Path
 # ============================================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-ASSETS_DIR = PROJECT_ROOT / 'src' / 'trcc' / 'gui' / 'assets'
+# The single asset tree.  qtgui shares this same colour set and greyscales at
+# runtime, so there's one source to rename (no separate qtgui copy).  (The
+# cutover moved ``src/trcc/gui/`` → ``src/trcc/ui/gui/``; this path used to be
+# the former — kept as a tuple so adding a second tree later is one line.)
+ASSET_DIRS = (
+    PROJECT_ROOT / 'src' / 'trcc' / 'ui' / 'gui' / 'assets',
+)
 CODE_DIRS = [
     PROJECT_ROOT / 'src' / 'trcc',
     PROJECT_ROOT / 'tests',
@@ -764,12 +770,18 @@ def main() -> None:
     full_map = _build_full_map()
 
     if args.unmapped:
-        unmapped = _report_unmapped(full_map, ASSETS_DIR)
-        if unmapped:
-            print(f"\n{len(unmapped)} unmapped assets:")
-            for name in unmapped:
-                print(f"  {name}.png")
-        else:
+        any_unmapped = False
+        for asset_dir in ASSET_DIRS:
+            if not asset_dir.is_dir():
+                continue
+            unmapped = _report_unmapped(full_map, asset_dir)
+            if unmapped:
+                any_unmapped = True
+                print(f"\n{len(unmapped)} unmapped assets in "
+                      f"{asset_dir.relative_to(PROJECT_ROOT)}:")
+                for name in unmapped:
+                    print(f"  {name}.png")
+        if not any_unmapped:
             print("All assets are mapped.")
         return
 
@@ -778,9 +790,16 @@ def main() -> None:
     print(f"Map entries: {len(RENAME_MAP)} base + {len(full_map) - len(RENAME_MAP)} i18n = {len(full_map)} total")
 
     if not args.code_only:
-        print(f"\n--- File Renames ({ASSETS_DIR.relative_to(PROJECT_ROOT)}) ---")
-        renames = _rename_files(full_map, ASSETS_DIR, args.dry_run)
-        print(f"\nFiles: {len(renames)} renamed")
+        total_renames = 0
+        for asset_dir in ASSET_DIRS:
+            if not asset_dir.is_dir():
+                print(f"\n--- File Renames: SKIP (missing) "
+                      f"{asset_dir.relative_to(PROJECT_ROOT)} ---")
+                continue
+            print(f"\n--- File Renames ({asset_dir.relative_to(PROJECT_ROOT)}) ---")
+            renames = _rename_files(full_map, asset_dir, args.dry_run)
+            total_renames += len(renames)
+        print(f"\nFiles: {total_renames} renamed")
 
     if not args.files_only:
         print("\n--- Code Updates ---")
@@ -788,15 +807,21 @@ def main() -> None:
         changed = _update_code_files(replacements, CODE_DIRS, args.dry_run)
         print(f"\nCode files: {changed} updated")
 
-    # Always report unmapped at the end
-    unmapped = _report_unmapped(full_map, ASSETS_DIR)
-    if unmapped:
-        print(f"\n⚠  {len(unmapped)} unmapped assets (new from C# update?):")
-        for name in unmapped[:20]:
-            print(f"  {name}.png")
-        if len(unmapped) > 20:
-            print(f"  ... and {len(unmapped) - 20} more")
-    else:
+    # Always report unmapped at the end (across both asset trees)
+    any_unmapped = False
+    for asset_dir in ASSET_DIRS:
+        if not asset_dir.is_dir():
+            continue
+        unmapped = _report_unmapped(full_map, asset_dir)
+        if unmapped:
+            any_unmapped = True
+            print(f"\n⚠  {len(unmapped)} unmapped assets in "
+                  f"{asset_dir.relative_to(PROJECT_ROOT)} (new from C# update?):")
+            for name in unmapped[:20]:
+                print(f"  {name}.png")
+            if len(unmapped) > 20:
+                print(f"  ... and {len(unmapped) - 20} more")
+    if not any_unmapped:
         print("\n✓ All assets mapped")
 
 
