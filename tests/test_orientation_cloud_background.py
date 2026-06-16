@@ -116,6 +116,21 @@ def test_rotation_reapplies_cloud_background_oriented(connected) -> None:
     assert "480854" in app.settings.for_device(_KEY).background_path
 
 
+def test_resolve_oriented_resolution_swaps_for_portrait(connected) -> None:
+    """The resolver every cloud-asset command now shares (LoadCloudTheme,
+    SaveTheme, ExportTheme/Overlay/Dc, ImportTheme, UploadCustomMask,
+    _search_theme_by_name, persist_user_mask_dc) returns the ORIENTED size for
+    the real connected non-square device — so CLI/API/daemon resolve the same
+    portrait catalog the GUI browser shows.  Locks the sweep's shared contract."""
+    from trcc.core.commands._helpers import _resolve_oriented_resolution
+    app, _recorder, _ = connected
+
+    app.dispatch(SetOrientation(key=_KEY, degrees=0))
+    assert _resolve_oriented_resolution(app, _KEY) == (854, 480)
+    app.dispatch(SetOrientation(key=_KEY, degrees=270))
+    assert _resolve_oriented_resolution(app, _KEY) == (480, 854)
+
+
 def test_cloud_background_decodes_at_oriented_canvas(connected) -> None:
     """The video decode size must be the ORIENTED canvas (480x854 at 90), not
     the native landscape — else the portrait video is squished into a landscape

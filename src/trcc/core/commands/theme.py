@@ -52,7 +52,6 @@ from ._helpers import (
     _publish_if_disconnect,
     _resolve_mask_path,
     _resolve_oriented_resolution,
-    _resolve_resolution,
     _search_theme_by_name,
     oriented_theme_path,
     overlay_elements_to_dc,
@@ -378,7 +377,7 @@ class SaveTheme(Command[ThemeResult]):
                 message=(f"no active theme for {self.key} — load one first"),
             )
 
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "SaveTheme: cannot resolve resolution for %s "
@@ -846,7 +845,7 @@ class ExportTheme(Command[ThemeExportResult]):
                 message=f"invalid theme name {self.theme_name!r}",
             )
 
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "ExportTheme: cannot resolve resolution for %s "
@@ -925,7 +924,7 @@ class ExportOverlay(Command[ThemeExportResult]):
                 message=f"invalid theme name {self.theme_name!r}",
             )
 
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "ExportOverlay: cannot resolve resolution for %s",
@@ -1010,7 +1009,7 @@ class ImportTheme(Command[ThemeImportResult]):
                 message=f"invalid theme name {chosen_name!r}",
             )
 
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "ImportTheme: cannot resolve resolution for %s",
@@ -1133,7 +1132,7 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
                 message=f"invalid theme name {self.theme_name!r}",
             )
 
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "ExportDcTheme: cannot resolve resolution for %s",
@@ -1242,7 +1241,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 ok=False, key=self.key, path="",
                 message=f"Source not a file: {self.source}",
             )
-        resolution = _resolve_resolution(app, self.key)
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             return MaskUploadResult(
                 ok=False, key=self.key, path="",

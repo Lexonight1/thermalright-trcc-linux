@@ -135,7 +135,7 @@ def persist_user_mask_dc(app: App, key: str) -> None:
     mask_path = settings.mask_path
     if not mask_path:
         return
-    resolution = _resolve_resolution(app, key)
+    resolution = _resolve_oriented_resolution(app, key)
     if resolution is None:
         log.debug("persist_user_mask_dc: no resolution for %s — skip", key)
         return
@@ -380,7 +380,7 @@ def _search_theme_by_name(
     """
     log.debug("_search_theme_by_name: key=%s name=%s", key, name)
     paths = app.platform.paths()
-    resolution = _resolve_resolution(app, key)
+    resolution = _resolve_oriented_resolution(app, key)
     candidates: list[Path] = []
     if resolution is not None:
         w, h = resolution
