@@ -8,13 +8,13 @@ Thanks for your interest in contributing! This project is a Linux port of the Th
 git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e '.[dev]'
-trcc setup              # interactive wizard — checks deps, udev, desktop entry
+trcc system setup              # interactive wizard — checks deps, udev, desktop entry
 ```
 
 Or manually:
 
 ```bash
-trcc setup-udev         # install udev rules (auto-prompts for sudo)
+trcc system setup         # install udev rules (auto-prompts for sudo)
 # Unplug/replug USB cable after
 ```
 

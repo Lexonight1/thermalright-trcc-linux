@@ -101,7 +101,7 @@ sudo dnf install pipx libusb-1.0.0 sg3_utils p7zip                      # Fedora
 
 # Install trcc-linux
 pipx install trcc-linux
-trcc setup        # interactive wizard — udev rules, desktop entry
+trcc system setup        # interactive wizard — udev rules, desktop entry
 ```
 
 Then **unplug and replug the USB cable** and run `trcc gui`.
@@ -147,7 +147,7 @@ Full desktop app with theme browser, video player, overlay editor, LED control p
 ```bash
 trcc detect               # Show connected devices
 trcc send image.png       # Send image to LCD
-trcc color "#ff0000"      # Fill LCD with solid color
+trcc display color "#ff0000"      # Fill LCD with solid color
 trcc video clip.mp4       # Play video on LCD
 trcc screencast           # Live screen capture to LCD
 trcc brightness 2         # Set brightness (1=25%, 2=50%, 3=100%)
@@ -159,7 +159,7 @@ trcc led-color "#00ff00"  # Set LED color
 trcc led-mode breathing   # Set LED effect mode
 trcc report               # Generate diagnostic report
 trcc doctor               # Check system dependencies
-trcc setup                # Interactive setup wizard
+trcc system setup                # Interactive setup wizard
 trcc uninstall            # Remove TRCC completely
 ```
 

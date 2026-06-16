@@ -27,7 +27,7 @@ After installing (see [Install Guide](GUIDE_INSTALL.md) or [New to Linux](GUIDE_
 
 ```bash
 # Set up device permissions (one time)
-sudo trcc setup-udev
+sudo trcc system setup
 
 # Unplug and replug your LCD
 

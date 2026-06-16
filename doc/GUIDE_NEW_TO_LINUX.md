@@ -90,7 +90,7 @@ pip install trcc-linux
 On Windows, the app just talks to USB devices. On Linux, you need to tell the system "this user is allowed to talk to this USB device." It's a one-time setup:
 
 ```bash
-sudo trcc setup-udev
+sudo trcc system setup
 ```
 
 Then unplug and replug your LCD. That's it.
@@ -138,7 +138,7 @@ trcc detect
 
 **`/dev/sg0`** — Linux represents hardware as files. Your LCD shows up as `/dev/sg0` or similar. TRCC finds it automatically — you never need to type this.
 
-**udev rules** — Linux permission rules for USB devices. The `trcc setup-udev` command creates these for you. Without them, only the root user can talk to your LCD.
+**udev rules** — Linux permission rules for USB devices. The `trcc system setup` command creates these for you. Without them, only the root user can talk to your LCD.
 
 **`~`** — Shorthand for your home folder. `~/.trcc/` means `/home/yourname/.trcc/`.
 
@@ -150,14 +150,14 @@ trcc detect
 
 ### "Permission denied" or device not found
 ```bash
-sudo trcc setup-udev
+sudo trcc system setup
 ```
 Then unplug and replug your LCD.
 
 ### Screen stays on the splash/boot logo
 Run `trcc doctor` and check for `[FAIL]` entries. Most common fix:
 ```bash
-sudo trcc setup-udev
+sudo trcc system setup
 ```
 
 ### "command not found: trcc"
@@ -176,7 +176,7 @@ trcc gui --decorated
 ### Device disconnects every 30 seconds
 Update your udev rules — this was fixed in v9.2.10:
 ```bash
-sudo trcc setup-udev
+sudo trcc system setup
 ```
 
 ### Need more help?
@@ -218,7 +218,7 @@ Everything you could do on Windows works on Linux:
 | Launch GUI | `trcc gui` |
 | Detect devices | `trcc detect` |
 | Check health | `trcc doctor` |
-| Set up permissions | `sudo trcc setup-udev` |
+| Set up permissions | `sudo trcc system setup` |
 | Generate bug report | `trcc report` |
 | Update (Arch) | `sudo pacman -U trcc-linux-*.pkg.tar.zst` |
 | Update (Fedora) | `sudo dnf install ./trcc-linux-*.rpm` |

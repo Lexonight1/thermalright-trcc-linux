@@ -62,10 +62,10 @@ hwmon `fanN_input` (RPM) + `inN_input` (voltage). Driver-dependent — `nct6779`
 
 🚨 **Permission gotcha (Linux 5.10+):** RAPL files restricted to root since kernel 5.10 (security: [CVE-2020-8694, CVE-2020-8695, INTEL-SA-00389](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/advisory-guidance/running-average-power-limit-energy-reporting.html)). Was world-readable before; broke many monitoring tools (e.g. [Prometheus node_exporter #2090](https://github.com/prometheus/node_exporter/issues/2090)).
 
-**Workaround we already use:** `trcc setup-rapl` chmods `+r` (or installs a udev rule) so the user's group can read. Lasts across reboots if the udev rule is in place.
+**Workaround we already use:** `trcc system setup-rapl` chmods `+r` (or installs a udev rule) so the user's group can read. Lasts across reboots if the udev rule is in place.
 
 ### USB device discovery
-- udev rules (we install via `trcc setup-udev`) for `/dev/sg*` (SCSI) and `/dev/hidraw*` (HID)
+- udev rules (we install via `trcc system setup`) for `/dev/sg*` (SCSI) and `/dev/hidraw*` (HID)
 - `pyusb` + `libusb-1.0` for raw USB
 - sysfs walk via `/sys/class/scsi_generic/sgN/device` for VID/PID
 
@@ -412,7 +412,7 @@ The BSD red entries (AMD/Intel GPU temp on FreeBSD, all GPU on OpenBSD) are **ec
 
 ### Linux (no code changes — already green)
 
-The only yellow is RAPL permission, and we already install a udev rule via `trcc setup-rapl`.
+The only yellow is RAPL permission, and we already install a udev rule via `trcc system setup-rapl`.
 
 ### Cross-cutting — pin recommendations
 

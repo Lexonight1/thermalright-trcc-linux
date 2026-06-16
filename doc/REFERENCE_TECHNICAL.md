@@ -626,15 +626,15 @@ Stored under `"devices"` keyed by index-only `"0"`, `"1"`, etc. The `vid_pid` is
 
 ```bash
 # Setup
-trcc setup                        # interactive setup wizard (deps, udev, desktop)
+trcc system setup                        # interactive setup wizard (deps, udev, desktop)
 trcc setup-gui                    # GUI setup wizard
-trcc setup-udev                   # install udev rules (auto-prompts sudo)
+trcc system setup                   # install udev rules (auto-prompts sudo)
 trcc detect --all                 # list all devices
 
 # Display
 trcc send image.png               # send image to LCD
-trcc color ff0000                 # solid color
-trcc test --loop                  # color cycle
+trcc display color ff0000                 # solid color
+trcc display test --loop                  # color cycle
 trcc video clip.mp4               # play video
 trcc screencast                   # stream screen to LCD
 trcc brightness 2                 # 50% brightness
@@ -676,7 +676,7 @@ trcc uninstall --yes              # non-interactive (for scripts/GUI)
 ### Permission denied
 ```bash
 # Install udev rules (preferred — auto-prompts for sudo)
-trcc setup-udev
+trcc system setup
 # Then replug the USB cable
 
 # Or manually:

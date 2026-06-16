@@ -162,7 +162,7 @@ sudo dpkg -i trcc-linux_*legacy*_all.deb
 **Step 3 — Run setup:**
 
 ```bash
-trcc setup-udev
+trcc system setup
 ```
 
 **Step 4 — Unplug and replug** the USB cable from your cooler (or reboot).
@@ -255,7 +255,7 @@ Unplug and replug the USB cable, then:
 trcc gui
 ```
 
-> **NixOS note:** The `trcc setup-udev` command won't work because NixOS manages udev rules declaratively. If you need manual udev rules, add them to your `configuration.nix`:
+> **NixOS note:** The `trcc system setup` command won't work because NixOS manages udev rules declaratively. If you need manual udev rules, add them to your `configuration.nix`:
 > ```nix
 > services.udev.extraRules = ''
 >   SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
@@ -315,7 +315,7 @@ sudo dnf install lm_sensors grim python3-gobject python3-dbus pipewire-devel
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard (device permissions, desktop shortcut)
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -348,7 +348,7 @@ sudo apt install lm-sensors grim python3-gi python3-dbus python3-gst-1.0
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -380,7 +380,7 @@ sudo pacman -S lm_sensors grim python-gobject python-dbus python-gst
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -403,7 +403,7 @@ sudo zypper install sensors grim python3-gobject python3-dbus-python python3-gst
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -433,7 +433,7 @@ sudo xbps-install lm_sensors grim python3-gobject python3-dbus python3-gst
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -467,7 +467,7 @@ sudo apk add lm-sensors grim py3-gobject3 py3-dbus
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -497,7 +497,7 @@ pip install pipx
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -521,7 +521,7 @@ pip install pipx
 pipx install trcc-linux
 
 # Step 4: Run the setup wizard
-trcc setup
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -597,7 +597,7 @@ source ~/trcc-env/bin/activate
 pip install trcc-linux
 
 # Step 4: Set up device permissions
-trcc setup-udev
+trcc system setup
 
 # Step 5: Unplug and replug the USB cable, then launch
 trcc gui
@@ -618,7 +618,7 @@ trcc gui
 
 **Optional desktop shortcut** (launches from your app menu):
 ```bash
-trcc setup
+trcc system setup
 ```
 Say `y` when it asks about the desktop entry — it installs the `.desktop` file and TRCC icon to your app menu.
 
@@ -639,7 +639,7 @@ pip install trcc-linux
 exit
 
 # Back on the host — set up device permissions
-trcc setup-udev
+trcc system setup
 # Unplug/replug USB cable
 
 # Run from Distrobox
@@ -668,7 +668,7 @@ sudo pacman -S --needed sg3_utils python-pip python-pyside6 portaudio ffmpeg
 pip install --break-system-packages trcc-linux
 
 # Set up device permissions
-sudo trcc setup-udev
+sudo trcc system setup
 
 # Re-enable read-only (recommended)
 sudo steamos-readonly enable
@@ -692,7 +692,7 @@ exit
 
 # Set up udev on the HOST (requires temporary unlock)
 sudo steamos-readonly disable
-sudo trcc setup-udev
+sudo trcc system setup
 sudo steamos-readonly enable
 
 # Unplug/replug USB cable, then run
@@ -718,7 +718,7 @@ pip install trcc-linux
 exit
 
 # Set up udev rules on the host
-trcc setup-udev
+trcc system setup
 
 # Unplug/replug USB cable, then run
 apx trcc-system run -- trcc gui
@@ -740,7 +740,7 @@ sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio
 pip install --break-system-packages trcc-linux
 
 # Set up device permissions
-trcc setup-udev
+trcc system setup
 
 # Unplug/replug USB cable, then launch
 trcc gui
@@ -762,7 +762,7 @@ Download [`trcc-latest-setup.exe`](https://github.com/Lexonight1/thermalright-tr
 **Requirements:**
 - Windows 10 or 11
 - For NVIDIA GPU sensors: install [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) — trcc reads its sensors automatically
-- For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc setup-winusb` for guidance. SCSI devices (most models) work with the default Windows driver.
+- For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc system setup-winusb` for guidance. SCSI devices (most models) work with the default Windows driver.
 - Run as Administrator for full hardware access
 
 **Verify:**
@@ -797,7 +797,7 @@ alias trcc='/Applications/TRCC.app/Contents/MacOS/TRCC'
 # CLI + API only
 pkg install py311-pip libusb py311-pyusb py311-hid
 pip install trcc-linux
-trcc setup
+trcc system setup
 trcc serve    # or trcc detect, trcc lcd, etc.
 ```
 
@@ -805,7 +805,7 @@ trcc serve    # or trcc detect, trcc lcd, etc.
 # GUI (adds Qt6/PySide6)
 pkg install py311-pip libusb py311-pyusb py311-hid py311-pyside6 p7zip ffmpeg
 pip install trcc-linux
-trcc setup
+trcc system setup
 trcc gui
 ```
 
@@ -832,7 +832,7 @@ Follow the [Fedora / Nobara (pip)](#fedora--nobara-pip) instructions — Asahi i
 ```bash
 sudo dnf install python3-pip sg3_utils python3-pyside6 portaudio ffmpeg
 pip install trcc-linux
-trcc setup
+trcc system setup
 trcc gui
 ```
 
@@ -850,15 +850,15 @@ TRCC works on ARM64 (aarch64) systems:
 # Raspberry Pi OS / Armbian (Debian-based)
 sudo apt install python3-pip python3-venv sg3-utils python3-pyside6 libportaudio2 ffmpeg
 pip install --break-system-packages trcc-linux
-trcc setup
+trcc system setup
 trcc gui
 ```
 
 > **No display?** If you're running headless (no monitor), the CLI still works:
 > ```bash
 > trcc send /path/to/image.png
-> trcc color ff0000
-> trcc test
+> trcc display color ff0000
+> trcc display test
 > ```
 
 > **ARM PySide6:** If `pip install PySide6` fails, use the system package (`python3-pyside6`). The CLI commands work without PySide6 — only the GUI needs it.
@@ -906,7 +906,7 @@ Use `trcc detect --all` to see all connected devices.
 Send a test pattern to make sure everything works:
 
 ```bash
-trcc test
+trcc display test
 ```
 
 This cycles through red, green, blue, yellow, magenta, cyan, and white on the LCD. If you see the colors, you're all set.
@@ -943,7 +943,7 @@ fish_add_path ~/.local/bin
 So you can launch TRCC from your app menu instead of typing a command:
 
 ```bash
-trcc setup
+trcc system setup
 ```
 
 Say `y` when it asks about the desktop entry — it installs the `.desktop` file and TRCC icon to your app menu.

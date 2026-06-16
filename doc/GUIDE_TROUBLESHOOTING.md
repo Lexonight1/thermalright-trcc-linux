@@ -71,7 +71,7 @@ trcc --version
 
 **Fix:**
 1. Make sure the USB cable is plugged in (both ends)
-2. Run udev setup: `trcc setup-udev`
+2. Run udev setup: `trcc system setup`
 3. **Unplug and replug the USB cable** (or reboot)
 4. Check if the device appears: `ls /dev/sg*`
 5. Check kernel messages: `dmesg | tail -20` right after plugging in
@@ -90,7 +90,7 @@ trcc --version
 pip install --upgrade trcc-linux
 
 # Re-generate udev rules
-trcc setup-udev
+trcc system setup
 
 # Unplug/replug USB cable, or reboot
 ```
@@ -109,7 +109,7 @@ Versions before v1.2.16 used `TAG+="uaccess"` in udev rules, which relies on sys
 **Fix:** Upgrade to v1.2.16+ which uses `MODE="0666"`:
 ```bash
 pip install --upgrade trcc-linux
-sudo trcc setup-udev
+sudo trcc system setup
 # Unplug/replug USB cable
 ```
 
@@ -191,7 +191,7 @@ QT_DEBUG_PLUGINS=1 trcc gui 2>&1 | head -30
 ### "No HID devices found"
 
 1. Verify USB connection: `lsusb | grep -i "0416\|0418\|87"`
-2. Run `trcc setup-udev` and unplug/replug
+2. Run `trcc system setup` and unplug/replug
 3. Check if another process holds the USB device (VM, Windows TRCC in dual-boot)
 
 ### "Handshake returned None (protocol error)"
@@ -255,7 +255,7 @@ If the issue persists after upgrading, do a clean reinstall:
 ```bash
 trcc uninstall
 pip install trcc-linux
-trcc setup
+trcc system setup
 ```
 
 If colors are still wrong, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with `trcc report` output.
@@ -271,7 +271,7 @@ cat /etc/modprobe.d/trcc-lcd.conf
 
 If missing, recreate:
 ```bash
-trcc setup-udev
+trcc system setup
 # Unplug/replug or reboot
 ```
 
@@ -323,7 +323,7 @@ sudo pacman -S python-gobject python-dbus python-gst
 
 ## NixOS-Specific
 
-### `trcc setup-udev` doesn't work
+### `trcc system setup` doesn't work
 
 NixOS manages udev rules declaratively. Add rules to `/etc/nixos/configuration.nix`:
 
@@ -352,7 +352,7 @@ Then rebuild: `sudo nixos-rebuild switch`
 Run the setup wizard to check all dependencies at once:
 
 ```bash
-trcc setup        # CLI — shows all checks with install prompts
+trcc system setup        # CLI — shows all checks with install prompts
 trcc setup-gui    # GUI — visual check panel with Install buttons
 ```
 

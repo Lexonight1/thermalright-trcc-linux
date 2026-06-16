@@ -46,7 +46,7 @@ rm ~/Library/LaunchAgents/com.thermalright.trccd.plist
 
 ## Windows
 
-A scheduled task is installed by `trcc setup` (Phase 11 wires this in).
+A scheduled task is installed by `trcc system setup` (Phase 11 wires this in).
 Manual install:
 
 ```powershell

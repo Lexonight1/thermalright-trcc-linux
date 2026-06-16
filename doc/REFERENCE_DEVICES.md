@@ -106,7 +106,7 @@ The exact product model is identified after a USB handshake. The device responds
 If you own any of the untested devices above and run Linux:
 
 1. Install: `pip install trcc-linux`
-2. Run the setup wizard: `trcc setup` (checks deps, installs udev rules, desktop entry)
+2. Run the setup wizard: `trcc system setup` (checks deps, installs udev rules, desktop entry)
 3. Unplug/replug USB cable
 4. Run detection: `trcc detect --all`
 5. Try the GUI: `trcc gui`
