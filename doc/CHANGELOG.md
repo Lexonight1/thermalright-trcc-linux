@@ -1,5 +1,41 @@
 # Changelog
 
+## v9.7.1
+
+Display-correctness release for LED and LCD panels, on top of a per-device
+panel model sourced from the Windows app's behaviour.
+
+**LCD — portrait orientation now works end-to-end.**  Non-square panels
+(e.g. 854×480) mounted rotated showed squished or mis-rotated content.  The
+render pipeline is now orientation-driven from a single source
+(`oriented_resolution`): at 90°/270° the canvas composes portrait and the
+content is NOT re-rotated — it's authored portrait, matching the Windows
+`themeDirection` model (no runtime rotation).  Cloud backgrounds download per
+resolution AND orientation (`web/480854` vs `web/854480`), re-apply on
+rotation, and decode video at the oriented canvas — so a portrait cloud
+background fills the screen instead of being squished.  Every cloud-asset
+command (themes, masks, backgrounds, save / export / import / upload) resolves
+the oriented catalog, so the CLI and API behave exactly like the GUI.
+
+**LED — control panel fixes.**  "Circulate" now rotates through exactly the
+metric pages you toggle (the per-page selection was never persisted, so it
+stuck on page 0); selecting a metric page reaches the device; the effect modes
+(breathing / colour-cycle / rainbow / carousel) animate at full speed again
+(a ~150 ms tick was dropped in the cutover); zone buttons render their images;
+and the selector buttons are labelled with the metric they show.
+
+**LED metrics no longer flicker.**  The displayed value was re-sampled from raw
+instantaneous sensors ~7×/second; it now updates once per refresh interval
+(steady), matching the gauges.
+
+**Per-device panel model.**  A toolkit-free model — sourced from the Windows
+app and keyed on the handshake — drives which sections each LED / LCD panel
+shows, shared by both GUI front-ends.
+
+Plus tooling: `audit_csharp` extracts device / panel / resolution facts from the
+decompile per release, and button images for the 2.1.6 devices (LC10 / LC13 /
+LC15 / LF014 / LD11 / RX1) are bundled.
+
 ## v9.7.0
 
 Feature + performance release.  Brings the animated-theme GUI to CPU
