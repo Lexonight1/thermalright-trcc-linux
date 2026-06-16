@@ -196,13 +196,23 @@ class RenderLed(Command[LedColorsResult]):
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         device_settings = app.settings.for_device(self.key)
 
-        # One metrics source for the whole frame — the same typed snapshot
-        # the GUI gauges observe (no second, divergent view).  compute_mask
-        # reads its attributes (metrics.cpu_temp, …); the effects engine
-        # reads the flat dict for per-zone color sources.
-        enum = app.platform.sensors()
-        current = enum.read_all()
-        metrics = enum.snapshot()
+        # One metrics source for the whole frame — the same RAW sample the
+        # MetricsLoop cached on its last broadcast (the steady values the GUI
+        # gauges observe, NOT a second divergent view).  RenderLed is dispatched
+        # ~7×/s by the 150 ms animation loop; re-polling the sensors every tick
+        # resampled instantaneous readings and made the displayed metric flicker
+        # ("sporadic metrics").  We read the cache so values step once per
+        # refresh interval and animation still advances on runtime counters.
+        # compute_mask reads metrics attributes (metrics.cpu_temp, …); the
+        # effects engine reads the flat dict for per-zone color sources.
+        current = app.last_raw_readings
+        metrics = app.last_raw_snapshot
+        if current is None or metrics is None:
+            # No broadcast yet (e.g. first render before MetricsLoop ticked, or
+            # a one-off CLI/test dispatch with no loop running) — read once.
+            enum = app.platform.sensors()
+            current = enum.read_all()
+            metrics = enum.snapshot()
         log.debug(
             "RenderLed %s: snapshot cpu_temp=%.0f cpu_pct=%.0f "
             "gpu_temp=%.0f gpu_usage=%.0f", self.key,
@@ -596,6 +606,28 @@ class SetLedZoneSyncInterval(Command[LedColorsResult]):
         return LedColorsResult(
             ok=True, key=self.key, colors=[],
             message=f"Zone-sync interval set to {self.ticks} tick(s)",
+        )
+
+@dataclass(frozen=True, slots=True)
+class SetLedZoneSyncZones(Command[LedColorsResult]):
+    """Set which pages/zones participate in the zone-sync carousel.
+
+    The carousel rotates only the enabled entries of this mask.  Page-style
+    devices (AX120 etc.) toggle metric pages in/out of the rotation here;
+    multi-zone styles (PA120/LF10) toggle colour zones.  Without this the mask
+    stays empty and ``next_sync_zone`` is stuck on page 0 — the carousel never
+    advances regardless of what the user toggles.
+    """
+    key: str
+    zones: tuple[bool, ...]
+
+    def execute(self, app: App) -> LedColorsResult:
+        log.info("SetLedZoneSyncZones %s: zones=%s", self.key, list(self.zones))
+        app.settings.set_led_zone_sync_zones(self.key, list(self.zones))
+        _publish_led_settings_changed(app, self.key)
+        return LedColorsResult(
+            ok=True, key=self.key, colors=[],
+            message=f"Carousel pages set to {list(self.zones)}",
         )
 
 @dataclass(frozen=True, slots=True)

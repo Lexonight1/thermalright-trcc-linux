@@ -455,6 +455,19 @@ class Settings:
             self.for_led(key).zone_sync_interval_ticks = max(1, ticks)
             self._save()
 
+    def set_led_zone_sync_zones(self, key: str, zones: list[bool]) -> None:
+        """Persist which pages/zones participate in the carousel rotation.
+
+        The carousel (``zone_sync``) iterates only the enabled entries of this
+        mask (see ``LedEffects.next_sync_zone``).  Page-style devices never
+        populate ``zones`` (their selector picks a metric page, not a colour
+        zone), so this mask — not ``zones`` — is the carousel's source of truth.
+        """
+        log.info("set_led_zone_sync_zones: key=%s zones=%s", key, zones)
+        with self._lock:
+            self.for_led(key).zone_sync_zones = list(zones)
+            self._save()
+
     def set_led_selected_zone(self, key: str, zone: int) -> None:
         """Pick the active zone — UIs use this when the user clicks a fan/strip."""
         log.info("set_led_selected_zone: key=%s zone=%d", key, zone)

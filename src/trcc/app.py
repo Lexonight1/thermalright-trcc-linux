@@ -40,7 +40,7 @@ from .core.events import (
     VideoStopped,
 )
 from .core.led_models import LedRuntimeState
-from .core.models import Theme, Wire
+from .core.models import HardwareMetrics, Theme, Wire, oriented_resolution
 from .core.ports import Device, Platform, Renderer, SendScheduler
 from .core.registry import find_product
 from .core.results import Result
@@ -98,6 +98,16 @@ class App:
         # phase counters, not user prefs.
         self.led_runtime: dict[str, LedRuntimeState] = {}
         self.led_effects = LEDEffectEngine()
+        # Latest RAW sensor sample, cached from the MetricsLoop broadcast
+        # (once per refresh_interval_s).  Per-tick consumers — RenderLed driven
+        # by the 150 ms LedAnimationLoop — read THIS instead of re-polling the
+        # sensors ~7×/s.  A per-tick re-poll resampled instantaneous readings,
+        # so the displayed metric flickered between ticks (the "sporadic
+        # metrics" bug).  Kept raw (un-personalized) so consumers apply their
+        # own temp-unit conversion exactly as a fresh read did.  ``None`` until
+        # the first broadcast — consumers fall back to a one-off read.
+        self.last_raw_readings: dict[str, float] | None = None
+        self.last_raw_snapshot: HardwareMetrics | None = None
         # Cloud theme catalog + service.  HTTP adapter is the only seam
         # that talks to the network; tests inject a fake fetcher.
         self.http = UrllibHttpFetcher()
@@ -240,15 +250,16 @@ class App:
         if device is None or device.profile is None:
             log.debug("_on_orientation_changed: %s not connected — skip", key)
             return
-        w, h = device.profile.resolution
-        bw, bh = (h, w) if event.degrees in (90, 270) else (w, h)
+        bw, bh = oriented_resolution(device.profile.resolution, event.degrees)
         paths = self.platform.paths()
         s = self.settings.for_device(key)
         log.info("_on_orientation_changed: %s degrees=%d catalog=%dx%d",
                  key, event.degrees, bw, bh)
 
-        from .core.commands import ApplyMask, LoadTheme
+        from .core.commands import ApplyMask, LoadCloudTheme, LoadTheme
         from .core.commands._helpers import oriented_theme_path
+
+        web_root = paths.data_dir() / "web"
 
         # Active theme → reload from the rotated-resolution theme dir.  Shared
         # resolver with RestoreLastTheme so connect-restore + runtime rotation
@@ -261,13 +272,30 @@ class App:
                          cur.name, cand)
                 self.dispatch(LoadTheme(key=key, path=cand))
 
+        # Active cloud background → re-apply from the rotated-resolution web dir.
+        # Stored as ``web/{res}/<id>``; ``LoadCloudTheme`` now materialises per
+        # ORIENTED resolution, so re-dispatching it re-fetches ``web/{bw}{bh}/<id>``
+        # and re-applies — the port of the C# ``buttonSelectBackgroundImage`` →
+        # ``ucThemeWeb1.CheakDirectionB`` on every rotation.  After the theme
+        # reload (which may reset the override) and before the mask (so the mask
+        # still composites on top).  User-uploaded backgrounds (under
+        # ``user_content_dir``) are native-res and stay.
+        bgp = s.background_path
+        if bgp:
+            bg_path = Path(bgp)
+            if (bg_path.parent.parent == web_root
+                    and bg_path.parent.name.isdigit()
+                    and bg_path.parent.name != f"{bw}{bh}"):
+                log.info("_on_orientation_changed: reload cloud background "
+                         "%s → web/%dx%d", bg_path.name, bw, bh)
+                self.dispatch(LoadCloudTheme(key=key, theme_id=bg_path.stem))
+
         # Active user mask → re-resolve to the rotated zt dir (after the theme,
         # so it overrides the theme's bundled mask).  Only cloud zt masks have
         # per-orientation variants; user-uploaded masks are native-res and stay.
         mp = s.mask_path
         if mp and s.mask_visible:
             mask_path = Path(mp)
-            web_root = paths.data_dir() / "web"
             zt_parent = mask_path.parent.parent  # .../web/zt{w}{h}
             if (zt_parent.parent == web_root
                     and zt_parent.name.startswith("zt")):

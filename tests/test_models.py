@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.core.models import parse_resolution
+from trcc.core.models import oriented_resolution, parse_resolution
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -19,3 +19,16 @@ def test_parse_resolution_valid(text: str, expected: tuple[int, int]) -> None:
 def test_parse_resolution_rejects_malformed(bad: str) -> None:
     with pytest.raises(ValueError, match="bad resolution"):
         parse_resolution(bad)
+
+
+@pytest.mark.parametrize("native,orientation,expected", [
+    ((854, 480), 0, (854, 480)),     # landscape — unchanged
+    ((854, 480), 180, (854, 480)),   # landscape flipped — still unchanged
+    ((854, 480), 90, (480, 854)),    # portrait — swapped
+    ((854, 480), 270, (480, 854)),   # portrait flipped — swapped
+    ((320, 320), 90, (320, 320)),    # square — swap is a no-op
+])
+def test_oriented_resolution(
+    native: tuple[int, int], orientation: int, expected: tuple[int, int],
+) -> None:
+    assert oriented_resolution(native, orientation) == expected

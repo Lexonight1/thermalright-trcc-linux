@@ -51,6 +51,7 @@ from ._helpers import (
     _json_default_tuple,
     _publish_if_disconnect,
     _resolve_mask_path,
+    _resolve_oriented_resolution,
     _resolve_resolution,
     _search_theme_by_name,
     oriented_theme_path,
@@ -1503,7 +1504,11 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
 
     def execute(self, app: App) -> CloudThemeLoadResult:
         log.info("LoadCloudTheme: key=%s theme_id=%s", self.key, self.theme_id)
-        resolution = _resolve_resolution(app, self.key)
+        # Cloud backgrounds are catalogued per ORIENTED resolution (the C#
+        # GetWebBackgroundImageDirectory direction split: 854480 ↔ 480854), so
+        # at portrait we must materialise from web/480854 — not the native
+        # landscape — or the landscape image gets fit-squished into the canvas.
+        resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "LoadCloudTheme: cannot resolve resolution for %s — "

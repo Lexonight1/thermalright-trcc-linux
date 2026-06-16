@@ -107,6 +107,32 @@ def test_page_selector_buttons_are_metric_labeled(style, qtbot) -> None:
                 f"{style.name} page button {i} not labeled {label!r}"
 
 
+def test_circulate_toggle_emits_full_enabled_mask(qtbot) -> None:
+    """Turning on Circulate and toggling a page must emit the FULL enabled mask
+    (not a single index), so the handler can persist ``zone_sync_zones`` — the
+    list the carousel actually rotates.  Guards the bug where the per-page
+    toggle was dropped on the floor and the carousel stayed stuck on page 0."""
+    from trcc.core.led_models import LedStyle
+    spec = LED_STYLES[LedStyle.AX120]          # PAGE style, 4 metric pages
+    sid = LEGACY_STYLE_ID[LedStyle.AX120]
+    panel = _panel(qtbot)
+    panel.initialize(sid, spec.segment_count, spec.zone_count,
+                     model=spec.model_name)
+
+    masks: list[list[bool]] = []
+    panel.carousel_zones_changed.connect(lambda m: masks.append(list(m)))
+
+    # Turn Circulate on, then toggle page 2 into the rotation.
+    panel._on_sync_toggled(True)
+    panel._on_zone_clicked(2)
+
+    assert masks, "toggling pages in carousel mode emitted no mask"
+    # Page 0 stays from configure, page 2 just toggled on; 1 and 3 stay off.
+    assert masks[-1] == [True, False, True, False], (
+        f"carousel mask should be the full per-page enabled list, got {masks[-1]}"
+    )
+
+
 def test_every_zone_asset_resolves_to_a_bundled_png() -> None:
     """Fast data guard (no Qt): every referenced zone image is bundled."""
     from trcc.ui.gui.assets import _PKG_ASSETS_DIR

@@ -34,7 +34,7 @@ from ..events import (
     VideoStarted,
     VideoStopped,
 )
-from ..models import FitMode, OverlayElement, Wire
+from ..models import FitMode, OverlayElement, Wire, oriented_resolution
 from ..registry import find_product
 from ..results import (
     ActiveDeviceResult,
@@ -599,6 +599,13 @@ class PlayVideo(Command[VideoResult]):
             canvas_size = device.profile.resolution
         else:
             canvas_size = device.info.native_resolution
+        # Decode at the ORIENTED canvas — at 90/270 the render composes a
+        # portrait canvas (``DisplayService._compose_geometry``), so a portrait
+        # cloud video (web/480854) must decode to 480x854, not the native
+        # landscape, or it gets squished into the wrong aspect. Same swap rule
+        # the whole orientation pipeline keys on.
+        orientation = app.settings.for_device(self.key).orientation
+        canvas_size = oriented_resolution(canvas_size, orientation)
 
         # User-made assets in ``user_content_dir`` (``~/.trcc-user/data/``)
         # decode at NATIVE so the render pipeline's fit-mode (width /

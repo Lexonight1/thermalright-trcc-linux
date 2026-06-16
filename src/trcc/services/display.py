@@ -31,6 +31,7 @@ from ..core.models import (
     ProductInfo,
     RawFrame,
     Theme,
+    oriented_resolution,
 )
 from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile, resolve_encode_angle
@@ -1256,8 +1257,7 @@ class DisplayService:
     @staticmethod
     def _visual_size(base: tuple[int, int], orientation: int) -> tuple[int, int]:
         """Render canvas dimensions = ``base`` swapped for 90/270 orientation."""
-        w, h = base
-        return (h, w) if orientation in (90, 270) else (w, h)
+        return oriented_resolution(base, orientation)
 
     @staticmethod
     def _resolve_profile(

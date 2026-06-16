@@ -214,11 +214,19 @@ class MetricsLoop:
         # Typed snapshot from the same enumerator, personalized the same
         # way — the OS dispatcher's per-tick metrics object the GUI
         # observes at this refresh interval (no GUI-side re-poll).
+        raw_snapshot = sensors.snapshot()
         metrics = personalize_metrics(
-            sensors.snapshot(),
+            raw_snapshot,
             temp_unit=s.temp_unit,
             hdd_enabled=s.hdd_enabled,
         )
+        # Cache the RAW sample so per-tick consumers (RenderLed on the 150 ms
+        # animation loop) render from this steady once-per-interval reading
+        # instead of re-polling the sensors every tick — the re-poll made the
+        # LED metric flicker on instantaneous values.  Raw, not personalized:
+        # those consumers do their own temp-unit conversion.
+        self._app.last_raw_readings = raw
+        self._app.last_raw_snapshot = raw_snapshot
         events.publish(SensorsUpdated(
             reading_count=len(readings),
             readings=readings,

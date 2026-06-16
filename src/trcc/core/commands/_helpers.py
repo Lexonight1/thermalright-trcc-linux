@@ -14,7 +14,7 @@ from ..events import (
     LedColorsChanged,
     LedSettingsChanged,
 )
-from ..models import OverlayElement
+from ..models import OverlayElement, oriented_resolution
 from ..registry import find_product
 from ..results import (
     HealthCheckEntry,
@@ -50,10 +50,9 @@ def oriented_theme_path(
     device = app.devices.get(key)
     if device is None or device.profile is None:
         return stored
-    w, h = device.profile.resolution
     if degrees is None:
         degrees = app.settings.for_device(key).orientation
-    bw, bh = (h, w) if degrees in (90, 270) else (w, h)
+    bw, bh = oriented_resolution(device.profile.resolution, degrees)
     paths = app.platform.paths()
     for base in (paths.theme_dir(bw, bh), paths.user_theme_dir(bw, bh)):
         cand = base / stored.name
@@ -295,6 +294,23 @@ def _resolve_resolution(app: App, key: str) -> tuple[int, int] | None:
     if product is None or product.native_resolution == (0, 0):
         return None
     return product.native_resolution
+
+
+def _resolve_oriented_resolution(app: App, key: str) -> tuple[int, int] | None:
+    """The device resolution adjusted for its current user orientation.
+
+    Cloud assets (themes / backgrounds / masks) are catalogued per ORIENTED
+    resolution — the C# keys every ``Web\\{res}\\`` directory on ``directionB``
+    (``GetWebBackgroundImageDirectory``: ``854480`` ↔ ``480854``).  So cloud
+    lookups/downloads must use this, not the native ``_resolve_resolution``
+    (which is the wire/device-buffer size and stays orientation-agnostic).
+    Returns ``None`` when the native resolution can't be resolved.
+    """
+    native = _resolve_resolution(app, key)
+    if native is None:
+        return None
+    orientation = app.settings.for_device(key).orientation
+    return oriented_resolution(native, orientation)
 
 
 def _resolve_mask_path(path: Path) -> Path | None:

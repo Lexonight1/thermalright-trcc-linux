@@ -258,7 +258,7 @@ class UCLedControl(QWidget):
     zone_selected = Signal(int)              # zone index (0-based)
     zone_toggled = Signal(int, bool)         # zone index, on/off
     carousel_changed = Signal(bool)          # carousel mode toggled
-    carousel_zone_changed = Signal(int, bool)  # zone index, in carousel
+    carousel_zones_changed = Signal(object)  # full enabled mask (list[bool])
     carousel_interval_changed = Signal(int)  # interval in seconds
     # LC2 clock signals (style 9)
     clock_format_changed = Signal(bool)      # True = 24h
@@ -1076,7 +1076,10 @@ class UCLedControl(QWidget):
         if emit.kind == "zone_selected":
             self.zone_selected.emit(emit.zone)
         elif emit.kind == "carousel_zone":
-            self.carousel_zone_changed.emit(emit.zone, emit.on)
+            # The model owns the full enabled mask — publish it whole so the
+            # carousel rotates exactly the toggled pages/zones (one command,
+            # no per-index reconstruction handler-side).
+            self.carousel_zones_changed.emit(self._zones.enabled)
 
     def _on_sync_toggled(self, carousel: bool):
         """Handle carousel/select-all checkbox toggle (C# buttonLB_Click).
@@ -1093,6 +1096,11 @@ class UCLedControl(QWidget):
             self._carousel_interval.setVisible(carousel and self._zone_count > 1)
         self._sync_zone_buttons()
         self.carousel_changed.emit(carousel)
+        # toggle_carousel recomputed the enabled mask (on → keep current
+        # multi-select; off → collapse to the selected one); persist it so the
+        # carousel seeds with at least the selected page instead of an empty
+        # mask (which would leave it stuck on page 0).
+        self.carousel_zones_changed.emit(self._zones.enabled)
 
     def _on_carousel_interval_changed(self, text: str = ""):
         """Handle carousel interval input change (C# textBoxTimer_TextChanged)."""

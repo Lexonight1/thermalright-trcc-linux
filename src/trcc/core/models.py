@@ -107,6 +107,21 @@ def parse_resolution(resolution: str) -> tuple[int, int]:
         ) from e
 
 
+def oriented_resolution(
+    native: tuple[int, int], orientation: int,
+) -> tuple[int, int]:
+    """The native resolution adjusted for a user orientation.
+
+    Portrait orientations (90 / 270) swap width and height; landscape ones
+    (0 / 180) leave them as-is.  This is the SINGLE source of the swap rule the
+    whole app keys orientation on — render canvas geometry, the per-orientation
+    cloud/theme/mask catalog dirs (``Web\\854480`` ↔ ``Web\\480854``, the C#
+    ``GetWebBackgroundImageDirectory`` direction split), and the preview bezel.
+    """
+    w, h = native
+    return (h, w) if orientation in (90, 270) else (w, h)
+
+
 class FitMode(str, Enum):
     """How a background image/video fits the device canvas.
 

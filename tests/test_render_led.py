@@ -146,6 +146,108 @@ def test_selected_metric_page_reaches_the_wire(
         )
 
 
+def test_carousel_rotates_only_through_toggled_pages(
+    fake_platform: FakePlatform,
+) -> None:
+    """Circulate (zone-sync carousel) must rotate the display through exactly
+    the metric pages the user toggled on — and no others.  Regression guard for
+    the bug where the per-page enabled mask (``zone_sync_zones``) was never
+    persisted: ``next_sync_zone([])`` returned 0 so the carousel stayed stuck on
+    page 0 regardless of what the user toggled."""
+    from trcc.core.commands import (
+        SetLedZoneSync,
+        SetLedZoneSyncInterval,
+        SetLedZoneSyncZones,
+    )
+    from trcc.core.led_protocol import LED_REMAP_TABLES
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
+    metrics = fake_platform.sensors().snapshot()
+    table = LED_REMAP_TABLES.get(LedStyle.AX120)
+
+    # Pre-compute each page's lit mask so we can recover the phase from the wire.
+    page_masks = {
+        page: frozenset(
+            i for i, on in enumerate(
+                compute_mask(LedStyle.AX120, metrics, phase=page, temp_unit="C"))
+            if on
+        )
+        for page in range(4)
+    }
+
+    def _wire_phase() -> int:
+        sent = _decode_body(fake_platform.bulk.writes, 30)
+        lit = frozenset(table[p] if table else p
+                        for p, c in enumerate(sent) if c != (0, 0, 0))
+        for page, mask in page_masks.items():
+            if lit == mask:
+                return page
+        raise AssertionError(f"wire mask {lit} matches no metric page")
+
+    # Toggle pages 0 and 2 into the carousel (1 and 3 stay off), 1 tick/rotation.
+    app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=True))
+    app.dispatch(SetLedZoneSyncZones(key=_LED_KEY, zones=(True, False, True, False)))
+    app.dispatch(SetLedZoneSyncInterval(key=_LED_KEY, ticks=1))
+
+    observed: list[int] = []
+    for _ in range(6):
+        fake_platform.bulk.writes.clear()
+        app.dispatch(RenderLed(key=_LED_KEY))
+        observed.append(_wire_phase())
+
+    assert set(observed) == {0, 2}, (
+        f"carousel must rotate only the toggled pages {{0, 2}}, saw {observed}"
+    )
+
+
+def test_render_led_uses_cached_sample_not_per_tick_repoll(
+    fake_platform: FakePlatform,
+    monkeypatch,
+) -> None:
+    """RenderLed must render from the cached broadcast sample, NOT re-poll the
+    sensors every tick.  The 150 ms animation loop dispatches RenderLed ~7×/s;
+    a per-tick re-poll resampled instantaneous readings and made the displayed
+    metric flicker ("sporadic metrics").  When the cache is primed RenderLed
+    reads it (zero sensor polls); only an empty cache falls back to one read."""
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120
+    enum = app.platform.sensors()
+
+    # Count sensor polls; the real methods still run.
+    polls = {"read_all": 0, "snapshot": 0}
+    real_read_all, real_snapshot = enum.read_all, enum.snapshot
+    monkeypatch.setattr(enum, "read_all",
+                        lambda *a, **k: (polls.__setitem__("read_all", polls["read_all"] + 1),
+                                         real_read_all(*a, **k))[1])
+    monkeypatch.setattr(enum, "snapshot",
+                        lambda *a, **k: (polls.__setitem__("snapshot", polls["snapshot"] + 1),
+                                         real_snapshot(*a, **k))[1])
+
+    # Prime the cache exactly as MetricsLoop's broadcast does, then reset counts.
+    app.last_raw_readings = enum.read_all()
+    app.last_raw_snapshot = enum.snapshot()
+    polls["read_all"] = polls["snapshot"] = 0
+
+    for _ in range(5):
+        app.dispatch(RenderLed(key=_LED_KEY))
+    assert polls == {"read_all": 0, "snapshot": 0}, (
+        f"RenderLed re-polled sensors instead of using the cache: {polls}"
+    )
+
+    # Empty cache (no broadcast yet) → RenderLed falls back to a live read.
+    app.last_raw_readings = None
+    app.last_raw_snapshot = None
+    app.dispatch(RenderLed(key=_LED_KEY))
+    assert polls["read_all"] >= 1 and polls["snapshot"] >= 1, (
+        f"RenderLed must read live when the cache is empty: {polls}"
+    )
+
+
 def test_led_settings_changed_re_renders_immediately(
     fake_platform: FakePlatform,
 ) -> None:

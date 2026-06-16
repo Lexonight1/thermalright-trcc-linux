@@ -27,6 +27,7 @@ from ...core.commands import (
     SetLedTempSource,
     SetLedZoneSync,
     SetLedZoneSyncInterval,
+    SetLedZoneSyncZones,
     SetMemoryRatio,
     SetWeekStart,
     ToggleLed,
@@ -166,14 +167,17 @@ class LEDHandler(BaseHandler):
             self._panel.load_zone_state(
                 0, s.mode.value, s.color, s.brightness, s.global_on,
             )
-        if s.zones:
-            # zone_sync_interval_ticks → seconds via 150 ms tick base
-            interval_secs = max(1, round(s.zone_sync_interval_ticks * 150 / 1000))
-            self._panel.load_sync_state(
-                s.zone_sync,
-                [True] * len(s.zones),  # all zones in carousel by default
-                interval_secs,
-            )
+        # Restore carousel mode + the saved per-page/zone enabled mask.  Page
+        # styles never populate ``zones`` (their selector picks a metric page,
+        # not a colour zone), so this must NOT gate on ``s.zones`` — it reads
+        # ``zone_sync_zones``, the carousel's actual source of truth.  The zone
+        # model clamps the mask to the configured slot count.
+        interval_secs = max(1, round(s.zone_sync_interval_ticks * 150 / 1000))
+        self._panel.load_sync_state(
+            s.zone_sync,
+            list(s.zone_sync_zones),
+            interval_secs,
+        )
 
     # ── Signal wiring ────────────────────────────────────────────────
 
@@ -194,7 +198,7 @@ class LEDHandler(BaseHandler):
         p.zone_selected.connect(self._guard(self._on_zone_selected))
         p.zone_toggled.connect(self._guard(self._on_zone_toggled))
         p.carousel_changed.connect(self._guard(self._on_carousel_changed))
-        p.carousel_zone_changed.connect(self._guard(self._on_carousel_zone_changed))
+        p.carousel_zones_changed.connect(self._guard(self._on_carousel_zones_changed))
         p.carousel_interval_changed.connect(
             self._guard(self._on_carousel_interval_changed),
         )
@@ -275,10 +279,15 @@ class LEDHandler(BaseHandler):
             key=self._device_key, enabled=on,
         ))
 
-    def _on_carousel_zone_changed(self, zi: int, sel: Any) -> None:
-        # next/'s zone-sync model: SetLedZoneColor for the picked zone
-        log.info("_on_carousel_zone_changed: zi=%s sel=%s", zi, sel)
-        del zi, sel  # Phase 7 hooks per-zone include/exclude
+    def _on_carousel_zones_changed(self, mask: list[bool]) -> None:
+        # Persist the full enabled mask the zone model computed — this is what
+        # the carousel rotates (``next_sync_zone``).  Toggling a metric page in
+        # the GUI now actually changes which pages circulate.
+        log.info("_on_carousel_zones_changed: mask=%s", mask)
+        self._dispatch(SetLedZoneSyncZones(
+            key=self._device_key,
+            zones=tuple(bool(x) for x in mask),
+        ))
 
     def _on_carousel_interval_changed(self, secs: int) -> None:
         # secs → ticks (150 ms tick base): ticks = secs * 1000 / 150
