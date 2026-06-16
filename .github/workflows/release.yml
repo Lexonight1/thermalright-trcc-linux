@@ -173,10 +173,7 @@ jobs:
           ${SITELIB}/sounddevice-*.dist-info/
           /usr/bin/trcc
           /usr/bin/trcc-gui
-          /usr/bin/trcc-detect
-          /usr/bin/trcc-test
           /usr/bin/trcc-lcd
-          /usr/bin/trcc-next
           %post
           udevadm control --reload-rules 2>/dev/null || :
           udevadm trigger 2>/dev/null || :
@@ -331,7 +328,7 @@ jobs:
           set -e
           python3 -m venv /opt/trcc-linux
           /opt/trcc-linux/bin/pip install --quiet "trcc-linux==${VER}"
-          for cmd in trcc trcc-gui trcc-detect trcc-lcd trcc-test; do
+          for cmd in trcc trcc-gui trcc-lcd; do
             echo "#!/bin/sh" > /usr/bin/\$cmd
             echo "exec /opt/trcc-linux/bin/\$cmd \"\\\$@\"" >> /usr/bin/\$cmd
             chmod 755 /usr/bin/\$cmd
@@ -345,7 +342,7 @@ jobs:
           cat > "$PKG/DEBIAN/prerm" << PRERM
           #!/bin/sh
           set -e
-          for cmd in trcc trcc-gui trcc-detect trcc-lcd trcc-test; do
+          for cmd in trcc trcc-gui trcc-lcd; do
             rm -f /usr/bin/\$cmd
           done
           rm -rf /opt/trcc-linux
