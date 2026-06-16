@@ -271,17 +271,27 @@ do_install() {
     step "3/3" "Running setup wizard (deps, udev, desktop entry)..."
     local trcc_cmd
     trcc_cmd="$(find_trcc_cmd)"
-    info "Running: $trcc_cmd setup --yes"
-    # trcc setup handles: system deps, GPU drivers, udev, SELinux, desktop entry.
-    # Run as the real user so the user's site-packages / venv are importable —
-    # if run as root, ~/.local installs aren't on sys.path and `trcc` crashes.
+    info "Running: $trcc_cmd system setup"
+    # `trcc system setup` writes /etc udev rules + modprobe quirks (needs root).
+    # The command is `system setup` — the old top-level `setup` was renamed in
+    # the cutover, so `setup --yes` failed with "No such command" and installs
+    # silently shipped WITHOUT udev rules.
+    #
+    # Run it AS ROOT (install.sh already is — check_root), NOT as the real user:
+    # setup re-execs its privileged udev step as root via `python -c`, and that
+    # root process can't import a user-local ~/.local trcc (ModuleNotFoundError
+    # → no rules written).  Running as root from the start skips that re-exec;
+    # we put the user's site-packages on PYTHONPATH so root can import trcc.
+    local py_ver site_paths
+    py_ver="$(sudo -u "$REAL_USER" python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    site_paths="$REAL_HOME/.local/lib/python${py_ver}/site-packages"
+    if [ -d "$VENV_DIR/lib/python${py_ver}/site-packages" ]; then
+        site_paths="$VENV_DIR/lib/python${py_ver}/site-packages:$site_paths"
+    fi
     if [[ "$trcc_cmd" == PYTHONPATH=* ]]; then
-        sudo -u "$REAL_USER" -H bash -lc \
-            "PATH=\"$REAL_HOME/.local/bin:$VENV_DIR/bin:\$PATH\" $trcc_cmd setup --yes"
+        eval "$trcc_cmd system setup"
     else
-        sudo -u "$REAL_USER" -H env \
-            PATH="$REAL_HOME/.local/bin:$VENV_DIR/bin:$PATH" \
-            "$trcc_cmd" setup --yes
+        PYTHONPATH="$site_paths:$SCRIPT_DIR/src" "$trcc_cmd" system setup
     fi
 
     print_success
