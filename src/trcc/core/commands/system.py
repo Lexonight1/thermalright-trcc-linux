@@ -383,8 +383,13 @@ class RunSetup(Command[SetupResult]):
     interactive: bool = True
 
     def execute(self, app: App) -> SetupResult:
-        warnings = app.platform.check_permissions()
+        # Check permissions AFTER setup so the warnings reflect what setup just
+        # installed — not the pre-install state.  Snapshotting before setup
+        # made a first run report "udev rules not installed" right next to
+        # "exit code 0" (legacy's run_setup checks-then-installs, never reports
+        # a pre-install warning as a result).
         code = app.platform.setup(interactive=self.interactive)
+        warnings = app.platform.check_permissions()
         return SetupResult(
             ok=code == 0,
             message=f"Setup completed with exit code {code}",
