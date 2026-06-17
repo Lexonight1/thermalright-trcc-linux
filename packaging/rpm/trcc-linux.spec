@@ -15,6 +15,9 @@ BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-hatchling
 BuildRequires:  python3-pip
+%if 0%{?fedora}
+BuildRequires:  checkpolicy
+%endif
 
 Requires:       python3-pyside6 >= 6.5.0
 Requires:       python3-numpy >= 1.24.0
@@ -63,6 +66,11 @@ Features:
 
 %build
 %pyproject_wheel
+%if 0%{?fedora}
+# Build the SELinux policy module from source — loaded in %post via semodule.
+checkmodule -M -m -o trcc_usb.mod src/trcc/data/trcc_usb.te
+semodule_package -o trcc_usb.pp -m trcc_usb.mod
+%endif
 
 %install
 %pyproject_install
@@ -86,20 +94,30 @@ install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
 install -Dm644 src/trcc/assets/trcc-quirk-fix.service \
     %{buildroot}%{_unitdir}/trcc-quirk-fix.service
 
-# SELinux policy source (Fedora only)
+# SELinux policy module (Fedora only) — built in %build, loaded in %post
 %if 0%{?fedora}
-install -Dm644 src/trcc/data/trcc_usb.te \
-    %{buildroot}%{_datadir}/selinux/packages/trcc_usb/trcc_usb.te
+install -Dm644 trcc_usb.pp \
+    %{buildroot}%{_datadir}/selinux/packages/trcc_usb/trcc_usb.pp
 %endif
 
 %post
 udevadm control --reload-rules 2>/dev/null || :
 udevadm trigger 2>/dev/null || :
 modprobe sg 2>/dev/null || :
+%if 0%{?fedora}
+if command -v semodule >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+    semodule -i %{_datadir}/selinux/packages/trcc_usb/trcc_usb.pp 2>/dev/null || :
+fi
+%endif
 %systemd_post trcc-quirk-fix.service
 
 %postun
 udevadm control --reload-rules 2>/dev/null || :
+%if 0%{?fedora}
+if [ $1 -eq 0 ] && command -v semodule >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+    semodule -r trcc_usb 2>/dev/null || :
+fi
+%endif
 %systemd_postun trcc-quirk-fix.service
 
 %files -f %{pyproject_files}
@@ -107,8 +125,6 @@ udevadm control --reload-rules 2>/dev/null || :
 %doc README.md
 %{_bindir}/trcc
 %{_bindir}/trcc-gui
-%{_bindir}/trcc-detect
-%{_bindir}/trcc-test
 %{_bindir}/trcc-lcd
 %{_udevrulesdir}/99-trcc-lcd.rules
 %{_modprobedir}/trcc-lcd.conf
@@ -118,7 +134,7 @@ udevadm control --reload-rules 2>/dev/null || :
 %{_datadir}/polkit-1/actions/com.github.lexonight1.trcc.policy
 %{_unitdir}/trcc-quirk-fix.service
 %if 0%{?fedora}
-%{_datadir}/selinux/packages/trcc_usb/trcc_usb.te
+%{_datadir}/selinux/packages/trcc_usb/trcc_usb.pp
 %endif
 
 %changelog

@@ -95,7 +95,7 @@ jobs:
             -v "${{ github.workspace }}/packages:/output" \
             fedora:latest bash -c '
           set -e
-          dnf install -y python3-devel python3-hatchling python3-pip python3-installer rpm-build >/dev/null 2>&1
+          dnf install -y python3-devel python3-hatchling python3-pip python3-installer rpm-build checkpolicy policycoreutils >/dev/null 2>&1
           echo "=== RPM Build Environment ==="
           echo "Fedora: $(cat /etc/fedora-release)"
           echo "Python: $(python3 --version)"
@@ -123,6 +123,14 @@ jobs:
           for size in 256 128 64 48 32 24 16; do
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
           done
+
+          # Build the SELinux policy module (.pp) from source so %post can load
+          # it with semodule — always present on SELinux systems, unlike the
+          # build tools (checkpolicy).  Lets the bulk/SCSI USB ioctls through on
+          # enforcing Fedora without the user running anything.
+          checkmodule -M -m -o /tmp/trcc_usb.mod /src/src/trcc/data/trcc_usb.te
+          semodule_package -o /tmp/trcc_usb.pp -m /tmp/trcc_usb.mod
+          install -Dm644 /tmp/trcc_usb.pp "$PKG/usr/share/selinux/packages/trcc_usb/trcc_usb.pp"
 
           PYVER=$(python3 -c "import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")")
           SITELIB="/usr/lib/python${PYVER}/site-packages"
@@ -163,6 +171,7 @@ jobs:
           /usr/share/applications/trcc-linux.desktop
           /usr/share/icons/hicolor/*/apps/trcc.png
           /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy
+          /usr/share/selinux/packages/trcc_usb/trcc_usb.pp
           /usr/lib/systemd/system/trcc-quirk-fix.service
           ${SITELIB}/trcc/
           ${SITELIB}/trcc_linux-*.dist-info/
@@ -178,6 +187,13 @@ jobs:
           udevadm control --reload-rules 2>/dev/null || :
           udevadm trigger 2>/dev/null || :
           modprobe sg 2>/dev/null || :
+          if command -v semodule >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+              semodule -i /usr/share/selinux/packages/trcc_usb/trcc_usb.pp 2>/dev/null || :
+          fi
+          %postun
+          if [ \$1 -eq 0 ] && command -v semodule >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+              semodule -r trcc_usb 2>/dev/null || :
+          fi
           SPEC
 
           rpmbuild -bb --buildroot="$PKG" --define "_rpmdir /output" /tmp/trcc.spec
