@@ -13,10 +13,11 @@ import logging
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from importlib.resources import files
 from pathlib import Path
+
+from ._elevate import reexec_as_root
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,9 @@ def install(dry_run: bool = False) -> int:
         return 0
 
     if os.geteuid() != 0:
-        return _sudo_reexec()
+        return reexec_as_root(
+            "from trcc.adapters.system._selinux import install; sys.exit(install())"
+        )
 
     if not (shutil.which("checkmodule") and shutil.which("semodule_package")):
         log.warning("selinux.install: checkpolicy/policycoreutils not installed "
@@ -102,23 +105,3 @@ def install(dry_run: bool = False) -> int:
     return 0
 
 
-def _sudo_reexec() -> int:
-    """Re-run as root via sudo to load the policy (mirrors _udev._sudo_reexec).
-
-    Uses ``python -c`` so it doesn't depend on a console script being on root's
-    PATH.
-    """
-    log.info("selinux._sudo_reexec: re-running as root via sudo to load %s",
-             _MODULE)
-    code = (
-        "from trcc.adapters.system._selinux import install; "
-        "import sys; sys.exit(install())"
-    )
-    try:
-        result = subprocess.run(
-            ["sudo", sys.executable, "-c", code], check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        log.exception("selinux._sudo_reexec: sudo re-exec failed")
-        return 1
-    return result.returncode

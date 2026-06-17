@@ -30,11 +30,11 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 from ...core.models import Wire
 from ...core.registry import ALL_DEVICES
+from ._elevate import reexec_as_root
 
 log = logging.getLogger(__name__)
 
@@ -131,7 +131,9 @@ def install(dry_run: bool = False) -> int:
         return 0
 
     if os.geteuid() != 0:
-        return _sudo_reexec()
+        return reexec_as_root(
+            "from trcc.adapters.system._udev import install; sys.exit(install())"
+        )
 
     try:
         _write_atomic(_RULES_PATH, rules)
@@ -175,22 +177,3 @@ def _reload_udev() -> int:
     return 0
 
 
-def _sudo_reexec() -> int:
-    """Re-run ourselves as root via sudo to install the rules.
-
-    The command string is a `python -c` to avoid relying on a console
-    script being on root's PATH.
-    """
-    log.info("_sudo_reexec: called")
-    code = (
-        "from trcc.adapters.system._udev import install; "
-        "import sys; sys.exit(install())"
-    )
-    cmd: list[str] = ["sudo", sys.executable, "-c", code]
-    log.info("Re-running as root via sudo to install udev rules")
-    try:
-        result = subprocess.run(cmd, check=False)
-    except (OSError, subprocess.SubprocessError):
-        log.exception("sudo re-exec failed")
-        return 1
-    return result.returncode
