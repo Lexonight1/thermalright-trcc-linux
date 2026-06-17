@@ -575,7 +575,7 @@ systemctl reboot
 
 After reboot, unplug and replug the USB cable, then: `trcc gui`
 
-> If you have a bulk USB device, you may also need SELinux policy: `trcc setup-selinux`
+> If you have a bulk USB device, you may also need SELinux policy: `trcc system setup`
 > (if `checkmodule` is not found: `rpm-ostree install checkpolicy` and reboot first)
 
 **Option B — pip in a venv (if RPM doesn't work):**

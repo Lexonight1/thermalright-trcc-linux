@@ -131,7 +131,7 @@ ls -la /dev/sg*
 **Fix (v4.2.0+):**
 ```bash
 pip install --upgrade trcc-linux
-trcc setup-selinux    # installs SELinux policy module (auto-elevates with sudo)
+trcc system setup    # installs SELinux policy module (auto-elevates with sudo)
 # Unplug/replug USB cable
 trcc report           # verify handshake succeeds
 ```
