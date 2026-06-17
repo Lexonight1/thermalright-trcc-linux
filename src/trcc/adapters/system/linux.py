@@ -39,6 +39,7 @@ from ..sensors.gpu_detect import (
     install_matching_gpu_extras,
 )
 from . import PlatformFactory
+from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)
@@ -509,12 +510,15 @@ class LinuxPlatform(Platform):
     def setup(self, interactive: bool = True) -> int:
         """Run one-time Linux setup.
 
-        Two things happen here and neither can silently no-op:
+        Three things happen here and none can silently no-op:
           1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
              every device in the registry + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
           2. GPU Python extras — detect GPU vendors via PCI sysfs and
              pip install matching libs (e.g., nvidia-ml-py for NVIDIA).
+          3. SELinux policy — on enforcing systems, build + load the
+             ``trcc_usb`` module so the bulk/SCSI USB ioctls aren't blocked.
+             No-op off SELinux.  (RPM installs already load it in %post.)
 
         Non-interactive mode prints what would be done and returns 0
         without touching the system.
@@ -526,13 +530,15 @@ class LinuxPlatform(Platform):
             vendors = detect_gpu_vendors()
             log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
             install_matching_gpu_extras(vendors, dry_run=True)
+            install_selinux_policy(dry_run=True)
             return 0
 
         rc_udev = install_udev_rules(dry_run=False)
         vendors = detect_gpu_vendors()
         log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
         rc_gpu = install_matching_gpu_extras(vendors, dry_run=False)
-        return rc_udev or rc_gpu
+        rc_selinux = install_selinux_policy(dry_run=False)
+        return rc_udev or rc_gpu or rc_selinux
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""

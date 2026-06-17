@@ -136,6 +136,10 @@ artifacts = [
     "**/assets/**/*.service",
     "**/assets/**/*.policy",
     "**/assets/**/*.svg",
+    # SELinux policy source — `trcc system setup` builds + loads it on Fedora
+    # so source/pip installs can pass the USB/SCSI ioctls (packages ship the
+    # compiled .pp via the rpm).
+    "**/data/trcc_usb.te",
 ]
 
 [tool.pytest.ini_options]
