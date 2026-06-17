@@ -114,7 +114,13 @@ def qtgui() -> None:
     """
     log.info("cli qtgui")
     from ..qtgui import launch
-    raise typer.Exit(code=launch())
+    # SystemExit (not typer.Exit): gui/qtgui are ALSO direct entry points
+    # (trcc-gui/trcc-lcd scripts + the Windows trcc-gui.exe frozen __main__),
+    # invoked OUTSIDE typer's runner.  typer.Exit only means something inside
+    # that runner — raised here it escapes unhandled and the PyInstaller build
+    # dies with "Failed to execute script" (#187).  SystemExit exits cleanly in
+    # every context (frozen exe, console script, AND `python -m trcc qtgui`).
+    raise SystemExit(launch())
 
 
 @app.command("gui")
@@ -128,7 +134,10 @@ def gui() -> None:
     """
     log.info("cli gui")
     from ..gui import launch
-    raise typer.Exit(code=launch())
+    # SystemExit (not typer.Exit) — see qtgui above: this is a direct entry
+    # point too (the Windows trcc-gui.exe calls gui() outside typer), so
+    # typer.Exit would escape unhandled and crash the frozen build (#187).
+    raise SystemExit(launch())
 
 
 @app.command("api")
