@@ -387,6 +387,12 @@ class SensorEnumerator(ABC):
     dict view for overlays keyed by normalized names.
     """
 
+    # User's GPU choice (sensor key, e.g. 'nvidia:0'); ``None`` = auto-pick.
+    # Set by ``SetGpuDevice`` and seeded at boot by the App composition root
+    # from ``settings.active_gpu`` — the universal path every UI shares, so the
+    # selected GPU drives the metric regardless of which UI made the choice.
+    _preferred_gpu_key: str | None = None
+
     # ── Structured access ───────────────────────────────────────────
     @abstractmethod
     def cpu(self) -> CpuSource: ...
@@ -402,9 +408,23 @@ class SensorEnumerator(ABC):
     def fans(self) -> list[FanSource]:
         """All detected fans.  Empty if none."""
 
+    def set_preferred_gpu(self, gpu_key: str | None) -> None:
+        """Pin which GPU ``primary_gpu()`` returns (``''``/``None`` = auto)."""
+        normalized = gpu_key or None
+        log.info("set_preferred_gpu: %s -> %s",
+                 self._preferred_gpu_key, normalized)
+        self._preferred_gpu_key = normalized
+
     def primary_gpu(self) -> GpuSource | None:
-        """First discrete GPU, else first integrated, else None."""
+        """The user-preferred GPU if one is set and still present, else the
+        first discrete GPU, else first integrated, else None."""
         gpus = self.gpus()
+        if self._preferred_gpu_key is not None:
+            for gpu in gpus:
+                if gpu.key == self._preferred_gpu_key:
+                    return gpu
+            log.warning("primary_gpu: preferred %s not among %s — auto-picking",
+                        self._preferred_gpu_key, [g.key for g in gpus])
         for gpu in gpus:
             if gpu.is_discrete:
                 return gpu

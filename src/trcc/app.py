@@ -207,6 +207,12 @@ class App:
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
         self._hotplug_started = False
+        # Seed the persisted GPU choice into the (singleton) enumerator so a
+        # restart / CLI / API / daemon honours it, not just an in-session GUI
+        # click — the composition root applies persisted state to the port.
+        # Guarded so the common no-preference case never force-builds sensors.
+        if self.settings.app.active_gpu:
+            self.platform.sensors().set_preferred_gpu(self.settings.app.active_gpu)
 
     def _persist_user_mask_dc(self, event: Any) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active

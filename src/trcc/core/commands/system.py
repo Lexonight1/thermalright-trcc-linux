@@ -994,6 +994,10 @@ class SetGpuDevice(Command[GpuDeviceResult]):
     def execute(self, app: App) -> GpuDeviceResult:
         normalized: str | None = self.gpu_key.strip() or None
         app.settings.set_active_gpu(normalized)
+        # Push the choice into the live (singleton) enumerator so the metric
+        # actually re-routes — the universal hop every UI shares.  Without
+        # this the selection only persisted and primary_gpu() ignored it.
+        app.platform.sensors().set_preferred_gpu(normalized)
         app.events.publish(GpuDeviceChanged(gpu_key=normalized))
         return GpuDeviceResult(
             ok=True, gpu_key=normalized,

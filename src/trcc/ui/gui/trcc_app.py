@@ -379,17 +379,9 @@ class TRCCApp(QMainWindow):
         self._last_metrics: HardwareMetrics = HardwareMetrics()
         self._ui_state.load()
 
-        # Apply saved GPU selection to the sensor enumerator
-        if app.settings.app.active_gpu:
-            # Best-effort — not every SensorEnumerator implementation
-            # exposes set_preferred_gpu; legacy GPU panels still work
-            # without it (next/ picks the discrete GPU by default).
-            set_pref = getattr(
-                self._sensors, "set_preferred_gpu", None,
-            )
-            if callable(set_pref):
-                set_pref(app.settings.app.active_gpu)
-
+        # NOTE: the saved GPU selection is applied universally by the App
+        # composition root (App.__init__ seeds the enumerator from
+        # settings.active_gpu) — no GUI-local hook needed.
         self._decorated = decorated
         self._drag_pos: Any = None
         self._force_quit = False
@@ -2302,13 +2294,10 @@ class TRCCApp(QMainWindow):
 
     def _on_gpu_changed(self, gpu_key: str) -> None:
         log.debug("_on_gpu_changed: gpu_key=%s", gpu_key)
+        # SetGpuDevice persists the choice AND pushes it into the live
+        # enumerator (the universal path — CLI/API/qtgui all do the same).
         result = self._app.dispatch(SetGpuDevice(gpu_key=gpu_key))
         self.uc_preview.set_status(result.message)
-        # The Command persists the choice; reflect into the live
-        # enumerator if it accepts a preference hint.
-        set_pref = getattr(self._sensors, "set_preferred_gpu", None)
-        if callable(set_pref):
-            set_pref(gpu_key)
 
     def _set_language(self, lang: str) -> None:
         log.debug("_set_language: %s", lang)
