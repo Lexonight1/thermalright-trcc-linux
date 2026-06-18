@@ -13,6 +13,16 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **ACTIVE — cross-platform restoration (the cutover dropped working per-OS legacy code).**
+  Discipline: for EVERY fix, READ legacy's impl end-to-end first, match its shape into our
+  hexagonal/SOLID/DRY tree — never reinvent. SHIPPED in v9.7.2/9.7.3: Windows GUI launch
+  (typer.Exit, fcntl, libusb NoBackendError, AF_UNIX). PENDING (legacy-grounded plan in
+  `memory/project_cross_platform_restoration.md`): Windows DPI hook + COM-init DRY + WMI GPU
+  fallback + mem/disk enums/SMART; macOS fans(wire existing)/SMC electrical keys/powermetrics
+  samplers (reporter-gated); BSD XDG autostart (reporter-gated); the lazy-OS-import hardening;
+  setup source/pip polkit/RAPL/desktop gaps. ALSO: post HONEST #187/#188/#179 reporter replies
+  (libusb VM-verified; AF_UNIX restores legacy — once v9.7.3 win installer builds). VM: libusb
+  device-detect VERIFIED; GUI-window-opens NOT watched (user said ship it, legacy-faithful).
 - **OWED: eyeball the 2026-06-15 fixes in `dev/mock_gui.py`** (all PUSHED @ `0b965ff2`; logic +
   headless verified, human look not done). mock_gui == the device (C# encodes ONE image for preview
   AND wire). Check: (1) **LED effects** — `device=0416:8001 pm=1` breathe/colour-cycle/rainbow
