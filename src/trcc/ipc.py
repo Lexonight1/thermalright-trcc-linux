@@ -342,7 +342,13 @@ class IPCServer:
         """Bind + listen.  Caller is responsible for serving (see ``serve_forever``)."""
         log.info("start: called")
         if not hasattr(socket, "AF_UNIX"):
-            raise RuntimeError("AF_UNIX not available — daemon mode requires Unix")
+            # Windows has no AF_UNIX — the GUI/daemon simply runs in-process,
+            # hosting no socket.  Legacy degraded here; the cutover changed this
+            # to `raise`, which crashed the Windows GUI on launch (#187 follow-on,
+            # surfaced once the libusb fix let the GUI boot far enough to reach it).
+            log.info("start: AF_UNIX unavailable (Windows) — IPC server skipped; "
+                     "running in-process")
+            return
         path = socket_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
