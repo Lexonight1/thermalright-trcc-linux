@@ -123,13 +123,13 @@ def _classify_devices() -> tuple[
     driver.  We can't tell the two apart without enumerating Windows'
     own driver tree, so the instructions cover both cases.
     """
-    import usb.core
+    from ..device._pyusb_find import find as usb_find
 
     visible: list[tuple[int, int, str]] = []
     invisible: list[tuple[int, int, str]] = []
     for (vid, pid), product in sorted(ALL_DEVICES.items()):
         label = f"{product.vendor} {product.product}"
-        if any(usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
+        if any(usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
             visible.append((vid, pid, label))
         else:
             invisible.append((vid, pid, label))

@@ -17,7 +17,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import psutil  # pyright: ignore[reportMissingImports]
-import usb.core
 import usb.util
 
 from ...core.models import DeviceInfo
@@ -31,6 +30,7 @@ from ...core.ports import (
     SensorEnumerator,
 )
 from ...core.registry import ALL_DEVICES
+from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
 from . import PlatformFactory
@@ -93,7 +93,7 @@ class MacOSPlatform(Platform):
                  len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
-            for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
+            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, "iSerialNumber", 0)
                 serial = ""
                 try:

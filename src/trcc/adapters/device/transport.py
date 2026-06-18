@@ -19,6 +19,7 @@ import usb.util
 
 from ...core.errors import PermissionError_, TransportError
 from ...core.ports import BulkTransport
+from ._pyusb_find import find as usb_find
 
 # Optional hidapi backend (the [hid] extra)
 try:
@@ -79,7 +80,7 @@ class PyUsbBulkTransport(BulkTransport):
         if self._serial:
             kwargs['serial_number'] = self._serial
 
-        self._device = usb.core.find(**kwargs)
+        self._device = usb_find(**kwargs)
         if self._device is None:
             log.error("USB device %04X:%04X not found", self._vid, self._pid)
             return False
@@ -203,7 +204,7 @@ class PyUsbBulkTransport(BulkTransport):
         }
         if self._serial:
             kwargs['serial_number'] = self._serial
-        new_device = usb.core.find(**kwargs)
+        new_device = usb_find(**kwargs)
         if new_device is None:
             raise TransportError(
                 f"USB device {self._vid:04X}:{self._pid:04X} disappeared "

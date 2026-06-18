@@ -17,7 +17,6 @@ import logging
 import os
 from pathlib import Path
 
-import usb.core
 import usb.util
 
 from ...core.errors import TransportError
@@ -32,6 +31,7 @@ from ...core.ports import (
     SensorEnumerator,
 )
 from ...core.registry import ALL_DEVICES
+from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
@@ -459,7 +459,7 @@ class LinuxPlatform(Platform):
                  len(ALL_DEVICES))
         found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
-            for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
+            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, 'iSerialNumber', 0)
                 serial: str = ""
                 try:
