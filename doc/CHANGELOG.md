@@ -1,5 +1,23 @@
 # Changelog
 
+## v9.7.3
+
+Windows GUI launch fixes — two crashes that v9.7.2 exposed by letting the app
+boot past the earlier `typer.Exit` / `fcntl` errors.
+
+**`usb.core.NoBackendError` on launch — fixed.**  Windows has no system libusb,
+and the packaged build's bare `usb.core.find` couldn't locate the bundled DLL,
+so device discovery crashed.  USB scanning now routes through `libusb_package`'s
+bundled backend (the canonical pyocd fix, #131 — dropped in the cutover).
+Verified on a Windows 11 VM: the device was detected.
+
+**`AF_UNIX not available` crash on launch — fixed.**  The GUI hosts an optional
+IPC socket; on Windows (no `AF_UNIX`) it now skips it and runs in-process,
+instead of raising.  This restores the pre-cutover behavior.
+
+Together with v9.7.2's `typer.Exit` + `fcntl` fixes, the Windows GUI launch path
+is clear again.
+
 ## v9.7.2
 
 Bug-fix release: a Windows GUI launch crash, the GPU selector, and automatic
