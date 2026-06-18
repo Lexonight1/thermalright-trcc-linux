@@ -1,5 +1,36 @@
 # Changelog
 
+## v9.7.2
+
+Bug-fix release: a Windows GUI launch crash, the GPU selector, and automatic
+SELinux setup.
+
+**Windows: GUI no longer crashes on launch (#187).**  `trcc-gui.exe` died with
+*"Failed to Execute script '__main__' due to unhandled exception"* on every
+v9.7.1 launch.  The packaged app calls the GUI launcher directly (outside the
+command-line runner), but it raised `typer.Exit` — an internal control-flow
+signal that only works inside that runner — so it escaped as an unhandled
+exception.  The launcher now exits cleanly via `SystemExit` in every context
+(packaged exe, `trcc-gui`/`trcc-lcd` scripts, and `python -m trcc gui`).
+
+**GPU selector now works.**  On multi-GPU machines the control-center GPU
+picker listed the GPUs and saved your choice, but the displayed metric always
+came from the first discrete GPU — the selection never reached the sensor
+layer.  Picking a GPU now re-routes the metric, through the universal command
+path so the GUI, qtgui, CLI (`trcc config gpu`), and API all honour it, and the
+choice persists across restarts.
+
+**SELinux USB policy installs automatically.**  On enforcing systems (Bazzite,
+Silverblue, Fedora Atomic) the `trcc_usb` policy that allows USB device access
+used to need a manual command.  The RPM now builds and loads it in `%post`, and
+source / pip installs load it via `trcc system setup`.
+
+**Source / pip setup fixes.**  `trcc system setup` failed with
+`ModuleNotFoundError: No module named 'trcc'` after `pip install --user` — the
+sudo re-exec couldn't see the user's site-packages; it now injects the right
+import paths.  Setup also reported "udev rules not installed" right next to
+"completed" on a first run; it now re-checks permissions after installing.
+
 ## v9.7.1
 
 Display-correctness release for LED and LCD panels, on top of a per-device
