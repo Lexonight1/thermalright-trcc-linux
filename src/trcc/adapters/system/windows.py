@@ -439,6 +439,29 @@ class WindowsPlatform(Platform):
         log.debug("minimize_on_close: called")
         return True
 
+    def configure_dpi(self) -> None:
+        """Mark the process per-monitor DPI-aware before the QApplication.
+
+        On hi-DPI displays Windows otherwise bitmap-stretches the window,
+        blurring the baked 1× PNG chrome.  ``SetProcessDpiAwareness(2)`` =
+        ``PROCESS_PER_MONITOR_DPI_AWARE``; it must run before any window
+        is created.  Legacy parity at
+        ``legacy/adapters/system/windows_platform.py:285``.
+
+        Best-effort: older Windows (no ``shcore``) or a non-Windows build
+        raises ``OSError`` / ``AttributeError`` — logged at debug, never
+        fatal.
+        """
+        log.info("configure_dpi: called")
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # type: ignore[attr-defined]
+        except (OSError, AttributeError) as e:
+            log.debug(
+                "configure_dpi: SetProcessDpiAwareness unavailable (%s) "
+                "— older Windows or shcore absent",
+                type(e).__name__,
+            )
+
     def configure_stdout(self) -> None:
         """Rewrap stdout / stderr as UTF-8 with ``errors='replace'``.
 
