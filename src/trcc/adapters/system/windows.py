@@ -20,7 +20,7 @@ from typing import Any
 import usb.util
 
 from ...core.errors import TransportError
-from ...core.models import DeviceInfo
+from ...core.models import DeviceInfo, memory_form_factor, memory_type
 from ...core.ports import (
     AutostartManager,
     BulkTransport,
@@ -574,8 +574,8 @@ def _windows_memory_info() -> list[dict[str, str]]:
                 "rank": str(mem.Rank or ""),
                 "data_width": str(mem.DataWidth or ""),
                 "total_width": str(mem.TotalWidth or ""),
-                "type": "Unknown",          # full mapping kept simple here
-                "form_factor": "Unknown",
+                "type": memory_type(mem.SMBIOSMemoryType),
+                "form_factor": memory_form_factor(mem.FormFactor),
             }
             if slot["size"] and slot["size"] != "0 GB":
                 slots.append(slot)
@@ -584,8 +584,44 @@ def _windows_memory_info() -> list[dict[str, str]]:
     return slots
 
 
+def _disk_type(disk: Any) -> str:
+    """SSD / HDD / Unknown from a ``Win32_DiskDrive`` row.
+
+    WMI has no clean rotational flag, so fall back to the model and
+    ``MediaType`` strings — the same heuristic legacy used.
+    """
+    model = (getattr(disk, "Model", "") or "").upper()
+    media_type = (getattr(disk, "MediaType", "") or "").upper()
+    if "SSD" in model or "NVME" in model or "SOLID" in media_type:
+        return "SSD"
+    if "HDD" in model or "FIXED" in media_type:
+        return "HDD"
+    return "Unknown"
+
+
+def _disk_health(device_id: str | None) -> str:
+    """SMART overall health via ``MSStorageDriver_FailurePredictStatus``.
+
+    Lives in the ``root\\WMI`` namespace (distinct from the default
+    ``root\\cimv2``).  Returns ``PASSED`` / ``FAILED`` / ``Unknown``.
+    """
+    if not device_id:
+        return "Unknown"
+    try:
+        import wmi  # pyright: ignore[reportMissingImports]
+        w = wmi.WMI(namespace="root\\WMI")
+        for status in w.MSStorageDriver_FailurePredictStatus():
+            if status.Active:
+                return "FAILED" if status.PredictFailure else "PASSED"
+    except ImportError:
+        log.debug("wmi package missing — no SMART health probe")
+    except Exception as e:  # WMI/COM exceptions share no common base
+        log.debug("MSStorageDriver_FailurePredictStatus failed: %s", type(e).__name__)
+    return "Unknown"
+
+
 def _windows_disk_info() -> list[dict[str, str]]:
-    """Win32_DiskDrive probe."""
+    """Win32_DiskDrive probe — name, model, size, type, SMART health."""
     log.debug("_windows_disk_info: called")
     disks: list[dict[str, str]] = []
     try:
@@ -600,7 +636,8 @@ def _windows_disk_info() -> list[dict[str, str]]:
                 "name": disk.DeviceID or "",
                 "model": (disk.Model or "").strip(),
                 "size": _format_size_bytes(disk.Size),
-                "type": "Unknown",
+                "type": _disk_type(disk),
+                "health": _disk_health(disk.DeviceID),
             })
     except Exception as e:
         log.debug("WMI disk query failed: %s", type(e).__name__)

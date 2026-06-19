@@ -1125,3 +1125,43 @@ SENSOR_TO_OVERLAY: dict[str, tuple[int, int]] = {
     "fan_cpu_fan": (5, 1),  "fan_gpu_fan": (5, 2),
     "fan_ssd_fan": (5, 3),  "fan_fan2": (5, 4),
 }
+
+
+# =========================================================================
+# SMBIOS memory descriptors (WMI Win32_PhysicalMemory numeric codes)
+# =========================================================================
+
+# ``Win32_PhysicalMemory.SMBIOSMemoryType`` (SMBIOS 7.18.2) → DRAM family.
+# ``Win32_PhysicalMemory.FormFactor`` (SMBIOS 7.18.1) → module form factor.
+# The Windows sensor adapter maps the raw WMI integers through these so the
+# memory panel shows "DDR5" / "SODIMM" instead of a bare code; Linux/macOS
+# read the same field names from their native probes.  Codes that aren't in
+# the table resolve to ``"Unknown"`` (see ``memory_type`` / ``memory_form_factor``).
+
+SMBIOS_MEMORY_TYPE: dict[int, str] = {
+    20: "DDR",
+    21: "DDR2",
+    24: "DDR3",
+    26: "DDR4",
+    30: "LPDDR4",
+    34: "DDR5",
+    35: "LPDDR5",
+}
+
+MEMORY_FORM_FACTOR: dict[int, str] = {
+    8: "DIMM",
+    12: "SODIMM",
+    13: "RIMM",
+    15: "FB-DIMM",
+    16: "Die",
+}
+
+
+def memory_type(code: int | None) -> str:
+    """SMBIOS memory-type code → DRAM family name (``"Unknown"`` if unmapped)."""
+    return SMBIOS_MEMORY_TYPE.get(code or 0, "Unknown")
+
+
+def memory_form_factor(code: int | None) -> str:
+    """SMBIOS form-factor code → module form factor (``"Unknown"`` if unmapped)."""
+    return MEMORY_FORM_FACTOR.get(code or 0, "Unknown")
