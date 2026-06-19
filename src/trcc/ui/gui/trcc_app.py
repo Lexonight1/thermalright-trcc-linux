@@ -431,6 +431,10 @@ class TRCCApp(QMainWindow):
         self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
         self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
         self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
+        # Live errors → transient tray balloon (spam-safe; render/transport
+        # errors can fire per-tick, so a dialog here would storm).
+        self._bus.error_occurred.connect(self._on_bus_error, type=qconn)
+        self._last_error_text = ""
 
         # Handshake notifier — kept for legacy code paths that spawn
         # threads to do connect() under the hood.  next/'s ConnectDevice
@@ -460,6 +464,28 @@ class TRCCApp(QMainWindow):
         self._setup_systray()
 
     # ── BusBridge subscribers (run on the Qt main thread) ───────────
+
+    def _on_bus_error(self, event: Any) -> None:
+        """Live error from the bus → transient system-tray balloon.
+
+        Spam-safe by construction: balloons are OS-transient, and we de-dup
+        an identical consecutive message (a per-tick render failure repeats
+        the same text — show it once, not every frame).  The tray is the
+        right surface for the legacy-skinned window: native, non-modal, no
+        clash with the chrome.
+        """
+        from .._errors import format_device_error
+        text = format_device_error(event)
+        if text == self._last_error_text:
+            return
+        self._last_error_text = text
+        log.info("_on_bus_error: [%s] %s", event.kind, event.message)
+        tray = getattr(self, "_tray", None)
+        if tray is not None and QSystemTrayIcon.isSystemTrayAvailable():
+            tray.showMessage(
+                "TRCC — device", text,
+                QSystemTrayIcon.MessageIcon.Warning, 8000,
+            )
 
     def _on_bus_device_connected(self, event: Any) -> None:
         """One device just attached/handshaked (hotplug after startup).

@@ -23,7 +23,6 @@ Usage (gui/__init__.py)::
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, Slot
@@ -33,7 +32,6 @@ from trcc.__version__ import __version__
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.results import ConnectResult
 
 log = logging.getLogger(__name__)
 
@@ -133,19 +131,6 @@ class TrccSplash(QWidget):
         self._status.setText(message)
 
 
-@dataclass(frozen=True, slots=True)
-class BootstrapOutcome:
-    """Result of the splash-time discover+connect pass.
-
-    ``aborted`` is True only if discovery itself raised (the GUI can't start).
-    ``failures`` lists devices that were found but did NOT connect — carried
-    forward so the main window can surface them once it (and its event sink)
-    exist; at bootstrap time no GUI sink is wired yet.
-    """
-    aborted: bool
-    failures: list[ConnectResult]
-
-
 class BootstrapWorker(QThread):
     """Runs ``DiscoverDevices`` on the App in a background QThread.
 
@@ -164,9 +149,6 @@ class BootstrapWorker(QThread):
     def __init__(self, app: App) -> None:
         super().__init__()
         self._app = app
-        # Devices found but not connected.  Read after the thread finishes
-        # (the GUI sink doesn't exist yet at bootstrap — see BootstrapOutcome).
-        self.failures: list[ConnectResult] = []
 
     def run(self) -> None:
         """Discover + connect every attached device.
@@ -197,19 +179,18 @@ class BootstrapWorker(QThread):
                         "Connect %s failed: %s",
                         product.key, connect_result.message,
                     )
-                    self.failures.append(connect_result)
         except Exception as exc:
             log.exception("Bootstrap error")
             self.failed.emit(str(exc))
 
 
-def run_bootstrap_with_splash(app: App) -> BootstrapOutcome:
+def run_bootstrap_with_splash(app: App) -> bool:
     """Show splash, run discover+connect in the background, close splash.
 
-    Returns a :class:`BootstrapOutcome`: ``aborted`` True only if discovery
-    itself raised (the GUI can't start); ``failures`` lists devices found but
-    not connected, surfaced once the window exists.  Caller must have a live
-    QApplication before calling this.
+    Returns True on success, False if discovery itself raised (the GUI can't
+    start).  Connect *failures* are not returned here — they're recorded in
+    the App model and surfaced by the window via the ``DeviceConnectionIssues``
+    query (bus-pure).  Caller must have a live QApplication before calling this.
     """
     splash = TrccSplash()
     splash.show()
@@ -231,5 +212,5 @@ def run_bootstrap_with_splash(app: App) -> BootstrapOutcome:
 
     if error:
         log.error("Bootstrap failed: %s", error[0])
-        return BootstrapOutcome(aborted=True, failures=[])
-    return BootstrapOutcome(aborted=False, failures=list(worker.failures))
+        return False
+    return True

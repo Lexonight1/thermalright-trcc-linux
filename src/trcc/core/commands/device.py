@@ -42,6 +42,7 @@ from ..results import (
     BackgroundResult,
     BootAnimationResult,
     BrightnessResult,
+    ConnectionIssuesResult,
     ConnectResult,
     DisconnectResult,
     DiscoverResult,
@@ -147,18 +148,22 @@ class ConnectDevice(Command[ConnectResult]):
             hints = app.platform.check_permissions()
             app.events.publish(ErrorOccurred(message=str(e), kind="not_found",
                                              key=self.key, hints=hints))
-            return ConnectResult(ok=False, key=self.key, message=str(e),
-                                 hints=hints)
+            result = ConnectResult(ok=False, key=self.key, message=str(e),
+                                   hints=hints)
+            app.note_connect_issue(result)
+            return result
 
         try:
             handshake = device.connect()
         except (HandshakeError, TransportError) as e:
-            app.detach(self.key)
+            app.detach(self.key)   # clears any prior issue for this key first
             hints = app.platform.check_permissions()
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
-            return ConnectResult(ok=False, key=self.key, message=str(e),
-                                 hints=hints)
+            result = ConnectResult(ok=False, key=self.key, message=str(e),
+                                   hints=hints)
+            app.note_connect_issue(result)
+            return result
 
         # Variant override: handshake reveals the PM/SUB fingerprint, which
         # disambiguates products sharing one (VID, PID).  Patch the device's
@@ -220,6 +225,7 @@ class ConnectDevice(Command[ConnectResult]):
         # from here (serialization + Bulk/LY keepalive) until disconnect.
         app.start_sender(self.key)
 
+        app.clear_connect_issue(self.key)   # it came up — drop any past failure
         app.events.publish(DeviceConnected(
             key=self.key, resolution=handshake.resolution,
         ))
@@ -228,6 +234,24 @@ class ConnectDevice(Command[ConnectResult]):
             message=f"Connected: {handshake.resolution}",
             handshake=handshake,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceConnectionIssues(Command[ConnectionIssuesResult]):
+    """Query devices that were found but failed to connect (with per-OS hints).
+
+    The bus-pure way for any UI to learn *current* connect failures — used on
+    startup to catch failures that fired before the UI subscribed, and as the
+    pull side alongside the ``ErrorOccurred`` push event.  Read-only.
+    """
+
+    def execute(self, app: App) -> ConnectionIssuesResult:
+        issues = app.connection_issues()
+        return ConnectionIssuesResult(
+            ok=True, issues=issues,
+            message=f"{len(issues)} device(s) failed to connect",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class DisconnectDevice(Command[DisconnectResult]):

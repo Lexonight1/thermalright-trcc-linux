@@ -43,7 +43,7 @@ from .core.led_models import LedRuntimeState
 from .core.models import HardwareMetrics, Theme, Wire, oriented_resolution
 from .core.ports import Device, Platform, Renderer, SendScheduler
 from .core.registry import find_product
-from .core.results import Result
+from .core.results import ConnectResult, Result
 from .services.cloud_theme import CloudThemeService
 from .services.device_sender import DeviceSender
 from .services.display import DisplayService
@@ -86,6 +86,11 @@ class App:
                  send_scheduler: SendScheduler | None = None) -> None:
         self.platform = platform
         self.devices: dict[str, Device] = {}
+        # Devices that were discovered but failed to connect, keyed by VID:PID.
+        # The model's queryable record of "what didn't come up, and why" — read
+        # back via the DeviceConnectionIssues command (bus-pure, survives the
+        # GUI not existing yet when the failure happened).
+        self._connect_issues: dict[str, ConnectResult] = {}
         self.events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = ThemeService(platform.paths())
@@ -385,9 +390,26 @@ class App:
             raise DeviceNotFoundError(f"Not attached: {key}")
         return device
 
+    # ── Connect-issue model (queried via DeviceConnectionIssues) ─────────
+
+    def note_connect_issue(self, result: ConnectResult) -> None:
+        """Record a failed connect so any UI can query why it didn't come up."""
+        log.info("note_connect_issue: key=%s msg=%s", result.key, result.message)
+        self._connect_issues[result.key] = result
+
+    def clear_connect_issue(self, key: str) -> None:
+        """Drop a device's recorded failure (it connected, or it's gone)."""
+        if self._connect_issues.pop(key, None) is not None:
+            log.info("clear_connect_issue: key=%s", key)
+
+    def connection_issues(self) -> list[ConnectResult]:
+        """Current connect failures — the queryable model state."""
+        return list(self._connect_issues.values())
+
     def detach(self, key: str) -> None:
         """Disconnect and drop a device.  Frees the scene cache + active theme."""
         log.info("detach: key=%s", key)
+        self.clear_connect_issue(key)
         # Stop the send worker BEFORE closing the transport so no in-flight
         # write races the disconnect (the scheduler joins the thread).
         self.stop_sender(key)

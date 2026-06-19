@@ -43,6 +43,18 @@ class ConnectResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class ConnectionIssuesResult(Result):
+    """Current device-connect failures — the queryable model state.
+
+    Each issue is the failed ``ConnectResult`` (key + message + per-OS
+    hints), reused as-is (DRY).  Any UI dispatches ``DeviceConnectionIssues``
+    to pull what failed and why — the bus-pure way to learn state that may
+    have happened before the UI subscribed.
+    """
+    issues: list[ConnectResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class DisconnectResult(Result):
     key: str = ""
 

@@ -31,7 +31,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import LcdSnapshot
+from ....core.commands import DeviceConnectionIssues, LcdSnapshot
+from ..._errors import format_device_error
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -113,10 +114,17 @@ class StatusPanel(BasePanel):
         )
         self._bus.error_occurred.connect(
             lambda e: self._add_event(
-                f"ERROR    [{e.kind}] {e.message}",
+                f"ERROR    [{e.kind}] {format_device_error(e)}",
             ),
             type=qconn,
         )
+
+        # Pull connect failures that fired before this panel subscribed —
+        # the same DeviceConnectionIssues query every UI uses (bus-pure).
+        for issue in self.dispatch(DeviceConnectionIssues()).issues:
+            self._add_event(
+                f"ERROR    [connect] {format_device_error(issue)}",
+            )
 
     # ── Refresh ───────────────────────────────────────────────────────
 

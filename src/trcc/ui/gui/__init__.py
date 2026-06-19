@@ -123,8 +123,7 @@ def run_gui(platform: Any, *, decorated: bool = False,
 
     # ── Splash + background discover ────────────────────────────────
     from .splash import run_bootstrap_with_splash
-    bootstrap = run_bootstrap_with_splash(app)
-    if bootstrap.aborted:
+    if not run_bootstrap_with_splash(app):
         return 1
 
     # ── Hotplug listener + metrics broadcast (one cadence drives the
@@ -174,9 +173,14 @@ def run_gui(platform: Any, *, decorated: bool = False,
         window.show()
         # Surface any device that was found but didn't connect — with the
         # OS-correct hint the Platform supplied (e.g. "run as administrator").
-        # Done after show() because the splash-time failure has no GUI sink
-        # yet (the window + bus_bridge are built above, post-bootstrap).
-        window.notify_device_failures(bootstrap.failures)
+        # Read from the bus (DeviceConnectionIssues query), NOT a handed list:
+        # the failures fired before the window subscribed, so we pull them
+        # from the App model the bus-pure way.  Live failures arrive via the
+        # ErrorOccurred subscription wired in the window.
+        from ...core.commands import DeviceConnectionIssues
+        window.notify_device_failures(
+            app.dispatch(DeviceConnectionIssues()).issues,
+        )
         # Foolproof GPU sensors: if an NVIDIA card is present but its reader
         # isn't installed, offer a one-click install (consented).  Guarded so
         # an optional prompt can never block startup.
