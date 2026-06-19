@@ -20,6 +20,7 @@ from ...core.ports import CpuSource, GpuSource
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
 from ._lhm import LhmCpu, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
+from ._wmi_gpu import discover_wmi_gpus
 from .aggregator import BaselineSensors
 from .chain import CpuSourceChain, GpuSourceChain
 from .nvml import discover_nvidia_gpus
@@ -74,4 +75,12 @@ def _build_windows_gpu_chains() -> list[GpuSource]:
             chains.append(sources[0])
         else:
             chains.append(GpuSourceChain(sources))
+
+    # Last resort: no live backend saw a GPU (AMD/Intel card with no
+    # HWiNFO/LHM running, non-NVIDIA so pynvml is N/A).  Surface the
+    # adapter by name via Win32_VideoController so the picker isn't empty.
+    if not chains:
+        chains = discover_wmi_gpus()
+        log.info("_build_windows_gpu_chains: live backends empty — "
+                 "WMI fallback yielded %d adapter(s)", len(chains))
     return chains
