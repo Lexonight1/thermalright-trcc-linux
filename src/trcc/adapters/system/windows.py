@@ -163,6 +163,17 @@ def _find_physical_drive(vid: int, pid: int) -> str | None:
     return None
 
 
+# Common CreateFileW failures when opening \\.\PhysicalDriveN for SCSI
+# passthrough — translated in the log so a reporter doesn't have to look up
+# the bare WinError number.
+_WIN_OPEN_ERRORS: dict[int, str] = {
+    2:  "ERROR_FILE_NOT_FOUND — the drive path is gone (replug / rescan)",
+    5:  "ERROR_ACCESS_DENIED — raw drive access needs Administrator; "
+        "run TRCC from an elevated terminal (Run as administrator)",
+    32: "ERROR_SHARING_VIOLATION — another process holds the device open",
+}
+
+
 class WindowsScsiTransport(ScsiTransport):
     """SCSI passthrough via DeviceIoControl on Windows."""
 
@@ -188,7 +199,11 @@ class WindowsScsiTransport(ScsiTransport):
                 None, OPEN_EXISTING, 0, None,
             )
             if handle == -1:
-                log.error("CreateFileW failed for %s", self._path)
+                err = ctypes.GetLastError()  # pyright: ignore[reportAttributeAccessIssue]
+                detail = _WIN_OPEN_ERRORS.get(
+                    err, "see Microsoft 'System Error Codes'")
+                log.error("CreateFileW failed for %s — WinError %d: %s",
+                          self._path, err, detail)
                 return False
             self._handle = handle
             return True
