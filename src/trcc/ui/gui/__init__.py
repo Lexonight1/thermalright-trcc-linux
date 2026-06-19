@@ -111,9 +111,6 @@ def run_gui(platform: Any, *, decorated: bool = False,
     # desktop-portal warnings are silenced at startup, not after.
     from ..qapp import configure_qapplication, configure_qt_environment
     configure_qt_environment()
-    # DPI awareness (Windows) must be set before the QApplication exists;
-    # no-op on Linux / macOS / BSD.
-    platform.configure_dpi()
     qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
     configure_qapplication(qapp)
 

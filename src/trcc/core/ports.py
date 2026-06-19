@@ -906,17 +906,6 @@ class Platform(ABC):
         already-UTF-8-safe stream.
         """
 
-    def configure_dpi(self) -> None:
-        """Apply per-process DPI configuration BEFORE the QApplication.
-
-        Default no-op for Linux / macOS / BSD — Qt's own HighDPI handling
-        suffices there.  Windows overrides to mark the process DPI-aware
-        so hi-DPI displays don't bitmap-stretch (and blur) the baked 1×
-        PNG chrome.  Must run before any window is created, so the GUI
-        launch calls it right after the Qt env vars and before building
-        the QApplication.
-        """
-
     def worker_thread_context(self) -> AbstractContextManager[None]:
         """Per-thread OS setup a background worker needs before OS API calls.
 
