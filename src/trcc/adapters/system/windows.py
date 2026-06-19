@@ -35,6 +35,7 @@ from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
 from ..sensors.windows import build_windows_sensors
 from . import PlatformFactory
+from ._windows_wmi import wmi_handle
 
 log = logging.getLogger(__name__)
 
@@ -143,8 +144,7 @@ def _find_physical_drive(vid: int, pid: int) -> str | None:
     vid_tag = f"VID_{vid:04X}"
     pid_tag = f"PID_{pid:04X}"
     try:
-        import wmi  # pyright: ignore[reportMissingImports]
-        w = wmi.WMI()
+        w = wmi_handle()
         for rel in w.Win32_USBControllerDevice():
             dep = str(rel.Dependent or "").upper()
             if vid_tag in dep and pid_tag in dep:
@@ -547,7 +547,7 @@ def _windows_memory_info() -> list[dict[str, str]]:
     log.debug("_windows_memory_info: called")
     slots: list[dict[str, str]] = []
     try:
-        import wmi  # pyright: ignore[reportMissingImports]
+        w = wmi_handle()
     except ImportError:
         log.debug("wmi package missing — falling back to psutil total")
         try:
@@ -563,7 +563,6 @@ def _windows_memory_info() -> list[dict[str, str]]:
             log.debug("psutil fallback failed: %s", type(e).__name__)
         return slots
     try:
-        w = wmi.WMI()
         for mem in w.Win32_PhysicalMemory():
             slot: dict[str, str] = {
                 "manufacturer": (mem.Manufacturer or "").strip(),
@@ -608,8 +607,7 @@ def _disk_health(device_id: str | None) -> str:
     if not device_id:
         return "Unknown"
     try:
-        import wmi  # pyright: ignore[reportMissingImports]
-        w = wmi.WMI(namespace="root\\WMI")
+        w = wmi_handle(namespace="root\\WMI")
         for status in w.MSStorageDriver_FailurePredictStatus():
             if status.Active:
                 return "FAILED" if status.PredictFailure else "PASSED"
@@ -625,12 +623,11 @@ def _windows_disk_info() -> list[dict[str, str]]:
     log.debug("_windows_disk_info: called")
     disks: list[dict[str, str]] = []
     try:
-        import wmi  # pyright: ignore[reportMissingImports]
+        w = wmi_handle()
     except ImportError:
         log.debug("wmi package missing — no disk info on Windows")
         return disks
     try:
-        w = wmi.WMI()
         for disk in w.Win32_DiskDrive():
             disks.append({
                 "name": disk.DeviceID or "",

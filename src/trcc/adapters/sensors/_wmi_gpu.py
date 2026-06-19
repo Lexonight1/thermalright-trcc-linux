@@ -32,9 +32,9 @@ _DISCRETE_MARKERS: tuple[str, ...] = (
 
 def _default_handle_factory() -> Any:
     """One-shot ``root\\cimv2`` WMI handle; ``None`` when wmi is absent."""
+    from ..system._windows_wmi import wmi_handle
     try:
-        import wmi  # pyright: ignore[reportMissingImports]
-        return wmi.WMI()
+        return wmi_handle()
     except ImportError:
         log.debug("wmi package unavailable — no WMI GPU enumeration")
         return None
