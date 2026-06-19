@@ -82,7 +82,19 @@ class DevicePickerWidget(QWidget):
     # ── Public API ───────────────────────────────────────────────────
 
     def current_key(self) -> str:
-        """Return the currently selected / typed key, stripped."""
+        """Return the currently selected / typed device key, stripped.
+
+        Items are ``addItem(label, userData=key)`` with a human label
+        ("vid:pid — Vendor Product"), so a SELECTED item carries the key in
+        ``currentData()``; the visible ``currentText()`` is just the label.
+        Reading ``currentText()`` handed the whole label to every command as
+        the key and broke all of them (#176).  Prefer the item's data; fall
+        back to the typed text only when nothing is selected (the editable
+        "type a raw key" path).
+        """
+        data = self._combo.currentData()
+        if data:
+            return str(data).strip()
         return self._combo.currentText().strip()
 
     def set_key(self, key: str) -> None:

@@ -1052,6 +1052,27 @@ def test_device_picker_emits_key_changed_on_text_finished(
     del qapp
 
 
+def test_device_picker_selected_item_yields_key_not_label(
+    gui_app: App, qapp: object,
+) -> None:
+    """Selecting a device from the dropdown must yield its KEY, not the human
+    label — #176, where qtgui sent the whole "vid:pid — Vendor Product" string
+    as the key and broke every display command."""
+    from types import SimpleNamespace
+
+    from trcc.ui.qtgui.device_picker import DevicePickerWidget
+
+    gui_app.devices["87ad:70db"] = SimpleNamespace(  # type: ignore[assignment]
+        info=SimpleNamespace(
+            vendor="Thermalright", product="Mjolnir Vision", kind="lcd"),
+    )
+    picker = DevicePickerWidget(gui_app, _bus(gui_app))
+    picker._populate_from_app()
+    picker._combo.setCurrentIndex(0)   # SELECT the dropdown item — the bug path
+    assert picker.current_key() == "87ad:70db"   # the KEY, not the label
+    del qapp
+
+
 def test_mask_browser_position_dispatches_command(
     gui_app: App, qapp: object,
 ) -> None:
