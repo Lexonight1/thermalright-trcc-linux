@@ -70,7 +70,7 @@ class HealthReport:
 # =========================================================================
 
 
-def check_python_version() -> HealthCheckResult:
+def check_python_version(platform: Platform) -> HealthCheckResult:
     """Python ≥ 3.11 is the project minimum (match-statement + slots)."""
     log.info("check_python_version: called")
     major, minor = sys.version_info[:2]
@@ -82,7 +82,7 @@ def check_python_version() -> HealthCheckResult:
     return HealthCheckResult(
         name="python-version", severity="FAIL",
         message=f"Python {major}.{minor} is below the 3.11 minimum",
-        fix_hint="Install Python 3.11+ via your distro package manager",
+        fix_hint=platform.software_install_hint("python"),
     )
 
 
@@ -143,9 +143,7 @@ def check_devices_visible(platform: Platform) -> HealthCheckResult:
         return HealthCheckResult(
             name="devices-visible", severity="WARN",
             message="No Thermalright devices detected on USB",
-            fix_hint=("Plug in a supported device and re-run; check udev "
-                      "rules with `trcc system doctor` if the device is "
-                      "physically attached"),
+            fix_hint=platform.no_devices_hint(),
         )
     return HealthCheckResult(
         name="devices-visible", severity="OK",
@@ -228,7 +226,7 @@ def check_gpu_sensors(platform: Platform) -> HealthCheckResult:
             name="gpu-sensors", severity="WARN",
             message="NVIDIA GPU detected but the pynvml reader is not installed "
                     "— GPU metrics will be empty",
-            fix_hint=package_install_hint("python3-pynvml")
+            fix_hint=platform.software_install_hint("pynvml")
                      + " (the trcc-linux package should pull this in)",
         )
     return HealthCheckResult(
@@ -238,7 +236,7 @@ def check_gpu_sensors(platform: Platform) -> HealthCheckResult:
     )
 
 
-def check_ffmpeg_present() -> HealthCheckResult:
+def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
     log.info("check_ffmpeg_present: called")
@@ -250,8 +248,8 @@ def check_ffmpeg_present() -> HealthCheckResult:
     return HealthCheckResult(
         name="ffmpeg", severity="WARN",
         message="ffmpeg not on PATH",
-        fix_hint="Install ffmpeg via your distro package manager — "
-                 "image themes still work without it",
+        fix_hint=platform.software_install_hint("ffmpeg")
+                 + " — image themes still work without it",
     )
 
 
@@ -299,7 +297,7 @@ def check_udev_rules_linux() -> HealthCheckResult:
     )
 
 
-def check_seven_zip_present() -> HealthCheckResult:
+def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
     """``7z`` is required for theme-pack extraction.  Absence is WARN —
     user can still install themes via tarballs or the cloud catalog."""
     log.info("check_seven_zip_present: called")
@@ -311,7 +309,7 @@ def check_seven_zip_present() -> HealthCheckResult:
     return HealthCheckResult(
         name="7z", severity="WARN",
         message="7z not on PATH",
-        fix_hint="Install p7zip-full / p7zip / 7zip via your package manager",
+        fix_hint=platform.software_install_hint("7z"),
     )
 
 
@@ -325,16 +323,16 @@ def run_health_checks(platform: Platform) -> HealthReport:
     log.info("run_health_checks: starting")
     paths = platform.paths()
     checks: list[HealthCheckResult] = [
-        check_python_version(),
+        check_python_version(platform),
         check_log_writable(paths),
         check_config_writable(paths),
         check_devices_visible(platform),
         check_sensors_enumerable(platform),
         check_gpu_sensors(platform),
-        check_ffmpeg_present(),
+        check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
-        check_seven_zip_present(),
+        check_seven_zip_present(platform),
     ]
     for c in checks:
         log.info("  %s [%s]: %s", c.name, c.severity, c.message)

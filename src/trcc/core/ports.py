@@ -887,6 +887,29 @@ class Platform(ABC):
     def install_method(self) -> str:
         """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
 
+    # ── Per-OS diagnostic hints (DI'd into the doctor / health checks) ──
+    #
+    # Concrete defaults so every Platform answers safely; each OS overrides
+    # with its native package manager / driver guidance.  Shared consumers
+    # (``adapters/diagnostics/health.py``) call these through the injected
+    # Platform — they NEVER hardcode a distro command, so the advice is
+    # correct on Windows / macOS / BSD, not just the Linux dev box.
+    def software_install_hint(self, tool: str) -> str:
+        """OS-correct one-line hint for installing a missing CLI tool.
+
+        ``tool`` is a logical name — ``"ffmpeg"``, ``"7z"``, ``"python"``,
+        ``"pynvml"``.  Override per OS (Linux → package manager, Windows →
+        winget, macOS → brew, BSD → pkg).
+        """
+        return f"Install {tool} and ensure it is on your PATH"
+
+    def no_devices_hint(self) -> str:
+        """OS-correct guidance shown when no device is detected.
+
+        Override per OS (Linux → udev rules, Windows → WinUSB driver, …).
+        """
+        return "Plug in a supported device and re-run."
+
     # ── GUI / hardware-probe convenience ──────────────────────────────
     def minimize_on_close(self) -> bool:
         """True if the GUI should minimize-to-tray on close instead of hiding.

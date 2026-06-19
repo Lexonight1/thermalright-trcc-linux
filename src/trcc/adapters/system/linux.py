@@ -321,6 +321,14 @@ class LinuxScsiTransport(ScsiTransport):
 # LinuxPlatform
 # =========================================================================
 
+# logical tool → distro package name (consumed by software_install_hint).
+_LINUX_INSTALL_PKGS: dict[str, str] = {
+    "ffmpeg": "ffmpeg",
+    "7z": "p7zip",
+    "python": "python3",
+    "pynvml": "python3-pynvml",
+}
+
 
 @PlatformFactory.register("linux")
 class LinuxPlatform(Platform):
@@ -506,6 +514,26 @@ class LinuxPlatform(Platform):
             log.debug("LinuxPlatform.install_method: shutil.which raised %s", e)
         log.info("LinuxPlatform.install_method → source")
         return "source"
+
+    # ── Per-OS diagnostic hints (distro package manager) ──────────────
+
+    def software_install_hint(self, tool: str) -> str:
+        """Distro-package-manager install line for ``tool``.
+
+        Reuses the existing pkg-manager detection (also used by the Linux
+        setup commands) — maps the logical tool to its distro package name.
+        """
+        log.debug("LinuxPlatform.software_install_hint: tool=%s", tool)
+        from ..diagnostics.health import package_install_hint
+        pkg = _LINUX_INSTALL_PKGS.get(tool, tool)
+        return package_install_hint(pkg)
+
+    def no_devices_hint(self) -> str:
+        log.debug("LinuxPlatform.no_devices_hint: called")
+        return (
+            "Run `trcc system setup` to install the udev rules "
+            "(/etc/udev/rules.d/99-trcc.rules), then replug the device."
+        )
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
 

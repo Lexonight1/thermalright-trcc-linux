@@ -62,6 +62,15 @@ class BSDPaths(Paths):
         return self._root / "trcc.log"
 
 
+# tool → pkg one-liner (FreeBSD/OpenBSD/NetBSD; consumed by software_install_hint).
+_BSD_INSTALL_HINTS: dict[str, str] = {
+    "ffmpeg": "pkg install ffmpeg",
+    "7z": "pkg install p7zip",
+    "python": "pkg install python311",
+    "pynvml": "pip install nvidia-ml-py",
+}
+
+
 @PlatformFactory.register("bsd")
 class BSDPlatform(Platform):
     """FreeBSD / OpenBSD implementation of Platform — BOT-only SCSI."""
@@ -175,6 +184,23 @@ class BSDPlatform(Platform):
         if getattr(sys, "frozen", False):
             return "pyinstaller"
         return "source"
+
+    # ── Per-OS diagnostic hints (pkg) ─────────────────────────────────
+
+    def software_install_hint(self, tool: str) -> str:
+        log.debug("software_install_hint: tool=%s", tool)
+        hint = _BSD_INSTALL_HINTS.get(tool)
+        if hint is None:
+            return f"Install {tool} and ensure it is on PATH"
+        return f"{tool} not found — install it:\n  {hint}"
+
+    def no_devices_hint(self) -> str:
+        log.debug("no_devices_hint: called")
+        return (
+            "Ensure the device is connected and your user can reach it "
+            "(check `usbconfig list` and the device node permissions under "
+            "/dev/da*)."
+        )
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
 

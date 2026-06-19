@@ -64,10 +64,36 @@ def test_tail_log_returns_last_n_lines(tmp_path: Path) -> None:
 # =========================================================================
 
 
-def test_python_version_check_passes_on_311_plus() -> None:
-    result = check_python_version()
+def test_python_version_check_passes_on_311_plus(fake_platform) -> None:
+    result = check_python_version(fake_platform)
     assert result.severity == "OK"
     assert "Python" in result.message
+
+
+def test_each_os_platform_answers_its_own_install_hint() -> None:
+    """The cutover Linux-hardcoded these; now each OS answers via the ABC."""
+    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.macos import MacOSPlatform
+    from trcc.adapters.system.windows import WindowsPlatform
+
+    assert "winget" in WindowsPlatform().software_install_hint("ffmpeg")
+    assert "brew" in MacOSPlatform().software_install_hint("ffmpeg")
+    assert "pkg install" in BSDPlatform().software_install_hint("ffmpeg")
+    # Unknown tool falls back to the generic ABC default, never crashes.
+    assert "PATH" in WindowsPlatform().software_install_hint("nonesuch")
+
+
+def test_each_os_platform_answers_its_own_no_devices_hint() -> None:
+    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.macos import MacOSPlatform
+    from trcc.adapters.system.windows import WindowsPlatform
+
+    assert "WinUSB" in WindowsPlatform().no_devices_hint()
+    assert "macOS" in MacOSPlatform().no_devices_hint()
+    assert "usbconfig" in BSDPlatform().no_devices_hint()
+    # No Linux-isms (udev) leaking onto the non-Linux platforms.
+    assert "udev" not in WindowsPlatform().no_devices_hint()
+    assert "udev" not in MacOSPlatform().no_devices_hint()
 
 
 def test_log_writable_check_passes_on_tmp_dir(
@@ -130,7 +156,9 @@ def test_gpu_check_warns_when_reader_missing(
     result = check_gpu_sensors(fake_platform)
     assert result.severity == "WARN"
     assert "pynvml reader is not installed" in result.message
-    assert "python3-pynvml" in result.fix_hint
+    # Hint now comes from the DI'd platform's software_install_hint("pynvml")
+    # rather than a Linux-hardcoded package name.
+    assert "pynvml" in result.fix_hint
 
 
 def test_gpu_check_warns_with_reload_hint_on_init_failure(

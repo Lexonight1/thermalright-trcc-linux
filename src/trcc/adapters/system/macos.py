@@ -65,6 +65,15 @@ class MacOSPaths(Paths):
         return self._root / "Logs" / "trcc.log"
 
 
+# tool → Homebrew one-liner (consumed by software_install_hint).
+_MAC_INSTALL_HINTS: dict[str, str] = {
+    "ffmpeg": "brew install ffmpeg",
+    "7z": "brew install p7zip",
+    "python": "brew install python@3.12",
+    "pynvml": "pip install nvidia-ml-py",
+}
+
+
 @PlatformFactory.register("darwin")
 class MacOSPlatform(Platform):
     """macOS implementation of Platform — BOT-only SCSI via libusb."""
@@ -183,6 +192,23 @@ class MacOSPlatform(Platform):
         if getattr(sys, "frozen", False):
             return "pyinstaller"
         return "source"
+
+    # ── Per-OS diagnostic hints (Homebrew) ────────────────────────────
+
+    def software_install_hint(self, tool: str) -> str:
+        log.debug("software_install_hint: tool=%s", tool)
+        hint = _MAC_INSTALL_HINTS.get(tool)
+        if hint is None:
+            return f"Install {tool} and ensure it is on PATH"
+        return f"{tool} not found — install it:\n  {hint}"
+
+    def no_devices_hint(self) -> str:
+        log.debug("no_devices_hint: called")
+        return (
+            "Ensure the device is connected. macOS needs no driver for SCSI "
+            "LCD panels; if it still isn't seen, check System Settings → "
+            "Privacy & Security for a blocked USB prompt."
+        )
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
 

@@ -325,6 +325,14 @@ class _ComApartment:
 # WindowsPlatform
 # =========================================================================
 
+# tool → winget/pip one-liner (consumed by software_install_hint).
+_WIN_INSTALL_HINTS: dict[str, str] = {
+    "ffmpeg": "winget install Gyan.FFmpeg",
+    "7z": "winget install 7zip.7zip",
+    "python": "winget install Python.Python.3.12",
+    "pynvml": "pip install nvidia-ml-py",
+}
+
 
 @PlatformFactory.register("win32")
 class WindowsPlatform(Platform):
@@ -428,6 +436,23 @@ class WindowsPlatform(Platform):
         if getattr(sys, "frozen", False):
             return "pyinstaller"
         return "source"
+
+    # ── Per-OS diagnostic hints (winget / WinUSB) ─────────────────────
+
+    def software_install_hint(self, tool: str) -> str:
+        log.debug("software_install_hint: tool=%s", tool)
+        hint = _WIN_INSTALL_HINTS.get(tool)
+        if hint is None:
+            return f"Install {tool} and ensure it is on PATH"
+        return f"{tool} not found — install it:\n  {hint}"
+
+    def no_devices_hint(self) -> str:
+        log.debug("no_devices_hint: called")
+        return (
+            "On Windows, non-SCSI devices (HID / Bulk / LY) need the WinUSB "
+            "driver — install it with Zadig (https://zadig.akeo.ie/). "
+            "SCSI LCD panels need no driver."
+        )
 
     # ── GUI behaviour ─────────────────────────────────────────────────
 
