@@ -267,6 +267,10 @@ class ErrorOccurred(Event):
     message: str
     kind: str = "general"
     key: str = ""
+    # Actionable, OS-correct guidance for THIS failure, supplied by the
+    # Platform (e.g. check_permissions() → "run as administrator").  Empty
+    # when there's nothing to add beyond ``message``.
+    hints: list[str] = field(default_factory=list)
 
 
 # ── Control-center settings changes (no device key — app-global) ─────

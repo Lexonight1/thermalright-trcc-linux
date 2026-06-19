@@ -44,6 +44,8 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
     result = get_app().dispatch(ConnectDevice(key=key))
     typer.echo(result.message)
     if not result.ok:
+        for hint in result.hints:
+            typer.echo(f"  hint: {hint}")
         raise typer.Exit(code=1)
     if result.handshake:
         h = result.handshake

@@ -611,6 +611,32 @@ class TRCCApp(QMainWindow):
         else:
             self._screencast.stop()
 
+    def notify_device_failures(self, failures: list[Any]) -> None:
+        """Surface devices that were found but failed to connect.
+
+        Called once after ``show()`` with the failures the splash-time
+        discover+connect collected.  Each carries an OS-correct hint the
+        Platform supplied via ``check_permissions()`` (e.g. "run as
+        administrator" on Windows, "run `trcc system setup`" on Linux), so the
+        user sees *why* the panel is blank instead of an empty window.  No-op
+        when nothing failed.
+        """
+        if not failures:
+            return
+        log.warning("notify_device_failures: %d device(s) did not connect",
+                    len(failures))
+        lines = [f"• {f.key}: {f.message}" for f in failures]
+        hints: list[str] = []
+        for f in failures:
+            for hint in getattr(f, "hints", []):
+                if hint not in hints:
+                    hints.append(hint)
+        body = "Some devices were found but did not connect:\n\n" + "\n".join(lines)
+        if hints:
+            body += "\n\n" + "\n".join(hints)
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.warning(self, "Device connection", body)
+
     def replay_initial_devices(self) -> None:
         """Build handlers + sidebar from ``app.devices`` after first discovery.
 

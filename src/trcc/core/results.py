@@ -36,6 +36,10 @@ class ConnectResult(Result):
     key: str = ""
     handshake: HandshakeResult | None = None
     led_handshake: LedHandshakeResult | None = None
+    # OS-correct guidance when ``ok`` is False (e.g. "run as administrator").
+    # ``list[str]`` (not tuple) so it round-trips the reflective IPC encoder
+    # as a JSON array with no decode coercion.
+    hints: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

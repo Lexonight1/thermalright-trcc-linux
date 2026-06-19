@@ -134,6 +134,21 @@ def _kernel32() -> Any:
     return ctypes.windll.kernel32  # pyright: ignore[reportAttributeAccessIssue]
 
 
+def _is_elevated() -> bool:
+    """True if the process holds Administrator rights.
+
+    Raw ``\\\\.\\PhysicalDriveN`` read/write (SCSI passthrough) needs admin;
+    the packaged app gets it via the ``--uac-admin`` manifest, but a
+    source / pip launch from a normal shell does not.  Returns ``True``
+    (assume fine, emit no warning) if ``shell32`` can't be reached — we only
+    warn when we are *sure* the user lacks elevation.
+    """
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # pyright: ignore[reportAttributeAccessIssue]
+    except (OSError, AttributeError):
+        return True
+
+
 def _find_physical_drive(vid: int, pid: int) -> str | None:
     """Map VID:PID → \\\\.\\PhysicalDriveN via WMI.
 
@@ -439,6 +454,12 @@ class WindowsPlatform(Platform):
 
     def check_permissions(self) -> list[str]:
         log.info("check_permissions: called")
+        if not _is_elevated():
+            return [
+                "Not running as administrator — raw LCD device access (SCSI "
+                "passthrough) will fail. Launch the installed TRCC app (it "
+                "elevates automatically), or run from an administrator terminal."
+            ]
         return []
 
     def distro_name(self) -> str:

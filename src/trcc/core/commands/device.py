@@ -144,17 +144,21 @@ class ConnectDevice(Command[ConnectResult]):
         try:
             device = app.attach(vid, pid)
         except DeviceNotFoundError as e:
+            hints = app.platform.check_permissions()
             app.events.publish(ErrorOccurred(message=str(e), kind="not_found",
-                                             key=self.key))
-            return ConnectResult(ok=False, key=self.key, message=str(e))
+                                             key=self.key, hints=hints))
+            return ConnectResult(ok=False, key=self.key, message=str(e),
+                                 hints=hints)
 
         try:
             handshake = device.connect()
         except (HandshakeError, TransportError) as e:
             app.detach(self.key)
+            hints = app.platform.check_permissions()
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
-                                             key=self.key))
-            return ConnectResult(ok=False, key=self.key, message=str(e))
+                                             key=self.key, hints=hints))
+            return ConnectResult(ok=False, key=self.key, message=str(e),
+                                 hints=hints)
 
         # Variant override: handshake reveals the PM/SUB fingerprint, which
         # disambiguates products sharing one (VID, PID).  Patch the device's
