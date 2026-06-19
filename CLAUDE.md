@@ -13,16 +13,25 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **ACTIVE — cross-platform restoration (the cutover dropped working per-OS legacy code).**
-  Discipline: for EVERY fix, READ legacy's impl end-to-end first, match its shape into our
-  hexagonal/SOLID/DRY tree — never reinvent. SHIPPED in v9.7.2/9.7.3: Windows GUI launch
-  (typer.Exit, fcntl, libusb NoBackendError, AF_UNIX). PENDING (legacy-grounded plan in
-  `memory/project_cross_platform_restoration.md`): Windows DPI hook + COM-init DRY + WMI GPU
-  fallback + mem/disk enums/SMART; macOS fans(wire existing)/SMC electrical keys/powermetrics
-  samplers (reporter-gated); BSD XDG autostart (reporter-gated); the lazy-OS-import hardening;
-  setup source/pip polkit/RAPL/desktop gaps. ALSO: post HONEST #187/#188/#179 reporter replies
-  (libusb VM-verified; AF_UNIX restores legacy — once v9.7.3 win installer builds). VM: libusb
-  device-detect VERIFIED; GUI-window-opens NOT watched (user said ship it, legacy-faithful).
+- **ACTIVE — GitHub issue work + failure-surfacing follow-ups (2026-06-19). READ
+  `memory/project_failure_surfacing_and_issue_triage.md` FIRST.** Workflow (user-locked): read issue →
+  **no `trcc report`/diagnostic → kindly ask + WAIT** (no speculative work on "slackers") → has report →
+  smoke it through CURRENT code. Voice = `feedback_talk_to_reporters_like_mom`. **NEVER post a reply
+  without explicit "post it".** State: 36 open / 16 unreplied >10d; #191 + #176 FIXED+pushed this session;
+  6 warm replies DRAFTED-not-posted (#188/#191/#179/#161/#159/#173). TEED UP: (a) intake-form decision —
+  `.github/ISSUE_TEMPLATE/bug-report.yml` DRAFTED (required `trcc report`, uncommitted) vs just fix stale
+  doc + `blank_issues_enabled:false`; (b) stale-`next` purge (`doc/QUICKSTART_NEXT.md` says dead
+  `trcc-next system debug-report` → `trcc report`; "next is main now"); (c) **#173 libwdi auto-WinUSB**
+  feature; (d) **Linux name-only GPU fallback** (parity w/ Win WMI; #145/#161); (e) smoke **#185/#152**.
+- **Cross-platform restoration — Windows/BSD SHIPPED 2026-06-19, all pushed**
+  (`memory/project_cross_platform_restoration.md`). Discipline: READ legacy end-to-end, match shape,
+  never reinvent. DONE: mem/disk type+SMART, WMI GPU fallback, COM-seam, per-OS install/no-device hints,
+  per-OS connect-failure hints, BSD XDG autostart. **DPI hook REVERTED** (Qt6 owns DPI — VM-caught).
+  **KEY: Windows "used to work" = packaged app self-elevates (`--uac-admin`); source/non-admin →
+  ACCESS_DENIED on `\\.\PhysicalDrive`, NOT a code regression.** PENDING: macOS SMC-electrical/
+  powermetrics (architecture-gated, DEFERRED — no voltage/current ports), BSD mem-type/usbconfig (minor),
+  lazy-OS-import hardening, setup polkit/RAPL/desktop gaps. VM (Win11): WMI-GPU/COM-seam VERIFIED;
+  device-window-opens NOT eyeballed.
 - **OWED: eyeball the 2026-06-15 fixes in `dev/mock_gui.py`** (all PUSHED @ `0b965ff2`; logic +
   headless verified, human look not done). mock_gui == the device (C# encodes ONE image for preview
   AND wire). Check: (1) **LED effects** — `device=0416:8001 pm=1` breathe/colour-cycle/rainbow
