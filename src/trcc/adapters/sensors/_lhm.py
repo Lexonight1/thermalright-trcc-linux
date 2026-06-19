@@ -175,6 +175,7 @@ class LhmSubprocess:
         "_owned_process",
         "_probe",
         "_spawn",
+        "_unavailable",
         "_wait",
     )
 
@@ -190,6 +191,9 @@ class LhmSubprocess:
         self._wait = wait
         self._owned_process: subprocess.Popen[bytes] | None = None
         self._namespace_handle: Any = None
+        # True once a spawn attempt found no bundled exe — stops us
+        # re-attempting (and re-warning) on every poll.
+        self._unavailable = False
 
     @property
     def namespace(self) -> Any:
@@ -198,10 +202,12 @@ class LhmSubprocess:
     def start(self) -> Any:
         """Return the WMI namespace handle, spawning LHM if needed.
 
-        Idempotent — once a handle is cached, subsequent ``start()``
-        calls just return it.  Returns ``None`` when LHM isn't running
-        AND the bundled exe isn't available AND the namespace doesn't
-        register after spawning.
+        Idempotent AND spawn-safe — once a handle is cached, subsequent
+        ``start()`` calls just return it; and we NEVER spawn a second LHM
+        while one we already launched is still pending (the bug behind the
+        "multiple LibreHardwareMonitor windows", #191).  Returns ``None``
+        when LHM isn't running AND the bundled exe isn't available AND the
+        namespace doesn't register after spawning.
         """
         if self._namespace_handle is not None:
             return self._namespace_handle
@@ -212,12 +218,26 @@ class LhmSubprocess:
             self._namespace_handle = existing
             return existing
 
+        # We already launched LHM — its WMI namespace just hasn't registered
+        # yet (or never will).  Wait on THAT process; never spawn a second
+        # copy.  This is the #191 fix: without it, a slow/failed namespace
+        # registration made every poll spawn another LibreHardwareMonitor.
+        if self._owned_process is not None:
+            self._namespace_handle = self._wait()
+            return self._namespace_handle
+
+        # A previous spawn found no bundled exe — don't retry it (or re-warn)
+        # on every poll.  Cleared by stop() so a fresh session can try again.
+        if self._unavailable:
+            return None
+
         self._owned_process = self._spawn()
         if self._owned_process is None:
             log.warning(
                 "LibreHardwareMonitor not running and bundled exe not "
                 "found; LHM sensor source unavailable",
             )
+            self._unavailable = True
             return None
         log.info("Spawned LibreHardwareMonitor (pid=%d)",
                  self._owned_process.pid)
@@ -234,6 +254,7 @@ class LhmSubprocess:
     def stop(self) -> None:
         """Terminate the LHM subprocess if WE spawned it; else no-op."""
         self._namespace_handle = None
+        self._unavailable = False
         if self._owned_process is None:
             return
         try:

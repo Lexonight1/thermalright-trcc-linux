@@ -225,3 +225,50 @@ def test_wait_returns_none_on_timeout() -> None:
     assert result is None
     # Timed out at clock=2.0; 4 sleeps of 0.5 each.
     assert fake_clock[0] >= 2.0
+
+
+# ── #191: never spawn a second LibreHardwareMonitor ──────────────────
+
+
+def test_does_not_respawn_while_namespace_pending() -> None:
+    """Spawn succeeded but the WMI namespace never registered — a second
+    start() must wait on the SAME process, not launch another LHM (#191)."""
+    spawned: list[_StubProcess] = []
+
+    def _spawn() -> _StubProcess:
+        proc = _StubProcess()
+        spawned.append(proc)
+        return proc
+
+    lhm = LhmSubprocess(probe=lambda: None, spawn=_spawn, wait=lambda: None)
+    assert lhm.start() is None   # spawns once, namespace times out
+    assert lhm.start() is None   # must NOT spawn again
+    assert len(spawned) == 1, "must not spawn a second LibreHardwareMonitor"
+
+
+def test_does_not_retry_spawn_when_exe_missing() -> None:
+    """No bundled exe → spawn returns None → don't re-attempt or re-warn
+    on every poll (the log-spam half of the bug)."""
+    spawn_calls: list[int] = []
+    lhm = LhmSubprocess(
+        probe=lambda: None,
+        spawn=lambda: spawn_calls.append(1) or None,
+        wait=lambda: None,
+    )
+    assert lhm.start() is None
+    assert lhm.start() is None
+    assert len(spawn_calls) == 1, "must not re-attempt spawn after exe-missing"
+
+
+def test_stop_clears_unavailable_so_a_fresh_session_retries() -> None:
+    spawn_calls: list[int] = []
+    lhm = LhmSubprocess(
+        probe=lambda: None,
+        spawn=lambda: spawn_calls.append(1) or None,
+        wait=lambda: None,
+    )
+    lhm.start()        # spawn #1 → None → marks unavailable
+    lhm.start()        # guarded — no spawn
+    lhm.stop()         # clears the unavailable flag
+    lhm.start()        # spawn allowed again
+    assert len(spawn_calls) == 2
