@@ -80,95 +80,13 @@ class LinuxPaths(Paths):
 
 
 # =========================================================================
-# LinuxAutostart — XDG Autostart (.desktop in ~/.config/autostart/)
+# Autostart — XDG .desktop manager moved to ._autostart
 # =========================================================================
 #
-# The XDG Autostart spec is supported by every major Linux desktop (GNOME,
-# KDE, XFCE, Cinnamon, Budgie, MATE, LXQt).  A simple `.desktop` file in
-# `$XDG_CONFIG_HOME/autostart/` (default `~/.config/autostart/`) makes the
-# app launch on user login.  No root required — pure per-user opt-in.
-
-
-_AUTOSTART_FILENAME = "trcc.desktop"
-
-_AUTOSTART_TEMPLATE = """\
-[Desktop Entry]
-Type=Application
-Name=TRCC (next)
-GenericName=Thermalright Cooler Control
-Comment=Auto-start TRCC GUI on login
-Exec={exec_cmd}
-Icon=trcc-linux
-Terminal=false
-Categories=System;Settings;
-X-GNOME-Autostart-enabled=true
-StartupNotify=false
-"""
-
-
-class LinuxAutostart(AutostartManager):
-    """XDG Autostart adapter — writes/removes ~/.config/autostart/trcc.desktop."""
-
-    def __init__(self) -> None:
-        xdg = os.environ.get("XDG_CONFIG_HOME")
-        base = Path(xdg) if xdg else Path.home() / ".config"
-        self._path = base / "autostart" / _AUTOSTART_FILENAME
-        log.info("LinuxAutostart: desktop file path = %s", self._path)
-
-    @property
-    def path(self) -> Path:
-        log.debug("LinuxAutostart.path → %s", self._path)
-        return self._path
-
-    def is_enabled(self) -> bool:
-        enabled = self._path.is_file()
-        log.debug("LinuxAutostart.is_enabled → %s (%s)", enabled, self._path)
-        return enabled
-
-    def enable(self) -> None:
-        log.info("LinuxAutostart.enable: writing %s", self._path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(self._render(), encoding="utf-8")
-        self._path.chmod(0o644)
-        log.info("Autostart enabled: %s", self._path)
-
-    def disable(self) -> None:
-        log.info("LinuxAutostart.disable: removing %s", self._path)
-        if self._path.exists():
-            self._path.unlink()
-            log.info("Autostart disabled: %s", self._path)
-        else:
-            log.info("LinuxAutostart.disable: %s did not exist", self._path)
-
-    def refresh(self) -> None:
-        """Re-render the .desktop file if it's present (picks up new Exec path)."""
-        if self._path.exists():
-            log.info("LinuxAutostart.refresh: re-rendering %s", self._path)
-            self.enable()
-        else:
-            log.debug("LinuxAutostart.refresh: %s not present — nothing to refresh",
-                      self._path)
-
-    def _render(self) -> str:
-        return _AUTOSTART_TEMPLATE.format(exec_cmd=self._exec_cmd())
-
-    @staticmethod
-    def _exec_cmd() -> str:
-        """Build the launch command.
-
-        Preference order:
-          1. `trcc` console script if installed and on PATH
-          2. `<sys.executable> -m trcc gui`
-
-        The second form is robust across pipx / venv / system-python
-        installs because sys.executable is always the right interpreter.
-        """
-        import shutil
-        import sys as _sys
-
-        if (resolved := shutil.which("trcc")):
-            return f"{resolved} gui"
-        return f"{_sys.executable} -m trcc gui"
+# ``XdgDesktopAutostart`` (writes ~/.config/autostart/trcc.desktop) now
+# lives in ``._autostart`` so ``BSDPlatform`` can share the same XDG
+# mechanism (legacy ran the identical code on both).  See
+# ``LinuxPlatform.autostart()`` below.
 
 
 # =========================================================================
@@ -490,8 +408,9 @@ class LinuxPlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
-            log.info("LinuxPlatform.autostart: building LinuxAutostart")
-            self._autostart = LinuxAutostart()
+            from ._autostart import XdgDesktopAutostart
+            log.info("LinuxPlatform.autostart: building XdgDesktopAutostart")
+            self._autostart = XdgDesktopAutostart()
         else:
             log.debug("LinuxPlatform.autostart: returning cached manager")
         return self._autostart

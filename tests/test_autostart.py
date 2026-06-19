@@ -1,18 +1,18 @@
-"""LinuxAutostart — per-user XDG .desktop file lifecycle."""
+"""XdgDesktopAutostart — per-user XDG .desktop file lifecycle (Linux + BSD)."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from trcc.adapters.system.linux import LinuxAutostart
+from trcc.adapters.system._autostart import XdgDesktopAutostart
 
 
 def test_is_enabled_false_when_no_file(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
     assert mgr.is_enabled() is False
 
 
 def test_enable_writes_desktop_entry(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
 
     mgr.enable()
 
@@ -23,7 +23,7 @@ def test_enable_writes_desktop_entry(tmp_home: Path) -> None:
 
 
 def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
 
     mgr.enable()
 
@@ -39,7 +39,7 @@ def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
 
 
 def test_enable_permissions_are_readable(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
 
     mgr.enable()
 
@@ -48,7 +48,7 @@ def test_enable_permissions_are_readable(tmp_home: Path) -> None:
 
 
 def test_disable_removes_file(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
     mgr.enable()
     assert mgr.is_enabled() is True
 
@@ -59,7 +59,7 @@ def test_disable_removes_file(tmp_home: Path) -> None:
 
 
 def test_disable_is_idempotent(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
 
     mgr.disable()  # nothing to remove — must not raise
 
@@ -67,7 +67,7 @@ def test_disable_is_idempotent(tmp_home: Path) -> None:
 
 
 def test_refresh_rewrites_when_file_present(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
     mgr.enable()
     # Truncate the file to simulate corruption
     mgr.path.write_text("bogus")
@@ -78,8 +78,17 @@ def test_refresh_rewrites_when_file_present(tmp_home: Path) -> None:
 
 
 def test_refresh_noops_when_file_absent(tmp_home: Path) -> None:
-    mgr = LinuxAutostart()
+    mgr = XdgDesktopAutostart()
 
     mgr.refresh()
 
     assert not mgr.path.exists()
+
+
+def test_linux_and_bsd_platforms_share_the_xdg_manager(tmp_home: Path) -> None:
+    """Both Linux and BSD return the shared XDG autostart (BSD was Noop)."""
+    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.linux import LinuxPlatform
+
+    assert isinstance(LinuxPlatform().autostart(), XdgDesktopAutostart)
+    assert isinstance(BSDPlatform().autostart(), XdgDesktopAutostart)

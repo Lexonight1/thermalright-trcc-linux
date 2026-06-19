@@ -266,7 +266,7 @@ class FakePlatform(Platform):
 def tmp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect $HOME + XDG_CONFIG_HOME to a per-test tmp dir.
 
-    Keeps LinuxAutostart, LinuxPaths, etc. from touching the user's
+    Keeps XdgDesktopAutostart, LinuxPaths, etc. from touching the user's
     real filesystem during tests.
     """
     monkeypatch.setenv("HOME", str(tmp_path))

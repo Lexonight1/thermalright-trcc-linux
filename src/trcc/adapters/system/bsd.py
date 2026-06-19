@@ -115,8 +115,10 @@ class BSDPlatform(Platform):
     def autostart(self) -> AutostartManager:
         log.info("autostart: cached=%s", self._autostart is not None)
         if self._autostart is None:
-            from ._autostart import NoopAutostart
-            self._autostart = NoopAutostart()
+            # XDG .desktop — the BSD desktops (GNOME/KDE/XFCE on FreeBSD et
+            # al.) honour the same spec as Linux; legacy shared this code.
+            from ._autostart import XdgDesktopAutostart
+            self._autostart = XdgDesktopAutostart()
         return self._autostart
 
     def hotplug(self) -> HotplugMonitor:
