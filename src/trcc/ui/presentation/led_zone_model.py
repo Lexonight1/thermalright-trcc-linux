@@ -79,6 +79,20 @@ class LedZoneModel:
 
     @property
     def enabled(self) -> list[bool]:
+        """The persisted multi-select / carousel mask (one bool per zone)."""
+        return list(self._enabled)
+
+    @property
+    def display_enabled(self) -> list[bool]:
+        """What the View should show as checked.
+
+        For a select-all style (PA120/LF10) the carousel toggle is an
+        "edit every zone together" overlay, so every button reads active while
+        it is on — without disturbing the persisted multi-select ``enabled``
+        mask, so turning it off restores the zones the user had picked.
+        """
+        if self._select_all_style and self._carousel:
+            return [True] * self._zone_count
         return list(self._enabled)
 
     # ── Interaction ───────────────────────────────────────────────────
@@ -86,47 +100,56 @@ class LedZoneModel:
     def click_zone(self, index: int) -> ZoneEmit | None:
         """Apply a zone-button click; return what the View should emit.
 
-        - select-all style + carousel on: click ignored, all stay enabled.
-        - carousel on: toggle this zone in/out; refuse to disable the last one.
-        - carousel off: radio-select this zone.
+        - **select-all style (PA120/LF10)**: the zones are an independent
+          multi-select — the colour applies to *every* selected zone (C#
+          ``ucColor1Delegate`` gate ``nowLedStyle == 2 || 7``).  Toggle this
+          zone in/out, refusing to disable the last.  While the "select all"
+          overlay (carousel) is on, all zones are edited together so a click is
+          ignored (turn it off to pick individually).
+        - **page style + carousel on**: toggle this page in/out of the rotation.
+        - **page style + carousel off**: radio-select this page.
         """
         if not 0 <= index < self._zone_count:
             log.debug("LedZoneModel.click_zone: index %s out of range", index)
             return None
 
-        if self._select_all_style and self._carousel:
-            self._enabled = [True] * self._zone_count
-            return None
+        if self._select_all_style:
+            if self._carousel:
+                return None  # select-all overlay on — every zone edited together
+            return self._toggle_zone(index)
 
         if self._carousel:
-            turning_on = not self._enabled[index]
-            if turning_on:
-                self._enabled[index] = True
-                return ZoneEmit("carousel_zone", index, True)
-            others = sum(1 for j in range(self._zone_count)
-                         if j != index and self._enabled[j])
-            if others > 0:
-                self._enabled[index] = False
-                return ZoneEmit("carousel_zone", index, False)
-            # Last enabled zone — keep it on, emit nothing.
-            self._enabled[index] = True
-            return None
+            return self._toggle_zone(index)
 
-        # Radio-select
+        # Page style, radio-select.
         self._selected = index
         self._enabled = [j == index for j in range(self._zone_count)]
         return ZoneEmit("zone_selected", index)
 
+    def _toggle_zone(self, index: int) -> ZoneEmit | None:
+        """Multi-select toggle with a can't-disable-the-last-zone guard."""
+        if not self._enabled[index]:
+            self._enabled[index] = True
+            return ZoneEmit("carousel_zone", index, True)
+        others = sum(1 for j in range(self._zone_count)
+                     if j != index and self._enabled[j])
+        if others > 0:
+            self._enabled[index] = False
+            return ZoneEmit("carousel_zone", index, False)
+        # Last enabled zone — keep it on, emit nothing.
+        self._enabled[index] = True
+        return None
+
     def toggle_carousel(self, on: bool) -> ZoneEmit:
-        """Toggle carousel/select-all mode; recompute enabled flags."""
+        """Toggle carousel / select-all mode."""
         self._carousel = on
         if self._select_all_style:
-            self._enabled = (
-                [True] * self._zone_count if on
-                else [j == self._selected for j in range(self._zone_count)]
-            )
+            # Select-all is a display/apply overlay (see ``display_enabled``):
+            # it does NOT mutate the underlying multi-select mask, so turning it
+            # off restores the zones the user had selected.
+            pass
         elif not on:
-            # Circulate off → collapse back to the single selected zone.
+            # Page style: circulate off → collapse to the single selected page.
             # (Circulate on leaves the current multi-select untouched.)
             self._enabled = [j == self._selected for j in range(self._zone_count)]
         return ZoneEmit("carousel", on=on)

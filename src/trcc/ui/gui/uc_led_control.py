@@ -1051,12 +1051,14 @@ class UCLedControl(QWidget):
     # -- Zone selection --
 
     def _sync_zone_buttons(self) -> None:
-        """Mirror the zone model's ``enabled`` flags onto the buttons.
+        """Mirror the zone model's display flags onto the buttons.
 
-        Buttons fire ``clicked`` (not ``toggled``) into ``_on_zone_clicked``,
-        so ``setChecked`` here never re-enters the handler.
+        Uses ``display_enabled`` so a select-all style shows every button active
+        while its overlay is on, without touching the persisted mask.  Buttons
+        fire ``clicked`` (not ``toggled``) into ``_on_zone_clicked``, so
+        ``setChecked`` here never re-enters the handler.
         """
-        enabled = self._zones.enabled
+        enabled = self._zones.display_enabled
         for i, btn in enumerate(self._zone_buttons):
             btn.setChecked(enabled[i] if i < len(enabled) else False)
 

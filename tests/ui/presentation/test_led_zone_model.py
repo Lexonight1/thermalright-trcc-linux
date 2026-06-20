@@ -81,29 +81,50 @@ def test_carousel_off_collapses_to_selected() -> None:
     assert m.enabled == [False, False, True, False]
 
 
-# ── select-all style (2 / 7) ─────────────────────────────────────────────
+# ── select-all style (PA120/LF10, 2/7) — independent multi-select ─────────
+#
+# Per the C# (FormLED button1_Click for nowLedStyle==2 + ucColor1Delegate
+# gate 2||7): the zones are an independent multi-select — the colour applies
+# to every selected zone.  There is NO radio mode; the "circulate" toggle is a
+# select-all/edit-all overlay that leaves the underlying mask intact.
 
 
-def test_select_all_style_carousel_enables_all() -> None:
+def test_select_all_click_is_multi_select_toggle_not_radio() -> None:
+    """Buttons toggle independently with circulate OFF (the #192 regression)."""
+    m = _model(4, select_all=True)            # zone 0 on by default
+    assert m.click_zone(2) == ZoneEmit("carousel_zone", 2, True)
+    assert m.enabled == [True, False, True, False]   # 0 kept, 2 added (not radio)
+    assert m.click_zone(0) == ZoneEmit("carousel_zone", 0, False)
+    assert m.enabled == [False, False, True, False]  # 0 removed
+
+
+def test_select_all_last_zone_cannot_be_disabled() -> None:
+    m = _model(4, select_all=True)            # only zone 0 on
+    assert m.click_zone(0) is None            # guard: can't disable the last
+    assert m.enabled == [True, False, False, False]
+
+
+def test_select_all_overlay_shows_all_and_preserves_mask() -> None:
+    """Circulate ON = edit-all overlay: display all active, mask untouched."""
     m = _model(4, select_all=True)
-    emit = m.toggle_carousel(True)
-    assert m.enabled == [True, True, True, True]
-    assert emit == ZoneEmit("carousel", on=True)
-
-
-def test_select_all_style_click_ignored_while_carousel_on() -> None:
-    m = _model(4, select_all=True)
+    m.click_zone(2)                           # mask = [T,F,T,F]
+    assert m.enabled == [True, False, True, False]
     m.toggle_carousel(True)
-    assert m.click_zone(2) is None
-    assert m.enabled == [True, True, True, True]
-
-
-def test_select_all_style_carousel_off_collapses_to_selected() -> None:
-    m = _model(4, select_all=True)
-    m.click_zone(3)                   # selected = 3
-    m.toggle_carousel(True)
+    assert m.enabled == [True, False, True, False]        # mask preserved
+    assert m.display_enabled == [True, True, True, True]  # overlay all-on
+    assert m.click_zone(1) is None            # clicks ignored while overlay on
+    assert m.enabled == [True, False, True, False]
     m.toggle_carousel(False)
-    assert m.enabled == [False, False, False, True]
+    assert m.enabled == [True, False, True, False]        # selection restored
+    assert m.display_enabled == [True, False, True, False]
+
+
+def test_page_style_display_equals_enabled() -> None:
+    """Non-select-all (page) styles: display mirrors the mask, no overlay."""
+    m = _model(4)
+    m.toggle_carousel(True)
+    m.click_zone(1)
+    assert m.display_enabled == m.enabled == [True, True, False, False]
 
 
 # ── load_sync (restore) ──────────────────────────────────────────────────
