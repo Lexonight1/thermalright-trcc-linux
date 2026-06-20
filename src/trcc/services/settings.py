@@ -395,13 +395,20 @@ class Settings:
             self._save()
 
     def set_led_zone_count(self, key: str, count: int) -> None:
-        """Resize the zones list — called by Led.connect once style is known."""
-        log.info("set_led_zone_count: key=%s count=%d", key, count)
+        """Resize the per-zone list to ``count`` — idempotent.
+
+        Sized lazily by RenderLed / SetLedColor for multi-zone styles
+        (PA120/LF10) the first time one is rendered/coloured.  No-op (no log,
+        no save) when already the right size, so per-tick / per-drag callers
+        don't spam.
+        """
         with self._lock:
             settings = self.for_led(key)
             current = len(settings.zones)
             if count == current:
                 return
+            log.info("set_led_zone_count: key=%s count=%d (was %d)",
+                     key, count, current)
             if count > current:
                 settings.zones.extend(
                     LedZoneSettings() for _ in range(count - current)

@@ -22,7 +22,7 @@ from trcc.adapters.device.led import (
     Led,
 )
 from trcc.app import App
-from trcc.core.commands import RenderLed
+from trcc.core.commands import RenderLed, SetLedColor
 from trcc.core.errors import DeviceNotConnectedError
 from trcc.core.led_protocol import LED_REMAP_TABLES
 from trcc.core.models import HardwareMetrics, LedStyle
@@ -365,3 +365,65 @@ def test_lc1_memory_ratio_scales_displayed_value() -> None:
         memory_ratio=4,
     )
     assert full_x4 != full_x1          # ×4 changes the rendered value
+
+
+# ── #192: SetLedColor applies per-zone for multi-zone styles (PA120) ──────────
+
+
+def test_set_led_color_targets_selected_zones_pa120(
+    fake_platform: FakePlatform,
+) -> None:
+    """Circulate OFF: colour applies only to the multi-selected (mask) zones."""
+    from trcc.services.led_segment import get_display
+
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=16)   # PA120
+    display = get_display(LedStyle.PA120)
+    assert display is not None and display.zone_led_map is not None
+    n = len(display.zone_led_map)
+    assert n >= 2
+
+    # Baseline every zone to white via select-all, then pick blue for 0 & 2 only.
+    app.settings.set_led_zone_count(_LED_KEY, n)
+    app.settings.set_led_zone_sync(_LED_KEY, True)
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(1, 1, 1)))   # all → white
+
+    app.settings.set_led_zone_sync(_LED_KEY, False)            # not select-all
+    app.settings.set_led_zone_sync_zones(
+        _LED_KEY, [i in (0, 2) for i in range(n)],
+    )
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(0, 0, 255)))
+
+    zones = app.settings.for_led(_LED_KEY).zones
+    assert zones[0].color == (0, 0, 255)
+    assert zones[2].color == (0, 0, 255)
+    assert zones[1].color == (1, 1, 1)               # untouched baseline
+    if n > 3:
+        assert zones[3].color == (1, 1, 1)
+
+
+def test_set_led_color_select_all_targets_every_zone_pa120(
+    fake_platform: FakePlatform,
+) -> None:
+    """Circulate ON (select-all) colours every zone (C# isLunBo branch)."""
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=16)
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(1, 1, 1)))
+    app.settings.set_led_zone_sync(_LED_KEY, True)           # select-all
+
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(0, 255, 0)))
+
+    zones = app.settings.for_led(_LED_KEY).zones
+    assert zones and all(z.color == (0, 255, 0) for z in zones)
+
+
+def test_set_led_color_stays_global_for_non_zone_style(
+    fake_platform: FakePlatform,
+) -> None:
+    """A page style (AX120) has no zone_led_map → colour is the global one."""
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=1)    # AX120 (PAGE, no zones)
+    app.dispatch(SetLedColor(key=_LED_KEY, color=(7, 8, 9)))
+    s = app.settings.for_led(_LED_KEY)
+    assert s.color == (7, 8, 9)
+    assert s.zones == []

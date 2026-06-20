@@ -242,6 +242,15 @@ class RenderLed(Command[LedColorsResult]):
                          "use SetLedColors instead"),
             )
 
+        # Multi-zone styles (PA120/LF10) keep a per-zone colour/mode list; make
+        # sure it exists, sized to the wire's zones, so the per-zone render path
+        # runs.  ``set_led_zone_count`` is idempotent — a no-op once sized.
+        # Nothing populated this before (#192), so the render always fell back
+        # to a single global colour and the zone buttons had no visible effect.
+        zone_map = display.zone_led_map
+        if zone_map is not None and len(led_settings.zones) != len(zone_map):
+            app.settings.set_led_zone_count(self.key, len(zone_map))
+
         # ── Segment phase (legacy ``_seg_phase``) ──
         # ``phase`` chooses which metric *page* a multi-page segment display
         # shows (C# LunBo) — CPU temp / CPU % / GPU temp / GPU %, etc.  The
@@ -283,9 +292,11 @@ class RenderLed(Command[LedColorsResult]):
         # ── Colors ──
         # Multi-zone styles (PA120 / LF10 — those with a ``zone_led_map``)
         # render each zone's own mode/color/brightness onto its mapped LED
-        # indices.  All other styles fill one global color list.
-        zone_map = display.zone_led_map
-        if zone_map is not None and effective_settings.zones:
+        # indices.  All other styles fill one global color list.  An EXPLICIT
+        # colour (CLI ``trcc led color`` diagnostic) overrides per-zone state —
+        # force that one colour on every LED at full brightness.
+        if (zone_map is not None and effective_settings.zones
+                and explicit_color is None):
             log.debug("RenderLed %s: multi-zone fill (%d zones)",
                       self.key, len(zone_map))
             colors = app.led_effects.tick_multi_zone(
@@ -359,9 +370,38 @@ class SetLedMode(Command[LedColorsResult]):
             message=f"LED mode set to {self.mode.name}",
         )
 
+def _multi_zone_count(app: App, key: str) -> int | None:
+    """Number of colour zones for a connected multi-zone LED, else None.
+
+    Resolves the device's LED style → segment display and returns
+    ``len(zone_led_map)`` for the per-zone styles (PA120/LF10), or None for
+    every other device, so a colour setter can branch global vs per-zone.
+    """
+    from ...services.led_segment import get_display
+    try:
+        device = app.get(key)
+    except DeviceNotFoundError:
+        return None
+    handshake = getattr(device, "led_handshake", None)
+    style = handshake.style if handshake is not None else None
+    if style is None:
+        return None
+    display = get_display(style)
+    if display is None or display.zone_led_map is None:
+        return None
+    return len(display.zone_led_map)
+
+
 @dataclass(frozen=True, slots=True)
 class SetLedColor(Command[LedColorsResult]):
-    """Set the global LED color (used in STATIC / BREATHING / COLORFUL modes)."""
+    """Set the LED colour.
+
+    For ordinary LED devices this is the global colour (STATIC / BREATHING /
+    COLORFUL).  For a multi-zone style (PA120/LF10) the colour applies to the
+    *selected* zones — every zone when "select all" (``zone_sync``) is on, else
+    the multi-select mask (``zone_sync_zones``) — mirroring the C#
+    ``ucColor1Delegate`` (gate ``nowLedStyle == 2 || 7``).  (#192)
+    """
     key: str
     color: tuple[int, int, int]
 
@@ -372,9 +412,31 @@ class SetLedColor(Command[LedColorsResult]):
                     ok=False, key=self.key, colors=[],
                     message=f"{label} out of range (0-255): {value}",
                 )
+        r, g, b = self.color
+        zone_count = _multi_zone_count(app, self.key)
+        if zone_count is not None:
+            app.settings.set_led_zone_count(self.key, zone_count)
+            s = app.settings.for_led(self.key)
+            if s.zone_sync:
+                targets = list(range(zone_count))
+            else:
+                mask = s.zone_sync_zones
+                targets = [i for i in range(zone_count)
+                           if i < len(mask) and mask[i]]
+                if not targets:
+                    targets = [0]   # default selection (configure: zone 0)
+            for i in targets:
+                app.settings.set_led_zone(self.key, i, color=self.color)
+            log.info("SetLedColor %s: #%02x%02x%02x → zone(s) %s",
+                     self.key, r, g, b, targets)
+            _publish_led_settings_changed(app, self.key)
+            return LedColorsResult(
+                ok=True, key=self.key, colors=[self.color],
+                message=(f"Zone colour #{r:02x}{g:02x}{b:02x} "
+                         f"applied to {len(targets)} zone(s)"),
+            )
         app.settings.set_led_color(self.key, self.color)
         _publish_led_settings_changed(app, self.key)
-        r, g, b = self.color
         return LedColorsResult(
             ok=True, key=self.key, colors=[self.color],
             message=f"LED color set to #{r:02x}{g:02x}{b:02x}",
