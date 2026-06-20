@@ -15,7 +15,6 @@ import logging
 import struct
 
 from ...core.errors import (
-    DeviceDisconnectedError,
     HandshakeError,
     TransportError,
 )
@@ -194,68 +193,22 @@ class BulkLcd(Device[BulkTransport]):
                   self.info.key, len(frame),
                   "JPEG" if self._profile.jpeg else "RGB565", width, height)
 
-        # Two-attempt loop with reconnect between attempts.  KVM USB
-        # passthrough + slower hubs intermittently NAK a frame; legacy
-        # ``BulkDevice.send_frame:199-225`` handled this by closing,
-        # re-handshaking, and retrying once before giving up.  The
-        # outer except hands the FINAL error to the recovery tracker
-        # so the per-frame retry doesn't burn G14's consecutive-error
-        # budget.
-        last_exc: BaseException | None = None
-        for attempt in range(2):
-            try:
-                for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
-                    self._transport.write(
-                        _EP_WRITE, frame[offset:offset + _WRITE_CHUNK_SIZE],
-                        _WRITE_TIMEOUT_MS,
-                    )
-                # Zero-length packet on 512-byte alignment (frame delimiter)
-                if len(frame) % 512 == 0:
-                    self._transport.write(_EP_WRITE, b"", _WRITE_TIMEOUT_MS)
-                break  # success
-            except Exception as e:
-                last_exc = e
-                if attempt == 0:
-                    log.warning(
-                        "BulkLcd %s: send attempt 1 failed (%s) — "
-                        "reconnecting and retrying",
-                        self.info.key, e,
-                    )
-                    try:
-                        self._transport.close()
-                        self._transport.open()
-                        self.connect()
-                    except Exception as reconnect_err:
-                        log.warning(
-                            "BulkLcd %s: reconnect failed: %s",
-                            self.info.key, reconnect_err,
-                        )
-                        # Fall through — second attempt will likely also
-                        # raise, and the recovery tracker handles it.
-                    continue
-                # Second attempt also failed — defer to the tracker.
-                verdict = self._recovery.note_error(e)
-                if verdict == "threshold":
-                    try:
-                        self._transport.close()
-                    except OSError as close_err:
-                        log.debug("BulkLcd %s: close raised: %s",
-                                  self.info.key, close_err)
-                    raise DeviceDisconnectedError(
-                        f"BulkLcd {self.info.key} disconnected after "
-                        f"{self._recovery.consecutive_failures} consecutive failures",
-                    ) from e
-                return False
-        else:  # pragma: no cover — 'break' or 'return' always exits
-            log.debug("BulkLcd %s: send loop exhausted; last_exc=%s",
-                      self.info.key, last_exc)
-            return False
+        def _write_frame() -> None:
+            for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
+                self._transport.write(
+                    _EP_WRITE, frame[offset:offset + _WRITE_CHUNK_SIZE],
+                    _WRITE_TIMEOUT_MS,
+                )
+            # Zero-length packet on 512-byte alignment (frame delimiter)
+            if len(frame) % 512 == 0:
+                self._transport.write(_EP_WRITE, b"", _WRITE_TIMEOUT_MS)
 
-        recovered = self._recovery.note_success()
-        if recovered:
-            log.info("BulkLcd %s: send recovered after %d disconnect failure(s)",
-                     self.info.key, recovered)
-        return True
+        # Shared reconnect + recovery policy (base Device): one in-place
+        # close→open→handshake retry absorbs the intermittent NAKs that KVM
+        # USB passthrough / slow hubs produce (legacy ``BulkDevice.send_frame``
+        # did the same) and heals a stale handle after resume, before
+        # escalating the final error to the recovery tracker.
+        return self._send_with_recovery(_write_frame)
 
     def disconnect(self) -> None:
         log.info("BulkLcd %s: disconnecting", self.info.key)

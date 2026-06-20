@@ -19,7 +19,6 @@ import time
 from pathlib import Path
 
 from ...core.errors import (
-    DeviceDisconnectedError,
     HandshakeError,
     TransportError,
     UnsupportedOperationError,
@@ -360,36 +359,23 @@ class Led(Device[BulkTransport]):
             log.debug("Led %s: already sending — skipped", self.info.key)
             return False
 
+        def _write_packet() -> None:
+            remaining = len(packet)
+            offset = 0
+            while remaining > 0:
+                chunk_size = min(remaining, _HID_REPORT_SIZE)
+                chunk = packet[offset:offset + chunk_size]
+                if len(chunk) < _HID_REPORT_SIZE:
+                    chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
+                self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
+                remaining -= chunk_size
+                offset += chunk_size
+
         try:
-            try:
-                remaining = len(packet)
-                offset = 0
-                while remaining > 0:
-                    chunk_size = min(remaining, _HID_REPORT_SIZE)
-                    chunk = packet[offset:offset + chunk_size]
-                    if len(chunk) < _HID_REPORT_SIZE:
-                        chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
-                    self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
-                    remaining -= chunk_size
-                    offset += chunk_size
-            except Exception as e:
-                verdict = self._recovery.note_error(e)
-                if verdict == "threshold":
-                    try:
-                        self._transport.close()
-                    except OSError as close_err:
-                        log.debug("Led %s: close raised: %s",
-                                  self.info.key, close_err)
-                    raise DeviceDisconnectedError(
-                        f"Led {self.info.key} disconnected after "
-                        f"{self._recovery.consecutive_failures} consecutive failures",
-                    ) from e
-                return False
-            recovered = self._recovery.note_success()
-            if recovered:
-                log.info("Led %s: send recovered after %d disconnect failure(s)",
-                         self.info.key, recovered)
-            return True
+            # Shared reconnect + recovery policy: one in-place close→open→
+            # handshake retry heals a stale handle (e.g. EIO after resume),
+            # then escalates to the recovery tracker.  (base Device)
+            return self._send_with_recovery(_write_packet)
         finally:
             self._send_lock.release()
 

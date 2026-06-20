@@ -37,12 +37,16 @@ _ERRNO_EBUSY = 16           # Device claimed by another process
 
 # Errnos that mean "the file descriptor / USB handle is gone".  These
 # never succeed on retry — recovery requires close + re-open.
+_ERRNO_EIO = 5              # I/O error — stale handle after a resume re-enumerate
 _ERRNO_EBADF = 9            # Bad file descriptor
 _ERRNO_ENXIO = 6            # No such device or address (SCSI generic gone)
 _ERRNO_ENODEV = 19          # No such device (USB unplugged / re-enumerated)
 _ERRNO_ESHUTDOWN = 108      # Transport endpoint is shut down (USB tear-down)
+# EIO is included because suspend/resume re-enumerates the USB device, leaving
+# the open handle stale: every write returns EIO and never recovers on retry —
+# only a close + re-open + re-handshake heals it (GitHub #189).
 _DISCONNECT_ERRNOS = frozenset(
-    (_ERRNO_EBADF, _ERRNO_ENXIO, _ERRNO_ENODEV, _ERRNO_ESHUTDOWN),
+    (_ERRNO_EIO, _ERRNO_EBADF, _ERRNO_ENXIO, _ERRNO_ENODEV, _ERRNO_ESHUTDOWN),
 )
 
 # After this many CONSECUTIVE disconnect-class failures, the tracker

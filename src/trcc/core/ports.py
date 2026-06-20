@@ -13,7 +13,7 @@ from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from .errors import UnsupportedOperationError
+from .errors import DeviceDisconnectedError, UnsupportedOperationError
 
 log = logging.getLogger(__name__)
 
@@ -216,6 +216,74 @@ class Device(ABC, Generic[T]):
         raise UnsupportedOperationError(
             f"{self.key} does not support boot animation (SCSI-only)"
         )
+
+    # ── Send recovery (Template Method shared by every wire) ─────────────
+    #
+    # The reconnect + consecutive-failure policy is invariant across wires;
+    # only the bytes written vary.  Subclasses build their payload and hand
+    # the wire-specific write as a thunk to ``_send_with_recovery`` — the
+    # base owns the retry/escalation so each ``send()`` carries one copy of
+    # the policy, not five.
+
+    def _reconnect(self) -> None:
+        """Close, re-open, and re-handshake the transport (best-effort).
+
+        The in-place recovery step every wire shares: a stale USB handle —
+        e.g. after the kernel re-enumerates the device on resume from suspend
+        (writes start returning ``EIO``) — is healed by reopening and re-running
+        ``connect()``, the same effect a reboot has without the reboot.  Swallows
+        and logs its own failure; the caller's retry surfaces a persistent
+        problem to the recovery tracker.
+        """
+        log.info("%s: reconnecting transport (close → open → handshake)", self.key)
+        try:
+            self._transport.close()
+            self._transport.open()
+            self.connect()
+        except Exception as e:
+            log.warning("%s: reconnect failed: %s", self.key, e)
+
+    def _send_with_recovery(self, write: Callable[[], None]) -> bool:
+        """Run a wire write under the shared reconnect + recovery policy.
+
+        Template Method: ``write`` is the subclass's wire-specific write thunk;
+        this owns the invariant every wire shares — one in-place
+        reconnect-and-retry (covers transient hub/KVM NAKs AND the
+        stale-handle-after-resume case), then escalation to the per-device
+        recovery tracker, raising :class:`DeviceDisconnectedError` once it hits
+        the consecutive-failure threshold so the device is marked disconnected.
+        Returns ``True`` on a successful send, ``False`` on a below-threshold
+        failure (caller retries next tick).
+        """
+        for attempt in range(2):
+            try:
+                write()
+            except Exception as e:
+                if attempt == 0:
+                    log.warning(
+                        "%s: send attempt 1 failed (%s) — reconnecting and retrying",
+                        self.key, e,
+                    )
+                    self._reconnect()
+                    continue
+                verdict = self._recovery.note_error(e)
+                if verdict == "threshold":
+                    try:
+                        self._transport.close()
+                    except OSError as close_err:
+                        log.debug("%s: close raised: %s", self.key, close_err)
+                    raise DeviceDisconnectedError(
+                        f"{self.key} disconnected after "
+                        f"{self._recovery.consecutive_failures} consecutive failures",
+                    ) from e
+                return False
+            else:
+                recovered = self._recovery.note_success()
+                if recovered:
+                    log.info("%s: send recovered after %d disconnect failure(s)",
+                             self.key, recovered)
+                return True
+        return False  # pragma: no cover — loop always returns or raises
 
 
 # =========================================================================
