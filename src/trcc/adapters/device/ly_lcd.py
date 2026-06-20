@@ -20,7 +20,6 @@ import logging
 import struct
 
 from ...core.errors import (
-    DeviceDisconnectedError,
     HandshakeError,
     TransportError,
 )
@@ -184,7 +183,7 @@ class LyLcd(Device[BulkTransport]):
         total_bytes = padded_chunks * _CHUNK_SIZE
         send_buf = bytes(chunks) + bytes(total_bytes - len(chunks))
 
-        try:
+        def _write_frame() -> bool:
             pos = 0
             while pos < total_bytes:
                 remaining = total_bytes - pos
@@ -196,27 +195,14 @@ class LyLcd(Device[BulkTransport]):
                     _EP_WRITE, send_buf[pos:pos + write_size], _WRITE_TIMEOUT_MS,
                 )
                 pos += _USB_WRITE_SIZE
-
             # ACK read
             self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _READ_TIMEOUT_MS)
-        except Exception as e:
-            verdict = self._recovery.note_error(e)
-            if verdict == "threshold":
-                try:
-                    self._transport.close()
-                except OSError as close_err:
-                    log.debug("LyLcd %s: close raised: %s",
-                              self.info.key, close_err)
-                raise DeviceDisconnectedError(
-                    f"LyLcd {self.info.key} disconnected after "
-                    f"{self._recovery.consecutive_failures} consecutive failures",
-                ) from e
-            return False
-        recovered = self._recovery.note_success()
-        if recovered:
-            log.info("LyLcd %s: send recovered after %d disconnect failure(s)",
-                     self.info.key, recovered)
-        return True
+            return True
+
+        # Shared reconnect + recovery policy (base Device): a transport error
+        # gets one in-place close→open→handshake retry (heals a stale handle
+        # after resume, #189) before escalating to the recovery tracker.
+        return self._send_with_recovery(_write_frame)
 
     def disconnect(self) -> None:
         log.info("LyLcd %s: disconnecting", self.info.key)

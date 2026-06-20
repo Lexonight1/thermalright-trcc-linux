@@ -193,7 +193,7 @@ class BulkLcd(Device[BulkTransport]):
                   self.info.key, len(frame),
                   "JPEG" if self._profile.jpeg else "RGB565", width, height)
 
-        def _write_frame() -> None:
+        def _write_frame() -> bool:
             for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
                 self._transport.write(
                     _EP_WRITE, frame[offset:offset + _WRITE_CHUNK_SIZE],
@@ -202,6 +202,7 @@ class BulkLcd(Device[BulkTransport]):
             # Zero-length packet on 512-byte alignment (frame delimiter)
             if len(frame) % 512 == 0:
                 self._transport.write(_EP_WRITE, b"", _WRITE_TIMEOUT_MS)
+            return True
 
         # Shared reconnect + recovery policy (base Device): one in-place
         # close→open→handshake retry absorbs the intermittent NAKs that KVM

@@ -14,7 +14,6 @@ import time
 import zlib
 
 from ...core.errors import (
-    DeviceDisconnectedError,
     HandshakeError,
     TransportError,
 )
@@ -180,7 +179,7 @@ class ScsiLcd(Device[ScsiTransport]):
 
         log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
                   self.info.key, total, len(chunks))
-        try:
+        def _write_frame() -> bool:
             offset = 0
             for cmd, size in chunks:
                 cdb = self._build_cdb(cmd, size)
@@ -195,33 +194,12 @@ class ScsiLcd(Device[ScsiTransport]):
                     )
                     return False
                 offset += size
-        except Exception as e:
-            verdict = self._recovery.note_error(e)
-            if verdict == "threshold":
-                self._close_transport_quietly()
-                raise DeviceDisconnectedError(
-                    f"ScsiLcd {self.info.key} disconnected after "
-                    f"{self._recovery.consecutive_failures} consecutive failures",
-                ) from e
-            return False
-        recovered = self._recovery.note_success()
-        if recovered:
-            log.info("ScsiLcd %s: send recovered after %d disconnect failure(s)",
-                     self.info.key, recovered)
-        return True
+            return True
 
-    def _close_transport_quietly(self) -> None:
-        """Best-effort transport close used by the recovery path.
-
-        The real :meth:`disconnect` also resets handshake/profile; that
-        state is preserved here so an immediate reconnect attempt can
-        re-use the cached identity.
-        """
-        try:
-            self._transport.close()
-        except OSError as e:
-            log.debug("ScsiLcd %s: transport close raised: %s",
-                      self.info.key, e)
+        # Shared reconnect + recovery policy (base Device): a transport error
+        # gets one in-place close→open→handshake retry (heals a stale handle
+        # after resume, #189) before escalating to the recovery tracker.
+        return self._send_with_recovery(_write_frame)
 
     def disconnect(self) -> None:
         log.info("ScsiLcd %s: disconnecting", self.info.key)

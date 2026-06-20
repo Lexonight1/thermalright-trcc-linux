@@ -359,7 +359,7 @@ class Led(Device[BulkTransport]):
             log.debug("Led %s: already sending — skipped", self.info.key)
             return False
 
-        def _write_packet() -> None:
+        def _write_packet() -> bool:
             remaining = len(packet)
             offset = 0
             while remaining > 0:
@@ -370,6 +370,7 @@ class Led(Device[BulkTransport]):
                 self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
                 remaining -= chunk_size
                 offset += chunk_size
+            return True
 
         try:
             # Shared reconnect + recovery policy: one in-place close→open→

@@ -12,11 +12,12 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC, Led, LedPayload
+from trcc.adapters.device.scsi_lcd import ScsiLcd
 from trcc.core.device_recovery import DISCONNECT_FAILURE_THRESHOLD, is_disconnect_error
 from trcc.core.errors import DeviceDisconnectedError
 from trcc.core.models import Kind, ProductInfo, Wire
 
-from .conftest import FakeBulkTransport
+from .conftest import FakeBulkTransport, FakeScsiTransport
 
 _EIO = 5
 
@@ -105,3 +106,67 @@ def test_led_send_escalates_to_disconnect_after_threshold() -> None:
         assert led.send(_payload()) is False
     with pytest.raises(DeviceDisconnectedError):
         led.send(_payload())
+
+
+# ── Cross-wire: the same template governs SCSI (increment 2) ──────────────────
+
+
+class _FlakyScsiTransport(FakeScsiTransport):
+    """FakeScsiTransport that raises EIO on the next ``fail_send`` CDBs."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_send = 0
+        self.open_calls = 0
+
+    def open(self) -> bool:
+        self.open_calls += 1
+        return super().open()
+
+    def send_cdb(self, cdb: bytes, data: bytes, timeout_ms: int = 5000) -> bool:
+        if self.fail_send > 0:
+            self.fail_send -= 1
+            raise OSError(_EIO, "Input/output error")
+        return super().send_cdb(cdb, data, timeout_ms)
+
+
+def _poll_response(fbl: int = 100, size: int = 0xE100) -> bytes:
+    resp = bytearray(size)
+    resp[0] = fbl
+    return bytes(resp)
+
+
+def _connected_scsi() -> tuple[ScsiLcd, _FlakyScsiTransport]:
+    transport = _FlakyScsiTransport()
+    transport.read_script.append(_poll_response())
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922,
+        vendor="ALi Corp", product="Frozen Warframe LCD",
+        wire=Wire.SCSI, kind=Kind.LCD,
+        device_type=1, fbl=100, native_resolution=(320, 320),
+        orientations=(0, 90, 180, 270),
+    )
+    scsi = ScsiLcd(info, transport)
+    scsi.connect()
+    return scsi, transport
+
+
+def test_scsi_soft_failure_returns_false_without_reconnect() -> None:
+    """A declined CDB (send_cdb→False) is a soft failure: no reconnect, no escalation."""
+    scsi, transport = _connected_scsi()
+    opens_after_connect = transport.open_calls
+    transport.send_should_succeed = False  # send_cdb returns False (no raise)
+
+    assert scsi.send(b"\x00" * 100) is False
+    assert transport.open_calls == opens_after_connect      # no reconnect
+    assert scsi._recovery.consecutive_failures == 0          # tracker untouched
+
+
+def test_scsi_send_reconnects_on_eio_then_succeeds() -> None:
+    """The shared template heals a stale SCSI handle too (cross-wire parity)."""
+    scsi, transport = _connected_scsi()
+    transport.read_script.append(_poll_response())  # for the reconnect's re-handshake
+    transport.fail_send = 1                          # first CDB of the send raises EIO
+
+    assert scsi.send(b"\x00" * 100) is True
+    assert transport.open_calls >= 2

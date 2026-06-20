@@ -243,21 +243,26 @@ class Device(ABC, Generic[T]):
         except Exception as e:
             log.warning("%s: reconnect failed: %s", self.key, e)
 
-    def _send_with_recovery(self, write: Callable[[], None]) -> bool:
+    def _send_with_recovery(self, write: Callable[[], bool]) -> bool:
         """Run a wire write under the shared reconnect + recovery policy.
 
-        Template Method: ``write`` is the subclass's wire-specific write thunk;
-        this owns the invariant every wire shares — one in-place
-        reconnect-and-retry (covers transient hub/KVM NAKs AND the
-        stale-handle-after-resume case), then escalation to the per-device
-        recovery tracker, raising :class:`DeviceDisconnectedError` once it hits
-        the consecutive-failure threshold so the device is marked disconnected.
-        Returns ``True`` on a successful send, ``False`` on a below-threshold
-        failure (caller retries next tick).
+        Template Method: ``write`` is the subclass's wire-specific write thunk.
+        Its outcome drives the policy every wire shares:
+
+        * **returns ``True``** — a completed send.  Resets the recovery counter
+          and returns ``True``.
+        * **returns ``False``** — a soft, protocol-level failure (short write,
+          empty ACK, ``send_cdb`` declined).  Returns ``False`` immediately so
+          the caller retries on the next tick — no reconnect, counter untouched.
+        * **raises** — a transport error.  One in-place reconnect-and-retry
+          (covers transient hub/KVM NAKs AND the stale-handle-after-resume case,
+          #189); a persistent failure escalates to the per-device recovery
+          tracker, raising :class:`DeviceDisconnectedError` once it hits the
+          consecutive-failure threshold so the device is marked disconnected.
         """
         for attempt in range(2):
             try:
-                write()
+                ok = write()
             except Exception as e:
                 if attempt == 0:
                     log.warning(
@@ -278,11 +283,12 @@ class Device(ABC, Generic[T]):
                     ) from e
                 return False
             else:
-                recovered = self._recovery.note_success()
-                if recovered:
-                    log.info("%s: send recovered after %d disconnect failure(s)",
-                             self.key, recovered)
-                return True
+                if ok:
+                    recovered = self._recovery.note_success()
+                    if recovered:
+                        log.info("%s: send recovered after %d disconnect failure(s)",
+                                 self.key, recovered)
+                return ok
         return False  # pragma: no cover — loop always returns or raises
 
 
