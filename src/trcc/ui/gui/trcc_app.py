@@ -691,8 +691,22 @@ class TRCCApp(QMainWindow):
             if key != target_key:
                 self._configure_inactive_lcd(key)
 
+        self._show_initial_view(target_key)
+
+    def _show_initial_view(self, target_key: str) -> None:
+        """Land on the active device's view, or the deviceless home when none.
+
+        Initial-view policy in one place (SRP): a discovered device activates
+        its panel; with zero devices (or none connected) the form chrome is
+        inert, so show the device-independent home/sysinfo view (live system
+        metrics) instead of a blank panel.  The sidebar already carries the
+        per-OS 'no devices' hint (``Platform.no_devices_hint()``).
+        """
         if target_key:
             self._activate_device(target_key)
+        else:
+            log.info("_show_initial_view: no devices — home/sysinfo empty state")
+            self._show_view('sysinfo')
 
     def _configure_inactive_lcd(self, key: str) -> None:
         """Load + render a connected LCD without it owning the shared preview.
@@ -943,6 +957,9 @@ class TRCCApp(QMainWindow):
         # Device sidebar — no detect_fn, populated via on_app_event
         self.uc_device = UCDevice(central)
         self.uc_device.setGeometry(*Layout.SIDEBAR)
+        # Per-OS "no devices" guidance comes from the Platform port (one
+        # source of truth), injected here so the panel stays toolkit-pure.
+        self.uc_device.set_no_devices_hint(self._app.platform.no_devices_hint())
 
         # FormCZTV container
         self.form_container = QWidget(central)

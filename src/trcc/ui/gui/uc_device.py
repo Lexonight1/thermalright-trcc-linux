@@ -232,6 +232,7 @@ class UCDevice(BasePanel):
             f"color: {Colors.MUTED_TEXT}; font-size: 9px; background: transparent;"
         )
         self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint_label.setWordWrap(True)  # per-OS hint is a full sentence
 
         # About / Control Center button
         self.about_btn = create_image_button(
@@ -241,6 +242,17 @@ class UCDevice(BasePanel):
         )
         self.about_btn.setToolTip("Control Center")
         self.about_btn.clicked.connect(self._on_about_clicked)
+
+    def set_no_devices_hint(self, text: str) -> None:
+        """Set the per-OS guidance shown in the sidebar when no device is found.
+
+        Injected by the composition root from ``Platform.no_devices_hint()`` so
+        the panel stays toolkit-pure (no platform import) and the hint is
+        sourced ONCE, per-OS, from the port — not hardcoded here.
+        """
+        old = self.hint_label.text()
+        log.info("set_no_devices_hint: %r → %r", old, text)
+        self.hint_label.setText(text)
 
     def _build_device_buttons(self, devices: list[dict]) -> None:
         """Clear old buttons and create new device buttons.

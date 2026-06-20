@@ -328,7 +328,46 @@ def _qapplication() -> Iterator[object]:
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     yield app
+    # Session end: GUI tests build widgets/timers parented to this long-lived
+    # QApplication; left in place they're destroyed during interpreter
+    # finalization — where a still-running daemon thread (``MetricsLoop`` /
+    # ``LedAnimationLoop`` / hotplug from an App a fixture didn't close) makes
+    # the destroy land off the main thread, tripping Qt's
+    # ``QObject::killTimer: Timers cannot be stopped from another thread``.
+    # Destroying them HERE — on the main thread, before finalization — kills
+    # their timers on the owning thread, silently and deterministically.
+    for w in list(QApplication.topLevelWidgets()):
+        w.deleteLater()
+    QApplication.processEvents()
+    import gc
+    gc.collect()
+    QApplication.processEvents()
     # No quit() — other Qt tests share this process; tearing down breaks them.
+
+
+@pytest.fixture(autouse=True)
+def _release_trcc_singleton() -> Iterator[None]:
+    """Release the ``TRCCApp`` process-singleton after each test.
+
+    ``TRCCApp.__new__`` enforces one instance per process; production releases
+    it in ``closeEvent``, which tests don't trigger.  So a test that builds a
+    ``TRCCApp`` leaves ``_instance`` set and the NEXT one in the same xdist
+    worker hits 'TRCCApp is a singleton'.  Reset it here (and delete the window
+    on the main thread) so every test starts clean.  Guarded on the module
+    already being imported, so non-GUI tests pay nothing — no forced import.
+    """
+    yield
+    import sys
+    mod = sys.modules.get("trcc.ui.gui.trcc_app")
+    if mod is None:
+        return
+    inst = mod.TRCCApp._instance
+    if inst is None:
+        return
+    inst.deleteLater()
+    mod.TRCCApp._instance = None
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()
 
 
 # =========================================================================
