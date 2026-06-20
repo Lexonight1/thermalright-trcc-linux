@@ -1,5 +1,41 @@
 # Changelog
 
+## v9.7.4
+
+Device-recovery and LED fixes, plus the GUI/cross-platform work that accumulated
+since v9.7.3.
+
+**Display no longer goes blank after sleep/resume (#189).**  On resume the kernel
+re-enumerates the USB device, leaving the app's open handle stale — every write
+failed with `EIO` and never recovered, so an LED cooler's screen stayed dark
+until a reboot.  `EIO` is now treated as a disconnect, and every wire
+(SCSI/HID/Bulk/LY/LED) heals a stale handle in place with one
+close→open→re-handshake retry before escalating.
+
+**PA120 / LF10 metric-zone selection + colouring restored (#192).**  Those zones
+are an independent multi-select — the picked colour applies to every selected
+zone, and "circulate" applies it to all — matching the original app.  A rework
+had turned them into a single-select "radio" and left the per-zone colour list
+unpopulated, so the buttons had no visible effect.  Both are fixed.
+
+**LED device picker fixed in the native skin (#176)** — it passed a label where a
+device id was expected, so display commands failed.
+
+**No more duplicate LibreHardwareMonitor helpers (#191)** — a slow sensor
+namespace could make the app spawn extra helper processes; it now waits for the
+one it started.
+
+**Empty-window state.**  With no device connected the GUI now shows the system
+dashboard plus a per-OS "connect a device" hint, instead of a blank panel.
+
+**Clearer failures.**  Device-connect failures now surface on the event bus with
+OS-correct hints (run `trcc system setup`, install the WinUSB driver, "run as
+administrator", etc.) across every UI.
+
+**Cross-platform restoration (Windows/BSD).**  Windows memory type/form-factor +
+disk type/SMART, a WMI `Win32_VideoController` GPU fallback, and a COM-safe WMI
+seam are back; BSD regained XDG autostart.
+
 ## v9.7.3
 
 Windows GUI launch fixes — two crashes that v9.7.2 exposed by letting the app
