@@ -144,8 +144,13 @@ class HidLcd(Device[BulkTransport]):
 
                 result = self._parse_response(resp)
                 self._handshake = result
-                log.info("HidLcd type %d handshake OK: resolution=%s",
-                         self.info.device_type, result.resolution)
+                log.info(
+                    "HidLcd type %d handshake OK: PM=%s SUB=%s resolution=%s",
+                    self.info.device_type,
+                    getattr(result, "pm_byte", "?"),
+                    getattr(result, "sub_byte", "?"),
+                    result.resolution,
+                )
                 return result
 
             except Exception as e:

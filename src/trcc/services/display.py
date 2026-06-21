@@ -646,18 +646,19 @@ class DisplayService:
 
     def _log_cache_transition(self, key: str, bg_hit: bool,
                               ovl_hit: bool) -> None:
-        """Log INFO on the first call AND every state flip per device.
+        """Log on the first call AND every cache state flip per device.
 
-        Per-tick HIT/MISS already logs at DEBUG in ``build_frame``; this
-        is the load-bearing diagnostic: "video should be animating but
-        cache is steady-HIT" is the shape of every "frozen on frame N"
-        regression, and surfaces as a missing flip in this log.
+        DEBUG, not INFO: on animated / cloud-background content the state flips
+        EVERY frame, so at INFO this floods the log and scrolls the once-per-
+        connect handshake line (PM/SUB/resolution) out of the report's tail.
+        The "frozen on frame N" diagnostic (a missing flip) is still here at
+        ``-v``; per-tick HIT/MISS already logs at DEBUG in ``build_frame``.
         """
         new_state = (bg_hit, ovl_hit)
         prev_state = self._cache_state.get(key)
         if prev_state == new_state:
             return
-        log.info(
+        log.debug(
             "build_frame %s: cache state %s → bg=%s overlay=%s",
             key,
             "(first)" if prev_state is None

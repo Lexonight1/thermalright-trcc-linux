@@ -518,7 +518,7 @@ class TRCCApp(QMainWindow):
         keepalive) leave ``surface`` None; those fall back to a one-off
         re-render.  Only the active device writes the shared preview.
         """
-        log.info("_on_bus_frame_sent")
+        log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)
