@@ -338,11 +338,19 @@ def test_get_gpu_reader_status_no_offer_on_version_mismatch(
     assert result.init_failed is True
 
 
+def _force_not_venv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the interpreter to look non-venv so the OS-package path is tested
+    deterministically regardless of where the suite runs (CI may be a venv)."""
+    import sys
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix)
+
+
 def test_install_gpu_reader_dry_run_builds_pkexec_command(
     _trcc_app, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from trcc.core.commands import InstallGpuReader
 
+    _force_not_venv(monkeypatch)
     monkeypatch.setattr(
         "trcc.adapters.diagnostics.health.detect_package_manager", lambda: "dnf",
     )
@@ -357,12 +365,29 @@ def test_install_gpu_reader_no_recipe_falls_back_to_guide(
 ) -> None:
     from trcc.core.commands import InstallGpuReader
 
+    _force_not_venv(monkeypatch)
     monkeypatch.setattr(
         "trcc.adapters.diagnostics.health.detect_package_manager", lambda: "apk",
     )
     result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
     assert result.ok is False
     assert "manually" in result.message
+
+
+def test_install_gpu_reader_uses_pip_in_a_venv(
+    _trcc_app, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In a virtualenv, install nvidia-ml-py via pip into THIS interpreter —
+    the OS package manager would target system python the venv can't see (#161)."""
+    import sys
+
+    from trcc.core.commands import InstallGpuReader
+
+    monkeypatch.setattr(sys, "base_prefix", "/usr")
+    monkeypatch.setattr(sys, "prefix", "/home/u/.venv")
+    result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
+    assert result.ok is True
+    assert result.command == [sys.executable, "-m", "pip", "install", "nvidia-ml-py"]
 
 
 def test_install_gpu_reader_no_package_manager(

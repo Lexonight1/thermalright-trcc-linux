@@ -697,10 +697,44 @@ class InstallGpuReader(Command[GpuReaderInstallResult]):
     def execute(self, app: App) -> GpuReaderInstallResult:
         del app
         import subprocess
-
-        from ...adapters.diagnostics.health import detect_package_manager
+        import sys
 
         log.info("InstallGpuReader.execute: dry_run=%s", self.dry_run)
+
+        # In a virtualenv the OS package manager would install python3-pynvml
+        # into the SYSTEM interpreter — invisible to this venv.  Install the
+        # NVML bindings into THIS interpreter via pip instead (no privileges
+        # needed; it writes into the venv).  Fixes pip/venv users whose NVIDIA
+        # card is detected but pynvml is missing (#161).  A non-venv system
+        # Python can see apt/dnf/pacman-installed python3-pynvml, so that path
+        # is unchanged below.
+        if sys.prefix != sys.base_prefix:
+            cmd = [sys.executable, "-m", "pip", "install", "nvidia-ml-py"]
+            if self.dry_run:
+                return GpuReaderInstallResult(
+                    ok=True, command=list(cmd),
+                    message=f"Would run: {' '.join(cmd)}",
+                )
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=600.0, check=False,
+                )
+            except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+                log.exception("InstallGpuReader.execute: pip install failed")
+                return GpuReaderInstallResult(
+                    ok=False, command=list(cmd),
+                    message=f"pip install failed: {type(e).__name__}: {e}",
+                )
+            ok = proc.returncode == 0
+            log.info("InstallGpuReader.execute: pip exit=%d", proc.returncode)
+            return GpuReaderInstallResult(
+                ok=ok, command=list(cmd), exit_code=proc.returncode,
+                message=("GPU sensor reader installed — restart trcc to enable "
+                         "GPU metrics" if ok else
+                         f"pip install failed (exit {proc.returncode})"),
+            )
+
+        from ...adapters.diagnostics.health import detect_package_manager
         pm = detect_package_manager()
         if pm is None:
             log.warning("InstallGpuReader.execute: no package manager detected")
