@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a bug or unexpected behavior
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this — we genuinely want to get your
+        device working. 🙂
+
+        **The one thing we truly need is a `trcc report`.** Run it in a terminal and
+        paste the output below — it's how we *see* what's actually happening instead
+        of guessing on your hardware. It works even when the GUI won't open, and it
+        doesn't change anything on your system.
+
+        > Reports without a `trcc report` (or, if the app won't run, the install/launch
+        > error) can't be diagnosed, so we'll have to kindly ask you to add one before
+        > we can help.
+  - type: textarea
+    id: description
+    attributes:
+      label: What's happening?
+      description: A clear description of the bug, and what you expected instead.
+      placeholder: e.g. The LCD stays blank after I load a theme.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report (`trcc report`)
+      description: |
+        Run `trcc report` in a terminal and paste the **full** output here.
+        **If the app won't even install or launch**, paste the install/launch error
+        instead — that's still the diagnostic we need.
+      render: shell
+      placeholder: Paste the full `trcc report` output (or your install/launch error) here
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device (model + USB ID if you know it)
+      placeholder: e.g. Wonder Vision 360 — 87ad:70db
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce (optional)
+      placeholder: |
+        1. Run `trcc ...`
+        2. ...
+        3. See ...
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I'm on the latest version (`pip install --upgrade trcc-linux`, or the latest installer)
+          required: false
+        - label: I pasted my `trcc report` above — or my install/launch error if it won't run
+          required: true

@@ -1,8 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Installation help
-    url: https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/INSTALL_GUIDE.md
-    about: Check the install guide before opening an issue
+    url: https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_INSTALL.md
+    about: Step-by-step install instructions for your distro — please check here first.
+  - name: Troubleshooting guide
+    url: https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_TROUBLESHOOTING.md
+    about: Common problems (no device detected, permissions, GPU metrics, blank display) and their fixes.
   - name: Supported devices
-    url: https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/SUPPORTED_DEVICES.md
-    about: See the full list of supported devices and USB IDs
+    url: https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/REFERENCE_DEVICES.md
+    about: The full list of supported devices and USB IDs.
