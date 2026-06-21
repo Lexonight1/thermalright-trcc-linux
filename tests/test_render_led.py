@@ -427,3 +427,27 @@ def test_set_led_color_stays_global_for_non_zone_style(
     s = app.settings.for_led(_LED_KEY)
     assert s.color == (7, 8, 9)
     assert s.zones == []
+
+
+def test_set_led_mode_targets_selected_zones_pa120(
+    fake_platform: FakePlatform,
+) -> None:
+    """#192 follow-up: mode (effect) applies per-zone for multi-zone styles."""
+    from trcc.core.commands import SetLedMode
+    from trcc.core.led_models import LEDMode
+    from trcc.services.led_segment import get_display
+
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=16)   # PA120
+    n = len(get_display(LedStyle.PA120).zone_led_map)  # type: ignore[arg-type]
+
+    # circulate off, select zones 0 & 2, set BREATHING
+    app.settings.set_led_zone_count(_LED_KEY, n)
+    app.settings.set_led_zone_sync(_LED_KEY, False)
+    app.settings.set_led_zone_sync_zones(_LED_KEY, [i in (0, 2) for i in range(n)])
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.BREATHING))
+
+    zones = app.settings.for_led(_LED_KEY).zones
+    assert zones[0].mode is LEDMode.BREATHING
+    assert zones[2].mode is LEDMode.BREATHING
+    assert zones[1].mode is not LEDMode.BREATHING   # untouched

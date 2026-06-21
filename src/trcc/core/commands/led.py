@@ -354,12 +354,36 @@ class RenderLed(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetLedMode(Command[LedColorsResult]):
-    """Set the global animation mode for an LED device."""
+    """Set the LED animation mode.
+
+    Global for ordinary devices; for a multi-zone style (PA120/LF10) the mode
+    applies to the *selected* zones (all when "select all"/``zone_sync`` is on,
+    else the ``zone_sync_zones`` mask) — the same per-zone path as
+    :class:`SetLedColor`.  Without this the mode/effect buttons did nothing on
+    a multi-zone device, because the render reads each zone's own mode (#192).
+    """
     key: str
     mode: LEDMode
 
     def execute(self, app: App) -> LedColorsResult:
-        app.settings.set_led_mode(self.key, self.mode)
+        zone_count = _multi_zone_count(app, self.key)
+        if zone_count is not None:
+            app.settings.set_led_zone_count(self.key, zone_count)
+            s = app.settings.for_led(self.key)
+            if s.zone_sync:
+                targets = list(range(zone_count))
+            else:
+                mask = s.zone_sync_zones
+                targets = [i for i in range(zone_count)
+                           if i < len(mask) and mask[i]]
+                if not targets:
+                    targets = [0]
+            for i in targets:
+                app.settings.set_led_zone(self.key, i, mode=self.mode)
+            log.info("SetLedMode %s: %s → zone(s) %s",
+                     self.key, self.mode.name, targets)
+        else:
+            app.settings.set_led_mode(self.key, self.mode)
         # Phase counters reset on mode change so animation restarts cleanly
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         runtime.rgb_timer = 0
