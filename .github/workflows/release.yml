@@ -240,14 +240,20 @@ jobs:
           # that path is not on sys.path and import trcc fails. The
           # unversioned dist-packages dir is on sys.path for every Debian/Ubuntu
           # python3. #157
+          # NOTE: on Debian/Ubuntu, prefix=/usr installs route to the
+          # /usr/local/lib/python3.X "local" scheme, NOT /usr/lib — so the
+          # glob MUST cover both roots or the relocate silently misses
+          # everything and trcc lands on a version-specific path off the
+          # target sys.path (Ubuntu 26.04 + Python 3.14: ModuleNotFoundError). #157
           DEST="$PKG/usr/lib/python3/dist-packages"
           mkdir -p "$DEST"
-          for vdir in "$PKG"/usr/lib/python3.*/dist-packages "$PKG"/usr/lib/python3.*/site-packages; do
+          for vdir in "$PKG"/usr/lib/python3.*/dist-packages "$PKG"/usr/lib/python3.*/site-packages \
+                      "$PKG"/usr/local/lib/python3.*/dist-packages "$PKG"/usr/local/lib/python3.*/site-packages; do
             [ -d "$vdir" ] || continue
             cp -a "$vdir"/. "$DEST"/
             rm -rf "$vdir"
           done
-          find "$PKG/usr/lib" -maxdepth 1 -type d -name 'python3.*' -empty -delete || true
+          find "$PKG/usr/lib" "$PKG/usr/local/lib" -maxdepth 1 -type d -name 'python3.*' -empty -delete 2>/dev/null || true
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
