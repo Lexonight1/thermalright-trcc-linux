@@ -1,5 +1,31 @@
 # Changelog
 
+## v9.7.5
+
+Follow-up fixes from reporters testing v9.7.4.
+
+**PA120 / LF10 mode buttons now work (#192).**  v9.7.4 fixed zone selection and
+per-zone colour, but the mode/effect buttons (solid / breathe / colour-cycle /
+rainbow) did nothing — `SetLedMode` wrote one global mode while the render reads
+each zone's own.  It's now per-zone like the colour setter.
+
+**Ubuntu 26.04 / Python 3.14 install fixed (#157).**  The `.deb` installed the
+package to a Python-version-specific path (`python3.12/dist-packages`), so on a
+system running a different Python (26.04 ships 3.14) `trcc` died with
+`ModuleNotFoundError`.  The relocate-to-version-agnostic step now covers the
+`/usr/local/lib` install scheme Debian/Ubuntu actually uses.  Reproduced and
+verified in an Ubuntu 26.04 container.
+
+**NVIDIA reader installs correctly in a virtualenv (#161).**  The "install GPU
+sensor support?" prompt ran the OS package manager, which targets system Python
+— invisible to a pip/venv install.  It now installs `nvidia-ml-py` into the
+running interpreter via pip when in a venv.
+
+**Diagnostic reports keep the device handshake line.**  Per-frame log spam was
+scrolling the once-per-connect `handshake OK: PM=… SUB=… resolution=…` line out
+of the report tail — the single most useful line for device-geometry triage.
+Per-frame logs are now DEBUG, and the HID handshake logs its PM/SUB too.
+
 ## v9.7.4
 
 Device-recovery and LED fixes, plus the GUI/cross-platform work that accumulated
