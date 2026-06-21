@@ -236,7 +236,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules, polkit policy, SELinux support, no root required after setup |
 
-**Under the hood**: 147 source files, ~49K lines of Python, 5799 tests across 96 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
+**Under the hood**: 223 source files, ~71K lines of Python, 1783 tests across 104 test files. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
 ### What we do better than Windows TRCC
 
