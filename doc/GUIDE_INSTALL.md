@@ -106,9 +106,11 @@ That's it! If your device isn't detected, see the [Device Testing Guide](GUIDE_D
 
 ### Ubuntu / Debian / Mint / Pop!_OS / Zorin
 
-Covers: Ubuntu 24.04+, Debian 13+, Linux Mint 22+, Pop!_OS 24.04+, Zorin OS 17+, KDE neon, Kubuntu, Xubuntu, Lubuntu
+Covers: Ubuntu 24.04+ (including **26.04 / Python 3.14**), Debian 13+, Linux Mint 22+, Pop!_OS 24.04+, Zorin OS 17+, KDE neon, Kubuntu, Xubuntu, Lubuntu
 
 > **Older versions** (Ubuntu 22.04, Mint 21.x, Debian 11/12, Pop!_OS 22.04, elementary OS 7) — use the [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb) instead, which bundles its own Python environment.
+
+> **On Ubuntu 26.04 (Python 3.14):** use **v9.7.5 or newer** — earlier `.deb`s installed to a Python-version-specific path and failed with `ModuleNotFoundError: No module named 'trcc'`.
 
 **One-liner** (download + install in one command):
 ```bash

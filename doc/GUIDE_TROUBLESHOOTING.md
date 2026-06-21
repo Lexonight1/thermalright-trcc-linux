@@ -12,9 +12,10 @@ Quick reference for common TRCC Linux issues. For full installation instructions
 4. [SELinux / Immutable Distros](#selinux--immutable-distros)
 5. [PySide6 Issues](#pyside6-issues)
 6. [HID Device Issues](#hid-device-issues)
-7. [Display Issues](#display-issues)
-8. [Video / Media Issues](#video--media-issues)
-9. [NixOS-Specific](#nixos-specific)
+7. [Sensors & GPU metrics](#sensors--gpu-metrics)
+8. [Display Issues](#display-issues)
+9. [Video / Media Issues](#video--media-issues)
+10. [NixOS-Specific](#nixos-specific)
 
 ---
 
@@ -224,6 +225,32 @@ See [Permission denied](#permission-denied-when-accessing-the-device) above — 
 ### GUI shows empty themes with HID device
 
 Themes are resolution-specific. If the handshake failed, the app doesn't know your screen resolution, so it can't load the right theme pack. Fix the handshake first — themes will populate automatically once the resolution is detected.
+
+---
+
+## Sensors & GPU metrics
+
+### GPU readings are empty / "No NVIDIA GPU detected"
+
+NVIDIA GPU metrics need the NVML python bindings (`nvidia-ml-py`, imported as `pynvml`). When the app detects an NVIDIA card but the reader isn't installed, it offers a one-click install at startup — accept it, then restart.
+
+If that didn't help — most often because you installed with **pip into a virtualenv**, where the system package manager can't reach your environment — install the reader into the *same* environment yourself:
+
+```bash
+# pip / venv install — install into the running interpreter
+pip install nvidia-ml-py
+
+# system package (when trcc runs on the system Python)
+sudo apt install python3-pynvml       # Debian / Ubuntu / Mint
+sudo dnf install python3-pynvml       # Fedora / Nobara
+sudo pacman -S python-nvidia-ml-py    # Arch / CachyOS
+```
+
+Then **restart trcc** — `pynvml` is imported once at startup, so a freshly installed reader only takes effect on the next launch.
+
+> As of **v9.7.5** the in-app "install GPU sensor support?" prompt installs via `pip` automatically when you're running inside a virtualenv (earlier versions only used the system package manager, which a venv can't see).
+
+AMD and Intel GPU temperatures come from `hwmon` and need no extra package.
 
 ---
 

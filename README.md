@@ -108,6 +108,8 @@ Then **unplug and replug the USB cable** and run `trcc gui`.
 
 > `pipx` not installed? `sudo apt install pipx` (Debian/Ubuntu), `sudo dnf install pipx` (Fedora), `sudo pacman -S python-pipx` (Arch). See the **[Install Guide](doc/GUIDE_INSTALL.md)** for your distro.
 
+> **NVIDIA GPU metrics?** The app detects your card and offers to install the sensor reader on first launch (it installs into your environment automatically). To add it upfront instead: `pipx install "trcc-linux[nvidia]"`.
+
 ### Automatic (git clone)
 
 ```bash
