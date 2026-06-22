@@ -35,7 +35,7 @@ from typing import Protocol
 
 from ...core._safe import is_safe_zip_member
 from ...core.errors import HttpFetchError, TrccError
-from ...core.ports import HttpFetcher
+from ...core.ports import DataInstaller, HttpFetcher
 
 log = logging.getLogger(__name__)
 
@@ -120,11 +120,11 @@ class SevenZipExtractor:
 
 
 # =========================================================================
-# DataInstaller — public adapter, DI'd into the service layer
+# HttpDataInstaller — concrete DataInstaller port, DI'd into the service layer
 # =========================================================================
 
 
-class DataInstaller:
+class HttpDataInstaller(DataInstaller):
     """Downloads + extracts per-resolution archives from GitHub.
 
     Construct with an ``HttpFetcher`` (the existing adapter from

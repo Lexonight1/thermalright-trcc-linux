@@ -46,8 +46,8 @@ class FakeHttp(HttpFetcher):
 # =========================================================================
 
 
-def test_categories_static_table_has_expected_prefixes() -> None:
-    cats = CzhordeCatalog.categories()
+def test_categories_static_table_has_expected_prefixes(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    cats = CzhordeCatalog(http=FakeHttp(), cache_dir=tmp_path).categories()
     prefixes = {c.prefix for c in cats}
     assert prefixes == {"a", "b", "c", "d", "e", "y"}
 
@@ -188,3 +188,14 @@ def test_materialise_writes_flat_layout(
     again = service.materialise("a004", resolution=resolution)
     assert again == mp4_path
     assert len(http.calls) == 1
+
+
+def test_czhorde_catalog_implements_the_core_cloud_catalog_port(tmp_path) -> None:
+    """Step 5: the concrete catalog subclasses the core CloudCatalog ABC, and the
+    DTOs live in core.models — so services type against core, not the adapter."""
+    from trcc.adapters.theme.cloud import CzhordeCatalog
+    from trcc.core.models import CloudCategory, CloudThemeEntry  # noqa: F401
+    from trcc.core.ports import CloudCatalog
+
+    catalog = CzhordeCatalog(http=FakeHttp(), cache_dir=tmp_path)
+    assert isinstance(catalog, CloudCatalog)

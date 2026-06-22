@@ -1128,6 +1128,27 @@ SENSOR_TO_OVERLAY: dict[str, tuple[int, int]] = {
 
 
 # =========================================================================
+# Cloud theme catalog DTOs (pure data the CloudCatalog port speaks)
+# =========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class CloudCategory:
+    """One entry in the cloud catalog's category table."""
+    prefix: str
+    name: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CloudThemeEntry:
+    """One theme in the catalog — id + which category it lives in."""
+    id: str               # e.g. "a001"
+    category: str         # prefix, e.g. "a"
+    category_name: str    # human label, e.g. "Gallery"
+
+
+# =========================================================================
 # SMBIOS memory descriptors (WMI Win32_PhysicalMemory numeric codes)
 # =========================================================================
 

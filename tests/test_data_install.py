@@ -64,3 +64,16 @@ def test_ensure_all_square_does_not_install_a_rotated_counterpart(
 ) -> None:
     archives = _run(tmp_home, (320, 320))
     assert archives == ["theme320320.7z", "320320.7z", "zt320320.7z"]
+
+
+def test_http_data_installer_implements_the_core_data_installer_port() -> None:
+    """Step 5: the concrete installer subclasses the core DataInstaller ABC."""
+    from trcc.adapters.repo.data_install import HttpDataInstaller
+    from trcc.core.ports import DataInstaller
+
+    class _FakeHttp:
+        def fetch(self, url, timeout_s=30.0):
+            return b""
+
+    assert issubclass(HttpDataInstaller, DataInstaller)
+    assert isinstance(HttpDataInstaller(http=_FakeHttp()), DataInstaller)

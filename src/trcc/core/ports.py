@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from .diagnostics import DoctorResult, GpuReaderState, HealthReport
     from .events import EventBus
     from .models import (
+        CloudCategory,
+        CloudThemeEntry,
         DeviceInfo,
         HandshakeResult,
         HardwareMetrics,
@@ -858,6 +860,61 @@ class Diagnostics(ABC):
     @abstractmethod
     def gpu_reader_state(self) -> GpuReaderState:
         """NVIDIA NVML reader presence / init state for the install prompt."""
+        ...
+
+
+# =========================================================================
+# DataInstaller — fetch + extract per-resolution data archives
+# =========================================================================
+
+
+class DataInstaller(ABC):
+    """Port for installing on-demand data archives (themes / web / masks).
+
+    Concrete: ``HttpDataInstaller`` (``adapters/repo/data_install.py``), which
+    downloads from GitHub releases and extracts.  ``DataInstallService`` depends
+    on this port so the service layer never names the HTTP/extraction adapter.
+    """
+
+    @abstractmethod
+    def install(
+        self, archive_name: str, target_dir: Path, *, subpath: str = "",
+    ) -> bool:
+        """Fetch *archive_name* and extract into *target_dir*; True if populated."""
+        ...
+
+
+# =========================================================================
+# CloudCatalog — read side of the hosted theme catalog
+# =========================================================================
+
+
+class CloudCatalog(ABC):
+    """Port for the hosted cloud theme catalog.
+
+    Concrete: ``CzhordeCatalog`` (``adapters/theme/cloud.py``).  ``CloudTheme
+    Service`` depends on this port (+ the ``CloudCategory`` / ``CloudThemeEntry``
+    DTOs in ``core.models``) so the service never names the catalog adapter.
+    """
+
+    @abstractmethod
+    def categories(self) -> tuple[CloudCategory, ...]:
+        """The catalog's category table."""
+        ...
+
+    @abstractmethod
+    def list_themes(self, category: str = "all") -> list[CloudThemeEntry]:
+        """Enumerate theme entries in *category* (or all categories)."""
+        ...
+
+    @abstractmethod
+    def download_theme(self, theme_id: str, resolution: str | None = None) -> Path:
+        """Fetch ``<theme_id>.mp4`` (cached); return its local path."""
+        ...
+
+    @abstractmethod
+    def download_preview(self, theme_id: str, resolution: str | None = None) -> Path:
+        """Fetch ``<theme_id>.png`` (cached); return its local path."""
         ...
 
 

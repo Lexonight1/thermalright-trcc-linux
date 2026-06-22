@@ -21,8 +21,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from ..adapters.repo.data_install import DataInstaller
-from ..core.ports import Paths
+from ..core.ports import DataInstaller, Paths
 
 log = logging.getLogger(__name__)
 

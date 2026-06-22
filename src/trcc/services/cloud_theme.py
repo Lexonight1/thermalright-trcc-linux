@@ -25,12 +25,8 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ..adapters.theme.cloud import (
-    CloudCategory,
-    CloudThemeEntry,
-    CzhordeCatalog,
-)
-from ..core.ports import Paths
+from ..core.models import CloudCategory, CloudThemeEntry
+from ..core.ports import CloudCatalog, Paths
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +41,7 @@ class CloudThemeService:
 
     def __init__(
         self,
-        catalog: CzhordeCatalog,
+        catalog: CloudCatalog,
         paths: Paths,
     ) -> None:
         self._catalog = catalog

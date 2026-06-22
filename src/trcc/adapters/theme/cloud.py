@@ -12,27 +12,23 @@ catalog retries the other on failure).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from ...core.errors import HttpFetchError
-from ...core.ports import HttpFetcher
+from ...core.models import CloudCategory, CloudThemeEntry
+from ...core.ports import CloudCatalog, HttpFetcher
 
 log = logging.getLogger(__name__)
+
+# DTOs moved to ``core.models`` (pure data the CloudCatalog port speaks);
+# re-exported here so existing ``from ...cloud import CloudCategory`` keeps working.
+__all__ = ["CloudCategory", "CloudThemeEntry", "CzhordeCatalog"]
 
 
 # =========================================================================
 # Categories — static data (matches legacy theme_cloud.CATEGORIES)
 # =========================================================================
-
-
-@dataclass(frozen=True, slots=True)
-class CloudCategory:
-    """One entry in the cloud catalog's category table."""
-    prefix: str
-    name: str
-    count: int
 
 
 _CATEGORIES: tuple[CloudCategory, ...] = (
@@ -43,14 +39,6 @@ _CATEGORIES: tuple[CloudCategory, ...] = (
     CloudCategory("e", "Nature",    54),
     CloudCategory("y", "Aesthetic", 10),
 )
-
-
-@dataclass(frozen=True, slots=True)
-class CloudThemeEntry:
-    """One theme in the catalog — id + which category it lives in."""
-    id: str               # e.g. "a001"
-    category: str         # prefix, e.g. "a"
-    category_name: str    # human label, e.g. "Gallery"
 
 
 Server = Literal["china", "international"]
@@ -67,7 +55,7 @@ _SERVERS: dict[Server, str] = {
 # =========================================================================
 
 
-class CzhordeCatalog:
+class CzhordeCatalog(CloudCatalog):
     """Read-side of Thermalright's hosted theme catalog.
 
     Construction is cheap (just stores config); the network only fires on
@@ -94,8 +82,7 @@ class CzhordeCatalog:
 
     # ── Static reads ──────────────────────────────────────────────────
 
-    @staticmethod
-    def categories() -> tuple[CloudCategory, ...]:
+    def categories(self) -> tuple[CloudCategory, ...]:
         return _CATEGORIES
 
     def list_themes(self, category: str = "all") -> list[CloudThemeEntry]:

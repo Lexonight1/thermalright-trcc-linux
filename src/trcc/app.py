@@ -133,11 +133,11 @@ class App:
         # Per-resolution data installer (themes + cloud previews +
         # masks).  Dispatched from DiscoverDevices when an attached
         # device's resolution hasn't been seen before.
-        from .adapters.repo.data_install import DataInstaller
+        from .adapters.repo.data_install import HttpDataInstaller
         from .services.data_install import DataInstallService
         self.data_install = DataInstallService(
             paths=platform.paths(),
-            installer=DataInstaller(http=self.http),
+            installer=HttpDataInstaller(http=self.http),
         )
         # Per-device slideshow cursor — tick-driven, no background thread.
         self.slideshow = SlideshowService()

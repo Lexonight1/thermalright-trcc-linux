@@ -46,11 +46,9 @@ _BANNED_TOPLEVEL = frozenset({
 # Keyed by (path relative to src/, resolved import target).  Delete an entry as
 # its breach is fixed; an entry that no longer matches any real import fails the
 # test (so fixes can't leave dead allowlist cruft behind).
-KNOWN_IMPORT_BREACHES: frozenset[tuple[str, str]] = frozenset({
-    # services type concrete adapters — to be closed by core port ABCs (step 5).
-    ("trcc/services/data_install.py", "trcc.adapters.repo.data_install"),
-    ("trcc/services/cloud_theme.py", "trcc.adapters.theme.cloud"),
-})
+# Empty — the core/services rings are sealed.  A new forbidden import fails the
+# gate immediately (no quarantine to hide behind).
+KNOWN_IMPORT_BREACHES: frozenset[tuple[str, str]] = frozenset()
 
 # Keyed by path relative to src/.  OS variance belongs in Platform subclasses.
 KNOWN_OS_SNIFF_FILES: frozenset[str] = frozenset()
