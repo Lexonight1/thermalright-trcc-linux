@@ -23,8 +23,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Literal
 
-from ..adapters.diagnostics.health import run_health_checks
-from ..core.ports import Platform
+from ..core.ports import Diagnostics, Platform
 
 log = logging.getLogger(__name__)
 
@@ -63,8 +62,9 @@ class QuickstartService:
     ``run_all`` is the user-facing entry that sequences them.
     """
 
-    def __init__(self, platform: Platform) -> None:
+    def __init__(self, platform: Platform, diagnostics: Diagnostics) -> None:
         self._platform = platform
+        self._diagnostics = diagnostics
 
     def run_all(self) -> QuickstartReport:
         """Walk the full sequence; stops at the first FAIL."""
@@ -87,7 +87,7 @@ class QuickstartService:
     # ── Steps ─────────────────────────────────────────────────────────
 
     def _run_doctor(self, report: QuickstartReport) -> bool:
-        health = run_health_checks(self._platform)
+        health = self._diagnostics.health()
         if health.fail_count:
             failing = [c for c in health.checks if c.severity == "FAIL"]
             first = failing[0]

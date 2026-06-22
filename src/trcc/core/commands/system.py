@@ -145,54 +145,26 @@ class SetDateFormat(Command[DateFormatResult]):
 
 @dataclass(frozen=True, slots=True)
 class ListFonts(Command[FontsListResult]):
-    """List font families Qt can find on the system.
+    """List font families the renderer can draw with.
 
-    Uses ``QFontDatabase.families()`` — same source the GUI uses for
-    its font picker.  Returns an empty list (not an error) when Qt
-    isn't installed, so headless callers can probe safely.
-
-    Headless callers (CLI / API / tests) reach this with no
-    ``QGuiApplication`` instance.  ``QFontDatabase.families()``
-    segfaults inside ``libQt6Gui`` when called before the GUI
-    application initialises the font subsystem — bypass that by
-    bringing up an offscreen ``QGuiApplication`` first, idempotently.
+    Delegates to the injected ``Renderer`` port (``app.renderer.list_fonts``) —
+    the same source the GUI font picker reads.  Core never imports a GUI
+    toolkit; the Qt-specific font enumeration (and its offscreen-QGuiApplication
+    bootstrap) lives in ``QtRenderer``.  Returns an empty list (not an error)
+    when no renderer is attached, so headless callers can probe safely.
     """
 
     def execute(self, app: App) -> FontsListResult:
-        del app
         try:
-            from PySide6.QtGui import (  # type: ignore[import-not-found]
-                QFontDatabase,
-                QGuiApplication,
-            )
-        except ImportError:
+            renderer = app.renderer
+        except RuntimeError:
+            log.info("ListFonts.execute: no renderer attached — empty list")
             return FontsListResult(
                 ok=True, fonts=[],
-                message="Qt not available — no fonts enumerable",
+                message="no renderer — no fonts enumerable",
             )
-
-        # libQt6Gui's font subsystem needs a QGuiApplication to be
-        # alive; without one, ``QFontDatabase.families()`` aborts the
-        # process (no Python exception to catch).  Spin one up offscreen
-        # if the caller didn't.  Idempotent — re-creating would raise.
-        if QGuiApplication.instance() is None:
-            import os
-            os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-            try:
-                QGuiApplication([])
-            except RuntimeError as e:
-                return FontsListResult(
-                    ok=False, fonts=[],
-                    message=f"QGuiApplication init failed: {e}",
-                )
-
-        try:
-            fonts = sorted(QFontDatabase.families())
-        except RuntimeError as e:
-            return FontsListResult(
-                ok=False, fonts=[],
-                message=f"QFontDatabase error: {e}",
-            )
+        fonts = renderer.list_fonts()
+        log.info("ListFonts.execute: %d font(s)", len(fonts))
         return FontsListResult(
             ok=True, fonts=fonts,
             message=f"{len(fonts)} font(s)",
@@ -406,8 +378,7 @@ class RunHealthCheck(Command[HealthReportResult]):
     """
 
     def execute(self, app: App) -> HealthReportResult:
-        from ...adapters.diagnostics.health import run_health_checks
-        report = run_health_checks(app.platform)
+        report = app.diagnostics.health()
         return HealthReportResult(
             ok=report.fail_count == 0,
             checks=_health_entries(report.checks),
@@ -423,18 +394,14 @@ class RunDoctor(Command[DoctorResultPayload]):
     """Run health checks + render a CLI-friendly summary + exit code."""
 
     def execute(self, app: App) -> DoctorResultPayload:
-        from ...adapters.diagnostics.doctor import (
-            render_doctor_output,
-            run_doctor,
-        )
-        doctor = run_doctor(app.platform)
+        doctor = app.diagnostics.doctor()
         return DoctorResultPayload(
             ok=doctor.is_healthy,
             checks=_health_entries(doctor.report.checks),
             fail_count=doctor.report.fail_count,
             warn_count=doctor.report.warn_count,
             exit_code=doctor.exit_code,
-            rendered=render_doctor_output(doctor.report),
+            rendered=app.diagnostics.render_doctor(doctor.report),
             message=("Healthy" if doctor.is_healthy
                      else f"{doctor.report.fail_count} check(s) failed"),
         )
@@ -452,18 +419,13 @@ class GenerateDebugReport(Command[DebugReportPayload]):
     log_tail_lines: int = 1000
 
     def execute(self, app: App) -> DebugReportPayload:
-        from ...adapters.diagnostics.debug_report import (
-            build_debug_report,
-            write_debug_report,
-        )
-        report = build_debug_report(
-            app.platform, log_tail_lines=self.log_tail_lines,
-        )
-        rendered = report.render_text()
+        rendered = app.diagnostics.debug_report(self.log_tail_lines)
         out: str = ""
         if self.output_path is not None:
             try:
-                written = write_debug_report(report, self.output_path)
+                written = app.diagnostics.write_debug_report(
+                    rendered, self.output_path,
+                )
             except OSError as e:
                 return DebugReportPayload(
                     ok=False, output_path=str(self.output_path),
@@ -596,12 +558,9 @@ class RunUpgrade(Command[UpgradeResult]):
     dry_run: bool = False
 
     def execute(self, app: App) -> UpgradeResult:
-        del app
         import subprocess
 
-        from ...adapters.diagnostics.health import detect_package_manager
-
-        pm = detect_package_manager()
+        pm = app.diagnostics.package_manager()
         if pm is None:
             return UpgradeResult(
                 ok=False, package_manager="",
@@ -653,11 +612,10 @@ class GetGpuReaderStatus(Command[GpuReaderStatusResult]):
     """
 
     def execute(self, app: App) -> GpuReaderStatusResult:
-        del app
-        from ...adapters.diagnostics.health import nvidia_gpu_present
-        from ...adapters.sensors.nvml import nvml_init_state
-        reader_available, initialized, _ = nvml_init_state()
-        present = nvidia_gpu_present()
+        state = app.diagnostics.gpu_reader_state()
+        present = state.nvidia_present
+        reader_available = state.reader_installed
+        initialized = state.initialized
         offer = present and not reader_available
         init_failed = present and reader_available and not initialized
         log.info(
@@ -695,7 +653,6 @@ class InstallGpuReader(Command[GpuReaderInstallResult]):
     dry_run: bool = False
 
     def execute(self, app: App) -> GpuReaderInstallResult:
-        del app
         import subprocess
         import sys
 
@@ -734,8 +691,7 @@ class InstallGpuReader(Command[GpuReaderInstallResult]):
                          f"pip install failed (exit {proc.returncode})"),
             )
 
-        from ...adapters.diagnostics.health import detect_package_manager
-        pm = detect_package_manager()
+        pm = app.diagnostics.package_manager()
         if pm is None:
             log.warning("InstallGpuReader.execute: no package manager detected")
             return GpuReaderInstallResult(

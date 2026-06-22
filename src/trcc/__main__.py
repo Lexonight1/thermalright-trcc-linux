@@ -100,7 +100,7 @@ if sys.platform == 'win32':
 
 try:
     # Auto-launch GUI when invoked as trcc-gui.exe (windowed PyInstaller build)
-    if os.path.basename(sys.executable).lower().startswith('trcc-gui'):
+    if Path(sys.executable).name.lower().startswith('trcc-gui'):
         from trcc.ui.cli.main import gui
         sys.exit(gui() or 0)
     # Everything else goes through the shared entry so python -m trcc and

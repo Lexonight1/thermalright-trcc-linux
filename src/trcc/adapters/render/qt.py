@@ -380,6 +380,24 @@ class QtRenderer(Renderer):
         ).copy()  # .copy() detaches from input buffer
         return qimg.convertToFormat(QImage.Format.Format_ARGB32)
 
+    # ── Fonts ─────────────────────────────────────────────────────────
+
+    def list_fonts(self) -> list[str]:
+        """Enumerate installed font families via the Qt font database.
+
+        ``__init__`` already brought up a ``QGuiApplication`` (so
+        ``QFontDatabase.families()`` won't abort the process); call the
+        idempotent guard again defensively, then read the families.
+        """
+        _ensure_qt_app()
+        try:
+            families = sorted(QFontDatabase.families())
+        except RuntimeError as e:
+            log.warning("QtRenderer.list_fonts: QFontDatabase error: %s", e)
+            return []
+        log.info("QtRenderer.list_fonts: %d families", len(families))
+        return families
+
     # ── Convenience: QPixmap export for GUI preview ───────────────────
 
     @staticmethod

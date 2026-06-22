@@ -482,6 +482,10 @@ class WindowsPlatform(Platform):
             return f"Install {tool} and ensure it is on PATH"
         return f"{tool} not found — install it:\n  {hint}"
 
+    def permission_denied_hint(self) -> str:
+        log.debug("WindowsPlatform.permission_denied_hint: called")
+        return "install the WinUSB driver via 'trcc system setup'"
+
     def no_devices_hint(self) -> str:
         log.debug("no_devices_hint: called")
         return (

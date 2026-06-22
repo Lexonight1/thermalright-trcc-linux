@@ -25,10 +25,15 @@ catch that subclass and publish the per-device disconnect event.
 from __future__ import annotations
 
 import logging
-import sys
 import time
 
 log = logging.getLogger(__name__)
+
+# Generic, OS-agnostic fallback for an EACCES USB error.  The per-OS specifics
+# (udev rules / WinUSB / sudo) live on ``Platform.permission_denied_hint`` and
+# are injected into the tracker via ``set_permission_hint`` — core never sniffs
+# the OS.  See [[project_architecture_boundary_gate]].
+_GENERIC_PERMISSION_HINT = "ensure you have permission to access USB devices"
 
 
 # USB / kernel errno constants.  Matches legacy ``factory.py:41-54``.
@@ -92,23 +97,6 @@ def is_disconnect_error(exc: BaseException) -> bool:
     return False
 
 
-def permission_denied_hint() -> str:
-    """Platform-aware hint for ``EACCES`` USB errors.
-
-    Surfaces in WARNING logs so users see the actionable next step
-    inline with the error instead of having to dig for it.
-    """
-    log.debug("permission_denied_hint: called")
-    if sys.platform.startswith("linux"):
-        return "run 'trcc system setup' to install udev rules"
-    if sys.platform == "darwin":
-        return ("try running with sudo, or check System Settings → "
-                "Privacy & Security → Files and Folders")
-    if sys.platform == "win32":
-        return "install the WinUSB driver via 'trcc system setup'"
-    return "ensure you have permission to access USB devices"
-
-
 class RecoveryTracker:
     """Per-device consecutive-disconnect counter + rate-limited logger.
 
@@ -134,12 +122,20 @@ class RecoveryTracker:
     coming back from a transient blip.
     """
 
-    __slots__ = ("_failures", "_label", "_last_warn_at")
+    __slots__ = ("_failures", "_label", "_last_warn_at", "_permission_hint")
 
     def __init__(self, label: str) -> None:
         self._label = label
         self._failures = 0
         self._last_warn_at = 0.0
+        # Per-OS EACCES remediation, injected by the composition root (which
+        # has the Platform).  Generic until set so the tracker never sniffs.
+        self._permission_hint = _GENERIC_PERMISSION_HINT
+
+    def set_permission_hint(self, hint: str) -> None:
+        """Inject the OS-specific EACCES hint (from ``Platform``)."""
+        log.debug("set_permission_hint: label=%s hint=%r", self._label, hint)
+        self._permission_hint = hint
 
     @property
     def consecutive_failures(self) -> int:
@@ -171,7 +167,7 @@ class RecoveryTracker:
         if _has_usb_errno(exc, _ERRNO_EACCES):
             log.warning(
                 "%s: permission denied — %s",
-                self._label, permission_denied_hint(),
+                self._label, self._permission_hint,
             )
             return "non-disconnect"
         if _has_usb_errno(exc, _ERRNO_EBUSY):

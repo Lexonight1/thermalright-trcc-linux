@@ -7,27 +7,15 @@ sit on top of the same ``HealthCheckResult`` data.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
+from ...core.diagnostics import DoctorResult, HealthReport
 from ...core.ports import Platform
-from .health import HealthReport, run_health_checks
+from .health import run_health_checks
 
 log = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True, slots=True)
-class DoctorResult:
-    """What the doctor decided.
-
-    ``exit_code`` is 0 when nothing FAILed, 1 otherwise — wraps the
-    standard "broken / not broken" CLI convention so scripts can branch.
-    """
-    report: HealthReport
-    exit_code: int
-
-    @property
-    def is_healthy(self) -> bool:
-        return self.exit_code == 0
+# ``DoctorResult`` moved to ``core.diagnostics`` (pure data); re-exported here.
+__all__ = ["DoctorResult", "render_doctor_output", "run_doctor"]
 
 
 def run_doctor(platform: Platform) -> DoctorResult:

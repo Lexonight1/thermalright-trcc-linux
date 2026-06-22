@@ -170,3 +170,35 @@ def test_scsi_send_reconnects_on_eio_then_succeeds() -> None:
 
     assert scsi.send(b"\x00" * 100) is True
     assert transport.open_calls >= 2
+
+
+# ── Step 4: per-OS permission hint is injected, not sniffed in core ──────────
+
+def test_recovery_tracker_uses_injected_permission_hint(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """On EACCES the tracker logs the hint injected via ``set_permission_hint``."""
+    import logging
+
+    from trcc.core.device_recovery import RecoveryTracker
+
+    tracker = RecoveryTracker("dev:test")
+    tracker.set_permission_hint("install the FROBNICATOR driver")
+    with caplog.at_level(logging.WARNING):
+        verdict = tracker.note_error(OSError(13, "Permission denied"))  # EACCES
+    assert verdict == "non-disconnect"
+    assert "install the FROBNICATOR driver" in caplog.text
+
+
+def test_recovery_tracker_default_permission_hint_is_generic(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With no injection the tracker still logs a generic permission hint."""
+    import logging
+
+    from trcc.core.device_recovery import RecoveryTracker
+
+    tracker = RecoveryTracker("dev:test")
+    with caplog.at_level(logging.WARNING):
+        tracker.note_error(OSError(13, "Permission denied"))
+    assert "permission" in caplog.text.lower()

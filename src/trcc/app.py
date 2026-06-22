@@ -41,7 +41,7 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.models import HardwareMetrics, Theme, Wire, oriented_resolution
-from .core.ports import Device, Platform, Renderer, SendScheduler
+from .core.ports import Device, Diagnostics, Platform, Renderer, SendScheduler
 from .core.registry import find_product
 from .core.results import ConnectResult, Result
 from .services.cloud_theme import CloudThemeService
@@ -162,10 +162,15 @@ class App:
         LibraryMigration(platform.paths()).run()
         # First-run flag — lightweight marker-file check.
         self.first_run = FirstRunService(platform.paths())
+        # Diagnostics port — health / doctor / debug-report / package-manager /
+        # gpu-reader, bound to this platform.  Core Commands + quickstart reach
+        # diagnostics through this injected port (never importing the adapter).
+        from .adapters.diagnostics.adapter import DiagnosticsAdapter
+        self.diagnostics: Diagnostics = DiagnosticsAdapter(platform)
         # Quickstart — guided first-session orchestrator.  Sequences
         # doctor + scan with explicit step boundaries so any UI renders
         # the same flow.
-        self.quickstart = QuickstartService(platform)
+        self.quickstart = QuickstartService(platform, self.diagnostics)
         # Periodic sensor broadcaster — owns the cadence that publishes
         # ``SensorsUpdated`` so the GUI's system_info / activity_sidebar
         # widgets and the DeviceRenderObserver (overlay refresh) all
@@ -378,6 +383,10 @@ class App:
         else:
             transport = self.platform.open_bulk(vid, pid)
         device = cls(info, transport)
+        # Hand down the OS-specific EACCES hint (resolved here, where Platform
+        # is in scope) so the device's recovery tracker can surface it without
+        # the device knowing which OS it's on.
+        device.set_permission_hint(self.platform.permission_denied_hint())
         self.devices[device.key] = device
         log.debug("App.attach: %s → %s", device.key, cls.__name__)
         return device

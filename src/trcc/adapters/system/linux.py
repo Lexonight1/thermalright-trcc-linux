@@ -169,7 +169,7 @@ def _resolve_scsi_path(vid: int, pid: int) -> str | None:
 def _walk_sysfs_for_vid_pid(start: Path) -> tuple[int, int] | None:
     """Walk up sysfs parents until we find idVendor + idProduct files."""
     log.debug("_walk_sysfs_for_vid_pid: start=%s", start)
-    path = Path(os.path.realpath(start))
+    path = Path(start).resolve()
     for _ in range(10):
         path = path.parent
         vid_file = path / "idVendor"
@@ -527,6 +527,10 @@ class LinuxPlatform(Platform):
         from ..diagnostics.health import package_install_hint
         pkg = _LINUX_INSTALL_PKGS.get(tool, tool)
         return package_install_hint(pkg)
+
+    def permission_denied_hint(self) -> str:
+        log.debug("LinuxPlatform.permission_denied_hint: called")
+        return "run 'trcc system setup' to install udev rules"
 
     def no_devices_hint(self) -> str:
         log.debug("LinuxPlatform.no_devices_hint: called")

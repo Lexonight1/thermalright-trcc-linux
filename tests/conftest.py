@@ -20,6 +20,7 @@ from trcc.core.ports import (
     MemorySource,
     Paths,
     Platform,
+    Renderer,
     ScsiTransport,
     SensorEnumerator,
 )
@@ -387,13 +388,17 @@ def cli_runner():
     return CliRunner()
 
 
-class _CliRenderer:
+class _CliRenderer(Renderer):
     """Stand-in for QtRenderer used by CLI command bodies.
 
     CLI rarely renders anything itself, but ``display color`` /
     ``display boot-anim`` / etc. exercise the DisplayService which
     needs *some* renderer.  This one short-circuits every method to
     a trivial result so tests stay headless.
+
+    A real ``Renderer`` subclass (not a duck type) so it inherits the
+    port's concrete defaults — ``list_fonts`` → ``[]`` etc. — and any
+    future port method automatically, instead of breaking when one lands.
     """
 
     def create_surface(self, width, height, color=None):

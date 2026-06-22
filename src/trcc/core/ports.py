@@ -18,6 +18,7 @@ from .errors import DeviceDisconnectedError, UnsupportedOperationError
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from .diagnostics import DoctorResult, GpuReaderState, HealthReport
     from .events import EventBus
     from .models import (
         DeviceInfo,
@@ -138,6 +139,16 @@ class Device(ABC, Generic[T]):
         # successful send via ``_recovery.note_success``.
         from .device_recovery import RecoveryTracker
         self._recovery = RecoveryTracker(self.info.key)
+
+    def set_permission_hint(self, hint: str) -> None:
+        """Inject the OS-specific EACCES remediation hint (a pre-resolved
+        string from ``Platform.permission_denied_hint``).
+
+        The device receives a string, never a ``Platform`` — it still knows
+        nothing about the OS; the composition root resolves the hint and hands
+        it down for the recovery tracker's permission-denied warning.
+        """
+        self._recovery.set_permission_hint(hint)
 
     @abstractmethod
     def connect(self) -> HandshakeResult:
@@ -779,9 +790,75 @@ class Renderer(ABC):
             "get_pixels_rgb not implemented on this Renderer",
         )
 
+    # ── Fonts ─────────────────────────────────────────────────────────
+    def list_fonts(self) -> list[str]:
+        """Enumerate the font families the renderer can draw with.
+
+        The source the GUI font picker reads.  Non-abstract — the default
+        returns ``[]`` ("none enumerable"), the headless-safe degradation,
+        so minimal test fakes inherit it.  The concrete Qt renderer
+        overrides with the real font database.  Lives behind the port so
+        core never imports a GUI toolkit to ask "what fonts exist?".
+        """
+        return []
+
     # ── Legacy boundary (video frames) ────────────────────────────────
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
+
+
+# =========================================================================
+# Diagnostics — health / doctor / debug-report / package-mgr / gpu-reader
+# =========================================================================
+
+
+class Diagnostics(ABC):
+    """Port for system diagnostics.  Concrete: ``DiagnosticsAdapter``
+    (``adapters/diagnostics/adapter.py``).
+
+    The diagnostics adapters consume the ``Platform`` port to probe the
+    machine; this port lets core Commands (``RunHealthCheck``, ``RunDoctor``,
+    ``GenerateDebugReport``, ``GetGpuReaderStatus``, ``RunUpgrade``,
+    ``InstallGpuReader``) and the ``QuickstartService`` reach that work through
+    an injected interface instead of importing the adapter — so core stays
+    pure.  Debug reports cross as rendered text, not a struct, so the
+    ``DebugReport`` bundle stays an adapter implementation detail.
+    """
+
+    @abstractmethod
+    def health(self) -> HealthReport:
+        """Run the full health-check suite."""
+        ...
+
+    @abstractmethod
+    def doctor(self) -> DoctorResult:
+        """Run health checks + the exit-code verdict."""
+        ...
+
+    @abstractmethod
+    def render_doctor(self, report: HealthReport) -> str:
+        """Render a health report as the CLI-friendly doctor summary."""
+        ...
+
+    @abstractmethod
+    def debug_report(self, log_tail_lines: int) -> str:
+        """Build the debug bundle and return its rendered, paste-ready text."""
+        ...
+
+    @abstractmethod
+    def write_debug_report(self, rendered: str, path: Path) -> Path:
+        """Write already-rendered debug text to *path*; return the path."""
+        ...
+
+    @abstractmethod
+    def package_manager(self) -> str | None:
+        """Detect the system package manager (``apt``/``dnf``/…), or ``None``."""
+        ...
+
+    @abstractmethod
+    def gpu_reader_state(self) -> GpuReaderState:
+        """NVIDIA NVML reader presence / init state for the install prompt."""
+        ...
 
 
 # =========================================================================
@@ -983,6 +1060,15 @@ class Platform(ABC):
         Override per OS (Linux → udev rules, Windows → WinUSB driver, …).
         """
         return "Plug in a supported device and re-run."
+
+    def permission_denied_hint(self) -> str:
+        """OS-correct guidance for an ``EACCES`` USB error.
+
+        Surfaces inline in the recovery tracker's WARNING log so users see the
+        actionable next step (Linux → udev rules, Windows → WinUSB, macOS →
+        sudo/Privacy).  Override per OS; the default is a generic fallback.
+        """
+        return "ensure you have permission to access USB devices"
 
     # ── GUI / hardware-probe convenience ──────────────────────────────
     def minimize_on_close(self) -> bool:

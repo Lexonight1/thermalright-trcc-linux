@@ -202,6 +202,11 @@ class MacOSPlatform(Platform):
             return f"Install {tool} and ensure it is on PATH"
         return f"{tool} not found — install it:\n  {hint}"
 
+    def permission_denied_hint(self) -> str:
+        log.debug("MacOSPlatform.permission_denied_hint: called")
+        return ("try running with sudo, or check System Settings → "
+                "Privacy & Security → Files and Folders")
+
     def no_devices_hint(self) -> str:
         log.debug("no_devices_hint: called")
         return (

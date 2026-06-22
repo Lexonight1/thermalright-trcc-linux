@@ -21,48 +21,26 @@ import logging
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
+from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
 from ...core.ports import Paths, Platform
 from ..sensors.nvml import NVML_RELOAD_HINT, nvml_init_state
 
 log = logging.getLogger(__name__)
 
-
-Severity = Literal["OK", "WARN", "FAIL"]
-
-
-@dataclass(frozen=True, slots=True)
-class HealthCheckResult:
-    """One check's outcome — name, severity, message, optional fix hint."""
-    name: str
-    severity: Severity
-    message: str
-    fix_hint: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class HealthReport:
-    """The full set of checks plus a one-line summary."""
-    checks: list[HealthCheckResult] = field(default_factory=list)
-
-    @property
-    def worst_severity(self) -> Severity:
-        if any(c.severity == "FAIL" for c in self.checks):
-            return "FAIL"
-        if any(c.severity == "WARN" for c in self.checks):
-            return "WARN"
-        return "OK"
-
-    @property
-    def fail_count(self) -> int:
-        return sum(1 for c in self.checks if c.severity == "FAIL")
-
-    @property
-    def warn_count(self) -> int:
-        return sum(1 for c in self.checks if c.severity == "WARN")
+# DTOs moved to ``core.diagnostics`` (pure data the Diagnostics port speaks);
+# re-exported here so existing ``from ...health import HealthReport`` keeps working.
+__all__ = [
+    "HealthCheckResult",
+    "HealthReport",
+    "Severity",
+    "detect_package_manager",
+    "nvidia_gpu_present",
+    "package_install_hint",
+    "quick_subprocess",
+    "run_health_checks",
+]
 
 
 # =========================================================================
