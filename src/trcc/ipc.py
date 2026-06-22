@@ -484,8 +484,11 @@ class SingleInstance:
     and listens for ``{"raise": true}`` messages.  Subsequent launches
     fail to bind, instead connect to the existing socket, send
     ``{"raise": true}``, and bail out — the running window's
-    :attr:`on_raise` callback fires on the Qt main thread to show /
-    activate the existing window.
+    :attr:`on_raise` callback fires on this helper's **accept thread**
+    (not the Qt main thread).  The consumer is therefore responsible for
+    marshalling any GUI work onto the main thread: the legacy GUI wires
+    ``on_raise`` to a Qt signal whose slot is connected with
+    ``QueuedConnection`` (see ``ui/gui/__init__.py``).
 
     Architectural note: this is separate from the daemon's
     :class:`IPCServer` (which serves Command dispatch).  Each UI type
@@ -497,7 +500,7 @@ class SingleInstance:
         instance = SingleInstance("gui")
         if instance is None:        # peer launch — raise sent, exit cleanly
             return 0
-        instance.on_raise = window.raise_window
+        instance.on_raise = window.raise_requested.emit  # thread-safe emit
         ...
     """
 

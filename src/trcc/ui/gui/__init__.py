@@ -146,12 +146,12 @@ def run_gui(platform: Any, *, decorated: bool = False,
         window._ipc_server = ipc_server
 
     # ── Wire raise-existing-window callback ─────────────────────────
+    # SingleInstance invokes this from its accept thread; emitting the Qt
+    # signal is thread-safe and the QueuedConnection marshals the window
+    # show/raise onto the GUI main thread (#196 — a direct cross-thread
+    # QWidget call deadlocked the event loop).
     if instance is not None:
-        def _raise_window() -> None:
-            window.show()
-            window.raise_()
-            window.activateWindow()
-        instance.on_raise = _raise_window
+        instance.on_raise = window.raise_requested.emit
 
     # ── Initial device replay — discover ran in the splash worker, so
     # iterate ``app.devices`` once for the first sidebar render.  Live

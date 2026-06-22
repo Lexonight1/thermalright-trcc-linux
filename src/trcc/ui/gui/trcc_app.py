@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QRegularExpression as QRE
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -339,6 +339,14 @@ class TRCCApp(QMainWindow):
 
     _instance: TRCCApp | None = None
 
+    # Emitted when a second ``trcc gui`` launch asks the running instance to
+    # surface itself.  ``SingleInstance`` invokes the callback from its accept
+    # thread, so this MUST be a signal (not a direct call): emitting is
+    # thread-safe, and the QueuedConnection in ``__init__`` marshals the actual
+    # window show/raise onto the Qt main thread (#196 — a direct cross-thread
+    # QWidget call deadlocked the event loop).
+    raise_requested = Signal()
+
     def __new__(cls, *args: Any, **kwargs: Any) -> TRCCApp:
         if cls._instance is not None:
             raise RuntimeError("TRCCApp is a singleton — use instance()")
@@ -462,6 +470,29 @@ class TRCCApp(QMainWindow):
 
         # System tray
         self._setup_systray()
+
+        # Raise-existing-window (second launch) — see ``raise_requested``.
+        # QueuedConnection: the emit comes from SingleInstance's accept thread,
+        # the slot runs on the Qt main thread.
+        self.raise_requested.connect(
+            self._on_raise_requested,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
+
+    def _on_raise_requested(self) -> None:
+        """Surface the window for a second ``trcc gui`` launch.
+
+        Runs on the Qt main thread (queued).  Restores from the tray /
+        minimized state and brings the window to the front + focus.
+        """
+        log.info(
+            "_on_raise_requested: visible=%s minimized=%s tray=%s",
+            self.isVisible(), self.isMinimized(), self._minimized_to_taskbar,
+        )
+        self._minimized_to_taskbar = False
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     # ── BusBridge subscribers (run on the Qt main thread) ───────────
 
