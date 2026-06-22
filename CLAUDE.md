@@ -508,7 +508,7 @@ on the next bug.
 - **DRY** — 3+ duplicates = centralize. Two = smell. One-off = inline.
 - **Type hints** on all public APIs
 - **Logging**: `log = logging.getLogger(__name__)` — never `print()`
-- **Paths**: `pathlib.Path` preferred; `os.path` only in `data_repository.py`
+- **Paths**: `pathlib.Path` everywhere; `os.path` only where a *lexical* path-string operation is required — currently just `adapters/repo/data_install.py` (zip-slip member normalization, where pathlib deliberately won't collapse `..`). Enforced by `tests/test_architecture_boundaries.py::test_os_path_confined_to_zip_slip_normalisation` (the old `data_repository.py` was removed in the cutover).
 - **Thread safety**: Qt signals for background→GUI communication — never `QTimer.singleShot` from non-main threads
 - **Import from canonical location** — `from .core.models import X`, not re-defining locally
 
