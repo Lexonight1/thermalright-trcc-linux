@@ -32,6 +32,7 @@ from pathlib import Path
 from trcc.adapters.device.hid_lcd import (
     _TYPE2_MAGIC,
     _TYPE2_RESPONSE_SIZE,
+    _TYPE3_ACK_SIZE,
     _TYPE3_RESPONSE_SIZE,
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
@@ -306,12 +307,32 @@ def scripted_scsi_transport(
     return transport
 
 
+class _AckingBulkTransport(FakeBulkTransport):
+    """``FakeBulkTransport`` that ACKs each frame, like a HID Type-3 panel.
+
+    Type-3 (ALi) firmware acknowledges every image frame: ``HidLcd.send``
+    writes the packet then reads a 16-byte ACK and treats an empty read as a
+    send failure.  The base fake only scripts the one handshake reply, so the
+    post-handshake ACK read would come back empty and every frame would
+    "fail" — a simulation gap, not a device bug.  We supply a canned non-empty
+    ACK for reads of exactly ``_TYPE3_ACK_SIZE`` once the script is exhausted;
+    the content isn't validated (only ``len(ack) > 0``), and every other read
+    size still falls through to the base ``b""`` behaviour, so no other wire's
+    handshake is perturbed.
+    """
+
+    def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+        if not self.read_script and length == _TYPE3_ACK_SIZE:
+            return bytes(_TYPE3_ACK_SIZE)
+        return super().read(endpoint, length, timeout_ms)
+
+
 def scripted_bulk_transport(
     by_key: dict[tuple[int, int], DeviceSpec], vid: int, pid: int,
     override: ReplyOverride | None = None,
 ) -> FakeBulkTransport:
     """Fresh bulk transport (every non-SCSI wire: BULK/HID/LY/LED)."""
-    transport = FakeBulkTransport()
+    transport = _AckingBulkTransport()
     transport.read_script.append(scripted_handshake_bytes(by_key, vid, pid, override))
     return transport
 
