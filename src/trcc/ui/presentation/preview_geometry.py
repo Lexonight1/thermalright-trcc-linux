@@ -1,15 +1,18 @@
-"""Preview-geometry resolution — toolkit-free, for the LCD device View.
+"""Preview + device orientation geometry — toolkit-free, for the LCD View.
 
-The preview bezel/label dimensions for a device's active theme are pure
-geometry: the DisplayService's composed canvas (portrait composition + user
-orientation, #136) when a theme and profile are resolved, otherwise the
-device's cached canvas swapped for the user orientation.  That decision lived
-inline in ``LCDHandler._composed_preview_size``, untestable without a QWidget.
+The orientation-driven sizes a device View needs are pure geometry:
 
-Lifting it here leaves the handler a thin View (call → poke the preview widget)
-and makes the compose-vs-fallback rule unit-testable with no Qt — and routes
-the fallback swap through the single ``oriented_resolution`` helper instead of a
-hand-rolled one.
+  * :func:`composed_preview_size` — the preview bezel/label dims for the active
+    theme (the DisplayService's composed canvas when a theme + profile resolve,
+    else the cached canvas swapped for the user orientation, #136).
+  * :func:`rotated_lcd_size` — the post-rotation LCD buffer size + the
+    is-rotated flag the theme/mask catalogs and preview key off.
+
+Both used to live inline in ``LCDHandler`` (``_composed_preview_size`` /
+``_sync_rotation_state``), each hand-rolling the orientation swap that core's
+``oriented_resolution`` already owns.  Lifting them leaves the handler a thin
+View and makes the rules unit-testable with no Qt — routed through the single
+``oriented_resolution`` helper.
 """
 from __future__ import annotations
 
@@ -18,7 +21,8 @@ from typing import TYPE_CHECKING, Protocol
 from ...core.models import oriented_resolution
 
 if TYPE_CHECKING:
-    from ...core.models import DeviceProfile, ProductInfo, Theme
+    from ...core.models import ProductInfo, Theme
+    from ...core.protocol import DeviceProfile
 
 
 class CanvasComposer(Protocol):
@@ -54,3 +58,17 @@ def composed_preview_size(
     if info is not None and theme is not None and profile is not None:
         return display.composed_canvas_size(info, theme, profile, orientation)
     return oriented_resolution(canvas_size, orientation)
+
+
+def rotated_lcd_size(
+    canvas_size: tuple[int, int], orientation: int,
+) -> tuple[bool, tuple[int, int]]:
+    """``(is_rotated, post-rotation lcd size)`` for a user orientation.
+
+    The GUI caches this off the device's pre-rotation canvas: at 90/270 the LCD
+    buffer is the canvas with width/height swapped (``oriented_resolution`` —
+    the single source of the swap), and ``is_rotated`` drives the theme/mask
+    catalog + preview portrait selection.  Square panels swap to themselves, so
+    only non-square panels actually change.
+    """
+    return orientation in (90, 270), oriented_resolution(canvas_size, orientation)

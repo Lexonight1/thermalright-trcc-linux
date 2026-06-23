@@ -41,7 +41,7 @@ from ...core.commands import (
     UploadCustomMask,
 )
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
-from ..presentation.preview_geometry import composed_preview_size
+from ..presentation.preview_geometry import composed_preview_size, rotated_lcd_size
 from ..presentation.theme_directories import resolve_theme_directories
 from .base_handler import BaseHandler
 
@@ -1041,9 +1041,9 @@ class LCDHandler(BaseHandler):
         it a persisted portrait orientation restores on the device but the
         catalogs + preview stay landscape.
         """
-        self._state.is_rotated = degrees in (90, 270)
-        cw, ch = self._state.canvas_size
-        self._state.lcd_size = (ch, cw) if self._state.is_rotated else (cw, ch)
+        self._state.is_rotated, self._state.lcd_size = rotated_lcd_size(
+            self._state.canvas_size, degrees,
+        )
 
     def set_rotation(self, degrees: int) -> None:
         self.log.info("set_rotation: degrees=%d device=%s",

@@ -11,7 +11,10 @@ from typing import Any, cast
 
 from trcc.core.models import ProductInfo, Theme
 from trcc.core.protocol import DeviceProfile
-from trcc.ui.presentation.preview_geometry import composed_preview_size
+from trcc.ui.presentation.preview_geometry import (
+    composed_preview_size,
+    rotated_lcd_size,
+)
 
 # Opaque stand-ins — the resolver only checks None-ness and forwards them to the
 # composer, so their identity is all that matters (the fake display ignores them).
@@ -83,3 +86,22 @@ def test_fallback_square_panel_unaffected_by_orientation() -> None:
             display, info=None, theme=None, profile=None,
             orientation=deg, canvas_size=(320, 320),
         ) == (320, 320)
+
+
+# ── rotated_lcd_size — (is_rotated, post-rotation lcd size) ───────────
+
+
+def test_rotated_lcd_size_landscape_unchanged() -> None:
+    assert rotated_lcd_size((854, 480), 0) == (False, (854, 480))
+    assert rotated_lcd_size((854, 480), 180) == (False, (854, 480))
+
+
+def test_rotated_lcd_size_portrait_swaps_and_flags() -> None:
+    assert rotated_lcd_size((854, 480), 90) == (True, (480, 854))
+    assert rotated_lcd_size((854, 480), 270) == (True, (480, 854))
+
+
+def test_rotated_lcd_size_square_flags_rotated_but_size_unchanged() -> None:
+    """A square panel at 90/270 is flagged rotated but swaps to itself."""
+    assert rotated_lcd_size((320, 320), 90) == (True, (320, 320))
+    assert rotated_lcd_size((320, 320), 0) == (False, (320, 320))
