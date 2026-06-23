@@ -4,7 +4,7 @@ Self-contained handler for a single LCD device.  Holds:
 
 * ``_device_key`` — vid:pid; ``app.devices[key]`` is the live Device
 * ``_app: App`` — universal command/event hub
-* ``_state: _DeviceState`` — cached canvas / mask / theme info,
+* ``_pm.state: DeviceState`` — cached canvas / mask / theme info,
   refreshed on connect / orientation / theme-load events
 * ``_w`` — shared GUI widgets (preview, theme tabs, cuts, etc.)
 
@@ -15,7 +15,6 @@ Animation state (playing, interval, current frame) comes from
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +39,7 @@ from ...core.commands import (
     StopVideo,
     UploadCustomMask,
 )
+from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
 from ..presentation.preview_geometry import composed_preview_size, rotated_lcd_size
 from ..presentation.theme_directories import resolve_theme_directories
@@ -68,22 +68,6 @@ _DEFAULT_BRIGHTNESS_LEVEL = 100
 class _DataReadyNotifier(QObject):
     """Thread-safe notifier: emits ``ready`` from any thread to the Qt main thread."""
     ready = Signal()
-
-
-@dataclass(slots=True)
-class _DeviceState:
-    """Per-handler cache of derived device state.
-
-    Populated/refreshed on ``apply_device_config`` and event-driven
-    callbacks (orientation, theme-load, overlay-toggle).  Read locally
-    per frame so the hot path doesn't pay per-call dispatch overhead.
-    """
-    canvas_size: tuple[int, int] = (0, 0)        # pre-rotation (w, h)
-    lcd_size: tuple[int, int] = (0, 0)           # post-rotation (w, h)
-    is_rotated: bool = False                     # 90° / 270° → True
-    overlay_enabled: bool = False
-    current_theme_path: Path | None = None
-    last_metrics: Any = None                     # cached for video-overlay updates
 
 
 class LCDHandler(BaseHandler):
@@ -131,8 +115,9 @@ class LCDHandler(BaseHandler):
         # vs read-only reactivate.
         self._configured = False
 
-        # Per-device cache + counters
-        self._state = _DeviceState()
+        # Qt-free coordination model (holds the per-device DeviceState cache;
+        # PM-refactor increment 5 grows the decisions onto it).
+        self._pm = LcdPresentationModel(self._device_key)
         self._brightness_level = _DEFAULT_BRIGHTNESS_LEVEL
         self._split_mode = 0
         self._ldd_is_split = False
@@ -196,23 +181,23 @@ class LCDHandler(BaseHandler):
     def current_theme_path(self) -> Path | None:
         """Active theme directory, or ``None`` if no theme is loaded.
 
-        Tracked on ``_state`` by the load + restore flows; exposed read-
+        Tracked on ``_pm.state`` by the load + restore flows; exposed read-
         only so the window can query without reaching into private
         state (DIP boundary at the handler).
         """
-        return self._state.current_theme_path
+        return self._pm.state.current_theme_path
 
     @property
     def lcd_size(self) -> tuple[int, int]:
         """Active resolution for this device.
 
-        Cached on ``_state`` by ``_refresh`` from
+        Cached on ``_pm.state`` by ``_refresh`` from
         ``device.profile.resolution`` (post-handshake) or the registry
         fallback.  Window-layer code that needs the canvas dims for
         image cutters / drag math reads this — never reaches into the
         protocol adapter directly.
         """
-        return self._state.lcd_size
+        return self._pm.state.lcd_size
 
     @property
     def has_video_playback(self) -> bool:
@@ -275,12 +260,12 @@ class LCDHandler(BaseHandler):
         self.log.info("_refresh: device_key=%s resolution=%dx%d",
                       self._device_key, w, h)
         # Cache canvas + lcd size + per-resolution dirs in the shared
-        # _DeviceState.  Done here (not in apply_device_config) so
+        # DeviceState.  Done here (not in apply_device_config) so
         # reactivate() also refreshes them — reactivate runs every time
         # the user picks the device in the sidebar, and the paths port
         # is the source of truth for theme/mask/web directories.
-        self._state.canvas_size = (w, h)
-        self._state.lcd_size = (w, h)
+        self._pm.state.canvas_size = (w, h)
+        self._pm.state.lcd_size = (w, h)
         paths = self._app.platform.paths()
         # Theme / web / mask dirs aren't cached on _state any more —
         # ``_update_theme_directories`` derives them per-call so portrait
@@ -406,7 +391,7 @@ class LCDHandler(BaseHandler):
                 "frame for %s (theme=%s), no re-load", self._device_key,
                 current,
             )
-            self._state.current_theme_path = Path(current)
+            self._pm.state.current_theme_path = Path(current)
             # Repopulate the overlay editor from the active theme (GUI only —
             # no EnableOverlay / render / send to the device).
             overlay_config = dc_as_legacy_overlay_config(Path(current))
@@ -439,7 +424,7 @@ class LCDHandler(BaseHandler):
         # can reference it.  For video-backed themes the VideoStarted
         # observer (``on_video_started``) takes over animating; for
         # static themes we refresh the preview here.
-        self._state.current_theme_path = (
+        self._pm.state.current_theme_path = (
             Path(result.theme_path) if result.theme_path else None
         )
         if self._app.media.playback(self._device_key) is None:
@@ -498,7 +483,7 @@ class LCDHandler(BaseHandler):
         result = self._app.dispatch(LoadTheme(
             key=self._device_key, path=path,
         ))
-        self._state.current_theme_path = path if result.ok else None
+        self._pm.state.current_theme_path = path if result.ok else None
         if result.ok:
             self._sync_preview_size()   # bezel matches portrait/landscape theme (#136)
         if overlay_config:
@@ -638,7 +623,7 @@ class LCDHandler(BaseHandler):
             self._app.dispatch(EnableOverlay(
                 key=self._device_key, enabled=False,
             ))
-            self._state.overlay_enabled = False
+            self._pm.state.overlay_enabled = False
             self._render_and_send()
             return
 
@@ -649,7 +634,7 @@ class LCDHandler(BaseHandler):
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)
         self._app.dispatch(EnableOverlay(key=self._device_key, enabled=True))
-        self._state.overlay_enabled = True
+        self._pm.state.overlay_enabled = True
         self._render_and_send()
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
@@ -889,11 +874,11 @@ class LCDHandler(BaseHandler):
         # persists the toggle; SetOverlayConfig persists the element
         # list.  next/ skips the legacy "is video playing" cache-update
         # branch — the render service handles overlay refresh next tick.
-        if not self._state.overlay_enabled:
+        if not self._pm.state.overlay_enabled:
             self._app.dispatch(EnableOverlay(
                 key=self._device_key, enabled=True,
             ))
-            self._state.overlay_enabled = True
+            self._pm.state.overlay_enabled = True
         self._app.dispatch(SetOverlayConfig(
             key=self._device_key,
             elements=tuple(element_data.values())
@@ -942,7 +927,7 @@ class LCDHandler(BaseHandler):
             theme=self._app.active_themes.get(self._device_key),
             profile=device.profile if device is not None else None,
             orientation=ds.orientation,
-            canvas_size=self._state.canvas_size,
+            canvas_size=self._pm.state.canvas_size,
         )
 
     def _sync_preview_size(self) -> None:
@@ -1000,7 +985,7 @@ class LCDHandler(BaseHandler):
         """Metrics tick: cache for video-overlay redraws on next frame."""
         # Per-tick on every metrics broadcast; DEBUG only.
         log.debug("update_metrics")
-        self._state.last_metrics = metrics
+        self._pm.state.last_metrics = metrics
         readings = getattr(metrics, 'readings', None) or {}
         self.log.debug(
             "update_metrics: %s readings=%d", self._device_key, len(readings),
@@ -1041,8 +1026,8 @@ class LCDHandler(BaseHandler):
         it a persisted portrait orientation restores on the device but the
         catalogs + preview stay landscape.
         """
-        self._state.is_rotated, self._state.lcd_size = rotated_lcd_size(
-            self._state.canvas_size, degrees,
+        self._pm.state.is_rotated, self._pm.state.lcd_size = rotated_lcd_size(
+            self._pm.state.canvas_size, degrees,
         )
 
     def set_rotation(self, degrees: int) -> None:
@@ -1052,10 +1037,10 @@ class LCDHandler(BaseHandler):
             key=self._device_key, degrees=degrees,
         ))
         self._sync_rotation_state(degrees)
-        ow, oh = self._state.lcd_size
+        ow, oh = self._pm.state.lcd_size
         self.log.info(
             "set_rotation: rotation=%d output=%dx%d rotated=%s",
-            degrees, ow, oh, self._state.is_rotated,
+            degrees, ow, oh, self._pm.state.is_rotated,
         )
         self._sync_preview_size()   # composed orientation, portrait-theme aware (#136)
         self._update_theme_directories()
@@ -1216,7 +1201,7 @@ class LCDHandler(BaseHandler):
             self._app.dispatch(LoadTheme(
                 key=self._device_key, path=path,
             ))
-            self._state.current_theme_path = path
+            self._pm.state.current_theme_path = path
             self._load_theme_overlay_config(path)
         else:
             self.log.warning(
@@ -1304,7 +1289,7 @@ class LCDHandler(BaseHandler):
         Returns True if a first-install auto-load happened (caller should
         skip restore_last_theme to avoid a redundant double-load).
 
-        Reads come from ``_DeviceState`` (cached at connect / rotation),
+        Reads come from ``DeviceState`` (cached at connect / rotation),
         not the legacy ``self._device.X`` properties which next/'s
         Device port doesn't expose.
 
@@ -1325,9 +1310,9 @@ class LCDHandler(BaseHandler):
         # View only pokes the resulting paths into the browser widgets.
         dirs = resolve_theme_directories(
             self._app.platform.paths(),
-            canvas_size=self._state.canvas_size,
-            lcd_size=self._state.lcd_size,
-            is_rotated=self._state.is_rotated,
+            canvas_size=self._pm.state.canvas_size,
+            lcd_size=self._pm.state.lcd_size,
+            is_rotated=self._pm.state.is_rotated,
         )
         bw, bh = dirs.catalog_size
         theme_dir = dirs.theme_dir
@@ -1339,7 +1324,7 @@ class LCDHandler(BaseHandler):
             "_update_theme_directories: catalog=%dx%d theme_dir=%s "
             "user_theme_dir=%s web_dir=%s masks_dir=%s rotated=%s",
             bw, bh, theme_dir, user_theme_dir, web_dir, masks_dir,
-            self._state.is_rotated,
+            self._pm.state.is_rotated,
         )
 
         if theme_dir and theme_dir.exists():
@@ -1358,7 +1343,7 @@ class LCDHandler(BaseHandler):
         # First-install auto-load: pick the first theme in the dir if
         # the device has nothing rendered yet AND no saved theme name.
         ds = self._app.settings.for_device(self._device_key)
-        if (self._state.current_theme_path is None
+        if (self._pm.state.current_theme_path is None
                 and theme_dir and theme_dir.exists()
                 and not ds.current_theme):
             for item in sorted(theme_dir.iterdir()):

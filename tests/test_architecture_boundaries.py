@@ -33,6 +33,18 @@ from pathlib import Path
 _SRC = Path(__file__).resolve().parents[1] / "src"
 _GUARDED_TREES = ("trcc/core", "trcc/services")
 
+# The Presentation Model layer (``ui/presentation``) is the Qt-free precursor to
+# the View: it must import only inward (core / services / sibling PMs) so the
+# coordination logic stays portable + unit-testable without a QApplication.  It
+# must NOT import a GUI toolkit, an adapter, the App composition root, or another
+# UI view (gui/qtgui/cli/api).  This makes the PMs' purity machine-enforced
+# rather than convention.  (PM refactor increment 5.)
+_PRESENTATION_TREE = "trcc/ui/presentation"
+_PRESENTATION_FORBIDDEN_PREFIXES = (
+    "trcc.adapters", "trcc.app", "trcc._boot",
+    "trcc.ui.gui", "trcc.ui.qtgui", "trcc.ui.cli", "trcc.ui.api",
+)
+
 # Top-level packages the inner rings must never import: GUI toolkits, OS
 # bindings, USB stacks.  ``win32*`` (pywin32) is matched by prefix below.
 _BANNED_TOPLEVEL = frozenset({
@@ -83,6 +95,19 @@ def _resolve_import(node: ast.ImportFrom, module_name: str) -> str:
 
 def _is_forbidden_target(target: str) -> bool:
     if target.startswith(("trcc.adapters", "trcc.ui")):
+        return True
+    top = target.split(".", 1)[0]
+    return top in _BANNED_TOPLEVEL or top.startswith("win32")
+
+
+def _is_forbidden_in_presentation(target: str) -> bool:
+    """True if ``target`` is an import the Presentation Model layer must not make.
+
+    Allows stdlib + ``trcc.core`` / ``trcc.services`` / ``trcc.ui.presentation``;
+    forbids GUI toolkits / OS bindings (``_BANNED_TOPLEVEL``), adapters, the App
+    composition root, and the other UI views.
+    """
+    if target.startswith(_PRESENTATION_FORBIDDEN_PREFIXES):
         return True
     top = target.split(".", 1)[0]
     return top in _BANNED_TOPLEVEL or top.startswith("win32")
@@ -344,6 +369,30 @@ def test_os_path_confined_to_zip_slip_normalisation() -> None:
     )
 
 
+def test_presentation_layer_is_qt_app_and_adapter_free() -> None:
+    """``ui/presentation`` (the Presentation Model layer) imports only inward.
+
+    The PMs are the Qt-free precursor to the View — they must never import a GUI
+    toolkit, an adapter, the App composition root, or another UI view, so the
+    coordination logic stays portable and unit-testable without a QApplication.
+    Walks module-level AND function-body imports (skips ``TYPE_CHECKING``).  No
+    allowlist: the layer is pure today, so any NEW breach fails the build.
+    """
+    breaches: list[str] = []
+    for path in _files_under(_PRESENTATION_TREE):
+        module = _module_name(path)
+        collector = _ImportCollector(module)
+        collector.visit(ast.parse(path.read_text(encoding="utf-8"), str(path)))
+        rel = str(path.relative_to(_SRC))
+        for lineno, target in collector.found:
+            if _is_forbidden_in_presentation(target):
+                breaches.append(f"  {rel}:{lineno} -> {target}")
+    assert not breaches, (
+        "ui/presentation must stay Qt/App/adapter-free (import only core / "
+        "services / sibling PMs):\n" + "\n".join(breaches)
+    )
+
+
 # ── Gate self-tests (the watchmen) ───────────────────────────────────────────
 # A boundary gate with a logic bug that silently stops detecting is worse than
 # no gate — everything goes green and breaches slip through unseen.  These feed
@@ -376,6 +425,19 @@ def test_selftest_forbidden_target_predicate() -> None:
     assert not _is_forbidden_target("trcc.core.models")
     assert not _is_forbidden_target("logging")
     assert not _is_forbidden_target("trcc.services.theme")
+
+
+def test_selftest_presentation_forbidden_predicate() -> None:
+    """The PM-layer predicate flags Qt/adapter/App/other-view, allows inward."""
+    assert _is_forbidden_in_presentation("PySide6.QtCore")
+    assert _is_forbidden_in_presentation("trcc.adapters.render.qt")
+    assert _is_forbidden_in_presentation("trcc.app")            # composition root
+    assert _is_forbidden_in_presentation("trcc.ui.gui.lcd_handler")
+    assert _is_forbidden_in_presentation("trcc.ui.qtgui.foo")
+    assert not _is_forbidden_in_presentation("trcc.core.models")
+    assert not _is_forbidden_in_presentation("trcc.services._dc")
+    assert not _is_forbidden_in_presentation("trcc.ui.presentation.preview_geometry")
+    assert not _is_forbidden_in_presentation("logging")
 
 
 def test_selftest_import_collector_catches_function_body_import() -> None:

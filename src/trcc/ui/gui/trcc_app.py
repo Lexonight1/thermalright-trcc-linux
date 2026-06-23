@@ -1745,10 +1745,7 @@ class TRCCApp(QMainWindow):
             # ``_state.current_theme_path``; if the deleted theme was
             # the active one, invalidate the scene cache so the next
             # render rebuilds from whatever falls back as background.
-            current = (
-                h._state.current_theme_path  # pyright: ignore[reportPrivateUsage]
-                if h is not None else None
-            )
+            current = h.current_theme_path if h is not None else None
             if (h is not None and current is not None
                     and str(current) == theme_info.path):
                 self._app.display.invalidate(h.device_key)
