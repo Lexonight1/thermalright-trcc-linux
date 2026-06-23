@@ -60,10 +60,6 @@ _SPLIT_MODE_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
     (462, 1920), (1920, 462),
 })
 
-# Default brightness % when the user hasn't picked one yet.
-_DEFAULT_BRIGHTNESS_LEVEL = 100
-
-
 class _DataReadyNotifier(QObject):
     """Thread-safe notifier: emits ``ready`` from any thread to the Qt main thread."""
     ready = Signal()
@@ -102,25 +98,11 @@ class LCDHandler(BaseHandler):
         self._is_visible = is_visible_fn or (lambda: True)
         self.log: logging.Logger = log
 
-        # UI focus state — multi-display windows share one preview widget;
-        # only the active handler writes to it.
-        self._ui_active = False
-
-        # First-load gate.  ``_device_key`` is set above (it's the dispatch
-        # key, always truthy) so it CANNOT double as the "have I loaded the
-        # persisted theme yet" flag — ``apply_device_config`` sets this True
-        # on first connect; ``_activate_device`` / ``_on_handshake_done``
-        # branch on it to pick load (apply_device_config, first_load=True)
-        # vs read-only reactivate.
-        self._configured = False
-
-        # Qt-free coordination model (holds the per-device DeviceState cache;
-        # PM-refactor increment 5 grows the decisions onto it).
+        # Qt-free coordination model — owns the per-device DeviceState cache
+        # AND the activation/view-lifecycle flags (ui_active gate, configured
+        # first-load gate, brightness/split/background state).  PM-refactor
+        # increment 5 grows the decisions onto it; the handler keeps the Qt.
         self._pm = LcdPresentationModel(self._device_key)
-        self._brightness_level = _DEFAULT_BRIGHTNESS_LEVEL
-        self._split_mode = 0
-        self._ldd_is_split = False
-        self._background_active = False
         # Slideshow cursor lives on ``app.slideshow`` (SlideshowService);
         # don't duplicate state here (S1.1 audit).
 
@@ -174,7 +156,7 @@ class LCDHandler(BaseHandler):
         only READ).  ``device_key`` is set at construction, so it can't
         serve as this flag.
         """
-        return self._configured
+        return self._pm.configured
 
     @property
     def current_theme_path(self) -> Path | None:
@@ -213,8 +195,8 @@ class LCDHandler(BaseHandler):
         already the handler's ``_device_key``, set in __init__.
         """
         self.log.info("apply_device_config: %s %dx%d", info.key, w, h)
-        self._ui_active = True
-        self._configured = True
+        self._pm.ui_active = True
+        self._pm.configured = True
         # Per-device child logger — tags handler logs with the key
         self.log = logging.getLogger(f"{__name__}.{info.key}")
         # First connect: load the persisted theme onto the device.
@@ -223,7 +205,7 @@ class LCDHandler(BaseHandler):
     def reactivate(self, w: int, h: int) -> None:
         """Return to known device — device already configured from connect()."""
         self.log.info("reactivate: %dx%d", w, h)
-        self._ui_active = True
+        self._pm.ui_active = True
         # Re-select: read what the device is already showing; do NOT re-load.
         self._refresh(w, h, first_load=False)
 
@@ -239,7 +221,7 @@ class LCDHandler(BaseHandler):
         when ``RestoreLastTheme`` → ``LoadTheme`` → ``PlayVideo`` fires,
         so no explicit timer start here (DRY: one start site).
         """
-        self._ui_active = False
+        self._pm.ui_active = False
         self._pixmap_cache.clear()
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
@@ -309,10 +291,10 @@ class LCDHandler(BaseHandler):
         self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
 
     def _restore_brightness(self, ds: DeviceSettings) -> None:
-        self._brightness_level = ds.brightness
-        self.log.info("Restoring brightness: %d%%", self._brightness_level)
+        self._pm.brightness_level = ds.brightness
+        self.log.info("Restoring brightness: %d%%", self._pm.brightness_level)
         self._app.dispatch(SetBrightness(
-            key=self._device_key, percent=self._brightness_level,
+            key=self._device_key, percent=self._pm.brightness_level,
         ))
 
     def _restore_rotation(self, ds: DeviceSettings) -> None:
@@ -330,13 +312,13 @@ class LCDHandler(BaseHandler):
         self._update_theme_directories()
 
     def _restore_split_mode(self, ds: DeviceSettings, w: int, h: int) -> None:
-        self._split_mode = ds.split_mode or 2
-        self._ldd_is_split = (w, h) in _SPLIT_MODE_RESOLUTIONS
+        self._pm.split_mode = ds.split_mode or 2
+        self._pm.ldd_is_split = (w, h) in _SPLIT_MODE_RESOLUTIONS
         self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s",
-                       self._split_mode, self._ldd_is_split)
-        if self._ldd_is_split:
+                       self._pm.split_mode, self._pm.ldd_is_split)
+        if self._pm.ldd_is_split:
             self._app.dispatch(SetSplitMode(
-                key=self._device_key, mode=self._split_mode,
+                key=self._device_key, mode=self._pm.split_mode,
             ))
         else:
             self._app.dispatch(SetSplitMode(key=self._device_key, mode=0))
@@ -456,7 +438,7 @@ class LCDHandler(BaseHandler):
         self._slideshow_timer.stop()
         self._app.dispatch(EnableOverlay(key=self._device_key, enabled=False))
 
-        self._background_active = False
+        self._pm.background_active = False
         # LoadTheme internally dispatches StopVideo (clears the previous
         # playback + cloud-bg override + publishes VideoStopped which
         # stops the timer via the bus_bridge observer) and, if the new
@@ -511,7 +493,7 @@ class LCDHandler(BaseHandler):
         self.log.info("select_cloud_theme: %s (video=%s)", theme_info.name,
                       getattr(theme_info, 'video', None))
         self._slideshow_timer.stop()
-        self._background_active = False
+        self._pm.background_active = False
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
 
@@ -659,7 +641,7 @@ class LCDHandler(BaseHandler):
         self._start_animation_timer(
             event.interval_ms, reason="video-started",
         )
-        if self._ui_active:
+        if self._pm.ui_active:
             self._w['preview'].set_playing(True)
             self._w['preview'].show_video_controls(True)
 
@@ -674,7 +656,7 @@ class LCDHandler(BaseHandler):
             return
         self.log.info("on_video_stopped: device=%s", self._device_key)
         self._stop_animation_timer(reason="video-stopped")
-        if self._ui_active:
+        if self._pm.ui_active:
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
 
@@ -819,7 +801,7 @@ class LCDHandler(BaseHandler):
             return
         playback.advance()
 
-        if self._ui_active:
+        if self._pm.ui_active:
             total = playback.frame_count
             cursor = playback.cursor
             percent = (cursor / total) if total else 0.0
@@ -897,7 +879,7 @@ class LCDHandler(BaseHandler):
         if image is None:
             self.log.debug("handle_frame: None surface — skip")
             return
-        if self._ui_active:
+        if self._pm.ui_active:
             self._w['preview'].set_image(
                 image, fast=self._animation_timer.isActive(),
             )
@@ -947,7 +929,7 @@ class LCDHandler(BaseHandler):
         the last cached frame if one exists, else build a one-off surface.
         Idempotent.
         """
-        if not self._ui_active:
+        if not self._pm.ui_active:
             self.log.debug(
                 "rebuild_preview: ui_active=False for %s — skip",
                 self._device_key,
@@ -971,7 +953,7 @@ class LCDHandler(BaseHandler):
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""
         log.debug("update_preview")
-        if self._ui_active:
+        if self._pm.ui_active:
             self._w['preview'].set_image(image)
         else:
             self.log.debug(
@@ -1007,8 +989,8 @@ class LCDHandler(BaseHandler):
 
     def set_brightness(self, percent: int) -> None:
         self.log.info("set_brightness: %d%% -> %d%% device=%s",
-                      self._brightness_level, percent, self._device_key)
-        self._brightness_level = percent
+                      self._pm.brightness_level, percent, self._device_key)
+        self._pm.brightness_level = percent
         self._app.dispatch(SetBrightness(
             key=self._device_key, percent=percent,
         ))
@@ -1042,8 +1024,8 @@ class LCDHandler(BaseHandler):
 
     def set_split_mode(self, mode: int) -> None:
         self.log.info("set_split_mode: %d -> %d device=%s",
-                      self._split_mode, mode, self._device_key)
-        self._split_mode = mode
+                      self._pm.split_mode, mode, self._device_key)
+        self._pm.split_mode = mode
         self._app.dispatch(SetSplitMode(
             key=self._device_key, mode=mode,
         ))
@@ -1059,7 +1041,7 @@ class LCDHandler(BaseHandler):
         """
         self.log.info("on_background_toggle: enabled=%s device=%s",
                       enabled, self._device_key)
-        self._background_active = enabled
+        self._pm.background_active = enabled
         if enabled:
             self._app.dispatch(StopVideo(key=self._device_key))
             self._w['preview'].set_playing(False)
@@ -1080,7 +1062,7 @@ class LCDHandler(BaseHandler):
         churn.
         """
         # Per-tick path; entry stays DEBUG.
-        if self._ui_active:
+        if self._pm.ui_active:
             self._w['preview'].set_image(image)
         device = self._app.devices.get(self._device_key)
         if device is None:
@@ -1238,7 +1220,7 @@ class LCDHandler(BaseHandler):
         """Render overlay and update preview (no send)."""
         self.log.info("render_and_preview: device=%s", self._device_key)
         image = self._build_preview_surface()
-        if image is not None and self._ui_active:
+        if image is not None and self._pm.ui_active:
             self._w['preview'].set_image(image)
         return image
 
@@ -1355,23 +1337,23 @@ class LCDHandler(BaseHandler):
 
     @property
     def is_background_active(self) -> bool:
-        return self._background_active
+        return self._pm.background_active
 
     @is_background_active.setter
     def is_background_active(self, value: bool) -> None:
-        self._background_active = value
+        self._pm.background_active = value
 
     @property
     def brightness_level(self) -> int:
-        return self._brightness_level
+        return self._pm.brightness_level
 
     @property
     def split_mode(self) -> int:
-        return self._split_mode
+        return self._pm.split_mode
 
     @property
     def ldd_is_split(self) -> bool:
-        return self._ldd_is_split
+        return self._pm.ldd_is_split
 
     # ── Lifecycle ──────────────────────────────────────────────────
 
@@ -1395,7 +1377,7 @@ class LCDHandler(BaseHandler):
         without killing the per-device animation timer, so the LCD keeps
         showing its theme while another device owns the GUI panel.
         """
-        self._ui_active = False
+        self._pm.ui_active = False
         self._slideshow_timer.stop()
         self._flash_timer.stop()
 

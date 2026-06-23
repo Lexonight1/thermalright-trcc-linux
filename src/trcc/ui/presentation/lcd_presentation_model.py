@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from ...core.models import ProductInfo, Theme
     from ...core.protocol import DeviceProfile
 
+# Default brightness % before the user picks one (legacy default).
+_DEFAULT_BRIGHTNESS = 100
+
 
 @dataclass(slots=True)
 class DeviceState:
@@ -59,6 +62,19 @@ class LcdPresentationModel:
     def __init__(self, device_key: str) -> None:
         self.device_key = device_key
         self.state = DeviceState()
+
+        # ── Activation / view-lifecycle flags (B3) ──
+        # ui_active: multi-display windows share one preview widget set; only
+        # the active handler may write to them — this is the gate.
+        self.ui_active = False
+        # configured: True once the first connect LOADED the persisted theme
+        # (distinguishes first activation from a read-only re-select).
+        self.configured = False
+        # Per-device display state mirrored from DeviceSettings on restore.
+        self.background_active = False
+        self.brightness_level = _DEFAULT_BRIGHTNESS
+        self.split_mode = 0
+        self.ldd_is_split = False
 
     # ── Geometry (B2) ──────────────────────────────────────────────────
 

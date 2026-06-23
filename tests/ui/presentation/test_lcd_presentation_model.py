@@ -39,6 +39,26 @@ def test_model_holds_key_and_fresh_state() -> None:
     assert pm.state.canvas_size == (0, 0)
 
 
+def test_activation_flag_defaults() -> None:
+    """B3: the model owns the activation/view-lifecycle flags at their defaults."""
+    pm = LcdPresentationModel("0402:3922")
+    assert pm.ui_active is False
+    assert pm.configured is False
+    assert pm.background_active is False
+    assert pm.brightness_level == 100
+    assert pm.split_mode == 0
+    assert pm.ldd_is_split is False
+
+
+def test_activation_flags_are_per_instance() -> None:
+    a = LcdPresentationModel("0402:3922")
+    b = LcdPresentationModel("87ad:70db")
+    a.ui_active = True
+    a.configured = True
+    a.brightness_level = 40
+    assert (b.ui_active, b.configured, b.brightness_level) == (False, False, 100)
+
+
 def test_state_is_mutable_per_instance() -> None:
     """The View writes the cache through the model; instances don't share state."""
     a = LcdPresentationModel("0402:3922")
