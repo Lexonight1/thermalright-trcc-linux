@@ -48,9 +48,11 @@ class AppSettings:
     active_device: str | None = None
     autostart_configured: bool = False
     ui_theme: Literal["dark", "light", "system"] = "system"
-    # Include HDD metrics in sensor broadcasts.  Off by default so spinning
-    # disks don't spin up just to report idle stats.
-    hdd_enabled: bool = False
+    # Include HDD metrics (disk temp / activity / read / write) in sensor
+    # broadcasts + the System-Info HDD panel.  On by default — NVMe/SSD report
+    # temperature without spinning anything up, and an empty HDD panel reads as
+    # broken.  Users on spinning disks who want them parked can toggle it off.
+    hdd_enabled: bool = True
     # Global default temp_unit — propagates to every DeviceSettings.temp_unit
     # via Settings.set_global_temp_unit so overlay renderers see a consistent
     # unit across all devices. Per-device override still possible via the
