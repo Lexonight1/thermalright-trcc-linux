@@ -97,6 +97,35 @@ def test_apply_rotation_portrait_swaps_lcd_size_and_flags() -> None:
     assert pm.state.lcd_size == (854, 480)       # restored
 
 
+# ── Split-mode policy (B4) ────────────────────────────────────────────
+
+
+def test_apply_split_mode_split_capable_panel() -> None:
+    """A split-capable resolution: ldd_is_split True, dispatch the chosen mode."""
+    pm = LcdPresentationModel("87ad:70db")
+    mode = pm.apply_split_mode(3, (1920, 462))      # a SPLIT_MODE resolution
+    assert pm.ldd_is_split is True
+    assert pm.split_mode == 3
+    assert mode == 3
+
+
+def test_apply_split_mode_defaults_to_two_when_unset() -> None:
+    pm = LcdPresentationModel("87ad:70db")
+    mode = pm.apply_split_mode(0, (1280, 480))       # persisted 0 → default 2
+    assert pm.split_mode == 2
+    assert pm.ldd_is_split is True
+    assert mode == 2
+
+
+def test_apply_split_mode_non_split_panel_dispatches_zero() -> None:
+    """A non-split resolution: ldd_is_split False, dispatch mode 0."""
+    pm = LcdPresentationModel("0402:3922")
+    mode = pm.apply_split_mode(3, (320, 320))         # not a split resolution
+    assert pm.ldd_is_split is False
+    assert pm.split_mode == 3                          # still recorded
+    assert mode == 0                                   # but 0 is sent
+
+
 class _FakeComposer:
     def __init__(self, result: tuple[int, int]) -> None:
         self._result = result

@@ -51,14 +51,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Per-resolution split-mode availability (legacy: SPLIT_MODE_RESOLUTIONS).
-# Devices with one of these resolutions get the multi-zone "Dynamic
-# Island"-style split editor instead of the brightness cycle button.
-_SPLIT_MODE_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
-    (480, 1280), (1280, 480),
-    (440, 1920), (1920, 440),
-    (462, 1920), (1920, 462),
-})
 
 class _DataReadyNotifier(QObject):
     """Thread-safe notifier: emits ``ready`` from any thread to the Qt main thread."""
@@ -312,16 +304,10 @@ class LCDHandler(BaseHandler):
         self._update_theme_directories()
 
     def _restore_split_mode(self, ds: DeviceSettings, w: int, h: int) -> None:
-        self._pm.split_mode = ds.split_mode or 2
-        self._pm.ldd_is_split = (w, h) in _SPLIT_MODE_RESOLUTIONS
-        self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s",
-                       self._pm.split_mode, self._pm.ldd_is_split)
-        if self._pm.ldd_is_split:
-            self._app.dispatch(SetSplitMode(
-                key=self._device_key, mode=self._pm.split_mode,
-            ))
-        else:
-            self._app.dispatch(SetSplitMode(key=self._device_key, mode=0))
+        mode = self._pm.apply_split_mode(ds.split_mode, (w, h))
+        self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s mode=%d",
+                       self._pm.split_mode, self._pm.ldd_is_split, mode)
+        self._app.dispatch(SetSplitMode(key=self._device_key, mode=mode))
 
     def _restore_slideshow(self, ds: DeviceSettings) -> None:
         """Restore slideshow UI state from typed DeviceSettings.

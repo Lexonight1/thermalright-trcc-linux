@@ -32,6 +32,14 @@ if TYPE_CHECKING:
 # Default brightness % before the user picks one (legacy default).
 _DEFAULT_BRIGHTNESS = 100
 
+# Panel resolutions that get the multi-zone "Dynamic Island" split editor
+# (legacy SPLIT_MODE_RESOLUTIONS) instead of the brightness-cycle button.
+SPLIT_MODE_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
+    (480, 1280), (1280, 480),
+    (440, 1920), (1920, 440),
+    (462, 1920), (1920, 462),
+})
+
 
 @dataclass(slots=True)
 class DeviceState:
@@ -96,6 +104,19 @@ class LcdPresentationModel:
         self.state.is_rotated, self.state.lcd_size = rotated_lcd_size(
             self.state.canvas_size, degrees,
         )
+
+    def apply_split_mode(
+        self, persisted_mode: int, lcd_size: tuple[int, int],
+    ) -> int:
+        """Resolve persisted split mode for a geometry; return the dispatch mode.
+
+        Sets ``split_mode`` (default 2 when unset) and ``ldd_is_split`` (whether
+        this panel's resolution supports the split editor), and returns the mode
+        to send the device: the chosen mode on a split-capable panel, else 0.
+        """
+        self.split_mode = persisted_mode or 2
+        self.ldd_is_split = lcd_size in SPLIT_MODE_RESOLUTIONS
+        return self.split_mode if self.ldd_is_split else 0
 
     def preview_size(
         self,
