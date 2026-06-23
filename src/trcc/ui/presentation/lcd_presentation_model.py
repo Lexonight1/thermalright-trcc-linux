@@ -17,7 +17,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from .preview_geometry import (
+    CanvasComposer,
+    composed_preview_size,
+    rotated_lcd_size,
+)
+
+if TYPE_CHECKING:
+    from ...core.models import ProductInfo, Theme
+    from ...core.protocol import DeviceProfile
 
 
 @dataclass(slots=True)
@@ -49,3 +59,44 @@ class LcdPresentationModel:
     def __init__(self, device_key: str) -> None:
         self.device_key = device_key
         self.state = DeviceState()
+
+    # ── Geometry (B2) ──────────────────────────────────────────────────
+
+    def set_canvas(self, width: int, height: int) -> None:
+        """Cache the device's pre-rotation canvas (connect / refresh).
+
+        Seeds ``lcd_size`` to the same value; a later :meth:`apply_rotation`
+        swaps it for portrait orientations.
+        """
+        self.state.canvas_size = (width, height)
+        self.state.lcd_size = (width, height)
+
+    def apply_rotation(self, degrees: int) -> None:
+        """Update ``is_rotated`` + post-rotation ``lcd_size`` for an orientation.
+
+        The catalogs + preview key off these; dispatching SetOrientation alone
+        rotates the DEVICE, not the GUI's cached geometry.
+        """
+        self.state.is_rotated, self.state.lcd_size = rotated_lcd_size(
+            self.state.canvas_size, degrees,
+        )
+
+    def preview_size(
+        self,
+        display: CanvasComposer,
+        *,
+        info: ProductInfo | None,
+        theme: Theme | None,
+        profile: DeviceProfile | None,
+        orientation: int,
+    ) -> tuple[int, int]:
+        """Preview bezel/label dims for the active theme (#136).
+
+        Composed canvas when a device + theme are present, else the cached
+        canvas swapped for the user orientation.  The View supplies the
+        device/theme primitives; the model owns the cached ``canvas_size``.
+        """
+        return composed_preview_size(
+            display, info=info, theme=theme, profile=profile,
+            orientation=orientation, canvas_size=self.state.canvas_size,
+        )

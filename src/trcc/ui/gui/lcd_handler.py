@@ -41,7 +41,6 @@ from ...core.commands import (
 )
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
-from ..presentation.preview_geometry import composed_preview_size, rotated_lcd_size
 from ..presentation.theme_directories import resolve_theme_directories
 from .base_handler import BaseHandler
 
@@ -264,8 +263,7 @@ class LCDHandler(BaseHandler):
         # reactivate() also refreshes them — reactivate runs every time
         # the user picks the device in the sidebar, and the paths port
         # is the source of truth for theme/mask/web directories.
-        self._pm.state.canvas_size = (w, h)
-        self._pm.state.lcd_size = (w, h)
+        self._pm.set_canvas(w, h)
         paths = self._app.platform.paths()
         # Theme / web / mask dirs aren't cached on _state any more —
         # ``_update_theme_directories`` derives them per-call so portrait
@@ -916,18 +914,17 @@ class LCDHandler(BaseHandler):
         frame asset + label match what the panel shows.  Falls back to the
         cached canvas size (pre-handshake / no theme). (#136 phase 3)
 
-        The compose-vs-fallback rule is the Qt-free
-        :func:`composed_preview_size`; this View just gathers the device state.
+        The compose-vs-fallback rule + the cached canvas live on the model;
+        this View just gathers the device/theme primitives to feed it.
         """
         device = self._app.devices.get(self._device_key)
         ds = self._app.settings.for_device(self._device_key)
-        return composed_preview_size(
+        return self._pm.preview_size(
             self._app.display,
             info=device.info if device is not None else None,
             theme=self._app.active_themes.get(self._device_key),
             profile=device.profile if device is not None else None,
             orientation=ds.orientation,
-            canvas_size=self._pm.state.canvas_size,
         )
 
     def _sync_preview_size(self) -> None:
@@ -1026,9 +1023,7 @@ class LCDHandler(BaseHandler):
         it a persisted portrait orientation restores on the device but the
         catalogs + preview stay landscape.
         """
-        self._pm.state.is_rotated, self._pm.state.lcd_size = rotated_lcd_size(
-            self._pm.state.canvas_size, degrees,
-        )
+        self._pm.apply_rotation(degrees)
 
     def set_rotation(self, degrees: int) -> None:
         self.log.info("set_rotation: degrees=%d device=%s",
