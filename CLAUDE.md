@@ -54,9 +54,13 @@ file:line claim against current code before asserting it as fact.
   Plus dev-console scroll-bleed fix (also uncommitted). Commit/push the backlog (+
   unpushed `5e9182ed`/`c19d3e09`) — confirm with user first. See
   `memory/project_dev_variant_console.md`.
-- **Presentation Model refactor** — increments 1–4 done; **5 (`DevicePresentationModel`
-  from the 1447-line `lcd_handler`) and 6 (`WorkspaceModel` from the window) remain.**
-  See `memory/project_presentation_model_refactor.md`.
+- **Presentation Model refactor** — increments 1–4 done; **increment 5 DONE 2026-06-23
+  (B1–B5): the `LcdPresentationModel` (`ui/presentation/lcd_presentation_model.py`,
+  Qt-free + App-free, gate-enforced) now owns DeviceState + geometry + activation
+  flags + split policy + video math; handler 1447→1381L. Only 6 (`WorkspaceModel`
+  from the 2522-line `trcc_app.py`) remains.** The boundary gate now also fails on
+  any Qt/adapter/App import under `ui/presentation`. See
+  `memory/project_presentation_model_refactor.md`.
 - **Thermalright shipped a NEW software version** — a fresh workstream: get the new
   decompile, diff vs the `v2.1.4_decompiled` reference, enumerate new devices /
   handshake / protocol / features. The dev variant console is the tool to validate
@@ -642,12 +646,21 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
   theme → `visual=480x854`, device 90° skipped; landscape → `854x480`),
   preview-bezel reorientation. The geometry-DTO "re-centralize" was a phantom
   (already done via `DeviceProfile` + `DisplayService`); dead `native_orientation`
-  removed (`39516d47`). **Still pending — Tier-1 wire-output gap**: the device
-  encode-rotation table (`encode_base`/`encode_invert`/`encode_sub_bases`) is
-  recorded-but-UNWIRED — a blanket `rotate→90°` replaced legacy's
-  `get_encode_rotation` on the 4 widescreen JPEG panels (FBL 114/128/192/224);
-  re-wiring is hardware/mock-gated (verify #169 Trofeo first). See
-  `memory/project_geometry_subsystem_and_mock.md`.
+  removed (`39516d47`). **PREVIEW rotation FIXED 2026-06-23 (`959b1648`, mock-verified
+  "solved all the mess ups on rotation"):** `rotate=True` panels showed the preview
+  image rotated by the device-mount 90° in an upright bezel (FBL 50 sideways /
+  FBL 192 upside-down). C#-grounded — the decompile's `RotateFlip` count is **0**, the
+  C# never rotates the preview image (composes on an orientation-sized canvas;
+  `SetMyUCScreenImage` FBL 50 @ angle 0 → 320×240 landscape control). Fix is
+  PREVIEW-ONLY: `build_frame` captures `preview_surface` BEFORE the device-rotate
+  steps; `DisplayService._apply_post_processing` gained `device_rotate=False` for
+  `build_preview_surface`. Wire untouched (the 150 geometry tests assert WIRE bytes
+  and stayed green). **Still pending — Tier-1 WIRE-output gap (separate, hardware-gated)**:
+  whether our wire rotation matches the C# `isFanZhuan`/`get_encode_rotation` model —
+  the device encode-rotation table (`encode_base`/`encode_invert`/`encode_sub_bases`)
+  is recorded-but-UNWIRED, a blanket `rotate→90°` replaced legacy's `get_encode_rotation`
+  on the 4 widescreen JPEG panels (FBL 114/128/192/224). The mock can't confirm wire
+  output; needs a real device. See `memory/project_geometry_subsystem_and_mock.md`.
 
 ## GitHub Issues
 - Never use "Fixes #N" in commit messages — GitHub auto-closes on push to default branch
