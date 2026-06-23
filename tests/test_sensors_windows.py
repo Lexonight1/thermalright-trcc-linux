@@ -25,7 +25,7 @@ from trcc.adapters.sensors._hwinfo import (
     _parse_header,
     _snapshot_from_bytes,
 )
-from trcc.adapters.sensors._lhm import LhmCpu, discover_lhm_gpus
+from trcc.adapters.sensors._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from trcc.adapters.sensors._msacpi import WmiAcpiCpu
 from trcc.adapters.sensors.aggregator import BaselineSensors
 
@@ -221,6 +221,77 @@ def test_lhm_discover_gpus_normalizes_vendor_keys() -> None:
 
 def test_lhm_discover_gpus_handles_missing_namespace() -> None:
     assert discover_lhm_gpus(handle_factory=lambda: None) == []
+
+
+# =========================================================================
+# LhmDisk — storage temperature
+# =========================================================================
+
+
+def _lhm_storage_namespace() -> _FakeLhmNamespace:
+    """Two storage rows (NVMe + SATA) each with a Temperature sensor, plus a
+    non-storage row that must be ignored."""
+    return _FakeLhmNamespace([
+        _FakeLhmHardware(
+            identifier="/nvme/0", name="Samsung 990 Pro", hw_type="Storage",
+            sensors=[
+                _FakeLhmSensor(name="Temperature", sensor_type="Temperature", value=44.0),
+                _FakeLhmSensor(name="Used Space", sensor_type="Load", value=61.0),
+            ],
+        ),
+        _FakeLhmHardware(
+            identifier="/hdd/1", name="Crucial MX500", hw_type="Storage",
+            sensors=[
+                _FakeLhmSensor(name="Temperature", sensor_type="Temperature", value=39.0),
+            ],
+        ),
+        _FakeLhmHardware(
+            identifier="/intelcpu/0", name="i9", hw_type="Cpu",
+            sensors=[_FakeLhmSensor(name="CPU Package", sensor_type="Temperature",
+                                    value=80.0)],
+        ),
+    ])
+
+
+def test_lhm_discover_disks_one_source_per_storage_row() -> None:
+    ns = _lhm_storage_namespace()
+    disks = discover_lhm_disks(handle_factory=lambda: ns)
+
+    # Only the two Storage rows — the CPU row is not a disk.
+    assert [d.key for d in disks] == ["lhm:nvme:0", "lhm:hdd:1"]
+    by_key = {d.key: d for d in disks}
+    assert by_key["lhm:nvme:0"].temp() == 44.0
+    assert by_key["lhm:nvme:0"].name == "Samsung 990 Pro"
+    assert by_key["lhm:hdd:1"].temp() == 39.0
+
+
+def test_lhm_disk_temp_is_max_across_sensors() -> None:
+    """A drive exposing multiple Temperature sensors reports the hottest."""
+    ns = _FakeLhmNamespace([
+        _FakeLhmHardware(
+            identifier="/nvme/0", name="WD SN850X", hw_type="Storage",
+            sensors=[
+                _FakeLhmSensor(name="Temperature 1", sensor_type="Temperature", value=42.0),
+                _FakeLhmSensor(name="Temperature 2", sensor_type="Temperature", value=57.0),
+            ],
+        ),
+    ])
+    disks = discover_lhm_disks(handle_factory=lambda: ns)
+
+    assert disks[0].temp() == 57.0
+
+
+def test_lhm_discover_disks_handles_missing_namespace() -> None:
+    assert discover_lhm_disks(handle_factory=lambda: None) == []
+
+
+def test_lhm_disk_temp_none_when_namespace_unavailable() -> None:
+    """A constructed source whose namespace later goes away reads None, not raise."""
+    from trcc.adapters.sensors._lhm import LhmDisk
+
+    disk = LhmDisk("/nvme/0", "Samsung 990 Pro", handle_factory=lambda: None)
+    assert disk.temp() is None
+    assert disk.key == "lhm:nvme:0"
 
 
 # =========================================================================

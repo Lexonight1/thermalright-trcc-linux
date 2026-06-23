@@ -18,7 +18,7 @@ from contextlib import AbstractContextManager, nullcontext
 
 from ...core.ports import CpuSource, GpuSource
 from ._hwinfo import HwinfoCpu, discover_hwinfo_gpus
-from ._lhm import LhmCpu, discover_lhm_gpus
+from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
 from ._wmi_gpu import discover_wmi_gpus
 from .aggregator import BaselineSensors
@@ -46,9 +46,11 @@ def build_windows_sensors(
         PsutilCpu(),
     ])
     gpus = _build_windows_gpu_chains()
-    log.info("Windows sensors: cpu chain ready, gpus=%d", len(gpus))
+    disks = discover_lhm_disks()
+    log.info("Windows sensors: cpu chain ready, gpus=%d, disks=%d",
+             len(gpus), len(disks))
     return BaselineSensors(
-        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[],
+        cpu=cpu, memory=PsutilMemory(), gpus=gpus, fans=[], disks=disks,
         thread_context=thread_context,
     )
 

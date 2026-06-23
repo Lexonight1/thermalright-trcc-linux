@@ -28,7 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ...core.ports import CpuSource, GpuSource
+from ...core.ports import CpuSource, DiskSource, GpuSource
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ _TYPE_DATA = "Data"              # MemUsed/MemAvailable in GB
 # helper matches via ``startswith("Gpu")``.
 _HW_CPU = "Cpu"
 _HW_GPU_PREFIX = "Gpu"
+_HW_STORAGE = "Storage"
 
 
 def _probe_wmi_namespace() -> Any:
@@ -585,4 +586,87 @@ def discover_lhm_gpus(
             ))
     except Exception:
         log.debug("LHM GPU enumeration failed", exc_info=True)
+    return out
+
+
+# =========================================================================
+# LhmDisk — one per LHM-detected Storage row (NVMe / SATA SSD / HDD)
+# =========================================================================
+
+
+class LhmDisk(DiskSource):
+    """Storage temperature via LHM — one per ``Storage`` Hardware row.
+
+    LHM's storage tree (``HardwareType == "Storage"``) carries a
+    ``Temperature`` sensor per drive — the same WMI shape as the GPU
+    temp, so this is :class:`LhmGpu`'s temperature path narrowed to the
+    one reading the model's ``disk_temp`` slot needs.  Returns ``None``
+    when LHM isn't running or the drive has no temp sensor yet.
+    """
+
+    def __init__(
+        self,
+        hardware_identifier: str,
+        display_name: str,
+        *,
+        handle_factory: Callable[[], Any] = _default_handle_factory,
+    ) -> None:
+        # Defer the handle to first read (born on the reading thread's
+        # apartment, #131); identity is the apartment-agnostic LHM identifier.
+        self._handle_factory = handle_factory
+        self._id = hardware_identifier
+        self._display_name = display_name
+
+    @property
+    def key(self) -> str:
+        # LHM storage identifiers look like "/nvme/0" or "/hdd/0" — flatten to
+        # a stable per-drive key ("lhm:nvme:0").
+        ident = self._id.lower().lstrip("/").replace("/", ":")
+        return f"lhm:{ident}"
+
+    @property
+    def name(self) -> str:
+        return self._display_name
+
+    def _row(self, ns: Any) -> Any | None:
+        if ns is None:
+            return None
+        try:
+            rows = list(ns.Hardware(Identifier=self._id))
+        except Exception:
+            return None
+        return rows[0] if rows else None
+
+    def temp(self) -> float | None:
+        ns = self._handle_factory()
+        if (row := self._row(ns)) is None:
+            return None
+        return _max_value(_sensors_for(ns, row, _TYPE_TEMP))
+
+
+def discover_lhm_disks(
+    *,
+    handle_factory: Callable[[], Any] = _default_handle_factory,
+) -> list[DiskSource]:
+    """Enumerate storage devices LHM is currently reporting on.
+
+    Returns ``[]`` when LHM isn't running.  The aggregator folds the hottest
+    into ``disk:temp``; multiple drives each get their own source.
+    """
+    log.info("discover_lhm_disks: called")
+    ns = handle_factory()
+    if ns is None:
+        return []
+    out: list[DiskSource] = []
+    try:
+        for hw in ns.Hardware():
+            if str(hw.HardwareType) != _HW_STORAGE:
+                continue
+            out.append(LhmDisk(
+                hardware_identifier=str(hw.Identifier),
+                display_name=str(hw.Name),
+                handle_factory=handle_factory,
+            ))
+    except Exception:
+        log.debug("LHM disk enumeration failed", exc_info=True)
     return out
