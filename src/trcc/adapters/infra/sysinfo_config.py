@@ -62,10 +62,10 @@ _PANEL_ROW_BINDINGS: dict[tuple[int, int], str] = {
     (3, 1): "memory:percent",
     (3, 2): "memory:used",
     (3, 3): "memory:available",
-    # Disk panel (category_id=4) — ``disk:0:temp`` requires SMART; aggregator
-    # currently doesn't ship a SMART source, so the row stays unbound until
-    # a SmartDisk source lands.
-    (4, 0): "disk:0:temp",
+    # Disk panel (category_id=4) — ``disk:temp`` is the hottest drive's temp,
+    # published by the per-OS DiskSource (Linux hwmon nvme/drivetemp, Windows
+    # LHM storage).  Boxes whose drives expose no temp sensor stay unbound (--).
+    (4, 0): "disk:temp",
     (4, 1): "disk:activity",
     (4, 2): "disk:read",
     (4, 3): "disk:write",
