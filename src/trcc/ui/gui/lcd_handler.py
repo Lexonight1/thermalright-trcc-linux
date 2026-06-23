@@ -41,6 +41,7 @@ from ...core.commands import (
     UploadCustomMask,
 )
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
+from ..presentation.preview_geometry import composed_preview_size
 from ..presentation.theme_directories import resolve_theme_directories
 from .base_handler import BaseHandler
 
@@ -929,17 +930,20 @@ class LCDHandler(BaseHandler):
         panel, else the device size swapped for user rotation — so the preview
         frame asset + label match what the panel shows.  Falls back to the
         cached canvas size (pre-handshake / no theme). (#136 phase 3)
+
+        The compose-vs-fallback rule is the Qt-free
+        :func:`composed_preview_size`; this View just gathers the device state.
         """
         device = self._app.devices.get(self._device_key)
-        theme = self._app.active_themes.get(self._device_key)
         ds = self._app.settings.for_device(self._device_key)
-        if device is not None and device.profile is not None and theme is not None:
-            return self._app.display.composed_canvas_size(
-                device.info, theme, device.profile, ds.orientation,
-            )
-        cw, ch = self._state.canvas_size
-        swap = cw != ch and ds.orientation in (90, 270)
-        return (ch, cw) if swap else (cw, ch)
+        return composed_preview_size(
+            self._app.display,
+            info=device.info if device is not None else None,
+            theme=self._app.active_themes.get(self._device_key),
+            profile=device.profile if device is not None else None,
+            orientation=ds.orientation,
+            canvas_size=self._state.canvas_size,
+        )
 
     def _sync_preview_size(self) -> None:
         """Resize the preview bezel/label to the active theme's composed
