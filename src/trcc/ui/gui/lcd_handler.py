@@ -41,6 +41,7 @@ from ...core.commands import (
     UploadCustomMask,
 )
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
+from ..presentation.theme_directories import resolve_theme_directories
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
@@ -1315,37 +1316,20 @@ class LCDHandler(BaseHandler):
         landscape art at encode time so the device still gets a correctly
         oriented frame.
         """
-        paths = self._app.platform.paths()
-        cw, ch = self._state.canvas_size
-
-        # Catalog dims: rotated (portrait) dims when rotated, else canvas.
-        # These drive the cloud-theme / mask / cutter catalogs + the
-        # preview resolution — unconditionally, mirroring legacy's
-        # device-owned dir resolution.
-        if self._state.is_rotated:
-            bw, bh = self._state.lcd_size
-        else:
-            bw, bh = cw, ch
-
-        web_dir = paths.cloud_theme_dir(bw, bh)
-        masks_dir = paths.cloud_mask_dir(bw, bh)
-
-        # Local theme browser: prefer the portrait-native theme dir; fall
-        # back to the landscape dir when no portrait theme dir is on disk
-        # (render pixel-rotates landscape art).  The user-saved theme
-        # location (``~/.trcc-user/data/theme{w}{h}/``) tracks the same dims
-        # so Custom_* themes show alongside the pkg/cloud themes.
-        theme_dir = paths.theme_dir(bw, bh)
-        user_theme_dir = paths.user_theme_dir(bw, bh)
-        if self._state.is_rotated and not (theme_dir and theme_dir.exists()):
-            self.log.info(
-                "_update_theme_directories: no portrait theme dir at %s — "
-                "local browser falls back to landscape %dx%d "
-                "(render pixel-rotates); cloud/mask catalogs stay portrait %dx%d",
-                theme_dir, cw, ch, bw, bh,
-            )
-            theme_dir = paths.theme_dir(cw, ch)
-            user_theme_dir = paths.user_theme_dir(cw, ch)
+        # Pure geometry → directories: the catalog-dims selection + #136
+        # portrait-fallback rule live in the Qt-free presentation layer; this
+        # View only pokes the resulting paths into the browser widgets.
+        dirs = resolve_theme_directories(
+            self._app.platform.paths(),
+            canvas_size=self._state.canvas_size,
+            lcd_size=self._state.lcd_size,
+            is_rotated=self._state.is_rotated,
+        )
+        bw, bh = dirs.catalog_size
+        theme_dir = dirs.theme_dir
+        user_theme_dir = dirs.user_theme_dir
+        web_dir = dirs.web_dir
+        masks_dir = dirs.masks_dir
 
         self.log.info(
             "_update_theme_directories: catalog=%dx%d theme_dir=%s "
