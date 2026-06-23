@@ -97,6 +97,34 @@ def test_apply_rotation_portrait_swaps_lcd_size_and_flags() -> None:
     assert pm.state.lcd_size == (854, 480)       # restored
 
 
+# ── Video math (B5) ───────────────────────────────────────────────────
+
+
+def test_video_interval_ms() -> None:
+    pm = LcdPresentationModel("87ad:70db")
+    assert pm.video_interval_ms(None) == 33      # no playback → 30fps fallback
+    assert pm.video_interval_ms(0) == 33          # fps 0 → 30fps fallback
+    assert pm.video_interval_ms(30) == 33
+    assert pm.video_interval_ms(60) == 16
+    assert pm.video_interval_ms(1000) == 1        # clamped to >= 1ms
+
+
+def test_seek_frame_clamps() -> None:
+    pm = LcdPresentationModel("87ad:70db")
+    assert pm.seek_frame(0.0, 100) == 0
+    assert pm.seek_frame(0.5, 100) == 50
+    assert pm.seek_frame(1.0, 100) == 99          # last valid index, not 100
+    assert pm.seek_frame(-0.2, 100) == 0          # below range clamps to 0
+    assert pm.seek_frame(2.0, 100) == 99          # above range clamps to last
+
+
+def test_progress_fraction() -> None:
+    pm = LcdPresentationModel("87ad:70db")
+    assert pm.progress_fraction(0, 100) == 0.0
+    assert pm.progress_fraction(50, 100) == 0.5
+    assert pm.progress_fraction(5, 0) == 0.0       # no frames → 0.0, no ZeroDiv
+
+
 # ── Split-mode policy (B4) ────────────────────────────────────────────
 
 

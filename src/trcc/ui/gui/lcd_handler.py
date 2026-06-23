@@ -694,7 +694,7 @@ class LCDHandler(BaseHandler):
             )
             return
         total = playback.frame_count
-        frame = max(0, min(total - 1, int(percent * total)))
+        frame = self._pm.seek_frame(percent, total)
         self.log.info("seek: percent=%.3f frame=%d/%d", percent, frame, total)
         self._app.dispatch(SeekVideo(key=self._device_key, frame=frame))
 
@@ -712,10 +712,8 @@ class LCDHandler(BaseHandler):
         service if the event already carries the answer).
         """
         playback = self._app.media.playback(self._device_key)
-        if playback is None:
-            return 33
-        fps = getattr(playback, 'fps', 0) or 30
-        return max(1, int(1000 / fps))
+        fps = getattr(playback, 'fps', None) if playback is not None else None
+        return self._pm.video_interval_ms(fps)
 
     def _start_animation_timer(self, interval_ms: int, reason: str) -> None:
         """Single entry point for starting the per-frame video timer.
@@ -790,7 +788,7 @@ class LCDHandler(BaseHandler):
         if self._pm.ui_active:
             total = playback.frame_count
             cursor = playback.cursor
-            percent = (cursor / total) if total else 0.0
+            percent = self._pm.progress_fraction(cursor, total)
             self._w['preview'].set_progress(percent, cursor, total)
 
         device = self._app.devices.get(self._device_key)
