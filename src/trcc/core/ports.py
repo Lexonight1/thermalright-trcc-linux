@@ -438,6 +438,32 @@ class FanSource(ABC):
         """Duty cycle 0-100, or None."""
 
 
+class DiskSource(ABC):
+    """One storage device's thermal sensor (NVMe / SATA SSD / HDD).
+
+    Every OS reads drive temperature differently — Linux from hwmon
+    ``nvme`` / ``drivetemp`` nodes, Windows from LibreHardwareMonitor /
+    HWiNFO or SMART attribute 0xC2, macOS from SMC / ``smartctl``, BSD
+    from ``sysctl dev.nvme.*.temp`` — so each ``Platform`` discovers its
+    own ``DiskSource`` list and the OS-neutral aggregator just folds the
+    hottest into ``disk:temp``.  Mirrors :class:`FanSource`.
+    """
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'hwmon:nvme:temp1', 'nvme0'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable label."""
+
+    @abstractmethod
+    def temp(self) -> float | None:
+        """Current temperature in °C, or None."""
+
+
 # =========================================================================
 # SensorEnumerator — the aggregate: composes one CPU + one memory + N GPUs + N fans
 # =========================================================================
@@ -564,6 +590,7 @@ class SensorEnumerator(ABC):
             mem_available=_safe(mem.available),
             mem_used=readings.get("memory:used", 0.0),
             mem_temp=readings.get("memory:temp", 0.0),
+            disk_temp=readings.get("disk:temp", 0.0),
             disk_activity=readings.get("disk:activity", 0.0),
             disk_read=readings.get("disk:read", 0.0),
             disk_write=readings.get("disk:write", 0.0),

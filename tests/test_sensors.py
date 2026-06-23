@@ -8,8 +8,27 @@ import pytest
 
 from trcc.adapters.sensors import hwmon
 from trcc.adapters.sensors.aggregator import BaselineSensors
+from trcc.core.ports import DiskSource
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
+
+
+class FakeDisk(DiskSource):
+    """One storage temp source for the aggregator tests."""
+
+    def __init__(self, key: str, temp: float | None, name: str = "Fake SSD") -> None:
+        self._key, self._temp, self._name = key, temp, name
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def temp(self) -> float | None:
+        return self._temp
 
 # ── snapshot() — typed HardwareMetrics, collapse policy ──────────────
 
@@ -92,6 +111,91 @@ def _sensors_with(gpus=None) -> BaselineSensors:
         cpu=FakeCpu(), memory=FakeMemory(),
         gpus=gpus or [], fans=[],
     )
+
+
+# ── Disk temperature — DiskSource → disk:temp → snapshot.disk_temp ───
+
+
+def test_disk_temp_collapses_to_hottest_drive() -> None:
+    """N DiskSources fold to the single hottest as ``disk:temp`` (model has one
+    disk_temp slot; the hottest drive is the one most likely to throttle)."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        disks=[FakeDisk("nvme0", 41.0), FakeDisk("nvme1", 58.0)],
+    )
+
+    assert s.read_all()["disk:temp"] == 58.0
+    assert s.snapshot().disk_temp == 58.0
+
+
+def test_disk_temp_absent_when_no_disk_source() -> None:
+    """No DiskSource → no ``disk:temp`` key, and snapshot's disk_temp stays 0.0
+    (the pre-fix behaviour for boxes with no readable drive sensor)."""
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    assert "disk:temp" not in s.read_all()
+    assert s.snapshot().disk_temp == 0.0
+
+
+def test_disk_temp_skips_unreadable_drive() -> None:
+    """A drive whose temp reads None is skipped, not folded as 0.0."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        disks=[FakeDisk("nvme0", None), FakeDisk("sata0", 47.0)],
+    )
+
+    assert s.read_all()["disk:temp"] == 47.0
+
+
+def test_disk_temp_in_discover_catalog() -> None:
+    """``disk:temp`` is a declared metric so the overlay picker can offer it."""
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    ids = {r.sensor_id for r in s.discover()}
+    assert "disk:temp" in ids
+
+
+# ── Linux hwmon disk discovery (nvme / drivetemp) ────────────────────
+
+
+def _hwmon_dir(root: Path, dirname: str, driver: str, *,
+               temp1_milli: int | None = None,
+               temp1_label: str | None = None) -> hwmon.HwmonDevice:
+    d = root / dirname
+    d.mkdir()
+    (d / "name").write_text(f"{driver}\n")
+    if temp1_milli is not None:
+        (d / "temp1_input").write_text(str(temp1_milli))
+    if temp1_label is not None:
+        (d / "temp1_label").write_text(f"{temp1_label}\n")
+    return hwmon.HwmonDevice(d)
+
+
+def test_discover_disk_temp_matches_nvme_and_drivetemp(tmp_path: Path) -> None:
+    """nvme + drivetemp nodes become DiskSources; non-storage drivers don't."""
+    devices = [
+        _hwmon_dir(tmp_path, "hwmon0", "coretemp", temp1_milli=45000),   # CPU
+        _hwmon_dir(tmp_path, "hwmon1", "nvme", temp1_milli=35850,
+                   temp1_label="Composite"),
+        _hwmon_dir(tmp_path, "hwmon2", "drivetemp", temp1_milli=41000),  # SATA SSD
+    ]
+
+    disks = hwmon.discover_disk_temp(devices)
+
+    assert {d.key for d in disks} == {
+        "hwmon:nvme:temp1", "hwmon:drivetemp:temp1",
+    }
+    by_key = {d.key: d for d in disks}
+    assert by_key["hwmon:nvme:temp1"].temp() == 35.85
+    assert by_key["hwmon:nvme:temp1"].name == "Composite"
+    assert by_key["hwmon:drivetemp:temp1"].temp() == 41.0
+
+
+def test_discover_disk_temp_skips_node_without_temp1(tmp_path: Path) -> None:
+    """An nvme node exposing no temp1_input is skipped (not a 0.0 source)."""
+    devices = [_hwmon_dir(tmp_path, "hwmon0", "nvme")]   # no temp1_input
+
+    assert hwmon.discover_disk_temp(devices) == []
 
 
 def test_read_all_produces_normalized_cpu_keys() -> None:

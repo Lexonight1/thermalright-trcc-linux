@@ -7,7 +7,7 @@ the normalized keys overlays use:
     gpu:primary:temp | gpu:0:temp | gpu:nvidia:0:temp | gpu:amd:0:temp
     memory:used | memory:available | memory:total | memory:percent
     fan:cpu:rpm | fan:gpu:percent | fan:<key>:rpm
-    disk:read | disk:write | disk:activity
+    disk:temp | disk:read | disk:write | disk:activity
     net:up | net:down | net:total_up | net:total_down
     time:{hour,minute,second} | date:{year,month,day,dow}
 
@@ -28,6 +28,7 @@ from contextlib import AbstractContextManager, nullcontext
 from ...core.models import MIN_REFRESH_INTERVAL_S, SensorReading
 from ...core.ports import (
     CpuSource,
+    DiskSource,
     FanSource,
     GpuSource,
     MemorySource,
@@ -36,6 +37,7 @@ from ...core.ports import (
 from .hwmon import (
     HwmonCpu,
     discover_amd_gpus,
+    discover_disk_temp,
     discover_fans,
     discover_intel_gpus,
     find_cpu_temp_device,
@@ -88,6 +90,7 @@ def _gpu_reading_keys(prefix: str) -> list[tuple[str, str, str]]:
 
 def _io_keys() -> list[tuple[str, str, str]]:
     return [
+        ("disk:temp", "temperature", "°C"),
         ("disk:read", "disk_io", "MB/s"),
         ("disk:write", "disk_io", "MB/s"),
         ("disk:activity", "disk_io", "%"),
@@ -125,12 +128,14 @@ class BaselineSensors(SensorEnumerator):
                  memory: MemorySource | None = None,
                  gpus: list[GpuSource] | None = None,
                  fans: list[FanSource] | None = None,
+                 disks: list[DiskSource] | None = None,
                  thread_context: Callable[[], AbstractContextManager[None]]
                      = nullcontext) -> None:
         self._cpu = cpu or PsutilCpu()
         self._memory = memory or PsutilMemory()
         self._gpus: list[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
         self._fans: list[FanSource] = fans or []
+        self._disks: list[DiskSource] = disks or []
         # Per-thread OS setup the poll thread enters before touching OS
         # sensor APIs (Windows → COM apartment for WMI; others → no-op).
         # Injected as a narrow callable so this OS-neutral aggregator never
@@ -352,6 +357,16 @@ class BaselineSensors(SensorEnumerator):
             _store(r, f"fan:{fan.key}:percent",
                    self._read(fan.percent, f"fan:{fan.key}:percent"))
 
+        # Disk temperature — one DiskSource per drive; the model carries a
+        # single ``disk_temp`` slot, so collapse to the HOTTEST drive (the one
+        # most likely to throttle), mirroring cpu_temp = hottest socket.
+        disk_temps = [
+            t for disk in self._disks
+            if (t := self._read(disk.temp, f"disk:{disk.key}:temp")) is not None
+        ]
+        if disk_temps:
+            _store(r, "disk:temp", max(disk_temps))
+
         # IO + time
         try:
             self._io.poll(r)
@@ -399,8 +414,9 @@ def build_linux_sensors() -> BaselineSensors:
     gpus.extend(discover_amd_gpus(hwmon_devices))
     gpus.extend(discover_intel_gpus(hwmon_devices))
     fans = discover_fans(hwmon_devices)
-    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d",
+    disks = discover_disk_temp(hwmon_devices)
+    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d",
              "yes" if cpu.temp() is not None else "no",
-             len(gpus), len(fans))
+             len(gpus), len(fans), len(disks))
     return BaselineSensors(cpu=cpu, memory=PsutilMemory(),
-                           gpus=gpus, fans=fans)
+                           gpus=gpus, fans=fans, disks=disks)

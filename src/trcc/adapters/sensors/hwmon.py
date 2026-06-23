@@ -24,7 +24,7 @@ import threading
 import time
 from pathlib import Path
 
-from ...core.ports import CpuSource, FanSource, GpuSource
+from ...core.ports import CpuSource, DiskSource, FanSource, GpuSource
 from .psutil_sources import PsutilCpu
 
 log = logging.getLogger(__name__)
@@ -461,3 +461,47 @@ def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
             label = _read_text(dev.path / f"fan{idx}_label")
             fans.append(HwmonFan(dev, idx, label))
     return fans
+
+
+# ── Disk temperature (NVMe / SATA SSD/HDD via the drivetemp module) ──
+
+# hwmon drivers that expose a storage-device temperature: the kernel ``nvme``
+# driver (NVMe Composite temp at temp1) and ``drivetemp`` (SATA SSD/HDD SMART
+# temperature, modprobe drivetemp).  One physical drive per device → read the
+# primary temp1 only (NVMe's temp2/temp3 are extra on-controller sensors of the
+# SAME drive; the model carries one disk_temp, so the composite is the number).
+_DISK_DRIVERS = ("nvme", "drivetemp")
+
+
+class HwmonDisk(DiskSource):
+    """One storage device's temp1 sensor on a hwmon ``nvme`` / ``drivetemp`` node."""
+
+    def __init__(self, hwmon: HwmonDevice, label: str | None) -> None:
+        self._hwmon = hwmon
+        self._label = label or f"{hwmon.driver} disk"
+
+    @property
+    def key(self) -> str:
+        return f"hwmon:{self._hwmon.driver}:temp1"
+
+    @property
+    def name(self) -> str:
+        return self._label
+
+    def temp(self) -> float | None:
+        return self._hwmon.read_temp(1)
+
+
+def discover_disk_temp(devices: list[HwmonDevice]) -> list[DiskSource]:
+    """One :class:`HwmonDisk` per ``nvme`` / ``drivetemp`` device with a temp1."""
+    log.info("discover_disk_temp: devices=%d", len(devices))
+    disks: list[DiskSource] = []
+    for dev in devices:
+        if dev.driver not in _DISK_DRIVERS:
+            continue
+        if dev.read_temp(1) is None:
+            log.debug("discover_disk_temp: %s has no temp1_input — skip", dev.driver)
+            continue
+        label = _read_text(dev.path / "temp1_label")
+        disks.append(HwmonDisk(dev, label))
+    return disks
