@@ -350,6 +350,17 @@ class DisplayService:
                       info.key, 360 - s.orientation)
             surface = self._r.rotate(surface, 360 - s.orientation)
 
+        # The PREVIEW is the upright composite (+ user orientation) — captured
+        # here, BEFORE any device-mount rotation.  The C# never RotateFlips an
+        # image (RotateFlip count in the decompile = 0); it composes onto an
+        # orientation-sized canvas and the on-screen preview shows that upright
+        # (e.g. FBL 50 at angle 0 → a 320×240 landscape control).  The device
+        # rotation below exists ONLY so the WIRE buffer matches the physically-
+        # rotated glass; on the real panel the viewer sees the upright content,
+        # so the preview must too.  Storing the rotated surface here was the bug
+        # (sideways image in an upright bezel).
+        preview_surface = surface
+
         # Device encode rotation — widescreen JPEG panels map the user
         # orientation (and the sub-byte base, folded at handshake) to a single
         # wire angle via the encode table (C# ImageToJpg directionB switch).
@@ -373,7 +384,7 @@ class DisplayService:
             bg_mask_surface=bg_surface, bg_mask_key=bg_key,
             overlay_surface=overlay_surface, overlay_key=overlay_key,
             frame_key=frame_key, frame_bytes=encoded,
-            preview_surface=surface,
+            preview_surface=preview_surface,
         )
         return encoded
 
@@ -425,8 +436,11 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        # Preview stays upright — the device-mount 90° is a wire concern only
+        # (matches build_frame's preview_surface, captured pre-device-rotate).
         return self._apply_post_processing(
             surface, s, resolved_profile, compose_portrait=portrait,
+            device_rotate=False,
         )
 
     def _resolve_bg_overlay(
@@ -585,6 +599,7 @@ class DisplayService:
         resolved: DeviceProfile,
         *,
         compose_portrait: bool = False,
+        device_rotate: bool = True,
     ) -> Any:
         """Apply user brightness, user orientation, and device-side rotation.
 
@@ -595,17 +610,24 @@ class DisplayService:
         no-op and the helper's extra rotate calls would burn cycles for
         no visible change.  ``compose_portrait`` skips the device 90° rotate
         when the canvas was already composed at portrait dims (#136).
+
+        ``device_rotate=False`` skips the device-mount 90° entirely — the
+        PREVIEW path passes this so the on-screen image stays upright (the
+        rotation is a WIRE concern; the physical glass is mounted rotated, so
+        the viewer sees the upright content).  The C# never rotates the preview
+        image (RotateFlip count = 0).
         """
         log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s "
-                  "compose_portrait=%s",
-                  s.brightness, s.orientation, resolved.rotate, compose_portrait)
+                  "compose_portrait=%s device_rotate=%s",
+                  s.brightness, s.orientation, resolved.rotate, compose_portrait,
+                  device_rotate)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         # Portrait-composed content is authored portrait (orientation baked in)
         # → skip BOTH the user-orientation and device rotates. (#136)
         if s.orientation and not compose_portrait:
             surface = self._r.rotate(surface, 360 - s.orientation)
-        if resolved.rotate and not compose_portrait:
+        if device_rotate and resolved.rotate and not compose_portrait:
             surface = self._r.rotate(surface, 90)
         return surface
 
