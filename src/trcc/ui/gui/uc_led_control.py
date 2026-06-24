@@ -151,6 +151,18 @@ _STYLE_CHECKABLE_BTN = (
     "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
 )
 
+# LED styles whose display-button art was cleared, so the buttons get tr() text
+# overlays (full i18n): AX120(1)+PA120(2) [led_zone_mode_1-4], AK120(3)+LF8(5)+
+# LF12(6)+LF15(11) [led_zone_mode_5-6], LC1(4)+LF11(10) [panel bg].  CZ1(8) keeps
+# its baked bg labels (not cleared); LF10(7) is colour-zones (no metric text).
+_OVERLAY_BUTTON_STYLES = frozenset({1, 2, 3, 4, 5, 6, 10, 11})
+
+# Button labels for styles whose model carries none (PA120 is ZONE → page_labels
+# must stay () per the model invariant, but its zones *are* the 4 metrics).
+_ZONE_BUTTON_LABELS: dict[int, tuple[str, ...]] = {
+    2: ("CPU (°C/°F)", "CPU (%)", "GPU (°C/°F)", "GPU (%)"),   # PA120
+}
+
 
 def _checkbox_image_style() -> str:
     """Build stylesheet for checkbox radio-style buttons (°C/°F, 24H/12H, etc.)."""
@@ -579,9 +591,32 @@ class UCLedControl(QWidget):
         # ============================================================
 
         # LC2 clock buttons — C#: 14x14 checkboxes at exact positions.
-        # Background PNG has "24H"/"12H"/"Sun"/"Mon" labels baked in.
-        self._lc2_label = QLabel(self)  # hidden — bg has labels
+        # Field labels (headers + per-button) are baked into the C# DLC2 art;
+        # we overlay them as tr() text (source: D0LC2en).  LC2 text is light,
+        # unlike the gold memory/disk panels.  ``_lc2_text_labels`` collects
+        # every LC2 overlay (tr-key) for visibility + language refresh.
+        _lc2_lbl_style = (
+            "color: rgb(220, 220, 220); font-size: 13px;"
+            " background: transparent;")
+        self._lc2_text_labels: list[tuple[QLabel, str]] = []
+
+        def _lc2_text(key: str, x: int, y: int, w: int, h: int) -> None:
+            lbl = QLabel(tr(key, self._language), self)
+            lbl.setGeometry(x, y, w, h)
+            lbl.setStyleSheet(_lc2_lbl_style)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
+                             | Qt.AlignmentFlag.AlignVCenter)
+            lbl.setVisible(False)
+            self._lc2_text_labels.append((lbl, key))
+
+        # "Time format" header + 24H/12H beside their buttons (x=592).
+        self._lc2_label = QLabel(tr('Time format', self._language), self)
+        self._lc2_label.setGeometry(560, 686, 150, 20)
+        self._lc2_label.setStyleSheet(_lc2_lbl_style)
         self._lc2_label.setVisible(False)
+        self._lc2_text_labels.append((self._lc2_label, 'Time format'))
+        _lc2_text("24H", 612, 709, 60, 18)
+        _lc2_text("12H", 612, 727, 60, 18)
 
         self._btn_24h = QPushButton(self)
         self._btn_24h.setGeometry(592, 711, 14, 14)
@@ -602,8 +637,18 @@ class UCLedControl(QWidget):
         self._btn_12h.clicked.connect(lambda: self._set_clock_format(False))
         self._btn_12h.setVisible(False)
 
-        self._week_label = QLabel(self)  # hidden — bg has labels
+        # "First day of the week" header + Monday/Sunday beside their buttons
+        # (x=741).  The C# en art labels the second box "Tuesday" (a typo —
+        # the function is isWeekSun, i.e. Sunday); we render the correct value.
+        self._week_label = QLabel(
+            tr('First day of the week', self._language), self)
+        self._week_label.setGeometry(709, 686, 200, 20)
+        self._week_label.setStyleSheet(_lc2_lbl_style)
         self._week_label.setVisible(False)
+        self._lc2_text_labels.append(
+            (self._week_label, 'First day of the week'))
+        _lc2_text("Monday", 761, 709, 90, 18)
+        _lc2_text("Sunday", 761, 727, 90, 18)
 
         self._btn_sun = QPushButton(self)
         self._btn_sun.setGeometry(741, 729, 14, 14)
@@ -715,6 +760,52 @@ class UCLedControl(QWidget):
             self._mem_labels[key] = lbl
         self._mem_slots: list[dict] = []
 
+        # Field-NAME labels.  The C# bakes these into the UCLEDMemoryInfo
+        # background art; our LED panel background is label-less here (the
+        # names were missing, not baked), so we overlay them as tr() text at
+        # the C# value-label anchors (the name sits left of its value).
+        # Transparent background (the baked panel text is erased from the art),
+        # font/colour match the C# (Microsoft YaHei, RGB 180,150,83 — the same
+        # as the value-label style).
+        _mem_name_style = (
+            "color: rgb(180, 150, 83); font-size: 13px;"
+            " background: transparent;")
+        self._mem_name_labels: list[tuple[QLabel, str]] = []
+        _mem_name_layout = [
+            ("SPD Hub Temp",    10, 15, 124, 23),
+            ("Memory Speed",    10, 35, 124, 23),
+            ("Memory Clock",   200, 35, 110, 23),
+            ("Ratio",          362, 35,  66, 23),
+            ("Memory Used",     10, 54, 124, 23),
+            ("Clock Ratio",     10, 74, 124, 23),
+            ("Memory Timings",  10, 94, 130, 23),
+            # The 6 timing terms (deleted from the art at these exact x's;
+            # they pair with the value labels at x=169/228/283/346/401/464).
+            ("Tcas",           141, 94,  34, 23),
+            ("Trcd",           201, 94,  34, 23),
+            ("Trp",            261, 94,  34, 23),
+            ("Tras",           321, 94,  34, 23),
+            ("Trc",            381, 94,  34, 23),
+            ("Trfc",           441, 94,  34, 23),
+        ]
+        for key, ix, iy, w, h in _mem_name_layout:
+            lbl = QLabel(tr(key, self._language), self)
+            lbl.setGeometry(13 + ix, 656 + iy, w, h)
+            lbl.setStyleSheet(_mem_name_style)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
+                             | Qt.AlignmentFlag.AlignVCenter)
+            lbl.setVisible(False)
+            self._mem_name_labels.append((lbl, key))
+        # "(Only DDR5)" — opaque, positioned over the baked "(位DDR5)" so the
+        # panel-coloured background hides the Chinese and shows the English.
+        self._mem_ddr5_label = QLabel(
+            f"({tr('Only DDR5', self._language)})", self)
+        self._mem_ddr5_label.setGeometry(13 + 189, 656 + 16, 130, 22)
+        self._mem_ddr5_label.setStyleSheet(_mem_name_style)
+        self._mem_ddr5_label.setAlignment(Qt.AlignmentFlag.AlignLeft
+                                          | Qt.AlignmentFlag.AlignVCenter)
+        self._mem_ddr5_label.setVisible(False)
+
         # DDR multiplier combo (C# ucComboBoxB at internal 430,35)
         self._ddr_combo = QComboBox(self)
         self._ddr_combo.setGeometry(13 + 430, 656 + 35, 58, 20)
@@ -760,6 +851,29 @@ class UCLedControl(QWidget):
             lbl.setVisible(False)
             self._disk_labels[key] = lbl
         self._disk_slots: list[dict] = []
+
+        # Field-NAME labels (C# bakes these into UCLEDHarddiskInfo art; our
+        # background is blank here).  Overlay tr() text left of each value
+        # (values at internal x=170; C# rows y=21/43/66/88).  Source text:
+        # D0LF11en ("Drive Temp / Total Activity / Read Rate / Write Rate").
+        _disk_name_style = (
+            "color: rgb(180, 150, 83); font-size: 13px;"
+            " background: transparent;")
+        self._disk_name_labels: list[tuple[QLabel, str]] = []
+        _disk_name_layout = [
+            ("Drive Temp",     10, 21, 155, 23),
+            ("Total Activity", 10, 43, 155, 23),
+            ("Read Rate",      10, 66, 155, 23),
+            ("Write Rate",     10, 88, 155, 23),
+        ]
+        for key, ix, iy, w, h in _disk_name_layout:
+            lbl = QLabel(tr(key, self._language), self)
+            lbl.setGeometry(13 + ix, 656 + iy, w, h)
+            lbl.setStyleSheet(_disk_name_style)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignLeft
+                             | Qt.AlignmentFlag.AlignVCenter)
+            lbl.setVisible(False)
+            self._disk_name_labels.append((lbl, key))
 
         # Disk selector combo (C# ucComboBoxC at internal 304,21)
         self._disk_selector = QComboBox(self)
@@ -867,22 +981,37 @@ class UCLedControl(QWidget):
             self._populate_disk_identity()
 
     def _apply_selector_labels(self, style_id: int) -> None:
-        """Tooltip the selector buttons with the metric each page shows.
+        """Label the selector buttons with the metric each page shows.
 
-        PAGE styles (C# LunBo) → per-metric tooltips so the user knows the
-        "Display Selection" row picks what the device displays.  ZONE styles
-        keep their default tooltip.
+        PAGE styles (C# LunBo) → the buttons carry the metric *text* (the C#
+        bakes it into the panel art; we render it as tr() so it stays
+        translatable + matches the now-label-less background).  ZONE styles
+        are image-based (per-zone colour), so their text is cleared.
         """
         disp = led_display_for(style_id)
-        if disp.selector is not LedSelector.PAGE:
-            return
-        log.info("_apply_selector_labels: style=%d pages=%s",
-                 style_id, disp.page_labels)
+        # PA120 is ZONE (page_labels==()) but its zone buttons carry metric
+        # labels — fall back to the override for those.
+        labels = _ZONE_BUTTON_LABELS.get(style_id, disp.page_labels)
+        is_overlay = style_id in _OVERLAY_BUTTON_STYLES
+        log.info("_apply_selector_labels: style=%d overlay=%s labels=%s",
+                 style_id, is_overlay, labels)
         for i, btn in enumerate(self._zone_buttons):
-            if i < len(disp.page_labels):
-                btn.setToolTip(disp.page_labels[i])
-        self._display_selection_label.setToolTip(
-            "Pick which metric the LED display shows")
+            label = tr(labels[i], self._language) if i < len(labels) else ""
+            if is_overlay:
+                # Buttons whose art was cleared → overlay text, two-line like
+                # the C# baked labels ("CPU" / "(°C/°F)").
+                btn.setToolTip(label)
+                btn.setText(label.replace(" (", "\n(", 1))
+            elif disp.selector is LedSelector.PAGE:
+                # Not cleared (e.g. CZ1) — the bg/image still carries the label;
+                # tooltip it for discoverability but set no text (would double).
+                btn.setToolTip(label)
+                btn.setText("")
+            else:
+                btn.setText("")          # colour-zone / NONE: no metric text
+        if disp.selector is LedSelector.PAGE:
+            self._display_selection_label.setToolTip(
+                "Pick which metric the LED display shows")
 
     def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""
@@ -924,6 +1053,16 @@ class UCLedControl(QWidget):
                 self._mode_buttons[i].setToolTip(text)
         self._display_selection_label.setText(tr('Display Selection', lang))
         self._circulate_label.setText(tr('Circulate', lang))
+        # Memory-panel field names (LC1) follow the language too.
+        for lbl, key in self._mem_name_labels:
+            lbl.setText(tr(key, lang))
+        self._mem_ddr5_label.setText(f"({tr('Only DDR5', lang)})")
+        # Disk-panel field names (LF11).
+        for lbl, key in self._disk_name_labels:
+            lbl.setText(tr(key, lang))
+        # LC2 clock/week labels.
+        for lbl, key in self._lc2_text_labels:
+            lbl.setText(tr(key, lang))
 
     def set_temp_unit(self, unit_int: int) -> None:
         """Set temperature unit from app settings.
@@ -957,13 +1096,32 @@ class UCLedControl(QWidget):
                 normal_path = Assets.get(normal_name)
                 active_path = Assets.get(active_name)
                 if normal_path and active_path:
-                    btn.setStyleSheet(
-                        f"QPushButton {{ border: none; "
-                        f"background-image: url({normal_path}); "
-                        f"background-repeat: no-repeat; }}"
-                        f"QPushButton:checked {{ "
-                        f"background-image: url({active_path}); }}"
-                    )
+                    # Only the bg-label styles (LC1/LF11) carry tr() TEXT over an
+                    # empty frame — give them a visible colour + shift the text
+                    # into the dark area right of the neon symbol (C# centred it
+                    # ~88px from the left; background-origin:border keeps the
+                    # frame image pinned left).  Other styles bake the label into
+                    # the image, so they keep the plain frame style untouched.
+                    if style_id in _OVERLAY_BUTTON_STYLES:
+                        # Not active (normal png) → grey text; active (_active
+                        # png, checked) → white text — matching the baked look.
+                        btn.setStyleSheet(
+                            f"QPushButton {{ border: none;"
+                            f" color: rgb(160,160,160); font-size: 11px;"
+                            f" padding-left: 36px; background-origin: border;"
+                            f" background-image: url({normal_path}); "
+                            f"background-repeat: no-repeat; }}"
+                            f"QPushButton:checked {{ color: white;"
+                            f" background-image: url({active_path}); }}"
+                        )
+                    else:
+                        btn.setStyleSheet(
+                            f"QPushButton {{ border: none; "
+                            f"background-image: url({normal_path}); "
+                            f"background-repeat: no-repeat; }}"
+                            f"QPushButton:checked {{ "
+                            f"background-image: url({active_path}); }}"
+                        )
                 else:
                     btn.setStyleSheet(_STYLE_FLAT_CHECKABLE_BTN)
 
@@ -1211,12 +1369,12 @@ class UCLedControl(QWidget):
 
     def _set_lc2_visibility(self, visible: bool):
         """Show/hide LC2 clock widgets."""
-        self._lc2_label.setVisible(visible)
         self._btn_24h.setVisible(visible)
         self._btn_12h.setVisible(visible)
-        self._week_label.setVisible(visible)
         self._btn_sun.setVisible(visible)
         self._btn_mon.setVisible(visible)
+        for lbl, _ in self._lc2_text_labels:
+            lbl.setVisible(visible)
 
     def _set_sensor_visibility(self, visible: bool):
         """Show/hide UCInfoImage sensor gauges.
@@ -1233,12 +1391,17 @@ class UCLedControl(QWidget):
         self._mem_bg.setVisible(visible)
         for lbl in self._mem_labels.values():
             lbl.setVisible(visible)
+        for lbl, _ in self._mem_name_labels:
+            lbl.setVisible(visible)
+        self._mem_ddr5_label.setVisible(visible)
         self._ddr_combo.setVisible(visible)
 
     def _set_disk_visibility(self, visible: bool):
         """Show/hide LF11 disk info panel (C# ucledHarddiskInfo1)."""
         self._disk_bg.setVisible(visible)
         for lbl in self._disk_labels.values():
+            lbl.setVisible(visible)
+        for lbl, _ in self._disk_name_labels:
             lbl.setVisible(visible)
         self._disk_selector.setVisible(visible)
 

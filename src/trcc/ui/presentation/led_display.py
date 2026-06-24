@@ -61,11 +61,12 @@ class LedDisplayModel:
 # follow the C# GetVal slot order (the metric fed into each LunBo page).
 _DISPLAY: dict[int, LedDisplayModel] = {
     1:  LedDisplayModel(1, LedSelector.PAGE, 4,
-                        ("CPU Temp", "CPU %", "GPU Temp", "GPU %")),       # AX120
+                        ("CPU (°C/°F)", "CPU (%)",
+                         "GPU (°C/°F)", "GPU (%)")),                       # AX120
     2:  LedDisplayModel(2, LedSelector.ZONE, 4, ()),                       # PA120
     3:  LedDisplayModel(3, LedSelector.PAGE, 2, ("CPU", "GPU")),           # AK120
     4:  LedDisplayModel(4, LedSelector.PAGE, 3,
-                        ("Memory Temp", "Memory Clock", "Memory Used")),   # LC1
+                        ("Temp (°C/°F)", "Speed (MT/S)", "Used (GB)")),    # LC1
     5:  LedDisplayModel(5, LedSelector.PAGE, 2, ("CPU", "GPU")),           # LF8
     6:  LedDisplayModel(6, LedSelector.PAGE, 2, ("CPU", "GPU")),           # LF12
     7:  LedDisplayModel(7, LedSelector.ZONE, 3, ()),                       # LF10
@@ -73,7 +74,8 @@ _DISPLAY: dict[int, LedDisplayModel] = {
                         ("CPU Temp", "CPU %", "GPU Temp", "GPU %")),       # CZ1
     9:  LedDisplayModel(9, LedSelector.NONE, 0, ()),                       # LC2 (clock)
     10: LedDisplayModel(10, LedSelector.PAGE, 4,
-                        ("Disk Temp", "Disk Use", "Disk Read", "Disk Write")),  # LF11
+                        ("Temp (°C/°F)", "Activity (%)",
+                         "Read Rate (MB/s)", "Write Rate (MB/s)")),        # LF11
     11: LedDisplayModel(11, LedSelector.PAGE, 2, ("CPU", "GPU")),          # LF15
     12: LedDisplayModel(12, LedSelector.NONE, 0, ()),                      # LF13 (solid)
 }

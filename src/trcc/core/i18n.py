@@ -291,6 +291,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Load Linked': 'Load Linked',
         'Display Selection': 'Display Selection',
         'Circulate': 'Circulate',
+        # LED info-panel field labels (sourced from the C# en resx panels:
+        # D0LC1en memory, D0LF11en disk, D0LC2en clock).  Rendered as tr()
+        # overlays since our panel backgrounds are label-less here.
+        'SPD Hub Temp': 'SPD Hub Temp',
+        'Memory Speed': 'Memory Speed',
+        'Memory Clock': 'Memory Clock',
+        'Ratio': 'Ratio',
+        'Memory Used': 'Memory Used',
+        'Clock Ratio': 'Clock Ratio',
+        'Memory Timings': 'Memory Timings',
+        'Only DDR5': 'Only DDR5',
+        'Drive Temp': 'Drive Temp',
+        'Total Activity': 'Total Activity',
+        'Read Rate': 'Read Rate',
+        'Write Rate': 'Write Rate',
+        'Time format': 'Time format',
+        'First day of the week': 'First day of the week',
+        'Monday': 'Monday',
+        'Sunday': 'Sunday',
+        # DRAM timing acronyms — universal, but tr-keyed so the panel is fully
+        # overlay-driven (the art was cleared).
+        'Tcas': 'Tcas', 'Trcd': 'Trcd', 'Trp': 'Trp',
+        'Tras': 'Tras', 'Trc': 'Trc', 'Trfc': 'Trfc',
+        # Display-button metric labels (AX120/PA120 mode_1-4, AK120/LF8/LF12/
+        # LF15 mode_5-6) — art cleared, now tr() overlays.
+        'CPU (°C/°F)': 'CPU (°C/°F)', 'CPU (%)': 'CPU (%)',
+        'GPU (°C/°F)': 'GPU (°C/°F)', 'GPU (%)': 'GPU (%)',
+        'CPU': 'CPU', 'GPU': 'GPU',
     },
     'de': {
         'Layer Mask': 'Ebenenmaske',
