@@ -943,15 +943,24 @@ class UCLedControl(QWidget):
         for i, btn in enumerate(self._zone_buttons):
             btn.setVisible(i < zone_count and zone_count > 1)
         self._is_select_all_style = style_id in LED_SELECT_ALL_STYLES
-        has_zones = zone_count > 1
-        self._carousel_btn.setVisible(has_zones)
+        # Carousel + interval + selector-row visibility follow the C# selector
+        # (verified against FormLEDInit's buttonLB/textBoxTimer Hide() calls):
+        #   * carousel toggle (buttonLB) + the selector row show for any style
+        #     WITH a selector — hidden only for NONE (LC2 clock / LF13 solid);
+        #   * the rotation-interval box (textBoxTimer) shows ONLY for PAGE styles
+        #     (timed metric-page rotation) — never for the ZONE "select all"
+        #     styles (PA120/LF10) or NONE.
+        selector = led_display_for(style_id).selector
+        has_selector = selector is not LedSelector.NONE
+        is_page = selector is LedSelector.PAGE
+        self._carousel_btn.setVisible(has_selector)
         self._carousel_btn.setToolTip(
             "Select all zones" if self._is_select_all_style
-            else "Cycle through selected zones"
+            else "Cycle through selected pages"
         )
-        self._carousel_interval.setVisible(False)
-        self._display_selection_label.setVisible(has_zones)
-        self._circulate_label.setVisible(has_zones)
+        self._carousel_interval.setVisible(is_page)
+        self._display_selection_label.setVisible(has_selector)
+        self._circulate_label.setVisible(has_selector)
         self._zones.configure(zone_count, self._is_select_all_style)
         self._carousel_btn.setChecked(False)
         if zone_count > 1:

@@ -144,3 +144,28 @@ def test_every_zone_asset_resolves_to_a_bundled_png() -> None:
         if not (_PKG_ASSETS_DIR / f"{name}.png").exists()
     })
     assert not missing, f"zone-button assets with no bundled .png: {missing}"
+
+
+@pytest.mark.parametrize("style", list(LED_STYLES), ids=lambda s: s.name)
+def test_carousel_and_interval_visibility_follow_selector(style, qtbot) -> None:
+    """Carousel toggle + selector row show for any style WITH a selector
+    (PAGE/ZONE); the rotation-interval box shows ONLY for PAGE styles — matching
+    the C# FormLEDInit buttonLB/textBoxTimer Hide() calls.  Regression for the
+    bug where visibility keyed off ``zone_count`` and the interval box was
+    unconditionally hidden (so the 8 page-styles never showed it)."""
+    from trcc.ui.presentation.led_display import LedSelector, led_display_for
+    spec = LED_STYLES[style]
+    sid = LEGACY_STYLE_ID[style]
+    sel = led_display_for(sid).selector
+    panel = _panel(qtbot)
+    panel.initialize(sid, spec.segment_count, spec.zone_count,
+                     model=spec.model_name)
+
+    has_selector = sel is not LedSelector.NONE
+    is_page = sel is LedSelector.PAGE
+    assert panel._carousel_btn.isVisibleTo(panel) == has_selector, \
+        f"{style.name}: carousel toggle visibility != (selector!=NONE)"
+    assert panel._display_selection_label.isVisibleTo(panel) == has_selector, \
+        f"{style.name}: selector row visibility != (selector!=NONE)"
+    assert panel._carousel_interval.isVisibleTo(panel) == is_page, \
+        f"{style.name}: interval box visibility != (selector==PAGE)"
