@@ -1,5 +1,43 @@
 # Changelog
 
+## v9.7.6
+
+LED-panel polish and sensor fixes.
+
+**LED panel labels are now translatable.**  The memory (LC1), disk (LF11) and
+clock (LC2) panels rendered their field labels from baked artwork — some of it
+Chinese (`(位DDR5)`), some missing entirely (the disk panel showed values with
+no "Drive Temp"/"Read Rate"/… names) — and the metric-selection buttons baked
+their labels into the button images.  Every LED-panel label is now an i18n
+`tr()` overlay, drawn at the original coordinates and font, so changing the app
+language changes the panel.  English text is sourced from the official panels;
+the clock's "first day of the week" also fixes an upstream typo (it's
+Sunday/Monday, not "Tuesday").
+
+**LED segment temperature shows in your unit.**  The 7-segment display lit the
+°F label but kept printing the raw °C number (e.g. 26 °C shown as "26°F").  It
+now converts to the device's selected °C/°F.
+
+**LED brightness dims the preview, not just the device.**  The brightness slider
+only affected the physical LEDs; the on-screen preview stayed full-bright.  Both
+now follow one signal, so the slider previews correctly.
+
+**LED rotation-interval control restored.**  The "Circulate" rotation-speed field
+was never shown, so metric-page styles (AX120, AK120, LC1, LF8, LF12, CZ1, LF11,
+LF15) couldn't set how fast the display cycles.  Carousel/interval/selector
+visibility now matches the device: page styles get the interval field, the
+"select all" styles (PA120/LF10) correctly don't, and the clock/solid panels
+show neither.
+
+**SSD/disk temperature.**  Disk temperature is wired on Linux (kernel
+`nvme`/`drivetemp`) and Windows (LibreHardwareMonitor); HDD metrics are on by
+default, and the System-Info hard-disk temperature row is bound correctly.
+
+**Preview stays upright on rotated panels.**  Non-square panels mounted at 90/180°
+no longer show a sideways/upside-down preview (the wire output is unchanged).
+
+**The running window raises on relaunch without hanging (#196).**
+
 ## v9.7.5
 
 Follow-up fixes from reporters testing v9.7.4.
