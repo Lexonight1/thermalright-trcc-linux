@@ -137,15 +137,16 @@ class LedRuntimeState:
 class LedPayload:
     """Structured payload for ``Led.send()``.
 
-    colors:     per-LED RGB tuples (0-255).
+    colors:     per-LED RGB tuples (0-255), already brightness-baked by
+                the service layer (``apply_brightness``).  The wire is pure
+                transport — it applies only the FormLED 0.4x hardware scale
+                + the on/off mask, never brightness.
     is_on:      per-LED boolean mask; ``None`` means all on.
     global_on:  master switch; ``False`` turns every LED off.
-    brightness: 0-100 multiplier applied before the FormLED 0.4x scale.
     """
     colors: list[tuple[int, int, int]]
     is_on: list[bool] | None = None
     global_on: bool = True
-    brightness: int = 100
 
 
 # =========================================================================

@@ -10,10 +10,15 @@ Pipeline shape per RenderLed tick::
     sensors = platform.sensors().read_all()
     colors  = LEDEffectEngine().tick(settings, runtime, sensors,
                                      led_count=N)
-    payload = LedPayload(colors=colors,
-                        global_on=settings.global_on,
-                        brightness=settings.brightness)
+    colors  = apply_brightness(colors, settings.brightness)  # one writer
+    payload = LedPayload(colors=colors, global_on=settings.global_on)
     device.send(payload)         # wire-remap applied inside Led.send
+
+Global brightness is baked into ``colors`` HERE (the single writer), so
+both observers of the rendered signal — the device wire and the GUI
+preview — show the same thing.  The wire applies only its hardware
+``_COLOR_SCALE`` (a perceptual constant, like RGB565 quantization), never
+brightness; ``LedPayload`` carries no brightness field.
 
 ``LEDEffectEngine`` is stateless across instantiations — every per-tick
 mutation lives on the caller-owned ``LedRuntimeState``.  That keeps the
@@ -28,6 +33,24 @@ from typing import ClassVar
 from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
 
 log = logging.getLogger(__name__)
+
+
+def apply_brightness(
+    colors: list[tuple[int, int, int]], percent: int,
+) -> list[tuple[int, int, int]]:
+    """Scale a logical colour array by a 0–100 % brightness.
+
+    The single conversion point for global LED brightness: ``RenderLed``
+    and ``SetLedColors`` bake it into the rendered signal so the device
+    wire and the GUI preview observe one identical colour list.  100 % is
+    the identity, so callers may always route through this.
+    """
+    scale = max(0, min(100, percent)) / 100.0
+    if scale == 1.0:
+        return list(colors)
+    return [(int(r * scale), int(g * scale), int(b * scale))
+            for r, g, b in colors]
+
 
 # =========================================================================
 # ColorEngine — rainbow lookup table + gradient mapping

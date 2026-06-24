@@ -4,10 +4,12 @@ HID 64-byte report transport.  Shares the Type 2 DA/DB/DC/DD magic with
 HID LCD devices, but LED packets use cmd=2 with per-LED RGB payload.
 
 Payload shape passed to send():
-    LedPayload(colors=[(r,g,b), ...], is_on=None, global_on=True, brightness=100)
+    LedPayload(colors=[(r,g,b), ...], is_on=None, global_on=True)
 
-Color scaling matches FormLED.cs SendHidVal:
-    scaled = channel * (brightness/100) * 0.4
+Colours arrive already brightness-baked by the service layer
+(``led_effects.apply_brightness``).  The wire is pure transport — it
+applies only the FormLED hardware perceptual scale, never brightness:
+    scaled = channel * 0.4          # FormLED.cs SendHidVal, sans brightness
 """
 from __future__ import annotations
 
@@ -348,7 +350,6 @@ class Led(Device[BulkTransport]):
                     colors=remapped_colors,
                     is_on=remapped_is_on,
                     global_on=payload.global_on,
-                    brightness=payload.brightness,
                 )
 
         packet = self._build_packet(payload)
@@ -409,15 +410,17 @@ class Led(Device[BulkTransport]):
         payload_len = count * 3
         header = cls._build_header(payload_len)
 
-        brightness = max(0, min(100, payload.brightness)) / 100.0
+        # Pure transport: the colours arrive already brightness-baked by the
+        # service (apply_brightness); the wire applies only the FormLED
+        # hardware perceptual scale + the on/off mask, never brightness.
         body = bytearray(payload_len)
         for i, (r, g, b) in enumerate(payload.colors):
             on = payload.global_on and (
                 payload.is_on[i] if payload.is_on is not None else True
             )
             if on:
-                body[i * 3] = min(255, max(0, int(r * brightness * _COLOR_SCALE)))
-                body[i * 3 + 1] = min(255, max(0, int(g * brightness * _COLOR_SCALE)))
-                body[i * 3 + 2] = min(255, max(0, int(b * brightness * _COLOR_SCALE)))
+                body[i * 3] = min(255, max(0, int(r * _COLOR_SCALE)))
+                body[i * 3 + 1] = min(255, max(0, int(g * _COLOR_SCALE)))
+                body[i * 3 + 2] = min(255, max(0, int(b * _COLOR_SCALE)))
             # else: stays 0,0,0 (off)
         return header + bytes(body)

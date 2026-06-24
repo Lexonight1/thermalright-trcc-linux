@@ -146,6 +146,63 @@ def test_selected_metric_page_reaches_the_wire(
         )
 
 
+def test_render_led_converts_temp_to_device_unit(
+    fake_platform: FakePlatform,
+) -> None:
+    """RenderLed must show the temperature in the *device's* unit, not the raw
+    °C number with the °F label lit.
+
+    Regression for the bug where the segment path rendered straight off the raw
+    ``last_raw_snapshot`` (Celsius) while ``temp_unit='F'`` only lit the °F
+    label — so a 26 °C GPU read showed "26" with °F instead of "78".  The fix
+    routes the raw snapshot through the single ``personalize_metrics`` relay
+    using the per-device unit before ``compute_mask``.
+    """
+    from trcc.core.commands import SelectZone
+    from trcc.core.led_protocol import LED_REMAP_TABLES
+    from trcc.services.metrics_personalize import personalize_metrics
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
+    app.settings.set_temp_unit(_LED_KEY, "F")
+    table = LED_REMAP_TABLES.get(LedStyle.AX120)
+
+    # A controlled raw (°C) snapshot so the converted digits are deterministic:
+    # 26 °C → 78 °F, 45 °C → 113 °F.
+    raw = HardwareMetrics(readings={}, cpu_temp=45.0, gpu_temp=26.0)
+    app.last_raw_readings = {}
+    app.last_raw_snapshot = raw
+    converted = personalize_metrics(raw, temp_unit="F")
+
+    def _wire_lit() -> set[int]:
+        sent = _decode_body(fake_platform.bulk.writes, 30)
+        return {table[p] if table else p
+                for p, c in enumerate(sent) if c != (0, 0, 0)}
+
+    for page in (0, 2):   # AX120 page 0 = CPU temp, page 2 = GPU temp
+        want = {i for i, on in enumerate(
+            compute_mask(LedStyle.AX120, converted, phase=page, temp_unit="F"))
+            if on}
+        buggy = {i for i, on in enumerate(
+            compute_mask(LedStyle.AX120, raw, phase=page, temp_unit="F"))
+            if on}
+        assert want != buggy, (
+            "test setup: converted and raw masks must differ on a temp page"
+        )
+        app.dispatch(SelectZone(key=_LED_KEY, zone=page))
+        fake_platform.bulk.writes.clear()
+        app.dispatch(RenderLed(key=_LED_KEY))
+        lit = _wire_lit()
+        assert lit == want, (
+            f"page {page}: wire must show the °F-converted temperature"
+        )
+        assert lit != buggy, (
+            f"page {page}: wire shows the raw °C digits with °F label (the bug)"
+        )
+
+
 def test_carousel_rotates_only_through_toggled_pages(
     fake_platform: FakePlatform,
 ) -> None:
@@ -201,6 +258,88 @@ def test_carousel_rotates_only_through_toggled_pages(
     assert set(observed) == {0, 2}, (
         f"carousel must rotate only the toggled pages {{0, 2}}, saw {observed}"
     )
+
+
+def test_reactive_render_holds_carousel_only_loop_advances(
+    fake_platform: FakePlatform,
+) -> None:
+    """Only the animation-loop tick (``advance=True``) advances the metric-page
+    carousel; reactive re-renders (``advance=False`` — a settings change or a
+    sensor broadcast) must HOLD the page.
+
+    Regression for the bug where every ``LedSettingsChanged`` (e.g. each tick of
+    a brightness-slider drag) and every ``SensorsUpdated`` advanced
+    ``zone_sync_ticks`` — so the carousel raced forward whenever the user
+    touched any control."""
+    from trcc.core.commands import (
+        SetLedZoneSync,
+        SetLedZoneSyncInterval,
+        SetLedZoneSyncZones,
+    )
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120: 4 metric pages
+    app.dispatch(SetLedZoneSyncZones(
+        key=_LED_KEY, zones=(True, True, True, True)))
+    app.dispatch(SetLedZoneSyncInterval(key=_LED_KEY, ticks=5))
+    app.dispatch(SetLedZoneSync(key=_LED_KEY, enabled=True))
+
+    runtime = app.led_runtime[_LED_KEY]
+    runtime.zone_sync_ticks = 0          # ignore any setup-render bookkeeping
+
+    # Reactive renders (settings/sensor change) never move the carousel clock.
+    for _ in range(10):
+        app.dispatch(RenderLed(key=_LED_KEY, advance=False))
+    assert runtime.zone_sync_ticks == 0, (
+        "reactive renders advanced the carousel — a slider drag would race it"
+    )
+    # The animation-loop render does advance it, one step per tick.
+    app.dispatch(RenderLed(key=_LED_KEY, advance=True))
+    assert runtime.zone_sync_ticks == 1
+
+
+def test_render_led_brightness_dims_preview_and_wire(
+    fake_platform: FakePlatform,
+) -> None:
+    """Global brightness dims BOTH the device wire AND the GUI preview
+    (``display_colors``) from one writer (``apply_brightness`` in RenderLed) —
+    one signal, two observers.
+
+    Regression: brightness lived only in the wire adapter, so the preview
+    stayed full-bright and the slider looked dead."""
+    from trcc.core.commands import SetLedBrightness
+    from trcc.core.events import FrameSent
+
+    from .conftest import _CliRenderer
+
+    app = App(fake_platform, renderer=_CliRenderer())  # type: ignore[arg-type]
+    _attach_and_connect(app, fake_platform, pm=1)      # AX120, STATIC (255,0,0)
+
+    captured: dict[str, list] = {}
+    app.events.subscribe(
+        FrameSent,
+        lambda e: captured.__setitem__("preview", list(e.display_colors)),
+    )
+
+    def _render_at(percent: int) -> tuple[list, list]:
+        app.dispatch(SetLedBrightness(key=_LED_KEY, percent=percent))
+        fake_platform.bulk.writes.clear()
+        captured.clear()
+        app.dispatch(RenderLed(key=_LED_KEY))   # advance default; no explicit colour
+        wire = _decode_body(fake_platform.bulk.writes, 30)
+        return captured["preview"], wire
+
+    preview_full, wire_full = _render_at(100)
+    preview_half, wire_half = _render_at(50)
+
+    # STATIC red → lit preview segments carry the colour at full, halved at 50 %.
+    assert max(r for r, _, _ in preview_full) == 255
+    assert max(r for r, _, _ in preview_half) == 127
+    # The wire applies only the 0.4 hardware scale on top of the baked value.
+    assert max(r for r, _, _ in wire_full) == int(255 * _COLOR_SCALE)
+    assert max(r for r, _, _ in wire_half) == int(127 * _COLOR_SCALE)
 
 
 def test_render_led_uses_cached_sample_not_per_tick_repoll(

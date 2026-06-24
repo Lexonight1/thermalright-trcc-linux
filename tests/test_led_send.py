@@ -59,8 +59,9 @@ def _decode_first_packet_colors(
 
     Led builds one header + body chunked into 64-byte HID reports;
     bytes 20.. of the first chunk + subsequent chunks form the body
-    laid out as RRGGBB per LED.  We undo the brightness*0.4 scale to
-    get back to the post-remap logical color.
+    laid out as RRGGBB per LED.  The wire applies only the 0.4 hardware
+    scale (brightness is baked in upstream), so callers compare against
+    ``int(channel * _COLOR_SCALE)``.
     """
     body = b"".join(chunk for _, chunk in writes)[20:20 + count * 3]
     colors: list[tuple[int, int, int]] = []
@@ -82,7 +83,7 @@ def test_send_remaps_using_pa120_handshake_style() -> None:
     # logical index landed at each physical position.  Stay above the
     # 0.4 scale rounding threshold by using multiples of 100.
     logical = [(i + 1, 0, 0) for i in range(84)]
-    led.send(LedPayload(colors=list(logical), brightness=100))
+    led.send(LedPayload(colors=list(logical)))
 
     sent = _decode_first_packet_colors(transport.writes, 84)
     table = LED_REMAP_TABLES[LedStyle.PA120]
@@ -103,7 +104,7 @@ def test_send_passthrough_for_style_without_remap_table() -> None:
     assert led.led_handshake.style is LedStyle.AX120
 
     logical = [(200, 0, 0)] * 30
-    led.send(LedPayload(colors=list(logical), brightness=100))
+    led.send(LedPayload(colors=list(logical)))
 
     sent = _decode_first_packet_colors(transport.writes, 30)
     for c in sent:
@@ -117,7 +118,7 @@ def test_send_unknown_pm_passes_through() -> None:
     assert led.led_handshake.style is None
 
     logical = [(150, 0, 0), (0, 150, 0)]
-    led.send(LedPayload(colors=list(logical), brightness=100))
+    led.send(LedPayload(colors=list(logical)))
 
     sent = _decode_first_packet_colors(transport.writes, 2)
     expected = [
@@ -142,7 +143,6 @@ def test_send_remaps_is_on_mask_alongside_colors() -> None:
     led.send(LedPayload(
         colors=list(logical_colors),
         is_on=list(logical_is_on),
-        brightness=100,
     ))
 
     sent = _decode_first_packet_colors(transport.writes, 84)
@@ -165,7 +165,6 @@ def test_send_all_off_is_on_zeros_every_wire_led() -> None:
     led.send(LedPayload(
         colors=[(200, 0, 0)] * 84,
         is_on=[False] * 84,
-        brightness=100,
     ))
     sent = _decode_first_packet_colors(transport.writes, 84)
     assert all(c == (0, 0, 0) for c in sent)

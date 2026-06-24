@@ -76,10 +76,12 @@ class SetLedColors(Command[LedColorsResult]):
                 f"{self.key} not connected — dispatch ConnectDevice first"
             )
 
+        # Bake brightness into the colours (the single writer) so the wire
+        # stays pure transport — same shape as RenderLed.
+        from ...services.led_effects import apply_brightness
         payload = LedPayload(
-            colors=list(self.colors),
+            colors=apply_brightness(list(self.colors), self.brightness),
             global_on=self.global_on,
-            brightness=self.brightness,
         )
         try:
             ok = app.send(self.key, payload)
@@ -157,9 +159,15 @@ class RenderLed(Command[LedColorsResult]):
     key: str
     color: tuple[int, int, int] | None = None    # None = use Settings.led.color
     phase: int = 0
+    # True only on the animation-loop tick — that is the carousel/effects
+    # clock.  Reactive re-renders (settings change, sensor broadcast) pass
+    # False so dragging a slider doesn't race the metric-page carousel.
+    advance: bool = True
 
     def execute(self, app: App) -> LedColorsResult:
+        from ...services.led_effects import apply_brightness
         from ...services.led_segment import compute_mask, get_display
+        from ...services.metrics_personalize import personalize_metrics
 
         try:
             device = app.get(self.key)
@@ -265,24 +273,41 @@ class RenderLed(Command[LedColorsResult]):
         if display.phase_count > 1:
             if (effective_settings.zone_sync
                     and style.value not in LED_SELECT_ALL_STYLES):
-                runtime.zone_sync_ticks += 1
-                if (runtime.zone_sync_ticks
-                        >= effective_settings.zone_sync_interval_ticks):
-                    runtime.zone_sync_ticks = 0
-                    runtime.zone_sync_current = app.led_effects.next_sync_zone(
-                        effective_settings.zone_sync_zones,
-                        runtime.zone_sync_current,
-                    )
+                # Only the animation-loop tick advances the carousel; reactive
+                # re-renders (advance=False) hold the current page so a slider
+                # drag — which fires many LedSettingsChanged — doesn't race it.
+                if self.advance:
+                    runtime.zone_sync_ticks += 1
+                    if (runtime.zone_sync_ticks
+                            >= effective_settings.zone_sync_interval_ticks):
+                        runtime.zone_sync_ticks = 0
+                        runtime.zone_sync_current = (
+                            app.led_effects.next_sync_zone(
+                                effective_settings.zone_sync_zones,
+                                runtime.zone_sync_current,
+                            )
+                        )
                 phase = runtime.zone_sync_current
-                log.debug("RenderLed %s: zone-sync carousel phase=%d",
-                          self.key, phase)
+                log.debug("RenderLed %s: zone-sync carousel phase=%d "
+                          "(advance=%s)", self.key, phase, self.advance)
             else:
                 phase = effective_settings.selected_zone
                 log.debug("RenderLed %s: selected-zone phase=%d",
                           self.key, phase)
 
+        # Personalize the RAW snapshot through the single conversion relay,
+        # using THIS device's unit — the device owns its °C/°F, so a future
+        # per-device toggle needs no plumbing change.  The cached snapshot
+        # stays raw precisely so each device converts with its own unit.
+        # compute_mask then only truncates (values are pre-converted) and
+        # lights the matching °C/°F label segment.
+        display_metrics = personalize_metrics(
+            metrics,
+            temp_unit=device_settings.temp_unit,
+            hdd_enabled=app.settings.app.hdd_enabled,
+        )
         mask = compute_mask(
-            style, metrics, phase=phase,
+            style, display_metrics, phase=phase,
             temp_unit=device_settings.temp_unit,
             is_24h=(device_settings.time_format == "24h"),
             memory_ratio=effective_settings.memory_ratio,
@@ -311,11 +336,17 @@ class RenderLed(Command[LedColorsResult]):
                 led_count=segment_count,
             )
 
+        # One writer: bake global brightness into the rendered signal so the
+        # device wire and the GUI preview observe one identical colour list.
+        # (Per-zone brightness is already baked by tick_multi_zone; this is
+        # the global 0–100 % on top.)  Explicit-colour diagnostics force
+        # brightness=100 via effective_settings, so this is a no-op there.
+        colors = apply_brightness(colors, effective_settings.brightness)
+
         payload = LedPayload(
             colors=colors,
             is_on=mask,
             global_on=effective_settings.global_on,
-            brightness=effective_settings.brightness,
         )
         try:
             ok = app.send(self.key, payload)
@@ -335,10 +366,11 @@ class RenderLed(Command[LedColorsResult]):
             ))
             # Same preview path as LCD: publish the rendered output on
             # FrameSent so the GUI preview shows exactly what went to the
-            # device (LCD carries a surface; LED carries the colors).
-            # Apply the on/off mask the device gets via is_on — otherwise
-            # the preview colors EVERY segment and reads as "888" instead
-            # of the lit digits.  Empty mask (pure-RGB styles) shows all.
+            # device.  ``colors`` is already brightness-baked above (the one
+            # writer), so the preview observes the same signal the wire does
+            # — the slider dims both.  Apply the on/off mask the device gets
+            # via is_on, else the preview colours EVERY segment and reads as
+            # "888".  Empty mask (pure-RGB styles) shows all.
             shown = ([c if on else (0, 0, 0)
                       for c, on in zip(colors, mask, strict=True)]
                      if mask else colors)

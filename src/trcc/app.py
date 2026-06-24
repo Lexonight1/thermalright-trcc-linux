@@ -674,7 +674,10 @@ class _DeviceRenderObserver:
                     "DeviceRenderObserver: %s for %s → RenderLed",
                     type(event).__name__, key,
                 )
-                self._app.dispatch(self._RenderLed(key=key))
+                # Reactive re-render (settings/sensor change), NOT an
+                # animation tick — hold the carousel so a slider drag or a
+                # sensor broadcast doesn't race the metric page forward.
+                self._app.dispatch(self._RenderLed(key=key, advance=False))
                 continue
             theme = self._app.active_themes.get(key)
             if theme is None:

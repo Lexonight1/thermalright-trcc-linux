@@ -109,7 +109,13 @@ class SegmentDisplay:
 
     @staticmethod
     def _to_display_temp(value: float, temp_unit: str) -> int:
-        """Truncate pre-converted temperature to int for segment display."""
+        """Truncate the (already personalized) temperature to int for display.
+
+        The value arrives pre-converted — RenderLed personalizes the raw
+        snapshot through ``personalize_metrics`` (the single conversion relay)
+        with the *per-device* unit before calling ``compute_mask`` — so this
+        only truncates; the °C/°F segment lights the matching label.
+        """
         return int(value)
 
     # ── Encoding helpers ────────────────────────────────────────────

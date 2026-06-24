@@ -74,7 +74,7 @@ def _connected_led() -> tuple[Led, _FlakyBulkTransport]:
 
 
 def _payload() -> LedPayload:
-    return LedPayload(colors=[(200, 0, 0)] * 30, brightness=100)
+    return LedPayload(colors=[(200, 0, 0)] * 30)
 
 
 def test_eio_is_classified_as_disconnect() -> None:
