@@ -16,8 +16,12 @@ import ctypes
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import usb.util
+
+if TYPE_CHECKING:
+    from ._imc_timings import ImcTimings
 
 from ...core.errors import TransportError
 from ...core.models import DeviceInfo
@@ -569,6 +573,11 @@ _DMI_MEMORY_FIELDS: frozenset[str] = frozenset({
 
 _POLKIT_POLICY = '/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy'
 
+# Privileged MCHBAR reader (installed by the distro packages).  Intel family-6
+# Alder Lake (0x97/0x9A) + Raptor Lake (0xB7/0xBA/0xBF) share the register map.
+_IMC_HELPER = '/usr/bin/trcc-imc'
+_ADL_RPL_MODELS = frozenset({0x97, 0x9A, 0xB7, 0xBA, 0xBF})
+
 
 def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     """Build a command, wrapping in pkexec when polkit policy is installed."""
@@ -604,6 +613,109 @@ def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
             slot[key] = str(val)
 
 
+# Sentinel so a failed/unsupported live read is cached too (timings are static
+# per boot; PlatformFactory builds a fresh LinuxPlatform each call, so the cache
+# lives at module scope, not on the instance).
+_UNREAD: object = object()
+_live_imc_cache: object = _UNREAD
+
+
+def _cpu_is_adl_rpl() -> bool:
+    """Rootless: True iff /proc/cpuinfo is an Intel family-6 Alder/Raptor Lake."""
+    family = model = None
+    try:
+        with Path("/proc/cpuinfo").open() as f:
+            for line in f:
+                if line.startswith("vendor_id") and "GenuineIntel" not in line:
+                    return False
+                if line.startswith("cpu family"):
+                    family = int(line.split(":")[1])
+                elif line.startswith("model") and "name" not in line:
+                    model = int(line.split(":")[1])
+                if line == "\n":          # end of the first processor block
+                    break
+    except (OSError, ValueError):
+        return False
+    return family == 6 and model in _ADL_RPL_MODELS
+
+
+def _read_live_imc_timings() -> ImcTimings | None:
+    """Live IMC timings via the privileged ``trcc-imc`` helper, cached for life.
+
+    Silent by design: only spawns the helper when the polkit policy + helper are
+    installed (packaged installs) so it never prompts for a password.  Any
+    failure (unsupported CPU, no policy, bad output) caches ``None`` so we never
+    re-spawn on the next ``memory_info()`` call.
+    """
+    global _live_imc_cache
+    if _live_imc_cache is not _UNREAD:
+        return _live_imc_cache  # type: ignore[return-value]
+    _live_imc_cache = None      # cache the negative result up front
+
+    if os.environ.get("TRCC_DISABLE_LIVE_IMC"):
+        return None
+    if not _cpu_is_adl_rpl() or not Path(_IMC_HELPER).is_file():
+        return None
+
+    import shutil
+    import subprocess
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        cmd = [_IMC_HELPER]
+    elif Path(_POLKIT_POLICY).is_file() and shutil.which("pkexec"):
+        cmd = ["pkexec", _IMC_HELPER]
+    else:
+        return None             # no silent privilege path available
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("_read_live_imc_timings: helper failed: %s", type(e).__name__)
+        return None
+    if result.returncode != 0:
+        log.info("_read_live_imc_timings: helper exit=%d", result.returncode)
+        return None
+
+    regs: dict[str, int] = {}
+    for token in result.stdout.split():
+        key, _, val = token.partition("=")
+        if key in ("tc_pre", "odt", "refresh", "bios_ddr"):
+            try:
+                regs[key] = int(val, 16)
+            except ValueError:
+                log.warning("_read_live_imc_timings: bad token %r", token)
+                return None
+    if len(regs) != 4:
+        log.warning("_read_live_imc_timings: incomplete helper output")
+        return None
+
+    from ._imc_timings import decode_adl
+    timings = decode_adl(regs["tc_pre"], regs["odt"],
+                         regs["refresh"], regs["bios_ddr"])
+    _live_imc_cache = timings
+    return timings
+
+
+def _enrich_with_live_imc_timings(slots: list[dict[str, str]]) -> None:
+    """Override the SPD timings with the live IMC values, in place.
+
+    Overrides tcas/trcd/trp/tras/trc; the SPD ``trfc`` (tRFC1) is kept — the live
+    register is tRFC2 (2x refresh), a different parameter, so overwriting it
+    would silently mislabel the panel.  No live read → SPD values stand.
+    """
+    if not slots:
+        return
+    t = _read_live_imc_timings()
+    if t is None:
+        return
+    fields = {'tcas': t.tcas, 'trcd': t.trcd, 'trp': t.trp,
+              'tras': t.tras, 'trc': t.trc}
+    log.info("_enrich_with_live_imc_timings: %s", fields)
+    for slot in slots:
+        for key, val in fields.items():
+            slot[key] = str(val)
+
+
 def _linux_memory_info() -> list[dict[str, str]]:
     """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
     log.debug("_linux_memory_info: called")
@@ -634,6 +746,7 @@ def _linux_memory_info() -> list[dict[str, str]]:
         log.debug("dmidecode -t memory failed: %s", type(e).__name__)
 
     _enrich_with_spd_timings(slots)
+    _enrich_with_live_imc_timings(slots)
 
     if not slots:
         try:

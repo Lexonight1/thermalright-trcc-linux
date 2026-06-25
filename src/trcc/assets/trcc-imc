@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+"""trcc-imc — privileged Intel MCHBAR memory-timing reader (run via pkexec).
+
+Reads the live DDR5 timing registers from the integrated memory controller's
+MCHBAR MMIO window and prints them as hex; the unprivileged TRCC process parses
++ decodes the output.  This is the ONLY piece of TRCC that touches /dev/mem, so
+it is a deliberately minimal, self-contained script:
+
+  * stdlib only — imports NOTHING from the trcc package, so running it as root
+    pulls in no untrusted code.
+  * takes NO arguments — the register offsets are compile-time constants, so it
+    can only ever read those few fixed registers (bounded blast radius).
+  * maps /dev/mem PROT_READ only, after verifying the CPU is a generation whose
+    register map we know (Alder Lake / Raptor Lake).
+  * fails closed: any error prints nothing and exits non-zero; the caller then
+    keeps the SPD base-profile timings.
+
+Output on success (exit 0):
+    tc_pre=0x... odt=0x... refresh=0x... bios_ddr=0x...
+Exit codes: 0 ok · 1 read/map error · 2 unsupported CPU or bad invocation.
+
+Register map (Intel 12th/13th gen client IMC, channel 0; from CoreFreq):
+    BIOS_DDR @0x5E00 (32b)   TC_PRE @0xE000 (64b)
+    ODT      @0xE070 (64b)   REFRESH @0xE43C (32b)
+"""
+import mmap
+import os
+import struct
+import sys
+from pathlib import Path
+
+# Intel family 6 models whose MCHBAR timing layout matches the offsets below.
+_ALDER_LAKE = (0x97, 0x9A)            # ADL-S / ADL-P
+_RAPTOR_LAKE = (0xB7, 0xBA, 0xBF)     # RPL-S / RPL-P / RPL refresh
+_SUPPORTED_MODELS = frozenset(_ALDER_LAKE + _RAPTOR_LAKE)
+
+_PCI_CFG = "/sys/bus/pci/devices/0000:00:00.0/config"
+_MCHBAR_OFFSET = 0x48                 # PCI config: MCHBAR base (bit0 = enable)
+_MCHBAR_ENABLE = 0x1
+_MCHBAR_BASE_MASK = 0x0007_FFFF_FFFE_0000
+# Plausible high-MMIO range for the MCHBAR base (FED0_0000h..FEEF_FFFFh region).
+_MCHBAR_MIN, _MCHBAR_MAX = 0xFED0_0000, 0xFEF0_0000
+
+# Fixed register offsets within the mapped window (channel 0).
+_TC_PRE, _ODT, _REFRESH, _BIOS_DDR = 0xE000, 0xE070, 0xE43C, 0x5E00
+_MAP_SPAN = 0xF000                    # covers 0x0000..0xEFFF (all four offsets)
+
+
+def _cpu_supported() -> bool:
+    """True iff /proc/cpuinfo reports an Intel family-6 ADL/RPL model."""
+    family = model = None
+    try:
+        with Path("/proc/cpuinfo").open() as f:
+            for line in f:
+                if line.startswith("vendor_id") and "GenuineIntel" not in line:
+                    return False
+                if line.startswith("cpu family"):
+                    family = int(line.split(":")[1])
+                elif line.startswith("model") and "name" not in line:
+                    model = int(line.split(":")[1])
+                if line == "\n":          # end of first processor block
+                    break
+    except (OSError, ValueError):
+        return False
+    return family == 6 and model in _SUPPORTED_MODELS
+
+
+def _mchbar_base() -> int | None:
+    """MCHBAR base physical address from PCI config, or None if disabled/bad."""
+    try:
+        with Path(_PCI_CFG).open("rb") as f:
+            f.seek(_MCHBAR_OFFSET)
+            raw = struct.unpack("<Q", f.read(8))[0]
+    except (OSError, struct.error):
+        return None
+    if not raw & _MCHBAR_ENABLE:
+        return None
+    base = raw & _MCHBAR_BASE_MASK
+    if not _MCHBAR_MIN <= base < _MCHBAR_MAX:
+        return None
+    return base
+
+
+def main() -> int:
+    if len(sys.argv) > 1:              # argv-locked: no caller-supplied addresses
+        return 2
+    if not _cpu_supported():
+        return 2
+    base = _mchbar_base()
+    if base is None:
+        return 1
+
+    page = mmap.PAGESIZE
+    aligned = base & ~(page - 1)
+    delta = base - aligned
+    try:
+        fd = os.open("/dev/mem", os.O_RDONLY)
+    except OSError:
+        return 1
+    try:
+        mm = mmap.mmap(fd, _MAP_SPAN + delta, mmap.MAP_SHARED,
+                       mmap.PROT_READ, offset=aligned)
+    except (OSError, ValueError):
+        os.close(fd)
+        return 1
+    try:
+        def rd(off: int, n: int) -> int:
+            return int.from_bytes(mm[delta + off: delta + off + n], "little")
+
+        tc_pre = rd(_TC_PRE, 8)
+        odt = rd(_ODT, 8)
+        refresh = rd(_REFRESH, 4)
+        bios_ddr = rd(_BIOS_DDR, 4)
+    except (OSError, ValueError, IndexError):
+        return 1
+    finally:
+        mm.close()
+        os.close(fd)
+
+    print(f"tc_pre={tc_pre:#x} odt={odt:#x} "
+          f"refresh={refresh:#x} bios_ddr={bios_ddr:#x}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
