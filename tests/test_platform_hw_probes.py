@@ -268,3 +268,49 @@ def test_bsd_disk_defaults_unknown_health() -> None:
     minimal = "Geom name: ada0\n   descr: Test\n"
     disks = _bsd_disk_info(runner=lambda: minimal)
     assert disks[0]["health"] == "Unknown"
+
+
+# ── Linux DDR5 SPD timings enrichment ─────────────────────────────────
+
+
+def test_enrich_with_spd_timings_adds_timing_keys(monkeypatch) -> None:
+    from trcc.adapters.system import linux, spd
+
+    timings = spd.SpdTimings(
+        dram_type="DDR5", mhz=2404, mts=4808,
+        tcas=40, trcd=40, trp=40, tras=77, trc=117, trfc=709,
+    )
+    monkeypatch.setattr(spd, "read_spd_timings", lambda: timings)
+
+    slots = [{"size": "16 GiB", "speed": "4800 MT/s"}]
+    linux._enrich_with_spd_timings(slots)
+
+    assert slots[0]["tcas"] == "40"
+    assert slots[0]["tras"] == "77"
+    assert slots[0]["trfc"] == "709"
+    assert slots[0]["size"] == "16 GiB"   # untouched
+
+
+def test_enrich_with_spd_timings_leaves_slots_when_no_spd(monkeypatch) -> None:
+    from trcc.adapters.system import linux, spd
+
+    monkeypatch.setattr(spd, "read_spd_timings", lambda: None)
+
+    slots = [{"size": "16 GiB"}]
+    linux._enrich_with_spd_timings(slots)
+
+    assert slots == [{"size": "16 GiB"}]   # no timing keys added
+
+
+def test_enrich_with_spd_timings_noop_on_empty_slots(monkeypatch) -> None:
+    from trcc.adapters.system import linux, spd
+
+    def _boom() -> None:
+        raise AssertionError("must not probe SPD when there are no slots")
+
+    monkeypatch.setattr(spd, "read_spd_timings", _boom)
+
+    slots: list[dict[str, str]] = []
+    linux._enrich_with_spd_timings(slots)   # returns early, no SPD read
+
+    assert slots == []

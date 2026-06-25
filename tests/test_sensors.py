@@ -8,7 +8,7 @@ import pytest
 
 from trcc.adapters.sensors import hwmon
 from trcc.adapters.sensors.aggregator import BaselineSensors
-from trcc.core.ports import DiskSource
+from trcc.core.ports import DiskSource, DramSource
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
 
@@ -17,6 +17,24 @@ class FakeDisk(DiskSource):
     """One storage temp source for the aggregator tests."""
 
     def __init__(self, key: str, temp: float | None, name: str = "Fake SSD") -> None:
+        self._key, self._temp, self._name = key, temp, name
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def temp(self) -> float | None:
+        return self._temp
+
+
+class FakeDram(DramSource):
+    """One DIMM temp source for the aggregator tests."""
+
+    def __init__(self, key: str, temp: float | None, name: str = "Fake DIMM") -> None:
         self._key, self._temp, self._name = key, temp, name
 
     @property
@@ -196,6 +214,129 @@ def test_discover_disk_temp_skips_node_without_temp1(tmp_path: Path) -> None:
     devices = [_hwmon_dir(tmp_path, "hwmon0", "nvme")]   # no temp1_input
 
     assert hwmon.discover_disk_temp(devices) == []
+
+
+# ── DRAM (SPD-hub) temperature — DramSource → memory:temp → mem_temp ──
+
+
+def test_dram_temp_collapses_to_hottest_dimm() -> None:
+    """N DramSources fold to the single hottest as ``memory:temp`` (model has
+    one mem_temp slot; the hottest DIMM is the one most likely to throttle)."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        dram=[FakeDram("dimm0", 27.0), FakeDram("dimm1", 39.0)],
+    )
+
+    assert s.read_all()["memory:temp"] == 39.0
+    assert s.snapshot().mem_temp == 39.0
+
+
+def test_dram_temp_absent_when_no_dram_source() -> None:
+    """No DramSource → no ``memory:temp`` key, and snapshot's mem_temp stays 0.0
+    (the pre-fix behaviour for boxes with no readable DIMM sensor)."""
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    assert "memory:temp" not in s.read_all()
+    assert s.snapshot().mem_temp == 0.0
+
+
+def test_dram_temp_skips_unreadable_dimm() -> None:
+    """A DIMM whose temp reads None is skipped, not folded as 0.0."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        dram=[FakeDram("dimm0", None), FakeDram("dimm1", 31.0)],
+    )
+
+    assert s.read_all()["memory:temp"] == 31.0
+
+
+def test_dram_temp_in_discover_catalog() -> None:
+    """``memory:temp`` is a declared metric so the overlay picker can offer it."""
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    ids = {r.sensor_id for r in s.discover()}
+    assert "memory:temp" in ids
+
+
+# ── Linux hwmon DRAM discovery (spd5118 / jc42) ──────────────────────
+
+
+def test_discover_dram_temp_matches_spd5118_and_jc42(tmp_path: Path) -> None:
+    """spd5118 + jc42 nodes become DramSources; coretemp + ee1004 don't."""
+    devices = [
+        _hwmon_dir(tmp_path, "hwmon0", "coretemp", temp1_milli=45000),    # CPU
+        _hwmon_dir(tmp_path, "hwmon1", "spd5118", temp1_milli=27250),     # DDR5
+        _hwmon_dir(tmp_path, "hwmon2", "jc42", temp1_milli=33000),        # DDR4
+        _hwmon_dir(tmp_path, "hwmon3", "ee1004"),                         # SPD EEPROM
+    ]
+
+    dram = hwmon.discover_dram_temp(devices)
+
+    assert {d.key for d in dram} == {
+        "hwmon:spd5118:hwmon1:temp1", "hwmon:jc42:hwmon2:temp1",
+    }
+    by_key = {d.key: d for d in dram}
+    assert by_key["hwmon:spd5118:hwmon1:temp1"].temp() == 27.25
+    assert by_key["hwmon:jc42:hwmon2:temp1"].temp() == 33.0
+
+
+def test_discover_dram_temp_distinct_keys_for_matched_dimms(tmp_path: Path) -> None:
+    """Two spd5118 nodes (matched DIMMs) yield DISTINCT keys — the dir name
+    disambiguates them so their per-source failure bookkeeping stays separate."""
+    devices = [
+        _hwmon_dir(tmp_path, "hwmon2", "spd5118", temp1_milli=27250),
+        _hwmon_dir(tmp_path, "hwmon3", "spd5118", temp1_milli=28000),
+    ]
+
+    keys = {d.key for d in hwmon.discover_dram_temp(devices)}
+
+    assert keys == {
+        "hwmon:spd5118:hwmon2:temp1", "hwmon:spd5118:hwmon3:temp1",
+    }
+
+
+def test_discover_dram_temp_skips_node_without_temp1(tmp_path: Path) -> None:
+    """A spd5118 node exposing no temp1_input is skipped (not a 0.0 source)."""
+    devices = [_hwmon_dir(tmp_path, "hwmon0", "spd5118")]   # no temp1_input
+
+    assert hwmon.discover_dram_temp(devices) == []
+
+
+# ── Memory channel clock — SpdClock → memory:clock → mem_clock ───────
+
+
+class _FakeSpdClock:
+    """Stub for the cached SPD clock source (mhz)."""
+
+    def __init__(self, mhz: float | None) -> None:
+        self._mhz = mhz
+
+    def clock(self) -> float | None:
+        return self._mhz
+
+
+def test_memory_clock_flows_to_snapshot() -> None:
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[],
+        spd_clock=_FakeSpdClock(2404.0),
+    )
+
+    assert s.read_all()["memory:clock"] == 2404.0
+    assert s.snapshot().mem_clock == 2404.0
+
+
+def test_memory_clock_absent_without_spd_clock() -> None:
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    assert "memory:clock" not in s.read_all()
+    assert s.snapshot().mem_clock == 0.0
+
+
+def test_memory_clock_in_discover_catalog() -> None:
+    s = BaselineSensors(cpu=FakeCpu(), memory=FakeMemory(), gpus=[], fans=[])
+
+    ids = {r.sensor_id for r in s.discover()}
+    assert "memory:clock" in ids
 
 
 def test_read_all_produces_normalized_cpu_keys() -> None:

@@ -24,7 +24,7 @@ import threading
 import time
 from pathlib import Path
 
-from ...core.ports import CpuSource, DiskSource, FanSource, GpuSource
+from ...core.ports import CpuSource, DiskSource, DramSource, FanSource, GpuSource
 from .psutil_sources import PsutilCpu
 
 log = logging.getLogger(__name__)
@@ -505,3 +505,70 @@ def discover_disk_temp(devices: list[HwmonDevice]) -> list[DiskSource]:
         label = _read_text(dev.path / "temp1_label")
         disks.append(HwmonDisk(dev, label))
     return disks
+
+
+# ── Memory (DRAM SPD-hub) temperature ────────────────────────────────
+
+# hwmon drivers that expose a DIMM thermal sensor: DDR5 modules carry an
+# integrated SPD-hub sensor (``spd5118``); DDR4 modules expose the optional
+# JEDEC JC-42.4 thermal sensor (``jc42``).  ``ee1004`` (the DDR4 SPD EEPROM)
+# is deliberately excluded — it carries identity data, not a temperature.
+_DRAM_DRIVERS = ("spd5118", "jc42")
+
+
+class HwmonDram(DramSource):
+    """One DIMM's temp1 sensor on a hwmon ``spd5118`` / ``jc42`` node."""
+
+    def __init__(self, hwmon: HwmonDevice, label: str | None) -> None:
+        self._hwmon = hwmon
+        self._label = label or f"{hwmon.driver} DRAM"
+
+    @property
+    def key(self) -> str:
+        # Include the hwmon dir name: matched DIMMs share a driver, so a
+        # driver-only key would collide across modules (and conflate their
+        # per-source read-failure bookkeeping).
+        return f"hwmon:{self._hwmon.driver}:{self._hwmon.path.name}:temp1"
+
+    @property
+    def name(self) -> str:
+        return self._label
+
+    def temp(self) -> float | None:
+        return self._hwmon.read_temp(1)
+
+
+def discover_dram_temp(devices: list[HwmonDevice]) -> list[DramSource]:
+    """One :class:`HwmonDram` per ``spd5118`` / ``jc42`` device with a temp1."""
+    log.info("discover_dram_temp: devices=%d", len(devices))
+    dram: list[DramSource] = []
+    for dev in devices:
+        if dev.driver not in _DRAM_DRIVERS:
+            continue
+        if dev.read_temp(1) is None:
+            log.debug("discover_dram_temp: %s has no temp1_input — skip", dev.driver)
+            continue
+        label = _read_text(dev.path / "temp1_label")
+        dram.append(HwmonDram(dev, label))
+    return dram
+
+
+# ── Memory channel clock (DDR5 SPD, rootless one-shot) ───────────────
+
+
+class SpdClock:
+    """Memory channel clock (MHz) decoded once from the DDR5 SPD EEPROM.
+
+    The clock is a static nameplate value, so it is read+decoded a single
+    time at construction and cached — ``clock()`` is then a cheap accessor the
+    aggregator can call every poll tick without touching sysfs.
+    """
+
+    def __init__(self) -> None:
+        from ..system.spd import read_spd_timings
+        timings = read_spd_timings()
+        self._mhz: float | None = float(timings.mhz) if timings else None
+        log.info("SpdClock: mhz=%s", self._mhz)
+
+    def clock(self) -> float | None:
+        return self._mhz

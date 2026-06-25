@@ -29,6 +29,7 @@ from ...core.models import MIN_REFRESH_INTERVAL_S, SensorReading
 from ...core.ports import (
     CpuSource,
     DiskSource,
+    DramSource,
     FanSource,
     GpuSource,
     MemorySource,
@@ -36,8 +37,10 @@ from ...core.ports import (
 )
 from .hwmon import (
     HwmonCpu,
+    SpdClock,
     discover_amd_gpus,
     discover_disk_temp,
+    discover_dram_temp,
     discover_fans,
     discover_intel_gpus,
     find_cpu_temp_device,
@@ -73,6 +76,8 @@ def _memory_keys() -> list[tuple[str, str, str]]:
         ("memory:available", "memory", "MB"),
         ("memory:total", "memory", "MB"),
         ("memory:percent", "memory", "%"),
+        ("memory:temp", "temperature", "°C"),
+        ("memory:clock", "clock", "MHz"),
     ]
 
 
@@ -129,6 +134,8 @@ class BaselineSensors(SensorEnumerator):
                  gpus: list[GpuSource] | None = None,
                  fans: list[FanSource] | None = None,
                  disks: list[DiskSource] | None = None,
+                 dram: list[DramSource] | None = None,
+                 spd_clock: SpdClock | None = None,
                  thread_context: Callable[[], AbstractContextManager[None]]
                      = nullcontext) -> None:
         self._cpu = cpu or PsutilCpu()
@@ -136,6 +143,8 @@ class BaselineSensors(SensorEnumerator):
         self._gpus: list[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
         self._fans: list[FanSource] = fans or []
         self._disks: list[DiskSource] = disks or []
+        self._dram: list[DramSource] = dram or []
+        self._spd_clock = spd_clock
         # Per-thread OS setup the poll thread enters before touching OS
         # sensor APIs (Windows → COM apartment for WMI; others → no-op).
         # Injected as a narrow callable so this OS-neutral aggregator never
@@ -367,6 +376,20 @@ class BaselineSensors(SensorEnumerator):
         if disk_temps:
             _store(r, "disk:temp", max(disk_temps))
 
+        # DRAM temperature — one DramSource per DIMM; the model carries a single
+        # ``mem_temp`` slot, so collapse to the HOTTEST module, mirroring disk.
+        dram_temps = [
+            t for d in self._dram
+            if (t := self._read(d.temp, f"memory:{d.key}:temp")) is not None
+        ]
+        if dram_temps:
+            _store(r, "memory:temp", max(dram_temps))
+
+        # Memory channel clock — static SPD nameplate (cached at construction).
+        if self._spd_clock is not None:
+            _store(r, "memory:clock",
+                   self._read(self._spd_clock.clock, "memory:clock"))
+
         # IO + time
         try:
             self._io.poll(r)
@@ -415,8 +438,12 @@ def build_linux_sensors() -> BaselineSensors:
     gpus.extend(discover_intel_gpus(hwmon_devices))
     fans = discover_fans(hwmon_devices)
     disks = discover_disk_temp(hwmon_devices)
-    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d",
+    dram = discover_dram_temp(hwmon_devices)
+    spd_clock = SpdClock()
+    log.info("Linux sensors: cpu_temp=%s, gpus=%d, fans=%d, disks=%d, dram=%d, "
+             "mem_clock=%s",
              "yes" if cpu.temp() is not None else "no",
-             len(gpus), len(fans), len(disks))
+             len(gpus), len(fans), len(disks), len(dram), spd_clock.clock())
     return BaselineSensors(cpu=cpu, memory=PsutilMemory(),
-                           gpus=gpus, fans=fans, disks=disks)
+                           gpus=gpus, fans=fans, disks=disks, dram=dram,
+                           spd_clock=spd_clock)

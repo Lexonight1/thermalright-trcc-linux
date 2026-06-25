@@ -464,6 +464,31 @@ class DiskSource(ABC):
         """Current temperature in °C, or None."""
 
 
+class DramSource(ABC):
+    """One memory module's SPD-hub thermal sensor.
+
+    DDR5 DIMMs carry an integrated SPD-hub temperature sensor (Linux
+    ``spd5118`` hwmon); DDR4 modules expose an optional JEDEC JC-42.4
+    thermal sensor (``jc42``).  Each ``Platform`` discovers its own
+    ``DramSource`` list and the OS-neutral aggregator folds the hottest
+    into ``memory:temp``.  Mirrors :class:`DiskSource`.
+    """
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'hwmon:spd5118:hwmon2:temp1'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable label."""
+
+    @abstractmethod
+    def temp(self) -> float | None:
+        """Current temperature in °C, or None."""
+
+
 # =========================================================================
 # SensorEnumerator — the aggregate: composes one CPU + one memory + N GPUs + N fans
 # =========================================================================
@@ -590,6 +615,7 @@ class SensorEnumerator(ABC):
             mem_available=_safe(mem.available),
             mem_used=readings.get("memory:used", 0.0),
             mem_temp=readings.get("memory:temp", 0.0),
+            mem_clock=readings.get("memory:clock", 0.0),
             disk_temp=readings.get("disk:temp", 0.0),
             disk_activity=readings.get("disk:activity", 0.0),
             disk_read=readings.get("disk:read", 0.0),

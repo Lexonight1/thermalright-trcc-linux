@@ -582,6 +582,28 @@ def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     return [binary, *args]
 
 
+def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
+    """Add DDR5 SPD timings (tcas..trfc) to every slot, in place.
+
+    dmidecode does not expose CAS timings; the DDR5 SPD EEPROM does.  Matched
+    DIMMs share timings, so one rootless SPD read covers the whole channel.
+    Failure (non-DDR5, no spd5118, permissions) leaves slots untouched → "NC".
+    """
+    if not slots:
+        return
+    from .spd import read_spd_timings
+    t = read_spd_timings()
+    if t is None:
+        log.info("_enrich_with_spd_timings: no DDR5 SPD timings available")
+        return
+    fields = {'tcas': t.tcas, 'trcd': t.trcd, 'trp': t.trp,
+              'tras': t.tras, 'trc': t.trc, 'trfc': t.trfc}
+    log.info("_enrich_with_spd_timings: %s", fields)
+    for slot in slots:
+        for key, val in fields.items():
+            slot[key] = str(val)
+
+
 def _linux_memory_info() -> list[dict[str, str]]:
     """Get DRAM slot info via dmidecode; falls back to psutil for totals."""
     log.debug("_linux_memory_info: called")
@@ -610,6 +632,8 @@ def _linux_memory_info() -> list[dict[str, str]]:
                 slots.append(current)
     except (OSError, subprocess.SubprocessError) as e:
         log.debug("dmidecode -t memory failed: %s", type(e).__name__)
+
+    _enrich_with_spd_timings(slots)
 
     if not slots:
         try:
