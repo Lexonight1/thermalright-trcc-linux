@@ -441,6 +441,8 @@ class LC1Display(SegmentDisplay):
         metric_key, mode, indicator_idx = phases[phase % 3]
         mask[indicator_idx] = True
         value = int(getattr(metrics, metric_key, 0))
+        if metric_key == "mem_used":
+            value //= 1000   # MB -> GB (matches the panel + C# MemUsed/1000)
         if mode == 0:
             self._encode_3digit(value, self.DIGITS, mask)
             self._encode_unit(

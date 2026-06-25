@@ -506,6 +506,25 @@ def test_lc1_memory_ratio_scales_displayed_value() -> None:
     assert full_x4 != full_x1          # ×4 changes the rendered value
 
 
+def test_lc1_mem_used_renders_gb_not_mb() -> None:
+    """LC1 phase 2 (mem_used) shows GB — ``mem_used`` is MB, so it is divided
+    by 1000 before encoding.  Without this, >10 GB used overflowed the 4-digit
+    field and froze at 9999 (the reported ``9999 G`` bug)."""
+    over_10gb = compute_mask(
+        LedStyle.LC1, HardwareMetrics(mem_used=10547), phase=2, temp_unit="C",
+    )
+    ten_gb = compute_mask(
+        LedStyle.LC1, HardwareMetrics(mem_used=10000), phase=2, temp_unit="C",
+    )
+    assert over_10gb == ten_gb          # 10547 MB and 10000 MB both render "10"
+
+    # And it is NOT the old MB value capped at the 4-digit ceiling (9999).
+    capped = compute_mask(
+        LedStyle.LC1, HardwareMetrics(mem_used=9_999_000), phase=2, temp_unit="C",
+    )
+    assert over_10gb != capped
+
+
 # ── #192: SetLedColor applies per-zone for multi-zone styles (PA120) ──────────
 
 

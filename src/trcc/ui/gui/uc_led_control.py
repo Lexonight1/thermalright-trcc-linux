@@ -733,14 +733,17 @@ class UCLedControl(QWidget):
         self._mem_bg.setVisible(False)
 
         # C# label positions: internal (x, y) → absolute (13+x, 656+y)
-        # label1=temp  label2=clock(MHz)  label2_1=clock(MT/s)
+        # label1=temp  label2=speed(MT/s)@136  label2_1=clock(MHz)@311
         # label3=used(GB)  label4=ratio(X)
         # label5-10=timings (tCAS/tRCD/tRP/tRAS/tRC/tRFC)
         self._mem_labels: dict[str, QLabel] = {}
         _mem_layout = [
             ("mem_temp",    136, 15, 166, 23),
-            ("mem_clock",   136, 35, 166, 23),
-            ("mem_mts",     311, 35, 128, 23),
+            # speed + clock sit in the gaps between the name labels (Memory
+            # Speed@10-134 | Memory Clock@200-310 | Ratio@362) so they don't
+            # collide once they carry real values instead of "NC".
+            ("mem_mts",     136, 35,  60, 23),
+            ("mem_clock",   292, 35,  58, 23),
             ("mem_used",    136, 54, 166, 23),
             ("mem_ratio",   136, 74, 166, 23),
             ("mem_tcas",    169, 94,  38, 23),
@@ -774,7 +777,7 @@ class UCLedControl(QWidget):
         _mem_name_layout = [
             ("SPD Hub Temp",    10, 15, 124, 23),
             ("Memory Speed",    10, 35, 124, 23),
-            ("Memory Clock",   200, 35, 110, 23),
+            ("Memory Clock",   198, 35,  90, 23),
             ("Ratio",          362, 35,  66, 23),
             ("Memory Used",     10, 54, 124, 23),
             ("Clock Ratio",     10, 74, 124, 23),
