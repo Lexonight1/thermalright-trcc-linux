@@ -18,6 +18,7 @@ from ..events import (
 )
 from ..led_models import (
     LED_SELECT_ALL_STYLES,
+    LED_STYLES,
     LEDMode,
     LedPayload,
     LedRuntimeState,
@@ -244,97 +245,106 @@ class RenderLed(Command[LedColorsResult]):
 
         display = get_display(style)
         if display is None:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=(f"style {style.value} has no segment display — "
-                         "use SetLedColors instead"),
-            )
-
-        # Multi-zone styles (PA120/LF10) keep a per-zone colour/mode list; make
-        # sure it exists, sized to the wire's zones, so the per-zone render path
-        # runs.  ``set_led_zone_count`` is idempotent — a no-op once sized.
-        # Nothing populated this before (#192), so the render always fell back
-        # to a single global colour and the zone buttons had no visible effect.
-        zone_map = display.zone_led_map
-        if zone_map is not None and len(led_settings.zones) != len(zone_map):
-            app.settings.set_led_zone_count(self.key, len(zone_map))
-
-        # ── Segment phase (legacy ``_seg_phase``) ──
-        # ``phase`` chooses which metric *page* a multi-page segment display
-        # shows (C# LunBo) — CPU temp / CPU % / GPU temp / GPU %, etc.  The
-        # selector buttons persist the choice as ``selected_zone``; with the
-        # page carousel on (and not a select-all style) it rotates the enabled
-        # pages instead.  This is gated on the display actually having more than
-        # one page (``phase_count > 1``) — NOT on ``zones`` being populated,
-        # which it never is for page-style devices (that was the bug: selecting
-        # a metric set ``selected_zone`` but the render ignored it and stayed
-        # stuck on page 0).  Single-page displays keep ``self.phase``.
-        phase = self.phase
-        if display.phase_count > 1:
-            if (effective_settings.zone_sync
-                    and style.value not in LED_SELECT_ALL_STYLES):
-                # Only the animation-loop tick advances the carousel; reactive
-                # re-renders (advance=False) hold the current page so a slider
-                # drag — which fires many LedSettingsChanged — doesn't race it.
-                if self.advance:
-                    runtime.zone_sync_ticks += 1
-                    if (runtime.zone_sync_ticks
-                            >= effective_settings.zone_sync_interval_ticks):
-                        runtime.zone_sync_ticks = 0
-                        runtime.zone_sync_current = (
-                            app.led_effects.next_sync_zone(
-                                effective_settings.zone_sync_zones,
-                                runtime.zone_sync_current,
-                            )
-                        )
-                phase = runtime.zone_sync_current
-                log.debug("RenderLed %s: zone-sync carousel phase=%d "
-                          "(advance=%s)", self.key, phase, self.advance)
-            else:
-                phase = effective_settings.selected_zone
-                log.debug("RenderLed %s: selected-zone phase=%d",
-                          self.key, phase)
-
-        # Personalize the RAW snapshot through the single conversion relay,
-        # using THIS device's unit — the device owns its °C/°F, so a future
-        # per-device toggle needs no plumbing change.  The cached snapshot
-        # stays raw precisely so each device converts with its own unit.
-        # compute_mask then only truncates (values are pre-converted) and
-        # lights the matching °C/°F label segment.
-        display_metrics = personalize_metrics(
-            metrics,
-            temp_unit=device_settings.temp_unit,
-            hdd_enabled=app.settings.app.hdd_enabled,
-        )
-        mask = compute_mask(
-            style, display_metrics, phase=phase,
-            temp_unit=device_settings.temp_unit,
-            is_24h=(device_settings.time_format == "24h"),
-            memory_ratio=effective_settings.memory_ratio,
-        )
-        segment_count = len(mask)
-
-        # ── Colors ──
-        # Multi-zone styles (PA120 / LF10 — those with a ``zone_led_map``)
-        # render each zone's own mode/color/brightness onto its mapped LED
-        # indices.  All other styles fill one global color list.  An EXPLICIT
-        # colour (CLI ``trcc led color`` diagnostic) overrides per-zone state —
-        # force that one colour on every LED at full brightness.
-        if (zone_map is not None and effective_settings.zones
-                and explicit_color is None):
-            log.debug("RenderLed %s: multi-zone fill (%d zones)",
-                      self.key, len(zone_map))
-            colors = app.led_effects.tick_multi_zone(
-                effective_settings, runtime, current,
-                zone_map=zone_map,
-                metric_sources=display.zone_metric_sources,
-                led_count=segment_count,
-            )
-        else:
+            # Pure-RGB style (e.g. LF13): no segment digits — fill the panel's
+            # LEDs with the same effects engine and send a maskless frame.  The
+            # send/preview tail already handles an empty mask ("shows all"); the
+            # display is only ever needed for the segment mask.
+            mask: list[bool] = []
             colors = app.led_effects.tick(
                 effective_settings, runtime, current,
-                led_count=segment_count,
+                led_count=LED_STYLES[style].led_count,
             )
+            log.debug("RenderLed %s: color-only fill (%d RGB LEDs)",
+                      self.key, len(colors))
+        else:
+            # Multi-zone styles (PA120/LF10) keep a per-zone colour/mode list;
+            # make sure it exists, sized to the wire's zones, so the per-zone
+            # render path runs.  ``set_led_zone_count`` is idempotent — a no-op
+            # once sized.  Nothing populated this before (#192), so the render
+            # always fell back to a single global colour and the zone buttons
+            # had no visible effect.
+            zone_map = display.zone_led_map
+            if zone_map is not None and len(led_settings.zones) != len(zone_map):
+                app.settings.set_led_zone_count(self.key, len(zone_map))
+
+            # ── Segment phase (legacy ``_seg_phase``) ──
+            # ``phase`` chooses which metric *page* a multi-page segment display
+            # shows (C# LunBo) — CPU temp / CPU % / GPU temp / GPU %, etc.  The
+            # selector buttons persist the choice as ``selected_zone``; with the
+            # page carousel on (and not a select-all style) it rotates the
+            # enabled pages instead.  This is gated on the display actually
+            # having more than one page (``phase_count > 1``) — NOT on ``zones``
+            # being populated, which it never is for page-style devices (that
+            # was the bug: selecting a metric set ``selected_zone`` but the
+            # render ignored it and stayed stuck on page 0).  Single-page
+            # displays keep ``self.phase``.
+            phase = self.phase
+            if display.phase_count > 1:
+                if (effective_settings.zone_sync
+                        and style.value not in LED_SELECT_ALL_STYLES):
+                    # Only the animation-loop tick advances the carousel;
+                    # reactive re-renders (advance=False) hold the current page
+                    # so a slider drag — which fires many LedSettingsChanged —
+                    # doesn't race it.
+                    if self.advance:
+                        runtime.zone_sync_ticks += 1
+                        if (runtime.zone_sync_ticks
+                                >= effective_settings.zone_sync_interval_ticks):
+                            runtime.zone_sync_ticks = 0
+                            runtime.zone_sync_current = (
+                                app.led_effects.next_sync_zone(
+                                    effective_settings.zone_sync_zones,
+                                    runtime.zone_sync_current,
+                                )
+                            )
+                    phase = runtime.zone_sync_current
+                    log.debug("RenderLed %s: zone-sync carousel phase=%d "
+                              "(advance=%s)", self.key, phase, self.advance)
+                else:
+                    phase = effective_settings.selected_zone
+                    log.debug("RenderLed %s: selected-zone phase=%d",
+                              self.key, phase)
+
+            # Personalize the RAW snapshot through the single conversion relay,
+            # using THIS device's unit — the device owns its °C/°F, so a future
+            # per-device toggle needs no plumbing change.  The cached snapshot
+            # stays raw precisely so each device converts with its own unit.
+            # compute_mask then only truncates (values are pre-converted) and
+            # lights the matching °C/°F label segment.
+            display_metrics = personalize_metrics(
+                metrics,
+                temp_unit=device_settings.temp_unit,
+                hdd_enabled=app.settings.app.hdd_enabled,
+            )
+            mask = compute_mask(
+                style, display_metrics, phase=phase,
+                temp_unit=device_settings.temp_unit,
+                is_24h=(device_settings.time_format == "24h"),
+                memory_ratio=effective_settings.memory_ratio,
+            )
+            segment_count = len(mask)
+
+            # ── Colors ──
+            # Multi-zone styles (PA120 / LF10 — those with a ``zone_led_map``)
+            # render each zone's own mode/color/brightness onto its mapped LED
+            # indices.  All other styles fill one global color list.  An EXPLICIT
+            # colour (CLI ``trcc led color`` diagnostic) overrides per-zone state
+            # — force that one colour on every LED at full brightness.
+            if (zone_map is not None and effective_settings.zones
+                    and explicit_color is None):
+                log.debug("RenderLed %s: multi-zone fill (%d zones)",
+                          self.key, len(zone_map))
+                colors = app.led_effects.tick_multi_zone(
+                    effective_settings, runtime, current,
+                    zone_map=zone_map,
+                    metric_sources=display.zone_metric_sources,
+                    led_count=segment_count,
+                )
+            else:
+                colors = app.led_effects.tick(
+                    effective_settings, runtime, current,
+                    led_count=segment_count,
+                )
 
         # One writer: bake global brightness into the rendered signal so the
         # device wire and the GUI preview observe one identical colour list.
@@ -345,7 +355,7 @@ class RenderLed(Command[LedColorsResult]):
 
         payload = LedPayload(
             colors=colors,
-            is_on=mask,
+            is_on=mask or None,   # empty mask (pure-RGB) → None → wire lights all
             global_on=effective_settings.global_on,
         )
         try:
@@ -377,10 +387,12 @@ class RenderLed(Command[LedColorsResult]):
             app.events.publish(FrameSent(
                 key=self.key, bytes_sent=len(colors), display_colors=shown,
             ))
+        rendered = (f"{sum(mask)}/{len(mask)} LEDs on" if mask
+                    else f"{len(colors)} RGB LEDs")
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,
             message=(f"Rendered {style.value} {effective_settings.mode.name} "
-                     f"({sum(mask)}/{len(mask)} LEDs on)"
+                     f"({rendered})"
                      if ok else "LED send returned False"),
         )
 

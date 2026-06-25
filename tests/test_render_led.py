@@ -450,10 +450,13 @@ def test_render_led_rejects_unknown_device_key(
     assert "Not attached" in result.message
 
 
-def test_render_led_rejects_style_without_segment_display(
+def test_render_led_color_only_style_fills_rgb(
     fake_platform: FakePlatform,
 ) -> None:
-    """PM 160 → LedStyle.LF13 has no SegmentDisplay → ok=False, no send."""
+    """PM 160 → LedStyle.LF13 is pure RGB (no segment digits) — RenderLed fills
+    its ``led_count`` LEDs with the effect colour and sends, NOT rejects.  This
+    is how the C# renders LF13 (62 LEDs, one colour, no segment); the old
+    ``no segment display`` rejection broke its breathe/rainbow effects."""
     app = App(fake_platform)
     _attach_and_connect(app, fake_platform, pm=160)   # PM 160 → LF13
     led = app.get(_LED_KEY)
@@ -461,12 +464,30 @@ def test_render_led_rejects_style_without_segment_display(
     assert led.led_handshake is not None
     assert led.led_handshake.style is LedStyle.LF13
 
+    # Explicit-colour diagnostic — fills all 62 LEDs blue, no mask.
     result = app.dispatch(RenderLed(key=_LED_KEY, color=(0, 0, 255)))
 
-    assert not result.ok
-    assert "no segment display" in result.message
-    # And no wire traffic resulted.
-    assert fake_platform.bulk.writes == []
+    assert result.ok
+    assert result.colors == [(0, 0, 255)] * 62
+    assert "62 RGB LEDs" in result.message
+    # A maskless frame DID reach the wire (62 LEDs; the wire dims by the
+    # device's global brightness, so assert a send happened, not exact bytes).
+    assert fake_platform.bulk.writes != []
+    assert len(_decode_body(fake_platform.bulk.writes, 62)) == 62
+
+
+def test_render_led_color_only_renders_without_explicit_colour(
+    fake_platform: FakePlatform,
+) -> None:
+    """A plain per-tick render (no explicit colour, the animation-loop path)
+    still produces 62 colours for LF13 — proves breathe/rainbow now animate."""
+    app = App(fake_platform)
+    _attach_and_connect(app, fake_platform, pm=160)
+
+    result = app.dispatch(RenderLed(key=_LED_KEY))
+
+    assert result.ok
+    assert len(result.colors) == 62
 
 
 def test_render_led_rejects_lcd_device_key(
