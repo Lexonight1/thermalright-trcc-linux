@@ -746,12 +746,15 @@ class UCLedControl(QWidget):
             ("mem_clock",   292, 35,  58, 23),
             ("mem_used",    136, 54, 166, 23),
             ("mem_ratio",   136, 74, 166, 23),
-            ("mem_tcas",    169, 94,  38, 23),
-            ("mem_trcd",    228, 94,  38, 23),
-            ("mem_trp",     283, 94,  38, 23),
-            ("mem_tras",    346, 94,  38, 23),
-            ("mem_trc",     401, 94,  38, 23),
-            ("mem_trfc",    464, 94,  38, 23),
+            # values sit a few px right of each term name (Tcas@141, Trcd@201,
+            # Trp@261, Tras@321, Trc@381, Trfc@441) so "Tcas 30" reads with a
+            # gap instead of "Tcas30" mashed together.
+            ("mem_tcas",    177, 94,  38, 23),
+            ("mem_trcd",    236, 94,  38, 23),
+            ("mem_trp",     291, 94,  38, 23),
+            ("mem_tras",    354, 94,  38, 23),
+            ("mem_trc",     409, 94,  38, 23),
+            ("mem_trfc",    472, 94,  38, 23),
         ]
         for key, ix, iy, w, h in _mem_layout:
             lbl = QLabel("NC", self)
