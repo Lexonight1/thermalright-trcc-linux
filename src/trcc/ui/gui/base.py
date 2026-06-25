@@ -451,6 +451,11 @@ def create_image_button(parent, x, y, w, h, normal_img, active_img,
                 border-radius: 3px; font-size: 10px;
             }}
             QPushButton:hover {{ background: {Colors.DEVICE_NORMAL_TOP}; color: white; }}
+            QPushButton:checked {{
+                background: {Colors.DEVICE_SELECTED_TOP}; color: white;
+                font-weight: bold;
+                border: 2px solid {Colors.ACCENT_BORDER};
+            }}
         """)
 
     return btn

@@ -36,6 +36,17 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 }
 """
 
+# Selected (checked) device button → a clear accent border.  The active "a"
+# image alone is too subtle to tell which device is current; the
+# DEVICE_SELECTED_* colours were defined for exactly this but never wired.  A
+# transparent border on the normal state keeps the geometry steady so checking
+# doesn't shift the icon.
+_DEVICE_BTN_QSS = (
+    "QPushButton { background: transparent; border: 2px solid transparent;"
+    " border-radius: 4px; }"
+    f"QPushButton:checked {{ border: 2px solid {Colors.ACCENT_BORDER}; }}"
+)
+
 # Map device model names to A1 image base names (without .png)
 DEVICE_IMAGE_MAP = {
     'CZTV': 'A1CZTV',
@@ -285,6 +296,11 @@ class UCDevice(BasePanel):
                 fallback_text=fallback,
             )
             btn.device_info = device  # type: ignore[attr-defined]
+            # Image buttons use the flat (border-less) icon style — give them a
+            # checked-state accent border so the active device is unmistakable.
+            # (Text-fallback buttons get their own :checked rule in base.py.)
+            if not btn.icon().isNull():
+                btn.setStyleSheet(_DEVICE_BTN_QSS)
             btn.clicked.connect(lambda _=False, d=device: self._on_device_clicked(d))
             btn.show()
             self.device_buttons.append(btn)
