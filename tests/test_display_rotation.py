@@ -575,3 +575,113 @@ def test_canvas_geometry_is_orientation_driven(
         _wide_info(), _theme_sized(*theme_wh), profile, orientation,
     )
     assert got == expected, f"orientation={orientation} theme={theme_wh}: got {got}"
+
+
+# ── 9. local landscape theme at 90/270 — synthesised portrait coords (#dc-clip-90)
+#
+# A non-square rotate=True panel viewing a LOCAL theme saved landscape-only
+# (DC rotation=0) at 90/270 composes a portrait canvas; the landscape coords
+# would clip.  These drive the REAL OverlayService so the x/y reaching
+# draw_text is observable, proving the clip is gone — and that the cloud
+# (portrait DC) / 0-180 paths are untouched.
+
+
+def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
+    from .conftest import FakePaths
+    return DisplayService(
+        renderer=renderer, themes=ThemeService(),
+        overlay=OverlayService(renderer),          # REAL overlay → records draw_text
+        settings=Settings(FakePaths(tmp_home)),
+        media=MediaService(),
+    )
+
+
+def _landscape_dc_theme(rotation: int) -> Theme:
+    """320×240-authored DC: a metric at the right edge (x=250) that clips a
+    240-wide portrait canvas unless its coord is synthesised."""
+    return Theme(
+        path=Path("/dev/null/themes/local"), name="local",
+        resolution=(320, 240),
+        config={"rotation": rotation, "overlay_enabled": True, "elements": [
+            {"id": "m", "type": "text", "x": 250, "y": 120,
+             "text": "796 MHz", "color": "#ffffff", "size": 20},
+        ]},
+    )
+
+
+@pytest.mark.parametrize("orientation", [90, 270])
+def test_landscape_local_theme_at_portrait_angle_does_not_clip(
+    renderer: RecordingRenderer, tmp_home: Path, orientation: int,
+) -> None:
+    info = _hid_type2_info()
+    profile = get_profile(58)          # 320×240 rotate, jpeg=False
+    display = _display_real(renderer, tmp_home)
+    display._settings.for_device(info.key).orientation = orientation
+
+    display.build_frame(info=info, theme=_landscape_dc_theme(0), sensors={},
+                        profile=profile)
+
+    draws = [args for name, args in renderer.calls if name == "draw_text"]
+    assert draws, "the text element must be drawn"
+    for x, y, _text in draws:
+        assert 0 <= x < 240, f"x={x} clips the 240-wide portrait canvas"
+        assert 0 <= y < 320, f"y={y} clips the 320-tall portrait canvas"
+
+
+def test_cloud_portrait_theme_is_not_resynthesised(
+    renderer: RecordingRenderer, tmp_home: Path,
+) -> None:
+    """A portrait DC (rotation=90 — the cloud path) already carries portrait
+    coords; the gate must leave them exactly as authored."""
+    info = _hid_type2_info()
+    profile = get_profile(58)
+    display = _display_real(renderer, tmp_home)
+    display._settings.for_device(info.key).orientation = 90
+
+    display.build_frame(info=info, theme=_landscape_dc_theme(90), sensors={},
+                        profile=profile)
+
+    draws = [args for name, args in renderer.calls if name == "draw_text"]
+    assert [(x, y) for x, y, _ in draws] == [(250, 120)], (
+        "portrait DC coords must pass through unrotated"
+    )
+
+
+def test_landscape_theme_at_orientation_0_is_untouched(
+    renderer: RecordingRenderer, tmp_home: Path,
+) -> None:
+    """At 0 the canvas is landscape — coords already fit, no synthesis."""
+    info = _hid_type2_info()
+    profile = get_profile(58)
+    display = _display_real(renderer, tmp_home)
+    display._settings.for_device(info.key).orientation = 0
+
+    display.build_frame(info=info, theme=_landscape_dc_theme(0), sensors={},
+                        profile=profile)
+
+    draws = [args for name, args in renderer.calls if name == "draw_text"]
+    assert [(x, y) for x, y, _ in draws] == [(250, 120)]
+
+
+def test_90_and_270_do_not_share_overlay_cache(
+    renderer: RecordingRenderer, tmp_home: Path,
+) -> None:
+    """90 and 270 share the same portrait visual_size but synthesise opposite
+    coords; orientation in the overlay cache key keeps the second build from
+    being served the first's cached overlay surface."""
+    info = _hid_type2_info()
+    profile = get_profile(58)
+    display = _display_real(renderer, tmp_home)
+    theme = _landscape_dc_theme(0)
+
+    display._settings.for_device(info.key).orientation = 90
+    display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
+    at90 = [args for name, args in renderer.calls if name == "draw_text"][-1]
+
+    renderer.calls.clear()
+    display._settings.for_device(info.key).orientation = 270
+    display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
+    rebuilt = [args for name, args in renderer.calls if name == "draw_text"]
+
+    assert rebuilt, "270 must rebuild the overlay, not serve the cached 90 one"
+    assert (rebuilt[-1][0], rebuilt[-1][1]) != (at90[0], at90[1])

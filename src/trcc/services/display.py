@@ -37,7 +37,11 @@ from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile, resolve_encode_angle
 from ._clock import compute_clock
 from .media import MediaService
-from .overlay import OverlayService, resolve_overlay_elements
+from .overlay import (
+    OverlayService,
+    orient_overlay_elements,
+    resolve_overlay_elements,
+)
 from .settings import Settings
 from .theme import ThemeService
 from .video_cache import VideoFrameCache
@@ -194,6 +198,32 @@ class DisplayService:
             return (h, w), True
         return self._visual_size((w, h), orientation), False
 
+    @staticmethod
+    def _overlay_orient(
+        profile: DeviceProfile, theme: Theme, orientation: int, portrait: bool,
+    ) -> tuple[tuple[int, int], int] | None:
+        """``(landscape_src_size, degrees)`` to synthesise portrait overlay
+        coords from a landscape DC, or ``None`` when no synthesis is needed.
+
+        Every LCD already renders landscape AND portrait correctly when both
+        per-orientation DC variants exist on disk: ``oriented_theme_path``
+        reloads the matched DC and the portrait-compose path draws its coords
+        upright on the transposed canvas (the cloud path).  This fires ONLY on
+        the gap the cutover left — a transposed (portrait) canvas whose loaded
+        theme DC still carries LANDSCAPE coords (``rotation`` not in 90/270),
+        i.e. a LOCAL theme saved in one orientation whose matched variant is
+        absent on disk so the fallback landscape DC was loaded.  Its landscape
+        x-coords overflow the narrower portrait canvas and clip.
+
+        Returns ``None`` for the cloud path (portrait DC), 0/180, square and
+        non-rotate panels — they already compose correctly and are untouched.
+        """
+        if not portrait:
+            return None
+        if theme.config.get("rotation", 0) in (90, 270):
+            return None
+        return profile.resolution, orientation
+
     def composed_canvas_size(
         self, info: ProductInfo, theme: Theme,
         profile: DeviceProfile | None, orientation: int,
@@ -242,6 +272,9 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         visual_size, portrait = self._compose_geometry(
             resolved_profile, s.orientation,
+        )
+        orient = self._overlay_orient(
+            resolved_profile, theme, s.orientation, portrait,
         )
 
         # Per-frame — DEBUG so `-vv` users see the build context without
@@ -303,7 +336,7 @@ class DisplayService:
 
         bg_surface, overlay_surface = self._resolve_bg_overlay(
             info, theme, sensors, visual_size, clock,
-            scene, bg_key, overlay_key,
+            scene, bg_key, overlay_key, orient,
         )
 
         # Compose: bg+mask below, overlay on top
@@ -411,6 +444,9 @@ class DisplayService:
         visual_size, portrait = self._compose_geometry(
             resolved_profile, s.orientation,
         )
+        orient = self._overlay_orient(
+            resolved_profile, theme, s.orientation, portrait,
+        )
 
         clock = compute_clock(
             time_format=s.time_format,
@@ -428,7 +464,7 @@ class DisplayService:
         # video theme's preview is a cache lookup, not a fresh per-tick decode.
         bg_surface, overlay_surface = self._resolve_bg_overlay(
             info, theme, sensors, visual_size, clock,
-            scene, bg_key, overlay_key,
+            scene, bg_key, overlay_key, orient,
         )
         self._scenes[info.key] = SceneCache(
             bg_mask_surface=bg_surface, bg_mask_key=bg_key,
@@ -453,6 +489,7 @@ class DisplayService:
         scene: SceneCache | None,
         bg_key: tuple[Any, ...],
         overlay_key: tuple[Any, ...],
+        orient: tuple[tuple[int, int], int] | None = None,
     ) -> tuple[Any, Any]:
         """Resolve the (bg+mask, overlay) surfaces for a tick.
 
@@ -490,7 +527,7 @@ class DisplayService:
             overlay_surface = scene.overlay_surface
         else:
             overlay_surface = self._build_overlay(
-                info, theme, sensors, visual_size, clock,
+                info, theme, sensors, visual_size, clock, orient,
             )
         return bg_surface, overlay_surface
 
@@ -1053,11 +1090,19 @@ class DisplayService:
         sensors: dict[str, float],
         visual_size: tuple[int, int],
         clock: dict[str, str],
+        orient: tuple[tuple[int, int], int] | None = None,
     ) -> Any:
         """Transparent layer with text + metric + clock elements painted on.
 
         Theme-bundled elements paint first; user-edited elements
         (``DeviceSettings.user_overlay_elements``) paint on top.
+
+        ``orient`` (when set) synthesises the missing portrait DC variant for a
+        LOCAL landscape theme viewed at 90/270: it rotates the THEME layer's
+        landscape centre-coords into the transposed canvas so the existing
+        portrait-compose path draws them unclipped, exactly like a cloud
+        portrait theme.  Applied to the theme layer ONLY — live user/mask edits
+        are already authored on the current canvas. (#dc-clip-90)
         """
         overlay_canvas = self._r.create_surface(*visual_size)
         s = self._settings.for_device(info.key)
@@ -1069,6 +1114,15 @@ class DisplayService:
         elements = resolve_overlay_elements(
             theme.config, s.mask_overlay_elements, s.user_overlay_elements,
         )
+        # Synthesise the missing portrait variant: the theme layer is the only
+        # source authored in the DC's (landscape) coord space — user/mask edits
+        # are placed live on the current canvas, so they are left untouched.
+        if (
+            orient is not None
+            and not s.user_overlay_elements
+            and s.mask_overlay_elements is None
+        ):
+            elements = orient_overlay_elements(elements, orient[0], orient[1])
         # The DEVICE'S overlay-enabled state is the single authority (the
         # user/GUI toggle ``DeviceSettings.overlay_enabled``, default True) —
         # NOT the theme's baked DC flag.  Otherwise a theme authored
@@ -1198,11 +1252,15 @@ class DisplayService:
             if s.mask_overlay_elements is not None
             else ()
         )
+        # Orientation participates so 90 and 270 — which share the same
+        # transposed ``visual_size`` (e.g. 240×320) but synthesise OPPOSITE
+        # portrait coords for a landscape-only local theme — never collide on
+        # one cached overlay surface. (#dc-clip-90)
         # Temp unit participates in the key so toggling °C ↔ °F via
         # SetTempUnit busts the overlay cache and the next render
         # picks up the new format-string + value-conversion path.
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
-                user_sig, mask_overlay_sig, s.temp_unit)
+                user_sig, mask_overlay_sig, s.temp_unit, s.orientation)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
 
