@@ -69,6 +69,9 @@ src_install() {
 	insinto /usr/share/polkit-1/actions
 	doins src/trcc/assets/com.github.lexonight1.trcc.policy
 
+	# privileged MCHBAR timing reader (pkexec target)
+	newbin src/trcc/assets/trcc-imc trcc-imc
+
 	# systemd service
 	systemd_dounit src/trcc/assets/trcc-quirk-fix.service
 }

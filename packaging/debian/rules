@@ -26,6 +26,9 @@ override_dh_auto_install:
 	# polkit policy
 	install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
 		debian/trcc-linux/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy
+	# privileged MCHBAR timing reader (pkexec target)
+	install -Dm755 src/trcc/assets/trcc-imc \
+		debian/trcc-linux/usr/bin/trcc-imc
 	# systemd service
 	install -Dm644 src/trcc/assets/trcc-quirk-fix.service \
 		debian/trcc-linux/lib/systemd/system/trcc-quirk-fix.service

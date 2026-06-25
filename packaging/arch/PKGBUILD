@@ -74,6 +74,9 @@ package() {
     install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
         "${pkgdir}/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
 
+    # privileged MCHBAR timing reader (pkexec target)
+    install -Dm755 src/trcc/assets/trcc-imc "${pkgdir}/usr/bin/trcc-imc"
+
     # systemd service
     install -Dm644 src/trcc/assets/trcc-quirk-fix.service \
         "${pkgdir}/usr/lib/systemd/system/trcc-quirk-fix.service"

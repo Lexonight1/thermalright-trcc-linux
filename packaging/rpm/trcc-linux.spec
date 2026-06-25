@@ -91,6 +91,7 @@ for size in 256 128 64 48 32 24 16; do
 done
 install -Dm644 src/trcc/assets/com.github.lexonight1.trcc.policy \
     %{buildroot}%{_datadir}/polkit-1/actions/com.github.lexonight1.trcc.policy
+install -Dm755 src/trcc/assets/trcc-imc %{buildroot}%{_bindir}/trcc-imc
 install -Dm644 src/trcc/assets/trcc-quirk-fix.service \
     %{buildroot}%{_unitdir}/trcc-quirk-fix.service
 
@@ -126,6 +127,7 @@ fi
 %{_bindir}/trcc
 %{_bindir}/trcc-gui
 %{_bindir}/trcc-lcd
+%{_bindir}/trcc-imc
 %{_udevrulesdir}/99-trcc-lcd.rules
 %{_modprobedir}/trcc-lcd.conf
 %{_modulesloaddir}/trcc-sg.conf

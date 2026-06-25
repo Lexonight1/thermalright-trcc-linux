@@ -23,6 +23,12 @@ _PYPROJECT = _ROOT / "pyproject.toml"
 _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 _RPM_SPEC = _ROOT / "packaging" / "rpm" / "trcc-linux.spec"
 
+# Binaries the packaging installs directly from ``src/trcc/assets/`` (NOT wheel
+# console scripts), so they legitimately appear in the file-lists without a
+# matching ``[project.scripts]`` entry.  ``trcc-imc`` is the standalone
+# privileged MCHBAR reader (pkexec target).
+_ASSET_HELPERS = frozenset({"trcc-imc"})
+
 
 def _declared_scripts() -> set[str]:
     """Console-script names the wheel actually produces."""
@@ -53,7 +59,7 @@ def test_release_packaging_matches_entry_points() -> None:
     assert scripts, "no [project.scripts] found in pyproject.toml"
     assert packaged, "no /usr/bin/trcc* binaries found in release.yml"
 
-    stale = packaged - scripts
+    stale = packaged - scripts - _ASSET_HELPERS
     assert not stale, (
         "release.yml packages binaries with no matching [project.scripts] "
         f"entry — the RPM/DEB build will fail with 'File not found': {sorted(stale)}"

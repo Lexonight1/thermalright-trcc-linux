@@ -10,4 +10,5 @@ src/trcc/assets/icons/trcc_32x32.png usr/share/icons/hicolor/32x32/apps/trcc.png
 src/trcc/assets/icons/trcc_24x24.png usr/share/icons/hicolor/24x24/apps/trcc.png
 src/trcc/assets/icons/trcc_16x16.png usr/share/icons/hicolor/16x16/apps/trcc.png
 src/trcc/assets/com.github.lexonight1.trcc.policy usr/share/polkit-1/actions/
+src/trcc/assets/trcc-imc usr/bin/
 src/trcc/assets/trcc-quirk-fix.service lib/systemd/system/

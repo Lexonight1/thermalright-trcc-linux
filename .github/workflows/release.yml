@@ -119,6 +119,7 @@ jobs:
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
           install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm755 /src/src/trcc/assets/trcc-imc "$PKG/usr/bin/trcc-imc"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
           for size in 256 128 64 48 32 24 16; do
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
@@ -183,6 +184,7 @@ jobs:
           /usr/bin/trcc
           /usr/bin/trcc-gui
           /usr/bin/trcc-lcd
+          /usr/bin/trcc-imc
           %post
           udevadm control --reload-rules 2>/dev/null || :
           udevadm trigger 2>/dev/null || :
@@ -263,6 +265,7 @@ jobs:
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
           done
           install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm755 /src/src/trcc/assets/trcc-imc "$PKG/usr/bin/trcc-imc"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
 
           cat > "$PKG/DEBIAN/control" << CTRL
@@ -326,6 +329,7 @@ jobs:
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
           done
           install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm755 /src/src/trcc/assets/trcc-imc "$PKG/usr/bin/trcc-imc"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
 
           cat > "$PKG/DEBIAN/control" << CTRL
@@ -412,6 +416,7 @@ jobs:
             install -Dm644 /src/src/trcc/assets/icons/trcc_${size}x${size}.png "$PKG/usr/share/icons/hicolor/${size}x${size}/apps/trcc.png"
           done
           install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm755 /src/src/trcc/assets/trcc-imc "$PKG/usr/bin/trcc-imc"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
           install -Dm644 /src/LICENSE "$PKG/usr/share/licenses/trcc-linux/LICENSE"
 

@@ -136,6 +136,9 @@ artifacts = [
     "**/assets/**/*.service",
     "**/assets/**/*.policy",
     "**/assets/**/*.svg",
+    # Privileged MCHBAR timing reader (no extension) — distro packages install
+    # it to /usr/bin/trcc-imc; shipped here so it's in the sdist/wheel too.
+    "**/assets/trcc-imc",
     # SELinux policy source — `trcc system setup` builds + loads it on Fedora
     # so source/pip installs can pass the USB/SCSI ioctls (packages ship the
     # compiled .pp via the rpm).
