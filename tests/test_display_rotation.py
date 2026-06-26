@@ -334,15 +334,14 @@ def test_profile_none_with_info_fbl_uses_registry_lookup(
 # ── 5. Order: user-orientation rotation precedes device rotation ──────
 
 
-def test_simple_rotate_panel_at_90_applies_no_rotation(
+def test_simple_rotate_panel_at_90_landscape_theme_rotates_whole_composite(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """A non-square RGB565 rotate panel at orientation 90 composes portrait (the
-    per-orientation catalog) and applies NO rotation.
-
-    This is EQUIVALENT to the previous behaviour, which did rotate(360-90=270)
-    then rotate(90) — a net 360° (identity) on the same swapped canvas.  The
-    orientation-driven model just expresses that as zero rotations.  (#136)
+    """A non-square RGB565 rotate panel at orientation 90 with a LANDSCAPE-only
+    theme (no portrait DC variant — ``rotation`` defaults 0) composes on the
+    native LANDSCAPE canvas (so nothing clips) and rotates the WHOLE composite
+    90° into the portrait buffer — legacy ``has_portrait_themes=False`` / the C#
+    oriented-output model.  bg + text rotate together, staying aligned. (#136)
     """
     info = _hid_type2_info()
     profile = get_profile(58)
@@ -351,10 +350,13 @@ def test_simple_rotate_panel_at_90_applies_no_rotation(
 
     display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
 
+    # Composed on the native landscape canvas, then ONE whole-composite rotate.
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (320, 240) in canvases, f"expected a 320×240 canvas, got {canvases}"
     rotation_angles = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
-    assert rotation_angles == [], (
-        f"orientation 90 portrait catalog → no rotation (was net-360 identity), "
-        f"got {rotation_angles}"
+    assert rotation_angles == [90], (
+        f"landscape theme at 90 rotates the whole composite once, got "
+        f"{rotation_angles}"
     )
 
 
@@ -577,13 +579,14 @@ def test_canvas_geometry_is_orientation_driven(
     assert got == expected, f"orientation={orientation} theme={theme_wh}: got {got}"
 
 
-# ── 9. local landscape theme at 90/270 — synthesised portrait coords (#dc-clip-90)
+# ── 9. landscape-only theme at 90/270 — compose landscape, rotate whole (#dc-clip-90)
 #
 # A non-square rotate=True panel viewing a LOCAL theme saved landscape-only
-# (DC rotation=0) at 90/270 composes a portrait canvas; the landscape coords
-# would clip.  These drive the REAL OverlayService so the x/y reaching
-# draw_text is observable, proving the clip is gone — and that the cloud
-# (portrait DC) / 0-180 paths are untouched.
+# (DC rotation=0) at 90/270 composes on the native LANDSCAPE canvas (bg + text
+# aligned, nothing clipped) and rotates the WHOLE composite into the portrait
+# buffer — legacy has_portrait_themes=False / the C# oriented-output model.
+# These drive the REAL OverlayService so the coords reaching draw_text are
+# observable, proving the text lands on the unclipped landscape canvas.
 
 
 def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
@@ -597,8 +600,8 @@ def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService
 
 
 def _landscape_dc_theme(rotation: int) -> Theme:
-    """320×240-authored DC: a metric at the right edge (x=250) that clips a
-    240-wide portrait canvas unless its coord is synthesised."""
+    """320×240-authored DC: a metric at the right edge (x=250) that would clip a
+    240-wide portrait canvas, but fits the 320-wide landscape compose canvas."""
     return Theme(
         path=Path("/dev/null/themes/local"), name="local",
         resolution=(320, 240),
@@ -610,9 +613,11 @@ def _landscape_dc_theme(rotation: int) -> Theme:
 
 
 @pytest.mark.parametrize("orientation", [90, 270])
-def test_landscape_local_theme_at_portrait_angle_does_not_clip(
+def test_landscape_only_theme_composes_landscape_then_rotates_whole(
     renderer: RecordingRenderer, tmp_home: Path, orientation: int,
 ) -> None:
+    """The text draws at its native landscape coord (x=250, on the 320-wide
+    canvas — unclipped), and the whole composite is rotated once to portrait."""
     info = _hid_type2_info()
     profile = get_profile(58)          # 320×240 rotate, jpeg=False
     display = _display_real(renderer, tmp_home)
@@ -621,18 +626,23 @@ def test_landscape_local_theme_at_portrait_angle_does_not_clip(
     display.build_frame(info=info, theme=_landscape_dc_theme(0), sensors={},
                         profile=profile)
 
+    # Composed on the 320-wide landscape canvas → the x=250 text never clips.
     draws = [args for name, args in renderer.calls if name == "draw_text"]
-    assert draws, "the text element must be drawn"
-    for x, y, _text in draws:
-        assert 0 <= x < 240, f"x={x} clips the 240-wide portrait canvas"
-        assert 0 <= y < 320, f"y={y} clips the 320-tall portrait canvas"
+    assert [(x, y) for x, y, _ in draws] == [(250, 120)]
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (320, 240) in canvases, f"expected a 320×240 canvas, got {canvases}"
+    # ONE whole-composite rotation by the user orientation.
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [orientation], (
+        f"expected a single rotate({orientation}), got {rotations}"
+    )
 
 
-def test_cloud_portrait_theme_is_not_resynthesised(
+def test_cloud_portrait_theme_still_composes_portrait_no_rotate(
     renderer: RecordingRenderer, tmp_home: Path,
 ) -> None:
-    """A portrait DC (rotation=90 — the cloud path) already carries portrait
-    coords; the gate must leave them exactly as authored."""
+    """A portrait DC (rotation=90 — the cloud path) keeps the existing
+    portrait-compose: transposed canvas, coords as authored, NO rotation."""
     info = _hid_type2_info()
     profile = get_profile(58)
     display = _display_real(renderer, tmp_home)
@@ -642,15 +652,17 @@ def test_cloud_portrait_theme_is_not_resynthesised(
                         profile=profile)
 
     draws = [args for name, args in renderer.calls if name == "draw_text"]
-    assert [(x, y) for x, y, _ in draws] == [(250, 120)], (
-        "portrait DC coords must pass through unrotated"
-    )
+    assert [(x, y) for x, y, _ in draws] == [(250, 120)]
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (240, 320) in canvases, f"expected a 240×320 canvas, got {canvases}"
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [], f"portrait content must not rotate, got {rotations}"
 
 
-def test_landscape_theme_at_orientation_0_is_untouched(
+def test_landscape_theme_at_orientation_0_is_unchanged(
     renderer: RecordingRenderer, tmp_home: Path,
 ) -> None:
-    """At 0 the canvas is landscape — coords already fit, no synthesis."""
+    """At 0 the existing path runs: landscape compose + a single device 90°."""
     info = _hid_type2_info()
     profile = get_profile(58)
     display = _display_real(renderer, tmp_home)
@@ -661,27 +673,5 @@ def test_landscape_theme_at_orientation_0_is_untouched(
 
     draws = [args for name, args in renderer.calls if name == "draw_text"]
     assert [(x, y) for x, y, _ in draws] == [(250, 120)]
-
-
-def test_90_and_270_do_not_share_overlay_cache(
-    renderer: RecordingRenderer, tmp_home: Path,
-) -> None:
-    """90 and 270 share the same portrait visual_size but synthesise opposite
-    coords; orientation in the overlay cache key keeps the second build from
-    being served the first's cached overlay surface."""
-    info = _hid_type2_info()
-    profile = get_profile(58)
-    display = _display_real(renderer, tmp_home)
-    theme = _landscape_dc_theme(0)
-
-    display._settings.for_device(info.key).orientation = 90
-    display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
-    at90 = [args for name, args in renderer.calls if name == "draw_text"][-1]
-
-    renderer.calls.clear()
-    display._settings.for_device(info.key).orientation = 270
-    display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
-    rebuilt = [args for name, args in renderer.calls if name == "draw_text"]
-
-    assert rebuilt, "270 must rebuild the overlay, not serve the cached 90 one"
-    assert (rebuilt[-1][0], rebuilt[-1][1]) != (at90[0], at90[1])
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [90], f"orientation 0 keeps the device 90°, got {rotations}"

@@ -66,52 +66,6 @@ def resolve_overlay_elements(
     return list(theme_config.get("elements") or [])
 
 
-def orient_overlay_elements(
-    elements: list[dict[str, Any]],
-    src_size: tuple[int, int],
-    degrees: int,
-) -> list[dict[str, Any]]:
-    """Rotate element CENTER coords from a landscape canvas into its transpose.
-
-    Fills the ONE hole the cutover left in an otherwise-working orientation
-    pipeline.  Every LCD already renders landscape AND portrait correctly when
-    both per-orientation DC variants exist on disk: the C# (and our
-    ``oriented_theme_path``) loads the orientation-matched DC, draws every
-    element UPRIGHT at its own centre coord onto an orientation-sized canvas
-    (C# ``UCScreenImage.SetMyUCScreenImage``: canvas 320x240 at 0/180, 240x320
-    at 90/270; ``DrawString`` at ``myX-w/2, myY-h/2`` with NO image rotation),
-    and sends it.  A LOCAL theme saved in only ONE orientation has no matched
-    variant, so at the perpendicular angle the landscape coords (x up to the
-    native width) overflow the narrower portrait canvas and clip.
-
-    This synthesises the missing portrait variant from the landscape DC so the
-    existing portrait-compose path renders it exactly like a cloud portrait
-    theme.  Coords are CENTRES (per the C# ``myX-w/2``), so a point rotation is
-    exact — no anchor/size fudge.  ``degrees`` is the user orientation (90/270);
-    ``src_size`` is the landscape native ``(w, h)``.  Returns NEW dicts; pure.
-
-        90°:  (x, y) -> (h-1-y, x)        270°:  (x, y) -> (y, w-1-x)
-
-    Both land inside the transposed ``(h, w)`` canvas, so nothing clips.
-    """
-    w, h = src_size
-    out: list[dict[str, Any]] = []
-    for e in elements:
-        x = int(e.get("x", 0))
-        y = int(e.get("y", 0))
-        if degrees == 270:
-            nx, ny = y, w - 1 - x
-        else:  # 90 (the only other portrait angle the gate admits)
-            nx, ny = h - 1 - y, x
-        log.debug("orient_overlay_elements: (%d,%d) -> (%d,%d) [%d deg, src %dx%d]",
-                  x, y, nx, ny, degrees, w, h)
-        out.append({**e, "x": nx, "y": ny})
-    log.info("orient_overlay_elements: %d element(s) rotated %d deg from %dx%d "
-             "landscape DC into %dx%d portrait canvas",
-             len(out), degrees, w, h, h, w)
-    return out
-
-
 class OverlayService:
     """Compose text/metric overlays onto a base surface."""
 

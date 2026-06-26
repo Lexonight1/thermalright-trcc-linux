@@ -37,11 +37,7 @@ from ..core.ports import Renderer
 from ..core.protocol import DeviceProfile, get_profile, resolve_encode_angle
 from ._clock import compute_clock
 from .media import MediaService
-from .overlay import (
-    OverlayService,
-    orient_overlay_elements,
-    resolve_overlay_elements,
-)
+from .overlay import OverlayService, resolve_overlay_elements
 from .settings import Settings
 from .theme import ThemeService
 from .video_cache import VideoFrameCache
@@ -166,63 +162,53 @@ class DisplayService:
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
+    @staticmethod
+    def _content_is_portrait(theme: Theme) -> bool:
+        """True when the loaded theme DC is laid out portrait (rotation 90/270).
+
+        The DC parser records the authoring orientation in ``config["rotation"]``
+        (0/180 = landscape, 90/270 = portrait).  Cloud themes reload the matched
+        portrait variant at 90/270 → True; a LOCAL theme saved landscape-only
+        keeps ``rotation=0`` → False, and there is no portrait variant on disk.
+        """
+        return theme.config.get("rotation", 0) in (90, 270)
+
     def _compose_geometry(
         self, profile: DeviceProfile, orientation: int,
-    ) -> tuple[tuple[int, int], bool]:
-        """The orientation-resolved render/preview canvas + portrait flag.
+        content_is_portrait: bool = True,
+    ) -> tuple[tuple[int, int], bool, int]:
+        """Compose canvas + portrait flag + whole-composite rotation angle.
 
-        SINGLE source of the frame canvas so every consumer agrees (build_frame
-        render, composed_canvas_size preview bezel, build_preview_surface).
+        Three cases of the C# oriented-output model (``SetMyUCScreenImage``):
 
-        Orientation-driven, matching the C# ``themeDirection`` model: a
-        non-square ``rotate=True`` panel keeps per-orientation theme/mask
-        catalogs (``theme854480`` ↔ ``theme480854``), and the active content is
-        loaded from the one matching the current orientation
-        (``oriented_theme_path`` / ``_on_orientation_changed``).  So at 90/270
-        the content is ALREADY portrait ("the orientation is in the masks") —
-        it composes at the swapped (portrait) size and takes **no further
-        rotation** (the rotation gates also skip ``portrait``).  At 0/180 it's
-        the landscape catalog.  Replaces the old ``theme.resolution`` content-
-        match (DC themes declare no size, so that never fired).
+        * **Portrait content @ 90/270** — a rotate panel whose loaded DC is the
+          orientation-matched portrait variant (the cloud path, or any theme
+          with both variants on disk).  Compose on the transposed portrait
+          canvas; no further rotation ("the orientation is in the masks").
+        * **Landscape-only content @ 90/270** — a non-JPEG rotate panel whose
+          portrait variant is ABSENT on disk, so ``oriented_theme_path`` fell
+          back to the landscape DC (a LOCAL theme saved in one orientation).
+          Compose on the native LANDSCAPE canvas (bg + mask + text aligned,
+          nothing clipped) and rotate the WHOLE composite by ``orientation``
+          into the portrait buffer.  This is legacy's ``has_portrait_themes=
+          False`` branch: everything rotates together so it stays aligned —
+          rotating text alone (the earlier bug) scrambled it against a
+          landscape background.  0/180 already compose landscape, so they need
+          no special case; only 90/270's portrait-swap had to be undone here.
+        * **Everything else** — 0/180, squares, non-rotate, JPEG widescreen:
+          the existing user-orientation swap, no whole-composite rotation.
 
-        Equivalence note: the simple RGB565 rotate panels previously did
-        ``rotate(360-orientation)`` then ``rotate(90)`` at 90/270 — a net 360°
-        (identity) on the same swapped canvas, so dropping both rotations here
-        is the same visual result.  Only the widescreen JPEG panels (which had a
-        net +90° via the encode table) actually change — that was the bug.
-        Square / non-rotate panels keep the user-orientation swap. (#136/#169)
+        Returns ``(compose_canvas, portrait, post_rotate)``.  ``post_rotate`` is
+        the angle to rotate the finished composite — 0 for every existing case,
+        so all other panels are byte-identical.
         """
         w, h = profile.resolution
-        portrait = bool(profile.rotate and w != h and orientation in (90, 270))
-        if portrait:
-            return (h, w), True
-        return self._visual_size((w, h), orientation), False
-
-    @staticmethod
-    def _overlay_orient(
-        profile: DeviceProfile, theme: Theme, orientation: int, portrait: bool,
-    ) -> tuple[tuple[int, int], int] | None:
-        """``(landscape_src_size, degrees)`` to synthesise portrait overlay
-        coords from a landscape DC, or ``None`` when no synthesis is needed.
-
-        Every LCD already renders landscape AND portrait correctly when both
-        per-orientation DC variants exist on disk: ``oriented_theme_path``
-        reloads the matched DC and the portrait-compose path draws its coords
-        upright on the transposed canvas (the cloud path).  This fires ONLY on
-        the gap the cutover left — a transposed (portrait) canvas whose loaded
-        theme DC still carries LANDSCAPE coords (``rotation`` not in 90/270),
-        i.e. a LOCAL theme saved in one orientation whose matched variant is
-        absent on disk so the fallback landscape DC was loaded.  Its landscape
-        x-coords overflow the narrower portrait canvas and clip.
-
-        Returns ``None`` for the cloud path (portrait DC), 0/180, square and
-        non-rotate panels — they already compose correctly and are untouched.
-        """
-        if not portrait:
-            return None
-        if theme.config.get("rotation", 0) in (90, 270):
-            return None
-        return profile.resolution, orientation
+        rotate_panel = profile.rotate and w != h and orientation in (90, 270)
+        if rotate_panel and not content_is_portrait and not profile.jpeg:
+            return (w, h), False, orientation
+        if rotate_panel:
+            return (h, w), True, 0
+        return self._visual_size((w, h), orientation), False, 0
 
     def composed_canvas_size(
         self, info: ProductInfo, theme: Theme,
@@ -233,7 +219,13 @@ class DisplayService:
         this so the frame asset + label match what the panel shows (#136).
         """
         resolved = self._resolve_profile(info, profile)
-        canvas, portrait = self._compose_geometry(resolved, orientation)
+        canvas, portrait, post_rotate = self._compose_geometry(
+            resolved, orientation, self._content_is_portrait(theme),
+        )
+        # The bezel shows the DISPLAYED frame: a whole-composite rotation
+        # transposes the landscape compose canvas to its portrait output size.
+        if post_rotate in (90, 270):
+            canvas = (canvas[1], canvas[0])
         # On-change (preview sizing), not per-frame — INFO so the orientation
         # decision is visible at the default level: panel native size + rotate
         # flag, the portrait-compose decision, the user orientation, → canvas.
@@ -270,11 +262,8 @@ class DisplayService:
         """
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
-        visual_size, portrait = self._compose_geometry(
-            resolved_profile, s.orientation,
-        )
-        orient = self._overlay_orient(
-            resolved_profile, theme, s.orientation, portrait,
+        visual_size, portrait, post_rotate = self._compose_geometry(
+            resolved_profile, s.orientation, self._content_is_portrait(theme),
         )
 
         # Per-frame — DEBUG so `-vv` users see the build context without
@@ -336,7 +325,7 @@ class DisplayService:
 
         bg_surface, overlay_surface = self._resolve_bg_overlay(
             info, theme, sensors, visual_size, clock,
-            scene, bg_key, overlay_key, orient,
+            scene, bg_key, overlay_key,
         )
 
         # Compose: bg+mask below, overlay on top
@@ -357,6 +346,28 @@ class DisplayService:
             log.debug("build_frame %s: applying brightness %d%%",
                       info.key, s.brightness)
             surface = self._r.apply_brightness(surface, s.brightness)
+
+        if post_rotate:
+            # Landscape-only theme on a rotate panel at 90/270: everything was
+            # composed aligned on the native LANDSCAPE canvas (no clip, no
+            # letterbox); rotate the WHOLE composite as ONE unit into the
+            # portrait buffer (legacy ``has_portrait_themes=False`` / the C#
+            # oriented-output model).  bg, mask and text rotate together, so
+            # they stay aligned.  The PREVIEW is this rotated result — what the
+            # physically-rotated glass shows — so it is captured AFTER the
+            # rotation (there is no upright portrait layout to show instead).
+            log.debug("build_frame %s: rotate whole composite %d° "
+                      "(landscape theme at portrait angle)", info.key, post_rotate)
+            surface = self._r.rotate(surface, post_rotate)
+            preview_surface = surface
+            encoded = self._encode_for_wire(surface, resolved_profile)
+            self._scenes[info.key] = SceneCache(
+                bg_mask_surface=bg_surface, bg_mask_key=bg_key,
+                overlay_surface=overlay_surface, overlay_key=overlay_key,
+                frame_key=frame_key, frame_bytes=encoded,
+                preview_surface=preview_surface,
+            )
+            return encoded
 
         # Widescreen JPEG panels (the C# isBiliPingmu set — 854×480, 1280×480,
         # 1600×720, 1920×462) compose landscape and fold the user orientation
@@ -441,11 +452,8 @@ class DisplayService:
                   info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
-        visual_size, portrait = self._compose_geometry(
-            resolved_profile, s.orientation,
-        )
-        orient = self._overlay_orient(
-            resolved_profile, theme, s.orientation, portrait,
+        visual_size, portrait, post_rotate = self._compose_geometry(
+            resolved_profile, s.orientation, self._content_is_portrait(theme),
         )
 
         clock = compute_clock(
@@ -464,7 +472,7 @@ class DisplayService:
         # video theme's preview is a cache lookup, not a fresh per-tick decode.
         bg_surface, overlay_surface = self._resolve_bg_overlay(
             info, theme, sensors, visual_size, clock,
-            scene, bg_key, overlay_key, orient,
+            scene, bg_key, overlay_key,
         )
         self._scenes[info.key] = SceneCache(
             bg_mask_surface=bg_surface, bg_mask_key=bg_key,
@@ -472,6 +480,13 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        if post_rotate:
+            # Landscape-only theme at a portrait angle: the preview shows the
+            # whole composite rotated (matches build_frame + the glass), brightness
+            # included — there is no upright portrait layout to show instead.
+            if s.brightness != 100:
+                surface = self._r.apply_brightness(surface, s.brightness)
+            return self._r.rotate(surface, post_rotate)
         # Preview stays upright — the device-mount 90° is a wire concern only
         # (matches build_frame's preview_surface, captured pre-device-rotate).
         return self._apply_post_processing(
@@ -489,7 +504,6 @@ class DisplayService:
         scene: SceneCache | None,
         bg_key: tuple[Any, ...],
         overlay_key: tuple[Any, ...],
-        orient: tuple[tuple[int, int], int] | None = None,
     ) -> tuple[Any, Any]:
         """Resolve the (bg+mask, overlay) surfaces for a tick.
 
@@ -527,7 +541,7 @@ class DisplayService:
             overlay_surface = scene.overlay_surface
         else:
             overlay_surface = self._build_overlay(
-                info, theme, sensors, visual_size, clock, orient,
+                info, theme, sensors, visual_size, clock,
             )
         return bg_surface, overlay_surface
 
@@ -1090,19 +1104,11 @@ class DisplayService:
         sensors: dict[str, float],
         visual_size: tuple[int, int],
         clock: dict[str, str],
-        orient: tuple[tuple[int, int], int] | None = None,
     ) -> Any:
         """Transparent layer with text + metric + clock elements painted on.
 
         Theme-bundled elements paint first; user-edited elements
         (``DeviceSettings.user_overlay_elements``) paint on top.
-
-        ``orient`` (when set) synthesises the missing portrait DC variant for a
-        LOCAL landscape theme viewed at 90/270: it rotates the THEME layer's
-        landscape centre-coords into the transposed canvas so the existing
-        portrait-compose path draws them unclipped, exactly like a cloud
-        portrait theme.  Applied to the theme layer ONLY — live user/mask edits
-        are already authored on the current canvas. (#dc-clip-90)
         """
         overlay_canvas = self._r.create_surface(*visual_size)
         s = self._settings.for_device(info.key)
@@ -1114,15 +1120,6 @@ class DisplayService:
         elements = resolve_overlay_elements(
             theme.config, s.mask_overlay_elements, s.user_overlay_elements,
         )
-        # Synthesise the missing portrait variant: the theme layer is the only
-        # source authored in the DC's (landscape) coord space — user/mask edits
-        # are placed live on the current canvas, so they are left untouched.
-        if (
-            orient is not None
-            and not s.user_overlay_elements
-            and s.mask_overlay_elements is None
-        ):
-            elements = orient_overlay_elements(elements, orient[0], orient[1])
         # The DEVICE'S overlay-enabled state is the single authority (the
         # user/GUI toggle ``DeviceSettings.overlay_enabled``, default True) —
         # NOT the theme's baked DC flag.  Otherwise a theme authored
@@ -1252,15 +1249,11 @@ class DisplayService:
             if s.mask_overlay_elements is not None
             else ()
         )
-        # Orientation participates so 90 and 270 — which share the same
-        # transposed ``visual_size`` (e.g. 240×320) but synthesise OPPOSITE
-        # portrait coords for a landscape-only local theme — never collide on
-        # one cached overlay surface. (#dc-clip-90)
         # Temp unit participates in the key so toggling °C ↔ °F via
         # SetTempUnit busts the overlay cache and the next render
         # picks up the new format-string + value-conversion path.
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
-                user_sig, mask_overlay_sig, s.temp_unit, s.orientation)
+                user_sig, mask_overlay_sig, s.temp_unit)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
 
