@@ -355,6 +355,20 @@ class UCLedControl(QWidget):
         )
         self._title.setVisible(False)
 
+        # -- Dev fingerprint (top-left): the device's handshake as a copy-paste
+        # -- ready mock_gui arg string, so a reported device can be reproduced
+        # -- without hand-typing PM/SUB.  Selectable text; harmless on a real run.
+        self._fingerprint_label = QLabel("", self)
+        self._fingerprint_label.setGeometry(8, 2, 460, 18)
+        self._fingerprint_label.setStyleSheet(
+            "color: #7A7A7A; font-family: monospace; font-size: 11px;"
+            " background: transparent;"
+        )
+        self._fingerprint_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+
         # -- Mode buttons (text rendered via i18n, not baked into PNG) --
         lang = self._language
         self._mode_buttons: list[QPushButton] = []
@@ -1035,6 +1049,11 @@ class UCLedControl(QWidget):
     def set_status(self, text: str) -> None:
         """Update status text."""
         self._status.setText(text)
+
+    def set_device_fingerprint(self, text: str) -> None:
+        """Show the device's handshake as a copy-paste-ready mock_gui arg line."""
+        log.info("set_device_fingerprint: %s", text)
+        self._fingerprint_label.setText(text)
 
     def set_language(self, lang: str) -> None:
         """Update the current language (injected by the window) and re-apply

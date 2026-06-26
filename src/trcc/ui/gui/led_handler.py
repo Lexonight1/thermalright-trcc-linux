@@ -108,6 +108,14 @@ class LEDHandler(BaseHandler):
             spec.zone_count,
             model=spec.model_name,
         )
+        # Dev aid: show the handshake as a copy-paste-ready mock_gui arg line so a
+        # reported device can be reproduced without hand-typing PM/SUB.
+        hs = getattr(self._device, "led_handshake", None)
+        fingerprint = (
+            f"device={self._device_key} pm={hs.pm} sub={hs.sub_type}"
+            if hs is not None else f"device={self._device_key}"
+        )
+        self._panel.set_device_fingerprint(fingerprint)
         self._sync_panel_from_settings()
         self._active = True
         log.info(

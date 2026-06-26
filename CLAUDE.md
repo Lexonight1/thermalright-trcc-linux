@@ -13,6 +13,32 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **DONE 2026-06-26 — DC theme clip at Display Angle 90° on rotate panels — FIXED + PUSHED
+  (`899d72cc`). READ `memory/project_dc_clip_90_rotate_panels.md`.** On a `rotate=True` RGB565 panel
+  (FBL 51 Frozen Warframe), a LOCAL landscape-only DC theme clipped at 90/270. C#-faithful fix (NOT the
+  superseded text-only `orient_overlay_elements`, `fb38cb49`, which the mock showed broken): the C#
+  never moves text apart from its background — `_compose_geometry` now returns `(canvas, portrait,
+  post_rotate)`; a non-JPEG rotate panel @90/270 whose loaded DC is landscape (`rotation ∉ {90,270}`)
+  composes on the native LANDSCAPE canvas (nothing clips) then rotates the WHOLE composite into the
+  portrait buffer (legacy `has_portrait_themes=False`). Cloud-portrait/JPEG/0-180/square/non-rotate →
+  `post_rotate=0`, byte-identical. Real-pipeline render verified at 0/90/180/270. Repro:
+  `python dev/mock_gui.py device=0416:5302 pm=51 sub=0 fbl=51` + angle 90. **Follow-up (not done):**
+  `SaveTheme`/data should store real PORTRAIT variants for rotate panels (the program data ships
+  landscape DCs even in the `theme240320` dir), so new local themes render upright like a true portrait
+  theme; render-time rotation already fixes existing landscape themes. On-glass handedness reporter-gated.
+- **ACTIVE — LED panel i18n (2026-06-24, v9.7.6 SHIPPED). READ
+  `memory/project_led_panel_i18n.md` FIRST.** Every LED control-panel label is now a translatable
+  `tr()` overlay drawn on **user-blanked artwork** (info-panel fields + metric-selection buttons; 15
+  assets cleared by hand). English text from the official **2.1.6 en resx** (carve the `TRCCCAP` zip
+  out of `TRCC 2.1.6-Setup.exe`); coords from the C# UserControls / measured from the deleted-region
+  diff. Code: `_OVERLAY_BUTTON_STYLES`, `_ZONE_BUTTON_LABELS`, `_apply_selector_labels` /
+  `_apply_zone_images` in `ui/gui/uc_led_control.py`; new `tr()` keys in `i18n.py`.
+  **TOMORROW (user):** (1) finish deleting the whole `(位DDR5)` in `led_bg_lc1.png` (only 位 removed →
+  overlay collides); (2) **CZ1** translatable — clear its `led_bg_cz1.png` button labels, then add 8 to
+  `_OVERLAY_BUTTON_STYLES`; (3) the `SSD(°C/%)` / `Memory(°C/%)` **legends**; (4) **the user wants to
+  review their `dev/.trcc/trcc.log`** (the mock_gui log) — open it next session. Aside: HR-10 2280 PRO /
+  MC-3 DIGITAL are user-reported `0416:8001` LED devices ABSENT from 2.1.4 AND 2.1.6 → reporter-gated
+  (need a `trcc report` PM byte to port).
 - **ACTIVE — GitHub issue work + failure-surfacing follow-ups (2026-06-19). READ
   `memory/project_failure_surfacing_and_issue_triage.md` FIRST.** Workflow (user-locked): read issue →
   **no `trcc report`/diagnostic → kindly ask + WAIT** (no speculative work on "slackers") → has report →
