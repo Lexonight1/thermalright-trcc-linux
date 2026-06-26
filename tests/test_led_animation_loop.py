@@ -46,3 +46,21 @@ def test_tick_re_renders_animating_led(fake_platform: FakePlatform) -> None:
     fake_platform.bulk.writes.clear()
     app.led_animation_loop.tick()
     assert fake_platform.bulk.writes, "animation tick should render a frame"
+
+
+def test_multi_zone_per_zone_effect_is_animated(fake_platform: FakePlatform) -> None:
+    """#193: a multi-zone device (PA120) with an effect set on its zones — and
+    "select all" (zone_sync) OFF — must still be ticked.
+
+    On a multi-zone style ``SetLedMode`` writes each selected ZONE's mode and
+    leaves the device-level ``mode`` at STATIC, so gating ``animating_keys`` on
+    ``s.mode`` alone left the device unticked → breathing/colour-cycle/rainbow
+    looked frozen while a solid colour worked.  The loop must see the zone modes.
+    """
+    app = _app(fake_platform, pm=16)   # PA120 — multi-zone (per-zone modes)
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.RAINBOW))
+    s = app.settings.for_led(_LED_KEY)
+    assert s.mode is LEDMode.STATIC, "device-level mode stays STATIC on a zone style"
+    assert not s.zone_sync, "zone_sync (select-all) is off by default"
+    assert any(z.mode is LEDMode.RAINBOW for z in s.zones), "a zone carries the effect"
+    assert app.led_animation_loop.animating_keys() == [_LED_KEY]

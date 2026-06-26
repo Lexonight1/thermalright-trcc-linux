@@ -77,13 +77,26 @@ class LedAnimationLoop:
     # ── Worker ────────────────────────────────────────────────────────
 
     def animating_keys(self) -> list[str]:
-        """Connected LED devices whose mode / carousel / test is moving."""
+        """Connected LED devices whose mode / carousel / test is moving.
+
+        A multi-zone style (PA120/LF10) stores its mode PER ZONE — ``SetLedMode``
+        writes ``zones[i].mode`` and leaves the device-level ``mode`` at STATIC.
+        So the gate must also look at the zone modes, or an effect set on
+        individual zones (with "select all"/``zone_sync`` off) would never tick
+        and stay frozen (#193).
+        """
         keys: list[str] = []
         for key, device in self._app.devices.items():
             if not (device.is_led and device.is_connected):
                 continue
             s = self._app.settings.for_led(key)
-            if s.mode in _ANIMATED_MODES or s.zone_sync or s.test_mode:
+            zone_animating = any(z.mode in _ANIMATED_MODES for z in s.zones)
+            if (
+                s.mode in _ANIMATED_MODES
+                or zone_animating
+                or s.zone_sync
+                or s.test_mode
+            ):
                 keys.append(key)
         return keys
 
