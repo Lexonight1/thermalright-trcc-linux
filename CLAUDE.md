@@ -13,8 +13,28 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **RESUME TOMORROW — open issue gaps after the 2026-06-26 triage + v9.7.7 release.
+  READ `memory/project_issue_triage_v977.md` FIRST.** v9.7.7 SHIPPED (geometry clip `899d72cc` +
+  #193 multi-zone effects `bf38d3c8` + #189 resume `632db1d4`); 33 issue replies POSTED. The triage
+  found only TWO genuine current-code bugs (both fixed). What's LEFT to actually build (NOT done, NOT
+  claimed fixed to reporters):
+  (1) **#143** LCD won't sleep on shutdown — needs the C# vendor sleep/clear command (standard SCSI
+      STOP → DID_ERROR) + a shutdown hook (`App.close()` / systemd `ExecStop`). Decompile the FormCZTV
+      exit path first.
+  (2) **#194** no AMD CPU power — `adapters/sensors/hwmon.py` `_RaplCpuPower` globs `intel-rapl:*` ONLY
+      and `energy_uj` is root-only; add AMD coverage (amd_energy hwmon / AMD RAPL) + a setup step
+      granting powercap read (ties to the RAPL setup gap).
+  (3) **#196** tray-reopen blank (KDE Wayland, Py 3.14) — single-instance + raise EXISTS
+      (`trcc_app.py:_on_raise_requested` → `showNormal`); Wayland blocks `raise_/activateWindow` and a
+      tray-HIDDEN window needs `show()` first. **Repro under Wayland before coding** (cross-platform rule).
+  (4) **360 cluster** #186/#169/#170/#185 (ChiZhu `87ad:70db`, square 480) — resolution misread
+      (PM→FBL 100=320 in `_PM_TO_FBL_OVERRIDES`) + 180° inversion; #170 fill is a SYMPTOM. PARKED awaiting
+      each reporter's handshake **PM byte** (asked in the replies). #197 (fan colour) + #152 (blank Mint
+      GUI) also await pasted reports.
+  (5) **#189 verify** — fixed in tests (close+reconnect on `SystemResumed`) but NEEDS a real
+      suspend-cycle eyeball; logic-verified only.
 - **DONE 2026-06-26 — DC theme clip at Display Angle 90° on rotate panels — FIXED + PUSHED
-  (`899d72cc`). READ `memory/project_dc_clip_90_rotate_panels.md`.** On a `rotate=True` RGB565 panel
+  (`899d72cc`, shipped v9.7.7). READ `memory/project_dc_clip_90_rotate_panels.md`.** On a `rotate=True` RGB565 panel
   (FBL 51 Frozen Warframe), a LOCAL landscape-only DC theme clipped at 90/270. C#-faithful fix (NOT the
   superseded text-only `orient_overlay_elements`, `fb38cb49`, which the mock showed broken): the C#
   never moves text apart from its background — `_compose_geometry` now returns `(canvas, portrait,
