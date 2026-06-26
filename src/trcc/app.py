@@ -34,6 +34,7 @@ from .core.events import (
     OverlayChanged,
     SensorsUpdated,
     SplitModeChanged,
+    SystemResumed,
     TempUnitChanged,
     TimeFormatChanged,
     VideoStarted,
@@ -213,6 +214,15 @@ class App:
         # an active theme/mask stayed pinned to the landscape dir.  Core-level so
         # CLI / API / GUI / daemon all benefit.
         self.events.subscribe(OrientationChanged, self._on_orientation_changed)
+        # Resume-from-suspend: the USB transport a device opened before the
+        # machine slept is stale on wake — writes silently no-op (or the
+        # consecutive-failure recovery never trips), so the panel stays blank
+        # until a manual restart (#189).  Reconnect every attached device on
+        # ``SystemResumed`` (published by the logind PrepareForSleep listener);
+        # ConnectDevice reopens the transport and emits DeviceConnected, after
+        # which the metrics / LED-animation loops and render observers resume on
+        # their own.  Core-level so the daemon, GUI and CLI all recover.
+        self.events.subscribe(SystemResumed, self._on_system_resumed)
         # Hotplug listener — caller (daemon, GUI launcher, tests) decides
         # whether to ``start_hotplug``.  In-process CLI scripts that
         # only do one Command don't need it; the daemon and GUI do.
@@ -246,6 +256,36 @@ class App:
         log.info("_on_device_attached: connecting %s", event.key)
         from .core.commands import ConnectDevice
         self.dispatch(ConnectDevice(key=event.key))
+
+    def _on_system_resumed(self, _event: Any) -> None:
+        """``SystemResumed`` → reconnect every attached device after wake.
+
+        Runs on the power-listener thread — the same off-main-thread pattern
+        ``_on_device_attached`` uses to dispatch ``ConnectDevice``.  The device
+        is already in ``self.devices`` with a STALE transport, so we rebuild it
+        like a replug: stop the old send worker (it is bound to the dead device),
+        release the stale transport, then ``ConnectDevice`` re-attaches a fresh
+        device + transport, re-handshakes, starts a new sender and emits
+        ``DeviceConnected``.  We deliberately do NOT ``detach`` — that would drop
+        the active theme / LED runtime and the panel would come back blank;
+        keeping them lets the metrics / LED-animation loops and render observers
+        repaint the same content on the next tick.  So both the LED segment
+        displays and the LCD panels recover without a manual restart (#189).
+        """
+        from .core.commands import ConnectDevice
+        keys = list(self.devices)
+        log.info("_on_system_resumed: reconnecting %d device(s) after wake", len(keys))
+        for key in keys:
+            old = self.devices.get(key)
+            log.info("_on_system_resumed: %s — stale transport after suspend, "
+                     "stop sender + reopen", key)
+            self.stop_sender(key)
+            if old is not None:
+                try:
+                    old.disconnect()
+                except Exception:
+                    log.exception("_on_system_resumed: disconnect %s raised", key)
+            self.dispatch(ConnectDevice(key=key))
 
     def _on_orientation_changed(self, event: Any) -> None:
         """``OrientationChanged`` → reload the active theme + mask from the
