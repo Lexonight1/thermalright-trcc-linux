@@ -1,5 +1,31 @@
 # Changelog
 
+## v9.7.7
+
+Rotation, LED-effect and resume fixes.
+
+**Rotate-panel themes no longer clip at Display Angle 90°/270°.**  On a
+non-square rotate panel (e.g. the Frozen Warframe 320×240), a local theme saved
+in one orientation had no portrait variant on disk, so at 90°/270° its text
+overflowed the narrower canvas and clipped (e.g. `796 MHz` cut off).  The whole
+theme is now composed on its native landscape canvas — where nothing clips — and
+rotated as one unit into the portrait buffer, so background and text stay
+aligned and full-screen, matching how the original software handles it.  Cloud
+themes, JPEG widescreen panels, square panels and the 0°/180° angles are
+unchanged.
+
+**LED effect modes animate on multi-zone coolers.**  On a multi-zone cooler
+(PA120 / LF10), setting Breathing / Colour-cycle / Rainbow on individual zones
+left the effect frozen on a solid colour — the animation tick only looked at the
+device-wide mode, not the per-zone modes.  The animator now sees the zone modes,
+so the effects run.
+
+**The display comes back after sleep/wake.**  After the machine suspended and
+resumed, the USB link a device opened beforehand was stale, so the panel stayed
+blank until you restarted the app.  TRCC now reconnects each device on resume
+(re-handshake + fresh send worker) so the LED segment displays and LCD panels
+repaint on their own.
+
 ## v9.7.6
 
 LED-panel polish and sensor fixes.
