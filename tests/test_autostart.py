@@ -38,6 +38,20 @@ def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
     )
 
 
+def test_exec_line_starts_hidden_in_tray(tmp_home: Path) -> None:
+    """Autostart must launch with `--resume` so login starts hidden in the
+    tray instead of popping a window — the behaviour that regressed (#201)."""
+    mgr = XdgDesktopAutostart()
+
+    mgr.enable()
+
+    exec_line = next(
+        line for line in mgr.path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("Exec=")
+    )
+    assert exec_line.endswith("gui --resume"), exec_line
+
+
 def test_enable_permissions_are_readable(tmp_home: Path) -> None:
     mgr = XdgDesktopAutostart()
 

@@ -142,10 +142,15 @@ class XdgDesktopAutostart(AutostartManager):
 
         The second form is robust across pipx / venv / system-python
         installs because ``sys.executable`` is always the right interpreter.
+
+        ``--resume`` makes the autostarted instance start hidden in the
+        system tray (restoring the last-used theme) instead of popping a
+        window on every login — the long-standing autostart behaviour that
+        regressed when the flag was dropped (#201).
         """
         if (resolved := shutil.which("trcc")):
-            return f"{resolved} gui"
-        return f"{sys.executable} -m trcc gui"
+            return f"{resolved} gui --resume"
+        return f"{sys.executable} -m trcc gui --resume"
 
 
 # =========================================================================

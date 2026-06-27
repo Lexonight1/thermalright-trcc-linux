@@ -15,7 +15,8 @@ import pytest
 def test_gui_raises_systemexit_with_launch_code(monkeypatch: pytest.MonkeyPatch) -> None:
     import trcc.ui.gui as gui_mod
     from trcc.ui.cli.main import gui
-    monkeypatch.setattr(gui_mod, "launch", lambda: 0)
+    # gui() always passes start_hidden= now (#201); the mock must accept it.
+    monkeypatch.setattr(gui_mod, "launch", lambda **_kw: 0)
     with pytest.raises(SystemExit) as exc:
         gui()
     assert exc.value.code == 0
@@ -36,10 +37,28 @@ def test_gui_exit_survives_except_exception(monkeypatch: pytest.MonkeyPatch) -> 
     crash dialog (the #187 regression: typer.Exit is a RuntimeError)."""
     import trcc.ui.gui as gui_mod
     from trcc.ui.cli.main import gui
-    monkeypatch.setattr(gui_mod, "launch", lambda: 1)
+    monkeypatch.setattr(gui_mod, "launch", lambda **_kw: 1)
     try:
         gui()
     except Exception:
         pytest.fail("gui() exit was caught by `except Exception` — frozen build would crash")
     except SystemExit as e:
         assert e.code == 1
+
+
+def test_gui_direct_entry_shows_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Called directly (trcc-gui console script / frozen trcc-gui.exe, no
+    typer), `resume` is typer's OptionInfo sentinel — gui() must coerce it so
+    those launchers SHOW the window, not start hidden (#201 regression)."""
+    import trcc.ui.gui as gui_mod
+    from trcc.ui.cli.main import gui
+    captured: dict[str, object] = {}
+
+    def _fake_launch(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(gui_mod, "launch", _fake_launch)
+    with pytest.raises(SystemExit):
+        gui()
+    assert captured["start_hidden"] is False

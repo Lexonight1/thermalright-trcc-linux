@@ -68,6 +68,44 @@ def test_gui_help(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_gui_resume_starts_hidden(cli_runner: CliRunner, cli_app, monkeypatch) -> None:
+    """``gui --resume`` launches the GUI hidden in the tray (#201/#195).
+
+    Patches ``launch`` so no Qt window is built — we only assert the flag
+    threads through to ``start_hidden``.
+    """
+    del cli_app
+    captured: dict[str, object] = {}
+
+    def _fake_launch(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    import trcc.ui.gui as gui_pkg
+    monkeypatch.setattr(gui_pkg, "launch", _fake_launch)
+
+    result = cli_runner.invoke(_app(), ["gui", "--resume"])
+    assert result.exit_code == 0
+    assert captured["start_hidden"] is True
+
+
+def test_gui_default_shows_window(cli_runner: CliRunner, cli_app, monkeypatch) -> None:
+    """Bare ``gui`` shows the window (``start_hidden`` False) (#201)."""
+    del cli_app
+    captured: dict[str, object] = {}
+
+    def _fake_launch(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    import trcc.ui.gui as gui_pkg
+    monkeypatch.setattr(gui_pkg, "launch", _fake_launch)
+
+    result = cli_runner.invoke(_app(), ["gui"])
+    assert result.exit_code == 0
+    assert captured["start_hidden"] is False
+
+
 def test_api_help(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
     result = cli_runner.invoke(_app(), ["api", "--help"])

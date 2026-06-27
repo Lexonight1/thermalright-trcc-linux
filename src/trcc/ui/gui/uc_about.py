@@ -68,6 +68,14 @@ def ensure_autostart(autostart) -> bool:
         except Exception:
             # Best-effort — read-only Platforms (sandboxes, CI) raise here.
             log.debug("ensure_autostart: enable() failed", exc_info=True)
+    else:
+        # Already enabled — re-render so an existing .desktop picks up Exec
+        # changes (the restored `--resume` flag, #201) without the user
+        # having to toggle autostart off and on again.
+        try:
+            autostart.refresh()
+        except Exception:
+            log.debug("ensure_autostart: refresh() failed", exc_info=True)
     return autostart.is_enabled()
 
 

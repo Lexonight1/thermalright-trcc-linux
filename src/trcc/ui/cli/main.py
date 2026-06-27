@@ -124,20 +124,37 @@ def qtgui() -> None:
 
 
 @app.command("gui")
-def gui() -> None:
+def gui(
+    resume: bool = typer.Option(
+        False, "--resume", "--tray", "--minimized",
+        help=(
+            "Start hidden in the system tray instead of showing the window "
+            "— used by XDG autostart on login.  The last-used theme is "
+            "restored automatically."
+        ),
+    ),
+) -> None:
     """Launch the legacy Windows-style GUI (port in progress).
 
     Today's shell hosts the device sidebar + a diagnostic content
     area — enough to prove the legacy-on-next/-bus pattern end to
     end on real hardware.  Real feature panels (LCD handler, theme
     settings, mask, video, LED) land in subsequent passes.
+
+    ``--resume`` starts hidden in the tray (XDG autostart-on-login);
+    bare ``trcc gui`` shows the window.
     """
-    log.info("cli gui")
+    # gui() is ALSO a direct entry point — the `trcc-gui` console script and
+    # the frozen ``trcc-gui.exe`` (__main__.py) call it OUTSIDE typer with no
+    # args, so `resume` arrives as typer's OptionInfo sentinel (truthy!), not
+    # a bool.  `is True` is the parsed-flag only; direct calls show the window.
+    start_hidden = resume is True
+    log.info("cli gui: start_hidden=%s", start_hidden)
     from ..gui import launch
     # SystemExit (not typer.Exit) — see qtgui above: this is a direct entry
     # point too (the Windows trcc-gui.exe calls gui() outside typer), so
     # typer.Exit would escape unhandled and crash the frozen build (#187).
-    raise SystemExit(launch())
+    raise SystemExit(launch(start_hidden=start_hidden))
 
 
 @app.command("api")
