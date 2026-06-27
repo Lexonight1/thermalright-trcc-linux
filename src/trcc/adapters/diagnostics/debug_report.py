@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import platform as py_platform
 import sys
 from dataclasses import dataclass, field
@@ -43,6 +44,7 @@ class DebugReport:
     devices_error: str = ""
     sensors: list[dict[str, str]] = field(default_factory=list)
     sensors_error: str = ""
+    powercap: list[dict[str, str]] = field(default_factory=list)
     settings_json: str = ""
     settings_error: str = ""
     health: HealthReport = field(default_factory=HealthReport)
@@ -57,6 +59,7 @@ class DebugReport:
         sections.append(_render_kv("Paths", self.paths))
         sections.append(_render_devices(self.devices, self.devices_error))
         sections.append(_render_sensors(self.sensors, self.sensors_error))
+        sections.append(_render_powercap(self.powercap))
         sections.append(_render_settings(self.settings_json, self.settings_error))
         sections.append(_render_health(self.health))
         sections.append(_render_log_tail(self.log_tail))
@@ -83,6 +86,7 @@ def build_debug_report(
     path_table = _collect_paths(platform)
     devices, devices_err = _collect_devices(platform)
     sensors, sensors_err = _collect_sensors(platform)
+    powercap = _collect_powercap()
     settings_text, settings_err = _read_settings_file(
         settings_path or platform.paths().config_dir() / "config.json",
     )
@@ -98,6 +102,7 @@ def build_debug_report(
         devices_error=devices_err,
         sensors=sensors,
         sensors_error=sensors_err,
+        powercap=powercap,
         settings_json=settings_text,
         settings_error=settings_err,
         health=health,
@@ -188,6 +193,45 @@ def _collect_sensors(
     return rows, ""
 
 
+def _collect_powercap() -> list[dict[str, str]]:
+    """Probe the powercap RAPL nodes that CPU package power comes from (#194).
+
+    Answers the two questions a bare ``cpu:power = —`` can't: does the
+    ``intel-rapl:*`` node exist at all (``intel_rapl_msr`` loaded?), and is
+    its ``energy_uj`` counter readable by us (root-only since CVE-2020-8694?).
+    Linux-only; other OSes get no rows (the section renders as N/A).
+    """
+    log.debug("_collect_powercap: called")
+    if sys.platform != "linux":
+        return []
+    root = Path("/sys/class/powercap")
+    rows: list[dict[str, str]] = []
+    try:
+        domains = sorted(root.glob("intel-rapl:*"))
+    except OSError as e:
+        log.debug("_collect_powercap: glob failed: %s", e)
+        return []
+    for domain in domains:
+        # Top-level package domains only (intel-rapl:N), not subdomains.
+        if ":" in domain.name.split("intel-rapl:")[1]:
+            continue
+        try:
+            name = (domain / "name").read_text(encoding="utf-8").strip() \
+                if (domain / "name").is_file() else "?"
+            energy = domain / "energy_uj"
+            if not energy.exists():
+                readable = "no energy_uj"
+            else:
+                mode = energy.stat().st_mode & 0o777
+                ok = os.access(energy, os.R_OK)
+                readable = f"{'readable' if ok else 'ROOT-ONLY'} ({mode:#o})"
+        except OSError as e:
+            # A diagnostic must never abort the report — note the probe error.
+            name, readable = "?", f"probe error: {type(e).__name__}"
+        rows.append({"domain": domain.name, "name": name, "energy_uj": readable})
+    return rows
+
+
 def _read_settings_file(path: Path) -> tuple[str, str]:
     log.debug("_read_settings_file: path=%s", path)
     if not path.is_file():
@@ -249,6 +293,18 @@ def _render_sensors(rows: list[dict[str, str]], error: str) -> str:
         for r in rows
     )
     return f"## Sensors ({len(rows)})\n{body}"
+
+
+def _render_powercap(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return ("## CPU power (RAPL)\n  No intel-rapl powercap domains — "
+                "intel_rapl_msr not loaded (or N/A on this OS).\n"
+                "  Run `trcc setup` to load it + grant read access (#194).")
+    body = "\n".join(
+        f"  {r['domain']:16}  {r['name']:12}  energy_uj: {r['energy_uj']}"
+        for r in rows
+    )
+    return f"## CPU power (RAPL, {len(rows)} package domain(s))\n{body}"
 
 
 def _render_settings(text: str, error: str) -> str:

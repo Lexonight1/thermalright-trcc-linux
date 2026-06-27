@@ -418,3 +418,48 @@ def test_install_gpu_reader_no_package_manager(
     result = _trcc_app.dispatch(InstallGpuReader(dry_run=True))
     assert result.ok is False
     assert "No supported package manager" in result.message
+
+
+# ── CPU power (RAPL) report section (#194) ───────────────────────────
+
+
+def test_render_powercap_readable_domain() -> None:
+    """A readable package domain renders its name + energy_uj mode (#194)."""
+    from trcc.adapters.diagnostics.debug_report import _render_powercap
+
+    out = _render_powercap([
+        {"domain": "intel-rapl:0", "name": "package-0",
+         "energy_uj": "readable (0o444)"},
+    ])
+    assert "intel-rapl:0" in out
+    assert "package-0" in out
+    assert "readable (0o444)" in out
+
+
+def test_render_powercap_root_only_is_flagged() -> None:
+    """A root-only energy_uj is surfaced so the reporter sees the real cause
+    of a blank cpu:power — the permission, not a code bug (#194)."""
+    from trcc.adapters.diagnostics.debug_report import _render_powercap
+
+    out = _render_powercap([
+        {"domain": "intel-rapl:0", "name": "package-0",
+         "energy_uj": "ROOT-ONLY (0o400)"},
+    ])
+    assert "ROOT-ONLY (0o400)" in out
+
+
+def test_render_powercap_empty_points_at_setup() -> None:
+    """No domains → tell the reporter to run setup (driver not loaded) (#194)."""
+    from trcc.adapters.diagnostics.debug_report import _render_powercap
+
+    out = _render_powercap([])
+    assert "intel_rapl_msr" in out
+    assert "trcc setup" in out
+
+
+def test_collect_powercap_returns_list() -> None:
+    """Smoke: the collector never raises and returns a list (rows on Linux
+    with RAPL, empty otherwise)."""
+    from trcc.adapters.diagnostics.debug_report import _collect_powercap
+
+    assert isinstance(_collect_powercap(), list)
