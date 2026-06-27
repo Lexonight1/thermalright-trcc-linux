@@ -61,3 +61,11 @@ ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db"
 # Thermalright LCD Display (SCSI)
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87cd", ATTR{idProduct}=="70db", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
+
+# CPU package power (RAPL) — make energy_uj readable without root so trcc can
+# report CPU watts.  energy_uj is root-only since CVE-2020-8694 (PLATYPUS);
+# without this the GUI/CLI show no CPU power on most distros (#194).  The
+# `intel-rapl:*` powercap node is vendor-agnostic — covers Intel AND AMD (Zen).
+# Scoped to the energy counter only; remove this file to revert.
+# MUST stay in sync with adapters/system/_udev.py (setup-udev).
+SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chmod 0444 /sys$devpath/energy_uj"

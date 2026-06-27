@@ -34,6 +34,11 @@ _HWMON_ROOT = Path("/sys/class/hwmon")
 _DRM_ROOT = Path("/sys/class/drm")
 _POWERCAP_ROOT = Path("/sys/class/powercap")
 
+# When RAPL discovery comes up empty (driver not loaded, or energy_uj still
+# root-only), re-scan at most this often so CPU power appears without an app
+# restart once the user runs `trcc setup` to load the module / grant read.
+_RAPL_REDISCOVER_INTERVAL_S = 30.0
+
 _CPU_DRIVERS = ("coretemp", "k10temp", "zenpower")
 _AMD_DRIVER = "amdgpu"
 _INTEL_DRIVERS = ("i915", "xe")
@@ -129,12 +134,13 @@ class _RaplCpuPower:
     ``prev`` and report garbage watts.
     """
 
-    __slots__ = ("_last", "_lock", "_paths")
+    __slots__ = ("_last", "_lock", "_next_rediscover", "_paths")
 
     def __init__(self) -> None:
         self._paths = self._discover()
         self._last: tuple[float, float] | None = None   # (sum_uj, monotonic)
         self._lock = threading.Lock()
+        self._next_rediscover = 0.0
 
     @staticmethod
     def _discover() -> list[Path]:
@@ -163,15 +169,29 @@ class _RaplCpuPower:
         log.info("RAPL CPU power: %d readable package domain(s)", len(paths))
         return paths
 
+    def _maybe_rediscover(self) -> None:
+        """Re-scan for RAPL paths when we have none — covers a driver load or
+        permission grant that happened after construction (the user just ran
+        ``trcc setup``), so CPU power appears without restarting the app
+        (#194).  Throttled so the empty case stays cheap.  Caller holds
+        ``_lock``."""
+        now = time.monotonic()
+        if now < self._next_rediscover:
+            return
+        self._next_rediscover = now + _RAPL_REDISCOVER_INTERVAL_S
+        self._paths = self._discover()
+
     def read(self) -> float | None:
         """Watts since the last read, or None (first read / wrap / locked).
 
         Thread-safe: the read-delta-update runs under ``_lock`` so
         concurrent callers can't interleave their energy/time samples.
         """
-        if not self._paths:
-            return None
         with self._lock:
+            if not self._paths:
+                self._maybe_rediscover()
+                if not self._paths:
+                    return None
             total = 0.0
             for path in self._paths:
                 val = _read_float(path)

@@ -31,6 +31,25 @@ def test_packaged_rule_matches_generated_autosuspend_policy() -> None:
         assert 'ATTR{power/autosuspend_delay_ms}="10000"' in ln, ln
 
 
+_POWERCAP_RULE = (
+    'SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", '
+    'RUN+="/bin/chmod 0444 /sys$devpath/energy_uj"'
+)
+
+
+def test_generated_rules_grant_rapl_read() -> None:
+    """setup-udev must emit the RAPL energy_uj read-grant so CPU power works
+    without root (root-only since CVE-2020-8694) (#194)."""
+    assert _POWERCAP_RULE in build_udev_rules()
+
+
+def test_packaged_rule_matches_generated_rapl_grant() -> None:
+    """The packaged rule and the setup-udev generator must carry the SAME RAPL
+    read-grant — two sources, one rule; drifting them breaks CPU power for one
+    install path (#194)."""
+    assert _POWERCAP_RULE in _PACKAGED_RULE.read_text()
+
+
 def test_every_registered_device_enables_autosuspend() -> None:
     """Every device gets control="auto" + a 10s delay so the kernel can
     autosuspend it and the firmware sleeps the panel.  Must NOT carry the old

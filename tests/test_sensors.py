@@ -463,6 +463,9 @@ def _rapl_with(paths: list[Path]) -> hwmon._RaplCpuPower:
     r._paths = paths
     r._last = None
     r._lock = threading.Lock()
+    # These tests pin a fixed path set — disable lazy re-discovery so an
+    # empty stub stays empty regardless of the host's real RAPL nodes (#194).
+    r._next_rediscover = float("inf")
     return r
 
 
@@ -530,3 +533,41 @@ def test_rapl_unreadable_counter_returns_none(
     monkeypatch.setattr(hwmon, "_read_float", lambda _p: None)
     monkeypatch.setattr(hwmon.time, "monotonic", lambda: 100.0)
     assert r.read() is None
+
+
+# ── RAPL CPU power lazy re-discovery (#194) ──────────────────────────
+
+
+def test_rapl_rediscovers_after_setup(tmp_path, monkeypatch) -> None:
+    """When RAPL starts empty (driver/perm not ready) and becomes available
+    later — e.g. the user just ran `trcc setup` — _RaplCpuPower picks it up on
+    the next throttled read instead of staying dark until restart (#194)."""
+    monkeypatch.setattr(hwmon._RaplCpuPower, "_discover", staticmethod(list))
+    rapl = hwmon._RaplCpuPower()
+    assert rapl._paths == []
+    assert rapl.read() is None                       # still empty
+
+    # Setup ran: a readable energy counter now exists.
+    energy = tmp_path / "energy_uj"
+    energy.write_text("1000000")
+    monkeypatch.setattr(
+        hwmon._RaplCpuPower, "_discover", staticmethod(lambda: [energy]),
+    )
+    rapl._next_rediscover = 0.0                       # open the throttle
+    rapl.read()                                       # re-discovers + seeds
+    assert rapl._paths == [energy]
+
+
+def test_rapl_rediscovery_is_throttled(monkeypatch) -> None:
+    """The empty-case re-scan is rate-limited so polling stays cheap (#194)."""
+    calls = {"n": 0}
+
+    def _count() -> list:
+        calls["n"] += 1
+        return []
+
+    monkeypatch.setattr(hwmon._RaplCpuPower, "_discover", staticmethod(_count))
+    rapl = hwmon._RaplCpuPower()                      # discover #1 (in __init__)
+    rapl.read()                                       # discover #2 (throttle was 0)
+    rapl.read()                                       # throttled — no discover
+    assert calls["n"] == 2

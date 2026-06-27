@@ -42,6 +42,23 @@ log = logging.getLogger(__name__)
 _RULES_PATH = Path("/etc/udev/rules.d/99-trcc-lcd.rules")
 _MODPROBE_PATH = Path("/etc/modprobe.d/trcc-lcd.conf")
 _MODULES_LOAD_PATH = Path("/etc/modules-load.d/trcc-sg.conf")
+_MODULES_LOAD_RAPL_PATH = Path("/etc/modules-load.d/trcc-rapl.conf")
+
+# `intel_rapl_msr` exposes the powercap RAPL energy counter on BOTH Intel and
+# AMD (Zen) — the vendor-agnostic `/sys/class/powercap/intel-rapl:*` node trcc
+# reads CPU package watts from (#194).
+_RAPL_MODULE = "intel_rapl_msr"
+
+# CPU package power read-grant.  `energy_uj` is root-only since CVE-2020-8694
+# (PLATYPUS), so without this trcc can't report CPU watts on most distros.
+# Scoped to ONLY the energy counter; reverted by deleting the rules file.
+_POWERCAP_RULES = (
+    "# CPU package power (RAPL) — make energy_uj readable without root so\n"
+    "# trcc can report CPU watts (root-only since CVE-2020-8694).  Scoped to\n"
+    "# the energy counter only; delete this file to revert.\n"
+    'SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", '
+    'RUN+="/bin/chmod 0444 /sys$devpath/energy_uj"\n'
+)
 
 
 # Wire → which kernel subsystems grant access for that protocol.
@@ -86,7 +103,8 @@ def build_udev_rules() -> str:
             f'ATTR{{power/autosuspend_delay_ms}}="10000"'
         )
         lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+    body = "\n".join(lines).rstrip() + "\n"
+    return f"{body}\n{_POWERCAP_RULES}"
 
 
 def build_modprobe_conf() -> str:
@@ -128,6 +146,9 @@ def install(dry_run: bool = False) -> int:
             print(modprobe, end="")
         print(f"\n--- would write {_MODULES_LOAD_PATH} ---")
         print("sg\n")
+        print(f"--- would write {_MODULES_LOAD_RAPL_PATH} ---")
+        print(f"{_RAPL_MODULE}\n")
+        print(f"--- would modprobe {_RAPL_MODULE} (CPU power, now) ---")
         return 0
 
     if os.geteuid() != 0:
@@ -143,9 +164,21 @@ def install(dry_run: bool = False) -> int:
             log.info("Wrote %s", _MODPROBE_PATH)
         _write_atomic(_MODULES_LOAD_PATH, "sg\n")
         log.info("Wrote %s (auto-load sg kernel module)", _MODULES_LOAD_PATH)
+        _write_atomic(_MODULES_LOAD_RAPL_PATH, f"{_RAPL_MODULE}\n")
+        log.info("Wrote %s (auto-load %s for CPU power)",
+                 _MODULES_LOAD_RAPL_PATH, _RAPL_MODULE)
     except OSError:
         log.exception("Could not write udev/modprobe config")
         return 1
+
+    # Load the RAPL module now so CPU power works without a reboot — the
+    # modules-load.d entry above only takes effect on next boot.  Best-effort:
+    # a kernel without the module (or a VM) just leaves CPU power unavailable.
+    try:
+        subprocess.run(["modprobe", _RAPL_MODULE], check=False)
+    except (OSError, subprocess.SubprocessError):
+        log.warning("modprobe %s failed — CPU power may need a reboot",
+                    _RAPL_MODULE)
 
     return _reload_udev()
 
@@ -166,7 +199,10 @@ def _reload_udev() -> int:
     for cmd in (["udevadm", "control", "--reload-rules"],
                 ["udevadm", "trigger", "--subsystem-match=usb"],
                 ["udevadm", "trigger", "--subsystem-match=scsi_generic"],
-                ["udevadm", "trigger", "--subsystem-match=hidraw"]):
+                ["udevadm", "trigger", "--subsystem-match=hidraw"],
+                # Re-fire the RAPL read-grant on the already-present
+                # powercap nodes so CPU power works without a reboot (#194).
+                ["udevadm", "trigger", "--subsystem-match=powercap"]):
         try:
             result = subprocess.run(cmd, check=False)
         except (OSError, subprocess.SubprocessError):
