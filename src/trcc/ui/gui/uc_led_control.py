@@ -14,7 +14,7 @@ FormLED.cs which is one form for all LED device types.
 
 import logging
 
-from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -101,6 +101,12 @@ PRESET_ASSETS = LED_PRESET_ASSETS
 BRIGHT_X = 976
 BRIGHT_Y = 537
 BRIGHT_W = 190
+
+# Coalesce a brightness drag into a single device write: `valueChanged`
+# fires per drag-tick, and each emit dispatches a SetLedBrightness down the
+# wire where it interleaves with the segment-number refresh and corrupts the
+# display (#202).  Send only after the slider has been still this long.
+_BRIGHTNESS_DEBOUNCE_MS = 150
 
 # °C/°F buttons — C#: buttonC at (699, 144) 14x14, buttonF at (759, 144)
 TEMP_BTN_Y = 144
@@ -509,16 +515,20 @@ class UCLedControl(QWidget):
             "180); border-radius: 4px; }"
         )
         self._brightness_slider.setToolTip("LED brightness")
-        self._brightness_slider.valueChanged.connect(self.brightness_changed.emit)
 
         self._brightness_label = QLabel("100%", self)
         self._brightness_label.setGeometry(
             BRIGHT_X + BRIGHT_W + 5, BRIGHT_Y, 40, 20)
         self._brightness_label.setStyleSheet(
             "color: white; font-size: 11px; background: transparent;")
-        self._brightness_slider.valueChanged.connect(
-            lambda v: self._brightness_label.setText(f"{v}%")
-        )
+
+        # Single-shot debounce — the label tracks the slider live, but the
+        # device write fires only once the slider settles (#202).
+        self._brightness_debounce = QTimer(self)
+        self._brightness_debounce.setSingleShot(True)
+        self._brightness_debounce.setInterval(_BRIGHTNESS_DEBOUNCE_MS)
+        self._brightness_debounce.timeout.connect(self._emit_brightness)
+        self._brightness_slider.valueChanged.connect(self._on_brightness_slider_moved)
 
         # -- Test mode checkbox (C# checkBox1 at (36, 78)) --
         self._test_cb = QCheckBox("", self)
@@ -1188,6 +1198,18 @@ class UCLedControl(QWidget):
         log.debug("_on_hue_changed: hue=%s", hue)
         color = QColor.fromHsv(hue, 255, 255)
         self._set_color(color.red(), color.green(), color.blue())
+
+    def _on_brightness_slider_moved(self, value: int) -> None:
+        """Track the slider live in the label, (re)arm the debounce so a drag
+        coalesces into one device write instead of flooding the wire (#202)."""
+        self._brightness_label.setText(f"{value}%")
+        self._brightness_debounce.start()
+
+    def _emit_brightness(self) -> None:
+        """Debounce elapsed — push the settled brightness to the device once."""
+        value = self._brightness_slider.value()
+        log.info("_emit_brightness: brightness settled at %d%%", value)
+        self.brightness_changed.emit(value)
 
     def _on_rgb_changed(self):
         """Handle RGB slider change."""

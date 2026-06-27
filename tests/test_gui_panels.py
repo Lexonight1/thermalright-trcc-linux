@@ -1210,3 +1210,37 @@ def test_led_panel_refreshes_on_key_set(gui_app: App, qapp: object) -> None:
     assert panel._color_tab._brightness.value() == 33
     assert panel._mode_tab._radios[LEDMode.BREATHING].isChecked()
     del qapp
+
+
+def test_brightness_slider_debounces_to_one_send(qapp: object) -> None:
+    """A brightness drag must coalesce into ONE ``brightness_changed`` emit,
+    not one per slider tick — the per-tick flood interleaved with the
+    segment-number refresh and glitched the display (#202)."""
+    del qapp
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_led_control import _BRIGHTNESS_DEBOUNCE_MS, UCLedControl
+
+    set_assets_dir(_PKG_ASSETS_DIR)
+    panel = UCLedControl()
+
+    emitted: list[int] = []
+    panel.brightness_changed.connect(emitted.append)
+
+    # Simulate a drag — many rapid value changes within the debounce window.
+    for value in (90, 80, 70, 60, 50, 42):
+        panel._brightness_slider.setValue(value)
+
+    # Nothing sent to the device yet: the slider is still "moving".
+    assert emitted == []
+    # The label, however, tracks the slider live.
+    assert panel._brightness_label.text() == "42%"
+
+    # Run the real event loop past the single-shot debounce so it fires once.
+    loop = QEventLoop()
+    QTimer.singleShot(_BRIGHTNESS_DEBOUNCE_MS + 200, loop.quit)
+    loop.exec()
+
+    assert emitted == [42], emitted
+    panel.deleteLater()
