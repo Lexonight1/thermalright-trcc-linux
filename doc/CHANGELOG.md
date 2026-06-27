@@ -1,5 +1,39 @@
 # Changelog
 
+## v9.7.8
+
+LED digit colouring, CPU power, autostart and glitch fixes.
+
+**Effect colours render one colour per digit, not a rainbow per segment.**  On
+the digital segment coolers (PA120 PRO, AX120, AK120, LC1, LF8, CZ1, LC2, LF11,
+LF10, LF12), the Rainbow / Colour-cycle effects spread the full spectrum across
+every individual segment, so a metric number looked like confetti instead of a
+solid colour.  Each digit now shows one cohesive colour with only a gentle
+gradient between digits — matching the original software — while decoration
+strips keep their flowing rainbow.
+
+**CPU power now works on AMD as well as Intel.**  CPU package power is read from
+the kernel's RAPL energy counter — the same vendor-agnostic node on AMD (Zen)
+and Intel — but it's root-only on most distros, so the reading came back blank.
+`trcc setup` now grants read access to it (and loads the RAPL module), so the
+CPU watts appear after running setup.  `trcc report` also gained a RAPL section
+so a blank reading is diagnosable at a glance.
+
+**Autostart can start hidden in the tray again.**  `trcc gui --resume` (used by
+the autostart entry) was dropped in an earlier rewrite, so logging in always
+popped a visible window.  The flag is restored — autostart starts hidden in the
+system tray and existing autostart entries pick it up automatically.
+
+**The segment numbers no longer hiccup when they update.**  Every sensor refresh
+(~2 s) re-rendered an already-animating LED device an extra time, nudging the
+effect one step forward in lock-step with the numbers updating — a brief visible
+glitch.  Animating devices are now driven only by the animation loop.  Dragging
+the brightness slider is also smoothed so it no longer floods the device.
+
+**Clean shutdown.**  The GUI now handles the shutdown signal the session manager
+sends, so devices are released cleanly when the PC powers off instead of being
+killed mid-frame.
+
 ## v9.7.7
 
 Rotation, LED-effect and resume fixes.
