@@ -698,10 +698,20 @@ class _DeviceRenderObserver:
             # display IS the live metric, no theme involved).  LED was
             # dropped from this list at the cutover, which is why LED panels
             # stopped updating on sensor ticks.
+            #
+            # BUT skip any LED device the animation loop is already ticking:
+            # it re-renders that device every 150 ms off the same cached
+            # sample, so an extra render here just advances the effect timer
+            # one more step right as the metric updates — a brief hiccup the
+            # user sees as the numbers "glitching while updating" (#202).  The
+            # loop owns the cadence for animating devices; static LED devices
+            # (not ticked by the loop) still need this sensor-driven refresh.
+            animating = set(self._app.led_animation_loop.animating_keys())
             keys = [
                 k for k, d in self._app.devices.items()
                 if d.is_connected
                 and (d.is_led or k in self._app.active_themes)
+                and k not in animating
             ]
         for key in keys:
             device = self._app.devices.get(key)

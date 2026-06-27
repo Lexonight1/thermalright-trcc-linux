@@ -64,3 +64,43 @@ def test_multi_zone_per_zone_effect_is_animated(fake_platform: FakePlatform) -> 
     assert not s.zone_sync, "zone_sync (select-all) is off by default"
     assert any(z.mode is LEDMode.RAINBOW for z in s.zones), "a zone carries the effect"
     assert app.led_animation_loop.animating_keys() == [_LED_KEY]
+
+
+# ── #202: no redundant reactive render that hiccups the effect ───────
+
+
+def test_animating_led_skipped_on_sensor_broadcast(
+    fake_platform: FakePlatform,
+) -> None:
+    """A device-wide SensorsUpdated must NOT re-render an LED device the
+    animation loop already ticks: the extra render advances the effect timer
+    one step right as the metric updates, which the user sees as the numbers
+    "glitching while updating" (#202).  The loop owns the cadence here."""
+    from trcc.core.events import SensorsUpdated
+
+    app = _app(fake_platform, pm=1)
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.RAINBOW))
+    assert app.led_animation_loop.animating_keys() == [_LED_KEY]
+
+    fake_platform.bulk.writes.clear()
+    app.events.publish(SensorsUpdated())
+    assert not fake_platform.bulk.writes, \
+        "animating LED must not be reactively re-rendered on the sensor tick"
+
+
+def test_static_led_refreshed_on_sensor_broadcast(
+    fake_platform: FakePlatform,
+) -> None:
+    """A STATIC LED device is NOT ticked by the loop, so it MUST still refresh
+    its segment numbers on the sensor broadcast — the reactive render stays for
+    non-animating devices (#202)."""
+    from trcc.core.events import SensorsUpdated
+
+    app = _app(fake_platform, pm=1)
+    app.dispatch(SetLedMode(key=_LED_KEY, mode=LEDMode.STATIC))
+    assert app.led_animation_loop.animating_keys() == []
+
+    fake_platform.bulk.writes.clear()
+    app.events.publish(SensorsUpdated())
+    assert fake_platform.bulk.writes, \
+        "static LED must still update its numbers on the sensor tick"
