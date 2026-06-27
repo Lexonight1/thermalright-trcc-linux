@@ -88,6 +88,19 @@ class SegmentDisplay:
     zone_led_map: tuple[tuple[int, ...], ...] | None = None
     # Per-zone metric source: (device, kind) per zone index.
     zone_metric_sources: tuple[tuple[str, str], ...] | None = None
+    # Per-zone color grouping for the spatial effects (rainbow / colorful):
+    # zone_color_groups[zi] is a tuple of LED-index groups, and every LED in a
+    # group shares ONE color.  The C# colors one logical slot per digit (all
+    # 7 segments together) with only a subtle cross-slot gradient — without
+    # this grouping the effect spreads a full rainbow across every individual
+    # segment (#193).  None → the effect runs per physical LED (correct for RGB
+    # strips/rings; segment-number styles override).  The union of a zone's
+    # groups MUST equal its ``zone_led_map`` entry.
+    zone_color_groups: tuple[tuple[tuple[int, ...], ...], ...] | None = None
+    # Single-zone (no ``zone_led_map``) equivalent: flat digit grouping for the
+    # whole display, consumed by ``LEDEffectEngine.tick``.  Same purpose — one
+    # cohesive color per digit (#193).  None → per-LED effect (RGB strips).
+    color_groups: tuple[tuple[int, ...], ...] | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -232,6 +245,32 @@ class SegmentDisplay:
                     mask[leds[wi]] = True
 
 
+def _digit_color_groups(
+    mask_size: int, *digit_sets: tuple[tuple[int, ...], ...],
+) -> tuple[tuple[int, ...], ...]:
+    """Build cohesive color groups for a single-zone segment display.
+
+    Each digit (a 7-segment group from the style's own digit constants) becomes
+    one color group, so the whole digit shows a single color with only a
+    gentle gradient between digits — the Windows look — instead of a rainbow
+    smeared across the segments (#193).  Every LED NOT in a digit (labels,
+    units, indicators) is swept into a final group so the union covers all
+    ``mask_size`` LEDs and nothing is left uncolored.  Only safe for displays
+    whose non-digit LEDs are indicators, NOT an RGB decoration strip that wants
+    a spatial rainbow.
+    """
+    groups: list[tuple[int, ...]] = []
+    covered: set[int] = set()
+    for digit_set in digit_sets:
+        for digit in digit_set:
+            groups.append(tuple(digit))
+            covered.update(digit)
+    rest = tuple(i for i in range(mask_size) if i not in covered)
+    if rest:
+        groups.append(rest)
+    return tuple(groups)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Style 1 — AX120_DIGITAL (30 LEDs, 3 digits, 4-phase rotation)
 # ═══════════════════════════════════════════════════════════════════════
@@ -255,6 +294,7 @@ class AX120Display(SegmentDisplay):
         ("gpu_temp", (4, 5), True),
         ("gpu_usage", (4, 5), False),
     )
+    color_groups = _digit_color_groups(mask_size, DIGITS)
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -316,6 +356,16 @@ class PA120Display(SegmentDisplay):
         (BFB1, *tuple(range(66, 80)), 82, 83),
     )
     zone_led_map = ZONE_LEDS
+    # Colour the indicator/unit LEDs as one group and EACH digit as its own
+    # group, so every digit shows a single cohesive color like the C# (#193)
+    # instead of a rainbow smeared across its 7 segments.  Built from the digit
+    # constants above — the union of each row equals the matching ZONE_LEDS row.
+    zone_color_groups: tuple[tuple[tuple[int, ...], ...], ...] = (
+        ((CPU1, CPU2, SSD, HSD), *CPU_TEMP_DIGITS),
+        ((BFB, *CPU_USE_PARTIAL), *CPU_USE_DIGITS),
+        ((GPU1, GPU2, SSD1, HSD1), *GPU_TEMP_DIGITS),
+        ((BFB1, *GPU_USE_PARTIAL), *GPU_USE_DIGITS),
+    )
     zone_metric_sources: tuple[tuple[str, str], ...] = (
         ("cpu", "temp"), ("cpu", "load"), ("gpu", "temp"), ("gpu", "load"),
     )
@@ -377,6 +427,9 @@ class AK120Display(SegmentDisplay):
         ("cpu_temp", "cpu_percent", "cpu_power", CPU1),
         ("gpu_temp", "gpu_usage", "gpu_power", GPU1),
     )
+    color_groups = _digit_color_groups(
+        mask_size, WATT_DIGITS, TEMP_DIGITS, USE_DIGITS, (USE_PARTIAL,),
+    )
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -430,6 +483,7 @@ class LC1Display(SegmentDisplay):
         ("disk_read", 1, MTNO),
         ("disk_activity", 2, GNO),
     )
+    color_groups = _digit_color_groups(mask_size, ALL_DIGITS)
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -489,6 +543,10 @@ class LF8Display(SegmentDisplay):
         ("cpu_temp", "cpu_power", "cpu_freq", "cpu_percent", CPU1),
         ("gpu_temp", "gpu_power", "gpu_clock", "gpu_usage", GPU1),
     )
+    color_groups = _digit_color_groups(
+        mask_size, TEMP_DIGITS, WATT_DIGITS, MHZ_DIGITS, USE_DIGITS,
+        (USE_PARTIAL,),
+    )
 
     def _compute_digits(
         self, metrics: HardwareMetrics, phase: int, temp_unit: str, mask: list[bool],
@@ -528,6 +586,12 @@ class LF8Display(SegmentDisplay):
 class LF12Display(LF8Display):
     mask_size = 124
     DECORATION = tuple(range(93, 124))
+    # Override LF8's cohesive groups to None: LF12 adds a 31-LED decoration
+    # strip (93–123) that may be meant to carry a spatial rainbow, and LF8's
+    # groups don't cover it (would leave it uncolored).  Cohesive-digit
+    # grouping for LF12 is deferred until its decoration behaviour is eyeballed
+    # on a real panel — keep the per-LED effect for now (#193).
+    color_groups = None
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -559,6 +623,10 @@ class LF10Display(SegmentDisplay):
         tuple(range(104, 116)),
     )
     zone_led_map = ZONE_LEDS
+    # Cohesive-digit grouping deferred: each zone interleaves 13-segment digits
+    # with a large decoration strip (84–115) that may want a spatial rainbow.
+    # Leave the per-LED effect (zone_color_groups stays None) until the
+    # decoration behaviour is eyeballed on a real panel (#193).
     zone_metric_sources: tuple[tuple[str, str], ...] = (
         ("cpu", "temp"), ("gpu", "temp"), ("", ""),
     )
@@ -604,6 +672,7 @@ class CZ1Display(SegmentDisplay):
         ("gpu_temp", (GPU1,)),
         ("gpu_usage", (GPU2,)),
     )
+    color_groups = _digit_color_groups(mask_size, DIGITS)
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -639,6 +708,9 @@ class LC2Display(SegmentDisplay):
     )
     MONTH_TENS_BC = (52, 53)
     DECORATION = tuple(range(54, 61))
+    # Clock digits cohesive; the colon/separators + weekday bar (a functional
+    # mask, not an RGB rainbow strip) ride along in the swept "rest" group.
+    color_groups = _digit_color_groups(mask_size, DIGITS, (MONTH_TENS_BC,))
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -702,6 +774,7 @@ class LF11Display(SegmentDisplay):
         ("disk_read", 2),
         ("disk_write", 2),
     )
+    color_groups = _digit_color_groups(mask_size, DIGITS)
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,

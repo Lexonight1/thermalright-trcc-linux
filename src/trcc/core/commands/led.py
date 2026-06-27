@@ -339,11 +339,13 @@ class RenderLed(Command[LedColorsResult]):
                     zone_map=zone_map,
                     metric_sources=display.zone_metric_sources,
                     led_count=segment_count,
+                    zone_color_groups=display.zone_color_groups,
                 )
             else:
                 colors = app.led_effects.tick(
                     effective_settings, runtime, current,
                     led_count=segment_count,
+                    color_groups=display.color_groups,
                 )
 
         # One writer: bake global brightness into the rendered signal so the

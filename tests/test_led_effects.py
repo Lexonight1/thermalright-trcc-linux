@@ -323,3 +323,80 @@ def test_next_sync_zone_no_enabled_zone_returns_zero() -> None:
 def test_next_sync_zone_empty_returns_zero() -> None:
     engine = LEDEffectEngine()
     assert engine.next_sync_zone([], 0) == 0
+
+
+# ── Cohesive per-digit colouring for segment displays (#193) ─────────
+
+
+def _all_segment_displays():
+    from trcc.services.led_segment import SegmentDisplay
+    subs = SegmentDisplay.__subclasses__()
+    return subs + [c for s in subs for c in s.__subclasses__()]
+
+
+def test_grouped_styles_cover_every_led() -> None:
+    """A style's colour groups MUST cover all its LEDs (single-zone) / its
+    zone_led_map row (multi-zone) — else grouped LEDs render black (#193)."""
+    for cls in _all_segment_displays():
+        d = cls()
+        if d.color_groups is not None:
+            union: set[int] = set()
+            for g in d.color_groups:
+                union |= set(g)
+            assert union == set(range(d.mask_size)), cls.__name__
+        if d.zone_color_groups is not None:
+            assert d.zone_led_map is not None
+            for zleds, zgroups in zip(d.zone_led_map, d.zone_color_groups,
+                                      strict=True):
+                gu: set[int] = set()
+                for g in zgroups:
+                    gu |= set(g)
+                assert gu == set(zleds), cls.__name__
+
+
+def test_rainbow_cohesive_within_each_digit_single_zone() -> None:
+    """Single-zone rainbow: every LED of a digit shares ONE colour, but the
+    old per-LED path spread a different colour across each segment (#193)."""
+    from trcc.services.led_segment import AK120Display
+
+    d = AK120Display()
+    eng = LEDEffectEngine()
+    st = LedDeviceSettings(mode=LEDMode.RAINBOW, color=(255, 0, 0))
+
+    grouped = eng.tick(st, LedRuntimeState(), {},
+                       led_count=d.mask_size, color_groups=d.color_groups)
+    flat = eng.tick(st, LedRuntimeState(), {},
+                    led_count=d.mask_size, color_groups=None)
+
+    digit = d.color_groups[0]
+    assert len({grouped[i] for i in digit}) == 1          # cohesive (fixed)
+    assert len({flat[i] for i in digit}) > 1              # spread (the bug)
+
+
+def test_rainbow_cohesive_within_each_digit_multi_zone() -> None:
+    """Multi-zone (PA120) rainbow: each digit cohesive, digits gently differ."""
+    from trcc.services.led_segment import PA120Display
+
+    d = PA120Display()
+    eng = LEDEffectEngine()
+    zones = [LedZoneSettings(on=True, mode=LEDMode.RAINBOW, brightness=100)
+             for _ in range(len(d.zone_led_map))]
+    st = LedDeviceSettings(zones=zones)
+
+    colors = eng.tick_multi_zone(
+        st, LedRuntimeState(), {}, zone_map=d.zone_led_map,
+        metric_sources=d.zone_metric_sources, led_count=d.mask_size,
+        zone_color_groups=d.zone_color_groups,
+    )
+    d1, d2, d3 = d.CPU_TEMP_DIGITS
+    assert len({colors[i] for i in d1}) == 1              # digit 1 cohesive
+    assert len({colors[i] for i in d2}) == 1              # digit 2 cohesive
+    assert colors[d1[0]] != colors[d2[0]]                 # gentle gradient
+
+
+def test_rainbow_strip_still_spreads_without_groups() -> None:
+    """No groups (RGB strip) keeps the full per-LED spread — unchanged."""
+    eng = LEDEffectEngine()
+    st = LedDeviceSettings(mode=LEDMode.RAINBOW, color=(255, 0, 0))
+    colors = eng.tick(st, LedRuntimeState(), {}, led_count=12)
+    assert len(set(colors)) > 1

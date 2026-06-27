@@ -38,11 +38,11 @@ log = logging.getLogger(__name__)
 def apply_brightness(
     colors: list[tuple[int, int, int]], percent: int,
 ) -> list[tuple[int, int, int]]:
-    """Scale a logical colour array by a 0–100 % brightness.
+    """Scale a logical color array by a 0–100 % brightness.
 
     The single conversion point for global LED brightness: ``RenderLed``
     and ``SetLedColors`` bake it into the rendered signal so the device
-    wire and the GUI preview observe one identical colour list.  100 % is
+    wire and the GUI preview observe one identical color list.  100 % is
     the identity, so callers may always route through this.
     """
     scale = max(0, min(100, percent)) / 100.0
@@ -149,6 +149,16 @@ _COLORFUL_PERIOD = 168            # six 28-tick phases
 _COLORFUL_PHASE_LEN = 28
 _RAINBOW_STEP = 4                 # rainbow advance per tick
 
+# Hue step between adjacent COLOUR GROUPS (one group = one digit).  A strip
+# wraps the whole spectrum around its LEDs (``table_len // led_count``); a
+# segment number instead wants each digit a single color with only a GENTLE
+# gradient between digits — the look the Windows app produces.  These fixed
+# steps give that subtle spread regardless of how many digits a zone has
+# (≈ one-sixth of the wheel across ten groups), so the rainbow never smears
+# across a single digit's seven segments (#193).
+_RAINBOW_GROUP_STEP = 768 // 10 // 6        # ≈ 12 / 768  ≈ 1.6 % of the wheel
+_COLORFUL_GROUP_STEP = _COLORFUL_PERIOD // 10 // 6   # ≈ 2 / 168
+
 
 class LEDEffectEngine:
     """Compute one tick's worth of per-segment colors for an LED device.
@@ -167,16 +177,28 @@ class LEDEffectEngine:
         sensors: dict[str, float],
         *,
         led_count: int,
+        color_groups: tuple[tuple[int, ...], ...] | None = None,
     ) -> list[tuple[int, int, int]]:
         """Run one tick and return ``led_count`` RGB tuples.
 
         Test mode short-circuits everything — diagnostic color cycle.
-        Otherwise dispatch by ``settings.mode``.
+        ``color_groups`` (segment-number displays) colors each digit as one
+        cohesive unit; without it the spatial effects render per raw LED,
+        which is right for RGB strips but smears a rainbow across a digit's
+        segments (#193).  Otherwise dispatch by ``settings.mode``.
         """
-        log.debug("tick: mode=%s test=%s led_count=%d",
-                  settings.mode, settings.test_mode, led_count)
+        log.debug("tick: mode=%s test=%s led_count=%d groups=%s",
+                  settings.mode, settings.test_mode, led_count,
+                  len(color_groups) if color_groups else 0)
         if settings.test_mode:
             return self._tick_test(runtime, led_count)
+
+        if color_groups is not None:
+            return self._color_groups(
+                settings.mode, settings.color, runtime, sensors,
+                color_groups, led_count,
+                settings.temp_source, settings.load_source,
+            )
 
         return self._tick_mode(
             settings.mode, settings.color, runtime, sensors,
@@ -194,6 +216,7 @@ class LEDEffectEngine:
         zone_map: tuple[tuple[int, ...], ...],
         metric_sources: tuple[tuple[str, str], ...] | None,
         led_count: int,
+        zone_color_groups: tuple[tuple[tuple[int, ...], ...], ...] | None = None,
     ) -> list[tuple[int, int, int]]:
         """Per-zone colors placed at each zone's physical LED indices.
 
@@ -201,7 +224,9 @@ class LEDEffectEngine:
         its own mode + color + brightness over its mapped LED indices
         (``SegmentDisplay.zone_led_map``).  ``metric_sources`` maps zone
         index → (device, kind) so a sensor-linked zone reads its own
-        source.
+        source.  ``zone_color_groups[zi]`` (when present) groups a zone's
+        LEDs by digit so each digit is one cohesive color — otherwise the
+        spatial effects smear a rainbow across a digit's segments (#193).
 
         Note the shared ``rgb_timer``: each animated zone's per-mode tick
         advances it, so N animated zones step it N× per frame and each
@@ -211,8 +236,8 @@ class LEDEffectEngine:
         """
         colors: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
         zones = settings.zones
-        log.debug("tick_multi_zone: %d zones, led_count=%d",
-                  len(zone_map), led_count)
+        log.debug("tick_multi_zone: %d zones, led_count=%d grouped=%s",
+                  len(zone_map), led_count, zone_color_groups is not None)
         for zi, led_indices in enumerate(zone_map):
             if zi >= len(zones):
                 break
@@ -228,16 +253,32 @@ class LEDEffectEngine:
             # Zone's device ("cpu"/"gpu") drives both temp + load sources;
             # the zone's mode decides which one applies.  Empty → "cpu".
             zone_source = src[0] if src and src[0] else "cpu"
-            zone_colors = self._tick_mode(
-                zone.mode, zone.color, runtime, sensors,
-                len(led_indices), zone_source, zone_source,
+            groups = (
+                zone_color_groups[zi]
+                if zone_color_groups is not None and zi < len(zone_color_groups)
+                else None
             )
-            if zone.brightness < 100:
-                scale = zone.brightness / 100.0
-                zone_colors = [
-                    (int(r * scale), int(g * scale), int(b * scale))
-                    for r, g, b in zone_colors
-                ]
+            if groups is not None:
+                # One color per digit-group, gentle gradient between digits.
+                group_colors = self._scale_brightness(
+                    self._tick_mode(
+                        zone.mode, zone.color, runtime, sensors,
+                        len(groups), zone_source, zone_source, cohesive=True,
+                    ),
+                    zone.brightness,
+                )
+                for gi, group_leds in enumerate(groups):
+                    for idx in group_leds:
+                        if idx < led_count:
+                            colors[idx] = group_colors[gi]
+                continue
+            zone_colors = self._scale_brightness(
+                self._tick_mode(
+                    zone.mode, zone.color, runtime, sensors,
+                    len(led_indices), zone_source, zone_source,
+                ),
+                zone.brightness,
+            )
             for i, idx in enumerate(led_indices):
                 if idx < led_count:
                     colors[idx] = zone_colors[i]
@@ -270,16 +311,29 @@ class LEDEffectEngine:
         led_count: int,
         temp_source: str,
         load_source: str,
+        *,
+        cohesive: bool = False,
     ) -> list[tuple[int, int, int]]:
+        """Compute ``led_count`` colors for one logical strip.
+
+        ``cohesive`` is set when ``led_count`` counts COLOUR GROUPS (digits),
+        not raw LEDs: the spatial effects then use a gentle fixed hue step so
+        each digit reads as one color, instead of wrapping a full rainbow
+        across the group (#193).  Non-spatial modes ignore it.
+        """
         match mode:
             case LEDMode.STATIC:
                 return [color] * led_count
             case LEDMode.BREATHING:
                 return self._tick_breathing(color, runtime, led_count)
             case LEDMode.COLORFUL:
-                return self._tick_colorful(runtime, led_count)
+                return self._tick_colorful(
+                    runtime, led_count,
+                    _COLORFUL_GROUP_STEP if cohesive else None)
             case LEDMode.RAINBOW:
-                return self._tick_rainbow(runtime, led_count)
+                return self._tick_rainbow(
+                    runtime, led_count,
+                    _RAINBOW_GROUP_STEP if cohesive else None)
             case LEDMode.TEMP_LINKED:
                 return self._tick_temp_linked(runtime, sensors, led_count,
                                               temp_source)
@@ -287,6 +341,47 @@ class LEDEffectEngine:
                 return self._tick_load_linked(runtime, sensors, led_count,
                                               load_source)
         return [(0, 0, 0)] * led_count
+
+    @staticmethod
+    def _scale_brightness(
+        colors: list[tuple[int, int, int]], brightness: int,
+    ) -> list[tuple[int, int, int]]:
+        """Scale a color list by a 0–100 % zone brightness (no-op at 100)."""
+        if brightness >= 100:
+            return colors
+        scale = brightness / 100.0
+        return [(int(r * scale), int(g * scale), int(b * scale))
+                for r, g, b in colors]
+
+    def _color_groups(
+        self,
+        mode: LEDMode,
+        color: tuple[int, int, int],
+        runtime: LedRuntimeState,
+        sensors: dict[str, float],
+        groups: tuple[tuple[int, ...], ...],
+        led_count: int,
+        temp_source: str,
+        load_source: str,
+    ) -> list[tuple[int, int, int]]:
+        """One color per group, written to every LED the group covers.
+
+        Each group is a digit (its seven segments), so the whole digit reads
+        as a single color and only a gentle gradient separates digits — the
+        Windows look, without the C#'s hand-mapped ``ledVal`` slots (#193).
+        Out-of-range indices are skipped defensively.
+        """
+        group_colors = self._tick_mode(
+            mode, color, runtime, sensors, len(groups),
+            temp_source, load_source, cohesive=True,
+        )
+        out: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
+        for gi, leds in enumerate(groups):
+            gc = group_colors[gi]
+            for led in leds:
+                if 0 <= led < led_count:
+                    out[led] = gc
+        return out
 
     def _tick_test(
         self,
@@ -326,10 +421,12 @@ class LEDEffectEngine:
     def _tick_colorful(
         runtime: LedRuntimeState,
         led_count: int,
+        step: int | None = None,
     ) -> list[tuple[int, int, int]]:
-        """6-phase gradient cycle with per-segment offset."""
+        """6-phase gradient cycle.  ``step`` overrides the per-element hue
+        offset (groups pass a small fixed step; a strip wraps the spectrum)."""
         timer = runtime.rgb_timer
-        seg_offset = _COLORFUL_PERIOD // max(led_count, 1)
+        seg_offset = step if step is not None else _COLORFUL_PERIOD // max(led_count, 1)
         colors: list[tuple[int, int, int]] = []
         for i in range(led_count):
             t_i = (timer + i * seg_offset) % _COLORFUL_PERIOD
@@ -356,12 +453,14 @@ class LEDEffectEngine:
     def _tick_rainbow(
         runtime: LedRuntimeState,
         led_count: int,
+        step: int | None = None,
     ) -> list[tuple[int, int, int]]:
-        """768-entry table shift with per-segment offset."""
+        """768-entry table shift.  ``step`` overrides the per-element table
+        offset (groups pass a small fixed step; a strip wraps the spectrum)."""
         table = ColorEngine.get_table()
         table_len = len(table)
         timer = runtime.rgb_timer
-        stride = table_len // max(led_count, 1)
+        stride = step if step is not None else table_len // max(led_count, 1)
         colors = [table[(timer + i * stride) % table_len]
                   for i in range(led_count)]
         runtime.rgb_timer = (timer + _RAINBOW_STEP) % table_len
