@@ -100,7 +100,7 @@ trcc system setup
 
 **Affects:** Bazzite, Fedora Silverblue, Fedora Kinoite, Aurora, Bluefin, and any SELinux-enforcing distro.
 
-Versions before v1.2.16 used `TAG+="uaccess"` in udev rules, which relies on systemd-logind ACLs. **SELinux blocks these ACLs**, so the device stays root-only even after `setup-udev`.
+Versions before v1.2.16 used `TAG+="uaccess"` in udev rules, which relies on systemd-logind ACLs. **SELinux blocks these ACLs**, so the device stays root-only even after `trcc system setup`.
 
 **Symptoms:**
 - `ls -la /dev/sgX` shows `crw-rw----. 1 root root` (no ACL `+` marker)
@@ -251,6 +251,16 @@ Then **restart trcc** — `pynvml` is imported once at startup, so a freshly ins
 > As of **v9.7.5** the in-app "install GPU sensor support?" prompt installs via `pip` automatically when you're running inside a virtualenv (earlier versions only used the system package manager, which a venv can't see).
 
 AMD and Intel GPU temperatures come from `hwmon` and need no extra package.
+
+### CPU power shows blank / `--`
+
+CPU package power is read from the kernel's RAPL energy counter, which is **root-only on most distros** (a side-channel mitigation), so the reading comes back empty. Grant read access (and load the counter's kernel module) with:
+
+```bash
+trcc system setup
+```
+
+This works the same on AMD (Zen) and Intel — the counter lives at the vendor-agnostic `intel-rapl` node either way. To see what's going on, `trcc report` now includes a **CPU power (RAPL)** section showing whether the counter exists and is readable.
 
 ---
 

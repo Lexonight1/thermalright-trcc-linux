@@ -180,27 +180,28 @@ Date/Time:
 
 ---
 
-### `trcc setup-udev`
+### `trcc system setup`
 
 Install udev rules and USB storage quirks (required once after first install).
 
 ```bash
-# Preview what will be written
-trcc setup-udev --dry-run
-
 # Install (auto-prompts for sudo)
-trcc setup-udev
+trcc system setup
+
+# Non-interactive (assume yes to prompts)
+trcc system setup --yes
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--dry-run` | Print rules without installing (no root needed) |
+| `--yes`, `-y` | Non-interactive — assume yes to prompts |
 
 **What this does:**
 
-1. Creates `/etc/udev/rules.d/99-trcc-lcd.rules` — grants your user permission to access the LCD
+1. Creates `/etc/udev/rules.d/99-trcc-lcd.rules` — grants your user permission to access the LCD, plus read access to the CPU package-power (RAPL) counter so CPU wattage works without root
 2. Creates `/etc/modprobe.d/trcc-lcd.conf` — USB quirk that forces bulk-only transport (required for device detection)
-3. Reloads udev rules
+3. Creates `/etc/modules-load.d/trcc-rapl.conf` and loads `intel_rapl_msr` — exposes the CPU power counter (the same module on AMD and Intel)
+4. Reloads udev rules
 
 After running, **unplug and replug the USB cable** (or reboot).
 
@@ -247,6 +248,7 @@ trcc report
 - `trcc detect --all` (detected TRCC devices with protocol info)
 - HID handshake results (PM byte, resolution, serial)
 - Udev rules status
+- CPU package-power (RAPL) status — whether the counter exists and is readable (diagnoses blank CPU wattage)
 - USB descriptor details for relevant devices
 
 ---
@@ -1133,8 +1135,8 @@ pip installs to `~/.local/bin/` which may not be on your PATH. Either:
 
 ### `sudo trcc: command not found` / `No module named 'trcc'` with sudo
 
-This was fixed in v1.2.0 — `trcc setup-udev` now automatically re-invokes itself with sudo and the correct PYTHONPATH. Just run:
+This was fixed in v1.2.0 — `trcc system setup` now automatically re-invokes itself with sudo and the correct PYTHONPATH. Just run:
 
 ```bash
-trcc setup-udev
+trcc system setup
 ```
