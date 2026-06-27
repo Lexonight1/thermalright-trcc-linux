@@ -1,5 +1,19 @@
 # Changelog
 
+## v9.7.9
+
+NVIDIA GPU sensors on the Debian/Ubuntu package, and a clearer setup.
+
+**NVIDIA GPU readings now work on the packaged (`.deb`) install.**  On the
+bundled package, `trcc system setup` installed the GPU sensor reader with
+`pip install --user`, which pip refuses *inside* the package's virtual
+environment — so the reader never installed (no GPU temperature / usage / power),
+and setup reported failure even though device access had already succeeded.  The
+reader now installs correctly into the virtual environment, and a GPU-reader
+hiccup no longer makes the whole setup look broken — granting device access is
+the part that matters, and it stands on its own.  (Thanks to the reporter who
+patiently chased this one down across two versions.)
+
 ## v9.7.8
 
 LED digit colouring, CPU power, autostart and glitch fixes.
