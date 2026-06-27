@@ -467,9 +467,16 @@ class LinuxPlatform(Platform):
         rc_udev = install_udev_rules(dry_run=False)
         vendors = detect_gpu_vendors()
         log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
+        # GPU sensor extras are a BONUS — device access (udev) is the real job.
+        # A pip hiccup here (e.g. an offline box) must NOT make setup report
+        # total failure, which scared users into thinking nothing worked (#161).
         rc_gpu = install_matching_gpu_extras(vendors, dry_run=False)
+        if rc_gpu:
+            log.warning("GPU sensor extras install returned %d — device setup "
+                        "is unaffected; GPU readings stay unavailable until the "
+                        "reader installs", rc_gpu)
         rc_selinux = install_selinux_policy(dry_run=False)
-        return rc_udev or rc_gpu or rc_selinux
+        return rc_udev or rc_selinux
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
