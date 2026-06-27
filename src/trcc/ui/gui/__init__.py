@@ -164,10 +164,19 @@ def run_gui(platform: Any, *, decorated: bool = False,
     if on_ready is not None:
         on_ready(window)
 
-    def _on_sigint(*_args: object) -> None:
-        """SIGINT — quit the Qt event loop cleanly."""
+    def _on_quit_signal(*_args: object) -> None:
+        """SIGINT / SIGTERM — quit the Qt event loop cleanly.
+
+        SIGTERM is what the session manager / systemd sends at PC shutdown;
+        without it the process is killed before ``qapp.exec()`` returns, so
+        the ``finally`` cleanup (``app.close()`` → device disconnect) never
+        runs and the LCD is left mid-stream showing "USB communication lost"
+        (#143).  The handler fires promptly because the metrics/render
+        QTimers keep yielding to the interpreter between Qt events.
+        """
         qapp.quit()
-    signal.signal(signal.SIGINT, _on_sigint)
+    signal.signal(signal.SIGINT, _on_quit_signal)
+    signal.signal(signal.SIGTERM, _on_quit_signal)
 
     if not start_hidden:
         window.show()
