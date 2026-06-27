@@ -343,6 +343,32 @@ class LEDEffectEngine:
         return [(0, 0, 0)] * led_count
 
     @staticmethod
+    def cohere_digit_groups(
+        colors: list[tuple[int, int, int]],
+        groups: tuple[tuple[int, ...], ...],
+    ) -> list[tuple[int, int, int]]:
+        """Collapse each digit group to one color (its first LED's), in place
+        on a copy.
+
+        For styles that pair segment digits with a decoration STRIP (LF10/
+        LF12): the strip must keep the spatial rainbow the effect already gave
+        it, so we don't group it — we only flatten the digits here, after the
+        effect, leaving every other LED on its per-LED spread (#193).
+        """
+        out = list(colors)
+        for group in groups:
+            if not group:
+                continue
+            head = group[0]
+            if head >= len(out):
+                continue
+            color = out[head]
+            for led in group:
+                if led < len(out):
+                    out[led] = color
+        return out
+
+    @staticmethod
     def _scale_brightness(
         colors: list[tuple[int, int, int]], brightness: int,
     ) -> list[tuple[int, int, int]]:

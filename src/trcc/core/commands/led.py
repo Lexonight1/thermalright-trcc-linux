@@ -348,6 +348,15 @@ class RenderLed(Command[LedColorsResult]):
                     color_groups=display.color_groups,
                 )
 
+            # Styles with a decoration strip (LF10/LF12) keep the strip's
+            # spatial rainbow but collapse each metric digit to one color so the
+            # number reads cohesively (#193) — a post-effect pass that leaves
+            # every non-digit LED on its per-LED spread.
+            if display.digit_groups is not None:
+                colors = app.led_effects.cohere_digit_groups(
+                    colors, display.digit_groups,
+                )
+
         # One writer: bake global brightness into the rendered signal so the
         # device wire and the GUI preview observe one identical colour list.
         # (Per-zone brightness is already baked by tick_multi_zone; this is

@@ -101,6 +101,13 @@ class SegmentDisplay:
     # whole display, consumed by ``LEDEffectEngine.tick``.  Same purpose — one
     # cohesive color per digit (#193).  None → per-LED effect (RGB strips).
     color_groups: tuple[tuple[int, ...], ...] | None = None
+    # For styles that ALSO carry a decoration strip (LF10/LF12): the decoration
+    # LEDs must keep the spatial rainbow the C# gives them, so we can't sweep
+    # them into a cohesive group.  Instead the render collapses ONLY these digit
+    # groups to one color each (their first LED's), leaving decoration +
+    # indicators on their per-LED spread (#193).  Applied AFTER the effect, so
+    # it composes with both the single-zone and multi-zone render paths.
+    digit_groups: tuple[tuple[int, ...], ...] | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -586,12 +593,16 @@ class LF8Display(SegmentDisplay):
 class LF12Display(LF8Display):
     mask_size = 124
     DECORATION = tuple(range(93, 124))
-    # Override LF8's cohesive groups to None: LF12 adds a 31-LED decoration
-    # strip (93–123) that may be meant to carry a spatial rainbow, and LF8's
-    # groups don't cover it (would leave it uncolored).  Cohesive-digit
-    # grouping for LF12 is deferred until its decoration behaviour is eyeballed
-    # on a real panel — keep the per-LED effect for now (#193).
+    # LF12 = LF8 + a 31-LED decoration strip (93–123) the C# spreads a spatial
+    # rainbow across.  So override LF8's tick-time cohesive groups to None (they
+    # would flatten / black out the strip) and instead cohere ONLY the digits
+    # post-effect via ``digit_groups`` — the strip keeps its per-LED spread (#193).
     color_groups = None
+    digit_groups = (
+        *LF8Display.TEMP_DIGITS, *LF8Display.WATT_DIGITS,
+        *LF8Display.MHZ_DIGITS, *LF8Display.USE_DIGITS,
+        LF8Display.USE_PARTIAL,
+    )
 
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
@@ -623,10 +634,12 @@ class LF10Display(SegmentDisplay):
         tuple(range(104, 116)),
     )
     zone_led_map = ZONE_LEDS
-    # Cohesive-digit grouping deferred: each zone interleaves 13-segment digits
-    # with a large decoration strip (84–115) that may want a spatial rainbow.
-    # Leave the per-LED effect (zone_color_groups stays None) until the
-    # decoration behaviour is eyeballed on a real panel (#193).
+    # Decoration strip (84–115) keeps its spatial rainbow (the C# spreads it,
+    # CHMS_Timer6); only the six 13-segment digits collapse to one color each
+    # so a number reads cohesively (#193).  zone_color_groups stays None — the
+    # digits are cohered post-effect via ``digit_groups`` instead, which leaves
+    # the decoration + indicators untouched.
+    digit_groups = DIGIT_LEDS_13
     zone_metric_sources: tuple[tuple[str, str], ...] = (
         ("cpu", "temp"), ("gpu", "temp"), ("", ""),
     )

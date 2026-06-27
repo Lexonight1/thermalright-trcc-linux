@@ -400,3 +400,45 @@ def test_rainbow_strip_still_spreads_without_groups() -> None:
     st = LedDeviceSettings(mode=LEDMode.RAINBOW, color=(255, 0, 0))
     colors = eng.tick(st, LedRuntimeState(), {}, led_count=12)
     assert len(set(colors)) > 1
+
+
+# ── Decoration-strip styles: digits cohesive, strip stays spatial (#193) ──
+
+
+def test_cohere_digit_groups_collapses_only_groups() -> None:
+    """cohere_digit_groups flattens each group to its first LED's color and
+    leaves every other LED untouched (the decoration strip)."""
+    colors = [(i, 0, 0) for i in range(10)]
+    out = LEDEffectEngine.cohere_digit_groups(colors, ((1, 2, 3), (5, 6)))
+    assert out[1] == out[2] == out[3] == (1, 0, 0)   # group 0 → first LED
+    assert out[5] == out[6] == (5, 0, 0)             # group 1 → first LED
+    assert out[0] == (0, 0, 0) and out[4] == (4, 0, 0) and out[7] == (7, 0, 0)
+
+
+def test_decoration_styles_cohere_digits_keep_strip_spatial() -> None:
+    """LF10/LF12 rainbow: each metric digit is one color, but the decoration
+    strip retains its per-LED spatial rainbow (the C# spreads it) (#193)."""
+    from trcc.services.led_segment import LF10Display, LF12Display
+
+    eng = LEDEffectEngine()
+
+    d12 = LF12Display()
+    st = LedDeviceSettings(mode=LEDMode.RAINBOW, color=(255, 0, 0))
+    flat = eng.tick(st, LedRuntimeState(), {},
+                    led_count=d12.mask_size, color_groups=d12.color_groups)
+    fixed = eng.cohere_digit_groups(flat, d12.digit_groups)
+    assert len({fixed[i] for i in d12.digit_groups[0]}) == 1
+    assert len({fixed[i] for i in d12.DECORATION}) > 1
+
+    d10 = LF10Display()
+    zones = [LedZoneSettings(on=True, mode=LEDMode.RAINBOW, brightness=100)
+             for _ in range(len(d10.zone_led_map))]
+    st2 = LedDeviceSettings(zones=zones)
+    flat2 = eng.tick_multi_zone(
+        st2, LedRuntimeState(), {}, zone_map=d10.zone_led_map,
+        metric_sources=d10.zone_metric_sources, led_count=d10.mask_size,
+        zone_color_groups=d10.zone_color_groups,
+    )
+    fixed2 = eng.cohere_digit_groups(flat2, d10.digit_groups)
+    assert len({fixed2[i] for i in d10.digit_groups[0]}) == 1
+    assert len({fixed2[i] for i in d10.DECORATION}) > 1
