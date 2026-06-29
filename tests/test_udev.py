@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from trcc.adapters.system._udev import (
+    _NO_AUTOSUSPEND,
     _WIRE_SUBSYSTEMS,
     build_modprobe_conf,
     build_udev_rules,
@@ -20,15 +21,38 @@ def test_packaged_rule_matches_generated_autosuspend_policy() -> None:
     """The hand-maintained packaged rule and the setup-udev generator are the
     same rule from two sources — they MUST agree on the autosuspend policy or
     panel-sleep silently re-breaks for one install path (#143).  Every add line
-    in the packaged file carries control="auto" + the 10s delay, and the old
+    carries the 10s delay + control="auto" (idle-sleep), EXCEPT _NO_AUTOSUSPEND
+    devices which pin control="on" (reconnect-loop fix, #201).  The old
     never-suspend pin is gone."""
     text = _PACKAGED_RULE.read_text()
     assert 'power/autosuspend}="-1"' not in text
     add_lines = [ln for ln in text.splitlines() if ln.startswith('ACTION=="add"')]
     assert add_lines, "packaged rule has no ACTION==add lines"
     for ln in add_lines:
-        assert 'ATTR{power/control}="auto"' in ln, ln
+        assert ('ATTR{power/control}="auto"' in ln
+                or 'ATTR{power/control}="on"' in ln), ln
         assert 'ATTR{power/autosuspend_delay_ms}="10000"' in ln, ln
+
+
+def test_no_autosuspend_devices_pin_control_on_both_sources() -> None:
+    """Devices that re-enumerate under suspend (#201) MUST pin control="on" in
+    BOTH the generator and the packaged rule — and must NOT carry the "auto"
+    that would re-trigger the reconnect loop."""
+    generated = build_udev_rules()
+    packaged = _PACKAGED_RULE.read_text()
+    assert _NO_AUTOSUSPEND, "expected at least one opt-out device"
+    for vid, pid in _NO_AUTOSUSPEND:
+        on_line = (
+            f'ACTION=="add", SUBSYSTEM=="usb", '
+            f'ATTR{{idVendor}}=="{vid:04x}", '
+            f'ATTR{{idProduct}}=="{pid:04x}", '
+            f'ATTR{{power/control}}="on", '
+            f'ATTR{{power/autosuspend_delay_ms}}="10000"'
+        )
+        auto_line = on_line.replace('"on"', '"auto"')
+        for src_name, src in (("generated", generated), ("packaged", packaged)):
+            assert on_line in src, f"{vid:04x}:{pid:04x} not pinned on in {src_name}"
+            assert auto_line not in src, f"{vid:04x}:{pid:04x} still auto in {src_name}"
 
 
 _POWERCAP_RULE = (
@@ -51,9 +75,10 @@ def test_packaged_rule_matches_generated_rapl_grant() -> None:
 
 
 def test_every_registered_device_enables_autosuspend() -> None:
-    """Every device gets control="auto" + a 10s delay so the kernel can
-    autosuspend it and the firmware sleeps the panel.  Must NOT carry the old
-    power/autosuspend="-1" never-suspend pin, which kept panels lit and
+    """Every device gets a 10s delay + control="auto" so the kernel can
+    autosuspend it and the firmware sleeps the panel — EXCEPT _NO_AUTOSUSPEND
+    devices, which pin control="on" (reconnect-loop fix, #201).  Must NOT carry
+    the old power/autosuspend="-1" never-suspend pin, which kept panels lit and
     re-broke setup-udev for ErP users (#143)."""
     rules = build_udev_rules()
 
@@ -63,11 +88,12 @@ def test_every_registered_device_enables_autosuspend() -> None:
     for (vid, pid), product in ALL_DEVICES.items():
         vid_str = f"{vid:04x}"
         pid_str = f"{pid:04x}"
+        control = "on" if (vid, pid) in _NO_AUTOSUSPEND else "auto"
         expected = (
             f'ACTION=="add", SUBSYSTEM=="usb", '
             f'ATTR{{idVendor}}=="{vid_str}", '
             f'ATTR{{idProduct}}=="{pid_str}", '
-            f'ATTR{{power/control}}="auto", '
+            f'ATTR{{power/control}}="{control}", '
             f'ATTR{{power/autosuspend_delay_ms}}="10000"'
         )
         assert expected in rules, (

@@ -15,8 +15,11 @@
 #      caused the original "USB communication lost" on app exit).
 #      10s = 5x our default 2s metrics-refresh tick → no spurious
 #      suspend during normal use, snappy panel-sleep on close.
-# MUST stay in sync with adapters/system/_udev.py (setup-udev) — same rule,
-# two sources; drifting them re-breaks panel sleep.
+#      EXCEPTION: devices whose firmware re-enumerates under suspend instead of
+#      sleeping (a reconnect loop) pin power/control="on" — see the ChiZhu
+#      GrandVision 360 (87ad:70db / 87cd:70db) below (#201).
+# MUST stay in sync with adapters/system/_udev.py (setup-udev, _NO_AUTOSUSPEND)
+# — same rule, two sources; drifting them re-breaks panel sleep / the loop fix.
 
 # Thermalright LCD Display (SCSI)
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", ATTRS{idProduct}=="3922", MODE="0666"
@@ -55,12 +58,15 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", MODE="0666"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0418", ATTR{idProduct}=="5304", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
 
 # ChiZhu Tech GrandVision 360 AIO (Bulk)
+# power/control="on": this firmware re-enumerates under USB autosuspend instead
+# of sleeping, causing a reconnect loop every ~10-15s — pin it awake (#201).
 SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87ad", ATTR{idProduct}=="70db", ATTR{power/control}="on", ATTR{power/autosuspend_delay_ms}="10000"
 
-# Thermalright LCD Display (SCSI)
+# Thermalright LCD Display (SCSI) — ChiZhu GrandVision 360 SCSI sibling, same
+# firmware: pin awake too (#201).
 SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="87cd", ATTRS{idProduct}=="70db", MODE="0666"
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87cd", ATTR{idProduct}=="70db", ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="10000"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="87cd", ATTR{idProduct}=="70db", ATTR{power/control}="on", ATTR{power/autosuspend_delay_ms}="10000"
 
 # CPU package power (RAPL) — make energy_uj readable without root so trcc can
 # report CPU watts.  energy_uj is root-only since CVE-2020-8694 (PLATYPUS);

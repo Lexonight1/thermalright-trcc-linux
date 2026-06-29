@@ -105,6 +105,18 @@ def quickstart(
             raise typer.Exit(code=1)
 
 
+@app.command("setup")
+def setup(
+    yes: bool = typer.Option(False, "--yes", "-y",
+                             help="Non-interactive (assume yes to prompts)"),
+) -> None:
+    """Alias for ``trcc system setup`` — OS-specific setup (udev rules on
+    Linux, WinUSB guide on Windows).  New users reach for the short form. (#194)
+    """
+    log.info("cli setup (alias → system setup): yes=%s", yes)
+    system.setup(yes=yes)
+
+
 @app.command("qtgui")
 def qtgui() -> None:
     """Launch the Qt-native GUI (clean-slate, layout-driven).

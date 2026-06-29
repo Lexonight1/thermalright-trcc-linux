@@ -353,7 +353,12 @@ jobs:
           #!/bin/sh
           set -e
           python3 -m venv /opt/trcc-linux
-          /opt/trcc-linux/bin/pip install --quiet "trcc-linux==${VER}"
+          # Bundle nvidia-ml-py in the venv (pure-Python, ~53 KB).  The venv is
+          # isolated + root-owned, so the apt python3-pynvml Recommends is invisible
+          # to it AND the runtime setup pip (run as the unprivileged user) cannot
+          # write here (EACCES).  Bundling makes NVIDIA metrics work out of the box
+          # and the runtime pip then just no-ops as already-satisfied. (#161)
+          /opt/trcc-linux/bin/pip install --quiet "trcc-linux==${VER}" nvidia-ml-py
           for cmd in trcc trcc-gui trcc-lcd; do
             echo "#!/bin/sh" > /usr/bin/\$cmd
             echo "exec /opt/trcc-linux/bin/\$cmd \"\\\$@\"" >> /usr/bin/\$cmd

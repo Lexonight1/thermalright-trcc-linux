@@ -108,6 +108,13 @@ def _import_dbus_glib() -> tuple[Any, Any] | None:
     log.debug("_import_dbus_glib: called")
     try:
         import dbus  # pyright: ignore[reportMissingImports]
+
+        # NOTE (investigated 2026-06-27): importing gi emits two
+        # DeprecationWarnings on Python 3.14 (GLib.unix_signal_add_full +
+        # asyncio event-loop policy) from PyGObject's OWN internals — not our
+        # calls.  Latest gi (3.56.3) still warns; our 3.12 floor is clean.
+        # Upstream + cosmetic, and this guarded import already degrades
+        # gracefully.  Leave it — don't filter blindly or monkeypatch gi.
         import gi  # noqa: F401  # pyright: ignore[reportMissingImports]
         from dbus.mainloop.glib import (  # pyright: ignore[reportMissingImports]
             DBusGMainLoop,
