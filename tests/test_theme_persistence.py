@@ -1430,7 +1430,7 @@ def test_list_themes_user_and_shipped_same_name_coexist(
     by_origin = {e.origin: e for e in matches}
     assert Path(by_origin["user"].path) == user      # the user's
     assert Path(by_origin["shipped"].path) == shipped  # the shipped, NOT hidden
-    assert matches[0].origin == "user"               # user listed first
+    assert matches[0].origin == "shipped"            # shipped (cs/program) first, user after
     assert by_origin["user"].preview                 # tile image resolved
 
 

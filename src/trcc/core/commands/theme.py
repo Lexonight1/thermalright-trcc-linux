@@ -1122,13 +1122,11 @@ class ListThemes(Command[ThemesListResult]):
             roots = [self.directory]
         elif self.resolution is not None:
             w, h = self.resolution
-            # User dir first so a user's saved themes surface ahead of the
-            # shipped ones — but BOTH are listed.  A user save NEVER hides or
-            # overwrites the shipped theme of the same name; they coexist and
-            # are told apart by ``origin``.  Dedupe is by PATH (a dir can't list
-            # twice), not by name (same-named user + shipped both belong).
-            # (#theme-collision)
-            roots = [paths.user_theme_dir(w, h), paths.theme_dir(w, h)]
+            # Shipped (program / cloud-downloaded) themes FIRST, the user's
+            # saved themes AFTER — both listed, neither hiding the other (dedupe
+            # by PATH, not name, so a same-named user + shipped pair both belong,
+            # told apart by ``origin``). (#theme-collision)
+            roots = [paths.theme_dir(w, h), paths.user_theme_dir(w, h)]
         else:
             return ThemesListResult(
                 ok=False, directory="", themes=[],
