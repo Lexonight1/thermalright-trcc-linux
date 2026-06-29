@@ -110,7 +110,15 @@ def color(
                    "(expected 6 hex chars, e.g. ff0000)", err=True)
         raise typer.Exit(code=2)
     r, g, b = rgb
-    result = get_app().dispatch(SendColor(key=key, r=r, g=g, b=b))
+    app_obj = get_app()
+    # Each CLI invocation is a fresh App (non-daemon) with no attached devices,
+    # so connect before sending — ConnectDevice is idempotent, so this is a
+    # no-op when a daemon/GUI already holds the device. (#150)
+    conn = app_obj.dispatch(ConnectDevice(key=key))
+    if not conn.ok:
+        typer.echo(conn.message, err=True)
+        raise typer.Exit(code=1)
+    result = app_obj.dispatch(SendColor(key=key, r=r, g=g, b=b))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -901,6 +909,12 @@ def test(
     import time
 
     app_obj = get_app()
+    # Fresh-process App has no attached devices (non-daemon); connect first.
+    # Idempotent, so it's a no-op against a daemon/GUI already streaming. (#150)
+    conn = app_obj.dispatch(ConnectDevice(key=key))
+    if not conn.ok:
+        typer.echo(conn.message, err=True)
+        raise typer.Exit(code=1)
     sequence = (
         ("red",   (0xFF, 0x00, 0x00)),
         ("green", (0x00, 0xFF, 0x00)),

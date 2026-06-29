@@ -187,12 +187,26 @@ def test_display_set_brightness_persists(cli_runner: CliRunner, cli_app) -> None
     assert result.exit_code == 0
 
 
-def test_display_color_without_device(cli_runner: CliRunner, cli_app) -> None:
-    """``display color`` needs a connected device — exits non-zero
-    with a structured "not attached" message."""
+def test_display_color_auto_connects_then_sends(cli_runner: CliRunner, cli_app) -> None:
+    """``display color`` self-connects before sending (#150).
+
+    Each non-daemon CLI invocation is a fresh App with no attached devices,
+    so the command dispatches ConnectDevice first — a known, present device
+    therefore sends successfully without a separate ``device connect`` step.
+    """
     del cli_app
     result = cli_runner.invoke(
         _app(), ["display", "color", "0402:3922", "ff0000"],
+    )
+    assert result.exit_code == 0
+
+
+def test_display_color_unknown_device_fails(cli_runner: CliRunner, cli_app) -> None:
+    """An unknown VID:PID can't connect, so ``display color`` exits non-zero
+    with the connect failure surfaced (not a silent send)."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "color", "dead:beef", "ff0000"],
     )
     assert result.exit_code != 0
 
