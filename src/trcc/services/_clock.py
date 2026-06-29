@@ -70,6 +70,23 @@ def _translate_date_pattern(pattern: str) -> str:
     return result
 
 
+# The default date format (DeviceSettings.date_format default).  A date element
+# whose pattern renders the same as this is treated as "uncustomised" → the
+# user's global pref wins; a different pattern is a deliberate theme choice.
+_DEFAULT_DATE_FORMAT = "yyyy/MM/dd"
+
+
+def is_default_date_pattern(fmt: str) -> bool:
+    """True if *fmt* (a strftime spec like ``%Y/%m/%d`` OR a ``yyyy/MM/dd``-style
+    pattern) renders identically to the DEFAULT date format.
+
+    The theme reconciliation rule: a date element carrying a NON-default pattern
+    (e.g. ``%m/%d``) is a deliberate design choice the renderer honours; a
+    default-equivalent pattern means the theme didn't customise the date, so the
+    user's global ``date_format`` preference wins — universally, every UI."""
+    return _translate_date_pattern(fmt) == _translate_date_pattern(_DEFAULT_DATE_FORMAT)
+
+
 def resolve_clock(
     source: ClockSource,
     *,

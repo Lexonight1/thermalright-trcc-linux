@@ -119,6 +119,33 @@ def test_date_element_honours_its_own_format_over_the_global() -> None:
     assert rec.drawn[0][2] != "2026/06/05"
 
 
+def test_date_element_with_default_pattern_follows_global() -> None:
+    """A date element whose pattern is the DEFAULT ("%Y/%m/%d" ≡ yyyy/MM/dd) is
+    treated as uncustomised → it follows the user's global date_format (the
+    precomputed dict), so the settings-panel choice applies.
+
+    The reconciliation of two reports: the sibling test keeps a DELIBERATE
+    pattern (%m/%d); this keeps the GLOBAL pref winning for the standard format
+    a user expects to control. (#format-prefs)
+    """
+    rec = _DrawRecorder()
+    service = OverlayService(rec)
+    base = rec.create_surface(320, 320)
+
+    service.render(
+        base,
+        _config([
+            {"type": "clock", "source": "date", "format": "%Y/%m/%d",
+             "x": 0, "y": 0},
+        ]),
+        sensors={},
+        clock={"date": "05/06/2026"},   # global pref (dd/MM/yyyy) already resolved
+    )
+
+    # Follows the global dict, NOT the element's default-equivalent pattern.
+    assert rec.drawn[0][2] == "05/06/2026"
+
+
 def test_date_element_without_pattern_uses_global_dict() -> None:
     """No real strftime pattern (e.g. the metric default "{value}") → fall
     back to the precomputed global clock dict, unchanged."""
