@@ -571,3 +571,28 @@ def test_gui_on_handlers_log_or_are_exempt() -> None:
         "GUI _on_* handler with no log (not tick/debounce-exempt) — a user "
         f"interaction would be invisible in the log: {offenders}"
     )
+
+
+def test_local_theme_browser_view_does_no_filesystem_walk() -> None:
+    """The local theme browser (``uc_theme_local``) renders ListThemes entries
+    via ``set_themes`` — it must NOT walk the disk itself.
+
+    A private disk walk in the View is exactly what diverged from the universal
+    ``ListThemes`` Command and shadowed a user-saved theme behind a same-named
+    shipped one (the green-"Theme1" collision).  This gate keeps listing +
+    deletion flowing through Commands. (#theme-collision, logging/architecture)
+    """
+    path = _SRC / "trcc" / "ui" / "gui" / "uc_theme_local.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    forbidden = {"iterdir", "glob", "rglob", "scandir", "rmtree", "walk",
+                 "listdir"}
+    offenders = [
+        f"uc_theme_local.py:{n.lineno} .{n.func.attr}()"
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and n.func.attr in forbidden
+    ]
+    assert not offenders, (
+        "theme browser View does filesystem traversal — listing must come from "
+        f"ListThemes (set_themes), deletion from DeleteTheme: {offenders}"
+    )

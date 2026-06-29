@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from ...core.commands import (
     ConnectDevice,
+    DeleteTheme,
     EnableOverlay,
     ListGpus,
     PlayVideo,
@@ -1738,19 +1739,27 @@ class TRCCApp(QMainWindow):
             self, "Delete Theme", f"Delete theme '{theme_info.name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            self.uc_theme_local.delete_theme(theme_info)
-            h = self._active_lcd()
-            # The handler tracks the active theme directory on its
-            # ``_state.current_theme_path``; if the deleted theme was
-            # the active one, invalidate the scene cache so the next
-            # render rebuilds from whatever falls back as background.
-            current = h.current_theme_path if h is not None else None
-            if (h is not None and current is not None
-                    and str(current) == theme_info.path):
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        # Delete via the Command — the FS removal happens in the service,
+        # confined to the user-content tree (shipped themes are refused), so
+        # the View does no filesystem work.  Then re-list through ListThemes
+        # and forget the name from the slideshow. (#theme-collision)
+        result = self._app.dispatch(DeleteTheme(path=Path(theme_info.path)))
+        if not result.ok:
+            self.uc_preview.set_status(result.message)
+            return
+        self.uc_theme_local.forget_slideshow_theme(theme_info.name)
+        h = self._active_lcd()
+        if h is not None:
+            h.refresh_themes()
+            # If the deleted theme was the active one, invalidate the scene
+            # cache so the next render rebuilds from whatever falls back.
+            current = h.current_theme_path
+            if current is not None and str(current) == theme_info.path:
                 self._app.display.invalidate(h.device_key)
                 self.uc_preview.set_image(None)
-            self.uc_preview.set_status(f"Deleted: {theme_info.name}")
+        self.uc_preview.set_status(f"Deleted: {theme_info.name}")
 
     # ── Settings Delegates ──────────────────────────────────────────
 

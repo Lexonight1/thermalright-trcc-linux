@@ -1246,6 +1246,11 @@ class LCDHandler(BaseHandler):
 
     # ── Helpers ─────────────────────────────────────────────────────
 
+    def refresh_themes(self) -> None:
+        """Public re-list of the local theme browser (after save / import /
+        delete) — re-dispatches ListThemes through the dir-resolution refresh."""
+        self._update_theme_directories()
+
     def _update_theme_directories(self) -> bool:
         """Reload theme browser directories for the current resolution.
 
