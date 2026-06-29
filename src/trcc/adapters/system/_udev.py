@@ -17,9 +17,11 @@ Per-wire subsystem mapping:
 Every device also gets `power/control="auto"` +
 `power/autosuspend_delay_ms="10000"` so the kernel autosuspends the device
 ~10s after our frame stream stops; the firmware sleeps the panel in response
-to the USB suspend (the mechanism the Windows app relies on — #143).  This
-MUST match packaging/udev/99-trcc-lcd.rules — the two are the same rule from
-two sources and drifting them re-breaks panel sleep.
+to the USB suspend (the mechanism the Windows app relies on — #143).  The
+EXCEPTION is `_NO_AUTOSUSPEND` devices, whose firmware re-enumerates instead of
+sleeping under suspend (a reconnect loop — #201); they pin `power/control="on"`.
+This MUST match packaging/udev/99-trcc-lcd.rules — the two are the same rule
+from two sources and drifting them re-breaks panel sleep / the loop fix.
 
 For SCSI devices we additionally write /etc/modprobe.d/trcc-lcd.conf
 forcing `usb-storage` Bulk-Only (not UAS) so /dev/sgN is reliably
@@ -71,6 +73,19 @@ _WIRE_SUBSYSTEMS: dict[Wire, tuple[str, ...]] = {
 }
 
 
+# Devices whose firmware can't survive USB autosuspend.  The kernel suspends the
+# port ~10s after our frame stream stops; instead of sleeping the panel, these
+# re-enumerate, the kernel re-suspends ~10s later, and you get a reconnect loop
+# every ~10-15s (#201, em73es' ChiZhu GrandVision 360).  They pin
+# power/control="on" (never autosuspend) instead of the "auto" the other panels
+# use for idle-sleep (#143).  87ad:70db (USB/bulk) is reporter-confirmed;
+# 87cd:70db (its SCSI sibling, same product family) is included by inference.
+_NO_AUTOSUSPEND: frozenset[tuple[int, int]] = frozenset({
+    (0x87ad, 0x70db),
+    (0x87cd, 0x70db),
+})
+
+
 # ── Rule generation ──────────────────────────────────────────────────
 
 
@@ -95,11 +110,12 @@ def build_udev_rules() -> str:
                 f'{attr}{{idProduct}}=="{pid:04x}", '
                 f'MODE="0666"'
             )
+        control = "on" if (vid, pid) in _NO_AUTOSUSPEND else "auto"
         lines.append(
             f'ACTION=="add", SUBSYSTEM=="usb", '
             f'ATTR{{idVendor}}=="{vid:04x}", '
             f'ATTR{{idProduct}}=="{pid:04x}", '
-            f'ATTR{{power/control}}="auto", '
+            f'ATTR{{power/control}}="{control}", '
             f'ATTR{{power/autosuspend_delay_ms}}="10000"'
         )
         lines.append("")
