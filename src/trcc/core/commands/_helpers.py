@@ -229,6 +229,11 @@ def _require_connected_device(app: App, key: str) -> Any:
     log.debug("_require_connected_device: key=%s", key)
     device = app.get(key)
     if not device.is_connected:
+        # DeviceNotConnectedError propagates PAST App.dispatch (no try/except
+        # there), so without this the rejected wire command is invisible in the
+        # log.  Warn with the key — the universal "acted before connect" trace.
+        log.warning("%s: wire command dispatched before ConnectDevice — "
+                    "device attached but not connected", key)
         raise DeviceNotConnectedError(
             f"{key} not connected — dispatch ConnectDevice first"
         )
