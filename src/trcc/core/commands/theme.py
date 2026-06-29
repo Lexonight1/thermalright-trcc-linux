@@ -81,38 +81,6 @@ def _theme_preview(theme_dir: Path) -> str:
     return str(any_png) if any_png is not None else ""
 
 
-_THEME_MARKERS = ("trcc.json", "config1.dc", "config.json")
-
-
-def _prefer_user_theme(app: App, candidate: Path) -> Path:
-    """Apply the user-wins precedence (the same domain rule as ListThemes) to a
-    RESTORE path.
-
-    If *candidate* is a SHIPPED theme (under ``data_dir``) that a same-named USER
-    theme shadows — the same relative path under ``user_data_dir`` carrying a
-    theme marker — return the user equivalent so a stale program-path pointer
-    self-heals on the next launch.  Otherwise return *candidate* unchanged.
-
-    Restore-only by design: NOT applied to runtime rotation (which shares
-    ``oriented_theme_path``), so rotating a device never surprise-swaps the
-    theme — only a fresh restore re-resolves which theme a name means.  Pure
-    path mapping, so it also covers the no-device restore path. (#theme-collision)
-    """
-    paths = app.platform.paths()
-    data_root = paths.data_dir().resolve()
-    cand = candidate.resolve()
-    if not cand.is_relative_to(data_root):
-        return candidate   # user-saved or external path — keep as stored
-    user_equiv = paths.user_data_dir() / cand.relative_to(data_root)
-    if user_equiv.is_dir() and any(
-        (user_equiv / m).exists() for m in _THEME_MARKERS
-    ):
-        log.info("RestoreLastTheme: shipped theme %s shadowed by user theme %s "
-                 "— restoring the user theme (user-wins)", candidate, user_equiv)
-        return user_equiv
-    return candidate
-
-
 @dataclass(frozen=True, slots=True)
 class LoadTheme(Command[ThemeResult]):
     """Parse a theme, persist it, render the first frame, and send it.
@@ -1154,11 +1122,12 @@ class ListThemes(Command[ThemesListResult]):
             roots = [self.directory]
         elif self.resolution is not None:
             w, h = self.resolution
-            # User dir FIRST so a user-saved theme WINS over a shipped theme of
-            # the same name (dedupe by name below) — a saved "Theme1" shadows
-            # the placeholder "Theme1", never the reverse.  Universal: every UI
-            # dispatches this Command, so CLI / API / GUI agree on which theme a
-            # name resolves to. (#theme-collision)
+            # User dir first so a user's saved themes surface ahead of the
+            # shipped ones — but BOTH are listed.  A user save NEVER hides or
+            # overwrites the shipped theme of the same name; they coexist and
+            # are told apart by ``origin``.  Dedupe is by PATH (a dir can't list
+            # twice), not by name (same-named user + shipped both belong).
+            # (#theme-collision)
             roots = [paths.user_theme_dir(w, h), paths.theme_dir(w, h)]
         else:
             return ThemesListResult(
@@ -1169,21 +1138,19 @@ class ListThemes(Command[ThemesListResult]):
         # Origin is location-derived (theme under user_data_dir → "user"), so
         # it is correct in directory mode too and replaces name heuristics.
         user_root = paths.user_data_dir().resolve()
-        seen_names: set[str] = set()
+        seen_paths: set[Path] = set()
         entries: list[ThemeListEntry] = []
         for root in roots:
             for theme in app.themes.list(root):
-                if theme.name in seen_names:
-                    log.info("ListThemes: %r in %s shadowed by a same-named "
-                             "user theme — skipping", theme.name, root)
+                resolved = theme.path.resolve()
+                if resolved in seen_paths:
                     continue
-                seen_names.add(theme.name)
-                is_user = theme.path.resolve().is_relative_to(user_root)
+                seen_paths.add(resolved)
                 entries.append(ThemeListEntry(
                     name=theme.name, resolution=theme.resolution,
                     path=str(theme.path),
                     preview=str(_theme_preview(theme.path)),
-                    origin="user" if is_user else "shipped",
+                    origin="user" if resolved.is_relative_to(user_root) else "shipped",
                 ))
         target_str = "; ".join(str(r) for r in roots)
         return ThemesListResult(
@@ -1495,11 +1462,11 @@ class RestoreLastTheme(Command[ThemeResult]):
         # the theme's bundled layout (that's an explicit-switch behavior).
         candidate = Path(stored)
         if candidate.is_dir():
+            # Load EXACTLY the persisted path (re-rooted to the current
+            # orientation).  A user save never overwrites the shipped theme of
+            # the same name, so restore must NOT re-resolve a shipped pointer to
+            # the user one — it loads whatever the user last selected.
             candidate = oriented_theme_path(app, self.key, candidate)
-            # User-wins precedence on restore: a stale pointer at a shipped
-            # theme that a same-named user theme now shadows re-resolves to the
-            # user one (consistent with ListThemes). (#theme-collision)
-            candidate = _prefer_user_theme(app, candidate)
             return LoadTheme(
                 key=self.key, path=candidate, reset_overrides=False,
             ).execute(app)
