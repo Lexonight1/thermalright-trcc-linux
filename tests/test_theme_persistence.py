@@ -1407,3 +1407,88 @@ def test_editing_metrics_does_not_touch_cloud_mask_dc(
 
     assert (cloud_dir / "config1.dc").read_bytes() == b"\xddORIGINAL", \
         "a cloud mask's DC must never be rewritten by a metric edit"
+
+
+def test_list_themes_user_theme_shadows_shipped_same_name(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """A user-saved theme WINS over a shipped theme of the same name (the green
+    "Theme1" placeholder collision): ListThemes returns ONE entry — the user's,
+    ``origin="user"``, with a resolved preview — and leaves the shipped one on
+    disk, just shadowed.  Universal: CLI / API / GUI all dispatch this. (#theme-collision)
+    """
+    from trcc.core.commands import ListThemes
+
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
+    user = _write_theme_with_real_pngs(user_theme_dir, "Theme1")
+
+    result = app.dispatch(ListThemes(resolution=_TEST_RES))
+    assert result.ok
+    matches = [e for e in result.themes if e.name == "Theme1"]
+    assert len(matches) == 1                        # deduped by name
+    entry = matches[0]
+    assert entry.origin == "user"
+    assert Path(entry.path) == user                 # the user dir, not the placeholder
+    assert entry.preview                            # tile image resolved
+    assert shipped.exists()                         # shipped untouched, just shadowed
+
+
+def test_list_themes_classifies_origin_by_location(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """Origin is location-derived (under user_data_dir → "user"), not name-based —
+    a user theme NOT named User*/Custom* is still origin="user"."""
+    from trcc.core.commands import ListThemes
+
+    paths = app.platform.paths()
+    _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")   # shipped
+    _write_theme_with_real_pngs(user_theme_dir, "MyMix")                 # user
+
+    by_name = {e.name: e for e in app.dispatch(ListThemes(resolution=_TEST_RES)).themes}
+    assert by_name["Aurora"].origin == "shipped"
+    assert by_name["MyMix"].origin == "user"
+
+
+def test_restore_prefers_user_theme_over_shadowed_shipped(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """A persisted ``current_theme`` at a SHIPPED theme that a same-named USER
+    theme now shadows self-heals on restore: RestoreLastTheme re-resolves to the
+    user theme (user-wins, consistent with ListThemes — the green-Theme1
+    collision). (#theme-collision)
+    """
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
+    user = _write_theme_with_real_pngs(user_theme_dir, "Theme1")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == user.resolve()       # the user theme, not the shipped placeholder
+
+
+def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
+    """No same-named user theme → RestoreLastTheme loads the stored shipped
+    theme unchanged (no regression)."""
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == shipped.resolve()
+
+
+def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> None:
+    """current_theme already at a user theme → unchanged (prefer-user is a no-op
+    for non-shipped paths)."""
+    user = _write_theme_with_real_pngs(user_theme_dir, "MyMix")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(user)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(user.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == user.resolve()
