@@ -952,6 +952,48 @@ def test_save_theme_references_non_catalog_mask_override(
     assert resolved.read_bytes() != (source / "01.png").read_bytes()
 
 
+def test_saved_pure_pointer_theme_renders_its_referenced_mask(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The gate the refs-not-copies change rides on: a saved theme's mask is a
+    library REFERENCE (no local 01.png), and it must still COMPOSITE through the
+    real render pipeline — not just resolve as a path.
+
+    Rendered through the real QtRenderer, the frame WITH the mask must differ
+    from the frame with mask_visible=False (the referenced mask contributes real
+    pixels). build_frame's cache keys on mask state, so the second call rebuilds.
+    """
+    from trcc.core.models import Kind, ProductInfo, Wire
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ptr")).ok
+    saved = user_theme_dir / "ptr"
+
+    # Pure pointer: mask is a ref (no local 01.png) that resolves to the library.
+    assert not (saved / "01.png").exists()
+    reloaded = app.themes.load(saved)
+    mask = app.themes.mask_path(reloaded)
+    assert mask is not None and mask.exists()
+
+    info = ProductInfo(
+        vid=0x0402, pid=0x3922, vendor="ALi Corp", product="320×320 LCD",
+        wire=Wire.SCSI, kind=Kind.LCD, device_type=1, fbl=100,
+        native_resolution=_TEST_RES, orientations=(0, 90, 180, 270),
+    )
+
+    app.settings.set_mask_visible(_TEST_DEVICE_KEY, True)
+    frame_with = app.display.build_frame(info=info, theme=reloaded, sensors={})
+    app.settings.set_mask_visible(_TEST_DEVICE_KEY, False)
+    frame_without = app.display.build_frame(info=info, theme=reloaded, sensors={})
+
+    assert frame_with and frame_without
+    assert frame_with != frame_without, (
+        "a saved theme's REFERENCED mask must composite real pixels into the "
+        "frame — not silently drop out"
+    )
+
+
 def test_save_theme_inlines_mask_overlay_elements_into_manifest(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
