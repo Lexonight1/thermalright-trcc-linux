@@ -26,6 +26,7 @@ from ...core.commands import (
     EnableOverlay,
     ExportTheme,
     ImportTheme,
+    ListThemes,
     LoadCloudTheme,
     LoadTheme,
     RestoreLastTheme,
@@ -542,8 +543,9 @@ class LCDHandler(BaseHandler):
         ))
         self._w['preview'].set_status(r.message)
         if r.ok:
-            # Reload local theme list so the new theme shows up
-            self._w['theme_local'].load_themes()
+            # Re-list via ListThemes so the new theme appears with user-
+            # precedence (same universal path as the initial listing).
+            self._update_theme_directories()
         return r
 
     def export_config(self, path: Path) -> None:
@@ -560,7 +562,7 @@ class LCDHandler(BaseHandler):
         ))
         self._w['preview'].set_status(r.message)
         if r.ok:
-            self._w['theme_local'].load_themes()
+            self._update_theme_directories()   # re-list via ListThemes
 
     # ── DC File Loading ────────────────────────────────────────────
 
@@ -1288,10 +1290,15 @@ class LCDHandler(BaseHandler):
             self._pm.state.is_rotated,
         )
 
-        if theme_dir and theme_dir.exists():
-            self._w['theme_local'].set_theme_directory(theme_dir, user_theme_dir)
-        elif user_theme_dir and user_theme_dir.exists():
-            self._w['theme_local'].set_theme_directory(user_theme_dir)
+        # Local theme browser: dispatch the universal ListThemes Command
+        # (user-precedence + origin + preview) and render its entries — no disk
+        # walk in the View.  The browse resolution is the theme dirs' dims: the
+        # canvas (landscape) when the #136 portrait-fallback applied, else the
+        # catalog (portrait) dims. (#theme-collision)
+        theme_res = (self._pm.state.canvas_size if dirs.portrait_fallback
+                     else dirs.catalog_size)
+        themes = self._app.dispatch(ListThemes(resolution=theme_res)).themes
+        self._w['theme_local'].set_themes(themes)
         if web_dir:
             self._w['theme_web'].set_web_directory(web_dir)
         self._w['theme_web'].set_resolution(f'{bw}x{bh}')
@@ -1301,22 +1308,17 @@ class LCDHandler(BaseHandler):
         self._w['image_cut'].set_resolution(bw, bh)
         self._w['video_cut'].set_resolution(bw, bh)
 
-        # First-install auto-load: pick the first theme in the dir if
-        # the device has nothing rendered yet AND no saved theme name.
+        # First-install auto-load: nothing rendered yet AND no saved theme →
+        # load the first listed theme (user-precedence already applied by
+        # ListThemes, so a user theme wins the auto-load too).
         ds = self._app.settings.for_device(self._device_key)
         if (self._pm.state.current_theme_path is None
-                and theme_dir and theme_dir.exists()
-                and not ds.current_theme):
-            for item in sorted(theme_dir.iterdir()):
-                if item.is_dir() and (item / '00.png').exists():
-                    self.log.info("Data ready: auto-loading first theme: %s", item)
-                    self._select_theme_from_path(item, persist=True,
-                                                  overlay_config=True)
-                    return True
-            self.log.debug(
-                "_update_theme_directories: no valid theme found for auto-load in %s",
-                theme_dir,
-            )
+                and not ds.current_theme and themes):
+            first = themes[0]
+            self.log.info("Data ready: auto-loading first theme: %s", first.path)
+            self._select_theme_from_path(Path(first.path), persist=True,
+                                          overlay_config=True)
+            return True
         return False
 
     @property

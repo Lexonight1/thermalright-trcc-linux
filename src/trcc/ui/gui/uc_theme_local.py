@@ -21,6 +21,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
 from ...core.models import LocalThemeItem
+from ...core.results import ThemeListEntry
 from ..presentation.slideshow_model import SlideshowModel
 from .assets import Assets
 from .base import BaseThemeBrowser, BaseThumbnail
@@ -252,7 +253,7 @@ class UCThemeLocal(BaseThemeBrowser):
         self.filter_mode = mode
         for i, btn in enumerate(self._filter_buttons):
             btn.setChecked(i == mode)
-        self.load_themes()
+        self._render_filtered()   # re-filter the cache; no disk re-walk
         self.invoke_delegate(self.CMD_FILTER_CHANGED, mode)
 
     def load_themes(self):
@@ -309,14 +310,41 @@ class UCThemeLocal(BaseThemeBrowser):
                 ))
         log.info("uc_theme_local.load_themes: %d theme(s) found", len(all_items))
         self._all_themes = all_items
+        self._render_filtered()
 
-        # Filter for display
+    def set_themes(self, entries: list[ThemeListEntry]) -> None:
+        """Render the browser from ListThemes entries — the universal Command
+        result — instead of walking the disk in the View.
+
+        ``origin`` ("user"/"shipped") drives the user/default filter (the
+        canonical, location-derived classification); ``preview`` is the tile
+        image.  Same data feeds CLI/API/qtgui. (#theme-collision)
+        """
+        log.info("UCThemeLocal.set_themes: %d entr%s",
+                 len(entries), "y" if len(entries) == 1 else "ies")
+        self._all_themes = [
+            LocalThemeItem(
+                name=e.name, path=e.path, thumbnail=e.preview,
+                is_local=True, is_user=(e.origin == "user"),
+            )
+            for e in entries
+        ]
+        self._render_filtered()
+
+    def _render_filtered(self) -> None:
+        """Clear + repopulate the grid from the cached ``self._all_themes`` for
+        the current filter mode.  No disk access — re-runnable on a filter click
+        (the filter buttons no longer re-walk the disk)."""
+        self._clear_grid()
+        if not self._all_themes:
+            self._show_empty_message()
+            return
         if self.filter_mode == self.MODE_DEFAULT:
-            theme_dirs = [t for t in all_items if not t.is_user]
+            theme_dirs = [t for t in self._all_themes if not t.is_user]
         elif self.filter_mode == self.MODE_USER:
-            theme_dirs = [t for t in all_items if t.is_user]
+            theme_dirs = [t for t in self._all_themes if t.is_user]
         else:
-            theme_dirs = list(all_items)
+            theme_dirs = list(self._all_themes)
 
         # Tag each with its global index in the unfiltered list
         for t in theme_dirs:
