@@ -70,6 +70,49 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _theme_preview(theme_dir: Path) -> str:
+    """Tile image for a theme dir: ``Theme.png`` → ``00.png`` → any ``*.png``
+    → ``""``.  Single source for the browser tile so every UI agrees."""
+    for name in ("Theme.png", "00.png"):
+        candidate = theme_dir / name
+        if candidate.is_file():
+            return str(candidate)
+    any_png = next(theme_dir.glob("*.png"), None)
+    return str(any_png) if any_png is not None else ""
+
+
+_THEME_MARKERS = ("trcc.json", "config1.dc", "config.json")
+
+
+def _prefer_user_theme(app: App, candidate: Path) -> Path:
+    """Apply the user-wins precedence (the same domain rule as ListThemes) to a
+    RESTORE path.
+
+    If *candidate* is a SHIPPED theme (under ``data_dir``) that a same-named USER
+    theme shadows — the same relative path under ``user_data_dir`` carrying a
+    theme marker — return the user equivalent so a stale program-path pointer
+    self-heals on the next launch.  Otherwise return *candidate* unchanged.
+
+    Restore-only by design: NOT applied to runtime rotation (which shares
+    ``oriented_theme_path``), so rotating a device never surprise-swaps the
+    theme — only a fresh restore re-resolves which theme a name means.  Pure
+    path mapping, so it also covers the no-device restore path. (#theme-collision)
+    """
+    paths = app.platform.paths()
+    data_root = paths.data_dir().resolve()
+    cand = candidate.resolve()
+    if not cand.is_relative_to(data_root):
+        return candidate   # user-saved or external path — keep as stored
+    user_equiv = paths.user_data_dir() / cand.relative_to(data_root)
+    if user_equiv.is_dir() and any(
+        (user_equiv / m).exists() for m in _THEME_MARKERS
+    ):
+        log.info("RestoreLastTheme: shipped theme %s shadowed by user theme %s "
+                 "— restoring the user theme (user-wins)", candidate, user_equiv)
+        return user_equiv
+    return candidate
+
+
 @dataclass(frozen=True, slots=True)
 class LoadTheme(Command[ThemeResult]):
     """Parse a theme, persist it, render the first frame, and send it.
@@ -413,31 +456,55 @@ class SaveTheme(Command[ThemeResult]):
                 message=f"A theme named {self.name!r} already exists.",
             )
 
+        # Build into a staging dir, THEN atomically swap it over the target.
+        # The theme being saved is usually the target ITSELF (re-saving the
+        # loaded theme — a prior save re-points the active theme at the saved
+        # dir), so deleting the target up-front would destroy the source's own
+        # background/mask BEFORE _build_manifest reads them — the cause of the
+        # "source theme has no background" data loss.  Staging keeps the source
+        # intact until every asset is captured, and makes overwrite crash-safe.
+        staging = target.parent / f".{self.name}.saving"
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists():
-                log.warning("SaveTheme: overwriting existing theme %s", target)
-                shutil.rmtree(target)
-            target.mkdir(exist_ok=False)
+            if staging.exists():
+                shutil.rmtree(staging)
+            staging.mkdir(exist_ok=False)
         except OSError as e:
-            log.warning("SaveTheme: mkdir failed for %s: %s", target, e)
+            log.warning("SaveTheme: mkdir failed for staging %s: %s", staging, e)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to create target directory: {e}",
+                message=f"failed to create staging directory: {e}",
             )
 
         try:
             manifest = self._build_manifest(
-                app, target, theme, device_settings, w, h,
+                app, staging, theme, device_settings, w, h,
             )
-            self._write_manifest(target, manifest)
-            self._write_thumbnail(app, target, theme)
+            self._write_manifest(staging, manifest)
+            self._write_thumbnail(app, staging, theme)
         except (OSError, ThemeError, TrccError) as e:
-            log.exception("SaveTheme: assembly failed; rolling back %s", target)
-            shutil.rmtree(target, ignore_errors=True)
+            log.exception("SaveTheme: assembly failed; discarding staging %s",
+                          staging)
+            shutil.rmtree(staging, ignore_errors=True)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
                 message=f"failed to assemble saved theme: {e}",
+            )
+
+        # Swap staging → target.  Every source asset is now captured in staging,
+        # so removing the (possibly ==source) target is safe.
+        try:
+            if target.exists():
+                log.warning("SaveTheme: overwriting existing theme %s", target)
+                shutil.rmtree(target)
+            staging.replace(target)
+        except OSError as e:
+            log.exception("SaveTheme: finalize failed; discarding staging %s",
+                          staging)
+            shutil.rmtree(staging, ignore_errors=True)
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=self.name,
+                message=f"failed to finalize saved theme: {e}",
             )
 
         # Saved theme is now fully self-contained — drop the device's
@@ -561,13 +628,21 @@ class SaveTheme(Command[ThemeResult]):
         width: int,
         height: int,
     ) -> str | None:
-        """Store the resolved current background; return its library ref.
+        """Store the resolved current background; return its manifest ref.
 
-        Image → canonical PNG bytes into the user library (deduped),
-        returning the ref.  Video → bundled verbatim as ``Theme.<ext>``
-        in the theme dir (returns ``None``; videos reload via the in-dir
-        convention).  ``DeviceSettings.background_path`` (cloud override)
-        wins over the source theme's bundled background.
+        Precedence, all returning a ``web/{w}{h}/…`` ref (or ``None``):
+
+        * **Catalog asset** — already under the cloud (``cloud_theme_dir``)
+          or user (``user_background_dir``) ``web/{w}{h}`` tree → REFERENCED
+          by ``web/{w}{h}/<name>``, never copied (cloud/user assets are
+          shared; a re-save re-emits the ref so the bg can't be lost).
+        * **Loose image** → canonical PNG bytes into the user library
+          (deduped), returning the library ref.
+        * **Loose video** → bundled verbatim as ``Theme.<ext>`` in the theme
+          dir (returns ``None``; videos reload via the in-dir convention).
+
+        ``DeviceSettings.background_path`` (cloud/user override) wins over the
+        source theme's bundled background.
         """
         import shutil
 
@@ -578,6 +653,24 @@ class SaveTheme(Command[ThemeResult]):
             log.warning("SaveTheme: source theme %r has no background",
                         theme.name)
             return None
+
+        # Asset already in a data catalog (a cloud download or the user
+        # background library) → REFERENCE it, never copy.  Mirrors
+        # _store_mask's catalog handling + the data-ownership model: cloud /
+        # user ``web/{w}{h}`` assets are shared, not bundled per-theme.  The
+        # ref resolves back via _resolve_asset_ref (user root → cloud root), so
+        # a saved theme just points at the existing download — and a re-save
+        # re-emits the same ref instead of copying, so the background can't be
+        # lost on overwrite. (#bg-save)
+        src_resolved = src.resolve()
+        paths = app.platform.paths()
+        for root in (paths.user_background_dir(width, height),
+                     paths.cloud_theme_dir(width, height)):
+            if src_resolved.is_relative_to(root.resolve()):
+                ref = f"web/{width}{height}/{src.name}"
+                log.info("SaveTheme: background %s is a catalog asset → "
+                         "reference %s (no copy)", src.name, ref)
+                return ref
 
         ext = src.suffix.lower()
         if ext in _VIDEO_EXTS_FOR_SAVE:
@@ -1056,28 +1149,41 @@ class ListThemes(Command[ThemesListResult]):
     directory: Path | None = None
 
     def execute(self, app: App) -> ThemesListResult:
+        paths = app.platform.paths()
         if self.directory is not None:
             roots = [self.directory]
         elif self.resolution is not None:
-            paths = app.platform.paths()
             w, h = self.resolution
-            roots = [paths.theme_dir(w, h), paths.user_theme_dir(w, h)]
+            # User dir FIRST so a user-saved theme WINS over a shipped theme of
+            # the same name (dedupe by name below) — a saved "Theme1" shadows
+            # the placeholder "Theme1", never the reverse.  Universal: every UI
+            # dispatches this Command, so CLI / API / GUI agree on which theme a
+            # name resolves to. (#theme-collision)
+            roots = [paths.user_theme_dir(w, h), paths.theme_dir(w, h)]
         else:
             return ThemesListResult(
                 ok=False, directory="", themes=[],
                 message="ListThemes requires resolution=(w,h) or directory=...",
             )
 
-        seen: set[Path] = set()
+        # Origin is location-derived (theme under user_data_dir → "user"), so
+        # it is correct in directory mode too and replaces name heuristics.
+        user_root = paths.user_data_dir().resolve()
+        seen_names: set[str] = set()
         entries: list[ThemeListEntry] = []
         for root in roots:
             for theme in app.themes.list(root):
-                if theme.path in seen:
+                if theme.name in seen_names:
+                    log.info("ListThemes: %r in %s shadowed by a same-named "
+                             "user theme — skipping", theme.name, root)
                     continue
-                seen.add(theme.path)
+                seen_names.add(theme.name)
+                is_user = theme.path.resolve().is_relative_to(user_root)
                 entries.append(ThemeListEntry(
                     name=theme.name, resolution=theme.resolution,
                     path=str(theme.path),
+                    preview=str(_theme_preview(theme.path)),
+                    origin="user" if is_user else "shipped",
                 ))
         target_str = "; ".join(str(r) for r in roots)
         return ThemesListResult(
@@ -1390,6 +1496,10 @@ class RestoreLastTheme(Command[ThemeResult]):
         candidate = Path(stored)
         if candidate.is_dir():
             candidate = oriented_theme_path(app, self.key, candidate)
+            # User-wins precedence on restore: a stale pointer at a shipped
+            # theme that a same-named user theme now shadows re-resolves to the
+            # user one (consistent with ListThemes). (#theme-collision)
+            candidate = _prefer_user_theme(app, candidate)
             return LoadTheme(
                 key=self.key, path=candidate, reset_overrides=False,
             ).execute(app)

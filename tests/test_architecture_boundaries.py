@@ -478,3 +478,121 @@ def test_selftest_shell_true_and_os_path_collectors_have_teeth() -> None:
     op = _OsPathCollector()
     op.visit(ast.parse("p = os.path.join('a', 'b')\n"))
     assert op.lines
+
+
+def test_ok_false_results_carry_a_message() -> None:
+    """Every ``Result(ok=False, …)`` in a core Command must carry a non-empty
+    ``message``.
+
+    ``App.dispatch`` is the universal user-action log: it WARNs on every
+    ``ok=False`` outcome with ``result.message``.  A blank/absent message makes
+    a rejected user action invisible there — so the message IS the log line for
+    that branch.  This gate keeps every failure branch self-explanatory without
+    mandating a duplicate per-branch ``log`` call. (logging coverage)
+    """
+    offenders: list[str] = []
+    for path in _files_under("trcc/core/commands"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            kw = {k.arg: k.value for k in node.keywords if k.arg}
+            ok = kw.get("ok")
+            if not (isinstance(ok, ast.Constant) and ok.value is False):
+                continue
+            msg = kw.get("message")
+            blank = msg is None or (
+                isinstance(msg, ast.Constant) and not str(msg.value).strip()
+            )
+            if blank:
+                offenders.append(f"{path.relative_to(_SRC)}:{node.lineno}")
+    assert not offenders, (
+        "Result(ok=False) with no/blank message — App.dispatch's WARNING would "
+        f"be uninformative: {offenders}"
+    )
+
+
+def test_gui_on_handlers_log_or_are_exempt() -> None:
+    """Every GUI ``_on_*`` user-interaction handler must LOG — a click /
+    selection / value change is a user action and must be visible.
+
+    EXEMPT: per-tick handlers (timer-wired via ``timeout.connect`` /
+    ``make_timer``, or named ``*_tick``) which are DEBUG/silent by design, and
+    debounced live-drag handlers (they re-arm a debounce; the SETTLED value
+    logs elsewhere).  Locks in user-interaction click coverage so a new silent
+    handler fails CI. (logging coverage)
+    """
+    import re
+
+    log_methods = {"info", "debug", "warning", "error", "exception", "critical"}
+    gui_files = _files_under("trcc/ui/gui")
+    alltext = "\n".join(p.read_text(encoding="utf-8") for p in gui_files)
+    timer_wired = set(re.findall(
+        r"(?:timeout\.connect|make_timer)\(\s*self\.(\w+)", alltext))
+
+    def _logs(node: ast.AST) -> bool:
+        for n in ast.walk(node):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr in log_methods):
+                base = n.func.value
+                if isinstance(base, ast.Name) and base.id in ("log", "logger"):
+                    return True
+                if (isinstance(base, ast.Attribute)
+                        and base.attr in ("log", "logger", "_log")):
+                    return True
+        return False
+
+    def _arms_debounce(fn: ast.AST) -> bool:
+        for n in ast.walk(fn):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "start"):
+                tgt = ast.unparse(n.func.value).lower()
+                if "debounce" in tgt or "_timer" in tgt:
+                    return True
+        return False
+
+    offenders: list[str] = []
+    for path in gui_files:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+            for fn in cls.body:
+                if (not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        or not fn.name.startswith("_on_")):
+                    continue
+                if _logs(fn):
+                    continue
+                if fn.name in timer_wired or fn.name.endswith("_tick"):
+                    continue   # per-tick — DEBUG/silent by design
+                if _arms_debounce(fn):
+                    continue   # live-drag — settled value logs elsewhere
+                offenders.append(
+                    f"{path.relative_to(_SRC)}:{fn.lineno} {cls.name}.{fn.name}")
+    assert not offenders, (
+        "GUI _on_* handler with no log (not tick/debounce-exempt) — a user "
+        f"interaction would be invisible in the log: {offenders}"
+    )
+
+
+def test_local_theme_browser_view_does_no_filesystem_walk() -> None:
+    """The local theme browser (``uc_theme_local``) renders ListThemes entries
+    via ``set_themes`` — it must NOT walk the disk itself.
+
+    A private disk walk in the View is exactly what diverged from the universal
+    ``ListThemes`` Command and shadowed a user-saved theme behind a same-named
+    shipped one (the green-"Theme1" collision).  This gate keeps listing +
+    deletion flowing through Commands. (#theme-collision, logging/architecture)
+    """
+    path = _SRC / "trcc" / "ui" / "gui" / "uc_theme_local.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    forbidden = {"iterdir", "glob", "rglob", "scandir", "rmtree", "walk",
+                 "listdir"}
+    offenders = [
+        f"uc_theme_local.py:{n.lineno} .{n.func.attr}()"
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and n.func.attr in forbidden
+    ]
+    assert not offenders, (
+        "theme browser View does filesystem traversal — listing must come from "
+        f"ListThemes (set_themes), deletion from DeleteTheme: {offenders}"
+    )

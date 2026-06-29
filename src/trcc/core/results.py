@@ -6,6 +6,7 @@ render.  Every Command has one concrete Result type.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from .models import (
     DeviceInfo,
@@ -205,10 +206,22 @@ class ThemeImportResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class ThemeListEntry:
-    """One row in a ThemesListResult — name + resolution + path."""
+    """One row in a ThemesListResult — name + resolution + path + preview + origin.
+
+    ``preview`` is the absolute path to the tile image (``Theme.png`` →
+    ``00.png`` → any ``*.png``, else ``""``) so every UI builds the same
+    browser tile from the Command result instead of re-walking the dir.
+
+    ``origin`` is the theme's data root — ``"user"`` (saved under
+    ``user_data_dir``) or ``"shipped"`` (pkg / cloud-downloaded).  Location-
+    derived, the canonical replacement for name-based heuristics: it drives the
+    user/default filter and any "my themes" badge, identically in every UI.
+    """
     name: str
     resolution: tuple[int, int]
     path: str
+    preview: str = ""
+    origin: Literal["user", "shipped"] = "shipped"
 
 
 @dataclass(frozen=True, slots=True)

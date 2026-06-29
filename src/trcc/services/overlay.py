@@ -18,7 +18,7 @@ from ..core.errors import ThemeError
 from ..core.models import OverlayElement
 from ..core.ports import Renderer
 from . import _dc as Dc
-from ._clock import resolve_clock
+from ._clock import is_default_date_pattern, resolve_clock
 
 log = logging.getLogger(__name__)
 
@@ -330,13 +330,18 @@ class OverlayService:
         source: str = "?",
     ) -> None:
         clock_source = str(element.get("source", ""))
-        # A date element may carry the theme's own strftime pattern (from the
-        # DC, or a grid edit) — honour it instead of the global default.
-        # ``"%" in fmt`` distinguishes a real pattern ("%m/%d") from the
-        # metric default "{value}".  Time/weekday keep the precomputed dict
-        # (localised weekday, 12h handling that isn't a bare strftime).
+        # Date format reconciliation (universal — every UI renders through here):
+        #   * A DELIBERATE non-default theme pattern (e.g. "%m/%d") is honoured —
+        #     a theme designed for a specific date layout keeps it.
+        #   * A default-equivalent pattern ("%Y/%m/%d" ≡ "yyyy/MM/dd") means the
+        #     theme didn't customise the date, so the user's global date_format
+        #     pref wins (it's already baked into the precomputed dict, per
+        #     device).  Time/weekday always use the dict (localised weekday, 12h
+        #     handling).  ``"%" in fmt`` excludes the metric default "{value}".
+        # (#format-prefs)
         elem_fmt = str(element.get("format", ""))
-        if clock_source == "date" and "%" in elem_fmt:
+        if (clock_source == "date" and "%" in elem_fmt
+                and not is_default_date_pattern(elem_fmt)):
             text = resolve_clock("date", date_format=elem_fmt)
         else:
             text = clock.get(clock_source, "")

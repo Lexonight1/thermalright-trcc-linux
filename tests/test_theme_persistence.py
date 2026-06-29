@@ -842,6 +842,84 @@ def test_save_theme_keeps_cloud_video_at_theme_ext(
     assert saved_video.read_bytes() == fake_mp4_bytes
 
 
+def test_resave_onto_self_keeps_in_dir_background(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Re-saving a saved theme onto its own name must NOT lose its background.
+
+    Reproduces the data-loss bug: the first save bundles the cloud video as
+    ``Theme.mp4``, clears the bg override, and re-points the active theme at the
+    saved dir.  The SECOND save then has source == target with no override —
+    the old code rmtree'd the target before reading it, destroying ``Theme.mp4``
+    and writing ``bg=None`` (black canvas on reload).  Staging the save keeps
+    the source intact until its assets are captured.
+    """
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_video = tmp_home / "cloud_pool" / "loop.mp4"
+    cloud_video.parent.mkdir(parents=True)
+    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(video_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    # First save bundles Theme.mp4, clears the override, and re-points the
+    # active theme at the saved dir → next save has source == target.
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="loop")).ok
+    saved = user_theme_dir / "loop"
+    assert (saved / "Theme.mp4").read_bytes() == video_bytes
+    assert app.settings.for_device(_TEST_DEVICE_KEY).background_path is None
+    assert app.active_themes[_TEST_DEVICE_KEY].path == saved
+
+    # Re-save onto the same name (overwrite) — the background must survive.
+    assert app.dispatch(
+        SaveTheme(key=_TEST_DEVICE_KEY, name="loop", overwrite=True)
+    ).ok
+    assert (saved / "Theme.mp4").read_bytes() == video_bytes
+    assert app.themes.background_path(app.themes.load(saved)) is not None
+
+
+def test_save_theme_references_catalog_background_without_copying(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A background already in the cloud/user data catalog is REFERENCED by
+    ``web/{w}{h}/<name>`` — never copied into the theme dir.
+
+    The data-ownership model: cloud downloads + user-library assets are
+    shared, so the saved theme just points at the existing file (the
+    "symlink in config").  A re-save re-emits the same ref, so the
+    background survives overwrite without any copy.
+    """
+    import json as _json
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    # A cloud-downloaded video lives under cloud_theme_dir (data_dir/web/{w}{h}).
+    cloud_dir = app.platform.paths().cloud_theme_dir(*_TEST_RES)
+    cloud_dir.mkdir(parents=True, exist_ok=True)
+    cloud_video = cloud_dir / "a023.mp4"
+    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(video_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    ref = f"web/{_TEST_RES[0]}{_TEST_RES[1]}/a023.mp4"
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="catref")).ok
+    saved = user_theme_dir / "catref"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["background"] == ref          # referenced…
+    assert not (saved / "Theme.mp4").exists()      # …not copied
+    assert app.themes.background_path(app.themes.load(saved)) == cloud_video
+
+    # Re-save onto the same name → ref persists, still no copy, no loss.
+    assert app.dispatch(
+        SaveTheme(key=_TEST_DEVICE_KEY, name="catref", overwrite=True)
+    ).ok
+    manifest2 = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest2["background"] == ref
+    assert not (saved / "Theme.mp4").exists()
+
+
 def test_save_theme_copies_non_catalog_mask_override_theme_local(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
@@ -1329,3 +1407,88 @@ def test_editing_metrics_does_not_touch_cloud_mask_dc(
 
     assert (cloud_dir / "config1.dc").read_bytes() == b"\xddORIGINAL", \
         "a cloud mask's DC must never be rewritten by a metric edit"
+
+
+def test_list_themes_user_theme_shadows_shipped_same_name(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """A user-saved theme WINS over a shipped theme of the same name (the green
+    "Theme1" placeholder collision): ListThemes returns ONE entry — the user's,
+    ``origin="user"``, with a resolved preview — and leaves the shipped one on
+    disk, just shadowed.  Universal: CLI / API / GUI all dispatch this. (#theme-collision)
+    """
+    from trcc.core.commands import ListThemes
+
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
+    user = _write_theme_with_real_pngs(user_theme_dir, "Theme1")
+
+    result = app.dispatch(ListThemes(resolution=_TEST_RES))
+    assert result.ok
+    matches = [e for e in result.themes if e.name == "Theme1"]
+    assert len(matches) == 1                        # deduped by name
+    entry = matches[0]
+    assert entry.origin == "user"
+    assert Path(entry.path) == user                 # the user dir, not the placeholder
+    assert entry.preview                            # tile image resolved
+    assert shipped.exists()                         # shipped untouched, just shadowed
+
+
+def test_list_themes_classifies_origin_by_location(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """Origin is location-derived (under user_data_dir → "user"), not name-based —
+    a user theme NOT named User*/Custom* is still origin="user"."""
+    from trcc.core.commands import ListThemes
+
+    paths = app.platform.paths()
+    _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")   # shipped
+    _write_theme_with_real_pngs(user_theme_dir, "MyMix")                 # user
+
+    by_name = {e.name: e for e in app.dispatch(ListThemes(resolution=_TEST_RES)).themes}
+    assert by_name["Aurora"].origin == "shipped"
+    assert by_name["MyMix"].origin == "user"
+
+
+def test_restore_prefers_user_theme_over_shadowed_shipped(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """A persisted ``current_theme`` at a SHIPPED theme that a same-named USER
+    theme now shadows self-heals on restore: RestoreLastTheme re-resolves to the
+    user theme (user-wins, consistent with ListThemes — the green-Theme1
+    collision). (#theme-collision)
+    """
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
+    user = _write_theme_with_real_pngs(user_theme_dir, "Theme1")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == user.resolve()       # the user theme, not the shipped placeholder
+
+
+def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
+    """No same-named user theme → RestoreLastTheme loads the stored shipped
+    theme unchanged (no regression)."""
+    paths = app.platform.paths()
+    shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == shipped.resolve()
+
+
+def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> None:
+    """current_theme already at a user theme → unchanged (prefer-user is a no-op
+    for non-shipped paths)."""
+    user = _write_theme_with_real_pngs(user_theme_dir, "MyMix")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(user)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(user.resolve()))
+
+    assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
+    restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
+    assert restored.resolve() == user.resolve()

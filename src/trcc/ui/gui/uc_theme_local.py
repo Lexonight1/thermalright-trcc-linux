@@ -13,14 +13,13 @@ Features:
 from __future__ import annotations
 
 import logging
-import shutil
-from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
 from ...core.models import LocalThemeItem
+from ...core.results import ThemeListEntry
 from ..presentation.slideshow_model import SlideshowModel
 from .assets import Assets
 from .base import BaseThemeBrowser, BaseThumbnail
@@ -143,7 +142,6 @@ class UCThemeLocal(BaseThemeBrowser):
 
     def __init__(self, parent=None):
         self.filter_mode = self.MODE_ALL
-        self.theme_directory = None
         # Slideshow interaction state lives in a toolkit-free model; this
         # panel renders it (badges, button icon) and exposes a public API
         # so the handler never reaches into private attrs.
@@ -218,23 +216,6 @@ class UCThemeLocal(BaseThemeBrowser):
     def _no_items_message(self) -> str:
         return "No themes found"
 
-    def set_theme_directory(self, path, *extra_paths):
-        """Bind the panel to one or more on-disk theme roots.
-
-        Accepts a single path (legacy callers) or a primary + extra
-        paths so the same widget shows themes from
-        ``paths.theme_dir(w, h)`` (pkg / GitHub-downloaded) AND
-        ``paths.user_theme_dir(w, h)`` (legacy user-saved) without
-        the caller pre-merging.
-        """
-        self.theme_directory = Path(path) if path else None
-        self._extra_theme_directories = [Path(p) for p in extra_paths if p]
-        log.info(
-            "UCThemeLocal.set_theme_directory: primary=%s extras=%s",
-            self.theme_directory, self._extra_theme_directories,
-        )
-        self.load_themes()
-
     def _on_filter_clicked(self, *_qt_args):
         """Filter-button slot — reads filter mode from sender's property."""
         sender = self.sender()
@@ -252,71 +233,42 @@ class UCThemeLocal(BaseThemeBrowser):
         self.filter_mode = mode
         for i, btn in enumerate(self._filter_buttons):
             btn.setChecked(i == mode)
-        self.load_themes()
+        self._render_filtered()   # re-filter the cache; no disk re-walk
         self.invoke_delegate(self.CMD_FILTER_CHANGED, mode)
 
-    def load_themes(self):
-        self._clear_grid()
+    def set_themes(self, entries: list[ThemeListEntry]) -> None:
+        """Render the browser from ListThemes entries — the universal Command
+        result — instead of walking the disk in the View.
 
-        # Walk each bound theme root.  Primary (theme_dir = pkg / GitHub-
-        # downloaded) + any extras (user_theme_dir = legacy user-saved).
-        # Both layouts use Theme.png or 00.png as the preview marker.
-        roots: list[Path] = []
-        if self.theme_directory and self.theme_directory.exists():
-            roots.append(self.theme_directory)
-        roots.extend(
-            p for p in getattr(self, "_extra_theme_directories", ())
-            if p and p.exists()
-        )
-        log.info("uc_theme_local.load_themes: scanning %s",
-                 [str(p) for p in roots] or "<empty — nothing bound>")
-        if not roots:
+        ``origin`` ("user"/"shipped") drives the user/default filter (the
+        canonical, location-derived classification); ``preview`` is the tile
+        image.  Same data feeds CLI/API/qtgui. (#theme-collision)
+        """
+        log.info("UCThemeLocal.set_themes: %d entr%s",
+                 len(entries), "y" if len(entries) == 1 else "ies")
+        self._all_themes = [
+            LocalThemeItem(
+                name=e.name, path=e.path, thumbnail=e.preview,
+                is_local=True, is_user=(e.origin == "user"),
+            )
+            for e in entries
+        ]
+        self._render_filtered()
+
+    def _render_filtered(self) -> None:
+        """Clear + repopulate the grid from the cached ``self._all_themes`` for
+        the current filter mode.  No disk access — re-runnable on a filter click
+        (the filter buttons no longer re-walk the disk)."""
+        self._clear_grid()
+        if not self._all_themes:
             self._show_empty_message()
             return
-
-        all_items: list[LocalThemeItem] = []
-        seen: set[Path] = set()
-        for root in roots:
-            for theme_dir in sorted(root.iterdir()):
-                if not theme_dir.is_dir() or theme_dir in seen:
-                    continue
-                # Accept any dir that carries a DC config OR a JSON
-                # theme config OR a preview asset.  Per the user:
-                # anything with a DC file in /data should get used.
-                has_dc = (
-                    (theme_dir / 'config1.dc').exists()
-                    or (theme_dir / 'config.json').exists()
-                    or (theme_dir / 'trcc.json').exists()
-                    or (theme_dir / 'trcc.json').exists()
-                )
-                thumb = theme_dir / 'Theme.png'
-                bg = theme_dir / '00.png'
-                preview = (
-                    thumb if thumb.exists() else (bg if bg.exists() else None)
-                )
-                if preview is None:
-                    # Fall back to ANY .png in the dir; if there isn't
-                    # one and there's no DC marker either, skip.
-                    preview = next(theme_dir.glob('*.png'), None)
-                if preview is None and not has_dc:
-                    continue
-                seen.add(theme_dir)
-                all_items.append(LocalThemeItem(
-                    name=theme_dir.name,
-                    path=str(theme_dir),
-                    thumbnail=str(preview) if preview is not None else "",
-                    is_user=theme_dir.name.startswith(('User', 'Custom')),
-                ))
-        log.info("uc_theme_local.load_themes: %d theme(s) found", len(all_items))
-        self._all_themes = all_items
-
-        # Filter for display
         if self.filter_mode == self.MODE_DEFAULT:
-            theme_dirs = [t for t in all_items if not t.is_user]
+            theme_dirs = [t for t in self._all_themes if not t.is_user]
         elif self.filter_mode == self.MODE_USER:
-            theme_dirs = [t for t in all_items if t.is_user]
+            theme_dirs = [t for t in self._all_themes if t.is_user]
         else:
-            theme_dirs = list(all_items)
+            theme_dirs = list(self._all_themes)
 
         # Tag each with its global index in the unfiltered list
         for t in theme_dirs:
@@ -447,20 +399,12 @@ class UCThemeLocal(BaseThemeBrowser):
     def get_selected_theme(self):
         return self.selected_item
 
-    def delete_theme(self, theme_info: LocalThemeItem):
-        """Delete a theme directory and refresh the list."""
-        path = Path(theme_info.path)
-        log.info("UCThemeLocal.delete_theme: name=%r path=%s",
-                 theme_info.name, path)
-        if path.exists() and path.is_dir():
-            shutil.rmtree(path)
-        else:
-            log.warning(
-                "UCThemeLocal.delete_theme: path %s missing or not a dir",
-                path,
-            )
+    def forget_slideshow_theme(self, name: str) -> None:
+        """Drop a deleted theme from the slideshow array.
 
-        # Remove from slideshow if present
-        self._slideshow_model.remove_theme(theme_info.name)
-
-        self.load_themes()
+        No filesystem, no re-list: the file removal is the ``DeleteTheme``
+        Command's job and the re-list is the handler's (``ListThemes``) — the
+        View only forgets the name from its slideshow model. (#theme-collision)
+        """
+        log.info("UCThemeLocal.forget_slideshow_theme: %r", name)
+        self._slideshow_model.remove_theme(name)

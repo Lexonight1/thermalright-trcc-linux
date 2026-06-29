@@ -73,6 +73,8 @@ class SetLedColors(Command[LedColorsResult]):
                 message=f"{self.key} is not an LED device",
             )
         if not device.is_connected:
+            log.warning("SetLedColors %s: device not connected — "
+                        "dispatched before ConnectDevice", self.key)
             raise DeviceNotConnectedError(
                 f"{self.key} not connected — dispatch ConnectDevice first"
             )
@@ -184,6 +186,10 @@ class RenderLed(Command[LedColorsResult]):
                 message=f"{self.key} is not an LED device",
             )
         if not device.is_connected:
+            # Per-frame command (DEBUG) — not-connected here is a transient
+            # race with disconnect, not a user mis-step; keep it off INFO.
+            log.debug("RenderLed %s: device not connected — skipping frame",
+                      self.key)
             raise DeviceNotConnectedError(
                 f"{self.key} not connected — dispatch ConnectDevice first"
             )

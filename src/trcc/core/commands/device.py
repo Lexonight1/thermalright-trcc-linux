@@ -980,6 +980,8 @@ class UploadBootAnimation(Command[BootAnimationResult]):
                 message=f"{self.key} is not a SCSI LCD (boot animation is SCSI-only)",
             )
         if not device.is_connected:
+            log.warning("UploadBootAnimation %s: device not connected — "
+                        "dispatched before ConnectDevice", self.key)
             raise DeviceNotConnectedError(
                 f"{self.key} not connected — dispatch ConnectDevice first"
             )
@@ -1088,7 +1090,7 @@ class SetBrightness(Command[BrightnessResult]):
         if not 0 <= self.percent <= 100:
             return BrightnessResult(
                 ok=False, key=self.key, percent=self.percent,
-                message="Brightness out of range (0–100)",
+                message=f"Brightness out of range (0–100): {self.percent}",
             )
         app.settings.set_brightness(self.key, self.percent)
         _invalidate_scene(app, self.key)
