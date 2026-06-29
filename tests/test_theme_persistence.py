@@ -1409,13 +1409,13 @@ def test_editing_metrics_does_not_touch_cloud_mask_dc(
         "a cloud mask's DC must never be rewritten by a metric edit"
 
 
-def test_list_themes_user_theme_shadows_shipped_same_name(
+def test_list_themes_user_and_shipped_same_name_coexist(
     app: App, user_theme_dir: Path,
 ) -> None:
-    """A user-saved theme WINS over a shipped theme of the same name (the green
-    "Theme1" placeholder collision): ListThemes returns ONE entry — the user's,
-    ``origin="user"``, with a resolved preview — and leaves the shipped one on
-    disk, just shadowed.  Universal: CLI / API / GUI all dispatch this. (#theme-collision)
+    """A user-saved theme and a shipped theme of the same name COEXIST — the
+    user save never hides or overwrites the shipped one.  Both are listed,
+    distinguished by ``origin``, user first (so the user's surfaces ahead of the
+    shipped placeholder). (#theme-collision)
     """
     from trcc.core.commands import ListThemes
 
@@ -1426,12 +1426,12 @@ def test_list_themes_user_theme_shadows_shipped_same_name(
     result = app.dispatch(ListThemes(resolution=_TEST_RES))
     assert result.ok
     matches = [e for e in result.themes if e.name == "Theme1"]
-    assert len(matches) == 1                        # deduped by name
-    entry = matches[0]
-    assert entry.origin == "user"
-    assert Path(entry.path) == user                 # the user dir, not the placeholder
-    assert entry.preview                            # tile image resolved
-    assert shipped.exists()                         # shipped untouched, just shadowed
+    assert len(matches) == 2                         # BOTH coexist (no name dedupe)
+    by_origin = {e.origin: e for e in matches}
+    assert Path(by_origin["user"].path) == user      # the user's
+    assert Path(by_origin["shipped"].path) == shipped  # the shipped, NOT hidden
+    assert matches[0].origin == "user"               # user listed first
+    assert by_origin["user"].preview                 # tile image resolved
 
 
 def test_list_themes_classifies_origin_by_location(
@@ -1450,23 +1450,22 @@ def test_list_themes_classifies_origin_by_location(
     assert by_name["MyMix"].origin == "user"
 
 
-def test_restore_prefers_user_theme_over_shadowed_shipped(
+def test_restore_loads_exact_stored_path_no_user_override(
     app: App, user_theme_dir: Path,
 ) -> None:
-    """A persisted ``current_theme`` at a SHIPPED theme that a same-named USER
-    theme now shadows self-heals on restore: RestoreLastTheme re-resolves to the
-    user theme (user-wins, consistent with ListThemes — the green-Theme1
-    collision). (#theme-collision)
+    """Restore loads EXACTLY the persisted path.  A same-named USER theme does
+    NOT override a stored SHIPPED pointer — a user save never overwrites the
+    shipped theme; restore honours whatever the user last selected. (#theme-collision)
     """
     paths = app.platform.paths()
     shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
-    user = _write_theme_with_real_pngs(user_theme_dir, "Theme1")
+    _write_theme_with_real_pngs(user_theme_dir, "Theme1")   # same-name user theme also exists
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
     assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
     restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
-    assert restored.resolve() == user.resolve()       # the user theme, not the shipped placeholder
+    assert restored.resolve() == shipped.resolve()    # shipped stays, NOT overridden by the user theme
 
 
 def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
