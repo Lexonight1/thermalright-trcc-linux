@@ -673,12 +673,12 @@ class SaveTheme(Command[ThemeResult]):
         the user's edited metrics live inline in the saved manifest's
         ``elements``, so no DC is written here.
 
-        A theme's OWN bundled mask (not in any catalog) is copied
-        theme-local into the saved dir as ``01.png`` — self-contained, yet
-        still never in the catalog.  Returns the ref for a catalog mask, or
-        ``None`` for a theme-local one (``mask_path`` then falls back to the
-        in-dir ``01.png``) and for no-mask.  ``DeviceSettings.mask_path``
-        (user/cloud override) wins over the source theme's mask.
+        A theme's OWN bundled mask (not in any catalog) is STORED into the
+        user mask library and referenced too — so the saved theme never copies
+        an asset into its own dir; it is a pure pointer.  Returns the
+        ``web/zt{w}{h}/<id>`` ref in every case (catalog or theme-local), or
+        ``None`` for no-mask.  ``DeviceSettings.mask_path`` (user/cloud
+        override) wins over the source theme's mask.
         """
         src = self._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
@@ -698,18 +698,22 @@ class SaveTheme(Command[ThemeResult]):
                          "%s (no copy)", src.parent.name, ref)
                 return ref
 
-        # Theme's own bundled mask → copy theme-local so the saved theme is
-        # self-contained, without adding to the user mask catalog.
-        import shutil
-        dst = target / _LEGACY_MASK_FILENAME
+        # Theme's own bundled mask (not in a catalog) → store it in the user
+        # mask library and REFERENCE it (web/zt{w}{h}/<id>), instead of copying
+        # 01.png into the theme dir.  Keeps the saved theme a pure pointer with
+        # no copied asset (deduped by content); the user's metric layout stays
+        # inline in the manifest's elements, so no separate mask DC is written
+        # here. (#refs-not-copies)
         try:
-            shutil.copy2(src, dst)
+            image = src.read_bytes()
         except OSError as e:
-            log.warning("SaveTheme: theme-local mask copy failed (%s) — mask "
-                        "omitted", e)
+            log.warning("SaveTheme: could not read theme-local mask %s (%s) — "
+                        "mask omitted", src, e)
             return None
-        log.info("SaveTheme: bundled mask %s → theme-local %s", src.name, dst)
-        return None
+        ref = app.themes.store_mask(image, width, height)
+        log.info("SaveTheme: bundled mask %s → library ref %s (no copy)",
+                 src.name, ref)
+        return ref
 
     @staticmethod
     def _write_manifest(target: Path, manifest: dict) -> None:

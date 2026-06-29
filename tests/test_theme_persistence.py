@@ -125,8 +125,8 @@ def test_export_dereferences_reference_theme_to_self_contained(
     matching library can import + load it (the Phase-E proof)."""
     import json as _json
 
-    # Save a reference theme — its bg lands in the user library; its OWN
-    # bundled mask is copied theme-local (not cataloged).
+    # Save a reference theme — both its bg AND its mask land in the user
+    # library and are referenced; nothing is copied into the saved dir.
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ref")).ok
@@ -135,9 +135,9 @@ def test_export_dereferences_reference_theme_to_self_contained(
         (saved / "trcc.json").read_text(encoding="utf-8"),
     )
     assert "background" in saved_manifest        # bg is a library ref
-    assert "mask" not in saved_manifest          # bundled mask → theme-local
-    assert not (saved / "00.png").exists()        # bg dereferenced on export
-    assert (saved / "01.png").exists()            # mask already in the saved dir
+    assert "mask" in saved_manifest              # mask is a library ref too (no copy)
+    assert not (saved / "00.png").exists()        # nothing copied into the saved dir
+    assert not (saved / "01.png").exists()
 
     # Export → archive must be self-contained, with refs stripped.
     archive = tmp_home / "ref.tr"
@@ -523,17 +523,15 @@ def test_save_theme_repoints_active_theme_to_saved_dir(
     # The live object the renderer reads is the SAVED theme, not the source.
     assert active.path == saved
     assert active.path != source
-    # The source's mask is the theme's OWN bundled 01.png (not a catalog
-    # mask), so SaveTheme copies it theme-local — self-contained, and NOT
-    # duplicated into the user mask catalog (the masks browser).
-    assert (saved / "01.png").exists()
+    # The source's own bundled mask is STORED in the user mask library and
+    # referenced — no copy in the saved dir (the theme is a pure pointer); the
+    # mask resolves into the library (deduped by content).
+    assert not (saved / "01.png").exists()
     w, h = _TEST_RES
     umd = app.platform.paths().user_mask_dir(w, h)
-    assert not umd.exists() or not list(umd.iterdir()), \
-        "a theme-bundled mask must not be added to the user mask catalog"
     mask = app.themes.mask_path(active)
     assert mask is not None
-    assert mask == saved / "01.png"
+    assert mask.resolve().is_relative_to(umd.resolve())
     assert mask != source / "01.png"
 
 
@@ -920,12 +918,13 @@ def test_save_theme_references_catalog_background_without_copying(
     assert not (saved / "Theme.mp4").exists()
 
 
-def test_save_theme_copies_non_catalog_mask_override_theme_local(
+def test_save_theme_references_non_catalog_mask_override(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """A mask override NOT in a catalog (an arbitrary file the user picked)
-    is copied theme-local on save — self-contained, never added to the user
-    mask catalog (only uploads go there), never the source theme's mask."""
+    """A mask override NOT in a catalog (an arbitrary file the user picked) is
+    STORED in the user mask library and referenced on save — no copy in the
+    theme dir; the saved theme is a pure pointer that resolves to the override
+    content. (#refs-not-copies)"""
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
@@ -940,13 +939,13 @@ def test_save_theme_copies_non_catalog_mask_override_theme_local(
 
     saved = user_theme_dir / "with-override"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    # Theme-local copy → no library ref; mask sits in the saved dir.
-    assert "mask" not in manifest
-    assert (saved / "01.png").exists()
-    # NOT added to the user mask catalog (the masks browser source).
+    ref_prefix = f"web/zt{_TEST_RES[0]}{_TEST_RES[1]}/"
+    assert manifest["mask"].startswith(ref_prefix)   # referenced, not copied
+    assert not (saved / "01.png").exists()
+    # Stored in the user mask library (deduped, reusable).
     umd = app.platform.paths().user_mask_dir(*_TEST_RES)
-    assert not umd.exists() or not list(umd.iterdir())
-    # Resolves to the override, never the source theme's mask.
+    assert umd.exists() and list(umd.iterdir())
+    # Resolves to the override content, never the source theme's mask.
     resolved = app.themes.mask_path(app.themes.load(saved))
     assert resolved is not None
     assert resolved.read_bytes() == override.read_bytes()
@@ -1099,16 +1098,15 @@ def test_save_then_reload_resolves_library_assets_not_source(
     assert bg.parent == paths.user_background_dir(*_TEST_RES).resolve()
     assert bg.read_bytes() != (source / "00.png").read_bytes()
 
-    # The mask override is non-catalog → copied theme-local.  A theme's OWN
-    # mask renders via the theme (mask_path), not as a settings override, so
-    # after reload it resolves to the saved dir's 01.png — never the
-    # source's — and was never duplicated into the user mask catalog.
+    # The mask override is stored in the user mask library and referenced — on
+    # reload it resolves INTO the library (deduped), not a copy in the saved
+    # dir, and never the source's mask.
     mask = app.themes.mask_path(active)
     assert mask is not None
-    assert mask == saved / "01.png"
-    assert mask.read_bytes() != (source / "01.png").read_bytes()
+    assert not (saved / "01.png").exists()
     umd = paths.user_mask_dir(*_TEST_RES)
-    assert not umd.exists() or not list(umd.iterdir())
+    assert mask.resolve().is_relative_to(umd.resolve())
+    assert mask.read_bytes() != (source / "01.png").read_bytes()
 
 
 # ─────────────────────────────────────────────────────────────────────
