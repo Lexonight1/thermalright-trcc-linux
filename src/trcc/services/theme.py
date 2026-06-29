@@ -445,8 +445,10 @@ class ThemeService:
     ) -> builtins.list[DiscoveredMask]:
         """Walk user + cloud mask dirs and return their mask metadata.
 
-        Order: user masks first (custom content), then cloud-cached
-        masks.  Dedupe by name (first seen wins).  Each mask must have
+        Order: cloud (shipped) masks first, then user masks — consistent with
+        themes; user data is never hidden by shipped, nor shipped by user.
+        Dedupe by PATH (a dir can't list twice; a same-id user + cloud pair
+        both belong).  Each mask must have
         ``Theme.png`` (preview thumbnail) OR ``01.png`` (canonical mask
         overlay) — matches legacy's acceptance.  Port of legacy
         ``ThemeService.discover_masks`` so the GUI inlining at
@@ -455,17 +457,20 @@ class ThemeService:
         log.info("discover_masks: cloud=%s user=%s",
                  cloud_masks_dir, user_masks_dir)
         masks: builtins.list[DiscoveredMask] = []
-        seen: set[str] = set()
+        seen: set[Path] = set()
 
         def _scan(directory: Path | None, is_custom: bool) -> None:
             if directory is None or not directory.exists():
                 return
             for item in sorted(directory.iterdir()):
-                if not item.is_dir() or item.name in seen:
+                if not item.is_dir():
+                    continue
+                resolved = item.resolve()
+                if resolved in seen:
                     continue
                 td = ThemeDir(item)
                 if td.preview.exists() or td.mask.exists():
-                    seen.add(item.name)
+                    seen.add(resolved)
                     masks.append(DiscoveredMask(
                         name=item.name,
                         path=item,
@@ -475,8 +480,10 @@ class ThemeService:
                         is_custom=is_custom,
                     ))
 
-        _scan(user_masks_dir, is_custom=True)
+        # Cloud (shipped) masks first, user masks after — consistent with
+        # themes; neither hides the other.
         _scan(cloud_masks_dir, is_custom=False)
+        _scan(user_masks_dir, is_custom=True)
         return masks
 
     def export(self, theme_path: Path, archive_path: Path) -> None:
