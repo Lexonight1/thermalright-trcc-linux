@@ -574,21 +574,25 @@ def test_gui_on_handlers_log_or_are_exempt() -> None:
 
 
 def test_local_theme_browser_view_does_no_filesystem_walk() -> None:
-    """The local theme browser (``uc_theme_local``) renders ListThemes entries
-    via ``set_themes`` — it must NOT walk the disk itself.
+    """The local theme browser Views (legacy ``uc_theme_local`` AND the qtgui
+    ``local_theme_browser``) render ListThemes entries — they must NOT walk the
+    disk themselves.
 
     A private disk walk in the View is exactly what diverged from the universal
     ``ListThemes`` Command and shadowed a user-saved theme behind a same-named
     shipped one (the green-"Theme1" collision).  This gate keeps listing +
-    deletion flowing through Commands. (#theme-collision, logging/architecture)
+    deletion flowing through Commands in BOTH UIs. (#theme-collision)
     """
-    path = _SRC / "trcc" / "ui" / "gui" / "uc_theme_local.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    browsers = (
+        _SRC / "trcc" / "ui" / "gui" / "uc_theme_local.py",
+        _SRC / "trcc" / "ui" / "qtgui" / "panels" / "local_theme_browser.py",
+    )
     forbidden = {"iterdir", "glob", "rglob", "scandir", "rmtree", "walk",
                  "listdir"}
     offenders = [
-        f"uc_theme_local.py:{n.lineno} .{n.func.attr}()"
-        for n in ast.walk(tree)
+        f"{path.name}:{n.lineno} .{n.func.attr}()"
+        for path in browsers
+        for n in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
         and n.func.attr in forbidden
     ]

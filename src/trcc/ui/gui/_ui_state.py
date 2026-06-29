@@ -136,27 +136,13 @@ class UiStateStore:
             "distro": self._state.install_distro,
         }
 
-    def apply_format_prefs(self, overlay_config: dict) -> None:
-        """Override per-element format with the saved global default.
-
-        Legacy ``Settings.apply_format_prefs`` behaviour: when a theme
-        loads, each TIME / DATE / temp-unit element gets its ``mode_sub``
-        overwritten with the user's saved global default.
-        """
-        for cfg in overlay_config.values():
-            if not isinstance(cfg, dict):
-                continue
-            metric = cfg.get("metric", "")
-            if metric == "time":
-                cfg["time_format"] = self._state.time_format
-            elif metric == "date":
-                cfg["date_format"] = self._state.date_format
-            elif metric and metric not in {"weekday"}:
-                # Hardware metric — temp unit goes in mode_sub via the
-                # overlay grid's own mapping; only override if a temp
-                # field is already present.
-                if "temp_unit" in cfg:
-                    cfg["temp_unit"] = self._state.temp_unit
+    # NOTE: the legacy ``apply_format_prefs`` (rewrite each element's date/time/
+    # temp format to the global default on theme load) was removed — format
+    # prefs are now resolved at RENDER, universally for every UI: time/date use
+    # the per-device precomputed clock dict and temp_unit converts in
+    # OverlayService, with a theme's deliberate non-default date pattern honoured
+    # (see services/overlay._draw_clock + _clock.is_default_date_pattern).  A GUI
+    # grid rewrite would only duplicate that core rule.
 
     @property
     def state(self) -> UiState:
