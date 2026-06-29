@@ -213,6 +213,25 @@ def test_rotation_reloads_theme_to_portrait_variant(
     assert themes[0].path == port           # theme_dir(480, 1280)/Theme1
 
 
+def test_rotation_theme_reload_preserves_user_overrides(
+    app: App, spy: list[Any],
+) -> None:
+    """Rotation re-roots the SAME theme to its oriented variant — it must
+    PRESERVE the user's overlay/background/mask edits (reset_overrides=False),
+    not drop them. The original C# rotates at the render layer and never resets
+    on rotate; the old default=True persist-cleared them, so a connect/restart
+    lost the user's last preview before RestoreLastTheme could replay it."""
+    land = _seed(_data(app) / "theme1280480" / _NAME, "00.png")
+    _seed(_data(app) / "theme4801280" / _NAME, "00.png")
+    app.settings.set_current_theme(_KEY, str(land.resolve()))
+
+    app.events.publish(OrientationChanged(key=_KEY, degrees=270))
+
+    themes = [c for c in spy if isinstance(c, LoadTheme)]
+    assert len(themes) == 1
+    assert themes[0].reset_overrides is False
+
+
 def test_theme_already_in_rotated_dir_no_reload(
     app: App, spy: list[Any],
 ) -> None:

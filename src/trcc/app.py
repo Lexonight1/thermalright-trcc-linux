@@ -320,13 +320,26 @@ class App:
         # Active theme → reload from the rotated-resolution theme dir.  Shared
         # resolver with RestoreLastTheme so connect-restore + runtime rotation
         # agree on the oriented variant (#136).
+        #
+        # reset_overrides=False: a rotation re-roots the SAME theme to its
+        # oriented variant — it is NOT an explicit theme switch.  The original
+        # C# app rotates at the render layer and NEVER drops the user's overlay/
+        # background/mask edits on rotate; legacy's startup restore likewise
+        # re-applied them.  Resetting here (the old default=True) PERSIST-CLEARED
+        # user_overlay_elements + stopped video + reverted the cloud background —
+        # so on a connect/restart the user's "last preview with changes" was lost
+        # before RestoreLastTheme could replay it.  Preserve them; the dedicated
+        # cloud-background + mask reload blocks below still re-resolve those two
+        # to the oriented resolution.  (Catalog selection + encode are untouched,
+        # so the hardware-verified widescreen behavior in #169 is unaffected.)
         if s.current_theme:
             cur = Path(s.current_theme)
             cand = oriented_theme_path(self, key, cur, degrees=event.degrees)
             if cand != cur:
-                log.info("_on_orientation_changed: reload theme %s → %s",
-                         cur.name, cand)
-                self.dispatch(LoadTheme(key=key, path=cand))
+                log.info("_on_orientation_changed: reload theme %s → %s "
+                         "(preserve overrides)", cur.name, cand)
+                self.dispatch(LoadTheme(key=key, path=cand,
+                                        reset_overrides=False))
 
         # Active cloud background → re-apply from the rotated-resolution web dir.
         # Stored as ``web/{res}/<id>``; ``LoadCloudTheme`` now materialises per
