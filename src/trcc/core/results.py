@@ -205,10 +205,16 @@ class ThemeImportResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class ThemeListEntry:
-    """One row in a ThemesListResult — name + resolution + path."""
+    """One row in a ThemesListResult — name + resolution + path + preview.
+
+    ``preview`` is the absolute path to the tile image (``Theme.png`` →
+    ``00.png`` → any ``*.png``, else ``""``) so every UI builds the same
+    browser tile from the Command result instead of re-walking the dir.
+    """
     name: str
     resolution: tuple[int, int]
     path: str
+    preview: str = ""
 
 
 @dataclass(frozen=True, slots=True)

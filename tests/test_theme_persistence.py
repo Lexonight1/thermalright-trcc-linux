@@ -842,6 +842,84 @@ def test_save_theme_keeps_cloud_video_at_theme_ext(
     assert saved_video.read_bytes() == fake_mp4_bytes
 
 
+def test_resave_onto_self_keeps_in_dir_background(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Re-saving a saved theme onto its own name must NOT lose its background.
+
+    Reproduces the data-loss bug: the first save bundles the cloud video as
+    ``Theme.mp4``, clears the bg override, and re-points the active theme at the
+    saved dir.  The SECOND save then has source == target with no override —
+    the old code rmtree'd the target before reading it, destroying ``Theme.mp4``
+    and writing ``bg=None`` (black canvas on reload).  Staging the save keeps
+    the source intact until its assets are captured.
+    """
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    cloud_video = tmp_home / "cloud_pool" / "loop.mp4"
+    cloud_video.parent.mkdir(parents=True)
+    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(video_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    # First save bundles Theme.mp4, clears the override, and re-points the
+    # active theme at the saved dir → next save has source == target.
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="loop")).ok
+    saved = user_theme_dir / "loop"
+    assert (saved / "Theme.mp4").read_bytes() == video_bytes
+    assert app.settings.for_device(_TEST_DEVICE_KEY).background_path is None
+    assert app.active_themes[_TEST_DEVICE_KEY].path == saved
+
+    # Re-save onto the same name (overwrite) — the background must survive.
+    assert app.dispatch(
+        SaveTheme(key=_TEST_DEVICE_KEY, name="loop", overwrite=True)
+    ).ok
+    assert (saved / "Theme.mp4").read_bytes() == video_bytes
+    assert app.themes.background_path(app.themes.load(saved)) is not None
+
+
+def test_save_theme_references_catalog_background_without_copying(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A background already in the cloud/user data catalog is REFERENCED by
+    ``web/{w}{h}/<name>`` — never copied into the theme dir.
+
+    The data-ownership model: cloud downloads + user-library assets are
+    shared, so the saved theme just points at the existing file (the
+    "symlink in config").  A re-save re-emits the same ref, so the
+    background survives overwrite without any copy.
+    """
+    import json as _json
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+
+    # A cloud-downloaded video lives under cloud_theme_dir (data_dir/web/{w}{h}).
+    cloud_dir = app.platform.paths().cloud_theme_dir(*_TEST_RES)
+    cloud_dir.mkdir(parents=True, exist_ok=True)
+    cloud_video = cloud_dir / "a023.mp4"
+    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
+    cloud_video.write_bytes(video_bytes)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    ref = f"web/{_TEST_RES[0]}{_TEST_RES[1]}/a023.mp4"
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="catref")).ok
+    saved = user_theme_dir / "catref"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["background"] == ref          # referenced…
+    assert not (saved / "Theme.mp4").exists()      # …not copied
+    assert app.themes.background_path(app.themes.load(saved)) == cloud_video
+
+    # Re-save onto the same name → ref persists, still no copy, no loss.
+    assert app.dispatch(
+        SaveTheme(key=_TEST_DEVICE_KEY, name="catref", overwrite=True)
+    ).ok
+    manifest2 = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest2["background"] == ref
+    assert not (saved / "Theme.mp4").exists()
+
+
 def test_save_theme_copies_non_catalog_mask_override_theme_local(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
