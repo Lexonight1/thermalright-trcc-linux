@@ -103,6 +103,29 @@ def test_oriented_theme_path_falls_back_when_variant_absent(app: App) -> None:
     assert oriented_theme_path(app, _KEY, land, degrees=270) == land
 
 
+def test_oriented_theme_path_preserves_user_tree_over_shipped(app: App) -> None:
+    """A user-saved theme + a shipped theme share a name (they coexist).
+    Re-rooting must keep the USER's tree, not swap to the shipped same-name
+    theme — else restart/restore loses the user's last preview (the reported
+    bug: shipped-first resolver clobbered the user selection)."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    paths = app.platform.paths()
+    _seed(paths.theme_dir(1280, 480) / _NAME, "00.png")                   # shipped
+    user = _seed(paths.user_theme_dir(1280, 480) / _NAME, "00.png")       # user-saved
+    assert oriented_theme_path(app, _KEY, user, degrees=0) == user
+
+
+def test_oriented_theme_path_preserves_user_tree_when_rotated(app: App) -> None:
+    """Rotating a user-saved theme picks the USER portrait variant, even when a
+    shipped portrait theme of the same name also exists."""
+    from trcc.core.commands._helpers import oriented_theme_path
+    paths = app.platform.paths()
+    land_user = _seed(paths.user_theme_dir(1280, 480) / _NAME, "00.png")
+    port_user = _seed(paths.user_theme_dir(480, 1280) / _NAME, "00.png")
+    _seed(paths.theme_dir(480, 1280) / _NAME, "00.png")                   # shipped portrait
+    assert oriented_theme_path(app, _KEY, land_user, degrees=270) == port_user
+
+
 # ── mask reload ─────────────────────────────────────────────────────────
 
 

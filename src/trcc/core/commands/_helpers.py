@@ -54,11 +54,19 @@ def oriented_theme_path(
         degrees = app.settings.for_device(key).orientation
     bw, bh = oriented_resolution(device.profile.resolution, degrees)
     paths = app.platform.paths()
-    for base in (paths.theme_dir(bw, bh), paths.user_theme_dir(bw, bh)):
-        cand = base / stored.name
-        if cand.exists():
-            return cand
-    return stored
+    # Re-root for ORIENTATION only — preserve the tree the user actually
+    # selected (their saved theme vs the shipped one).  A user-saved theme and
+    # a shipped theme can share a name (they coexist); re-resolving shipped-first
+    # would silently swap the user's last preview for the shipped default of the
+    # same name on every rotation/restore, losing their changes. Fall back to
+    # ``stored`` when the same-name oriented variant isn't on disk in that tree
+    # (the renderer pixel-rotates the art).
+    if stored.is_relative_to(paths.user_content_dir()):
+        base = paths.user_theme_dir(bw, bh)
+    else:
+        base = paths.theme_dir(bw, bh)
+    cand = base / stored.name
+    return cand if cand.exists() else stored
 
 
 _VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
