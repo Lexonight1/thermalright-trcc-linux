@@ -962,6 +962,22 @@ def test_system_setup_help(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_top_level_setup_alias_delegates_to_system_setup(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``trcc setup`` is a top-level alias for ``trcc system setup`` (#194) —
+    it reaches the same RunSetup path (FakePlatform.setup is a 0 no-op)."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["setup"])
+    assert result.exit_code == 0
+
+
+def test_top_level_setup_alias_registered() -> None:
+    """The alias is wired on the top-level app, not just the system sub-app."""
+    names = {cmd.name for cmd in _app().registered_commands}
+    assert "setup" in names
+
+
 # =========================================================================
 # config sub-app — 4 commands
 # =========================================================================
