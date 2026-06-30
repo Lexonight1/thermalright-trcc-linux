@@ -1,5 +1,29 @@
 # Changelog
 
+## v9.7.10
+
+Saved themes now remember everything you set — and they come back exactly that
+way after a restart.
+
+**Your saved theme's background is remembered again — including video
+backgrounds.**  A saved theme stores each asset (background image or video, and
+mask) as a symlink into your data folder rather than a copy, so nothing is
+duplicated and a video background now plays back when you reload the theme
+instead of showing nothing.  The only real file a saved theme keeps is its own
+layout (the overlay you edited in settings), which is rewritten each time you
+save.
+
+**Restarting the app brings back the last theme you were using — with your
+changes.**  On launch the app now restores the exact theme you last had on each
+device, along with its background, mask, and overlay edits, instead of falling
+back to the shipped default.  Your own saved theme and a shipped theme that
+happen to share a name now coexist — saving never overwrites the original, and
+shipped themes simply list first.
+
+**Rotating the display no longer wipes your edits.**  Changing orientation now
+keeps your overlay layout, background, and mask, matching the original Windows
+app's behaviour (it rotates what's on screen rather than reloading from scratch).
+
 ## v9.7.9
 
 NVIDIA GPU sensors on the Debian/Ubuntu package, and a clearer setup.
