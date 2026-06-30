@@ -400,10 +400,26 @@ class ThemeService:
         whatever ``background_path`` returned.
         """
         log.debug("video_path: theme=%s", theme.name)
+        # A theme-local bundled video (Theme.mp4 / .mov / …) — including a
+        # symlink SaveTheme drops in for a video background.
         for candidate in _VIDEO_CANDIDATES:
             video = theme.path / candidate
             if video.exists():
                 return video
+        # A REFERENCED video background: a saved pure-pointer theme records its
+        # background as a manifest ref (e.g. ``web/{w}{h}/<id>.mp4``).  Resolve
+        # it directly (NOT via ``background_path`` — that calls us back and would
+        # recurse) so ``LoadTheme`` plays it through ``PlayVideo`` instead of
+        # handing an ``.mp4`` to the static-image path (which renders no
+        # background).  This is the symlink-fallback / legacy-ref case.
+        ref = theme.config.get("background")
+        if (isinstance(ref, str) and ref
+                and Path(ref).suffix.lower() in _VIDEO_EXTS):
+            resolved = self._resolve_asset_ref(ref)
+            if resolved is not None:
+                log.info("video_path: %s → referenced video background %s",
+                         theme.name, resolved)
+                return resolved
         return None
 
     def mask_path(self, theme: Theme) -> Path | None:

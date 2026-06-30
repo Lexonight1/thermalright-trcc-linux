@@ -84,6 +84,9 @@ _MASK_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 _LEGACY_MASK_FILENAME = "01.png"
 
 
+_LEGACY_BG_FILENAME = "00.png"
+
+
 _IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
 

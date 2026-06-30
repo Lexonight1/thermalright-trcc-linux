@@ -45,6 +45,7 @@ from ..results import (
 from ._base import Command
 from ._helpers import (
     _IMAGE_EXTS,
+    _LEGACY_BG_FILENAME,
     _LEGACY_MASK_FILENAME,
     _VIDEO_EXTS_FOR_LOAD,
     _VIDEO_EXTS_FOR_SAVE,
@@ -596,24 +597,22 @@ class SaveTheme(Command[ThemeResult]):
         width: int,
         height: int,
     ) -> str | None:
-        """Store the resolved current background; return its manifest ref.
+        """Link the resolved current background into the saved theme dir.
 
-        Precedence, all returning a ``web/{w}{h}/…`` ref (or ``None``):
+        Every asset a saved theme uses is a SYMLINK into the shared data tree —
+        no bytes duplicated; only the DC/config (``trcc.json``) is a real copy
+        edited per save.  The background links in under its standard in-dir name
+        — ``00.png`` for an image, ``Theme.<ext>`` for a video — so the loader
+        finds it by convention and no manifest ref is needed (returns ``None``).
 
-        * **Catalog asset** — already under the cloud (``cloud_theme_dir``)
-          or user (``user_background_dir``) ``web/{w}{h}`` tree → REFERENCED
-          by ``web/{w}{h}/<name>``, never copied (cloud/user assets are
-          shared; a re-save re-emits the ref so the bg can't be lost).
-        * **Loose image** → canonical PNG bytes into the user library
-          (deduped), returning the library ref.
-        * **Loose video** → bundled verbatim as ``Theme.<ext>`` in the theme
-          dir (returns ``None``; videos reload via the in-dir convention).
-
-        ``DeviceSettings.background_path`` (cloud/user override) wins over the
-        source theme's bundled background.
+        Asset home (the symlink target): a catalog asset (cloud
+        ``cloud_theme_dir`` / user ``user_background_dir`` ``web/{w}{h}``) is
+        linked in place; a loose image/video is first stored into the user
+        library (deduped, native res) and the link points there.  On a
+        filesystem WITHOUT symlink support the asset is REFERENCED instead (the
+        ``web/{w}{h}/…`` ref is returned and the loader resolves it).
+        ``DeviceSettings.background_path`` (override) wins over the source theme.
         """
-        import shutil
-
         src = self._pick_asset(
             s.background_path, app.themes.background_path(theme), "background",
         )
@@ -622,36 +621,37 @@ class SaveTheme(Command[ThemeResult]):
                         theme.name)
             return None
 
-        # Asset already in a data catalog (a cloud download or the user
-        # background library) → REFERENCE it, never copy.  Mirrors
-        # _store_mask's catalog handling + the data-ownership model: cloud /
-        # user ``web/{w}{h}`` assets are shared, not bundled per-theme.  The
-        # ref resolves back via _resolve_asset_ref (user root → cloud root), so
-        # a saved theme just points at the existing download — and a re-save
-        # re-emits the same ref instead of copying, so the background can't be
-        # lost on overwrite. (#bg-save)
-        src_resolved = src.resolve()
+        ext = src.suffix.lower()
+        is_video = ext in _VIDEO_EXTS_FOR_SAVE
         paths = app.platform.paths()
+        src_resolved = src.resolve()
+
+        # Stable home for the asset (what the symlink points at) + the ref that
+        # names it (the no-symlink fallback).  Catalog asset → link in place;
+        # loose asset → give it a deduped home in the user library first.
+        canonical: Path | None = None
+        ref: str | None = None
         for root in (paths.user_background_dir(width, height),
                      paths.cloud_theme_dir(width, height)):
             if src_resolved.is_relative_to(root.resolve()):
+                canonical = src_resolved
                 ref = f"web/{width}{height}/{src.name}"
-                log.info("SaveTheme: background %s is a catalog asset → "
-                         "reference %s (no copy)", src.name, ref)
-                return ref
+                break
+        if canonical is None:
+            data = (src.read_bytes() if is_video
+                    else app.renderer.encode_png(app.renderer.open_image(src)))
+            ref = app.themes.store_background(
+                data, ext if is_video else ".png", width, height,
+            )
+            canonical = paths.user_background_dir(width, height) / Path(ref).name
 
-        ext = src.suffix.lower()
-        if ext in _VIDEO_EXTS_FOR_SAVE:
-            dst = target / f"Theme{ext}"
-            shutil.copy2(src, dst)
-            log.info("SaveTheme: video bg bundled → %s", dst)
+        in_dir = f"Theme{ext}" if is_video else _LEGACY_BG_FILENAME
+        if self._try_symlink(target / in_dir, canonical):
+            log.info("SaveTheme: background %s → symlink %s → %s (no copy)",
+                     src.name, in_dir, canonical)
             return None
-
-        surface = app.renderer.open_image(src)
-        ref = app.themes.store_background(
-            app.renderer.encode_png(surface), ".png", width, height,
-        )
-        log.info("SaveTheme: image bg %s → library ref %s", src.name, ref)
+        log.info("SaveTheme: background %s → reference %s (no symlink support)",
+                 src.name, ref)
         return ref
 
     def _store_mask(
@@ -673,12 +673,13 @@ class SaveTheme(Command[ThemeResult]):
         the user's edited metrics live inline in the saved manifest's
         ``elements``, so no DC is written here.
 
-        A theme's OWN bundled mask (not in any catalog) is STORED into the
-        user mask library and referenced too — so the saved theme never copies
-        an asset into its own dir; it is a pure pointer.  Returns the
-        ``web/zt{w}{h}/<id>`` ref in every case (catalog or theme-local), or
-        ``None`` for no-mask.  ``DeviceSettings.mask_path`` (user/cloud
-        override) wins over the source theme's mask.
+        A theme's OWN bundled / loose mask (not in any catalog) is first stored
+        into the user mask library (deduped) and the symlink points there.  On a
+        filesystem WITHOUT symlink support the mask is REFERENCED instead (the
+        ``web/zt{w}{h}/<id>`` ref is returned and the loader resolves it).  The
+        mask's own ``config1.dc`` stays with the mask in the library; the saved
+        theme's overlay layout lives in its own ``trcc.json`` (baked elements).
+        ``DeviceSettings.mask_path`` (override) wins over the source theme's mask.
         """
         src = self._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
@@ -687,33 +688,59 @@ class SaveTheme(Command[ThemeResult]):
             log.info("SaveTheme: no mask to save (neither override nor source)")
             return None
 
-        # Catalog mask (cloud or prior upload) → reference it, never copy.
-        src_resolved = src.resolve()
         paths = app.platform.paths()
-        for root in (paths.cloud_mask_dir(width, height),
-                     paths.user_mask_dir(width, height)):
-            if src_resolved.is_relative_to(root.resolve()):
-                ref = f"web/zt{width}{height}/{src.parent.name}"
-                log.info("SaveTheme: mask %s is a catalog mask → reference "
-                         "%s (no copy)", src.parent.name, ref)
-                return ref
+        src_resolved = src.resolve()
+        mask_dir = src_resolved.parent
 
-        # Theme's own bundled mask (not in a catalog) → store it in the user
-        # mask library and REFERENCE it (web/zt{w}{h}/<id>), instead of copying
-        # 01.png into the theme dir.  Keeps the saved theme a pure pointer with
-        # no copied asset (deduped by content); the user's metric layout stays
-        # inline in the manifest's elements, so no separate mask DC is written
-        # here. (#refs-not-copies)
-        try:
-            image = src.read_bytes()
-        except OSError as e:
-            log.warning("SaveTheme: could not read theme-local mask %s (%s) — "
-                        "mask omitted", src, e)
+        # Stable home for the mask's 01.png (symlink target) + its ref (the
+        # no-symlink fallback).  Catalog mask → link in place; loose mask → give
+        # it a deduped home in the user mask library first.
+        canonical: Path | None = None
+        ref: str | None = None
+        for root in (paths.user_mask_dir(width, height),
+                     paths.cloud_mask_dir(width, height)):
+            if mask_dir.is_relative_to(root.resolve()):
+                canonical = src_resolved
+                ref = f"web/zt{width}{height}/{mask_dir.name}"
+                break
+        if canonical is None:
+            try:
+                image = src.read_bytes()
+            except OSError as e:
+                log.warning("SaveTheme: could not read mask %s (%s) — mask "
+                            "omitted", src, e)
+                return None
+            ref = app.themes.store_mask(image, width, height)
+            canonical = (paths.user_mask_dir(width, height)
+                         / Path(ref).name / _LEGACY_MASK_FILENAME)
+
+        if self._try_symlink(target / _LEGACY_MASK_FILENAME, canonical):
+            log.info("SaveTheme: mask %s → symlink 01.png → %s (no copy)",
+                     src.name, canonical)
             return None
-        ref = app.themes.store_mask(image, width, height)
-        log.info("SaveTheme: bundled mask %s → library ref %s (no copy)",
+        log.info("SaveTheme: mask %s → reference %s (no symlink support)",
                  src.name, ref)
         return ref
+
+    @staticmethod
+    def _try_symlink(link: Path, asset: Path) -> bool:
+        """Create *link* as a symlink to *asset*.
+
+        True on success; False when the filesystem can't symlink (e.g. Windows
+        without the privilege, exotic FS) so the caller falls back to a manifest
+        reference.  An existing entry at *link* (a prior save's symlink) is
+        replaced.  *asset* is linked as an absolute path so the link resolves
+        regardless of the theme dir's location.
+        """
+        try:
+            if link.is_symlink() or link.exists():
+                link.unlink()
+            link.symlink_to(asset)
+            return True
+        except OSError as e:
+            log.info("SaveTheme: symlink %s → %s unavailable (%s) — referencing",
+                     link, asset, e)
+            return False
 
     @staticmethod
     def _write_manifest(target: Path, manifest: dict) -> None:

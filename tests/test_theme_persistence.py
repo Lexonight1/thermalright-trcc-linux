@@ -125,8 +125,9 @@ def test_export_dereferences_reference_theme_to_self_contained(
     matching library can import + load it (the Phase-E proof)."""
     import json as _json
 
-    # Save a reference theme — both its bg AND its mask land in the user
-    # library and are referenced; nothing is copied into the saved dir.
+    # Save a reference theme — its bg AND mask SYMLINK into the saved dir
+    # (pointing at the user library); the DC is the only real copy. No manifest
+    # ref needed (the loader finds the symlinked in-dir assets by convention).
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ref")).ok
@@ -134,10 +135,10 @@ def test_export_dereferences_reference_theme_to_self_contained(
     saved_manifest = _json.loads(
         (saved / "trcc.json").read_text(encoding="utf-8"),
     )
-    assert "background" in saved_manifest        # bg is a library ref
-    assert "mask" in saved_manifest              # mask is a library ref too (no copy)
-    assert not (saved / "00.png").exists()        # nothing copied into the saved dir
-    assert not (saved / "01.png").exists()
+    assert "background" not in saved_manifest     # bg is a symlink, not a ref
+    assert "mask" not in saved_manifest           # mask is a symlink, not a ref
+    assert (saved / "00.png").is_symlink()        # asset symlinked into the dir
+    assert (saved / "01.png").is_symlink()
 
     # Export → archive must be self-contained, with refs stripped.
     archive = tmp_home / "ref.tr"
@@ -523,10 +524,10 @@ def test_save_theme_repoints_active_theme_to_saved_dir(
     # The live object the renderer reads is the SAVED theme, not the source.
     assert active.path == saved
     assert active.path != source
-    # The source's own bundled mask is STORED in the user mask library and
-    # referenced — no copy in the saved dir (the theme is a pure pointer); the
-    # mask resolves into the library (deduped by content).
-    assert not (saved / "01.png").exists()
+    # The source's own bundled mask is stored in the user mask library and
+    # SYMLINKED into the saved dir as 01.png (no copy); the link resolves into
+    # the library (deduped by content).
+    assert (saved / "01.png").is_symlink()
     w, h = _TEST_RES
     umd = app.platform.paths().user_mask_dir(w, h)
     mask = app.themes.mask_path(active)
@@ -811,10 +812,10 @@ def test_save_theme_bakes_cloud_background_override(
 
     saved = user_theme_dir / "with-cloud-bg"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    # Background is a library ref, not a bundled 00.png.
-    assert manifest["background"].startswith(f"web/{_TEST_RES[0]}{_TEST_RES[1]}/")
-    assert not (saved / "00.png").exists()
-    # The referenced asset resolves to the cloud override, not the source bg.
+    # Background symlinks in as 00.png (pointing at the user library) — no ref.
+    assert "background" not in manifest
+    assert (saved / "00.png").is_symlink()
+    # The symlinked asset resolves to the cloud override, not the source bg.
     resolved = app.themes.background_path(app.themes.load(saved))
     assert resolved is not None
     assert resolved.read_bytes() != (source / "00.png").read_bytes()
@@ -901,30 +902,30 @@ def test_save_theme_references_catalog_background_without_copying(
     cloud_video.write_bytes(video_bytes)
     app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
 
-    ref = f"web/{_TEST_RES[0]}{_TEST_RES[1]}/a023.mp4"
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="catref")).ok
     saved = user_theme_dir / "catref"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    assert manifest["background"] == ref          # referenced…
-    assert not (saved / "Theme.mp4").exists()      # …not copied
-    assert app.themes.background_path(app.themes.load(saved)) == cloud_video
+    assert "background" not in manifest            # symlinked, not referenced…
+    assert (saved / "Theme.mp4").is_symlink()      # …and not copied
+    assert (saved / "Theme.mp4").resolve() == cloud_video.resolve()
+    assert (app.themes.background_path(app.themes.load(saved)).resolve()
+            == cloud_video.resolve())
 
-    # Re-save onto the same name → ref persists, still no copy, no loss.
+    # Re-save onto the same name → symlink persists, still no copy, no loss.
     assert app.dispatch(
         SaveTheme(key=_TEST_DEVICE_KEY, name="catref", overwrite=True)
     ).ok
     manifest2 = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    assert manifest2["background"] == ref
-    assert not (saved / "Theme.mp4").exists()
+    assert "background" not in manifest2
+    assert (saved / "Theme.mp4").resolve() == cloud_video.resolve()
 
 
 def test_save_theme_references_non_catalog_mask_override(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     """A mask override NOT in a catalog (an arbitrary file the user picked) is
-    STORED in the user mask library and referenced on save — no copy in the
-    theme dir; the saved theme is a pure pointer that resolves to the override
-    content. (#refs-not-copies)"""
+    STORED in the user mask library and SYMLINKED into the theme dir as 01.png —
+    no copy; the saved theme resolves to the override content. (#symlink-assets)"""
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
@@ -939,12 +940,11 @@ def test_save_theme_references_non_catalog_mask_override(
 
     saved = user_theme_dir / "with-override"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    ref_prefix = f"web/zt{_TEST_RES[0]}{_TEST_RES[1]}/"
-    assert manifest["mask"].startswith(ref_prefix)   # referenced, not copied
-    assert not (saved / "01.png").exists()
-    # Stored in the user mask library (deduped, reusable).
+    assert "mask" not in manifest                    # symlinked, not referenced
+    assert (saved / "01.png").is_symlink()
+    # Symlink target lives in the user mask library (deduped, reusable).
     umd = app.platform.paths().user_mask_dir(*_TEST_RES)
-    assert umd.exists() and list(umd.iterdir())
+    assert (saved / "01.png").resolve().is_relative_to(umd.resolve())
     # Resolves to the override content, never the source theme's mask.
     resolved = app.themes.mask_path(app.themes.load(saved))
     assert resolved is not None
@@ -970,8 +970,8 @@ def test_saved_pure_pointer_theme_renders_its_referenced_mask(
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ptr")).ok
     saved = user_theme_dir / "ptr"
 
-    # Pure pointer: mask is a ref (no local 01.png) that resolves to the library.
-    assert not (saved / "01.png").exists()
+    # Pure pointer: mask is a SYMLINK (01.png) into the library, not a copy.
+    assert (saved / "01.png").is_symlink()
     reloaded = app.themes.load(saved)
     mask = app.themes.mask_path(reloaded)
     assert mask is not None and mask.exists()
@@ -992,6 +992,49 @@ def test_saved_pure_pointer_theme_renders_its_referenced_mask(
         "a saved theme's REFERENCED mask must composite real pixels into the "
         "frame — not silently drop out"
     )
+
+
+def test_video_path_resolves_referenced_video_background(app: App) -> None:
+    """A saved theme records a VIDEO background as a ref (web/{res}/<id>.mp4),
+    not a local Theme.mp4 — so ``video_path`` must resolve it, or ``LoadTheme``
+    hands an .mp4 to the static-image path and the background never plays
+    (reported: 'saved themes have no background remembered')."""
+    from trcc.core.models import Theme
+
+    w, h = _TEST_RES
+    vid = app.platform.paths().data_dir() / "web" / f"{w}{h}" / "a023.mp4"
+    vid.parent.mkdir(parents=True, exist_ok=True)
+    vid.write_bytes(b"\x00\x00\x00\x20ftypisom")
+    theme = Theme(
+        path=app.platform.paths().user_theme_dir(w, h) / "vidref",
+        name="vidref", resolution=(w, h),
+        config={"background": f"web/{w}{h}/a023.mp4", "elements": []},
+    )
+    assert app.themes.video_path(theme) == vid
+
+
+def test_saved_theme_video_background_plays_via_symlink(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """End-to-end for 'saved themes have no background remembered': a saved
+    theme with a VIDEO background symlinks it in as Theme.mp4, so video_path
+    finds it on reload and LoadTheme plays it — instead of the static path
+    handing an .mp4 to the image renderer (no background)."""
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    cloud_dir = app.platform.paths().cloud_theme_dir(*_TEST_RES)
+    cloud_dir.mkdir(parents=True, exist_ok=True)
+    cloud_video = cloud_dir / "a023.mp4"
+    cloud_video.write_bytes(b"\x00\x00\x00\x20ftypisom" * 50)
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="vid")).ok
+    saved = user_theme_dir / "vid"
+    assert (saved / "Theme.mp4").is_symlink()
+    # Reload from disk → video_path finds the symlinked video → PlayVideo fires.
+    vp = app.themes.video_path(app.themes.load(saved))
+    assert vp is not None
+    assert vp.resolve() == cloud_video.resolve()
 
 
 def test_save_theme_inlines_mask_overlay_elements_into_manifest(
@@ -1134,18 +1177,19 @@ def test_save_then_reload_resolves_library_assets_not_source(
     assert active.path == saved
     paths = app.platform.paths()
 
-    # Background resolves to the library override, not the source bg.
+    # Background symlinks in as 00.png and RESOLVES into the user library
+    # (the override), never the source bg.
     bg = app.themes.background_path(active)
     assert bg is not None
-    assert bg.parent == paths.user_background_dir(*_TEST_RES).resolve()
+    assert (saved / "00.png").is_symlink()
+    assert bg.resolve().parent == paths.user_background_dir(*_TEST_RES).resolve()
     assert bg.read_bytes() != (source / "00.png").read_bytes()
 
-    # The mask override is stored in the user mask library and referenced — on
-    # reload it resolves INTO the library (deduped), not a copy in the saved
-    # dir, and never the source's mask.
+    # The mask override symlinks in as 01.png and RESOLVES into the user mask
+    # library (deduped), never the source's mask.
     mask = app.themes.mask_path(active)
     assert mask is not None
-    assert not (saved / "01.png").exists()
+    assert (saved / "01.png").is_symlink()
     umd = paths.user_mask_dir(*_TEST_RES)
     assert mask.resolve().is_relative_to(umd.resolve())
     assert mask.read_bytes() != (source / "01.png").read_bytes()
@@ -1318,16 +1362,17 @@ def test_save_theme_references_cloud_mask_without_duplicating(
 
     saved = user_theme_dir / "cloud-themed"
     manifest = json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
-    assert manifest.get("mask") == f"web/zt{w}{h}/{cloud_id}", \
-        "saved theme must reference the cloud mask by ref, not copy it"
+    assert "mask" not in manifest, \
+        "saved theme symlinks the cloud mask in place, no manifest ref"
+    assert (saved / "01.png").is_symlink()
     # No duplicate created in the user catalog (the masks browser source).
     umd = app.platform.paths().user_mask_dir(w, h)
     assert not umd.exists() or not list(umd.iterdir()), \
         "cloud mask must not be duplicated into the user catalog"
-    # The reference still resolves back to the cloud mask.
+    # The symlink still resolves back to the cloud mask.
     mask = app.themes.mask_path(app.active_themes[_TEST_DEVICE_KEY])
     assert mask is not None
-    assert mask.parent.name == cloud_id and mask.name == "01.png"
+    assert mask.resolve().parent.name == cloud_id and mask.name == "01.png"
 
 
 def test_upload_custom_mask_captures_current_overlay_as_dc(
