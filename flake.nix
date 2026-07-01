@@ -117,7 +117,7 @@
           config = lib.mkIf cfg.enable {
             environment.systemPackages = [ self.packages.${pkgs.system}.default ];
 
-            services.udev.extraRules = builtins.readFile ./packaging/udev/99-trcc-lcd.rules;
+            services.udev.extraRules = builtins.replaceStrings [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ] (builtins.readFile ./packaging/udev/99-trcc-lcd.rules);
 
             boot.kernelModules = [ "sg" ];
 
