@@ -185,8 +185,9 @@ class DisplayService:
           orientation-matched portrait variant (the cloud path, or any theme
           with both variants on disk).  Compose on the transposed portrait
           canvas; no further rotation ("the orientation is in the masks").
-        * **Landscape-only content @ 90/270** — a non-JPEG rotate panel whose
-          portrait variant is ABSENT on disk, so ``oriented_theme_path`` fell
+        * **Landscape-only content @ 90/270** — a non-widescreen rotate panel
+          (simple 320×240 / 640×480, RGB565 *or* bulk-JPEG) whose portrait
+          variant is ABSENT on disk, so ``oriented_theme_path`` fell
           back to the landscape DC (a LOCAL theme saved in one orientation).
           Compose on the native LANDSCAPE canvas (bg + mask + text aligned,
           nothing clipped) and rotate the WHOLE composite by ``orientation``
@@ -204,7 +205,7 @@ class DisplayService:
         """
         w, h = profile.resolution
         rotate_panel = profile.rotate and w != h and orientation in (90, 270)
-        if rotate_panel and not content_is_portrait and not profile.jpeg:
+        if rotate_panel and not content_is_portrait and not profile.widescreen:
             return (w, h), False, orientation
         if rotate_panel:
             return (h, w), True, 0
@@ -376,7 +377,10 @@ class DisplayService:
         # widescreen set is all JPEG; the simple RGB565 rotate panels (320×240)
         # are not, and keep the blanket 90° below.  Portrait-composed themes
         # (portrait=True) already match the portrait wire buffer, so neither
-        # device rotation applies to them. (#136/#169)
+        # device rotation applies to them.  (NB: at 90/270 a landscape theme
+        # returns early via ``post_rotate`` above, so this only governs 0/180 —
+        # where a small bulk-JPEG panel (FBL 50) stays here with an empty encode
+        # table = no rotation, matching its working landscape output.) (#136/#169)
         fold_into_encode = (
             resolved_profile.rotate and not portrait and resolved_profile.jpeg
         )

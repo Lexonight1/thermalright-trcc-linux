@@ -360,6 +360,36 @@ def test_simple_rotate_panel_at_90_landscape_theme_rotates_whole_composite(
     )
 
 
+def test_bulk_jpeg_small_rotate_panel_at_90_rotates_whole_composite(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """A simple 320×240 rotate panel that arrives on the bulk wire as JPEG
+    (FBL 50, PM=5 Mjolnir: ``jpeg=True rotate=True widescreen=False``) must
+    rotate like its RGB565 sibling — one whole-composite rotate into the
+    portrait buffer — NOT fall through the widescreen encode-table path (empty
+    table → no rotation, the #176 bug: "landscape works, can't rotate").  The
+    final encode is still JPEG.  (#176)
+    """
+    info = _hid_type2_info()
+    profile = DeviceProfile(width=320, height=240, jpeg=True, rotate=True)
+    assert profile.widescreen is False
+    settings = display._settings.for_device(info.key)
+    settings.orientation = 90
+
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (320, 240) in canvases, f"expected a 320×240 canvas, got {canvases}"
+    rotation_angles = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotation_angles == [90], (
+        f"JPEG small rotate panel at 90 rotates the whole composite once "
+        f"(like RGB565), got {rotation_angles}"
+    )
+    encoders = [c[0] for c in renderer.calls
+                if c[0] in ("encode_jpeg", "encode_rgb565")]
+    assert encoders == ["encode_jpeg"], f"expected JPEG encode, got {encoders}"
+
+
 # ── 6. fit_mode wired through (regression guard) ──────────────────────
 
 
