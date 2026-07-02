@@ -35,11 +35,10 @@
             prompt-toolkit
             sounddevice
             certifi
+            nvidia-ml-py    # NVIDIA GPU temp/usage/clock — always on for NixOS
+                            # users (the reader self-guards on non-NVIDIA hosts;
+                            # NixOS can't `pip install` the optional extra) — #207
           ];
-
-          optional-dependencies = {
-            nvidia = [ python.pkgs.nvidia-ml-py ];
-          };
 
           nativeBuildInputs = [ pkgs.makeWrapper ];
 
@@ -117,7 +116,14 @@
           config = lib.mkIf cfg.enable {
             environment.systemPackages = [ self.packages.${pkgs.system}.default ];
 
-            services.udev.extraRules = builtins.readFile ./packaging/udev/99-trcc-lcd.rules;
+            # Read the shipped rules but rewrite the RAPL rule's `/bin/chmod`
+            # (fine on FHS distros) to the Nix store path — NixOS has no
+            # `/bin/chmod`, and its udev-rules builder rejects absolute-path
+            # programs that don't exist, failing the whole system build (#207).
+            services.udev.extraRules =
+              builtins.replaceStrings
+                [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ]
+                (builtins.readFile ./packaging/udev/99-trcc-lcd.rules);
 
             boot.kernelModules = [ "sg" ];
 
