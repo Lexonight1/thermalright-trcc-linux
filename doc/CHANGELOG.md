@@ -1,5 +1,26 @@
 # Changelog
 
+## v9.8.0
+
+Rotating a display to portrait now switches to your portrait artwork instead of
+turning the landscape version on its side.
+
+**Portrait masks display upright at 90° / 270°.**  On panels that can rotate,
+picking a portrait mask and rotating the display used to spin the whole
+landscape layout sideways.  Now the app loads the portrait version of your
+content and composes it upright — the way the original Windows app does — so
+masks, backgrounds, and overlay text stay aligned and nothing gets clipped.
+
+**Saving a theme while rotated saves it in the right orientation.**  A theme you
+save at 90° / 270° is now stored as portrait (and a landscape one as landscape),
+so it comes back exactly as you saved it the next time you load it — no more
+themes reloading in the wrong orientation.
+
+Under the hood this restores the original per-orientation content model the app
+was built on, with the whole change covered by tests and verified on a real
+rotating panel.  Note: Thermalright ships far fewer portrait masks (5) than
+landscape ones (110) — that's the vendor's catalog, not a bug in this release.
+
 ## v9.7.10
 
 Saved themes now remember everything you set — and they come back exactly that
