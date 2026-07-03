@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core.geometry import plan_orientation
 from ..core.models import (
     SPLIT_OVERLAY_MAP,
     DeviceSettings,
@@ -31,7 +32,6 @@ from ..core.models import (
     ProductInfo,
     RawFrame,
     Theme,
-    oriented_resolution,
 )
 from ..core.ports import Renderer
 from ..core.protocol import (
@@ -168,53 +168,62 @@ class DisplayService:
     # ── Top-level pipeline ────────────────────────────────────────────
 
     @staticmethod
-    def _content_is_portrait(theme: Theme) -> bool:
-        """True when the loaded theme DC is laid out portrait (rotation 90/270).
+    def _content_is_portrait(
+        theme: Theme, profile: DeviceProfile, s: DeviceSettings,
+    ) -> bool:
+        """True when the ACTUALLY-LOADED content is portrait-oriented.
 
-        The DC parser records the authoring orientation in ``config["rotation"]``
-        (0/180 = landscape, 90/270 = portrait).  Cloud themes reload the matched
-        portrait variant at 90/270 → True; a LOCAL theme saved landscape-only
-        keeps ``rotation=0`` → False, and there is no portrait variant on disk.
+        A SUPERSET of three signals — True whenever ANY says portrait, so it
+        never contradicts the old DC-only read (no regression) yet catches the
+        cases that one missed:
+
+        1. **Active mask under ``web/zt{h}{w}``** — an explicitly-applied portrait
+           mask makes the frame portrait even over a landscape base theme.  This
+           is the bug that motivated the change: a portrait mask got SPUN instead
+           of switched, because only the base theme's DC was consulted.
+        2. **Theme loaded from ``theme{h}{w}``** — disk truth.  Shipped portrait
+           folders ship the landscape DC with ``rotation=0``, so signal 3 alone
+           reports landscape for a genuinely-portrait folder; the path doesn't
+           lie.
+        3. **Theme DC ``rotation`` ∈ {90,270}** — the legacy signal.  Real cloud
+           portrait themes carry it; kept so nothing that worked before breaks.
+
+        Only meaningful for a non-square rotate panel; squares / non-rotate never
+        compose portrait.
         """
-        return theme.config.get("rotation", 0) in (90, 270)
+        w, h = profile.resolution
+        if not (profile.rotate and w != h):
+            return False
+        portrait_mask = f"zt{h}{w}"
+        if (s.mask_visible and s.mask_path
+                and portrait_mask in Path(s.mask_path).parts):
+            log.debug("_content_is_portrait: active mask under %s → portrait",
+                      portrait_mask)
+            return True
+        if f"theme{h}{w}" in theme.path.parts:
+            log.debug("_content_is_portrait: theme %s under portrait dir → portrait",
+                      theme.name)
+            return True
+        if theme.config.get("rotation", 0) in (90, 270):
+            log.debug("_content_is_portrait: theme %s DC rotation portrait",
+                      theme.name)
+            return True
+        return False
 
+    @staticmethod
     def _compose_geometry(
-        self, profile: DeviceProfile, orientation: int,
+        profile: DeviceProfile, orientation: int,
         content_is_portrait: bool = True,
     ) -> tuple[tuple[int, int], bool, int]:
         """Compose canvas + portrait flag + whole-composite rotation angle.
 
-        Three cases of the C# oriented-output model (``SetMyUCScreenImage``):
-
-        * **Portrait content @ 90/270** — a rotate panel whose loaded DC is the
-          orientation-matched portrait variant (the cloud path, or any theme
-          with both variants on disk).  Compose on the transposed portrait
-          canvas; no further rotation ("the orientation is in the masks").
-        * **Landscape-only content @ 90/270** — a non-widescreen rotate panel
-          (simple 320×240 / 640×480, RGB565 *or* bulk-JPEG) whose portrait
-          variant is ABSENT on disk, so ``oriented_theme_path`` fell
-          back to the landscape DC (a LOCAL theme saved in one orientation).
-          Compose on the native LANDSCAPE canvas (bg + mask + text aligned,
-          nothing clipped) and rotate the WHOLE composite by ``orientation``
-          into the portrait buffer.  This is legacy's ``has_portrait_themes=
-          False`` branch: everything rotates together so it stays aligned —
-          rotating text alone (the earlier bug) scrambled it against a
-          landscape background.  0/180 already compose landscape, so they need
-          no special case; only 90/270's portrait-swap had to be undone here.
-        * **Everything else** — 0/180, squares, non-rotate, JPEG widescreen:
-          the existing user-orientation swap, no whole-composite rotation.
-
-        Returns ``(compose_canvas, portrait, post_rotate)``.  ``post_rotate`` is
-        the angle to rotate the finished composite — 0 for every existing case,
-        so all other panels are byte-identical.
+        Thin adapter over the pure :func:`trcc.core.geometry.plan_orientation`
+        (the single source for the decision — shared by wire + preview + the
+        GUI bezel).  Returns the legacy ``(canvas, portrait, post_rotate)``
+        tuple the call sites unpack.
         """
-        w, h = profile.resolution
-        rotate_panel = profile.rotate and w != h and orientation in (90, 270)
-        if rotate_panel and not content_is_portrait and not profile.widescreen:
-            return (w, h), False, orientation
-        if rotate_panel:
-            return (h, w), True, 0
-        return self._visual_size((w, h), orientation), False, 0
+        plan = plan_orientation(profile, orientation, content_is_portrait)
+        return plan.canvas, plan.is_portrait_content, plan.post_rotate
 
     def composed_canvas_size(
         self, info: ProductInfo, theme: Theme,
@@ -225,8 +234,9 @@ class DisplayService:
         this so the frame asset + label match what the panel shows (#136).
         """
         resolved = self._resolve_profile(info, profile)
+        s = self._settings.for_device(info.key)
         canvas, portrait, post_rotate = self._compose_geometry(
-            resolved, orientation, self._content_is_portrait(theme),
+            resolved, orientation, self._content_is_portrait(theme, resolved, s),
         )
         # The bezel shows the DISPLAYED frame: a whole-composite rotation
         # transposes the landscape compose canvas to its portrait output size.
@@ -269,7 +279,8 @@ class DisplayService:
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         visual_size, portrait, post_rotate = self._compose_geometry(
-            resolved_profile, s.orientation, self._content_is_portrait(theme),
+            resolved_profile, s.orientation,
+            self._content_is_portrait(theme, resolved_profile, s),
         )
 
         # Per-frame — DEBUG so `-vv` users see the build context without
@@ -459,7 +470,8 @@ class DisplayService:
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         visual_size, portrait, post_rotate = self._compose_geometry(
-            resolved_profile, s.orientation, self._content_is_portrait(theme),
+            resolved_profile, s.orientation,
+            self._content_is_portrait(theme, resolved_profile, s),
         )
 
         clock = compute_clock(
@@ -1333,11 +1345,6 @@ class DisplayService:
             return None
 
     # ── Helpers ───────────────────────────────────────────────────────
-
-    @staticmethod
-    def _visual_size(base: tuple[int, int], orientation: int) -> tuple[int, int]:
-        """Render canvas dimensions = ``base`` swapped for 90/270 orientation."""
-        return oriented_resolution(base, orientation)
 
     @staticmethod
     def _resolve_profile(
