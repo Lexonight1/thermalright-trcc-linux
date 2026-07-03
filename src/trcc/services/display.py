@@ -34,7 +34,12 @@ from ..core.models import (
     oriented_resolution,
 )
 from ..core.ports import Renderer
-from ..core.protocol import DeviceProfile, get_profile, resolve_encode_angle
+from ..core.protocol import (
+    DeviceProfile,
+    get_profile,
+    resolve_encode_angle,
+    wire_rotation,
+)
 from ._clock import compute_clock
 from .media import MediaService
 from .overlay import OverlayService, resolve_overlay_elements
@@ -370,62 +375,59 @@ class DisplayService:
             )
             return encoded
 
-        # Widescreen JPEG panels (the C# isBiliPingmu set — 854×480, 1280×480,
-        # 1600×720, 1920×462) compose landscape and fold the user orientation
-        # into a per-resolution encode TABLE — a single wire angle, not a
-        # user-rotation + blanket device 90°.  Discriminated by ``jpeg``: the
-        # widescreen set is all JPEG; the simple RGB565 rotate panels (320×240)
-        # are not, and keep the blanket 90° below.  Portrait-composed themes
-        # (portrait=True) already match the portrait wire buffer, so neither
-        # device rotation applies to them.  (NB: at 90/270 a landscape theme
-        # returns early via ``post_rotate`` above, so this only governs 0/180 —
-        # where a small bulk-JPEG panel (FBL 50) stays here with an empty encode
-        # table = no rotation, matching its working landscape output.) (#136/#169)
-        fold_into_encode = (
-            resolved_profile.rotate and not portrait and resolved_profile.jpeg
-        )
-        blanket_device_rotate = (
+        # ── Wire rotation (0/180 for rotate panels; all angles for squares) ──
+        # The composite so far is upright on the oriented canvas.  Two things
+        # rotate it: the user-selected display orientation (a preview + wire
+        # concern) and the panel's physical mount (a WIRE-only concern — the C#
+        # applies RotateImg solely in the encoder, never in the compose/preview
+        # path, RotateFlip count = 0).  ``portrait`` content is authored portrait
+        # (orientation baked in) so it is never re-rotated.  (#136/#169)
+        composite = surface
+
+        # PREVIEW = composite + user orientation ONLY.  No mount rotation: the
+        # on-screen bezel shows what the viewer sees on the physically-rotated
+        # glass, which is upright.  (FBL 50 at angle 0 → a 320×240 landscape
+        # control.)  Storing the mount-rotated surface here was the sideways-in-
+        # an-upright-bezel bug.
+        if s.orientation and not portrait:
+            preview_surface = self._r.rotate(composite, 360 - s.orientation)
+        else:
+            preview_surface = composite
+
+        # WIRE rotation:
+        #  * Non-widescreen rotate panels (320×240 RGB565 + JPEG/Mjolnir, 640×480)
+        #    fold mount + orientation into ONE C#-faithful angle via wire_rotation
+        #    (= base - orientation; base is the dir-0 mount angle — 90° RGB565,
+        #    0° JPEG — ImageTo565:2983-2989 / ImageToJpg:2669-2704).  At 90/270 a
+        #    landscape theme returned early via ``post_rotate`` above, so this
+        #    governs 0/180 (+ any portrait-content early-out below).
+        #  * Widescreen JPEG panels (854×480, 1280×480, 1600×720, 1920×462) keep
+        #    the per-resolution encode TABLE (resolve_encode_angle) — the
+        #    hardware-verified #169 path, unchanged.
+        #  * Squares + non-rotate panels: user orientation only.
+        wire_rotate_panel = (
             resolved_profile.rotate and not portrait
-            and not resolved_profile.jpeg
+            and not resolved_profile.widescreen
         )
-
-        # User-orientation rotation (square panels + simple RGB565 rotate panels).
-        # Portrait-composed themes/masks are authored portrait — the orientation
-        # is already baked into the content — so they must NOT be re-rotated by
-        # the user orientation (that put already-portrait content 90° off). (#136)
-        if s.orientation and not fold_into_encode and not portrait:
-            log.debug("build_frame %s: user rotate %d°",
-                      info.key, 360 - s.orientation)
-            surface = self._r.rotate(surface, 360 - s.orientation)
-
-        # The PREVIEW is the upright composite (+ user orientation) — captured
-        # here, BEFORE any device-mount rotation.  The C# never RotateFlips an
-        # image (RotateFlip count in the decompile = 0); it composes onto an
-        # orientation-sized canvas and the on-screen preview shows that upright
-        # (e.g. FBL 50 at angle 0 → a 320×240 landscape control).  The device
-        # rotation below exists ONLY so the WIRE buffer matches the physically-
-        # rotated glass; on the real panel the viewer sees the upright content,
-        # so the preview must too.  Storing the rotated surface here was the bug
-        # (sideways image in an upright bezel).
-        preview_surface = surface
-
-        # Device encode rotation — widescreen JPEG panels map the user
-        # orientation (and the sub-byte base, folded at handshake) to a single
-        # wire angle via the encode table (C# ImageToJpg directionB switch).
-        # Replaces the cutover's blanket 90°: FBL 224 (854×480) at orientation
-        # 0 → 0° (landscape, unrotated). (#169)
-        if fold_into_encode:
+        fold_into_encode = (
+            resolved_profile.rotate and not portrait
+            and resolved_profile.widescreen and resolved_profile.jpeg
+        )
+        if wire_rotate_panel:
+            angle = wire_rotation(resolved_profile, s.orientation)
+        elif fold_into_encode:
             angle = resolve_encode_angle(resolved_profile, s.orientation)
-            if angle:
-                log.debug("build_frame %s: device encode rotate %d°",
-                          info.key, angle)
-                surface = self._r.rotate(surface, angle)
-        # Simple RGB565 rotate panels keep the blanket device 90° — content
-        # composes landscape, the device buffer is portrait. (#136)
-        elif blanket_device_rotate:
-            log.debug("build_frame %s: device rotate 90° (portrait panel)",
-                      info.key)
-            surface = self._r.rotate(surface, 90)
+        elif s.orientation and not portrait:
+            angle = 360 - s.orientation
+        else:
+            angle = 0
+        if angle % 360:
+            log.debug("build_frame %s: wire rotate %d° "
+                      "(wire_panel=%s widescreen=%s)",
+                      info.key, angle, wire_rotate_panel, fold_into_encode)
+            surface = self._r.rotate(composite, angle)
+        else:
+            surface = composite
 
         encoded = self._encode_for_wire(surface, resolved_profile)
         self._scenes[info.key] = SceneCache(
