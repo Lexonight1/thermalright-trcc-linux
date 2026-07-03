@@ -21,6 +21,7 @@ from ..events import (
     ThemeLoaded,
     ThemeSaved,
 )
+from ..geometry import content_is_portrait, plan_orientation
 from ..registry import find_product
 from ..results import (
     CloudCategoryEntry,
@@ -389,7 +390,27 @@ class SaveTheme(Command[ThemeResult]):
                 message=(f"no active theme for {self.key} — load one first"),
             )
 
-        resolution = _resolve_oriented_resolution(app, self.key)
+        device_settings = app.settings.for_device(self.key)
+        # Save into the folder matching the COMPOSED orientation, not the raw
+        # angle — the content's parent folder IS the orientation.  A connected
+        # device carries its profile, so we key the resolution on the same
+        # plan_orientation decision the renderer uses: a portrait selection
+        # (portrait mask / portrait theme) → theme{h}{w}; landscape content →
+        # theme{w}{h}.  This makes save + reload agree — a theme always reloads
+        # into the orientation it was composed in.  Disconnected (no live
+        # profile) falls back to the angle-keyed resolution, unchanged.
+        device = app.devices.get(self.key)
+        profile = device.profile if device is not None else None
+        if profile is not None:
+            portrait = content_is_portrait(
+                theme, profile, device_settings.mask_path,
+                device_settings.mask_visible,
+            )
+            resolution = plan_orientation(
+                profile, device_settings.orientation, portrait,
+            ).canvas
+        else:
+            resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             log.warning(
                 "SaveTheme: cannot resolve resolution for %s "
@@ -405,7 +426,6 @@ class SaveTheme(Command[ThemeResult]):
 
         import shutil
         target = app.platform.paths().user_theme_dir(w, h) / self.name
-        device_settings = app.settings.for_device(self.key)
         log.info(
             "SaveTheme: source=%s target=%s resolution=%dx%d "
             "bg_override=%r mask_override=%r user_elements=%d "

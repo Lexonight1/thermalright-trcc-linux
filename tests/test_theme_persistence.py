@@ -1576,3 +1576,91 @@ def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> N
     assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
     restored = Path(app.settings.for_device(_TEST_DEVICE_KEY).current_theme)
     assert restored.resolve() == user.resolve()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# SaveTheme — folder matches the COMPOSED orientation, not the raw angle
+# (Phase D of the folder-switch geometry restore).  A connected rotate
+# panel exposes its profile, so the save resolution is keyed on the same
+# content_is_portrait / plan_orientation decision the renderer uses.
+# ─────────────────────────────────────────────────────────────────────
+
+_ROTATE_KEY = "87ad:70db"
+
+
+def _rotate_device():
+    """A connected non-square rotate panel (native 320×240) with a live
+    profile — portrait catalogs theme240320 / zt240320."""
+    from trcc.core.models import Kind, ProductInfo, Wire
+    from trcc.core.protocol import DeviceProfile
+
+    class _RotateDevice:
+        info = ProductInfo(
+            vid=0x87AD, pid=0x70DB, vendor="Test", product="Rotate",
+            wire=Wire.SCSI, kind=Kind.LCD, native_resolution=(320, 240),
+            orientations=(0, 90, 180, 270),
+        )
+        profile = DeviceProfile(320, 240, rotate=True)
+        is_connected = True
+        key = _ROTATE_KEY
+
+    return _RotateDevice()
+
+
+def test_save_at_90_portrait_mask_saves_to_portrait_folder(
+    app: App, tmp_home: Path,
+) -> None:
+    """A portrait mask applied at 90° saves into the PORTRAIT folder
+    (theme240320) — its composed orientation — so it reloads composed
+    portrait, not spun.  And the reloaded theme composes 240×320."""
+    device = _rotate_device()
+    app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
+    source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
+    app.active_themes[_ROTATE_KEY] = ThemeService().load(source)
+
+    # A real portrait mask under web/zt240320 (the portrait catalog).
+    mask = app.platform.paths().cloud_mask_dir(240, 320) / "000d" / "01.png"
+    mask.parent.mkdir(parents=True)
+    mask.write_bytes(_png_bytes(red=0x55))
+    app.settings.set_orientation(_ROTATE_KEY, 90)
+    app.settings.set_mask_path(_ROTATE_KEY, str(mask))
+    app.settings.set_mask_visible(_ROTATE_KEY, True)
+
+    assert app.dispatch(SaveTheme(key=_ROTATE_KEY, name="p")).ok
+
+    portrait_dir = app.platform.paths().user_theme_dir(240, 320) / "p"
+    landscape_dir = app.platform.paths().user_theme_dir(320, 240) / "p"
+    assert portrait_dir.is_dir(), "portrait mask @90 must save into theme240320"
+    assert not landscape_dir.exists()
+
+    # Round-trip: the reloaded theme (now under theme240320) composes PORTRAIT.
+    reloaded = app.themes.load(portrait_dir)
+    canvas = app.display.composed_canvas_size(
+        device.info, reloaded, device.profile, 90,
+    )
+    assert canvas == (240, 320), (
+        "a saved portrait theme must reload composed portrait, not spun"
+    )
+
+
+def test_save_at_90_landscape_content_saves_to_landscape_folder(
+    app: App, tmp_home: Path,
+) -> None:
+    """Landscape content (no portrait mask, landscape base theme) saved at
+    90° lands in the LANDSCAPE folder (theme320240) — not the angle's
+    portrait folder — so save + reload agree.  Before the fix this filed
+    landscape coords under theme240320, where reload misread them."""
+    device = _rotate_device()
+    app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
+    source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
+    app.active_themes[_ROTATE_KEY] = ThemeService().load(source)
+    app.settings.set_orientation(_ROTATE_KEY, 90)
+
+    assert app.dispatch(SaveTheme(key=_ROTATE_KEY, name="l")).ok
+
+    landscape_dir = app.platform.paths().user_theme_dir(320, 240) / "l"
+    portrait_dir = app.platform.paths().user_theme_dir(240, 320) / "l"
+    assert landscape_dir.is_dir(), (
+        "landscape content @90 must save into theme320240, not the portrait folder"
+    )
+    assert not portrait_dir.exists()

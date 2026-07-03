@@ -8,9 +8,16 @@ must preserve byte-for-byte when it routes the render path through this module.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from trcc.core.geometry import OrientationPlan, plan_orientation
+from trcc.core.geometry import (
+    OrientationPlan,
+    content_is_portrait,
+    plan_orientation,
+)
+from trcc.core.models import Theme
 from trcc.core.protocol import FBL_PROFILES, DeviceProfile
 
 ANGLES = (0, 90, 180, 270)
@@ -109,3 +116,54 @@ def test_landscape_angles_never_spin() -> None:
             for content_portrait in (True, False):
                 plan = plan_orientation(profile, orientation, content_portrait)
                 assert plan.post_rotate == 0, f"fbl={fbl} @{orientation}"
+
+
+# ── content_is_portrait — the shared parent-folder predicate ────────────────
+# A non-square rotate panel with native (320, 240): its portrait catalogs are
+# theme240320 / zt240320.  Three OR-signals + the square/non-rotate guard.
+
+_ROTATE = DeviceProfile(320, 240, rotate=True)
+_SQUARE = DeviceProfile(320, 320, big_endian=True)
+
+
+def _theme(path: str, rotation: int = 0) -> Theme:
+    return Theme(path=Path(path), name="t", resolution=(320, 240),
+                 config={"rotation": rotation})
+
+
+def test_content_portrait_active_mask_wins_over_landscape_theme() -> None:
+    # Portrait mask (web/zt240320) over a landscape base theme → portrait.
+    t = _theme("/x/theme320240/T", rotation=0)
+    assert content_is_portrait(t, _ROTATE, "/x/web/zt240320/000d/01.png", True)
+
+
+def test_content_portrait_mask_ignored_when_hidden() -> None:
+    t = _theme("/x/theme320240/T", rotation=0)
+    assert not content_is_portrait(t, _ROTATE, "/x/web/zt240320/000d/01.png", False)
+
+
+def test_content_portrait_landscape_mask_is_not_portrait() -> None:
+    t = _theme("/x/theme320240/T", rotation=0)
+    assert not content_is_portrait(t, _ROTATE, "/x/web/zt320240/000d/01.png", True)
+
+
+def test_content_portrait_theme_folder_signal_beats_lying_dc() -> None:
+    # Shipped-bug case: portrait folder, landscape DC (rotation=0) → still portrait.
+    t = _theme("/x/theme240320/T", rotation=0)
+    assert content_is_portrait(t, _ROTATE, None, False)
+
+
+def test_content_portrait_dc_rotation_signal_kept() -> None:
+    t = _theme("/x/anywhere/T", rotation=90)
+    assert content_is_portrait(t, _ROTATE, None, False)
+
+
+def test_content_portrait_all_signals_false_is_landscape() -> None:
+    t = _theme("/x/theme320240/T", rotation=0)
+    assert not content_is_portrait(t, _ROTATE, None, False)
+
+
+def test_content_portrait_square_never_portrait() -> None:
+    # Every signal points portrait, but a square panel never composes portrait.
+    t = _theme("/x/theme240320/T", rotation=90)
+    assert not content_is_portrait(t, _SQUARE, "/x/web/zt320320/m/01.png", True)

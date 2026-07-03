@@ -21,10 +21,56 @@ test_geometry.py`` pins the truth table.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 
-from .models import oriented_resolution
+from .models import Theme, oriented_resolution
 from .protocol import DeviceProfile
+
+log = logging.getLogger(__name__)
+
+
+def content_is_portrait(
+    theme: Theme, profile: DeviceProfile,
+    mask_path: str | None, mask_visible: bool,
+) -> bool:
+    """True when the ACTUALLY-LOADED content is portrait-oriented.
+
+    A SUPERSET of three signals — True whenever ANY says portrait, so it never
+    contradicts the old DC-only read (no regression) yet catches what that one
+    missed:
+
+    1. **Active mask under ``web/zt{h}{w}``** — an explicitly-applied portrait
+       mask makes the frame portrait even over a landscape base theme (the bug
+       where a portrait mask got SPUN instead of switched).
+    2. **Theme loaded from ``theme{h}{w}``** — disk truth.  Shipped portrait
+       folders ship the landscape DC with ``rotation=0``, so signal 3 alone
+       reports landscape for a genuinely-portrait folder; the path doesn't lie.
+    3. **Theme DC ``rotation`` ∈ {90,270}** — the legacy signal.  Real cloud
+       portrait themes carry it; kept so nothing that worked before breaks.
+
+    The single source of the portrait decision — shared by ``DisplayService``
+    (render) and ``SaveTheme`` (which folder to persist into), so a saved theme
+    always reloads into the orientation it was composed in.  Only meaningful for
+    a non-square rotate panel; squares / non-rotate never compose portrait.
+    """
+    w, h = profile.resolution
+    if not (profile.rotate and w != h):
+        return False
+    portrait_mask = f"zt{h}{w}"
+    if mask_visible and mask_path and portrait_mask in Path(mask_path).parts:
+        log.debug("content_is_portrait: active mask under %s → portrait",
+                  portrait_mask)
+        return True
+    if f"theme{h}{w}" in theme.path.parts:
+        log.debug("content_is_portrait: theme %s under portrait dir → portrait",
+                  theme.name)
+        return True
+    if theme.config.get("rotation", 0) in (90, 270):
+        log.debug("content_is_portrait: theme %s DC rotation portrait", theme.name)
+        return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
