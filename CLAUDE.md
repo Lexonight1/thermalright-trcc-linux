@@ -13,25 +13,33 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **RESUME TOMORROW (2026-06-30) — v9.7.10 SHIPPED + 37 open issues nudged → AWAIT replies.
-  READ `memory/project_theme_save_pure_pointer.md` FIRST.** The whole theme save/restore/rotation
-  batch shipped as **v9.7.10** (release `3078965b`), all from the user's own GUI testing (NOT
-  issue-tied):
-  - Saved themes now **symlink** their assets (bg image/video + mask) into the theme dir; the DC
-    (`trcc.json` overlay layout) is the only real copy — and **video backgrounds are remembered**
-    again (`video_path` resolves the symlinked/referenced video) (`e9d55d97`).
-  - **Restart restores the last theme per device WITH its bg/mask/overlay changes** — fixed MY
-    shipped-first regression in `oriented_theme_path` (now preserves the user-vs-shipped tree)
-    (`7a61b2ff`); **rotation preserves edits** too (`ebfd2596`, C#-faithful `reset_overrides=False`).
-  - **Shipped + user same-name themes coexist**, shipped lists first (`b88b504d`).
-  Posted a warm "upgrade to v9.7.10 + send a fresh `trcc report`, we're on it" nudge to **37** open
-  bug/install reports (excluded #203 just-replied, #160/#149/#159/#144 non-bugs). So **TOMORROW =
-  triage the replies as they land** (version-check → already-fixed-vs-genuine → report-gated, per
-  `feedback_check_version_then_already_fixed`). **STANDING GATE: device eyeball of the theme work**
-  (render-proven via tests, not glass-proven on the user's panel).
-  - **Follow-up not done:** the symlink save is test-verified only; eyeball one
-    save→reload→restart cycle on the real device. Non-square rotated-restart still loses edits
-    (hardware-gated geometry, deliberately NOT pursued — see the memo).
+- **RESUME 2026-07-04 — v9.8.1 SHIPPED + issues/PRs cleared. READ
+  `memory/project_rotation_universal_port.md` + `memory/project_report_replay_and_v980_issue_informing.md`
+  + `memory/project_decompile_miner.md` FIRST.** Tree clean, all pushed. Big session:
+  - **v9.8.1 RELEASED** (`753eaeaa`, packages + PyPI live): portrait content on SMALL rotate panels
+    (320×240 / 640×480) now flips 180° at 270° — true to rotation, was frozen at 90°. Eyeball-confirmed
+    on 87ad:70db pm=5. **Widescreen NOT fixed** (separate path).
+  - **Report-replay dev tool COMPLETE** (`43d94ab6`/`9a0553da`/`c5be99b3`/`70449f88`):
+    `dev/mock_gui.py --report FILE | --issue N | --replay | --check` boots + replays any reporter's
+    session from their `trcc report`, zero hardware. `--check` = headless PASS/FAIL batch. Only works
+    if the report carries a `handshake OK: PM=` line (no handshake → reporter-gated).
+  - **Universal rotation port — Inc 1 DONE (`bd2194bc`, no-op split), Inc 2 NEXT (fixes widescreen
+    #203/#171).** Replace 3 branchy rotation paths with ONE `wire_rotation` table (`(base−orientation)
+    mod 360`, per-panel baseline, verified vs C# decompile). Inc 2 was REVERTED once (naive "compose
+    oriented" CLIPS landscape-only content at portrait angles). **Corrected model (user's A→B): render =
+    ONE branchless path (compose oriented canvas → wire_rotation); content-fit is a SEPARATE data/catalog
+    concern, NOT a rotation branch.** Full spec in the memo. Do it deliberately, verify per-panel in mock.
+  - **Decompile-miner PLANNED = the NEW-DEVICE ONBOARDING PIPELINE (user's north star):** exe→Ghidra→
+    mine data tables (rotation switches, wire byte-arrays, resolution/PM)→JSON→OCP registry rows→
+    report-replay validates no-hardware→ship. Data-extract ONLY, not app-gen. Scaffold `dev/decompiler/`
+    (UNCOMMITTED). Start = rotation-table extractor (would've caught my widescreen transcription error).
+  - **Issues: 39 open (was 41).** Replied to ALL OP-last; precise diagnostic asks out on #175/#150/#189
+    (`-vv` log) + #161/#207 (`nvidia-smi` + pynvml ver); closed #192/#182; #176 = 270° fixed, awaiting
+    confirm. PRs: 0 open (#209 merged = flake version-from-pyproject, kills a bump location; #208 closed
+    already-fixed via `3ea9d1e9`). USER PREFERS **binary fixed/not-fixed, no "triage" jargon**
+    (`feedback_binary_fixed_not_fixed`).
+  - **On my plate, code-side (no reporter needed):** rotation port Inc 2 (widescreen), #143 sleep-bytes
+    (from the decompile). Mock CANNOT verify send-path #175/#150 (no display in mock) → reporter-gated.
   Older still-open BUILD backlog (from the 2026-06-26 triage, `memory/project_issue_triage_v977.md`):
   (1) **#143** LCD won't sleep on shutdown — needs the C# vendor sleep/clear command (standard SCSI
       STOP → DID_ERROR) + a shutdown hook (`App.close()` / systemd `ExecStop`). Decompile the FormCZTV
