@@ -117,5 +117,13 @@ def plan_orientation(
     if rotate_panel and not content_is_portrait and not profile.widescreen:
         return OrientationPlan((w, h), False, orientation)
     if rotate_panel:
-        return OrientationPlan((h, w), True, 0)
+        # Portrait content is composed on the transposed canvas with the
+        # orientation baked into the pixels — but the asset is authored for 90.
+        # 270 is 90 + a 180° flip, and 180° is dimension-preserving, so rotate
+        # the WHOLE composite (bg + mask + text) as one unit and everything
+        # stays true to the physical rotation instead of frozen at 90.
+        # Widescreen JPEG panels keep post_rotate=0: their 90/270 send-unrotated
+        # behaviour is hardware-verified (#169) and must not change.
+        post_rotate = 180 if orientation == 270 and not profile.widescreen else 0
+        return OrientationPlan((h, w), True, post_rotate)
     return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)

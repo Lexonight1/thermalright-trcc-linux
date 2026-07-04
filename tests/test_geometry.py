@@ -46,13 +46,16 @@ CASES = [
     # 90/270 landscape-only → LANDSCAPE canvas + whole-composite spin (fallback).
     ("s565@90L",   _SMALL_RGB565, 90,  False, OrientationPlan((320, 240), False, 90)),
     ("s565@270L",  _SMALL_RGB565, 270, False, OrientationPlan((320, 240), False, 270)),
-    # 90/270 portrait content → PORTRAIT canvas, NO spin (the fix's target).
+    # Portrait content → PORTRAIT canvas.  90 bakes orientation into the pixels
+    # (no spin); 270 is 90 + a dimension-preserving 180° flip so the whole
+    # composite stays true to the physical rotation instead of frozen at 90.
     ("s565@90P",   _SMALL_RGB565, 90,  True,  OrientationPlan((240, 320), True, 0)),
-    ("s565@270P",  _SMALL_RGB565, 270, True,  OrientationPlan((240, 320), True, 0)),
+    ("s565@270P",  _SMALL_RGB565, 270, True,  OrientationPlan((240, 320), True, 180)),
 
     # Small rotate JPEG (Mjolnir) behaves identically — rotate, not widescreen.
     ("sjpg@90L",   _SMALL_JPEG, 90,  False, OrientationPlan((320, 240), False, 90)),
     ("sjpg@90P",   _SMALL_JPEG, 90,  True,  OrientationPlan((240, 320), True, 0)),
+    ("sjpg@270P",  _SMALL_JPEG, 270, True,  OrientationPlan((240, 320), True, 180)),
 
     # Widescreen JPEG (#169/#203) — NEVER gets post_rotate; at 90/270 always
     # composes portrait (rides the second rotate_panel branch), regardless of
@@ -92,21 +95,30 @@ def test_plan_invariants_over_every_profile(
     assert plan.canvas in {(w, h), (h, w)}
     assert plan.canvas[0] * plan.canvas[1] == w * h
 
-    # post_rotate is only ever the raw orientation (fallback spin) or 0.
-    assert plan.post_rotate in {0, orientation}
+    # post_rotate is 0, the raw orientation (landscape-fallback spin), or 180
+    # (portrait content at 270 — the dimension-preserving flip).
+    assert plan.post_rotate in {0, orientation, 180}
 
     # Widescreen panels NEVER take the whole-composite spin — #169/#203 protection.
     if profile.widescreen:
         assert plan.post_rotate == 0
 
-    # A non-zero post_rotate implies a non-widescreen rotate panel at 90/270
-    # with landscape content composed on the landscape canvas.
+    # Any non-zero spin is a non-widescreen rotate panel at 90/270.
     if plan.post_rotate:
         assert profile.rotate and w != h and not profile.widescreen
         assert orientation in (90, 270)
-        assert not content_portrait
-        assert plan.canvas == (w, h)
-        assert plan.is_portrait_content is False
+        if plan.post_rotate == 180:
+            # Portrait content at 270: composed portrait, flipped as one unit.
+            assert orientation == 270
+            assert content_portrait
+            assert plan.canvas == (h, w)
+            assert plan.is_portrait_content is True
+        else:
+            # Landscape-only fallback: composed on the landscape canvas, spun whole.
+            assert plan.post_rotate == orientation
+            assert not content_portrait
+            assert plan.canvas == (w, h)
+            assert plan.is_portrait_content is False
 
 
 def test_landscape_angles_never_spin() -> None:
