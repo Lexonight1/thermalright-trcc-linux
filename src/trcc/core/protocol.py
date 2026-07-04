@@ -39,6 +39,14 @@ class DeviceProfile:
     jpeg: bool = False           # JPEG encoding (vs RGB565)
     big_endian: bool = False     # RGB565 byte order (> vs <)
     rotate: bool = False         # Pre-rotate 90° CW for non-square portrait panels
+    # Widescreen "bili" panels (C# isBiliPingmu — 854×480, 1280×480, 1600×720,
+    # 1920×462).  Their user-orientation folds into the per-resolution encode
+    # TABLE (a single wire angle), NOT the whole-composite rotation the simple
+    # 320×240 / 640×480 rotate panels use.  This is the correct discriminator for
+    # the two rotation models — NOT ``jpeg``: a bulk 320×240 panel (FBL 50, PM=5
+    # Mjolnir) negotiates JPEG yet rotates like its RGB565 siblings, not like a
+    # widescreen panel.  (#176 — was conflated with ``jpeg`` pre-fix.)
+    widescreen: bool = False
     # Resolved device-only encode rotation, applied to the WIRE frame only (not
     # the preview) in _encode_for_wire.  Resolved at handshake from
     # encode_pm_bases via resolve_encode_base() once the PM byte is known.  0 =
@@ -86,15 +94,15 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     100: DeviceProfile(320,  320,  big_endian=True),
     101: DeviceProfile(320,  320,  big_endian=True),
     102: DeviceProfile(320,  320,  big_endian=True),
-    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True,
+    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True, widescreen=True,
                        encode_base=180, encode_sub_bases=((3, 0),)),
-    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True,
+    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True, widescreen=True,
                        encode_sub_bases=((2, 90),)),
     129: DeviceProfile(480,  480,
                        encode_pm_bases=((6, 180),)),                # alias for 72
-    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True,
+    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True, widescreen=True,
                        encode_base=180, encode_sub_bases=((2, 0), (3, 0), (4, 0))),
-    224: DeviceProfile(854,  480,  jpeg=True, rotate=True,
+    224: DeviceProfile(854,  480,  jpeg=True, rotate=True, widescreen=True,
                        encode_invert=False, encode_sub_bases=((2, 180),)),
 }
 # fmt: on
@@ -192,6 +200,7 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
             jpeg=profile.jpeg,
             big_endian=profile.big_endian,
             rotate=profile.rotate,
+            widescreen=profile.widescreen,
             encode_base=profile.encode_base,
             encode_invert=profile.encode_invert,
             encode_sub_bases=profile.encode_sub_bases,
@@ -204,6 +213,7 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
             jpeg=profile.jpeg,
             big_endian=profile.big_endian,
             rotate=profile.rotate,
+            widescreen=profile.widescreen,
             encode_base=profile.encode_base,
             encode_invert=profile.encode_invert,
             encode_sub_bases=profile.encode_sub_bases,
@@ -268,4 +278,47 @@ def resolve_encode_angle(profile: DeviceProfile, orientation: int) -> int:
     angle = (profile.encode_base + signed) % 360
     log.debug("resolve_encode_angle: base=%d invert=%s orient=%d → %d°",
               profile.encode_base, profile.encode_invert, orientation, angle)
+    return angle
+
+
+def wire_rotation(profile: DeviceProfile, orientation: int, pm: int = 0) -> int:
+    """Whole-composite rotation for the WIRE frame only, applied before encode.
+
+    The C#-faithful unification of the ``ImageToJpg`` (FormCZTV.cs:2655-2711)
+    and ``ImageTo565`` (FormCZTV.cs:2976-2990) ``directionB`` switches into one
+    formula: ``wire_angle = (BASE - orientation) mod 360``.  ``BASE`` is the
+    panel's physical-mount offset — the angle the C# rotates by at
+    ``directionB == 0`` — derived purely from resolution + encoder (JPEG vs
+    RGB565) + the ``pm == 6`` square special case:
+
+        * squares (``w == h``, 240/320/360/480): 0, except a JPEG panel with
+          ``pm == 6`` → 180 (C# ``is320x320 || is480x480`` + ``myDevicePingMu
+          == 6``, FormCZTV.cs:2655-2661).  Round-480 / ``pm == 3`` use the C#
+          ``RotateImgHei`` / ``RotateImgBu`` border-fill variants — same angle,
+          only the border differs, so that fill is a separate round-panel
+          concern, not part of this rotation.
+        * 1600×720 / 1920×462: 180 (C# FormCZTV.cs:2678 / 2692).
+        * 320×240: 0 when JPEG (``pm == 5`` Mjolnir, FormCZTV.cs:2669-2675),
+          else 90 (RGB565 small panel, C# default ``ImageTo565``,
+          FormCZTV.cs:2985-2989).  The discriminator is the encoder, NOT the
+          FBL code — ``pm == 5`` (Mjolnir, JPEG) and ``pm == 50`` (Frozen
+          Warframe, RGB565) both collapse to FBL 50 yet rotate oppositely.
+        * everything else (640×480, 854×480, 1280×480, 800×480, 960×540): 0
+          (C# FormCZTV.cs:2683-2704).
+
+    The preview never rotates — ``GenerateImage`` composes on the oriented
+    canvas — so this is the *only* rotation, and it touches the wire alone.
+    """
+    w, h = profile.resolution
+    if w == h:
+        base = 180 if (profile.jpeg and pm == 6) else 0
+    elif (w, h) in {(1600, 720), (1920, 462)}:
+        base = 180
+    elif (w, h) == (320, 240):
+        base = 0 if profile.jpeg else 90
+    else:
+        base = 0
+    angle = (base - orientation) % 360
+    log.debug("wire_rotation: %dx%d jpeg=%s pm=%d base=%d orient=%d → %d°",
+              w, h, profile.jpeg, pm, base, orientation, angle)
     return angle

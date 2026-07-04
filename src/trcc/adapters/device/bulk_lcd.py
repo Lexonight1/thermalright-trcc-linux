@@ -147,6 +147,7 @@ class BulkLcd(Device[BulkTransport]):
             width=base.width, height=base.height,
             jpeg=(self._pm not in _RGB565_PMS),
             big_endian=base.big_endian, rotate=base.rotate,
+            widescreen=base.widescreen,
             encode_baseline=encode_baseline,
             encode_base=encode_base, encode_invert=base.encode_invert,
             encode_sub_bases=(),  # folded into encode_base above

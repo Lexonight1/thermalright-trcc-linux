@@ -13,11 +13,26 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **RESUME TOMORROW — open issue gaps after the 2026-06-26 triage + v9.7.7 release.
-  READ `memory/project_issue_triage_v977.md` FIRST.** v9.7.7 SHIPPED (geometry clip `899d72cc` +
-  #193 multi-zone effects `bf38d3c8` + #189 resume `632db1d4`); 33 issue replies POSTED. The triage
-  found only TWO genuine current-code bugs (both fixed). What's LEFT to actually build (NOT done, NOT
-  claimed fixed to reporters):
+- **RESUME TOMORROW (2026-06-30) — v9.7.10 SHIPPED + 37 open issues nudged → AWAIT replies.
+  READ `memory/project_theme_save_pure_pointer.md` FIRST.** The whole theme save/restore/rotation
+  batch shipped as **v9.7.10** (release `3078965b`), all from the user's own GUI testing (NOT
+  issue-tied):
+  - Saved themes now **symlink** their assets (bg image/video + mask) into the theme dir; the DC
+    (`trcc.json` overlay layout) is the only real copy — and **video backgrounds are remembered**
+    again (`video_path` resolves the symlinked/referenced video) (`e9d55d97`).
+  - **Restart restores the last theme per device WITH its bg/mask/overlay changes** — fixed MY
+    shipped-first regression in `oriented_theme_path` (now preserves the user-vs-shipped tree)
+    (`7a61b2ff`); **rotation preserves edits** too (`ebfd2596`, C#-faithful `reset_overrides=False`).
+  - **Shipped + user same-name themes coexist**, shipped lists first (`b88b504d`).
+  Posted a warm "upgrade to v9.7.10 + send a fresh `trcc report`, we're on it" nudge to **37** open
+  bug/install reports (excluded #203 just-replied, #160/#149/#159/#144 non-bugs). So **TOMORROW =
+  triage the replies as they land** (version-check → already-fixed-vs-genuine → report-gated, per
+  `feedback_check_version_then_already_fixed`). **STANDING GATE: device eyeball of the theme work**
+  (render-proven via tests, not glass-proven on the user's panel).
+  - **Follow-up not done:** the symlink save is test-verified only; eyeball one
+    save→reload→restart cycle on the real device. Non-square rotated-restart still loses edits
+    (hardware-gated geometry, deliberately NOT pursued — see the memo).
+  Older still-open BUILD backlog (from the 2026-06-26 triage, `memory/project_issue_triage_v977.md`):
   (1) **#143** LCD won't sleep on shutdown — needs the C# vendor sleep/clear command (standard SCSI
       STOP → DID_ERROR) + a shutdown hook (`App.close()` / systemd `ExecStop`). Decompile the FormCZTV
       exit path first.

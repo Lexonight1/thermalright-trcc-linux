@@ -1,5 +1,40 @@
 # Changelog
 
+## v9.8.1
+
+**Rotating to 270° now shows your content the right way up.**  On rotating
+panels, setting the display to 270° used to look identical to 90° — the
+background, mask, and metrics were all a half-turn off.  Now the whole composite
+flips to follow the physical rotation, so 90° and 270° are proper opposites the
+way they should be.  This covers the smaller rotating panels (320×240 / 640×480);
+the widescreen panels handle rotation on a separate path that's still being
+worked on, so they're unchanged in this release.
+
+Also for maintainers: a diagnostic replay tool now boots and replays a user's
+`trcc report` with no hardware (`dev/mock_gui.py --issue N --replay --check`),
+which makes reproducing device-specific bug reports much faster.
+
+## v9.8.0
+
+Rotating a display to portrait now switches to your portrait artwork instead of
+turning the landscape version on its side.
+
+**Portrait masks display upright at 90° / 270°.**  On panels that can rotate,
+picking a portrait mask and rotating the display used to spin the whole
+landscape layout sideways.  Now the app loads the portrait version of your
+content and composes it upright — the way the original Windows app does — so
+masks, backgrounds, and overlay text stay aligned and nothing gets clipped.
+
+**Saving a theme while rotated saves it in the right orientation.**  A theme you
+save at 90° / 270° is now stored as portrait (and a landscape one as landscape),
+so it comes back exactly as you saved it the next time you load it — no more
+themes reloading in the wrong orientation.
+
+Under the hood this restores the original per-orientation content model the app
+was built on, with the whole change covered by tests and verified on a real
+rotating panel.  Note: Thermalright ships far fewer portrait masks (5) than
+landscape ones (110) — that's the vendor's catalog, not a bug in this release.
+
 ## v9.7.10
 
 Saved themes now remember everything you set — and they come back exactly that
