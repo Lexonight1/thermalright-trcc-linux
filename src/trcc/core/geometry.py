@@ -127,3 +127,25 @@ def plan_orientation(
         post_rotate = 180 if orientation == 270 and not profile.widescreen else 0
         return OrientationPlan((h, w), True, post_rotate)
     return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)
+
+
+def save_folder_resolution(
+    profile: DeviceProfile, orientation: int, content_is_portrait: bool,
+) -> tuple[int, int]:
+    """Resolution key for a saved theme's FOLDER (``theme{w}{h}`` vs ``{h}{w}``).
+
+    This is the **asset-catalog** concern — portrait content saves into the
+    portrait folder, landscape into the landscape folder — kept deliberately
+    separate from the render **compose canvas** (which is purely
+    :func:`oriented_resolution`, content-independent).  The two coincide today
+    but diverge for landscape content at a portrait angle, so ``SaveTheme`` owns
+    this predicate rather than borrowing the renderer's canvas.  Mirrors the
+    v9.8.0 folder-switch (Phase D): a portrait selection → ``theme{h}{w}``.
+    """
+    w, h = profile.resolution
+    rotate_panel = profile.rotate and w != h and orientation in (90, 270)
+    if rotate_panel and (content_is_portrait or profile.widescreen):
+        return (h, w)                       # portrait folder
+    if rotate_panel:
+        return (w, h)                       # landscape content at a portrait angle
+    return oriented_resolution((w, h), orientation)

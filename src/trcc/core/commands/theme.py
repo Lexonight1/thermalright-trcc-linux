@@ -21,7 +21,7 @@ from ..events import (
     ThemeLoaded,
     ThemeSaved,
 )
-from ..geometry import content_is_portrait, plan_orientation
+from ..geometry import content_is_portrait, save_folder_resolution
 from ..registry import find_product
 from ..results import (
     CloudCategoryEntry,
@@ -391,13 +391,14 @@ class SaveTheme(Command[ThemeResult]):
             )
 
         device_settings = app.settings.for_device(self.key)
-        # Save into the folder matching the COMPOSED orientation, not the raw
+        # Save into the folder matching the content's orientation, not the raw
         # angle — the content's parent folder IS the orientation.  A connected
-        # device carries its profile, so we key the resolution on the same
-        # plan_orientation decision the renderer uses: a portrait selection
-        # (portrait mask / portrait theme) → theme{h}{w}; landscape content →
-        # theme{w}{h}.  This makes save + reload agree — a theme always reloads
-        # into the orientation it was composed in.  Disconnected (no live
+        # device carries its profile, so we key the resolution on
+        # save_folder_resolution: a portrait selection (portrait mask / portrait
+        # theme) → theme{h}{w}; landscape content → theme{w}{h}.  This makes
+        # save + reload agree — a theme always reloads into the orientation it
+        # was composed in.  (Folder selection is the asset-catalog concern, kept
+        # separate from the renderer's compose canvas.)  Disconnected (no live
         # profile) falls back to the angle-keyed resolution, unchanged.
         device = app.devices.get(self.key)
         profile = device.profile if device is not None else None
@@ -406,9 +407,9 @@ class SaveTheme(Command[ThemeResult]):
                 theme, profile, device_settings.mask_path,
                 device_settings.mask_visible,
             )
-            resolution = plan_orientation(
+            resolution = save_folder_resolution(
                 profile, device_settings.orientation, portrait,
-            ).canvas
+            )
         else:
             resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
