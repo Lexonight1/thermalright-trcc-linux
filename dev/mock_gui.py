@@ -24,6 +24,8 @@ Usage:
   Reproduce a reported device (no hardware needed) — a trcc report records the
   vid:pid AND the handshake reply bytes (PM + sub_byte):
     PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt   # their exact fleet
+    PYTHONPATH=src python3 dev/mock_gui.py --issue 176 --replay       # fetch the issue thread
+                                                # (body + all comments) via gh and boot + replay
     PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt --replay
                                                 # + re-run their action sequence
                                                 #   (SetOrientation/LoadTheme/…)
@@ -103,6 +105,37 @@ def _device_spec_from_token(token: str) -> dict:
     return {"vid": vid, "pid": pid, "name": f"reported device {vid}:{pid}"}
 
 
+def _fetch_issue_report(number: str) -> str:
+    """``--issue N`` → fetch the issue's WHOLE thread (body + every comment)
+    into a report file and return its path, for ``--report`` replay.
+
+    The whole thread is used deliberately: the newest ``trcc report`` a reporter
+    pastes is often thinner than an older one (missing the handshake bytes), so
+    mining every comment recovers the device PM/SUB from whichever report carries
+    it — "use the old reports" by default."""
+    import subprocess
+    if not number.isdigit():
+        print(f"Error: --issue {number} — expected an issue number, e.g. --issue 176")
+        sys.exit(1)
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "view", number, "--json", "body,comments",
+             "-q", r'.body + "\n" + (.comments | map(.body) | join("\n"))'],
+            capture_output=True, text=True, check=True,
+        )
+    except FileNotFoundError:
+        print("Error: --issue needs the GitHub CLI (`gh`) on PATH")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: gh issue view {number} failed: {e.stderr.strip()}")
+        sys.exit(1)
+    DEV_TRCC.mkdir(parents=True, exist_ok=True)
+    path = DEV_TRCC / f"issue{number}_report.md"
+    path.write_text(out.stdout)
+    print(f"Fetched issue #{number} thread → {path}")
+    return str(path)
+
+
 def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
     decorated = False
     verbosity = 0
@@ -133,6 +166,13 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
                 report_path = args[i]
             else:
                 print("Error: --report requires a file path")
+                sys.exit(1)
+        elif arg == '--issue':
+            i += 1
+            if i < len(args):
+                report_path = _fetch_issue_report(args[i])
+            else:
+                print("Error: --issue requires an issue number, e.g. --issue 176")
                 sys.exit(1)
         elif arg == '--replay':
             replay = True
