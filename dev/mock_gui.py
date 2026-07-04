@@ -24,7 +24,18 @@ Usage:
   Reproduce a reported device (no hardware needed) — a trcc report records the
   vid:pid AND the handshake reply bytes (PM + sub_byte):
     PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt   # their exact fleet
+    PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt --replay
+                                                # + re-run their action sequence
+                                                #   (SetOrientation/LoadTheme/…)
+                                                #   to reproduce their SCREEN state
     PYTHONPATH=src python3 dev/mock_gui.py device=0416:5302 pm=9 sub=2 # one device by hand
+
+  The report's log tail records every ``app.dispatch(cmd)`` at INFO, so
+  ``--replay`` reconstructs the exact ordered Commands the user ran and dispatches
+  them through the same universal bus the GUI/CLI/API share — the definitive way
+  to SEE a reported bug and localise it to the Command layer (theme paths are
+  local to the reporter, so a LoadTheme to a missing path reports ok=False — the
+  rest of the state still applies).
 """
 from __future__ import annotations
 
@@ -92,12 +103,13 @@ def _device_spec_from_token(token: str) -> dict:
     return {"vid": vid, "pid": pid, "name": f"reported device {vid}:{pid}"}
 
 
-def _parse_args() -> tuple[bool, int, str | None, bool, dict | None]:
+def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
     decorated = False
     verbosity = 0
     report_path: str | None = None
     all_devices = False
     device_spec: dict | None = None
+    replay = False
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -122,6 +134,8 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None]:
             else:
                 print("Error: --report requires a file path")
                 sys.exit(1)
+        elif arg == '--replay':
+            replay = True
         elif arg == '--decorated':
             decorated = True
         elif arg.startswith('device='):
@@ -138,11 +152,11 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None]:
                 print(f"Error: {arg} — {val!r} is not a number")
                 sys.exit(1)
         i += 1
-    return decorated, verbosity, report_path, all_devices, device_spec
+    return decorated, verbosity, report_path, all_devices, device_spec, replay
 
 
 def main() -> None:
-    decorated, verbosity, report_path, all_devices, device_spec = _parse_args()
+    decorated, verbosity, report_path, all_devices, device_spec, replay = _parse_args()
 
     # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.  This is the
     # ONLY thing the mock does differently — substitute the dev platform and
@@ -164,6 +178,16 @@ def main() -> None:
     # developer console once the window is built (guarded to a mock fleet).
     from trcc.ui.gui import run_gui
 
+    # A ``--report`` file means "show me THIS reporter's fleet".  DevMockPlatform
+    # scans to [] by dev rule, so — exactly like the ``device=`` form — nothing
+    # presents unless we auto-connect it.  Resolve the reported specs (vid:pid +
+    # handshake PM/SUB recovered by the diagnose parser) so _on_ready can boot
+    # the reporter's device on screen instead of a blank window.
+    report_specs: list[dict] = []
+    if report_path and device_spec is None and not all_devices:
+        from _mock_bootstrap import load_device_specs
+        report_specs = load_device_specs(report_path)
+
     def _on_ready(window: Any) -> None:
         _mount_dev_console(window)
         # A CLI ``device=VID:PID pm=… sub=…`` means "show me THIS device" —
@@ -171,6 +195,15 @@ def main() -> None:
         # returns []).  Mirrors the dev variant panel's click path.
         if device_spec is not None:
             _auto_connect(window._app, device_spec)
+        else:
+            # Same path for every device recovered from a ``--report`` file.
+            for spec in report_specs:
+                _auto_connect(window._app, spec)
+            # ``--replay`` then re-runs the reporter's own action sequence
+            # (SetOrientation / LoadTheme / ApplyMask …) through the same
+            # universal Command bus, reproducing their on-screen state.
+            if replay and report_path:
+                _replay_report_actions(window._app, report_path)
 
     sys.exit(run_gui(
         cast(Any, platform), decorated=decorated,
@@ -201,6 +234,37 @@ def _auto_connect(app: Any, spec: dict) -> None:
     result = app.dispatch(ConnectDevice(key=key))
     log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d → ok=%s",
              key, pm, sub, fbl, getattr(result, "ok", None))
+
+
+def _replay_report_actions(app: Any, report_path: str) -> None:
+    """Re-dispatch the reporter's Command sequence recovered from their report.
+
+    The report's log tail records every ``app.dispatch(cmd)`` at INFO, so
+    ``parse_dispatch_sequence`` reconstructs the exact ordered actions the user
+    took (orientation, theme, mask, split…).  Feeding each back through
+    ``decode_command`` → ``app.dispatch`` reproduces their on-screen state on
+    the mock, with no hardware — the definitive way to SEE a reported bug and
+    localise it to the universal Command bus."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / 'tools'))
+    from diagnose import parse_dispatch_sequence  # type: ignore[import-not-found]
+    from trcc.ipc import decode_command
+
+    seq = parse_dispatch_sequence(Path(report_path).read_text(errors="replace"))
+    log.info("mock_gui._replay_report_actions: %d action(s) from %s",
+             len(seq), report_path)
+    print(f"Replaying {len(seq)} reported action(s) from {report_path}")
+    for env in seq:
+        name = env["command"]
+        try:
+            cmd = decode_command(env)
+        except (ValueError, TypeError) as e:
+            log.warning("replay: skip %s — %s", name, e)
+            print(f"  · skip {name} — {e}")
+            continue
+        result = app.dispatch(cmd)
+        ok = getattr(result, "ok", None)
+        log.info("replay: %s(%s) → ok=%s", name, env["kwargs"], ok)
+        print(f"  → {name}({', '.join(f'{k}={v}' for k, v in env['kwargs'].items())}) ok={ok}")
 
 
 def _mount_dev_console(window: Any) -> None:

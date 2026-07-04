@@ -62,7 +62,7 @@ def _specs_from_report(report_path: str) -> list[dict]:
     returns the real attached set), only by ``mock_cli`` / ``mock_api``
     style harnesses that want a fixed device list.
     """
-    sys.path.insert(0, str(_REPO_ROOT / 'tools'))
+    sys.path.insert(0, str(_REPO_ROOT / 'dev' / 'tools'))
     from diagnose import parse_report  # type: ignore[import-not-found]
 
     text = Path(report_path).read_text()
