@@ -124,7 +124,13 @@ def plan_orientation(
         # stays true to the physical rotation instead of frozen at 90.
         # Widescreen JPEG panels keep post_rotate=0: their 90/270 send-unrotated
         # behaviour is hardware-verified (#169) and must not change.
-        post_rotate = 180 if orientation == 270 and not profile.widescreen else 0
+        # 270 is 90 + a dimension-preserving 180° flip — applies to EVERY rotate
+        # panel including widescreen (the C# decompile shows widescreen 854×480
+        # rotates 90→270° / 270→90°, a 180° difference, not frozen).  The flip
+        # keeps the portrait-buffer dimensions (#169) and only re-orients the
+        # content, so it's dimension-safe (no clip).  On-glass handedness for
+        # widescreen still wants a reporter photo (#203) to confirm.
+        post_rotate = 180 if orientation == 270 else 0
         return OrientationPlan((h, w), True, post_rotate)
     return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)
 

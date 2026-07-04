@@ -57,14 +57,17 @@ CASES = [
     ("sjpg@90P",   _SMALL_JPEG, 90,  True,  OrientationPlan((240, 320), True, 0)),
     ("sjpg@270P",  _SMALL_JPEG, 270, True,  OrientationPlan((240, 320), True, 180)),
 
-    # Widescreen JPEG (#169/#203) — NEVER gets post_rotate; at 90/270 always
-    # composes portrait (rides the second rotate_panel branch), regardless of
-    # content flag.  0/180 = oriented landscape.
+    # Widescreen JPEG (#169/#203) — always composes portrait at 90/270 (rides the
+    # second rotate_panel branch), regardless of content flag.  90 bakes the
+    # orientation into the pixels (no spin); 270 = 90 + a dimension-preserving
+    # 180° flip (the C# shows 854×480 rotates 90 and 270 a 180° apart — no longer
+    # frozen at 90).  0/180 = oriented landscape.
     ("wide@0",     _WIDE_JPEG, 0,   False, OrientationPlan((854, 480), False, 0)),
     ("wide@180",   _WIDE_JPEG, 180, False, OrientationPlan((854, 480), False, 0)),
     ("wide@90L",   _WIDE_JPEG, 90,  False, OrientationPlan((480, 854), True, 0)),
     ("wide@90P",   _WIDE_JPEG, 90,  True,  OrientationPlan((480, 854), True, 0)),
-    ("wide@270L",  _WIDE_JPEG, 270, False, OrientationPlan((480, 854), True, 0)),
+    ("wide@270L",  _WIDE_JPEG, 270, False, OrientationPlan((480, 854), True, 180)),
+    ("wide@270P",  _WIDE_JPEG, 270, True,  OrientationPlan((480, 854), True, 180)),
 ]
 
 
@@ -96,27 +99,27 @@ def test_plan_invariants_over_every_profile(
     assert plan.canvas[0] * plan.canvas[1] == w * h
 
     # post_rotate is 0, the raw orientation (landscape-fallback spin), or 180
-    # (portrait content at 270 — the dimension-preserving flip).
+    # (portrait-composed content at 270 — the dimension-preserving flip, which
+    # now includes widescreen: the C# shows 854×480 rotates 90 and 270 by a 180°
+    # difference, so widescreen is no longer frozen).
     assert plan.post_rotate in {0, orientation, 180}
 
-    # Widescreen panels NEVER take the whole-composite spin — #169/#203 protection.
-    if profile.widescreen:
-        assert plan.post_rotate == 0
-
-    # Any non-zero spin is a non-widescreen rotate panel at 90/270.
+    # Any non-zero spin is a rotate panel at 90/270.
     if plan.post_rotate:
-        assert profile.rotate and w != h and not profile.widescreen
+        assert profile.rotate and w != h
         assert orientation in (90, 270)
         if plan.post_rotate == 180:
-            # Portrait content at 270: composed portrait, flipped as one unit.
+            # The 270 flip on portrait-composed content — non-widescreen portrait
+            # content, OR any widescreen panel (which always composes portrait).
             assert orientation == 270
-            assert content_portrait
             assert plan.canvas == (h, w)
             assert plan.is_portrait_content is True
         else:
-            # Landscape-only fallback: composed on the landscape canvas, spun whole.
+            # Landscape-only fallback: composed on the landscape canvas, spun
+            # whole.  Non-widescreen only — widescreen always composes portrait.
             assert plan.post_rotate == orientation
             assert not content_portrait
+            assert not profile.widescreen
             assert plan.canvas == (w, h)
             assert plan.is_portrait_content is False
 
