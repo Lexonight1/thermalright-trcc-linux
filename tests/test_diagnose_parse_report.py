@@ -130,6 +130,44 @@ def test_truncated_report_recovers_device_from_log_tail(parse_report):
     assert (dev.width, dev.height) == (854, 480)
 
 
+_LED_REPORT = """\
+## Platform
+  system              Linux
+
+## Devices (1)
+  0416:8001       Assassin 120 Digital            wire=led
+
+## Log tail (1000 lines)
+  2026-06-30 INFO trcc.adapters.device.led:Led.connect:252:   found 0416:8001 serial='z'
+  2026-06-30 INFO trcc.adapters.device.led:Led.connect:252: Led handshake OK: PM=16 SUB=16 style=pa120 model=PA120_DIGITAL
+"""
+
+
+def test_led_handshake_without_resolution_extracts_pm_sub(parse_report):
+    # LED / segment coolers log "handshake OK: PM=N SUB=M style=… model=…" with
+    # no "resolution=(w, h)" — PM/SUB must still be recovered (they are the
+    # whole fingerprint; width/height stay 0 and the model resolves from PM).
+    report = parse_report(_LED_REPORT)
+    assert len(report.devices) == 1
+    dev = report.devices[0]
+    assert (dev.vid, dev.pid) == (0x0416, 0x8001)
+    assert dev.protocol == "hid"          # led → hid test surface
+    assert (dev.pm, dev.sub) == (16, 16)
+    assert (dev.width, dev.height) == (0, 0)
+
+
+def test_variant_override_line_is_not_mistaken_for_handshake(parse_report):
+    # "variant override PM=… SUB=…" carries the same bytes but no resolution —
+    # only the real "handshake OK:" line should set the device's PM/SUB.
+    text = _CURRENT + (
+        "  2026 INFO trcc.core.commands.device:ConnectDevice.execute:188: "
+        "ConnectDevice 87ad:70db: variant override PM=99 SUB=99 → A1LF19\n"
+    )
+    report = parse_report(text)
+    # PM/SUB come from the handshake line (11/5), not the override line (99/99).
+    assert (report.devices[0].pm, report.devices[0].sub) == (11, 5)
+
+
 def test_legacy_layout_still_parses(parse_report):
     report = parse_report(_LEGACY)
     assert report.trcc_version == "9.6.5"

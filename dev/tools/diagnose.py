@@ -196,16 +196,23 @@ def parse_report(text: str) -> ParsedReport:
             proto = protos[idx].lower() if idx < len(protos) else ""
             report.devices.append(DeviceProfile(protocol=proto, vid=vid, pid=pid))
 
-    # Handshake values — one PM/SUB/resolution block per device (in order)
-    handshake_blocks = re.findall(
-        r"PM=(\d+).*?SUB=(\d+).*?resolution=\((\d+),\s*(\d+)\)", text
-    )
+    # Handshake bytes — every wire logs "... handshake OK: PM=N SUB=M ...".
+    # LCD wires append "resolution=(w, h)"; LED / segment wires don't (they're
+    # (0, 0) and the model is resolved from PM/SUB), so resolution is optional.
+    # Anchoring to "handshake OK:" also skips "variant override PM=… SUB=…"
+    # lines, which carry the same bytes but no resolution.
+    handshake_blocks: list[tuple[int, int, int, int]] = []
+    for hm in re.finditer(r"handshake OK:\s*PM=(\d+)\s+SUB=(\d+)(.*)", text):
+        rest = hm.group(3)
+        res = re.search(r"resolution=\((\d+),\s*(\d+)\)", rest)
+        w, h = (int(res.group(1)), int(res.group(2))) if res else (0, 0)
+        handshake_blocks.append((int(hm.group(1)), int(hm.group(2)), w, h))
     for i, (pm, sub, w, h) in enumerate(handshake_blocks):
         if i < len(report.devices):
-            report.devices[i].pm = int(pm)
-            report.devices[i].sub = int(sub)
-            report.devices[i].width = int(w)
-            report.devices[i].height = int(h)
+            report.devices[i].pm = pm
+            report.devices[i].sub = sub
+            report.devices[i].width = w
+            report.devices[i].height = h
 
     # EBUSY / claim_interface anywhere in the log
     if re.search(r"EBUSY|claim_interface", text):
