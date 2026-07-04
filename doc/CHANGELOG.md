@@ -1,5 +1,19 @@
 # Changelog
 
+## v9.8.1
+
+**Rotating to 270° now shows your content the right way up.**  On rotating
+panels, setting the display to 270° used to look identical to 90° — the
+background, mask, and metrics were all a half-turn off.  Now the whole composite
+flips to follow the physical rotation, so 90° and 270° are proper opposites the
+way they should be.  This covers the smaller rotating panels (320×240 / 640×480);
+the widescreen panels handle rotation on a separate path that's still being
+worked on, so they're unchanged in this release.
+
+Also for maintainers: a diagnostic replay tool now boots and replays a user's
+`trcc report` with no hardware (`dev/mock_gui.py --issue N --replay --check`),
+which makes reproducing device-specific bug reports much faster.
+
 ## v9.8.0
 
 Rotating a display to portrait now switches to your portrait artwork instead of
