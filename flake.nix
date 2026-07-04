@@ -14,7 +14,7 @@
       in {
         packages.default = python.pkgs.buildPythonApplication {
           pname = "trcc-linux";
-          version = "9.8.1";
+          version = (builtins.fromTOML (builtins.readFile ./pyproject.toml)).project.version;
           pyproject = true;
 
           src = ./.;
