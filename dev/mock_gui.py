@@ -136,13 +136,14 @@ def _fetch_issue_report(number: str) -> str:
     return str(path)
 
 
-def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
+def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]:
     decorated = False
     verbosity = 0
     report_path: str | None = None
     all_devices = False
     device_spec: dict | None = None
     replay = False
+    check = False
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -176,6 +177,8 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
                 sys.exit(1)
         elif arg == '--replay':
             replay = True
+        elif arg == '--check':
+            check = True
         elif arg == '--decorated':
             decorated = True
         elif arg.startswith('device='):
@@ -192,11 +195,12 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool]:
                 print(f"Error: {arg} — {val!r} is not a number")
                 sys.exit(1)
         i += 1
-    return decorated, verbosity, report_path, all_devices, device_spec, replay
+    return decorated, verbosity, report_path, all_devices, device_spec, replay, check
 
 
 def main() -> None:
-    decorated, verbosity, report_path, all_devices, device_spec, replay = _parse_args()
+    (decorated, verbosity, report_path, all_devices, device_spec,
+     replay, check) = _parse_args()
 
     # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.  This is the
     # ONLY thing the mock does differently — substitute the dev platform and
@@ -229,21 +233,47 @@ def main() -> None:
         report_specs = load_device_specs(report_path)
 
     def _on_ready(window: Any) -> None:
-        _mount_dev_console(window)
+        # Headless ``--check`` skips the dev console: it kicks off a full
+        # theme/mask/web data prefetch (network + threads) that a batch boot
+        # check neither needs nor should wait on.
+        if not check:
+            _mount_dev_console(window)
+        app = window._app
         # A CLI ``device=VID:PID pm=… sub=…`` means "show me THIS device" —
         # auto-connect it (the dev mock boots blank otherwise; scan_devices
         # returns []).  Mirrors the dev variant panel's click path.
+        connected: list[bool] = []
+        replayed = replay_failed = 0
         if device_spec is not None:
-            _auto_connect(window._app, device_spec)
+            connected.append(_auto_connect(app, device_spec))
         else:
             # Same path for every device recovered from a ``--report`` file.
             for spec in report_specs:
-                _auto_connect(window._app, spec)
+                connected.append(_auto_connect(app, spec))
             # ``--replay`` then re-runs the reporter's own action sequence
             # (SetOrientation / LoadTheme / ApplyMask …) through the same
             # universal Command bus, reproducing their on-screen state.
             if replay and report_path:
-                _replay_report_actions(window._app, report_path)
+                replayed, replay_failed = _replay_report_actions(app, report_path)
+
+        # ``--check``: headless batch mode — report a one-line PASS/FAIL and
+        # quit the event loop instead of waiting for the window to close, so a
+        # sweep of reports scripts cleanly (no ``timeout`` kill, real exit code).
+        if check:
+            # PASS gates on the device booting — the tool's job.  Replay
+            # failures are shown but don't fail the check: a LoadTheme to the
+            # reporter's LOCAL theme path legitimately fails on this box.
+            ok = bool(connected) and all(connected)
+            label = report_path or (
+                f"{device_spec['vid']}:{device_spec['pid']}"
+                if device_spec else "(none)"
+            )
+            print(f"\nCHECK {'PASS' if ok else 'FAIL'}: {Path(label).name} — "
+                  f"devices={sum(bool(c) for c in connected)}/{len(connected)} "
+                  f"replay_actions={replayed} replay_fail={replay_failed}")
+            from PySide6.QtCore import QTimer  # type: ignore[import-not-found]
+            from PySide6.QtWidgets import QApplication  # type: ignore[import-not-found]
+            QTimer.singleShot(400, QApplication.quit)
 
     sys.exit(run_gui(
         cast(Any, platform), decorated=decorated,
@@ -252,16 +282,16 @@ def main() -> None:
     ))
 
 
-def _auto_connect(app: Any, spec: dict) -> None:
+def _auto_connect(app: Any, spec: dict) -> bool:
     """Connect a CLI ``device=`` spec immediately — the same way the dev
     variant panel does on a click: pin the handshake reply, then
     ``ConnectDevice`` (which self-attaches via ``find_product``).  So
     ``device=87ad:70db pm=11 sub=5`` presents that device instead of a blank
-    boot."""
+    boot.  Returns whether the connect succeeded (for ``--check``)."""
     platform = app.platform
     if not hasattr(platform, "set_active_reply"):
         log.warning("_auto_connect: platform has no set_active_reply — skip")
-        return
+        return False
     from trcc.core.commands import ConnectDevice
     from trcc.core.protocol import pm_to_fbl
     vid = int(str(spec["vid"]), 16)
@@ -272,11 +302,13 @@ def _auto_connect(app: Any, spec: dict) -> None:
     key = f"{vid:04x}:{pid:04x}"
     platform.set_active_reply(vid, pid, pm=pm, sub=sub, fbl=fbl)
     result = app.dispatch(ConnectDevice(key=key))
+    ok = bool(getattr(result, "ok", False))
     log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d → ok=%s",
-             key, pm, sub, fbl, getattr(result, "ok", None))
+             key, pm, sub, fbl, ok)
+    return ok
 
 
-def _replay_report_actions(app: Any, report_path: str) -> None:
+def _replay_report_actions(app: Any, report_path: str) -> tuple[int, int]:
     """Re-dispatch the reporter's Command sequence recovered from their report.
 
     The report's log tail records every ``app.dispatch(cmd)`` at INFO, so
@@ -284,7 +316,8 @@ def _replay_report_actions(app: Any, report_path: str) -> None:
     took (orientation, theme, mask, split…).  Feeding each back through
     ``decode_command`` → ``app.dispatch`` reproduces their on-screen state on
     the mock, with no hardware — the definitive way to SEE a reported bug and
-    localise it to the universal Command bus."""
+    localise it to the universal Command bus.  Returns
+    ``(replayed, failed)`` counts for ``--check``."""
     sys.path.insert(0, str(Path(__file__).resolve().parent / 'tools'))
     from diagnose import parse_dispatch_sequence  # type: ignore[import-not-found]
     from trcc.ipc import decode_command
@@ -293,6 +326,7 @@ def _replay_report_actions(app: Any, report_path: str) -> None:
     log.info("mock_gui._replay_report_actions: %d action(s) from %s",
              len(seq), report_path)
     print(f"Replaying {len(seq)} reported action(s) from {report_path}")
+    replayed = failed = 0
     for env in seq:
         name = env["command"]
         try:
@@ -303,8 +337,12 @@ def _replay_report_actions(app: Any, report_path: str) -> None:
             continue
         result = app.dispatch(cmd)
         ok = getattr(result, "ok", None)
+        replayed += 1
+        if ok is False:
+            failed += 1
         log.info("replay: %s(%s) → ok=%s", name, env["kwargs"], ok)
         print(f"  → {name}({', '.join(f'{k}={v}' for k, v in env['kwargs'].items())}) ok={ok}")
+    return replayed, failed
 
 
 def _mount_dev_console(window: Any) -> None:
