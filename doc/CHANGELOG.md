@@ -1,5 +1,17 @@
 # Changelog
 
+## v9.8.2
+
+**Widescreen panels now rotate at 270° too.** v9.8.1 fixed 270° on the smaller
+rotating panels; this extends the exact same fix to the widescreen panels
+(854×480 / 1280×480 / 1600×720 / 1920×462), which were still showing 270° the
+same as 90°. Now the content flips to follow the physical rotation on those
+panels as well — so all rotating panels behave the same way.
+
+If you're on a widescreen panel and rotate to 270°, please let me know how it
+looks — a screenshot at each angle helps me confirm the orientation is exactly
+right on the glass.
+
 ## v9.8.1
 
 **Rotating to 270° now shows your content the right way up.**  On rotating
