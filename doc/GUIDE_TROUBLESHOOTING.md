@@ -203,8 +203,8 @@ The device was detected but didn't respond to the handshake query. Common causes
    ```bash
    pip install --upgrade trcc-linux
    ```
-2. **Firmware consumed the handshake** — some devices only respond once per USB power cycle. Unplug the USB header, wait 5 seconds, replug, then immediately run `trcc hid-debug`
-3. **Unknown device** — if the device model isn't in our mapping table, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with the `trcc hid-debug` output
+2. **Firmware consumed the handshake** — some devices only respond once per USB power cycle. Unplug the USB header, wait 5 seconds, replug, then immediately run `trcc system hid-debug`
+3. **Unknown device** — if the device model isn't in our mapping table, [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues) with the `trcc system hid-debug` output
 
 ### "No USB backend available"
 

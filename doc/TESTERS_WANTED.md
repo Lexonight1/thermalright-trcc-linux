@@ -120,7 +120,7 @@ These devices also connect via `0416:8001` but use different PM byte mappings th
 | LM26 | — | Not yet mapped |
 | LM27 | 1 (sub=49) | Not yet mapped |
 
-> If you have any of these Vision-series devices, a `trcc hid-debug` dump would be extremely valuable — it will help us figure out how Windows distinguishes these from the standard LED devices.
+> If you have any of these Vision-series devices, a `trcc system hid-debug` dump would be extremely valuable — it will help us figure out how Windows distinguishes these from the standard LED devices.
 
 ## All TRCC-Compatible Models (from Thermalright's download page)
 

@@ -659,8 +659,8 @@ trcc led-off                      # turn LEDs off
 # Diagnostics
 trcc report                       # full diagnostic report
 trcc doctor                       # check deps and permissions
-trcc hid-debug                    # HID handshake dump
-trcc led-debug --test             # LED diagnostic
+trcc system hid-debug                    # HID handshake dump
+trcc system led-debug --test             # LED diagnostic
 
 # GUI / API
 trcc gui                          # launch GUI

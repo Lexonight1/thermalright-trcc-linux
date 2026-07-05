@@ -253,13 +253,13 @@ trcc report
 
 ---
 
-### `trcc hid-debug`
+### `trcc system hid-debug`
 
 HID handshake diagnostic — prints hex dump and resolved device info for bug reports.
 
 ```bash
-trcc hid-debug
-trcc hid-debug --test-frame   # send red test frame after handshake
+trcc system hid-debug
+trcc system hid-debug --test-frame   # send red test frame after handshake
 ```
 
 | Option | Description |
@@ -293,13 +293,13 @@ Device: ALi Corp LCD Display
 
 ---
 
-### `trcc led-debug`
+### `trcc system led-debug`
 
 Diagnose an LED device — performs handshake and reports PM byte, style, and segment count.
 
 ```bash
-trcc led-debug             # handshake only
-trcc led-debug --test      # handshake + send test colors
+trcc system led-debug             # handshake only
+trcc system led-debug --test      # handshake + send test colors
 ```
 
 | Option | Description |

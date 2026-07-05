@@ -53,7 +53,7 @@ The "No device path found" is normal for HID devices — they don't use `/dev/sg
 This is the most important step. The `hid-debug` command performs the handshake with your device and shows exactly what it reports:
 
 ```bash
-trcc hid-debug
+trcc system hid-debug
 ```
 
 Example output:
@@ -119,7 +119,7 @@ Check:
 
 This usually means the handshake succeeded but frame transfer failed. The most common causes:
 
-1. **Wrong resolution detected** — The PM byte mapped to the wrong resolution, so frames are the wrong size. Run `trcc hid-debug` and share the output
+1. **Wrong resolution detected** — The PM byte mapped to the wrong resolution, so frames are the wrong size. Run `trcc system hid-debug` and share the output
 2. **USB permissions** — Run `trcc system setup`, then unplug/replug the USB cable
 3. **Missing pyusb** — Run `pip install --break-system-packages pyusb`
 
@@ -132,7 +132,7 @@ This usually means the handshake succeeded but frame transfer failed. The most c
 
 ### Device shows wrong name in sidebar
 
-After the HID handshake, the sidebar button updates based on the PM (product mode) byte. If your device shows a wrong name (e.g. "TARAN ARMS" when it's a Trofeo Vision), it means we need to update the PM→product mapping. Run `trcc hid-debug` and share the PM byte.
+After the HID handshake, the sidebar button updates based on the PM (product mode) byte. If your device shows a wrong name (e.g. "TARAN ARMS" when it's a Trofeo Vision), it means we need to update the PM→product mapping. Run `trcc system hid-debug` and share the PM byte.
 
 ### GUI opens but device isn't in the sidebar
 
@@ -193,7 +193,7 @@ The handshake response contains a **PM (Product Mode)** byte that identifies the
 | 100 | — | — | FROZEN WARFRAME PRO |
 | 101 | — | — | ELITE VISION |
 
-If your device reports a PM byte not in this table, we need to add it. The `trcc hid-debug` output tells us exactly what PM byte your device uses.
+If your device reports a PM byte not in this table, we need to add it. The `trcc system hid-debug` output tells us exactly what PM byte your device uses.
 
 ### FBL → Resolution Table
 
