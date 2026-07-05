@@ -57,12 +57,18 @@ dependencies = [
     # Core feature, not optional; the graceful-None fallback only covers exotic
     # environments that strip libudev (#139).
     "pyudev>=0.24.1; sys_platform == 'linux'",
+    # NVIDIA GPU temp/usage/clock via NVML.  Pure-Python (~53 KB), imports on
+    # any OS/hardware — nvmlInit() just no-ops without a card.  Core, not an
+    # extra, so `pip install trcc-linux` gets it out of the box: #161 was a
+    # pip-channel install where the card was present but the reader was never
+    # importable because the [nvidia] extra wasn't pulled.
+    "nvidia-ml-py>=11.0.0",
 ]
 
 [project.optional-dependencies]
-nvidia = [
-    "nvidia-ml-py>=11.0.0",
-]
+# Promoted to a core dependency (see [project].dependencies).  Kept as an empty
+# alias so existing `pip install trcc-linux[nvidia]` invocations still resolve.
+nvidia = []
 wayland = [
     "dbus-python>=1.3.0",
     "PyGObject>=3.42.0",
