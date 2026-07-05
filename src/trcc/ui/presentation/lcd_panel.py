@@ -24,7 +24,10 @@ Unit-testable with plain ``pytest`` — there is no toolkit here.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 # Preview placement per resolution: (left, top, width, height, frame_image).
 # Native 1:1 for square / small panels; scaled to fit the 500x500 container for
@@ -99,8 +102,15 @@ def lcd_panel_for(resolution: tuple[int, int]) -> LcdPanelModel:
     historical default.
     """
     w, h = resolution
+    widescreen = (w, h) in _WIDESCREEN or (h, w) in _WIDESCREEN
+    offset = _PREVIEW_OFFSETS.get((w, h))
+    if offset is None:
+        log.warning("lcd_panel_for: no preview offset for %dx%d — falling back to "
+                    "320x320 default; add it to _PREVIEW_OFFSETS", w, h)
+        offset = _DEFAULT_OFFSET
+    else:
+        log.info("lcd_panel_for: %dx%d → widescreen=%s frame=%s", w, h,
+                 widescreen, offset[4])
     return LcdPanelModel(
-        resolution=(w, h),
-        widescreen=(w, h) in _WIDESCREEN or (h, w) in _WIDESCREEN,
-        offset_info=_PREVIEW_OFFSETS.get((w, h), _DEFAULT_OFFSET),
+        resolution=(w, h), widescreen=widescreen, offset_info=offset,
     )

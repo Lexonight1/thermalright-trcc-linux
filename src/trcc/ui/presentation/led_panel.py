@@ -18,7 +18,10 @@ Unit-testable with plain ``pytest`` — there is no toolkit here.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 # Legacy style ids (match ``core.led_models.LEGACY_STYLE_ID``):
 _LC1 = 4    # memory panel  (C# FormLEDInit NO 128: hide gauges, show memory)
@@ -48,10 +51,14 @@ def led_panel_for(style_id: int) -> LedPanelModel:
 
     Mirrors the C# ``FormLEDInit`` section visibility (see module docstring).
     """
-    return LedPanelModel(
+    model = LedPanelModel(
         style_id=style_id,
         show_sensor_gauges=style_id not in (_LC1, _LF11),
         show_memory_panel=style_id == _LC1,
         show_disk_panel=style_id == _LF11,
         show_clock_panel=style_id == _LC2,
     )
+    log.info("led_panel_for: style=%d → gauges=%s memory=%s disk=%s clock=%s",
+             style_id, model.show_sensor_gauges, model.show_memory_panel,
+             model.show_disk_panel, model.show_clock_panel)
+    return model

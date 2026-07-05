@@ -11,8 +11,11 @@ Lifted verbatim from ``UCLedControl.update_*`` so the formatting is byte-identic
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 
 from ...core.models import HardwareMetrics
+
+log = logging.getLogger(__name__)
 
 # Mid-string temperature glyphs (NOT the "°C"/"°F" unit *symbols* the gauges
 # use): the LC1/LF11 labels render ℃ / ℉ inline.
@@ -37,7 +40,7 @@ def format_sensor_gauges(
     ``temp_unit`` is the symbol the panel holds ("°C"/"°F") — passed straight
     through as the gauge's unit suffix for temp readings.
     """
-    return {
+    gauges = {
         "cpu_temp": (metrics.cpu_temp, f"{metrics.cpu_temp:.0f}", temp_unit),
         "cpu_clock": (metrics.cpu_freq, f"{metrics.cpu_freq:.0f}", "MHz"),
         "cpu_usage": (metrics.cpu_percent, f"{metrics.cpu_percent:.0f}", "%"),
@@ -45,6 +48,9 @@ def format_sensor_gauges(
         "gpu_clock": (metrics.gpu_clock, f"{metrics.gpu_clock:.0f}", "MHz"),
         "gpu_usage": (metrics.gpu_usage, f"{metrics.gpu_usage:.0f}", "%"),
     }
+    log.debug("format_sensor_gauges: temp_unit=%s → %s", temp_unit,
+              {k: v[1] for k, v in gauges.items()})
+    return gauges
 
 
 def format_memory_labels(
@@ -70,6 +76,8 @@ def format_memory_labels(
         out["mem_used"] = "NC"
 
     out["mem_ratio"] = f"{memory_ratio}X"
+    log.debug("format_memory_labels: temp_unit=%s ratio=%d → %s",
+              temp_unit, memory_ratio, out)
     return out
 
 
@@ -77,12 +85,14 @@ def format_disk_labels(
     metrics: HardwareMetrics, temp_unit: str,
 ) -> dict[str, str]:
     """LF11 (style 10) disk info labels → ``{key: text}``."""
-    return {
+    labels = {
         "lf11_disk_temp": _temp_label(metrics.disk_temp, temp_unit),
         "lf11_disk_usage": f"{metrics.disk_activity:.0f}%",
         "lf11_disk_read": f"{metrics.disk_read:.0f}MB/S",
         "lf11_disk_write": f"{metrics.disk_write:.0f}MB/S",
     }
+    log.debug("format_disk_labels: temp_unit=%s → %s", temp_unit, labels)
+    return labels
 
 
 def clock_fields(
@@ -100,4 +110,7 @@ def clock_fields(
     dow = now.weekday()
     if is_sunday:
         dow = (dow + 1) % 7
-    return (now.month, now.day, hour, now.minute, dow)
+    fields = (now.month, now.day, hour, now.minute, dow)
+    log.debug("clock_fields: %s 24h=%s sunday=%s → %s",
+              now.isoformat(timespec="minutes"), is_24h, is_sunday, fields)
+    return fields

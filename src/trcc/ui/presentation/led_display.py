@@ -30,8 +30,11 @@ Unit-testable with plain ``pytest`` — there is no toolkit here.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
+
+log = logging.getLogger(__name__)
 
 
 class LedSelector(Enum):
@@ -88,4 +91,11 @@ def led_display_for(style_id: int) -> LedDisplayModel:
 
     Unknown ids fall back to NONE (no selector).
     """
-    return _DISPLAY.get(style_id, _DEFAULT)
+    model = _DISPLAY.get(style_id)
+    if model is None:
+        log.warning("led_display_for: unknown style=%d → NONE selector (no metric "
+                    "pages / zones); expected 1-12", style_id)
+        return _DEFAULT
+    log.info("led_display_for: style=%d → selector=%s slots=%d",
+             style_id, model.selector.value, model.slot_count)
+    return model

@@ -12,7 +12,11 @@ of the widgets so they're shared + unit-testable without Qt:
 """
 from __future__ import annotations
 
+import logging
+
 from ...core.models import SensorInfo, SensorReading
+
+log = logging.getLogger(__name__)
 
 # Hardware-source → display header (the sensor-id prefix IS the source).
 _SOURCE_LABELS = {
@@ -32,6 +36,7 @@ def format_sensor_value(value: float, unit: str, temp_unit: int = 0) -> str:
     value is already converted upstream (metrics broadcast).  Default 0 matches
     the picker, which always shows °C.
     """
+    log.debug("format_sensor_value: %.2f unit=%s temp_unit=%d", value, unit, temp_unit)
     if unit == "°C":
         symbol = "°F" if temp_unit == 1 else "°C"
         return f"{value:.0f}{symbol}"
@@ -75,4 +80,7 @@ def group_sensors(
     ordered += [s for s in sorted(groups)
                 if s not in _SOURCE_ORDER and s not in _CLOCK_SOURCES]
 
-    return [(_SOURCE_LABELS.get(src, src.upper()), groups[src]) for src in ordered]
+    result = [(_SOURCE_LABELS.get(src, src.upper()), groups[src]) for src in ordered]
+    log.info("group_sensors: %d readings → %d groups: %s", len(readings), len(result),
+             ", ".join(f"{h}({len(g)})" for h, g in result))
+    return result

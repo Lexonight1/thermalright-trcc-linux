@@ -13,9 +13,12 @@ Unit-testable with plain ``pytest`` — there is no toolkit here.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ...core.models import Kind, ProductInfo
+
+log = logging.getLogger(__name__)
 
 #: View identifiers the graphical UIs switch their panel stack on.
 VIEW_LED = "led"
@@ -45,9 +48,13 @@ def presentation_for(info: ProductInfo) -> DevicePresentation:
     graphical UIs agree on what a device presents without re-deriving it.
     """
     if info.kind is Kind.LED:
+        log.info("presentation_for: %s → view=%s gauges=True (LED)",
+                 info.kind.name, VIEW_LED)
         return DevicePresentation(
             kind=Kind.LED, view_name=VIEW_LED, shows_metric_gauges=True,
         )
+    log.info("presentation_for: %s → view=%s gauges=False (LCD form)",
+             info.kind.name, VIEW_FORM)
     return DevicePresentation(
         kind=Kind.LCD, view_name=VIEW_FORM, shows_metric_gauges=False,
     )

@@ -16,9 +16,12 @@ View and makes the rules unit-testable with no Qt — routed through the single
 """
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Protocol
 
 from ...core.models import oriented_resolution
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ...core.models import ProductInfo, Theme
@@ -56,8 +59,14 @@ def composed_preview_size(
     no theme) fall back to the cached canvas swapped for the user orientation.
     """
     if info is not None and theme is not None and profile is not None:
-        return display.composed_canvas_size(info, theme, profile, orientation)
-    return oriented_resolution(canvas_size, orientation)
+        size = display.composed_canvas_size(info, theme, profile, orientation)
+        log.debug("composed_preview_size: composed canvas (device+theme) "
+                  "orient=%d → %dx%d", orientation, *size)
+        return size
+    size = oriented_resolution(canvas_size, orientation)
+    log.debug("composed_preview_size: cached canvas (pre-handshake/no-theme) "
+              "orient=%d → %dx%d", orientation, *size)
+    return size
 
 
 def rotated_lcd_size(

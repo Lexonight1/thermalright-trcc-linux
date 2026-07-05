@@ -15,6 +15,7 @@ Its purity (Qt-free, App-free, adapter-free) is machine-enforced by
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,8 @@ from .preview_geometry import (
 if TYPE_CHECKING:
     from ...core.models import ProductInfo, Theme
     from ...core.protocol import DeviceProfile
+
+log = logging.getLogger(__name__)
 
 # Default brightness % before the user picks one (legacy default).
 _DEFAULT_BRIGHTNESS = 100
@@ -94,6 +97,8 @@ class LcdPresentationModel:
         """
         self.state.canvas_size = (width, height)
         self.state.lcd_size = (width, height)
+        log.info("set_canvas: %s → canvas=lcd=%dx%d",
+                 self.device_key, width, height)
 
     def apply_rotation(self, degrees: int) -> None:
         """Update ``is_rotated`` + post-rotation ``lcd_size`` for an orientation.
@@ -104,6 +109,9 @@ class LcdPresentationModel:
         self.state.is_rotated, self.state.lcd_size = rotated_lcd_size(
             self.state.canvas_size, degrees,
         )
+        log.info("apply_rotation: %s %d° → is_rotated=%s lcd_size=%dx%d",
+                 self.device_key, degrees, self.state.is_rotated,
+                 *self.state.lcd_size)
 
     # ── Video math (B5) ────────────────────────────────────────────────
     # Pure per-tick arithmetic lifted off the handler's video path; the
@@ -135,7 +143,11 @@ class LcdPresentationModel:
         """
         self.split_mode = persisted_mode or 2
         self.ldd_is_split = lcd_size in SPLIT_MODE_RESOLUTIONS
-        return self.split_mode if self.ldd_is_split else 0
+        dispatch_mode = self.split_mode if self.ldd_is_split else 0
+        log.info("apply_split_mode: %s persisted=%d size=%dx%d → split_mode=%d "
+                 "ldd_is_split=%s dispatch=%d", self.device_key, persisted_mode,
+                 *lcd_size, self.split_mode, self.ldd_is_split, dispatch_mode)
+        return dispatch_mode
 
     def preview_size(
         self,
@@ -152,7 +164,11 @@ class LcdPresentationModel:
         canvas swapped for the user orientation.  The View supplies the
         device/theme primitives; the model owns the cached ``canvas_size``.
         """
-        return composed_preview_size(
+        size = composed_preview_size(
             display, info=info, theme=theme, profile=profile,
             orientation=orientation, canvas_size=self.state.canvas_size,
         )
+        log.info("preview_size: %s orient=%d device=%s theme=%s → %dx%d",
+                 self.device_key, orientation, info is not None,
+                 theme is not None, *size)
+        return size
