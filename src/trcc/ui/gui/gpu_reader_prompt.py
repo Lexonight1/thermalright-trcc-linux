@@ -26,8 +26,8 @@ def maybe_offer_gpu_reader_install(app: Any, parent: Any) -> None:
     """
     from ...core.commands import GetGpuReaderStatus, InstallGpuReader
 
-    if app.settings.app.gpu_reader_install_declined:
-        log.debug("maybe_offer_gpu_reader_install: previously declined — skipping")
+    if app.settings.app.gpu_reader_offer_suppressed:
+        log.debug("maybe_offer_gpu_reader_install: user opted out — skipping")
         return
     status = app.dispatch(GetGpuReaderStatus())
     if not status.offer_install:
@@ -37,7 +37,10 @@ def maybe_offer_gpu_reader_install(app: Any, parent: Any) -> None:
         )
         return
 
-    from PySide6.QtWidgets import QMessageBox  # type: ignore[import-not-found]
+    from PySide6.QtWidgets import (  # type: ignore[import-not-found]
+        QCheckBox,
+        QMessageBox,
+    )
 
     log.info("maybe_offer_gpu_reader_install: offering reader install to the user")
     ask = QMessageBox(parent)
@@ -47,13 +50,21 @@ def maybe_offer_gpu_reader_install(app: Any, parent: Any) -> None:
                 "installed, so GPU metrics will be empty.")
     ask.setInformativeText("Install GPU sensor support now? You'll be asked "
                            "for your password.")
+    dont_ask = QCheckBox("Don't ask again")
+    ask.setCheckBox(dont_ask)
     install_btn = ask.addButton("Install", QMessageBox.ButtonRole.AcceptRole)
     ask.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
     ask.exec()
 
     if ask.clickedButton() is not install_btn:
-        log.info("maybe_offer_gpu_reader_install: declined — remembering choice")
-        app.settings.set_gpu_reader_install_declined(True)
+        # A plain "Not now"/dismissal re-offers next launch; only an explicit
+        # "Don't ask again" suppresses future offers.  Guards against a stray
+        # Escape permanently trapping a user who wants GPU metrics (#161).
+        if dont_ask.isChecked():
+            log.info("maybe_offer_gpu_reader_install: opted out — suppressing offers")
+            app.settings.set_gpu_reader_offer_suppressed(True)
+        else:
+            log.info("maybe_offer_gpu_reader_install: not now — will re-offer next launch")
         return
 
     log.info("maybe_offer_gpu_reader_install: accepted — dispatching install")

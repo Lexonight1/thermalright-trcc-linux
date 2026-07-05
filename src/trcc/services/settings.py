@@ -71,10 +71,14 @@ class AppSettings:
     # None = let SensorEnumerator.primary_gpu() pick automatically.
     active_gpu: str | None = None
     # The GUI offers to install the NVIDIA NVML reader (pynvml) once an
-    # NVIDIA GPU is detected without it.  "Not now" sets this so we stop
-    # re-offering on every launch; installing the reader clears the need
-    # naturally (the reader becomes importable next launch).
-    gpu_reader_install_declined: bool = False
+    # NVIDIA GPU is detected without it.  Only an explicit "Don't ask again"
+    # sets this — a plain "Not now" / dialog dismissal re-offers next launch,
+    # so a stray Escape can't permanently trap a user who wants GPU metrics
+    # (#161).  Installing the reader clears the need naturally (it becomes
+    # importable next launch).  Renamed from the old, over-eager
+    # ``gpu_reader_install_declined``, whose value is intentionally dropped on
+    # load so anyone previously silenced by a dismissal gets one fresh offer.
+    gpu_reader_offer_suppressed: bool = False
 
 
 # =========================================================================
@@ -541,11 +545,11 @@ class Settings:
             self._app.hdd_enabled = enabled
             self._save()
 
-    def set_gpu_reader_install_declined(self, declined: bool) -> None:
-        """Remember the user said "Not now" to the GPU-reader install offer."""
-        log.info("set_gpu_reader_install_declined: declined=%s", declined)
+    def set_gpu_reader_offer_suppressed(self, suppressed: bool) -> None:
+        """Remember the user ticked "Don't ask again" on the GPU-reader offer."""
+        log.info("set_gpu_reader_offer_suppressed: suppressed=%s", suppressed)
         with self._lock:
-            self._app.gpu_reader_install_declined = declined
+            self._app.gpu_reader_offer_suppressed = suppressed
             self._save()
 
     def set_background_mode(
