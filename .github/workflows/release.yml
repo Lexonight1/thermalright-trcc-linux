@@ -111,8 +111,15 @@ jobs:
           # (modern Fedora/Ubuntu ship only python3 by default). #157
           find "$PKG" -name "trcc*" -path "*/bin/*" -exec sed -i "1s|^#\!.*/python[0-9.]*|#!/usr/bin/python3|" {} +
 
-          # Bundle sounddevice (not in Fedora repos)
-          pip install --root="$PKG" --prefix=/usr --no-deps sounddevice
+          # Bundle sounddevice + nvidia-ml-py (neither in Fedora repos).  The
+          # NVML reader is now a core Python dependency (#161); Fedora ships no
+          # python3-pynvml / nvidia-ml-py package to depend on, so vendor it
+          # into the payload — `import pynvml` then works out of the box.  It
+          # ships a single pynvml.py, plus a stray example.py (+ pyc) in the
+          # site-packages root that we drop so %files stays clean.
+          pip install --root="$PKG" --prefix=/usr --no-deps sounddevice nvidia-ml-py
+          rm -f "$PKG"/usr/lib/python*/site-packages/example.py \
+                "$PKG"/usr/lib/python*/site-packages/__pycache__/example.*
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/etc/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
@@ -160,7 +167,6 @@ jobs:
           Requires:   sg3_utils
           Recommends: p7zip
           Recommends: ffmpeg
-          Recommends: python3-pynvml
           Recommends: python3-dbus
           Recommends: python3-hidapi
           %description
@@ -181,6 +187,9 @@ jobs:
           ${SITELIB}/__pycache__/sounddevice.*
           ${SITELIB}/__pycache__/_sounddevice.*
           ${SITELIB}/sounddevice-*.dist-info/
+          ${SITELIB}/pynvml.py
+          ${SITELIB}/__pycache__/pynvml.*
+          ${SITELIB}/nvidia_ml_py-*.dist-info/
           /usr/bin/trcc
           /usr/bin/trcc-gui
           /usr/bin/trcc-lcd
@@ -449,9 +458,9 @@ jobs:
           depend = portaudio
           depend = libusb
           depend = sg3_utils
+          depend = python-nvidia-ml-py
           optdepend = 7zip: theme archive extraction
           optdepend = ffmpeg: video and GIF playback
-          optdepend = python-nvidia-ml-py: NVIDIA GPU sensor support
           optdepend = python-dbus: Wayland session support
           optdepend = python-gobject: Wayland session support
           optdepend = python-hidapi: Alternative HID transport
