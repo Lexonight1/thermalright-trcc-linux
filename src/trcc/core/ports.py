@@ -873,11 +873,10 @@ class Diagnostics(ABC):
 
     The diagnostics adapters consume the ``Platform`` port to probe the
     machine; this port lets core Commands (``RunHealthCheck``, ``RunDoctor``,
-    ``GenerateDebugReport``, ``GetGpuReaderStatus``, ``RunUpgrade``,
-    ``InstallGpuReader``) and the ``QuickstartService`` reach that work through
-    an injected interface instead of importing the adapter — so core stays
-    pure.  Debug reports cross as rendered text, not a struct, so the
-    ``DebugReport`` bundle stays an adapter implementation detail.
+    ``GenerateDebugReport``, ``RunUpgrade``) and the ``QuickstartService`` reach
+    that work through an injected interface instead of importing the adapter —
+    so core stays pure.  Debug reports cross as rendered text, not a struct, so
+    the ``DebugReport`` bundle stays an adapter implementation detail.
     """
 
     @abstractmethod

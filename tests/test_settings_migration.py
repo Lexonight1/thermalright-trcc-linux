@@ -57,28 +57,23 @@ def test_reads_pre_cutover_filename_when_only_old_exists(
     assert dev.brightness == 25
 
 
-def test_gpu_reader_offer_suppressed_flag_round_trips(tmp_path: Path) -> None:
-    """The "Don't ask again" GPU-reader opt-out persists and reloads."""
-    paths = FakePaths(tmp_path)
-    s = Settings(paths)
-    assert s.app.gpu_reader_offer_suppressed is False  # default
-    s.set_gpu_reader_offer_suppressed(True)
-
-    reloaded = Settings(paths)
-    assert reloaded.app.gpu_reader_offer_suppressed is True
-
-
-def test_stale_declined_flag_is_dropped_on_load(tmp_path: Path) -> None:
-    """A config written by the old, over-eager ``gpu_reader_install_declined``
-    key is ignored — anyone previously silenced by a stray dismissal gets a
-    fresh offer under the corrected opt-out semantics (#161)."""
+def test_removed_gpu_reader_keys_are_ignored_on_load(tmp_path: Path) -> None:
+    """Configs written by older versions carried GPU-reader-offer keys
+    (``gpu_reader_offer_suppressed`` / the older ``gpu_reader_install_declined``)
+    that no longer exist — nvidia-ml-py is now a core dependency, so the prompt
+    was retired.  A config still carrying them must load cleanly (unknown keys
+    are dropped), not crash — otherwise the retirement would break upgraders."""
     paths = FakePaths(tmp_path)
     config = paths.config_dir() / "trcc.json"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text('{"app": {"gpu_reader_install_declined": true}}')
+    config.write_text(
+        '{"app": {"gpu_reader_offer_suppressed": true, '
+        '"gpu_reader_install_declined": true, "language": "en"}}'
+    )
 
     s = Settings(paths)
-    assert s.app.gpu_reader_offer_suppressed is False
+    assert s.app.language == "en"                     # real keys still load
+    assert not hasattr(s.app, "gpu_reader_offer_suppressed")  # removed key dropped
 
 
 def test_next_save_promotes_to_trcc_json(tmp_path: Path) -> None:

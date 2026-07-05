@@ -72,9 +72,9 @@ def test_qtrenderer_list_fonts_returns_list() -> None:
 
 # ── Step 3: Diagnostics port ─────────────────────────────────────────────────
 # The diagnostics commands (RunHealthCheck/RunDoctor/GenerateDebugReport/
-# GetGpuReaderStatus/RunUpgrade/InstallGpuReader) must reach health/doctor/
-# debug-report/package-manager/gpu-reader through an INJECTED ``Diagnostics``
-# port, not by importing adapters inside core Command bodies.
+# RunUpgrade) must reach health/doctor/debug-report/package-manager through an
+# INJECTED ``Diagnostics`` port, not by importing adapters inside core Command
+# bodies.
 
 def _fake_diagnostics() -> object:
     """A ``Diagnostics`` returning sentinels so delegation is provable."""
@@ -158,13 +158,12 @@ def test_run_upgrade_dry_run_reads_pm_from_the_port(tmp_path) -> None:  # type: 
 
 def test_diagnostics_commands_still_dispatch_through_real_adapter(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """Characterisation: the real wiring still answers each command (safety net)."""
-    from trcc.core.commands import GenerateDebugReport, GetGpuReaderStatus, RunDoctor
+    from trcc.core.commands import GenerateDebugReport, RunDoctor
 
     app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
     try:
         assert app.dispatch(RunHealthCheck()).ok in (True, False)   # runs, returns a report
         assert isinstance(app.dispatch(RunDoctor()).rendered, str)
         assert app.dispatch(GenerateDebugReport()).rendered_text
-        assert app.dispatch(GetGpuReaderStatus()).ok
     finally:
         app.close()

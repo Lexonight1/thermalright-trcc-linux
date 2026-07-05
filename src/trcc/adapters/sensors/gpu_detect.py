@@ -86,7 +86,7 @@ def install_matching_gpu_extras(vendors: set[str],
     # are not visible in this virtualenv") and aborts setup — exactly what the
     # bundled-venv .deb hits (#161).  Install into the venv directly; only a
     # non-venv system Python needs --user (writes to the user's site-packages,
-    # no root).  Same detection as InstallGpuReader.
+    # no root).
     in_venv = sys.prefix != sys.base_prefix
     user_flag = [] if in_venv else ["--user"]
     cmd = [sys.executable, "-m", "pip", "install", *user_flag, *needed]

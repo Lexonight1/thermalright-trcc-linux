@@ -188,20 +188,6 @@ _UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
 }
 
 
-# Install the NVIDIA NVML python reader (pynvml) when an NVIDIA GPU is
-# detected.  ``pkexec`` (graphical polkit prompt) rather than ``sudo`` —
-# this is dispatched from the GUI, which has no TTY for a sudo password.
-# Argv is a fixed list per package manager (never interpolate input).
-# Only distros whose package name is verified are auto-installable; an
-# unmapped PM falls back to detect-and-guide (the doctor prints the
-# manual command) rather than guessing a wrong package name.
-_GPU_READER_INSTALL_COMMANDS: dict[str, tuple[str, ...]] = {
-    "dnf":    ("pkexec", "dnf", "install", "-y", "python3-pynvml"),
-    "apt":    ("pkexec", "apt-get", "install", "-y", "python3-pynvml"),
-    "pacman": ("pkexec", "pacman", "-S", "--noconfirm", "python-nvidia-ml-py"),
-}
-
-
 def _json_default_tuple(obj: Any) -> Any:
     """tuple → list for JSON serialisation (no other coercions)."""
     log.debug("_json_default_tuple: type=%s", type(obj).__name__)

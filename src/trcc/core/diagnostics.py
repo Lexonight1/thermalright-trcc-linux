@@ -68,9 +68,9 @@ class GpuReaderState:
     """Whether the NVIDIA NVML reader (pynvml) is present and initialised.
 
     ``nvidia_present`` — an NVIDIA card was detected.  ``reader_installed`` —
-    pynvml importable.  ``initialized`` — ``nvmlInit`` succeeded.  Drives the
-    "offer to install the reader" / "reader present but needs a reboot" logic
-    in :class:`GetGpuReaderStatus` without core importing the sensor adapter.
+    pynvml importable.  ``initialized`` — ``nvmlInit`` succeeded.  Surfaced by
+    the doctor's GPU health check (reader present / needs a reboot) without core
+    importing the sensor adapter.
     """
     nvidia_present: bool
     reader_installed: bool
