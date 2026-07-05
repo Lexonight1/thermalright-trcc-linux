@@ -423,7 +423,7 @@ After the above, the recommended pyproject extras would be:
 | `[windows]` | pywin32, wmi (already exists) | (Windows base) |
 | `[windows-vendor]` (NEW) | ADLX wheels (not yet on PyPI — would need build) + Intel `pyze` (community) | Power users without LHM running |
 | `[hid]` | hidapi (already exists) | All OSes for HID protocol devices |
-| `[nvidia]` | nvidia-ml-py (already exists) | All OSes with NVIDIA GPU |
+| `[nvidia]` | nvidia-ml-py — **now a core dependency** (v9.8.3); the extra is an empty back-compat alias | Ships on every install; nothing to add |
 | `[macos-iorport]` (NEW) | (just version-pin if we vendor the IOReport ctypes wrapper) | Apple Silicon best path |
 
 ---

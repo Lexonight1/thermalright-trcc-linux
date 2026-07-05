@@ -232,23 +232,16 @@ Themes are resolution-specific. If the handshake failed, the app doesn't know yo
 
 ### GPU readings are empty / "No NVIDIA GPU detected"
 
-NVIDIA GPU metrics need the NVML python bindings (`nvidia-ml-py`, imported as `pynvml`). When the app detects an NVIDIA card but the reader isn't installed, it offers a one-click install at startup — accept it, then restart.
+NVIDIA GPU metrics use the NVML python bindings (`nvidia-ml-py`, imported as `pynvml`). **As of v9.8.3 this is a core dependency** — every install channel (pip, pipx, the distro packages, the frozen builds) ships it, so GPU metrics work out of the box with no separate install and no prompt to accept. It's pure-Python and does nothing on machines without an NVIDIA card.
 
-If that didn't help — most often because you installed with **pip into a virtualenv**, where the system package manager can't reach your environment — install the reader into the *same* environment yourself:
+If GPU readings are still empty on a current version, it's almost always the NVIDIA **driver**, not the reader: check `nvidia-smi` runs, and if it reports a version mismatch, reboot (or reload the driver module). Only if you're on an **older install that predates v9.8.3** — or an environment that deliberately stripped the dependency — would you need to add the reader into trcc's own interpreter:
 
 ```bash
 # pip / venv install — install into the running interpreter
 pip install nvidia-ml-py
-
-# system package (when trcc runs on the system Python)
-sudo apt install python3-pynvml       # Debian / Ubuntu / Mint
-sudo dnf install python3-pynvml       # Fedora / Nobara
-sudo pacman -S python-nvidia-ml-py    # Arch / CachyOS
 ```
 
 Then **restart trcc** — `pynvml` is imported once at startup, so a freshly installed reader only takes effect on the next launch.
-
-> As of **v9.7.5** the in-app "install GPU sensor support?" prompt installs via `pip` automatically when you're running inside a virtualenv (earlier versions only used the system package manager, which a venv can't see).
 
 AMD and Intel GPU temperatures come from `hwmon` and need no extra package.
 
