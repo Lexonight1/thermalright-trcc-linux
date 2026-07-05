@@ -114,7 +114,7 @@ jobs:
           # Bundle sounddevice + nvidia-ml-py (neither in Fedora repos).  The
           # NVML reader is now a core Python dependency (#161); Fedora ships no
           # python3-pynvml / nvidia-ml-py package to depend on, so vendor it
-          # into the payload — `import pynvml` then works out of the box.  It
+          # into the payload so the pynvml import works out of the box.  It
           # ships a single pynvml.py, plus a stray example.py (+ pyc) in the
           # site-packages root that we drop so %files stays clean.
           pip install --root="$PKG" --prefix=/usr --no-deps sounddevice nvidia-ml-py
