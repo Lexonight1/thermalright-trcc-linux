@@ -108,3 +108,42 @@ def test_transient_init_failure_stays_at_debug(
 
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert any(r.levelno == logging.DEBUG for r in caplog.records)
+
+
+def test_unavailable_pynvml_warns_exactly_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """pynvml not importable (the #161 case) logs WARNING once, not per retry."""
+    monkeypatch.setattr(nvml, "_AVAILABLE", False)
+    monkeypatch.setattr(nvml, "pynvml", None)
+    monkeypatch.setattr(nvml, "_initialized", False)
+    monkeypatch.setattr(nvml, "_warned_unavailable", False)
+    monkeypatch.setattr(nvml, "_import_error", "No module named 'pynvml'")
+
+    with caplog.at_level(logging.WARNING, logger="trcc.adapters.sensors.nvml"):
+        assert nvml._ensure_init() is False
+        assert nvml._ensure_init() is False  # retry — must not re-warn
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "not importable" in warnings[0].message
+    assert "No module named 'pynvml'" in warnings[0].message
+    assert "nvidia-ml-py" in warnings[0].message
+
+
+def test_nvml_init_state_logs_resolved_tuple(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The state the GPU-offer decision consumes is traced at DEBUG."""
+    monkeypatch.setattr(nvml, "_AVAILABLE", False)
+    monkeypatch.setattr(nvml, "pynvml", None)
+    monkeypatch.setattr(nvml, "_initialized", False)
+    monkeypatch.setattr(nvml, "_warned_unavailable", True)  # silence the warn path
+    monkeypatch.setattr(nvml, "_import_error", "No module named 'pynvml'")
+
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.sensors.nvml"):
+        state = nvml.nvml_init_state()
+
+    assert state == (False, False, None)
+    assert any("nvml_init_state:" in r.message and r.levelno == logging.DEBUG
+               for r in caplog.records)

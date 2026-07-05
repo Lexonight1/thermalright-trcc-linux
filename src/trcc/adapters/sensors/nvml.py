@@ -20,15 +20,20 @@ log = logging.getLogger(__name__)
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
     _AVAILABLE = True
-except ImportError:
+    _import_error: str | None = None
+except ImportError as e:
     pynvml = None  # type: ignore[assignment]
     _AVAILABLE = False
+    # Recorded, not logged here — logging isn't configured at module-import
+    # time.  Surfaced lazily (once) the first time init is attempted.
+    _import_error = str(e)
 
 
 _init_lock = threading.Lock()
 _initialized = False
 _init_error: str | None = None
 _warned_init_failure = False
+_warned_unavailable = False
 
 # Canonical fix for an NVML version mismatch (driver updated without reboot) —
 # referenced by both the runtime warning and the doctor's GPU check.
@@ -58,10 +63,20 @@ def _nvml_fix_hint(e: Exception) -> str:
 
 def _ensure_init() -> bool:
     """Lazy NVML init — retries until driver is loaded."""
-    global _initialized, _init_error, _warned_init_failure
+    global _initialized, _init_error, _warned_init_failure, _warned_unavailable
     if _initialized:
         return True
     if not _AVAILABLE or pynvml is None:
+        # pynvml itself couldn't be imported in this interpreter — the #161
+        # case (card present, reader missing).  Warn ONCE with the fix so it's
+        # visible at the default log level instead of a silent gpu:[].
+        if not _warned_unavailable:
+            _warned_unavailable = True
+            log.warning(
+                "pynvml not importable in this interpreter (%s) — NVIDIA GPU "
+                "sensors unavailable; install nvidia-ml-py into trcc's "
+                "environment", _import_error or "ImportError",
+            )
         return False
     with _init_lock:
         if _initialized:
@@ -99,6 +114,8 @@ def nvml_init_state() -> tuple[bool, bool, str | None]:
     late-loaded driver is reflected.
     """
     _ensure_init()
+    log.debug("nvml_init_state: available=%s initialized=%s error=%s",
+              _AVAILABLE, _initialized, _init_error)
     return _AVAILABLE, _initialized, _init_error
 
 
