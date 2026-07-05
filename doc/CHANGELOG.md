@@ -1,5 +1,25 @@
 # Changelog
 
+## v9.8.3
+
+**NVIDIA GPU metrics now work out of the box.** If you installed via `pip` (or
+`pipx`) and your NVIDIA card showed no temperature/usage/clock, that's fixed:
+the NVML reader (`nvidia-ml-py`) is now a core dependency, so a plain
+`pip install trcc-linux` includes it — no separate install step, no in-app
+prompt to chase. It's pure-Python and does nothing on machines without an
+NVIDIA card, so there's no cost if you're on AMD/Intel.
+
+**Some SCSI panels that wouldn't connect now do.** On certain coolers (Winbond
+and ChiZhu SCSI displays), a boot-time helper was accidentally overwriting the
+USB-storage quirk list down to a single device — which stripped the setting that
+lets the panel expose the device node the app needs, so it never connected.
+It now applies the full list. If your SCSI panel was failing with a "no
+/dev/sg* node" error, update and reboot (or unplug/replug the panel).
+
+**Docs:** the diagnostic commands live under `trcc system` now (e.g.
+`trcc system hid-debug`) — corrected the guides that still showed the old
+`trcc hid-debug` form.
+
 ## v9.8.2
 
 **Widescreen panels now rotate at 270° too.** v9.8.1 fixed 270° on the smaller
