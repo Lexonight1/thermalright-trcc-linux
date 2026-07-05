@@ -5,7 +5,13 @@ DefaultDependencies=no
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'modprobe sg && echo "0402:3922:u" > /sys/module/usb_storage/parameters/quirks'
+# Force usb-storage Bulk-Only on every SCSI display so /dev/sgN is created.
+# The quirks sysfs param is a single comma-list and `echo` OVERWRITES it, so we
+# MUST write the FULL list — echoing one device here silently clobbered the
+# others set by /etc/modprobe.d/trcc-lcd.conf (#212: 0416:5406 lost its quirk).
+# MUST stay in sync with packaging/modprobe/trcc-lcd.conf AND
+# adapters/system/_udev.py build_modprobe_conf() — same list, three sources.
+ExecStart=/bin/sh -c 'modprobe sg && echo "0402:3922:u,0416:5406:u,87cd:70db:u" > /sys/module/usb_storage/parameters/quirks'
 RemainAfterExit=yes
 
 [Install]
