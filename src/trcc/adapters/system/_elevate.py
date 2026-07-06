@@ -13,9 +13,11 @@ is more robust than a ``PYTHONPATH=`` env var, which sudo's ``env_reset`` /
 from __future__ import annotations
 
 import logging
+import os
 import site
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -40,9 +42,26 @@ def reexec_as_root(snippet: str) -> int:
     paths = _import_paths()
     code = f"import sys; sys.path[:0] = {paths!r}; {snippet}"
     log.info("reexec_as_root: re-running as root via sudo")
+    fd: int = -1
+    tmp_path: str = ""
     try:
-        result = subprocess.run(["sudo", sys.executable, "-c", code], check=False)
+        fd, tmp_path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode("utf-8"))
+        os.close(fd)
+        fd = -1
+        result = subprocess.run(["sudo", sys.executable, tmp_path], check=False)
     except (OSError, subprocess.SubprocessError):
         log.exception("reexec_as_root: sudo re-exec failed")
         return 1
+    finally:
+        if fd != -1:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     return result.returncode
