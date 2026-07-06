@@ -958,10 +958,20 @@ class LCDHandler(BaseHandler):
 
     def flash_element(self, index: int) -> None:
         """Flash/blink selected overlay element on preview."""
-        self.log.info("flash_element: index=%d", index)
         from ...core.commands import FlashOverlayElement
+        # The overlay-element widgets are 1:1 (in order) with
+        # user_overlay_elements, so map the clicked index → the element's real
+        # id.  Passing a bare index ('0') never matched the element's id
+        # ('el_...'), so flash silently failed for every element (#150/#203).
+        elements = self._app.settings.for_device(
+            self._device_key,
+        ).user_overlay_elements
+        element_id = (elements[index].id if 0 <= index < len(elements)
+                      else str(index))
+        self.log.info("flash_element: index=%d → element_id=%s",
+                      index, element_id)
         self._app.dispatch(FlashOverlayElement(
-            key=self._device_key, element_id=str(index), duration_ms=980,
+            key=self._device_key, element_id=element_id, duration_ms=980,
         ))
         self._flash_timer.start(980)
         self._render_and_send()

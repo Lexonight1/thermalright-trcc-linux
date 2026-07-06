@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -533,9 +534,15 @@ class OverlayElement:
 
     @classmethod
     def from_dict(cls, data: dict) -> OverlayElement:
-        """Rebuild from JSON-loaded dict; tolerant of missing fields."""
+        """Rebuild from JSON-loaded dict; tolerant of missing fields.
+
+        Elements from a DC parse / an older config carry no ``id``; mint a
+        stable unique one so Update/Delete/Flash Commands can address the
+        element (a bare positional index never matched the ``el_<uuid>`` /
+        ``el_N`` schemes — #150/#203 click-to-highlight was fully broken).
+        """
         return cls(
-            id=str(data.get("id", "")),
+            id=str(data.get("id") or "") or f"el_{uuid.uuid4().hex[:8]}",
             type=data.get("type", "text"),
             x=int(data.get("x", 0)),
             y=int(data.get("y", 0)),
