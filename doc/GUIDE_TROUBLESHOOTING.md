@@ -313,6 +313,42 @@ sudo dracut --force       # Fedora/RHEL
 sudo update-initramfs -u  # Debian/Ubuntu
 ```
 
+### Headless / server hosts (Proxmox, etc.) — panel dark despite a "successful" send
+
+**Symptom:** on a headless server — especially a **Proxmox** host (`root@pve`) — a
+command like `trcc display color KEY ff0000` reports success (`Sent … bytes`, no
+errors), but the panel stays dark.
+
+**Cause:** two things combine. Servers are power-tuned and enable aggressive
+**USB autosuspend**, and TRCC panels are designed to *sleep when the USB link
+suspends* (that's the intended "screen off on shutdown" behaviour). A **one-shot
+CLI command sends a single frame and exits** — there's no keepalive stream to
+hold the link awake — so the panel can suspend the instant the command finishes.
+The frame was delivered to a panel that's now asleep → successful send, dark
+screen. (This is a *power* issue, not a bug in the send path.)
+
+**Fixes, quickest first:**
+
+1. **Run the GUI, or keep a persistent send running, instead of a one-shot
+   command.** The GUI keeps a continuous keepalive frame stream that holds the
+   panel awake and refreshed. If the panel lights up in the GUI but not via
+   `trcc display color`, autosuspend is confirmed.
+2. **Check the device's power state** (look for `suspended`):
+   ```bash
+   for d in /sys/bus/usb/devices/*; do \
+     printf '%s %s:%s ctrl=%s %s\n' "$d" \
+       "$(cat $d/idVendor 2>/dev/null)" "$(cat $d/idProduct 2>/dev/null)" \
+       "$(cat $d/power/control 2>/dev/null)" "$(cat $d/power/runtime_status 2>/dev/null)"; \
+   done | grep -i "0416\|0402\|0418\|87"
+   ```
+3. **Disable USB autosuspend** system-wide and retest — add
+   `usbcore.autosuspend=-1` inside the quotes on `GRUB_CMDLINE_LINUX_DEFAULT`
+   in `/etc/default/grub`, then `sudo update-grub && sudo reboot`.
+4. **Confirm the udev rules are installed** — `trcc system setup` lays down the
+   power-management rules for the panel; without them the device runs on the
+   host's (more aggressive) defaults. A "run `trcc system setup`" hint in the
+   log means they're missing.
+
 ---
 
 ## Video / Media Issues
