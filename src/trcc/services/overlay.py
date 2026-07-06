@@ -25,6 +25,19 @@ log = logging.getLogger(__name__)
 
 _DC_CONFIG_FILE = "config1.dc"
 
+# Unit suffixes stripped off a metric value before drawing — the Windows app
+# (TRCC.cs) removes ℃/℉/MHz/%/RPM from every sensor value and draws the bare
+# integer, because the unit glyph is baked into the theme artwork, not the
+# overlay.  Longest-first so " MHz" is removed before a bare "MHz" fragment.
+_METRIC_UNITS = ("°C", "°F", "℃", "℉", " MHz", "MHz", " RPM", "RPM", "%")
+
+
+def _strip_metric_unit(text: str) -> str:
+    """Return ``text`` with any trailing metric unit removed (bare number)."""
+    for unit in _METRIC_UNITS:
+        text = text.replace(unit, "")
+    return text.strip()
+
 
 def resolve_overlay_elements(
     theme_config: dict[str, Any],
@@ -297,17 +310,15 @@ class OverlayService:
             )
             return
         fmt = str(element.get("format", "{value}"))
-        text = fmt.format(value=value)
-        # Presentation-layer suffix swap only — the numeric value is
-        # ALREADY converted by ``personalize_readings`` at the
-        # broadcast / one-shot boundary (MetricsLoop / RenderAndSend /
-        # LoadTheme / ReadSensors all route through it).  Renderer
-        # just adjusts the unit symbol in the formatted text so the
-        # theme's hardcoded ``"33°C"`` reads ``"33°F"`` when the
-        # user picked °F.  No celsius_to_fahrenheit call here — that
-        # would double-convert.
-        if temp_unit == "F" and "°C" in text:
-            text = text.replace("°C", "°F")
+        text = _strip_metric_unit(fmt.format(value=value))
+        # The Windows app draws the BARE number for a metric value — the unit
+        # glyph (°C / % / MHz / RPM) is part of the theme's background artwork,
+        # not the overlay.  TRCC.cs strips ℃/℉/MHz/%/RPM off every sensor value
+        # (Convert.ToInt32) before DrawString, so drawing "42°C" here would
+        # double-print the unit on top of the baked-in glyph (#150/#203).  The
+        # numeric value is ALREADY unit-converted upstream by
+        # ``personalize_readings`` (°F picked → value is already Fahrenheit), so
+        # the bare number reads correctly regardless of temp_unit.
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         log.debug("draw_metric %s: %s=%s at (%d, %d)",

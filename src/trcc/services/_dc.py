@@ -44,19 +44,26 @@ _MODE_DATE = 3
 _MODE_CUSTOM = 4
 
 
+# Metric VALUE slots render the BARE INTEGER — never the unit.  The Windows
+# app strips the unit off every sensor value before drawing it on the panel
+# (TRCC.cs: val.Replace("℃"/"℉"/"MHz"/"%"/"RPM","") → Convert.ToInt32 →
+# DrawString) because the unit is part of the theme's background artwork, not
+# the overlay.  Baking "°C"/"%"/"MHz" into the format double-prints the unit
+# on top of the baked-in glyph (#150/#203 diagnosis).  Label slots keep their
+# text; only the value slots are bare.
 _SLOT_MAP: list[tuple[str, str | None, str, str]] = [
     ("custom_text",       None,               "",      ""),
-    ("cpu_temp",          "cpu:temp",         "CPU",   "{value:.0f}°C"),
+    ("cpu_temp",          "cpu:temp",         "CPU",   "{value:.0f}"),
     ("cpu_temp_label",    None,               "CPU",   ""),
-    ("cpu_freq",          "cpu:freq",         "CPU",   "{value:.0f} MHz"),
+    ("cpu_freq",          "cpu:freq",         "CPU",   "{value:.0f}"),
     ("cpu_freq_label",    None,               "CPU",   ""),
-    ("cpu_usage",         "cpu:usage",        "CPU",   "{value:.0f}%"),
+    ("cpu_usage",         "cpu:usage",        "CPU",   "{value:.0f}"),
     ("cpu_usage_label",   None,               "CPU",   ""),
-    ("gpu_temp",          "gpu:primary:temp", "GPU",   "{value:.0f}°C"),
+    ("gpu_temp",          "gpu:primary:temp", "GPU",   "{value:.0f}"),
     ("gpu_temp_label",    None,               "GPU",   ""),
-    ("gpu_clock",         "gpu:primary:clock","GPU",   "{value:.0f} MHz"),
+    ("gpu_clock",         "gpu:primary:clock","GPU",   "{value:.0f}"),
     ("gpu_clock_label",   None,               "GPU",   ""),
-    ("gpu_usage",         "gpu:primary:usage","GPU",   "{value:.0f}%"),
+    ("gpu_usage",         "gpu:primary:usage","GPU",   "{value:.0f}"),
     ("gpu_usage_label",   None,               "GPU",   ""),
 ]
 
