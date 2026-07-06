@@ -234,13 +234,24 @@ trcc gui
 
 Covers: NixOS 24.05+, NixOS unstable
 
-NixOS is different from other distros — you declare packages in a config file instead of downloading them. Add to your `flake.nix`:
+NixOS is different from other distros — you declare packages in a config file instead of downloading them. Add to your `flake.nix` and `configuration.nix`:
 
 ```nix
+# flake.nix
 {
   inputs.trcc-linux.url = "github:Lexonight1/thermalright-trcc-linux";
+  # ...
+}
+```
 
-  # In your system configuration:
+```nix
+# configuration.nix
+{ inputs, ... }:
+{
+  imports = [
+    inputs.trcc-linux.nixosModules.default
+  ];
+
   programs.trcc-linux.enable = true;
 }
 ```
