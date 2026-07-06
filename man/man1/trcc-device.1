@@ -1,0 +1,102 @@
+.TH "TRCC\-DEVICE" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-device \- Discover and connect to TRCC devices
+.SH SYNOPSIS
+\fBtrcc device\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+Discover and connect to TRCC devices.
+.SH SUBCOMMANDS
+.SS connect
+.PP
+\fBtrcc device connect\fR \fIKEY\fR
+.PP
+Open USB transport and perform the wire\-protocol handshake.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS disconnect
+.PP
+\fBtrcc device disconnect\fR \fIKEY\fR
+.PP
+Close the transport and drop the device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+(no description)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list
+.PP
+\fBtrcc device list\fR
+.PP
+List devices currently attached to the host.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS reset
+.PP
+\fBtrcc device reset\fR \fIKEY\fR
+.PP
+Disconnect + clear cached state for a device. Use this when the LCD seems stuck  \-  drops any cached frame, theme, and runtime counters. Re\-running connect after this starts completely fresh.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+(no description)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS select
+.PP
+\fBtrcc device select\fR \fIORDINAL\fR
+.PP
+Persist the active\-device selection by ordinal. Multi\-device hosts (e.g. two LCDs + one LED controller) need a way to point CLI commands at "the one I'm steering today". Resolves the ordinal against device list and stores the resulting key in AppSettings.active_device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBORDINAL\fR
+1\-based ordinal of the attached device to mark active (matches device list output)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

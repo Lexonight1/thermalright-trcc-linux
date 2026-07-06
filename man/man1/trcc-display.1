@@ -1,0 +1,1011 @@
+.TH "TRCC\-DISPLAY" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-display \- Configure device display (theme / orientation / brightness)
+.SH SYNOPSIS
+\fBtrcc display\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+Configure device display (theme / orientation / brightness).
+.SH SUBCOMMANDS
+.SS apply\-mask
+.PP
+\fBtrcc display apply\-mask\fR \fIKEY\fR \fIPATH\fR
+.PP
+Override the active theme's mask with a user\-supplied image.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Image file path (png/jpg/jpeg/bmp/webp)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS background\-mode
+.PP
+\fBtrcc display background\-mode\fR \fIKEY\fR \fIMODE\fR
+.PP
+Pick what fills the LCD behind overlays.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBMODE\fR
+\&'theme' / 'color' / 'transparent'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS boot\-anim
+.PP
+\fBtrcc display boot\-anim\fR \fIKEY\fR \fIFRAMES_DIR\fR [\fIOPTIONS\fR]
+.PP
+Upload a multi\-frame compressed boot animation to a SCSI LCD's flash. The animation plays from device flash on every boot until overwritten. Only SCSI panels with 240x240 / 240x320 / 320x240 / 320x320 resolution support boot animations. Frame files are picked up in alphabetical order from *frames_dir*  \-  PNG / JPG / JPEG / BMP / WebP. Each frame uses the same dwell time via \-\-delay (per\-frame delays via the API only).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922 (SCSI only)
+.TP
+\fBFRAMES_DIR\fR
+Directory of image frames (sorted alphabetically; 1\-248 frames)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-delay, \-d \fIDELAY_DS\fR\fR
+Dwell time per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS color
+.PP
+\fBtrcc display color\fR \fIKEY\fR \fIHEX_COLOR\fR
+.PP
+Display a single solid color on the LCD. Smallest path that exercises the full wire chain (handshake\-derived profile + DisplayService encoder + Device.send). Useful diagnostic for confirming a device class works end\-to\-end on real hardware.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBHEX_COLOR\fR
+Hex color (e.g. ff0000 for red)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS configure\-slideshow
+.PP
+\fBtrcc display configure\-slideshow\fR \fIKEY\fR \fITHEMES\fR [\fIOPTIONS\fR]
+.PP
+Set the slideshow theme list + interval.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBTHEMES\fR
+Theme names (directories under user_content_dir)  \-  order matters
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Seconds between theme swaps (default 60).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS keepalive
+.PP
+\fBtrcc display keepalive\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Periodically resend the device's last frame. Workaround for Bulk/LY firmware that drops the displayed image when the internal buffer ages out. Render at least once before starting the loop so there's a cached frame to resend. count=0 (default) runs open\-ended and exits cleanly on Ctrl\-C  \-  the Command itself owns the loop + signal handling so the CLI doesn't need a user\-space while wrapper.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Seconds between resends. Bulk/LY firmware reverts to the built\-in logo after ~2\-3 s without a frame; default 0.150 s keeps the screen pinned.
+.TP
+\fB\-\-count, \-c \fICOUNT\fR\fR
+Number of resends; 0 means loop forever (until Ctrl\-C).
+.TP
+\fB\-\-metric\-interval \fIMETRIC_INTERVAL\fR\fR
+Seconds between overlay re\-renders (live sensor refresh). 0 disables  \-  last frame's metrics stay frozen on screen.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-masks
+.PP
+\fBtrcc display list\-masks\fR [\fIKEY\fR] [\fIOPTIONS\fR]
+.PP
+List mask images for the device's resolution. By default, scans both the cloud\-downloaded mask dir (data/web/zt{W}{H}) and the user\-created mask dir (user_content_dir/data/web/zt{W}{H}).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922)  \-  its resolution scopes the scan. Required unless \-\-dir is given.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-dir, \-d \fIDIRECTORY\fR\fR
+Override: scan an explicit directory instead of the device's mask dirs
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS load\-image
+.PP
+\fBtrcc display load\-image\fR \fIKEY\fR \fIPATH\fR
+.PP
+Show a single image on the LCD. Stages the image as a one\-file theme so the existing render pipeline handles fit + brightness + rotation. Re\-runnable: subsequent loads of the same image are cheap (no re\-copy).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Image file (PNG / JPG / JPEG / BMP / WEBP)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS load\-theme
+.PP
+\fBtrcc display load\-theme\fR \fIKEY\fR \fIPATH\fR
+.PP
+Load a theme: parse, persist, render+send if device is connected.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Theme directory
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS load\-video
+.PP
+\fBtrcc display load\-video\fR \fIKEY\fR \fIPATH\fR [\fIOPTIONS\fR]
+.PP
+Play a video on the LCD as a single\-video theme. Transcodes the source to a Theme.zt matching the device's native resolution (.zt inputs are copied as\-is), stages a one\-file theme, then dispatches LoadTheme. Device must be attached so we know the target resolution.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Video file (MP4 / MOV / WEBM / MKV / AVI / ZT)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-start, \-s \fISTART_MS\fR\fR
+Clip start in milliseconds (default: 0).
+.TP
+\fB\-\-end, \-e \fIEND_MS\fR\fR
+Clip end in milliseconds (default: probe duration, fallback 10s).
+.TP
+\fB\-\-rotation, \-r \fIROTATION\fR\fR
+Rotation in degrees: 0 / 90 / 180 / 270.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS loop\-video
+.PP
+\fBtrcc display loop\-video\fR \fIKEY\fR \fISTATE\fR
+.PP
+Toggle whether video wraps at the end or sticks at the last frame.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key
+.TP
+\fBSTATE\fR
+\&'on' (loop) or 'off' (single\-pass)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS mask\-position
+.PP
+\fBtrcc display mask\-position\fR \fIKEY\fR \fIX\fR \fIY\fR
+.PP
+Position the mask overlay within the canvas.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBX\fR
+X offset in pixels (>= 0)
+.TP
+\fBY\fR
+Y offset in pixels (>= 0)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS mask\-visible
+.PP
+\fBtrcc display mask\-visible\fR \fIKEY\fR \fISTATE\fR
+.PP
+Toggle mask visibility.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBSTATE\fR
+\&'on' or 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay
+.PP
+\fBtrcc display overlay\fR \fIKEY\fR \fISTATE\fR
+.PP
+Toggle the metric overlay layer.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBSTATE\fR
+\&'on' or 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-add
+.PP
+\fBtrcc display overlay\-add\fR \fIKEY\fR \fITYPE_\fR [\fIOPTIONS\fR]
+.PP
+Add a user\-edited overlay element to a device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBTYPE_\fR
+\&'text' / 'metric' / 'clock'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-x \fIX\fR\fR
+X position
+.TP
+\fB\-\-y \fIY\fR\fR
+Y position
+.TP
+\fB\-\-text \fITEXT\fR\fR
+Text content (type=text)
+.TP
+\fB\-\-metric \fIMETRIC\fR\fR
+Metric id (type=metric)
+.TP
+\fB\-\-format \fIFMT\fR\fR
+Metric format string
+.TP
+\fB\-\-source \fISOURCE\fR\fR
+Clock source: time / weekday / date
+.TP
+\fB\-\-color \fICOLOR\fR\fR
+(no description)
+.TP
+\fB\-\-size \fISIZE\fR\fR
+(no description)
+.TP
+\fB\-\-bold\fR
+(no description)
+.TP
+\fB\-\-italic\fR
+(no description)
+.TP
+\fB\-\-id \fIELEMENT_ID\fR\fR
+Explicit element id (default: auto\-generated UUID)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-background
+.PP
+\fBtrcc display overlay\-background\fR \fIKEY\fR \fIHEX_COLOR\fR
+.PP
+Set the solid color used when background\-mode=color.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBHEX_COLOR\fR
+Hex color (e.g. 000000 for black)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-delete
+.PP
+\fBtrcc display overlay\-delete\fR \fIKEY\fR \fIELEMENT_ID\fR
+.PP
+Remove a user\-edited overlay element by id.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+(no description)
+.TP
+\fBELEMENT_ID\fR
+ID returned by overlay\-add
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-flash
+.PP
+\fBtrcc display overlay\-flash\fR \fIKEY\fR \fIELEMENT_ID\fR [\fIOPTIONS\fR]
+.PP
+Briefly highlight an overlay element in the GUI.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+(no description)
+.TP
+\fBELEMENT_ID\fR
+(no description)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-duration, \-d \fIDURATION_MS\fR\fR
+Flash duration in milliseconds
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-render
+.PP
+\fBtrcc display overlay\-render\fR \fIDC_PATH\fR [\fIOPTIONS\fR]
+.PP
+Render a DC config to a PNG preview  \-  no active device required. Mirrors legacy trcc overlay  \-  composites every element from config1.dc onto a solid\-black canvas at *width x height* and writes the result as PNG. Useful when iterating on a theme's metric positions without unplugging the device or sending frames.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBDC_PATH\fR
+DC file or theme directory containing config1.dc
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-output, \-o \fIOUTPUT\fR\fR
+Output PNG path for the rendered preview.
+.TP
+\fB\-\-width, \-w \fIWIDTH\fR\fR
+Render canvas width (px)
+.TP
+\fB\-\-height, \-h \fIHEIGHT\fR\fR
+Render canvas height (px)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS overlay\-update
+.PP
+\fBtrcc display overlay\-update\fR \fIKEY\fR \fIELEMENT_ID\fR [\fIOPTIONS\fR]
+.PP
+Mutate fields on an existing user\-edited overlay element.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+(no description)
+.TP
+\fBELEMENT_ID\fR
+ID returned by overlay\-add
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-x \fIX\fR\fR
+(no description)
+.TP
+\fB\-\-y \fIY\fR\fR
+(no description)
+.TP
+\fB\-\-color \fICOLOR\fR\fR
+(no description)
+.TP
+\fB\-\-size \fISIZE\fR\fR
+(no description)
+.TP
+\fB\-\-text \fITEXT\fR\fR
+(no description)
+.TP
+\fB\-\-metric \fIMETRIC\fR\fR
+(no description)
+.TP
+\fB\-\-format \fIFMT\fR\fR
+(no description)
+.TP
+\fB\-\-source \fISOURCE\fR\fR
+(no description)
+.TP
+\fB\-\-bold\fR
+(no description)
+.TP
+\fB\-\-italic\fR
+(no description)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS pause\-video
+.PP
+\fBtrcc display pause\-video\fR \fIKEY\fR \fISTATE\fR
+.PP
+Pause or resume video playback.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key
+.TP
+\fBSTATE\fR
+\&'on' (pause) or 'off' (resume)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS play
+.PP
+\fBtrcc display play\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Run the render\-and\-send ticker until Ctrl\-C. Dispatches RenderAndSend every tick with live sensors. Keeps SCSI devices from timing out (static\-blink fix) and advances video playback. Stops cleanly on SIGINT.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Tick interval in seconds (default: AppSettings.refresh_interval_s)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS play\-video
+.PP
+\fBtrcc display play\-video\fR \fIKEY\fR \fIPATH\fR [\fIOPTIONS\fR]
+.PP
+Decode a video and start playing it on the device. Overrides the active theme's background until stop\-video runs. Frames advance on each display play tick.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Video path (mp4/mov/webm/mkv/avi/zt)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-fps \fIFPS\fR\fR
+Decode FPS (default: 15)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS restore\-theme
+.PP
+\fBtrcc display restore\-theme\fR \fIKEY\fR
+.PP
+Reload the device's persisted theme  \-  convenience after restart.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS resume
+.PP
+\fBtrcc display resume\fR [\fIOPTIONS\fR]
+.PP
+Send each detected device's last\-used theme (headless, no GUI). Use case: cron / systemd unit / udev hook that runs at boot or after a suspend cycle. Enumerates every TRCC\-known device on the bus, connects, and replays the saved theme so the displays come back to their pre\-boot / pre\-suspend state without the GUI. Bulk/LY devices fade after ~2\-3 s without a fresh frame  \-  pair this with trcc display keepalive per device for those, or trcc display play for the full render\-loop.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-retries \fIRETRIES\fR\fR
+Discovery attempts before giving up (1 attempt = 2 s delay)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS screencast
+.PP
+\fBtrcc display screencast\fR \fIKEY\fR \fIX\fR \fIY\fR \fIW\fR \fIH\fR [\fIOPTIONS\fR]
+.PP
+Stream a screen region to the LCD until interrupted. Wraps StartScreencast  \-  the GUI ScreencastHandler subscriber drives the per\-frame Qt capture timer. Ctrl\-C calls StopScreencast for clean teardown.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBX\fR
+Top\-left X coordinate of capture region (px)
+.TP
+\fBY\fR
+Top\-left Y coordinate of capture region (px)
+.TP
+\fBW\fR
+Capture region width (px)
+.TP
+\fBH\fR
+Capture region height (px)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-audio\fR
+Pipe system audio alongside the video feed (Linux: PipeWire)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS seek\-video
+.PP
+\fBtrcc display seek\-video\fR \fIKEY\fR \fIFRAME\fR
+.PP
+Jump the playback cursor to a specific frame.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key
+.TP
+\fBFRAME\fR
+Frame index to jump to
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS send\-image
+.PP
+\fBtrcc display send\-image\fR \fIKEY\fR \fIPATH\fR
+.PP
+Push an image to the LCD once  \-  no theme staging, no persistence. Companion to load\-image (which materialises a single\-image theme and persists DeviceSettings.current_theme). Use this when you want ephemeral display: boot logos, quick previews, API upload pipelines.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPATH\fR
+Image file (PNG/JPG/BMP/WEBP)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS set\-brightness
+.PP
+\fBtrcc display set\-brightness\fR \fIKEY\fR \fIPERCENT\fR
+.PP
+Set per\-device display brightness.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBPERCENT\fR
+Brightness 0\-100
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS set\-fit\-mode
+.PP
+\fBtrcc display set\-fit\-mode\fR \fIKEY\fR \fIMODE\fR
+.PP
+Set how the background fits the canvas.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBMODE\fR
+Fit mode: 'width' (letterbox), 'height' (pillarbox), 'stretch'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS set\-orientation
+.PP
+\fBtrcc display set\-orientation\fR \fIKEY\fR \fIDEGREES\fR
+.PP
+Set per\-device rotation.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBDEGREES\fR
+Rotation: 0, 90, 180, or 270
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS slideshow
+.PP
+\fBtrcc display slideshow\fR \fIKEY\fR \fISTATE\fR
+.PP
+Toggle the per\-device slideshow on/off.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBSTATE\fR
+\&'on' / 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS slideshow\-run
+.PP
+\fBtrcc display slideshow\-run\fR \fIKEY\fR \fITHEMES_DIR\fR [\fIOPTIONS\fR]
+.PP
+Foreground slideshow over a directory of themes. Different from slideshow / configure\-slideshow (which persist state). This is a one\-shot loop: blocks until Ctrl\-C, swaps to the next theme each tick. Useful for demos + smoke tests; the persisted flow is what production users want.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBTHEMES_DIR\fR
+Directory containing theme subdirectories
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Seconds between theme switches (default: 30.0)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS snapshot
+.PP
+\fBtrcc display snapshot\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Print the persisted LCD state for a device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-json\fR
+Emit JSON instead of human text.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS split\-mode
+.PP
+\fBtrcc display split\-mode\fR \fIKEY\fR \fIMODE\fR
+.PP
+Set the Dynamic Island style (widescreen panels only).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBMODE\fR
+0 (off), 1 (style A), 2 (B), 3 (C)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS stop\-screencast
+.PP
+\fBtrcc display stop\-screencast\fR \fIKEY\fR
+.PP
+Stop an active screencast started by another process (daemon/API).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS stop\-video
+.PP
+\fBtrcc display stop\-video\fR \fIKEY\fR
+.PP
+Clear the video playback override (returns to the active theme).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS test
+.PP
+\fBtrcc display test\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Color\-cycle the LCD: red \-> green \-> blue \-> black. Smallest end\-to\-end exercise of the wire chain. Useful when porting a new device class to confirm handshake \-> frame build \-> USB send all work before fighting overlay/theme bugs.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-seconds, \-s \fISECONDS\fR\fR
+Hold each color for this many seconds.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS test\-lcd
+.PP
+\fBtrcc display test\-lcd\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Print an ANSI true\-color preview of the LCD's current render. Same pipeline as display play but stops at the renderer surface  \-  no wire send. Useful for headless / sshell debugging where you can't see the physical device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-cols, \-c \fICOLS\fR\fR
+Width of the ANSI preview in terminal cells.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS toggle\-video
+.PP
+\fBtrcc display toggle\-video\fR \fIKEY\fR
+.PP
+Flip video playback between paused / playing (single\-verb helper).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS upload\-mask
+.PP
+\fBtrcc display upload\-mask\fR \fIKEY\fR \fISOURCE\fR
+.PP
+Copy a mask into user_content_dir/masks and apply it to the device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key
+.TP
+\fBSOURCE\fR
+Mask image file to copy + apply
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

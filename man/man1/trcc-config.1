@@ -1,0 +1,128 @@
+.TH "TRCC\-CONFIG" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-config \- App\-global preferences: temp unit, language, GPU, refresh interval
+.SH SYNOPSIS
+\fBtrcc config\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+App\-global preferences: temp unit, language, GPU, refresh interval.
+.SH SUBCOMMANDS
+.SS date\-format
+.PP
+\fBtrcc config date\-format\fR \fIFMT\fR
+.PP
+Set the global LCD overlay date format.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBFMT\fR
+LCD date format, e.g. 'yyyy/MM/dd', 'dd.MM.yyyy', 'MM/dd/yyyy'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS gpu
+.PP
+\fBtrcc config gpu\fR [\fIKEY\fR]
+.PP
+Pick the primary GPU for sensor overlays. Empty string = auto.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+GPU sensor key (e.g. 'nvidia:0') or '' to clear
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS language
+.PP
+\fBtrcc config language\fR \fILANG\fR
+.PP
+Set the UI language.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBLANG\fR
+ISO 639\-1 code, e.g. 'en', 'zh', 'fr'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS refresh\-interval
+.PP
+\fBtrcc config refresh\-interval\fR \fISECONDS\fR
+.PP
+Set the global metrics\-refresh / render\-and\-send tick interval.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBSECONDS\fR
+Seconds between metric refreshes (1 to 100)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS temp\-unit
+.PP
+\fBtrcc config temp\-unit\fR \fIUNIT\fR
+.PP
+Set the global temperature unit (propagates to every device).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBUNIT\fR
+Either 'C' or 'F'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS time\-format
+.PP
+\fBtrcc config time\-format\fR \fIFMT\fR
+.PP
+Set the global LCD overlay clock format.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBFMT\fR
+LCD clock format: '12h' or '24h'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

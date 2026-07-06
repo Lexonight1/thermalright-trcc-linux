@@ -1,0 +1,87 @@
+.TH "TRCC" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc \- Thermalright LCD/LED cooler control for Linux
+.SH SYNOPSIS
+\fBtrcc\fR [\fIOPTIONS\fR] \fICOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+TRCC  \-  Thermalright LCD/LED cooler control (clean\-slate build).
+.PP
+Device commands under \fBtrcc display\fR, \fBtrcc led\fR and \fBtrcc theme\fR take the device \fIKEY\fR (its USB VID:PID, shown by \fBtrcc detect\fR \(em e.g. 0402:3922) as their first argument.
+.SH COMMANDS
+.TP
+\fBapi\fR
+Launch the REST API (FastAPI + uvicorn). Three operating modes: * trcc api  \-  loopback only (127.0.0.1), no auth. Dev default. * trcc api \-\-host 0.0.0.0 \-\-token <secret>  \-  public bind, token required on every request. Use a long random secret. * trcc api \-\-host 0.0.0.0 \-\-token <secret> \-\-pair  \-  same as above plus the pairing endpoint; a 6\-char code is shown so a remote app can fetch the token without out\-of\-band copy/paste. Refusal: \-\-host other than 127.0.0.1 / localhost without \-\-token exits 2  \-  would otherwise expose every endpoint to LAN.
+.TP
+\fBdaemon\fR
+Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at $XDG_RUNTIME_DIR/trcc.sock and serves Commands until SIGTERM / SIGINT or a remote trcc kill. Sets TRCC_DAEMON=1 to route clients through this daemon.
+.TP
+\fBdaemon\-status\fR
+Report whether the background daemon socket is reachable. Replaces the previous top\-level status command, which conflated daemon reachability with app state. Use trcc status for the unified app + device snapshot.
+.TP
+\fBdetect\fR
+Alias for trcc device list  \-  list attached devices.
+.TP
+\fBdoctor\fR
+Alias for trcc system doctor  \-  health checks.
+.TP
+\fBgui\fR
+Launch the legacy Windows\-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area  \-  enough to prove the legacy\-on\-next/\-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. \-\-resume starts hidden in the tray (XDG autostart\-on\-login); bare trcc gui shows the window.
+.TP
+\fBkill\fR
+Ask the running daemon to shut down, return when its socket is gone.
+.TP
+\fBqtgui\fR
+Launch the Qt\-native GUI (clean\-slate, layout\-driven). This is the rebuild's GUI  \-  built up over G1\-G5 and used during development. See gui for the legacy Windows\-style port.
+.TP
+\fBquickstart\fR
+Guided first\-session flow for new users. Runs the doctor, scans for devices, and walks you through what to do next. Pass \-\-yes to also test\-connect to the first device found. Safe to re\-run any time.
+.TP
+\fBreport\fR
+Alias for trcc system debug\-report  \-  full diagnostic dump.
+.TP
+\fBsensors\fR
+Alias for trcc system sensors  \-  print sensor readings.
+.TP
+\fBserve\fR
+Alias for trcc api  \-  launches the REST API + uvicorn. The serve name matches legacy CLI ergonomics; api still works for backwards\-compat with existing scripts.
+.TP
+\fBsetup\fR
+Alias for trcc system setup  \-  OS\-specific setup (udev rules on Linux, WinUSB guide on Windows). New users reach for the short form. (#194)
+.TP
+\fBshell\fR
+Open an interactive prompt sharing one App across commands. Each line is parsed as if it were a fresh trcc invocation, but the App is built once and reused  \-  no per\-command handshake. In daemon mode the App is an AppProxy that round\-trips each line to the running daemon. Ctrl\-D or exit quits.
+.TP
+\fBstatus\fR
+Show unified app + LCD + LED state. Composes ControlCenterSnapshot (app prefs) with per\-device LcdSnapshot / LedSnapshot  \-  one round\-trip for "what state is everything in right now?". Pass \-\-json for scripts. Use trcc daemon\-status for daemon reachability checks.
+.SH COMMAND GROUPS
+.TP
+\fBconfig\fR
+App\-global preferences: temp unit, language, GPU, refresh interval. See \fBtrcc\-config\fR(1).
+.TP
+\fBdevice\fR
+Discover and connect to TRCC devices. See \fBtrcc\-device\fR(1).
+.TP
+\fBdisplay\fR
+Configure device display (theme / orientation / brightness). See \fBtrcc\-display\fR(1).
+.TP
+\fBled\fR
+RGB LED control. See \fBtrcc\-led\fR(1).
+.TP
+\fBsystem\fR
+System\-level operations (setup, sensors, info). See \fBtrcc\-system\fR(1).
+.TP
+\fBtheme\fR
+Save / export / import themes. See \fBtrcc\-theme\fR(1).
+.SH FILES
+.TP
+\fB~/.trcc/\fR
+Program + cloud data and config (config.json, logs).
+.TP
+\fB~/.trcc\-user/\fR
+User-authored themes, backgrounds, and masks.
+.SH SEE ALSO
+\fBtrcc\-config\fR(1), \fBtrcc\-device\fR(1), \fBtrcc\-display\fR(1), \fBtrcc\-led\fR(1), \fBtrcc\-system\fR(1), \fBtrcc\-theme\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

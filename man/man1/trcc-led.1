@@ -1,0 +1,565 @@
+.TH "TRCC\-LED" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-led \- RGB LED control
+.SH SYNOPSIS
+\fBtrcc led\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+RGB LED control.
+.SH SUBCOMMANDS
+.SS brightness
+.PP
+\fBtrcc led brightness\fR \fIKEY\fR \fIPERCENT\fR
+.PP
+Set the global LED brightness (persists).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBPERCENT\fR
+Brightness 0\-100
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS clock\-format
+.PP
+\fBtrcc led clock\-format\fR \fIKEY\fR \fIFMT\fR
+.PP
+Set the 12h/24h clock display for LC2\-style segment devices.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBFMT\fR
+\&'12h' or '24h'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS color
+.PP
+\fBtrcc led color\fR \fIKEY\fR \fICOLOR\fR
+.PP
+Set the LED color used by STATIC / BREATHING / COLORFUL modes.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBCOLOR\fR
+Hex color (#rrggbb)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS disk\-index
+.PP
+\fBtrcc led disk\-index\fR \fIKEY\fR \fIINDEX\fR
+.PP
+Pick which disk's read/write stats to surface.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBINDEX\fR
+Disk index (0\-based)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS initialize
+.PP
+\fBtrcc led initialize\fR \fIKEY\fR
+.PP
+Connect + render one initial frame in a single dispatch. Convenience for boot scripts  \-  equivalent to device connect followed by led render, but in one Command so the caller only inspects one Result. Use this on app start; use the individual commands for finer control.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-modes
+.PP
+\fBtrcc led list\-modes\fR
+.PP
+List every animation mode (STATIC, BREATHING, RAINBOW, ...).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-styles
+.PP
+\fBtrcc led list\-styles\fR
+.PP
+List every LED style registered in the PM byte registry.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS load\-source
+.PP
+\fBtrcc led load\-source\fR \fIKEY\fR \fISOURCE\fR
+.PP
+Pick the sensor source for LOAD_LINKED mode.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBSOURCE\fR
+\&'cpu' or 'gpu'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS memory\-ratio
+.PP
+\fBtrcc led memory\-ratio\fR \fIKEY\fR \fIRATIO\fR
+.PP
+Set the DDR memory multiplier for the LED memory gauge.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBRATIO\fR
+DDR multiplier: 1, 2, or 4
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS mode
+.PP
+\fBtrcc led mode\fR \fIKEY\fR \fIMODE\fR
+.PP
+Set the LED animation mode (persists).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBMODE\fR
+One of: static, breathing, colorful, rainbow, temp_linked, load_linked
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS play
+.PP
+\fBtrcc led play\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Run the LED render ticker until Ctrl\-C. Mirrors display play  \-  dispatches RenderLed every tick so BREATHING / COLORFUL / RAINBOW animations advance. Stops cleanly on SIGINT.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Tick interval in seconds (default: AppSettings.refresh_interval_s)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS render
+.PP
+\fBtrcc led render\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Render one LED frame from current settings + sensors and send. Reads the device's saved mode / color / brightness from Settings, advances the engine's phase counters on app.led_runtime, and sends one tick. Pass \-\-color to override the saved color (treated as STATIC at full brightness  \-  diagnostic shape).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-color, \-c \fICOLOR\fR\fR
+Override hex color (#rrggbb); omit to use the saved color
+.TP
+\fB\-\-phase, \-p \fIPHASE\fR\fR
+Rotation phase for multi\-phase displays
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS select\-zone
+.PP
+\fBtrcc led select\-zone\fR \fIKEY\fR \fIZONE\fR
+.PP
+Set the currently\-selected zone (UI state).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBZONE\fR
+Zone index to select
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS set\-colors
+.PP
+\fBtrcc led set\-colors\fR \fIKEY\fR \fICOLORS\fR [\fIOPTIONS\fR]
+.PP
+Push a full LED color update.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBCOLORS\fR
+Hex colors (#rrggbb), one per LED
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-brightness, \-b \fIBRIGHTNESS\fR\fR
+Global brightness 0\-100
+.TP
+\fB\-\-off\fR
+Force all LEDs off (overrides colors)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS snapshot
+.PP
+\fBtrcc led snapshot\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+Print the persisted LED state for a device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-json\fR
+Emit JSON instead of human text.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS temp\-source
+.PP
+\fBtrcc led temp\-source\fR \fIKEY\fR \fISOURCE\fR
+.PP
+Pick the sensor source for TEMP_LINKED mode.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBSOURCE\fR
+\&'cpu' or 'gpu'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS test\-led
+.PP
+\fBtrcc led test\-led\fR \fIKEY\fR
+.PP
+Print an ANSI true\-color preview of the LED zones in the terminal. Reads the current zone color list from LedSnapshot and paints each zone as a coloured square  \-  handy for visualising multi\-zone strips during headless debugging.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS test\-mode
+.PP
+\fBtrcc led test\-mode\fR \fIKEY\fR \fION\fR
+.PP
+Toggle the 4\-color diagnostic test cycle.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBON\fR
+Enable (true) or disable (false)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS toggle
+.PP
+\fBtrcc led toggle\fR \fIKEY\fR \fISTATE\fR [\fIOPTIONS\fR]
+.PP
+Turn the LED device (or one zone) on/off.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBSTATE\fR
+\&'on' or 'off' (or use \-\-zone N to target one zone)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-zone, \-z \fIZONE\fR\fR
+Toggle a single zone (omit for global toggle)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS toggle\-segment
+.PP
+\fBtrcc led toggle\-segment\fR \fIKEY\fR \fIINDEX\fR \fISTATE\fR
+.PP
+Flip one segment on/off (segment\-display devices).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBINDEX\fR
+Segment index
+.TP
+\fBSTATE\fR
+\&'on' or 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS week\-start
+.PP
+\fBtrcc led week\-start\fR \fIKEY\fR \fIDAY\fR
+.PP
+Pick the week\-start day on devices that show a day\-of\-week display.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBDAY\fR
+\&'sunday' or 'monday'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS zone\-brightness
+.PP
+\fBtrcc led zone\-brightness\fR \fIKEY\fR \fIZONE\fR \fIPERCENT\fR
+.PP
+Set one zone's persistent brightness.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBZONE\fR
+Zone index (0\-based)
+.TP
+\fBPERCENT\fR
+Brightness 0\-100
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS zone\-color
+.PP
+\fBtrcc led zone\-color\fR \fIKEY\fR \fIZONE\fR \fICOLOR\fR
+.PP
+Set one zone's persistent color.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBZONE\fR
+Zone index (0\-based)
+.TP
+\fBCOLOR\fR
+Hex color (#rrggbb)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS zone\-mode
+.PP
+\fBtrcc led zone\-mode\fR \fIKEY\fR \fIZONE\fR \fIMODE\fR
+.PP
+Set one zone's persistent animation mode.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.TP
+\fBZONE\fR
+Zone index (0\-based)
+.TP
+\fBMODE\fR
+One of: static, breathing, colorful, rainbow, temp_linked, load_linked
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS zone\-sync
+.PP
+\fBtrcc led zone\-sync\fR \fIKEY\fR \fISTATE\fR [\fIOPTIONS\fR]
+.PP
+Toggle the zone\-sync carousel (optionally set the interval).
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key
+.TP
+\fBSTATE\fR
+\&'on' or 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-interval, \-i \fIINTERVAL\fR\fR
+Set ticks\-per\-rotation alongside the toggle
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

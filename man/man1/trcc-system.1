@@ -1,0 +1,357 @@
+.TH "TRCC\-SYSTEM" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-system \- System\-level operations (setup, sensors, info)
+.SH SYNOPSIS
+\fBtrcc system\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+System\-level operations (setup, sensors, info).
+.SH SUBCOMMANDS
+.SS autostart
+.PP
+\fBtrcc system autostart\fR
+.PP
+Manage auto\-launch\-on\-login (XDG .desktop on Linux).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS check\-update
+.PP
+\fBtrcc system check\-update\fR
+.PP
+Ask GitHub Releases whether a newer version is available.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS debug\-report
+.PP
+\fBtrcc system debug\-report\fR [\fIOPTIONS\fR]
+.PP
+Generate a debug report bundle for GitHub issues.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-output, \-o \fIOUTPUT\fR\fR
+Write the report to this path instead of stdout. Recommended when filing a GitHub issue  \-  attach the file.
+.TP
+\fB\-\-log\-lines \fILOG_LINES\fR\fR
+How many trailing log lines to include (default 1000).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS doctor
+.PP
+\fBtrcc system doctor\fR
+.PP
+Run health checks  \-  exits 1 on any FAIL. The reporter\-friendly summary tells you what's wrong + how to fix it. For a copy\-paste GitHub\-issue dump, use system debug\-report instead.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS download
+.PP
+\fBtrcc system download\fR \fIWIDTH\fR \fIHEIGHT\fR
+.PP
+Pre\-fetch the theme + cloud + mask archives for a resolution. DiscoverDevices runs this implicitly the first time a device of a given resolution attaches. Call it directly to populate the local cache while you have network  \-  handy for headless setups that'll later run offline. Idempotent.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBWIDTH\fR
+Display width (px), e.g. 320
+.TP
+\fBHEIGHT\fR
+Display height (px), e.g. 320
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS first\-run\-status
+.PP
+\fBtrcc system first\-run\-status\fR
+.PP
+Show whether trcc has been set up on this machine yet.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS hdd\-enabled
+.PP
+\fBtrcc system hdd\-enabled\fR \fISTATE\fR
+.PP
+Toggle inclusion of HDD metrics in sensor broadcasts.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBSTATE\fR
+\&'on' or 'off'
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS health
+.PP
+\fBtrcc system health\fR
+.PP
+Quick read\-only health report  \-  same checks as doctor, no exit code.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS hid\-debug
+.PP
+\fBtrcc system hid\-debug\fR \fIKEY\fR
+.PP
+Connect to *key* + print handshake details for a GitHub issue paste. Composes ConnectDevice (returns handshake bytes + parsed resolution / model id / serial) and LcdSnapshot to dump the persisted state. Output is plain text  \-  copy + paste\-friendly.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS info
+.PP
+\fBtrcc system info\fR [\fIOPTIONS\fR]
+.PP
+Show current sensor metrics (CPU/GPU/fan/disk/net readings). Mirrors legacy trcc info  \-  dispatches ReadSensors and prints each reading. Use \-\-metric <prefix> to narrow the output; pass no args for everything. For paths / install info / permissions, see trcc system platform\-info.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-metric, \-m \fIMETRIC\fR\fR
+Filter readings whose sensor_id startswith this prefix (e.g. cpu, gpu, mem, disk, net, fan, time).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS lang
+.PP
+\fBtrcc system lang\fR
+.PP
+Print the currently\-active UI language code. Read\-only  \-  for "what language is TRCC in right now?" without digging through snapshot. Use set\-language to change it.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS led\-debug
+.PP
+\fBtrcc system led\-debug\fR \fIKEY\fR [\fIOPTIONS\fR]
+.PP
+LED device handshake + zone/segment dump + optional test cycle. Composes ConnectDevice and LedSnapshot for a one\- shot diagnostic. Pass \-\-test\-colors to cycle the device's test pattern so you can confirm wire\-up visually.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+LED device key, e.g. 0416:8001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-test\-colors\fR
+After handshake, enable the 4\-color test cycle (Ctrl\-C to stop).
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-disks
+.PP
+\fBtrcc system list\-disks\fR
+.PP
+List disk partitions (for use with led disk\-index).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-endpoints
+.PP
+\fBtrcc system list\-endpoints\fR
+.PP
+Enumerate every HTTP route the REST API exposes. Builds the FastAPI app (no uvicorn) and walks its router so the output reflects what trcc api / trcc serve would serve.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-fonts
+.PP
+\fBtrcc system list\-fonts\fR
+.PP
+List font families Qt can see.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-gpus
+.PP
+\fBtrcc system list\-gpus\fR
+.PP
+List GPUs exposed by the sensors aggregator.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-languages
+.PP
+\fBtrcc system list\-languages\fR
+.PP
+List every UI language the i18n table supports.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list\-sensors
+.PP
+\fBtrcc system list\-sensors\fR
+.PP
+Print every sensor the platform enumerates  \-  descriptors only. Read\-only enumeration: no polling, no values. Pair with system sensors (or system info \-\-metric <prefix>) when you want the current readings instead.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS mark\-setup\-done
+.PP
+\fBtrcc system mark\-setup\-done\fR
+.PP
+Tell trcc the welcome flow has been completed.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS platform\-info
+.PP
+\fBtrcc system platform\-info\fR
+.PP
+Show platform info (distro, install method, config dir, permissions).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS sensors
+.PP
+\fBtrcc system sensors\fR
+.PP
+Print current sensor readings.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS setup
+.PP
+\fBtrcc system setup\fR [\fIOPTIONS\fR]
+.PP
+Run the OS\-specific setup (udev rules on Linux, WinUSB guide on Windows).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-yes, \-y\fR
+Non\-interactive (assume yes to prompts)
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS snapshot
+.PP
+\fBtrcc system snapshot\fR [\fIOPTIONS\fR]
+.PP
+Print the AppSettings snapshot (language, GPU, refresh interval).
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-json\fR
+Emit JSON instead of human text.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS upgrade
+.PP
+\fBtrcc system upgrade\fR [\fIOPTIONS\fR]
+.PP
+Upgrade trcc\-linux via the detected package manager.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-yes, \-y\fR
+Skip confirmation and run the upgrade subprocess.
+.TP
+\fB\-\-dry\-run\fR
+Print the command that would run, don't execute it.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.

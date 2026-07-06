@@ -1,0 +1,289 @@
+.TH "TRCC\-THEME" "1" "" "trcc\-linux 9.8.3" "TRCC Manual"
+.SH NAME
+trcc\-theme \- Save / export / import themes
+.SH SYNOPSIS
+\fBtrcc theme\fR \fISUBCOMMAND\fR [\fIARGS\fR]...
+.SH DESCRIPTION
+Save / export / import themes.
+.SH SUBCOMMANDS
+.SS cloud\-list
+.PP
+\fBtrcc theme cloud\-list\fR [\fIOPTIONS\fR]
+.PP
+List themes in Thermalright's hosted catalog.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-category, \-c \fICATEGORY\fR\fR
+Category prefix: 'all' / 'a' / 'b' / 'c' / 'd' / 'e' / 'y'
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS cloud\-load
+.PP
+\fBtrcc theme cloud\-load\fR \fIKEY\fR \fITHEME_ID\fR
+.PP
+Download a cloud theme and load it on a device.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBTHEME_ID\fR
+Cloud theme id, e.g. a001
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS create
+.PP
+\fBtrcc theme create\fR \fIKEY\fR \fINAME\fR [\fIOPTIONS\fR]
+.PP
+One\-shot theme builder: bg + optional mask + overlay metrics \-> save. Mirrors legacy trcc theme \-\-save. Dispatches a chain of existing Commands: LoadImage for the background, UploadCustomMask if \-\-mask given, AddOverlayElement per \-\-metric arg, then SaveTheme to persist the result. Stops on the first failure and leaves the device in whatever state was reached.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBNAME\fR
+Theme name to save as
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-bg, \-b \fIBACKGROUND\fR\fR
+Background image (PNG/JPG/BMP/WEBP)
+.TP
+\fB\-\-mask \fIMASK\fR\fR
+Optional mask PNG to overlay (custom_<name>/01.png)
+.TP
+\fB\-\-metric, \-m \fIMETRIC\fR\fR
+Overlay metric spec: 'metric_key:x,y[:color[:size]]'  \-  e.g. 'cpu:temp:160,90:#ff8800:24'. color defaults to '#ffffff', size defaults to 16. Repeatable.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS delete
+.PP
+\fBtrcc theme delete\fR \fIPATH\fR
+.PP
+Delete a theme directory. Path\-based to match legacy's delete_theme(lcd, path)  \-  the caller already has the resolved path from theme list output.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBPATH\fR
+Absolute path to the theme directory to delete
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS export
+.PP
+\fBtrcc theme export\fR \fIKEY\fR \fITHEME_NAME\fR \fIARCHIVE_PATH\fR
+.PP
+Zip a theme into an archive file.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922) whose resolution scopes the lookup
+.TP
+\fBTHEME_NAME\fR
+Theme name (directory under user_theme_dir(w, h))
+.TP
+\fBARCHIVE_PATH\fR
+Destination archive path (e.g. theme.tr)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS export\-config
+.PP
+\fBtrcc theme export\-config\fR \fIKEY\fR \fIOUTPUT_PATH\fR
+.PP
+Snapshot one device's settings to a JSON file. Captures everything in DeviceSettings: active theme path, brightness, orientation, overlay edits, mask choice, format prefs. Pair with trcc theme import\-config to restore on another host or after a wipe.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBOUTPUT_PATH\fR
+Destination JSON path (e.g. mydevice.json)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS export\-dc
+.PP
+\fBtrcc theme export\-dc\fR \fIKEY\fR \fITHEME_NAME\fR \fIOUTPUT_PATH\fR
+.PP
+Write a theme out as legacy config1.dc for Windows TRCC users.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922)  \-  its resolution scopes the lookup and layers the user's overlay elements into the export
+.TP
+\fBTHEME_NAME\fR
+Theme name (directory under user_theme_dir(w, h))
+.TP
+\fBOUTPUT_PATH\fR
+Where to write the config1.dc file
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS export\-overlay
+.PP
+\fBtrcc theme export\-overlay\fR \fIKEY\fR \fITHEME_NAME\fR \fIOUTPUT_PATH\fR
+.PP
+Export just a theme's overlay layout (the metric grid) for sharing  \-  lighter than the whole\-theme zip and distinct from the DC binary.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922)  \-  its resolution scopes the lookup
+.TP
+\fBTHEME_NAME\fR
+Theme name (directory under user_theme_dir(w, h))
+.TP
+\fBOUTPUT_PATH\fR
+Where to write the overlay layout file
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS import
+.PP
+\fBtrcc theme import\fR \fIKEY\fR \fIARCHIVE_PATH\fR [\fINAME\fR]
+.PP
+Unpack a theme archive into the device's per\-resolution theme dir.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922) whose resolution scopes the target
+.TP
+\fBARCHIVE_PATH\fR
+Archive to unpack
+.TP
+\fBNAME\fR
+Theme name (defaults to archive filename stem)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS import\-config
+.PP
+\fBtrcc theme import\-config\fR \fIKEY\fR \fIINPUT_PATH\fR
+.PP
+Restore one device's settings from an export\-config JSON file.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBINPUT_PATH\fR
+Source JSON written by trcc theme export\-config
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS list
+.PP
+\fBtrcc theme list\fR [\fIKEY\fR] [\fIOPTIONS\fR]
+.PP
+List themes for a device resolution. By default scans both data/theme{W}{H} (pkg + GitHub\-downloaded) and user_content_dir/data/theme{W}{H} (legacy user\-saved location) so installed\-user themes show up alongside fresh downloads.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key (e.g. 0402:3922)  \-  its resolution scopes the scan. Required unless \-\-dir is given.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-dir, \-d \fIDIRECTORY\fR\fR
+Override: scan an explicit directory instead of the device's theme dirs.
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS save
+.PP
+\fBtrcc theme save\fR \fIKEY\fR \fINAME\fR
+.PP
+Duplicate the device's active theme directory under a new name.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key whose active theme to save
+.TP
+\fBNAME\fR
+New theme name (directory under user_content_dir)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SH SEE ALSO
+\fBtrcc\fR(1)
+.SH REPORTING BUGS
+Report bugs at \fBhttps://github.com/Lexonight1/thermalright-trcc-linux/issues\fR \(em include the output of \fBtrcc report\fR.
+.SH AUTHOR
+TRCC Linux contributors. Unofficial community project, not affiliated with Thermalright.
