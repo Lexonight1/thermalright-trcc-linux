@@ -87,6 +87,13 @@ src/trcc/data/ui_*.json
 /dev/.trcc-user/
 /dev/__pycache__/
 /dev/devices.json
+# decompile-miner: track the tool SOURCE, never its inputs/outputs — Windows
+# TRCC binaries are copyrighted (never commit an .exe/.dll), and Ghidra dumps +
+# mined tables are large, derived artifacts.
+/dev/decompiler/**/*.exe
+/dev/decompiler/**/*.dll
+/dev/decompiler/ghidra_projects/
+/dev/decompiler/out/
 /dev_*
 # Dev scripts at root
 /test_*.py
