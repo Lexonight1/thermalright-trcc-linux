@@ -148,24 +148,24 @@ Full desktop app with theme browser, video player, overlay editor, LED control p
 
 ### CLI
 
+Device commands take your device **key** (its `VID:PID`, from `trcc detect`) as the first argument — e.g. `0402:3922`:
+
 ```bash
-trcc detect               # Show connected devices
-trcc send image.png       # Send image to LCD
-trcc display color "#ff0000"      # Fill LCD with solid color
-trcc video clip.mp4       # Play video on LCD
-trcc screencast           # Live screen capture to LCD
-trcc brightness 2         # Set brightness (1=25%, 2=50%, 3=100%)
-trcc rotation 90          # Rotate display (0/90/180/270)
-trcc theme-list           # List available themes
-trcc theme-load NAME      # Load a theme by name
-trcc overlay              # Render and send overlay
-trcc led-color "#00ff00"  # Set LED color
-trcc led-mode breathing   # Set LED effect mode
-trcc report               # Generate diagnostic report
-trcc doctor               # Check system dependencies
-trcc system setup                # Interactive setup wizard
-trcc uninstall            # Remove TRCC completely
+trcc detect                                     # Show connected devices + their keys
+trcc display send-image 0402:3922 image.png     # Send an image to the LCD
+trcc display color 0402:3922 "#ff0000"          # Fill the LCD with a solid color
+trcc display load-video 0402:3922 clip.mp4      # Play a video on the LCD
+trcc display screencast 0402:3922               # Live screen capture to the LCD
+trcc display set-brightness 0402:3922 80        # Brightness (0–100%)
+trcc display set-orientation 0402:3922 90       # Rotate display (0/90/180/270)
+trcc led color 0416:8001 "#00ff00"              # Set LED color
+trcc led mode 0416:8001 breathing               # Set LED effect mode
+trcc report                                     # Generate diagnostic report
+trcc doctor                                     # Check system dependencies
+trcc system setup                               # Interactive setup wizard
 ```
+
+> **Command groups:** LCD actions live under `trcc display …`, LED under `trcc led …`, themes under `trcc theme …`; diagnostics (`report`, `detect`, `doctor`, `sensors`) are top-level; OS setup under `trcc system …`. Run `trcc --help` or `trcc display --help` to explore, and see the **[CLI Guide](doc/GUIDE_CLI.md)** for the full walkthrough.
 
 See the **[CLI Reference](doc/REFERENCE_CLI.md)** for the full command list.
 
@@ -211,7 +211,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | [Supported Devices](doc/REFERENCE_DEVICES.md) | Full device list with USB IDs and protocols |
 | [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
 | [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) | How to test and report device compatibility |
-| [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
+| [Architecture Guide](doc/GUIDE_ARCHITECTURE.md) | Project layout, hexagonal design, and the unified UI presentation layer |
 | [Technical Reference](doc/REFERENCE_TECHNICAL.md) | SCSI protocol and file formats |
 
 ### Protocol documentation (reverse-engineered from Windows TRCC)
@@ -401,7 +401,7 @@ Every single star is a small vote of confidence that this is worth keeping alive
 
 **[akasvi](https://github.com/akasvi)** · **[alessa-lara](https://github.com/alessa-lara)** · **[alicepolice](https://github.com/alicepolice)** · **[ArcaneCoder404](https://github.com/ArcaneCoder404)** · **[Arty-x-g](https://github.com/Arty-x-g)** · **[audacieuxnumber1](https://github.com/audacieuxnumber1)** · **[azrael1911](https://github.com/azrael1911)** · **[bbrriiaann97](https://github.com/bbrriiaann97)** · **[behold81](https://github.com/behold81)** · **[betolink](https://github.com/betolink)** · **[bfesfbsbfesfbn](https://github.com/bfesfbsbfesfbn)** · **[bive242](https://github.com/bive242)** · **[brook-cheng](https://github.com/brook-cheng)** · **[BrunoLeguizamon05](https://github.com/BrunoLeguizamon05)** · **[cancos1](https://github.com/cancos1)** · **[capiazmi](https://github.com/capiazmi)** · **[cdh407](https://github.com/cdh407)** · **[cesarnr21](https://github.com/cesarnr21)** · **[chirox](https://github.com/chirox)** · **[codeflitting](https://github.com/codeflitting)** · **[CT-Actual](https://github.com/CT-Actual)** · **[curttheg](https://github.com/curttheg)** · **[dabombUSA](https://github.com/dabombUSA)** · **[damachine](https://github.com/damachine)** · **[DasFlogetier](https://github.com/DasFlogetier)** · **[david43](https://github.com/david43)** · **[DavidKirkitadze](https://github.com/DavidKirkitadze)** · **[Dezinger](https://github.com/Dezinger)** · **[Dezuvo](https://github.com/Dezuvo)** · **[eap5](https://github.com/eap5)** · **[eduu-dudu](https://github.com/eduu-dudu)** · **[emaspa](https://github.com/emaspa)** · **[enricomarchesin](https://github.com/enricomarchesin)** · **[falumamx](https://github.com/falumamx)** · **[Gdetrane](https://github.com/Gdetrane)** · **[greaseyjockey](https://github.com/greaseyjockey)** · **[guowc](https://github.com/guowc)** · **[gupsterg](https://github.com/gupsterg)** · **[huzky-v](https://github.com/huzky-v)** · **[hydrogen2005](https://github.com/hydrogen2005)** · **[immenz](https://github.com/immenz)** · **[israelsz](https://github.com/israelsz)** · **[jamespo](https://github.com/jamespo)** · **[jaminmc](https://github.com/jaminmc)** · **[jezzaw007](https://github.com/jezzaw007)** · **[jhlasnik](https://github.com/jhlasnik)** · **[jmo808](https://github.com/jmo808)** · **[Jorann](https://github.com/Jorann)** · **[JuanVargas](https://github.com/JuanVargas)** · **[JyeroRayguster404](https://github.com/JyeroRayguster404)** · **[k1w3l](https://github.com/k1w3l)** · **[KawalChlopa](https://github.com/KawalChlopa)** · **[kazhala](https://github.com/kazhala)** · **[knappstar](https://github.com/knappstar)** · **[kyle-tracy](https://github.com/kyle-tracy)** · **[Langustensorbet](https://github.com/Langustensorbet)** · **[Legendarycentaur](https://github.com/Legendarycentaur)** · **[Leonnaki](https://github.com/Leonnaki)** · **[Lfatua](https://github.com/Lfatua)** · **[llauer](https://github.com/llauer)** · **[lotte25](https://github.com/lotte25)** · **[m-marcal](https://github.com/m-marcal)** · **[mgaruccio](https://github.com/mgaruccio)** · **[michelle0812](https://github.com/michelle0812)** · **[mkogut](https://github.com/mkogut)** · **[monkky](https://github.com/monkky)** · **[mrsaraiva](https://github.com/mrsaraiva)** · **[N1sona](https://github.com/N1sona)** · **[narfel](https://github.com/narfel)** · **[nathanielhernandez](https://github.com/nathanielhernandez)** · **[nedimlisica](https://github.com/nedimlisica)** · **[nookpp](https://github.com/nookpp)** · **[NostraTiepus](https://github.com/NostraTiepus)** · **[NuiQuant](https://github.com/NuiQuant)** · **[oddajpierscien](https://github.com/oddajpierscien)** · **[okrzanowska](https://github.com/okrzanowska)** · **[PantherX12max](https://github.com/PantherX12max)** · **[Pewful2021](https://github.com/Pewful2021)** · **[Pikarz](https://github.com/Pikarz)** · **[psyrie](https://github.com/psyrie)** · **[qussaif10](https://github.com/qussaif10)** · **[qwerty22121998](https://github.com/qwerty22121998)** · **[Reborn627](https://github.com/Reborn627)** · **[Rehaell](https://github.com/Rehaell)** · **[reinierjh](https://github.com/reinierjh)** · **[rhuggins573-crypto](https://github.com/rhuggins573-crypto)** · **[riodevelop](https://github.com/riodevelop)** · **[RolandTaverner](https://github.com/RolandTaverner)** · **[rslater](https://github.com/rslater)** · **[satoru8](https://github.com/satoru8)** · **[saucymcbeef](https://github.com/saucymcbeef)** · **[shadowepaxeor-glitch](https://github.com/shadowepaxeor-glitch)** · **[ShaunnyBwoy](https://github.com/ShaunnyBwoy)** · **[sigizito](https://github.com/sigizito)** · **[Smokemic](https://github.com/Smokemic)** · **[Spebelgenenst](https://github.com/Spebelgenenst)** · **[spiritofjon](https://github.com/spiritofjon)** · **[stephenvalente](https://github.com/stephenvalente)** · **[sudo-st8less](https://github.com/sudo-st8less)** · **[SunnyZorya23](https://github.com/SunnyZorya23)** · **[the-black-eagle](https://github.com/the-black-eagle)** · **[Thymur](https://github.com/Thymur)** · **[TimG-NL](https://github.com/TimG-NL)** · **[Torotin](https://github.com/Torotin)** · **[trizmark](https://github.com/trizmark)** · **[TuxLux40](https://github.com/TuxLux40)** · **[urbnywrt](https://github.com/urbnywrt)** · **[vindocel](https://github.com/vindocel)** · **[Viwyn](https://github.com/Viwyn)** · **[Vydon](https://github.com/Vydon)** · **[wernerzsolt](https://github.com/wernerzsolt)** · **[Xentrino](https://github.com/Xentrino)** · **[YahusRevus](https://github.com/YahusRevus)** · **[zhanghangt](https://github.com/zhanghangt)** · **[Ziusz](https://github.com/Ziusz)**
 
-## Faulkers
+## Forkers
 
 Thanks for carrying the torch — these folks forked the repo to build on it.
 

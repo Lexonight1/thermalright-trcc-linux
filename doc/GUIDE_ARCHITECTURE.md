@@ -192,6 +192,54 @@ Per-device `LCDHandler` (`ui/gui/lcd_handler.py`) now routes every write through
 
 Multi-LCD keep-alive (issue #120) lives entirely in handler-local state (`_ui_active` flag).  Inactive handlers stop writing to shared widgets but keep their animation timer running so the LCD's panel doesn't go dark when the user switches devices in the GUI.
 
+## Unified UI — the presentation layer
+
+There is **one app** for every device. Whether you plug in an LCD cooler or an
+LED segment display, whether it speaks SCSI, HID, Bulk, LY, or LED — the same
+window, the same command bus, the same settings. The piece that makes that work
+without a pile of `if device.is_led` branches scattered across the GUI is the
+**presentation layer** (`ui/presentation/`).
+
+### One device → one `DevicePresentation`
+
+`ui/presentation/device_presentation.py::presentation_for(info)` maps a device's
+resolved `ProductInfo` to a toolkit-free contract: its `kind` (LED vs LCD), the
+`view_name` the UI should show (`"led"` segment panel vs `"form"` theme/preview),
+and whether it has metric gauges to populate. Every graphical front-end asks this
+one function "what does this device present?" instead of each re-deriving it.
+
+### Qt-free Presentation Models
+
+The decisions a device view coordinates — geometry, rotation, split policy,
+preview sizing, sensor/metric formatting, LED panel/selector composition — live
+in `ui/presentation/` as **pure Python with zero Qt, zero `App` handle, zero
+widgets**:
+
+| Model | Owns |
+|---|---|
+| `LcdPresentationModel` | per-device display state, canvas/rotation geometry, split mode, video math |
+| `lcd_panel` / `led_panel` / `led_display` | preview composition + which panel sections/selectors a device shows |
+| `sensor_display` / `led_metrics_format` | value→string formatting shared by every sensor UI |
+| `overlay_model` / `overlay_serialization` | overlay element resolution + DC (de)serialisation |
+
+Because they hold no toolkit, they unit-test with plain `pytest` (no
+`QApplication`), and a different presentation — the native-skin `ui/qtgui`
+rebuild, a future TUI or web UI — can bind the *same* logic. Both `ui/gui`
+(PySide6 legacy skin) and `ui/qtgui` are thin View layers that read these models
+and poke their own widgets; neither owns the decisions.
+
+### The boundary gate
+
+`tests/test_architecture_boundaries.py` machine-enforces the purity: any import
+of Qt, an adapter, or the `App` under `ui/presentation` fails the build. That's
+what keeps the layer a genuine seam rather than drifting back into a Qt tangle.
+
+### Adding a device is a row, not a rewrite
+
+Because the View is toolkit-agnostic and driven entirely by the
+handshake-resolved `ProductInfo` + these models, onboarding a new panel is a
+data change (a registry row + its geometry/PM/SUB), not new UI branching.
+
 ## Settings
 
 `Settings` (`conf.py`) is a singleton-ish handle.  Phase 10A.3 + Tier E moved every consumer onto pure DI:
