@@ -54,6 +54,23 @@ def test_stale_preference_falls_back_to_discrete() -> None:
     assert enum.primary_gpu().key == "nvidia:0"
 
 
+def test_discrete_nvidia_beats_a_misflagged_amd_apu() -> None:
+    """#157: an AMD APU with a large UMA framebuffer reports is_discrete=True.
+
+    An NVML-reported NVIDIA is always genuinely discrete, so it must win the
+    auto-pick — not lose to ``amd:0`` on the old alphabetical tiebreak (which
+    is how an RTX 5090 lost to a Raphael iGPU).
+    """
+    enum = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(),
+        gpus=[FakeGpu(0, discrete=True, vendor="amd"),      # APU, mis-flagged
+              FakeGpu(1, discrete=True, vendor="nvidia")],  # the real card
+        fans=[],
+    )
+    assert enum.primary_gpu().key == "nvidia:1"
+    assert [g.key for g in enum.gpus()][0] == "nvidia:1"    # order too
+
+
 # ── universal command: SetGpuDevice wires BOTH hops ──────────────────
 
 def test_set_gpu_device_sets_settings_and_enumerator(fake_platform) -> None:

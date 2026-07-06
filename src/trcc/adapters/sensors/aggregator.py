@@ -52,6 +52,21 @@ from .psutil_sources import ComputedIo, PsutilCpu, PsutilMemory
 log = logging.getLogger(__name__)
 
 
+# Vendor priority when GPUs tie on discreteness.  An NVML-reported NVIDIA is
+# ALWAYS genuinely discrete (NVIDIA ships no consumer iGPUs), so it must win
+# over an AMD/Intel APU that only *looks* discrete via a large UMA framebuffer
+# — otherwise "amd:0" beats "nvidia:0" on the alphabetical tiebreak and the
+# integrated GPU becomes primary over the real card (#157: an RTX 5090 lost to
+# a Raphael iGPU with a big UMA allocation).
+_GPU_VENDOR_RANK = {"nvidia": 0, "amd": 1, "intel": 2}
+
+
+def _gpu_order(gpu: GpuSource) -> tuple[bool, int, str]:
+    """Sort key: discrete first, then nvidia > amd > intel, then key."""
+    vendor = gpu.key.split(":", 1)[0]
+    return (not gpu.is_discrete, _GPU_VENDOR_RANK.get(vendor, 9), gpu.key)
+
+
 # ── Key mapping helpers ──────────────────────────────────────────────
 
 
@@ -159,7 +174,10 @@ class BaselineSensors(SensorEnumerator):
         # Labels whose read has already raised — warn once, then DEBUG, so a
         # persistently-broken sensor doesn't spam a line every poll interval.
         self._read_failures: set[str] = set()
-        self._gpus.sort(key=lambda g: (not g.is_discrete, g.key))
+        self._gpus.sort(key=_gpu_order)
+        if self._gpus:
+            log.info("GPU order: %s (primary auto-pick = first discrete)",
+                     [g.key for g in self._gpus])
 
     def _read(
         self, fn: Callable[[], float | None], label: str,
