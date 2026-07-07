@@ -53,6 +53,29 @@ def ensure_connected(app: App, key: str) -> None:
         raise typer.Exit(code=1)
 
 
+def dispatch_echo(cmd: Any) -> Any:
+    """Dispatch *cmd*, echo its ``message``, exit(1) on failure; return the Result.
+
+    Collapses the `result = get_app().dispatch(...); typer.echo(result.message);
+    if not result.ok: raise typer.Exit(1)` tail that every non-interactive CLI
+    command repeats.  Commands that read fields off the Result keep the returned
+    value; the rest just call it.
+    """
+    result = get_app().dispatch(cmd)
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
+    return result
+
+
+def parse_on_off(state: str) -> bool:
+    """Parse an ``on``/``off`` CLI argument to bool, or raise ``BadParameter``."""
+    lowered = state.lower()
+    if lowered not in ("on", "off"):
+        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
+    return lowered == "on"
+
+
 _platform_override: Platform | None = None
 _renderer_override: Renderer | None = None
 

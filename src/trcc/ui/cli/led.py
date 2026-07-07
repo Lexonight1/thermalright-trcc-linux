@@ -33,7 +33,13 @@ from ...core.commands import (
     ToggleSegment,
 )
 from ...core.led_models import LEDMode
-from ._ctx import emit_json, ensure_connected, get_app
+from ._ctx import (
+    dispatch_echo,
+    emit_json,
+    ensure_connected,
+    get_app,
+    parse_on_off,
+)
 
 log = logging.getLogger(__name__)
 
@@ -76,15 +82,10 @@ def set_colors(
         key, colors, brightness, off,
     )
     parsed = [_parse_hex_color(c) for c in colors]
-    app_obj = get_app()
-    ensure_connected(app_obj, key)
-    result = app_obj.dispatch(SetLedColors(
-        key=key, colors=parsed,
-        global_on=not off, brightness=brightness,
+    ensure_connected(get_app(), key)
+    dispatch_echo(SetLedColors(
+        key=key, colors=parsed, global_on=not off, brightness=brightness,
     ))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
 
 
 @app.command("render")
@@ -104,14 +105,8 @@ def render(
     """
     log.info("cli led render: key=%s color=%s phase=%s", key, color, phase)
     override = _parse_hex_color(color) if color else None
-    app_obj = get_app()
-    ensure_connected(app_obj, key)
-    result = app_obj.dispatch(RenderLed(
-        key=key, color=override, phase=phase,
-    ))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    ensure_connected(get_app(), key)
+    dispatch_echo(RenderLed(key=key, color=override, phase=phase))
 
 
 @app.command("mode")
@@ -123,10 +118,7 @@ def set_mode(
 ) -> None:
     """Set the LED animation mode (persists)."""
     log.info("cli led mode: key=%s mode=%s", key, mode)
-    result = get_app().dispatch(SetLedMode(key=key, mode=_parse_mode(mode)))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedMode(key=key, mode=_parse_mode(mode)))
 
 
 @app.command("color")
@@ -137,10 +129,7 @@ def set_color(
     """Set the LED color used by STATIC / BREATHING / COLORFUL modes."""
     log.info("cli led color: key=%s color=%s", key, color)
     parsed = _parse_hex_color(color)
-    result = get_app().dispatch(SetLedColor(key=key, color=parsed))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedColor(key=key, color=parsed))
 
 
 @app.command("brightness")
@@ -150,10 +139,7 @@ def set_brightness(
 ) -> None:
     """Set the global LED brightness (persists)."""
     log.info("cli led brightness: key=%s percent=%s", key, percent)
-    result = get_app().dispatch(SetLedBrightness(key=key, percent=percent))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedBrightness(key=key, percent=percent))
 
 
 @app.command("test-mode")
@@ -163,10 +149,7 @@ def test_mode(
 ) -> None:
     """Toggle the 4-color diagnostic test cycle."""
     log.info("cli led test-mode: key=%s on=%s", key, on)
-    result = get_app().dispatch(EnableLedTestMode(key=key, enabled=on))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(EnableLedTestMode(key=key, enabled=on))
 
 
 @app.command("temp-source")
@@ -176,10 +159,7 @@ def temp_source(
 ) -> None:
     """Pick the sensor source for TEMP_LINKED mode."""
     log.info("cli led temp-source: key=%s source=%s", key, source)
-    result = get_app().dispatch(SetLedTempSource(key=key, source=source))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedTempSource(key=key, source=source))
 
 
 @app.command("load-source")
@@ -189,10 +169,7 @@ def load_source(
 ) -> None:
     """Pick the sensor source for LOAD_LINKED mode."""
     log.info("cli led load-source: key=%s source=%s", key, source)
-    result = get_app().dispatch(SetLedLoadSource(key=key, source=source))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedLoadSource(key=key, source=source))
 
 
 @app.command("toggle")
@@ -208,13 +185,7 @@ def toggle(
 ) -> None:
     """Turn the LED device (or one zone) on/off."""
     log.info("cli led toggle: key=%s state=%s zone=%s", key, state, zone)
-    if state.lower() not in ("on", "off"):
-        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
-    on = state.lower() == "on"
-    result = get_app().dispatch(ToggleLed(key=key, on=on, zone=zone))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(ToggleLed(key=key, on=parse_on_off(state), zone=zone))
 
 
 @app.command("zone-color")
@@ -226,12 +197,7 @@ def zone_color(
     """Set one zone's persistent color."""
     log.info("cli led zone-color: key=%s zone=%s color=%s", key, zone, color)
     parsed = _parse_hex_color(color)
-    result = get_app().dispatch(
-        SetLedZoneColor(key=key, zone=zone, color=parsed),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedZoneColor(key=key, zone=zone, color=parsed))
 
 
 @app.command("zone-mode")
@@ -244,12 +210,7 @@ def zone_mode(
 ) -> None:
     """Set one zone's persistent animation mode."""
     log.info("cli led zone-mode: key=%s zone=%s mode=%s", key, zone, mode)
-    result = get_app().dispatch(
-        SetLedZoneMode(key=key, zone=zone, mode=_parse_mode(mode)),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedZoneMode(key=key, zone=zone, mode=_parse_mode(mode)))
 
 
 @app.command("zone-brightness")
@@ -263,12 +224,7 @@ def zone_brightness(
         "cli led zone-brightness: key=%s zone=%s percent=%s",
         key, zone, percent,
     )
-    result = get_app().dispatch(
-        SetLedZoneBrightness(key=key, zone=zone, percent=percent),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedZoneBrightness(key=key, zone=zone, percent=percent))
 
 
 @app.command("zone-sync")
@@ -285,20 +241,9 @@ def zone_sync(
         "cli led zone-sync: key=%s state=%s interval=%s",
         key, state, interval,
     )
-    if state.lower() not in ("on", "off"):
-        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
-    app_obj = get_app()
-    result = app_obj.dispatch(
-        SetLedZoneSync(key=key, enabled=state.lower() == "on"),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetLedZoneSync(key=key, enabled=parse_on_off(state)))
     if interval is not None:
-        ir = app_obj.dispatch(SetLedZoneSyncInterval(key=key, ticks=interval))
-        typer.echo(ir.message)
-        if not ir.ok:
-            raise typer.Exit(code=1)
+        dispatch_echo(SetLedZoneSyncInterval(key=key, ticks=interval))
 
 
 @app.command("select-zone")
@@ -308,10 +253,7 @@ def select_zone(
 ) -> None:
     """Set the currently-selected zone (UI state)."""
     log.info("cli led select-zone: key=%s zone=%s", key, zone)
-    result = get_app().dispatch(SelectZone(key=key, zone=zone))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SelectZone(key=key, zone=zone))
 
 
 @app.command("toggle-segment")
@@ -325,14 +267,7 @@ def toggle_segment(
         "cli led toggle-segment: key=%s index=%s state=%s",
         key, index, state,
     )
-    if state.lower() not in ("on", "off"):
-        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
-    result = get_app().dispatch(
-        ToggleSegment(key=key, index=index, on=state.lower() == "on"),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(ToggleSegment(key=key, index=index, on=parse_on_off(state)))
 
 
 @app.command("list-styles")
@@ -389,12 +324,7 @@ def week_start(
         raise typer.BadParameter(
             f"day must be 'sunday' or 'monday', got {day!r}",
         )
-    result = get_app().dispatch(
-        SetWeekStart(key=key, sunday_first=day_lower == "sunday"),
-    )
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetWeekStart(key=key, sunday_first=day_lower == "sunday"))
 
 
 @app.command("memory-ratio")
@@ -406,10 +336,7 @@ def memory_ratio(
     log.info("cli led memory-ratio: key=%s ratio=%s", key, ratio)
     if ratio not in (1, 2, 4):
         raise typer.BadParameter(f"ratio must be 1, 2, or 4, got {ratio}")
-    result = get_app().dispatch(SetMemoryRatio(key=key, ratio=ratio))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetMemoryRatio(key=key, ratio=ratio))
 
 
 @app.command("disk-index")
@@ -419,10 +346,7 @@ def disk_index(
 ) -> None:
     """Pick which disk's read/write stats to surface."""
     log.info("cli led disk-index: key=%s index=%s", key, index)
-    result = get_app().dispatch(SetDiskIndex(key=key, index=index))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetDiskIndex(key=key, index=index))
 
 
 @app.command("initialize")
@@ -437,10 +361,7 @@ def initialize(
     commands for finer control.
     """
     log.info("cli led initialize: key=%s", key)
-    result = get_app().dispatch(InitializeLed(key=key))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(InitializeLed(key=key))
 
 
 @app.command("test-led")
