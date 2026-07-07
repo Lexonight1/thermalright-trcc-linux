@@ -81,6 +81,8 @@ _DISPLAY: dict[int, LedDisplayModel] = {
                          "Read Rate (MB/s)", "Write Rate (MB/s)")),        # LF11
     11: LedDisplayModel(11, LedSelector.PAGE, 2, ("CPU", "GPU")),          # LF15
     12: LedDisplayModel(12, LedSelector.NONE, 0, ()),                      # LF13 (solid)
+    13: LedDisplayModel(13, LedSelector.PAGE, 4,
+                        ("CPU Temp", "GPU Temp", "GPU %", "CPU %")),       # Magic Qube
 }
 
 _DEFAULT = LedDisplayModel(0, LedSelector.NONE, 0, ())

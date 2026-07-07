@@ -702,6 +702,92 @@ class CZ1Display(SegmentDisplay):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Magic Qube (50 LEDs, two 7-seg digits × 3-LED segments, 4-phase rotation)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# Physical wire order of the 7 segments within one Magic Qube digit, 3 LEDs
+# each (empirically mapped on hardware): c, d, e, g, b, a, f.
+_QUBE_WIRE: tuple[str, ...] = ("c", "d", "e", "g", "b", "a", "f")
+
+
+def _qube_digit_segmap(base: int) -> dict[str, tuple[int, int, int]]:
+    """Map each 7-seg label → its 3 LED indices for a digit starting at ``base``."""
+    pos = {seg: i for i, seg in enumerate(_QUBE_WIRE)}
+    return {
+        seg: (base + pos[seg] * 3, base + pos[seg] * 3 + 1, base + pos[seg] * 3 + 2)
+        for seg in "abcdefg"
+    }
+
+
+class MagicQubeDisplay(SegmentDisplay):
+    """Thermalright Magic Qube — 50 LEDs: two 7-seg digits + 4 indicators.
+
+    Both digits render ONE 2-digit value (left = tens, right = units); a
+    single corner indicator lights to name the metric, rotating through the
+    four phases like CZ1.  Each segment is 3 physical LEDs in wire order
+    c, d, e, g, b, a, f; the right digit is LED 0-20, the left 21-41; the
+    four indicator pairs are 42-49 (clockwise from top-left).  Mapped
+    empirically on hardware (no reference implementation exists).
+    """
+
+    mask_size = 65
+    phase_count = 4
+
+    LEFT = _qube_digit_segmap(21)   # tens digit (physically left)
+    RIGHT = _qube_digit_segmap(0)   # units digit (physically right)
+
+    # Indicator LED pairs, clockwise from top-left.
+    IND_CPU_TEMP = (42, 43)
+    IND_GPU_TEMP = (44, 45)
+    IND_GPU_LOAD = (46, 47)
+    IND_CPU_LOAD = (48, 49)
+
+    # Contour/border LEDs — always lit; they take the effect colour (the
+    # segments/indicators are gated by the value mask, the border is not).
+    BORDER = tuple(range(50, 65))
+
+    PHASES: tuple[tuple[str, tuple[int, int]], ...] = (
+        ("cpu_temp",    IND_CPU_TEMP),
+        ("gpu_temp",    IND_GPU_TEMP),
+        ("gpu_usage",   IND_GPU_LOAD),
+        ("cpu_percent", IND_CPU_LOAD),
+    )
+
+    # Each digit is one cohesive colour group (right 0-20, left 21-41); the
+    # indicators ride along in the swept "rest" group (#193).
+    color_groups = _digit_color_groups(
+        mask_size, (tuple(range(21)), tuple(range(21, 42))),
+    )
+
+    def _encode_qube_digit(
+        self, ch: str, segmap: dict[str, tuple[int, int, int]], mask: list[bool],
+    ) -> None:
+        """Light the 3 LEDs of every segment the character ``ch`` needs."""
+        for seg in self.CHAR_7SEG.get(ch, set()):
+            for led in segmap[seg]:
+                mask[led] = True
+
+    def compute_mask(
+        self, metrics: HardwareMetrics, phase: int = 0, temp_unit: str = "C", **kw: Any,
+    ) -> list[bool]:
+        mask = [False] * self.mask_size
+        metric_key, indicator = self.PHASES[phase % self.phase_count]
+        for idx in indicator:
+            mask[idx] = True
+        value = int(getattr(metrics, metric_key, 0))
+        if "temp" in metric_key:
+            value = self._to_display_temp(value, temp_unit)
+        value = max(0, min(99, value))
+        tens, units = divmod(value, 10)
+        self._encode_qube_digit(str(tens) if tens else " ", self.LEFT, mask)
+        self._encode_qube_digit(str(units), self.RIGHT, mask)
+        for idx in self.BORDER:
+            mask[idx] = True
+        return mask
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Style 9 — LC2 (61 LEDs, clock display, 7 decoration)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -828,6 +914,7 @@ DISPLAYS: dict[LedStyle, SegmentDisplay] = {
     LedStyle.LC2:   LC2Display(),
     LedStyle.LF11:  LF11Display(),
     LedStyle.LF15:  LF8Display(),   # LF15 = same layout as LF8
+    LedStyle.MAGIC_QUBE: MagicQubeDisplay(),
     # LedStyle.LF13 — pure RGB, no digit display
 }
 

@@ -26,6 +26,9 @@ from trcc.adapters.device.led import (
 from trcc.core.led_protocol import (
     _PM_REGISTRY,
     PmEntry,
+    is_fingerprint_header,
+    resolve_handshake,
+    resolve_model_name,
     resolve_pm,
 )
 from trcc.core.models import Kind, LedStyle, ProductInfo, Wire
@@ -279,3 +282,113 @@ def test_led_probe_cache_handles_corrupt_file(
     import json as _json
     cache = _json.loads(cache_path.read_text(encoding="utf-8"))
     assert cache[f"{0x0416:04x}_{0x8001:04x}"]["pm"] == 128
+
+
+# =========================================================================
+# Magic Qube — handshake fingerprint override (shares PM=208 with CZ1)
+# =========================================================================
+
+_QUBE_HEADER = bytes([0xDC, 0xDD, 0xAA, 0x01])
+
+
+def _scripted_qube_response() -> bytes:
+    """A 64-byte Magic Qube handshake reply.
+
+    Mirrors the real hardware capture ``dc dd aa 01 00 d0 d0 …``: the
+    non-standard header, SUB=0, PM=208 at both offset 5 and 6, and no
+    cmd-ACK byte at offset 12 (the firmware leaves it 0).
+    """
+    buf = bytearray(_HID_REPORT_SIZE)
+    buf[0:4] = _QUBE_HEADER
+    buf[4] = 0      # SUB
+    buf[5] = 208    # PM (0xD0)
+    buf[6] = 208
+    return bytes(buf)
+
+
+def test_resolve_handshake_header_override_wins() -> None:
+    """The Magic Qube header routes PM=208 to MAGIC_QUBE, not CZ1."""
+    entry = resolve_handshake(_QUBE_HEADER, 208, 0)
+    assert entry == PmEntry(LedStyle.MAGIC_QUBE, "MAGIC_QUBE")
+
+
+def test_resolve_handshake_standard_header_keeps_registry() -> None:
+    """A standard header falls through to the PM registry (real CZ1)."""
+    assert resolve_handshake(_MAGIC, 208, 0) == PmEntry(LedStyle.CZ1, "CZ1")
+    assert resolve_handshake(_MAGIC, 80, 0) == PmEntry(LedStyle.LF12, "LF12")
+
+
+def test_resolve_model_name_recovers_override() -> None:
+    """Cached fingerprint devices resolve back by model name."""
+    assert resolve_model_name("MAGIC_QUBE") == PmEntry(
+        LedStyle.MAGIC_QUBE, "MAGIC_QUBE",
+    )
+    assert resolve_model_name("CZ1") is None   # PM-registry devices excluded
+
+
+def test_is_fingerprint_header() -> None:
+    """The Magic Qube header is a known fingerprint; the standard magic isn't."""
+    assert is_fingerprint_header(_QUBE_HEADER) is True
+    assert is_fingerprint_header(_MAGIC) is False
+    assert is_fingerprint_header(bytes(4)) is False
+
+
+def test_led_connect_magic_qube_from_header() -> None:
+    """Full Led.connect with the Magic Qube header → MAGIC_QUBE style."""
+    transport = FakeBulkTransport()
+    transport.read_script.append(_scripted_qube_response())
+    led = Led(_led_info(), transport)
+
+    led.connect()
+
+    hs = led.led_handshake
+    assert hs is not None
+    assert hs.pm == 208
+    assert hs.style is LedStyle.MAGIC_QUBE
+    assert hs.model_name == "MAGIC_QUBE"
+
+
+def test_led_connect_magic_qube_no_anomaly_warnings(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A recognised fingerprint header must not log magic/cmd anomaly warnings."""
+    transport = FakeBulkTransport()
+    transport.read_script.append(_scripted_qube_response())
+    led = Led(_led_info(), transport)
+
+    with caplog.at_level("WARNING"):
+        led.connect()
+
+    assert not any("unexpected magic" in r.message for r in caplog.records)
+    assert not any("unexpected cmd" in r.message for r in caplog.records)
+
+
+def test_led_connect_cache_fallback_preserves_magic_qube(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cached Magic Qube recovers as MAGIC_QUBE, not CZ1.
+
+    The cache persists the model name but not the handshake header, so
+    the fallback must recover the fingerprint device by name — otherwise
+    PM=208 would resolve to CZ1 and drive the wrong layout.
+    """
+    import json as _json
+
+    from trcc.adapters.device import led as led_mod
+    cache_path = tmp_path / "led_probe_cache.json"
+    cache_path.write_text(_json.dumps({
+        f"{0x0416:04x}_{0x8001:04x}": {
+            "pm": 208, "sub": 0, "model_name": "MAGIC_QUBE",
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(led_mod, "_PROBE_CACHE_PATH", cache_path)
+
+    transport = FakeBulkTransport()   # empty script → live handshake fails
+    led = Led(_led_info(), transport)
+
+    led.connect()
+
+    hs = led.led_handshake
+    assert hs is not None
+    assert hs.style is LedStyle.MAGIC_QUBE
+    assert hs.model_name == "MAGIC_QUBE"

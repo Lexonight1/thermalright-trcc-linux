@@ -114,6 +114,65 @@ def resolve_pm(pm: int, sub_type: int = 0) -> PmEntry | None:
     return _PM_REGISTRY.get(pm)
 
 
+# =========================================================================
+# Handshake fingerprint overrides
+# =========================================================================
+#
+# A product can reuse another device's PM byte yet ship a distinct firmware
+# handshake header, leaving the PM byte alone ambiguous.  The Thermalright
+# Magic Qube reports PM=208 (same as CZ1) but answers the HID handshake with
+# the header ``DC DD AA 01`` instead of the standard ``DA DB DC DD`` — the
+# only wire-level signal that tells it apart from a genuine CZ1.  Header
+# overrides are checked before the PM registry.
+
+_HEADER_OVERRIDES: dict[bytes, PmEntry] = {
+    bytes([0xDC, 0xDD, 0xAA, 0x01]): PmEntry(LedStyle.MAGIC_QUBE, "MAGIC_QUBE"),
+}
+
+_OVERRIDES_BY_MODEL: dict[str, PmEntry] = {
+    entry.model_name: entry for entry in _HEADER_OVERRIDES.values()
+}
+
+
+def resolve_handshake(
+    header: bytes, pm: int, sub_type: int = 0,
+) -> PmEntry | None:
+    """Resolve a device from its handshake — header fingerprint first.
+
+    A handful of products reuse another device's PM byte but ship a distinct
+    handshake header (firmware fingerprint).  When the leading four header
+    bytes match a known override that entry wins; otherwise we fall back to
+    the PM-byte registry (:func:`resolve_pm`).
+    """
+    entry = _HEADER_OVERRIDES.get(bytes(header[:4]))
+    if entry is not None:
+        log.info("resolve_handshake: header %s → %s (overrides pm=%d)",
+                 bytes(header[:4]).hex(), entry.model_name, pm)
+        return entry
+    return resolve_pm(pm, sub_type)
+
+
+def resolve_model_name(model_name: str) -> PmEntry | None:
+    """Resolve a fingerprint-override entry by its model name.
+
+    Used by the probe-cache fallback: the cache persists the model name, not
+    the handshake header, so a cached fingerprint device is recovered by
+    name.  Returns ``None`` for names not carried by an override — the caller
+    then falls back to the PM registry.
+    """
+    return _OVERRIDES_BY_MODEL.get(model_name)
+
+
+def is_fingerprint_header(header: bytes) -> bool:
+    """Whether the handshake header matches a known device fingerprint.
+
+    Lets the LED adapter treat a recognised non-standard header (e.g. the
+    Magic Qube's ``DC DD AA 01``) as expected instead of logging it as an
+    anomaly next to the standard ``DA DB DC DD`` magic.
+    """
+    return bytes(header[:4]) in _HEADER_OVERRIDES
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Wire-order remap tables
 # ═══════════════════════════════════════════════════════════════════════
@@ -322,6 +381,9 @@ __all__ = [
     "LED_REMAP_SUB_TABLES",
     "LED_REMAP_TABLES",
     "PmEntry",
+    "is_fingerprint_header",
     "remap_led_colors",
+    "resolve_handshake",
+    "resolve_model_name",
     "resolve_pm",
 ]

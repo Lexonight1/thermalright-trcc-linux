@@ -26,7 +26,13 @@ from ...core.errors import (
     UnsupportedOperationError,
 )
 from ...core.led_models import LedPayload
-from ...core.led_protocol import remap_led_colors, resolve_pm
+from ...core.led_protocol import (
+    is_fingerprint_header,
+    remap_led_colors,
+    resolve_handshake,
+    resolve_model_name,
+    resolve_pm,
+)
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device
 from . import DeviceFactory
@@ -206,11 +212,15 @@ class Led(Device[BulkTransport]):
                     time.sleep(_HANDSHAKE_RETRY_DELAY_S)
                     continue
 
-                # Windows DeviceDataReceived1 doesn't validate magic/cmd —
-                # we warn on mismatch but accept.
-                if resp[0:4] != _MAGIC:
-                    log.warning("Led handshake: unexpected magic %s", resp[0:4].hex())
-                if len(resp) > 12 and resp[12] != 1:
+                # Windows DeviceDataReceived1 doesn't validate magic/cmd — we
+                # accept regardless.  A recognised fingerprint header (e.g. the
+                # Magic Qube's DC DD AA 01) is expected, so only warn on a truly
+                # unknown magic / cmd byte.
+                header = bytes(resp[0:4])
+                recognised = is_fingerprint_header(header)
+                if header != _MAGIC and not recognised:
+                    log.warning("Led handshake: unexpected magic %s", header.hex())
+                if len(resp) > 12 and resp[12] != 1 and not recognised:
                     log.warning("Led handshake: unexpected cmd byte %d", resp[12])
 
                 # PM and SUB extraction — matches Windows UCDevice.cs offsets:
@@ -218,10 +228,13 @@ class Led(Device[BulkTransport]):
                 self._pm = resp[5]
                 self._sub = resp[4]
 
-                # PM byte → device style + readable model name. Falls back to
-                # the registry's ``led_style`` / ``product`` when the firmware
-                # reports a PM not in PmRegistry (e.g. a new SKU).
-                entry = resolve_pm(self._pm, self._sub)
+                # Handshake → device style + readable model name.  The header
+                # fingerprint wins first (some SKUs reuse a PM byte but ship a
+                # distinct handshake header — e.g. the Magic Qube shares PM=208
+                # with CZ1 but answers with DC DD AA 01), then the PM registry.
+                # Falls back to the registry's ``led_style`` / ``product`` when
+                # the firmware reports a PM not in PmRegistry (e.g. a new SKU).
+                entry = resolve_handshake(header, self._pm, self._sub)
                 if entry is not None:
                     style = entry.style
                     model_name = entry.model_name
@@ -278,7 +291,10 @@ class Led(Device[BulkTransport]):
         cached = _probe_cache_load(self.info.vid, self.info.pid)
         if cached is not None:
             cpm, csub, cname = cached
-            entry = resolve_pm(cpm, csub)
+            # A fingerprint device (e.g. Magic Qube) shares its PM byte with
+            # another product, so recover it by cached model name first — the
+            # cache doesn't persist the handshake header — then by PM byte.
+            entry = resolve_model_name(cname) or resolve_pm(cpm, csub)
             log.warning(
                 "Led handshake: live failed after %d retries — using "
                 "disk cache (PM=%d SUB=%d model=%s, last_err=%s)",

@@ -161,7 +161,9 @@ _STYLE_CHECKABLE_BTN = (
 # overlays (full i18n): AX120(1)+PA120(2) [led_zone_mode_1-4], AK120(3)+LF8(5)+
 # LF12(6)+LF15(11) [led_zone_mode_5-6], LC1(4)+LF11(10) [panel bg].  CZ1(8) keeps
 # its baked bg labels (not cleared); LF10(7) is colour-zones (no metric text).
-_OVERLAY_BUTTON_STYLES = frozenset({1, 2, 3, 4, 5, 6, 10, 11})
+# Magic Qube(13) has no baked-label art (generic segment bg) → overlay the
+# tr() page labels on the plain button frame, like the LC1/LF11 group.
+_OVERLAY_BUTTON_STYLES = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 13})
 
 # Button labels for styles whose model carries none (PA120 is ZONE → page_labels
 # must stay () per the model invariant, but its zones *are* the 4 metrics).

@@ -200,6 +200,10 @@ LEGACY_STYLE_ID: dict[LedStyle, int] = {
     LedStyle.LF11:  10,
     LedStyle.LF15:  11,
     LedStyle.LF13:  12,
+    # Synthetic id for the Linux-added Magic Qube (no legacy C# style_id);
+    # continues the sequence so every LED_STYLES entry has an id.  It shows
+    # plain sensor gauges (led_panel_for treats any non-LC1/LF11/LC2 id so).
+    LedStyle.MAGIC_QUBE: 13,
 }
 
 # Inverse lookup — legacy int → :class:`LedStyle` enum.  Used by GUI
@@ -268,6 +272,13 @@ LED_STYLES: dict[LedStyle, LedStyleSpec] = {
                                  zone_assets=_ZONE_BTN_MODE56),
     LedStyle.LF13:  LedStyleSpec(62,  62, 0, "LF13",
                                  "led_preview_lf13",  "led_bg_lf13"),
+    # Magic Qube — 65 LEDs: two 7-seg digits (3 LEDs/segment, LED 0-41) + 4
+    # corner metric indicators (42-49) + a 15-LED contour border (50-64).
+    # Same 2-digit / 4-phase design as CZ1.  Reuses the generic segment assets
+    # until dedicated art is added.
+    LedStyle.MAGIC_QUBE: LedStyleSpec(65, 14, 4, "MAGIC_QUBE",
+                                      "led_preview_cz1", "led_bg_segment",
+                                      zone_assets=_ZONE_BTN_N),
 }
 
 
@@ -302,6 +313,7 @@ ZONE_STYLE_ASSETS: dict[LedStyle, tuple[tuple[str, str], ...]] = {
     LedStyle.LF10:  _ZONE_ASSETS_BTNN,
     LedStyle.CZ1:   _ZONE_ASSETS_BTNN,
     LedStyle.LF11:  _ZONE_ASSETS_BTNN,
+    LedStyle.MAGIC_QUBE: _ZONE_ASSETS_BTNN,
 }
 
 
