@@ -1,5 +1,27 @@
 # Changelog
 
+## v9.8.4
+
+**LED digital coolers that came up a dim, colourless "888" now display
+properly.** Single-display LED digital coolers (AX120, frozen-horizon/magic,
+LF15, LF13, CZ1 and similar) could show dim grey with no colour even though the
+numbers were correct. The cause was a leftover "test mode" flag that got saved
+into your config in an earlier session and was silently restored on every
+launch. Test mode is a momentary diagnostic now — it never persists across
+restarts — so your colours come back. Its reference colours are also full-bright
+now, and it applies to the multi-zone coolers too.
+
+**Metric text renders at the right size, and fan speeds show again.** Large
+authored metric sizes (like a big hero temperature) were being shrunk to a small
+default; they now render at their intended size. Fan-RPM tiles that previously
+drew nothing now show the speed.
+
+**Show or hide the unit on each metric.** Every metric element can draw its value
+with the unit (45°C, 60%, 1200 RPM) or as a bare number when the unit is already
+part of the theme art — a per-element toggle in the editor, the CLI
+(`--show-unit` / `--hide-unit`) and the API. Celsius/Fahrenheit stays where it
+has always been, on the About panel.
+
 ## v9.8.3
 
 **NVIDIA GPU metrics now work out of the box.** If you installed via `pip` (or
