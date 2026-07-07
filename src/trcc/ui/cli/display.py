@@ -48,7 +48,13 @@ from ...core.commands import (
     UploadBootAnimation,
     UploadCustomMask,
 )
-from ._ctx import emit_json, ensure_connected, get_app
+from ._ctx import (
+    dispatch_echo,
+    emit_json,
+    ensure_connected,
+    get_app,
+    parse_on_off,
+)
 
 log = logging.getLogger(__name__)
 
@@ -63,10 +69,7 @@ def set_orientation(
 ) -> None:
     """Set per-device rotation."""
     log.info("cli display set-orientation: key=%s degrees=%s", key, degrees)
-    result = get_app().dispatch(SetOrientation(key=key, degrees=degrees))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetOrientation(key=key, degrees=degrees))
 
 
 @app.command("set-brightness")
@@ -76,10 +79,7 @@ def set_brightness(
 ) -> None:
     """Set per-device display brightness."""
     log.info("cli display set-brightness: key=%s percent=%s", key, percent)
-    result = get_app().dispatch(SetBrightness(key=key, percent=percent))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetBrightness(key=key, percent=percent))
 
 
 def _parse_hex_color(hex_str: str) -> tuple[int, int, int] | None:
@@ -127,10 +127,7 @@ def set_fit_mode(
 ) -> None:
     """Set how the background fits the canvas."""
     log.info("cli display set-fit-mode: key=%s mode=%s", key, mode)
-    result = get_app().dispatch(SetFitMode(key=key, mode=mode.lower()))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetFitMode(key=key, mode=mode.lower()))
 
 
 @app.command("overlay")
@@ -148,10 +145,7 @@ def overlay(
     else:
         typer.echo(f"Invalid state: {state!r} (expected on/off)", err=True)
         raise typer.Exit(code=2)
-    result = get_app().dispatch(EnableOverlay(key=key, enabled=enabled))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(EnableOverlay(key=key, enabled=enabled))
 
 
 @app.command("apply-mask")
@@ -180,10 +174,7 @@ def mask_position(
 ) -> None:
     """Position the mask overlay within the canvas."""
     log.info("cli display mask-position: key=%s x=%s y=%s", key, x, y)
-    result = get_app().dispatch(SetMaskPosition(key=key, x=x, y=y))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetMaskPosition(key=key, x=x, y=y))
 
 
 @app.command("mask-visible")
@@ -201,10 +192,7 @@ def mask_visible(
     else:
         typer.echo(f"Invalid state: {state!r} (expected on/off)", err=True)
         raise typer.Exit(code=2)
-    result = get_app().dispatch(SetMaskVisible(key=key, visible=visible))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetMaskVisible(key=key, visible=visible))
 
 
 @app.command("split-mode")
@@ -214,10 +202,7 @@ def split_mode(
 ) -> None:
     """Set the Dynamic Island style (widescreen panels only)."""
     log.info("cli display split-mode: key=%s mode=%s", key, mode)
-    result = get_app().dispatch(SetSplitMode(key=key, mode=mode))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetSplitMode(key=key, mode=mode))
 
 
 @app.command("load-image")
@@ -235,10 +220,7 @@ def load_image(
     of the same image are cheap (no re-copy).
     """
     log.info("cli display load-image: key=%s path=%s", key, path)
-    result = get_app().dispatch(LoadImage(key=key, path=path))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(LoadImage(key=key, path=path))
 
 
 @app.command("load-video")
@@ -494,10 +476,7 @@ def toggle_video(
 ) -> None:
     """Flip video playback between paused / playing (single-verb helper)."""
     log.info("cli display toggle-video: key=%s", key)
-    result = get_app().dispatch(ToggleVideo(key=key))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(ToggleVideo(key=key))
 
 
 @app.command("seek-video")
@@ -507,10 +486,7 @@ def seek_video(
 ) -> None:
     """Jump the playback cursor to a specific frame."""
     log.info("cli display seek-video: key=%s frame=%s", key, frame)
-    result = get_app().dispatch(SeekVideo(key=key, frame=frame))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SeekVideo(key=key, frame=frame))
 
 
 @app.command("loop-video")
@@ -520,12 +496,7 @@ def loop_video(
 ) -> None:
     """Toggle whether video wraps at the end or sticks at the last frame."""
     log.info("cli display loop-video: key=%s state=%s", key, state)
-    if state.lower() not in ("on", "off"):
-        raise typer.BadParameter(f"state must be 'on' or 'off', got {state!r}")
-    result = get_app().dispatch(LoopVideo(key=key, loop=state.lower() == "on"))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(LoopVideo(key=key, loop=parse_on_off(state)))
 
 
 @app.command("upload-mask")
@@ -808,10 +779,7 @@ def background_mode(
 ) -> None:
     """Pick what fills the LCD behind overlays."""
     log.info("cli display background-mode: key=%s mode=%s", key, mode)
-    result = get_app().dispatch(SetBackgroundMode(key=key, mode=mode.lower()))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetBackgroundMode(key=key, mode=mode.lower()))
 
 
 @app.command("overlay-background")
@@ -827,10 +795,7 @@ def overlay_background(
     if rgb is None:
         typer.echo(f"Invalid hex color: {hex_color!r}", err=True)
         raise typer.Exit(code=2)
-    result = get_app().dispatch(SetOverlayBackground(key=key, color=rgb))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(SetOverlayBackground(key=key, color=rgb))
 
 
 @app.command("restore-theme")
@@ -839,10 +804,7 @@ def restore_theme(
 ) -> None:
     """Reload the device's persisted theme — convenience after restart."""
     log.info("cli display restore-theme: key=%s", key)
-    result = get_app().dispatch(RestoreLastTheme(key=key))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(RestoreLastTheme(key=key))
 
 
 @app.command("resume")
@@ -1096,10 +1058,7 @@ def stop_screencast(
 ) -> None:
     """Stop an active screencast started by another process (daemon/API)."""
     log.info("cli display stop-screencast: key=%s", key)
-    result = get_app().dispatch(StopScreencast(key=key))
-    typer.echo(result.message)
-    if not result.ok:
-        raise typer.Exit(code=1)
+    dispatch_echo(StopScreencast(key=key))
 
 
 @app.command("snapshot")
