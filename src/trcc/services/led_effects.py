@@ -234,6 +234,13 @@ class LEDEffectEngine:
         multi-callback timer behaviour (animation runs proportionally
         faster on a multi-zone device, not per-zone phase-isolated).
         """
+        # Test mode overrides the whole frame, page AND zone styles alike —
+        # the C# ``SendHidVal`` cycles the reference colours across all LEDs
+        # regardless of device style, so a zone device must honour it too.
+        if settings.test_mode:
+            log.debug("tick_multi_zone: test_mode → cycling reference colours")
+            return self._tick_test(runtime, led_count)
+
         colors: list[tuple[int, int, int]] = [(0, 0, 0)] * led_count
         zones = settings.zones
         log.debug("tick_multi_zone: %d zones, led_count=%d grouped=%s",

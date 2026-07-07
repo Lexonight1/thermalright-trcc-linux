@@ -261,6 +261,26 @@ def test_tick_multi_zone_places_each_zone_color_at_its_mapped_indices() -> None:
     assert colors == [(255, 0, 0), (255, 0, 0), (0, 255, 0), (0, 255, 0)]
 
 
+def test_tick_multi_zone_honours_test_mode() -> None:
+    """Test mode overrides the whole frame on ZONE styles too — the C#
+    ``SendHidVal`` cycles reference colours across all LEDs regardless of
+    device style, so a zone device must not silently ignore the flag."""
+    engine = LEDEffectEngine()
+    zones = [
+        LedZoneSettings(mode=LEDMode.STATIC, color=(255, 0, 0),
+                        brightness=100, on=True),
+        LedZoneSettings(mode=LEDMode.STATIC, color=(0, 255, 0),
+                        brightness=100, on=True),
+    ]
+    settings = _settings(zones=zones, test_mode=True)
+    colors = engine.tick_multi_zone(
+        settings, LedRuntimeState(), sensors={},
+        zone_map=((0, 1), (2, 3)), metric_sources=None, led_count=4,
+    )
+    # First test colour is white — not the per-zone red/green.
+    assert colors == [(255, 255, 255)] * 4
+
+
 def test_tick_multi_zone_skips_an_off_zone() -> None:
     """An off zone leaves its LEDs dark (0,0,0); other zones still render."""
     engine = LEDEffectEngine()
