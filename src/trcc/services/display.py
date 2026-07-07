@@ -37,8 +37,7 @@ from ..core.ports import Renderer
 from ..core.protocol import (
     DeviceProfile,
     get_profile,
-    resolve_encode_angle,
-    wire_rotation,
+    wire_angle,
 )
 from ._clock import compute_clock
 from .media import MediaService
@@ -382,26 +381,9 @@ class DisplayService:
         #    the per-resolution encode TABLE (resolve_encode_angle) — the
         #    hardware-verified #169 path, unchanged.
         #  * Squares + non-rotate panels: user orientation only.
-        wire_rotate_panel = (
-            resolved_profile.rotate and not portrait
-            and not resolved_profile.widescreen
-        )
-        fold_into_encode = (
-            resolved_profile.rotate and not portrait
-            and resolved_profile.widescreen and resolved_profile.jpeg
-        )
-        if wire_rotate_panel:
-            angle = wire_rotation(resolved_profile, s.orientation)
-        elif fold_into_encode:
-            angle = resolve_encode_angle(resolved_profile, s.orientation)
-        elif s.orientation and not portrait:
-            angle = 360 - s.orientation
-        else:
-            angle = 0
+        angle = wire_angle(resolved_profile, s.orientation, portrait)
         if angle % 360:
-            log.debug("build_frame %s: wire rotate %d° "
-                      "(wire_panel=%s widescreen=%s)",
-                      info.key, angle, wire_rotate_panel, fold_into_encode)
+            log.debug("build_frame %s: wire rotate %d°", info.key, angle)
             surface = self._r.rotate(composite, angle)
         else:
             surface = composite

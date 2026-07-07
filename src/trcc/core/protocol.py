@@ -322,3 +322,35 @@ def wire_rotation(profile: DeviceProfile, orientation: int, pm: int = 0) -> int:
     log.debug("wire_rotation: %dx%d jpeg=%s pm=%d base=%d orient=%d → %d°",
               w, h, profile.jpeg, pm, base, orientation, angle)
     return angle
+
+
+def wire_angle(
+    profile: DeviceProfile, orientation: int, portrait_content: bool,
+) -> int:
+    """The single wire-frame rotation a device gets at a user *orientation*.
+
+    Collapses ``DisplayService.build_frame``'s three-way selection into one
+    pure decision so the render path and any auditor share it (DRY):
+
+      * non-widescreen rotate panels → :func:`wire_rotation` (``base − orient``)
+      * widescreen JPEG rotate panels → :func:`resolve_encode_angle` (the
+        hardware-verified #169 per-resolution encode table)
+      * squares / non-rotate panels → user orientation only (``360 − orient``)
+
+    A portrait-content theme on a rotate panel is pre-rotated at compose time
+    (``post_rotate``) and opts out by passing ``portrait_content=True``.
+    """
+    wire_rotate_panel = (
+        profile.rotate and not portrait_content and not profile.widescreen
+    )
+    fold_into_encode = (
+        profile.rotate and not portrait_content
+        and profile.widescreen and profile.jpeg
+    )
+    if wire_rotate_panel:
+        return wire_rotation(profile, orientation)
+    if fold_into_encode:
+        return resolve_encode_angle(profile, orientation)
+    if orientation and not portrait_content:
+        return (360 - orientation) % 360
+    return 0
