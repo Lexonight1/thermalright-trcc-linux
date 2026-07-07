@@ -33,7 +33,7 @@ from ...core.commands import (
     ToggleSegment,
 )
 from ...core.led_models import LEDMode
-from ._ctx import emit_json, get_app
+from ._ctx import emit_json, ensure_connected, get_app
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +76,9 @@ def set_colors(
         key, colors, brightness, off,
     )
     parsed = [_parse_hex_color(c) for c in colors]
-    result = get_app().dispatch(SetLedColors(
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(SetLedColors(
         key=key, colors=parsed,
         global_on=not off, brightness=brightness,
     ))
@@ -102,7 +104,9 @@ def render(
     """
     log.info("cli led render: key=%s color=%s phase=%s", key, color, phase)
     override = _parse_hex_color(color) if color else None
-    result = get_app().dispatch(RenderLed(
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(RenderLed(
         key=key, color=override, phase=phase,
     ))
     typer.echo(result.message)
@@ -512,6 +516,7 @@ def play(
     import time
 
     app_obj = get_app()
+    ensure_connected(app_obj, key)   # once, before the loop (not per tick)
     tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
     tick_s = max(0.05, tick_s)
 

@@ -237,6 +237,34 @@ class ConnectDevice(Command[ConnectResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class EnsureConnected(Command[ConnectResult]):
+    """Bring *key* up for a wire command only if it isn't already connected.
+
+    The idempotent counterpart to :class:`ConnectDevice`.  A stateless CLI
+    process holds no attached devices, so a wire command (``color``, ``play``,
+    ``load-theme`` …) dispatched from a fresh process would fail with "not
+    connected".  This attaches + handshakes once; when a daemon/GUI already
+    holds the device it is a pure no-op — unlike ``ConnectDevice`` it never
+    rebuilds the transport or re-handshakes a live device, so it is safe to
+    call before every wire command and once before a render/play loop without
+    disrupting an active stream.  (``ConnectDevice`` keeps its always-handshake
+    contract for the reconnect / dev-console inject-reply paths.)
+    """
+    key: str
+
+    def execute(self, app: App) -> ConnectResult:
+        existing = app.devices.get(self.key)
+        if existing is not None and existing.is_connected:
+            log.debug("EnsureConnected %s: already connected — no-op", self.key)
+            return ConnectResult(
+                ok=True, key=self.key,
+                message=f"{self.key} already connected",
+            )
+        log.info("EnsureConnected %s: not connected — attaching", self.key)
+        return app.dispatch(ConnectDevice(key=self.key))
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceConnectionIssues(Command[ConnectionIssuesResult]):
     """Query devices that were found but failed to connect (with per-OS hints).
 

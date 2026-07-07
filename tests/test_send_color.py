@@ -375,6 +375,47 @@ def test_send_color_unknown_device_returns_failure(tmp_home: Path) -> None:
     assert result.bytes_sent == 0
 
 
+# ── EnsureConnected — idempotent connect-first for wire commands ──────
+
+
+def test_ensure_connected_attaches_a_fresh_device(tmp_home: Path) -> None:
+    """A stateless (fresh) App holds no devices; EnsureConnected brings the
+    device up so a following wire command works — the #150/#171 fix."""
+    from trcc.core.commands import EnsureConnected
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+    key = "0402:3922"
+    assert key not in app.devices                      # nothing attached yet
+
+    assert app.dispatch(EnsureConnected(key=key)).ok
+    assert app.devices[key].is_connected               # now ready for wire I/O
+
+
+def test_ensure_connected_is_idempotent_no_rehandshake(tmp_home: Path) -> None:
+    """A second EnsureConnected on a live device is a pure no-op — it must NOT
+    rebuild the transport or re-handshake (safe before every tick / in daemon
+    mode).  ConnectDevice, by contrast, DOES re-handshake (dev-console inject-
+    reply contract) — asserted here so the two stay distinct."""
+    from trcc.core.commands import ConnectDevice, EnsureConnected
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.extend(_scsi_poll_response(100) for _ in range(3))
+    app = App(platform=platform, renderer=RecordingRenderer())
+    key = "0402:3922"
+
+    assert app.dispatch(EnsureConnected(key=key)).ok
+    first = app.devices[key]
+
+    result = app.dispatch(EnsureConnected(key=key))     # already connected
+    assert result.ok and "already connected" in result.message
+    assert app.devices[key] is first                    # SAME instance — no rebuild
+
+    app.dispatch(ConnectDevice(key=key))                # re-handshake path
+    assert app.devices[key] is not first                # rebuilt — contract preserved
+
+
 # ── CLI hex parsing ───────────────────────────────────────────────────
 
 

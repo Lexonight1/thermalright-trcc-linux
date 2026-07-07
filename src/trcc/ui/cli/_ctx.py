@@ -35,6 +35,24 @@ def emit_json(result: Any) -> None:
     typer.echo(dumps_json(dataclasses.asdict(result)))
 
 
+def ensure_connected(app: App, key: str) -> None:
+    """Attach + handshake *key* if this stateless CLI process hasn't yet.
+
+    Every CLI invocation is a fresh, non-daemon App holding no attached
+    devices, so a wire command (``color`` / ``play`` / ``load-theme`` / LED
+    ``render`` …) dispatched straight away would fail with "not connected".
+    ``EnsureConnected`` is idempotent — a no-op when a daemon/GUI already holds
+    the device — so this is safe before a single wire command and once before a
+    render/play loop.  Exits with the connect error on failure (a wire command
+    against an unattached device can do nothing useful).
+    """
+    from ...core.commands import EnsureConnected
+    result = app.dispatch(EnsureConnected(key=key))
+    if not result.ok:
+        typer.echo(result.message, err=True)
+        raise typer.Exit(code=1)
+
+
 _platform_override: Platform | None = None
 _renderer_override: Renderer | None = None
 

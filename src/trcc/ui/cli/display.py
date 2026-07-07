@@ -48,7 +48,7 @@ from ...core.commands import (
     UploadBootAnimation,
     UploadCustomMask,
 )
-from ._ctx import emit_json, get_app
+from ._ctx import emit_json, ensure_connected, get_app
 
 log = logging.getLogger(__name__)
 
@@ -111,13 +111,7 @@ def color(
         raise typer.Exit(code=2)
     r, g, b = rgb
     app_obj = get_app()
-    # Each CLI invocation is a fresh App (non-daemon) with no attached devices,
-    # so connect before sending — ConnectDevice is idempotent, so this is a
-    # no-op when a daemon/GUI already holds the device. (#150)
-    conn = app_obj.dispatch(ConnectDevice(key=key))
-    if not conn.ok:
-        typer.echo(conn.message, err=True)
-        raise typer.Exit(code=1)
+    ensure_connected(app_obj, key)
     result = app_obj.dispatch(SendColor(key=key, r=r, g=g, b=b))
     typer.echo(result.message)
     if not result.ok:
@@ -170,7 +164,9 @@ def apply_mask(
 ) -> None:
     """Override the active theme's mask with a user-supplied image."""
     log.info("cli display apply-mask: key=%s path=%s", key, path)
-    result = get_app().dispatch(ApplyMask(key=key, path=path))
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(ApplyMask(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -294,7 +290,9 @@ def load_theme(
 ) -> None:
     """Load a theme: parse, persist, render+send if device is connected."""
     log.info("cli display load-theme: key=%s path=%s", key, path)
-    result = get_app().dispatch(LoadTheme(key=key, path=path))
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(LoadTheme(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -317,7 +315,9 @@ def play_video(
     Frames advance on each ``display play`` tick.
     """
     log.info("cli display play-video: key=%s path=%s fps=%s", key, path, fps)
-    result = get_app().dispatch(PlayVideo(key=key, path=path, fps=fps))
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(PlayVideo(key=key, path=path, fps=fps))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -359,6 +359,7 @@ def slideshow_run(
     import time
 
     app_obj = get_app()
+    ensure_connected(app_obj, key)   # once, before the slideshow loop
     themes = sorted(p for p in themes_dir.iterdir() if p.is_dir())
     if not themes:
         typer.echo(f"No theme subdirectories under {themes_dir}", err=True)
@@ -424,7 +425,9 @@ def boot_anim(
     delays = [delay_ds] * len(frame_paths)
     typer.echo(f"Uploading {len(frame_paths)} boot-animation frames to {key} "
                f"({delay_ds * 0.1:.1f}s each)…")
-    result = get_app().dispatch(UploadBootAnimation(
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(UploadBootAnimation(
         key=key, frame_paths=frame_paths, delays_ds=delays,
     ))
     typer.echo(result.message)
@@ -450,6 +453,7 @@ def play(
     import time
 
     app_obj = get_app()
+    ensure_connected(app_obj, key)   # once, before the loop (not per tick)
     tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
     tick_s = max(0.05, tick_s)
 
@@ -920,12 +924,7 @@ def test(
     import time
 
     app_obj = get_app()
-    # Fresh-process App has no attached devices (non-daemon); connect first.
-    # Idempotent, so it's a no-op against a daemon/GUI already streaming. (#150)
-    conn = app_obj.dispatch(ConnectDevice(key=key))
-    if not conn.ok:
-        typer.echo(conn.message, err=True)
-        raise typer.Exit(code=1)
+    ensure_connected(app_obj, key)
     sequence = (
         ("red",   (0xFF, 0x00, 0x00)),
         ("green", (0x00, 0xFF, 0x00)),
@@ -997,7 +996,9 @@ def send_image(
     upload pipelines.
     """
     log.info("cli display send-image: key=%s path=%s", key, path)
-    result = get_app().dispatch(SendImage(key=key, path=path))
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(SendImage(key=key, path=path))
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
@@ -1064,6 +1065,7 @@ def screencast(
     import signal
 
     app_obj = get_app()
+    ensure_connected(app_obj, key)
     result = app_obj.dispatch(StartScreencast(
         key=key, x=x, y=y, w=w, h=h, audio=audio,
     ))
