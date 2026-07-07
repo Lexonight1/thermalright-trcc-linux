@@ -141,7 +141,7 @@ class ColorEngine:
 
 
 _TEST_COLORS: tuple[tuple[int, int, int], ...] = (
-    (1, 1, 1), (1, 0, 0), (0, 1, 0), (0, 0, 1),
+    (255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
 )
 _TEST_PERIOD = 10                 # ticks per test color
 _BREATHING_PERIOD = 66            # full pulse cycle
@@ -414,7 +414,7 @@ class LEDEffectEngine:
         runtime: LedRuntimeState,
         led_count: int,
     ) -> list[tuple[int, int, int]]:
-        """Cycle 4 dim reference colors every ``_TEST_PERIOD`` ticks."""
+        """Cycle 4 bright reference colours every ``_TEST_PERIOD`` ticks."""
         runtime.test_timer += 1
         if runtime.test_timer >= _TEST_PERIOD:
             runtime.test_timer = 0

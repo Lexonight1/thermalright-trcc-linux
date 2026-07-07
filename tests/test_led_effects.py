@@ -221,9 +221,9 @@ def test_test_mode_overrides_mode_and_cycles_colors() -> None:
     runtime = LedRuntimeState()
     settings = _settings(mode=LEDMode.RAINBOW, test_mode=True)
 
-    # First tick: white (1,1,1), test_timer goes from 0 → 1
+    # First tick: white (255,255,255), test_timer goes from 0 → 1
     colors = engine.tick(settings, runtime, sensors={}, led_count=2)
-    assert colors == [(1, 1, 1), (1, 1, 1)]
+    assert colors == [(255, 255, 255), (255, 255, 255)]
     assert runtime.test_timer == 1
 
 
@@ -236,7 +236,7 @@ def test_test_mode_rotates_color_every_10_ticks() -> None:
 
     assert runtime.test_timer == 0
     assert runtime.test_color == 1
-    assert colors == [(1, 0, 0)]   # red — index 1 in _TEST_COLORS
+    assert colors == [(255, 0, 0)]   # red — index 1 in _TEST_COLORS
 
 
 # ── Multi-zone fill (PA120 / LF10) ──────────────────────────────────
