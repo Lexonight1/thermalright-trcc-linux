@@ -276,6 +276,14 @@ def _run_steps() -> list[_Step]:
         EnableLedTestMode(key="0416:8001", enabled=True),
         LedColorsChanged,
     )
+    # Test mode is a momentary diagnostic — turn it back off so the harness
+    # never leaves it persisted in the config (a stale True paints PAGE-style
+    # panels near-black on the next summon).  Mirrors smoke_real_hardware.
+    _step(
+        "EnableLedTestMode (off)",
+        EnableLedTestMode(key="0416:8001", enabled=False),
+        LedColorsChanged,
+    )
 
     # ── Control center ────────────────────────────────────────────
     _step("SetTempUnit", SetTempUnit(unit="F"), TempUnitChanged)
