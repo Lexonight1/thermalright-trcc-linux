@@ -76,6 +76,29 @@ def test_removed_gpu_reader_keys_are_ignored_on_load(tmp_path: Path) -> None:
     assert not hasattr(s.app, "gpu_reader_offer_suppressed")  # removed key dropped
 
 
+def test_led_test_mode_is_not_restored_from_disk(tmp_path: Path) -> None:
+    """``test_mode`` is a momentary diagnostic, not a saved preference.  A True
+    flag left on disk by a past ``EnableLedTestMode`` (CLI / smoke run) must NOT
+    reload — otherwise every summon of a PAGE-style device restores it and the
+    panel paints near-black on load.  Other LED fields still load normally."""
+    paths = FakePaths(tmp_path)
+    config = paths.config_dir() / "trcc.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps({
+        "app": {"language": "en"},
+        "devices": {},
+        "led_devices": {"0416:8001": {
+            "test_mode": True, "brightness": 98, "color": [0, 13, 255],
+        }},
+    }), encoding="utf-8")
+
+    s = Settings(paths)
+    led = s.for_led("0416:8001")
+    assert led.test_mode is False          # diagnostic flag not restored
+    assert led.brightness == 98            # real preferences still load
+    assert led.color == (0, 13, 255)
+
+
 def test_next_save_promotes_to_trcc_json(tmp_path: Path) -> None:
     """After reading the pre-cutover file, the next mutation writes
     ``trcc.json`` (the new name) without touching the old file."""

@@ -816,6 +816,13 @@ def _led_settings_from_dict(data: dict[str, Any]) -> LedDeviceSettings:
     for k, v in data.items():
         if k in valid:
             kwargs[k] = v
+    # ``test_mode`` is a momentary diagnostic (cycles reference colours on the
+    # LEDs), never a saved preference.  A True flag left on disk by a past CLI /
+    # smoke run (``EnableLedTestMode``) would otherwise be restored on every
+    # summon and paint the PAGE-style panels near-black on load — the ZONE styles
+    # escape only because ``tick_multi_zone`` ignores the flag.  Always start a
+    # session with test mode off; a live in-session toggle still works.
+    kwargs.pop("test_mode", None)
     # Mode enum from its int value
     if "mode" in kwargs and isinstance(kwargs["mode"], int):
         try:
