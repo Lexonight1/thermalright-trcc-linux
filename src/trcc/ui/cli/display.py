@@ -602,6 +602,11 @@ def overlay_add(
     size: int = typer.Option(16, "--size"),
     bold: bool = typer.Option(False, "--bold"),
     italic: bool = typer.Option(False, "--italic"),
+    show_unit: bool = typer.Option(
+        True, "--show-unit/--hide-unit",
+        help="Draw the metric's unit (°C/%/MHz/RPM) after the number, or the "
+             "bare number when the unit is baked into the theme art",
+    ),
     element_id: str = typer.Option(
         "", "--id", help="Explicit element id (default: auto-generated UUID)",
     ),
@@ -609,13 +614,13 @@ def overlay_add(
     """Add a user-edited overlay element to a device."""
     log.info(
         "cli display overlay-add: key=%s type=%s x=%s y=%s metric=%s "
-        "element_id=%s",
-        key, type_, x, y, metric, element_id,
+        "show_unit=%s element_id=%s",
+        key, type_, x, y, metric, show_unit, element_id,
     )
     result = get_app().dispatch(AddOverlayElement(
         key=key, type=type_, x=x, y=y, text=text, metric=metric,
         format=fmt, source=source, color=color, size=size,
-        bold=bold, italic=italic, element_id=element_id,
+        bold=bold, italic=italic, show_unit=show_unit, element_id=element_id,
     ))
     typer.echo(result.message)
     if result.ok and result.element is not None:
@@ -638,16 +643,22 @@ def overlay_update(
     source: str | None = typer.Option(None, "--source"),
     bold: bool | None = typer.Option(None, "--bold/--no-bold"),
     italic: bool | None = typer.Option(None, "--italic/--no-italic"),
+    show_unit: bool | None = typer.Option(
+        None, "--show-unit/--hide-unit",
+        help="Draw the metric's unit (°C/%/MHz/RPM) after the number, or the "
+             "bare number when the unit is baked into the theme art",
+    ),
 ) -> None:
     """Mutate fields on an existing user-edited overlay element."""
     log.info(
-        "cli display overlay-update: key=%s element_id=%s", key, element_id,
+        "cli display overlay-update: key=%s element_id=%s show_unit=%s",
+        key, element_id, show_unit,
     )
     result = get_app().dispatch(UpdateOverlayElement(
         key=key, element_id=element_id,
         x=x, y=y, color=color, size=size, text=text,
         metric=metric, format=fmt, source=source,
-        bold=bold, italic=italic,
+        bold=bold, italic=italic, show_unit=show_unit,
     ))
     typer.echo(result.message)
     if not result.ok:

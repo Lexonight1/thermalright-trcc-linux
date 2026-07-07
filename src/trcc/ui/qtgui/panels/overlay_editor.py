@@ -22,6 +22,7 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -217,6 +218,7 @@ class OverlayEditorPanel(BasePanel):
             text=values["text"],
             metric=values["metric"],
             format=values["format"],
+            show_unit=values["show_unit"],
             source=values["source"],
         ))
         self._status.setText(result.message)
@@ -249,7 +251,8 @@ class OverlayEditorPanel(BasePanel):
             color=values["color"], size=values["size"],
             bold=values["bold"], italic=values["italic"],
             text=values["text"], metric=values["metric"],
-            format=values["format"], source=values["source"],
+            format=values["format"], show_unit=values["show_unit"],
+            source=values["source"],
         ))
         self._status.setText(result.message)
         if result.ok:
@@ -361,6 +364,9 @@ class _ElementDialog(QDialog):
         metric_row.addWidget(self._pick_metric_btn)
         self._format = QLineEdit(self)
         self._format.setText("{value:.0f}°C")
+        # button0 unit-switch: draw the value with its unit (45°C) vs bare (45).
+        self._show_unit = QCheckBox("Show unit (e.g. °C, %, RPM)", self)
+        self._show_unit.setChecked(True)
         self._source = QComboBox(self)
         for src in _CLOCK_SOURCES:
             self._source.addItem(src, userData=src)
@@ -376,6 +382,7 @@ class _ElementDialog(QDialog):
         form.addRow("Text:", self._text)
         form.addRow("Metric id:", metric_row)
         form.addRow("Format string:", self._format)
+        form.addRow("", self._show_unit)
         form.addRow("Clock source:", self._source)
 
         self._form = form
@@ -409,6 +416,7 @@ class _ElementDialog(QDialog):
         self._text.setText(element.text)
         self._metric.setText(element.metric)
         self._format.setText(element.format)
+        self._show_unit.setChecked(getattr(element, "show_unit", True))
         try:
             self._source.setCurrentIndex(
                 list(_CLOCK_SOURCES).index(element.source),
@@ -423,6 +431,7 @@ class _ElementDialog(QDialog):
         self._set_row_visible(self._text, kind == "text")
         self._set_row_visible(self._metric, kind == "metric")
         self._set_row_visible(self._format, kind == "metric")
+        self._set_row_visible(self._show_unit, kind == "metric")
         self._set_row_visible(self._source, kind == "clock")
 
     def _set_row_visible(self, widget, visible: bool) -> None:
@@ -501,5 +510,6 @@ class _ElementDialog(QDialog):
             "text":    self._text.text(),
             "metric":  self._metric.text().strip(),
             "format":  self._format.text() or "{value}",
+            "show_unit": bool(self._show_unit.isChecked()),
             "source":  self._source.currentData(),
         }

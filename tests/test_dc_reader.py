@@ -85,15 +85,16 @@ def _build_dd_element(
     main_count: int = 0,
     sub_count: int = 0,
     custom_text: bytes = b"",
+    font_size: float = 24.0,
 ) -> bytes:
     """Build one 0xDD element record."""
     el = bytearray()
     el.extend(struct.pack("<ii", mode, mode_sub))
     el.extend(struct.pack("<ii", x, y))
     el.extend(struct.pack("<ii", main_count, sub_count))
-    # Font block — empty font_name (length 0), size 24, neutral style/color
+    # Font block — empty font_name (length 0), style/color neutral
     el.append(0)                                   # font_name length
-    el.extend(struct.pack("<f", 24.0))             # size
+    el.extend(struct.pack("<f", font_size))        # size
     el.extend(bytes([0, 0, 0, 255, 255, 255, 255]))  # style+unit+charset+alpha+rgb
     # custom_text — length prefix + bytes
     el.append(len(custom_text))
@@ -137,6 +138,24 @@ def test_dd_time_weekday_date_emit_clock_elements(tmp_path: Path) -> None:
     text_payloads = [e.get("text") for e in cfg["elements"] if e["type"] == "text"]
     assert "{time}" not in text_payloads
     assert "{date}" not in text_payloads
+
+
+def test_dd_font_size_preserves_hero_number(tmp_path: Path) -> None:
+    """A big authored font (the 001-series temperature is 128) is preserved,
+    not squashed to the 24 default.  A misaligned/garbage read still falls back.
+    """
+    f = tmp_path / "big.dc"
+    f.write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=0, main_count=0, sub_count=1, font_size=128.25),  # hero temp
+        _build_dd_element(mode=0, main_count=0, sub_count=2, font_size=9.0),     # tiny label
+        _build_dd_element(mode=0, main_count=0, sub_count=3, font_size=-5.0),    # garbage
+    ]))
+
+    cfg = load_dc_as_theme_config(f)
+    by_metric = {e["metric"]: e for e in cfg["elements"] if e["type"] == "metric"}
+    assert by_metric["cpu:temp"]["size"] == 128.25
+    assert by_metric["cpu:usage"]["size"] == 9.0
+    assert by_metric["cpu:freq"]["size"] == 24.0  # garbage → default
 
 
 def test_rejects_dd_cloud_format_with_bogus_count(tmp_path: Path) -> None:
@@ -204,6 +223,23 @@ def test_metric_labels_are_device_names_never_units(tmp_path: Path) -> None:
     # No label may be a bare unit — the exact regression that shipped.
     for bad in ("%", "MHz", "°C"):
         assert bad not in labels, f"label {bad!r} is a unit, not a device name"
+
+
+def test_dd_fan_lcd_sentinel_maps_to_fan_rpm(tmp_path: Path) -> None:
+    """The fan-LCD "FAN" element uses main_count 10000; the C# renders it as the
+    cooler's own fan RPM.  Before the map it was unmapped → dropped → blank on
+    every fan-LCD mask (38 shipped masks).
+    """
+    f = tmp_path / "fan.dc"
+    f.write_bytes(_build_dd_buffer([
+        _build_dd_element(mode=0, main_count=10000, sub_count=1, x=180, y=253),
+    ]))
+
+    cfg = load_dc_as_theme_config(f)
+    metrics = [e for e in cfg["elements"] if e["type"] == "metric"]
+    assert len(metrics) == 1
+    assert metrics[0]["metric"] == "fan:cpu"
+    assert metrics[0]["format"] == "{value:.0f} RPM"
 
 
 def test_respects_disabled_flags(tmp_path: Path) -> None:

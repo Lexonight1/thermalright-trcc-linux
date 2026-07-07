@@ -507,6 +507,11 @@ class OverlayElement:
     # type == "metric"
     metric: str = ""
     format: str = "{value}"
+    # type == "metric" — draw the unit glyph (°C/%/MHz/RPM) after the number,
+    # or the bare number when the unit is baked into the theme art.  Mirrors
+    # the Windows unit-switch (myModeSub == 1); the universal per-element unit
+    # toggle flips this in every UI.
+    show_unit: bool = True
     # type == "clock"
     source: ClockSource = "time"
 
@@ -524,6 +529,7 @@ class OverlayElement:
         elif self.type == "metric":
             out["metric"] = self.metric
             out["format"] = self.format
+            out["show_unit"] = self.show_unit
         elif self.type == "clock":
             out["source"] = self.source
             # A date element carries the theme's strftime pattern (e.g.
@@ -553,6 +559,7 @@ class OverlayElement:
             text=str(data.get("text", "")),
             metric=str(data.get("metric", "")),
             format=str(data.get("format", "{value}")),
+            show_unit=bool(data.get("show_unit", True)),
             source=data.get("source", "time"),
         )
 

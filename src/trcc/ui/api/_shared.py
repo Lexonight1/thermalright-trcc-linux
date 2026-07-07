@@ -523,7 +523,7 @@ def _element_entry_to_schema(
     return OverlayElementSchema(
         id=e.id, type=e.type, x=e.x, y=e.y, color=e.color, size=e.size,
         bold=e.bold, italic=e.italic, text=e.text, metric=e.metric,
-        format=e.format, source=e.source,
+        format=e.format, show_unit=e.show_unit, source=e.source,
     )
 
 

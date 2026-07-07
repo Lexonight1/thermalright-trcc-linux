@@ -1426,6 +1426,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
     text: str = ""
     metric: str = ""
     format: str = "{value}"
+    show_unit: bool = True
     source: str = "time"
     element_id: str = ""
 
@@ -1449,6 +1450,7 @@ class AddOverlayElement(Command[OverlayElementResult]):
             x=self.x, y=self.y, color=self.color, size=self.size,
             bold=self.bold, italic=self.italic, text=self.text,
             metric=self.metric, format=self.format,
+            show_unit=self.show_unit,
             source=self.source,  # type: ignore[arg-type]
         )
         app.settings.add_user_overlay_element(self.key, element)
@@ -1473,6 +1475,7 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
     text: str | None = None
     metric: str | None = None
     format: str | None = None
+    show_unit: bool | None = None
     source: str | None = None
 
     def execute(self, app: App) -> OverlayElementResult:
@@ -1481,7 +1484,8 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
                 self.key, self.element_id,
                 x=self.x, y=self.y, color=self.color, size=self.size,
                 bold=self.bold, italic=self.italic, text=self.text,
-                metric=self.metric, format=self.format, source=self.source,
+                metric=self.metric, format=self.format,
+                show_unit=self.show_unit, source=self.source,
             )
         except KeyError as e:
             return OverlayElementResult(

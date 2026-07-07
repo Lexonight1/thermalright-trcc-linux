@@ -387,7 +387,7 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     sample = OverlayElement(
         id="el_x", type="metric", x=42, y=24, color="#a0b0c0",
         size=20, bold=True, italic=False,
-        metric="cpu:temp", format="{value:.0f}°C",
+        metric="cpu:temp", format="{value:.0f}°C", show_unit=False,
     )
     dialog = _ElementDialog(panel, prefill=sample)
     out = dialog.values()
@@ -398,6 +398,7 @@ def test_overlay_editor_dialog_round_trips_values(gui_app: App) -> None:
     assert out["size"] == 20
     assert out["bold"] is True
     assert out["metric"] == "cpu:temp"
+    assert out["show_unit"] is False        # button0 unit-switch round-trips
 
 
 def test_overlay_editor_adopts_theme_layout_and_edits_in_place(

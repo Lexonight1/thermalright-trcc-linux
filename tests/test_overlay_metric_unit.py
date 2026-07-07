@@ -1,11 +1,12 @@
-"""Metric values render as BARE numbers — the unit comes from the theme art.
+"""A metric's unit is drawn or hidden per-element via ``show_unit``.
 
-The Windows app strips ℃/℉/MHz/%/RPM off every sensor value before drawing it
-(TRCC.cs: val.Replace(...) → Convert.ToInt32 → DrawString), because the unit
-glyph is baked into the theme's background image, not the overlay.  Drawing
-"42°C" over a baked-in "°C" double-prints the unit (#150/#203).  These lock the
-strip so any theme source (fresh DC parse, cached trcc.json, user, cloud) draws
-the bare number.
+The Windows unit-switch (``button0`` → ``myModeSub``) decides, per element,
+whether the unit glyph is appended to the number: ``myModeSub == 1`` draws
+"42°C", otherwise the bare "42" (the unit is baked into the theme art, and
+drawing it again double-prints — #150/#203).  89% of shipped masks show the
+unit; the 001-series (baked glyph) hide it.  ``show_unit`` carries that choice
+through every theme source (DC parse, cached trcc.json, user, cloud), and the
+global temperature unit (C/F) swaps the °C glyph when the unit is shown.
 """
 from __future__ import annotations
 
@@ -40,40 +41,61 @@ def _config(elements: list[dict[str, Any]]) -> dict[str, Any]:
     return {"overlay_enabled": True, "elements": elements}
 
 
-def test_metric_element_draws_bare_number_despite_unit_format() -> None:
-    """A metric whose format bakes in °C still draws just the number."""
+def _render(element: dict[str, Any], sensors: dict[str, float], **kw: Any) -> _DrawRecorder:
     rec = _DrawRecorder()
     service = OverlayService(rec)
     base = rec.create_surface(854, 480)
+    service.render(base, _config([element]), sensors=sensors, clock={}, **kw)
+    return rec
 
-    service.render(
-        base,
-        _config([{
-            "type": "metric", "metric": "cpu:temp", "format": "{value:.0f}°C",
-            "x": 130, "y": 370, "color": "#ffffff", "size": 36,
-        }]),
-        sensors={"cpu:temp": 42.0},
-        clock={},
+
+def test_show_unit_true_draws_the_unit() -> None:
+    """A metric with ``show_unit`` draws number + unit (the 89% majority)."""
+    rec = _render(
+        {"type": "metric", "metric": "cpu:temp", "format": "{value:.0f}°C",
+         "show_unit": True, "x": 130, "y": 370, "color": "#ffffff", "size": 36},
+        {"cpu:temp": 42.0},
     )
+    assert rec.drawn == [(130, 370, "42°C", "#ffffff", 36, False, False)]
 
+
+def test_show_unit_false_draws_bare_number() -> None:
+    """The 001-series masks bake the glyph into the art → bare number."""
+    rec = _render(
+        {"type": "metric", "metric": "cpu:temp", "format": "{value:.0f}°C",
+         "show_unit": False, "x": 130, "y": 370, "color": "#ffffff", "size": 36},
+        {"cpu:temp": 42.0},
+    )
     assert rec.drawn == [(130, 370, "42", "#ffffff", 36, False, False)]
 
 
-def test_metric_freq_and_usage_also_bare() -> None:
-    rec = _DrawRecorder()
-    service = OverlayService(rec)
-    base = rec.create_surface(854, 480)
-
-    service.render(
-        base,
-        _config([
-            {"type": "metric", "metric": "cpu:freq", "format": "{value:.0f} MHz",
-             "x": 660, "y": 370, "color": "#ffffff", "size": 27},
-            {"type": "metric", "metric": "cpu:usage", "format": "{value:.0f}%",
-             "x": 370, "y": 370, "color": "#ffffff", "size": 27},
-        ]),
-        sensors={"cpu:freq": 801.0, "cpu:usage": 13.0},
-        clock={},
+def test_show_unit_defaults_to_true_when_absent() -> None:
+    """A metric dict with no ``show_unit`` shows the unit (majority default)."""
+    rec = _render(
+        {"type": "metric", "metric": "cpu:freq", "format": "{value:.0f} MHz",
+         "x": 660, "y": 370, "color": "#ffffff", "size": 27},
+        {"cpu:freq": 801.0},
     )
+    assert rec.drawn[0][2] == "801 MHz"
 
-    assert [d[2] for d in rec.drawn] == ["801", "13"]
+
+def test_shown_temp_unit_swaps_glyph_for_fahrenheit() -> None:
+    """With the global unit F and the unit shown, the °C glyph becomes °F."""
+    rec = _render(
+        {"type": "metric", "metric": "cpu:temp", "format": "{value:.0f}°C",
+         "show_unit": True, "x": 130, "y": 370, "color": "#ffffff", "size": 36},
+        {"cpu:temp": 107.0},   # already-Fahrenheit value from upstream
+        temp_unit="F",
+    )
+    assert rec.drawn[0][2] == "107°F"
+
+
+def test_hidden_unit_ignores_temp_unit() -> None:
+    """A bare-number element stays bare regardless of the global unit."""
+    rec = _render(
+        {"type": "metric", "metric": "cpu:temp", "format": "{value:.0f}°C",
+         "show_unit": False, "x": 130, "y": 370, "color": "#ffffff", "size": 36},
+        {"cpu:temp": 107.0},
+        temp_unit="F",
+    )
+    assert rec.drawn[0][2] == "107"

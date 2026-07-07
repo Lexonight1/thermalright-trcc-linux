@@ -12,6 +12,7 @@ from dataclasses import replace
 from trcc.core.models import OverlayElementConfig, OverlayMode
 from trcc.ui.presentation.overlay_model import MAX_ELEMENTS, OverlayModel
 from trcc.ui.presentation.overlay_serialization import (
+    configs_to_next_elements,
     configs_to_overlay_config,
     overlay_config_to_configs,
 )
@@ -159,9 +160,8 @@ def test_disabled_model_serializes_to_empty_overlay_config() -> None:
 def test_overlay_config_round_trip_preserves_text_and_clock_elements() -> None:
     """CUSTOM + TIME survive configs_to_overlay_config → overlay_config_to_configs.
 
-    (HARDWARE is NOT a round-trip through this pair: the renderer shape writes
-    legacy ``HARDWARE_METRICS`` names while the editor-load reads next/ ids —
-    they serve opposite directions in production. See the hardware test below.)
+    (HARDWARE also round-trips now that the write side emits canonical DC ids —
+    see ``test_hardware_metric_round_trips_via_dc_id``.)
     """
     original = [
         _cfg(mode=OverlayMode.CUSTOM, text="cpu", x=5, y=6,
@@ -190,7 +190,7 @@ def test_editor_load_maps_next_id_hardware_metric_back_to_main_sub() -> None:
     element re-enters the grid (overlay_grid.py:316 lesson)."""
     theme_shape = {
         "cpu:temp": {"x": 70, "y": 80, "enabled": True, "metric": "cpu:temp",
-                     "temp_unit": 0, "font": {"size": 24, "style": "regular"}},
+                     "show_unit": True, "font": {"size": 24, "style": "regular"}},
     }
     restored = overlay_config_to_configs(theme_shape)
     assert len(restored) == 1
@@ -198,3 +198,57 @@ def test_editor_load_maps_next_id_hardware_metric_back_to_main_sub() -> None:
     assert hardware.mode is OverlayMode.HARDWARE
     assert (hardware.main_count, hardware.sub_count) == (0, 1)
     assert (hardware.x, hardware.y) == (70, 80)
+
+
+def test_hardware_metric_round_trips_via_dc_id() -> None:
+    """A HARDWARE element survives configs_to_overlay_config →
+    overlay_config_to_configs: the write side emits the canonical DC id
+    (``cpu:temp``) so the read side resolves it back to ``(main, sub)`` instead
+    of dropping it (the former underscore-vs-colon vocabulary mismatch)."""
+    original = OverlayElementConfig(mode=OverlayMode.HARDWARE,
+                                    main_count=0, sub_count=1, x=12, y=34)
+    serialized = configs_to_overlay_config([replace(original)], True)
+    entry = next(iter(serialized.values()))
+    assert entry["metric"] == "cpu:temp"          # canonical DC id, not cpu_temp
+
+    restored = overlay_config_to_configs(serialized)
+    assert len(restored) == 1                      # element survives, not dropped
+    assert restored[0].mode is OverlayMode.HARDWARE
+    assert (restored[0].main_count, restored[0].sub_count) == (0, 1)
+    assert (restored[0].x, restored[0].y) == (12, 34)
+
+
+# ── button0 unit-switch (mode_sub ↔ show_unit) ───────────────────────────
+
+
+def test_next_elements_carry_show_unit_from_mode_sub() -> None:
+    """The Command-bus path (SetOverlayConfig) carries button0 as show_unit —
+    the C# unit-switch: mode_sub 1 → draw the unit, 0 → bare number."""
+    shown = OverlayElementConfig(mode=OverlayMode.HARDWARE, mode_sub=1,
+                                 main_count=0, sub_count=1)
+    hidden = OverlayElementConfig(mode=OverlayMode.HARDWARE, mode_sub=0,
+                                  main_count=0, sub_count=1)
+    out = configs_to_next_elements([shown, hidden])
+    assert out[0]["type"] == "metric" and out[0]["show_unit"] is True
+    assert out[1]["show_unit"] is False
+
+
+def test_configs_to_overlay_config_emits_show_unit() -> None:
+    """Editor config → keyed dict carries button0 as ``show_unit`` (both states)."""
+    for mode_sub in (0, 1):
+        cfg = OverlayElementConfig(mode=OverlayMode.HARDWARE, mode_sub=mode_sub,
+                                   main_count=1, sub_count=2)
+        entry = next(iter(configs_to_overlay_config([cfg], True).values()))
+        assert entry["show_unit"] is (mode_sub == 1)
+
+
+def test_overlay_config_to_configs_reads_show_unit_into_mode_sub() -> None:
+    """Keyed dict → editor config maps ``show_unit`` back to mode_sub 1/0."""
+    for show_unit, expected in ((True, 1), (False, 0)):
+        theme_shape = {
+            "cpu:temp": {"x": 5, "y": 6, "enabled": True, "metric": "cpu:temp",
+                         "show_unit": show_unit,
+                         "font": {"size": 24, "style": "regular"}},
+        }
+        restored = overlay_config_to_configs(theme_shape)
+        assert restored[0].mode_sub == expected

@@ -92,6 +92,9 @@ _HW_TO_SENSOR: dict[tuple[int, int], tuple[str, str]] = {
     (5, 2): ("fan:gpu",             "{value:.0f} RPM"),
     (5, 3): ("fan:ssd",             "{value:.0f} RPM"),
     (5, 4): ("fan:sys2",            "{value:.0f} RPM"),
+    # Fan-LCD "FAN" sentinel: the C# maps main_count 10000 to the cooler's own
+    # fan RPM (UCXiTongXianShiSubTimer: label1="FAN", label2=RPM, label3="RPM").
+    (10000, 1): ("fan:cpu",         "{value:.0f} RPM"),
 }
 
 
@@ -646,7 +649,12 @@ def _build_dd_element(
                 )
                 return None
             sensor_id, fmt = entry
-            return {**base, "type": "metric", "metric": sensor_id, "format": fmt}
+            # mode_sub is the C# "unit-switch" (button0): 1 appends the unit
+            # glyph to the number, otherwise the bare number is drawn (the unit
+            # lives in the theme art).  Translate the wire int to the domain
+            # ``show_unit`` here so the model/UI layers never see mode_sub.
+            return {**base, "type": "metric", "metric": sensor_id,
+                    "format": fmt, "show_unit": mode_sub == 1}
         case 4:
             if not custom_text:
                 return None
@@ -664,8 +672,11 @@ def _build_dd_element(
 
 
 def _clamp_font_size(raw: float, default: float = 24.0) -> float:
-    if 0 < raw < 100:
-        return max(8.0, min(72.0, raw))
+    # Theme fonts span ~8 px labels up to the panel's hero number (the 001-series
+    # temperature is authored at 128).  Only reject values a misaligned/garbage
+    # read produces (NaN, negative, or absurdly large); everything else is real.
+    if 8.0 <= raw <= 512.0:
+        return raw
     return default
 
 

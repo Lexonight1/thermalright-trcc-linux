@@ -577,6 +577,7 @@ class OverlayElementEntry:
     text: str = ""
     metric: str = ""
     format: str = "{value}"
+    show_unit: bool = True
     source: str = "time"
 
 

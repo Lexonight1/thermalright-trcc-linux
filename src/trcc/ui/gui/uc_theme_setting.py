@@ -258,6 +258,13 @@ class UCThemeSetting(BasePanel):
         # Global format defaults are GUI-only state — stored in UiState,
         # not app.settings.  ``_ui_state`` is injected by the window;
         # if absent (e.g. legacy callers) we skip persistence.
+        #
+        # HARDWARE (button0) is the C# per-element unit-switch (show/hide the
+        # unit glyph) — it lives on the element as ``mode_sub`` (persisted just
+        # above via ``_update_selected``), NOT a global preference.  The global
+        # temperature unit (C/F) is owned by the About panel's celsius/
+        # fahrenheit radios (the C# buttonC/buttonF), so button0 must not write
+        # it here.
         if self._ui_state is None:
             return
         if mode == OverlayMode.TIME:
@@ -266,9 +273,6 @@ class UCThemeSetting(BasePanel):
         elif mode == OverlayMode.DATE:
             self._ui_state.set_format_pref('date_format', mode_sub)
             self.format_pref_changed.emit('date', mode_sub)
-        elif mode == OverlayMode.HARDWARE:
-            self._ui_state.set_format_pref('temp_unit', mode_sub)
-            self.format_pref_changed.emit('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
         log.info("_on_text_changed: text=%s", text)

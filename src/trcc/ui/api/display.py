@@ -940,7 +940,7 @@ def overlay_update(key: str, element_id: str,
         x=body.x, y=body.y, color=body.color, size=body.size,
         bold=body.bold, italic=body.italic,
         text=body.text, metric=body.metric, format=body.format,
-        source=body.source,
+        show_unit=body.show_unit, source=body.source,
     ))
     http_error_if_failed(result)
     return to_overlay_element_response(result)

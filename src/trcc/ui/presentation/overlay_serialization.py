@@ -26,7 +26,6 @@ from ...core._safe import load_json_or_default
 from ...core.errors import ThemeError
 from ...core.models import (
     DATE_FORMATS,
-    HARDWARE_METRICS,
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
@@ -86,11 +85,17 @@ def configs_to_overlay_config(
             entry["text"] = cfg.text
             key = f"custom_{i}"
         elif cfg.mode == OverlayMode.HARDWARE:
-            entry["metric"] = HARDWARE_METRICS.get(
-                (cfg.main_count, cfg.sub_count),
-                f"hw_{cfg.main_count}_{cfg.sub_count}",
+            # Emit the canonical DC id ("cpu:temp") — the same vocabulary the
+            # read side (``metric_to_hardware``) and the theme-DC parser use.
+            # ``HARDWARE_METRICS`` underscore names ("cpu_temp") would not
+            # round-trip: ``overlay_config_to_configs`` would drop the element.
+            hw = Dc.hardware_metric(cfg.main_count, cfg.sub_count)
+            entry["metric"] = (
+                hw[0] if hw is not None
+                else f"hw_{cfg.main_count}_{cfg.sub_count}"
             )
-            entry["temp_unit"] = cfg.mode_sub
+            # button0 unit-switch: mode_sub 1 → draw the unit glyph.
+            entry["show_unit"] = cfg.mode_sub == 1
             key = f"hw_{cfg.main_count}_{cfg.sub_count}_{i}"
         else:
             continue
@@ -145,7 +150,8 @@ def overlay_config_to_configs(
         elif (hw := Dc.metric_to_hardware(metric)) is not None:
             elem.main_count, elem.sub_count = hw
             elem.mode = OverlayMode.HARDWARE
-            elem.mode_sub = cfg.get("temp_unit", 0)
+            # show_unit (button0) round-trips to mode_sub 1/0.
+            elem.mode_sub = 1 if cfg.get("show_unit", True) else 0
         else:
             log.warning(
                 "overlay_config_to_configs: unmapped metric %r — skipping element",
@@ -208,8 +214,12 @@ def configs_to_next_elements(configs: list[Any]) -> list[dict[str, Any]]:
                                 cfg.sub_count)
                     continue
                 sensor, fmt = entry
+                # ``mode_sub`` is the C# unit-switch (button0): 1 draws the unit
+                # glyph after the number, 0 the bare number.  Carry it as the
+                # domain ``show_unit`` so the toggle reaches the render.
                 out.append({**base, "type": "metric",
-                            "metric": sensor, "format": fmt})
+                            "metric": sensor, "format": fmt,
+                            "show_unit": cfg.mode_sub == 1})
             case _:
                 log.warning("configs_to_next_elements: unknown mode %s — "
                             "skipping", cfg.mode)
@@ -318,8 +328,9 @@ def _element_to_legacy_entry(
     if not metric_id:
         return None, None
     entry["metric"] = metric_id
-    if metric_id.endswith("temp"):
-        entry["temp_unit"] = 0
+    # Carry the DC element's unit-switch (button0) so loading a mask restores
+    # the right toggle state; defaults to shown (the 89% majority) when absent.
+    entry["show_unit"] = bool(element.get("show_unit", True))
     return _take_key(metric_id, counters), entry
 
 

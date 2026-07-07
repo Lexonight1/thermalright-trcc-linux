@@ -504,6 +504,7 @@ class OverlayElementSchema(BaseModel):
     text: str = ""
     metric: str = ""
     format: str = "{value}"
+    show_unit: bool = True
     source: str = "time"
 
 
@@ -518,6 +519,7 @@ class OverlayElementAddRequest(BaseModel):
     text: str = ""
     metric: str = ""
     format: str = "{value}"
+    show_unit: bool = True
     source: str = "time"
     element_id: str = ""
 
@@ -532,6 +534,7 @@ class OverlayElementUpdateRequest(BaseModel):
     text: str | None = None
     metric: str | None = None
     format: str | None = None
+    show_unit: bool | None = None
     source: str | None = None
 
 

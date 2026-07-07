@@ -81,6 +81,7 @@ class SensorItem(QFrame):
         main_count, sub_count = SENSOR_TO_OVERLAY.get(sensor_key, (0, 1))
         self._overlay_config = OverlayElementConfig(
             mode=OverlayMode.HARDWARE,
+            mode_sub=1,  # button0 default: show the unit (the C# / 89%-mask default)
             main_count=main_count,
             sub_count=sub_count,
             color=color,

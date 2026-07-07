@@ -758,6 +758,21 @@ def test_overlay_add_text_element(cli_runner: CliRunner, cli_app) -> None:
     assert "id: el_" in result.output
 
 
+def test_overlay_add_hide_unit_sets_show_unit_false(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``overlay-add --hide-unit`` creates the element with show_unit=False."""
+    result = cli_runner.invoke(
+        _app(),
+        ["display", "overlay-add", "0402:3922", "metric",
+         "--metric", "cpu:temp", "--hide-unit"],
+    )
+    assert result.exit_code == 0
+    elements = cli_app.settings.for_device("0402:3922").user_overlay_elements
+    assert len(elements) == 1
+    assert elements[0].show_unit is False
+
+
 def test_overlay_add_rejects_bad_type(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
     result = cli_runner.invoke(

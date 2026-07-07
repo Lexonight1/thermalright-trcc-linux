@@ -310,15 +310,20 @@ class OverlayService:
             )
             return
         fmt = str(element.get("format", "{value}"))
-        text = _strip_metric_unit(fmt.format(value=value))
-        # The Windows app draws the BARE number for a metric value — the unit
-        # glyph (°C / % / MHz / RPM) is part of the theme's background artwork,
-        # not the overlay.  TRCC.cs strips ℃/℉/MHz/%/RPM off every sensor value
-        # (Convert.ToInt32) before DrawString, so drawing "42°C" here would
-        # double-print the unit on top of the baked-in glyph (#150/#203).  The
-        # numeric value is ALREADY unit-converted upstream by
-        # ``personalize_readings`` (°F picked → value is already Fahrenheit), so
-        # the bare number reads correctly regardless of temp_unit.
+        text = fmt.format(value=value)
+        # ``show_unit`` mirrors the Windows unit-switch (myModeSub == 1): when
+        # set, the unit glyph (°C / % / MHz / RPM) is drawn after the number;
+        # otherwise the bare number is drawn because the unit is baked into the
+        # theme art and drawing it here would double-print it (#150/#203).  89%
+        # of shipped masks show the unit; the 001-series (baked glyph) do not.
+        if bool(element.get("show_unit", True)):
+            # The value is already unit-converted upstream by
+            # ``personalize_readings`` (°F picked → value is Fahrenheit); swap
+            # the hard-coded °C glyph so the label matches the global unit.
+            if temp_unit.upper() == "F":
+                text = text.replace("°C", "°F").replace("℃", "℉")
+        else:
+            text = _strip_metric_unit(text)
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         log.debug("draw_metric %s: %s=%s at (%d, %d)",

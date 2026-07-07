@@ -2385,21 +2385,13 @@ class TRCCApp(QMainWindow):
             self._app.dispatch(SetDateFormat(
                 fmt=_DATE_INT_TO_PATTERN.get(value, "yyyy/MM/dd"),
             ))
-        elif kind == 'temp_unit':
-            # The overlay editor's per-element °C/°F toggle routes here, but
-            # the GLOBAL temperature unit is owned by the About-panel's
-            # dedicated °C/°F toggle (``_on_temp_unit_changed`` → SetTempUnit)
-            # — so THIS click is intentionally inert.  That makes it a visible
-            # control that does nothing, which reads as a bug to the user.
-            # Warn LOUDLY (CLAUDE.md "warn loudly on silent skips") so a click
-            # that doesn't change the preview is never a silent mystery.
-            log.warning(
-                "_on_format_pref_changed: temp_unit toggle (overlay editor) is "
-                "INERT — the global °C/°F unit is owned by the About-panel "
-                "toggle; no Command dispatched, preview will not change. "
-                "(value=%d)", value,
-            )
         else:
+            # NB: the HARDWARE button0 no longer routes here.  It is the C#
+            # per-element unit-switch (show/hide the unit glyph) and now
+            # persists on the element as ``mode_sub`` → ``show_unit`` via
+            # ``SetOverlayConfig`` (uc_theme_setting._on_format_changed).  The
+            # GLOBAL °C/°F unit stays with the About-panel toggle
+            # (``_on_temp_unit_changed`` → SetTempUnit).
             log.debug(
                 "_on_format_pref_changed: kind=%r — no Command dispatch",
                 kind,

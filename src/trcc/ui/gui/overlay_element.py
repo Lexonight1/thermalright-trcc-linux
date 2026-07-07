@@ -6,6 +6,7 @@ live hardware metrics, and selection overlay.
 from __future__ import annotations
 
 import logging
+import re
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter
@@ -102,7 +103,13 @@ class OverlayElementWidget(QWidget):
         self.update()
 
     def update_metrics(self, metrics):
-        """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
+        """Update card with live system metrics (Windows UCXiTongXianShiSubTimer).
+
+        ``label2`` is the number, ``label3`` the unit.  The C# unit-switch
+        (``mode_sub``) decides whether the unit shows: 1 → number + unit, 0 →
+        bare.  C/F is a separate global choice, not ``mode_sub`` (that was the
+        bug — the toggle flipped Celsius↔Fahrenheit instead of show/hide).
+        """
         log.debug("update_metrics")
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
@@ -112,19 +119,16 @@ class OverlayElementWidget(QWidget):
         raw = getattr(metrics, metric_key, None)
         if raw is None:
             return
-        # Split formatted value into number + unit (Windows regex pattern)
-        import re
-
-        formatted = format_metric(metric_key, raw,
-                                  temp_unit=self.config.mode_sub)
-        # Separate number from unit: "52°C" → "52" + "°C"
+        # Separate number from unit: "52°C" → "52" + "°C".
+        formatted = format_metric(metric_key, raw)
         m = re.match(r'([\d.]+)(.*)', formatted)
         if m:
             self._live_value = m.group(1)
-            self._live_unit = m.group(2).strip()
+            unit = m.group(2).strip()
         else:
             self._live_value = formatted
-            self._live_unit = ''
+            unit = ''
+        self._live_unit = unit if self.config.mode_sub == 1 else ''
         self.update()
 
     # Card UI font matching Windows 微软雅黑 10.5pt

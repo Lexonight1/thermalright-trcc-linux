@@ -31,7 +31,8 @@ class DataTablePanel(QFrame):
     """Data selection table (matches UCXiTongXianShiTable 230x54).
 
     Windows shows different controls depending on the selected element mode:
-    - Hardware (mode 0): button0 — C/F unit toggle
+    - Hardware (mode 0): button0 — show/hide the unit glyph (myModeSub 0↔1);
+      the global C/F choice is the About panel's celsius/fahrenheit radios
     - Time    (mode 1): button1 — 12H/24H toggle
     - Weekday (mode 2): no controls
     - Date    (mode 3): button3 — date format cycle (YMD→DMY→MD→DM)
@@ -52,16 +53,19 @@ class DataTablePanel(QFrame):
             Sizes.DATA_TABLE_W, Sizes.DATA_TABLE_H,
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
-        # button0 — C/F unit toggle (mode 0: hardware)
+        # button0 — show/hide unit glyph (mode 0: hardware).  The C# unit-switch
+        # toggles myModeSub: 1 draws the number + unit, 0 the bare number (unit
+        # baked into the theme art).  NOT the global C/F choice (About panel).
         # Windows: (80, 15) 70x24
         self.unit_btn = QPushButton(self)
         self.unit_btn.setGeometry(80, 15, 70, 24)
         self.unit_btn.setFlat(True)
         self.unit_btn.setStyleSheet(Styles.FLAT_BUTTON)
         self.unit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._unit_off = Assets.load_pixmap('display_mode_unit_c.png', 70, 24)   # °C
-        self._unit_on = Assets.load_pixmap('display_mode_unit_f.png', 70, 24)   # °F
-        self.unit_btn.setToolTip("Temperature unit (C/F)")
+        # _unit_off = bare (mode_sub 0), _unit_on = unit shown (mode_sub 1).
+        self._unit_off = Assets.load_pixmap('display_mode_unit_c.png', 70, 24)
+        self._unit_on = Assets.load_pixmap('display_mode_unit_f.png', 70, 24)
+        self.unit_btn.setToolTip("Show unit (°C/%/MHz/RPM) on the value")
         self.unit_btn.clicked.connect(self._on_unit_clicked)
         self.unit_btn.setVisible(False)
 
@@ -156,7 +160,7 @@ class DataTablePanel(QFrame):
                 self.text_input.setVisible(True)
 
     def _on_unit_clicked(self):
-        """Toggle C/F: mode_sub 0↔1."""
+        """Toggle show-unit: mode_sub 0 (bare) ↔ 1 (number + unit)."""
         log.debug("_on_unit_clicked: mode_sub=%s→%s", self._mode_sub, 0 if self._mode_sub else 1)
         self._mode_sub = 0 if self._mode_sub else 1
         self._update_unit_image()
