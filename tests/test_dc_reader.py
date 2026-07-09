@@ -225,6 +225,33 @@ def test_metric_labels_are_device_names_never_units(tmp_path: Path) -> None:
         assert bad not in labels, f"label {bad!r} is a unit, not a device name"
 
 
+def test_metric_values_carry_their_unit_for_dynamic_render(tmp_path: Path) -> None:
+    """0xDC metric VALUE elements carry the unit in their format string.
+
+    The C# flag-template reader (case 220) sets every value element's
+    ``myModeSub = 1`` → it draws number + unit; the unit is the DYNAMIC
+    decorator (``_draw_metric`` swaps °C→°F on the global toggle, button0
+    can hide it), NOT a baked art glyph.  Rendering the bare integer left a
+    Fahrenheit user reading the F value beside a static baked "°C" — wrong.
+    Lock the units into the value format so C↔F works.
+    """
+    f = tmp_path / "Theme1" / "config1.dc"
+    f.parent.mkdir()
+    f.write_bytes(_build_dc())  # all metrics enabled
+
+    cfg = load_dc_as_theme_config(f)
+    fmts = {
+        e["metric"]: e["format"]
+        for e in cfg["elements"] if e["type"] == "metric"
+    }
+    assert fmts["cpu:temp"] == "{value:.0f}°C"
+    assert fmts["gpu:primary:temp"] == "{value:.0f}°C"
+    assert fmts["cpu:freq"] == "{value:.0f} MHz"
+    assert fmts["gpu:primary:clock"] == "{value:.0f} MHz"
+    assert fmts["cpu:usage"] == "{value:.0f}%"
+    assert fmts["gpu:primary:usage"] == "{value:.0f}%"
+
+
 def test_dd_fan_lcd_sentinel_maps_to_fan_rpm(tmp_path: Path) -> None:
     """The fan-LCD "FAN" element uses main_count 10000; the C# renders it as the
     cooler's own fan RPM.  Before the map it was unmapped → dropped → blank on
