@@ -463,9 +463,9 @@ jobs:
           depend = portaudio
           depend = libusb
           depend = sg3_utils
-          depend = python-nvidia-ml-py
           optdepend = 7zip: theme archive extraction
           optdepend = ffmpeg: video and GIF playback
+          optdepend = python-nvidia-ml-py: NVIDIA GPU sensor support
           optdepend = python-dbus: Wayland session support
           optdepend = python-gobject: Wayland session support
           optdepend = python-hidapi: Alternative HID transport
