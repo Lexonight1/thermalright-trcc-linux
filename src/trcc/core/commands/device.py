@@ -386,6 +386,44 @@ class SendColor(Command[SendResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class SleepDevice(Command[SendResult]):
+    """Blank a connected panel so it goes dark on shutdown / quit (#143).
+
+    The unified "turn the screen off" action every surface dispatches — the
+    GUI/daemon shutdown hook (``App.close``), ``trcc display sleep`` (CLI),
+    and the ``/sleep`` API route all send this one Command.  Mirrors the C#
+    exit path (stop streaming + close the device) but adds an explicit dark
+    frame first, so the panel visibly clears instead of holding its last
+    image until the firmware idle-sleeps.
+
+    Composes the existing wire paths rather than duplicating them: LCD →
+    :class:`SendColor` (a solid-black frame via
+    ``DisplayService.build_solid_color_frame``); LED → :class:`SetLedColors`
+    with ``global_on=False`` (an all-off payload).  Best-effort by design —
+    a device mid-unplug returns ``ok=False`` instead of raising, so it can
+    never abort ``App.close`` mid-shutdown.
+    """
+    key: str
+
+    def execute(self, app: App) -> SendResult:
+        log.info("SleepDevice: key=%s", self.key)
+        device = app.devices.get(self.key)
+        if device is None or not device.is_connected:
+            log.info("SleepDevice %s: not connected — nothing to blank",
+                     self.key)
+            return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              message=f"{self.key} not connected")
+        if device.is_led:
+            from .led import SetLedColors
+            result = SetLedColors(
+                key=self.key, colors=[(0, 0, 0)], global_on=False,
+            ).execute(app)
+            return SendResult(ok=result.ok, key=self.key, bytes_sent=0,
+                              message=result.message)
+        return SendColor(key=self.key, r=0, g=0, b=0).execute(app)
+
+
+@dataclass(frozen=True, slots=True)
 class SendImage(Command[SendResult]):
     """Push an image file to the LCD without staging it as a theme.
 

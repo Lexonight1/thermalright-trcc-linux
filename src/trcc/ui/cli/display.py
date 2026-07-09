@@ -40,6 +40,7 @@ from ...core.commands import (
     SetOverlayBackground,
     SetSlideshow,
     SetSplitMode,
+    SleepDevice,
     StartScreencast,
     StopScreencast,
     StopVideo,
@@ -901,6 +902,25 @@ def test(
             raise typer.Exit(code=1)
         time.sleep(seconds)
     typer.echo("Color cycle complete.")
+
+
+@app.command("sleep")
+def sleep(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Blank the panel so it goes dark (the shutdown / turn-off action).
+
+    Sends a solid-black frame (LCD) or an all-off payload (LED) — the same
+    Command the GUI + daemon fire at PC shutdown so the screen doesn't hold
+    its last image lit.  Idempotent; auto-connects in a fresh process.
+    """
+    log.info("cli display sleep: key=%s", key)
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(SleepDevice(key=key))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("test-lcd")

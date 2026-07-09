@@ -316,6 +316,53 @@ def test_send_color_command_drives_real_app_dispatch(
     assert frame_sent_events[0].surface is None
 
 
+def test_sleep_device_blanks_lcd_with_black_frame(tmp_home: Path) -> None:
+    """SleepDevice pushes a solid-black frame to a connected LCD (#143)."""
+    from trcc.core.commands import SleepDevice
+
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+
+    result = app.dispatch(SleepDevice(key="0402:3922"))
+
+    assert result.ok, f"SleepDevice failed: {result.message}"
+    assert result.bytes_sent > 0
+    assert "#000000" in result.message   # composed SendColor(0,0,0)
+
+
+def test_sleep_device_not_connected_returns_false(tmp_home: Path) -> None:
+    """SleepDevice never raises for a missing/disconnected device — it is
+    dispatched from App.close() mid-shutdown and must degrade gracefully."""
+    from trcc.core.commands import SleepDevice
+
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    result = app.dispatch(SleepDevice(key="dead:beef"))
+
+    assert not result.ok
+    assert "not connected" in result.message
+
+
+def test_app_close_blanks_the_panel_before_release(tmp_home: Path) -> None:
+    """App.close() sends a black frame to every device before detaching, so
+    the panel darkens on shutdown instead of holding its last image (#143)."""
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=RecordingRenderer())
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+
+    sent: list[FrameSent] = []
+    app.events.subscribe(
+        FrameSent, lambda e: sent.append(e),   # type: ignore[arg-type, return-value]
+    )
+    app.close()
+
+    # A blank frame went out (the last FrameSent) and the device is released.
+    assert sent, "close() sent no frame — panel would stay lit"
+    assert "0402:3922" not in app.devices
+
+
 def test_render_and_send_frame_sent_carries_surface(tmp_home: Path) -> None:
     """RenderAndSend ships the rendered surface in ``FrameSent`` so the GUI
     preview shows THAT frame directly — legacy's publish-the-frame shape,

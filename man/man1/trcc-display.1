@@ -795,6 +795,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS sleep
+.PP
+\fBtrcc display sleep\fR \fIKEY\fR
+.PP
+Blank the panel so it goes dark (the shutdown / turn\-off action). Sends a solid\-black frame (LCD) or an all\-off payload (LED)  \-  the same Command the GUI + daemon fire at PC shutdown so the screen doesn't hold its last image lit. Idempotent; auto\-connects in a fresh process.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS slideshow
 .PP
 \fBtrcc display slideshow\fR \fIKEY\fR \fISTATE\fR

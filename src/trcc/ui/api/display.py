@@ -49,6 +49,7 @@ from ...core.commands import (
     SetOverlayConfig,
     SetSlideshow,
     SetSplitMode,
+    SleepDevice,
     StartScreencast,
     StopScreencast,
     StopVideo,
@@ -764,6 +765,19 @@ def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
     result = request.app.state.trcc.dispatch(
         SendColor(key=key, r=body.r, g=body.g, b=body.b),
     )
+    http_error_if_failed(result)
+    return to_send_response(result)
+
+
+@router.post("/sleep", response_model=SendResponse)
+def sleep(key: str, request: Request) -> SendResponse:
+    """Blank the panel so it goes dark — the shutdown / turn-off action.
+
+    Sends a solid-black frame (LCD) or an all-off payload (LED), the same
+    Command the GUI + daemon fire at PC shutdown.
+    """
+    log.info("api POST /devices/{key}/display/sleep: key=%s", key)
+    result = request.app.state.trcc.dispatch(SleepDevice(key=key))
     http_error_if_failed(result)
     return to_send_response(result)
 

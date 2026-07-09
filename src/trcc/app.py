@@ -526,6 +526,16 @@ class App:
         self.metrics_loop.stop()
         self.led_animation_loop.stop()
         self.stop_hotplug()
+        # Blank every panel before releasing it so it goes dark on shutdown
+        # instead of holding its last frame lit (#143).  Best-effort: the
+        # Command swallows a mid-unplug send, and any unexpected error here
+        # must not block device release below.
+        from .core.commands import SleepDevice
+        for key in list(self.devices):
+            try:
+                self.dispatch(SleepDevice(key=key))
+            except Exception:
+                log.exception("close: SleepDevice raised for %s", key)
         for key in list(self.devices):
             self.detach(key)
         self._send_scheduler.shutdown()
