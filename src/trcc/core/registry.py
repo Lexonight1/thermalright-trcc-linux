@@ -51,8 +51,11 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         vid=0x0416, pid=0x5406,
         vendor="Winbond",
         product="LCD Display",
-        wire=Wire.SCSI, kind=Kind.LCD,
-        device_type=1, fbl=100,
+        # Elite Vision 360 ARGB (#212): enumerates vendor-specific with two BULK
+        # endpoints, never a /dev/sg* node — it is a BULK device, not SCSI.  Its
+        # PM/resolution table already lives in _BULK_VARIANTS (variants.py).
+        wire=Wire.BULK, kind=Kind.LCD,
+        device_type=4, fbl=100,
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),
     ),
