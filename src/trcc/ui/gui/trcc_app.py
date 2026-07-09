@@ -598,7 +598,8 @@ class TRCCApp(QMainWindow):
         GUI just OBSERVES it.  Cache it so a view-switch between ticks can
         re-render the last reading without re-polling.
         """
-        log.info("_on_bus_sensors_updated")
+        log.debug("_on_bus_sensors_updated: %d readings",
+                  len(event.metrics.readings))
         self._last_metrics = event.metrics
         self._fan_out_metrics(reason="bus")
 

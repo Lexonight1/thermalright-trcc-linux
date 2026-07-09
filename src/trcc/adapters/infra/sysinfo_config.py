@@ -291,12 +291,24 @@ class SysInfoConfig:
                 (i, b) for i, b in enumerate(fan_panel.sensors)
                 if not b.sensor_id
             ]
-            leftover_fan_ids = sorted(
-                r.sensor_id for r in readings
-                if r.sensor_id.startswith("fan:")
-                and r.sensor_id.endswith(":rpm")
-                and r.sensor_id not in bound_fan_ids
-            )
+            # Spinning fans first, dead headers last.  A super-I/O chip
+            # exposes every fan header (fan1..fan6) whether or not a fan is
+            # plugged in, and label-less boards (nct6xxx etc.) give no way to
+            # tell which is the CPU/pump.  Binding in raw id order lands the
+            # CPU/GPU slots on disconnected headers reading 0 RPM while the
+            # real fans (a water pump + radiator fans sit on arbitrary
+            # headers, always spinning) fall off the end — the "fans not
+            # reporting" bug (#145).  Order by (is-idle, id) so live readings
+            # claim the visible slots; idle headers only backfill leftovers.
+            leftover_fan_ids = [
+                r.sensor_id for r in sorted(
+                    (r for r in readings
+                     if r.sensor_id.startswith("fan:")
+                     and r.sensor_id.endswith(":rpm")
+                     and r.sensor_id not in bound_fan_ids),
+                    key=lambda r: ((r.value or 0.0) <= 0.0, r.sensor_id),
+                )
+            ]
             for (slot_idx, binding), fan_id in zip(
                 unbound_slots, leftover_fan_ids, strict=False,
             ):
