@@ -54,7 +54,7 @@ from .services.led_effects import LEDEffectEngine
 from .services.media import MediaService
 from .services.metrics_loop import MetricsLoop
 from .services.migration import LibraryMigration
-from .services.overlay import OverlayService
+from .services.overlay import OverlayService, resolve_overlay_elements
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
@@ -412,6 +412,34 @@ class App:
                 "Renderer unavailable — call App.set_renderer(...) first"
             )
         return self._renderer
+
+    def effective_overlay_elements(self, key: str) -> list[dict]:
+        """The ONE overlay layout actually on screen for ``key``.
+
+        The single source every per-element operation (flash, select, edit)
+        must address — resolved by the same precedence the renderer uses
+        (user > mask > theme, each REPLACES; see
+        ``resolve_overlay_elements``).  Addressing only the user layer was
+        the ``FlashOverlayElement 'N' not found`` bug: when a mask or theme
+        supplies the live layout the user layer is empty, so an id/index
+        resolved against it matched nothing on screen.
+        """
+        s = self.settings.for_device(key)
+        theme = self.active_themes.get(key)
+        theme_config = theme.config if theme is not None else {}
+        elements = resolve_overlay_elements(
+            theme_config, s.mask_overlay_elements, s.user_overlay_elements,
+        )
+        log.debug(
+            "effective_overlay_elements: key=%s → %d element(s) "
+            "[theme=%d mask=%s user=%d]",
+            key, len(elements),
+            len(theme_config.get("elements") or []),
+            None if s.mask_overlay_elements is None
+            else len(s.mask_overlay_elements),
+            len(s.user_overlay_elements),
+        )
+        return elements
 
     # ── Device lifecycle ──────────────────────────────────────────────
 

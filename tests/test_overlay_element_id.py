@@ -44,3 +44,23 @@ def test_flash_finds_the_element_by_its_id(fake_platform) -> None:  # type: igno
 
     missing = app.dispatch(FlashOverlayElement(key=key, element_id="0"))
     assert not missing.ok  # a bare index no longer matches — that was the bug
+
+
+def test_flash_finds_a_mask_layer_element_when_user_layer_empty(fake_platform) -> None:  # type: ignore[no-untyped-def]
+    """The reported bug: a mask supplies the on-screen layout and the user
+    layer is empty, so Flash addressed the empty user layer and returned
+    'not found'.  It must resolve against the EFFECTIVE layer instead.
+    """
+    app = App(fake_platform, renderer=QtRenderer())
+    key = "0402:3922"
+    # State right after ApplyMask: mask layer active, user layer empty.
+    app.settings.set_mask_overlay_elements(key, [
+        OverlayElement.from_dict({
+            "id": "el_mask2", "type": "metric", "metric": "cpu:temp",
+            "x": 10, "y": 10, "format": "{value:.0f}",
+        }),
+    ])
+    assert not app.settings.for_device(key).user_overlay_elements
+
+    ok = app.dispatch(FlashOverlayElement(key=key, element_id="el_mask2"))
+    assert ok.ok  # previously "not found" — Flash only searched the user layer

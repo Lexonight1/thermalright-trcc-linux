@@ -1563,16 +1563,20 @@ class FlashOverlayElement(Command[OverlayElementResult]):
     duration_ms: int = 1500
 
     def execute(self, app: App) -> OverlayElementResult:
-        elements = app.settings.for_device(self.key).user_overlay_elements
-        for e in elements:
-            if e.id == self.element_id:
+        # Resolve against the EFFECTIVE layout on screen (user > mask >
+        # theme), not just the user layer — a mask/theme supplies the live
+        # elements while the user layer is empty, so a user-only lookup
+        # never matched them (the "element 'N' not found" flash bug).
+        for e in app.effective_overlay_elements(self.key):
+            if e.get("id") == self.element_id:
                 app.events.publish(OverlayChanged(
                     key=self.key, enabled=True,
                     flash_element_id=self.element_id,
                     flash_duration_ms=self.duration_ms,
                 ))
                 return OverlayElementResult(
-                    ok=True, key=self.key, element=_element_to_entry(e),
+                    ok=True, key=self.key,
+                    element=_element_to_entry(OverlayElement.from_dict(e)),
                     message=f"Flashing overlay element {self.element_id} "
                             f"for {self.duration_ms}ms",
                 )
