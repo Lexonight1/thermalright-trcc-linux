@@ -67,6 +67,14 @@ def esc(text: str | None) -> str:
     return flat
 
 
+def _is_group(cmd: click.Command) -> bool:
+    """True for a command group. Duck-typed on the ``.commands`` mapping rather
+    than ``isinstance(cmd, click.Group)`` because Typer (>=0.13) vendors its own
+    click as ``typer._click`` \\(em the tree objects are no longer instances of
+    the installed ``click`` package's classes."""
+    return getattr(cmd, "commands", None) is not None
+
+
 def _metavar(param: click.Argument) -> str:
     """UPPERCASE metavar for a positional argument (``hex_color`` -> HEX_COLOR)."""
     return param.name.upper() if param.name else "ARG"
@@ -77,9 +85,12 @@ def _visible_params(cmd: click.Command) -> tuple[list[click.Argument], list[clic
     args: list[click.Argument] = []
     opts: list[click.Option] = []
     for param in cmd.params:
-        if isinstance(param, click.Argument):
+        # `.param_type_name` ("argument"/"option") is stable click API and works
+        # regardless of whether the object comes from click or typer's vendored
+        # copy; isinstance against the installed click would miss Typer's tree.
+        if param.param_type_name == "argument":
             args.append(param)
-        elif isinstance(param, click.Option) and not param.hidden:
+        elif param.param_type_name == "option" and not getattr(param, "hidden", False):
             opts.append(param)
     return args, opts
 
@@ -196,7 +207,7 @@ def render_root_page(cli: click.Group, groups: list[str]) -> str:
         ".SH COMMANDS",
     ]
     for name, cmd in sorted(cli.commands.items()):
-        if getattr(cmd, "hidden", False) or isinstance(cmd, click.Group):
+        if getattr(cmd, "hidden", False) or _is_group(cmd):
             continue
         lines.append(".TP")
         lines.append(f"\\fB{esc(name)}\\fR")
@@ -226,15 +237,15 @@ def render_root_page(cli: click.Group, groups: list[str]) -> str:
 def generate() -> dict[str, str]:
     """Build every man page as {filename: troff}, deterministically."""
     cli = typer.main.get_command(app)
-    assert isinstance(cli, click.Group)
+    assert _is_group(cli), f"expected a command group, got {type(cli).__name__}"
     groups = sorted(
         name for name, cmd in cli.commands.items()
-        if isinstance(cmd, click.Group) and not getattr(cmd, "hidden", False)
+        if _is_group(cmd) and not getattr(cmd, "hidden", False)
     )
     pages = {"trcc.1": render_root_page(cli, groups)}
     for name in groups:
         grp = cli.commands[name]
-        assert isinstance(grp, click.Group)
+        assert _is_group(grp)
         pages[f"trcc-{name}.1"] = render_group_page(name, grp)
     return pages
 
