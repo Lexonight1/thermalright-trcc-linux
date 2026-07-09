@@ -1,5 +1,34 @@
 # Changelog
 
+## v9.8.5
+
+**CPU and case fans report again.** On boards whose fan headers aren't labelled
+(the common super-I/O chips — and the water-cooler pumps every Thermalright
+cooler ships), the fan panel bound its CPU/GPU rows to whichever header came
+first — often a disconnected one reading 0 RPM — while your real, spinning fans
+fell off the end. The panel now puts the **spinning** fans in the visible slots,
+so your pump and radiator fans show up instead of a row of zeros.
+
+**Your panel goes dark on shutdown.** LCD panels used to hold their last image
+lit after you powered the PC off. They now blank when the app closes on
+shutdown (`trcc display sleep <device>` does it on demand too).
+
+**`trcc display test` works on its own.** Running a wire command in a fresh
+terminal — `display test`, `display color`, and friends — now auto-connects the
+device instead of failing with "Not attached".
+
+**Elite Vision 360 ARGB White connects.** This cooler was talking the wrong USB
+protocol in our registry and wouldn't come up; it's now correctly a Bulk device.
+
+**Arch on AMD no longer pulls the NVIDIA stack.** The Arch package listed the
+NVIDIA sensor library as a hard dependency, dragging in `nvidia-utils` + the EGL
+stack (~885 MiB) on AMD-only systems. It's an optional dependency now.
+
+**Metric units follow the °C/°F toggle on more masks.** On the flag-template
+(0xDC) cloud masks, values now draw their unit and it switches with your
+Celsius/Fahrenheit choice. Plus a fix for the overlay "flash" highlight and a
+quieter log (a per-tick sensor line was flooding it).
+
 ## v9.8.4
 
 **LED digital coolers that came up a dim, colourless "888" now display
