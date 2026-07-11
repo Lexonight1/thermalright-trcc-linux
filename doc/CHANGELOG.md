@@ -1,5 +1,21 @@
 # Changelog
 
+## v9.8.6
+
+**Grand Vision 360 (and its square-panel siblings) show at the right size.**
+The Grand Vision 360 and similar 480×480 bulk panels were being detected as
+320×240, so the picture was the wrong size and looked rotated or garbled at
+every display angle. The panel now resolves to its true 480×480. The cause was
+a device-ID table that had drifted from the original app's rules; it's now an
+exact match, so the panel gets exactly the resolution the official software
+would give it. (#176, #186)
+
+**`trcc report` now captures your panel's handshake.** The debug report includes
+each connected device's exact resolution and identity bytes (PM/SUB/raw),
+instead of only whatever happened to still be in the log tail. This is the piece
+that lets a new or mis-detected panel be mapped correctly — previously that
+information had usually scrolled out of the log by the time the report ran.
+
 ## v9.8.5
 
 **CPU and case fans report again.** On boards whose fan headers aren't labelled
