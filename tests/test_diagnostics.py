@@ -1,6 +1,7 @@
 """Diagnostics — health checks, doctor, debug report bundle."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -247,6 +248,44 @@ def test_debug_report_writes_to_disk(fake_platform, tmp_path: Path) -> None:
     assert written == out
     body = out.read_text(encoding="utf-8")
     assert "Paths" in body
+
+
+def test_debug_report_captures_live_handshake(tmp_path: Path) -> None:
+    """A connected LCD device's exact PM / SUB / fbl / resolution / raw bytes
+    are captured live — the byte the report previously couldn't produce because
+    the connect-time log line scrolls out of the tail (the #176/#186 blocker)."""
+    from tests.mock_platform import MockPlatform
+
+    # GrandVision 360 (bulk, registry fbl 72) with a pinned PM=50 handshake.
+    platform = MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 50}], tmp_path)
+    report = build_debug_report(platform)
+
+    assert len(report.devices) == 1
+    dev = report.devices[0]
+    assert dev["key"] == "87ad:70db"
+    assert dev["hs_pm"] == "50"
+    assert dev["hs_sub"] == "0"
+    # Resolution is whatever the resolver returns for PM=50 today — the report
+    # surfaces the ground truth so the *resolver* bug is visible, not hidden.
+    assert re.fullmatch(r"\d+x\d+", dev["hs_resolution"])
+    assert dev["hs_raw"]  # first handshake bytes, hex — ground truth for offsets
+
+    text = report.render_text()
+    assert "handshake: PM=50 SUB=0" in text
+    assert f"resolution={dev['hs_resolution']}" in text
+
+
+def test_debug_report_skips_handshake_for_led(tmp_path: Path) -> None:
+    """An LED segment display has no frame handshake — the probe skips it
+    cleanly (no ``hs_`` fields) and the report still renders."""
+    from tests.mock_platform import MockPlatform
+
+    platform = MockPlatform([{"vid": "0416", "pid": "8001", "pm": 1}], tmp_path)
+    report = build_debug_report(platform)
+
+    assert len(report.devices) == 1
+    assert "hs_resolution" not in report.devices[0]
+    assert "## Devices" in report.render_text()
 
 
 # =========================================================================

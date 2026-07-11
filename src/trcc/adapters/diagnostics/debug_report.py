@@ -17,21 +17,31 @@ whole report.  Reporters always get *something* useful to attach.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import platform as py_platform
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ...core.errors import HandshakeError, TransportError
+from ...core.models import Kind, ProductInfo, Wire
 from ...core.ports import Platform
 from ...core.registry import find_product
+from ..device import DeviceFactory
 from ..infra.logging import tail_log
 from .health import HealthReport, run_health_checks
 
 log = logging.getLogger(__name__)
+
+# Marker for the connect-time handshake line ("BulkLcd handshake OK: PM=…",
+# "HidLcd handshake OK: …", etc.).  Scraped from the FULL log as a fallback
+# when a live probe can't run.
+_HANDSHAKE_LOG_MARKER = "handshake OK"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +59,7 @@ class DebugReport:
     settings_error: str = ""
     health: HealthReport = field(default_factory=HealthReport)
     log_tail: list[str] = field(default_factory=list)
+    handshake_log: list[str] = field(default_factory=list)
 
     def render_text(self) -> str:
         """Render the report as a single string for clipboard/file output."""
@@ -58,6 +69,9 @@ class DebugReport:
         sections.append(_render_kv("Platform", self.platform_info))
         sections.append(_render_kv("Paths", self.paths))
         sections.append(_render_devices(self.devices, self.devices_error))
+        handshake = _render_handshake_log(self.handshake_log)
+        if handshake:
+            sections.append(handshake)
         sections.append(_render_sensors(self.sensors, self.sensors_error))
         sections.append(_render_powercap(self.powercap))
         sections.append(_render_settings(self.settings_json, self.settings_error))
@@ -93,6 +107,7 @@ def build_debug_report(
     health = run_health_checks(platform)
     log_path = platform.paths().log_file()
     log_lines = tail_log(log_path, n_lines=log_tail_lines)
+    handshake_log = _scrape_handshake_lines(log_path)
 
     return DebugReport(
         timestamp=timestamp,
@@ -107,6 +122,7 @@ def build_debug_report(
         settings_error=settings_err,
         health=health,
         log_tail=log_lines,
+        handshake_log=handshake_log,
     )
 
 
@@ -160,15 +176,103 @@ def _collect_devices(
     rows: list[dict[str, str]] = []
     for info in infos:
         product = find_product(info.vid, info.pid)
-        rows.append({
+        row = {
             "key": info.key,
             "vid": f"{info.vid:04x}",
             "pid": f"{info.pid:04x}",
             "product": product.product if product else "(unregistered)",
             "vendor": product.vendor if product else "(unregistered)",
             "wire": product.wire.value if product else "(unknown)",
-        })
+        }
+        # Capture the live handshake so the report always carries the exact
+        # PM / SUB / fbl / resolution — the bytes that decide a panel's
+        # geometry.  Without this the report only has them if the connect-time
+        # log line survived in the tail, which on a long session it never does.
+        if product is not None:
+            handshake = _probe_handshake(platform, product)
+            if handshake is not None:
+                row.update({f"hs_{k}": v for k, v in handshake.items()})
+        rows.append(row)
     return rows, ""
+
+
+def _probe_handshake(
+    platform: Platform, product: ProductInfo,
+) -> dict[str, str] | None:
+    """Connect the device, capture its handshake bytes, then disconnect.
+
+    The device's PM / SUB / fbl / resolution decide its whole geometry, yet the
+    report otherwise loses them: the handshake fires once at connect (startup)
+    and its log line scrolls out of the tail on any real session.  A fresh live
+    probe captures the exact bytes every time — this is what lets us map a new
+    panel (e.g. the shared ``87ad:70db`` controller) without asking the reporter
+    for a byte their report can't produce.
+
+    Returns None — the caller falls back to the log scrape — when the device
+    can't be probed: an LED segment display (no frame handshake), the GUI /
+    daemon already holds the device (busy), a permission error, or a handshake
+    failure.  A diagnostic must never abort the report, so every failure is
+    swallowed into the fallback.
+    """
+    key = f"{product.vid:04x}:{product.pid:04x}"
+    log.info("_probe_handshake: %s wire=%s", key, product.wire.value)
+    if product.kind is not Kind.LCD:
+        log.info("_probe_handshake: %s is %s, not LCD — no frame handshake",
+                 key, product.kind.value)
+        return None
+    device = None
+    try:
+        cls = DeviceFactory.for_wire(product.wire)
+        if product.wire is Wire.SCSI:
+            transport = platform.open_scsi(product.vid, product.pid)
+        else:
+            transport = platform.open_bulk(product.vid, product.pid)
+        device = cls(product, transport)
+        result = device.connect()
+    except (OSError, HandshakeError, TransportError, RuntimeError) as e:
+        log.info("_probe_handshake: %s probe failed (%s: %s) — scraping log",
+                 key, type(e).__name__, e)
+        return None
+    finally:
+        if device is not None:
+            with contextlib.suppress(OSError, TransportError, RuntimeError):
+                device.disconnect()
+    handshake = {
+        "pm": str(result.pm_byte),
+        "sub": str(result.sub_byte),
+        "fbl": str(result.fbl) if result.fbl is not None else "?",
+        "resolution": f"{result.resolution[0]}x{result.resolution[1]}",
+        "raw": result.raw_response[:64].hex(),
+    }
+    log.info("_probe_handshake: %s → PM=%s SUB=%s fbl=%s resolution=%s",
+             key, handshake["pm"], handshake["sub"], handshake["fbl"],
+             handshake["resolution"])
+    return handshake
+
+
+def _scrape_handshake_lines(log_path: Path, keep: int = 6) -> list[str]:
+    """The most recent ``handshake OK`` lines from the FULL log (not the tail).
+
+    The fallback for :func:`_probe_handshake`: when a live probe can't run
+    (the GUI holds the device), the connect-time handshake line may still be
+    somewhere in the log — but earlier than the tail window.  Scans the whole
+    file keeping only the last *keep* matches, so it stays memory-bounded even
+    on a large log.
+    """
+    log.debug("_scrape_handshake_lines: %s (keep=%d)", log_path, keep)
+    if not log_path.is_file():
+        return []
+    recent: deque[str] = deque(maxlen=keep)
+    try:
+        with log_path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if _HANDSHAKE_LOG_MARKER in line:
+                    recent.append(line.rstrip("\n"))
+    except OSError as e:
+        log.debug("_scrape_handshake_lines: read failed: %s", e)
+        return []
+    log.debug("_scrape_handshake_lines: found %d line(s)", len(recent))
+    return list(recent)
 
 
 def _collect_sensors(
@@ -276,11 +380,29 @@ def _render_devices(rows: list[dict[str, str]], error: str) -> str:
         return f"## Devices\n  Scan failed: {error}"
     if not rows:
         return "## Devices\n  No supported devices detected on USB"
-    body = "\n".join(
-        f"  {r['key']:14}  {r['product']:30}  wire={r['wire']}"
-        for r in rows
-    )
-    return f"## Devices ({len(rows)})\n{body}"
+    lines: list[str] = []
+    for r in rows:
+        lines.append(f"  {r['key']:14}  {r['product']:30}  wire={r['wire']}")
+        if "hs_resolution" in r:
+            lines.append(
+                f"    handshake: PM={r['hs_pm']} SUB={r['hs_sub']} "
+                f"fbl={r['hs_fbl']} resolution={r['hs_resolution']}"
+            )
+            lines.append(f"    raw[0:64]:  {r['hs_raw']}")
+        else:
+            lines.append(
+                "    handshake: (live probe unavailable — device busy or LED; "
+                "see Handshake-from-log below)"
+            )
+    return f"## Devices ({len(rows)})\n" + "\n".join(lines)
+
+
+def _render_handshake_log(lines: list[str]) -> str:
+    """The scraped-from-log handshake fallback section (omitted when empty)."""
+    if not lines:
+        return ""
+    body = "\n".join(f"  {line}" for line in lines)
+    return f"## Handshake (from log — fallback)\n{body}"
 
 
 def _render_sensors(rows: list[dict[str, str]], error: str) -> str:
