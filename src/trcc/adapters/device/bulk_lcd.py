@@ -55,16 +55,22 @@ _WRITE_CHUNK_SIZE = 16 * 1024
 # PM values that use raw RGB565 (cmd=3); everything else uses JPEG (cmd=2).
 _RGB565_PMS: set[int] = {32}
 
-# Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  C#
-# FormCZTVInit (myDeviceMode==2) overrides it only for this known PM set
-# (plus PM=1 with SUB 48/49); every other PM stays 480x480.  pm_to_fbl()
-# returns the PM itself for unrecognised values, which get_profile would
-# misread as a 320x320 panel — so unknown bulk PMs must clamp to FBL 72.
-# Mirrors legacy ``_bulk_resolution``. (#169)
+# Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  The C# resolves
+# every bulk panel through ``FormCZTVInit(fbl=72, m=2, pm, pmSub)``
+# (TRCC.decompiled.cs:742) — base 480x480, overridden ONLY for the PM values
+# its ``switch(pm)`` handles.  This set is exactly those values:
+#     case 5 → 50 (320x240)   case 7 → 64 (640x480)
+#     m==2 default: pm==32 → 100 (320x320);  pm==64 → 114 (1600x720);
+#     pm==65 → 192 (1920x462);  pm∈{9,11} → 224 (854x480);
+#     pm==10 → 224 (960x540);   pm==12 → 224 (800x480)
+# (PM=1 with SUB 48/49 is handled by the separate SUB guard in ``connect()``.)
+# EVERY other PM stays 480x480 — including PM=50 (a poll-byte "SPI mode 2"
+# value the GrandVision 360 reports, #176) and the 224/192-by-PM poll-byte
+# values (13-17, 63, 66, 68, 69) that HID/LY resolve via ``pm_to_fbl`` but
+# ``FormCZTVInit`` never maps on the bulk path.  Keep this set == FormCZTVInit's
+# branches; do not re-add poll-byte PMs, or bulk panels misread again. (#176/#169)
 _BULK_BASE_FBL = 72
-_BULK_KNOWN_PMS: frozenset[int] = frozenset(
-    {5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 50, 63, 64, 65, 66, 68, 69}
-)
+_BULK_KNOWN_PMS: frozenset[int] = frozenset({5, 7, 9, 10, 11, 12, 32, 64, 65})
 
 
 @DeviceFactory.register(Wire.BULK)

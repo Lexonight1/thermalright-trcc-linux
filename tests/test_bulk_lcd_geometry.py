@@ -56,6 +56,19 @@ def _make_bulk(transport: FakeBulkTransport, *,
     (32, (320, 320), 100),
     # PM=64 → FBL=114 → 1600×720 widescreen
     (64, (1600, 720), 114),
+    # Widescreen 224-family — the C# FormCZTVInit m==2 sub-branches.
+    (9,  (854, 480), 224),   # pm 9  → is854x480
+    (10, (960, 540), 224),   # pm 10 → is960x540
+    (12, (800, 480), 224),   # pm 12 → is800x480
+    (65, (1920, 462), 192),  # pm 65 → is1920x462
+    # PM=50 — a poll-byte "SPI mode 2" value the GrandVision 360 (87ad:70db)
+    # reports.  FormCZTVInit has NO case 50 → stays 480×480.  Previously the
+    # accreted _BULK_KNOWN_PMS mis-mapped it to 320×240. (#176)
+    (50, (480, 480), 72),
+    # 224/192-by-PM poll-byte values (HID/LY resolve these via pm_to_fbl, but
+    # FormCZTVInit never maps them on the bulk path) → 480×480. (#176)
+    (13, (480, 480), 72),
+    (63, (480, 480), 72),
     # PM unknown to the bulk FBL table → C# FormCZTVInit (myDeviceMode==2)
     # default FBL=72 (480×480).  NOT the PM echoed as a bogus FBL. (#169)
     (200, (480, 480), 72),
