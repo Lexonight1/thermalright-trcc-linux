@@ -186,6 +186,30 @@ _FLAG_NAMES = (
 )
 
 
+# Resolution flag → (width, height).  When FormCZTVInit sets no resolution flag
+# the C# base canvas is 320×240 (the Mjolnir / small-panel default) — see the
+# pm=5 trace in project_decompile_miner_device_oracle.
+_FLAG_RESOLUTION: dict[str, tuple[int, int]] = {
+    "is240x240": (240, 240), "is320x320": (320, 320), "is360x360": (360, 360),
+    "is480x480": (480, 480), "is640x480": (640, 480), "is1600x720": (1600, 720),
+    "is1280x480": (1280, 480), "is1920x462": (1920, 462),
+    "is854x480": (854, 480), "is960x540": (960, 540), "is800x480": (800, 480),
+}
+_DEFAULT_RESOLUTION: tuple[int, int] = (320, 240)
+
+
+def resolution_of(st: CztvState) -> tuple[int, int]:
+    """The (w, h) FormCZTVInit resolves for this device from its res flags.
+
+    Faithful to the C# base canvas: exactly one resolution flag is set for the
+    special panels; a device with no flag falls back to the 320×240 default.
+    """
+    for flag, res in _FLAG_RESOLUTION.items():
+        if getattr(st, flag):
+            return res
+    return _DEFAULT_RESOLUTION
+
+
 def _fmt_flags(st: CztvState) -> str:
     return ", ".join(n for n in _FLAG_NAMES if getattr(st, n)) or "(none)"
 
