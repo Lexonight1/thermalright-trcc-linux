@@ -870,6 +870,7 @@ Bare `patch`, `minor`, or `major` → full release workflow:
 - **Multi-LCD shared widgets**: All `LCDHandler` instances share one preview/progress widget set. Only the *active* handler may write to those widgets — gated by `self._ui_active`. `apply_device_config` / `reactivate` set it `True`; `set_inactive` (sidebar A→B switch) and `restore_inactive_state` (initial-scan keep-alive) set it `False`. `_on_video_tick` and `_render_and_send` honor the gate. Cleanup uses full `deactivate()` (stops all timers); sidebar switch uses `set_inactive()` (keeps animation timer running so the LCD's physical screen doesn't go dark when another device owns the GUI).
 
 ## Reference Docs
+- **Methods of Operation (the working playbook)**: `METHOD.md` — the C#-oracle port loop (observe → oracle → diff → locate → KISS → verify → guard → confirm), its four executable stations, the "where does the fix go?" layer map, and the anti-patterns. Read it before porting any device/feature.
 - Architecture history: `doc/HISTORY_ARCHITECTURE.md`
 - Project history: `doc/HISTORY_PROJECT.md`
 - Changelog: `doc/CHANGELOG.md`
