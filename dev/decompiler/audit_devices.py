@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from formcztv_init import form_cztv_init, resolution_of
 
+from trcc.adapters.device.bulk_lcd import _BULK_BASE_FBL, _BULK_KNOWN_PMS
 from trcc.core.models import oriented_resolution
 from trcc.core.protocol import get_profile, pm_to_fbl
 
@@ -206,11 +207,57 @@ def _print(row: Row) -> None:
           f"{thememl_note}  [not a verdict axis]")
 
 
+def _bulk_resolution(pm: int, sub: int) -> tuple[int, int]:
+    """The resolution ``BulkLcd.connect()`` resolves for a (pm, sub).
+
+    Mirrors the adapter's branch exactly and imports the SHIPPING
+    ``_BULK_KNOWN_PMS`` — so this checks the real code path, never a copy of it.
+    """
+    if pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49)):
+        fbl = pm_to_fbl(pm, sub)
+    else:
+        fbl = _BULK_BASE_FBL
+    return get_profile(fbl, pm).resolution
+
+
+def exhaustive_bulk() -> int:
+    """Sweep the ENTIRE bulk PM space against the C# ``FormCZTVInit(72, 2, …)``.
+
+    The bulk path is the one wire whose resolution is 100% ``FormCZTVInit``
+    (TRCC.decompiled.cs:742 passes the PM straight in), so it is fully
+    bench-decidable.  Zero divergence over every PM means the bulk device axis
+    is a closed, C#-faithful wall — every bulk panel the C# supports resolves
+    correctly in our port before anyone plugs one in.  Non-zero exit = a PM
+    drifted from the C# (e.g. a poll-byte value re-added to ``_BULK_KNOWN_PMS``).
+    """
+    cases = [(pm, 0) for pm in range(256)] + [(1, 48), (1, 49)]
+    diverge = [
+        (pm, sub, _bulk_resolution(pm, sub), theirs)
+        for pm, sub in cases
+        if (theirs := resolution_of(form_cztv_init(fbl=72, m=2, pm=pm, pmSub=sub)))
+        != _bulk_resolution(pm, sub)
+    ]
+    print(f"Exhaustive bulk sweep: {len(cases)} fingerprints "
+          "(pm 0-255 + 1/48, 1/49) vs C# FormCZTVInit(72, 2, pm, sub)")
+    if diverge:
+        print(f"  {len(diverge)} DIVERGE from the C#:")
+        for pm, sub, ours, theirs in diverge:
+            print(f"    pm={pm} sub={sub}: ours={_res(ours)}  C#={_res(theirs)}")
+        return 1
+    print("  OK — every bulk PM matches the C#. The bulk device axis is a wall.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pm", type=int, help="filter the corpus to this PM byte")
     ap.add_argument("--all", action="store_true", help="audit the whole corpus")
+    ap.add_argument("--exhaustive-bulk", action="store_true",
+                    help="sweep the whole bulk PM space vs the C# (the wall)")
     args = ap.parse_args()
+
+    if args.exhaustive_bulk:
+        return exhaustive_bulk()
 
     if args.all:
         corpus = CORPUS

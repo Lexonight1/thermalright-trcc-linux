@@ -127,6 +127,39 @@ def test_pm1_known_sub_still_overrides(
     assert device.connect().resolution == expected
 
 
+def _formcztv_bulk_resolution(pm: int) -> tuple[int, int]:
+    """The resolution the C# ``FormCZTVInit(72, 2, pm, 0)`` yields — the spec.
+
+    Independent statement of the C# rule (the ``switch(pm)`` + ``m==2`` branches);
+    the test asserts the real ``BulkLcd`` handshake matches it for every PM.
+    """
+    override = {
+        5: (320, 240), 7: (640, 480), 32: (320, 320),
+        64: (1600, 720), 65: (1920, 462),
+        9: (854, 480), 10: (960, 540), 11: (854, 480), 12: (800, 480),
+    }
+    return override.get(pm, (480, 480))
+
+
+@pytest.mark.parametrize("pm", range(1, 71))
+def test_bulk_resolution_matches_formcztvinit_over_full_pm_space(
+    fake_bulk: FakeBulkTransport, pm: int,
+) -> None:
+    """The wall: EVERY bulk PM resolves exactly as the C# FormCZTVInit(72,2,pm,0).
+
+    The bulk path is 100% FormCZTVInit (the C# passes the PM straight in), so
+    it's fully bench-decidable — every bulk panel the C# supports resolves
+    correctly before anyone plugs one in.  This sweep is the guard against a
+    poll-byte PM re-accreting into ``_BULK_KNOWN_PMS`` (the #176 root cause). (#176)
+    """
+    fake_bulk.read_script.append(_bulk_response(pm))
+    result = _make_bulk(fake_bulk).connect()
+    expected = _formcztv_bulk_resolution(pm)
+    assert result.resolution == expected, (
+        f"PM={pm}: bulk resolved {result.resolution}, C# FormCZTVInit says {expected}"
+    )
+
+
 @pytest.mark.parametrize("pm,expected_baseline", [
     (6, 180),   # FW360 Ultra mounts 180° rotated — needs a device baseline (#137)
     (1, 0),     # other PMs carry no hardware-mount baseline
