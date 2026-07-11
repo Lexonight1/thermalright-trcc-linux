@@ -965,8 +965,8 @@ class LCDHandler(BaseHandler):
         # every mask/theme element (user layer empty) — the flash then fell
         # back to a bare index that matched nothing (#150/#203).
         elements = self._app.effective_overlay_elements(self._device_key)
-        element_id = (elements[index].get("id") if 0 <= index < len(elements)
-                      else str(index))
+        raw_id = elements[index].get("id") if 0 <= index < len(elements) else None
+        element_id = str(raw_id) if raw_id is not None else str(index)
         self.log.info("flash_element: index=%d → element_id=%s",
                       index, element_id)
         self._app.dispatch(FlashOverlayElement(
