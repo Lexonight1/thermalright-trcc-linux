@@ -29,6 +29,7 @@ from ...core.commands import (
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
+    RestoreDeviceState,
     RestoreLastTheme,
     SaveTheme,
     SetBrightness,
@@ -203,15 +204,15 @@ class LCDHandler(BaseHandler):
         self._refresh(w, h, first_load=False)
 
     def restore_inactive_state(self) -> None:
-        """Restore last theme for an inactive LCD without touching shared widgets.
+        """Restore display state for an inactive LCD without touching shared widgets.
 
         Multi-display: all LCDs should keep playing their video even
-        when not selected.  next/'s RestoreLastTheme Command persists +
-        re-loads the previously-active theme; the handler subscribes to
-        the resulting frame via the global FrameSent stream.
+        when not selected.  The unified ``RestoreDeviceState`` Command
+        rehydrates the device's persisted theme + background; the handler
+        subscribes to the resulting frame via the global FrameSent stream.
 
         The animation timer is started by the ``VideoStarted`` observer
-        when ``RestoreLastTheme`` → ``LoadTheme`` → ``PlayVideo`` fires,
+        when ``RestoreDeviceState`` → ``LoadTheme`` → ``PlayVideo`` fires,
         so no explicit timer start here (DRY: one start site).
         """
         self._pm.ui_active = False
@@ -219,7 +220,7 @@ class LCDHandler(BaseHandler):
         device = self._app.devices.get(self._device_key)
         if device is None or not device.is_connected:
             return
-        self._app.dispatch(RestoreLastTheme(key=self._device_key))
+        self._app.dispatch(RestoreDeviceState(key=self._device_key))
 
     def _refresh(self, w: int, h: int, *, first_load: bool = False) -> None:
         """Update widgets from the device's current persisted settings.

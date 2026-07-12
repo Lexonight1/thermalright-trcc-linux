@@ -27,6 +27,7 @@ from ...core.commands import (
     PlayVideo,
     RenderAndSend,
     RenderDcStandalone,
+    RestoreDeviceState,
     RestoreLastTheme,
     SeekVideo,
     SendColor,
@@ -221,7 +222,14 @@ def load_image(
     of the same image are cheap (no re-copy).
     """
     log.info("cli display load-image: key=%s path=%s", key, path)
-    dispatch_echo(LoadImage(key=key, path=path))
+    # LoadImage → LoadTheme renders on the wire; attach the device first so a
+    # fresh CLI process doesn't fail "not connected".  Idempotent.  (#150)
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(LoadImage(key=key, path=path))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("load-video")
@@ -437,6 +445,13 @@ def play(
 
     app_obj = get_app()
     ensure_connected(app_obj, key)   # once, before the loop (not per tick)
+    # Self-prime: a fresh CLI process holds no in-memory theme, so RenderAndSend
+    # would fail "No active theme".  Restore the device's persisted display
+    # state (theme + background) the way the GUI does on connect.  (#150)
+    restore = app_obj.dispatch(RestoreDeviceState(key=key))
+    if not restore.ok:
+        typer.echo(restore.message, err=True)
+        raise typer.Exit(code=1)
     tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
     tick_s = max(0.05, tick_s)
 
@@ -762,7 +777,15 @@ def keepalive(
             f"Keepalive on {key} every {interval:.3f}s "
             f"(metric refresh every {metric_interval:.1f}s, Ctrl-C to stop)…"
         )
-    result = get_app().dispatch(KeepAliveLoop(
+    app_obj = get_app()
+    ensure_connected(app_obj, key)
+    # Self-prime persisted display state so a rendered frame exists to resend
+    # — closes the "No cached frame — render at least once first" gap.  (#150)
+    restore = app_obj.dispatch(RestoreDeviceState(key=key))
+    if not restore.ok:
+        typer.echo(restore.message, err=True)
+        raise typer.Exit(code=1)
+    result = app_obj.dispatch(KeepAliveLoop(
         key=key, count=count,
         interval_s=interval, metric_interval_s=metric_interval,
     ))

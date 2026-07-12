@@ -201,6 +201,56 @@ def test_display_color_auto_connects_then_sends(cli_runner: CliRunner, cli_app) 
     assert result.exit_code == 0
 
 
+def test_display_load_image_auto_connects_then_sends(
+    cli_runner: CliRunner, cli_app, tmp_path,
+) -> None:
+    """``display load-image`` self-connects before rendering (#150).
+
+    LoadImage → LoadTheme renders on the wire; a fresh CLI process holds no
+    attached device, so without the ensure_connected the command failed
+    "not connected".  A known device now loads the image successfully.
+    """
+    del cli_app
+    image = tmp_path / "pic.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")  # header only — _CliRenderer ignores content
+    result = cli_runner.invoke(
+        _app(), ["display", "load-image", "0402:3922", str(image)],
+    )
+    assert result.exit_code == 0
+
+
+def test_theme_cloud_load_attaches_before_load(
+    cli_runner: CliRunner, cli_app, monkeypatch,
+) -> None:
+    """``theme cloud-load`` dispatches EnsureConnected before the wire load (#150).
+
+    The reporter's "Not attached: 0402:3922" was cloud-load skipping the
+    attach that display commands already do.  We spy the App's dispatch to
+    assert the attach lands first, short-circuiting the actual network
+    download at the LoadCloudTheme boundary.
+    """
+    from trcc.core.commands import LoadCloudTheme
+    from trcc.core.commands.theme import CloudThemeLoadResult
+
+    seen: list[str] = []
+    real_dispatch = cli_app.dispatch
+
+    def spy(cmd):
+        seen.append(type(cmd).__name__)
+        if isinstance(cmd, LoadCloudTheme):
+            return CloudThemeLoadResult(
+                ok=True, key=cmd.key, theme_id=cmd.theme_id,
+                theme_path="", message="ok",
+            )
+        return real_dispatch(cmd)
+
+    monkeypatch.setattr(cli_app, "dispatch", spy)
+    cli_runner.invoke(_app(), ["theme", "cloud-load", "0402:3922", "a001"])
+
+    assert "EnsureConnected" in seen
+    assert seen.index("EnsureConnected") < seen.index("LoadCloudTheme")
+
+
 def test_display_color_unknown_device_fails(cli_runner: CliRunner, cli_app) -> None:
     """An unknown VID:PID can't connect, so ``display color`` exits non-zero
     with the connect failure surfaced (not a silent send)."""

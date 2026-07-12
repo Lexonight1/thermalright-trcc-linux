@@ -36,7 +36,7 @@ from ...core.commands import (
     PauseVideo,
     PlayVideo,
     RenderAndSend,
-    RestoreLastTheme,
+    RestoreDeviceState,
     SeekVideo,
     SendColor,
     SetBackgroundMode,
@@ -815,9 +815,14 @@ def tick(key: str, request: Request) -> RenderResponse:
 
 @router.post("/restore-theme", response_model=ThemeResponse)
 def restore_theme(key: str, request: Request) -> ThemeResponse:
-    """Reload the device's persisted theme."""
+    """Restore the device's display state (persisted theme + background).
+
+    Dispatches the unified ``RestoreDeviceState`` — persisted theme, or the
+    first available theme when none is saved, then replays the persisted
+    background video — the same path the GUI/CLI use at their display entry.
+    """
     log.info("api POST /devices/{key}/display/restore-theme: key=%s", key)
-    result = request.app.state.trcc.dispatch(RestoreLastTheme(key=key))
+    result = request.app.state.trcc.dispatch(RestoreDeviceState(key=key))
     http_error_if_failed(result)
     return to_theme_response(result)
 

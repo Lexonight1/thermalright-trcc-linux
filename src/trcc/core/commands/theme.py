@@ -1534,6 +1534,85 @@ class RestoreLastTheme(Command[ThemeResult]):
         ).execute(app)
 
 @dataclass(frozen=True, slots=True)
+class RestoreDeviceState(Command[ThemeResult]):
+    """Ensure *key* has a renderable display state from persisted settings.
+
+    The shared "make this device show something" path every UI dispatches at
+    its display-start entry — the GUI on connect, the CLI ``display play`` /
+    ``keepalive`` before their loop, the API ``restore-theme`` endpoint.
+    Idempotent: a no-op when a theme is already active (a daemon / GUI already
+    primed it), so it's safe to dispatch unconditionally at each entry.
+
+    Order (mirrors the GUI connect-restore, minus GUI-only widget restore):
+      1. Active theme already loaded → done.
+      2. ``RestoreLastTheme`` — the persisted theme + its mask + overlays +
+         bundled video (preserves the device's overrides).
+      3. No persisted theme → auto-load the first available theme
+         (``ListThemes`` → ``LoadTheme``), matching the GUI first-install
+         auto-load so a fresh device still shows something.
+      4. Replay the persisted ``background_path`` video override
+         (``PlayVideo``) so a cloud / user video resumes on top of the theme.
+
+    Steps 2-3 render + send an immediate first frame, which also leaves a
+    cached frame — so a keepalive resend has something to push (the terminal
+    "No cached frame — render at least once first" gap this closes). (#150)
+    """
+    key: str
+
+    def execute(self, app: App) -> ThemeResult:
+        log.info("RestoreDeviceState: key=%s", self.key)
+        existing = app.active_themes.get(self.key)
+        if existing is not None:
+            log.info("RestoreDeviceState: %s already has an active theme — no-op",
+                     self.key)
+            return ThemeResult(ok=True, key=self.key, theme_name=existing.name,
+                               theme_path=str(existing.path),
+                               message="Display state already active")
+
+        # 2. Persisted theme (reset_overrides=False preserves overlay/mask edits).
+        RestoreLastTheme(key=self.key).execute(app)
+
+        # 3. Nothing persisted → first available theme (GUI first-install parity).
+        #    Resolve via the shared oriented resolver (device profile → native →
+        #    registry) so a rotate panel lists its portrait catalog, matching
+        #    where the GUI browser lists themes.
+        if app.active_themes.get(self.key) is None:
+            resolution = _resolve_oriented_resolution(app, self.key)
+            if resolution is None:
+                log.warning("RestoreDeviceState: %s — cannot resolve resolution "
+                            "to auto-load a theme", self.key)
+            else:
+                listing = ListThemes(resolution=resolution).execute(app)
+                if listing.themes:
+                    first = Path(listing.themes[0].path)
+                    log.info("RestoreDeviceState: %s no persisted theme — "
+                             "auto-loading first theme %s", self.key, first)
+                    LoadTheme(key=self.key, path=first).execute(app)
+
+        theme = app.active_themes.get(self.key)
+        if theme is None:
+            log.warning("RestoreDeviceState: %s — no theme available to restore",
+                        self.key)
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=("No theme available for this device — install themes "
+                         "or load a theme first"),
+            )
+
+        # 4. Resume the persisted cloud / user video background over the theme.
+        bg = app.settings.for_device(self.key).background_path
+        if bg:
+            log.info("RestoreDeviceState: %s replaying persisted background %s",
+                     self.key, bg)
+            PlayVideo(key=self.key, path=Path(bg)).execute(app)
+
+        return ThemeResult(
+            ok=True, key=self.key, theme_name=theme.name,
+            theme_path=str(theme.path),
+            message=f"Display state restored ({theme.name})",
+        )
+
+@dataclass(frozen=True, slots=True)
 class ListCloudThemes(Command[CloudThemesListResult]):
     """List themes available in Thermalright's hosted catalog.
 

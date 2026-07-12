@@ -22,7 +22,7 @@ from ...core.commands import (
     SaveTheme,
     UploadCustomMask,
 )
-from ._ctx import get_app
+from ._ctx import ensure_connected, get_app
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +114,10 @@ def create(
         key, name, background, mask, metric,
     )
     app_obj = get_app()
+    # This CLI process holds no attached devices; LoadImage → LoadTheme renders
+    # on the wire, so attach first or it fails "not connected".  Idempotent when
+    # a daemon/GUI already owns the device.  (#150)
+    ensure_connected(app_obj, key)
 
     bg_result = app_obj.dispatch(LoadImage(key=key, path=background))
     if not bg_result.ok:
@@ -292,7 +296,12 @@ def cloud_load(
 ) -> None:
     """Download a cloud theme and load it on a device."""
     log.info("cli theme cloud-load: key=%s theme_id=%s", key, theme_id)
-    result = get_app().dispatch(LoadCloudTheme(key=key, theme_id=theme_id))
+    app_obj = get_app()
+    # LoadCloudTheme dispatches PlayVideo on the wire; this stateless CLI
+    # process must attach the device first or it fails "Not attached".
+    # Idempotent when a daemon/GUI already holds it.  (#150)
+    ensure_connected(app_obj, key)
+    result = app_obj.dispatch(LoadCloudTheme(key=key, theme_id=theme_id))
     typer.echo(result.message)
     if result.theme_path:
         typer.echo(f"  staged at: {result.theme_path}")

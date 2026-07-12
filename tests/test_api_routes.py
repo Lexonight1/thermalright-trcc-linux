@@ -521,10 +521,33 @@ def test_display_snapshot(api_client: TestClient) -> None:
 
 
 def test_display_restore_theme_no_persisted(api_client: TestClient) -> None:
-    """RestoreLastTheme with nothing persisted returns a 400 from
-    ``http_error_if_failed`` (Result.ok=False)."""
+    """RestoreDeviceState with nothing persisted AND no themes installed
+    returns a 400 from ``http_error_if_failed`` (Result.ok=False —
+    "No theme available")."""
     resp = api_client.post("/devices/0402:3922/display/restore-theme")
     assert resp.status_code in (400, 404)
+
+
+def test_display_restore_theme_autoloads_first_theme(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """With a theme installed but none persisted, the restore-theme route's
+    RestoreDeviceState auto-loads the first available theme → 200 ok."""
+    import json as _json
+
+    theme_root = fake_platform.paths().theme_dir(320, 320)
+    tdir = theme_root / "Auto"
+    tdir.mkdir(parents=True)
+    (tdir / "trcc.json").write_text(
+        _json.dumps({"name": "Auto", "width": 320, "height": 320, "elements": []}),
+        encoding="utf-8",
+    )
+    (tdir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    resp = api_client.post("/devices/0402:3922/display/restore-theme")
+
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
 
 
 def test_system_list_gpus(api_client: TestClient) -> None:
