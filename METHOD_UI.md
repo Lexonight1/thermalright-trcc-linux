@@ -16,9 +16,9 @@ it everywhere already exists (see #150: the GUI could keep a volatile panel lit
 from persisted state; the CLI couldn't, because its entry skipped the restore
 the GUI did on connect).
 
-## The three backbones
+## The four backbones
 
-Everything a UI does resolves to one of three shared spines. A UI owns none of
+Everything a UI does resolves to one of four shared spines. A UI owns none of
 them; it only *invokes* them.
 
 1. **Behaviour → one Command.** Every user action is a single `Command`
@@ -37,6 +37,16 @@ them; it only *invokes* them.
    steps are identical everywhere: **detect → ensure data → connect → restore
    → stream** (below). A UI decides *when* to run a step (GUI on window-ready,
    CLI on command, API on request), never *what* the step does.
+4. **Launch → one contract: `run(platform) -> int`.** Every leaf UI is injected
+   the `Platform` *port* — the abstraction the mock replaces (`MockPlatform`) —
+   and composes its own App from it (via `_boot.trcc(platform, renderer)`,
+   the one App factory). **Inject the Platform, not a pre-built App:** the GUI's
+   Qt-before-renderer and single-instance-before-build ordering can't receive an
+   injected App, so the platform is the only *uniform* seam (DIP — depend on the
+   port; each UI owns its own renderer lifecycle). The GUI + qtgui share
+   `qapp.build_qt_app(platform)`; the API composes a headless `QtRenderer`. This
+   is what lets one `dev/mock.py --ui {cli,api,gui,qtgui}` drive any UI against
+   the same `MockPlatform` (real dev-box sensors, faked device).
 
 ## The UI is a thin translator — the shape of every adapter method
 
@@ -108,11 +118,17 @@ drift to resist.
 ## The parity gate
 
 `tests/test_ui_parity.py` pins the CLI ↔ API Command surface: the two complete
-programmatic UIs must dispatch the same Commands, and every intentional
-asymmetry lives in an annotated ledger with a reason. A new Command wired into
-one surface but not the other **fails the test** — which forces the author to
-either reach parity or record why not. That test is the enforceable half of this
-doc; the prose is the why.
+programmatic UIs must dispatch the same Commands (today ~95 shared), and every
+intentional asymmetry lives in an annotated ledger — `_CLI_ONLY` / `_API_ONLY` —
+where each reason is tagged **`scoped:`** (legitimately one-UI) or **`gap:`**
+(should reach parity — a tracked TODO, e.g. `RunQuickstart`, the first-run
+lifecycle drift). A new Command wired into one surface but not the other **fails
+the test**, forcing the author to either reach parity or ledger it with a reason;
+a stale ledger entry (no longer diverging) also fails, so the ledger can't rot.
+A shared-surface floor guards against the collector silently returning empty and
+passing vacuously. That test is the enforceable half of this doc; the prose is
+the why. (GUI/qtgui dispatch via handlers, not top-level imports, so their
+reachability needs a dynamic collector — a future gate.)
 
 ## Anti-patterns — the ways UI unity breaks
 
