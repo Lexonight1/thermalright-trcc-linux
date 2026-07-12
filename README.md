@@ -53,7 +53,7 @@
 
 Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.1.2). Control and customize the LCD displays and LED segment displays on Thermalright CPU coolers, AIO pump heads, and fan hubs — entirely from Linux.
 
-> **This project wouldn't exist without our testers.** I only own one device. Every supported device in this list works because someone plugged it in, ran `trcc report`, and told me what broke. 32 testers helped us go from "SCSI only" to full C# feature parity with 6 USB protocols, 16 FBL resolutions, and 12 LED styles. Open source at its best — see [Contributors](#contributors) below.
+> **This project wouldn't exist without our testers.** I only own one device. Every supported device in this list works because someone plugged it in, ran `trcc report`, and told me what broke. 32 testers helped us go from "SCSI only" to full C# feature parity with 6 USB protocols, 16 FBL resolutions, and 13 LED styles. Open source at its best — see [Contributors](#contributors) below.
 
 > Unofficial community project, not affiliated with Thermalright. Built with [Claude](https://claude.ai) (AI) for protocol reverse engineering and code generation, guided by human architecture decisions and logical assessment.
 
@@ -233,7 +233,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Media** | Video/GIF playback on LCD, video trimmer, image cropper, screen cast (X11 + Wayland), mic audio visualization |
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
 | **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage — customizable dashboard |
-| **LED Control** | 12 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
+| **LED Control** | 13 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
 | **Display** | 16 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels |
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules, polkit policy, SELinux support, no root required after setup |
@@ -291,7 +291,7 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 **HID LED devices** — RGB LED control:
 | USB ID | Devices |
 |--------|---------|
-| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL ARGB White, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, HR10 2280 PRO Digital, and others (model auto-detected via handshake) |
+| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL ARGB White, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, HR10 2280 PRO Digital, Magic Qube, and others (model auto-detected via handshake) |
 
 > See the [full device list with protocol details](doc/REFERENCE_DEVICES.md) and the [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) if you have an untested device.
 
@@ -336,20 +336,21 @@ If a probe goes `BAD`, that's the bug — fix in `src/`, re-run, see `PASS`. Eve
 | HID Type 3 | pyusb interrupt | TARAN ARMS |
 | Bulk | pyusb bulk | GrandVision 360, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro |
 | LY | pyusb bulk (chunked) | Trofeo Vision 9.16 LCD |
-| LED | pyusb HID | All LED segment display devices (12 styles) |
+| LED | pyusb HID | All LED segment display devices (13 styles) |
 
 ## Code Contributors
 
 These folks didn't just report a problem — they opened the editor and sent a fix. On a solo project, a merged pull request is about the most generous thing you can do, and every one of these shipped to every user:
 
+- **[@jphilipb](https://github.com/jphilipb)** — [#215](https://github.com/Lexonight1/thermalright-trcc-linux/pull/215): reverse-engineered and hardware-validated the Thermalright Magic Qube (65-LED segment display) — a device that doesn't even exist in the Windows app — and wired up full support from scratch.
 - **[@Hythera](https://github.com/Hythera)** — [#209](https://github.com/Lexonight1/thermalright-trcc-linux/pull/209): had the flake read its version straight from `pyproject.toml`, killing an entire place I used to have to bump by hand every release.
 - **[@elsiedotcafe](https://github.com/elsiedotcafe)** — [#123](https://github.com/Lexonight1/thermalright-trcc-linux/pull/123): pinned the PySide6 package to a stable source so the build stops breaking.
 
-Thank you both — genuinely. PRs are always welcome, and you'll land right here.
+Thank you all — genuinely. PRs are always welcome, and you'll land right here.
 
 ## Contributors
 
-A huge thank you to every single person who filed an issue, pasted a `trcc report`, or just said "it doesn't work." You are the reason this project supports 6 USB protocols, 16 resolutions, and 12 LED styles from a single developer with one device. Every bug report, every test on hardware I don't own, every "hey this is broken" — that's open source at its best. You're not wasting your time. You're building something together.
+A huge thank you to every single person who filed an issue, pasted a `trcc report`, or just said "it doesn't work." You are the reason this project supports 6 USB protocols, 16 resolutions, and 13 LED styles from a single developer with one device. Every bug report, every test on hardware I don't own, every "hey this is broken" — that's open source at its best. You're not wasting your time. You're building something together.
 
 Special thanks to everyone who has contributed invaluable reports to this project:
 

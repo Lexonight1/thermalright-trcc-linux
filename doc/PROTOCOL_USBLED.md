@@ -102,6 +102,26 @@ From `FormLEDInit()` (FormLED.cs line 1598):
 
 **Sub-type disambiguation:** PM=128 is shared by LC1 (sub=0) and HR10 (sub=129). The `SUB_TYPE_OVERRIDES` table resolves this.
 
+### Handshake-header overrides (Linux additions)
+
+A product can reuse another device's PM byte yet ship a distinct firmware
+handshake header, leaving the PM byte alone ambiguous. When the leading four
+header bytes match a known fingerprint, that entry wins over the PM registry
+(`resolve_handshake()` in `core/led_protocol.py`, checked before `resolve_pm()`).
+
+| Header | Style | Model | LED Count | Segments | Zones |
+|--------|-------|-------|-----------|----------|-------|
+| `DC DD AA 01` | 13 | Magic Qube | 65 | 14 | 4 |
+
+The **Magic Qube** reports PM=208 (same as CZ1) but answers the HID handshake
+with `DC DD AA 01` instead of the standard `DA DB DC DD` — the only wire-level
+signal that tells it apart. It is a 65-LED device (two 7-segment digits at 3 LEDs
+per segment, four corner metric indicators, and a 15-LED contour border) with a
+CZ1-style 2-digit / 4-phase indicator rotation (CPU°C / GPU°C / GPU% / CPU%). No
+reference exists in the Windows TRCC 2.1.4/2.1.6 app; the layout was
+reverse-engineered on hardware and validated by
+[@jphilipb](https://github.com/jphilipb).
+
 ## LED Data Packet
 
 ### Header (20 bytes)

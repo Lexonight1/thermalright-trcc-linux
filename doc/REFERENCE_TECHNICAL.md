@@ -302,6 +302,13 @@ The LED handshake reads a PM (product mode) byte from the device, which maps to 
 | 144| 11    | LF15 | 93 | 72 |
 | 160| 12    | LF13 | 62 | 62 |
 | 208| 8     | CZ1 | 18 | 13 |
+| 208| 13    | Magic Qube | 65 | 14 |
+
+The Magic Qube reports PM=208 like the CZ1, so it is not told apart by the PM
+byte. It is disambiguated by its handshake header `DC DD AA 01` (the CZ1 answers
+with the standard `DA DB DC DD`); the header override is checked before the PM
+registry. It is a Linux-added device — absent from the Windows TRCC app —
+reverse-engineered and hardware-validated by [@jphilipb](https://github.com/jphilipb).
 
 ### LED Packet Format
 
@@ -538,7 +545,7 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
-    ├── uc_led_control.py        # LED RGB control panel (LED styles 1-12)
+    ├── uc_led_control.py        # LED RGB control panel (LED styles 1-13)
     ├── uc_screen_led.py         # LED segment visualization (colored circles)
     ├── uc_color_wheel.py        # HSV color wheel for LED hue selection
     ├── uc_activity_sidebar.py   # Sensor element picker

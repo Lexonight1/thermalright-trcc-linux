@@ -34,6 +34,7 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Peerless Assassin 120 Digital ARGB White | HID (0416:8001) | [Xentrino](https://github.com/Xentrino) |
 | Phantom Spirit 120 Digital EVO | HID (0416:8001) | [javisaman](https://github.com/javisaman), [Rizzzolo](https://github.com/Rizzzolo) |
 | HR10 2280 PRO Digital | HID (0416:8001) | [Lcstyle](https://github.com/Lcstyle) |
+| Magic Qube | HID (0416:8001) | [jphilipb](https://github.com/jphilipb) |
 
 ---
 
@@ -66,7 +67,6 @@ These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, vid
 | Royal Lord 120 Vision | — |
 | Royal Knight 130 Vision | — |
 | Phantom Spirit 120 Vision | — |
-| Magic Qube | — |
 
 ### LED + Segment Display Products (Digital Series)
 

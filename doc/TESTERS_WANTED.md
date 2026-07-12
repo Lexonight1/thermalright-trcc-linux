@@ -135,7 +135,6 @@ The following models are listed on [Thermalright's official download page](https
 | Core Vision | HID LCD or LED | Need tester |
 | Hyper Vision | HID LCD or LED | Need tester |
 | Levita Vision | HID LCD or LED | Need tester |
-| Magic Qube | HID LCD or LED | Need tester |
 | MC-3 DIGITAL | HID LCD or LED | Need tester |
 | Peerless Assassin 140 Digital | HID LCD or LED | Need tester |
 | Peerless Vision | HID LCD or LED | Need tester |

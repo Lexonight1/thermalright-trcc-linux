@@ -69,7 +69,7 @@ All features are tested and working on the `main` branch:
 | 6 | Linting (ruff) | Done — 0 violations |
 | 7 | PyPI publish | Done — [trcc-linux](https://pypi.org/project/trcc-linux/) |
 | 8 | HID LCD support | Done — auto-detected |
-| 9 | LED RGB control | Done — 6 modes, 12 styles, sensor-linked |
+| 9 | LED RGB control | Done — 6 modes, 13 styles, sensor-linked |
 | 10 | Bulk USB protocol | Done — GrandVision/Mjolnir Vision |
 | 11 | HR10 7-segment display | Removed (v5.1.0) — Linux-only, not in C# reference |
 | 12 | On-demand download | Done — 16 resolutions + 33 web archives |
