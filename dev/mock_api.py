@@ -70,21 +70,6 @@ def main() -> None:
 
     platform = bootstrap(report_path)
 
-    # Pre-seed the API boot cache with our MockPlatform — every endpoint
-    # uses `_boot.get_trcc()` (devices, led, system, control_center,
-    # themes, i18n) and picks up the cached, mock-backed Trcc.
-    from trcc._boot import trcc as get_trcc
-    get_trcc(platform)
-
-    # configure_app() builds TrccApp via ControllerBuilder.for_current_os,
-    # which routes through `make_platform()`. Setting TRCC_MOCK lets the
-    # legacy TrccApp path also see MockPlatform — same flow as production.
-    os.environ.setdefault('TRCC_MOCK', '1')
-
-    import trcc.ui.api as api_module
-    api_module.configure_app()
-    api_module.configure_auth(token)
-
     print(f"\nServing on http://127.0.0.1:{port}")
     print(f"Auth: {'token=' + token if token else 'OPEN (no auth)'}")
     print("Try:")
@@ -92,8 +77,12 @@ def main() -> None:
     print(f"  curl http://127.0.0.1:{port}/system/health")
     print("Ctrl+C to quit.\n")
 
-    import uvicorn
-    uvicorn.run(api_module.app, host='127.0.0.1', port=port)
+    # Uniform launch seam (METHOD_UI.md): inject the MockPlatform; the API
+    # composes its App from it (headless QtRenderer) and serves.  ``run``
+    # is the same code path the shipping ``trcc api`` uses.
+    from trcc.ui.api.main import configure_auth, run
+    configure_auth(token)
+    run(platform, host='127.0.0.1', port=port)
 
 
 if __name__ == '__main__':
