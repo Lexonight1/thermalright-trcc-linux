@@ -51,10 +51,11 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         vid=0x0416, pid=0x5406,
         vendor="Winbond",
         product="LCD Display",
-        # Elite Vision 360 ARGB (#212): enumerates vendor-specific with two BULK
-        # endpoints, never a /dev/sg* node — it is a BULK device, not SCSI.  Its
-        # PM/resolution table already lives in _BULK_VARIANTS (variants.py).
-        wire=Wire.BULK, kind=Kind.LCD,
+        # Elite Vision 360 ARGB (#212): USBLCDNew "Ali" variant — driven by its
+        # own C# worker (ThreadSendDeviceDataALi), a DISTINCT bulk protocol from
+        # GrandVision (write EP 0x02, F5-handshake, validate resp[0]∈{101,102},
+        # fixed 320x320 RGB565).  Not PM-table-driven — see adapters/device/ali_lcd.py.
+        wire=Wire.BULK_ALI, kind=Kind.LCD,
         device_type=4, fbl=100,
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),

@@ -130,6 +130,18 @@ def ly_reply(pm: int, sub: int = 0, *, is_ly1: bool = False,
     return bytes(resp)
 
 
+def ali_handshake_reply(*, size: int = 1024) -> bytes:
+    """USBLCDNew "Ali" reply — identity at ``resp[0]`` (101 or 102).
+
+    Mirrors ``AliLcd.connect``: the validator accepts ``resp[0] ∈ {101, 102}``
+    and derives ``model_id = resp[0] - 1``.  No PM/SUB — the Ali device has a
+    fixed 320x320 RGB565 canvas.
+    """
+    resp = bytearray(size)
+    resp[0] = 101
+    return bytes(resp)
+
+
 def mock_handshake(product: ProductInfo, *, pm: int, sub: int, fbl: int) -> bytes:
     """The bytes ``<device>.connect()`` reads back — derived from our models.
 
@@ -150,6 +162,8 @@ def mock_handshake(product: ProductInfo, *, pm: int, sub: int, fbl: int) -> byte
                 else hid_type3_reply(fbl))
     if wire is Wire.LY:
         return ly_reply(pm, sub, is_ly1=(product.pid != _PID_LY))
+    if wire is Wire.BULK_ALI:
+        return ali_handshake_reply()
     return bulk_handshake_reply(pm, sub)  # BULK + synthesized fallback
 
 

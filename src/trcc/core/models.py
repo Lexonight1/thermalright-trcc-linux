@@ -20,6 +20,7 @@ class Wire(str, Enum):
     SCSI = "scsi"
     HID = "hid"
     BULK = "bulk"
+    BULK_ALI = "bulk_ali"
     LY = "ly"
     LED = "led"
 
@@ -28,7 +29,7 @@ class Wire(str, Enum):
 # Thermalright logo after ~2-3 s unless frames keep arriving.  The per-device
 # send worker keepalive-resends the last frame for these.  SCSI/HID latch;
 # LED has no screen.  (Legacy ``run_static_loop`` covered exactly Bulk + LY.)
-VOLATILE_FRAME_WIRES: frozenset[Wire] = frozenset({Wire.BULK, Wire.LY})
+VOLATILE_FRAME_WIRES: frozenset[Wire] = frozenset({Wire.BULK, Wire.BULK_ALI, Wire.LY})
 
 
 class Kind(str, Enum):
