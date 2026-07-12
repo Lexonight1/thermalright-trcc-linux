@@ -13,9 +13,11 @@ device family, with zero hardware.
     PYTHONPATH=src python3 dev/decompiler/audit_rotation.py --all
 
 Exit code is non-zero if any DIFF is found, so it doubles as a CI/regression
-guard on the rotation port.  "ours" comes from the real shipping function
-``trcc.core.protocol.wire_angle`` (no reimplementation); "theirs" from
-``encode_reference`` (the cited C# transcription).
+guard on the rotation port.  "ours" is the FULL wire angle the render applies —
+``trcc.core.protocol.wire_angle`` composed with the device-mount
+``encode_baseline`` (the two rotations ``DisplayService`` applies at
+display.py:384 + :1321), no reimplementation; "theirs" from ``encode_reference``
+(the cited C# transcription, whose base already folds the pm=6 mount offset).
 """
 from __future__ import annotations
 
@@ -86,7 +88,13 @@ def _effective_profile(pm: int, sub: int) -> DeviceProfile:
 
 def audit(pm: int, sub: int, label: str = "") -> Row:
     p = _effective_profile(pm, sub)
-    ours = {o: wire_angle(p, o, portrait_content=False) for o in _ORIENTS}
+    # The FULL wire angle the render applies, mirroring DisplayService exactly:
+    # wire_angle (build_frame, display.py:384) THEN the device-mount encode
+    # baseline (_encode_for_wire, display.py:1321) — two same-origin clockwise
+    # rotations compose additively.  Omitting the baseline made pm=6 squares a
+    # false positive (the C# folds pm6→180 into its base; we split it out).
+    ours = {o: (wire_angle(p, o, portrait_content=False) + p.encode_baseline) % 360
+            for o in _ORIENTS}
     theirs = {o: csharp_wire_rotation(p.resolution, jpeg=p.jpeg, pm=pm,
                                       orientation=o) for o in _ORIENTS}
     return Row(label or f"pm={pm} sub={sub}", p.resolution, p.jpeg, pm,
