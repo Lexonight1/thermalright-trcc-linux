@@ -13,6 +13,7 @@ Key pieces:
 from __future__ import annotations
 
 import ctypes
+import errno
 import logging
 import os
 from pathlib import Path
@@ -219,6 +220,20 @@ class LinuxScsiTransport(ScsiTransport):
             return True
         except OSError as e:
             log.error("LinuxScsiTransport: open failed for %s: %s", self._path, e)
+            if e.errno == errno.EACCES:
+                # A resolved-but-unreadable node almost always means setup was
+                # never run: the /dev/sd* block fallback is root-only (the udev
+                # 0666 rule only covers scsi_generic), and even /dev/sg* is
+                # root-only until the setup rule lands.  Name the remediation
+                # instead of a bare EACCES.  (#217)
+                is_block = self._path.startswith("/dev/sd")
+                detail = ("this is a root-only block node (the sg kernel module "
+                          "isn't loaded) — " if is_block else "")
+                log.warning(
+                    "LinuxScsiTransport: permission denied on %s — %srun "
+                    "`trcc system setup` then reboot to load sg and grant "
+                    "0666 access without sudo (#217)", self._path, detail,
+                )
             return False
 
     def close(self) -> None:
