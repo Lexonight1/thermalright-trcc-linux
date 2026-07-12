@@ -13,6 +13,24 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **RESUME 2026-07-12 (evening) — #212 Ali bulk protocol, DIAGNOSED + plan APPROVED,
+  NOT yet coded. READ `memory/project_issue212_ali_bulk_protocol.md` FIRST.**
+  main==origin, tree clean (only CLAUDE.md/memory edits), CI GREEN, v9.8.6 live.
+  `0416:5406` (Elite Vision 360) = USBLCDNew **"Ali" variant** (C#
+  `ThreadSendDeviceDataALi`, USBLCDNEW.decompiled.cs:548) — a DISTINCT bulk protocol
+  from GrandVision (write EP **0x02**, 16-B handshake `F5 00 01 00 BC FF B6 C8…`,
+  validate `resp[0]∈{101,102}`, fixed **320×320 RGB565**). Our BulkLcd sends the
+  GrandVision handshake → 16-B reply → `len<41` rejects = the OP's `len=16,
+  resp[24]=N/A`. **APPROVED next step: build Option A** = new `Wire.BULK_ALI` +
+  `AliLcd` adapter + registry row + tests (all byte constants + full plan in the
+  memo). On-glass reporter-gated (AleksandroSN) — keep #212 open. **Other reporters
+  waiting**: #217 (SCSI `/dev/sda` scan-order/perm), #150 (bulk multi-command state),
+  #175 (reporter-gated `-vv`), #218 (Windows PATH + rotation).
+- **DONE 2026-07-12 — font-size "bug" was NOT a bug** (clock on 12hr; AM/PM read
+  bigger). Size pipeline measured + cited C#-faithful (reader matches case 220, units
+  = Point, 96-DPI QImage). `memory/project_resume_v986_and_font_size.md`. DO NOT
+  re-audit the DC reader. v9.8.6 shipped: GrandVision bulk fix + `trcc report`
+  handshake capture; bulk axis WALLED; **`METHOD.md` at root — READ IT.**
 - **RESUME 2026-07-04 — v9.8.2 SHIPPED (270° freeze fixed on ALL rotate panels) + issues/PRs cleared.
   READ `memory/project_rotation_universal_port.md` + `memory/project_report_replay_and_v980_issue_informing.md`
   + `memory/project_decompile_miner.md` FIRST.** Tree clean, all pushed. Big session:
