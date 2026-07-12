@@ -52,11 +52,12 @@ def main() -> None:
 
     platform = bootstrap(report_path)
 
-    # Pre-seed the CLI boot cache with our MockPlatform. Any command
-    # that subsequently calls `_boot.trcc()` gets the cached, mock-backed
-    # Trcc — no monkey-patching, just clean DI.
-    from trcc._boot import trcc as boot_trcc
-    boot_trcc(platform)
+    # Inject the MockPlatform into the CLI the same way the test ``cli_app``
+    # fixture does: set the ``_ctx`` platform override so every command's
+    # ``get_app()`` builds its App on the mock (renderer auto-detects the
+    # offscreen QtRenderer).  ``set_platform`` clears the lru_cache for us.
+    from trcc.ui.cli import _ctx
+    _ctx.set_platform(platform)
 
     from trcc.ui.cli import app as cli_app
     cli_app()
