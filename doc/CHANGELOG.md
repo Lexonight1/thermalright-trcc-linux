@@ -1,5 +1,32 @@
 # Changelog
 
+## v9.8.7
+
+**Widescreen panels display the right way up at 90° and 270°.** On widescreen
+LCDs — the Assassin 120 / Wonder Vision and similar 854×480, 1600×720, 1920×462
+and 1280×480 panels — rotating the display to 90° or 270° showed the image
+turned 180° from where it should be. The wire rotation now matches the official
+app exactly at every angle: the base rotation is fixed per panel size (it never
+depended on the handshake sub-byte, which is what had thrown it off for some
+panels). (#203, #169)
+
+**Elite Vision 360 ARGB now works.** This panel speaks a different variant of the
+bulk protocol than the other USB LCDs, so TRCC couldn't finish its handshake and
+the screen stayed blank. It's now recognised and driven with its own protocol
+(fixed 320×320). (#212)
+
+**Showing a theme from the terminal works on its own now.** Driving a panel
+purely from the command line, `trcc display play` and `trcc display keepalive`
+failed with "No active theme" / "No cached frame", and `trcc theme cloud-load`
+failed with "Not attached" — because each command is a fresh process that didn't
+reload what you'd already set. Those commands now restore the device's theme and
+background automatically before they start streaming, the same way the GUI does
+on connect. (#150)
+
+**Clearer message when a panel needs setup.** When a SCSI LCD can only be opened
+as root, TRCC now points you at `trcc system setup` (then reboot) instead of a
+bare permission error. (#217)
+
 ## v9.8.6
 
 **Grand Vision 360 (and its square-panel siblings) show at the right size.**
