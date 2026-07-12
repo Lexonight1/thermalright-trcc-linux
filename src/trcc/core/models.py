@@ -189,6 +189,7 @@ class LedStyle(str, Enum):
     LF11 = "lf11"       # legacy style_id 10
     LF15 = "lf15"       # legacy style_id 11
     LF13 = "lf13"       # legacy style_id 12
+    MAGIC_QUBE = "magic_qube"  # Linux-added: Thermalright Magic Qube (no legacy style_id)
 
 
 # =========================================================================

@@ -385,11 +385,36 @@ _POS_12: tuple[tuple[int, int, int, int], ...] = (
     (0, 0, 460, 460),
 )
 
+# Style 13: Magic Qube (50 LEDs) — two 7-seg digits, 3 LEDs per segment in
+# wire order c,d,e,g,b,a,f (right digit LEDs 0-20, left 21-41), + 4 corner
+# metric indicators, 2 LEDs each (42-49).  Derived by splitting the CZ1
+# segment rects so the preview aligns with the reused CZ1 deco background.
+_POS_13: tuple[tuple[int, int, int, int], ...] = (
+    (430, 240, 30, 65), (430, 305, 30, 65), (430, 370, 30, 66),
+    (264, 430, 57, 30), (321, 430, 57, 30), (378, 430, 58, 30),
+    (240, 240, 30, 65), (240, 305, 30, 65), (240, 370, 30, 66),
+    (264, 215, 57, 30), (321, 215, 57, 30), (378, 215, 58, 30),
+    (430, 24, 30, 65), (430, 89, 30, 65), (430, 154, 30, 66),
+    (264, 0, 57, 30), (321, 0, 57, 30), (378, 0, 58, 30),
+    (240, 24, 30, 65), (240, 89, 30, 65), (240, 154, 30, 66),
+    (190, 240, 30, 65), (190, 305, 30, 65), (190, 370, 30, 66),
+    (24, 430, 57, 30), (81, 430, 57, 30), (138, 430, 58, 30),
+    (0, 240, 30, 65), (0, 305, 30, 65), (0, 370, 30, 66),
+    (24, 215, 57, 30), (81, 215, 57, 30), (138, 215, 58, 30),
+    (190, 24, 30, 65), (190, 89, 30, 65), (190, 154, 30, 66),
+    (24, 0, 57, 30), (81, 0, 57, 30), (138, 0, 58, 30),
+    (0, 24, 30, 65), (0, 89, 30, 65), (0, 154, 30, 66),
+    (73, 114, 36, 16), (109, 114, 37, 16), (313, 114, 36, 16),
+    (349, 114, 37, 16), (313, 330, 36, 16), (349, 330, 37, 16),
+    (73, 330, 36, 16), (109, 330, 37, 16),
+)
+
 # Style → position array mapping
 STYLE_POSITIONS: dict[int, tuple[tuple[int, int, int, int], ...]] = {
     1: _POS_1, 2: _POS_2, 3: _POS_3, 4: _POS_4,
     5: _POS_5, 6: _POS_6, 7: _POS_7, 8: _POS_8,
     9: _POS_9, 10: _POS_10, 11: _POS_11, 12: _POS_12,
+    13: _POS_13,
 }
 
 
@@ -426,6 +451,12 @@ _DECO: dict[int, _DecoConfig] = {
     ),
     # Style 8 (CZ1): full background decoration
     8: _DecoConfig(
+        images=[("screen_led_deco_cz1", 0, 0)],
+        color_fills=[],
+    ),
+    # Style 13 (Magic Qube): same two-digit + 4-corner-label layout as CZ1 —
+    # reuse the CZ1 deco background (identical CPU°C/GPU°C/CPU%/GPU% labels).
+    13: _DecoConfig(
         images=[("screen_led_deco_cz1", 0, 0)],
         color_fills=[],
     ),

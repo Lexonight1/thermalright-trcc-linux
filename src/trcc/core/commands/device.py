@@ -191,18 +191,29 @@ class ConnectDevice(Command[ConnectResult]):
                     override.button_image or "(cutout-only)",
                 )
 
-        # LED style: enrich ``led_style`` from the same handshake fingerprint.
-        # The registry leaves it None ("resolved at runtime from PM byte"), so
-        # without this the LED handler reads None and falls back to a default
-        # style.  resolve_pm lives in core, so this stays inside the hexagon.
+        # LED style: enrich ``led_style`` from the handshake.  The registry
+        # leaves it None ("resolved at runtime"), so without this the LED
+        # handler reads None and falls back to a default style.  Prefer the
+        # LED adapter's already-resolved style — it honours the header
+        # fingerprint, so a Magic Qube (shares PM=208 with CZ1) isn't
+        # mis-tagged as CZ1 — and fall back to the header/PM registry from the
+        # raw handshake bytes.  resolve_* live in core, so this stays inside
+        # the hexagon.
         if device.info.wire is Wire.LED and device.info.led_style is None:
-            from ..led_protocol import resolve_pm
-            led_entry = resolve_pm(handshake.pm_byte, handshake.sub_byte)
-            if led_entry is not None and led_entry.style is not None:
-                device.info = _dc_replace(device.info, led_style=led_entry.style)
+            led_hs = getattr(device, "led_handshake", None)
+            led_style = getattr(led_hs, "style", None)
+            if led_style is None:
+                from ..led_protocol import resolve_handshake
+                led_entry = resolve_handshake(
+                    handshake.raw_response[:4],
+                    handshake.pm_byte, handshake.sub_byte,
+                )
+                led_style = led_entry.style if led_entry is not None else None
+            if led_style is not None:
+                device.info = _dc_replace(device.info, led_style=led_style)
                 log.info(
-                    "ConnectDevice %s: LED style PM=%d → %s",
-                    self.key, handshake.pm_byte, led_entry.style.value,
+                    "ConnectDevice %s: LED style → %s",
+                    self.key, led_style.value,
                 )
 
         # Install theme/cloud/mask data for the HANDSHAKE-resolved resolution.
