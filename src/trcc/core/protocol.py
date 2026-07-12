@@ -55,13 +55,17 @@ class DeviceProfile:
     # encode_pm_bases is the LIVE source for encode_baseline: a PM (PingMu)
     # keyed hardware-mount rotation (e.g. PM=6 → 180° for the FW360 Ultra).
     encode_pm_bases: tuple[tuple[int, int], ...] = ()   # ((pm, base), ...) LIVE
-    # encode_base / encode_invert / encode_sub_bases are recorded-but-UNWIRED:
-    # the C# unified per-resolution model (angle = base + direction*sign).  Our
-    # rotate-flag pipeline already covers widescreen rotation, so they are NOT
-    # applied — wiring them needs widescreen hardware verification.
+    # encode_base / encode_invert are LIVE for widescreen JPEG panels: wire_angle
+    # routes them to resolve_encode_angle = (encode_base − orientation) [invert
+    # defaults True], the C# ImageToJpg per-resolution switch (854×480→base 0,
+    # 1600×720/1920×462→base 180).  The C# base is FIXED per resolution and
+    # sub-INDEPENDENT (TRCC.decompiled.cs:65285+), so encode_sub_bases stays
+    # empty for every profile — folding sub into the base was a phantom that put
+    # widescreen 180° off at 90/270 (#203/#169).  Kept for a future device only
+    # if the C# is ever found to vary the base by sub; do not populate blind.
     encode_base: int = 0
-    encode_invert: bool = True   # (unwired — see above)
-    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...) unwired
+    encode_invert: bool = True
+    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...) — unused
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -94,16 +98,22 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     100: DeviceProfile(320,  320,  big_endian=True),
     101: DeviceProfile(320,  320,  big_endian=True),
     102: DeviceProfile(320,  320,  big_endian=True),
+    # Widescreen encode base is FIXED per resolution, sub-INDEPENDENT — the C#
+    # ImageToJpg switch keys only on the resolution flag + user orientation
+    # (TRCC.decompiled.cs:65285+): is854x480/is960x540/is1280x480/is800x480 → 0,
+    # is1600x720/is1920x462 → 180.  Every value is base + default encode_invert
+    # (=True) so resolve_encode_angle sends (base − orientation), matching the C#
+    # at EVERY sub.  The old encode_sub_bases overrides (folding sub into base)
+    # + FBL 224's encode_invert=False were a phantom — no C# basis — and put the
+    # frame 180° off at 90/270 for the affected subs. (#203/#169)
     114: DeviceProfile(1600, 720,  jpeg=True, rotate=True, widescreen=True,
-                       encode_base=180, encode_sub_bases=((3, 0),)),
-    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True, widescreen=True,
-                       encode_sub_bases=((2, 90),)),
+                       encode_base=180),
+    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True, widescreen=True),
     129: DeviceProfile(480,  480,
                        encode_pm_bases=((6, 180),)),                # alias for 72
     192: DeviceProfile(1920, 462,  jpeg=True, rotate=True, widescreen=True,
-                       encode_base=180, encode_sub_bases=((2, 0), (3, 0), (4, 0))),
-    224: DeviceProfile(854,  480,  jpeg=True, rotate=True, widescreen=True,
-                       encode_invert=False, encode_sub_bases=((2, 180),)),
+                       encode_base=180),
+    224: DeviceProfile(854,  480,  jpeg=True, rotate=True, widescreen=True),
 }
 # fmt: on
 
@@ -334,7 +344,7 @@ def wire_angle(
 
       * non-widescreen rotate panels → :func:`wire_rotation` (``base − orient``)
       * widescreen JPEG rotate panels → :func:`resolve_encode_angle` (the
-        hardware-verified #169 per-resolution encode table)
+        C#-source-verified per-resolution encode base, #203/#169)
       * squares / non-rotate panels → user orientation only (``360 − orient``)
 
     A portrait-content theme on a rotate panel is pre-rotated at compose time
