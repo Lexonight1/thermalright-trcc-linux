@@ -7,6 +7,6 @@ events into Qt signals for thread-safe UI updates.
 Entry point: `python -m trcc gui` → launches MainWindow.
 """
 
-from .app import launch
+from .app import launch, run
 
-__all__ = ["launch"]
+__all__ = ["launch", "run"]

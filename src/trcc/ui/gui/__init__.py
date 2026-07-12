@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import signal
-import sys
 from collections.abc import Callable
 from typing import Any
 
@@ -60,14 +59,21 @@ def launch(verbosity: int = 0, decorated: bool = False,
     del verbosity
     from ...adapters.system import PlatformFactory
     platform = PlatformFactory.current()
-    return run_gui(platform, decorated=decorated, start_hidden=start_hidden)
+    return run(platform, decorated=decorated, start_hidden=start_hidden)
 
 
-def run_gui(platform: Any, *, decorated: bool = False,
-            start_hidden: bool = False, single_instance: bool = True,
-            ipc: bool = True, force_exit: bool = True,
-            on_ready: Callable[[Any], None] | None = None) -> int:
-    """Run the GUI composition for a given ``platform``.  Returns exit code.
+def run(platform: Any, *, decorated: bool = False,
+        start_hidden: bool = False, single_instance: bool = True,
+        ipc: bool = True, force_exit: bool = True,
+        on_ready: Callable[[Any], None] | None = None) -> int:
+    """Run the GUI composition from an injected ``platform``.  Returns exit code.
+
+    The GUI's ``run(platform, …)`` in the unified UI-launch contract (see
+    ``METHOD_UI.md``): the composition root injects the ``Platform`` port and
+    this UI composes its App from it (Qt-first, via ``build_qt_app``).  It takes
+    a platform rather than a pre-built App because the windowed ``QApplication``
+    must precede ``QtRenderer`` and the single-instance early-return must precede
+    any build — constraints App-injection can't satisfy.
 
     The ONE shared composition root for every GUI entry point — shipping
     ``launch`` and ``dev/mock_gui`` both call this, so the dev mock exercises
@@ -106,20 +112,13 @@ def run_gui(platform: Any, *, decorated: bool = False,
     from .assets import _PKG_ASSETS_DIR, set_assets_dir
     set_assets_dir(_PKG_ASSETS_DIR)
 
-    # ── Qt bootstrap (windowed QApp — must precede QtRenderer) ──────
-    # Env (QT_LOGGING_RULES etc.) MUST be set before QApplication so the
-    # desktop-portal warnings are silenced at startup, not after.
-    from ..qapp import configure_qapplication, configure_qt_environment
-    configure_qt_environment()
-    qapp = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
-    configure_qapplication(qapp)
-
-    # ── Build App via the canonical factory (renderer follows QApp) ──
-    from ..._boot import trcc
-    from ...adapters.render.qt import QtRenderer
-    from ...app import App
-    renderer = QtRenderer()
-    app = cast(App, trcc(platform=platform, renderer=renderer))
+    # ── Qt bootstrap + App (QApplication precedes QtRenderer) ──────
+    # The shared Qt-first composition, identical to the qtgui skin: set the Qt
+    # env, build the windowed QApplication, apply the shared QApp settings, then
+    # build the App via the canonical factory with a QtRenderer.  (build_qt_app)
+    from ..qapp import build_qt_app
+    app = build_qt_app(platform)
+    qapp = cast(QApplication, QApplication.instance())
 
     # ── Splash + background discover ────────────────────────────────
     from .splash import run_bootstrap_with_splash
@@ -211,3 +210,8 @@ def run_gui(platform: Any, *, decorated: bool = False,
         import os as _os
         _os._exit(exit_code)
     return exit_code
+
+
+# Back-compat alias — ``dev/mock_gui`` and existing tests call ``run_gui``.
+# ``run`` is the canonical name in the unified UI-launch contract.
+run_gui = run

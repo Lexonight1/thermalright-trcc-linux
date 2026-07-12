@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
@@ -26,6 +27,9 @@ from PySide6.QtWidgets import (
 
 from ...app import App
 from ...core.commands import RenderAndSend
+
+if TYPE_CHECKING:
+    from ...core.ports import Platform
 from ...core.events import (
     DeviceConnected,
     DeviceDisconnected,
@@ -188,38 +192,35 @@ class MainWindow(QMainWindow):
                 log.exception("Tick failed for %s: %s", key, e)
 
 
-def launch(app: App | None = None) -> int:
-    """Start the GUI.  Returns the exit code.
+def run(platform: Platform | None = None) -> int:
+    """Start the qtgui skin from an injected ``Platform``.  Returns the exit code.
 
-    A real QApplication (not just a QGuiApplication) is required for
-    widgets — we instantiate it *before* anything that might implicitly
-    create a headless QGuiApplication (notably QtRenderer).
+    The unified UI-launch contract (see ``METHOD_UI.md``): the composition root
+    injects the ``Platform`` port; this UI composes its own App from it via the
+    shared ``build_qt_app`` (Qt-first, so ``QtRenderer`` finds a real
+    QApplication), then runs.  ``platform=None`` uses the host platform; the dev
+    mock injects a ``MockPlatform``.
     """
-    # Silence the desktop-portal warnings before Qt initialises (no-op if
-    # the QApplication already exists — env is read at first construction).
-    from ..qapp import configure_qt_environment
-    configure_qt_environment()
+    from ..qapp import build_qt_app
+    app = build_qt_app(platform)
     qapp = QApplication.instance()
-    if not isinstance(qapp, QApplication):
+    if not isinstance(qapp, QApplication):   # build_qt_app just created it
         qapp = QApplication(sys.argv)
-
     splash = show_splash()
     qapp.processEvents()
-
-    if app is None:
-        # Import QtRenderer only after QApplication exists, so its
-        # bootstrap helper finds our QApplication instead of creating a
-        # bare QGuiApplication.  Build through the canonical factory so
-        # this UI becomes a daemon client when TRCC_DAEMON=1
-        # instead of fighting the daemon for USB (audit bug B4).
-        from ..._boot import trcc
-        from ...adapters.render.qt import QtRenderer
-        app = trcc(renderer=QtRenderer())
-
     window = MainWindow(app)
     window.show()
     auto_close(splash, after_ms=250)
     return qapp.exec()
+
+
+def launch(platform: Platform | None = None) -> int:
+    """Back-compat entry — ``trcc qtgui`` and the direct entry points call this.
+
+    Identical to :func:`run`; kept as the historical name until the CLI router
+    dispatches ``run`` directly.
+    """
+    return run(platform)
 
 
 # Silence unused-import warnings for QGuiApplication (kept for reference).

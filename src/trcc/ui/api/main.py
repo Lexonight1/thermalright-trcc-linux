@@ -21,6 +21,7 @@ from __future__ import annotations
 import hmac
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -28,6 +29,9 @@ from fastapi.staticfiles import StaticFiles
 
 from ...__version__ import __version__
 from ...app import App
+
+if TYPE_CHECKING:
+    from ...core.ports import Platform
 from . import config, devices, display, led, system, theme
 from . import trcc as _trcc_router
 
@@ -223,8 +227,27 @@ def build_app(trcc: App | None = None) -> FastAPI:
     return api
 
 
-def serve(host: str = "127.0.0.1", port: int = 8080) -> None:
-    """Run the API with uvicorn (blocking)."""
+def run(platform: Platform | None = None, *,
+        host: str = "127.0.0.1", port: int = 8080) -> int:
+    """Serve the REST API from an injected ``Platform`` (blocking).  Returns the
+    exit code.
+
+    The unified UI-launch contract (see ``METHOD_UI.md``): the composition root
+    injects the ``Platform`` port; this UI composes its App from it (a headless
+    ``QtRenderer`` — the API renders preview frames but has no widgets) and
+    ``build_app`` wraps it in the ASGI surface.  ``platform=None`` uses the host
+    platform; the dev mock injects a ``MockPlatform``.
+    """
     import uvicorn
 
-    uvicorn.run(build_app(), host=host, port=port, log_level="info")
+    from ..._boot import trcc
+    from ...adapters.render.qt import QtRenderer
+
+    app = trcc(platform=platform, renderer=QtRenderer())
+    uvicorn.run(build_app(trcc=app), host=host, port=port, log_level="info")
+    return 0
+
+
+def serve(host: str = "127.0.0.1", port: int = 8080) -> None:
+    """Back-compat entry — serve on the host platform (blocking)."""
+    run(host=host, port=port)

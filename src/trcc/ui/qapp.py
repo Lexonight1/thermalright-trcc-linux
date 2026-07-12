@@ -21,9 +21,15 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+    from ..app import App
+    from ..core.ports import Platform
 
 log = logging.getLogger(__name__)
 
@@ -71,3 +77,28 @@ def configure_qapplication(qapp: QApplication) -> None:
         qapp.font().family(),
         qapp.quitOnLastWindowClosed(),
     )
+
+
+def build_qt_app(platform: Platform | None = None) -> App:
+    """Compose the ``App`` for a widget Qt UI — the shared Qt-first path used
+    by BOTH the shipping GUI and the qtgui skin.
+
+    The unified launch seam (see ``METHOD_UI.md``): every UI is injected the
+    ``Platform`` port and composes its own App from it, respecting its own
+    renderer lifecycle.  Here that lifecycle is Qt-first — set the Qt env,
+    ensure a windowed ``QApplication`` (``QtRenderer`` needs one), apply the
+    shared QApplication settings, then build through the canonical factory with
+    a ``QtRenderer``.
+
+    ``platform=None`` uses the host platform; the dev mock injects a
+    ``MockPlatform``.  Returns the composed App; the QApplication is reachable
+    via ``QApplication.instance()``.
+    """
+    configure_qt_environment()
+    qapp = QApplication.instance()
+    if not isinstance(qapp, QApplication):
+        qapp = QApplication(sys.argv)
+    configure_qapplication(qapp)
+    from .._boot import trcc
+    from ..adapters.render.qt import QtRenderer
+    return trcc(platform=platform, renderer=QtRenderer())
