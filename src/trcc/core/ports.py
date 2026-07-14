@@ -195,6 +195,18 @@ class Device(ABC, Generic[T]):
         return None
 
     @property
+    def handshake(self) -> HandshakeResult | None:
+        """Raw LCD handshake result — PM/SUB bytes, serial, reported resolution.
+
+        Populated on ``connect()`` by every LCD wire (stored on the base as
+        ``self._handshake``); None pre-handshake or for LED devices (which use
+        ``led_handshake``).  Exposes the PM/SUB bytes for diagnostics — the
+        developer device inspector and ``trcc report`` read them here rather
+        than re-deriving from the profile (PM isn't recoverable from FBL alone).
+        """
+        return self._handshake
+
+    @property
     def led_handshake(self) -> LedHandshakeResult | None:
         """LED handshake result (PM byte → style + sub), or None.
 
