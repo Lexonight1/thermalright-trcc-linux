@@ -8,8 +8,18 @@ Thanks for your interest in contributing! This project is a Linux port of the Th
 git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e '.[dev]'
+git config core.hooksPath .githooks   # enable repo git hooks (see below)
 trcc system setup              # interactive wizard — checks deps, udev, desktop entry
 ```
+
+### Git hooks
+
+Run `git config core.hooksPath .githooks` once per clone to enable the tracked
+hooks in [`.githooks/`](.githooks/). The `pre-commit` hook keeps code-derived
+artifacts in sync with the source: when a commit touches the CLI surface
+(`src/trcc/ui/cli/`) or the version, it regenerates the man pages
+(`dev/gen_manpages.py` → `man/man1/*.1`) and folds them into the same commit, so
+the committed pages can never drift (CI's `test_manpages` is the backstop).
 
 Or manually:
 

@@ -1,0 +1,32 @@
+#!/bin/sh
+# TRCC pre-commit — keep code-derived artifacts in sync with the source tree.
+#
+# The problem this solves: generated files that are committed (not build
+# output) silently drift when the code they derive from changes and nobody
+# remembers to regenerate them.  CI catches it as a red test AFTER the push;
+# this catches it BEFORE the commit and folds the regenerated files into the
+# same commit, so a clean tree is the default, not a discipline.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# (dev/README.md documents this; the release/setup path can run it too.)
+#
+# To add a future generator: give it its own block below — the trigger grep
+# names the source paths it derives from, then it regenerates + `git add`s.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# ── man pages ──────────────────────────────────────────────────────────
+# man/man1/*.1 are generated from the live Typer CLI (dev/gen_manpages.py),
+# whose output depends on the command tree (src/trcc/ui/cli/) and the version
+# string (src/trcc/__version__.py).  Regenerate when either is staged.
+if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/|^src/trcc/__version__\.py$'; then
+    echo "pre-commit: CLI/version changed — regenerating man pages"
+    if ! PYTHONPATH=src python3 dev/gen_manpages.py >/dev/null; then
+        echo "pre-commit: man page generation FAILED (dev/gen_manpages.py)" >&2
+        exit 1
+    fi
+    git add man/man1/*.1
+fi
+
+exit 0
