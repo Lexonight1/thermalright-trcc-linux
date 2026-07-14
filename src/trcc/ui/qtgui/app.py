@@ -206,6 +206,13 @@ def run(platform: Platform | None = None) -> int:
     qapp = QApplication.instance()
     if not isinstance(qapp, QApplication):   # build_qt_app just created it
         qapp = QApplication(sys.argv)
+    # qtgui is the developer cockpit — closing its window ENDS the process.
+    # The shared build_qt_app sets quitOnLastWindowClosed=False so the end-user
+    # gui can hide to the system tray and keep the LCD lit; qtgui has no tray,
+    # so without this override a window-close would neither quit nor hide —
+    # orphaning a trcc-qtgui process with nothing to bring it back or kill it.
+    # Every background loop/monitor is a daemon thread, so this exits cleanly.
+    qapp.setQuitOnLastWindowClosed(True)
     splash = show_splash()
     qapp.processEvents()
     window = MainWindow(app)
