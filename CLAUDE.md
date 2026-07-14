@@ -13,6 +13,26 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **RESUME 2026-07-14 (LATE) — qtgui developer-cockpit + UI-contract unification. READ
+  `memory/project_qtgui_developer_cockpit.md` + `memory/project_open_issue_triage_v988.md`
+  + `memory/project_issue220_hidpi_scaling.md` FIRST.** main==origin, tree clean, all
+  pushed. **Direction (user): qtgui must FUNCTION EXACTLY LIKE gui** (full parity); the
+  developer inspector is a BONUS on top, not a substitute. qtgui is close (dispatches 53
+  commands > gui's 45, ~1:1 panels). SHIPPED this session (all pushed): (1) **#220 DPI
+  logging** `fc821a1a` (`qapp.probe_screens` devicePixelRatio/geometry at startup+on-change
+  — reports were blind to scaling); (2) **smoke harness** `142918a5` retargeted to the OPEN
+  issue set (#171/#201/#162/#148/#166/#187/#188/#191/#194/#216 all NOT-REPRODUCED);
+  (3) **Device/Protocol Inspector** `c1988dfb` (qtgui `DevicePanel` shows PM/SUB/FBL/profile/
+  live bytes) + new `Device.handshake` port property; (4) **qtgui thumbnail grids**
+  `34b8acce`/`b6a493fb`/`e1db74ec` then (5) **P1 root fix** `50ec3659` — `ListMasks`/
+  `ListCloudThemes` now CARRY `preview` (via `discover_masks` / `web/{w}{h}/<id>.png`), so
+  every UI reads `entry.preview`; (6) **`dev/tools/ui_contract.py`** `7092c63a` — command-
+  surface completeness audit (114 commands; API near-pure at 95; found the contract holes);
+  (7) **shared `ui/qt_tray.py::TrayController`** — qtgui `3e5ce431` + gui `3183b1ee` (one
+  tray, both skins; qtgui hides-to-tray like gui). Replies POSTED #145/#186/#220 (all
+  awaiting reporters). **NEXT:** panel-behaviour parity pass (qtgui vs gui per panel) +
+  remaining contract holes **P2** overlay resolution (`resolve_overlay_elements`→command),
+  **P3** video authoring (`CreateThemeFromVideo`), **P4** audio (niche); also #170 video fill.
 - **RESUME 2026-07-14 (EOD) — v9.8.8 SHIPPED (#169 widescreen rotation + fill). READ
   `memory/project_issue169_widescreen_rotation_fill.md` FIRST.** main==origin, tree
   clean, tag v9.8.8 pushed, GitHub release live, PyPI/pkgs building. #169 root-caused
