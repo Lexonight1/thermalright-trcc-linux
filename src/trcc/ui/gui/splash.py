@@ -151,34 +151,18 @@ class BootstrapWorker(QThread):
         self._app = app
 
     def run(self) -> None:
-        """Discover + connect every attached device.
+        """Discover + connect every attached device (the shared coldplug).
 
-        next/'s split:
-          * ``DiscoverDevices`` — enumerate the registry against live USB
-          * ``ConnectDevice(key=…)`` — attach the transport + handshake
-
-        The window's sidebar reads from ``app.devices``, which only the
-        Connect step populates.  Without this loop the GUI starts empty
-        and every subsequent dispatch on a device key errors out with
-        "Not attached: vid:pid".
+        Delegates to ``App.discover_and_connect`` — the UI-agnostic coldplug
+        loop (``DiscoverDevices`` → ``ConnectDevice`` per product) shared with
+        the qtgui skin — passing ``self.progress.emit`` so the splash still
+        shows live per-device status.  ``progress`` is a Qt Signal, so emitting
+        it from this background QThread marshals safely to the splash label.
+        The window's sidebar reads from ``app.devices``, which only the connect
+        step populates.
         """
-        from ...core.commands import ConnectDevice, DiscoverDevices
-
         try:
-            self.progress.emit("Discovering devices…")
-            result = self._app.dispatch(DiscoverDevices())
-            for product in result.products:
-                self.progress.emit(
-                    f"Connecting {product.vendor} {product.product}…",
-                )
-                connect_result = self._app.dispatch(
-                    ConnectDevice(key=product.key),
-                )
-                if not connect_result.ok:
-                    log.warning(
-                        "Connect %s failed: %s",
-                        product.key, connect_result.message,
-                    )
+            self._app.discover_and_connect(on_progress=self.progress.emit)
         except Exception as exc:
             log.exception("Bootstrap error")
             self.failed.emit(str(exc))

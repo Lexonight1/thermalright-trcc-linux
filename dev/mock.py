@@ -56,12 +56,28 @@ def _run_qtgui() -> int:
     The real qtgui composes its App from the injected MockPlatform (real
     sensors, faked device) via ``build_qt_app`` — the same code path the
     shipping qtgui runs.
-    """
-    from _mock_bootstrap import bootstrap
 
-    platform = bootstrap(_pop_report())
+    Device presentation mirrors ``mock_gui`` so the qtgui mock stops booting
+    blank: a simulated fleet (``devices.json`` / ``--report``) is auto-connected
+    via an ``on_ready`` hook, because ``DevMockPlatform.scan_devices`` returns
+    ``[]`` by dev rule so ``run``'s own coldplug finds nothing.  With NO specs
+    the platform is the REAL ``DevPlatform`` and ``run``'s ``discover_and_connect``
+    attaches whatever hardware is actually plugged in — "use my device".
+    """
+    from _mock_bootstrap import bootstrap, load_device_specs
+
+    report = _pop_report()
+    platform = bootstrap(report)
+    specs = load_device_specs(report)
+
+    def _on_ready(window: object) -> None:
+        import mock_gui
+        app = window._app  # type: ignore[attr-defined]
+        for spec in specs:
+            mock_gui._auto_connect(app, spec)
+
     from trcc.ui.qtgui import run
-    return run(platform)
+    return run(platform, on_ready=_on_ready if specs else None)
 
 
 def main() -> None:

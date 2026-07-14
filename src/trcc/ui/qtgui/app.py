@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -213,7 +214,10 @@ class MainWindow(QMainWindow):
                 log.exception("Tick failed for %s: %s", key, e)
 
 
-def run(platform: Platform | None = None) -> int:
+def run(
+    platform: Platform | None = None,
+    on_ready: Callable[[MainWindow], None] | None = None,
+) -> int:
     """Start the qtgui skin from an injected ``Platform``.  Returns the exit code.
 
     The unified UI-launch contract (see ``METHOD_UI.md``): the composition root
@@ -221,6 +225,15 @@ def run(platform: Platform | None = None) -> int:
     shared ``build_qt_app`` (Qt-first, so ``QtRenderer`` finds a real
     QApplication), then runs.  ``platform=None`` uses the host platform; the dev
     mock injects a ``MockPlatform``.
+
+    Device bootstrap is at PARITY with the gui skin (``run_gui``): the coldplug
+    ``discover_and_connect`` populates ``app.devices`` and the live loops
+    (hotplug / metrics / LED animation) start BEFORE the window builds, so every
+    panel and device picker sees the attached device at construction — without
+    this the whole UI booted blank (no device, empty selection grids).
+
+    ``on_ready`` is a behaviour-neutral post-build hook (default None); the dev
+    mock uses it to auto-connect its simulated fleet, mirroring ``mock_gui``.
     """
     from ..qapp import build_qt_app
     app = build_qt_app(platform)
@@ -232,19 +245,42 @@ def run(platform: Platform | None = None) -> int:
     # running, exactly like gui.  Exit (tray menu) force-quits.
     splash = show_splash()
     qapp.processEvents()
+
+    # ── Device bootstrap (parity with run_gui) ─────────────────────────
+    # gui runs discover in a background splash worker; qtgui runs it inline —
+    # one handshake per attached device is fast, and doing it before the window
+    # builds means the pickers/browsers populate at construction.  Live attach/
+    # detach afterwards flows through start_hotplug → DeviceConnected events.
+    app.discover_and_connect()
+    app.start_hotplug()
+    app.metrics_loop.start()
+    app.led_animation_loop.start()
+
     window = MainWindow(app)
     window.show()
     auto_close(splash, after_ms=250)
-    return qapp.exec()
+
+    if on_ready is not None:
+        on_ready(window)
+
+    try:
+        return qapp.exec()
+    finally:
+        # Stop the metrics / hotplug / LED threads + disconnect devices so the
+        # process exits cleanly (parity with run_gui's finally: app.close()).
+        app.close()
 
 
-def launch(platform: Platform | None = None) -> int:
+def launch(
+    platform: Platform | None = None,
+    on_ready: Callable[[MainWindow], None] | None = None,
+) -> int:
     """Back-compat entry — ``trcc qtgui`` and the direct entry points call this.
 
     Identical to :func:`run`; kept as the historical name until the CLI router
     dispatches ``run`` directly.
     """
-    return run(platform)
+    return run(platform, on_ready)
 
 
 # Silence unused-import warnings for QGuiApplication (kept for reference).

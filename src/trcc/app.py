@@ -7,6 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any, TypeVar
@@ -607,6 +608,46 @@ class App:
             log.debug("exclusive_wire: no sender for %s — nullcontext", key)
             return nullcontext()
         return sender.exclusive()
+
+    # ── Coldplug ──────────────────────────────────────────────────────
+
+    def discover_and_connect(
+        self, on_progress: Callable[[str], None] | None = None,
+    ) -> None:
+        """Coldplug: discover attached devices and connect each.
+
+        Dispatches ``DiscoverDevices`` (enumerate the registry against live
+        USB), then ``ConnectDevice(key=…)`` per product (attach transport +
+        handshake).  Only the connect step populates ``self.devices``, which
+        every UI's sidebar / device picker reads — without this loop a
+        long-lived UI starts empty and every device-keyed dispatch errors with
+        "Not attached: vid:pid".  Long-lived UIs (gui / qtgui) call this once
+        on startup; ``start_hotplug`` handles live changes afterwards; one-shot
+        CLI scripts skip it.  ``on_progress`` receives a human string per step
+        (splash display); connect *failures* are logged + recorded on the App
+        model (queried via ``DeviceConnectionIssues``), never raised.
+        """
+        from .core.commands import ConnectDevice, DiscoverDevices
+
+        def _say(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        log.info("discover_and_connect: starting coldplug")
+        _say("Discovering devices…")
+        result = self.dispatch(DiscoverDevices())
+        for product in result.products:
+            _say(f"Connecting {product.vendor} {product.product}…")
+            connect = self.dispatch(ConnectDevice(key=product.key))
+            if not connect.ok:
+                log.warning(
+                    "discover_and_connect: connect %s failed: %s",
+                    product.key, connect.message,
+                )
+        log.info(
+            "discover_and_connect: %d product(s) discovered, %d attached",
+            len(result.products), len(self.devices),
+        )
 
     # ── Hotplug ───────────────────────────────────────────────────────
 
