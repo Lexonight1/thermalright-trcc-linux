@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import ListCloudThemes, LoadCloudTheme
+from ..assets import thumbnail_icon
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -58,6 +59,18 @@ class CloudThemeBrowser(BasePanel):
         self._list = QListWidget(self)
         self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self._list.itemDoubleClicked.connect(lambda _item: self._on_apply())
+        # Thumbnail grid (parity with the gui skin): each catalog entry shows
+        # its extracted preview PNG (data/web/{w}{h}/<id>.png).
+        self._list.setViewMode(QListWidget.ViewMode.IconMode)
+        self._list.setIconSize(QSize(96, 96))
+        self._list.setGridSize(QSize(124, 140))
+        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setSpacing(6)
+        self._list.setWordWrap(True)
+        # Re-fill on device change so previews resolve to the picked device's
+        # resolution (the local/mask browsers do the same).
+        self._picker.key_changed.connect(self._on_key_changed)
 
         self._refresh_btn = QPushButton("Refresh", self)
         self._refresh_btn.clicked.connect(self._on_refresh)
@@ -116,12 +129,37 @@ class CloudThemeBrowser(BasePanel):
         result = self.dispatch(ListCloudThemes(category=cat))
         self._fill_list_from_result(result)
 
+    def _on_key_changed(self, _key: str) -> None:
+        log.info("_on_key_changed: re-filling cloud list for device resolution")
+        self._on_category_changed()
+
+    def _resolution(self) -> tuple[int, int] | None:
+        """The picked device's canvas resolution, or None if unresolvable."""
+        key = self._picker.current_key()
+        if not key:
+            return None
+        device = self.app.devices.get(key)
+        if device is not None:
+            if device.profile is not None:
+                return device.profile.resolution
+            if device.info.native_resolution != (0, 0):
+                return device.info.native_resolution
+        return None
+
     def _fill_list_from_result(self, result) -> None:
         self._list.clear()
+        # Previews live at data/web/{w}{h}/<id>.png (extracted by the data
+        # layer); resolve the dir from the picked device.  No device yet →
+        # text-only until one is picked and the list re-fills.
+        resolution = self._resolution()
+        web_dir = (
+            self.app.platform.paths().cloud_theme_dir(*resolution)
+            if resolution is not None else None
+        )
         for entry in result.themes:
-            item = QListWidgetItem(
-                f"{entry.id}    ({entry.category_name})",
-            )
+            item = QListWidgetItem(f"{entry.id}\n{entry.category_name}")
+            if web_dir is not None:
+                item.setIcon(thumbnail_icon(web_dir / f"{entry.id}.png"))
             item.setData(Qt.ItemDataRole.UserRole, entry.id)
             self._list.addItem(item)
         if result.ok:
