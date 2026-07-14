@@ -43,7 +43,10 @@ from ...core.commands import (
 )
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
-from ..presentation.theme_directories import resolve_theme_directories
+from ..presentation.theme_directories import (
+    oriented_theme_reload_target,
+    resolve_theme_directories,
+)
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
@@ -1016,7 +1019,51 @@ class LCDHandler(BaseHandler):
             degrees, ow, oh, self._pm.state.is_rotated,
         )
         self._sync_preview_size()   # composed orientation, portrait-theme aware (#136)
-        self._update_theme_directories()
+        # _update_theme_directories switches the browser catalog to the new
+        # orientation dims + re-lists it, and auto-loads the first theme ONLY on
+        # first install (nothing active yet).  When a theme IS already active it
+        # returns False and leaves the OLD-orientation theme rendering — so reload
+        # the active theme's oriented variant here, or the device keeps a
+        # landscape bg letterboxed into the portrait buffer (#169 "not filling").
+        if not self._update_theme_directories():
+            self._reload_theme_for_orientation()
+
+    def _reload_theme_for_orientation(self) -> None:
+        """Reload the ACTIVE theme from the just-switched orientation catalog.
+
+        A rotation swaps the browser catalog (``theme1600720`` ↔ ``theme7201600``)
+        but not the rendered theme; the C# re-authors the theme per orientation,
+        so the portrait catalog ships a genuine portrait ``00.png`` that fills the
+        720×1600 buffer.  Reloading the same-name variant from the new catalog
+        gives the same result — a filled, upright frame (#169).
+
+        Falls back to keeping the current theme when the new catalog has no
+        same-name variant (a user's custom theme, or the #136 portrait-fallback
+        where the local dir resolves back to landscape); there the render pipeline
+        pixel-rotates the landscape art so it is at least correctly oriented.
+        """
+        active = self._pm.state.current_theme_path
+        if active is None:
+            return
+        dirs = resolve_theme_directories(
+            self._app.platform.paths(),
+            canvas_size=self._pm.state.canvas_size,
+            lcd_size=self._pm.state.lcd_size,
+            is_rotated=self._pm.state.is_rotated,
+        )
+        target = oriented_theme_reload_target(active, dirs)
+        if target is None:
+            self.log.info(
+                "_reload_theme_for_orientation: no oriented variant of '%s' in the "
+                "%dx%d catalog — keeping current theme (pixel-rotate fallback)",
+                active.name, *dirs.catalog_size,
+            )
+            return
+        self.log.info(
+            "_reload_theme_for_orientation: reloading '%s' from the %dx%d catalog "
+            "→ %s", active.name, *dirs.catalog_size, target,
+        )
+        self._select_theme_from_path(target, persist=True, overlay_config=True)
 
     def set_split_mode(self, mode: int) -> None:
         self.log.info("set_split_mode: %d -> %d device=%s",

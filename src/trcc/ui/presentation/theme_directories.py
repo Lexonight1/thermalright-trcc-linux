@@ -86,3 +86,30 @@ def resolve_theme_directories(
         masks_dir=masks_dir,
         portrait_fallback=portrait_fallback,
     )
+
+
+def oriented_theme_reload_target(
+    active_theme_path: Path, dirs: ThemeDirectories,
+) -> Path | None:
+    """The theme to reload after a rotation switches the catalog, or ``None``.
+
+    A rotation swaps the browser catalog (``theme1600720`` ↔ ``theme7201600``)
+    but not the rendered theme, so the device keeps the old-orientation bg — a
+    landscape image letterboxed into the portrait buffer (#169 "not filling").
+    The C# re-authors the theme per orientation; the equivalent here is to reload
+    the **same-name variant** from the new catalog, whose oriented ``00.png``
+    fills the buffer.
+
+    Returns that variant's path (user dir wins, then cloud dir), or ``None`` when
+    the active theme is already in the new catalog, or has no variant there (a
+    custom theme, or the #136 portrait-fallback where the dir resolves back to
+    landscape) — in which case the caller keeps the current theme and the render
+    pipeline pixel-rotates the landscape art.  Pure decision; the View applies it.
+    """
+    name = active_theme_path.name
+    for candidate in (dirs.user_theme_dir / name, dirs.theme_dir / name):
+        if candidate == active_theme_path:
+            return None
+        if candidate.exists():
+            return candidate
+    return None

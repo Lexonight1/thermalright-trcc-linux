@@ -11,6 +11,7 @@ from pathlib import Path
 from tests.conftest import FakePaths
 from trcc.ui.presentation.theme_directories import (
     ThemeDirectories,
+    oriented_theme_reload_target,
     resolve_theme_directories,
 )
 
@@ -64,3 +65,60 @@ def test_rotated_without_portrait_theme_dir_falls_back_local_only(tmp_path: Path
     # …while cloud + mask catalogs remain portrait.
     assert dirs.web_dir == tmp_path / "data" / "web" / "480854"
     assert dirs.masks_dir == tmp_path / "data" / "web" / "zt480854"
+
+
+# ── oriented_theme_reload_target — the on-rotation active-theme reload (#169) ──
+
+
+def test_reload_target_picks_same_name_portrait_variant(tmp_path: Path) -> None:
+    """Rotating with an active landscape theme → reload its same-name variant from
+    the portrait cloud catalog (whose oriented 00.png fills the buffer)."""
+    (tmp_path / "data" / "theme480854" / "MSI2").mkdir(parents=True)
+    active = tmp_path / "data" / "theme854480" / "MSI2"     # landscape, was rendering
+    dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
+
+    assert oriented_theme_reload_target(active, dirs) == (
+        tmp_path / "data" / "theme480854" / "MSI2"
+    )
+
+
+def test_reload_target_prefers_user_dir_over_cloud(tmp_path: Path) -> None:
+    """A user-authored portrait variant wins over the cloud one (ListThemes
+    precedence)."""
+    (tmp_path / "user" / "data" / "theme480854" / "MSI2").mkdir(parents=True)
+    (tmp_path / "data" / "theme480854" / "MSI2").mkdir(parents=True)
+    active = tmp_path / "data" / "theme854480" / "MSI2"
+    dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
+
+    assert oriented_theme_reload_target(active, dirs) == (
+        tmp_path / "user" / "data" / "theme480854" / "MSI2"
+    )
+
+
+def test_reload_target_none_when_already_in_new_catalog(tmp_path: Path) -> None:
+    """Active theme already lives in the new catalog → no reload (idempotent)."""
+    (tmp_path / "data" / "theme480854" / "MSI2").mkdir(parents=True)
+    active = tmp_path / "data" / "theme480854" / "MSI2"
+    dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
+
+    assert oriented_theme_reload_target(active, dirs) is None
+
+
+def test_reload_target_none_when_no_variant_exists(tmp_path: Path) -> None:
+    """A custom theme with no same-name portrait variant → keep current (the
+    render pipeline pixel-rotates it)."""
+    (tmp_path / "data" / "theme480854").mkdir(parents=True)   # catalog exists, MSI2 doesn't
+    active = tmp_path / "data" / "theme854480" / "MyCustomTheme"
+    dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
+
+    assert oriented_theme_reload_target(active, dirs) is None
+
+
+def test_reload_target_none_on_portrait_fallback(tmp_path: Path) -> None:
+    """#136 portrait-fallback (no portrait theme dir) → theme_dir resolves back to
+    the landscape dir == the active theme's dir → no reload, keep + pixel-rotate."""
+    active = tmp_path / "data" / "theme854480" / "MSI2"
+    dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)   # no theme480854 → fallback
+
+    assert dirs.portrait_fallback is True
+    assert oriented_theme_reload_target(active, dirs) is None
