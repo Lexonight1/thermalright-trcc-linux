@@ -312,9 +312,18 @@ class LoadTheme(Command[ThemeResult]):
                 key=self.key, bytes_sent=len(frame),
                 surface=app.display.rendered_surface(self.key),
             ))
+            prof = device.profile
+            wire_w, wire_h = (
+                prof.resolution if prof is not None
+                else device.info.native_resolution
+            )
+            encoding = "jpeg" if (prof is not None and prof.jpeg) else "rgb565"
+            # Resolved wire dims + encoding, not just the byte count: a
+            # devicePixelRatio blow-up (#220) shows here as bytes != wire w*h*2
+            # for rgb565 — self-evident against the stated dims.
             log.info(
-                "LoadTheme: %s rendered + sent (%d bytes) from %s",
-                theme.name, len(frame), theme_path_str,
+                "LoadTheme: %s rendered + sent - wire %dx%d %s (%d bytes) from %s",
+                theme.name, wire_w, wire_h, encoding, len(frame), theme_path_str,
             )
         return ThemeResult(
             ok=sent, key=self.key, theme_name=theme.name,

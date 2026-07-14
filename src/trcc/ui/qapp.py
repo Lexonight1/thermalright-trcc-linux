@@ -24,7 +24,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QScreen
 from PySide6.QtWidgets import QApplication
 
 if TYPE_CHECKING:
@@ -79,6 +79,54 @@ def configure_qapplication(qapp: QApplication) -> None:
     )
 
 
+def _log_screen(screen: QScreen) -> None:
+    """Emit one INFO line of a screen's DPI/scale facts.
+
+    Logged at INFO so every default ``trcc report`` (which pastes the log
+    tail) carries device-pixel-ratio + geometry — the facts a HiDPI /
+    desktop-scaling bug (#220) needs, and which no verbosity surfaced before
+    because nothing read them.
+    """
+    g = screen.geometry()
+    log.info(
+        "screen %r: devicePixelRatio=%.2f logicalDpi=%.0f geometry=%dx%d@(%d,%d)",
+        screen.name(), screen.devicePixelRatio(), screen.logicalDotsPerInch(),
+        g.width(), g.height(), g.x(), g.y(),
+    )
+
+
+def _on_screen_metrics_changed(*_args: object) -> None:
+    """Re-probe every screen when one's geometry or DPI changes at runtime.
+
+    This is the #220 repro: the user toggles desktop scaling (100% ↔ 200%)
+    while the app is open.  A startup-only probe misses it; this fires on the
+    change so the log captures the before/after.
+    """
+    log.info("screen metrics changed at runtime — re-probing all screens")
+    for screen in QApplication.screens():
+        _log_screen(screen)
+
+
+def _on_primary_screen_changed(screen: QScreen | None) -> None:
+    log.info("primaryScreenChanged -> %r", screen.name() if screen else None)
+    if screen is not None:
+        _log_screen(screen)
+
+
+def probe_screens(qapp: QApplication) -> None:
+    """Log DPI/scale facts now and wire live-change re-probes (#220).
+
+    GUI-only: the headless CLI/API render path never builds a windowed
+    QApplication, so there are no real screens to probe there.
+    """
+    for screen in qapp.screens():
+        _log_screen(screen)
+        screen.geometryChanged.connect(_on_screen_metrics_changed)
+        screen.logicalDotsPerInchChanged.connect(_on_screen_metrics_changed)
+        screen.physicalDotsPerInchChanged.connect(_on_screen_metrics_changed)
+    qapp.primaryScreenChanged.connect(_on_primary_screen_changed)
+
+
 def build_qt_app(platform: Platform | None = None) -> App:
     """Compose the ``App`` for a widget Qt UI — the shared Qt-first path used
     by BOTH the shipping GUI and the qtgui skin.
@@ -99,6 +147,7 @@ def build_qt_app(platform: Platform | None = None) -> App:
     if not isinstance(qapp, QApplication):
         qapp = QApplication(sys.argv)
     configure_qapplication(qapp)
+    probe_screens(qapp)
     from .._boot import trcc
     from ..adapters.render.qt import QtRenderer
     return trcc(platform=platform, renderer=QtRenderer())
