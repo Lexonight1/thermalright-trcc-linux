@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -42,6 +42,8 @@ from ....core.commands import (
     SetMaskVisible,
     UploadCustomMask,
 )
+from ....core.models import ThemeDir
+from ..assets import thumbnail_icon
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -64,6 +66,15 @@ class MaskBrowser(BasePanel):
         self._list = QListWidget(self)
         self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self._list.itemDoubleClicked.connect(lambda _item: self._on_apply())
+        # Thumbnail grid (parity with the gui skin): each mask shows its
+        # Theme.png preview (falling back to the 01.png overlay).
+        self._list.setViewMode(QListWidget.ViewMode.IconMode)
+        self._list.setIconSize(QSize(96, 96))
+        self._list.setGridSize(QSize(124, 140))
+        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setSpacing(6)
+        self._list.setWordWrap(True)
 
         self._refresh_btn = QPushButton("Refresh", self)
         self._refresh_btn.clicked.connect(self.refresh)
@@ -158,7 +169,9 @@ class MaskBrowser(BasePanel):
             return
         result = self.dispatch(ListMasks(resolution=resolution))
         for entry in result.masks:
-            item = QListWidgetItem(entry.name)
+            td = ThemeDir(Path(entry.path))
+            preview = td.preview if td.preview.exists() else td.mask
+            item = QListWidgetItem(thumbnail_icon(preview), entry.name)
             item.setData(Qt.ItemDataRole.UserRole, entry.path)
             self._list.addItem(item)
         if not result.masks:
