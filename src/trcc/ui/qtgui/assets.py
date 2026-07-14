@@ -20,8 +20,8 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPainter, QPixmap
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +114,27 @@ def _placeholder() -> QPixmap:
     pixmap = QPixmap(1, 1)
     pixmap.fill(Qt.GlobalColor.transparent)
     return pixmap
+
+
+def thumbnail_icon(path: Path, size: int = 96) -> QIcon:
+    """A scaled COLOUR :class:`QIcon` for a content-preview image.
+
+    Used by the theme / mask / background browsers to show what each entry
+    actually looks like.  Unlike chrome assets (:func:`_pixmap`), previews are
+    NOT greyscaled — they're content, same as the live device render.  A
+    missing / unloadable file yields a transparent placeholder icon so the grid
+    still lays out cleanly.
+    """
+    if path.is_file():
+        pixmap = QPixmap(str(path))
+        if not pixmap.isNull():
+            return QIcon(pixmap.scaled(
+                QSize(size, size),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+    log.debug("thumbnail_icon: no preview at %s", path)
+    return QIcon(_placeholder())
 
 
 # =========================================================================

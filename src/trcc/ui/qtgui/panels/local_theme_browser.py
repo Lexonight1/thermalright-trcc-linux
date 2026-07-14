@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
     QDialog,
@@ -39,6 +39,7 @@ from ....core.commands import (
     LoadTheme,
     SaveTheme,
 )
+from ..assets import thumbnail_icon
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -60,6 +61,15 @@ class LocalThemeBrowser(BasePanel):
         self._list = QListWidget(self)
         self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self._list.itemDoubleClicked.connect(lambda _item: self._on_apply())
+        # Thumbnail grid (parity with the gui skin): each theme shows its
+        # Theme.png preview instead of a bare text row.
+        self._list.setViewMode(QListWidget.ViewMode.IconMode)
+        self._list.setIconSize(QSize(96, 96))
+        self._list.setGridSize(QSize(124, 140))
+        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setSpacing(6)
+        self._list.setWordWrap(True)
 
         self._refresh_btn = QPushButton("Refresh", self)
         self._refresh_btn.clicked.connect(self.refresh)
@@ -145,7 +155,8 @@ class LocalThemeBrowser(BasePanel):
         result = self.dispatch(ListThemes(resolution=resolution))
         for theme in result.themes:
             w, h = theme.resolution
-            item = QListWidgetItem(f"{theme.name}   ({w}×{h})")
+            item = QListWidgetItem(thumbnail_icon(Path(theme.preview)),
+                                   f"{theme.name}\n{w}×{h}")
             item.setData(Qt.ItemDataRole.UserRole, theme.path)
             item.setData(Qt.ItemDataRole.UserRole + 1, theme.name)
             self._list.addItem(item)
