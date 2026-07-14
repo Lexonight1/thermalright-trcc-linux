@@ -116,20 +116,24 @@ def plan_orientation(
     rotate_panel = profile.rotate and w != h and orientation in (90, 270)
     if rotate_panel and not content_is_portrait and not profile.widescreen:
         return OrientationPlan((w, h), False, orientation)
+    if rotate_panel and profile.widescreen:
+        # Widescreen JPEG panels (1600×720 etc.): compose on the transposed
+        # portrait canvas (720×1600), preview upright — but post_rotate=0.  The
+        # WIRE rotation is owned entirely by resolve_encode_angle (via wire_angle),
+        # which the C# ``ImageToJpg`` applies to the whole composite to reach the
+        # device's fixed landscape dims: 0→180, 90→90, 180→0, 270→270.  A
+        # post_rotate here would double-rotate on top of it (the pre-fix code
+        # returned 180 at 270 AND relied on portrait_content=True to suppress the
+        # wire rotate — which silently sent an unrotated 720×1600 portrait frame,
+        # #169).  On-glass handedness still wants a reporter photo (#203/#169).
+        return OrientationPlan((h, w), True, 0)
     if rotate_panel:
-        # Portrait content is composed on the transposed canvas with the
-        # orientation baked into the pixels — but the asset is authored for 90.
-        # 270 is 90 + a 180° flip, and 180° is dimension-preserving, so rotate
-        # the WHOLE composite (bg + mask + text) as one unit and everything
-        # stays true to the physical rotation instead of frozen at 90.
-        # Widescreen JPEG panels keep post_rotate=0: their 90/270 send-unrotated
-        # behaviour is hardware-verified (#169) and must not change.
-        # 270 is 90 + a dimension-preserving 180° flip — applies to EVERY rotate
-        # panel including widescreen (the C# decompile shows widescreen 854×480
-        # rotates 90→270° / 270→90°, a 180° difference, not frozen).  The flip
-        # keeps the portrait-buffer dimensions (#169) and only re-orients the
-        # content, so it's dimension-safe (no clip).  On-glass handedness for
-        # widescreen still wants a reporter photo (#203) to confirm.
+        # Non-widescreen portrait content: composed on the transposed canvas with
+        # the orientation baked into the pixels — but the asset is authored for
+        # 90.  270 is 90 + a dimension-preserving 180° flip, so rotate the WHOLE
+        # composite (bg + mask + text) as one unit and everything stays true to
+        # the physical rotation instead of frozen at 90.  These panels take no
+        # wire rotation (portrait_content=True opts them out of wire_angle).
         post_rotate = 180 if orientation == 270 else 0
         return OrientationPlan((h, w), True, post_rotate)
     return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)

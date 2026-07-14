@@ -30,13 +30,27 @@ _CSHARP_WIRE = {
 _ORIENTATIONS = (0, 90, 180, 270)
 
 
+@pytest.mark.parametrize("portrait_content", [False, True])
 @pytest.mark.parametrize("fbl,expected", _CSHARP_WIRE.items())
-def test_widescreen_wire_angle_matches_csharp(fbl: int, expected: tuple[int, ...]) -> None:
+def test_widescreen_wire_angle_matches_csharp(
+    fbl: int, expected: tuple[int, ...], portrait_content: bool,
+) -> None:
+    """The wire angle must match the C# switch REGARDLESS of portrait_content.
+
+    The live render path composes a widescreen 90/270 frame on the portrait
+    canvas and passes ``portrait_content=True``; the old test only checked
+    ``False``, so wire_angle silently returned 0 (unrotated) on the live path and
+    the frame shipped as an unrotated 720×1600 portrait (#169).  Both values must
+    now resolve to the C# rotation.
+    """
     profile = get_profile(fbl)
     assert profile.widescreen and profile.jpeg
     for orientation, want in zip(_ORIENTATIONS, expected, strict=True):
-        got = wire_angle(profile, orientation, portrait_content=False)
-        assert got == want, f"FBL {fbl} @ {orientation}°: got {got}, want {want}"
+        got = wire_angle(profile, orientation, portrait_content=portrait_content)
+        assert got == want, (
+            f"FBL {fbl} @ {orientation}° (portrait_content={portrait_content}): "
+            f"got {got}, want {want}"
+        )
 
 
 @pytest.mark.parametrize("fbl", _CSHARP_WIRE)

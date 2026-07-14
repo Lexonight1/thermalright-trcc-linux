@@ -58,16 +58,17 @@ CASES = [
     ("sjpg@270P",  _SMALL_JPEG, 270, True,  OrientationPlan((240, 320), True, 180)),
 
     # Widescreen JPEG (#169/#203) — always composes portrait at 90/270 (rides the
-    # second rotate_panel branch), regardless of content flag.  90 bakes the
-    # orientation into the pixels (no spin); 270 = 90 + a dimension-preserving
-    # 180° flip (the C# shows 854×480 rotates 90 and 270 a 180° apart — no longer
-    # frozen at 90).  0/180 = oriented landscape.
+    # widescreen rotate_panel branch), regardless of content flag, with
+    # post_rotate=0.  The WIRE rotation is owned entirely by resolve_encode_angle
+    # (via wire_angle), which the C# ImageToJpg applies to the whole composite at
+    # every angle — a post_rotate here would double-rotate on top of it (#169).
+    # 0/180 = oriented landscape.
     ("wide@0",     _WIDE_JPEG, 0,   False, OrientationPlan((854, 480), False, 0)),
     ("wide@180",   _WIDE_JPEG, 180, False, OrientationPlan((854, 480), False, 0)),
     ("wide@90L",   _WIDE_JPEG, 90,  False, OrientationPlan((480, 854), True, 0)),
     ("wide@90P",   _WIDE_JPEG, 90,  True,  OrientationPlan((480, 854), True, 0)),
-    ("wide@270L",  _WIDE_JPEG, 270, False, OrientationPlan((480, 854), True, 180)),
-    ("wide@270P",  _WIDE_JPEG, 270, True,  OrientationPlan((480, 854), True, 180)),
+    ("wide@270L",  _WIDE_JPEG, 270, False, OrientationPlan((480, 854), True, 0)),
+    ("wide@270P",  _WIDE_JPEG, 270, True,  OrientationPlan((480, 854), True, 0)),
 ]
 
 
@@ -99,9 +100,9 @@ def test_plan_invariants_over_every_profile(
     assert plan.canvas[0] * plan.canvas[1] == w * h
 
     # post_rotate is 0, the raw orientation (landscape-fallback spin), or 180
-    # (portrait-composed content at 270 — the dimension-preserving flip, which
-    # now includes widescreen: the C# shows 854×480 rotates 90 and 270 by a 180°
-    # difference, so widescreen is no longer frozen).
+    # (non-widescreen portrait content at 270 — the dimension-preserving flip).
+    # Widescreen panels take post_rotate=0 at every angle: their whole-composite
+    # rotation is owned by resolve_encode_angle at wire time (#169), never here.
     assert plan.post_rotate in {0, orientation, 180}
 
     # Any non-zero spin is a rotate panel at 90/270.
@@ -109,9 +110,10 @@ def test_plan_invariants_over_every_profile(
         assert profile.rotate and w != h
         assert orientation in (90, 270)
         if plan.post_rotate == 180:
-            # The 270 flip on portrait-composed content — non-widescreen portrait
-            # content, OR any widescreen panel (which always composes portrait).
+            # The 270 flip on non-widescreen portrait-composed content (widescreen
+            # never reaches here — it composes portrait with post_rotate=0).
             assert orientation == 270
+            assert not profile.widescreen
             assert plan.canvas == (h, w)
             assert plan.is_portrait_content is True
         else:

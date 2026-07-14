@@ -390,6 +390,72 @@ def test_bulk_jpeg_small_rotate_panel_at_90_rotates_whole_composite(
     assert encoders == ["encode_jpeg"], f"expected JPEG encode, got {encoders}"
 
 
+# ── 5b. Widescreen JPEG panels apply the wire rotation on the LIVE path ──
+# Regression for #169: the live path composes the widescreen 90/270 frame on the
+# portrait canvas and passes portrait_content=True, which used to short-circuit
+# wire_angle to 0 — so the frame shipped as an unrotated 720×1600 portrait to a
+# device that wants 1600×720.  These drive the WHOLE build_frame (not wire_angle
+# in isolation, which the old test did with portrait_content=False and missed the
+# bug) and assert the C# ImageToJpg rotation actually reaches the renderer.
+
+
+def _widescreen_info(fbl: int, native: tuple[int, int]) -> ProductInfo:
+    return ProductInfo(
+        vid=0x87AD, pid=0x70DB,
+        vendor="Thermalright", product=f"Widescreen LCD {native[0]}x{native[1]}",
+        wire=Wire.BULK, kind=Kind.LCD,
+        device_type=2, fbl=fbl, native_resolution=native,
+        orientations=(0, 90, 180, 270),
+    )
+
+
+@pytest.mark.parametrize(
+    "fbl,native,orientation,wire_deg",
+    [
+        # FBL 114 (1600×720, WillVinzant's panel — encode_base 180): 90→90, 270→270
+        (114, (1600, 720), 90, 90),
+        (114, (1600, 720), 270, 270),
+        # FBL 224 (854×480 — encode_base 0): 90→270, 270→90 (covers the other base)
+        (224, (854, 480), 90, 270),
+        (224, (854, 480), 270, 90),
+    ],
+)
+def test_widescreen_panel_applies_wire_rotation_on_live_path(
+    display: DisplayService, renderer: RecordingRenderer,
+    fbl: int, native: tuple[int, int], orientation: int, wire_deg: int,
+) -> None:
+    """A widescreen panel at 90/270 must rotate the composite by the C# angle and
+    encode a LANDSCAPE frame — proving resolve_encode_angle reaches the live
+    path (portrait_content=True no longer suppresses it). (#169)"""
+    info = _widescreen_info(fbl, native)
+    profile = get_profile(fbl)
+    assert profile.widescreen and profile.jpeg and profile.rotate
+    settings = display._settings.for_device(info.key)
+    settings.orientation = orientation
+
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+
+    # Composed on the transposed PORTRAIT canvas (h, w).
+    canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
+    assert (native[1], native[0]) in canvases, (
+        f"expected a {native[1]}×{native[0]} portrait canvas, got {canvases}"
+    )
+    # Exactly one whole-composite rotation, by the C# ImageToJpg angle.
+    rotation_angles = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotation_angles == [wire_deg], (
+        f"FBL {fbl} @ {orientation}°: expected one wire rotate of {wire_deg}°, "
+        f"got {rotation_angles} (0/absent = the #169 unrotated-portrait bug)"
+    )
+    # The encoded surface is the native LANDSCAPE frame the device expects.
+    enc = [c for c in renderer.calls if c[0] == "encode_jpeg"]
+    assert len(enc) == 1, f"expected one JPEG encode, got {len(enc)}"
+    encoded_surface = enc[0][1][0]
+    assert (encoded_surface.w, encoded_surface.h) == native, (
+        f"FBL {fbl} @ {orientation}°: encoded {encoded_surface.w}×"
+        f"{encoded_surface.h}, expected native landscape {native[0]}×{native[1]}"
+    )
+
+
 # ── 6. fit_mode wired through (regression guard) ──────────────────────
 
 
@@ -500,13 +566,19 @@ def test_rotate_panel_at_90_composes_portrait_and_skips_device_rotate(
     assert rot90 == [], f"portrait compose must skip the device rotate, got {rot90}"
 
 
-def test_portrait_theme_at_orientation90_is_not_rotated(
+def test_widescreen_at_orientation90_applies_csharp_wire_rotation(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """At orientation 90 a non-square panel loads the portrait catalog — the
-    content is pre-oriented ("orientation is in the masks"), so NO rotation.
-    Orientation-driven, so this holds even for an unsized DC theme; re-rotating
-    it put it 90° off — the reported bug. (#136)"""
+    """At orientation 90 a widescreen panel composes on the portrait canvas and
+    rotates the whole composite by the C# ImageToJpg angle to reach the device's
+    fixed LANDSCAPE wire dims — even for an unsized DC theme.
+
+    This REVERSES the prior "portrait content is pre-oriented, no rotate"
+    assumption, which was self-admittedly unverified ("verify Trofeo first") and
+    shipped in v9.8.7: the actual C# decompile applies ``RotateImg`` to every
+    widescreen frame (854×480 base 0 → directionB 90 → 270°), the wire header is
+    hard-coded landscape (so a 480×854 portrait buffer MUST be rotated), and #169
+    reports the unrotated output is wrong on glass. (#169)"""
     info = _wide_info()
     profile = get_profile(224)                       # 854×480, rotate=True
     display._settings.for_device(info.key).orientation = 90
@@ -516,8 +588,8 @@ def test_portrait_theme_at_orientation90_is_not_rotated(
     )
 
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
-    assert rotations == [], (
-        f"portrait content has orientation baked in — must not rotate, "
+    assert rotations == [270], (
+        f"854×480 @ 90° → C# RotateImg 270° to reach landscape wire dims, "
         f"got {rotations}"
     )
 
@@ -544,16 +616,17 @@ def test_landscape_widescreen_orientation0_composes_landscape_unrotated(
     )
 
 
-def test_widescreen_orientation90_loads_portrait_catalog_no_rotate(
+def test_widescreen_orientation90_encodes_landscape_wire_frame(
     display: DisplayService, renderer: RecordingRenderer,
 ) -> None:
-    """At orientation 90 the widescreen panel loads the PORTRAIT catalog — the
-    content is pre-oriented, so it sends UNROTATED (no encode-table rotate).
+    """At orientation 90 the widescreen panel composes portrait then rotates to a
+    LANDSCAPE wire frame — the device's fixed dims (854×480), never portrait.
 
-    This SUPERSEDES the earlier #169 assumption (encode-table directionB 90 →
-    90°), which was unverified ("verify Trofeo first"): the real device + the C#
-    ``themeDirection`` model load the oriented theme/mask and don't re-rotate it.
-    Orientation is the single source — applied once, in the catalog. (#136/#169)"""
+    Reversal of the earlier "portrait catalog, pre-oriented, no rotate" model
+    (unverified, shipped v9.8.7): the C# ``ImageToJpg`` always applies the
+    directionB ``RotateImg`` and the USB frame header is hard-coded landscape, so
+    the compose buffer (480×854) must be rotated 270° back to 854×480.  #169's
+    on-glass report confirms the no-rotate frame was wrong. (#169)"""
     info = _wide_info()
     profile = get_profile(224)
     display._settings.for_device(info.key).orientation = 90
@@ -562,9 +635,12 @@ def test_widescreen_orientation90_loads_portrait_catalog_no_rotate(
         info=info, theme=_theme_sized(0, 0), sensors={}, profile=profile,
     )
 
-    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
-    assert rotations == [], (
-        f"orientation 90 → portrait catalog, pre-oriented, no rotate; got {rotations}"
+    enc = [c for c in renderer.calls if c[0] == "encode_jpeg"]
+    assert len(enc) == 1, f"expected one JPEG encode, got {len(enc)}"
+    surface = enc[0][1][0]
+    assert (surface.w, surface.h) == (854, 480), (
+        f"orientation 90 must encode the 854×480 landscape wire frame, got "
+        f"{surface.w}×{surface.h}"
     )
 
 
