@@ -1,5 +1,17 @@
 # Changelog
 
+## v9.8.8
+
+**Widescreen panels now actually rotate and fill the screen at 90° and 270°.**
+v9.8.7 corrected the widescreen rotation math, but the live render path was
+quietly bypassing it — so on an 854×480 / 1600×720 / 1920×462 / 1280×480 panel
+the image was still sent the wrong way up, and the theme sat small and
+letterboxed instead of filling the display at portrait angles. Two fixes here:
+the render now applies the rotation it's supposed to (the frame is sent in the
+panel's real landscape shape at every angle), and rotating the display reloads
+the theme's portrait artwork so the background fills the screen. Verified against
+the official app's own rotation logic. (#169, #203)
+
 ## v9.8.7
 
 **Widescreen panels display the right way up at 90° and 270°.** On widescreen
