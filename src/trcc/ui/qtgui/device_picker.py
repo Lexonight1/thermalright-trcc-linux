@@ -143,7 +143,18 @@ class DevicePickerWidget(QWidget):
     # ── Population ───────────────────────────────────────────────────
 
     def _populate_from_app(self) -> None:
-        """Rebuild the dropdown from ``app.devices``, preserving choice."""
+        """Rebuild the dropdown from ``app.devices``, preserving choice.
+
+        Devices attach *asynchronously* — usually after the panels that host
+        this picker have already built and run their initial refresh against an
+        empty ``app.devices``.  When a device then appears (or the selection
+        otherwise changes as a result of the rebuild), we emit
+        :sig:`key_changed` so dependent panels (theme / mask / cloud browsers,
+        preview) re-fetch their lists.  Without this the dropdown would show a
+        device while every selection grid stayed empty.  The rebuild itself is
+        done under blocked signals so the per-widget churn doesn't thrash;
+        the single deliberate emit at the end carries the real transition.
+        """
         previous_key = self.current_key()
 
         self._combo.blockSignals(True)
@@ -167,6 +178,14 @@ class DevicePickerWidget(QWidget):
             # have to know any key.
             self._combo.setCurrentIndex(0)
         self._combo.blockSignals(False)
+
+        new_key = self.current_key()
+        if new_key != previous_key:
+            log.info(
+                "_populate_from_app: selection %r -> %r — emitting key_changed",
+                previous_key, new_key,
+            )
+            self.key_changed.emit(new_key)
 
     def _matches_filter(self, device) -> bool:
         """Optional 'lcd' / 'led' filter — narrow when callers know."""
