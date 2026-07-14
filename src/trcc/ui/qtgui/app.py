@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -37,6 +38,7 @@ from ...core.events import (
     FrameSent,
     ThemeLoaded,
 )
+from ..qt_tray import TrayController
 from .bus_bridge import BusBridge
 from .panels import (
     AboutPanel,
@@ -134,6 +136,25 @@ class MainWindow(QMainWindow):
 
         self._show_platform_info()
 
+        # Shared tray: a window-close hides to the tray (keeps the LCD running)
+        # exactly like the gui skin — via the shared TrayController, not a
+        # qtgui-local reinvention.  Exit (menu) or a force-quit ends the process.
+        icon_path = (Path(__file__).resolve().parents[2]
+                     / "assets" / "icons" / "trcc.png")
+        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+        self._tray = TrayController(
+            self, minimize_on_close=app.platform.minimize_on_close(), icon=icon,
+        )
+        self._tray.install()
+
+    def closeEvent(self, event: Any) -> None:
+        if self._tray.intercept_close(event):
+            return
+        # Genuine quit: stop the playback ticker; the daemon-thread loops die
+        # with the process.
+        self._ticker.stop()
+        event.accept()
+
     def _show_platform_info(self) -> None:
         platform = self._app.platform
         msg = (f"{platform.distro_name()}  |  install: {platform.install_method()}"
@@ -206,13 +227,9 @@ def run(platform: Platform | None = None) -> int:
     qapp = QApplication.instance()
     if not isinstance(qapp, QApplication):   # build_qt_app just created it
         qapp = QApplication(sys.argv)
-    # qtgui is the developer cockpit — closing its window ENDS the process.
-    # The shared build_qt_app sets quitOnLastWindowClosed=False so the end-user
-    # gui can hide to the system tray and keep the LCD lit; qtgui has no tray,
-    # so without this override a window-close would neither quit nor hide —
-    # orphaning a trcc-qtgui process with nothing to bring it back or kill it.
-    # Every background loop/monitor is a daemon thread, so this exits cleanly.
-    qapp.setQuitOnLastWindowClosed(True)
+    # quitOnLastWindowClosed stays False (the shared build_qt_app default): the
+    # MainWindow's TrayController hides to the tray on close and keeps the LCD
+    # running, exactly like gui.  Exit (tray menu) force-quits.
     splash = show_splash()
     qapp.processEvents()
     window = MainWindow(app)
