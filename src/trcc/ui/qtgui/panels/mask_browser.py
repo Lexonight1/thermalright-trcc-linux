@@ -42,7 +42,6 @@ from ....core.commands import (
     SetMaskVisible,
     UploadCustomMask,
 )
-from ....core.models import ThemeDir
 from ..assets import thumbnail_icon
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -169,9 +168,7 @@ class MaskBrowser(BasePanel):
             return
         result = self.dispatch(ListMasks(resolution=resolution))
         for entry in result.masks:
-            td = ThemeDir(Path(entry.path))
-            preview = td.preview if td.preview.exists() else td.mask
-            item = QListWidgetItem(thumbnail_icon(preview), entry.name)
+            item = QListWidgetItem(thumbnail_icon(Path(entry.preview)), entry.name)
             item.setData(Qt.ItemDataRole.UserRole, entry.path)
             self._list.addItem(item)
         if not result.masks:

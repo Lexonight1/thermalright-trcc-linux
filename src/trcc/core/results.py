@@ -533,9 +533,15 @@ class MaskUploadResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class FileEntry:
-    """One row in a generic listing of files."""
+    """One mask row: the mask dir (``path``) + its preview image (``preview``).
+
+    ``preview`` is the ``Theme.png`` tile (falling back to the ``01.png``
+    overlay) resolved by ``ThemeService.discover_masks`` — carried here so every
+    UI can render a thumbnail from the Command result, instead of re-deriving it
+    from the path (the gap that forced gui to call the service directly)."""
     name: str
     path: str
+    preview: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -614,6 +620,10 @@ class CloudThemeEntryResult:
     id: str
     category: str
     category_name: str
+    # On-disk preview PNG (``web/{w}{h}/<id>.png``), resolved by ListCloudThemes
+    # when a resolution is given; "" when unresolved or not yet extracted.  Lets
+    # any UI thumbnail the catalog without re-deriving the path.
+    preview: str = ""
 
 
 @dataclass(frozen=True, slots=True)

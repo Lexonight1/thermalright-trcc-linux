@@ -52,7 +52,6 @@ from ._helpers import (
     _VIDEO_EXTS_FOR_SAVE,
     _json_default_tuple,
     _publish_if_disconnect,
-    _resolve_mask_path,
     _resolve_oriented_resolution,
     _search_theme_by_name,
     oriented_theme_path,
@@ -81,6 +80,15 @@ def _theme_preview(theme_dir: Path) -> str:
             return str(candidate)
     any_png = next(theme_dir.glob("*.png"), None)
     return str(any_png) if any_png is not None else ""
+
+
+def _cloud_preview(web_dir: Path | None, theme_id: str) -> str:
+    """On-disk preview PNG for a cloud theme id (``web/{w}{h}/<id>.png``), or ""
+    when no resolution was given or the preview hasn't been extracted yet."""
+    if web_dir is None:
+        return ""
+    png = web_dir / f"{theme_id}.png"
+    return str(png) if png.is_file() else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1453,36 +1461,38 @@ class ListMasks(Command[MasksListResult]):
     directory: Path | None = None
 
     def execute(self, app: App) -> MasksListResult:
+        # Delegate to the SAME discovery the gui skin uses — one implementation,
+        # and it carries the preview path so the result is self-sufficient for
+        # any UI (no re-deriving the thumbnail from the path).
+        from ...services.theme import ThemeService
+
         if self.directory is not None:
-            roots = [self.directory]
+            cloud_dir: Path | None = self.directory
+            user_dir: Path | None = None
         elif self.resolution is not None:
             paths = app.platform.paths()
             w, h = self.resolution
-            roots = [paths.cloud_mask_dir(w, h), paths.user_mask_dir(w, h)]
+            cloud_dir = paths.cloud_mask_dir(w, h)
+            user_dir = paths.user_mask_dir(w, h)
         else:
             return MasksListResult(
                 ok=False, directory="", masks=[],
                 message="ListMasks requires resolution=(w,h) or directory=...",
             )
 
-        seen: set[Path] = set()
-        entries: list[FileEntry] = []
-        for root in roots:
-            if not root.is_dir():
-                continue
-            for entry in sorted(root.iterdir()):
-                resolved = _resolve_mask_path(entry)
-                if resolved is None or resolved in seen:
-                    continue
-                seen.add(resolved)
-                # For legacy subdirs, surface the subdir name (e.g.
-                # "000a") so users see the catalog id, not "01.png".
-                display_name = entry.name if entry.is_dir() else resolved.name
-                entries.append(FileEntry(name=display_name, path=str(resolved)))
-        target_str = "; ".join(str(r) for r in roots)
+        discovered = ThemeService.discover_masks(cloud_dir, user_dir)
+        entries = [
+            FileEntry(
+                name=m.name,
+                path=str(m.path),
+                preview=str(m.preview_path) if m.preview_path else "",
+            )
+            for m in discovered
+        ]
+        target = "; ".join(str(d) for d in (cloud_dir, user_dir) if d is not None)
         return MasksListResult(
-            ok=True, directory=target_str, masks=entries,
-            message=f"{len(entries)} mask(s) under {target_str}",
+            ok=True, directory=target, masks=entries,
+            message=f"{len(entries)} mask(s) under {target}",
         )
 
 @dataclass(frozen=True, slots=True)
@@ -1628,8 +1638,13 @@ class ListCloudThemes(Command[CloudThemesListResult]):
     Pass ``category="a"`` (or any registered prefix) to scope the list,
     or ``"all"`` (the default) for everything.  Pure read — no network
     until ``LoadCloudTheme`` runs, since the catalog itself is static.
+
+    Pass ``resolution=(w, h)`` to have each entry's on-disk preview PNG
+    (``web/{w}{h}/<id>.png``, extracted by the data layer) resolved into
+    ``preview`` — so any UI can thumbnail the catalog from the result.
     """
     category: str = "all"
+    resolution: tuple[int, int] | None = None
 
     def execute(self, app: App) -> CloudThemesListResult:
         try:
@@ -1642,9 +1657,14 @@ class ListCloudThemes(Command[CloudThemesListResult]):
             CloudCategoryEntry(prefix=c.prefix, name=c.name, count=c.count)
             for c in app.cloud_themes.categories()
         ]
+        web_dir = (
+            app.platform.paths().cloud_theme_dir(*self.resolution)
+            if self.resolution is not None else None
+        )
         entries = [
             CloudThemeEntryResult(
                 id=t.id, category=t.category, category_name=t.category_name,
+                preview=_cloud_preview(web_dir, t.id),
             )
             for t in themes
         ]

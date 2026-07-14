@@ -495,7 +495,8 @@ def to_mask_upload_response(r: MaskUploadResult) -> MaskUploadResponse:
 def to_masks_list_response(r: MasksListResult) -> MasksListResponse:
     return MasksListResponse(
         ok=r.ok, message=r.message, directory=r.directory,
-        masks=[FileEntrySchema(name=m.name, path=m.path) for m in r.masks],
+        masks=[FileEntrySchema(name=m.name, path=m.path, preview=m.preview)
+               for m in r.masks],
     )
 
 
@@ -565,6 +566,7 @@ def to_cloud_themes_list_response(
         themes=[
             CloudThemeEntrySchema(
                 id=t.id, category=t.category, category_name=t.category_name,
+                preview=t.preview,
             )
             for t in r.themes
         ],

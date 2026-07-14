@@ -470,6 +470,7 @@ class MaskUploadResponse(ResultBase):
 class FileEntrySchema(BaseModel):
     name: str
     path: str
+    preview: str = ""
 
 
 class MasksListResponse(ResultBase):
@@ -572,6 +573,7 @@ class CloudThemeEntrySchema(BaseModel):
     id: str
     category: str
     category_name: str
+    preview: str = ""
 
 
 class CloudThemesListResponse(ResultBase):

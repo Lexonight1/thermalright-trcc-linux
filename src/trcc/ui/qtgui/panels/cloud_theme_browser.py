@@ -17,6 +17,7 @@ the theme server.  Check your internet connection."
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
@@ -104,7 +105,8 @@ class CloudThemeBrowser(BasePanel):
 
     def _populate_categories(self) -> None:
         """Fill the category dropdown from the catalog (offline-safe)."""
-        result = self.dispatch(ListCloudThemes(category=_ALL_CATEGORIES))
+        result = self.dispatch(ListCloudThemes(
+            category=_ALL_CATEGORIES, resolution=self._resolution()))
         # Categories never change after this — they're a static table.
         existing = {
             self._category.itemData(i) for i in range(self._category.count())
@@ -126,7 +128,8 @@ class CloudThemeBrowser(BasePanel):
     def _on_category_changed(self) -> None:
         log.info("_on_category_changed")
         cat = str(self._category.currentData() or _ALL_CATEGORIES)
-        result = self.dispatch(ListCloudThemes(category=cat))
+        result = self.dispatch(ListCloudThemes(
+            category=cat, resolution=self._resolution()))
         self._fill_list_from_result(result)
 
     def _on_key_changed(self, _key: str) -> None:
@@ -148,18 +151,11 @@ class CloudThemeBrowser(BasePanel):
 
     def _fill_list_from_result(self, result) -> None:
         self._list.clear()
-        # Previews live at data/web/{w}{h}/<id>.png (extracted by the data
-        # layer); resolve the dir from the picked device.  No device yet →
-        # text-only until one is picked and the list re-fills.
-        resolution = self._resolution()
-        web_dir = (
-            self.app.platform.paths().cloud_theme_dir(*resolution)
-            if resolution is not None else None
-        )
+        # ListCloudThemes carries each entry's preview path (resolved for the
+        # device resolution we passed).  Thin UI: just read entry.preview.
         for entry in result.themes:
-            item = QListWidgetItem(f"{entry.id}\n{entry.category_name}")
-            if web_dir is not None:
-                item.setIcon(thumbnail_icon(web_dir / f"{entry.id}.png"))
+            item = QListWidgetItem(thumbnail_icon(Path(entry.preview)),
+                                   f"{entry.id}\n{entry.category_name}")
             item.setData(Qt.ItemDataRole.UserRole, entry.id)
             self._list.addItem(item)
         if result.ok:
