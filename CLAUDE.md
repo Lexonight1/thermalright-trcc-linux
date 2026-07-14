@@ -13,19 +13,27 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **RESUME 2026-07-12 (evening) — #212 Ali bulk protocol, DIAGNOSED + plan APPROVED,
-  NOT yet coded. READ `memory/project_issue212_ali_bulk_protocol.md` FIRST.**
-  main==origin, tree clean (only CLAUDE.md/memory edits), CI GREEN, v9.8.6 live.
-  `0416:5406` (Elite Vision 360) = USBLCDNew **"Ali" variant** (C#
-  `ThreadSendDeviceDataALi`, USBLCDNEW.decompiled.cs:548) — a DISTINCT bulk protocol
-  from GrandVision (write EP **0x02**, 16-B handshake `F5 00 01 00 BC FF B6 C8…`,
-  validate `resp[0]∈{101,102}`, fixed **320×320 RGB565**). Our BulkLcd sends the
-  GrandVision handshake → 16-B reply → `len<41` rejects = the OP's `len=16,
-  resp[24]=N/A`. **APPROVED next step: build Option A** = new `Wire.BULK_ALI` +
-  `AliLcd` adapter + registry row + tests (all byte constants + full plan in the
-  memo). On-glass reporter-gated (AleksandroSN) — keep #212 open. **Other reporters
-  waiting**: #217 (SCSI `/dev/sda` scan-order/perm), #150 (bulk multi-command state),
-  #175 (reporter-gated `-vv`), #218 (Windows PATH + rotation).
+- **RESUME 2026-07-14 (EOD) — v9.8.8 SHIPPED (#169 widescreen rotation + fill). READ
+  `memory/project_issue169_widescreen_rotation_fill.md` FIRST.** main==origin, tree
+  clean, tag v9.8.8 pushed, GitHub release live, PyPI/pkgs building. #169 root-caused
+  via the C# oracle (`FormCZTV.cs::ImageToJpg` + `UCScreenImage.cs::GenerateImage`) as
+  TWO coupled bugs: **Inc 1 `5315ce2c`** — the live render path passed
+  `portrait_content=True` for widescreen, short-circuiting `wire_angle`→0, so
+  `resolve_encode_angle` NEVER ran (v9.8.7's fix was dormant) and the frame shipped as
+  wrong-shape portrait; **Inc 2 `3fa8e102`** — rotation switched the browser catalog but
+  didn't reload the active theme's portrait `00.png`, so the landscape bg letterboxed.
+  Both C#-verified + real-encoder-verified (correct landscape dims at every angle;
+  portrait bg 0% black bars vs 78%). Suite 2842. **AWAITING on-glass photos** from
+  WillVinzant (#169) + GeorgeN69 (#203, sent an **honesty correction** — v9.8.7's fix was
+  bypassed, v9.8.8 is real). Replies POSTED #169/#203/#175/#150/#220. **NEXT / still open
+  (all reporter-gated, NO code blocked on us):** #170 (widescreen *video* fill — LIKELY
+  the same fix on the video/animation compose path; needs TheJMS-NQ's PM byte to
+  confirm), #150 (wake-from-sleep — need the replug answer), #220 (HiDPI — need
+  X11/Wayland + fresh-launch answer + investigate how DPI reaches the wire render).
+  **Backlog verified ALREADY-FIXED (no code):** #157 (`b43151be` discrete-GPU sort),
+  #175 (v9.8.7 led `ensure_connected`), #194 (reporter confirmed 9800X3D works via
+  intel-rapl powercap; optional pre-Zen2 `amd_energy` hwmon fallback, nobody blocked),
+  #212 (Ali — CONFIRMED on glass, CLOSED).
 - **DONE 2026-07-12 — font-size "bug" was NOT a bug** (clock on 12hr; AM/PM read
   bigger). Size pipeline measured + cited C#-faithful (reader matches case 220, units
   = Point, 96-DPI QImage). `memory/project_resume_v986_and_font_size.md`. DO NOT
