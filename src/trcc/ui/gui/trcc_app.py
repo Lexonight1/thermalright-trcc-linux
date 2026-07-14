@@ -26,10 +26,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMenu,
     QPushButton,
     QStackedWidget,
-    QSystemTrayIcon,
     QWidget,
 )
 
@@ -52,6 +50,7 @@ from ...core.commands import (
 )
 from ...core.models import HardwareMetrics, Kind
 from ..presentation import presentation_for
+from ..qt_tray import TrayController
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -360,7 +359,7 @@ class TRCCApp(QMainWindow):
         return cls._instance
 
     def is_app_visible(self) -> bool:
-        return self.isVisible() and not self._minimized_to_taskbar
+        return self.isVisible() and not self._tray.minimized_to_taskbar
 
     def __init__(
         self,
@@ -393,8 +392,14 @@ class TRCCApp(QMainWindow):
         # settings.active_gpu) — no GUI-local hook needed.
         self._decorated = decorated
         self._drag_pos: Any = None
-        self._force_quit = False
-        self._minimized_to_taskbar = False
+        # System tray (shared TrayController): a window-close hides/minimises to
+        # the tray and keeps the LCD running; Exit quits.  Constructed here so
+        # ``is_app_visible`` can read its state; ``install()`` runs below.
+        _tray_icon = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
+        self._tray = TrayController(
+            self, minimize_on_close=self._minimize_on_close,
+            icon=QIcon(str(_tray_icon)) if _tray_icon.exists() else QIcon(),
+        )
         self._data_dir = app.platform.paths().user_content_dir()
 
         self.setWindowTitle("TRCC-Linux - Thermalright LCD Control Center")
@@ -469,8 +474,8 @@ class TRCCApp(QMainWindow):
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
-        # System tray
-        self._setup_systray()
+        # System tray — controller built above; show it now.
+        self._tray.install()
 
         # Raise-existing-window (second launch) — see ``raise_requested``.
         # QueuedConnection: the emit comes from SingleInstance's accept thread,
@@ -488,9 +493,9 @@ class TRCCApp(QMainWindow):
         """
         log.info(
             "_on_raise_requested: visible=%s minimized=%s tray=%s",
-            self.isVisible(), self.isMinimized(), self._minimized_to_taskbar,
+            self.isVisible(), self.isMinimized(), self._tray.minimized_to_taskbar,
         )
-        self._minimized_to_taskbar = False
+        self._tray.clear_minimized()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -512,12 +517,7 @@ class TRCCApp(QMainWindow):
             return
         self._last_error_text = text
         log.info("_on_bus_error: [%s] %s", event.kind, event.message)
-        tray = getattr(self, "_tray", None)
-        if tray is not None and QSystemTrayIcon.isSystemTrayAvailable():
-            tray.showMessage(
-                "TRCC — device", text,
-                QSystemTrayIcon.MessageIcon.Warning, 8000,
-            )
+        self._tray.notify("TRCC — device", text)
 
     def _on_bus_device_connected(self, event: Any) -> None:
         """One device just attached/handshaked (hotplug after startup).
@@ -936,43 +936,6 @@ class TRCCApp(QMainWindow):
         self.setPalette(palette)
 
     # ── System tray ─────────────────────────────────────────────────
-
-    def _setup_systray(self) -> None:
-        # __file__ = src/trcc/ui/gui/trcc_app.py  →  parents[2] = src/trcc/
-        icon_path = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
-        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
-        self.setWindowIcon(icon)
-
-        self._tray = QSystemTrayIcon(icon, self)
-        self._tray.setToolTip("TRCC Linux")
-
-        menu = QMenu()
-        if (show_action := menu.addAction("Show/Hide")):
-            show_action.triggered.connect(self._toggle_visibility)
-        menu.addSeparator()
-        if (exit_action := menu.addAction("Exit")):
-            exit_action.triggered.connect(self._quit_app)
-        self._tray.setContextMenu(menu)
-        self._tray.activated.connect(self._on_tray_activated)
-        self._tray.show()
-
-    def _on_tray_activated(self, reason: Any) -> None:
-        log.info("_on_tray_activated: reason=%s", reason)
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._toggle_visibility()
-
-    def _toggle_visibility(self) -> None:
-        if self.isVisible():
-            self.hide()
-        else:
-            self._minimized_to_taskbar = False
-            self.show()
-            self.activateWindow()
-            self.raise_()
-
-    def _quit_app(self) -> None:
-        self._force_quit = True
-        self.close()
 
     # ── UI Setup ────────────────────────────────────────────────────
 
@@ -2505,20 +2468,9 @@ class TRCCApp(QMainWindow):
         event.accept()
 
     def closeEvent(self, event: Any) -> None:
-        if (not self._force_quit
-                and self._tray.isSystemTrayAvailable()
-                and self._tray.isVisible()
-                and not (self._minimize_on_close and self._minimized_to_taskbar)):
-            event.ignore()
-            if self._minimize_on_close:
-                self._minimized_to_taskbar = True
-                self.showMinimized()
-            else:
-                self.hide()
+        if self._tray.intercept_close(event):
             return
-        self._minimized_to_taskbar = False
-
-        self._tray.hide()
+        # Genuine quit (Exit / force): the controller already hid the tray.
         self._screencast.cleanup()
         for h in list(self._handlers.values()):
             h.cleanup()
