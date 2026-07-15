@@ -280,6 +280,13 @@ jobs:
           install -Dm755 /src/src/trcc/assets/trcc-imc "$PKG/usr/bin/trcc-imc"
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
 
+          # python3-pynvml stays a Recommends below, NOT a Depends: it pulls
+          # libnvidia-ml1 (NVIDIA libs onto AMD boxes) and lives in contrib,
+          # which many users have not enabled -- a hard Depends then fails to
+          # resolve at all. Same trade as the Arch optdepend (#216); the app
+          # tells NVIDIA users the apt command instead (#207).
+          # (Comments cannot go INSIDE the control heredoc -- Debian Policy 5.1
+          # allows them only in SOURCE control files; dpkg rejects them here.)
           cat > "$PKG/DEBIAN/control" << CTRL
           Package: trcc-linux
           Version: ${VER}-1
@@ -469,6 +476,12 @@ jobs:
           depend = portaudio
           depend = libusb
           depend = sg3_utils
+          # DO NOT make this a hard depend. python-nvidia-ml-py depends on
+          # nvidia-utils -- ~938 MB of driver + EGL stack on an AMD-only
+          # machine (#216). It was changed to a hard depend once, shipped in
+          # v9.9.0, and a user reported the 938 MB within hours.
+          # The reader is OPTIONAL; the ADVICE is what must be right --
+          # Platform.software_install_hint names the per-distro package (#207).
           optdepend = python-nvidia-ml-py: NVIDIA GPU sensor support
           optdepend = 7zip: theme archive extraction
           optdepend = ffmpeg: video and GIF playback
