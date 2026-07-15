@@ -93,7 +93,7 @@ On Windows, the app just talks to USB devices. On Linux, you need to tell the sy
 sudo trcc system setup
 ```
 
-Then unplug and replug your LCD. That's it.
+Then restart your computer. That's it.
 
 ---
 
@@ -152,7 +152,7 @@ trcc detect
 ```bash
 sudo trcc system setup
 ```
-Then unplug and replug your LCD.
+Then restart your computer.
 
 ### Screen stays on the splash/boot logo
 Run `trcc doctor` and check for `[FAIL]` entries. Most common fix:

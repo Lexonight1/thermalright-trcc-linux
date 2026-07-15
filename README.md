@@ -79,7 +79,7 @@ Pre-built packages are available for every major distro. No pip, no venv, no PEP
 | macOS 11+ | [macOS](doc/GUIDE_INSTALL.md#macos-experimental) |
 | FreeBSD | [FreeBSD](doc/GUIDE_INSTALL.md#freebsd-experimental) |
 
-Each guide has a one-liner copy-paste command and step-by-step instructions. After installing, unplug and replug the USB cable, then run `trcc gui`.
+Each guide has a one-liner copy-paste command and step-by-step instructions. After installing, run `trcc gui` — TRCC picks the cooler up automatically. (Not detected? Restart your computer and try again.)
 
 ### Verify your download
 
@@ -106,7 +106,7 @@ pipx install trcc-linux
 trcc system setup        # interactive wizard — udev rules, desktop entry
 ```
 
-Then **unplug and replug the USB cable** and run `trcc gui`.
+Then **restart your computer** and run `trcc gui`.
 
 > `pipx` not installed? `sudo apt install pipx` (Debian/Ubuntu), `sudo dnf install pipx` (Fedora), `sudo pacman -S python-pipx` (Arch). See the **[Install Guide](doc/GUIDE_INSTALL.md)** for your distro.
 

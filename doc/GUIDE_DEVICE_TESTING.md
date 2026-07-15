@@ -24,7 +24,7 @@ pip install trcc-linux pyusb
 trcc system setup        # interactive wizard — checks all deps, installs udev rules, desktop entry
 ```
 
-After setup finishes: **unplug and replug the USB cable**, then **open a new terminal**.
+After setup finishes: **open a new terminal**. (If the device isn't picked up, restart your computer.)
 
 > **Already have TRCC installed?** Just run `pip install pyusb` and then `trcc gui` (HID is auto-detected).
 
@@ -120,14 +120,14 @@ Check:
 This usually means the handshake succeeded but frame transfer failed. The most common causes:
 
 1. **Wrong resolution detected** — The PM byte mapped to the wrong resolution, so frames are the wrong size. Run `trcc system hid-debug` and share the output
-2. **USB permissions** — Run `trcc system setup`, then unplug/replug the USB cable
+2. **USB permissions** — Run `trcc system setup`, then restart your computer if it still isn't detected
 3. **Missing pyusb** — Run `pip install --break-system-packages pyusb`
 
 ### "No HID devices found" in hid-debug
 
 1. Make sure the USB cable is plugged in
 2. Run `lsusb` — you should see your device listed
-3. Run `trcc system setup` and unplug/replug the USB cable
+3. Run `trcc system setup`, then restart your computer if it still isn't detected
 4. Check if another process (like the Windows TRCC in a VM) is holding the USB device
 
 ### Device shows wrong name in sidebar

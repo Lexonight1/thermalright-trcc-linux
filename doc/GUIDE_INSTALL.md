@@ -93,15 +93,13 @@ sudo dnf install ./trcc-linux-*.noarch.rpm
 
 It will ask for your password — type it and press Enter (the password won't show as you type, that's normal).
 
-**Step 3 — Unplug and replug** the USB cable from your cooler (or reboot).
-
-**Step 4 — Launch:**
+**Step 3 — Launch:**
 
 ```bash
 trcc gui
 ```
 
-That's it! If your device isn't detected, see the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
+That's it! If your device isn't detected, restart your computer and try again — that's usually all it takes. Still nothing? See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
 ---
 
@@ -128,15 +126,13 @@ cd ~/Downloads
 sudo apt install ./trcc-linux_*_all.deb
 ```
 
-**Step 3 — Unplug and replug** the USB cable from your cooler (or reboot).
-
-**Step 4 — Launch:**
+**Step 3 — Launch:**
 
 ```bash
 trcc gui
 ```
 
-That's it! If your device isn't detected, see the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
+That's it! If your device isn't detected, restart your computer and try again — that's usually all it takes. Still nothing? See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
 > **`python3-pyside6` not found?** On Ubuntu 24.04 it may be in the `universe` repository — enable it, then install again:
 > ```bash
@@ -168,9 +164,7 @@ sudo apt install ./trcc-linux_*legacy*_all.deb
 trcc system setup
 ```
 
-**Step 4 — Unplug and replug** the USB cable from your cooler (or reboot).
-
-**Step 5 — Launch:**
+**Step 4 — Launch:**
 
 ```bash
 trcc gui
@@ -196,15 +190,13 @@ cd ~/Downloads
 sudo pacman -U trcc-linux-*-any.pkg.tar.zst
 ```
 
-**Step 3 — Unplug and replug** the USB cable from your cooler (or reboot).
-
-**Step 4 — Launch:**
+**Step 3 — Launch:**
 
 ```bash
 trcc gui
 ```
 
-That's it! If your device isn't detected, see the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
+That's it! If your device isn't detected, restart your computer and try again — that's usually all it takes. Still nothing? See the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
 ---
 
@@ -221,9 +213,7 @@ cd ~/Downloads
 sudo zypper install ./trcc-linux-*.noarch.rpm
 ```
 
-**Step 3 — Unplug and replug** the USB cable from your cooler (or reboot).
-
-**Step 4 — Launch:**
+**Step 3 — Launch:**
 
 ```bash
 trcc gui
@@ -263,7 +253,7 @@ Then rebuild:
 sudo nixos-rebuild switch
 ```
 
-Unplug and replug the USB cable, then:
+Then:
 
 ```bash
 trcc gui
@@ -302,7 +292,7 @@ sudo ebuild trcc-linux-*.ebuild manifest
 sudo emerge --ask app-misc/trcc-linux
 ```
 
-Unplug and replug the USB cable, then:
+Then:
 
 ```bash
 trcc gui
@@ -331,7 +321,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard (device permissions, desktop shortcut)
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -364,7 +354,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -396,7 +386,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -419,7 +409,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -449,7 +439,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -483,7 +473,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -513,7 +503,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -537,7 +527,7 @@ pipx install trcc-linux
 # Step 4: Run the setup wizard
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -555,7 +545,7 @@ cd thermalright-trcc-linux
 sudo ./install.sh
 ```
 
-The script auto-detects your distro, installs system packages, Python deps, udev rules, and a desktop shortcut. After it finishes: unplug and replug the USB cable, then run `trcc gui`.
+The script auto-detects your distro, installs system packages, Python deps, udev rules, and a desktop shortcut. After it finishes: restart your computer, then run `trcc gui`.
 
 To uninstall: `trcc uninstall` (or `sudo ./install.sh --uninstall`).
 
@@ -587,7 +577,7 @@ rpm-ostree install ./trcc-linux-*.noarch.rpm
 systemctl reboot
 ```
 
-After reboot, unplug and replug the USB cable, then: `trcc gui`
+After reboot: `trcc gui`
 
 > If you have a bulk USB device, you may also need SELinux policy: `trcc system setup`
 > (if `checkmodule` is not found: `rpm-ostree install checkpolicy` and reboot first)
@@ -613,7 +603,7 @@ pip install trcc-linux
 # Step 4: Set up device permissions
 trcc system setup
 
-# Step 5: Unplug and replug the USB cable, then launch
+# Step 5: Launch
 trcc gui
 ```
 
@@ -654,7 +644,7 @@ exit
 
 # Back on the host — set up device permissions
 trcc system setup
-# Unplug/replug USB cable
+# Launch
 
 # Run from Distrobox
 distrobox enter trcc -- trcc gui
@@ -687,7 +677,7 @@ sudo trcc system setup
 # Re-enable read-only (recommended)
 sudo steamos-readonly enable
 
-# Unplug/replug USB cable, then launch
+# Launch
 trcc gui
 ```
 
@@ -709,7 +699,7 @@ sudo steamos-readonly disable
 sudo trcc system setup
 sudo steamos-readonly enable
 
-# Unplug/replug USB cable, then run
+# Run
 distrobox enter trcc -- trcc gui
 ```
 
@@ -734,7 +724,7 @@ exit
 # Set up udev rules on the host
 trcc system setup
 
-# Unplug/replug USB cable, then run
+# Run
 apx trcc-system run -- trcc gui
 ```
 
@@ -756,7 +746,7 @@ pip install --break-system-packages trcc-linux
 # Set up device permissions
 trcc system setup
 
-# Unplug/replug USB cable, then launch
+# Launch
 trcc gui
 ```
 
