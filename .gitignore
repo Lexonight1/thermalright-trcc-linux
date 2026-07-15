@@ -101,8 +101,8 @@ src/trcc/data/ui_*.json
 /*.sh
 !install.sh
 
-# Dev tooling
-tools/
+# Dev tooling (root-level scratch only — dev/tools/ is tracked source)
+/tools/
 
 # Large binary docs
 doc/*.pdf

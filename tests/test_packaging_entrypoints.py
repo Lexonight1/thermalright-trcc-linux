@@ -14,6 +14,7 @@ moment someone touches ``[project.scripts]`` — not silently at the next releas
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import tomllib
@@ -95,53 +96,31 @@ def test_release_docker_comments_have_no_quote_breakers() -> None:
 
 # ── Arch runtime dependencies ─────────────────────────────────────────
 
-# pyproject name -> Arch package name.  Only names that differ or need the
-# `python-` prefix are interesting; the mapping is explicit so a rename shows
-# up as a test failure rather than a silent skip.
-_ARCH_PKG = {
-    "PySide6": "pyside6",
-    "numpy": "python-numpy",
-    "psutil": "python-psutil",
-    "pyusb": "python-pyusb",
-    "pyudev": "python-pyudev",
-    "click": "python-click",
-    "typer": "python-typer",
-    "fastapi": "python-fastapi",
-    "prompt_toolkit": "python-prompt_toolkit",
-    "python-multipart": "python-multipart",
-    "certifi": "python-certifi",
-    "nvidia-ml-py": "python-nvidia-ml-py",
-    "uvicorn": "python-uvicorn",
-    "sounddevice": "python-sounddevice",
-}
-
-# Hard deps in pyproject that Arch does NOT ship in its official repos, so a
-# `depend =` line would make `pacman -U` fail to resolve for every user.  These
-# are knowingly absent; anything else missing is a bug.  Verified against
-# archlinux.org/packages: both are AUR-only.
+# The name mapping and the "Arch has no package for these" list live in
+# dev/tools/check_distro_deps.py, which is the tool that VERIFIES them against
+# live distro repos.  Imported rather than copied: a second copy would drift
+# from the one being checked, and then neither is trustworthy.
 #
-# Consequence, recorded honestly rather than hidden: on Arch, `trcc api` has no
-# uvicorn and audio features have no sounddevice unless the user installs them
-# from the AUR.  Fedora solves the same problem by vendoring via pip into the
-# package (release.yml); Arch does not.  That gap is real and unfixed.
-_ARCH_UNAVAILABLE = {"python-uvicorn", "python-sounddevice"}
+# Recorded consequence of ARCH_UNAVAILABLE, rather than hidden: on Arch,
+# `trcc api` has no uvicorn and audio has no sounddevice unless the user pulls
+# them from the AUR.  Fedora solves the same problem by vendoring via pip;
+# Arch does not.  That gap is real and unfixed.
+_DEV_TOOLS_DIR = _ROOT / "dev" / "tools"
+if str(_DEV_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_DEV_TOOLS_DIR))
 
+from check_distro_deps import _PKG_NAMES  # noqa: E402
+from check_distro_deps import (  # noqa: E402
+    ARCH_UNAVAILABLE as _ARCH_UNAVAILABLE,
+)
+from check_distro_deps import (  # noqa: E402
+    arch_declared_depends as _arch_depends,
+)
+from check_distro_deps import (  # noqa: E402
+    pyproject_runtime_deps as _pyproject_linux_runtime_deps,
+)
 
-def _arch_depends() -> set[str]:
-    text = _RELEASE_YML.read_text()
-    start = text.index("          depend = python\n")
-    block = text[start:text.index("          INFO", start)]
-    return set(re.findall(r"^\s*depend = (\S+)", block, re.M))
-
-
-def _pyproject_linux_runtime_deps() -> list[str]:
-    data = tomllib.loads(_PYPROJECT.read_text())
-    out = []
-    for spec in data["project"]["dependencies"]:
-        if "sys_platform == 'win32'" in spec:
-            continue
-        out.append(re.split(r"[><=;\[]", spec)[0].strip())
-    return out
+_ARCH_PKG = {name: pkgs[0] for name, pkgs in _PKG_NAMES.items()}
 
 
 def test_arch_package_declares_every_hard_runtime_dep() -> None:
