@@ -127,6 +127,39 @@ class DiscoverDevices(Command[DiscoverResult]):
             devices=live,
         )
 
+def _suspended_panel_hints(app: App, vid: int, pid: int) -> list[str]:
+    """Explain a failed handshake when the panel is merely ASLEEP.
+
+    A USB-suspended panel and a dead one produce the identical error --
+    ``[Errno 110] Operation timed out`` -- so a reporter (and I) cannot tell
+    "working as designed" from "broken".  #150 cost two months partly on that
+    ambiguity: the kernel autosuspends the panel ~10s after the frame stream
+    stops (by design, #143 -- it is how the firmware sleeps), and the next
+    connect times out looking like a hardware fault.
+
+    The app already knows.  It just never said.  Best-effort by design: a
+    Platform that cannot read USB power returns None and we add nothing --
+    a diagnostic must never become the thing that breaks the diagnosis.
+    """
+    try:
+        power = app.platform.usb_power_state(vid, pid)
+    except Exception:
+        log.exception("_suspended_panel_hints: usb_power_state raised")
+        return []
+    if power is None or not power.suspended:
+        return []
+    asleep = (f" (asleep for {power.suspended_time_ms}ms)"
+              if power.suspended_time_ms else "")
+    log.warning("connect failed while the panel was USB-SUSPENDED%s "
+                "(control=%s) — this is #150, not a broken device",
+                asleep, power.control)
+    return [
+        f"The panel is USB-suspended{asleep}, not broken — it sleeps when "
+        f"nothing is drawing to it (power/control={power.control}).",
+        "Keep a stream running to hold it awake: trcc display play <key>",
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class ConnectDevice(Command[ConnectResult]):
     """Attach + handshake with a discovered device."""
@@ -158,6 +191,7 @@ class ConnectDevice(Command[ConnectResult]):
         except (HandshakeError, TransportError) as e:
             app.detach(self.key)   # clears any prior issue for this key first
             hints = app.platform.check_permissions()
+            hints += _suspended_panel_hints(app, vid, pid)
             app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
                                              key=self.key, hints=hints))
             result = ConnectResult(ok=False, key=self.key, message=str(e),

@@ -198,6 +198,18 @@ def _collect_devices(
             "vendor": product.vendor if product else "(unregistered)",
             "wire": product.wire.value if product else "(unknown)",
         }
+        # USB runtime power. Without it, a SUSPENDED panel and a dead one look
+        # identical in every log we have (#150) -- and remote_wakeup explains
+        # why two panels of the same product behave differently: one that
+        # cannot wake the host is never autosuspended at all.
+        power = platform.usb_power_state(info.vid, info.pid)
+        if power is not None:
+            row["power"] = (
+                f"control={power.control} status={power.runtime_status} "
+                f"remote_wakeup={'yes' if power.supports_remote_wakeup else 'no'}"
+                + (f" suspended_for={power.suspended_time_ms}ms"
+                   if power.suspended_time_ms else "")
+            )
         # Capture the live handshake so the report always carries the exact
         # PM / SUB / fbl / resolution — the bytes that decide a panel's
         # geometry.  Without this the report only has them if the connect-time
@@ -433,6 +445,8 @@ def _render_devices(rows: list[dict[str, str]], error: str) -> str:
     lines: list[str] = []
     for r in rows:
         lines.append(f"  {r['key']:14}  {r['product']:30}  wire={r['wire']}")
+        if "power" in r:
+            lines.append(f"    usb power: {r['power']}")
         if "hs_resolution" in r:
             lines.append(
                 f"    handshake: PM={r['hs_pm']} SUB={r['hs_sub']} "

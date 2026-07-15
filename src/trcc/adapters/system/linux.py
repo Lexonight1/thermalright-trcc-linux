@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from ._imc_timings import ImcTimings
 
 from ...core.errors import TransportError
-from ...core.models import DeviceInfo
+from ...core.models import DeviceInfo, UsbPowerState
 from ...core.ports import (
     AutostartManager,
     BulkTransport,
@@ -524,6 +524,65 @@ class LinuxPlatform(Platform):
             log.warning("LinuxPlatform.distro_name: parse failed (%s) — "
                         "defaulting to 'Linux'", e)
         return "Linux"
+
+    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+        """Read the kernel's runtime-PM view of this device from sysfs.
+
+        Read-only.  Setting the policy is the udev rules' job (``_udev.py``);
+        this reports what the kernel currently thinks so a timed-out handshake
+        can be told apart from a SUSPENDED panel (#150).
+
+        ``supports_remote_wakeup`` comes from the config descriptor's
+        ``bmAttributes`` bit 5.  It is the discriminator that explains why two
+        panels behave differently: a device that cannot wake the host is never
+        autosuspended, whatever ``power/control`` says — measured on the dev
+        panel (0402:3922, bmAttributes 0x80 → bit 5 clear → never suspends
+        even at control=auto).
+        """
+        log.debug("usb_power_state: %04x:%04x", vid, pid)
+        base = Path("/sys/bus/usb/devices")
+        if not base.is_dir():
+            return None
+        for dev in base.iterdir():
+            try:
+                if (int((dev / "idVendor").read_text().strip(), 16) != vid
+                        or int((dev / "idProduct").read_text().strip(), 16) != pid):
+                    continue
+            except (OSError, ValueError):
+                continue
+
+            def _read(node: Path, name: str, default: str = "") -> str:
+                try:
+                    return (node / name).read_text().strip()
+                except OSError:
+                    return default
+
+            def _int(node: Path, name: str) -> int:
+                raw = _read(node, name)
+                return int(raw) if raw.isdigit() else 0
+
+            # bmAttributes is per-configuration; bit 5 = remote wakeup.
+            wakeup = False
+            raw_attrs = _read(dev, "bmAttributes")
+            try:
+                wakeup = bool(int(raw_attrs, 16) & 0x20) if raw_attrs else False
+            except ValueError:
+                wakeup = False
+
+            state = UsbPowerState(
+                control=_read(dev, "power/control"),
+                runtime_status=_read(dev, "power/runtime_status"),
+                autosuspend_delay_ms=_int(dev, "power/autosuspend_delay_ms"),
+                suspended_time_ms=_int(dev, "power/runtime_suspended_time"),
+                supports_remote_wakeup=wakeup,
+            )
+            log.info("usb_power_state %04x:%04x → control=%s status=%s "
+                     "remote_wakeup=%s delay=%dms",
+                     vid, pid, state.control, state.runtime_status,
+                     state.supports_remote_wakeup, state.autosuspend_delay_ms)
+            return state
+        log.debug("usb_power_state: %04x:%04x not present on the bus", vid, pid)
+        return None
 
     def install_method(self) -> str:
         """How this package got here — delegated to the one honest detector.

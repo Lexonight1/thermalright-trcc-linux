@@ -198,6 +198,39 @@ class LedStyle(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class UsbPowerState:
+    """A device's USB runtime-power state — an OS fact, read, never set here.
+
+    Exists because nothing in TRCC has ever known whether a panel was
+    SUSPENDED at the moment it failed to answer.  #150: a headless box stops
+    streaming, the kernel autosuspends the panel ~10s later, and the next
+    connect times out with ``[Errno 110]`` — indistinguishable, in every log we
+    have, from a broken cable or a dead device.
+
+    ``control`` is the policy ("auto" = the kernel may suspend it, "on" =
+    never); ``runtime_status`` is the live truth ("active" / "suspended").
+    ``supports_remote_wakeup`` is why two identical-looking panels behave
+    differently: a device that cannot wake the host is not autosuspended at
+    all, which is why the SCSI dev panel (bmAttributes 0x80) can never
+    reproduce the HID reporter's failure.
+    """
+    control: str                       # "auto" | "on" | "" if unreadable
+    runtime_status: str                # "active" | "suspended" | ""
+    autosuspend_delay_ms: int = 0
+    suspended_time_ms: int = 0
+    supports_remote_wakeup: bool = False
+
+    @property
+    def suspended(self) -> bool:
+        return self.runtime_status == "suspended"
+
+    @property
+    def may_autosuspend(self) -> bool:
+        """The kernel is *allowed* to suspend it AND the device can wake."""
+        return self.control == "auto" and self.supports_remote_wakeup
+
+
+@dataclass(frozen=True, slots=True)
 class PanelCutout:
     """Rectangular cutout on the panel (e.g. smartphone-display camera notch).
 

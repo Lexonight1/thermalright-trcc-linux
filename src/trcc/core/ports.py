@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         ProductInfo,
         RawFrame,
         SensorReading,
+        UsbPowerState,
     )
     from .protocol import DeviceProfile
 
@@ -1158,6 +1159,23 @@ class Platform(ABC):
     @abstractmethod
     def install_method(self) -> str:
         """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
+
+    # ── USB runtime power (diagnostics; read-only) ────────────────────
+    #
+    # Concrete default = None ("this OS does not expose it"), the same shape
+    # as the hints below.  An honest None beats four stubs inventing a value:
+    # only Linux publishes runtime PM per device (sysfs), and a wrong answer
+    # here would mislead exactly the debugging it exists to serve.
+    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+        """The device's USB runtime-power state, or None if unknowable.
+
+        Read-only.  TRCC never sets power policy — that is the udev rules'
+        job (``adapters/system/_udev.py``); this only reports what the kernel
+        currently thinks, so a failed handshake can be told apart from a
+        SUSPENDED panel (#150).
+        """
+        log.debug("Platform.usb_power_state: not exposed on this OS")
+        return None
 
     # ── Per-OS diagnostic hints (DI'd into the doctor / health checks) ──
     #
