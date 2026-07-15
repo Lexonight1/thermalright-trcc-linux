@@ -1,5 +1,47 @@
 # Changelog
 
+## v9.8.9
+
+**TRCC no longer tells everyone they need to update.** The update check was
+comparing the latest release against `0.0.0` instead of your actual version, so
+it announced "update available" to every user on every release — including
+people already on the newest build. It now reports the version you're really
+running, and says "up to date" when you are.
+
+That one bug did real damage beyond the annoyance: because the nag never went
+away, people upgraded again and again and reasonably believed they were current
+when they weren't. Two of the fixes below exist to make sure that can't hide
+again.
+
+**Uninstalling no longer deletes the themes you made.** `install.sh --uninstall`
+removed `~/.trcc-user` — where your own saved themes and backgrounds live —
+without asking, while its `--help` only said "Remove TRCC Linux". It now asks
+first and keeps your work unless you explicitly say otherwise; answering "no"
+(the default) leaves your themes untouched. Downloaded/online themes are
+unaffected either way, since those come back on their own.
+
+**`trcc report` now says which TRCC you're actually running.** Reports carried no
+version at all, so "which version are you on?" couldn't be answered from a
+report — and the answer is usually the whole story. Reports now open with an
+Install section listing your version, where TRCC is installed, which Python it
+runs under, and how it was installed. If you're hitting a bug, this is the part
+that gets it fixed fastest.
+
+**`trcc doctor` catches installs that can't update.** Two things silently make an
+upgrade do nothing, and both are now checked. If more than one `trcc` is on your
+PATH, an upgrade can land on one while a different one keeps running — doctor
+now warns and tells you which one actually runs. And if Python is serving cached
+bytecode that no longer matches the installed code, doctor fails loudly with the
+fix, instead of you running a version you no longer have on disk.
+
+**"How was this installed?" is now answered honestly.** TRCC reported the install
+method by guessing, and the guess was wrong nearly everywhere: on macOS, BSD and
+Windows a pip install reported "source"; on Linux anything on your PATH reported
+"pip"; and the About panel reported whichever package manager your distro
+happens to ship. It now reads the real installer.
+
+(#175, #207, #220, #150)
+
 ## v9.8.8
 
 **Widescreen panels now actually rotate and fill the screen at 90° and 270°.**
