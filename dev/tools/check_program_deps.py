@@ -311,9 +311,17 @@ def check() -> list[Finding]:
             print(f"  {dep:16} {'(unmapped)':22}")
             continue
         a_name, f_name, d_name = names
-        a, f, d = in_arch(a_name), in_fedora(f_name), in_debian(d_name)
+        a, f = in_arch(a_name), in_fedora(f_name)
+        # The deb targets Ubuntu 24.04+ AND Debian 13+ — two archives with
+        # different package sets.  Available in EITHER means the deb can and
+        # must declare it.  Checking Debian alone read python3-pynvml as
+        # 'absent', skipped the assertion, and stayed green over #221.
+        d_ubuntu, d_debian = in_ubuntu(d_name), in_debian(d_name)
+        d = d_ubuntu or d_debian
+        d_src = "ubuntu" if d_ubuntu and not d_debian else ("debian" if d_debian else "")
+        d_cell = f"{d} [{d_src}]" if d and d_src else (d or "— absent")
         print(f"  {dep:16} {(a or '— absent'):22} {(f or '— absent'):18} "
-              f"{(d or '— absent'):22}")
+              f"{d_cell:30}")
 
         # 1. A mapped name that exists nowhere is probably a typo, and today
         #    that fails silently: we simply never depend on it.
