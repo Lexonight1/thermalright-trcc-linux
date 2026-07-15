@@ -456,12 +456,27 @@ def play(
     tick_s = max(0.05, tick_s)
 
     typer.echo(f"Playing on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
+    warned_video = False
     try:
         while True:
             result = app_obj.dispatch(RenderAndSend(key=key))
             if not result.ok:
                 typer.echo(f"  tick failed: {result.message}", err=True)
                 raise typer.Exit(code=1)
+            # `play` is the METRICS loop — it re-renders the active theme every
+            # tick_s (seconds).  On a video theme that is a still frame every
+            # couple of seconds, which looks exactly like a broken video.  The
+            # app knows the theme is a video (LoadVideo names it "video:<name>")
+            # and said nothing, so the reporter concluded the video was broken
+            # rather than that `play` is the wrong verb (#150).
+            if not warned_video and str(result.theme_name).startswith("video:"):
+                warned_video = True
+                typer.echo(
+                    f"  note: {result.theme_name!r} is a video, and `display play` "
+                    f"only redraws it every {tick_s:.2f}s — it will look frozen.\n"
+                    f"        To play it as video:  trcc display play-video {key} <file.mp4>",
+                    err=True,
+                )
             typer.echo(f"  sent {result.bytes_sent} bytes "
                        f"(theme={result.theme_name!r})")
             time.sleep(tick_s)

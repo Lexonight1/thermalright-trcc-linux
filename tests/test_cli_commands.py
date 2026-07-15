@@ -1169,3 +1169,67 @@ def test_every_sub_app_has_commands_registered() -> None:
     assert len(led.app.registered_commands) >= 21
     assert len(system.app.registered_commands) >= 13
     assert len(theme.app.registered_commands) >= 8
+
+
+# ── `display play` on a VIDEO theme (#150) ────────────────────────────
+
+def test_display_play_warns_that_a_video_theme_will_look_frozen(
+    cli_runner: CliRunner, cli_app, monkeypatch,
+) -> None:
+    """`play` is the METRICS loop — on a video it redraws a still every tick.
+
+    #150: armangido ran `load-video` then `play` (which reads exactly like
+    "load it, then play it"), got a frame every 2.00s, and reasonably reported
+    "it showing only static picture of the video??". The app KNEW -- it printed
+    theme='video:a015' on every tick -- and never said the verb was wrong.
+
+    Drives the real command body: `play` loops forever, so time.sleep is the
+    seam -- raise KeyboardInterrupt there and the existing handler exits after
+    exactly one tick.
+    """
+    from trcc.core.results import RenderResult
+    from trcc.ui.cli import display as cli_display
+
+    def _one_tick(_s):
+        raise KeyboardInterrupt
+
+    import time as _time
+    monkeypatch.setattr(_time, "sleep", _one_tick)   # `play` does `import time` inside
+    monkeypatch.setattr(
+        cli_app, "dispatch",
+        lambda cmd: RenderResult(ok=True, key="0416:5302", message="ok",
+                               bytes_sent=153600, theme_name="video:a015"),
+    )
+
+    result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])
+
+    out = result.stdout + (result.stderr or "")
+    assert "is a video" in out, (
+        f"exit={result.exit_code} exc={result.exception!r} out={out!r}"
+    )
+    assert "play-video" in out, "must name the command that actually plays it"
+
+
+def test_display_play_stays_quiet_for_a_normal_theme(
+    cli_runner: CliRunner, cli_app, monkeypatch,
+) -> None:
+    """No nag on a still theme — the note must mean something when it appears."""
+    from trcc.core.results import RenderResult
+    from trcc.ui.cli import display as cli_display
+
+    def _one_tick(_s):
+        raise KeyboardInterrupt
+
+    import time as _time
+    monkeypatch.setattr(_time, "sleep", _one_tick)
+    monkeypatch.setattr(
+        cli_app, "dispatch",
+        lambda cmd: RenderResult(ok=True, key="0416:5302", message="ok",
+                               bytes_sent=153600, theme_name="Theme1"),
+    )
+
+    result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])
+
+    out = result.stdout + (result.stderr or "")
+    assert "is a video" not in out
+    assert "play-video" not in out
