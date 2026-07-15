@@ -227,3 +227,47 @@ def test_dispatch_envelopes_decode_to_real_commands(parse_dispatch_sequence):
     assert isinstance(cmd, SetOrientation)
     assert cmd.key == "87ad:70db"
     assert cmd.degrees == 180
+
+
+# ── round trip: the emitter and the parser must not drift ─────────────
+
+def test_parser_reads_a_REAL_generated_report(parse_report, tmp_path) -> None:
+    """Generate a report with the real builder, parse it with the real parser.
+
+    Every other test here feeds the parser hand-written fixtures. Fixtures are
+    frozen text: they don't move when the report format moves, so the emitter
+    can drift away from the parser with the whole suite green. That is not
+    hypothetical — moving the version row from "## Platform: trcc 9.8.8" to
+    "## Install: version 9.8.8" silently broke version parsing, and every
+    fixture-based test still passed.
+
+    This test is the tie: it fails the moment the two disagree.
+    """
+    import trcc
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.diagnostics.debug_report import build_debug_report
+
+    text = build_debug_report(MockPlatform([], tmp_path)).render_text()
+    parsed = parse_report(text)
+
+    assert parsed.trcc_version == trcc.__version__, (
+        f"parser read {parsed.trcc_version!r} from a freshly generated report, "
+        f"but this build is {trcc.__version__} — the report format and "
+        f"dev/tools/diagnose.py have drifted apart"
+    )
+
+
+def test_parser_ignores_a_version_word_in_the_log_tail(parse_report) -> None:
+    """The log tail is pasted verbatim and is full of the word 'version'.
+
+    The version row is only meaningful inside the Install block; matching it
+    anywhere would let arbitrary log text masquerade as the reporter's build.
+    """
+    parsed = parse_report(
+        "## Install\n"
+        "  version             9.8.8\n"
+        "\n"
+        "## Log tail\n"
+        "  2026-07-15 INFO some.module:go:1: version 0.0.1 of the widget\n"
+    )
+    assert parsed.trcc_version == "9.8.8"

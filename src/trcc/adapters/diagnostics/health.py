@@ -11,9 +11,9 @@ Severity ladder:
   * ``WARN`` — works on this machine but reporter should know.
   * ``FAIL`` — feature won't work until this is fixed.
 
-Adding a check: define a function returning ``HealthCheckResult`` and
-add it to ``ALL_CHECKS``.  The doctor + report bundlers iterate that
-tuple, so registration = inclusion.
+Adding a check: define a function returning ``HealthCheckResult`` and add
+it to the list in ``run_health_checks``.  The doctor + report bundlers both
+go through that function, so registration = inclusion.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from pathlib import Path
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
 from ...core.ports import Paths, Platform
 from ..sensors.nvml import NVML_RELOAD_HINT, nvml_init_state
+from .install import collect_install_info
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,57 @@ __all__ = [
 # =========================================================================
 # Individual checks
 # =========================================================================
+
+
+def check_install_integrity() -> HealthCheckResult:
+    """Is the running trcc the one the user thinks they installed?
+
+    Two failures both present to the user as "I upgraded and nothing
+    changed", and neither is visible from the outside:
+
+    * stale bytecode — Python serves a cached .pyc whose recorded mtime+size
+      still match a since-edited source (FAIL: every other diagnostic, and
+      the version itself, is then untrustworthy);
+    * duplicate binaries on PATH — the upgrade landed on one, the other keeps
+      running (WARN: legitimate for venv/pipx users, so not fatal).
+    """
+    log.info("check_install_integrity: called")
+    try:
+        info = collect_install_info()
+    except Exception as e:
+        log.exception("check_install_integrity: collection failed: %s", e)
+        return HealthCheckResult(
+            name="install-integrity", severity="WARN",
+            message=f"Could not inspect the install: {e}",
+        )
+    if info.bytecode_stale:
+        return HealthCheckResult(
+            name="install-integrity", severity="FAIL",
+            message=(
+                f"Stale bytecode — running {info.version} but "
+                f"{info.module_path} says {info.source_version}"
+            ),
+            fix_hint=(
+                "Python is serving a cached .pyc that no longer matches the "
+                "source. Delete the __pycache__ directories under "
+                f"{info.module_path}, or reinstall trcc-linux."
+            ),
+        )
+    if info.duplicates:
+        found = ", ".join(str(e.path) for e in info.executables)
+        return HealthCheckResult(
+            name="install-integrity", severity="WARN",
+            message=f"{len(info.executables)} trcc on PATH: {found}",
+            fix_hint=(
+                f"'{info.executables[0].path}' is the one that runs. An "
+                "upgrade applied to the other will appear to do nothing. "
+                "Remove whichever you don't want."
+            ),
+        )
+    return HealthCheckResult(
+        name="install-integrity", severity="OK",
+        message=f"{info.version} via {info.installer} ({info.interpreter})",
+    )
 
 
 def check_python_version(platform: Platform) -> HealthCheckResult:
@@ -301,6 +353,9 @@ def run_health_checks(platform: Platform) -> HealthReport:
     log.info("run_health_checks: starting")
     paths = platform.paths()
     checks: list[HealthCheckResult] = [
+        # First: if this isn't the trcc they think it is, nothing below means
+        # anything.
+        check_install_integrity(),
         check_python_version(platform),
         check_log_writable(paths),
         check_config_writable(paths),

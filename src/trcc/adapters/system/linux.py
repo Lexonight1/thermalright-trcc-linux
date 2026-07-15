@@ -526,20 +526,18 @@ class LinuxPlatform(Platform):
         return "Linux"
 
     def install_method(self) -> str:
-        """Rough heuristic: PyInstaller bundle > pip > source."""
-        import sys
-        if getattr(sys, 'frozen', False):
-            log.info("LinuxPlatform.install_method → pyinstaller (frozen)")
-            return "pyinstaller"
-        try:
-            import shutil
-            if shutil.which("trcc"):
-                log.info("LinuxPlatform.install_method → pip (trcc on PATH)")
-                return "pip"
-        except Exception as e:
-            log.debug("LinuxPlatform.install_method: shutil.which raised %s", e)
-        log.info("LinuxPlatform.install_method → source")
-        return "source"
+        """How this package got here — delegated to the one honest detector.
+
+        Was a per-OS guess: this returned "source" for every pip install
+        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
+        rpm/deb/venv/source checkouts all reported "pip"). The reading of
+        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
+        implement — see adapters/diagnostics/install.detect_installer.
+        """
+        from ..diagnostics.install import detect_installer
+        method = detect_installer()
+        log.info("install_method: %s", method)
+        return method
 
     # ── Per-OS diagnostic hints (distro package manager) ──────────────
 

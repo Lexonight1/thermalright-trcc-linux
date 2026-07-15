@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
-import sys
 import webbrowser
 from pathlib import Path
 from threading import Thread
@@ -126,26 +124,18 @@ def _detect_distro() -> str:
 
 
 def _detect_install_method() -> str:
-    """Detect how trcc-linux was installed.
+    """How trcc-linux was installed — delegated to the one honest detector.
 
-    Returns 'pipx', 'pip', 'pacman', 'dnf', or 'apt'.
+    This used to be a second, divergent copy of the logic: it fell back to
+    probing for `pacman`/`dnf`/`apt` on PATH, which reports the package
+    manager the DISTRO ships rather than the one that installed trcc — so a
+    pip install on Fedora read "dnf". The shared detector answers "package"
+    when a distro package manager owns it and cannot be named.
     """
-    # pipx installs into its own venv
-    if 'pipx' in sys.prefix:
-        return 'pipx'
-    try:
-        from importlib.metadata import PackageNotFoundError, distribution
-        dist = distribution('trcc-linux')
-        installer = (dist.read_text('INSTALLER') or '').strip()
-        if installer == 'pip':
-            return 'pip'
-    except (PackageNotFoundError, OSError) as e:
-        log.debug("uc_about: trcc-linux distribution metadata unavailable: %s", e)
-    # Detect which package manager installed it
-    for mgr in ('pacman', 'dnf', 'apt'):
-        if shutil.which(mgr):
-            return mgr
-    return 'pip'  # fallback
+    from ...adapters.diagnostics.install import detect_installer
+    method = detect_installer()
+    log.info("_detect_install_method: %s", method)
+    return method
 
 
 def _get_install_info(ui_state: UiStateStore | None = None) -> tuple[str, str]:

@@ -131,12 +131,19 @@ def parse_report(text: str) -> ParsedReport:
     """
     report = ParsedReport()
 
-    # Version — current "## Platform" row "  trcc  9.8.8", else the legacy
-    # "trcc-linux: 9.6.4" line.  Take the LAST match: an issue thread often
-    # carries several reports, and the newest one is the reporter's current
-    # state.  Matching first would pin us to their oldest paste (#150).
-    ms = re.findall(r"^\s*trcc\s+(\d\S*)", text, re.MULTILINE) or \
-        re.findall(r"trcc-linux:\s+(\S+)", text)
+    # Version, newest layout first:
+    #   current  "## Install" section, row "  version  9.8.8"
+    #   legacy   "trcc-linux: 9.6.4"
+    # The "version" row is matched only INSIDE the Install block — bare
+    # `version` would otherwise hit the log tail, which is pasted verbatim.
+    # Take the LAST match: an issue thread often carries several reports and
+    # the newest is the reporter's current state (matching first pinned us to
+    # their oldest paste — #150 announced 9.6.4 from a 23-comment thread).
+    ms: list[str] = []
+    for block in re.findall(r"^## Install\n(.*?)(?=^## |\Z)", text,
+                            re.MULTILINE | re.DOTALL):
+        ms += re.findall(r"^\s*version\s+(\S+)", block, re.MULTILINE)
+    ms = ms or re.findall(r"trcc-linux:\s+(\S+)", text)
     if ms:
         report.trcc_version = ms[-1]
 

@@ -179,11 +179,18 @@ class BSDPlatform(Platform):
         return "FreeBSD" if "freebsd" in sys.platform else "BSD"
 
     def install_method(self) -> str:
-        log.info("install_method: called")
-        import sys
-        if getattr(sys, "frozen", False):
-            return "pyinstaller"
-        return "source"
+        """How this package got here — delegated to the one honest detector.
+
+        Was a per-OS guess: this returned "source" for every pip install
+        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
+        rpm/deb/venv/source checkouts all reported "pip"). The reading of
+        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
+        implement — see adapters/diagnostics/install.detect_installer.
+        """
+        from ..diagnostics.install import detect_installer
+        method = detect_installer()
+        log.info("install_method: %s", method)
+        return method
 
     # ── Per-OS diagnostic hints (pkg) ─────────────────────────────────
 

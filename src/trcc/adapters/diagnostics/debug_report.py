@@ -35,6 +35,7 @@ from ...core.registry import find_product
 from ..device import DeviceFactory
 from ..infra.logging import tail_log
 from .health import HealthReport, run_health_checks
+from .install import InstallInfo, collect_install_info
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class DebugReport:
     timestamp: str
     platform_info: dict[str, str]
     paths: dict[str, str]
+    install: InstallInfo | None = None
     devices: list[dict[str, str]] = field(default_factory=list)
     devices_error: str = ""
     sensors: list[dict[str, str]] = field(default_factory=list)
@@ -66,6 +68,9 @@ class DebugReport:
         log.info("render_text: called")
         sections: list[str] = []
         sections.append(_header(self.timestamp))
+        # Install first: every other section is worthless if this is not the
+        # trcc the reporter thinks they are running.
+        sections.append(_render_install(self.install))
         sections.append(_render_kv("Platform", self.platform_info))
         sections.append(_render_kv("Paths", self.paths))
         sections.append(_render_devices(self.devices, self.devices_error))
@@ -96,6 +101,15 @@ def build_debug_report(
              log_tail_lines)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+    # Best-effort like every other collector: a report from a broken install is
+    # exactly when this matters, so it must degrade to "(unavailable)" rather
+    # than abort the report that would have explained the breakage.
+    try:
+        install = collect_install_info()
+    except Exception as e:
+        log.exception("build_debug_report: install info failed: %s", e)
+        install = None
+
     info = _collect_platform_info(platform)
     path_table = _collect_paths(platform)
     devices, devices_err = _collect_devices(platform)
@@ -113,6 +127,7 @@ def build_debug_report(
         timestamp=timestamp,
         platform_info=info,
         paths=path_table,
+        install=install,
         devices=devices,
         devices_error=devices_err,
         sensors=sensors,
@@ -141,18 +156,10 @@ def write_debug_report(report: DebugReport, output_path: Path) -> Path:
 
 def _collect_platform_info(platform: Platform) -> dict[str, str]:
     log.debug("_collect_platform_info: called")
-    # `trcc` and `trcc_path` come from the imported package, not from pip
-    # metadata, so they describe the code that is ACTUALLY running.  A source
-    # checkout shadowing an installed wheel reports the checkout (#220), and a
-    # reporter who believes they are "on latest" is visibly not (#150).
-    from ... import __version__
+    # Version / path / installer live in the Install section, which owns the
+    # "which trcc is this?" question in one place — see _render_install.
     return {
-        "trcc": __version__,
-        "trcc_path": str(Path(__file__).parents[3]),
         "distro": platform.distro_name(),
-        "install_method": platform.install_method(),
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}."
-                  f"{sys.version_info.micro}",
         "python_impl": py_platform.python_implementation(),
         "machine": py_platform.machine(),
         "system": py_platform.system(),
@@ -380,6 +387,42 @@ def _header(timestamp: str) -> str:
 def _render_kv(title: str, table: dict[str, str]) -> str:
     body = "\n".join(f"  {k:18}  {v}" for k, v in table.items())
     return f"## {title}\n{body}" if body else f"## {title}\n  (empty)"
+
+
+def _render_install(info: InstallInfo | None) -> str:
+    """Which trcc is running — and loud warnings when it isn't the expected one.
+
+    The warnings are spelled out in full because the reporter reading them is
+    the person who has to act, and neither of the two failures is guessable
+    from the outside: a stale cache and a duplicate binary both present as
+    "I upgraded and nothing changed".
+    """
+    if info is None:
+        return "## Install\n  (unavailable)"
+    rows = {
+        "version": info.version,
+        "installed_by": info.installer,
+        "module_path": str(info.module_path or "unknown"),
+        "interpreter": info.interpreter,
+        "python": info.python,
+    }
+    lines = [f"  {k:18}  {v}" for k, v in rows.items()]
+    for exe in info.executables:
+        lines.append(f"  {'on PATH':18}  {exe.path}  ->  {exe.interpreter}")
+    if info.bytecode_stale:
+        lines.append("")
+        lines.append(f"  !! STALE BYTECODE — running {info.version} but the source "
+                     f"says {info.source_version}.")
+        lines.append("  !! Python is serving a cached .pyc that no longer matches "
+                     "the code on disk.")
+        lines.append("  !! Fix: delete __pycache__ dirs, or reinstall.")
+    if info.duplicates:
+        lines.append("")
+        lines.append(f"  !! {len(info.executables)} trcc found on PATH — an upgrade "
+                     "may land on one")
+        lines.append("  !! while a different one keeps running. The first listed "
+                     "above is what runs.")
+    return "## Install\n" + "\n".join(lines)
 
 
 def _render_devices(rows: list[dict[str, str]], error: str) -> str:
