@@ -138,11 +138,11 @@ trcc gui
 
 That's it! If your device isn't detected, see the [Device Testing Guide](GUIDE_DEVICE_TESTING.md) or run `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
-> **`python3-pyside6` not found?** On Ubuntu 24.04 it may be in the `universe` repository:
+> **`python3-pyside6` not found?** On Ubuntu 24.04 it may be in the `universe` repository — enable it, then install again:
 > ```bash
 > sudo add-apt-repository universe
 > sudo apt update
-> sudo apt-get install -f
+> sudo apt install ./trcc-linux-latest_all.deb
 > ```
 
 ---
