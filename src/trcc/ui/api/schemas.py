@@ -160,6 +160,24 @@ class SensorsResponse(ResultBase):
     readings: list[SensorReadingSchema] = []
 
 
+class SensorInfoSchema(BaseModel):
+    """A sensor's identity — no value.  Mirrors core SensorInfoEntry."""
+    sensor_id: str
+    category: str
+    unit: str = ""
+    label: str = ""
+
+
+class SensorCatalogResponse(ResultBase):
+    """What sensors EXIST, as opposed to what they currently read.
+
+    /system/sensors answers "what are the values"; this answers "what can this
+    machine measure at all".  The CLI has had `system list-sensors` since
+    forever; the API could not ask (#unified-ui contract hole).
+    """
+    sensors: list[SensorInfoSchema] = []
+
+
 class SetupResponse(ResultBase):
     exit_code: int = 0
     warnings: list[str] = []

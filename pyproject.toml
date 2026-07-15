@@ -88,7 +88,11 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-qt>=4.0.0",
     "ruff>=0.4.0",
-    "httpx>=0.24.0",
+    # httpx2, not httpx: starlette.testclient does `try: import httpx2 / except:
+    # import httpx` + a DeprecationWarning. Pinning the old one made the suite
+    # emit that warning on every API test, and it becomes a hard failure when
+    # starlette drops the fallback. Nothing of ours imports httpx directly.
+    "httpx2>=2.0",
     "types-qrcode>=7.0",
 ]
 all = [

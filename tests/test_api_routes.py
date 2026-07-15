@@ -973,6 +973,25 @@ def test_system_sensors_returns_readings_list(api_client: TestClient) -> None:
     assert isinstance(body["readings"], list)
 
 
+def test_system_sensor_catalog_lists_what_exists(api_client: TestClient) -> None:
+    """/system/sensors answers "what do they read"; this answers "what exists".
+
+    ListSensors was reachable from the CLI (`system list-sensors`) and from
+    nowhere else -- so a script could not ask the first question a script asks.
+    The API is the unified UI: a capability it cannot reach is not universal.
+    """
+    resp = api_client.get("/system/sensors/catalog")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert isinstance(body["sensors"], list)
+    for entry in body["sensors"]:
+        # descriptors, NOT values -- that is what makes it distinct from
+        # /system/sensors and cheap enough to populate a picker with.
+        assert "sensor_id" in entry and "category" in entry
+        assert "value" not in entry
+
+
 def test_system_metrics_returns_flat_dict(api_client: TestClient) -> None:
     """``GET /system/metrics`` is the flat ``{sensor_id: value}`` shape."""
     resp = api_client.get("/system/metrics")

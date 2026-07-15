@@ -78,10 +78,6 @@ _CLI_ONLY: dict[str, str] = {
         "scoped: the API initialises the LED via SendColor on connect/reset; "
         "explicit init is a CLI setup step"
     ),
-    "ListSensors": (
-        "scoped: the API exposes sensors via GET /system/sensors/{category}, "
-        "reading the enumerator directly rather than the ListSensors command"
-    ),
     "LoadVideo": (
         "scoped: the capability is covered by PlayVideo (shared); LoadVideo is a "
         "CLI stage-without-play convenience"

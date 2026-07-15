@@ -18,6 +18,7 @@ from ...core.commands import (
     ListFonts,
     ListGpus,
     ListLanguages,
+    ListSensors,
     MarkFirstRunDone,
     ReadSensors,
     RunDoctor,
@@ -38,6 +39,7 @@ from ._shared import (
     to_hdd_enabled_response,
     to_health_report_response,
     to_languages_list_response,
+    to_sensor_catalog_response,
     to_sensors_response,
     to_setup_response,
     to_update_check_response,
@@ -61,6 +63,7 @@ from .schemas import (
     HealthReportResponse,
     LanguageResponse,
     LanguagesListResponse,
+    SensorCatalogResponse,
     SensorsResponse,
     SetupResponse,
     UpdateCheckResponse,
@@ -78,6 +81,23 @@ def setup(request: Request) -> SetupResponse:
     log.info("api POST /system/setup")
     result = request.app.state.trcc.dispatch(RunSetup(interactive=False))
     return to_setup_response(result)
+
+
+@router.get("/sensors/catalog", response_model=SensorCatalogResponse)
+def sensor_catalog(request: Request) -> SensorCatalogResponse:
+    """Every sensor this machine can measure — identities, no values.
+
+    /system/sensors answers "what do they read"; this answers "what exists".
+    The CLI has had `system list-sensors` all along, so a script could not ask
+    the one question a script most wants to ask first. (unified-UI contract)
+
+    Declared BEFORE /sensors/{category}: FastAPI matches in declaration
+    order, so a static segment must come first or "catalog" is swallowed
+    as a {category} value (it was — the route returned readings).
+    """
+    log.info("api GET /system/sensors/catalog")
+    result = request.app.state.trcc.dispatch(ListSensors())
+    return to_sensor_catalog_response(result)
 
 
 @router.get("/sensors/{category}", response_model=SensorsResponse)

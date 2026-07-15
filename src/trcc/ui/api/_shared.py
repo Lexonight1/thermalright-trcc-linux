@@ -59,6 +59,7 @@ from ...core.results import (
     Result,
     SeekVideoResult,
     SendResult,
+    SensorsListResult,
     SensorsResult,
     SetupResult,
     SlideshowResult,
@@ -137,6 +138,8 @@ from .schemas import (
     RenderResponse,
     SeekVideoResponse,
     SendResponse,
+    SensorCatalogResponse,
+    SensorInfoSchema,
     SensorReadingSchema,
     SensorsResponse,
     SetupResponse,
@@ -719,6 +722,17 @@ def to_sensors_response(result: SensorsResult) -> SensorsResponse:
     return SensorsResponse(
         ok=result.ok, message=result.message,
         readings=[sensor_to_schema(r) for r in result.readings],
+    )
+
+
+def to_sensor_catalog_response(result: SensorsListResult) -> SensorCatalogResponse:
+    return SensorCatalogResponse(
+        ok=result.ok, message=result.message,
+        sensors=[
+            SensorInfoSchema(sensor_id=s.sensor_id, category=s.category,
+                             unit=s.unit, label=s.label)
+            for s in result.sensors
+        ],
     )
 
 
