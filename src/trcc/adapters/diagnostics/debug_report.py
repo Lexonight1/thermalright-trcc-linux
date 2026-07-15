@@ -141,7 +141,14 @@ def write_debug_report(report: DebugReport, output_path: Path) -> Path:
 
 def _collect_platform_info(platform: Platform) -> dict[str, str]:
     log.debug("_collect_platform_info: called")
+    # `trcc` and `trcc_path` come from the imported package, not from pip
+    # metadata, so they describe the code that is ACTUALLY running.  A source
+    # checkout shadowing an installed wheel reports the checkout (#220), and a
+    # reporter who believes they are "on latest" is visibly not (#150).
+    from ... import __version__
     return {
+        "trcc": __version__,
+        "trcc_path": str(Path(__file__).parents[3]),
         "distro": platform.distro_name(),
         "install_method": platform.install_method(),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}."

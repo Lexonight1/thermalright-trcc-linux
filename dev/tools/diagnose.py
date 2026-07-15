@@ -131,10 +131,14 @@ def parse_report(text: str) -> ParsedReport:
     """
     report = ParsedReport()
 
-    # Version — only legacy reports carry an explicit line.
-    m = re.search(r"trcc-linux:\s+(\S+)", text)
-    if m:
-        report.trcc_version = m.group(1)
+    # Version — current "## Platform" row "  trcc  9.8.8", else the legacy
+    # "trcc-linux: 9.6.4" line.  Take the LAST match: an issue thread often
+    # carries several reports, and the newest one is the reporter's current
+    # state.  Matching first would pin us to their oldest paste (#150).
+    ms = re.findall(r"^\s*trcc\s+(\d\S*)", text, re.MULTILINE) or \
+        re.findall(r"trcc-linux:\s+(\S+)", text)
+    if ms:
+        report.trcc_version = ms[-1]
 
     # Python — current "## Platform" row "  python  3.14.5", else legacy line.
     m = re.search(r"^\s*python\s+(\S+)", text, re.MULTILINE) or \
