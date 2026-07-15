@@ -439,6 +439,10 @@ jobs:
           install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
           install -Dm644 /src/LICENSE "$PKG/usr/share/licenses/trcc-linux/LICENSE"
 
+          # pacman does not read pyproject.toml: every HARD runtime dep must be
+          # repeated as a "depend =" below or it never ships to Arch users.
+          # Enforced by tests/test_packaging_entrypoints.py, which also records
+          # the two deps Arch has no official package for.
           INSTALLED_SIZE=$(du -sk "$PKG" | cut -f1)
           cat > "$PKG/.PKGINFO" << INFO
           pkgname = trcc-linux
@@ -460,12 +464,14 @@ jobs:
           depend = python-typer
           depend = python-fastapi
           depend = python-prompt_toolkit
+          depend = python-multipart
+          depend = python-certifi
           depend = portaudio
           depend = libusb
           depend = sg3_utils
+          depend = python-nvidia-ml-py
           optdepend = 7zip: theme archive extraction
           optdepend = ffmpeg: video and GIF playback
-          optdepend = python-nvidia-ml-py: NVIDIA GPU sensor support
           optdepend = python-dbus: Wayland session support
           optdepend = python-gobject: Wayland session support
           optdepend = python-hidapi: Alternative HID transport
