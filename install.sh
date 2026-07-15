@@ -365,14 +365,28 @@ do_uninstall() {
         done
     fi
 
-    # 3. User files
-    for dir in "$CONFIG_DIR" "$USER_CONTENT_DIR" "$LEGACY_CONFIG_DIR"; do
+    # 3. User files.  Config and cloud data are re-created/re-downloaded on the
+    #    next install; themes the user authored are not.  Ask before those.
+    for dir in "$CONFIG_DIR" "$LEGACY_CONFIG_DIR"; do
         if [ -d "$dir" ]; then
             rm -rf "$dir"
             info "Removed $dir"
             removed=1
         fi
     done
+
+    if [ -d "$USER_CONTENT_DIR" ]; then
+        echo ""
+        warn "$USER_CONTENT_DIR holds the themes and backgrounds you made."
+        warn "Nothing can download them back — deleting them is permanent."
+        if ask_yn "Delete your own themes and custom content too?" "n"; then
+            rm -rf "$USER_CONTENT_DIR"
+            info "Removed $USER_CONTENT_DIR"
+            removed=1
+        else
+            info "Kept your themes in $USER_CONTENT_DIR"
+        fi
+    fi
     for f in "$AUTOSTART_FILE" "$DESKTOP_FILE"; do
         if [ -f "$f" ]; then
             rm -f "$f"
@@ -399,6 +413,9 @@ Usage:
   sudo ./install.sh              Install TRCC Linux
   sudo ./install.sh --uninstall  Remove TRCC Linux
   ./install.sh --help            Show this help
+
+Uninstalling removes the app, its config, and downloaded cloud data.  Themes
+you made yourself (~/.trcc-user) are kept unless you confirm at the prompt.
 
 The installer bootstraps pip, installs trcc-linux, then delegates to
 'trcc setup' for system dependencies, udev rules, and desktop integration.
