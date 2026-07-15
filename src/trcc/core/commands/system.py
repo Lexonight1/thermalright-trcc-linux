@@ -517,9 +517,12 @@ class CheckForUpdate(Command[UpdateCheckResult]):
     """
 
     def execute(self, app: App) -> UpdateCheckResult:
-        from ... import __version__ as next_version_module
-
-        local = getattr(next_version_module, "__version__", "0.0.0")
+        # `trcc/__init__` rebinds the name `__version__` from the submodule to
+        # the version STRING, so this import yields a str, not a module.  The
+        # old `getattr(mod, "__version__", "0.0.0")` therefore always fell
+        # through to "0.0.0" and told every user, on every release, that an
+        # update was available — including users already on the newest one.
+        from ... import __version__ as local
         try:
             latest = app.github_releases.latest()
         except HttpFetchError as e:

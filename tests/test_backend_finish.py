@@ -43,6 +43,12 @@ def test_is_newer(remote: str, local: str, expected: bool) -> None:
     assert is_newer(remote, local) is expected
 
 
+_LATEST_URL = (
+    "https://api.github.com/repos/Lexonight1/"
+    "thermalright-trcc-linux/releases/latest"
+)
+
+
 class _FakeHttp(HttpFetcher):
     """Canned-response fetcher — maps URL → bytes."""
 
@@ -149,16 +155,52 @@ def test_check_for_update_with_canned_http(_trcc_app) -> None:
     from trcc.adapters.repo.github_releases import GitHubReleases
     from trcc.core.commands import CheckForUpdate
 
-    url = (
-        "https://api.github.com/repos/Lexonight1/"
-        "thermalright-trcc-linux/releases/latest"
-    )
     payload = b'{"tag_name": "v99.0.0", "html_url": "https://x"}'
-    _trcc_app.github_releases = GitHubReleases(http=_FakeHttp({url: payload}))
+    _trcc_app.github_releases = GitHubReleases(http=_FakeHttp({_LATEST_URL: payload}))
     result = _trcc_app.dispatch(CheckForUpdate())
     assert result.ok is True
     assert result.update_available is True
     assert result.latest_version == "99.0.0"
+
+
+def test_check_for_update_reports_the_running_version(_trcc_app) -> None:
+    """local_version must be the real version, never the "0.0.0" fallback.
+
+    Regression: `from trcc import __version__` yields the version STRING
+    (trcc/__init__ rebinds the name off the submodule), so the old
+    `getattr(mod, "__version__", "0.0.0")` always fell through to "0.0.0".
+    """
+    import trcc
+    from trcc.adapters.repo.github_releases import GitHubReleases
+    from trcc.core.commands import CheckForUpdate
+
+    _trcc_app.github_releases = GitHubReleases(
+        http=_FakeHttp({_LATEST_URL: b'{"tag_name": "v99.0.0", "html_url": "https://x"}'})
+    )
+    result = _trcc_app.dispatch(CheckForUpdate())
+    assert result.local_version == trcc.__version__
+    assert result.local_version != "0.0.0"
+
+
+def test_check_for_update_on_newest_release_offers_nothing(_trcc_app) -> None:
+    """Being ON the latest release must NOT offer an update.
+
+    The canned-http test above pins the remote at v99.0.0, which reports
+    "update available" whether local is right or "0.0.0" — so it passed
+    while every user on the newest build was told to upgrade forever.
+    """
+    import trcc
+    from trcc.adapters.repo.github_releases import GitHubReleases
+    from trcc.core.commands import CheckForUpdate
+
+    payload = (
+        f'{{"tag_name": "v{trcc.__version__}", "html_url": "https://x"}}'
+    ).encode()
+    _trcc_app.github_releases = GitHubReleases(http=_FakeHttp({_LATEST_URL: payload}))
+    result = _trcc_app.dispatch(CheckForUpdate())
+    assert result.ok is True
+    assert result.update_available is False
+    assert result.local_version == trcc.__version__
 
 
 def test_check_for_update_network_failure(_trcc_app) -> None:
