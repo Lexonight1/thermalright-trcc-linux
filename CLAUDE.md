@@ -792,8 +792,8 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - **Package upgrade instructions must be copy-paste ready** — always provide the full `wget -c <URL>` + install command so users can paste directly into their terminal. Use the actual download URL from `gh release view --json assets`, not just "go to Releases page". Distro-specific:
   - Arch: `wget -c <url>.pkg.tar.zst && sudo pacman -U trcc-linux-*.pkg.tar.zst`
   - Fedora: `wget -c <url>.rpm && sudo dnf install ./trcc-linux-*.rpm`
-  - Ubuntu/Debian (legacy): `wget -c <url>.legacy_all.deb && sudo dpkg -i trcc-linux_*.legacy_all.deb`
-  - Ubuntu/Debian (standard): `wget -c <url>.deb && sudo dpkg -i trcc-linux_*.deb`
+  - Ubuntu/Debian (legacy): `wget -c <url>.legacy_all.deb && sudo apt install ./trcc-linux_*.legacy_all.deb`
+  - Ubuntu/Debian (standard): `wget -c <url>.deb && sudo apt install ./trcc-linux_*.deb`
 
 ## Deployment
 - Default branch: `main`

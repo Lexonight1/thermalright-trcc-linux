@@ -70,12 +70,12 @@ curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases
 
 ### Ubuntu (24.04+) / Debian 13+ / Pop!_OS / Linux Mint 22+
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*_all.deb' | head -1 | xargs wget -c && sudo dpkg -i trcc-linux_*_all.deb && sudo apt install -f -y
+curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*_all.deb' | head -1 | xargs wget -c && sudo apt install -y ./trcc-linux_*_all.deb
 ```
 
 ### Ubuntu 22.04 / Debian 12 / Linux Mint 21 (legacy)
 ```bash
-curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*legacy_all.deb' | xargs wget -c && sudo dpkg -i trcc-linux_*legacy_all.deb && sudo apt install -f -y
+curl -s https://api.github.com/repos/Lexonight1/thermalright-trcc-linux/releases/latest | grep -o 'https://.*legacy_all.deb' | xargs wget -c && sudo apt install -y ./trcc-linux_*legacy_all.deb
 ```
 
 ### pip (any distro, if packages don't work)
@@ -222,7 +222,7 @@ Everything you could do on Windows works on Linux:
 | Generate bug report | `trcc report` |
 | Update (Arch) | `sudo pacman -U trcc-linux-*.pkg.tar.zst` |
 | Update (Fedora) | `sudo dnf install ./trcc-linux-*.rpm` |
-| Update (Ubuntu) | `sudo dpkg -i trcc-linux_*.deb` |
+| Update (Ubuntu) | `sudo apt install ./trcc-linux_*.deb` |
 | Update (pip) | `pip install --upgrade trcc-linux` |
 | Start API server | `trcc serve` |
 | Interactive shell | `trcc shell` |

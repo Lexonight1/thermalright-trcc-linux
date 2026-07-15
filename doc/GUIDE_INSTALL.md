@@ -115,18 +115,18 @@ Covers: Ubuntu 24.04+ (including **26.04 / Python 3.14**), Debian 13+, Linux Min
 
 **One-liner** (download + install in one command):
 ```bash
-curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest_all.deb && sudo dpkg -i trcc-linux-latest_all.deb && sudo apt-get install -f
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest_all.deb && sudo apt install ./trcc-linux-latest_all.deb
 ```
+
+`apt install ./file.deb` installs the package **and** pulls in its dependencies in
+one step. (The `./` matters — without it, apt looks for a package by that name.)
 
 **Or manually:** Download the `.deb` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
 
 ```bash
 cd ~/Downloads
-sudo dpkg -i trcc-linux_*_all.deb
-sudo apt-get install -f
+sudo apt install ./trcc-linux_*_all.deb
 ```
-
-The first command installs the package. The second command pulls in any missing dependencies — if it says "0 newly installed", that's fine, everything was already there.
 
 **Step 3 — Unplug and replug** the USB cable from your cooler (or reboot).
 
@@ -159,7 +159,7 @@ The standard `.deb` requires `python3-pyside6` and other packages that aren't in
 
 ```bash
 cd ~/Downloads
-sudo dpkg -i trcc-linux_*legacy*_all.deb
+sudo apt install ./trcc-linux_*legacy*_all.deb
 ```
 
 **Step 3 — Run setup:**
