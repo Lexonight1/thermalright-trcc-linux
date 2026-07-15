@@ -97,7 +97,7 @@ def test_release_docker_comments_have_no_quote_breakers() -> None:
 # ── Arch runtime dependencies ─────────────────────────────────────────
 
 # The name mapping and the "Arch has no package for these" list live in
-# dev/tools/check_distro_deps.py, which is the tool that VERIFIES them against
+# dev/tools/check_program_deps.py, which is the tool that VERIFIES them against
 # live distro repos.  Imported rather than copied: a second copy would drift
 # from the one being checked, and then neither is trustworthy.
 #
@@ -109,14 +109,14 @@ _DEV_TOOLS_DIR = _ROOT / "dev" / "tools"
 if str(_DEV_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_DEV_TOOLS_DIR))
 
-from check_distro_deps import _PKG_NAMES  # noqa: E402
-from check_distro_deps import (  # noqa: E402
+from check_program_deps import _PKG_NAMES  # noqa: E402
+from check_program_deps import (  # noqa: E402
     ARCH_UNAVAILABLE as _ARCH_UNAVAILABLE,
 )
-from check_distro_deps import (  # noqa: E402
+from check_program_deps import (  # noqa: E402
     arch_declared_depends as _arch_depends,
 )
-from check_distro_deps import (  # noqa: E402
+from check_program_deps import (  # noqa: E402
     pyproject_runtime_deps as _pyproject_linux_runtime_deps,
 )
 
@@ -189,7 +189,7 @@ def test_nvidia_reader_is_a_hard_dep_on_every_distro() -> None:
     _dev_tools = _ROOT / "dev" / "tools"
     if str(_dev_tools) not in _sys.path:
         _sys.path.insert(0, str(_dev_tools))
-    from check_distro_deps import (
+    from check_program_deps import (
         arch_declared_depends,
         deb_declared_depends,
         rpm_declared_requires,

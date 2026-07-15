@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""Check our packaging claims against what the distros ACTUALLY ship.
+"""Check every way we ship against what each target ACTUALLY provides.
+
+A UNIVERSAL dependency check: every hard dependency x every shipping target.
+Not "distros" -- we ship six ways, and they use THREE different models:
+
+    target        deps come from              can drift?
+    ------------  --------------------------  ----------
+    Arch          pacman `depend =`           YES - hand-declared
+    deb           apt `Depends:`              YES - hand-declared
+    rpm (Fedora)  dnf `Requires:` + vendored  YES - hand-declared
+    deb (legacy)  pip, in its own venv        no  - resolved from pyproject
+    Windows       pip install ".[...]"        no  - resolved from pyproject
+    macOS         pip install ".[...]"        no  - resolved from pyproject
+
+Only the hand-declared three can silently omit something; the pip-resolved three
+take the wheel as their source of truth. So each cell asks one of two questions,
+never one blanket rule.
 
 Packaging carries frozen claims about the outside world:
 
@@ -42,6 +58,7 @@ _PYPROJECT = _ROOT / "pyproject.toml"
 _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 
 _FEDORA_RELEASE = "f44"
+_UBUNTU_SERIES = "questing"
 _TIMEOUT = 15
 
 
@@ -92,15 +109,37 @@ ARCH_UNAVAILABLE = {"python-uvicorn", "python-sounddevice"}
 FEDORA_VENDORED = {"sounddevice", "nvidia-ml-py"}
 
 
-def pyproject_runtime_deps() -> list[str]:
-    """Hard runtime deps from pyproject, minus the win32-gated ones."""
+def pyproject_runtime_deps(include_win32: bool = False) -> list[str]:
+    """Hard runtime deps from pyproject.
+
+    ``include_win32=False`` (the default) drops the win32-gated ones, because
+    the Linux package managers must not declare them.  The universal report
+    passes True so wmi / tzdata / libusb-package stop being invisible: they are
+    real dependencies of a real target, and nothing checked them before.
+    """
     data = tomllib.loads(_PYPROJECT.read_text())
     out: list[str] = []
     for spec in data["project"]["dependencies"]:
-        if "sys_platform == 'win32'" in spec:
+        if not include_win32 and "sys_platform == 'win32'" in spec:
             continue
         out.append(re.split(r"[><=;\[]", spec)[0].strip())
     return out
+
+
+def pip_resolved_targets() -> dict[str, str]:
+    """Targets whose deps come from the wheel, and the line that proves it.
+
+    These cannot drift from pyproject -- pip resolves it -- so the check is
+    "does this target still install the project with pip?", not "does it list
+    every dep?".  If one of these ever stops pip-installing the project, its
+    guarantee is gone silently.
+    """
+    yml = lambda n: (_ROOT / ".github" / "workflows" / n).read_text()  # noqa: E731
+    return {
+        "windows (PyInstaller)": yml("windows.yml"),
+        "macos (PyInstaller)": yml("macos.yml"),
+        "deb-legacy (venv)": _RELEASE_YML.read_text(),
+    }
 
 
 def arch_declared_depends() -> set[str]:
@@ -165,6 +204,29 @@ def in_fedora(pkg: str) -> str | None:
         "version") else None
 
 
+def in_ubuntu(pkg: str) -> str | None:
+    """Ubuntu is NOT Debian, and our deb targets both.
+
+    python3-pynvml is published in Ubuntu and absent from Debian. Checking only
+    Debian made the tool read "absent everywhere", skip the deb assertion, and
+    stay green over #221 -- a bug the reporter found by hand. One wrong archive
+    is the whole failure.
+    """
+    body = _get(
+        "https://api.launchpad.net/1.0/ubuntu/+archive/primary"
+        "?ws.op=getPublishedBinaries&exact_match=true&status=Published"
+        f"&binary_name={pkg}"
+        f"&distro_arch_series=https://api.launchpad.net/1.0/ubuntu/{_UBUNTU_SERIES}/amd64"
+    )
+    if not body:
+        return None
+    try:
+        entries = json.loads(body).get("entries") or []
+    except json.JSONDecodeError:
+        return None
+    return entries[0].get("binary_package_version") if entries else None
+
+
 def in_debian(pkg: str) -> str | None:
     body = _get(
         f"https://api.ftp-master.debian.org/madison?package={pkg}&f=json"
@@ -214,8 +276,15 @@ def fedora_provides_module(module: str) -> list[str]:
             continue
         names.update(re.findall(r"^([a-z0-9][\w.+-]*)\s*:", out, re.M))
         names.update(re.findall(r"^([a-z0-9][\w.+-]*-[\d.]+[\w.]*)\s", out, re.M))
-    return sorted(n.rsplit("-", 2)[0] if re.search(r"-[\d.]+", n) else n
-                  for n in names)
+    # Exclude ourselves: trcc-linux "provides" pynvml.py only because the RPM
+    # vendors it. Counting that made the tool advise remapping Fedora to
+    # trcc-linux and dropping the vendoring that put the file there -- a
+    # self-referential loop that would have deleted NVIDIA support on Fedora.
+    return sorted(
+        pkg for pkg in (
+            n.rsplit("-", 2)[0] if re.search(r"-[\d.]+", n) else n for n in names
+        ) if not pkg.startswith("trcc")
+    )
 
 
 # Fedora has no pynvml package (dnf provides */pynvml.py → nothing), so the RPM
@@ -311,9 +380,53 @@ def check() -> list[Finding]:
     return findings
 
 
+def check_pip_resolved_targets() -> list[Finding]:
+    """The three pip-resolved targets must still pip-install the project.
+
+    That single line IS their dependency guarantee.  If a refactor ever replaces
+    it (copying files, a frozen requirements list), the target silently stops
+    tracking pyproject and nothing else here would notice.
+    """
+    findings: list[Finding] = []
+    for name, text in pip_resolved_targets().items():
+        if 'pip install "' not in text and "pip install trcc-linux" not in text \
+                and 'pip install ".' not in text and "bin/pip install" not in text:
+            findings.append(Finding(
+                "GAP", name,
+                "no `pip install` of the project found — this target may no "
+                "longer resolve its dependencies from pyproject"))
+    return findings
+
+
+def report_matrix() -> None:
+    """Every hard dep x every target that can drift."""
+    deps = pyproject_runtime_deps(include_win32=True)
+    arch, deb, rpm = arch_declared_depends(), deb_declared_depends(), rpm_declared_requires()
+    print(f"{'dependency':18} {'arch':10} {'deb':10} {'rpm':10}  (hand-declared targets)")
+    print("-" * 62)
+    for dep in deps:
+        names = _PKG_NAMES.get(dep)
+        if names is None:
+            print(f"  {dep:16} {'(win32/unmapped — pip-resolved targets only)'}")
+            continue
+        a, f, d = names
+        cells = (
+            "yes" if a in arch else ("vendor" if a in ARCH_UNAVAILABLE else "NO"),
+            "yes" if d in deb else "NO",
+            "yes" if f in rpm else ("vendor" if dep in FEDORA_VENDORED else "NO"),
+        )
+        print(f"  {dep:16} {cells[0]:10} {cells[1]:10} {cells[2]:10}")
+    print()
+    print("pip-resolved targets (deps come from the wheel — cannot drift):")
+    for name in pip_resolved_targets():
+        print(f"  {name}")
+
+
 def main() -> int:
-    print("Checking packaging claims against live distro repositories…\n")
-    findings = check()
+    print("Checking every shipping target against what it actually provides…\n")
+    report_matrix()
+    print()
+    findings = check() + check_pip_resolved_targets()
     print()
     if not findings:
         print("All packaging claims still hold.")
