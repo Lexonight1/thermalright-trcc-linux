@@ -1,5 +1,38 @@
 # Changelog
 
+## v9.9.0
+
+**NVIDIA GPU sensors now work on Arch and CachyOS.** If you installed the Arch
+package and your NVIDIA card showed no temperature, load or power — this is why.
+The NVIDIA reader was listed as an *optional* dependency, so pacman never
+installed it, and TRCC silently fell back to no GPU data. Nothing told you. It's
+now a required dependency like every other, so a fresh install just works.
+
+Already installed? `sudo pacman -Syu trcc-linux` will pull it in — or
+`sudo pacman -S python-nvidia-ml-py` if you'd rather not upgrade yet.
+
+**The Trofeo Vision 9.16 can be rotated again.** On the 1920×462 ultrawide
+panel, setting the display to 90° or 270° silently did nothing and the screen
+stayed landscape. The rotation itself had been correct for two releases — the
+panel was simply listed as landscape-only, so the app refused the setting before
+it ever reached the screen. All four angles now work, matching the official app
+exactly.
+
+**Installing on Ubuntu/Debian actually works now.** Our own one-liner was
+broken: `dpkg` reports an error when dependencies are missing, which caused the
+very next command — the one that installs those dependencies — to be skipped. If
+you got a wall of "depends on … however: Package is not installed", that was us,
+not you. The instructions now use `apt install ./trcc-linux-latest_all.deb`,
+which installs the package and its dependencies together.
+
+**No more unplugging your cooler.** Every install guide used to end with "unplug
+and replug the USB cable" — on a panel that usually lives inside your case,
+behind tempered glass. It was never needed: the installer already applies the
+USB permissions, and TRCC finds your cooler on its own when it starts. Just run
+`trcc gui`. (If it isn't detected, restarting still sorts it.)
+
+(#207, #221, #150)
+
 ## v9.8.9
 
 **TRCC no longer tells everyone they need to update.** The update check was

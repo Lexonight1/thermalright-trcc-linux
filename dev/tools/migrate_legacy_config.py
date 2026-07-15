@@ -58,8 +58,8 @@ _SRC = _REPO_ROOT / "src"
 if _SRC.is_dir():
     sys.path.insert(0, str(_SRC))
 
-from trcc.core.ports import Paths  # noqa: E402
-from trcc.services.settings import Settings  # noqa: E402
+from trcc.core.ports import Paths
+from trcc.services.settings import Settings
 
 log = logging.getLogger("migrate_legacy_config")
 
