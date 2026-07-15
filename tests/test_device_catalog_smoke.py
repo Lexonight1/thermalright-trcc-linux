@@ -130,3 +130,36 @@ def test_every_variant_button_image_has_an_asset() -> None:
         and not (_PKG_ASSETS_DIR / f"{n.replace(' ', '_')}.png").exists()
     )
     assert not missing, f"button_image(s) with no bundled asset .png: {missing}"
+
+
+# ── orientation availability ──────────────────────────────────────────
+
+def test_every_lcd_panel_offers_all_four_orientations() -> None:
+    """A panel the user cannot rotate is a panel with a registry typo.
+
+    `SetOrientation` gates on `ProductInfo.orientations`, so a missing angle is
+    rejected before the render is ever reached — the user sees "vertical does
+    not work" on a build whose rotation math is correct and C#-verified.
+
+    That is exactly what happened to the Trofeo Vision 9.16 (0416:5408/5409,
+    1920x462): the cutover declared `(0, 180)`, while the C# has an explicit
+    `is1920x462` directionB switch covering 0/90/180/270 (FormCZTV.cs:2690) and
+    our own encode table already matched it at every angle. One wrong tuple, and
+    the reporter was stuck in landscape (#207).
+
+    Every LCD in the catalog rotates in the official app. If a genuinely
+    fixed-orientation panel ever ships, add it here WITH the C# evidence rather
+    than quietly narrowing the tuple.
+    """
+    from trcc.core.models import Kind
+    from trcc.core.registry import ALL_DEVICES
+
+    offenders = {
+        f"{vid:04x}:{pid:04x} ({p.product})": p.orientations
+        for (vid, pid), p in ALL_DEVICES.items()
+        if p.kind is Kind.LCD and set(p.orientations) != {0, 90, 180, 270}
+    }
+    assert not offenders, (
+        "LCD panels that cannot be rotated by the user — SetOrientation will "
+        f"reject the missing angles before rendering: {offenders}"
+    )

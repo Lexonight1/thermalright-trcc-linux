@@ -116,6 +116,13 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
     ),
 
     # --- LY bulk LCD (Trofeo Vision 9.16 ultrawide) --------------------
+    # orientations: all four, per the C# oracle.  FormCZTV.cs:2690 has an
+    # explicit `is1920x462` directionB switch covering 0/90/180/270 — the panel
+    # rotates in the official app, and our encode table already matches it
+    # exactly (FBL 192: encode_base=180 invert=True → 0:180 90:90 180:0
+    # 270:270).  The cutover declared (0, 180), so SetOrientation rejected 90
+    # before the render was ever reached and the panel was stuck in landscape
+    # on a build whose rotation was already correct (#207).
     (0x0416, 0x5408): ProductInfo(
         vid=0x0416, pid=0x5408,
         vendor="Winbond",
@@ -123,7 +130,7 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         wire=Wire.LY, kind=Kind.LCD,
         device_type=5, fbl=192,
         native_resolution=(1920, 462),
-        orientations=(0, 180),
+        orientations=(0, 90, 180, 270),
     ),
     (0x0416, 0x5409): ProductInfo(
         vid=0x0416, pid=0x5409,
@@ -132,7 +139,7 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         wire=Wire.LY, kind=Kind.LCD,
         device_type=5, fbl=192,
         native_resolution=(1920, 462),
-        orientations=(0, 180),
+        orientations=(0, 90, 180, 270),
     ),
 
     # --- RGB LED controllers (HID 64-byte reports) ---------------------
