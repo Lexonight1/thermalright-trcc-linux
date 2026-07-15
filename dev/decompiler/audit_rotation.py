@@ -30,34 +30,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from encode_reference import csharp_encode_base, csharp_wire_rotation
 
-from trcc.adapters.device.bulk_lcd import _RGB565_PMS
-from trcc.core.protocol import (
-    DeviceProfile,
-    get_profile,
-    pm_to_fbl,
-    resolve_encode_base,
-    resolve_encode_sub,
-    wire_angle,
-)
+from trcc.adapters.device.bulk_lcd import bulk_profile
+from trcc.core.protocol import wire_angle
 
 _ORIENTS = (0, 90, 180, 270)
 
-# Handshake fingerprints to sweep — labelled by fingerprint only; the true
-# resolution/encoder/rotate is derived from the profile and printed per row
-# (a label must never assert a resolution the profile might contradict).
+# Handshake fingerprints to sweep, as the PM/SUB bytes a bulk panel actually
+# reports.  Labels are descriptive only — every resolution/encoder/baseline is
+# resolved by the shipping ``bulk_profile`` and printed per row, so a stale
+# label can never make the audit assert a device that doesn't exist.  (An
+# earlier revision hand-rolled this resolution, invented a phantom "square pm6"
+# whose FBL 6 is not in the registry, and reported two false 180°/90° bugs
+# against reporter-confirmed code.)
 _FAMILY: tuple[tuple[str, int, int], ...] = (
-    ("Mjolnir (JPEG small)",   5,  1),
-    ("RGB565 small",          50,  0),
-    ("square pm6",             6,  0),
-    ("widescreen A",          16,  0),
-    ("widescreen 854x480",    11,  5),
-    ("bulk pm1 sub48",         1, 48),
+    ("Mjolnir",              5,  1),   # → fbl 50, 320x240 JPEG
+    ("FW360 Ultra",          6,  0),   # → fbl 72, 480x480, PM-keyed 180° baseline (#137)
+    ("GrandVision 360",     50,  0),   # → fbl 72 (unknown PM → 480x480 base, #176)
+    ("widescreen 854x480",  11,  5),   # → fbl 224
+    ("widescreen 960x540",  10,  0),   # → fbl 224 (PM disambiguates, not FBL)
+    ("bulk pm1 sub48",       1, 48),   # → fbl 114, 1600x720
 )
 
 
 @dataclass(frozen=True, slots=True)
 class Row:
     label: str
+    fbl: int
     resolution: tuple[int, int]
     jpeg: bool
     pm: int
@@ -69,43 +67,31 @@ class Row:
         return [o for o in _ORIENTS if self.ours[o] != self.theirs[o]]
 
 
-def _effective_profile(pm: int, sub: int) -> DeviceProfile:
-    """Rebuild the profile the bulk handshake would produce (jpeg override +
-    folded sub/pm encode bases) so the audit sees exactly what ships."""
-    fbl = pm_to_fbl(pm, sub)
-    base = get_profile(fbl, pm)
-    return DeviceProfile(
-        width=base.width, height=base.height,
-        jpeg=(pm not in _RGB565_PMS),
-        big_endian=base.big_endian, rotate=base.rotate,
-        widescreen=base.widescreen,
-        encode_baseline=resolve_encode_base(base, pm),
-        encode_base=resolve_encode_sub(base, sub),
-        encode_sub_bases=(), encode_pm_bases=base.encode_pm_bases,
-        encode_invert=base.encode_invert,
-    )
-
-
 def audit(pm: int, sub: int, label: str = "") -> Row:
-    p = _effective_profile(pm, sub)
+    # The SHIPPING handshake resolution — never a copy of it.  Reimplementing
+    # these rules here is what made this tool cry wolf: it echoed the PM into
+    # get_profile as an FBL (the exact bogus-FBL path bulk_profile guards for
+    # #169), so pm=6 missed FBL 72 and lost the FW360 Ultra's 180° baseline.
+    fbl, p = bulk_profile(pm, sub)
     # The FULL wire angle the render applies, mirroring DisplayService exactly:
     # wire_angle (build_frame, display.py:384) THEN the device-mount encode
     # baseline (_encode_for_wire, display.py:1321) — two same-origin clockwise
-    # rotations compose additively.  Omitting the baseline made pm=6 squares a
-    # false positive (the C# folds pm6→180 into its base; we split it out).
+    # rotations compose additively.  The C# folds the pm6 mount offset into its
+    # single base; we split it across wire_angle + encode_baseline, so only the
+    # SUM is comparable — auditing either half alone reports a phantom 180°.
     ours = {o: (wire_angle(p, o, portrait_content=False) + p.encode_baseline) % 360
             for o in _ORIENTS}
     theirs = {o: csharp_wire_rotation(p.resolution, jpeg=p.jpeg, pm=pm,
                                       orientation=o) for o in _ORIENTS}
-    return Row(label or f"pm={pm} sub={sub}", p.resolution, p.jpeg, pm,
+    return Row(label or f"pm={pm} sub={sub}", fbl, p.resolution, p.jpeg, pm,
                ours, theirs)
 
 
 def _print(row: Row) -> None:
     enc = "JPEG" if row.jpeg else "RGB565"
     base = csharp_encode_base(row.resolution, jpeg=row.jpeg, pm=row.pm)
-    print(f"\n{row.label}  ({row.resolution[0]}x{row.resolution[1]} {enc}, "
-          f"pm={row.pm}, C# base={base}°)")
+    print(f"\n{row.label}  (fbl={row.fbl}, {row.resolution[0]}x{row.resolution[1]} "
+          f"{enc}, pm={row.pm}, C# base={base}°)")
     print(f"  {'orient':>7} {'ours':>6} {'C#':>6}   verdict")
     for o in _ORIENTS:
         ok = row.ours[o] == row.theirs[o]

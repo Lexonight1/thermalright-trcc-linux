@@ -73,6 +73,59 @@ _BULK_BASE_FBL = 72
 _BULK_KNOWN_PMS: frozenset[int] = frozenset({5, 7, 9, 10, 11, 12, 32, 64, 65})
 
 
+def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]:
+    """Resolve a bulk handshake's PM/SUB bytes to its ``(FBL, profile)``.
+
+    The one implementation of the bulk fingerprint → geometry rules, shared by
+    the wire path (:meth:`BulkLcd.connect`) and the bench auditor
+    (``dev/decompiler/audit_rotation.py``).  It is a pure function of the two
+    handshake bytes precisely so an auditor can resolve a device with no USB.
+
+    Keep it that way: a hand-copy of these rules in the auditor drifted — it
+    dropped the ``_BULK_KNOWN_PMS`` guard below and invented a phantom FBL 6,
+    which then reported our (reporter-confirmed, #137) FW360 Ultra rotation as
+    a 180° bug.  An oracle that re-implements the thing it audits proves
+    nothing about the code that ships.
+    """
+    # Resolution comes from the FBL tables (mirrors legacy ``_bulk_resolution``).
+    # Unknown bulk PMs stay on the 480x480 base rather than letting pm_to_fbl
+    # echo the PM into get_profile as a bogus FBL (C# parity, #169).
+    if pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49)):
+        fbl = pm_to_fbl(pm, sub)
+    else:
+        log.info(
+            "BulkLcd %s: PM=%d SUB=%d not a known bulk model — "
+            "defaulting to FBL %d (480x480)", key, pm, sub, _BULK_BASE_FBL,
+        )
+        fbl = _BULK_BASE_FBL
+    base = get_profile(fbl, pm)
+    # Resolve the device-only encode baseline now that PM is known — e.g. the
+    # FW360 Ultra (PM=6) mounts 180° rotated and needs its wire frame
+    # pre-rotated so it reads upright on the glass. (#137)
+    encode_baseline = resolve_encode_base(base, pm)
+    if encode_baseline:
+        log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
+                 key, pm, encode_baseline)
+    # Fold the sub-byte override into encode_base now that SUB is known, so the
+    # render-time resolve_encode_angle only needs the user orientation
+    # (C# ImageToJpg mySubMode branch — e.g. FBL 224 sub=2 → 180°). (#169)
+    return fbl, DeviceProfile(
+        width=base.width, height=base.height,
+        # The Bulk-specific override: USBLCDNew uses JPEG (cmd=2) for every PM
+        # except 32, which forces RGB565 (cmd=3).  This flag is what the C#
+        # rotation switches key on (ImageToJpg vs ImageTo565) — FBL_PROFILES
+        # alone wouldn't capture it.
+        jpeg=(pm not in _RGB565_PMS),
+        big_endian=base.big_endian, rotate=base.rotate,
+        widescreen=base.widescreen,
+        encode_baseline=encode_baseline,
+        encode_base=resolve_encode_sub(base, sub),
+        encode_sub_bases=(),  # folded into encode_base above
+        encode_pm_bases=base.encode_pm_bases,
+        encode_invert=base.encode_invert,
+    )
+
+
 @DeviceFactory.register(Wire.BULK)
 class BulkLcd(Device[BulkTransport]):
     """Raw USB bulk LCD device (USBLCDNew protocol)."""
@@ -121,44 +174,7 @@ class BulkLcd(Device[BulkTransport]):
         self._pm = resp[24]
         self._sub = resp[36]
 
-        # Build the cached profile. Resolution comes from the FBL tables
-        # (mirrors legacy ``_bulk_resolution``); the jpeg flag is the
-        # Bulk-specific override (USBLCDNew → JPEG except PM=32).  Unknown
-        # bulk PMs stay on the 480x480 base rather than letting pm_to_fbl
-        # echo the PM into get_profile as a bogus FBL (C# parity, #169).
-        if self._pm in _BULK_KNOWN_PMS or (
-            self._pm == 1 and self._sub in (48, 49)
-        ):
-            fbl = pm_to_fbl(self._pm, self._sub)
-        else:
-            log.info(
-                "BulkLcd %s: PM=%d SUB=%d not a known bulk model — "
-                "defaulting to FBL %d (480x480)",
-                self.info.key, self._pm, self._sub, _BULK_BASE_FBL,
-            )
-            fbl = _BULK_BASE_FBL
-        base = get_profile(fbl, self._pm)
-        # Resolve the device-only encode baseline now that PM is known — e.g.
-        # the FW360 Ultra (PM=6) mounts 180° rotated and needs its wire frame
-        # pre-rotated so it reads upright on the glass. (#137)
-        encode_baseline = resolve_encode_base(base, self._pm)
-        if encode_baseline:
-            log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
-                     self.info.key, self._pm, encode_baseline)
-        # Fold the sub-byte override into encode_base now that SUB is known, so
-        # the render-time resolve_encode_angle only needs the user orientation
-        # (C# ImageToJpg mySubMode branch — e.g. FBL 224 sub=2 → 180°). (#169)
-        encode_base = resolve_encode_sub(base, self._sub)
-        self._profile = DeviceProfile(
-            width=base.width, height=base.height,
-            jpeg=(self._pm not in _RGB565_PMS),
-            big_endian=base.big_endian, rotate=base.rotate,
-            widescreen=base.widescreen,
-            encode_baseline=encode_baseline,
-            encode_base=encode_base, encode_invert=base.encode_invert,
-            encode_sub_bases=(),  # folded into encode_base above
-            encode_pm_bases=base.encode_pm_bases,
-        )
+        fbl, self._profile = bulk_profile(self._pm, self._sub, self.info.key)
 
         result = HandshakeResult(
             resolution=self._profile.resolution,

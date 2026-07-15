@@ -34,11 +34,13 @@ from __future__ import annotations
 
 import pytest
 
+from trcc.adapters.device.bulk_lcd import bulk_profile
 from trcc.core.protocol import (
     fbl_to_resolution,
     get_profile,
     pm_to_fbl,
     resolve_encode_angle,
+    wire_angle,
 )
 
 # ── FormCZTV.cs::ImageToJpg — the `directionB` switch, per resolution ──
@@ -143,3 +145,71 @@ def test_oracle_tables_are_not_silently_empty() -> None:
     assert len(_CSHARP_PM_TO_RESOLUTION) >= 6
     for angles in _CSHARP_ENCODE_ANGLES.values():
         assert sorted(angles) == [0, 90, 180, 270]
+    assert len(_CSHARP_BULK_WIRE_ANGLES) >= 6
+    for _, _, angles in _CSHARP_BULK_WIRE_ANGLES:
+        assert sorted(angles) == [0, 90, 180, 270]
+
+
+# ── The COMPOSED wire angle, per real bulk handshake fingerprint ──────────
+#
+# The tests above check the rotation tables in isolation.  This one checks what
+# a panel actually gets: the whole PM/SUB → FBL → profile → angle chain, summed
+# the way ``DisplayService`` sums it.  That composition is where the maths hid
+# its last bug, and where an auditor hallucinated two more (2026-07-15):
+#
+#   * ``wire_angle`` (build_frame, display.py:384) — the encoder/resolution base
+#   * ``+ encode_baseline`` (_encode_for_wire, display.py:1321) — the PM-keyed
+#     hardware-mount offset (#137)
+#
+# The C# folds both into ONE base; we split them.  So only the SUM is comparable
+# — check either half alone and the FW360 Ultra reads 180° "wrong" while being
+# provably right on satoru8's glass (#137, confirmed on commit 3a3b9ea1).
+#
+# Expected angles transcribed from FormCZTV.cs with the encoder that
+# ``myDeviceMode == 2`` selects at the call site (:2178 → ImageToJpg, else
+# ImageTo565); USBLCDNew sends JPEG for every bulk PM except 32:
+#
+#   :2655  is320x320 || is480x480, myDevicePingMu == 6  → 0:180 90:90 180:0 270:270
+#   :2661  is320x320 || is480x480, otherwise            → 0:0 90:270 180:180 270:90
+#   :2669  myDevicePingMu == 5 (Mjolnir 320x240)        → 0:0 90:270 180:180 270:90
+#   :2677  is1600x720                                   → 0:180 90:90 180:0 270:270
+#   :2683  is854x480 || is960x540                       → 0:0 90:270 180:180 270:90
+#
+# (pm, sub) are the bytes the panel reports at handshake — resp[24]/resp[36].
+_CSHARP_BULK_WIRE_ANGLES: tuple[tuple[str, tuple[int, int], dict[int, int]], ...] = (
+    # FW360 Ultra: the PM-keyed 180° mount offset.  DO NOT "fix" this to 0 on a
+    # reading of ImageTo565 — it is JPEG (PM 6 != 32), so ImageToJpg's pm==6
+    # branch applies, and satoru8 confirmed it upright on the panel (#137).
+    ("FW360 Ultra",         (6, 0),   {0: 180, 90: 90, 180: 0, 270: 270}),
+    ("Mjolnir",             (5, 1),   {0: 0, 90: 270, 180: 180, 270: 90}),
+    # Unknown bulk PM → stays on the 480x480 base, never echoes PM as FBL (#176).
+    ("GrandVision 360",     (50, 0),  {0: 0, 90: 270, 180: 180, 270: 90}),
+    ("widescreen 854x480",  (11, 5),  {0: 0, 90: 270, 180: 180, 270: 90}),
+    ("widescreen 960x540",  (10, 0),  {0: 0, 90: 270, 180: 180, 270: 90}),
+    ("bulk 1600x720",       (1, 48),  {0: 180, 90: 90, 180: 0, 270: 270}),
+)
+
+
+@pytest.mark.parametrize("label,fingerprint,expected",
+                         _CSHARP_BULK_WIRE_ANGLES, ids=lambda v: v if isinstance(v, str) else "")
+def test_bulk_wire_angle_matches_the_csharp(
+    label: str, fingerprint: tuple[int, int], expected: dict[int, int],
+) -> None:
+    """The angle a real bulk fingerprint puts on the wire == the C#'s.
+
+    Resolves through the SHIPPING ``bulk_profile`` — never a copy of it.  A
+    hand-rolled copy in ``dev/decompiler/audit_rotation.py`` dropped the
+    ``_BULK_KNOWN_PMS`` guard, invented a phantom FBL 6, and reported this very
+    device as a 180° bug.  An oracle that re-implements the code it audits
+    proves nothing about what ships.
+    """
+    pm, sub = fingerprint
+    fbl, profile = bulk_profile(pm, sub)
+    for orientation, want in expected.items():
+        got = (wire_angle(profile, orientation, portrait_content=False)
+               + profile.encode_baseline) % 360
+        assert got == want, (
+            f"{label} (pm={pm} sub={sub} → fbl={fbl}, {profile.width}x"
+            f"{profile.height} {'JPEG' if profile.jpeg else 'RGB565'}) at "
+            f"display angle {orientation}°: we send {got}°, the C# sends {want}°"
+        )
