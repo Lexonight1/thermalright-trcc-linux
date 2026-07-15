@@ -164,3 +164,54 @@ def test_arch_unavailable_list_has_no_stale_entries() -> None:
         f"{stale} are declared as Arch depends but still listed as unavailable "
         f"— remove them from _ARCH_UNAVAILABLE"
     )
+
+
+# ── the NVIDIA reader must be a real dependency on every distro ────────
+
+def test_nvidia_reader_is_a_hard_dep_on_every_distro() -> None:
+    """"Optional" here means "silently missing", and nothing tells the user.
+
+    nvidia-ml-py is a HARD dep in pyproject — it is what `import pynvml` needs,
+    and without it GPU metrics are simply blank with no error. TRCC does try to
+    pip-install it during setup, but Arch AND Debian/Ubuntu both block pip from
+    the system Python (PEP 668), so that fallback cannot work: the package
+    manager is the only route.
+
+    It shipped as `optdepend` on Arch (#207/#161 — pacman never installed it)
+    and as `Recommends` on the deb (#221 — apt skips Recommends under
+    --no-install-recommends, and a reporter had to find `apt install
+    python3-pynvml` by hand). Two distros, same bug, found a day apart. Fedora
+    is the exception ONLY because it has no such package and vendors it via pip
+    into the payload instead — asserted here so that stops being a silent
+    assumption.
+    """
+    import sys as _sys
+    _dev_tools = _ROOT / "dev" / "tools"
+    if str(_dev_tools) not in _sys.path:
+        _sys.path.insert(0, str(_dev_tools))
+    from check_distro_deps import (
+        arch_declared_depends,
+        deb_declared_depends,
+        rpm_declared_requires,
+    )
+
+    assert "python-nvidia-ml-py" in arch_declared_depends(), (
+        "Arch: python-nvidia-ml-py is not a `depend =` — pacman will not "
+        "install it and NVIDIA GPU metrics stay silently empty (#207)"
+    )
+    assert "python3-pynvml" in deb_declared_depends(), (
+        "deb: python3-pynvml is not in `Depends:` — apt skips Recommends under "
+        "--no-install-recommends and NVIDIA GPU metrics stay silently empty (#221)"
+    )
+    # Fedora ships no pynvml package (verified via dnf provides */pynvml.py →
+    # nothing; python3-py3nvml is a DIFFERENT project providing py3nvml).
+    # The RPM therefore vendors it — assert the vendoring, not a Requires.
+    yml = _RELEASE_YML.read_text()
+    assert "--no-deps sounddevice nvidia-ml-py" in yml, (
+        "the RPM stopped vendoring nvidia-ml-py and Fedora has no package to "
+        "depend on — NVIDIA GPU metrics would go silently empty on Fedora"
+    )
+    assert "python3-pynvml" not in rpm_declared_requires(), (
+        "the RPM Requires python3-pynvml, which does not exist in Fedora — "
+        "the build will fail to resolve it"
+    )

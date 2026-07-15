@@ -111,6 +111,26 @@ def arch_declared_depends() -> set[str]:
     return set(re.findall(r"^\s*depend = (\S+)", block, re.M))
 
 
+def deb_declared_depends() -> set[str]:
+    """The STANDARD deb's `Depends:` line (not the legacy venv deb).
+
+    The legacy deb vendors its Python deps into /opt/trcc-linux, so its
+    Depends list is deliberately short — only the standard deb declares them.
+    """
+    text = _RELEASE_YML.read_text()
+    for line in re.findall(r"^\s*Depends: (.+)$", text, re.M):
+        if "pyside6" not in line:
+            continue                     # the legacy deb — vendors instead
+        return {re.split(r"\s*\(", tok.strip())[0] for tok in line.split(",")}
+    return set()
+
+
+def rpm_declared_requires() -> set[str]:
+    """The RPM spec's `Requires:` lines from the heredoc in release.yml."""
+    text = _RELEASE_YML.read_text()
+    return set(re.findall(r"^\s*Requires:\s+(\S+)", text, re.M))
+
+
 # ── remote probes ──────────────────────────────────────────────────────
 
 def _get(url: str) -> str | None:
@@ -198,10 +218,19 @@ def fedora_provides_module(module: str) -> list[str]:
                   for n in names)
 
 
+# Fedora has no pynvml package (dnf provides */pynvml.py → nothing), so the RPM
+# vendors it into the payload instead of depending on it.  Same for sounddevice
+# historically — see FEDORA_VENDORED.  Anything else absent from a distro's
+# declarations is a real hole.
+_RPM_VENDORED_OK = {"nvidia-ml-py", "sounddevice"}
+
+
 def check() -> list[Finding]:
     findings: list[Finding] = []
     deps = pyproject_runtime_deps()
     declared = arch_declared_depends()
+    deb_declared = deb_declared_depends()
+    rpm_declared = rpm_declared_requires()
 
     print(f"{'dependency':18} {'arch':22} {'fedora':18} {'debian':22}")
     print("-" * 82)
@@ -246,7 +275,25 @@ def check() -> list[Finding]:
                 f"Fedora now ships {f_name} ({f}) but the RPM still pip-vendors "
                 f"it — depend on the package instead"))
 
-        # 5. Capability cross-check: names lie, imports do not.  Only the
+        # 5. Declared for Arch but NOT for deb/rpm.  This tool was built to
+        #    catch exactly this and originally only checked Arch — so the deb
+        #    shipped python3-pynvml as a `Recommends` (apt skips it under
+        #    --no-install-recommends) and a reporter found it by hand (#221),
+        #    the day after the identical Arch `optdepend` bug (#207). One distro
+        #    checked is not the class checked.
+        if d and d_name not in deb_declared:
+            findings.append(Finding(
+                "GAP", dep,
+                f"Debian/Ubuntu ships {d_name} ({d}) but the deb does not "
+                f"`Depends:` it — apt may skip it and the feature goes silently "
+                f"missing"))
+        if f and f_name not in rpm_declared and dep not in _RPM_VENDORED_OK:
+            findings.append(Finding(
+                "GAP", dep,
+                f"Fedora ships {f_name} ({f}) but the RPM does not `Requires:` "
+                f"it and does not vendor it"))
+
+        # 6. Capability cross-check: names lie, imports do not.  Only the
         #    module we actually import proves a package is the right one.
         module = _IMPORT_NAME.get(dep)
         if module:
