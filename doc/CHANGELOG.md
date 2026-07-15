@@ -1,5 +1,44 @@
 # Changelog
 
+## v9.9.1
+
+**If you're on AMD and v9.9.0 tried to install 938 MB of NVIDIA drivers — that
+was my mistake, and it's fixed.** The Arch package listed the NVIDIA sensor
+reader as a required dependency, so pacman pulled in `nvidia-utils` and the
+whole EGL stack on machines with no NVIDIA card in them. It's back to being
+optional, where it belongs.
+
+If you skipped v9.9.0 because of this, v9.9.1 is safe to install.
+
+**NVIDIA owners: TRCC now tells you the right command for your distro.** The
+reader stays optional — nobody should be handed a driver stack they don't need —
+but if you *do* have an NVIDIA card and the reader is missing, TRCC now names
+the exact package for your system instead of guessing:
+
+```bash
+sudo pacman -S python-nvidia-ml-py     # Arch / CachyOS
+sudo apt install python3-pynvml        # Ubuntu / Debian
+```
+
+Previously it suggested Fedora's package name on every distro, so the command it
+gave Arch users didn't exist.
+
+**Your panel now says when it's asleep.** If a panel goes idle it sleeps, and
+reconnecting used to fail with a bare `[Errno 110] Operation timed out` — which
+looks exactly like broken hardware. TRCC now says it's asleep, and how to keep
+it awake.
+
+**Videos: `display play` explains itself.** Loading a video and then running
+`trcc display play` redrew a single frame every couple of seconds and looked
+frozen. `play` is the metrics loop; `display play-video` is the video player.
+TRCC now says so instead of leaving you guessing.
+
+Thanks to **@em73es** and **@SunnyZorya23** for catching the AMD regression
+within hours, and **@developer-yl** and **@armangido** for the reports behind
+the rest.
+
+(#216, #207, #150)
+
 ## v9.9.0
 
 **NVIDIA GPU sensors now work on Arch and CachyOS.** If you installed the Arch
