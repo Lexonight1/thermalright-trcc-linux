@@ -104,6 +104,25 @@ _IMPORT_NAME = {
 # This tool exists to tell us when an entry here stops being true.
 ARCH_UNAVAILABLE = {"python-uvicorn", "python-sounddevice"}
 
+# Hard pyproject deps we DELIBERATELY do not declare for a distro, with the
+# reason.  Distinct from "unavailable": the package EXISTS, and depending on it
+# would cost the user more than the feature is worth.  Recording the reason is
+# the point -- an unexplained optdepend reads as an oversight and gets "fixed",
+# which is exactly what happened: #216 made the NVIDIA reader optional because
+# it drags nvidia-utils (~938 MB) onto AMD systems, and six days later it was
+# reverted to a hard depend "to fix #207" and shipped.
+#
+# The trade is only acceptable because the app TELLS the user how to install it
+# (Platform.software_install_hint) -- see
+# tests/test_packaging_entrypoints.py, which asserts BOTH halves.
+DELIBERATELY_OPTIONAL: dict[str, str] = {
+    "nvidia-ml-py": (
+        "pulls nvidia-utils (~938 MB) on Arch / libnvidia-ml1 from contrib on "
+        "Debian -- an NVIDIA driver stack for every AMD and Intel owner (#216). "
+        "Optional + an OS-correct install hint instead (#207)."
+    ),
+}
+
 # Packages the Fedora RPM vendors via pip instead of depending on.
 # Justified only while Fedora genuinely has no package.
 FEDORA_VENDORED = {"sounddevice", "nvidia-ml-py"}

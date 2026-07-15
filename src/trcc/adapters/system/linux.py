@@ -348,6 +348,25 @@ _LINUX_INSTALL_PKGS: dict[str, str] = {
     "pynvml": "python3-pynvml",
 }
 
+# Tools whose package name DIFFERS per distro.  One name for all of Linux is a
+# lie: advising "python3-pynvml" on Arch names a package that does not exist,
+# so the NVIDIA user is told to run a command that fails (#207).
+#
+# This is also why the reader is an optdepend/Recommends and must stay one:
+# Arch's python-nvidia-ml-py depends on nvidia-utils (~938 MB) and Debian's
+# python3-pynvml pulls libnvidia-ml1 from *contrib* — hard-depending inflicts
+# the NVIDIA driver stack on every AMD/Intel owner (#216) and breaks installs
+# where contrib is not enabled.  The reader is optional; the ADVICE is what
+# has to be right.
+_LINUX_PKG_BY_MANAGER: dict[str, dict[str, str]] = {
+    "pynvml": {
+        "pacman": "python-nvidia-ml-py",
+        "apt": "python3-pynvml",
+        "dnf": "python3-pynvml",
+        "zypper": "python3-pynvml",
+    },
+}
+
 
 @PlatformFactory.register("linux")
 class LinuxPlatform(Platform):
@@ -607,8 +626,14 @@ class LinuxPlatform(Platform):
         setup commands) — maps the logical tool to its distro package name.
         """
         log.debug("LinuxPlatform.software_install_hint: tool=%s", tool)
-        from ..diagnostics.health import package_install_hint
-        pkg = _LINUX_INSTALL_PKGS.get(tool, tool)
+        from ..diagnostics.health import detect_package_manager, package_install_hint
+        by_manager = _LINUX_PKG_BY_MANAGER.get(tool)
+        if by_manager is not None:
+            pm = detect_package_manager() or ""
+            pkg = by_manager.get(pm) or _LINUX_INSTALL_PKGS.get(tool, tool)
+        else:
+            pkg = _LINUX_INSTALL_PKGS.get(tool, tool)
+        log.info("software_install_hint: tool=%s → package=%s", tool, pkg)
         return package_install_hint(pkg)
 
     def permission_denied_hint(self) -> str:

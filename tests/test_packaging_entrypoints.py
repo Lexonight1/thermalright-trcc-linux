@@ -109,7 +109,10 @@ _DEV_TOOLS_DIR = _ROOT / "dev" / "tools"
 if str(_DEV_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_DEV_TOOLS_DIR))
 
-from check_program_deps import _PKG_NAMES  # noqa: E402
+from check_program_deps import (  # noqa: E402
+    _PKG_NAMES,
+    DELIBERATELY_OPTIONAL,
+)
 from check_program_deps import (  # noqa: E402
     ARCH_UNAVAILABLE as _ARCH_UNAVAILABLE,
 )
@@ -141,8 +144,8 @@ def test_arch_package_declares_every_hard_runtime_dep() -> None:
             f"add it to _ARCH_PKG (and to the release.yml depends) or record "
             f"why Arch cannot have it"
         )
-        if arch in _ARCH_UNAVAILABLE:
-            continue
+        if arch in _ARCH_UNAVAILABLE or name in DELIBERATELY_OPTIONAL:
+            continue   # no package, or optional ON PURPOSE with a recorded reason
         if arch not in declared:
             missing.append(f"{name} -> {arch}")
     assert not missing, (
@@ -166,52 +169,60 @@ def test_arch_unavailable_list_has_no_stale_entries() -> None:
     )
 
 
-# ── the NVIDIA reader must be a real dependency on every distro ────────
+# ── the NVIDIA reader: TWO constraints, both true ─────────────────────
 
-def test_nvidia_reader_is_a_hard_dep_on_every_distro() -> None:
-    """"Optional" here means "silently missing", and nothing tells the user.
+def test_nvidia_reader_is_never_a_hard_dep() -> None:
+    """It must stay OPTIONAL — a hard dep inflicts NVIDIA drivers on AMD boxes.
 
-    nvidia-ml-py is a HARD dep in pyproject — it is what `import pynvml` needs,
-    and without it GPU metrics are simply blank with no error. TRCC does try to
-    pip-install it during setup, but Arch AND Debian/Ubuntu both block pip from
-    the system Python (PEP 668), so that fallback cannot work: the package
-    manager is the only route.
+    #216 (em73es): the Arch package hard-depended on python-nvidia-ml-py, which
+    depends on `nvidia-utils` — ~938 MB of driver + EGL stack on an AMD-only
+    system. It was made an optdepend on 2026-07-09 to fix exactly that.
 
-    It shipped as `optdepend` on Arch (#207/#161 — pacman never installed it)
-    and as `Recommends` on the deb (#221 — apt skips Recommends under
-    --no-install-recommends, and a reporter had to find `apt install
-    python3-pynvml` by hand). Two distros, same bug, found a day apart. Fedora
-    is the exception ONLY because it has no such package and vendors it via pip
-    into the payload instead — asserted here so that stops being a silent
-    assumption.
+    On 2026-07-15 I reverted it to a hard depend "to fix #207" without asking
+    why it was optional, shipped it in v9.9.0, and a user reported the 938 MB
+    within hours. I then wrote a test asserting the HARD dep — encoding my own
+    regression as a guard, so the next person fixing #216 would hit my test
+    telling them they were wrong.
+
+    Debian is the same trap: python3-pynvml pulls libnvidia-ml1 and lives in
+    *contrib*, so a hard Depends also breaks installs where contrib is off.
+
+    The reader is optional. Making it available is the USER's choice; making
+    that choice OBVIOUS is ours — see the paired test below. Neither half can
+    be "fixed" by breaking the other.
     """
     import sys as _sys
     _dev_tools = _ROOT / "dev" / "tools"
     if str(_dev_tools) not in _sys.path:
         _sys.path.insert(0, str(_dev_tools))
-    from check_program_deps import (
-        arch_declared_depends,
-        deb_declared_depends,
-        rpm_declared_requires,
+    from check_program_deps import arch_declared_depends, deb_declared_depends
+
+    assert "python-nvidia-ml-py" not in arch_declared_depends(), (
+        "Arch hard-depends on python-nvidia-ml-py — that drags nvidia-utils "
+        "(~938 MB) onto every AMD/Intel system (#216). Keep it an optdepend "
+        "and tell the user instead (software_install_hint)."
+    )
+    assert "python3-pynvml" not in deb_declared_depends(), (
+        "the deb hard-depends on python3-pynvml — it pulls libnvidia-ml1 and "
+        "is in contrib, so this inflicts NVIDIA libs on AMD users and breaks "
+        "installs without contrib enabled. Keep it a Recommends."
     )
 
-    assert "python-nvidia-ml-py" in arch_declared_depends(), (
-        "Arch: python-nvidia-ml-py is not a `depend =` — pacman will not "
-        "install it and NVIDIA GPU metrics stay silently empty (#207)"
+
+def test_nvidia_reader_advice_names_a_package_that_exists() -> None:
+    """#207: an NVIDIA user must be told the RIGHT command for their distro.
+
+    The reader being optional is only acceptable if the app says how to get
+    it. One name for all of Linux is a lie — Arch's package is
+    python-nvidia-ml-py, Debian/Ubuntu's is python3-pynvml. Advising the wrong
+    one sends the user to a command that fails, which is #207 with extra steps.
+    """
+    from trcc.adapters.system.linux import _LINUX_PKG_BY_MANAGER
+
+    by_mgr = _LINUX_PKG_BY_MANAGER["pynvml"]
+    assert by_mgr["pacman"] == "python-nvidia-ml-py", (
+        "Arch's package is python-nvidia-ml-py; python3-pynvml does not exist "
+        "there and pacman will fail"
     )
-    assert "python3-pynvml" in deb_declared_depends(), (
-        "deb: python3-pynvml is not in `Depends:` — apt skips Recommends under "
-        "--no-install-recommends and NVIDIA GPU metrics stay silently empty (#221)"
-    )
-    # Fedora ships no pynvml package (verified via dnf provides */pynvml.py →
-    # nothing; python3-py3nvml is a DIFFERENT project providing py3nvml).
-    # The RPM therefore vendors it — assert the vendoring, not a Requires.
-    yml = _RELEASE_YML.read_text()
-    assert "--no-deps sounddevice nvidia-ml-py" in yml, (
-        "the RPM stopped vendoring nvidia-ml-py and Fedora has no package to "
-        "depend on — NVIDIA GPU metrics would go silently empty on Fedora"
-    )
-    assert "python3-pynvml" not in rpm_declared_requires(), (
-        "the RPM Requires python3-pynvml, which does not exist in Fedora — "
-        "the build will fail to resolve it"
-    )
+    assert by_mgr["apt"] == "python3-pynvml"
+    assert by_mgr["dnf"] == "python3-pynvml"
