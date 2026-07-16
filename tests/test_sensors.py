@@ -8,7 +8,7 @@ import pytest
 
 from trcc.adapters.sensors import hwmon
 from trcc.adapters.sensors.aggregator import BaselineSensors
-from trcc.core.ports import DiskSource, DramSource
+from trcc.core.ports import DiskSource, DramSource, FanSource
 
 from .conftest import FakeCpu, FakeGpu, FakeMemory
 
@@ -47,6 +47,27 @@ class FakeDram(DramSource):
 
     def temp(self) -> float | None:
         return self._temp
+
+
+class FakeFan(FanSource):
+    """One fan header for the aggregator tests."""
+
+    def __init__(self, key: str, rpm: int | None, name: str = "Fake Fan") -> None:
+        self._key, self._rpm, self._name = key, rpm, name
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def rpm(self) -> int | None:
+        return self._rpm
+
+    def percent(self) -> float | None:
+        return None
 
 # ── snapshot() — typed HardwareMetrics, collapse policy ──────────────
 
@@ -129,6 +150,42 @@ def _sensors_with(gpus=None) -> BaselineSensors:
         cpu=FakeCpu(), memory=FakeMemory(),
         gpus=gpus or [], fans=[],
     )
+
+
+# ── Fan RPM — FanSource → snapshot.fan_cpu/gpu/ssd/sys2 ──────────────
+
+
+def test_fans_fill_slots_in_discovery_order() -> None:
+    """Spinning fans populate the four DC slots in the order discovered
+    (Linux has no fanN_label, so slot = position; #145/#207)."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[],
+        fans=[FakeFan("fan1", 1200), FakeFan("fan2", 800),
+              FakeFan("fan3", 600)],
+    )
+
+    m = s.snapshot()
+    assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (1200, 800, 600, 0)
+
+
+def test_fans_skip_stopped_headers() -> None:
+    """A 0-RPM (or unreadable) header is an empty slot, not a fan — it is
+    skipped so the next spinning fan fills the slot instead of a false 0."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[],
+        fans=[FakeFan("fan1", 0), FakeFan("fan2", None),
+              FakeFan("fan3", 950)],
+    )
+
+    m = s.snapshot()
+    assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (950, 0, 0, 0)
+
+
+def test_fans_absent_leaves_slots_zero() -> None:
+    """No FanSource → all four slots stay 0.0 (the pre-fix default, now
+    reached only when the board truly has no readable fan)."""
+    m = _sensors_with().snapshot()
+    assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (0, 0, 0, 0)
 
 
 # ── Disk temperature — DiskSource → disk:temp → snapshot.disk_temp ───

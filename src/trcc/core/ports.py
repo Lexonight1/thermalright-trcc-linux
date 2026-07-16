@@ -615,6 +615,20 @@ class SensorEnumerator(ABC):
         ) for g in self.gpus()]
         primary = self.primary_gpu()
         mem = self.memory()
+        # Fan slots (the DC's CPUFAN/GPUFAN/SSDFAN/FAN2, all declared RPM).
+        # snapshot() populated every other field but never called self.fans(),
+        # so all four defaulted to 0.0 — every theme showed 0 RPM on every
+        # board (#145/#207).  hwmon ``fanN_input`` is RPM (unit matches); the
+        # GPU fan is a duty-cycle percent, so it is deliberately NOT forced
+        # into an RPM slot.  Linux exposes no ``fanN_label`` (the C# binds its
+        # LHM sensors by name — "CPU Fan" — which cannot port), so we cannot
+        # know which header is the CPU fan without the user saying: that
+        # mapping is the fan-slot picker.  Until then, fill the slots with the
+        # fans that are actually spinning, in discovery order, so a theme
+        # shows a real reading instead of 0.  A 0-RPM header is an empty
+        # header, not a fan, so it is skipped.
+        spinning = [rpm for fan in self.fans() if (rpm := fan.rpm())]
+        fan_cpu, fan_gpu, fan_ssd, fan_sys2 = [*spinning, 0, 0, 0, 0][:4]
         metrics = HardwareMetrics(
             cpu_temp=max((c.temp for c in cpus), default=0.0),
             cpu_percent=(sum(c.usage for c in cpus) / len(cpus)) if cpus else 0.0,
@@ -637,14 +651,17 @@ class SensorEnumerator(ABC):
             net_down=readings.get("net:down", 0.0),
             net_total_up=readings.get("net:total_up", 0.0),
             net_total_down=readings.get("net:total_down", 0.0),
+            fan_cpu=fan_cpu, fan_gpu=fan_gpu,
+            fan_ssd=fan_ssd, fan_sys2=fan_sys2,
             readings=readings,
             cpus=cpus,
             gpus=gpus,
         )
         log.debug(
             "snapshot: cpus=%d gpus=%d cpu_temp=%.1f cpu_pct=%.1f "
-            "gpu_temp=%.1f", len(cpus), len(gpus),
+            "gpu_temp=%.1f fans(rpm)=%s", len(cpus), len(gpus),
             metrics.cpu_temp, metrics.cpu_percent, metrics.gpu_temp,
+            (fan_cpu, fan_gpu, fan_ssd, fan_sys2),
         )
         return metrics
 
