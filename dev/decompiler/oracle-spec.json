@@ -1,0 +1,297 @@
+{
+  "decompile": "TRCC_decompiled",
+  "frame_headers": [
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is480x480",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 480,
+      "declared_h": 480,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is320x320",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 320,
+      "declared_h": 320,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is640x480",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 640,
+      "declared_h": 480,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is240x240",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 240,
+      "declared_h": 240,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is1600x720",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 1600,
+      "declared_h": 720,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is800x480",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 800,
+      "declared_h": 480,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is854x480",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 854,
+      "declared_h": 480,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is960x540",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 960,
+      "declared_h": 540,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is1920x462",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 1920,
+      "declared_h": 462,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is1280x480",
+      "header_len": 20,
+      "magic": [
+        218,
+        219,
+        220,
+        221
+      ],
+      "declared_w": 1280,
+      "declared_h": 480,
+      "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is360x360",
+      "header_len": 20,
+      "magic": [
+        218,
+        219,
+        220,
+        221
+      ],
+      "declared_w": 360,
+      "declared_h": 360,
+      "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "myDevicePingMu == 5",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 320,
+      "declared_h": 240,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "else_default",
+      "header_len": 20,
+      "magic": [
+        218,
+        219,
+        220,
+        221
+      ],
+      "declared_w": 240,
+      "declared_h": 320,
+      "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageTo565",
+      "condition": "myDeviceMode == 3",
+      "header_len": 20,
+      "magic": [
+        218,
+        219,
+        220,
+        221
+      ],
+      "declared_w": 240,
+      "declared_h": 320,
+      "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageTo565",
+      "condition": "myDeviceMode == 4",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 320,
+      "declared_h": 320,
+      "length_slot": "60:64"
+    }
+  ],
+  "markers": [
+    {
+      "encoder": "ImageToJpg",
+      "condition": "else_default",
+      "bytes": [
+        0,
+        0,
+        0,
+        30
+      ]
+    },
+    {
+      "encoder": "ImageTo565",
+      "condition": "myDeviceMode == 1",
+      "bytes": [
+        0,
+        1,
+        1,
+        30
+      ]
+    },
+    {
+      "encoder": "ImageTo565",
+      "condition": "myDeviceMode == 4",
+      "bytes": [
+        0,
+        0,
+        0,
+        30
+      ]
+    }
+  ],
+  "families": {
+    "hid2": {
+      "wire": "hid",
+      "note": "0416:5302 DA-magic; frames from FormCZTV ImageTo565/Jpg",
+      "handshake_init": {
+        "len": 20,
+        "magic": [
+          218,
+          219,
+          220,
+          221
+        ]
+      },
+      "delivery_chunk": 512,
+      "status": "MINED"
+    },
+    "hid3": {
+      "wire": "hid",
+      "note": "0418:5303/4 ALi F5 \u2014 handshake/delivery not cleanly isolated in UCDevice; trace before trusting HidType3Protocol",
+      "status": "NEEDS_REVIEW"
+    },
+    "led": {
+      "wire": "led",
+      "note": "colour/segment; SendHidVal perceptual *0.4 \u2014 mine separately",
+      "status": "NEEDS_REVIEW"
+    },
+    "scsi": {
+      "wire": "scsi",
+      "note": "share-memory bridge \u2192 USBLCD component, absent from this decompile",
+      "status": "NOT_IN_THIS_DECOMPILE"
+    },
+    "bulk": {
+      "wire": "bulk",
+      "note": "share-memory bridge \u2192 USBLCD component, absent from this decompile",
+      "status": "NOT_IN_THIS_DECOMPILE"
+    },
+    "ly": {
+      "wire": "ly",
+      "note": "Trofeo Vision LY wire \u2014 not in this decompile",
+      "status": "NOT_IN_THIS_DECOMPILE"
+    }
+  },
+  "coverage": {
+    "hid2": "MINED",
+    "hid3": "NEEDS_REVIEW",
+    "led": "NEEDS_REVIEW",
+    "scsi": "NOT_IN_THIS_DECOMPILE",
+    "bulk": "NOT_IN_THIS_DECOMPILE",
+    "ly": "NOT_IN_THIS_DECOMPILE"
+  }
+}
