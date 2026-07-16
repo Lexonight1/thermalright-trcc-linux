@@ -13,6 +13,19 @@ the compressed index or a blank slate. Memories are point-in-time — verify any
 file:line claim against current code before asserting it as fact.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
+- **RESUME 2026-07-16 — fan RPM always 0 FIXED+PUSHED (`701bf9bc`). READ
+  `memory/project_fan_rpm_snapshot_fix.md` FIRST.** main==origin, tree clean. On
+  v9.9.1 (fix NOT yet tagged — ships next bump). Root cause: `snapshot()`
+  (`src/trcc/core/ports.py`) built `HardwareMetrics` from every source EXCEPT
+  `self.fans()`, so `fan_cpu/gpu/ssd/sys2` defaulted to 0.0 on every board
+  (#145/#207). Fix fills the 4 DC slots with spinning fans in discovery order
+  (Linux has no `fanN_label` → slot = position; 0-RPM header skipped; GPU-fan-%
+  deliberately not RPM-forced). Guarded: `FakeFan` + 3 tests in `test_sensors.py`
+  (149 sensor tests green, ruff+pyright clean). **NEXT:** on-glass RPM is
+  reporter-gated (#145/#207 must confirm the numbers match the board); the real
+  feature behind the stop-gap is a **user-facing fan-slot picker** (map
+  header→CPU/GPU/SSD/SYS2 instead of guessing by discovery order). Also carry the
+  older qtgui-parity thread below.
 - **RESUME 2026-07-14 (LATE) — qtgui developer-cockpit + UI-contract unification. READ
   `memory/project_qtgui_developer_cockpit.md` + `memory/project_open_issue_triage_v988.md`
   + `memory/project_issue220_hidpi_scaling.md` FIRST.** main==origin, tree clean, all
