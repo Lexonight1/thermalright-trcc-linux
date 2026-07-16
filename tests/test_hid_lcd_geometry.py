@@ -267,6 +267,46 @@ def test_type2_cached_profile_is_canonical(fake_bulk: FakeBulkTransport) -> None
     assert device._profile == expected
 
 
+# ── Type 2 send: 512-byte chunked delivery (C# ThreadSendDeviceData2) ──
+
+
+def test_type2_send_chunks_frame_in_512_byte_writes(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """The C# hidList2 path delivers the picture as 512-byte writes, never one
+    blob — the firmware reads fixed-size reports and only latches the frame when
+    it arrives that way (#150: a single bulk write handshakes clean, reports
+    every byte transferred, yet the panel stays on its boot logo). The packet
+    is 512-aligned, so every chunk must be exactly full and reassemble to the
+    built packet byte-for-byte.
+    """
+    from trcc.adapters.device.hid_lcd import _EP_WRITE, _USB_BULK_ALIGNMENT
+
+    fake_bulk.read_script.append(_type2_response(pm=58))
+    device = _make_type2(fake_bulk)
+    device.connect()
+
+    # A full RGB565 frame for this panel (320×240×2), unaligned deliberately.
+    payload = b"\x00" * (320 * 240 * 2)
+    packet = device._build_frame_type2(payload)
+    assert len(packet) % _USB_BULK_ALIGNMENT == 0, "packet should be 512-aligned"
+
+    frame_start = len(fake_bulk.writes)   # ignore the handshake write
+    assert device.send(payload) is True
+
+    chunks = fake_bulk.writes[frame_start:]
+    assert len(chunks) == len(packet) // _USB_BULK_ALIGNMENT, (
+        "frame must be split into one write per 512-byte chunk"
+    )
+    assert all(ep == _EP_WRITE for ep, _ in chunks), "every chunk goes to EP 0x02"
+    assert all(len(data) == _USB_BULK_ALIGNMENT for _, data in chunks), (
+        "every chunk is exactly 512 bytes"
+    )
+    assert b"".join(data for _, data in chunks) == packet, (
+        "reassembled chunks must equal the built packet"
+    )
+
+
 # ── Edge cases: serial parsing, validation failures, malformed bytes ──
 
 

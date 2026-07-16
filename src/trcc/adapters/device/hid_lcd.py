@@ -181,13 +181,29 @@ class HidLcd(Device[BulkTransport]):
         log.debug("HidLcd %s (type %d): sending %d-byte packet",
                   self.info.key, self.info.device_type, len(packet))
         def _write_frame() -> bool:
+            if self.info.device_type == 2:
+                # The C# ThreadSendDeviceData2 (hidList2) delivers the picture
+                # as a sequence of 512-byte writes, never one blob — the
+                # firmware reads fixed-size reports and only latches the frame
+                # when it arrives that way. A single bulk write of the whole
+                # frame handshakes clean and reports every byte transferred,
+                # yet the panel stays on its boot logo (#150). The packet is
+                # 512-aligned, so every chunk is exactly full. Slice through a
+                # memoryview so the chunking is zero-copy — this runs ~300×
+                # per frame at video framerate.
+                view = memoryview(packet)
+                for offset in range(0, len(packet), _USB_BULK_ALIGNMENT):
+                    chunk = view[offset:offset + _USB_BULK_ALIGNMENT]
+                    if self._transport.write(_EP_WRITE, chunk, timeout) != len(chunk):
+                        log.warning("HidLcd %s: short chunk write at offset %d",
+                                    self.info.key, offset)
+                        return False
+                time.sleep(_DELAY_FRAME_TYPE2_S)
+                return True
             transferred = self._transport.write(_EP_WRITE, packet, timeout)
             if transferred == 0:
                 log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
                 return False
-            if self.info.device_type == 2:
-                time.sleep(_DELAY_FRAME_TYPE2_S)
-                return transferred == len(packet)
             ack = self._transport.read(
                 _EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
             )

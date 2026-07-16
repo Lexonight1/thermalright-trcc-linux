@@ -18,7 +18,7 @@ import usb.core
 import usb.util
 
 from ...core.errors import PermissionError_, TransportError
-from ...core.ports import BulkTransport
+from ...core.ports import BulkTransport, WriteBuffer
 from ._pyusb_find import find as usb_find
 
 # Optional hidapi backend (the [hid] extra)
@@ -245,7 +245,7 @@ class PyUsbBulkTransport(BulkTransport):
         except Exception as e:
             log.debug("Endpoint auto-detection failed: %s", e)
 
-    def write(self, endpoint: int, data: bytes,
+    def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = DEFAULT_TIMEOUT_MS) -> int:
         if not self._is_open or self._device is None:
             raise TransportError("Transport not open")
@@ -331,12 +331,13 @@ class HidApiTransport(BulkTransport):
     def is_open(self) -> bool:
         return self._is_open
 
-    def write(self, endpoint: int, data: bytes,
+    def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = DEFAULT_TIMEOUT_MS) -> int:
         if not self._is_open or self._device is None:
             raise TransportError("Transport not open")
-        # hidapi prepends a report ID byte (0x00 for default)
-        return self._device.write(bytes([0x00]) + data)
+        # hidapi prepends a report ID byte (0x00 for default); bytes(data)
+        # normalizes any buffer (incl. a memoryview slice) before concat.
+        return self._device.write(bytes([0x00]) + bytes(data))
 
     def read(self, endpoint: int, length: int,
              timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bytes:

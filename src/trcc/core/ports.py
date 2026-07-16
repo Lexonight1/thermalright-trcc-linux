@@ -17,6 +17,11 @@ from .errors import DeviceDisconnectedError, UnsupportedOperationError
 
 log = logging.getLogger(__name__)
 
+# Any buffer a bulk write accepts.  Kept 3.10-safe (``collections.abc.Buffer``
+# is 3.12+, but the install gate is >=3.10) so callers can hand a zero-copy
+# ``memoryview`` slice of a large frame without a per-chunk copy.
+WriteBuffer = bytes | bytearray | memoryview
+
 if TYPE_CHECKING:
     from .diagnostics import DoctorResult, GpuReaderState, HealthReport
     from .events import EventBus
@@ -67,9 +72,14 @@ class BulkTransport(ABC):
         """Whether the transport currently holds an open handle."""
 
     @abstractmethod
-    def write(self, endpoint: int, data: bytes,
+    def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = 100) -> int:
-        """Bulk-write bytes to an OUT endpoint.  Returns bytes transferred."""
+        """Bulk-write a buffer to an OUT endpoint.  Returns bytes transferred.
+
+        Accepts any buffer (``bytes``/``bytearray``/``memoryview``) so callers
+        can hand a zero-copy ``memoryview`` slice of a large frame — the HID
+        frame path chunks a 154 KB packet ~300×/frame and must not re-copy it.
+        """
 
     @abstractmethod
     def read(self, endpoint: int, length: int,

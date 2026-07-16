@@ -23,6 +23,7 @@ from trcc.core.ports import (
     Renderer,
     ScsiTransport,
     SensorEnumerator,
+    WriteBuffer,
 )
 
 # ── Transport fakes ──────────────────────────────────────────────────
@@ -47,9 +48,10 @@ class FakeBulkTransport(BulkTransport):
     def close(self) -> None:
         self._open = False
 
-    def write(self, endpoint: int, data: bytes, timeout_ms: int = 100) -> int:
-        self.writes.append((endpoint, bytes(data)))
-        return len(data)
+    def write(self, endpoint: int, data: WriteBuffer, timeout_ms: int = 100) -> int:
+        payload = bytes(data)
+        self.writes.append((endpoint, payload))
+        return len(payload)
 
     def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
         if not self.read_script:
