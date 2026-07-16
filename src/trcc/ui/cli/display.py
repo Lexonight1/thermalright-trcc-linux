@@ -35,6 +35,7 @@ from ...core.commands import (
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
+    SetFlip180,
     SetMaskPosition,
     SetMaskVisible,
     SetOrientation,
@@ -205,6 +206,23 @@ def split_mode(
     """Set the Dynamic Island style (widescreen panels only)."""
     log.info("cli display split-mode: key=%s mode=%s", key, mode)
     dispatch_echo(SetSplitMode(key=key, mode=mode))
+
+
+@app.command("flip-180")
+def flip_180(
+    key: str = typer.Argument(..., help="Device key, e.g. 87ad:70db"),
+    enabled: bool = typer.Argument(
+        ..., help="Flip the display 180° (true/false) for an upside-down mount",
+    ),
+) -> None:
+    """Flip the display 180° for a physically upside-down mounted panel (#224).
+
+    Some coolers ship the same panel rotated 180° in the chassis (the Levita
+    Vision vs the Wonder Vision), which VID/PID can't tell apart — this is the
+    opt-in correction.  Orthogonal to ``set-orientation``.
+    """
+    log.info("cli display flip-180: key=%s enabled=%s", key, enabled)
+    dispatch_echo(SetFlip180(key=key, enabled=enabled))
 
 
 @app.command("load-image")

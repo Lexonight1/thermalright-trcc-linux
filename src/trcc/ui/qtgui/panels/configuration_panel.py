@@ -40,6 +40,7 @@ from ....core.commands import (
     ListLanguages,
     SetBackgroundMode,
     SetFitMode,
+    SetFlip180,
     SetLanguage,
     SetOverlayBackground,
     SetRefreshInterval,
@@ -97,9 +98,15 @@ class ConfigurationPanel(BasePanel):
         self._overlay.addItem("On",  userData=True)
         self._overlay.addItem("Off", userData=False)
 
+        # Physical-mount 180° flip (#224) — for a panel installed upside-down.
+        self._flip = QComboBox(display_box)
+        self._flip.addItem("Off", userData=False)
+        self._flip.addItem("On",  userData=True)
+
         display_form.addRow("Fit mode:", self._fit)
         display_form.addRow("Split mode:", self._split)
         display_form.addRow("Metric overlay:", self._overlay)
+        display_form.addRow("Flip 180°:", self._flip)
 
         # ── Background group ──
         bg_box = QGroupBox("Background", self)
@@ -253,6 +260,7 @@ class ConfigurationPanel(BasePanel):
         self._select_combo_by_data(self._fit, snap.fit_mode)
         self._select_combo_by_data(self._split, snap.split_mode)
         self._select_combo_by_data(self._overlay, snap.overlay_enabled)
+        self._select_combo_by_data(self._flip, snap.flip_180)
         # Background fields come from Settings since the snapshot doesn't
         # carry overlay_background; read directly.
         settings = self.app.settings.for_device(key)
@@ -300,6 +308,12 @@ class ConfigurationPanel(BasePanel):
             key=key, enabled=bool(self._overlay.currentData()),
         ))
         messages.append(r3.message)
+
+        # 180° physical-mount flip (#224)
+        r3b = self.dispatch(SetFlip180(
+            key=key, enabled=bool(self._flip.currentData()),
+        ))
+        messages.append(r3b.message)
 
         # Background mode
         r4 = self.dispatch(SetBackgroundMode(

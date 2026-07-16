@@ -42,6 +42,7 @@ from ...core.commands import (
     SetBackgroundMode,
     SetBrightness,
     SetFitMode,
+    SetFlip180,
     SetMaskPosition,
     SetMaskVisible,
     SetOrientation,
@@ -63,6 +64,7 @@ from ._shared import (
     to_boot_animation_response,
     to_brightness_response,
     to_fit_mode_response,
+    to_flip_180_response,
     to_keepalive_response,
     to_lcd_snapshot_response,
     to_loop_video_response,
@@ -97,6 +99,8 @@ from .schemas import (
     CreateThemeResponse,
     FitModeRequest,
     FitModeResponse,
+    Flip180Request,
+    Flip180Response,
     KeepaliveRequest,
     KeepaliveResponse,
     LcdSnapshotResponse,
@@ -307,6 +311,20 @@ def set_split_mode(key: str, body: SplitModeRequest,
     )
     http_error_if_failed(result)
     return to_split_mode_response(result)
+
+
+@router.post("/flip-180", response_model=Flip180Response)
+def set_flip_180(key: str, body: Flip180Request,
+                 request: Request) -> Flip180Response:
+    log.info(
+        "api POST /devices/{key}/display/flip-180: key=%s enabled=%s",
+        key, body.enabled,
+    )
+    result = request.app.state.trcc.dispatch(
+        SetFlip180(key=key, enabled=body.enabled),
+    )
+    http_error_if_failed(result)
+    return to_flip_180_response(result)
 
 
 @router.post("/play-video", response_model=VideoResponse)

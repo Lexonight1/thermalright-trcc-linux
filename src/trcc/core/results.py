@@ -175,6 +175,12 @@ class SplitModeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class Flip180Result(Result):
+    key: str = ""
+    enabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplyResult(Result):
     key: str = ""
     path: str = ""
@@ -393,6 +399,7 @@ class LcdSnapshotResult(Result):
     mask_position: tuple[int, int] | None = None
     fit_mode: str = "fit"
     split_mode: int = 0
+    flip_180: bool = False
     time_format: str = "24h"
     date_format: str = ""
     temp_unit: str = "C"

@@ -382,6 +382,15 @@ class DisplayService:
         #    hardware-verified #169 path, unchanged.
         #  * Squares + non-rotate panels: user orientation only.
         angle = wire_angle(resolved_profile, s.orientation, portrait)
+        # Physical-mount 180° flip (#224): same panel mounted upside-down in
+        # the chassis (Levita vs Wonder Vision) — indistinguishable by VID/PID,
+        # so the user opts in.  WIRE-only, like every other mount rotation: the
+        # preview already shows what the viewer sees on the flipped glass
+        # (upright), so only the wire frame gets the extra 180°.
+        if s.flip_180:
+            angle = (angle + 180) % 360
+            log.info("build_frame %s: +180° mount flip (flip_180) → %d°",
+                     info.key, angle)
         if angle % 360:
             log.debug("build_frame %s: wire rotate %d°", info.key, angle)
             surface = self._r.rotate(composite, angle)

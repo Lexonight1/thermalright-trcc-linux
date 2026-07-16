@@ -781,3 +781,53 @@ def test_landscape_theme_at_orientation_0_is_unchanged(
     assert [(x, y) for x, y, _ in draws] == [(250, 120)]
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
     assert rotations == [90], f"orientation 0 keeps the device 90°, got {rotations}"
+
+
+# ── flip_180: per-device physical-mount 180° flip (#224) ──────────────
+
+
+def test_flip_180_cancels_widescreen_mount_rotation(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """#224: the Levita is the Wonder Vision panel mounted 180° flipped.
+
+    The 1600×720 base rotation is 180° at orientation 0 (correct for the
+    Wonder Vision). Enabling flip_180 adds another 180° → 0°, landing the
+    physically-flipped Levita upright — without touching the Wonder Vision.
+    """
+    info = _widescreen_info(114, (1600, 720))
+    profile = get_profile(114, 64)          # 1600×720 widescreen, encode_base=180
+    assert profile.widescreen and profile.encode_base == 180
+    display._settings.for_device(info.key).orientation = 0
+
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+    before = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert 180 in before, f"Wonder Vision base is 180°, got {before}"
+
+    renderer.calls.clear()
+    display.invalidate(info.key)
+    display._settings.set_flip_180(info.key, True)
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=profile)
+    after = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert 180 not in after, f"flip must cancel the 180° base (→0°), got {after}"
+
+
+def test_flip_180_adds_180_to_a_non_rotating_panel(
+    display: DisplayService, renderer: RecordingRenderer,
+) -> None:
+    """The flip is general: a panel that normally sends 0° rotation gets a
+    180° wire rotation when flipped (any upside-down mount).  Orientation 0
+    so no preview rotation is in play — the 180° is purely the flip.
+    """
+    info = _scsi_info()
+    display._settings.for_device(info.key).orientation = 0
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=None)
+    baseline = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert baseline == [], f"square panel at orient 0 sends no rotation, got {baseline}"
+
+    renderer.calls.clear()
+    display.invalidate(info.key)
+    display._settings.set_flip_180(info.key, True)
+    display.build_frame(info=info, theme=_theme(), sensors={}, profile=None)
+    flipped = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert flipped == [180], f"flip adds a 180° wire rotation, got {flipped}"

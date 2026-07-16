@@ -98,6 +98,12 @@ class SplitModeChanged(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class Flip180Changed(Event):
+    key: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class MaskApplied(Event):
     key: str
     path: str
