@@ -109,6 +109,91 @@ def load_device_specs(report_path: str | None = None) -> list[dict]:
     return []
 
 
+# ─── Simulated GPU fleet (``--gpus``) ────────────────────────────────────────
+
+# Default discreteness per vendor.  Intel is the CPU's integrated graphics;
+# nvidia/amd are add-in cards unless told otherwise.
+_GPU_DISCRETE_DEFAULT = {"nvidia": True, "amd": True, "intel": False}
+
+
+def _pop_gpu_flag() -> str | None:
+    """Pull ``--gpus VALUE`` out of argv.
+
+    Popped in :func:`bootstrap` — the one seam EVERY harness (gui / cli / api /
+    qtgui) funnels through — so the flag works for all four without teaching
+    four argument parsers about it.
+    """
+    if "--gpus" not in sys.argv:
+        return None
+    i = sys.argv.index("--gpus")
+    if i + 1 >= len(sys.argv):
+        print("Error: --gpus requires a value, e.g. --gpus nvidia,amd,intel",
+              file=sys.stderr)
+        raise SystemExit(1)
+    value = sys.argv[i + 1]
+    del sys.argv[i:i + 2]
+    return value
+
+
+def parse_gpu_specs(raw: str) -> list[tuple[str, bool]]:
+    """``'nvidia,amd,intel'`` → ``[('nvidia', True), ('amd', True), ('intel', False)]``.
+
+    ``vendor[:discrete|:igpu]`` overrides the per-vendor default, because the
+    interesting bugs live in the exceptions: ``amd:discrete`` is the #157 APU
+    that reports a large UMA framebuffer and so claims to be a discrete card.
+    """
+    specs: list[tuple[str, bool]] = []
+    for token in raw.split(","):
+        if not (token := token.strip().lower()):
+            continue
+        vendor, _, kind = token.partition(":")
+        if kind == "igpu":
+            discrete = False
+        elif kind == "discrete":
+            discrete = True
+        elif kind:
+            print(f"Error: --gpus {token!r} — kind must be 'discrete' or 'igpu'",
+                  file=sys.stderr)
+            raise SystemExit(1)
+        else:
+            discrete = _GPU_DISCRETE_DEFAULT.get(vendor, True)
+        specs.append((vendor, discrete))
+    return specs
+
+
+def apply_fake_gpus(platform: Platform, specs: list[tuple[str, bool]]) -> None:
+    """Swap the GPU list for a simulated fleet; every other sensor stays real.
+
+    Why swap rather than rebuild: ``build_linux_sensors`` composes the GPUs
+    beside real hwmon cpu/fan/disk/dram sources, and only ``cpu`` / ``memory``
+    / ``gpus`` / ``fans`` are readable back off the enumerator — reconstructing
+    it would silently drop disks, DRAM and the memory clock.  Replacing the one
+    list keeps every other reading honest, and re-sorting through the real
+    ``_gpu_order`` means the auto-pick under test is the shipping one.
+
+    This is the GPU counterpart to ``devices.json``: it lets a single-GPU dev
+    box drive the real GUI as a multi-GPU machine, which is the only way to see
+    the Control Center's GPU select (it renders a plain label at one GPU).
+    """
+    from trcc.adapters.sensors.aggregator import _gpu_order
+
+    from tests.conftest import FakeGpu
+
+    per_vendor: dict[str, int] = {}
+    gpus = []
+    for vendor, discrete in specs:
+        index = per_vendor.get(vendor, 0)
+        per_vendor[vendor] = index + 1
+        gpus.append(FakeGpu(index, discrete=discrete, vendor=vendor))
+
+    enumerator = platform.sensors()
+    enumerator._gpus = sorted(gpus, key=_gpu_order)
+    log.info("apply_fake_gpus: %s", [(g.key, g.is_discrete) for g in gpus])
+    print(f"Mock GPUs: {len(gpus)} simulated — "
+          + ", ".join(f"{g.key} ({'discrete' if g.is_discrete else 'integrated'})"
+                      for g in enumerator._gpus))
+
+
 # ─── Device catalog (the REAL device space — variants, not bare vid:pid) ─────
 
 def device_catalog() -> list[tuple[list[tuple[int, int]], int, int | None, str, tuple[int, int]]]:
@@ -315,6 +400,11 @@ def bootstrap(report_path: str | None = None,
         "dev bootstrap: platform=%s paths.config=%s specs=%d",
         type(platform).__name__, platform.paths().config_dir(), len(specs),
     )
+    # A simulated GPU fleet is orthogonal to the device fleet — it fakes what
+    # the box HAS, not what's plugged into USB — so it applies to either
+    # platform, after logging so the swap is visible in the log.
+    if (raw_gpus := _pop_gpu_flag()):
+        apply_fake_gpus(platform, parse_gpu_specs(raw_gpus))
     if specs:
         print(f"Mock fleet: {len(specs)} device spec(s) from {source} — "
               "scripted on a real host platform (no hardware needed).")

@@ -21,6 +21,15 @@ Usage:
     PYTHONPATH=src python3 dev/mock_gui.py -v             # DEBUG level (-vv = more)
     PYTHONPATH=src python3 dev/mock_gui.py --list         # available resolutions
 
+  Simulate the box's GPUs (``devices.json`` fakes what's plugged in; this fakes
+  what the machine HAS).  A single-GPU dev box can't show the Control Center's
+  GPU select at all — it renders a plain label below 2 GPUs:
+    PYTHONPATH=src python3 dev/mock_gui.py --gpus nvidia,amd,intel  # 3-GPU box
+    PYTHONPATH=src python3 dev/mock_gui.py --gpus amd:discrete,nvidia
+                                                # #157: an APU claiming to be discrete
+  ``vendor[:discrete|:igpu]`` overrides the default (intel = CPU graphics,
+  nvidia/amd = add-in card).  Every other sensor stays real.
+
   Reproduce a reported device (no hardware needed) — a trcc report records the
   vid:pid AND the handshake reply bytes (PM + sub_byte):
     PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt   # their exact fleet
