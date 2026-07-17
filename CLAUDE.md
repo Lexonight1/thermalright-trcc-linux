@@ -2,15 +2,35 @@
 
 ## Session start — read memory FIRST, before anything else
 
-Before acting on any request, **read the project memory** at
-`/home/ignorant/.claude/projects/-home-ignorant-Desktop-projects-thermalright-trcc-linux/memory/MEMORY.md`
-and open the topic files it links that are relevant to the task. The index is
-auto-loaded into context but **truncated** (it's >200 lines / ~47 KB and only
-part loads); the linked `*.md` files hold the real state — open bugs, the
-"Resume here next" pointer, user feedback, and the current work-in-progress.
-Start every session by recovering that state from the files on disk, not from
-the compressed index or a blank slate. Memories are point-in-time — verify any
-file:line claim against current code before asserting it as fact.
+Before acting on any request, in this order:
+
+1. **Read `memory/SESSION.md`** — the single **live handoff**: current tree
+   state, what the last session pushed, and where to resume. This is the
+   front-door; it replaces the stale "Resume here next" blocks that used to
+   accrete in this file.
+2. **Read `memory/MEMORY.md`** — the index of durable topic files (facts,
+   feedback, user profile) — and open the linked `*.md` files relevant to the
+   task. The index is auto-loaded but **truncated** (>200 lines); the linked
+   files hold the real detail.
+3. **Need history?** Past session handoffs are archived in `memory/sessions/`
+   (dated, immutable) — read on demand, e.g. when `SESSION.md` references a
+   prior session.
+
+Full path base:
+`/home/ignorant/.claude/projects/-home-ignorant-Desktop-projects-thermalright-trcc-linux/memory/`
+
+Recover state from the files on disk, not the compressed index or a blank slate.
+Memories are point-in-time — verify any file:line claim against current code
+before asserting it as fact.
+
+**Session wrap-up (the other half of the loop):** before overwriting
+`SESSION.md` with the new state, copy its outgoing content to
+`memory/sessions/YYYY-MM-DD-<slug>.md` and add a line to that folder's README
+index. Then rewrite `SESSION.md` for the current session. Durable facts still go
+to topic files + `MEMORY.md`, never into `SESSION.md`.
+
+The dated "RESUME …" blocks below are legacy handoff state being superseded by
+`SESSION.md`; they will age out. Trust `SESSION.md` first when they conflict.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
 - **RESUME 2026-07-16 — fan RPM always 0 FIXED+PUSHED (`701bf9bc`). READ
