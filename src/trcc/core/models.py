@@ -466,13 +466,6 @@ class DeviceSettings:
     # 0 = off (no split overlay), 1/2/3 = style A/B/C.  Ignored by
     # rendering on devices whose profile.resolution isn't widescreen.
     split_mode: int = 0
-    # Physical-mount 180° flip.  Some coolers ship the same panel mounted
-    # upside-down (e.g. the Levita Vision vs the Wonder Vision — identical
-    # 1600×720 screen, rotated 180° in the chassis), so the mount-corrected
-    # default rotation is 180° off and can't be told apart by VID/PID.  When
-    # true, the wire frame is rotated an extra 180° — orthogonal to the user
-    # ``orientation`` control, opt-in, so no other panel regresses.  (#224)
-    flip_180: bool = False
     # User-supplied mask path that overrides the active theme's mask.
     # None = use the theme's bundled mask (or no mask if the theme has none).
     mask_path: str | None = None

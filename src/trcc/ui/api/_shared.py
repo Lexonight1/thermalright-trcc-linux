@@ -24,7 +24,6 @@ from ...core.results import (
     DoctorResultPayload,
     FirstRunStatusResult,
     FitModeResult,
-    Flip180Result,
     FontsListResult,
     GpuDeviceResult,
     GpusListResult,
@@ -100,7 +99,6 @@ from .schemas import (
     FileEntrySchema,
     FirstRunStatusResponse,
     FitModeResponse,
-    Flip180Response,
     FontsListResponse,
     GpuDeviceResponse,
     GpuEntrySchema,
@@ -274,13 +272,6 @@ def to_split_mode_response(result: SplitModeResult) -> SplitModeResponse:
     return SplitModeResponse(
         ok=result.ok, message=result.message,
         key=result.key, mode=result.mode,
-    )
-
-
-def to_flip_180_response(result: Flip180Result) -> Flip180Response:
-    return Flip180Response(
-        ok=result.ok, message=result.message,
-        key=result.key, enabled=result.enabled,
     )
 
 

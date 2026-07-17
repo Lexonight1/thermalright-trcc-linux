@@ -22,7 +22,6 @@ from ..events import (
     DeviceDiscovered,
     ErrorOccurred,
     FitModeChanged,
-    Flip180Changed,
     FrameSent,
     MaskApplied,
     MaskPositionChanged,
@@ -48,7 +47,6 @@ from ..results import (
     DisconnectResult,
     DiscoverResult,
     FitModeResult,
-    Flip180Result,
     LcdSnapshotResult,
     LoopVideoResult,
     MaskApplyResult,
@@ -1294,30 +1292,6 @@ class SetSplitMode(Command[SplitModeResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class SetFlip180(Command[Flip180Result]):
-    """Toggle the per-device 180° physical-mount flip.
-
-    Some coolers ship the same panel mounted upside-down (the Levita
-    Vision vs the Wonder Vision — identical 1600×720 screen rotated 180°
-    in the chassis), which VID/PID can't distinguish.  Enabling this
-    rotates the wire frame an extra 180°, orthogonal to the user
-    ``orientation`` control, so the picture lands upright without any
-    other panel regressing.  Opt-in per device.  (#224)
-    """
-    key: str
-    enabled: bool
-
-    def execute(self, app: App) -> Flip180Result:
-        app.settings.set_flip_180(self.key, self.enabled)
-        _invalidate_scene(app, self.key)
-        app.events.publish(Flip180Changed(key=self.key, enabled=self.enabled))
-        return Flip180Result(
-            ok=True, key=self.key, enabled=self.enabled,
-            message=(f"180° flip enabled for {self.key}" if self.enabled
-                     else f"180° flip disabled for {self.key}"),
-        )
-
-@dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):
     """Set a user-supplied mask image that overrides the active theme's mask.
 
@@ -1838,7 +1812,6 @@ class LcdSnapshot(Command[LcdSnapshotResult]):
             mask_position=s.mask_position,
             fit_mode=s.fit_mode.value,
             split_mode=s.split_mode,
-            flip_180=s.flip_180,
             time_format=s.time_format,
             date_format=s.date_format,
             temp_unit=s.temp_unit,

@@ -27,7 +27,6 @@ from .core.events import (
     ErrorOccurred,
     EventBus,
     FitModeChanged,
-    Flip180Changed,
     LedSettingsChanged,
     MaskApplied,
     MaskPositionChanged,
@@ -740,7 +739,7 @@ class _DeviceRenderObserver:
         for event_cls in (
             BrightnessChanged, MaskApplied, MaskPositionChanged,
             MaskVisibilityChanged, OverlayChanged, FitModeChanged,
-            SplitModeChanged, Flip180Changed, SensorsUpdated,
+            SplitModeChanged, SensorsUpdated,
             # Video background events trigger a render so a fresh
             # PlayVideo / StopVideo immediately shows the new bg on
             # the preview + device, without waiting for the next

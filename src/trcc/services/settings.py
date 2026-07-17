@@ -335,13 +335,6 @@ class Settings:
             self.for_device(key).split_mode = mode
             self._save()
 
-    def set_flip_180(self, key: str, enabled: bool) -> None:
-        """Set the per-device 180° physical-mount flip (#224)."""
-        log.info("set_flip_180: key=%s enabled=%s", key, enabled)
-        with self._lock:
-            self.for_device(key).flip_180 = enabled
-            self._save()
-
     # ── LED-device settings ───────────────────────────────────────────
 
     def for_led(self, key: str) -> LedDeviceSettings:

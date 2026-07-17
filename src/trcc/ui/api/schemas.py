@@ -95,11 +95,6 @@ class SplitModeResponse(ResultBase):
     mode: int = 0
 
 
-class Flip180Response(ResultBase):
-    key: str = ""
-    enabled: bool = False
-
-
 class MaskApplyResponse(ResultBase):
     key: str = ""
     path: str = ""
@@ -778,10 +773,6 @@ class OverlayRequest(BaseModel):
 
 class SplitModeRequest(BaseModel):
     mode: int = Field(..., ge=0, le=3)
-
-
-class Flip180Request(BaseModel):
-    enabled: bool
 
 
 class MaskApplyRequest(BaseModel):
