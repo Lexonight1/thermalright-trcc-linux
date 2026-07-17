@@ -35,15 +35,14 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from core.csharp import CSharpSource
+
 _DEFAULT_DECOMPILE = Path.home() / "Downloads/TRCCCAPEN/TRCC_decompiled"
 
 _FORM_CZTV = "TRCC.CZTV/FormCZTV.cs"      # LCD frame encoders (all wires)
 _UC_DEVICE = "TRCC/UCDevice.cs"           # HID USB handshake + chunk threads
 _FORM_LED = "TRCC.LED/FormLED.cs"         # LED colour/segment wire
 
-_METHOD_RE = re.compile(
-    r"\b(?:private|public|internal|protected)\s+[\w<>\[\],\s]+?\s+(\w+)\s*\(",
-)
 _COND_RE = re.compile(r"\b(?:else\s+if|if)\s*\((.+)\)\s*$")
 _ELSE_RE = re.compile(r"^\s*else\s*$")
 _ARR_RE = re.compile(r"new\s+byte\[(\d+)\]")
@@ -111,15 +110,15 @@ def _parse_bytes(inner: str) -> list[int]:
     return out
 
 
-def _byte_arrays(text: str) -> list[ByteArray]:
-    lines = text.splitlines()
+def _byte_arrays(src: CSharpSource) -> list[ByteArray]:
+    lines = src.text.splitlines()
     method, condition = "?", "?"
     out: list[ByteArray] = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        if (m := _METHOD_RE.search(line)):
-            method, condition = m.group(1), "?"
+        if (found := CSharpSource.definition_at(line)):
+            method, condition = found, "?"
         if (c := _COND_RE.search(line.strip())):
             condition = c.group(1).strip()
         elif _ELSE_RE.match(line):
@@ -141,26 +140,9 @@ def _byte_arrays(text: str) -> list[ByteArray]:
     return out
 
 
-def _method_body(text: str, method: str) -> str | None:
-    start = text.find(f" {method}(")
-    if start < 0:
-        return None
-    brace = text.find("{", start)
-    depth, i = 0, brace
-    while i < len(text):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[brace : i + 1]
-        i += 1
-    return None
-
-
-def _chunk_size(text: str, method: str) -> int | None:
-    body = _method_body(text, method)
-    if body and (m := re.search(r"num2\s*>\s*(\d+)", body)):
+def _chunk_size(src: CSharpSource, method: str) -> int | None:
+    found = src.method(method)
+    if found and (m := re.search(r"num2\s*>\s*(\d+)", found.body)):
         return int(m.group(1))
     return None
 
@@ -194,7 +176,7 @@ def extract(decompile: Path) -> OracleSpec:
     spec = OracleSpec(decompile=decompile.name)
 
     # Shared LCD frame headers + markers (every LCD wire uses these encoders).
-    form = (decompile / _FORM_CZTV).read_text(errors="replace")
+    form = CSharpSource.read(decompile / _FORM_CZTV)
     for ba in _byte_arrays(form):
         if ba.method not in ("ImageToJpg", "ImageTo565"):
             continue
@@ -214,15 +196,15 @@ def extract(decompile: Path) -> OracleSpec:
             row["status"] = "NOT_IN_THIS_DECOMPILE"
             spec.families[name] = row
             continue
-        text = (decompile / fam.source).read_text(errors="replace")
+        src = CSharpSource.read(decompile / fam.source)
         located = False
         if fam.handshake_method:
-            for ba in _byte_arrays(text):
+            for ba in _byte_arrays(src):
                 if ba.method == fam.handshake_method and ba.values[:4] == [218, 219, 220, 221]:
                     row["handshake_init"] = {"len": ba.length, "magic": ba.values[:4]}
                     located = True
         if fam.delivery_method:
-            cs = _chunk_size(text, fam.delivery_method)
+            cs = _chunk_size(src, fam.delivery_method)
             if cs is not None:
                 row["delivery_chunk"] = cs
                 located = True

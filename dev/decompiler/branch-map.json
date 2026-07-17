@@ -1,0 +1,1576 @@
+{
+  "decompile": "TRCCCAPEN",
+  "branches": [
+    {
+      "method": "FormCZTVInit",
+      "line": 688,
+      "kind": "switch",
+      "on": "pm",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 690,
+      "kind": "case",
+      "on": "5",
+      "guards": "fbl ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 693,
+      "kind": "case",
+      "on": "7",
+      "guards": "fbl ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 697,
+      "kind": "if",
+      "on": "myDeviceMode == 2 && pm == 32",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 702,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && (pm == 64 || (pm == 1 && pmSub == 48))",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 716,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && (pm == 65 || (pm == 1 && pmSub == 49))",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 730,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && (pm == 9 || pm == 11)",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 744,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && pm == 10",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 758,
+      "kind": "else-if",
+      "on": "myDeviceMode == 2 && pm == 12",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 774,
+      "kind": "if",
+      "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 58",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 778,
+      "kind": "if",
+      "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 54",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 785,
+      "kind": "if",
+      "on": "myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 128",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 799,
+      "kind": "if",
+      "on": "myDeviceMode == 1 && fbl == 51",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 803,
+      "kind": "if",
+      "on": "myDeviceMode == 3 && fbl == 53",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 813,
+      "kind": "if",
+      "on": "fbl == 100 || fbl == 101 || fbl == 102",
+      "guards": "fbl ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 817,
+      "kind": "if",
+      "on": "fbl == 36 || fbl == 37",
+      "guards": "fbl ="
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 882,
+      "kind": "if",
+      "on": "is320x320",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 889,
+      "kind": "if",
+      "on": "is360x360",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 893,
+      "kind": "if",
+      "on": "is480x480",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 897,
+      "kind": "if",
+      "on": "is240x240",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 901,
+      "kind": "if",
+      "on": "is1600x720",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 905,
+      "kind": "if",
+      "on": "is1280x480",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 909,
+      "kind": "if",
+      "on": "is1920x462",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 913,
+      "kind": "if",
+      "on": "is640x480",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 917,
+      "kind": "if",
+      "on": "is854x480",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 919,
+      "kind": "if",
+      "on": "pmSub < 5",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 928,
+      "kind": "if",
+      "on": "is960x540",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 930,
+      "kind": "if",
+      "on": "pmSub < 5",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 939,
+      "kind": "if",
+      "on": "is800x480",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 941,
+      "kind": "if",
+      "on": "pmSub < 5",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 953,
+      "kind": "if",
+      "on": "name != null",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 961,
+      "kind": "if",
+      "on": "name != null",
+      "guards": ""
+    },
+    {
+      "method": "FormCZTVInit",
+      "line": 985,
+      "kind": "if",
+      "on": "Form1.Language != 100",
+      "guards": ""
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2649,
+      "kind": "if",
+      "on": "!File.Exists(text)",
+      "guards": ""
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2657,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2658,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2659,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2660,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2661,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2664,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2665,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2666,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2667,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImgHei"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2668,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2671,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2672,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2673,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2674,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2675,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2678,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2679,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2680,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2681,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2682,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2685,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2686,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2687,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2688,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2689,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2692,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2693,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2694,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2695,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2696,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2699,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2700,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2701,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2702,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2703,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2706,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2707,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2708,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2709,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2710,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2715,
+      "kind": "if",
+      "on": "array.Length >= 450000",
+      "guards": "return"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2720,
+      "kind": "if",
+      "on": "is480x480",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2739,
+      "kind": "else-if",
+      "on": "is320x320",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2758,
+      "kind": "else-if",
+      "on": "is640x480",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2777,
+      "kind": "else-if",
+      "on": "is240x240",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2796,
+      "kind": "else-if",
+      "on": "is1600x720",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2815,
+      "kind": "else-if",
+      "on": "is800x480",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2834,
+      "kind": "else-if",
+      "on": "is854x480",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2853,
+      "kind": "else-if",
+      "on": "is960x540",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2872,
+      "kind": "else-if",
+      "on": "is1920x462",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2891,
+      "kind": "else-if",
+      "on": "is1280x480",
+      "guards": "new byte[20]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2905,
+      "kind": "else-if",
+      "on": "is360x360",
+      "guards": "new byte[20]"
+    },
+    {
+      "method": "ImageToJpg",
+      "line": 2919,
+      "kind": "else-if",
+      "on": "myDevicePingMu == 5",
+      "guards": "myDevicePingMu ="
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2970,
+      "kind": "if",
+      "on": "!File.Exists(text)",
+      "guards": ""
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2978,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2979,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2980,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2981,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2982,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2985,
+      "kind": "arm",
+      "on": "0",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2986,
+      "kind": "arm",
+      "on": "90",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2987,
+      "kind": "arm",
+      "on": "180",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2988,
+      "kind": "arm",
+      "on": "270",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 2989,
+      "kind": "arm",
+      "on": "_",
+      "guards": "RotateImg"
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3009,
+      "kind": "if",
+      "on": "is320x320",
+      "guards": ""
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3016,
+      "kind": "else-if",
+      "on": "myDeviceSPIMode == 2",
+      "guards": ""
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3033,
+      "kind": "if",
+      "on": "myDeviceMode == 1",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3039,
+      "kind": "else-if",
+      "on": "myDeviceMode == 3",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3055,
+      "kind": "else-if",
+      "on": "myDeviceMode == 4",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "ImageTo565",
+      "line": 3083,
+      "kind": "else-if",
+      "on": "myDeviceMode == 10",
+      "guards": "myDeviceMode ="
+    },
+    {
+      "method": "DeviceDataReceived2",
+      "line": 1081,
+      "kind": "if",
+      "on": "data.Length != 0 && device2 == device && data[1] == 218 && data[2] == 219 && data[3] == 220 && data[4] == 221 && data[13] == 1",
+      "guards": ""
+    },
+    {
+      "method": "DeviceDataReceived2",
+      "line": 1085,
+      "kind": "if",
+      "on": "usbHidDevice.DevicePath.Equals(device2.DevicePath)",
+      "guards": ""
+    },
+    {
+      "method": "DeviceDataReceived2",
+      "line": 1090,
+      "kind": "if",
+      "on": "data[17] == 16 && data.Length >= 37",
+      "guards": ""
+    },
+    {
+      "method": "DeviceDataReceived2",
+      "line": 1107,
+      "kind": "if",
+      "on": "data.Length == 0 || data[1] != 218 || data[2] != 219 || data[3] != 220 || data[4] != 221 || data[13] != 8",
+      "guards": "return"
+    },
+    {
+      "method": "DeviceDataReceived2",
+      "line": 1113,
+      "kind": "if",
+      "on": "device == hidList2[i]",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData1",
+      "line": 989,
+      "kind": "if",
+      "on": "isSendUsbThread0[num]",
+      "guards": "return"
+    },
+    {
+      "method": "ThreadSendDeviceData1",
+      "line": 1000,
+      "kind": "if",
+      "on": "num2 > 64",
+      "guards": "new byte[64]"
+    },
+    {
+      "method": "ThreadSendDeviceData2",
+      "line": 1130,
+      "kind": "if",
+      "on": "isSendUsbThread[num]",
+      "guards": "return"
+    },
+    {
+      "method": "ThreadSendDeviceData2",
+      "line": 1147,
+      "kind": "if",
+      "on": "num2 > 512",
+      "guards": "new byte[512]"
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 128,
+      "kind": "if",
+      "on": "shareMemoryRGB == null",
+      "guards": "return"
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 144,
+      "kind": "if",
+      "on": "item.Vid == 34733 && item.Pid == 28891",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 146,
+      "kind": "if",
+      "on": "!item.Open(out usbDevice)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 157,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[j]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 174,
+      "kind": "else-if",
+      "on": "item.Vid == 1046 && item.Pid == 21250",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 176,
+      "kind": "if",
+      "on": "!item.Open(out usbDevice)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 187,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[k]",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 206,
+      "kind": "if",
+      "on": "item.Vid != 1046 || item.Pid != 21510 || !item.Open(out usbDevice)",
+      "guards": ""
+    },
+    {
+      "method": "StratDCReadWriteAsync",
+      "line": 217,
+      "kind": "if",
+      "on": "!arrayDeviceOnline[l]",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 248,
+      "kind": "if",
+      "on": "usbDevice == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 254,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice2",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 273,
+      "kind": "if",
+      "on": "usbEndpointWriter.SubmitAsyncTransfer(array2, 0, array2.Length, 100, out var transferContext) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 277,
+      "kind": "if",
+      "on": "usbEndpointReader.SubmitAsyncTransfer(array, 0, array.Length, 100, out var transferContext2) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 285,
+      "kind": "if",
+      "on": "!transferContext.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 292,
+      "kind": "if",
+      "on": "!transferContext2.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 305,
+      "kind": "if",
+      "on": "array[24] != 0",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 330,
+      "kind": "if",
+      "on": "array3[0] == 170 && array3[1] == 187 && array3[2] == 204 && array3[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 337,
+      "kind": "if",
+      "on": "array3[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 339,
+      "kind": "if",
+      "on": "array3[0] != 0 || array3[1] != 1 || array3[2] != 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 354,
+      "kind": "if",
+      "on": "usbEndpointWriter.SubmitAsyncTransfer(array3, 0, num2, 100, out transferContext) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 358,
+      "kind": "if",
+      "on": "num2 % 512 == 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 365,
+      "kind": "if",
+      "on": "!transferContext.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 388,
+      "kind": "if",
+      "on": "usbDevice != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 390,
+      "kind": "if",
+      "on": "usbDevice.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceData",
+      "line": 392,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice3",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 414,
+      "kind": "if",
+      "on": "usbDevice == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 420,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice2",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 436,
+      "kind": "if",
+      "on": "usbEndpointWriter.SubmitAsyncTransfer(first, 0, first.Length, 100, out var transferContext) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 440,
+      "kind": "if",
+      "on": "usbEndpointReader.SubmitAsyncTransfer(array, 0, array.Length, 100, out var transferContext2) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 447,
+      "kind": "if",
+      "on": "!transferContext.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 455,
+      "kind": "if",
+      "on": "!transferContext2.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 468,
+      "kind": "if",
+      "on": "array[0] == 218 && array[1] == 219 && array[2] == 220 && array[3] == 221 && array[12] == 1 && array[16] == 16",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 489,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 496,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 498,
+      "kind": "if",
+      "on": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 512,
+      "kind": "if",
+      "on": "usbEndpointWriter.Transfer(array2, 0, num2, 100, out var transferLength) != ErrorCode.None || transferLength == 0",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 531,
+      "kind": "if",
+      "on": "usbDevice != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 533,
+      "kind": "if",
+      "on": "usbDevice.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataH",
+      "line": 535,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice3",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 557,
+      "kind": "if",
+      "on": "usbDevice == null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 563,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice2",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 578,
+      "kind": "if",
+      "on": "usbEndpointWriter.SubmitAsyncTransfer(first, 0, first.Length, 100, out var transferContext) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 582,
+      "kind": "if",
+      "on": "usbEndpointReader.SubmitAsyncTransfer(array, 0, array.Length, 100, out var transferContext2) != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 589,
+      "kind": "if",
+      "on": "!transferContext.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 597,
+      "kind": "if",
+      "on": "!transferContext2.IsCompleted",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 610,
+      "kind": "if",
+      "on": "array[0] == 101 || array[0] == 102",
+      "guards": "new byte[9]"
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 632,
+      "kind": "if",
+      "on": "array2[0] == 170 && array2[1] == 187 && array2[2] == 204 && array2[3] == 221",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 639,
+      "kind": "if",
+      "on": "array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 641,
+      "kind": "if",
+      "on": "array2[0] == 0 && array2[1] == 1 && array2[2] == 1",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 654,
+      "kind": "if",
+      "on": "errorCode != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 661,
+      "kind": "if",
+      "on": "errorCode2 != ErrorCode.None",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 679,
+      "kind": "if",
+      "on": "usbDevice != null",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 681,
+      "kind": "if",
+      "on": "usbDevice.IsOpen",
+      "guards": ""
+    },
+    {
+      "method": "ThreadSendDeviceDataALi",
+      "line": 683,
+      "kind": "if",
+      "on": "usbDevice is IUsbDevice usbDevice3",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4313,
+      "kind": "if",
+      "on": "checkBox1.Checked",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4316,
+      "kind": "if",
+      "on": "testTimer >= 10",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4320,
+      "kind": "if",
+      "on": "testCount >= 4",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4335,
+      "kind": "if",
+      "on": "testCount == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4341,
+      "kind": "else-if",
+      "on": "testCount == 1",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4347,
+      "kind": "else-if",
+      "on": "testCount == 2",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4353,
+      "kind": "else-if",
+      "on": "testCount == 3",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4364,
+      "kind": "if",
+      "on": "nowLedStyle == 2",
+      "guards": "new byte[252]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4376,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[j]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4647,
+      "kind": "if",
+      "on": "nowLedStyle == 3",
+      "guards": "new byte[192]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4659,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4665,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[k]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4876,
+      "kind": "if",
+      "on": "nowLedStyle == 4",
+      "guards": "new byte[93]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4888,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 4894,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[l]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5006,
+      "kind": "if",
+      "on": "nowLedStyle == 5",
+      "guards": "new byte[279]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5019,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5025,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[m]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5320,
+      "kind": "if",
+      "on": "nowLedStyle == 6",
+      "guards": "new byte[423]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5333,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5339,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[n]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5781,
+      "kind": "if",
+      "on": "nowLedStyle == 7",
+      "guards": "new byte[438]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 5794,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[num7]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6251,
+      "kind": "if",
+      "on": "nowLedStyle == 8",
+      "guards": "new byte[198]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6265,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDC2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6289,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDD2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6313,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDE2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6337,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDG2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6361,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDB2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6385,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDA2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6409,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDF2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6433,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDC1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6457,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDD1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6481,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDE1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6505,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDG1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6529,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDB1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6553,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDA1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6577,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.LEDF1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6601,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.Cpu1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6619,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.Gpu1]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6637,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.Gpu2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6655,
+      "kind": "if",
+      "on": "ucScreenLED1.isOn[ucScreenLED1.Cpu2]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6728,
+      "kind": "if",
+      "on": "nowLedStyle == 9",
+      "guards": "new byte[189]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6741,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6747,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[num10]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6955,
+      "kind": "if",
+      "on": "nowLedStyle == 10",
+      "guards": "new byte[114]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6967,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 6973,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[num12]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7106,
+      "kind": "if",
+      "on": "nowLedStyle == 11",
+      "guards": "new byte[411]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7119,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7125,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[num14]",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7556,
+      "kind": "if",
+      "on": "nowLedStyle == 12",
+      "guards": "new byte[186]"
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7569,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7596,
+      "kind": "if",
+      "on": "myOnOff == 0",
+      "guards": ""
+    },
+    {
+      "method": "SendHidVal",
+      "line": 7602,
+      "kind": "else-if",
+      "on": "ucScreenLED1.isOn[num18]",
+      "guards": ""
+    }
+  ],
+  "per_method": {
+    "FormCZTV.cs::FormCZTVInit": 33,
+    "FormCZTV.cs::ImageToJpg": 54,
+    "FormCZTV.cs::ImageTo565": 17,
+    "UCDevice.cs::DeviceDataReceived2": 5,
+    "UCDevice.cs::ThreadSendDeviceData1": 2,
+    "UCDevice.cs::ThreadSendDeviceData2": 2,
+    "USBLCDNEW.decompiled.cs::StratDCReadWriteAsync": 9,
+    "USBLCDNEW.decompiled.cs::ThreadSendDeviceData": 16,
+    "USBLCDNEW.decompiled.cs::ThreadSendDeviceDataH": 14,
+    "USBLCDNEW.decompiled.cs::ThreadSendDeviceDataALi": 15,
+    "FormLED.cs::SendHidVal": 55
+  },
+  "not_mined": [
+    "TRCC_decompiled/TRCC/UCDevice.cs::DeviceOnConnected2 \u2014 0 branches (body at L1046); confirm by hand",
+    "USBLCD.exe.c (scsi/bulk/ly) \u2014 Ghidra C dump, not branch-mined here"
+  ]
+}
