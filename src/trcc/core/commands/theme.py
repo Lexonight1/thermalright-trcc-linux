@@ -635,20 +635,27 @@ class SaveTheme(Command[ThemeResult]):
         width: int,
         height: int,
     ) -> str | None:
-        """Link the resolved current background into the saved theme dir.
+        """Link (image) or copy (video) the resolved background into the
+        saved theme dir.
 
-        Every asset a saved theme uses is a SYMLINK into the shared data tree —
+        A static image background is a SYMLINK into the shared data tree —
         no bytes duplicated; only the DC/config (``trcc.json``) is a real copy
-        edited per save.  The background links in under its standard in-dir name
-        — ``00.png`` for an image, ``Theme.<ext>`` for a video — so the loader
-        finds it by convention and no manifest ref is needed (returns ``None``).
+        edited per save.  A video background is COPIED verbatim instead: a
+        symlinked ``Theme.<ext>`` would go dark if the library asset it
+        points at is later pruned/moved, and videos dedup poorly anyway (see
+        :meth:`_pick_asset` callers), so there's little to lose by making the
+        saved theme's own copy self-contained.  Either way the asset lands
+        under its standard in-dir name — ``00.png`` for an image,
+        ``Theme.<ext>`` for a video — so the loader finds it by convention and
+        no manifest ref is needed (returns ``None``).
 
-        Asset home (the symlink target): a catalog asset (cloud
+        Asset home (the symlink/copy source): a catalog asset (cloud
         ``cloud_theme_dir`` / user ``user_background_dir`` ``web/{w}{h}``) is
-        linked in place; a loose image/video is first stored into the user
-        library (deduped, native res) and the link points there.  On a
-        filesystem WITHOUT symlink support the asset is REFERENCED instead (the
-        ``web/{w}{h}/…`` ref is returned and the loader resolves it).
+        used in place; a loose image/video is first stored into the user
+        library (deduped, native res) and linked/copied from there.  On a
+        filesystem WITHOUT symlink support (image case) or an IO failure
+        (video case) the asset is REFERENCED instead (the ``web/{w}{h}/…``
+        ref is returned and the loader resolves it).
         ``DeviceSettings.background_path`` (override) wins over the source theme.
         """
         src = self._pick_asset(
@@ -684,6 +691,14 @@ class SaveTheme(Command[ThemeResult]):
             canonical = paths.user_background_dir(width, height) / Path(ref).name
 
         in_dir = f"Theme{ext}" if is_video else _LEGACY_BG_FILENAME
+        if is_video:
+            if self._try_copy(target / in_dir, canonical):
+                log.info("SaveTheme: background %s → copy %s → %s",
+                         src.name, in_dir, canonical)
+                return None
+            log.info("SaveTheme: background %s → reference %s (copy failed)",
+                     src.name, ref)
+            return ref
         if self._try_symlink(target / in_dir, canonical):
             log.info("SaveTheme: background %s → symlink %s → %s (no copy)",
                      src.name, in_dir, canonical)
@@ -778,6 +793,26 @@ class SaveTheme(Command[ThemeResult]):
         except OSError as e:
             log.info("SaveTheme: symlink %s → %s unavailable (%s) — referencing",
                      link, asset, e)
+            return False
+
+    @staticmethod
+    def _try_copy(dest: Path, asset: Path) -> bool:
+        """Copy *asset* to *dest* verbatim (used for video backgrounds).
+
+        True on success; False on an IO failure, so the caller falls back
+        to a manifest reference — same shape :meth:`_try_symlink` uses.
+        An existing entry at *dest* (a prior save's copy or symlink) is
+        replaced first.
+        """
+        import shutil
+        try:
+            if dest.is_symlink() or dest.exists():
+                dest.unlink()
+            shutil.copy2(asset, dest)
+            return True
+        except OSError as e:
+            log.info("SaveTheme: copy %s → %s failed (%s) — referencing",
+                     asset, dest, e)
             return False
 
     @staticmethod
