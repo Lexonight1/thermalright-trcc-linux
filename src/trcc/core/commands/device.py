@@ -82,8 +82,16 @@ from ._helpers import (
 
 if TYPE_CHECKING:
     from ...app import App
+    from ...services.media import Playback
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _PlayVideoPrepared:
+    """Result of ``PlayVideo._prepare`` on the happy path: a decoded
+    Playback ready for ``_apply`` to install + publish events for."""
+    playback: Playback
 
 
 @dataclass(frozen=True, slots=True)
@@ -699,11 +707,35 @@ class PlayVideo(Command[VideoResult]):
     fps: int = 15
 
     def execute(self, app: App) -> VideoResult:
-        log.info("PlayVideo.execute: key=%s path=%s fps=%d",
+        """Synchronous prepare+apply — unchanged behavior for CLI/API/tests.
+
+        GUI callers that want to avoid blocking the Qt thread should call
+        ``_prepare`` on a background ``QThread`` (via ``ui.qt_async.PrepareThread``)
+        and ``_apply`` back on the GUI thread with the result — see
+        ``_PlayVideoPrepared``.
+        """
+        prepared = self._prepare(app)
+        if isinstance(prepared, VideoResult):
+            return prepared
+        return self._apply(app, prepared)
+
+    def _prepare(self, app: App) -> _PlayVideoPrepared | VideoResult:
+        """Validate + decode the video. This is the slow part (ffmpeg).
+
+        Reads device/settings state but the only *write* is the decoded
+        frames landing in ``MediaService._playbacks[key]`` — a single
+        atomic dict assignment (`media.py::MediaService.load_video`), so
+        it's safe to run off the GUI thread as long as nothing else
+        concurrently dispatches a Command against the SAME device key
+        (GUI call sites disable the relevant controls while this runs).
+        All App-state MUTATION (event publish, scene invalidation) stays
+        in ``_apply``.
+        """
+        log.info("PlayVideo._prepare: key=%s path=%s fps=%d",
                  self.key, self.path, self.fps)
         if self.path.suffix.lower() not in _VIDEO_EXTS_OK:
             log.warning(
-                "PlayVideo.execute: unsupported extension %r (allowed=%s)",
+                "PlayVideo._prepare: unsupported extension %r (allowed=%s)",
                 self.path.suffix, sorted(_VIDEO_EXTS_OK),
             )
             return VideoResult(
@@ -712,14 +744,14 @@ class PlayVideo(Command[VideoResult]):
                          f"(expected one of {sorted(_VIDEO_EXTS_OK)})"),
             )
         if not self.path.exists():
-            log.warning("PlayVideo.execute: path does not exist: %s",
+            log.warning("PlayVideo._prepare: path does not exist: %s",
                         self.path)
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
                 message=f"video does not exist: {self.path}",
             )
         if not self.path.is_file():
-            log.warning("PlayVideo.execute: path is not a regular file: %s",
+            log.warning("PlayVideo._prepare: path is not a regular file: %s",
                         self.path)
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
@@ -729,7 +761,7 @@ class PlayVideo(Command[VideoResult]):
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
-            log.warning("PlayVideo.execute: device %s not found: %s",
+            log.warning("PlayVideo._prepare: device %s not found: %s",
                         self.key, e)
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
@@ -769,11 +801,15 @@ class PlayVideo(Command[VideoResult]):
             None if is_user_asset else canvas_size
         )
         log.info(
-            "PlayVideo.execute: target_size=%s (profile=%s, user_asset=%s)",
+            "PlayVideo._prepare: target_size=%s (profile=%s, user_asset=%s)",
             "native" if decode_size is None else f"{decode_size[0]}x{decode_size[1]}",
             device.profile is not None, is_user_asset,
         )
 
+        # The heavy step: ffmpeg subprocess decode (or the ZtDecoder batch
+        # decode).  This is the ONLY write this method performs — a single
+        # atomic ``MediaService._playbacks[key] = playback`` assignment — see
+        # the docstring above for why that's safe off the GUI thread.
         try:
             playback = app.media.load_video(
                 device_key=self.key, path=self.path, size=decode_size,
@@ -781,13 +817,28 @@ class PlayVideo(Command[VideoResult]):
             )
         except ThemeError as e:
             log.warning(
-                "PlayVideo.execute: load_video raised ThemeError: %s", e,
+                "PlayVideo._prepare: load_video raised ThemeError: %s", e,
             )
+            # Publishing here (not in _apply) is safe even off the GUI
+            # thread: EventBus subscribers cross to Qt via BusBridge, which
+            # re-emits as a Qt Signal specifically so it can marshal from
+            # any thread (ui/qtgui/bus_bridge.py, ui/gui/bus_bridge.py).
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="video", key=self.key,
             ))
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
+
+        return _PlayVideoPrepared(playback=playback)
+
+    def _apply(
+        self, app: App, prepared: _PlayVideoPrepared | VideoResult,
+    ) -> VideoResult:
+        """Fast tail: scene invalidation + event publish. Run on the GUI
+        thread — this is where DisplayService's scene cache gets busted."""
+        if isinstance(prepared, VideoResult):
+            return prepared
+        playback = prepared.playback
 
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
@@ -800,7 +851,7 @@ class PlayVideo(Command[VideoResult]):
         # ffmpeg's own decode count.
         if playback.frame_count <= 1:
             log.info(
-                "PlayVideo.execute: %s is a STATIC single-frame background "
+                "PlayVideo._apply: %s is a STATIC single-frame background "
                 "— rendering once, no animation timer", self.path.name,
             )
             app.events.publish(
@@ -818,7 +869,7 @@ class PlayVideo(Command[VideoResult]):
         fps = getattr(playback, "fps", 0) or 30
         interval_ms = max(1, int(1000 / fps))
         log.info(
-            "PlayVideo.execute: playback loaded — %d frames @ %d fps "
+            "PlayVideo._apply: playback loaded — %d frames @ %d fps "
             "(interval=%dms, VideoStarted published)",
             playback.frame_count, fps, interval_ms,
         )

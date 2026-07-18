@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -26,6 +27,7 @@ from ....core.commands import (
     StopVideo,
     ToggleVideo,
 )
+from ...qt_async import PrepareThread
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -36,6 +38,7 @@ class DisplayPanel(BasePanel):
     """Per-device display controls (orientation / brightness / theme)."""
 
     def _setup_ui(self) -> None:
+        self._video_thread: PrepareThread | None = None
         self._picker = DevicePickerWidget(
             self.app, self._bus, kind_filter="lcd", parent=self,
         )
@@ -142,8 +145,24 @@ class DisplayPanel(BasePanel):
         if not source:
             return
         log.info("_on_play_video: key=%s path=%s", key, source)
-        result = self.dispatch(PlayVideo(key=key, path=Path(source)))
-        self._status.setText(result.message)
+        cmd = PlayVideo(key=key, path=Path(source))
+        self._set_video_busy(True, f"Loading {Path(source).name}…")
+        thread = PrepareThread(lambda: cmd._prepare(self.app))
+        thread.succeeded.connect(lambda prepared: self._on_play_video_prepared(cmd, prepared))
+        thread.failed.connect(self._on_video_prepare_failed)
+        thread.start()
+        self._video_thread = thread   # keep alive — Qt won't GC a running QThread
+
+    def _on_play_video_prepared(self, cmd: PlayVideo, prepared: Any) -> None:
+        result = cmd._apply(self.app, prepared)
+        self._set_video_busy(False, result.message)
+
+    def _on_video_prepare_failed(self, message: str) -> None:
+        self._set_video_busy(False, message)
+
+    def _set_video_busy(self, busy: bool, message: str) -> None:
+        self._play_video_btn.setEnabled(not busy)
+        self._status.setText(message)
 
     def _on_toggle_video(self) -> None:
         key = self._require_key()
