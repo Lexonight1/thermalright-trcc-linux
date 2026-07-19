@@ -115,14 +115,41 @@ every spec cell oracle-tested (`test_csharp_oracle_parity`).
 - Verify: oracle green · suite green · ruff+pyright clean · **zero behaviour change** (no consumer touched).
 - Risk: none.
 
-**2 — Render Template Method (delivers G1/G2/G5)**
-- Builds: `Renderer.build_frame` + `bg_fit`/`wire_angle`/`frame`; `Device.render_and_send`
-  calls it; `handshake` caches the spec.
-- Files: `core/ports.py`, `adapters/render/qt.py` (`bg_fit`), `services/display.py`,
-  `core/geometry.py` (per-res branches → spec reads).
-- Verify: oracle green · geometry/rotation suites green · **`dev/mock.py` Mjolnir (pm=5)
-  0/90/180/270 fills + text upright** · then **on-glass on the user's device**.
-- Risk: medium (behaviour change) — mock + glass gated, no ship until confirmed.
+**2 — Render Template Method — split 2a/2b/2c (per no-bundling)**
+The bundled sketch below was superseded by the 2a/2b/2c split. Reading `build_frame`
+end-to-end showed the pure core is NOT a clean contiguous slice — it interleaves
+service state (background_mode, mask, `_fit`/fit_mode, split-mode, brightness,
+encode_baseline, preview capture). So the Template Method lives on `Renderer`
+(compose→encode) and `DisplayService` wraps it (owns the interleaved state); the
+device adapter keeps its own wire header (`build_frame` returns the encoded PAYLOAD).
+
+- **2a — root-cause G2** (investigation): DONE. `_build_bg_mask` + program-vs-user origin.
+- **2b — the minimal G2 fix** (native-or-black width test): DONE `65fbe036`. VERIFIED
+  end-to-end incl. wire bytes (2026-07-19) — oracle green + read all frames + captured
+  device payload. On-glass redundant with oracle parity for a byte-matching device.
+- **2c — `Renderer.build_frame` Template Method** (behaviour-preserving structural
+  consolidation; `post_rotate` wire output already matches C#, so no behaviour change):
+  - **2c.1 — DONE (uncalled, additive):** `RenderContent` DTO (`core/models.py`) +
+    concrete `Renderer.build_frame`/`bg_fit`/`_encode_payload` (`core/ports.py`) reusing
+    the abstract primitives + `plan_orientation`/`wire_angle`. `tests/test_render_template.py`
+    (13 tests) pins the 2b native-or-black rule + encode dispatch across the matrix.
+    `display.py` UNTOUCHED → zero live-path risk. ruff+pyright clean.
+  - **2c.2 — DONE (revised shape):** tracing showed `DisplayService.build_frame` is
+    ALREADY decomposed (bg via `_build_bg_mask`, overlay separate, then
+    compose→rotate→encode with caching + preview woven in) — a whole-path reroute would
+    LOSE its caching/preview and isn't byte-identical for user content (needs `_fit`).
+    So 2c.2 = **DRY the two genuinely-shared pieces**: `_build_bg_mask`'s program branch
+    → `Renderer.bg_fit`; `_encode_for_wire` → `Renderer.encode_payload` (made public).
+    `bg_fit` gained the branch logging (native/black warn). Gate: **byte-identical
+    verified** (BEFORE==AFTER hashes via `git stash`, deterministic no-clock harness,
+    all panels × angles) + oracle/geometry/display/mask green. `bg_fit` lost its unused
+    `profile` param.
+  - **2c.3 — NOT started:** fold `post_rotate` in, retire `_compose_geometry`'s triple
+    return. Gate: byte-identical across the whole panel matrix.
+- Files: `core/models.py`, `core/ports.py`, `services/display.py`, `tests/test_render_template.py`.
+- Verify (each increment): oracle green · geometry/rotation/display suites green · ruff+pyright ·
+  `dev/mock.py` render-and-read all frames · **`g2_wire_capture` byte-identical** to pre-refactor.
+- Risk: 2c.1 none (additive); 2c.2/2c.3 medium (routing) — byte-identical gated.
 
 **3 — LED onto the pipeline**
 - Files: `core/led_models.py`, `services/led_*`. Verify: LED tests + `dev/mock.py --device 0416:8001`.

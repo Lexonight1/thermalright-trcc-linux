@@ -31,6 +31,7 @@ from ..core.models import (
     FitMode,
     ProductInfo,
     RawFrame,
+    RenderContent,
     Theme,
 )
 from ..core.ports import Paths, Renderer
@@ -894,26 +895,14 @@ class DisplayService:
                     canvas = self._r.composite(
                         canvas, fitted, position=(off_x, off_y),
                     )
-                elif src_w <= dst_w + 2:
-                    # Program/cloud content authored-for-canvas — the C#
-                    # width test (UCScreenImage.cs:824-834): fits within the
-                    # canvas width → draw NATIVE at (0,0), never scale.
-                    log.debug(
-                        "build_bg_mask %s: program background %dx%d ≤ canvas "
-                        "%dx%d → native at (0, 0)",
-                        info.key, src_w, src_h, dst_w, dst_h,
-                    )
-                    canvas = self._r.composite(canvas, source, position=(0, 0))
                 else:
-                    # Program/cloud content wider than the canvas (a landscape
-                    # theme on a portrait canvas at 90/270) — the C# draws a
-                    # solid-black background rather than letterboxing, so the
-                    # canvas stays at its black init.  Warn: the bg is dropped.
-                    log.warning(
-                        "build_bg_mask %s: program background %dx%d exceeds "
-                        "canvas %dx%d → solid black (C# width test, no "
-                        "letterbox); theme %r bg not shown at this orientation",
-                        info.key, src_w, src_h, dst_w, dst_h, theme.name,
+                    # Program/cloud content — the C# native-or-black width test,
+                    # shared with Renderer.build_frame (increment 2c): native at
+                    # (0,0) when it fits the canvas width, else solid black.
+                    # bg_fit logs the native/black branch (incl. the drop warn).
+                    canvas = self._r.bg_fit(
+                        canvas,
+                        RenderContent(source, None, background_is_user=False),
                     )
             else:
                 log.warning(
@@ -1352,17 +1341,12 @@ class DisplayService:
         return DeviceProfile(width=w, height=h, jpeg=False, rotate=False)
 
     def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:
-        # Device-only encode baseline: panels with a fixed hardware-mount
-        # rotation (FW360 PM=6 → 180°) need their WIRE frame pre-rotated so the
-        # glass reads upright.  This is the single chokepoint every send path
-        # funnels through; the preview path never calls it, so the GUI preview
-        # stays upright — exactly the reporter's ask.  rotate() returns a new
-        # surface, so the caller's stored preview_surface is untouched. (#137)
-        if profile.encode_baseline:
-            surface = self._r.rotate(surface, profile.encode_baseline)
-        if profile.jpeg:
-            return self._r.encode_jpeg(surface)
-        return self._r.encode_rgb565(surface, profile.byte_order)
+        # The single wire-encode chokepoint every send path funnels through;
+        # the preview path never calls it, so the GUI preview stays upright
+        # (#137).  Delegates to the shared Renderer.encode_payload (increment
+        # 2c): a fixed hardware-mount baseline (FW360 PM=6 → 180°) pre-rotates
+        # the wire frame, then JPEG or RGB565 per the profile.
+        return self._r.encode_payload(surface, profile)
 
 
 # =========================================================================
