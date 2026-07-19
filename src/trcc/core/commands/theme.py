@@ -125,6 +125,17 @@ class LoadTheme(Command[ThemeResult]):
         # Persist the absolute path — names are display strings, paths
         # are the stable reference RestoreLastTheme needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
+        # Set the new theme BEFORE StopVideo: StopVideo's VideoStopped
+        # publish is handled synchronously by _DeviceRenderObserver, which
+        # re-renders using whatever theme is currently in ``active_themes``.
+        # If the old (about-to-be-replaced) theme were still active at that
+        # point, and it had a bundled video, DisplayService._resolve_background
+        # would decode + cache that video into MediaService as a side effect
+        # of the read — then LoadTheme's own render just below would see that
+        # stale playback and use it instead of the new theme's background
+        # (animated→static switches silently kept showing the old animation
+        # until a second click finally cleared it).
+        app.active_themes[self.key] = theme
         # Single source of truth for "stop the previous video + clear the
         # cloud-background override + invalidate the scene cache": ``StopVideo``
         # (publishes VideoStopped, clears background_path, unloads playback).
@@ -134,7 +145,6 @@ class LoadTheme(Command[ThemeResult]):
         # background to the theme's bundled one (StopVideo cleared the override).
         if self.reset_overrides:
             StopVideo(key=self.key).execute(app)
-        app.active_themes[self.key] = theme
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
             "LoadTheme: %s loaded — prior playback + cloud-bg override "
