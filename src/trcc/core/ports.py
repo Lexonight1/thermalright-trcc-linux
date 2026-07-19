@@ -554,6 +554,12 @@ class SensorEnumerator(ABC):
     # selected GPU drives the metric regardless of which UI made the choice.
     _preferred_gpu_key: str | None = None
 
+    # Dedupe key for the "preferred GPU absent" warning: ``primary_gpu`` runs
+    # every tick, so we warn ONCE per distinct missing key (reset when the
+    # preferred GPU reappears or the preference changes) instead of per poll —
+    # otherwise one stale preference floods the log with identical lines.
+    _warned_missing_gpu_key: str | None = None
+
     # ── Structured access ───────────────────────────────────────────
     @abstractmethod
     def cpu(self) -> CpuSource: ...
@@ -575,6 +581,8 @@ class SensorEnumerator(ABC):
         log.info("set_preferred_gpu: %s -> %s",
                  self._preferred_gpu_key, normalized)
         self._preferred_gpu_key = normalized
+        # A fresh choice re-arms the missing-GPU warning.
+        self._warned_missing_gpu_key = None
 
     def primary_gpu(self) -> GpuSource | None:
         """The user-preferred GPU if one is set and still present, else the
@@ -583,9 +591,15 @@ class SensorEnumerator(ABC):
         if self._preferred_gpu_key is not None:
             for gpu in gpus:
                 if gpu.key == self._preferred_gpu_key:
+                    # Preferred is back — re-arm the warning for a future drop.
+                    self._warned_missing_gpu_key = None
                     return gpu
-            log.warning("primary_gpu: preferred %s not among %s — auto-picking",
-                        self._preferred_gpu_key, [g.key for g in gpus])
+            # Runs every tick; warn once per distinct missing key (see field).
+            if self._warned_missing_gpu_key != self._preferred_gpu_key:
+                log.warning(
+                    "primary_gpu: preferred %s not among %s — auto-picking",
+                    self._preferred_gpu_key, [g.key for g in gpus])
+                self._warned_missing_gpu_key = self._preferred_gpu_key
         for gpu in gpus:
             if gpu.is_discrete:
                 return gpu
