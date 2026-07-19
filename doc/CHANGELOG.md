@@ -1,5 +1,29 @@
 # Changelog
 
+## v9.9.2
+
+**Fan RPM shows up again.** Fan speeds were reading a flat 0 RPM on every board —
+the metrics snapshot was quietly building itself from every source *except* the
+fans. They're back. (#145, #207)
+
+**Rotated panels now match the official app.** On a panel you've rotated to
+portrait, a landscape background at 90°/270° draws a clean black backdrop behind
+your metrics — exactly like the Windows app does — instead of stretched
+letterbox bars.
+
+**A display fix for some panels.** Certain panels weren't receiving frames
+cleanly; TRCC now sends the image in the 512-byte chunks their firmware expects.
+(#150)
+
+**Read your panel's fingerprint at a glance.** A selectable line under the
+rotation control shows the device's name, USB id, and protocol codes — handy
+when you're filing an issue.
+
+**Under the hood.** The render pipeline is being consolidated onto one shared
+compose→encode path (no change to what ships to your panel — verified
+byte-for-byte), and a "less noise" fix stops the log repeating a GPU-absent
+warning every tick.
+
 ## v9.9.1
 
 **If you're on AMD and v9.9.0 tried to install 938 MB of NVIDIA drivers — that
