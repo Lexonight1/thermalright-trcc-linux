@@ -810,6 +810,7 @@ class TRCCApp(QMainWindow):
             'image_cut': self.uc_image_cut,
             'video_cut': self.uc_video_cut,
             'rotation_combo': self.rotation_combo,
+            'device_info_label': self.device_info_label,
         }
         log.info("LCD handler added: %s", key)
         return LCDHandler(
@@ -833,6 +834,10 @@ class TRCCApp(QMainWindow):
             remaining = list(self._handlers)
             if remaining:
                 self._activate_device(remaining[0])
+            else:
+                # No device left — clear the fingerprint line so it doesn't
+                # show a removed device's bytes.
+                self.device_info_label.clear()
 
         self._refresh_sidebar()
 
@@ -1143,6 +1148,19 @@ class TRCCApp(QMainWindow):
             " selection-background-color: #4A6FA5; }")
         self.rotation_combo.setToolTip("LCD rotation")
         self.rotation_combo.currentIndexChanged.connect(self._on_rotation_change)
+
+        # Device fingerprint line — name · vid:pid · FBL/PM/SUB, selectable so
+        # it can be copied straight into a bug report / porting note.
+        self.device_info_label = QLabel(self.form_container)
+        self.device_info_label.setGeometry(*Layout.DEVICE_INFO)
+        self.device_info_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.device_info_label.setWordWrap(True)
+        self.device_info_label.setStyleSheet(
+            "QLabel { color: #9AA0A6; font-family: monospace; font-size: 10px; }")
+        self.device_info_label.setToolTip("Device fingerprint (selectable)")
 
         from ...core.registry import BRIGHTNESS_STEPS
         self._ldd_pixmaps: dict = {}
