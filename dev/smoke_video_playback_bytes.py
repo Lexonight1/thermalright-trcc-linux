@@ -110,6 +110,7 @@ def main() -> int:
             overlay=overlay,
             settings=settings,
             media=media,
+            paths=_Paths(base),
         )
 
         # Fabricate a theme dir containing a PNG background (image-theme

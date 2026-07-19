@@ -389,6 +389,7 @@ class App:
             overlay=OverlayService(renderer),
             settings=self.settings,
             media=self.media,
+            paths=self.platform.paths(),
         )
 
     @property

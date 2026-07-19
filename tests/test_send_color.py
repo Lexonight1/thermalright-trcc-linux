@@ -124,6 +124,7 @@ def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=MediaService(),
+        paths=FakePaths(tmp_home),
     )
 
 

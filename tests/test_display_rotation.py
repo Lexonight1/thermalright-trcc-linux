@@ -148,6 +148,7 @@ def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
         overlay=_StubOverlay(renderer),
         settings=settings,
         media=MediaService(),
+        paths=paths,
     )
 
 
@@ -702,6 +703,7 @@ def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService
         overlay=OverlayService(renderer),          # REAL overlay → records draw_text
         settings=Settings(FakePaths(tmp_home)),
         media=MediaService(),
+        paths=FakePaths(tmp_home),
     )
 
 

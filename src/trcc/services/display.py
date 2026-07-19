@@ -33,7 +33,7 @@ from ..core.models import (
     RawFrame,
     Theme,
 )
-from ..core.ports import Renderer
+from ..core.ports import Paths, Renderer
 from ..core.protocol import (
     DeviceProfile,
     get_profile,
@@ -139,12 +139,18 @@ class DisplayService:
         overlay: OverlayService,
         settings: Settings,
         media: MediaService,
+        paths: Paths,
     ) -> None:
         self._r = renderer
         self._themes = themes
         self._overlay = overlay
         self._settings = settings
         self._media = media
+        # Content origin (program/cloud vs user upload) drives the theme-bg
+        # fill rule: program content is authored-for-canvas → the C# native-
+        # or-black width test (no letterbox); user content keeps fit_mode
+        # scaling.  Same axis as the PlayVideo decode-size gate.
+        self._paths = paths
         self._scenes: dict[str, SceneCache] = {}
         # Per-device pre-composited animation-frame cache (bg+mask for
         # every video frame, built once).  Decouples the animation loop
@@ -864,17 +870,51 @@ class DisplayService:
             if source is not None:
                 src_w, src_h = self._r.surface_size(source)
                 dst_w, dst_h = visual_size
-                fit_w, fit_h, off_x, off_y = _fit(
-                    s.fit_mode, src_w, src_h, dst_w, dst_h,
+                is_user = (
+                    theme.path is not None
+                    and Path(theme.path).is_relative_to(
+                        self._paths.user_content_dir()
+                    )
                 )
-                log.debug(
-                    "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
-                    info.key, src_w, src_h,
-                    s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
-                    fit_w, fit_h, off_x, off_y,
-                )
-                fitted = self._r.resize(source, fit_w, fit_h)
-                canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
+                if is_user:
+                    # User upload — native resolution; honor the user's chosen
+                    # fit_mode (scale/letterbox as selected).
+                    fit_w, fit_h, off_x, off_y = _fit(
+                        s.fit_mode, src_w, src_h, dst_w, dst_h,
+                    )
+                    log.debug(
+                        "build_bg_mask %s: user background %dx%d → fit %s → "
+                        "%dx%d at (%d, %d)",
+                        info.key, src_w, src_h,
+                        s.fit_mode.value if hasattr(s.fit_mode, "value")
+                        else s.fit_mode,
+                        fit_w, fit_h, off_x, off_y,
+                    )
+                    fitted = self._r.resize(source, fit_w, fit_h)
+                    canvas = self._r.composite(
+                        canvas, fitted, position=(off_x, off_y),
+                    )
+                elif src_w <= dst_w + 2:
+                    # Program/cloud content authored-for-canvas — the C#
+                    # width test (UCScreenImage.cs:824-834): fits within the
+                    # canvas width → draw NATIVE at (0,0), never scale.
+                    log.debug(
+                        "build_bg_mask %s: program background %dx%d ≤ canvas "
+                        "%dx%d → native at (0, 0)",
+                        info.key, src_w, src_h, dst_w, dst_h,
+                    )
+                    canvas = self._r.composite(canvas, source, position=(0, 0))
+                else:
+                    # Program/cloud content wider than the canvas (a landscape
+                    # theme on a portrait canvas at 90/270) — the C# draws a
+                    # solid-black background rather than letterboxing, so the
+                    # canvas stays at its black init.  Warn: the bg is dropped.
+                    log.warning(
+                        "build_bg_mask %s: program background %dx%d exceeds "
+                        "canvas %dx%d → solid black (C# width test, no "
+                        "letterbox); theme %r bg not shown at this orientation",
+                        info.key, src_w, src_h, dst_w, dst_h, theme.name,
+                    )
             else:
                 log.warning(
                     "build_bg_mask %s: no background source resolved for theme %r — "
