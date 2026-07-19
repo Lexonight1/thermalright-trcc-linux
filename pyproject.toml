@@ -33,6 +33,9 @@ dependencies = [
     "numpy>=1.24.0",
     "psutil>=5.9.0",
     "pyusb>=1.2.0",
+    # Frozen Warframe SE 0416:5302 bcdDevice 4.07 ignores libusb endpoint
+    # writes and requires HID output reports.
+    "hidapi>=0.14.0; sys_platform == 'linux'",
     # libusb-package bundles libusb-1.0.dll on Windows so pip-installed
     # users get a working pyusb backend out of the box. Pyocd's canonical
     # pattern (#131 — usb.core.NoBackendError on pip-install Windows).
@@ -78,7 +81,7 @@ windows = [
     "pywin32>=306; sys_platform == 'win32'",
 ]
 hid = [
-    "hidapi>=0.14.0",
+    "hidapi>=0.14.0; sys_platform != 'linux'",
 ]
 remote = [
     "qrcode>=7.0",

@@ -293,8 +293,14 @@ class HidApiTransport(BulkTransport):
     Large bulk transfers should prefer PyUsbBulkTransport.
     """
 
-    def __init__(self, vid: int, pid: int,
-                 serial: str | None = None) -> None:
+    def __init__(
+        self,
+        vid: int,
+        pid: int,
+        serial: str | None = None,
+        *,
+        device_release: int | None = None,
+    ) -> None:
         if not HIDAPI_AVAILABLE:
             raise ImportError(
                 "hidapi not installed — pip install hidapi "
@@ -303,18 +309,30 @@ class HidApiTransport(BulkTransport):
         self._vid = vid
         self._pid = pid
         self._serial = serial
+        self._device_release = device_release
         self._device: Any = None
         self._is_open = False
 
     def open(self) -> bool:
-        kwargs: dict[str, Any] = {'vid': self._vid, 'pid': self._pid}
-        if self._serial:
-            kwargs['serial'] = self._serial
         DeviceClass = getattr(hidapi, 'device', None) or getattr(hidapi, 'Device', None)
         if DeviceClass is None:
             raise ImportError("hidapi module has neither 'device' nor 'Device' class")
-        self._device = DeviceClass(**kwargs)
-        self._device.nonblocking = 0
+        if getattr(hidapi, 'device', None) is DeviceClass:
+            self._device = DeviceClass()
+            if self._serial:
+                self._device.open(self._vid, self._pid, self._serial)
+            else:
+                self._device.open(self._vid, self._pid)
+        else:
+            kwargs: dict[str, Any] = {'vid': self._vid, 'pid': self._pid}
+            if self._serial:
+                kwargs['serial'] = self._serial
+            self._device = DeviceClass(**kwargs)
+        set_nonblocking = getattr(self._device, "set_nonblocking", None)
+        if callable(set_nonblocking):
+            set_nonblocking(0)
+        else:
+            self._device.nonblocking = 0
         self._is_open = True
         return True
 
@@ -331,13 +349,27 @@ class HidApiTransport(BulkTransport):
     def is_open(self) -> bool:
         return self._is_open
 
+    @property
+    def device_release(self) -> int | None:
+        return self._device_release
+
+    @property
+    def uses_hid_reports(self) -> bool:
+        return True
+
     def write(self, endpoint: int, data: WriteBuffer,
               timeout_ms: int = DEFAULT_TIMEOUT_MS) -> int:
         if not self._is_open or self._device is None:
             raise TransportError("Transport not open")
         # hidapi prepends a report ID byte (0x00 for default); bytes(data)
         # normalizes any buffer (incl. a memoryview slice) before concat.
-        return self._device.write(bytes([0x00]) + bytes(data))
+        payload = bytes(data)
+        transferred = self._device.write(bytes([0x00]) + payload)
+        # BulkTransport reports payload bytes, while hidapi includes the report
+        # ID in its successful byte count.
+        if transferred == len(payload) + 1:
+            return len(payload)
+        return transferred
 
     def read(self, endpoint: int, length: int,
              timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bytes:

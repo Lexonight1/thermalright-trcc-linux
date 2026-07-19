@@ -557,6 +557,7 @@ class App:
             return
         sender = DeviceSender(
             device, volatile=device.needs_keepalive,
+            keepalive_interval=device.keepalive_interval,
             on_failure=self._on_sender_failure,
         )
         self.senders[key] = sender

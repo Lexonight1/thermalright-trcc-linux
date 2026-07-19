@@ -58,6 +58,16 @@ if TYPE_CHECKING:
 class BulkTransport(ABC):
     """Abstract USB bulk/interrupt transport.  One per open device handle."""
 
+    @property
+    def device_release(self) -> int | None:
+        """USB ``bcdDevice`` value when the transport was selected by revision."""
+        return None
+
+    @property
+    def uses_hid_reports(self) -> bool:
+        """Whether writes are HID output reports rather than USB endpoint writes."""
+        return False
+
     @abstractmethod
     def open(self) -> bool:
         """Open the device and claim interface.  True on success."""
@@ -196,6 +206,16 @@ class Device(ABC, Generic[T]):
         return self.info.wire in VOLATILE_FRAME_WIRES
 
     @property
+    def keepalive_interval(self) -> float:
+        """Seconds between cached-frame resends for volatile devices."""
+        return 0.150
+
+    @property
+    def reconnect_on_send_error(self) -> bool:
+        """Whether a transport exception may close and reopen this device."""
+        return True
+
+    @property
     def profile(self) -> DeviceProfile | None:
         """Handshake-derived geometry + encoding profile.
 
@@ -300,7 +320,7 @@ class Device(ABC, Generic[T]):
             try:
                 ok = write()
             except Exception as e:
-                if attempt == 0:
+                if attempt == 0 and self.reconnect_on_send_error:
                     log.warning(
                         "%s: send attempt 1 failed (%s) — reconnecting and retrying",
                         self.key, e,

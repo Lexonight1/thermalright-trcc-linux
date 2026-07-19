@@ -37,7 +37,7 @@ from ...core.ports import (
 )
 from ...core.registry import ALL_DEVICES
 from ..device._pyusb_find import find as usb_find
-from ..device.transport import PyUsbBulkTransport
+from ..device.transport import HidApiTransport, PyUsbBulkTransport
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
     detect_gpu_vendors,
@@ -48,6 +48,9 @@ from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)
+
+_WARFRAME_SE_HIDAPI_ID = (0x0416, 0x5302)
+_WARFRAME_SE_HIDAPI_RELEASE = 0x0407
 
 
 # =========================================================================
@@ -387,8 +390,26 @@ class LinuxPlatform(Platform):
 
     def open_bulk(self, vid: int, pid: int,
                   serial: str | None = None) -> BulkTransport:
-        """Return an unopened PyUsbBulkTransport for HID/BULK/LY/LED."""
+        """Return an unopened USB transport for HID/BULK/LY/LED."""
         log.info("LinuxPlatform.open_bulk: %04x:%04x serial=%r", vid, pid, serial)
+        if (vid, pid) == _WARFRAME_SE_HIDAPI_ID:
+            kwargs: dict[str, object] = {
+                "idVendor": vid,
+                "idProduct": pid,
+            }
+            if serial:
+                kwargs["serial_number"] = serial
+            dev = usb_find(**kwargs)
+            release = int(getattr(dev, "bcdDevice", 0)) if dev is not None else 0
+            if release == _WARFRAME_SE_HIDAPI_RELEASE:
+                log.info(
+                    "LinuxPlatform.open_bulk: %04x:%04x bcdDevice=%04x "
+                    "requires HID output reports",
+                    vid, pid, release,
+                )
+                return HidApiTransport(
+                    vid, pid, serial, device_release=release,
+                )
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,

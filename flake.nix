@@ -26,6 +26,7 @@
             numpy
             psutil
             pyusb
+            hidapi           # HID output reports for FW SE bcdDevice 4.07
             pyudev          # Linux hotplug (live attach/detach + coldplug) — #139
             click
             typer
@@ -91,7 +92,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (ps: with ps; [
-              pyside6 numpy psutil pyusb pyudev click typer fastapi uvicorn
+              pyside6 numpy psutil pyusb hidapi pyudev click typer fastapi uvicorn
               python-multipart prompt-toolkit sounddevice
               pytest pytest-cov pytest-xdist httpx nvidia-ml-py ruff
             ]))

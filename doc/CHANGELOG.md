@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**Frozen Warframe SE firmware 4.07 now stays on.** This `0416:5302` revision
+ignores libusb endpoint writes and reboots when it receives the usual Type-2
+init packet. TRCC now detects its USB revision, opens one hidapi session,
+streams portrait RGB565 frames as HID output reports, and keeps the last frame
+alive without closing and reopening the device.
+
+(#228)
+
 ## v9.9.1
 
 **If you're on AMD and v9.9.0 tried to install 938 MB of NVIDIA drivers — that

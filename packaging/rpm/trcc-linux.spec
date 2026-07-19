@@ -23,6 +23,7 @@ Requires:       python3-pyside6 >= 6.5.0
 Requires:       python3-numpy >= 1.24.0
 Requires:       python3-psutil >= 5.9.0
 Requires:       python3-pyusb >= 1.2.0
+Requires:       python3-hidapi >= 0.14.0
 Requires:       python3-click >= 7.0
 Requires:       python3-typer >= 0.9.0
 Requires:       python3-fastapi >= 0.100
@@ -45,7 +46,6 @@ Recommends:     ffmpeg
 Recommends:     python3-pynvml
 Recommends:     python3-dbus
 Recommends:     python3-gobject
-Recommends:     python3-hidapi
 
 %description
 Linux implementation of the Thermalright LCD Control Center (TRCC).

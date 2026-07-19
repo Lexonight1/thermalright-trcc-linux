@@ -58,8 +58,13 @@ _HANDSHAKE_RETRY_DELAY_S = 0.5
 _DELAY_PRE_INIT_S = 0.050
 _DELAY_POST_INIT_S = 0.200
 _DELAY_FRAME_TYPE2_S = 0.001
+_DELAY_HID_BACKPRESSURE_S = 0.010
+_DELAY_WARFRAME_SE_BOOT_S = 3.0
 
 _DEFAULT_FRAME_TIMEOUT_MS = 100
+_WARFRAME_SE_HIDAPI_RELEASE = 0x0407
+_WARFRAME_SE_PM = 58
+_WARFRAME_SE_SUB = 0
 
 
 def _ceil_to_align(n: int, align: int = _USB_BULK_ALIGNMENT) -> int:
@@ -103,6 +108,29 @@ class HidLcd(Device[BulkTransport]):
         """Handshake-derived profile; None pre-handshake."""
         return self._profile
 
+    @property
+    def _warframe_se_hidapi(self) -> bool:
+        return (
+            self.info.vid == 0x0416
+            and self.info.pid == 0x5302
+            and self._transport.uses_hid_reports
+            and self._transport.device_release == _WARFRAME_SE_HIDAPI_RELEASE
+        )
+
+    @property
+    def needs_keepalive(self) -> bool:
+        return self._warframe_se_hidapi or super().needs_keepalive
+
+    @property
+    def keepalive_interval(self) -> float:
+        return 1.0 if self._warframe_se_hidapi else super().keepalive_interval
+
+    @property
+    def reconnect_on_send_error(self) -> bool:
+        # This firmware accepts exactly one HID session per USB power-cycle.
+        # Closing and reopening wedges all writes until a physical replug.
+        return not self._warframe_se_hidapi
+
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
@@ -114,6 +142,30 @@ class HidLcd(Device[BulkTransport]):
             raise HandshakeError(
                 f"Failed to open USB transport for {self.info.key}"
             )
+
+        if self._warframe_se_hidapi:
+            # bcdDevice 4.07 exposes PM=58/SUB=0 but its Type-2 init packet
+            # reboots the panel.  Open once, let the boot logo finish, and
+            # stream frames directly over HID output reports.
+            time.sleep(_DELAY_WARFRAME_SE_BOOT_S)
+            self._profile = DeviceProfile(240, 320)
+            result = HandshakeResult(
+                resolution=self._profile.resolution,
+                model_id=_WARFRAME_SE_PM,
+                pm_byte=_WARFRAME_SE_PM,
+                sub_byte=_WARFRAME_SE_SUB,
+                fbl=_WARFRAME_SE_PM,
+            )
+            self._handshake = result
+            log.info(
+                "HidLcd type 2 no-init session: PM=%d SUB=%d "
+                "resolution=%s bcdDevice=%04x",
+                _WARFRAME_SE_PM,
+                _WARFRAME_SE_SUB,
+                result.resolution,
+                _WARFRAME_SE_HIDAPI_RELEASE,
+            )
+            return result
 
         init_pkt = self._build_init_packet()
         response_size = self._response_size()
@@ -194,7 +246,11 @@ class HidLcd(Device[BulkTransport]):
                 view = memoryview(packet)
                 for offset in range(0, len(packet), _USB_BULK_ALIGNMENT):
                     chunk = view[offset:offset + _USB_BULK_ALIGNMENT]
-                    if self._transport.write(_EP_WRITE, chunk, timeout) != len(chunk):
+                    transferred = self._transport.write(_EP_WRITE, chunk, timeout)
+                    if transferred != len(chunk):
+                        time.sleep(_DELAY_HID_BACKPRESSURE_S)
+                        transferred = self._transport.write(_EP_WRITE, chunk, timeout)
+                    if transferred != len(chunk):
                         log.warning("HidLcd %s: short chunk write at offset %d",
                                     self.info.key, offset)
                         return False
@@ -235,11 +291,13 @@ class HidLcd(Device[BulkTransport]):
         return header + b'\x00' * (_TYPE2_INIT_SIZE - len(header))
 
     def _validate_response_type2(self, resp: bytes) -> bool:
-        """Type 2: resp[0:4] == DA DB DC DD && resp[12] == 0x01."""
+        """Accept canonical replies and the short PM/SUB-only reply."""
         return (
-            len(resp) >= 20
-            and resp[0:4] == _TYPE2_MAGIC
-            and resp[12] == 0x01
+            resp[0:4] == _TYPE2_MAGIC
+            and (
+                len(resp) == 8
+                or (len(resp) >= 20 and resp[12] == 0x01)
+            )
         )
 
     def _parse_response_type2(self, resp: bytes) -> HandshakeResult:

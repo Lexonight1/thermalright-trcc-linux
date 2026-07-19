@@ -18,7 +18,7 @@ import pytest
 from trcc.adapters.device.hid_lcd import HidLcd
 from trcc.core.errors import HandshakeError
 from trcc.core.models import Kind, ProductInfo, Wire
-from trcc.core.protocol import get_profile
+from trcc.core.protocol import DeviceProfile, get_profile
 
 from .conftest import FakeBulkTransport
 
@@ -75,6 +75,41 @@ def _make_type3(transport: FakeBulkTransport,
         orientations=(0, 90, 180, 270),
     )
     return HidLcd(info, transport)
+
+
+class _WarframeSeHidTransport(FakeBulkTransport):
+    """HID-report transport selected for 0416:5302 bcdDevice 4.07."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.open_calls = 0
+        self.close_calls = 0
+        self.fail_next_write = False
+        self.raise_on_write = False
+
+    @property
+    def device_release(self) -> int | None:
+        return 0x0407
+
+    @property
+    def uses_hid_reports(self) -> bool:
+        return True
+
+    def open(self) -> bool:
+        self.open_calls += 1
+        return super().open()
+
+    def close(self) -> None:
+        self.close_calls += 1
+        super().close()
+
+    def write(self, endpoint: int, data: bytes, timeout_ms: int = 100) -> int:
+        if self.raise_on_write:
+            raise OSError(5, "Input/output error")
+        if self.fail_next_write:
+            self.fail_next_write = False
+            return 0
+        return super().write(endpoint, data, timeout_ms)
 
 
 # ── Type 2: PM byte derives resolution + profile ──────────────────────
@@ -135,6 +170,56 @@ def test_type2_pm_sub_compound_uses_correct_fbl(
     assert result.resolution == (1600, 720)
     assert result.pm_byte == 1
     assert result.sub_byte == 48
+
+
+def test_warframe_se_407_opens_one_no_init_portrait_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 4.07 firmware must not receive the rebooting Type-2 init packet."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", lambda _: None)
+    transport = _WarframeSeHidTransport()
+    device = _make_type2(transport)
+
+    result = device.connect()
+
+    assert transport.open_calls == 1
+    assert transport.writes == []
+    assert result.pm_byte == 58
+    assert result.sub_byte == 0
+    assert result.resolution == (240, 320)
+    assert device.profile == DeviceProfile(240, 320)
+    assert device.needs_keepalive is True
+    assert device.keepalive_interval == 1.0
+    assert device.reconnect_on_send_error is False
+
+
+def test_warframe_se_407_retries_hid_backpressure_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero-length hidapi write gets the reporter-proven 10ms retry."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", lambda _: None)
+    transport = _WarframeSeHidTransport()
+    device = _make_type2(transport)
+    device.connect()
+    transport.fail_next_write = True
+
+    assert device.send(b"\x00" * 100) is True
+    assert len(transport.writes) == 1
+
+
+def test_warframe_se_407_send_error_does_not_reopen_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Close+reopen wedges this firmware until physical USB replug."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", lambda _: None)
+    transport = _WarframeSeHidTransport()
+    device = _make_type2(transport)
+    device.connect()
+    transport.raise_on_write = True
+
+    assert device.send(b"\x00" * 100) is False
+    assert transport.open_calls == 1
+    assert transport.close_calls == 0
 
 
 # ── Type 3: FBL byte derives resolution + profile ─────────────────────
@@ -366,6 +451,18 @@ def test_type2_rejects_wrong_magic(fake_bulk: FakeBulkTransport) -> None:
 
     with pytest.raises(HandshakeError):
         device.connect()
+
+
+def test_type2_accepts_short_pm_sub_reply(fake_bulk: FakeBulkTransport) -> None:
+    """Some Type-2 firmware returns only magic + SUB + PM + two zero bytes."""
+    fake_bulk.read_script.append(_TYPE2_MAGIC + b"\x00\x3a\x00\x00")
+    device = _make_type2(fake_bulk)
+
+    result = device.connect()
+
+    assert result.pm_byte == 58
+    assert result.sub_byte == 0
+    assert result.fbl == 58
 
 
 def test_type3_rejects_short_response(fake_bulk: FakeBulkTransport) -> None:

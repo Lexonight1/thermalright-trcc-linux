@@ -5,8 +5,15 @@ chunking) with fake transports — no USB, no ioctl.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
+from trcc.adapters.device import transport as transport_module
 from trcc.adapters.device.scsi_lcd import ScsiLcd
+from trcc.adapters.device.transport import HidApiTransport, PyUsbBulkTransport
 from trcc.adapters.device.usb_bot_scsi import UsbBotScsiTransport
+from trcc.adapters.system import linux
 from trcc.core.models import Kind, ProductInfo, Wire
 
 
@@ -107,3 +114,69 @@ def test_usb_bot_scsi_fails_on_non_zero_csw(fake_bulk) -> None:
     ok = transport.send_cdb(b"\xF5" + b"\x00" * 15, b"x")
 
     assert ok is False
+
+
+def test_hidapi_transport_uses_classic_open_and_normalizes_report_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """hid.device() opens separately and counts the report ID byte."""
+    instances = []
+
+    class FakeHidDevice:
+        def __init__(self) -> None:
+            self.opened = None
+            self.nonblocking = None
+            instances.append(self)
+
+        def open(self, vid: int, pid: int) -> None:
+            self.opened = (vid, pid)
+
+        def set_nonblocking(self, value: int) -> None:
+            self.nonblocking = value
+
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(transport_module, "HIDAPI_AVAILABLE", True)
+    monkeypatch.setattr(
+        transport_module,
+        "hidapi",
+        SimpleNamespace(device=FakeHidDevice),
+        raising=False,
+    )
+    transport = HidApiTransport(0x0416, 0x5302, device_release=0x0407)
+
+    assert transport.open() is True
+    assert instances[0].opened == (0x0416, 0x5302)
+    assert instances[0].nonblocking == 0
+    assert transport.write(0x02, b"x" * 512) == 512
+    assert transport.uses_hid_reports is True
+    assert transport.device_release == 0x0407
+
+
+def test_linux_selects_hidapi_only_for_warframe_se_release_407(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Other 0416:5302 firmware revisions stay on the existing libusb path."""
+    sentinel = object()
+    monkeypatch.setattr(
+        linux,
+        "usb_find",
+        lambda **_: SimpleNamespace(bcdDevice=0x0407),
+    )
+    monkeypatch.setattr(linux, "HidApiTransport", lambda *_, **__: sentinel)
+
+    assert linux.LinuxPlatform().open_bulk(0x0416, 0x5302) is sentinel
+
+    monkeypatch.setattr(
+        linux,
+        "usb_find",
+        lambda **_: SimpleNamespace(bcdDevice=0x0406),
+    )
+    assert isinstance(
+        linux.LinuxPlatform().open_bulk(0x0416, 0x5302),
+        PyUsbBulkTransport,
+    )

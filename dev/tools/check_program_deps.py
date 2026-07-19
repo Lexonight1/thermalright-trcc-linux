@@ -70,6 +70,7 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
     "numpy":            ("python-numpy", "python3-numpy", "python3-numpy"),
     "psutil":           ("python-psutil", "python3-psutil", "python3-psutil"),
     "pyusb":            ("python-pyusb", "python3-pyusb", "python3-usb"),
+    "hidapi":           ("python-hidapi", "python3-hidapi", "python3-hidapi"),
     "pyudev":           ("python-pyudev", "python3-pyudev", "python3-pyudev"),
     "click":            ("python-click", "python3-click", "python3-click"),
     "typer":            ("python-typer", "python3-typer", "python3-typer"),
@@ -94,6 +95,7 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
 # check ("who provides pynvml?") cannot be fooled that way.
 _IMPORT_NAME = {
     "nvidia-ml-py": "pynvml",
+    "hidapi": "hid",
     "python-multipart": "multipart",
     "PySide6": "PySide6",
     "prompt_toolkit": "prompt_toolkit",

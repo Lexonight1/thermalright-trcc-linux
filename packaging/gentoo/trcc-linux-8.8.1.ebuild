@@ -17,13 +17,14 @@ S="${WORKDIR}/thermalright-trcc-linux-${PV}"
 LICENSE="GPL-3"
 SLOT="0"
 KEYWORDS="~amd64 ~x86"
-IUSE="nvidia wayland hid"
+IUSE="nvidia wayland"
 
 RDEPEND="
 	dev-python/pyside6[${PYTHON_USEDEP}]
 	dev-python/numpy[${PYTHON_USEDEP}]
 	dev-python/psutil[${PYTHON_USEDEP}]
 	dev-python/pyusb[${PYTHON_USEDEP}]
+	dev-python/hidapi[${PYTHON_USEDEP}]
 	dev-python/click[${PYTHON_USEDEP}]
 	dev-python/typer[${PYTHON_USEDEP}]
 	dev-python/fastapi[${PYTHON_USEDEP}]
@@ -36,7 +37,6 @@ RDEPEND="
 		dev-python/dbus-python[${PYTHON_USEDEP}]
 		dev-python/pygobject[${PYTHON_USEDEP}]
 	)
-	hid? ( dev-python/hidapi[${PYTHON_USEDEP}] )
 "
 BDEPEND="
 	dev-python/hatchling[${PYTHON_USEDEP}]
