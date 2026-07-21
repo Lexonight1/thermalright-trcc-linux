@@ -410,6 +410,7 @@ def test_display_resolves_background_from_playback_when_present(
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
 
     info = ProductInfo(
@@ -442,6 +443,7 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
 
     # Build a theme dir with a background image
@@ -563,6 +565,7 @@ def test_video_cache_frames_byte_identical_to_direct_build(
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
     info = ProductInfo(
         vid=0x0402, pid=0x3922,
@@ -626,6 +629,7 @@ def test_video_cache_builds_once_then_serves_lookups(
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
     info = ProductInfo(
         vid=0x0402, pid=0x3922,
@@ -684,6 +688,7 @@ def test_build_preview_surface_uses_the_video_cache(tmp_home: Path) -> None:
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
     info = ProductInfo(
         vid=0x0402, pid=0x3922,
@@ -742,6 +747,7 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
+        paths=FakePaths(tmp_home),
     )
     info = ProductInfo(
         vid=0x0402, pid=0x3922,

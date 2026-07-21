@@ -275,6 +275,7 @@ class LCDHandler(BaseHandler):
         self._restore_rotation(ds)
         self._restore_split_mode(ds, w, h)
         self._restore_slideshow(ds)
+        self._update_device_info()
 
         if auto_loaded:
             return
@@ -286,6 +287,27 @@ class LCDHandler(BaseHandler):
         self.log.info("_on_data_ready: refreshing dirs and theme lists")
         auto_loaded = self._update_theme_directories()
         self.log.info("_on_data_ready: done, auto_loaded=%s", auto_loaded)
+
+    def _update_device_info(self) -> None:
+        """Populate the selectable fingerprint line for the active device.
+
+        Name · vid:pid · FBL/PM/SUB — the handshake bytes read straight from
+        ``device.handshake`` (same source as the qtgui device inspector), so a
+        user can copy the line into a bug report / porting note.  LED devices
+        have no LCD handshake; the profile-only fields still identify them.
+        """
+        from ...core.protocol import pm_to_fbl
+
+        info = self._device.info
+        parts = [info.product, info.key]
+        hs = self._device.handshake
+        if hs is not None:
+            fbl = hs.fbl if hs.fbl is not None else pm_to_fbl(
+                hs.pm_byte, hs.sub_byte)
+            parts += [f"FBL {fbl}", f"PM {hs.pm_byte}", f"SUB {hs.sub_byte}"]
+        text = "  ·  ".join(parts)
+        self.log.info("_update_device_info: %s", text)
+        self._w['device_info_label'].setText(text)
 
     def _restore_brightness(self, ds: DeviceSettings) -> None:
         self._pm.brightness_level = ds.brightness

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         LedHandshakeResult,
         ProductInfo,
         RawFrame,
+        RenderContent,
         SensorReading,
         UsbPowerState,
     )
@@ -574,6 +575,12 @@ class SensorEnumerator(ABC):
     # selected GPU drives the metric regardless of which UI made the choice.
     _preferred_gpu_key: str | None = None
 
+    # Dedupe key for the "preferred GPU absent" warning: ``primary_gpu`` runs
+    # every tick, so we warn ONCE per distinct missing key (reset when the
+    # preferred GPU reappears or the preference changes) instead of per poll —
+    # otherwise one stale preference floods the log with identical lines.
+    _warned_missing_gpu_key: str | None = None
+
     # ── Structured access ───────────────────────────────────────────
     @abstractmethod
     def cpu(self) -> CpuSource: ...
@@ -595,6 +602,8 @@ class SensorEnumerator(ABC):
         log.info("set_preferred_gpu: %s -> %s",
                  self._preferred_gpu_key, normalized)
         self._preferred_gpu_key = normalized
+        # A fresh choice re-arms the missing-GPU warning.
+        self._warned_missing_gpu_key = None
 
     def primary_gpu(self) -> GpuSource | None:
         """The user-preferred GPU if one is set and still present, else the
@@ -603,9 +612,15 @@ class SensorEnumerator(ABC):
         if self._preferred_gpu_key is not None:
             for gpu in gpus:
                 if gpu.key == self._preferred_gpu_key:
+                    # Preferred is back — re-arm the warning for a future drop.
+                    self._warned_missing_gpu_key = None
                     return gpu
-            log.warning("primary_gpu: preferred %s not among %s — auto-picking",
-                        self._preferred_gpu_key, [g.key for g in gpus])
+            # Runs every tick; warn once per distinct missing key (see field).
+            if self._warned_missing_gpu_key != self._preferred_gpu_key:
+                log.warning(
+                    "primary_gpu: preferred %s not among %s — auto-picking",
+                    self._preferred_gpu_key, [g.key for g in gpus])
+                self._warned_missing_gpu_key = self._preferred_gpu_key
         for gpu in gpus:
             if gpu.is_discrete:
                 return gpu
@@ -904,6 +919,86 @@ class Renderer(ABC):
         raise NotImplementedError(
             "get_pixels_rgb not implemented on this Renderer",
         )
+
+    # ── Frame assembly (Template Method) ──────────────────────────────
+    # Consolidation increment 2c: the single compose→encode skeleton, shared
+    # by every wire.  Concrete here (reuses the abstract primitives above);
+    # `DisplayService` resolves the `RenderContent`, owns caching / sensors /
+    # brightness / split-mode / preview capture, and wraps this core.  Returns
+    # the encoded PAYLOAD — the device adapter adds its own wire header.
+    def build_frame(
+        self,
+        profile: DeviceProfile,
+        content: RenderContent,
+        orientation: int,
+        content_is_portrait: bool,
+    ) -> bytes:
+        """Compose one oriented frame and encode its wire payload.
+
+        Fixed skeleton (Template Method): pick the oriented compose canvas, fit
+        the background (the C# native-or-black width test — increment 2b),
+        composite the overlay, apply the single wire rotation, encode.  The
+        geometry decision (:func:`plan_orientation`) and wire angle
+        (:func:`wire_angle`) are the shared pure functions the live
+        ``DisplayService.build_frame`` already keys on, so this is behaviour-
+        preserving by construction.
+        """
+        from .geometry import plan_orientation
+        from .protocol import wire_angle
+
+        plan = plan_orientation(profile, orientation, content_is_portrait)
+        canvas = self.create_surface(
+            plan.canvas[0], plan.canvas[1], color=(0, 0, 0, 255),
+        )
+        canvas = self.bg_fit(canvas, content)
+        if content.overlay is not None:
+            canvas = self.composite(canvas, content.overlay, position=(0, 0))
+        if plan.post_rotate:
+            canvas = self.rotate(canvas, plan.post_rotate)
+        else:
+            angle = wire_angle(profile, orientation, plan.is_portrait_content)
+            if angle % 360:
+                canvas = self.rotate(canvas, angle)
+        return self.encode_payload(canvas, profile)
+
+    def bg_fit(self, canvas: Any, content: RenderContent) -> Any:
+        """Draw the background onto ``canvas`` — the C# native-or-black rule.
+
+        Program/cloud content (``UCScreenImage.cs:824-834``): native at (0,0)
+        when it fits the canvas width, else the canvas stays solid black — never
+        letterboxed.  User uploads arrive pre-fitted from ``DisplayService`` and
+        are composited as-is.  ``None`` background → solid black.
+        """
+        if content.background is None:
+            log.debug("bg_fit: no background source → solid black canvas")
+            return canvas
+        src_w, src_h = self.surface_size(content.background)
+        dst_w, dst_h = self.surface_size(canvas)
+        if content.background_is_user:
+            log.debug("bg_fit: user background %dx%d composited as-is",
+                      src_w, src_h)
+            return self.composite(canvas, content.background, position=(0, 0))
+        if src_w <= dst_w + 2:
+            log.debug("bg_fit: program background %dx%d ≤ canvas %dx%d → "
+                      "native at (0, 0)", src_w, src_h, dst_w, dst_h)
+            return self.composite(canvas, content.background, position=(0, 0))
+        log.warning("bg_fit: program background %dx%d exceeds canvas %dx%d → "
+                    "solid black (C# width test, no letterbox); bg not shown "
+                    "at this orientation", src_w, src_h, dst_w, dst_h)
+        return canvas
+
+    def encode_payload(self, surface: Any, profile: DeviceProfile) -> bytes:
+        """Encode the composed surface to the wire payload.
+
+        Mirrors ``DisplayService._encode_for_wire``: a fixed hardware-mount
+        baseline (``encode_baseline`` — FW360 PM=6 → 180°) pre-rotates the wire
+        frame, then JPEG or RGB565 per the profile.
+        """
+        if profile.encode_baseline:
+            surface = self.rotate(surface, profile.encode_baseline)
+        if profile.jpeg:
+            return self.encode_jpeg(surface)
+        return self.encode_rgb565(surface, profile.byte_order)
 
     # ── Fonts ─────────────────────────────────────────────────────────
     def list_fonts(self) -> list[str]:

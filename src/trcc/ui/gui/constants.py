@@ -196,6 +196,10 @@ class Layout:
     TAB_CLOUD = (682, 90, 50, 38)
     TAB_SETTINGS = (882, 90, 50, 38)
 
+    # Device fingerprint line — selectable/copyable, beneath the rotation row
+    # (preview ends y=648; the bottom control row sits at y=680).
+    DEVICE_INFO = (16, 712, 500, 44)
+
     # Bottom control buttons (within form_container)
     ROTATION_COMBO = (39, 680, 108, 24)
     BRIGHTNESS_BTN = (157, 680, 52, 24)

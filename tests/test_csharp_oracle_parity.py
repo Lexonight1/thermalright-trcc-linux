@@ -148,6 +148,7 @@ def test_oracle_tables_are_not_silently_empty() -> None:
     assert len(_CSHARP_BULK_WIRE_ANGLES) >= 6
     for _, _, angles in _CSHARP_BULK_WIRE_ANGLES:
         assert sorted(angles) == [0, 90, 180, 270]
+    assert sorted(_CSHARP_360_FAN_ANGLES) == [0, 90, 180, 270]
 
 
 # ── The COMPOSED wire angle, per real bulk handshake fingerprint ──────────
@@ -213,3 +214,44 @@ def test_bulk_wire_angle_matches_the_csharp(
             f"{profile.height} {'JPEG' if profile.jpeg else 'RGB565'}) at "
             f"display angle {orientation}°: we send {got}°, the C# sends {want}°"
         )
+
+
+# ── FBL 54 360×360 fan-hub LCD — the ONE family that diverges from the C# ──
+#
+# 360×360 matches NO resolution guard in either C# rotation switch:
+#   * ImageToJpg (isFanLcd → mode 2 → JPEG) tests `is320x320 || is480x480`
+#   * ImageTo565 tests `is240x240 || is320x320 || is480x480`
+# so it falls through to the DEFAULT branch → BASE 90 (FormCZTV.cs:2706-2710,
+# 0:90 90:0 180:270 270:180).  Our ``wire_rotation`` lumps 360 with the other
+# squares (BASE 0), so we send every frame 90° rotated from the C#.  Confirmed
+# the sole divergence by ``dev/decompiler/rotation_trace.py`` (18/19 devices
+# agree).
+#
+# xfail(strict) — NOT a hard failure and NOT a loosened assertion.  The assertion
+# below is the true C# value; the marker records that our shipping code does not
+# match it *yet*, deliberately: there is no 360×360 reporter to confirm which way
+# is upright on glass, and flipping a device path blind breaks "no definites
+# without hardware".  When ``wire_rotation`` is corrected to base 90 (or a 360
+# owner confirms it), this XPASSES → strict turns that into a failure → delete the
+# marker and the drift is closed.  Do not remove this test to make CI quiet.
+_CSHARP_360_FAN_ANGLES: dict[int, int] = {0: 90, 90: 0, 180: 270, 270: 180}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="360x360 fan-hub (FBL 54) hits the C# ImageToJpg DEFAULT branch "
+    "(base 90, FormCZTV.cs:2706); wire_rotation sends base 0. No 360 reporter "
+    "to confirm on glass — see dev/decompiler/rotation_trace.py. Fix = base 90 "
+    "in wire_rotation, then drop this marker.",
+)
+def test_360_fan_hub_matches_the_csharp_default_branch() -> None:
+    """The 360×360 fan-hub wire angle must equal the C# default-branch switch.
+
+    FBL 54 is square + JPEG but is excluded from BOTH rotation switches' square
+    guards, so the C# rotates it via the default branch (base 90).  Currently
+    xfailing: our table gives base 0.  This is the CI tripwire for that drift.
+    """
+    profile = get_profile(54, 54)
+    got = {deg: wire_angle(profile, deg, portrait_content=False)
+           for deg in (0, 90, 180, 270)}
+    assert got == _CSHARP_360_FAN_ANGLES

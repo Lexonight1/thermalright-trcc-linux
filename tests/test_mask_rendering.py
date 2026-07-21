@@ -122,13 +122,16 @@ def settings(tmp_home: Path) -> Settings:
 
 
 @pytest.fixture
-def display(renderer: RecordingRenderer, settings: Settings) -> DisplayService:
+def display(
+    renderer: RecordingRenderer, settings: Settings, tmp_home: Path,
+) -> DisplayService:
     return DisplayService(
         renderer=renderer,
         themes=ThemeService(),
         overlay=_StubOverlay(renderer),
         settings=settings,
         media=MediaService(),
+        paths=FakePaths(tmp_home),
     )
 
 
@@ -328,7 +331,7 @@ def test_mask_state_change_rebuilds_bg_layer(
 
 
 def _display_real(
-    renderer: RecordingRenderer, settings: Settings,
+    renderer: RecordingRenderer, settings: Settings, tmp_home: Path,
 ) -> DisplayService:
     """DisplayService wired with the REAL OverlayService (draws text)."""
     return DisplayService(
@@ -337,6 +340,7 @@ def _display_real(
         overlay=OverlayService(renderer),
         settings=settings,
         media=MediaService(),
+        paths=FakePaths(tmp_home),
     )
 
 
@@ -363,7 +367,7 @@ def test_theme_only_draws_each_element_once(
     renderer: RecordingRenderer, settings: Settings, tmp_home: Path,
 ) -> None:
     """With no user edits the theme's one label draws exactly once."""
-    _display_real(renderer, settings).build_frame(
+    _display_real(renderer, settings, tmp_home).build_frame(
         info=_info(), theme=_theme_with_one_label(tmp_home), sensors={},
     )
     assert _text_draws(renderer) == [(10, 10, "CPU")]
@@ -382,7 +386,7 @@ def test_user_edit_replaces_theme_element_no_duplicate(
     settings.set_user_overlay_elements(_KEY, [
         OverlayElement(id="t0", type="text", x=50, y=50, text="CPU"),
     ])
-    _display_real(renderer, settings).build_frame(
+    _display_real(renderer, settings, tmp_home).build_frame(
         info=_info(), theme=_theme_with_one_label(tmp_home), sensors={},
     )
     draws = _text_draws(renderer)

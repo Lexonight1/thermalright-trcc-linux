@@ -31,9 +31,10 @@ from ..core.models import (
     FitMode,
     ProductInfo,
     RawFrame,
+    RenderContent,
     Theme,
 )
-from ..core.ports import Renderer
+from ..core.ports import Paths, Renderer
 from ..core.protocol import (
     DeviceProfile,
     get_profile,
@@ -139,12 +140,18 @@ class DisplayService:
         overlay: OverlayService,
         settings: Settings,
         media: MediaService,
+        paths: Paths,
     ) -> None:
         self._r = renderer
         self._themes = themes
         self._overlay = overlay
         self._settings = settings
         self._media = media
+        # Content origin (program/cloud vs user upload) drives the theme-bg
+        # fill rule: program content is authored-for-canvas → the C# native-
+        # or-black width test (no letterbox); user content keeps fit_mode
+        # scaling.  Same axis as the PlayVideo decode-size gate.
+        self._paths = paths
         self._scenes: dict[str, SceneCache] = {}
         # Per-device pre-composited animation-frame cache (bg+mask for
         # every video frame, built once).  Decouples the animation loop
@@ -864,17 +871,39 @@ class DisplayService:
             if source is not None:
                 src_w, src_h = self._r.surface_size(source)
                 dst_w, dst_h = visual_size
-                fit_w, fit_h, off_x, off_y = _fit(
-                    s.fit_mode, src_w, src_h, dst_w, dst_h,
+                is_user = (
+                    theme.path is not None
+                    and Path(theme.path).is_relative_to(
+                        self._paths.user_content_dir()
+                    )
                 )
-                log.debug(
-                    "build_bg_mask %s: background %dx%d → fit %s → %dx%d at (%d, %d)",
-                    info.key, src_w, src_h,
-                    s.fit_mode.value if hasattr(s.fit_mode, "value") else s.fit_mode,
-                    fit_w, fit_h, off_x, off_y,
-                )
-                fitted = self._r.resize(source, fit_w, fit_h)
-                canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
+                if is_user:
+                    # User upload — native resolution; honor the user's chosen
+                    # fit_mode (scale/letterbox as selected).
+                    fit_w, fit_h, off_x, off_y = _fit(
+                        s.fit_mode, src_w, src_h, dst_w, dst_h,
+                    )
+                    log.debug(
+                        "build_bg_mask %s: user background %dx%d → fit %s → "
+                        "%dx%d at (%d, %d)",
+                        info.key, src_w, src_h,
+                        s.fit_mode.value if hasattr(s.fit_mode, "value")
+                        else s.fit_mode,
+                        fit_w, fit_h, off_x, off_y,
+                    )
+                    fitted = self._r.resize(source, fit_w, fit_h)
+                    canvas = self._r.composite(
+                        canvas, fitted, position=(off_x, off_y),
+                    )
+                else:
+                    # Program/cloud content — the C# native-or-black width test,
+                    # shared with Renderer.build_frame (increment 2c): native at
+                    # (0,0) when it fits the canvas width, else solid black.
+                    # bg_fit logs the native/black branch (incl. the drop warn).
+                    canvas = self._r.bg_fit(
+                        canvas,
+                        RenderContent(source, None, background_is_user=False),
+                    )
             else:
                 log.warning(
                     "build_bg_mask %s: no background source resolved for theme %r — "
@@ -1312,17 +1341,12 @@ class DisplayService:
         return DeviceProfile(width=w, height=h, jpeg=False, rotate=False)
 
     def _encode_for_wire(self, surface: Any, profile: DeviceProfile) -> bytes:
-        # Device-only encode baseline: panels with a fixed hardware-mount
-        # rotation (FW360 PM=6 → 180°) need their WIRE frame pre-rotated so the
-        # glass reads upright.  This is the single chokepoint every send path
-        # funnels through; the preview path never calls it, so the GUI preview
-        # stays upright — exactly the reporter's ask.  rotate() returns a new
-        # surface, so the caller's stored preview_surface is untouched. (#137)
-        if profile.encode_baseline:
-            surface = self._r.rotate(surface, profile.encode_baseline)
-        if profile.jpeg:
-            return self._r.encode_jpeg(surface)
-        return self._r.encode_rgb565(surface, profile.byte_order)
+        # The single wire-encode chokepoint every send path funnels through;
+        # the preview path never calls it, so the GUI preview stays upright
+        # (#137).  Delegates to the shared Renderer.encode_payload (increment
+        # 2c): a fixed hardware-mount baseline (FW360 PM=6 → 180°) pre-rotates
+        # the wire frame, then JPEG or RGB565 per the profile.
+        return self._r.encode_payload(surface, profile)
 
 
 # =========================================================================

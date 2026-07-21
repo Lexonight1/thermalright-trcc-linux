@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
@@ -348,6 +348,24 @@ class RawFrame:
     data: bytes
     width: int
     height: int
+
+
+@dataclass(frozen=True, slots=True)
+class RenderContent:
+    """Resolved artwork for one frame — opaque renderer surfaces.
+
+    ``DisplayService`` resolves the active theme into these surfaces
+    (``background`` = the theme background already merged with its mask and,
+    for user uploads, pre-fitted to the canvas; ``overlay`` = the pre-rendered
+    metric/clock overlay) and hands them to ``Renderer.build_frame``, the pure
+    compose→encode Template Method.  Caching, sensors, brightness, split-mode
+    and preview capture stay in ``DisplayService`` — it wraps the core.
+    Surfaces are ``Any`` because the core treats them as opaque handles, exactly
+    like the rest of the ``Renderer`` port; ``None`` background → solid black.
+    """
+    background: Any
+    overlay: Any
+    background_is_user: bool = False
 
 
 class ThemeDir:
