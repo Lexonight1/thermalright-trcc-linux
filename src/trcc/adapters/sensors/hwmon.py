@@ -43,6 +43,16 @@ _CPU_DRIVERS = ("coretemp", "k10temp", "zenpower")
 _AMD_DRIVER = "amdgpu"
 _INTEL_DRIVERS = ("i915", "xe")
 
+# Label-preference order for GPU package temperature.  A fixed
+# read_temp(1) assumes the die sensor lives at temp1_input, but that
+# channel is driver-specific: the Intel `xe` driver (Arc) has no
+# temp1_input at all — its lowest channel is temp2 labelled "pkg", with
+# temp3="vram", temp4="mctrl", temp5="pcie" — so read_temp(1) reads a
+# nonexistent file and _read_int returns None silently.  Resolving by
+# tempN_label instead, package/die sensor first, fixes this without
+# hard-coding a per-driver channel number.
+_GPU_TEMP_LABELS = ("pkg", "gpu", "edge", "vram")
+
 
 # ── Sysfs I/O helpers ────────────────────────────────────────────────
 
@@ -91,6 +101,50 @@ class HwmonDevice:
         """tempN_input reports millidegrees C."""
         val = _read_int(self.path / f"temp{idx}_input")
         return val / 1000.0 if val is not None else None
+
+    def read_temp_labeled(
+        self, prefer: tuple[str, ...] = _GPU_TEMP_LABELS
+    ) -> float | None:
+        """Resolve a temperature by tempN_label instead of a fixed channel.
+
+        Some drivers don't populate temp1 — the Intel ``xe`` (Arc) driver's
+        lowest channel is temp2 labelled ``pkg`` — so a hard-coded
+        ``read_temp(1)`` reads a nonexistent ``temp1_input`` and returns None.
+        This scans the ``tempN_label`` files, returns the ``tempN_input``
+        matching the first preferred label (case-insensitive, exact match so
+        ``vram`` never picks up ``vram_ch_0``), and falls back to the lowest
+        readable ``tempN_input`` when no label matches (drivers that expose no
+        labels at all).  Returns None only when no channel is readable.
+        """
+        by_label: dict[str, int] = {}
+        indices: list[int] = []
+        for input_path in self.path.glob("temp*_input"):
+            try:
+                idx = int(input_path.name[len("temp"):-len("_input")])
+            except ValueError:
+                continue
+            indices.append(idx)
+            label = _read_text(self.path / f"temp{idx}_label")
+            if label is not None:
+                by_label[label.strip().lower()] = idx
+        for want in prefer:
+            idx = by_label.get(want)
+            if idx is None:
+                continue
+            val = self.read_temp(idx)
+            if val is not None:
+                log.debug("read_temp_labeled(%s): label %r -> temp%d = %.1f°C",
+                          self.driver, want, idx, val)
+                return val
+        for idx in sorted(indices):
+            val = self.read_temp(idx)
+            if val is not None:
+                log.debug("read_temp_labeled(%s): no preferred label matched, "
+                          "fell back to lowest channel temp%d = %.1f°C",
+                          self.driver, idx, val)
+                return val
+        log.debug("read_temp_labeled(%s): no readable temp*_input", self.driver)
+        return None
 
     def read_fan_rpm(self, idx: int = 1) -> int | None:
         return _read_int(self.path / f"fan{idx}_input")
@@ -384,7 +438,10 @@ class IntelGpu(GpuSource):
         return self._driver == "xe"
 
     def temp(self) -> float | None:
-        return self._hwmon.read_temp(1) if self._hwmon is not None else None
+        # Resolve by tempN_label — the xe (Arc) driver has no temp1_input
+        # (lowest channel is temp2="pkg"), so a fixed read_temp(1) reads a
+        # missing file and yields None (#gpu-temp-empty).
+        return self._hwmon.read_temp_labeled() if self._hwmon is not None else None
 
     def usage(self) -> float | None:
         # i915 exposes gt busy as `gt_cur_freq_mhz` / max ratio — approximate;

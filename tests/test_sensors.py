@@ -359,6 +359,98 @@ def test_discover_dram_temp_skips_node_without_temp1(tmp_path: Path) -> None:
     assert hwmon.discover_dram_temp(devices) == []
 
 
+# ── Label-based GPU temperature resolution (Intel xe / Arc) ──────────
+
+
+def _hwmon_temps(root: Path, dirname: str, driver: str,
+                 channels: dict[int, tuple[int, str | None]]) -> hwmon.HwmonDevice:
+    """Build a hwmon node with arbitrary tempN channels.
+
+    ``channels`` maps channel index -> (millidegrees, label|None).  Unlike
+    ``_hwmon_dir`` this never writes a temp1 unless the caller asks for one,
+    so it can reproduce the xe layout (lowest channel is temp2="pkg").
+    """
+    d = root / dirname
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "name").write_text(f"{driver}\n")
+    for idx, (milli, label) in channels.items():
+        (d / f"temp{idx}_input").write_text(str(milli))
+        if label is not None:
+            (d / f"temp{idx}_label").write_text(f"{label}\n")
+    return hwmon.HwmonDevice(d)
+
+
+# The real Intel Arc Pro B70 (xe driver) channel layout: no temp1 at all,
+# temp2="pkg" is the package/die sensor.  (Trimmed from the 21 real channels.)
+_XE_CHANNELS = {
+    2: (52000, "pkg"),
+    3: (54000, "vram"),
+    4: (40000, "mctrl"),
+    5: (54000, "pcie"),
+    6: (50000, "vram_ch_0"),
+}
+
+
+def test_read_temp1_is_none_on_xe_layout(tmp_path: Path) -> None:
+    """Regression: the old read_temp(1) reads a nonexistent temp1_input."""
+    dev = _hwmon_temps(tmp_path, "hwmon8", "xe", _XE_CHANNELS)
+
+    assert dev.read_temp(1) is None
+
+
+def test_read_temp_labeled_prefers_pkg_on_xe(tmp_path: Path) -> None:
+    """Package sensor (temp2='pkg') resolves via label, not channel number."""
+    dev = _hwmon_temps(tmp_path, "hwmon8", "xe", _XE_CHANNELS)
+
+    assert dev.read_temp_labeled() == 52.0
+
+
+def test_read_temp_labeled_exact_match_not_substring(tmp_path: Path) -> None:
+    """'vram' must not select the 'vram_ch_0' channel when no earlier label
+    matches — exact label match only."""
+    dev = _hwmon_temps(tmp_path, "hwmon8", "xe", {
+        3: (54000, "vram"),        # exact 'vram'
+        6: (48000, "vram_ch_0"),   # must be ignored by the 'vram' preference
+    })
+
+    assert dev.read_temp_labeled() == 54.0
+
+
+def test_read_temp_labeled_falls_back_to_lowest_channel(tmp_path: Path) -> None:
+    """A driver exposing temps with no matching label uses the lowest channel."""
+    dev = _hwmon_temps(tmp_path, "hwmon0", "i915", {
+        1: (47000, None),
+        2: (61000, "junction"),   # not in the preference list
+    })
+
+    assert dev.read_temp_labeled() == 47.0
+
+
+def test_read_temp_labeled_none_when_no_channels(tmp_path: Path) -> None:
+    """No temp*_input at all → None (not a crash, not 0.0)."""
+    d = tmp_path / "hwmon8"
+    d.mkdir()
+    (d / "name").write_text("xe\n")
+
+    assert hwmon.HwmonDevice(d).read_temp_labeled() is None
+
+
+def test_intel_arc_temp_reads_package_via_label(tmp_path: Path) -> None:
+    """IntelGpu.temp() now surfaces the xe package temp instead of None."""
+    dev = _hwmon_temps(tmp_path, "hwmon8", "xe", _XE_CHANNELS)
+    gpu = hwmon.IntelGpu(0, dev, drm_card=None, driver="xe")
+
+    assert gpu.key == "intel:arc:0"
+    assert gpu.temp() == 52.0
+
+
+def test_intel_gpu_temp_none_without_hwmon(tmp_path: Path) -> None:
+    """A DRM-only iGPU (no hwmon node) still reports None, not a crash."""
+    gpu = hwmon.IntelGpu(0, None, drm_card=None, driver="i915")
+
+    assert gpu.temp() is None
+
+
 # ── Memory channel clock — SpdClock → memory:clock → mem_clock ───────
 
 
