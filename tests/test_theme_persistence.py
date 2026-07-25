@@ -1271,6 +1271,45 @@ def test_screencast_region_persists_and_is_mutually_exclusive(
     assert app.settings.for_device(_TEST_DEVICE_KEY).screencast_region is None
 
 
+def test_save_theme_references_media_player_uri_and_url(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The media-player source (a local URI or a web URL) is stored in the user
+    library and referenced by URI in the theme; the URL survives verbatim
+    (slashes intact — it is kept a string, never a Path)."""
+    import json as _json
+
+    for name, uri in (("local", "/home/me/clip.mp4"),
+                      ("web", "https://test-streams.mux.dev/x/y.m3u8")):
+        source = _write_theme_with_real_pngs(tmp_home, f"src_{name}")
+        app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+        app.settings.set_media_player_uri(_TEST_DEVICE_KEY, uri)
+
+        assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name=name)).ok
+        saved = user_theme_dir / name
+        manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+        ref = manifest["media_player"]
+        assert ref.startswith("media_player/")
+        mpdir = app.platform.paths().user_media_player_dir() / Path(ref).name
+        assert (mpdir / "config.json").exists()
+        # Ref resolves back to the exact URI/URL (no slash mangling).
+        assert app.themes.media_player_uri(app.themes.load(saved)) == uri
+
+
+def test_media_player_uri_persists_and_is_mutually_exclusive(
+    app: App, tmp_home: Path,
+) -> None:
+    """set_media_player_uri round-trips and clears the other display sources."""
+    del tmp_home
+    app.settings.set_screencast_region(_TEST_DEVICE_KEY, (1, 2, 3, 4, False))
+    app.settings.set_media_player_uri(_TEST_DEVICE_KEY, "rtsp://cam/live")
+    dev = app.settings.for_device(_TEST_DEVICE_KEY)
+    assert dev.media_player_uri == "rtsp://cam/live"
+    assert dev.screencast_region is None          # cleared — mutually exclusive
+    reloaded = Settings(app.platform.paths())
+    assert reloaded.for_device(_TEST_DEVICE_KEY).media_player_uri == "rtsp://cam/live"
+
+
 # ─────────────────────────────────────────────────────────────────────
 # ExportTheme Command
 # ─────────────────────────────────────────────────────────────────────

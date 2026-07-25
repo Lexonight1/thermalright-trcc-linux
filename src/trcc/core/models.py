@@ -498,6 +498,12 @@ class DeviceSettings:
     # ref and a reload can resume it.  Mutually exclusive with a video/image
     # background (the toggles are).
     screencast_region: tuple[int, int, int, int, bool] | None = None
+    # Active media-player source URI — the display source when the media-player
+    # toggle is on.  A URI: a local path OR a URL/stream (http, https, rtsp, …).
+    # ``None`` = not playing media.  Persisted like ``background_path`` so
+    # SaveTheme can bake it into a theme's ``media_player`` ref and a reload can
+    # resume it.  Mutually exclusive with the other display-source toggles.
+    media_player_uri: str | None = None
     # Show / hide the mask overlay regardless of which mask source is active.
     mask_visible: bool = True
     # Background mode — what fills the LCD behind overlays.  Mirrors

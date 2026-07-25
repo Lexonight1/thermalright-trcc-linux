@@ -321,8 +321,9 @@ class Settings:
         with self._lock:
             dev = self.for_device(key)
             dev.background_path = path
-            if path is not None:
-                dev.screencast_region = None   # toggles are mutually exclusive
+            if path is not None:   # display-source toggles are mutually exclusive
+                dev.screencast_region = None
+                dev.media_player_uri = None
             self._save()
 
     def set_screencast_region(
@@ -340,6 +341,24 @@ class Settings:
             dev.screencast_region = region
             if region is not None:
                 dev.background_path = None
+                dev.media_player_uri = None
+            self._save()
+
+    def set_media_player_uri(self, key: str, uri: str | None) -> None:
+        """Set (or clear with ``None``) the device's media-player source URI.
+
+        A URI — a local path or a URL/stream.  The media-player toggle's
+        persisted state — SaveTheme bakes it into a theme's ``media_player`` ref
+        and a reload resumes it.  Mutually exclusive with the other display
+        sources, so setting it clears the background + screencast.
+        """
+        log.info("set_media_player_uri: key=%s uri=%s", key, uri)
+        with self._lock:
+            dev = self.for_device(key)
+            dev.media_player_uri = uri
+            if uri is not None:
+                dev.background_path = None
+                dev.screencast_region = None
             self._save()
 
     def set_fit_mode(self, key: str, mode: FitMode) -> None:

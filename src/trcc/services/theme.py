@@ -276,6 +276,51 @@ class ThemeService:
             log.warning("screencast_region: bad config %s (%s)", cfg, e)
             return None
 
+    def store_media_player(self, uri: str) -> str:
+        """Store a media-player source URI in the user library; return its ref.
+
+        Writes ``{uri}`` as JSON to ``user_media_player_dir()/<id>/config.json``
+        (``<id>`` = content hash, so identical sources dedup) and returns the
+        ref ``media_player/<id>`` that :meth:`media_player_uri` resolves back.
+        The URI may be a local path or a URL/stream — it is stored verbatim.
+        """
+        if self._paths is None:
+            raise RuntimeError("store_media_player requires paths injection")
+        blob = json.dumps({"uri": uri}, sort_keys=True).encode("utf-8")
+        asset_id = self._content_id(blob)
+        dest_dir = self._paths.user_media_player_dir() / asset_id
+        ref = f"media_player/{asset_id}"
+        cfg = dest_dir / "config.json"
+        if cfg.exists():
+            log.info("store_media_player: dedup hit %s → %s", asset_id, dest_dir)
+            return ref
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        cfg.write_bytes(blob)
+        log.info("store_media_player: wrote %r → %s (ref=%s)", uri, dest_dir, ref)
+        return ref
+
+    def media_player_uri(self, theme: Theme) -> str | None:
+        """Resolve a theme's ``media_player`` ref → its source URI, or None.
+
+        Reads the ``config.json`` written by :meth:`store_media_player`.  Used
+        by LoadTheme to resume a saved media-player source.
+        """
+        ref = theme.config.get("media_player")
+        if not (isinstance(ref, str) and ref):
+            return None
+        resolved = self._resolve_asset_ref(ref)
+        if resolved is None:
+            log.warning("media_player_uri: %s ref %r did not resolve",
+                        theme.name, ref)
+            return None
+        cfg = resolved / "config.json" if resolved.is_dir() else resolved
+        try:
+            uri = json.loads(cfg.read_text(encoding="utf-8"))["uri"]
+            return str(uri) if uri else None
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log.warning("media_player_uri: bad config %s (%s)", cfg, e)
+            return None
+
     def load(self, path: Path) -> Theme:
         """Load a theme directory into a Theme dataclass.
 

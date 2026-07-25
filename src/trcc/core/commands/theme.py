@@ -277,6 +277,23 @@ class LoadTheme(Command[ThemeResult]):
                          if sc.ok else f"Theme '{theme.name}': {sc.message}"),
             )
 
+        # Media-player-backed theme: resume the saved source URI.  A local
+        # file plays through the same PlayVideo pipeline; a URL/stream is
+        # referenced but its continuous-streaming playback is a separate
+        # runtime feature (the one-shot decoder can't roll an infinite stream),
+        # so we persist the ref and let the media-player handler pick it up.
+        media_uri = app.themes.media_player_uri(theme)
+        if media_uri is not None:
+            local = Path(media_uri)
+            if "://" not in media_uri and local.is_file():
+                log.info("LoadTheme: %s media-player local source %s — "
+                         "dispatching PlayVideo", theme.name, local.name)
+                PlayVideo(key=self.key, path=local).execute(app)
+            else:
+                log.info("LoadTheme: %s media-player URL source %r — referenced "
+                         "(streaming playback is a runtime feature)",
+                         theme.name, media_uri)
+
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
         # PlayVideo pipeline so the same VideoStarted event fires for
         # local + cloud + user-loaded videos — UI handler subscribes
@@ -617,6 +634,14 @@ class SaveTheme(Command[ThemeResult]):
             )
             log.info("SaveTheme: screencast region %s → reference %s",
                      s.screencast_region, manifest["screencast"])
+        # Media-player source (a URI — local path or URL/stream) when its toggle
+        # is on — store it in the user library and reference it by URI.
+        if s.media_player_uri:
+            manifest["media_player"] = app.themes.store_media_player(
+                s.media_player_uri,
+            )
+            log.info("SaveTheme: media_player %r → reference %s",
+                     s.media_player_uri, manifest["media_player"])
         return manifest
 
     @staticmethod
