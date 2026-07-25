@@ -194,7 +194,13 @@ class HidLcd(Device[BulkTransport]):
                 view = memoryview(packet)
                 for offset in range(0, len(packet), _USB_BULK_ALIGNMENT):
                     chunk = view[offset:offset + _USB_BULK_ALIGNMENT]
-                    if self._transport.write(_EP_WRITE, chunk, timeout) != len(chunk):
+                    # A SHORT write (< chunk) is the real failure.  On Windows
+                    # the HID driver prepends a 1-byte Report ID, so a full
+                    # 512-byte write reports 513 transferred — that's NOT short,
+                    # it's the whole chunk plus the report byte, so ``>=`` passes
+                    # it (an ``!= len`` check wrongly failed every Windows HID
+                    # Type-2 frame with "short chunk write", #240).
+                    if self._transport.write(_EP_WRITE, chunk, timeout) < len(chunk):
                         log.warning("HidLcd %s: short chunk write at offset %d",
                                     self.info.key, offset)
                         return False

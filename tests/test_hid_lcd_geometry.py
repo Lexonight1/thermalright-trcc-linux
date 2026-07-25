@@ -413,3 +413,41 @@ def test_type3_serial_extracted_from_resp_10_14(
     result = device.connect()
 
     assert result.serial == "ABCDEF01"
+
+
+# ── #240: Windows HID report-id byte in the write count ────────────────
+
+
+class _ReportIdTransport(FakeBulkTransport):
+    """Windows HID: the driver prepends a 1-byte Report ID, so a full write
+    reports len+1 transferred (#240)."""
+
+    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:  # type: ignore[override]
+        return super().write(endpoint, data, timeout_ms) + 1
+
+
+class _ShortTransport(FakeBulkTransport):
+    """A genuinely SHORT write (fewer bytes than the chunk) — the real failure."""
+
+    def write(self, endpoint: int, data, timeout_ms: int = 100) -> int:  # type: ignore[override]
+        return super().write(endpoint, data, timeout_ms) - 1
+
+
+def test_windows_hid_report_id_frame_write_accepted() -> None:
+    """A write reporting len+1 (Windows report-id byte) must NOT be treated as a
+    short chunk write — the Type-2 frame send succeeds (#240)."""
+    t = _ReportIdTransport()
+    t.read_script.append(_type2_response(pm=1))
+    dev = _make_type2(t)
+    dev.connect()
+    assert dev.send(bytes(240 * 320 * 2)) is True
+
+
+def test_short_chunk_write_still_fails() -> None:
+    """A genuinely short write (< chunk size) is still rejected — the fix only
+    tolerates the extra report-id byte, not real short writes."""
+    t = _ShortTransport()
+    t.read_script.append(_type2_response(pm=1))
+    dev = _make_type2(t)
+    dev.connect()
+    assert dev.send(bytes(240 * 320 * 2)) is False
