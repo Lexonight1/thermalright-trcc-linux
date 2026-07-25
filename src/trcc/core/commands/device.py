@@ -932,6 +932,13 @@ class StartScreencast(Command[ScreencastResult]):
         # playback was loaded.
         StopVideo(key=self.key).execute(app)
 
+        # Persist the region as the active display source (clears any
+        # background/video override — the toggles are mutually exclusive) so
+        # SaveTheme can bake it into a theme's ``screencast`` ref and a reload
+        # can resume it.
+        app.settings.set_screencast_region(
+            self.key, (self.x, self.y, self.w, self.h, self.audio),
+        )
         app.events.publish(ScreencastStarted(
             key=self.key,
             x=self.x, y=self.y, w=self.w, h=self.h,
@@ -957,6 +964,7 @@ class StopScreencast(Command[ScreencastResult]):
 
     def execute(self, app: App) -> ScreencastResult:
         log.info("StopScreencast.execute: key=%s", self.key)
+        app.settings.set_screencast_region(self.key, None)
         app.events.publish(ScreencastStopped(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,

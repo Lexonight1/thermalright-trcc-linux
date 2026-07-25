@@ -60,6 +60,7 @@ from .device import (
     ApplyMask,
     PlayVideo,
     SetMaskPosition,
+    StartScreencast,
     StopVideo,
 )
 
@@ -257,6 +258,23 @@ class LoadTheme(Command[ThemeResult]):
                 ok=True, key=self.key, theme_name=theme.name,
                 theme_path=theme_path_str,
                 message=f"Theme '{theme.name}' saved (no Renderer attached)",
+            )
+
+        # Screencast-backed theme: resume the saved screen-capture region as
+        # the display source (mutually exclusive with a video/image bg).
+        region = app.themes.screencast_region(theme)
+        if region is not None:
+            x, y, w, h, audio = region
+            log.info("LoadTheme: %s carries a screencast region %s — "
+                     "dispatching StartScreencast", theme.name, region)
+            sc = StartScreencast(
+                key=self.key, x=x, y=y, w=w, h=h, audio=audio,
+            ).execute(app)
+            return ThemeResult(
+                ok=sc.ok, key=self.key, theme_name=theme.name,
+                theme_path=theme_path_str,
+                message=(f"Theme '{theme.name}' loaded — {sc.message}"
+                         if sc.ok else f"Theme '{theme.name}': {sc.message}"),
             )
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
@@ -590,6 +608,15 @@ class SaveTheme(Command[ThemeResult]):
         mask_ref = self._store_mask(app, theme, s, width, height)
         if mask_ref is not None:
             manifest["mask"] = mask_ref
+        # Screencast is the active display source when the screencast toggle is
+        # on (mutually exclusive with a background/video) — store its region
+        # config in the user library and reference it by URI.
+        if s.screencast_region is not None:
+            manifest["screencast"] = app.themes.store_screencast(
+                s.screencast_region,
+            )
+            log.info("SaveTheme: screencast region %s → reference %s",
+                     s.screencast_region, manifest["screencast"])
         return manifest
 
     @staticmethod

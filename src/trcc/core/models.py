@@ -492,6 +492,12 @@ class DeviceSettings:
     # Set by LoadCloudTheme, cleared by LoadTheme (picking a local
     # theme reverts to its own background).  Survives app restart.
     background_path: str | None = None
+    # Active screencast region (x, y, w, h, audio) — the display source when the
+    # screencast toggle is on.  ``None`` = not screencasting.  Persisted like
+    # ``background_path`` so SaveTheme can bake it into a theme's ``screencast``
+    # ref and a reload can resume it.  Mutually exclusive with a video/image
+    # background (the toggles are).
+    screencast_region: tuple[int, int, int, int, bool] | None = None
     # Show / hide the mask overlay regardless of which mask source is active.
     mask_visible: bool = True
     # Background mode — what fills the LCD behind overlays.  Mirrors

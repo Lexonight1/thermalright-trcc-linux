@@ -23,6 +23,7 @@ from trcc.core.commands import (
 from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import Theme
+from trcc.services.settings import Settings
 from trcc.services.theme import ThemeService
 
 from .conftest import FakePlatform
@@ -1228,6 +1229,46 @@ def test_save_then_reload_resolves_library_assets_not_source(
     assert not (saved / "01.png").exists()
     assert mask.is_relative_to(app.platform.paths().user_mask_dir(w, h))
     assert mask.read_bytes() != (source / "01.png").read_bytes()
+
+
+def test_save_theme_references_screencast_region(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """An active screencast region is stored in the user screencast library and
+    referenced by URI in the saved theme's config; the ref resolves back to the
+    region (the screencast toggle as a saveable theme asset)."""
+    import json as _json
+
+    source = _write_theme_with_real_pngs(tmp_home, "src")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.set_screencast_region(_TEST_DEVICE_KEY, (100, 50, 640, 480, True))
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cast")).ok
+    saved = user_theme_dir / "cast"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    ref = manifest["screencast"]
+    assert ref.startswith("screencast/")
+    # Config lives in the user screencast library, referenced — NOT in the theme.
+    scdir = app.platform.paths().user_screencast_dir() / Path(ref).name
+    assert (scdir / "config.json").exists()
+    assert not (saved / "config.json").exists()
+    # Ref resolves back to the exact region.
+    loaded = app.themes.load(saved)
+    assert app.themes.screencast_region(loaded) == (100, 50, 640, 480, True)
+
+
+def test_screencast_region_persists_and_is_mutually_exclusive(
+    app: App, tmp_home: Path,
+) -> None:
+    """set_screencast_region round-trips through config.json, and setting a
+    background clears it (the four toggles are mutually exclusive)."""
+    del tmp_home
+    app.settings.set_screencast_region(_TEST_DEVICE_KEY, (1, 2, 3, 4, False))
+    reloaded = Settings(app.platform.paths())
+    assert reloaded.for_device(_TEST_DEVICE_KEY).screencast_region == (1, 2, 3, 4, False)
+    # A background override clears the screencast (mutually exclusive).
+    app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/video.mp4")
+    assert app.settings.for_device(_TEST_DEVICE_KEY).screencast_region is None
 
 
 # ─────────────────────────────────────────────────────────────────────

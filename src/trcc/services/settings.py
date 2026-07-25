@@ -319,7 +319,27 @@ class Settings:
         """
         log.info("set_background_path: key=%s path=%s", key, path)
         with self._lock:
-            self.for_device(key).background_path = path
+            dev = self.for_device(key)
+            dev.background_path = path
+            if path is not None:
+                dev.screencast_region = None   # toggles are mutually exclusive
+            self._save()
+
+    def set_screencast_region(
+        self, key: str, region: tuple[int, int, int, int, bool] | None,
+    ) -> None:
+        """Set (or clear with ``None``) the device's active screencast region.
+
+        The screencast toggle's persisted state — SaveTheme bakes it into a
+        theme's ``screencast`` ref and a reload resumes it.  Mutually exclusive
+        with a video/image background, so setting one clears the other.
+        """
+        log.info("set_screencast_region: key=%s region=%s", key, region)
+        with self._lock:
+            dev = self.for_device(key)
+            dev.screencast_region = region
+            if region is not None:
+                dev.background_path = None
             self._save()
 
     def set_fit_mode(self, key: str, mode: FitMode) -> None:
@@ -775,6 +795,10 @@ def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
     bg = kwargs.get("overlay_background")
     if isinstance(bg, list) and len(bg) == 3:
         kwargs["overlay_background"] = (bg[0], bg[1], bg[2])
+    # screencast_region: list[5] → tuple[x, y, w, h, audio]
+    sc = kwargs.get("screencast_region")
+    if isinstance(sc, list) and len(sc) == 5:
+        kwargs["screencast_region"] = (sc[0], sc[1], sc[2], sc[3], bool(sc[4]))
     # user_overlay_elements: list[dict] → list[OverlayElement]
     raw_elements = kwargs.get("user_overlay_elements")
     if isinstance(raw_elements, list):

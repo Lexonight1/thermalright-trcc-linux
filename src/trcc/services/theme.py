@@ -220,6 +220,62 @@ class ThemeService:
                  len(image), "yes" if dc is not None else "no", dest_dir, ref)
         return ref
 
+    def store_screencast(
+        self, region: tuple[int, int, int, int, bool],
+    ) -> str:
+        """Store a screencast region config in the user library; return its ref.
+
+        Writes ``{x, y, w, h, audio}`` as JSON to
+        ``user_screencast_dir()/<id>/config.json`` (``<id>`` = content hash, so
+        identical regions dedup) and returns the ref ``screencast/<id>`` that
+        :meth:`screencast_region` resolves back through ``_resolve_asset_ref``.
+        A screencast is a live capture, so it is not resolution-keyed.
+        """
+        if self._paths is None:
+            raise RuntimeError("store_screencast requires paths injection")
+        x, y, w, h, audio = region
+        blob = json.dumps(
+            {"x": x, "y": y, "w": w, "h": h, "audio": bool(audio)},
+            sort_keys=True,
+        ).encode("utf-8")
+        asset_id = self._content_id(blob)
+        dest_dir = self._paths.user_screencast_dir() / asset_id
+        ref = f"screencast/{asset_id}"
+        cfg = dest_dir / "config.json"
+        if cfg.exists():
+            log.info("store_screencast: dedup hit %s → %s", asset_id, dest_dir)
+            return ref
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        cfg.write_bytes(blob)
+        log.info("store_screencast: wrote %s → %s (ref=%s)",
+                 region, dest_dir, ref)
+        return ref
+
+    def screencast_region(
+        self, theme: Theme,
+    ) -> tuple[int, int, int, int, bool] | None:
+        """Resolve a theme's ``screencast`` ref → (x, y, w, h, audio), or None.
+
+        Reads the ``config.json`` written by :meth:`store_screencast`.  Used by
+        LoadTheme to resume a saved screencast.
+        """
+        ref = theme.config.get("screencast")
+        if not (isinstance(ref, str) and ref):
+            return None
+        resolved = self._resolve_asset_ref(ref)
+        if resolved is None:
+            log.warning("screencast_region: %s ref %r did not resolve",
+                        theme.name, ref)
+            return None
+        cfg = resolved / "config.json" if resolved.is_dir() else resolved
+        try:
+            d = json.loads(cfg.read_text(encoding="utf-8"))
+            return (int(d["x"]), int(d["y"]), int(d["w"]),
+                    int(d["h"]), bool(d["audio"]))
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log.warning("screencast_region: bad config %s (%s)", cfg, e)
+            return None
+
     def load(self, path: Path) -> Theme:
         """Load a theme directory into a Theme dataclass.
 
