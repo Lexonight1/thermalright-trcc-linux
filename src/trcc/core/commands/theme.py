@@ -350,6 +350,15 @@ class LoadTheme(Command[ThemeResult]):
                      if sent else f"Theme '{theme.name}' rendered but send failed"),
         )
 
+def _clear_existing(path: Path) -> None:
+    """Remove any prior entry at *path* — a previous save's symlink or copy —
+    so a fresh link/copy can take its place.  Shared by ``_try_symlink`` and
+    ``_try_copy`` so the replace-then-place idiom lives in one spot.
+    """
+    if path.is_symlink() or path.exists():
+        path.unlink()
+
+
 @dataclass(frozen=True, slots=True)
 class SaveTheme(Command[ThemeResult]):
     """Save the device's CURRENT rendered state as a new theme directory.
@@ -796,8 +805,7 @@ class SaveTheme(Command[ThemeResult]):
         regardless of the theme dir's location.
         """
         try:
-            if link.is_symlink() or link.exists():
-                link.unlink()
+            _clear_existing(link)
             link.symlink_to(asset)
             return True
         except OSError as e:
@@ -816,8 +824,7 @@ class SaveTheme(Command[ThemeResult]):
         """
         import shutil
         try:
-            if dest.is_symlink() or dest.exists():
-                dest.unlink()
+            _clear_existing(dest)
             shutil.copy2(asset, dest)
             return True
         except OSError as e:
