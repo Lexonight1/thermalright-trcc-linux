@@ -87,6 +87,21 @@ def _read_float(path: Path) -> float | None:
         return None
 
 
+def _channel_index(input_name: str, prefix: str) -> int | None:
+    """Parse the channel number N from a ``{prefix}N_input`` hwmon filename
+    (``temp2_input`` → 2, ``fan1_input`` → 1), or None if it doesn't match.
+
+    Single parse for every ``{prefix}*_input`` scan (temp/fan/…) so the
+    filename convention lives in one place.
+    """
+    if not (input_name.startswith(prefix) and input_name.endswith("_input")):
+        return None
+    try:
+        return int(input_name[len(prefix):-len("_input")])
+    except ValueError:
+        return None
+
+
 # ── HwmonDevice — a wrapper around one /sys/class/hwmon/hwmonN dir ──
 
 
@@ -119,9 +134,8 @@ class HwmonDevice:
         by_label: dict[str, int] = {}
         indices: list[int] = []
         for input_path in self.path.glob("temp*_input"):
-            try:
-                idx = int(input_path.name[len("temp"):-len("_input")])
-            except ValueError:
+            idx = _channel_index(input_path.name, "temp")
+            if idx is None:
                 continue
             indices.append(idx)
             label = _read_text(self.path / f"temp{idx}_label")
@@ -531,9 +545,8 @@ def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
     fans: list[FanSource] = []
     for dev in devices:
         for fan_input in sorted(dev.path.glob("fan*_input")):
-            try:
-                idx = int(fan_input.name.replace("fan", "").replace("_input", ""))
-            except ValueError:
+            idx = _channel_index(fan_input.name, "fan")
+            if idx is None:
                 continue
             label = _read_text(dev.path / f"fan{idx}_label")
             fans.append(HwmonFan(dev, idx, label))
