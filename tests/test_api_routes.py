@@ -311,6 +311,20 @@ def test_display_set_brightness_on_valid_key(api_client: TestClient) -> None:
     assert body["percent"] == 50
 
 
+def test_display_media_player_clear(api_client: TestClient) -> None:
+    """SetMediaPlayer with an empty URI clears the source — succeeds without a
+    connected device.  Proves the media-player toggle is unified into the API."""
+    resp = api_client.post(
+        "/devices/0402:3922/display/media-player",
+        json={"uri": ""},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["uri"] == ""
+    assert body["playing"] is False
+
+
 def test_display_send_color_unknown_device_returns_4xx(
     api_client: TestClient,
 ) -> None:

@@ -52,6 +52,7 @@ from ..results import (
     MaskApplyResult,
     MaskPositionResult,
     MaskVisibilityResult,
+    MediaPlayerResult,
     OrientationResult,
     OverlayBackgroundResult,
     OverlayConfigResult,
@@ -969,6 +970,66 @@ class StopScreencast(Command[ScreencastResult]):
         return ScreencastResult(
             ok=True, key=self.key, active=False,
             message=f"screencast stopped on {self.key}",
+        )
+
+@dataclass(frozen=True, slots=True)
+class SetMediaPlayer(Command[MediaPlayerResult]):
+    """Set the device's media-player source — a URI (a resource on the computer)
+    or a URL (a resource on the web / a stream).
+
+    The media-player toggle's Command, sibling to :class:`SetBackground` /
+    :class:`StartScreencast`, so every UI drives it the same way: dispatch,
+    don't reach into settings.  Persists the source in
+    ``DeviceSettings.media_player_uri`` (mutually exclusive with the other
+    display sources) so ``SaveTheme`` can bake it into a theme's ``media_player``
+    ref.  A LOCAL file starts playback through the same :class:`PlayVideo`
+    pipeline; a web URL is referenced (persisted so a save captures it) — its
+    continuous-streaming playback is a separate runtime feature.  Pass an empty
+    ``uri`` to clear the source.
+    """
+    key: str
+    uri: str
+
+    def execute(self, app: App) -> MediaPlayerResult:
+        log.info("SetMediaPlayer.execute: key=%s uri=%r", self.key, self.uri)
+        uri = self.uri.strip()
+        if not uri:
+            app.settings.set_media_player_uri(self.key, None)
+            return MediaPlayerResult(
+                ok=True, key=self.key, uri="", playing=False,
+                message=f"media-player source cleared for {self.key}",
+            )
+        try:
+            app.get(self.key)
+        except DeviceNotFoundError as e:
+            log.warning("SetMediaPlayer.execute: device %s not found: %s",
+                        self.key, e)
+            return MediaPlayerResult(ok=False, key=self.key, uri=uri,
+                                     message=str(e))
+
+        if "://" in uri:   # a web URL / stream
+            app.settings.set_media_player_uri(self.key, uri)
+            log.info("SetMediaPlayer.execute: %r is a web URL — referenced "
+                     "(streaming playback is a runtime feature)", uri)
+            return MediaPlayerResult(
+                ok=True, key=self.key, uri=uri, playing=False,
+                message=(f"media-player source set to {uri} "
+                         "(referenced; streaming playback pending)"),
+            )
+
+        local = Path(uri)   # a resource on the computer
+        if not local.is_file():
+            log.warning("SetMediaPlayer.execute: source does not exist: %s", uri)
+            return MediaPlayerResult(
+                ok=False, key=self.key, uri=uri,
+                message=f"media-player source does not exist: {uri}",
+            )
+        app.settings.set_media_player_uri(self.key, uri)
+        play = PlayVideo(key=self.key, path=local).execute(app)
+        return MediaPlayerResult(
+            ok=play.ok, key=self.key, uri=uri, playing=play.ok,
+            message=(f"media-player playing {local.name}"
+                     if play.ok else play.message),
         )
 
 @dataclass(frozen=True, slots=True)

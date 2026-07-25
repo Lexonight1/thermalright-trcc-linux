@@ -44,6 +44,7 @@ from ...core.commands import (
     SetFitMode,
     SetMaskPosition,
     SetMaskVisible,
+    SetMediaPlayer,
     SetOrientation,
     SetOverlayBackground,
     SetOverlayConfig,
@@ -111,6 +112,8 @@ from .schemas import (
     MaskUploadResponse,
     MaskVisibilityRequest,
     MaskVisibilityResponse,
+    MediaPlayerRequest,
+    MediaPlayerResponse,
     OrientationRequest,
     OrientationResponse,
     OverlayBackgroundRequest,
@@ -544,6 +547,27 @@ def screencast_stop(key: str, request: Request) -> ScreencastResponse:
     return ScreencastResponse(
         ok=result.ok, key=result.key, active=result.active,
         message=result.message,
+    )
+
+
+@router.post("/media-player", response_model=MediaPlayerResponse)
+def media_player(key: str, body: MediaPlayerRequest,
+                 request: Request) -> MediaPlayerResponse:
+    """Set the media-player source for *key* — a local file or a web URL/stream.
+
+    Dispatches :class:`SetMediaPlayer`: a local file plays through the video
+    pipeline; a web URL is referenced (persisted so a theme save captures it).
+    An empty ``uri`` clears the source.
+    """
+    log.info("api POST /devices/{key}/display/media-player: key=%s uri=%s",
+             key, body.uri)
+    result = request.app.state.trcc.dispatch(
+        SetMediaPlayer(key=key, uri=body.uri),
+    )
+    http_error_if_failed(result)
+    return MediaPlayerResponse(
+        ok=result.ok, key=result.key, uri=result.uri,
+        playing=result.playing, message=result.message,
     )
 
 

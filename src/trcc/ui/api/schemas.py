@@ -928,6 +928,20 @@ class ScreencastResponse(ResultBase):
     audio: bool = False
 
 
+class MediaPlayerRequest(BaseModel):
+    """Body for ``POST /devices/{key}/display/media-player``."""
+    uri: str = Field(
+        "", description="A local file path, or a web URL/stream. '' clears.",
+    )
+
+
+class MediaPlayerResponse(ResultBase):
+    """Result of a media-player source request."""
+    key: str = ""
+    uri: str = ""
+    playing: bool = False
+
+
 class VideoStatusResponse(ResultBase):
     """Current playback state for a device's video background override.
 

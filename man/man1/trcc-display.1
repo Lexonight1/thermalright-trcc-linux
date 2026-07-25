@@ -316,6 +316,28 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS media\-player
+.PP
+\fBtrcc display media\-player\fR \fIKEY\fR [\fIURI\fR]
+.PP
+Set the media\-player source  \-  a local file or a web URL/stream. Wraps SetMediaPlayer: a local file plays through the video pipeline; a web URL is referenced (persisted so theme save captures it). An empty URI clears the source.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBURI\fR
+Source: a local file path, or a web URL/stream. '' clears.
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS overlay
 .PP
 \fBtrcc display overlay\fR \fIKEY\fR \fISTATE\fR

@@ -187,6 +187,16 @@ def test_display_set_brightness_persists(cli_runner: CliRunner, cli_app) -> None
     assert result.exit_code == 0
 
 
+def test_display_media_player_clear(cli_runner: CliRunner, cli_app) -> None:
+    """`display media-player <key> ''` clears the source — the media-player
+    toggle unified into the CLI (empty URI needs no connected device)."""
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["display", "media-player", "0402:3922", ""],
+    )
+    assert result.exit_code == 0
+
+
 def test_display_color_auto_connects_then_sends(cli_runner: CliRunner, cli_app) -> None:
     """``display color`` self-connects before sending (#150).
 

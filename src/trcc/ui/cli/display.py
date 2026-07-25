@@ -37,6 +37,7 @@ from ...core.commands import (
     SetFitMode,
     SetMaskPosition,
     SetMaskVisible,
+    SetMediaPlayer,
     SetOrientation,
     SetOverlayBackground,
     SetSlideshow,
@@ -1122,6 +1123,29 @@ def stop_screencast(
     """Stop an active screencast started by another process (daemon/API)."""
     log.info("cli display stop-screencast: key=%s", key)
     dispatch_echo(StopScreencast(key=key))
+
+
+@app.command("media-player")
+def media_player(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    uri: str = typer.Argument(
+        "", help="Source: a local file path, or a web URL/stream. '' clears.",
+    ),
+) -> None:
+    """Set the media-player source — a local file or a web URL/stream.
+
+    Wraps :class:`SetMediaPlayer`: a local file plays through the video
+    pipeline; a web URL is referenced (persisted so ``theme save`` captures it).
+    An empty URI clears the source.
+    """
+    log.info("cli display media-player: key=%s uri=%s", key, uri)
+    app_obj = get_app()
+    if uri:
+        ensure_connected(app_obj, key)
+    result = app_obj.dispatch(SetMediaPlayer(key=key, uri=uri))
+    typer.echo(result.message)
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("snapshot")

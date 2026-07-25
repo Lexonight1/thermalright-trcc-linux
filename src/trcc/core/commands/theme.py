@@ -60,6 +60,7 @@ from .device import (
     ApplyMask,
     PlayVideo,
     SetMaskPosition,
+    SetMediaPlayer,
     StartScreencast,
     StopVideo,
 )
@@ -277,22 +278,15 @@ class LoadTheme(Command[ThemeResult]):
                          if sc.ok else f"Theme '{theme.name}': {sc.message}"),
             )
 
-        # Media-player-backed theme: resume the saved source URI.  A local
-        # file plays through the same PlayVideo pipeline; a URL/stream is
-        # referenced but its continuous-streaming playback is a separate
-        # runtime feature (the one-shot decoder can't roll an infinite stream),
-        # so we persist the ref and let the media-player handler pick it up.
+        # Media-player-backed theme: resume the saved source URI via the same
+        # Command every UI dispatches (restores the setting + plays a local
+        # source; a web URL is referenced — streaming playback is a runtime
+        # feature).
         media_uri = app.themes.media_player_uri(theme)
         if media_uri is not None:
-            local = Path(media_uri)
-            if "://" not in media_uri and local.is_file():
-                log.info("LoadTheme: %s media-player local source %s — "
-                         "dispatching PlayVideo", theme.name, local.name)
-                PlayVideo(key=self.key, path=local).execute(app)
-            else:
-                log.info("LoadTheme: %s media-player URL source %r — referenced "
-                         "(streaming playback is a runtime feature)",
-                         theme.name, media_uri)
+            log.info("LoadTheme: %s carries a media-player source %r — "
+                     "dispatching SetMediaPlayer", theme.name, media_uri)
+            SetMediaPlayer(key=self.key, uri=media_uri).execute(app)
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
         # PlayVideo pipeline so the same VideoStarted event fires for
