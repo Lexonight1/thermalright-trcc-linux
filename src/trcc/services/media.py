@@ -212,10 +212,12 @@ class ZtDecoder:
             int32 : jpeg_size
             bytes : jpeg payload
 
-    Decoded frames are scaled to the requested ``size`` via a single
-    ffmpeg ``jpeg_pipe`` invocation per frame — same approach as
-    legacy.  ``fps`` is derived from the average inter-frame delay
-    (timestamps are absolute ms offsets).
+    Decoded frames are scaled to the requested ``size`` via ONE ffmpeg
+    invocation for the whole sequence — concatenated JPEGs are a valid
+    MJPEG stream, so ``-f mjpeg`` decodes every frame in a single process
+    instead of spawning one ffmpeg per frame (a 5s/24fps clip was 120+
+    process spawns).  ``fps`` is derived from the average inter-frame
+    delay (timestamps are absolute ms offsets).
     """
 
     def __init__(self, path: Path, size: tuple[int, int]) -> None:
@@ -256,6 +258,7 @@ class ZtDecoder:
 
         # Timestamps + JPEG payloads laid out back-to-back.
         pos = 5
+        jpegs: list[bytes] = []
         try:
             self.timestamps = list(
                 struct.unpack_from(f"<{frame_count}i", data, pos)
@@ -268,14 +271,15 @@ class ZtDecoder:
                 if size <= 0 or pos + size > len(data):
                     raise ThemeError(
                         f".zt frame size out of range or truncated at frame "
-                        f"{len(self.frames)}: size={size} pos={pos} "
+                        f"{len(jpegs)}: size={size} pos={pos} "
                         f"file_len={len(data)}"
                     )
-                jpeg = data[pos:pos + size]
+                jpegs.append(data[pos:pos + size])
                 pos += size
-                self.frames.append(self._decode_jpeg(jpeg))
         except struct.error as e:
             raise ThemeError(f".zt parse error in {self.path}: {e}") from e
+
+        self.frames = self._decode_jpegs(jpegs)
 
         # Per-frame delays from timestamps (last frame inherits previous).
         for i, ts in enumerate(self.timestamps):
@@ -295,33 +299,59 @@ class ZtDecoder:
         )
         return self.frames
 
-    def _decode_jpeg(self, jpeg: bytes) -> RawFrame:
-        """One ffmpeg run per JPEG → scaled RGB24 frame."""
+    def _decode_jpegs(self, jpegs: list[bytes]) -> list[RawFrame]:
+        """One ffmpeg run for the WHOLE sequence → scaled RGB24 frames.
+
+        Concatenated JPEGs form a valid MJPEG byte stream — ffmpeg's
+        ``mjpeg`` demuxer scans SOI/EOI markers and decodes each as its
+        own frame, so this replaces what used to be ``len(jpegs)``
+        separate subprocess spawns with exactly one.
+        """
         w, h = self.size
+        frame_bytes = w * h * 3
+        if not jpegs:
+            return []
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "jpeg_pipe", "-i", "pipe:0",
+            "-f", "mjpeg", "-i", "pipe:0",
             "-vf", f"scale={w}:{h}",
             "-f", "rawvideo", "-pix_fmt", "rgb24",
             "pipe:1",
         ]
         try:
             proc = subprocess.run(
-                cmd, input=jpeg, capture_output=True,
-                timeout=10, check=False,
+                cmd, input=b"".join(jpegs), capture_output=True,
+                timeout=max(10, len(jpegs)), check=False,
             )
         except FileNotFoundError as e:
             raise ThemeError("ffmpeg not found on PATH") from e
 
-        if proc.returncode != 0 or not proc.stdout:
+        if proc.returncode != 0:
             stderr = proc.stderr.decode("utf-8", errors="replace").strip()
             log.warning(
-                "ZtDecoder: JPEG decode failed (%s) — substituting blank frame",
-                stderr[:120] or "no stderr",
+                "ZtDecoder: batch JPEG decode failed (%s) — substituting "
+                "%d blank frame(s)", stderr[:200] or "no stderr", len(jpegs),
             )
-            return RawFrame(data=bytes(w * h * 3), width=w, height=h)
+            return [RawFrame(data=bytes(frame_bytes), width=w, height=h)
+                    for _ in jpegs]
 
-        return RawFrame(data=proc.stdout[:w * h * 3], width=w, height=h)
+        out = proc.stdout
+        count = len(out) // frame_bytes
+        frames = [
+            RawFrame(data=out[i * frame_bytes:(i + 1) * frame_bytes],
+                     width=w, height=h)
+            for i in range(count)
+        ]
+        if count < len(jpegs):
+            log.warning(
+                "ZtDecoder: batch decode produced %d frame(s), expected %d "
+                "— padding tail with blank frames", count, len(jpegs),
+            )
+            frames += [RawFrame(data=bytes(frame_bytes), width=w, height=h)
+                       for _ in range(len(jpegs) - count)]
+        elif count > len(jpegs):
+            frames = frames[:len(jpegs)]
+        return frames
 
 
 # =========================================================================
