@@ -125,6 +125,17 @@ class LoadTheme(Command[ThemeResult]):
         # Persist the absolute path — names are display strings, paths
         # are the stable reference RestoreLastTheme needs.
         app.settings.set_current_theme(self.key, str(theme.path.resolve()))
+        # Set the new theme BEFORE StopVideo: StopVideo's VideoStopped
+        # publish is handled synchronously by _DeviceRenderObserver, which
+        # re-renders using whatever theme is currently in ``active_themes``.
+        # If the old (about-to-be-replaced) theme were still active at that
+        # point, and it had a bundled video, DisplayService._resolve_background
+        # would decode + cache that video into MediaService as a side effect
+        # of the read — then LoadTheme's own render just below would see that
+        # stale playback and use it instead of the new theme's background
+        # (animated→static switches silently kept showing the old animation
+        # until a second click finally cleared it).
+        app.active_themes[self.key] = theme
         # Single source of truth for "stop the previous video + clear the
         # cloud-background override + invalidate the scene cache": ``StopVideo``
         # (publishes VideoStopped, clears background_path, unloads playback).
@@ -134,7 +145,6 @@ class LoadTheme(Command[ThemeResult]):
         # background to the theme's bundled one (StopVideo cleared the override).
         if self.reset_overrides:
             StopVideo(key=self.key).execute(app)
-        app.active_themes[self.key] = theme
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
             "LoadTheme: %s loaded — prior playback + cloud-bg override "
@@ -339,6 +349,15 @@ class LoadTheme(Command[ThemeResult]):
             message=(f"Theme '{theme.name}' loaded and sent ({len(frame)} bytes)"
                      if sent else f"Theme '{theme.name}' rendered but send failed"),
         )
+
+def _clear_existing(path: Path) -> None:
+    """Remove any prior entry at *path* — a previous save's symlink or copy —
+    so a fresh link/copy can take its place.  Shared by ``_try_symlink`` and
+    ``_try_copy`` so the replace-then-place idiom lives in one spot.
+    """
+    if path.is_symlink() or path.exists():
+        path.unlink()
+
 
 @dataclass(frozen=True, slots=True)
 class SaveTheme(Command[ThemeResult]):
@@ -635,20 +654,27 @@ class SaveTheme(Command[ThemeResult]):
         width: int,
         height: int,
     ) -> str | None:
-        """Link the resolved current background into the saved theme dir.
+        """Link (image) or copy (video) the resolved background into the
+        saved theme dir.
 
-        Every asset a saved theme uses is a SYMLINK into the shared data tree —
+        A static image background is a SYMLINK into the shared data tree —
         no bytes duplicated; only the DC/config (``trcc.json``) is a real copy
-        edited per save.  The background links in under its standard in-dir name
-        — ``00.png`` for an image, ``Theme.<ext>`` for a video — so the loader
-        finds it by convention and no manifest ref is needed (returns ``None``).
+        edited per save.  A video background is COPIED verbatim instead: a
+        symlinked ``Theme.<ext>`` would go dark if the library asset it
+        points at is later pruned/moved, and videos dedup poorly anyway (see
+        :meth:`_pick_asset` callers), so there's little to lose by making the
+        saved theme's own copy self-contained.  Either way the asset lands
+        under its standard in-dir name — ``00.png`` for an image,
+        ``Theme.<ext>`` for a video — so the loader finds it by convention and
+        no manifest ref is needed (returns ``None``).
 
-        Asset home (the symlink target): a catalog asset (cloud
+        Asset home (the symlink/copy source): a catalog asset (cloud
         ``cloud_theme_dir`` / user ``user_background_dir`` ``web/{w}{h}``) is
-        linked in place; a loose image/video is first stored into the user
-        library (deduped, native res) and the link points there.  On a
-        filesystem WITHOUT symlink support the asset is REFERENCED instead (the
-        ``web/{w}{h}/…`` ref is returned and the loader resolves it).
+        used in place; a loose image/video is first stored into the user
+        library (deduped, native res) and linked/copied from there.  On a
+        filesystem WITHOUT symlink support (image case) or an IO failure
+        (video case) the asset is REFERENCED instead (the ``web/{w}{h}/…``
+        ref is returned and the loader resolves it).
         ``DeviceSettings.background_path`` (override) wins over the source theme.
         """
         src = self._pick_asset(
@@ -684,6 +710,14 @@ class SaveTheme(Command[ThemeResult]):
             canonical = paths.user_background_dir(width, height) / Path(ref).name
 
         in_dir = f"Theme{ext}" if is_video else _LEGACY_BG_FILENAME
+        if is_video:
+            if self._try_copy(target / in_dir, canonical):
+                log.info("SaveTheme: background %s → copy %s → %s",
+                         src.name, in_dir, canonical)
+                return None
+            log.info("SaveTheme: background %s → reference %s (copy failed)",
+                     src.name, ref)
+            return ref
         if self._try_symlink(target / in_dir, canonical):
             log.info("SaveTheme: background %s → symlink %s → %s (no copy)",
                      src.name, in_dir, canonical)
@@ -771,13 +805,31 @@ class SaveTheme(Command[ThemeResult]):
         regardless of the theme dir's location.
         """
         try:
-            if link.is_symlink() or link.exists():
-                link.unlink()
+            _clear_existing(link)
             link.symlink_to(asset)
             return True
         except OSError as e:
             log.info("SaveTheme: symlink %s → %s unavailable (%s) — referencing",
                      link, asset, e)
+            return False
+
+    @staticmethod
+    def _try_copy(dest: Path, asset: Path) -> bool:
+        """Copy *asset* to *dest* verbatim (used for video backgrounds).
+
+        True on success; False on an IO failure, so the caller falls back
+        to a manifest reference — same shape :meth:`_try_symlink` uses.
+        An existing entry at *dest* (a prior save's copy or symlink) is
+        replaced first.
+        """
+        import shutil
+        try:
+            _clear_existing(dest)
+            shutil.copy2(asset, dest)
+            return True
+        except OSError as e:
+            log.info("SaveTheme: copy %s → %s failed (%s) — referencing",
+                     asset, dest, e)
             return False
 
     @staticmethod

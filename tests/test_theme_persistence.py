@@ -878,15 +878,19 @@ def test_resave_onto_self_keeps_in_dir_background(
     assert app.themes.background_path(app.themes.load(saved)) is not None
 
 
-def test_save_theme_references_catalog_background_without_copying(
+def test_save_theme_references_catalog_image_background_without_copying(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """A background already in the cloud/user data catalog is REFERENCED by
-    ``web/{w}{h}/<name>`` — never copied into the theme dir.
+    """A STATIC IMAGE background already in the cloud/user data catalog is
+    REFERENCED by symlink — never copied into the theme dir.  (Video
+    backgrounds are the exception — see
+    ``test_saved_theme_video_background_plays_via_copy`` — a symlinked video
+    would go dark if the library asset is later pruned/moved, so those are
+    copied instead; this test covers the still-symlinked image case.)
 
     The data-ownership model: cloud downloads + user-library assets are
     shared, so the saved theme just points at the existing file (the
-    "symlink in config").  A re-save re-emits the same ref, so the
+    "symlink in config").  A re-save re-emits the same symlink, so the
     background survives overwrite without any copy.
     """
     import json as _json
@@ -894,22 +898,21 @@ def test_save_theme_references_catalog_background_without_copying(
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
-    # A cloud-downloaded video lives under cloud_theme_dir (data_dir/web/{w}{h}).
-    cloud_dir = app.platform.paths().cloud_theme_dir(*_TEST_RES)
-    cloud_dir.mkdir(parents=True, exist_ok=True)
-    cloud_video = cloud_dir / "a023.mp4"
-    video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
-    cloud_video.write_bytes(video_bytes)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+    # A user-library image lives under user_background_dir (data_dir/web/{w}{h}).
+    lib_dir = app.platform.paths().user_background_dir(*_TEST_RES)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    lib_image = lib_dir / "a023.png"
+    lib_image.write_bytes(_png_bytes(red=0x30))
+    app.settings.set_background_path(_TEST_DEVICE_KEY, str(lib_image))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="catref")).ok
     saved = user_theme_dir / "catref"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
     assert "background" not in manifest            # symlinked, not referenced…
-    assert (saved / "Theme.mp4").is_symlink()      # …and not copied
-    assert (saved / "Theme.mp4").resolve() == cloud_video.resolve()
+    assert (saved / "00.png").is_symlink()          # …and not copied
+    assert (saved / "00.png").resolve() == lib_image.resolve()
     assert (app.themes.background_path(app.themes.load(saved)).resolve()
-            == cloud_video.resolve())
+            == lib_image.resolve())
 
     # Re-save onto the same name → symlink persists, still no copy, no loss.
     assert app.dispatch(
@@ -917,7 +920,7 @@ def test_save_theme_references_catalog_background_without_copying(
     ).ok
     manifest2 = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
     assert "background" not in manifest2
-    assert (saved / "Theme.mp4").resolve() == cloud_video.resolve()
+    assert (saved / "00.png").resolve() == lib_image.resolve()
 
 
 def test_save_theme_references_non_catalog_mask_override(
@@ -1013,28 +1016,36 @@ def test_video_path_resolves_referenced_video_background(app: App) -> None:
     assert app.themes.video_path(theme) == vid
 
 
-def test_saved_theme_video_background_plays_via_symlink(
+def test_saved_theme_video_background_plays_via_copy(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     """End-to-end for 'saved themes have no background remembered': a saved
-    theme with a VIDEO background symlinks it in as Theme.mp4, so video_path
-    finds it on reload and LoadTheme plays it — instead of the static path
-    handing an .mp4 to the image renderer (no background)."""
+    theme with a VIDEO background is COPIED in as Theme.mp4 (not symlinked —
+    a video source dedups poorly and a broken symlink would go dark if the
+    library asset is later pruned/moved), so video_path finds it on reload
+    and LoadTheme plays it — instead of the static path handing an .mp4 to
+    the image renderer (no background)."""
     source = _write_theme_with_real_pngs(tmp_home, "src")
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
     cloud_dir = app.platform.paths().cloud_theme_dir(*_TEST_RES)
     cloud_dir.mkdir(parents=True, exist_ok=True)
     cloud_video = cloud_dir / "a023.mp4"
-    cloud_video.write_bytes(b"\x00\x00\x00\x20ftypisom" * 50)
+    video_bytes = b"\x00\x00\x00\x20ftypisom" * 50
+    cloud_video.write_bytes(video_bytes)
     app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="vid")).ok
     saved = user_theme_dir / "vid"
-    assert (saved / "Theme.mp4").is_symlink()
-    # Reload from disk → video_path finds the symlinked video → PlayVideo fires.
+    assert not (saved / "Theme.mp4").is_symlink()
+    assert (saved / "Theme.mp4").read_bytes() == video_bytes
+    # The saved theme survives the library source being removed — proof
+    # it's an independent copy, not a link that would go dark.
+    cloud_video.unlink()
+    # Reload from disk → video_path finds the copied video → PlayVideo fires.
     vp = app.themes.video_path(app.themes.load(saved))
     assert vp is not None
-    assert vp.resolve() == cloud_video.resolve()
+    assert vp.exists()
+    assert vp.read_bytes() == video_bytes
 
 
 def test_save_theme_inlines_mask_overlay_elements_into_manifest(

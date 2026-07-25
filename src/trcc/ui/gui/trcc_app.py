@@ -36,7 +36,6 @@ from ...core.commands import (
     DeleteTheme,
     EnableOverlay,
     ListGpus,
-    PlayVideo,
     SetBackground,
     SetGpuDevice,
     SetHddEnabled,
@@ -1899,13 +1898,16 @@ class TRCCApp(QMainWindow):
         if self._screencast.active:
             self._app.dispatch(StopScreencast(key=h.device_key))
         h.is_background_active = False
-        # ``PlayVideo`` owns the full pipeline: decode, populate
-        # MediaService playback, publish ``VideoStarted`` so the
-        # handler's timer observer takes over.  Overlay-off is part of
-        # "play arbitrary video" UX — disable through the Command bus
-        # so persistence + render chain stays in sync.
+        # ``SetBackground`` persists the pick as the device's background
+        # override THEN delegates to ``PlayVideo`` (decode, populate
+        # MediaService playback, publish ``VideoStarted`` so the handler's
+        # timer observer takes over) — without the persist step a later
+        # ``SaveTheme`` has no override to bake in and the saved theme
+        # reloads without this video.  Overlay-off is part of "play
+        # arbitrary video" UX — disable through the Command bus so
+        # persistence + render chain stays in sync.
         self._app.dispatch(EnableOverlay(key=h.device_key, enabled=False))
-        result = self._app.dispatch(PlayVideo(
+        result = self._app.dispatch(SetBackground(
             key=h.device_key, path=Path(path),
         ))
         if not result.ok:
@@ -2158,10 +2160,14 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
-            # ``PlayVideo`` decodes the .zt, publishes ``VideoStarted``;
-            # handler observer starts the per-frame timer.  Same path
-            # cloud + local video themes take.
-            result = self._app.dispatch(PlayVideo(
+            # ``SetBackground`` persists the .zt as the device's
+            # background override (``DeviceSettings.background_path``)
+            # THEN delegates to ``PlayVideo`` for the decode/animate
+            # pipeline — same as the image cutter's ``_on_image_cut_done``.
+            # Dispatching ``PlayVideo`` directly here (the old code) left
+            # no override for ``SaveTheme`` to bake in, so a saved theme
+            # lost the video and reloaded with a black background.
+            result = self._app.dispatch(SetBackground(
                 key=h.device_key, path=Path(zt_path),
             ))
             if result.ok:

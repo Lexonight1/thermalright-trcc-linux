@@ -308,6 +308,11 @@ def play_video(
     log.info("cli display play-video: key=%s path=%s fps=%s", key, path, fps)
     app_obj = get_app()
     ensure_connected(app_obj, key)
+    # Persist the override BEFORE playing — mirrors ``LoadCloudTheme`` /
+    # ``SetBackground``.  Without this a later ``theme save`` has nothing
+    # in ``DeviceSettings.background_path`` to bake in and the saved
+    # theme reloads with no background.
+    app_obj.settings.set_background_path(key, str(path))
     result = app_obj.dispatch(PlayVideo(key=key, path=path, fps=fps))
     typer.echo(result.message)
     if not result.ok:
