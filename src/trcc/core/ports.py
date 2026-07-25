@@ -808,6 +808,20 @@ class Paths(ABC):
         log.debug("user_mask_dir: %dx%d", width, height)
         return self.user_data_dir() / "web" / f"zt{width}{height}"
 
+    def user_screencast_dir(self) -> Path:
+        """User screencast configs (captured region + params) that a saved
+        theme references.  Not resolution-keyed — a screencast is a live
+        region descriptor, not a per-resolution asset."""
+        log.debug("user_screencast_dir")
+        return self.user_data_dir() / "screencast"
+
+    def user_media_player_dir(self) -> Path:
+        """User media-player configs (source URI) that a saved theme
+        references.  Not resolution-keyed — the source is a path/URL, scaled
+        at play time."""
+        log.debug("user_media_player_dir")
+        return self.user_data_dir() / "media_player"
+
 
 # =========================================================================
 # Renderer — pixel operations (PySide6 on all OSes today)
