@@ -15,6 +15,7 @@ from ...core.commands import (
     GetFirstRunStatus,
     GetPlatformInfo,
     ListDisks,
+    ListFans,
     ListFonts,
     ListGpus,
     ListLanguages,
@@ -33,6 +34,7 @@ from ._shared import (
     to_debug_report_response,
     to_disks_list_response,
     to_doctor_response,
+    to_fans_list_response,
     to_first_run_status_response,
     to_fonts_list_response,
     to_gpus_list_response,
@@ -55,6 +57,7 @@ from .schemas import (
     DebugReportResponse,
     DisksListResponse,
     DoctorResponse,
+    FansListResponse,
     FirstRunStatusResponse,
     FontsListResponse,
     GpusListResponse,
@@ -176,6 +179,18 @@ def list_gpus(request: Request) -> GpusListResponse:
     log.info("api GET /system/gpus")
     result = request.app.state.trcc.dispatch(ListGpus())
     return to_gpus_list_response(result)
+
+
+@router.get("/fans", response_model=FansListResponse)
+def list_fans(request: Request) -> FansListResponse:
+    """List fans the sensors aggregator exposes, with live readings.
+
+    Read-only diagnostic (#145/#207) — snapshot() maps fans to theme slots
+    automatically; this just surfaces what the box exposes.
+    """
+    log.info("api GET /system/fans")
+    result = request.app.state.trcc.dispatch(ListFans())
+    return to_fans_list_response(result)
 
 
 @router.get("/snapshot", response_model=ControlCenterSnapshotResponse)

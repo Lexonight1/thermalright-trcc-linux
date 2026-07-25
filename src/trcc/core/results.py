@@ -381,6 +381,24 @@ class GpusListResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class FanEntry:
+    """One row in a FansListResult — a discovered fan with its live reading.
+
+    ``rpm`` / ``percent`` let a diagnostic UI show which fan is actually
+    spinning (#145/#207).
+    """
+    key: str
+    name: str
+    rpm: int | None = None
+    percent: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FansListResult(Result):
+    fans: list[FanEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class LcdSnapshotResult(Result):
     """Per-device LCD state snapshot — what's currently persisted."""
     key: str = ""

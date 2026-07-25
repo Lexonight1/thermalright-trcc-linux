@@ -577,6 +577,13 @@ def test_system_list_gpus(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_system_list_fans(cli_runner: CliRunner, cli_app) -> None:
+    """``system list-fans`` runs (output depends on platform fake)."""
+    del cli_app
+    result = cli_runner.invoke(_app(), ["system", "list-fans"])
+    assert result.exit_code == 0
+
+
 # --- Tier 2 Commands ---------------------------------------------------------
 
 

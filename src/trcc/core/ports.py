@@ -640,20 +640,27 @@ class SensorEnumerator(ABC):
         ) for g in self.gpus()]
         primary = self.primary_gpu()
         mem = self.memory()
-        # Fan slots (the DC's CPUFAN/GPUFAN/SSDFAN/FAN2, all declared RPM).
+        # Fan slots the DC can show (CPUFAN / GPUFAN / SSDFAN / FAN2).
         # snapshot() populated every other field but never called self.fans(),
         # so all four defaulted to 0.0 — every theme showed 0 RPM on every
-        # board (#145/#207).  hwmon ``fanN_input`` is RPM (unit matches); the
-        # GPU fan is a duty-cycle percent, so it is deliberately NOT forced
-        # into an RPM slot.  Linux exposes no ``fanN_label`` (the C# binds its
-        # LHM sensors by name — "CPU Fan" — which cannot port), so we cannot
-        # know which header is the CPU fan without the user saying: that
-        # mapping is the fan-slot picker.  Until then, fill the slots with the
-        # fans that are actually spinning, in discovery order, so a theme
-        # shows a real reading instead of 0.  A 0-RPM header is an empty
-        # header, not a fan, so it is skipped.
-        spinning = [rpm for fan in self.fans() if (rpm := fan.rpm())]
-        fan_cpu, fan_gpu, fan_ssd, fan_sys2 = [*spinning, 0, 0, 0, 0][:4]
+        # board (#145/#207).
+        #
+        # The GPU fan is the one slot we can identify with certainty: it belongs
+        # to the GPU the user already picked, so it FOLLOWS the GPU picker —
+        # ``primary_gpu().fan()`` (a duty-cycle percent, all the driver exposes;
+        # not RPM).  Linux has no ``fanN_label`` for the motherboard headers, so
+        # CPU/SSD/SYS2 fill from the device's still-spinning fans in discovery
+        # order (a 0-RPM header is an empty header, skipped).  The GPU's own
+        # hwmon fan (e.g. ``amdgpu``) is excluded from that pool so it is never
+        # double-counted as a case fan.
+        fan_gpu = _safe(primary.fan) if primary else 0.0
+        pool = iter(
+            rpm for f in self.fans()
+            if "gpu" not in f.key.lower() and (rpm := f.rpm())
+        )
+        fan_cpu = next(pool, 0)
+        fan_ssd = next(pool, 0)
+        fan_sys2 = next(pool, 0)
         metrics = HardwareMetrics(
             cpu_temp=max((c.temp for c in cpus), default=0.0),
             cpu_percent=(sum(c.usage for c in cpus) / len(cpus)) if cpus else 0.0,

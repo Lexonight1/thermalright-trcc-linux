@@ -28,6 +28,8 @@ from ..results import (
     DiskEntry,
     DisksListResult,
     DoctorResultPayload,
+    FanEntry,
+    FansListResult,
     FirstRunStatusResult,
     FontsListResult,
     GpuDeviceResult,
@@ -216,6 +218,27 @@ class ListGpus(Command[GpusListResult]):
         return GpusListResult(
             ok=True, gpus=gpus,
             message=f"{len(gpus)} GPU(s) detected",
+        )
+
+@dataclass(frozen=True, slots=True)
+class ListFans(Command[FansListResult]):
+    """Enumerate every fan the sensors aggregator exposes, with live readings.
+
+    Read-only diagnostic (#145/#207): Linux has no reliable ``fanN_label``, so
+    ``snapshot()`` fills the theme's CPU/SSD/SYS2 slots from the device's fans
+    automatically and the GPU slot follows the picked GPU.  This surfaces the
+    raw fan list for debugging "which fans does my box even expose".
+    """
+
+    def execute(self, app: App) -> FansListResult:
+        sensors = app.platform.sensors()
+        fans = [
+            FanEntry(key=f.key, name=f.name, rpm=f.rpm(), percent=f.percent())
+            for f in sensors.fans()
+        ]
+        return FansListResult(
+            ok=True, fans=fans,
+            message=f"{len(fans)} fan(s) detected",
         )
 
 @dataclass(frozen=True, slots=True)

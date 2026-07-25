@@ -17,6 +17,7 @@ from ...core.commands import (
     GetFirstRunStatus,
     GetPlatformInfo,
     ListDisks,
+    ListFans,
     ListFonts,
     ListGpus,
     ListLanguages,
@@ -75,6 +76,23 @@ def list_gpus() -> None:
     for g in result.gpus:
         discrete = "discrete" if g.is_discrete else "integrated"
         typer.echo(f"  {g.key:20} {g.name}  ({discrete})")
+
+
+@app.command("list-fans")
+def list_fans() -> None:
+    """List fans the sensors aggregator exposes, with live readings.
+
+    Read-only diagnostic (#145/#207) — snapshot() maps fans to theme slots
+    automatically (GPU slot follows the picked GPU); this shows what the box
+    exposes.
+    """
+    log.info("cli system list-fans")
+    result = get_app().dispatch(ListFans())
+    typer.echo(result.message)
+    for f in result.fans:
+        rpm = f"{f.rpm} rpm" if f.rpm is not None else "-- rpm"
+        pct = f", {f.percent:.0f}%" if f.percent is not None else ""
+        typer.echo(f"  {f.key:24} {f.name}  ({rpm}{pct})")
 
 
 @app.command("list-fonts")

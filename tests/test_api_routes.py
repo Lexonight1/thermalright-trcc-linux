@@ -557,6 +557,14 @@ def test_system_list_gpus(api_client: TestClient) -> None:
     assert body["ok"] is True
 
 
+def test_system_list_fans(api_client: TestClient) -> None:
+    resp = api_client.get("/system/fans")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert isinstance(body["fans"], list)
+
+
 def test_system_snapshot(api_client: TestClient) -> None:
     resp = api_client.get("/system/snapshot")
     assert resp.status_code == 200

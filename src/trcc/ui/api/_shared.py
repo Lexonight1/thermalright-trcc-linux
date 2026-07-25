@@ -22,6 +22,7 @@ from ...core.results import (
     DiskIndexResult,
     DisksListResult,
     DoctorResultPayload,
+    FansListResult,
     FirstRunStatusResult,
     FitModeResult,
     FontsListResult,
@@ -96,6 +97,8 @@ from .schemas import (
     DiskIndexResponse,
     DisksListResponse,
     DoctorResponse,
+    FanEntrySchema,
+    FansListResponse,
     FileEntrySchema,
     FirstRunStatusResponse,
     FitModeResponse,
@@ -365,6 +368,18 @@ def to_gpus_list_response(result: GpusListResult) -> GpusListResponse:
                 key=g.key, name=g.name, is_discrete=g.is_discrete,
             )
             for g in result.gpus
+        ],
+    )
+
+
+def to_fans_list_response(result: FansListResult) -> FansListResponse:
+    return FansListResponse(
+        ok=result.ok, message=result.message,
+        fans=[
+            FanEntrySchema(
+                key=f.key, name=f.name, rpm=f.rpm, percent=f.percent,
+            )
+            for f in result.fans
         ],
     )
 

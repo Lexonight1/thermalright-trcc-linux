@@ -155,9 +155,10 @@ def _sensors_with(gpus=None) -> BaselineSensors:
 # ── Fan RPM — FanSource → snapshot.fan_cpu/gpu/ssd/sys2 ──────────────
 
 
-def test_fans_fill_slots_in_discovery_order() -> None:
-    """Spinning fans populate the four DC slots in the order discovered
-    (Linux has no fanN_label, so slot = position; #145/#207)."""
+def test_device_fans_fill_cpu_ssd_sys2_in_discovery_order() -> None:
+    """The motherboard fans populate CPU/SSD/SYS2 in discovery order (Linux
+    has no fanN_label, so slot = position).  The GPU slot is NOT drawn from
+    this pool — it follows the picked GPU (#145/#207)."""
     s = BaselineSensors(
         cpu=FakeCpu(), memory=FakeMemory(), gpus=[],
         fans=[FakeFan("fan1", 1200), FakeFan("fan2", 800),
@@ -165,7 +166,8 @@ def test_fans_fill_slots_in_discovery_order() -> None:
     )
 
     m = s.snapshot()
-    assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (1200, 800, 600, 0)
+    # No GPU → gpu slot 0; the three fans fill cpu/ssd/sys2 in order.
+    assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (1200, 0, 800, 600)
 
 
 def test_fans_skip_stopped_headers() -> None:
@@ -182,10 +184,37 @@ def test_fans_skip_stopped_headers() -> None:
 
 
 def test_fans_absent_leaves_slots_zero() -> None:
-    """No FanSource → all four slots stay 0.0 (the pre-fix default, now
-    reached only when the board truly has no readable fan)."""
+    """No FanSource and no GPU → all four slots stay 0.0 (the pre-fix default,
+    now reached only when the board truly has no readable fan)."""
     m = _sensors_with().snapshot()
     assert (m.fan_cpu, m.fan_gpu, m.fan_ssd, m.fan_sys2) == (0, 0, 0, 0)
+
+
+def test_gpu_fan_slot_follows_picked_gpu() -> None:
+    """The GPU fan slot reads the picked GPU's fan (a duty-cycle percent),
+    not a motherboard fan — it follows the GPU picker (#145/#207)."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[FakeGpu(0)],
+        fans=[FakeFan("fan1", 1200), FakeFan("fan2", 800)],
+    )
+    m = s.snapshot()
+    assert m.fan_gpu == 42.0                       # FakeGpu.fan() percent
+    # motherboard fans fill cpu/ssd/sys2, never the gpu slot
+    assert (m.fan_cpu, m.fan_ssd, m.fan_sys2) == (1200, 800, 0)
+
+
+def test_gpu_hwmon_fan_excluded_from_device_pool() -> None:
+    """A GPU's own hwmon fan (amdgpu) is never double-counted as a case fan:
+    the gpu slot comes from the GPU source, so 'gpu'-keyed headers are skipped
+    from the CPU/SSD/SYS2 pool."""
+    s = BaselineSensors(
+        cpu=FakeCpu(), memory=FakeMemory(), gpus=[],
+        fans=[FakeFan("hwmon:amdgpu:fan1", 1500),
+              FakeFan("hwmon:nct6798:fan1", 1000)],
+    )
+    m = s.snapshot()
+    # amdgpu header skipped; only the nct header fills the first device slot.
+    assert (m.fan_cpu, m.fan_ssd, m.fan_sys2) == (1000, 0, 0)
 
 
 # ── Disk temperature — DiskSource → disk:temp → snapshot.disk_temp ───

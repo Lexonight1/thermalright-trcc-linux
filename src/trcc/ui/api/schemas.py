@@ -337,6 +337,17 @@ class GpusListResponse(ResultBase):
     gpus: list[GpuEntrySchema] = []
 
 
+class FanEntrySchema(BaseModel):
+    key: str
+    name: str
+    rpm: int | None = None
+    percent: float | None = None
+
+
+class FansListResponse(ResultBase):
+    fans: list[FanEntrySchema] = []
+
+
 class LcdSnapshotResponse(ResultBase):
     key: str = ""
     orientation: int = 0
