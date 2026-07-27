@@ -46,16 +46,20 @@ CASES = [
     # 90/270 landscape-only → LANDSCAPE canvas + whole-composite spin (fallback).
     ("s565@90L",   _SMALL_RGB565, 90,  False, OrientationPlan((320, 240), False, 90)),
     ("s565@270L",  _SMALL_RGB565, 270, False, OrientationPlan((320, 240), False, 270)),
-    # Portrait content → PORTRAIT canvas.  90 bakes orientation into the pixels
-    # (no spin); 270 is 90 + a dimension-preserving 180° flip so the whole
-    # composite stays true to the physical rotation instead of frozen at 90.
+    # Portrait content → PORTRAIT canvas, composed UPRIGHT (post_rotate=0 at
+    # every angle) — the same model as the widescreen panels below.  The WIRE
+    # owns all rotation via wire_angle (= base − orientation): a base-90 RGB565
+    # panel gets 0 @90 / 180 @270 (net-identical to the old post_rotate=180),
+    # while a base-0 panel gets 270 @90 / 90 @270 (transposes the portrait canvas
+    # to the device's landscape buffer — the #234 640×480 squeeze fix).  Keeping
+    # a post_rotate here would double-rotate on top of the wire angle.
     ("s565@90P",   _SMALL_RGB565, 90,  True,  OrientationPlan((240, 320), True, 0)),
-    ("s565@270P",  _SMALL_RGB565, 270, True,  OrientationPlan((240, 320), True, 180)),
+    ("s565@270P",  _SMALL_RGB565, 270, True,  OrientationPlan((240, 320), True, 0)),
 
     # Small rotate JPEG (Mjolnir) behaves identically — rotate, not widescreen.
     ("sjpg@90L",   _SMALL_JPEG, 90,  False, OrientationPlan((320, 240), False, 90)),
     ("sjpg@90P",   _SMALL_JPEG, 90,  True,  OrientationPlan((240, 320), True, 0)),
-    ("sjpg@270P",  _SMALL_JPEG, 270, True,  OrientationPlan((240, 320), True, 180)),
+    ("sjpg@270P",  _SMALL_JPEG, 270, True,  OrientationPlan((240, 320), True, 0)),
 
     # Widescreen JPEG (#169/#203) — always composes portrait at 90/270 (rides the
     # widescreen rotate_panel branch), regardless of content flag, with

@@ -101,41 +101,32 @@ def plan_orientation(
     Faithful port of ``DisplayService._compose_geometry``.  Three cases of the
     C# oriented-output model (``SetMyUCScreenImage``):
 
-    * **Portrait content @ 90/270** (or any widescreen rotate panel) — compose on
-      the transposed portrait canvas; no further rotation ("orientation is in the
-      masks").
     * **Landscape-only content @ 90/270** on a non-widescreen rotate panel — the
       portrait variant is absent on disk, so compose on the native LANDSCAPE
       canvas (bg + mask + text aligned, nothing clipped) and rotate the WHOLE
       composite by ``orientation`` into the portrait buffer.  Legacy's
-      ``has_portrait_themes=False`` branch.
-    * **Everything else** — 0/180, squares, non-rotate, JPEG widescreen — the
-      user-orientation dimension swap, no whole-composite rotation.
+      ``has_portrait_themes=False`` branch — the ONLY non-zero ``post_rotate``.
+    * **Any other rotate panel @ 90/270** — portrait content, or a widescreen
+      panel regardless of content — compose UPRIGHT on the transposed portrait
+      canvas (``post_rotate=0``) and let the WIRE own all rotation.
+      ``wire_angle`` (= ``base − orientation``) then does the right thing per
+      panel: a base-90 RGB565 panel gets 0 @90 / 180 @270 (net-identical to the
+      old compose-time 180° flip), while a base-0 panel gets 270 @90 / 90 @270,
+      transposing the portrait canvas onto the device's fixed LANDSCAPE buffer —
+      the #234 640×480 squeeze fix and the #169 widescreen 1600×720 fix, one
+      rule.  A ``post_rotate`` here would double-rotate on top of the wire angle.
+    * **Everything else** — 0/180, squares, non-rotate — the user-orientation
+      dimension swap, no whole-composite rotation.
+
+    On-glass handedness (90 vs 270) rides ``wire_angle``/the C# oracle; a
+    reporter photo confirms it (#234 Chiefbot, #169/#203 widescreen).
     """
     w, h = profile.resolution
     rotate_panel = profile.rotate and w != h and orientation in (90, 270)
     if rotate_panel and not content_is_portrait and not profile.widescreen:
         return OrientationPlan((w, h), False, orientation)
-    if rotate_panel and profile.widescreen:
-        # Widescreen JPEG panels (1600×720 etc.): compose on the transposed
-        # portrait canvas (720×1600), preview upright — but post_rotate=0.  The
-        # WIRE rotation is owned entirely by resolve_encode_angle (via wire_angle),
-        # which the C# ``ImageToJpg`` applies to the whole composite to reach the
-        # device's fixed landscape dims: 0→180, 90→90, 180→0, 270→270.  A
-        # post_rotate here would double-rotate on top of it (the pre-fix code
-        # returned 180 at 270 AND relied on portrait_content=True to suppress the
-        # wire rotate — which silently sent an unrotated 720×1600 portrait frame,
-        # #169).  On-glass handedness still wants a reporter photo (#203/#169).
-        return OrientationPlan((h, w), True, 0)
     if rotate_panel:
-        # Non-widescreen portrait content: composed on the transposed canvas with
-        # the orientation baked into the pixels — but the asset is authored for
-        # 90.  270 is 90 + a dimension-preserving 180° flip, so rotate the WHOLE
-        # composite (bg + mask + text) as one unit and everything stays true to
-        # the physical rotation instead of frozen at 90.  These panels take no
-        # wire rotation (portrait_content=True opts them out of wire_angle).
-        post_rotate = 180 if orientation == 270 else 0
-        return OrientationPlan((h, w), True, post_rotate)
+        return OrientationPlan((h, w), True, 0)
     return OrientationPlan(oriented_resolution((w, h), orientation), False, 0)
 
 

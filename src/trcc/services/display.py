@@ -381,9 +381,12 @@ class DisplayService:
         #  * Non-widescreen rotate panels (320×240 RGB565 + JPEG/Mjolnir, 640×480)
         #    fold mount + orientation into ONE C#-faithful angle via wire_rotation
         #    (= base - orientation; base is the dir-0 mount angle — 90° RGB565,
-        #    0° JPEG — ImageTo565:2983-2989 / ImageToJpg:2669-2704).  At 90/270 a
-        #    landscape theme returned early via ``post_rotate`` above, so this
-        #    governs 0/180 (+ any portrait-content early-out below).
+        #    0° JPEG — ImageTo565:2983-2989 / ImageToJpg:2669-2704).  Portrait
+        #    content composes upright (post_rotate=0) and rides this SAME angle:
+        #    a base-0 panel gets 270°/90° to transpose the portrait canvas onto
+        #    the device's landscape buffer (the #234 640×480 squeeze fix); a
+        #    base-90 panel gets 0°/180° (unchanged).  A landscape-only theme at
+        #    90/270 returned early via ``post_rotate`` above.
         #  * Widescreen JPEG panels (854×480, 1280×480, 1600×720, 1920×462) keep
         #    the per-resolution encode TABLE (resolve_encode_angle) — the
         #    hardware-verified #169 path, unchanged.

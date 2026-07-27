@@ -347,18 +347,20 @@ def wire_angle(
         C#-source-verified per-resolution encode base, #203/#169)
       * squares / non-rotate panels → user orientation only (``360 − orient``)
 
-    A *non-widescreen* portrait-content theme on a rotate panel is pre-rotated at
-    compose time (``post_rotate``) and opts out via ``portrait_content=True``.
-    **Widescreen JPEG panels do NOT opt out**: their 90/270 compose buffer is an
-    upright 720×1600 portrait canvas that MUST be rotated by
-    :func:`resolve_encode_angle` to reach the device's fixed landscape wire
-    dimensions (1600×720).  The C# ``ImageToJpg`` applies exactly this rotation to
-    every widescreen frame regardless of the compose orientation (#169) — gating
-    it on ``not portrait_content`` left the live path (which passes
-    ``portrait_content=True`` for widescreen) sending an unrotated portrait frame.
+    Portrait content on a rotate panel is composed UPRIGHT (``post_rotate=0``)
+    and rides the SAME ``wire_rotation`` as landscape content — it is NOT opted
+    out.  This is the #234 fix: gating the wire rotation on ``not
+    portrait_content`` sent a base-0 panel's upright portrait canvas (480×640) to
+    the device unrotated, which the fixed 640×480 panel then squeezed.  Letting
+    portrait content ride ``base − orientation`` transposes it (270° @90 / 90°
+    @270) onto the device's landscape buffer — identical to how widescreen JPEG
+    panels already reached their fixed 1600×720 wire dims (#169).  A base-90
+    RGB565 panel gets 0°/180°, net-identical to the old compose-time flip.
+    ``portrait_content`` now only distinguishes the square / non-rotate fallback
+    (where content is never portrait, so it is a no-op in practice).
     """
     wire_rotate_panel = (
-        profile.rotate and not portrait_content and not profile.widescreen
+        profile.rotate and not profile.widescreen
     )
     fold_into_encode = (
         profile.rotate and profile.widescreen and profile.jpeg
