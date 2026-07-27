@@ -71,6 +71,7 @@ _PKG_NAMES: dict[str, tuple[str, str, str]] = {
     "psutil":           ("python-psutil", "python3-psutil", "python3-psutil"),
     "pyusb":            ("python-pyusb", "python3-pyusb", "python3-usb"),
     "pyudev":           ("python-pyudev", "python3-pyudev", "python3-pyudev"),
+    "hidapi":           ("python-hidapi", "python3-hid", "python3-hidapi"),
     "click":            ("python-click", "python3-click", "python3-click"),
     "typer":            ("python-typer", "python3-typer", "python3-typer"),
     "fastapi":          ("python-fastapi", "python3-fastapi", "python3-fastapi"),
