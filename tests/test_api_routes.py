@@ -364,6 +364,33 @@ def test_display_load_theme_reaches_lookup_not_attribute_error(
     assert resp.status_code == 400
 
 
+def test_display_load_theme_accepts_a_nested_catalog_path(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """A path straight from the theme catalog — nested ``theme{res}/<name>``
+    under the data / user root, NOT flat under user_content_dir — must load,
+    not be wrongly rejected "Unknown theme" (#239).  The old whitelist only
+    enumerated top-level user_content_dir, so every real /theme/list path 400'd.
+    """
+    import json as _json
+
+    tdir = fake_platform.paths().theme_dir(320, 320) / "Nested"
+    tdir.mkdir(parents=True)
+    (tdir / "trcc.json").write_text(
+        _json.dumps({"name": "Nested", "width": 320, "height": 320,
+                     "elements": []}),
+        encoding="utf-8",
+    )
+    (tdir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    resp = api_client.post(
+        "/devices/0402:3922/display/theme", json={"path": str(tdir)},
+    )
+
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["ok"] is True
+
+
 def test_boot_animation_rejects_path_traversal(
     api_client: TestClient, fake_platform: FakePlatform,
 ) -> None:

@@ -188,19 +188,30 @@ def load_theme(key: str, body: ThemeRequest,
         key, body.path,
     )
     # Whitelist by basename (CodeQL py/path-injection sanitizer barrier).
-    # Themes are flat dirs directly under ``user_content_dir`` (see
-    # ThemeService.list — only top-level subdirs with config.json /
-    # config1.dc count). We enumerate the trusted root once and look
-    # up by basename, so the Path passed to LoadTheme comes entirely
-    # from ``iterdir()`` — no user-controlled component flows into a
-    # filesystem call.
-    platform = request.app.state.trcc.platform
-    allowed_root = platform.paths().user_content_dir().resolve(strict=True)
-    requested_name = Path(body.path).name
-    if not requested_name:
+    # Themes live at ``<root>/theme{w}{h}/<name>/`` under BOTH the program data
+    # dir and the user content dir (mirrors ThemeService's two-root enumeration)
+    # — NOT flat under ``user_content_dir``, which is why a path straight from
+    # ``/theme/list`` was wrongly rejected "Unknown theme" (#239).  We match the
+    # request's resolution-dir + theme-dir basenames against the trusted roots
+    # by iterating, so the Path handed to LoadTheme comes entirely from
+    # ``iterdir()`` — no user-controlled component flows into a filesystem call.
+    paths = request.app.state.trcc.platform.paths()
+    requested = Path(body.path)
+    res_name, theme_name = requested.parent.name, requested.name
+    if not theme_name:
         raise HTTPException(400, "Theme path required")
-    themes = {p.name: p for p in allowed_root.iterdir() if p.is_dir()}
-    candidate = themes.get(requested_name)
+    candidate: Path | None = None
+    for root in (paths.user_data_dir(), paths.data_dir()):
+        if not root.is_dir():
+            continue
+        res_dir = next((d for d in root.iterdir()
+                        if d.is_dir() and d.name == res_name), None)
+        if res_dir is None:
+            continue
+        candidate = next((d for d in res_dir.iterdir()
+                          if d.is_dir() and d.name == theme_name), None)
+        if candidate is not None:
+            break
     if candidate is None:
         raise HTTPException(400, "Unknown theme")
 
@@ -842,9 +853,20 @@ def tick(key: str, request: Request) -> RenderResponse:
     Stateless — the caller (scheduled job, cron, client-side timer)
     polls this at AppSettings.refresh_interval_s or whatever cadence
     they like.  Uses the scene cache so ticks are cheap.
+
+    Self-primes and advances video the way the CLI ``display play`` loop does,
+    so a headless poller Just Works (#239): (1) ``RestoreDeviceState`` is
+    idempotent — a no-op once a theme is active — so the first tick can't fail
+    "No active theme"; (2) a play-video override's cursor advances each tick
+    (nothing else advances it outside the GUI), so successive ticks animate it.
     """
     log.info("api POST /devices/{key}/display/tick: key=%s", key)
-    result = request.app.state.trcc.dispatch(RenderAndSend(key=key))
+    app = request.app.state.trcc
+    app.dispatch(RestoreDeviceState(key=key))
+    playback = app.media.playback(key)
+    if playback is not None and playback.frames and not playback.paused:
+        playback.advance()
+    result = app.dispatch(RenderAndSend(key=key))
     http_error_if_failed(result)
     return to_render_response(result)
 

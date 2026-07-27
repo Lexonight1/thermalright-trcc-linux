@@ -1190,22 +1190,39 @@ def test_every_sub_app_has_commands_registered() -> None:
 
 # ── `display play` on a VIDEO theme (#150) ────────────────────────────
 
-def test_display_play_warns_that_a_video_theme_will_look_frozen(
+def test_display_play_advances_an_active_video(
     cli_runner: CliRunner, cli_app, monkeypatch,
 ) -> None:
-    """`play` is the METRICS loop — on a video it redraws a still every tick.
+    """`play` now ANIMATES a video override headlessly (#239).
 
-    #150: armangido ran `load-video` then `play` (which reads exactly like
-    "load it, then play it"), got a frame every 2.00s, and reasonably reported
-    "it showing only static picture of the video??". The app KNEW -- it printed
-    theme='video:a015' on every tick -- and never said the verb was wrong.
+    #150 shipped a nag ("`play` redraws a video as a still every tick — use
+    play-video") because outside the GUI nothing advanced the playback cursor,
+    so `display play` sent frame 0 forever.  The real fix is to advance it: the
+    play loop calls ``playback.advance()`` each tick when a playback is active
+    and paces at the video's fps, so the video actually plays.  This asserts the
+    cursor advances and the frame is surfaced, and that the obsolete nag is gone.
 
     Drives the real command body: `play` loops forever, so time.sleep is the
-    seam -- raise KeyboardInterrupt there and the existing handler exits after
-    exactly one tick.
+    seam -- raise KeyboardInterrupt there and the handler exits after one tick.
     """
     from trcc.core.results import RenderResult
     from trcc.ui.cli import display as cli_display
+
+    class _FakePlayback:
+        frames = [b"x"] * 30
+        paused = False
+        cursor = 3
+        frame_count = 30
+        fps = 15
+
+        def __init__(self) -> None:
+            self.advanced = 0
+
+        def advance(self) -> None:
+            self.advanced += 1
+
+    fake = _FakePlayback()
+    monkeypatch.setattr(cli_app.media, "playback", lambda key: fake)
 
     def _one_tick(_s):
         raise KeyboardInterrupt
@@ -1215,16 +1232,17 @@ def test_display_play_warns_that_a_video_theme_will_look_frozen(
     monkeypatch.setattr(
         cli_app, "dispatch",
         lambda cmd: RenderResult(ok=True, key="0416:5302", message="ok",
-                               bytes_sent=153600, theme_name="video:a015"),
+                               bytes_sent=153600, theme_name="Misfiled"),
     )
 
     result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])
 
     out = result.stdout + (result.stderr or "")
-    assert "is a video" in out, (
+    assert fake.advanced >= 1, "play must advance the video cursor each tick"
+    assert "video frame 3/30" in out, (
         f"exit={result.exit_code} exc={result.exception!r} out={out!r}"
     )
-    assert "play-video" in out, "must name the command that actually plays it"
+    assert "is a video" not in out, "the obsolete frozen-nag must be gone"
 
 
 def test_display_play_stays_quiet_for_a_normal_theme(

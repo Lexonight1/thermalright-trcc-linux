@@ -462,30 +462,32 @@ def play(
     tick_s = max(0.05, tick_s)
 
     typer.echo(f"Playing on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
-    warned_video = False
     try:
         while True:
+            # Video-paced tick: a play-video override only animates if SOMETHING
+            # advances its cursor every frame — and outside the GUI's video timer
+            # nothing did, so headless `display play` sent frame 0 forever and the
+            # video looked frozen (#239).  When a playback is active, advance it
+            # (GUI parity) and pace the loop at the video's fps; otherwise stay on
+            # the metrics interval.
+            playback = app_obj.media.playback(key)
+            video_active = (playback is not None and bool(playback.frames)
+                            and not playback.paused)
+            if playback is not None and video_active:
+                playback.advance()
             result = app_obj.dispatch(RenderAndSend(key=key))
             if not result.ok:
                 typer.echo(f"  tick failed: {result.message}", err=True)
                 raise typer.Exit(code=1)
-            # `play` is the METRICS loop — it re-renders the active theme every
-            # tick_s (seconds).  On a video theme that is a still frame every
-            # couple of seconds, which looks exactly like a broken video.  The
-            # app knows the theme is a video (LoadVideo names it "video:<name>")
-            # and said nothing, so the reporter concluded the video was broken
-            # rather than that `play` is the wrong verb (#150).
-            if not warned_video and str(result.theme_name).startswith("video:"):
-                warned_video = True
+            if playback is not None and video_active:
                 typer.echo(
-                    f"  note: {result.theme_name!r} is a video, and `display play` "
-                    f"only redraws it every {tick_s:.2f}s — it will look frozen.\n"
-                    f"        To play it as video:  trcc display play-video {key} <file.mp4>",
-                    err=True,
-                )
-            typer.echo(f"  sent {result.bytes_sent} bytes "
-                       f"(theme={result.theme_name!r})")
-            time.sleep(tick_s)
+                    f"  sent {result.bytes_sent} bytes (theme={result.theme_name!r}"
+                    f", video frame {playback.cursor}/{playback.frame_count})")
+                time.sleep(max(0.02, 1.0 / max(1, playback.fps)))
+            else:
+                typer.echo(f"  sent {result.bytes_sent} bytes "
+                           f"(theme={result.theme_name!r})")
+                time.sleep(tick_s)
     except KeyboardInterrupt:
         typer.echo("\nStopped.")
 
