@@ -1,5 +1,37 @@
 # Changelog
 
+## v9.9.3
+
+**Your custom themes finally stick.** If you saved a theme with your own video
+background or a positioned layer mask, then restarted TRCC and got a cloud
+background (or the mask jumped to the middle) — that's fixed. Custom videos and
+masks are now copied into your own library and referenced by the saved theme, so
+they survive a restart exactly as you set them. (#242, #243)
+
+**Portrait themes on the Mjolnir Vision 360 (640×480) aren't squeezed anymore.**
+At display angle 90°/270° a portrait theme was being crushed to fit; it now
+rotates properly, matching the official app. (#234)
+
+**Frozen Warframe SE now displays.** One firmware revision of this panel
+(0416:5302, bcdDevice 4.07) ignored the frames TRCC sent and stayed blank. TRCC
+now speaks the HID-report protocol that firmware needs — huge thanks to the
+reporters who reverse-engineered it. (#228)
+
+**Video plays from the terminal + API.** `trcc display play` (and the API tick)
+now actually animate a video background instead of showing a single frozen
+frame, and the tick line tells you which frame it's on. (#239)
+
+**Intel Arc GPU temperature works.** On the newer `xe` driver (Arc Pro cards),
+GPU temperature read empty because it looked for a sensor channel that driver
+doesn't expose. It now finds the right one. (#236)
+
+**Set the media player from any interface.** A new media-player command works the
+same from the GUI, CLI, and API — and the source is saved with your theme.
+
+**Under the hood.** `hidapi` is now a proper Linux dependency (so the panels that
+need it work out of the box), plus a batch of older reported crashes and quirks
+confirmed already fixed and shipping here.
+
 ## v9.9.2
 
 **Fan RPM shows up again.** Fan speeds were reading a flat 0 RPM on every board —
