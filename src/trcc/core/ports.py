@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         CloudCategory,
         CloudThemeEntry,
         DeviceInfo,
+        DeviceQuirks,
         HandshakeResult,
         HardwareMetrics,
         LedHandshakeResult,
@@ -145,9 +146,14 @@ class Device(ABC, Generic[T]):
     """
 
     def __init__(self, info: ProductInfo, transport: T) -> None:
+        from .models import DeviceQuirks
         self.info = info
         self._transport: T = transport
         self._handshake: HandshakeResult | None = None
+        # Firmware-specific behavior overrides (empty = family default).
+        # Injected by the composition root via ``set_quirks`` once the live
+        # fingerprint (incl. bcdDevice) is known.  (#228)
+        self._quirks: DeviceQuirks = DeviceQuirks()
         # Auto-recovery state — tracks consecutive disconnect-class
         # send failures + rate-limits the warning log.  Reset on every
         # successful send via ``_recovery.note_success``.
@@ -163,6 +169,17 @@ class Device(ABC, Generic[T]):
         it down for the recovery tracker's permission-denied warning.
         """
         self._recovery.set_permission_hint(hint)
+
+    def set_quirks(self, quirks: DeviceQuirks) -> None:
+        """Inject firmware-specific behavior overrides for this exact device.
+
+        Resolved from the live ``(vid, pid, bcdDevice)`` fingerprint at the
+        composition root and handed down, so the device honors its firmware's
+        divergences (transport, handshake, rotation, streaming) without any
+        subclass knowing about USB enumeration.  (#228)
+        """
+        self._quirks = quirks
+        log.debug("Device %s: quirks=%s", self.info.key, quirks)
 
     @abstractmethod
     def connect(self) -> HandshakeResult:
@@ -192,9 +209,11 @@ class Device(ABC, Generic[T]):
     @property
     def needs_keepalive(self) -> bool:
         """True if this device's firmware drops frames and needs a periodic
-        resend (Bulk/LY).  Drives the send worker's keepalive."""
+        resend (Bulk/LY, or a per-firmware ``keepalive_stream`` quirk).  Drives
+        the send worker's keepalive."""
         from .models import VOLATILE_FRAME_WIRES
-        return self.info.wire in VOLATILE_FRAME_WIRES
+        return (self.info.wire in VOLATILE_FRAME_WIRES
+                or self._quirks.keepalive_stream)
 
     @property
     def profile(self) -> DeviceProfile | None:
@@ -301,13 +320,20 @@ class Device(ABC, Generic[T]):
             try:
                 ok = write()
             except Exception as e:
-                if attempt == 0:
+                if attempt == 0 and not self._quirks.keepalive_stream:
                     log.warning(
                         "%s: send attempt 1 failed (%s) — reconnecting and retrying",
                         self.key, e,
                     )
                     self._reconnect()
                     continue
+                if self._quirks.keepalive_stream:
+                    # Single-session firmware: a close→reopen wedges the panel
+                    # until a physical replug (#228), so NEVER reconnect — soft-
+                    # fail and let the next keepalive tick resend the frame.
+                    log.debug("%s: send failed (%s) — single-session, will resend",
+                              self.key, e)
+                    return False
                 verdict = self._recovery.note_error(e)
                 if verdict == "threshold":
                     try:

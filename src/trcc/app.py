@@ -42,7 +42,15 @@ from .core.events import (
     VideoStopped,
 )
 from .core.led_models import LedRuntimeState
-from .core.models import HardwareMetrics, Theme, Wire, oriented_resolution
+from .core.models import (
+    DeviceInfo,
+    DeviceQuirks,
+    HardwareMetrics,
+    Theme,
+    Wire,
+    oriented_resolution,
+    quirks_for,
+)
 from .core.ports import Device, Diagnostics, Platform, Renderer, SendScheduler
 from .core.registry import find_product
 from .core.results import ConnectResult, Result
@@ -88,6 +96,10 @@ class App:
                  send_scheduler: SendScheduler | None = None) -> None:
         self.platform = platform
         self.devices: dict[str, Device] = {}
+        # Last scan's live DeviceInfo per key — carries the firmware fingerprint
+        # (bcdDevice) that ``attach`` needs to resolve per-device quirks but the
+        # static ProductInfo can't know.  Populated by DiscoverDevices.  (#228)
+        self._scanned: dict[str, DeviceInfo] = {}
         # Devices that were discovered but failed to connect, keyed by VID:PID.
         # The model's queryable record of "what didn't come up, and why" — read
         # back via the DeviceConnectionIssues command (bus-pure, survives the
@@ -459,10 +471,16 @@ class App:
                 f"Unknown product: {vid:04x}:{pid:04x}"
             )
         cls = DeviceFactory.for_wire(info.wire)
-        # SCSI needs a kernel-native passthrough transport; everything
-        # else speaks plain USB bulk.  Platform picks the right impl.
+        quirks = self._quirks_for(vid, pid)
+        # SCSI needs a kernel-native passthrough transport; a firmware that
+        # only accepts HID output reports needs the hidapi backend (#228);
+        # everything else speaks plain USB bulk.  Platform picks the OS impl.
         if info.wire is Wire.SCSI:
             transport = self.platform.open_scsi(vid, pid)
+        elif quirks.hid_reports:
+            from .adapters.device.transport import HidApiTransport
+            log.info("attach: %04x:%04x uses HID output reports (quirk)", vid, pid)
+            transport = HidApiTransport(vid, pid)
         else:
             transport = self.platform.open_bulk(vid, pid)
         device = cls(info, transport)
@@ -470,9 +488,29 @@ class App:
         # is in scope) so the device's recovery tracker can surface it without
         # the device knowing which OS it's on.
         device.set_permission_hint(self.platform.permission_denied_hint())
+        # Inject firmware-specific overrides resolved from the live fingerprint.
+        device.set_quirks(quirks)
         self.devices[device.key] = device
         log.debug("App.attach: %s → %s", device.key, cls.__name__)
         return device
+
+    def remember_scan(self, infos: list[DeviceInfo]) -> None:
+        """Cache the live DeviceInfo per key from a scan, so a later ``attach``
+        can resolve firmware quirks from the fingerprint (bcdDevice).  (#228)"""
+        for info in infos:
+            self._scanned[info.key] = info
+
+    def _quirks_for(self, vid: int, pid: int) -> DeviceQuirks:
+        """Resolve firmware quirks from the last-scanned fingerprint for a key.
+
+        Falls back to the empty default when the device wasn't scanned (e.g. a
+        direct connect with no prior discovery) — so quirk devices are handled
+        on the normal discover→connect path and everything else is unaffected.
+        """
+        key = f"{vid:04x}:{pid:04x}"
+        info = self._scanned.get(key)
+        bcd = info.bcd_device if info is not None else 0
+        return quirks_for(vid, pid, bcd)
 
     def get(self, key: str) -> Device:
         """Look up an attached device.  Raises if not attached."""

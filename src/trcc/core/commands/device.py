@@ -100,6 +100,9 @@ class DiscoverDevices(Command[DiscoverResult]):
 
     def execute(self, app: App) -> DiscoverResult:
         live = app.platform.scan_devices()
+        # Cache the fingerprints so ConnectDevice→attach can resolve per-device
+        # firmware quirks (bcdDevice isn't in the static registry).  (#228)
+        app.remember_scan(live)
         products = []
         seen_resolutions: set[tuple[int, int]] = set()
         for info in live:

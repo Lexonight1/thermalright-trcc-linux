@@ -298,15 +298,63 @@ class DeviceInfo:
     """Live device, produced by Platform.scan_devices().
 
     Matches a ProductInfo by (vid, pid); the path differs per enumeration.
+    ``bcd_device`` is the USB ``bcdDevice`` (firmware revision, BCD-encoded) —
+    the only pre-handshake discriminator between two firmware revisions that
+    share a VID/PID, so :func:`quirks_for` keys on it.
     """
     vid: int
     pid: int
     path: str | None = None
     serial: str | None = None
+    bcd_device: int = 0
 
     @property
     def key(self) -> str:
         return f"{self.vid:04x}:{self.pid:04x}"
+
+    @property
+    def quirks(self) -> DeviceQuirks:
+        """Firmware-specific behavior overrides for this exact device."""
+        return quirks_for(self.vid, self.pid, self.bcd_device)
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceQuirks:
+    """Per-firmware behavior overrides for a device that diverges from its
+    wire family's defaults.
+
+    Keyed on ``(vid, pid, bcd_device)`` so ONE firmware revision opts in;
+    every device without a row keeps its family default (all flags ``False``),
+    so shared wire code (all Type-2 HID panels, the sibling PID, …) cannot
+    regress.  Isolates firmware handling to an OCP registry row instead of
+    fingerprint checks scattered across the transport / handshake / render
+    seams.  (#228 — Frozen Warframe SE firmware 4.07.)
+    """
+    hid_reports: bool = False       # HidApiTransport (HID output reports), not bulk
+    skip_init: bool = False         # do NOT send the wire's init packet (reboots panel)
+    short_handshake: bool = False   # accept the firmware's short (<20-byte) reply
+    portrait_native: bool = False   # device self-orients: 240×320 raster, no pre-rotate
+    keepalive_stream: bool = False  # never skip an unchanged frame (panel blanks when idle)
+
+
+_NO_QUIRKS = DeviceQuirks()
+
+# (vid, pid, bcd_device) → quirks.  bcd_device is the raw USB bcdDevice (BCD).
+DEVICE_QUIRKS: dict[tuple[int, int, int], DeviceQuirks] = {
+    # Frozen Warframe SE, firmware bcdDevice 4.07 (#228, adamkoehler1990):
+    # reverse-engineered — needs HID output reports (pyusb bulk is ignored),
+    # no init packet, an 8-byte handshake reply, a portrait-native 240×320
+    # raster (no pre-rotate), and a continuous frame stream (blanks when idle).
+    (0x0416, 0x5302, 0x0407): DeviceQuirks(
+        hid_reports=True, skip_init=True, short_handshake=True,
+        portrait_native=True, keepalive_stream=True,
+    ),
+}
+
+
+def quirks_for(vid: int, pid: int, bcd_device: int) -> DeviceQuirks:
+    """Firmware quirks for an exact fingerprint, or the empty default."""
+    return DEVICE_QUIRKS.get((vid, pid, bcd_device), _NO_QUIRKS)
 
 
 # =========================================================================

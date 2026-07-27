@@ -27,6 +27,8 @@
             psutil
             pyusb
             pyudev          # Linux hotplug (live attach/detach + coldplug) — #139
+            hidapi          # HID output-report transport — some firmware ignores
+                            # libusb bulk and only accepts HID reports (#228)
             click
             typer
             fastapi
@@ -91,7 +93,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (ps: with ps; [
-              pyside6 numpy psutil pyusb pyudev click typer fastapi uvicorn
+              pyside6 numpy psutil pyusb pyudev hidapi click typer fastapi uvicorn
               python-multipart prompt-toolkit sounddevice
               pytest pytest-cov pytest-xdist httpx nvidia-ml-py ruff
             ]))

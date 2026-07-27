@@ -63,6 +63,12 @@ dependencies = [
     # pip-channel install where the card was present but the reader was never
     # importable because the [nvidia] extra wasn't pulled.
     "nvidia-ml-py>=11.0.0",
+    # HID output-report transport (hidapi/hidraw).  A core Linux dependency, not
+    # an extra: some firmware only accepts frames as HID output reports and
+    # ignores libusb bulk writes entirely — the Frozen Warframe SE bcdDevice
+    # 4.07 is blank without it (#228).  Off the Windows path (libusb serves the
+    # HID panels there); Linux selects it per-fingerprint via DeviceQuirks.
+    "hidapi>=0.14.0; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]
@@ -77,9 +83,9 @@ windows = [
     "wmi>=1.5.1; sys_platform == 'win32'",
     "pywin32>=306; sys_platform == 'win32'",
 ]
-hid = [
-    "hidapi>=0.14.0",
-]
+# Promoted to a core Linux dependency (see [project].dependencies).  Kept as an
+# empty alias so existing `pip install trcc-linux[hid]` invocations still resolve.
+hid = []
 remote = [
     "qrcode>=7.0",
 ]

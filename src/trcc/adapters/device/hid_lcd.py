@@ -12,6 +12,7 @@ class.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 import time
@@ -58,6 +59,9 @@ _HANDSHAKE_RETRY_DELAY_S = 0.5
 _DELAY_PRE_INIT_S = 0.050
 _DELAY_POST_INIT_S = 0.200
 _DELAY_FRAME_TYPE2_S = 0.001
+# A streaming firmware reboots on the init packet, so we skip it and let the
+# panel finish its own boot before the first frame (#228 Frozen Warframe SE).
+_QUIRK_BOOT_SETTLE_S = 3.0
 
 _DEFAULT_FRAME_TIMEOUT_MS = 100
 
@@ -115,6 +119,9 @@ class HidLcd(Device[BulkTransport]):
                 f"Failed to open USB transport for {self.info.key}"
             )
 
+        if self._quirks.skip_init:
+            return self._connect_streaming_firmware()
+
         init_pkt = self._build_init_packet()
         response_size = self._response_size()
 
@@ -163,6 +170,67 @@ class HidLcd(Device[BulkTransport]):
         raise HandshakeError(
             f"HidLcd handshake failed after {_HANDSHAKE_MAX_RETRIES} attempts"
         ) from last_err
+
+    def _connect_streaming_firmware(self) -> HandshakeResult:
+        """Handshake a firmware that reboots on the init packet and streams
+        without the normal exchange (#228 Frozen Warframe SE, bcdDevice 4.07).
+
+        Faithful to the reporter's working driver: no init packet, let the
+        panel settle, best-effort-read its short (8-byte) reply for PM/SUB, and
+        pin a portrait-native profile (the panel self-orients, so we must NOT
+        pre-rotate).  The device is identified by fingerprint, so a missing or
+        short reply is fine — we fall back to the registry FBL.
+        """
+        log.info("HidLcd %s: streaming-firmware connect (init skipped)",
+                 self.info.key)
+        time.sleep(_QUIRK_BOOT_SETTLE_S)
+        resp = b""
+        try:
+            resp = self._transport.read(
+                _EP_READ, self._response_size(), _HANDSHAKE_TIMEOUT_MS,
+            )
+        except Exception as e:
+            log.info("HidLcd %s: no unsolicited handshake (%s) — using fingerprint",
+                     self.info.key, e)
+
+        pm, sub = 0, 0
+        if len(resp) >= 6 and resp[0:4] == _TYPE2_MAGIC:
+            pm, sub = resp[5], resp[4]
+            log.info("HidLcd %s: short handshake reply PM=%d SUB=%d",
+                     self.info.key, pm, sub)
+        fbl = pm_to_fbl(pm, sub) if pm else self.info.fbl
+        base = self._base_profile(fbl, pm)
+        profile = self._portrait_native(base)
+        self._profile = profile
+        result = HandshakeResult(
+            resolution=profile.resolution, model_id=pm, serial="",
+            pm_byte=pm, sub_byte=sub, fbl=fbl, raw_response=bytes(resp[:64]),
+        )
+        self._handshake = result
+        log.info("HidLcd %s: streaming connect OK, portrait-native %s",
+                 self.info.key, profile.resolution)
+        return result
+
+    def _base_profile(self, fbl: int | None, pm: int) -> DeviceProfile:
+        """Resolve the pre-quirk geometry profile: from the FBL when known,
+        else from the registry ``native_resolution`` (a streaming firmware that
+        volunteered no handshake is still identified by its registry row)."""
+        if fbl is not None:
+            return get_profile(fbl, pm)
+        return DeviceProfile(*self.info.native_resolution)
+
+    def _portrait_native(self, base: DeviceProfile) -> DeviceProfile:
+        """Portrait-native profile for a self-orienting firmware: transpose the
+        landscape rotate profile to its true portrait raster and drop the
+        pre-rotate, so the render composes upright and ships the raw raster the
+        panel expects (#228).  A no-op unless the ``portrait_native`` quirk is
+        set."""
+        if not self._quirks.portrait_native:
+            return base
+        w, h = base.resolution
+        return dataclasses.replace(
+            base, width=min(w, h), height=max(w, h), rotate=False,
+        )
 
     def send(self, payload: bytes) -> bool:
         """Send one image frame (RGB565 or JPEG bytes, protocol-specific)."""
@@ -241,12 +309,18 @@ class HidLcd(Device[BulkTransport]):
         return header + b'\x00' * (_TYPE2_INIT_SIZE - len(header))
 
     def _validate_response_type2(self, resp: bytes) -> bool:
-        """Type 2: resp[0:4] == DA DB DC DD && resp[12] == 0x01."""
-        return (
-            len(resp) >= 20
-            and resp[0:4] == _TYPE2_MAGIC
-            and resp[12] == 0x01
-        )
+        """Type 2: resp[0:4] == DA DB DC DD && resp[12] == 0x01.
+
+        A ``short_handshake`` firmware answers with fewer than 20 bytes (e.g.
+        the 8-byte ``da db dc dd 00 3a 00 00`` of the Frozen Warframe SE 4.07,
+        #228) — the magic alone is enough to accept it; PM/SUB still parse from
+        [5]/[4].
+        """
+        if not (len(resp) >= 6 and resp[0:4] == _TYPE2_MAGIC):
+            return False
+        if self._quirks.short_handshake:
+            return True
+        return len(resp) >= 20 and resp[12] == 0x01
 
     def _parse_response_type2(self, resp: bytes) -> HandshakeResult:
         """Type 2: PM at resp[5], SUB at resp[4], optional serial at resp[20:36].
@@ -260,7 +334,7 @@ class HidLcd(Device[BulkTransport]):
         has_serial = len(resp) > 36 and resp[16] == 0x10
         serial = resp[20:36].hex().upper() if has_serial else ""
         fbl = pm_to_fbl(pm, sub)
-        self._profile = get_profile(fbl, pm)
+        self._profile = self._portrait_native(get_profile(fbl, pm))
         return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=pm,

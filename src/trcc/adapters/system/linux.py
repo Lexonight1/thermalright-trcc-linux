@@ -431,8 +431,11 @@ class LinuxPlatform(Platform):
                         serial = usb.util.get_string(dev, serial_idx) or ""
                 except Exception:
                     serial = ""
-                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None))
-                log.info("  found %04x:%04x serial=%r", vid, pid, serial)
+                bcd = int(getattr(dev, 'bcdDevice', 0) or 0)
+                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None,
+                                        bcd_device=bcd))
+                log.info("  found %04x:%04x serial=%r bcdDevice=%#06x",
+                         vid, pid, serial, bcd)
         log.info("LinuxPlatform.scan_devices: %d device(s) total", len(found))
         return found
 
