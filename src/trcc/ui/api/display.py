@@ -58,92 +58,69 @@ from ...core.commands import (
     UploadBootAnimation,
     UploadCustomMask,
 )
+from ...core.results import (
+    BackgroundModeResult,
+    BootAnimationResult,
+    BrightnessResult,
+    FitModeResult,
+    KeepaliveResult,
+    LcdSnapshotResult,
+    LoopVideoResult,
+    MaskApplyResult,
+    MaskPositionResult,
+    MasksListResult,
+    MaskUploadResult,
+    MaskVisibilityResult,
+    MediaPlayerResult,
+    OrientationResult,
+    OverlayBackgroundResult,
+    OverlayConfigResult,
+    OverlayElementDeleteResult,
+    OverlayElementResult,
+    OverlayResult,
+    PauseVideoResult,
+    RenderResult,
+    ScreencastResult,
+    SeekVideoResult,
+    SendResult,
+    SlideshowResult,
+    SplitModeResult,
+    VideoResult,
+)
 from ._shared import (
     http_error_if_failed,
-    to_background_mode_response,
-    to_boot_animation_response,
-    to_brightness_response,
-    to_fit_mode_response,
-    to_keepalive_response,
-    to_lcd_snapshot_response,
-    to_loop_video_response,
-    to_mask_apply_response,
-    to_mask_position_response,
-    to_mask_upload_response,
-    to_mask_visibility_response,
-    to_masks_list_response,
-    to_orientation_response,
-    to_overlay_background_response,
-    to_overlay_config_response,
-    to_overlay_element_delete_response,
-    to_overlay_element_response,
-    to_overlay_response,
-    to_pause_video_response,
-    to_render_response,
-    to_seek_video_response,
-    to_send_response,
-    to_slideshow_response,
-    to_split_mode_response,
     to_theme_response,
-    to_video_response,
 )
 from .schemas import (
     BackgroundModeRequest,
-    BackgroundModeResponse,
     BootAnimationRequest,
-    BootAnimationResponse,
     BrightnessRequest,
-    BrightnessResponse,
     ColorRequest,
     CreateThemeResponse,
     FitModeRequest,
-    FitModeResponse,
     KeepaliveRequest,
-    KeepaliveResponse,
-    LcdSnapshotResponse,
     LoopVideoRequest,
-    LoopVideoResponse,
     MaskApplyRequest,
-    MaskApplyResponse,
     MaskPositionRequest,
-    MaskPositionResponse,
-    MasksListResponse,
     MaskUploadRequest,
-    MaskUploadResponse,
     MaskVisibilityRequest,
-    MaskVisibilityResponse,
     MediaPlayerRequest,
-    MediaPlayerResponse,
     OrientationRequest,
-    OrientationResponse,
     OverlayBackgroundRequest,
-    OverlayBackgroundResponse,
     OverlayConfigRequest,
-    OverlayConfigResponse,
     OverlayElementAddRequest,
-    OverlayElementDeleteResponse,
-    OverlayElementResponse,
     OverlayElementUpdateRequest,
     OverlayFlashRequest,
     OverlayRequest,
-    OverlayResponse,
     PauseVideoRequest,
-    PauseVideoResponse,
     PlayVideoRequest,
-    RenderResponse,
-    ScreencastResponse,
     ScreencastStartRequest,
     SeekVideoRequest,
-    SeekVideoResponse,
-    SendResponse,
     SlideshowConfigureRequest,
-    SlideshowResponse,
     SlideshowToggleRequest,
     SplitModeRequest,
-    SplitModeResponse,
     ThemeRequest,
     ThemeResponse,
-    VideoResponse,
     VideoStatusResponse,
 )
 
@@ -152,9 +129,9 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/devices/{key}/display", tags=["display"])
 
 
-@router.post("/orientation", response_model=OrientationResponse)
+@router.post("/orientation")
 def set_orientation(key: str, body: OrientationRequest,
-                    request: Request) -> OrientationResponse:
+                    request: Request) -> OrientationResult:
     log.info(
         "api POST /devices/{key}/display/orientation: key=%s degrees=%s",
         key, body.degrees,
@@ -163,12 +140,12 @@ def set_orientation(key: str, body: OrientationRequest,
         SetOrientation(key=key, degrees=body.degrees),
     )
     http_error_if_failed(result)
-    return to_orientation_response(result)
+    return result
 
 
-@router.post("/brightness", response_model=BrightnessResponse)
+@router.post("/brightness")
 def set_brightness(key: str, body: BrightnessRequest,
-                   request: Request) -> BrightnessResponse:
+                   request: Request) -> BrightnessResult:
     log.info(
         "api POST /devices/{key}/display/brightness: key=%s percent=%s",
         key, body.percent,
@@ -177,7 +154,7 @@ def set_brightness(key: str, body: BrightnessRequest,
         SetBrightness(key=key, percent=body.percent),
     )
     http_error_if_failed(result)
-    return to_brightness_response(result)
+    return result
 
 
 @router.post("/theme", response_model=ThemeResponse)
@@ -222,9 +199,9 @@ def load_theme(key: str, body: ThemeRequest,
     return to_theme_response(result)
 
 
-@router.post("/fit-mode", response_model=FitModeResponse)
+@router.post("/fit-mode")
 def set_fit_mode(key: str, body: FitModeRequest,
-                 request: Request) -> FitModeResponse:
+                 request: Request) -> FitModeResult:
     log.info(
         "api POST /devices/{key}/display/fit-mode: key=%s mode=%s",
         key, body.mode,
@@ -233,12 +210,12 @@ def set_fit_mode(key: str, body: FitModeRequest,
         SetFitMode(key=key, mode=body.mode),
     )
     http_error_if_failed(result)
-    return to_fit_mode_response(result)
+    return result
 
 
-@router.post("/overlay", response_model=OverlayResponse)
+@router.post("/overlay")
 def set_overlay(key: str, body: OverlayRequest,
-                request: Request) -> OverlayResponse:
+                request: Request) -> OverlayResult:
     log.info(
         "api POST /devices/{key}/display/overlay: key=%s enabled=%s",
         key, body.enabled,
@@ -247,12 +224,12 @@ def set_overlay(key: str, body: OverlayRequest,
         EnableOverlay(key=key, enabled=body.enabled),
     )
     http_error_if_failed(result)
-    return to_overlay_response(result)
+    return result
 
 
-@router.post("/mask", response_model=MaskApplyResponse)
+@router.post("/mask")
 def apply_mask(key: str, body: MaskApplyRequest,
-                request: Request) -> MaskApplyResponse:
+                request: Request) -> MaskApplyResult:
     """Apply a user-supplied mask.
 
     Path is whitelisted by basename within the user_content_dir/masks
@@ -278,12 +255,12 @@ def apply_mask(key: str, body: MaskApplyRequest,
         ApplyMask(key=key, path=chosen),
     )
     http_error_if_failed(result)
-    return to_mask_apply_response(result)
+    return result
 
 
-@router.post("/mask-position", response_model=MaskPositionResponse)
+@router.post("/mask-position")
 def set_mask_position(key: str, body: MaskPositionRequest,
-                      request: Request) -> MaskPositionResponse:
+                      request: Request) -> MaskPositionResult:
     log.info(
         "api POST /devices/{key}/display/mask-position: key=%s x=%s y=%s",
         key, body.x, body.y,
@@ -292,12 +269,12 @@ def set_mask_position(key: str, body: MaskPositionRequest,
         SetMaskPosition(key=key, x=body.x, y=body.y),
     )
     http_error_if_failed(result)
-    return to_mask_position_response(result)
+    return result
 
 
-@router.post("/mask-visible", response_model=MaskVisibilityResponse)
+@router.post("/mask-visible")
 def set_mask_visible(key: str, body: MaskVisibilityRequest,
-                     request: Request) -> MaskVisibilityResponse:
+                     request: Request) -> MaskVisibilityResult:
     log.info(
         "api POST /devices/{key}/display/mask-visible: key=%s visible=%s",
         key, body.visible,
@@ -306,12 +283,12 @@ def set_mask_visible(key: str, body: MaskVisibilityRequest,
         SetMaskVisible(key=key, visible=body.visible),
     )
     http_error_if_failed(result)
-    return to_mask_visibility_response(result)
+    return result
 
 
-@router.post("/split-mode", response_model=SplitModeResponse)
+@router.post("/split-mode")
 def set_split_mode(key: str, body: SplitModeRequest,
-                   request: Request) -> SplitModeResponse:
+                   request: Request) -> SplitModeResult:
     log.info(
         "api POST /devices/{key}/display/split-mode: key=%s mode=%s",
         key, body.mode,
@@ -320,12 +297,12 @@ def set_split_mode(key: str, body: SplitModeRequest,
         SetSplitMode(key=key, mode=body.mode),
     )
     http_error_if_failed(result)
-    return to_split_mode_response(result)
+    return result
 
 
-@router.post("/play-video", response_model=VideoResponse)
+@router.post("/play-video")
 def play_video(key: str, body: PlayVideoRequest,
-                request: Request) -> VideoResponse:
+                request: Request) -> VideoResult:
     """Start a video playback override on the device."""
     log.info(
         "api POST /devices/{key}/display/play-video: key=%s path=%s fps=%s",
@@ -340,16 +317,16 @@ def play_video(key: str, body: PlayVideoRequest,
         PlayVideo(key=key, path=Path(body.path), fps=body.fps),
     )
     http_error_if_failed(result)
-    return to_video_response(result)
+    return result
 
 
-@router.post("/stop-video", response_model=VideoResponse)
-def stop_video(key: str, request: Request) -> VideoResponse:
+@router.post("/stop-video")
+def stop_video(key: str, request: Request) -> VideoResult:
     """Clear the video playback override on the device."""
     log.info("api POST /devices/{key}/display/stop-video: key=%s", key)
     result = request.app.state.trcc.dispatch(StopVideo(key=key))
     http_error_if_failed(result)
-    return to_video_response(result)
+    return result
 
 
 @router.get("/video-status", response_model=VideoStatusResponse)
@@ -515,9 +492,9 @@ def preview(key: str, request: Request) -> Response:
     return Response(content=png_bytes, media_type="image/png")
 
 
-@router.post("/screencast/start", response_model=ScreencastResponse)
+@router.post("/screencast/start")
 def screencast_start(key: str, body: ScreencastStartRequest,
-                     request: Request) -> ScreencastResponse:
+                     request: Request) -> ScreencastResult:
     """Begin a screen-capture session for *key*.
 
     Dispatches :class:`StartScreencast` which validates region geometry,
@@ -539,15 +516,11 @@ def screencast_start(key: str, body: ScreencastStartRequest,
         ),
     )
     http_error_if_failed(result)
-    return ScreencastResponse(
-        ok=result.ok, key=result.key, active=result.active,
-        x=result.x, y=result.y, w=result.w, h=result.h,
-        audio=result.audio, message=result.message,
-    )
+    return result
 
 
-@router.post("/screencast/stop", response_model=ScreencastResponse)
-def screencast_stop(key: str, request: Request) -> ScreencastResponse:
+@router.post("/screencast/stop")
+def screencast_stop(key: str, request: Request) -> ScreencastResult:
     """End the screen-capture session for *key*.
 
     Idempotent — returns ``ok=True`` even when no session was running.
@@ -555,15 +528,12 @@ def screencast_stop(key: str, request: Request) -> ScreencastResponse:
     log.info("api POST /devices/{key}/display/screencast/stop: key=%s", key)
     result = request.app.state.trcc.dispatch(StopScreencast(key=key))
     http_error_if_failed(result)
-    return ScreencastResponse(
-        ok=result.ok, key=result.key, active=result.active,
-        message=result.message,
-    )
+    return result
 
 
-@router.post("/media-player", response_model=MediaPlayerResponse)
+@router.post("/media-player")
 def media_player(key: str, body: MediaPlayerRequest,
-                 request: Request) -> MediaPlayerResponse:
+                 request: Request) -> MediaPlayerResult:
     """Set the media-player source for *key* — a local file or a web URL/stream.
 
     Dispatches :class:`SetMediaPlayer`: a local file plays through the video
@@ -576,10 +546,7 @@ def media_player(key: str, body: MediaPlayerRequest,
         SetMediaPlayer(key=key, uri=body.uri),
     )
     http_error_if_failed(result)
-    return MediaPlayerResponse(
-        ok=result.ok, key=result.key, uri=result.uri,
-        playing=result.playing, message=result.message,
-    )
+    return result
 
 
 _BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({
@@ -587,9 +554,9 @@ _BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({
 })
 
 
-@router.post("/boot-animation", response_model=BootAnimationResponse)
+@router.post("/boot-animation")
 def upload_boot_animation(key: str, body: BootAnimationRequest,
-                          request: Request) -> BootAnimationResponse:
+                          request: Request) -> BootAnimationResult:
     """Upload a multi-frame compressed boot animation to a SCSI LCD's flash.
 
     *frames_dir* is a subdirectory **name** under the user-content
@@ -636,7 +603,7 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
         key=key, frame_paths=frame_paths, delays_ds=delays,
     ))
     http_error_if_failed(result)
-    return to_boot_animation_response(result)
+    return result
 
 
 # Extensions accepted by the create-theme background upload — union of
@@ -803,8 +770,8 @@ async def create_theme(
     )
 
 
-@router.post("/color", response_model=SendResponse)
-def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
+@router.post("/color")
+def send_color(key: str, body: ColorRequest, request: Request) -> SendResult:
     """Push a solid-color frame to a connected LCD device."""
     log.info(
         "api POST /devices/{key}/display/color: key=%s r=%s g=%s b=%s",
@@ -814,11 +781,11 @@ def send_color(key: str, body: ColorRequest, request: Request) -> SendResponse:
         SendColor(key=key, r=body.r, g=body.g, b=body.b),
     )
     http_error_if_failed(result)
-    return to_send_response(result)
+    return result
 
 
-@router.post("/sleep", response_model=SendResponse)
-def sleep(key: str, request: Request) -> SendResponse:
+@router.post("/sleep")
+def sleep(key: str, request: Request) -> SendResult:
     """Blank the panel so it goes dark — the shutdown / turn-off action.
 
     Sends a solid-black frame (LCD) or an all-off payload (LED), the same
@@ -827,11 +794,11 @@ def sleep(key: str, request: Request) -> SendResponse:
     log.info("api POST /devices/{key}/display/sleep: key=%s", key)
     result = request.app.state.trcc.dispatch(SleepDevice(key=key))
     http_error_if_failed(result)
-    return to_send_response(result)
+    return result
 
 
-@router.post("/reset", response_model=SendResponse)
-def reset(key: str, request: Request) -> SendResponse:
+@router.post("/reset")
+def reset(key: str, request: Request) -> SendResult:
     """Reset the display — stop any active video, then send a solid red frame.
 
     Mirrors legacy's reset: blanks the panel to a known state regardless
@@ -843,11 +810,11 @@ def reset(key: str, request: Request) -> SendResponse:
     trcc.dispatch(StopVideo(key=key))   # best-effort — ok if nothing playing
     result = trcc.dispatch(SendColor(key=key, r=255, g=0, b=0))
     http_error_if_failed(result)
-    return to_send_response(result)
+    return result
 
 
-@router.post("/tick", response_model=RenderResponse)
-def tick(key: str, request: Request) -> RenderResponse:
+@router.post("/tick")
+def tick(key: str, request: Request) -> RenderResult:
     """Render the active theme with live sensors + send one frame.
 
     Stateless — the caller (scheduled job, cron, client-side timer)
@@ -868,7 +835,7 @@ def tick(key: str, request: Request) -> RenderResponse:
         playback.advance()
     result = app.dispatch(RenderAndSend(key=key))
     http_error_if_failed(result)
-    return to_render_response(result)
+    return result
 
 
 
@@ -886,18 +853,18 @@ def restore_theme(key: str, request: Request) -> ThemeResponse:
     return to_theme_response(result)
 
 
-@router.get("/snapshot", response_model=LcdSnapshotResponse)
-def snapshot(key: str, request: Request) -> LcdSnapshotResponse:
+@router.get("/snapshot")
+def snapshot(key: str, request: Request) -> LcdSnapshotResult:
     """Return the persisted LCD state for one device."""
     log.info("api GET /devices/{key}/display/snapshot: key=%s", key)
     result = request.app.state.trcc.dispatch(LcdSnapshot(key=key))
     http_error_if_failed(result)
-    return to_lcd_snapshot_response(result)
+    return result
 
 
-@router.post("/slideshow", response_model=SlideshowResponse)
+@router.post("/slideshow")
 def slideshow_toggle(key: str, body: SlideshowToggleRequest,
-                     request: Request) -> SlideshowResponse:
+                     request: Request) -> SlideshowResult:
     """Turn the device's slideshow on / off."""
     log.info(
         "api POST /devices/{key}/display/slideshow: key=%s enabled=%s",
@@ -907,12 +874,12 @@ def slideshow_toggle(key: str, body: SlideshowToggleRequest,
         SetSlideshow(key=key, enabled=body.enabled),
     )
     http_error_if_failed(result)
-    return to_slideshow_response(result)
+    return result
 
 
-@router.put("/slideshow", response_model=SlideshowResponse)
+@router.put("/slideshow")
 def slideshow_configure(key: str, body: SlideshowConfigureRequest,
-                        request: Request) -> SlideshowResponse:
+                        request: Request) -> SlideshowResult:
     """Set the theme list + interval for a device's slideshow."""
     log.info(
         "api PUT /devices/{key}/display/slideshow: key=%s themes=%s "
@@ -925,12 +892,12 @@ def slideshow_configure(key: str, body: SlideshowConfigureRequest,
         interval_s=body.interval_s,
     ))
     http_error_if_failed(result)
-    return to_slideshow_response(result)
+    return result
 
 
-@router.post("/keepalive", response_model=KeepaliveResponse)
+@router.post("/keepalive")
 def keepalive(key: str, body: KeepaliveRequest,
-              request: Request) -> KeepaliveResponse:
+              request: Request) -> KeepaliveResult:
     """Run a keepalive burst (resend the last frame N times)."""
     log.info(
         "api POST /devices/{key}/display/keepalive: key=%s count=%s "
@@ -944,12 +911,12 @@ def keepalive(key: str, body: KeepaliveRequest,
         metric_interval_s=body.metric_interval_s,
     ))
     http_error_if_failed(result)
-    return to_keepalive_response(result)
+    return result
 
 
-@router.post("/background-mode", response_model=BackgroundModeResponse)
+@router.post("/background-mode")
 def background_mode(key: str, body: BackgroundModeRequest,
-                    request: Request) -> BackgroundModeResponse:
+                    request: Request) -> BackgroundModeResult:
     """Pick what fills the LCD behind overlays (theme/color/transparent)."""
     log.info(
         "api POST /devices/{key}/display/background-mode: key=%s mode=%s",
@@ -959,12 +926,12 @@ def background_mode(key: str, body: BackgroundModeRequest,
         SetBackgroundMode(key=key, mode=body.mode),
     )
     http_error_if_failed(result)
-    return to_background_mode_response(result)
+    return result
 
 
-@router.post("/overlay-background", response_model=OverlayBackgroundResponse)
+@router.post("/overlay-background")
 def overlay_background(key: str, body: OverlayBackgroundRequest,
-                       request: Request) -> OverlayBackgroundResponse:
+                       request: Request) -> OverlayBackgroundResult:
     """Set the solid background color used when background-mode=color."""
     log.info(
         "api POST /devices/{key}/display/overlay-background: key=%s color=%s",
@@ -974,15 +941,15 @@ def overlay_background(key: str, body: OverlayBackgroundRequest,
         SetOverlayBackground(key=key, color=body.color),
     )
     http_error_if_failed(result)
-    return to_overlay_background_response(result)
+    return result
 
 
 # ── Overlay element CRUD ─────────────────────────────────────────────
 
 
-@router.post("/overlay-elements", response_model=OverlayElementResponse)
+@router.post("/overlay-elements")
 def overlay_add(key: str, body: OverlayElementAddRequest,
-                request: Request) -> OverlayElementResponse:
+                request: Request) -> OverlayElementResult:
     """Add a user-edited overlay element."""
     log.info(
         "api POST /devices/{key}/display/overlay-elements: key=%s type=%s "
@@ -997,16 +964,13 @@ def overlay_add(key: str, body: OverlayElementAddRequest,
         source=body.source, element_id=body.element_id,
     ))
     http_error_if_failed(result)
-    return to_overlay_element_response(result)
+    return result
 
 
-@router.patch(
-    "/overlay-elements/{element_id}",
-    response_model=OverlayElementResponse,
-)
+@router.patch("/overlay-elements/{element_id}")
 def overlay_update(key: str, element_id: str,
                    body: OverlayElementUpdateRequest,
-                   request: Request) -> OverlayElementResponse:
+                   request: Request) -> OverlayElementResult:
     """Mutate fields on an existing user-edited overlay element."""
     log.info(
         "api PATCH /devices/{key}/display/overlay-elements/{element_id}: "
@@ -1021,15 +985,12 @@ def overlay_update(key: str, element_id: str,
         show_unit=body.show_unit, source=body.source,
     ))
     http_error_if_failed(result)
-    return to_overlay_element_response(result)
+    return result
 
 
-@router.delete(
-    "/overlay-elements/{element_id}",
-    response_model=OverlayElementDeleteResponse,
-)
+@router.delete("/overlay-elements/{element_id}")
 def overlay_delete(key: str, element_id: str,
-                   request: Request) -> OverlayElementDeleteResponse:
+                   request: Request) -> OverlayElementDeleteResult:
     """Remove an overlay element by id."""
     log.info(
         "api DELETE /devices/{key}/display/overlay-elements/{element_id}: "
@@ -1040,16 +1001,13 @@ def overlay_delete(key: str, element_id: str,
         DeleteOverlayElement(key=key, element_id=element_id),
     )
     http_error_if_failed(result)
-    return to_overlay_element_delete_response(result)
+    return result
 
 
-@router.post(
-    "/overlay-elements/{element_id}/flash",
-    response_model=OverlayElementResponse,
-)
+@router.post("/overlay-elements/{element_id}/flash")
 def overlay_flash(key: str, element_id: str,
                   body: OverlayFlashRequest,
-                  request: Request) -> OverlayElementResponse:
+                  request: Request) -> OverlayElementResult:
     """Briefly highlight an overlay element in the GUI."""
     log.info(
         "api POST /devices/{key}/display/overlay-elements/{element_id}/flash: "
@@ -1060,15 +1018,12 @@ def overlay_flash(key: str, element_id: str,
         key=key, element_id=element_id, duration_ms=body.duration_ms,
     ))
     http_error_if_failed(result)
-    return to_overlay_element_response(result)
+    return result
 
 
-@router.put(
-    "/overlay-elements",
-    response_model=OverlayConfigResponse,
-)
+@router.put("/overlay-elements")
 def overlay_set_config(key: str, body: OverlayConfigRequest,
-                       request: Request) -> OverlayConfigResponse:
+                       request: Request) -> OverlayConfigResult:
     """Bulk replace the user-overlay element list."""
     log.info(
         "api PUT /devices/{key}/display/overlay-elements: key=%s count=%s",
@@ -1079,12 +1034,12 @@ def overlay_set_config(key: str, body: OverlayConfigRequest,
         SetOverlayConfig(key=key, elements=elements),
     )
     http_error_if_failed(result)
-    return to_overlay_config_response(result)
+    return result
 
 
-@router.post("/pause-video", response_model=PauseVideoResponse)
+@router.post("/pause-video")
 def pause_video(key: str, body: PauseVideoRequest,
-                request: Request) -> PauseVideoResponse:
+                request: Request) -> PauseVideoResult:
     """Pause / resume video playback."""
     log.info(
         "api POST /devices/{key}/display/pause-video: key=%s paused=%s",
@@ -1094,12 +1049,12 @@ def pause_video(key: str, body: PauseVideoRequest,
         PauseVideo(key=key, paused=body.paused),
     )
     http_error_if_failed(result)
-    return to_pause_video_response(result)
+    return result
 
 
-@router.post("/seek-video", response_model=SeekVideoResponse)
+@router.post("/seek-video")
 def seek_video(key: str, body: SeekVideoRequest,
-               request: Request) -> SeekVideoResponse:
+               request: Request) -> SeekVideoResult:
     """Jump to a specific frame."""
     log.info(
         "api POST /devices/{key}/display/seek-video: key=%s frame=%s",
@@ -1109,12 +1064,12 @@ def seek_video(key: str, body: SeekVideoRequest,
         SeekVideo(key=key, frame=body.frame),
     )
     http_error_if_failed(result)
-    return to_seek_video_response(result)
+    return result
 
 
-@router.post("/loop-video", response_model=LoopVideoResponse)
+@router.post("/loop-video")
 def loop_video(key: str, body: LoopVideoRequest,
-               request: Request) -> LoopVideoResponse:
+               request: Request) -> LoopVideoResult:
     """Toggle whether playback wraps or sticks at the last frame."""
     log.info(
         "api POST /devices/{key}/display/loop-video: key=%s loop=%s",
@@ -1124,12 +1079,12 @@ def loop_video(key: str, body: LoopVideoRequest,
         LoopVideo(key=key, loop=body.loop),
     )
     http_error_if_failed(result)
-    return to_loop_video_response(result)
+    return result
 
 
-@router.post("/upload-mask", response_model=MaskUploadResponse)
+@router.post("/upload-mask")
 def upload_mask(key: str, body: MaskUploadRequest,
-                request: Request) -> MaskUploadResponse:
+                request: Request) -> MaskUploadResult:
     """Upload a mask file (server-side path) + apply it."""
     log.info(
         "api POST /devices/{key}/display/upload-mask: key=%s source=%s",
@@ -1139,7 +1094,7 @@ def upload_mask(key: str, body: MaskUploadRequest,
         UploadCustomMask(key=key, source=Path(body.source)),
     )
     http_error_if_failed(result)
-    return to_mask_upload_response(result)
+    return result
 
 
 # ── Meta routes (no device key in path) ──────────────────────────────
@@ -1148,13 +1103,13 @@ def upload_mask(key: str, body: MaskUploadRequest,
 meta_router = APIRouter(prefix="/display", tags=["display"])
 
 
-@meta_router.get("/masks", response_model=MasksListResponse)
+@meta_router.get("/masks")
 def list_masks(
     request: Request,
     key: str | None = None,
     width: int | None = None,
     height: int | None = None,
-) -> MasksListResponse:
+) -> MasksListResult:
     """List masks for a device resolution.
 
     Pass either ``?key=vid:pid`` (resolved through the connected
@@ -1169,7 +1124,7 @@ def list_masks(
     if key is not None:
         device = request.app.state.trcc.devices.get(key)
         if device is None or device.profile is None:
-            return MasksListResponse(
+            return MasksListResult(
                 ok=False, directory="", masks=[],
                 message=(f"Device {key} not connected — connect first "
                          "so we know the target resolution"),
@@ -1179,4 +1134,4 @@ def list_masks(
         resolution = (width, height)
     result = request.app.state.trcc.dispatch(ListMasks(resolution=resolution))
     http_error_if_failed(result)
-    return to_masks_list_response(result)
+    return result

@@ -37,35 +37,30 @@ from ...core.commands import (
     SaveTheme,
 )
 from ...core.models import parse_resolution
+from ...core.results import (
+    CloudThemeLoadResult,
+    CloudThemesListResult,
+    DeleteThemeResult,
+    ThemeDcExportResult,
+    ThemeExportResult,
+    ThemeImportResult,
+    ThemesListResult,
+)
 from ._shared import (
     http_error_if_failed,
-    to_cloud_theme_load_response,
-    to_cloud_themes_list_response,
-    to_delete_theme_response,
     to_import_config_response,
-    to_theme_dc_export_response,
-    to_theme_export_response,
-    to_theme_import_response,
     to_theme_response,
-    to_themes_list_response,
 )
 from .schemas import (
     CloudThemeLoadRequest,
-    CloudThemeLoadResponse,
-    CloudThemesListResponse,
     DeleteThemeRequest,
-    DeleteThemeResponse,
     EnsureDataResponse,
     ImportConfigResponse,
     ThemeDcExportRequest,
-    ThemeDcExportResponse,
     ThemeExportRequest,
-    ThemeExportResponse,
     ThemeImportRequest,
-    ThemeImportResponse,
     ThemeResponse,
     ThemeSaveRequest,
-    ThemesListResponse,
     WebThemeSchema,
 )
 
@@ -99,9 +94,9 @@ def save(body: ThemeSaveRequest, request: Request) -> ThemeResponse:
     return to_theme_response(result)
 
 
-@router.post("/export", response_model=ThemeExportResponse)
+@router.post("/export")
 def export(body: ThemeExportRequest,
-           request: Request) -> ThemeExportResponse:
+           request: Request) -> ThemeExportResult:
     log.info(
         "api POST /theme/export: key=%s theme_name=%s archive_path=%s",
         body.key, body.theme_name, body.archive_path,
@@ -118,12 +113,12 @@ def export(body: ThemeExportRequest,
         ),
     )
     http_error_if_failed(result)
-    return to_theme_export_response(result)
+    return result
 
 
-@router.post("/import", response_model=ThemeImportResponse)
+@router.post("/import")
 def import_(body: ThemeImportRequest,
-            request: Request) -> ThemeImportResponse:
+            request: Request) -> ThemeImportResult:
     """Import a theme archive from a server-side path."""
     log.info(
         "api POST /theme/import: key=%s archive_path=%s name=%s",
@@ -137,16 +132,16 @@ def import_(body: ThemeImportRequest,
         ImportTheme(key=body.key, archive_path=archive, name=name),
     )
     http_error_if_failed(result)
-    return to_theme_import_response(result)
+    return result
 
 
-@router.post("/import-upload", response_model=ThemeImportResponse)
+@router.post("/import-upload")
 async def import_upload(
     request: Request,
     key: str,
     archive: UploadFile = File(...),
     name: str = "",
-) -> ThemeImportResponse:
+) -> ThemeImportResult:
     """Import a theme archive uploaded via multipart form-data.
 
     Remote clients without filesystem access to the server use this
@@ -178,7 +173,7 @@ async def import_upload(
         except OSError:
             pass
     http_error_if_failed(result)
-    return to_theme_import_response(result)
+    return result
 
 
 @router.get("/{key}/{theme_name}/download")
@@ -284,14 +279,14 @@ def _unlink_quietly(path: Path) -> None:
         pass
 
 
-@router.get("/list", response_model=ThemesListResponse)
+@router.get("/list")
 def list_(
     request: Request,
     directory: str | None = None,
     key: str | None = None,
     width: int | None = None,
     height: int | None = None,
-) -> ThemesListResponse:
+) -> ThemesListResult:
     """List themes for a device resolution.
 
     Pass ``?key=vid:pid`` (resolution from the connected device's
@@ -311,7 +306,7 @@ def list_(
         if key is not None:
             device = request.app.state.trcc.devices.get(key)
             if device is None or device.profile is None:
-                return ThemesListResponse(
+                return ThemesListResult(
                     ok=False, directory="", themes=[],
                     message=(f"Device {key} not connected — connect first "
                              "so we know the target resolution"),
@@ -323,21 +318,21 @@ def list_(
             ListThemes(resolution=resolution),
         )
     http_error_if_failed(result)
-    return to_themes_list_response(result)
+    return result
 
 
-@router.get("/cloud", response_model=CloudThemesListResponse)
+@router.get("/cloud")
 def cloud_list(
     request: Request,
     category: str = "all",
-) -> CloudThemesListResponse:
+) -> CloudThemesListResult:
     """List Thermalright cloud catalog (offline — catalog is static)."""
     log.info("api GET /theme/cloud: category=%s", category)
     result = request.app.state.trcc.dispatch(
         ListCloudThemes(category=category),
     )
     http_error_if_failed(result)
-    return to_cloud_themes_list_response(result)
+    return result
 
 
 @router.get("/web", response_model=list[WebThemeSchema])
@@ -393,9 +388,9 @@ def init_data(
     )
 
 
-@router.post("/cloud/{key}", response_model=CloudThemeLoadResponse)
+@router.post("/cloud/{key}")
 def cloud_load(key: str, body: CloudThemeLoadRequest,
-                request: Request) -> CloudThemeLoadResponse:
+                request: Request) -> CloudThemeLoadResult:
     """Download a cloud theme + apply it to *key*."""
     log.info(
         "api POST /theme/cloud/{key}: key=%s theme_id=%s",
@@ -405,12 +400,12 @@ def cloud_load(key: str, body: CloudThemeLoadRequest,
         LoadCloudTheme(key=key, theme_id=body.theme_id),
     )
     http_error_if_failed(result)
-    return to_cloud_theme_load_response(result)
+    return result
 
 
-@router.post("/{name}/export-dc", response_model=ThemeDcExportResponse)
+@router.post("/{name}/export-dc")
 def export_dc(name: str, body: ThemeDcExportRequest,
-              request: Request) -> ThemeDcExportResponse:
+              request: Request) -> ThemeDcExportResult:
     """Write a theme out as legacy ``config1.dc``."""
     log.info(
         "api POST /theme/{name}/export-dc: name=%s key=%s output_path=%s",
@@ -423,12 +418,12 @@ def export_dc(name: str, body: ThemeDcExportRequest,
         output_path=Path(body.output_path),
     ))
     http_error_if_failed(result)
-    return to_theme_dc_export_response(result)
+    return result
 
 
-@router.delete("", response_model=DeleteThemeResponse)
+@router.delete("")
 def delete(body: DeleteThemeRequest,
-           request: Request) -> DeleteThemeResponse:
+           request: Request) -> DeleteThemeResult:
     """Delete a theme directory at an absolute path.
 
     Path is confined to ``user_content_dir`` server-side — see
@@ -437,4 +432,4 @@ def delete(body: DeleteThemeRequest,
     log.info("api DELETE /theme: path=%s", body.path)
     result = request.app.state.trcc.dispatch(DeleteTheme(path=Path(body.path)))
     http_error_if_failed(result)
-    return to_delete_theme_response(result)
+    return result

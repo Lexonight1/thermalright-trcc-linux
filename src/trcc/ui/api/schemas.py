@@ -50,102 +50,9 @@ class ConnectResponse(ResultBase):
     handshake: HandshakeSchema | None = None
 
 
-class DisconnectResponse(ResultBase):
-    key: str = ""
-
-
-class OrientationResponse(ResultBase):
-    key: str = ""
-    degrees: int = 0
-
-
-class BrightnessResponse(ResultBase):
-    key: str = ""
-    percent: int = 100
-
-
 class ThemeResponse(ResultBase):
     key: str = ""
     theme_name: str = ""
-
-
-class RenderResponse(ResultBase):
-    key: str = ""
-    bytes_sent: int = 0
-    theme_name: str = ""
-
-
-class SendResponse(ResultBase):
-    key: str = ""
-    bytes_sent: int = 0
-
-
-class FitModeResponse(ResultBase):
-    key: str = ""
-    mode: str = "width"
-
-
-class OverlayResponse(ResultBase):
-    key: str = ""
-    enabled: bool = True
-
-
-class SplitModeResponse(ResultBase):
-    key: str = ""
-    mode: int = 0
-
-
-class MaskApplyResponse(ResultBase):
-    key: str = ""
-    path: str = ""
-
-
-class MaskPositionResponse(ResultBase):
-    key: str = ""
-    position: tuple[int, int] | None = None
-
-
-class MaskVisibilityResponse(ResultBase):
-    key: str = ""
-    visible: bool = True
-
-
-class ThemeExportResponse(ResultBase):
-    theme_name: str = ""
-    archive_path: str = ""
-
-
-class ThemeImportResponse(ResultBase):
-    theme_name: str = ""
-    path: str = ""
-
-
-class ThemeListEntrySchema(BaseModel):
-    name: str
-    resolution: tuple[int, int]
-    path: str
-
-
-class ThemesListResponse(ResultBase):
-    directory: str = ""
-    themes: list[ThemeListEntrySchema] = []
-
-
-class VideoResponse(ResultBase):
-    key: str = ""
-    path: str = ""
-    frame_count: int = 0
-
-
-class BootAnimationResponse(ResultBase):
-    key: str = ""
-    frames_uploaded: int = 0
-    frames_total: int = 0
-
-
-class LedColorsResponse(ResultBase):
-    key: str = ""
-    colors: list[tuple[int, int, int]] = []
 
 
 class SensorReadingSchema(BaseModel):
@@ -178,38 +85,7 @@ class SensorCatalogResponse(ResultBase):
     sensors: list[SensorInfoSchema] = []
 
 
-class SetupResponse(ResultBase):
-    exit_code: int = 0
-    warnings: list[str] = []
-
-
 # ── Control-center settings ──────────────────────────────────────────
-
-
-class TempUnitResponse(ResultBase):
-    unit: str = "C"
-
-
-class LanguageResponse(ResultBase):
-    language: str = "en"
-
-
-class GpuDeviceResponse(ResultBase):
-    gpu_key: str | None = None
-
-
-class RefreshIntervalResponse(ResultBase):
-    seconds: float = 2.0
-
-
-class TimeFormatResponse(ResultBase):
-    key: str = ""
-    fmt: str = "24h"
-
-
-class DateFormatResponse(ResultBase):
-    key: str = ""
-    fmt: str = "yyyy/MM/dd"
 
 
 class ImportConfigResponse(ResultBase):
@@ -310,146 +186,33 @@ class LedToggleSegmentRequest(BaseModel):
     on: bool
 
 
-class LedStyleEntrySchema(BaseModel):
-    style: str
-    model_name: str
-    pm_byte: int
-    style_sub: int = 0
-    segment_count: int = 0
-    zone_count: int = 0
-
-
-class LedStylesListResponse(ResultBase):
-    styles: list[LedStyleEntrySchema] = []
-
-
-class LedModesListResponse(ResultBase):
-    modes: list[str] = []
-
-
-class GpuEntrySchema(BaseModel):
-    key: str
-    name: str
-    is_discrete: bool
-
-
-class GpusListResponse(ResultBase):
-    gpus: list[GpuEntrySchema] = []
-
-
-class FanEntrySchema(BaseModel):
-    key: str
-    name: str
-    rpm: int | None = None
-    percent: float | None = None
-
-
-class FansListResponse(ResultBase):
-    fans: list[FanEntrySchema] = []
-
-
-class LcdSnapshotResponse(ResultBase):
-    key: str = ""
-    orientation: int = 0
-    brightness: int = 100
-    current_theme: str | None = None
-    overlay_enabled: bool = True
-    mask_path: str | None = None
-    mask_visible: bool = True
-    mask_position: tuple[int, int] | None = None
-    fit_mode: str = "fit"
-    split_mode: int = 0
-    time_format: str = "24h"
-    date_format: str = ""
-    temp_unit: str = "C"
-
-
-class LedSnapshotResponse(ResultBase):
-    key: str = ""
-    mode: str = "STATIC"
-    color: tuple[int, int, int] = (0, 0, 0)
-    brightness: int = 100
-    global_on: bool = True
-    test_mode: bool = False
-    temp_source: str = "cpu"
-    load_source: str = "cpu"
-    zone_sync: bool = False
-    zone_sync_interval_ticks: int = 13
-    selected_zone: int = 0
-    zone_count: int = 0
-    segment_count: int = 0
-
-
-class ControlCenterSnapshotResponse(ResultBase):
-    language: str = "en"
-    temp_unit: str = "C"
-    active_device: str | None = None
-    active_gpu: str | None = None
-    refresh_interval_s: float = 2.0
-    hdd_enabled: bool = False
-
-
 # Tier-2 request/response shapes
 class ClockFormatRequest(BaseModel):
     is_24h: bool
-
-
-class ClockFormatResponse(ResultBase):
-    key: str = ""
-    is_24h: bool = True
 
 
 class WeekStartRequest(BaseModel):
     sunday_first: bool
 
 
-class WeekStartResponse(ResultBase):
-    key: str = ""
-    sunday_first: bool = False
-
-
 class MemoryRatioRequest(BaseModel):
     ratio: int          # DDR multiplier: 1, 2, or 4
-
-
-class MemoryRatioResponse(ResultBase):
-    key: str = ""
-    ratio: int = 2
 
 
 class DiskIndexRequest(BaseModel):
     index: int = Field(..., ge=0)
 
 
-class DiskIndexResponse(ResultBase):
-    key: str = ""
-    index: int = 0
-
-
 class HddEnabledRequest(BaseModel):
     enabled: bool
-
-
-class HddEnabledResponse(ResultBase):
-    enabled: bool = False
 
 
 class BackgroundModeRequest(BaseModel):
     mode: str = Field(..., pattern="^(theme|color|transparent)$")
 
 
-class BackgroundModeResponse(ResultBase):
-    key: str = ""
-    mode: str = "theme"
-
-
 class OverlayBackgroundRequest(BaseModel):
     color: tuple[int, int, int]
-
-
-class OverlayBackgroundResponse(ResultBase):
-    key: str = ""
-    color: tuple[int, int, int] = (0, 0, 0)
 
 
 # Tier 3 schemas
@@ -457,68 +220,17 @@ class PauseVideoRequest(BaseModel):
     paused: bool
 
 
-class PauseVideoResponse(ResultBase):
-    key: str = ""
-    paused: bool = False
-
-
 class SeekVideoRequest(BaseModel):
     frame: int = Field(..., ge=0)
-
-
-class SeekVideoResponse(ResultBase):
-    key: str = ""
-    cursor: int = 0
-    frame_count: int = 0
 
 
 class LoopVideoRequest(BaseModel):
     loop: bool
 
 
-class LoopVideoResponse(ResultBase):
-    key: str = ""
-    loop: bool = True
-
-
-class DeleteThemeResponse(ResultBase):
-    theme_name: str = ""
-    path: str = ""
-
-
 class MaskUploadRequest(BaseModel):
     """Server-side mask path — same shape as theme import requests."""
     source: str
-
-
-class MaskUploadResponse(ResultBase):
-    key: str = ""
-    path: str = ""
-
-
-class FileEntrySchema(BaseModel):
-    name: str
-    path: str
-    preview: str = ""
-
-
-class MasksListResponse(ResultBase):
-    directory: str = ""
-    masks: list[FileEntrySchema] = []
-
-
-class FontsListResponse(ResultBase):
-    fonts: list[str] = []
-
-
-class DiskEntrySchema(BaseModel):
-    index: int
-    device: str
-    mountpoint: str
-
-
-class DisksListResponse(ResultBase):
-    disks: list[DiskEntrySchema] = []
 
 
 # Overlay element CRUD
@@ -572,45 +284,11 @@ class OverlayFlashRequest(BaseModel):
     duration_ms: int = Field(1500, ge=100, le=10000)
 
 
-class OverlayElementResponse(ResultBase):
-    key: str = ""
-    element: OverlayElementSchema | None = None
-
-
-class OverlayElementDeleteResponse(ResultBase):
-    key: str = ""
-    element_id: str = ""
-
-
 class OverlayConfigRequest(BaseModel):
     elements: list[OverlayElementSchema] = []
 
 
-class OverlayConfigResponse(ResultBase):
-    key: str = ""
-    elements: list[OverlayElementSchema] = []
-
-
 # Cloud themes
-class CloudCategorySchema(BaseModel):
-    prefix: str
-    name: str
-    count: int
-
-
-class CloudThemeEntrySchema(BaseModel):
-    id: str
-    category: str
-    category_name: str
-    preview: str = ""
-
-
-class CloudThemesListResponse(ResultBase):
-    category: str = "all"
-    categories: list[CloudCategorySchema] = []
-    themes: list[CloudThemeEntrySchema] = []
-
-
 class WebThemeSchema(BaseModel):
     """One cloud-theme preview on disk for a resolution.
 
@@ -637,22 +315,6 @@ class CloudThemeLoadRequest(BaseModel):
     theme_id: str
 
 
-class CloudThemeLoadResponse(ResultBase):
-    key: str = ""
-    theme_id: str = ""
-    theme_path: str = ""
-
-
-class LanguageEntrySchema(BaseModel):
-    code: str
-    name: str
-    translated_keys: int
-
-
-class LanguagesListResponse(ResultBase):
-    languages: list[LanguageEntrySchema] = []
-
-
 class ThemeDcExportRequest(BaseModel):
     """Server-side path to write the legacy DC file to.
 
@@ -664,24 +326,12 @@ class ThemeDcExportRequest(BaseModel):
     output_path: str
 
 
-class ThemeDcExportResponse(ResultBase):
-    theme_name: str = ""
-    output_path: str = ""
-
-
 # Diagnostics
 class HealthCheckEntrySchema(BaseModel):
     name: str
     severity: str
     message: str
     fix_hint: str = ""
-
-
-class HealthReportResponse(ResultBase):
-    checks: list[HealthCheckEntrySchema] = []
-    fail_count: int = 0
-    warn_count: int = 0
-    worst_severity: str = "OK"
 
 
 class DoctorResponse(ResultBase):
@@ -703,24 +353,8 @@ class DebugReportResponse(ResultBase):
 
 
 # Update + upgrade
-class UpdateCheckResponse(ResultBase):
-    local_version: str = ""
-    latest_version: str = ""
-    latest_tag: str = ""
-    release_url: str = ""
-    update_available: bool = False
-
-
 class UpgradeRequest(BaseModel):
     dry_run: bool = False
-
-
-class UpgradeResponse(ResultBase):
-    package_manager: str = ""
-    command: list[str] = []
-    stdout: str = ""
-    stderr: str = ""
-    exit_code: int = 0
 
 
 # Slideshow + keepalive
@@ -731,13 +365,6 @@ class SlideshowToggleRequest(BaseModel):
 class SlideshowConfigureRequest(BaseModel):
     themes: list[str] | None = None
     interval_s: float | None = Field(None, ge=1.0)
-
-
-class SlideshowResponse(ResultBase):
-    key: str = ""
-    enabled: bool = False
-    interval_s: float = 60.0
-    themes: list[str] = []
 
 
 class KeepaliveRequest(BaseModel):
@@ -755,18 +382,7 @@ class KeepaliveRequest(BaseModel):
     metric_interval_s: float = Field(1.0, ge=0.0)
 
 
-class KeepaliveResponse(ResultBase):
-    key: str = ""
-    frames_resent: int = 0
-    bytes_resent: int = 0
-
-
 # First-run + legacy migration
-class FirstRunStatusResponse(ResultBase):
-    is_first_run: bool = True
-    marker_path: str = ""
-
-
 class ColorRequest(BaseModel):
     """Solid-color frame request — three 0-255 channels."""
     r: int = Field(..., ge=0, le=255)
@@ -856,12 +472,6 @@ class AutostartRequest(BaseModel):
     enabled: bool
 
 
-class AutostartResponse(ResultBase):
-    """Autostart state after the request, plus the on-disk entry path."""
-    enabled: bool = False
-    path: str = ""
-
-
 class AppStatusEntry(BaseModel):
     """One device in :class:`AppStatusResponse`.
 
@@ -917,29 +527,11 @@ class ScreencastStartRequest(BaseModel):
     audio: bool = False
 
 
-class ScreencastResponse(ResultBase):
-    """Result of a screencast start/stop request."""
-    key: str = ""
-    active: bool = False
-    x: int = 0
-    y: int = 0
-    w: int = 0
-    h: int = 0
-    audio: bool = False
-
-
 class MediaPlayerRequest(BaseModel):
     """Body for ``POST /devices/{key}/display/media-player``."""
     uri: str = Field(
         "", description="A local file path, or a web URL/stream. '' clears.",
     )
-
-
-class MediaPlayerResponse(ResultBase):
-    """Result of a media-player source request."""
-    key: str = ""
-    uri: str = ""
-    playing: bool = False
 
 
 class VideoStatusResponse(ResultBase):

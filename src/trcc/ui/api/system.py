@@ -28,50 +28,40 @@ from ...core.commands import (
     RunUpgrade,
     SetHddEnabled,
 )
+from ...core.results import (
+    AutostartResult,
+    ControlCenterSnapshotResult,
+    DisksListResult,
+    FansListResult,
+    FirstRunStatusResult,
+    FontsListResult,
+    GpusListResult,
+    HddEnabledResult,
+    HealthReportResult,
+    LanguageResult,
+    LanguagesListResult,
+    SetupResult,
+    UpdateCheckResult,
+    UpgradeResult,
+)
 from ._shared import (
     http_error_if_failed,
-    to_control_center_snapshot_response,
     to_debug_report_response,
-    to_disks_list_response,
     to_doctor_response,
-    to_fans_list_response,
-    to_first_run_status_response,
-    to_fonts_list_response,
-    to_gpus_list_response,
-    to_hdd_enabled_response,
-    to_health_report_response,
-    to_languages_list_response,
     to_sensor_catalog_response,
     to_sensors_response,
-    to_setup_response,
-    to_update_check_response,
-    to_upgrade_response,
 )
 from .schemas import (
     AppStatusEntry,
     AppStatusResponse,
     AutostartRequest,
-    AutostartResponse,
-    ControlCenterSnapshotResponse,
     DebugReportRequest,
     DebugReportResponse,
-    DisksListResponse,
     DoctorResponse,
-    FansListResponse,
-    FirstRunStatusResponse,
-    FontsListResponse,
-    GpusListResponse,
     HddEnabledRequest,
-    HddEnabledResponse,
-    HealthReportResponse,
-    LanguageResponse,
-    LanguagesListResponse,
     SensorCatalogResponse,
     SensorsResponse,
-    SetupResponse,
-    UpdateCheckResponse,
     UpgradeRequest,
-    UpgradeResponse,
 )
 
 log = logging.getLogger(__name__)
@@ -79,11 +69,11 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["system"])
 
 
-@router.post("/setup", response_model=SetupResponse)
-def setup(request: Request) -> SetupResponse:
+@router.post("/setup")
+def setup(request: Request) -> SetupResult:
     log.info("api POST /system/setup")
     result = request.app.state.trcc.dispatch(RunSetup(interactive=False))
-    return to_setup_response(result)
+    return result
 
 
 @router.get("/sensors/catalog", response_model=SensorCatalogResponse)
@@ -173,16 +163,16 @@ def info(request: Request) -> dict:
     }
 
 
-@router.get("/gpus", response_model=GpusListResponse)
-def list_gpus(request: Request) -> GpusListResponse:
+@router.get("/gpus")
+def list_gpus(request: Request) -> GpusListResult:
     """List GPUs exposed by the sensors aggregator."""
     log.info("api GET /system/gpus")
     result = request.app.state.trcc.dispatch(ListGpus())
-    return to_gpus_list_response(result)
+    return result
 
 
-@router.get("/fans", response_model=FansListResponse)
-def list_fans(request: Request) -> FansListResponse:
+@router.get("/fans")
+def list_fans(request: Request) -> FansListResult:
     """List fans the sensors aggregator exposes, with live readings.
 
     Read-only diagnostic (#145/#207) — snapshot() maps fans to theme slots
@@ -190,55 +180,55 @@ def list_fans(request: Request) -> FansListResponse:
     """
     log.info("api GET /system/fans")
     result = request.app.state.trcc.dispatch(ListFans())
-    return to_fans_list_response(result)
+    return result
 
 
-@router.get("/snapshot", response_model=ControlCenterSnapshotResponse)
-def snapshot(request: Request) -> ControlCenterSnapshotResponse:
+@router.get("/snapshot")
+def snapshot(request: Request) -> ControlCenterSnapshotResult:
     """Return the AppSettings snapshot."""
     log.info("api GET /system/snapshot")
     result = request.app.state.trcc.dispatch(ControlCenterSnapshot())
-    return to_control_center_snapshot_response(result)
+    return result
 
 
-@router.post("/hdd-enabled", response_model=HddEnabledResponse)
+@router.post("/hdd-enabled")
 def hdd_enabled(body: HddEnabledRequest,
-                request: Request) -> HddEnabledResponse:
+                request: Request) -> HddEnabledResult:
     """Toggle inclusion of HDD metrics in sensor broadcasts."""
     log.info("api POST /system/hdd-enabled: enabled=%s", body.enabled)
     result = request.app.state.trcc.dispatch(
         SetHddEnabled(enabled=body.enabled),
     )
     http_error_if_failed(result)
-    return to_hdd_enabled_response(result)
+    return result
 
 
-@router.get("/fonts", response_model=FontsListResponse)
-def list_fonts(request: Request) -> FontsListResponse:
+@router.get("/fonts")
+def list_fonts(request: Request) -> FontsListResult:
     """List font families Qt can see."""
     log.info("api GET /system/fonts")
     result = request.app.state.trcc.dispatch(ListFonts())
-    return to_fonts_list_response(result)
+    return result
 
 
-@router.get("/disks", response_model=DisksListResponse)
-def list_disks(request: Request) -> DisksListResponse:
+@router.get("/disks")
+def list_disks(request: Request) -> DisksListResult:
     """List disk partitions for the LED disk-index selector."""
     log.info("api GET /system/disks")
     result = request.app.state.trcc.dispatch(ListDisks())
-    return to_disks_list_response(result)
+    return result
 
 
-@router.get("/languages", response_model=LanguagesListResponse)
-def list_languages(request: Request) -> LanguagesListResponse:
+@router.get("/languages")
+def list_languages(request: Request) -> LanguagesListResult:
     """Enumerate UI languages the i18n table supports."""
     log.info("api GET /system/languages")
     result = request.app.state.trcc.dispatch(ListLanguages())
-    return to_languages_list_response(result)
+    return result
 
 
-@router.get("/language", response_model=LanguageResponse)
-def current_language(request: Request) -> LanguageResponse:
+@router.get("/language")
+def current_language(request: Request) -> LanguageResult:
     """Return the currently active UI language (ISO 639-1 code).
 
     Read-only — set via ``POST /config/language``.  Legacy parity with
@@ -246,7 +236,7 @@ def current_language(request: Request) -> LanguageResponse:
     """
     log.info("api GET /system/language")
     lang = request.app.state.trcc.settings.app.language
-    return LanguageResponse(ok=True, language=lang, message=lang)
+    return LanguageResult(ok=True, language=lang, message=lang)
 
 
 @router.get("/status", response_model=AppStatusResponse)
@@ -294,21 +284,21 @@ def app_status(request: Request) -> AppStatusResponse:
     )
 
 
-@router.get("/autostart", response_model=AutostartResponse)
-def autostart_status(request: Request) -> AutostartResponse:
+@router.get("/autostart")
+def autostart_status(request: Request) -> AutostartResult:
     """Snapshot the autostart entry — whether it's installed + its path."""
     log.info("api GET /system/autostart")
     mgr = request.app.state.trcc.platform.autostart()
     enabled = mgr.is_enabled()
-    return AutostartResponse(
+    return AutostartResult(
         ok=True, enabled=enabled,
         message="autostart enabled" if enabled else "autostart disabled",
     )
 
 
-@router.post("/autostart", response_model=AutostartResponse)
+@router.post("/autostart")
 def set_autostart(body: AutostartRequest,
-                  request: Request) -> AutostartResponse:
+                  request: Request) -> AutostartResult:
     """Toggle the OS autostart entry (per-user, no sudo).
 
     Dispatches :class:`EnableAutostart` or :class:`DisableAutostart`
@@ -320,20 +310,15 @@ def set_autostart(body: AutostartRequest,
     trcc = request.app.state.trcc
     command = EnableAutostart() if body.enabled else DisableAutostart()
     result = trcc.dispatch(command)
-    return AutostartResponse(
-        ok=result.ok,
-        enabled=result.enabled,
-        path=result.path,
-        message=result.message,
-    )
+    return result
 
 
-@router.get("/health", response_model=HealthReportResponse)
-def health(request: Request) -> HealthReportResponse:
+@router.get("/health")
+def health(request: Request) -> HealthReportResult:
     """Run the health check suite + return structured results."""
     log.info("api GET /system/health")
     result = request.app.state.trcc.dispatch(RunHealthCheck())
-    return to_health_report_response(result)
+    return result
 
 
 @router.get("/doctor", response_model=DoctorResponse)
@@ -365,17 +350,17 @@ def debug_report(body: DebugReportRequest,
     return to_debug_report_response(result)
 
 
-@router.get("/check-update", response_model=UpdateCheckResponse)
-def check_update(request: Request) -> UpdateCheckResponse:
+@router.get("/check-update")
+def check_update(request: Request) -> UpdateCheckResult:
     """Ask GitHub whether a newer version of trcc-linux is published."""
     log.info("api GET /system/check-update")
     result = request.app.state.trcc.dispatch(CheckForUpdate())
-    return to_update_check_response(result)
+    return result
 
 
-@router.post("/upgrade", response_model=UpgradeResponse)
+@router.post("/upgrade")
 def upgrade(body: UpgradeRequest,
-            request: Request) -> UpgradeResponse:
+            request: Request) -> UpgradeResult:
     """Upgrade trcc-linux via the detected package manager.
 
     Pass ``dry_run=true`` to get the command without executing it —
@@ -386,22 +371,22 @@ def upgrade(body: UpgradeRequest,
     result = request.app.state.trcc.dispatch(
         RunUpgrade(dry_run=body.dry_run),
     )
-    return to_upgrade_response(result)
+    return result
 
 
-@router.get("/first-run-status", response_model=FirstRunStatusResponse)
-def first_run_status(request: Request) -> FirstRunStatusResponse:
+@router.get("/first-run-status")
+def first_run_status(request: Request) -> FirstRunStatusResult:
     """Has trcc finished onboarding on this machine?"""
     log.info("api GET /system/first-run-status")
     result = request.app.state.trcc.dispatch(GetFirstRunStatus())
-    return to_first_run_status_response(result)
+    return result
 
 
-@router.post("/mark-setup-done", response_model=FirstRunStatusResponse)
-def mark_setup_done(request: Request) -> FirstRunStatusResponse:
+@router.post("/mark-setup-done")
+def mark_setup_done(request: Request) -> FirstRunStatusResult:
     """Mark the first-run flow as completed."""
     log.info("api POST /system/mark-setup-done")
     result = request.app.state.trcc.dispatch(MarkFirstRunDone())
-    return to_first_run_status_response(result)
+    return result
 
 

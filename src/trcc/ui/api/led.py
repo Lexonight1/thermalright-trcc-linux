@@ -31,33 +31,29 @@ from ...core.commands import (
     ToggleSegment,
 )
 from ...core.led_models import LEDMode
+from ...core.results import (
+    ClockFormatResult,
+    DiskIndexResult,
+    LedColorsResult,
+    LedModesListResult,
+    LedSnapshotResult,
+    LedStylesListResult,
+    MemoryRatioResult,
+    WeekStartResult,
+)
 from ._shared import (
     http_error_if_failed,
-    to_clock_format_response,
-    to_disk_index_response,
-    to_led_modes_list_response,
-    to_led_response,
-    to_led_snapshot_response,
-    to_led_styles_list_response,
-    to_memory_ratio_response,
-    to_week_start_response,
 )
 from .schemas import (
     ClockFormatRequest,
-    ClockFormatResponse,
     DiskIndexRequest,
-    DiskIndexResponse,
     LedBrightnessRequest,
     LedColorRequest,
     LedColorsRequest,
-    LedColorsResponse,
     LedModeRequest,
-    LedModesListResponse,
     LedRenderRequest,
     LedSelectZoneRequest,
-    LedSnapshotResponse,
     LedSourceRequest,
-    LedStylesListResponse,
     LedTestModeRequest,
     LedToggleRequest,
     LedToggleSegmentRequest,
@@ -66,9 +62,7 @@ from .schemas import (
     LedZoneModeRequest,
     LedZoneSyncRequest,
     MemoryRatioRequest,
-    MemoryRatioResponse,
     WeekStartRequest,
-    WeekStartResponse,
 )
 
 log = logging.getLogger(__name__)
@@ -76,9 +70,9 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/devices/{key}/led", tags=["led"])
 
 
-@router.post("/colors", response_model=LedColorsResponse)
+@router.post("/colors")
 def set_colors(key: str, body: LedColorsRequest,
-               request: Request) -> LedColorsResponse:
+               request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/colors: key=%s brightness=%s global_on=%s",
         key, body.brightness, body.global_on,
@@ -92,12 +86,12 @@ def set_colors(key: str, body: LedColorsRequest,
         ),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/render", response_model=LedColorsResponse)
+@router.post("/render")
 def render(key: str, body: LedRenderRequest,
-           request: Request) -> LedColorsResponse:
+           request: Request) -> LedColorsResult:
     """One tick — engine reads Settings, advances counters, sends a frame."""
     log.info(
         "api POST /devices/{key}/led/render: key=%s phase=%s",
@@ -107,12 +101,12 @@ def render(key: str, body: LedRenderRequest,
         RenderLed(key=key, color=body.color, phase=body.phase),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/mode", response_model=LedColorsResponse)
+@router.post("/mode")
 def set_mode(key: str, body: LedModeRequest,
-             request: Request) -> LedColorsResponse:
+             request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/mode: key=%s mode=%s", key, body.mode,
     )
@@ -122,12 +116,12 @@ def set_mode(key: str, body: LedModeRequest,
         raise HTTPException(400, f"Unknown LED mode: {body.mode!r}") from e
     result = request.app.state.trcc.dispatch(SetLedMode(key=key, mode=mode))
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/color", response_model=LedColorsResponse)
+@router.post("/color")
 def set_color(key: str, body: LedColorRequest,
-              request: Request) -> LedColorsResponse:
+              request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/color: key=%s color=%s", key, body.color,
     )
@@ -135,12 +129,12 @@ def set_color(key: str, body: LedColorRequest,
         SetLedColor(key=key, color=body.color),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/brightness", response_model=LedColorsResponse)
+@router.post("/brightness")
 def set_brightness(key: str, body: LedBrightnessRequest,
-                   request: Request) -> LedColorsResponse:
+                   request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/brightness: key=%s percent=%s",
         key, body.percent,
@@ -149,12 +143,12 @@ def set_brightness(key: str, body: LedBrightnessRequest,
         SetLedBrightness(key=key, percent=body.percent),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/test-mode", response_model=LedColorsResponse)
+@router.post("/test-mode")
 def test_mode(key: str, body: LedTestModeRequest,
-              request: Request) -> LedColorsResponse:
+              request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/test-mode: key=%s enabled=%s",
         key, body.enabled,
@@ -163,12 +157,12 @@ def test_mode(key: str, body: LedTestModeRequest,
         EnableLedTestMode(key=key, enabled=body.enabled),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/temp-source", response_model=LedColorsResponse)
+@router.post("/temp-source")
 def temp_source(key: str, body: LedSourceRequest,
-                request: Request) -> LedColorsResponse:
+                request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/temp-source: key=%s source=%s",
         key, body.source,
@@ -177,12 +171,12 @@ def temp_source(key: str, body: LedSourceRequest,
         SetLedTempSource(key=key, source=body.source),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/load-source", response_model=LedColorsResponse)
+@router.post("/load-source")
 def load_source(key: str, body: LedSourceRequest,
-                request: Request) -> LedColorsResponse:
+                request: Request) -> LedColorsResult:
     log.info(
         "api POST /devices/{key}/led/load-source: key=%s source=%s",
         key, body.source,
@@ -191,12 +185,12 @@ def load_source(key: str, body: LedSourceRequest,
         SetLedLoadSource(key=key, source=body.source),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/toggle", response_model=LedColorsResponse)
+@router.post("/toggle")
 def toggle(key: str, body: LedToggleRequest,
-           request: Request) -> LedColorsResponse:
+           request: Request) -> LedColorsResult:
     """Turn the LED device (or one zone) on/off."""
     log.info(
         "api POST /devices/{key}/led/toggle: key=%s on=%s zone=%s",
@@ -206,12 +200,12 @@ def toggle(key: str, body: LedToggleRequest,
         ToggleLed(key=key, on=body.on, zone=body.zone),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/zone-color", response_model=LedColorsResponse)
+@router.post("/zone-color")
 def zone_color(key: str, body: LedZoneColorRequest,
-               request: Request) -> LedColorsResponse:
+               request: Request) -> LedColorsResult:
     """Set one zone's persistent color."""
     log.info(
         "api POST /devices/{key}/led/zone-color: key=%s zone=%s color=%s",
@@ -221,12 +215,12 @@ def zone_color(key: str, body: LedZoneColorRequest,
         SetLedZoneColor(key=key, zone=body.zone, color=body.color),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/zone-mode", response_model=LedColorsResponse)
+@router.post("/zone-mode")
 def zone_mode(key: str, body: LedZoneModeRequest,
-              request: Request) -> LedColorsResponse:
+              request: Request) -> LedColorsResult:
     """Set one zone's persistent LED mode."""
     log.info(
         "api POST /devices/{key}/led/zone-mode: key=%s zone=%s mode=%s",
@@ -240,12 +234,12 @@ def zone_mode(key: str, body: LedZoneModeRequest,
         SetLedZoneMode(key=key, zone=body.zone, mode=mode),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/zone-brightness", response_model=LedColorsResponse)
+@router.post("/zone-brightness")
 def zone_brightness(key: str, body: LedZoneBrightnessRequest,
-                    request: Request) -> LedColorsResponse:
+                    request: Request) -> LedColorsResult:
     """Set one zone's persistent brightness (0-100)."""
     log.info(
         "api POST /devices/{key}/led/zone-brightness: key=%s zone=%s "
@@ -258,12 +252,12 @@ def zone_brightness(key: str, body: LedZoneBrightnessRequest,
         ),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/zone-sync", response_model=LedColorsResponse)
+@router.post("/zone-sync")
 def zone_sync(key: str, body: LedZoneSyncRequest,
-              request: Request) -> LedColorsResponse:
+              request: Request) -> LedColorsResult:
     """Enable/disable the zone-sync carousel (optionally set interval)."""
     log.info(
         "api POST /devices/{key}/led/zone-sync: key=%s enabled=%s "
@@ -278,12 +272,12 @@ def zone_sync(key: str, body: LedZoneSyncRequest,
             SetLedZoneSyncInterval(key=key, ticks=body.interval_ticks),
         )
         http_error_if_failed(ir)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/select-zone", response_model=LedColorsResponse)
+@router.post("/select-zone")
 def select_zone(key: str, body: LedSelectZoneRequest,
-                request: Request) -> LedColorsResponse:
+                request: Request) -> LedColorsResult:
     """Pick the currently-active zone."""
     log.info(
         "api POST /devices/{key}/led/select-zone: key=%s zone=%s",
@@ -293,12 +287,12 @@ def select_zone(key: str, body: LedSelectZoneRequest,
         SelectZone(key=key, zone=body.zone),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.post("/toggle-segment", response_model=LedColorsResponse)
+@router.post("/toggle-segment")
 def toggle_segment(key: str, body: LedToggleSegmentRequest,
-                   request: Request) -> LedColorsResponse:
+                   request: Request) -> LedColorsResult:
     """Flip one segment on/off."""
     log.info(
         "api POST /devices/{key}/led/toggle-segment: key=%s index=%s on=%s",
@@ -308,21 +302,21 @@ def toggle_segment(key: str, body: LedToggleSegmentRequest,
         ToggleSegment(key=key, index=body.index, on=body.on),
     )
     http_error_if_failed(result)
-    return to_led_response(result)
+    return result
 
 
-@router.get("/snapshot", response_model=LedSnapshotResponse)
-def snapshot(key: str, request: Request) -> LedSnapshotResponse:
+@router.get("/snapshot")
+def snapshot(key: str, request: Request) -> LedSnapshotResult:
     """Return the persisted LED state for one device."""
     log.info("api GET /devices/{key}/led/snapshot: key=%s", key)
     result = request.app.state.trcc.dispatch(LedSnapshot(key=key))
     http_error_if_failed(result)
-    return to_led_snapshot_response(result)
+    return result
 
 
-@router.post("/clock-format", response_model=ClockFormatResponse)
+@router.post("/clock-format")
 def clock_format(key: str, body: ClockFormatRequest,
-                 request: Request) -> ClockFormatResponse:
+                 request: Request) -> ClockFormatResult:
     """Set the 12h/24h clock display."""
     log.info(
         "api POST /devices/{key}/led/clock-format: key=%s is_24h=%s",
@@ -332,12 +326,12 @@ def clock_format(key: str, body: ClockFormatRequest,
         SetClockFormat(key=key, is_24h=body.is_24h),
     )
     http_error_if_failed(result)
-    return to_clock_format_response(result)
+    return result
 
 
-@router.post("/week-start", response_model=WeekStartResponse)
+@router.post("/week-start")
 def week_start(key: str, body: WeekStartRequest,
-               request: Request) -> WeekStartResponse:
+               request: Request) -> WeekStartResult:
     """Pick the week-start day (Sunday-first vs Monday-first)."""
     log.info(
         "api POST /devices/{key}/led/week-start: key=%s sunday_first=%s",
@@ -347,12 +341,12 @@ def week_start(key: str, body: WeekStartRequest,
         SetWeekStart(key=key, sunday_first=body.sunday_first),
     )
     http_error_if_failed(result)
-    return to_week_start_response(result)
+    return result
 
 
-@router.post("/memory-ratio", response_model=MemoryRatioResponse)
+@router.post("/memory-ratio")
 def memory_ratio(key: str, body: MemoryRatioRequest,
-                 request: Request) -> MemoryRatioResponse:
+                 request: Request) -> MemoryRatioResult:
     """Set the DDR memory multiplier (1, 2, or 4)."""
     log.info(
         "api POST /devices/{key}/led/memory-ratio: key=%s ratio=%s",
@@ -362,12 +356,12 @@ def memory_ratio(key: str, body: MemoryRatioRequest,
         SetMemoryRatio(key=key, ratio=body.ratio),
     )
     http_error_if_failed(result)
-    return to_memory_ratio_response(result)
+    return result
 
 
-@router.post("/disk-index", response_model=DiskIndexResponse)
+@router.post("/disk-index")
 def disk_index(key: str, body: DiskIndexRequest,
-               request: Request) -> DiskIndexResponse:
+               request: Request) -> DiskIndexResult:
     """Pick which disk's read/write stats to surface."""
     log.info(
         "api POST /devices/{key}/led/disk-index: key=%s index=%s",
@@ -377,7 +371,7 @@ def disk_index(key: str, body: DiskIndexRequest,
         SetDiskIndex(key=key, index=body.index),
     )
     http_error_if_failed(result)
-    return to_disk_index_response(result)
+    return result
 
 
 # ── Top-level meta routes (no device key in path) ────────────────────
@@ -386,19 +380,19 @@ def disk_index(key: str, body: DiskIndexRequest,
 meta_router = APIRouter(prefix="/led", tags=["led"])
 
 
-@meta_router.get("/styles", response_model=LedStylesListResponse)
-def list_styles(request: Request) -> LedStylesListResponse:
+@meta_router.get("/styles")
+def list_styles(request: Request) -> LedStylesListResult:
     """Enumerate every LED style in the PM byte registry."""
     log.info("api GET /led/styles")
     result = request.app.state.trcc.dispatch(ListLedStyles())
     http_error_if_failed(result)
-    return to_led_styles_list_response(result)
+    return result
 
 
-@meta_router.get("/modes", response_model=LedModesListResponse)
-def list_modes(request: Request) -> LedModesListResponse:
+@meta_router.get("/modes")
+def list_modes(request: Request) -> LedModesListResult:
     """Enumerate animation modes."""
     log.info("api GET /led/modes")
     result = request.app.state.trcc.dispatch(ListLedModes())
     http_error_if_failed(result)
-    return to_led_modes_list_response(result)
+    return result

@@ -6,16 +6,17 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from ...core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
+from ...core.results import (
+    DisconnectResult,
+)
 from ._shared import (
     http_error_if_failed,
     product_to_schema,
     to_connect_response,
-    to_disconnect_response,
     to_discover_response,
 )
 from .schemas import (
     ConnectResponse,
-    DisconnectResponse,
     DiscoverResponse,
     ProductSchema,
 )
@@ -51,9 +52,9 @@ def connect(key: str, request: Request) -> ConnectResponse:
     return to_connect_response(result)
 
 
-@router.post("/{key}/disconnect", response_model=DisconnectResponse)
-def disconnect(key: str, request: Request) -> DisconnectResponse:
+@router.post("/{key}/disconnect")
+def disconnect(key: str, request: Request) -> DisconnectResult:
     log.info("api POST /devices/{key}/disconnect: key=%s", key)
     result = request.app.state.trcc.dispatch(DisconnectDevice(key=key))
     http_error_if_failed(result, status_code=404)
-    return to_disconnect_response(result)
+    return result
