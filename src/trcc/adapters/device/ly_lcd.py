@@ -21,25 +21,21 @@ import struct
 
 from ...core.errors import (
     HandshakeError,
-    TransportError,
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
-from ...core.ports import BulkTransport, Device
+from ...core.ports import BulkTransport
 from ...core.protocol import (
-    DeviceProfile,
     get_profile,
     pm_to_fbl,
     resolve_encode_sub,
 )
 from . import DeviceFactory
+from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
-
-_EP_WRITE = 0x01
-_EP_READ = 0x81
 
 _PID_LY = 0x5408
 _PID_LY1 = 0x5409
@@ -62,8 +58,16 @@ _USB_WRITE_SIZE = 4096
 
 
 @DeviceFactory.register(Wire.LY)
-class LyLcd(Device[BulkTransport]):
-    """LY-series USB bulk LCD (Trofeo Vision 9.16)."""
+class LyLcd(BaseBulkDevice):
+    """LY-series USB bulk LCD (Trofeo Vision 9.16).
+
+    ``self._profile`` is cached at handshake.  FBL 192 (the Trofeo Vision 9.16
+    family) carries both ``jpeg=True`` and the multi-sub rotation table —
+    DisplayService reads ``profile.jpeg`` / ``.rotate`` / ``.encode_sub_bases``
+    from there.
+    """
+
+    _EP_WRITE = 0x01
 
     def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
         super().__init__(info, transport)
@@ -71,30 +75,12 @@ class LyLcd(Device[BulkTransport]):
         self._sub: int = 0
         # LY uses chunk header byte[8]=1, LY1 uses byte[8]=2
         self._chunk_cmd: int = 1 if info.pid == _PID_LY else 2
-        # Cached at handshake. FBL 192 (Trofeo Vision 9.16 family) carries
-        # both jpeg=True and the multi-sub rotation table — DisplayService
-        # reads profile.jpeg / .rotate / .encode_sub_bases from here.
-        self._profile: DeviceProfile | None = None
-
-    @property
-    def profile(self) -> DeviceProfile | None:
-        """Handshake-derived profile; None pre-handshake."""
-        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
-    def connect(self) -> HandshakeResult:
-        log.info("LyLcd %s: opening transport", self.info.key)
-        if not self._transport.open():
-            log.error("LyLcd %s: transport open failed", self.info.key)
-            raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
-
-        try:
-            self._transport.write(_EP_WRITE, _HANDSHAKE_PAYLOAD, _HANDSHAKE_TIMEOUT_MS)
-            resp = self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _HANDSHAKE_TIMEOUT_MS)
-        except TransportError as e:
-            log.error("LyLcd %s: handshake I/O failed: %s", self.info.key, e)
-            raise HandshakeError(f"LyLcd handshake I/O failed: {e}") from e
+    def _do_handshake(self) -> HandshakeResult:
+        resp = self._exchange(_HANDSHAKE_PAYLOAD, _HANDSHAKE_READ_SIZE,
+                              _HANDSHAKE_TIMEOUT_MS)
 
         if (len(resp) < 37 or resp[0] != 3 or resp[1] != 0xFF or resp[8] != 1):
             log.error("LyLcd %s: handshake validation failed (len=%d)",
@@ -128,7 +114,7 @@ class LyLcd(Device[BulkTransport]):
             encode_sub_bases=(),
         )
 
-        result = HandshakeResult(
+        return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=self._pm,
             pm_byte=self._pm,
@@ -136,18 +122,16 @@ class LyLcd(Device[BulkTransport]):
             fbl=fbl,
             raw_response=bytes(resp[:64]),
         )
-        self._handshake = result
-        log.info("LyLcd handshake OK: PM=%d SUB=%d resolution=%s (pid=0x%04x)",
-                 self._pm, self._sub, result.resolution, self.info.pid)
-        return result
 
-    def send(self, payload: bytes) -> bool:
-        if not self._transport.is_open:
-            log.error("LyLcd %s: send() called before connect()", self.info.key)
-            raise TransportError(
-                f"LyLcd {self.info.key} not connected — call connect() first"
-            )
+    def _handshake_detail(self, result: HandshakeResult) -> str:
+        """The PID picks the variant (LY vs LY1) — worth having on the record."""
+        return f" (pid=0x{self.info.pid:04x})"
 
+    def _prepare_frame(self, payload: bytes) -> bytes:
+        """Slice the payload into 512-byte chunks (16-byte header + 496 data).
+
+        Chunk count is padded to a multiple of 4 on LY, left alone on LY1.
+        """
         total_size = len(payload)
         num_chunks = total_size // _CHUNK_DATA_SIZE + 1
         log.debug("LyLcd %s: sending %d-byte payload in %d chunks",
@@ -181,31 +165,22 @@ class LyLcd(Device[BulkTransport]):
         if remainder != 0:
             padded_chunks += pad_multiple - remainder
         total_bytes = padded_chunks * _CHUNK_SIZE
-        send_buf = bytes(chunks) + bytes(total_bytes - len(chunks))
+        return bytes(chunks) + bytes(total_bytes - len(chunks))
 
-        def _write_frame() -> bool:
-            pos = 0
-            while pos < total_bytes:
-                remaining = total_bytes - pos
-                if remaining >= _USB_WRITE_SIZE:
-                    write_size = _USB_WRITE_SIZE
-                else:
-                    write_size = min(2048, remaining) if self.info.pid == _PID_LY else remaining
-                self._transport.write(
-                    _EP_WRITE, send_buf[pos:pos + write_size], _WRITE_TIMEOUT_MS,
-                )
-                pos += _USB_WRITE_SIZE
-            # ACK read
-            self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _READ_TIMEOUT_MS)
-            return True
-
-        # Shared reconnect + recovery policy (base Device): a transport error
-        # gets one in-place close→open→handshake retry (heals a stale handle
-        # after resume, #189) before escalating to the recovery tracker.
-        return self._send_with_recovery(_write_frame)
-
-    def disconnect(self) -> None:
-        log.info("LyLcd %s: disconnecting", self.info.key)
-        self._transport.close()
-        self._handshake = None
-        self._profile = None
+    def _write_frame(self, frame: bytes) -> bool:
+        """4096-byte USB writes over the chunk buffer, then the 512-byte ACK."""
+        total_bytes = len(frame)
+        pos = 0
+        while pos < total_bytes:
+            remaining = total_bytes - pos
+            if remaining >= _USB_WRITE_SIZE:
+                write_size = _USB_WRITE_SIZE
+            else:
+                write_size = min(2048, remaining) if self.info.pid == _PID_LY else remaining
+            self._transport.write(
+                self._EP_WRITE, frame[pos:pos + write_size], _WRITE_TIMEOUT_MS,
+            )
+            pos += _USB_WRITE_SIZE
+        # ACK read
+        self._transport.read(self._EP_READ, _HANDSHAKE_READ_SIZE, _READ_TIMEOUT_MS)
+        return True

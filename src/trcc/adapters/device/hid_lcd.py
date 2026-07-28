@@ -22,9 +22,10 @@ from ...core.errors import (
     UnsupportedOperationError,
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
-from ...core.ports import BulkTransport, Device
+from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
 from . import DeviceFactory
+from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +33,6 @@ log = logging.getLogger(__name__)
 # =========================================================================
 # Wire constants (from USBLCDNEW decompiled C#)
 # =========================================================================
-
-# Endpoints (LibUsbDotNet EP01 read / EP02 write)
-_EP_READ = 0x81
-_EP_WRITE = 0x02
 
 # Type 2 magic bytes and sizes
 _TYPE2_MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
@@ -52,12 +49,9 @@ _TYPE3_ACK_SIZE = 16
 
 _USB_BULK_ALIGNMENT = 512
 
-# Handshake + frame timings (from C#)
-_HANDSHAKE_TIMEOUT_MS = 5000
-_HANDSHAKE_MAX_RETRIES = 3
-_HANDSHAKE_RETRY_DELAY_S = 0.5
-_DELAY_PRE_INIT_S = 0.050
-_DELAY_POST_INIT_S = 0.200
+# Frame timing (from C#).  The handshake's own pacing + retry budget is shared
+# with the LED wire and lives on ``_base`` — this wire only adds its per-frame
+# settle.
 _DELAY_FRAME_TYPE2_S = 0.001
 # A streaming firmware reboots on the init packet, so we skip it and let the
 # panel finish its own boot before the first frame (#228 Frozen Warframe SE).
@@ -82,13 +76,21 @@ def _frame_timeout_ms(packet_size: int) -> int:
 
 
 @DeviceFactory.register(Wire.HID)
-class HidLcd(Device[BulkTransport]):
+class HidLcd(BaseBulkDevice):
     """HID-protocol LCD device (Type 2 or Type 3 firmware variants).
 
     Selection is by `info.device_type` (2 or 3); both variants share the
     handshake template (write init → delay → read response → validate →
     parse) and differ in packet layout and response validation.
+
+    ``self._profile`` is populated by the handshake and carries PM-derived
+    geometry + encoding flags (jpeg, big_endian, rotate).  Frame builders read
+    it instead of ``info.native_resolution``, so a variant that reports a
+    different resolution at handshake is honored.
     """
+
+    # LibUsbDotNet EP01 read / EP02 write.
+    _EP_WRITE = 0x02
 
     def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
         super().__init__(info, transport)
@@ -96,80 +98,31 @@ class HidLcd(Device[BulkTransport]):
             raise UnsupportedOperationError(
                 f"HidLcd requires device_type 2 or 3, got {info.device_type}"
             )
-        # Populated by handshake. Carries PM-derived geometry + encoding
-        # flags (jpeg, big_endian, rotate). Frame builders use this instead
-        # of info.native_resolution so a device variant that reports a
-        # different resolution at handshake is honored.
-        self._profile: DeviceProfile | None = None
-
-    @property
-    def profile(self) -> DeviceProfile | None:
-        """Handshake-derived profile; None pre-handshake."""
-        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
-    def connect(self) -> HandshakeResult:
-        """Open transport and perform the type-specific handshake."""
-        log.info("HidLcd %s (type %d): opening transport",
-                 self.info.key, self.info.device_type)
-        if not self._transport.open():
-            log.error("HidLcd %s: transport open failed", self.info.key)
-            raise HandshakeError(
-                f"Failed to open USB transport for {self.info.key}"
-            )
+    def _handshake_detail(self, result: HandshakeResult) -> str:
+        """Which firmware variant answered — the two speak different packets."""
+        return f" (type {self.info.device_type})"
 
+    def _do_handshake(self) -> HandshakeResult:
+        """Perform the type-specific handshake, retrying a bad exchange."""
         if self._quirks.skip_init:
             return self._connect_streaming_firmware()
+        return self._handshake_retry(
+            self._build_init_packet(), self._response_size(),
+            self._validate_and_parse,
+        )
 
-        init_pkt = self._build_init_packet()
-        response_size = self._response_size()
-
-        last_err: Exception | None = None
-        for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):
-            try:
-                time.sleep(_DELAY_PRE_INIT_S)
-                self._transport.write(_EP_WRITE, init_pkt, _HANDSHAKE_TIMEOUT_MS)
-                time.sleep(_DELAY_POST_INIT_S)
-
-                resp = self._transport.read(
-                    _EP_READ, response_size, _HANDSHAKE_TIMEOUT_MS,
-                )
-
-                if not self._validate_response(resp):
-                    log.warning(
-                        "HidLcd handshake attempt %d/%d: invalid response "
-                        "(len=%d, first 16: %s)",
-                        attempt, _HANDSHAKE_MAX_RETRIES,
-                        len(resp), resp[:16].hex() if resp else "empty",
-                    )
-                    last_err = HandshakeError(
-                        f"Invalid handshake response for {self.info.key}"
-                    )
-                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
-                    continue
-
-                result = self._parse_response(resp)
-                self._handshake = result
-                log.info(
-                    "HidLcd type %d handshake OK: PM=%s SUB=%s resolution=%s",
-                    self.info.device_type,
-                    getattr(result, "pm_byte", "?"),
-                    getattr(result, "sub_byte", "?"),
-                    result.resolution,
-                )
-                return result
-
-            except Exception as e:
-                log.warning("HidLcd handshake attempt %d/%d failed: %s",
-                            attempt, _HANDSHAKE_MAX_RETRIES, e)
-                last_err = e
-                if attempt < _HANDSHAKE_MAX_RETRIES:
-                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
-
-        raise HandshakeError(
-            f"HidLcd handshake failed after {_HANDSHAKE_MAX_RETRIES} attempts"
-        ) from last_err
+    def _validate_and_parse(self, resp: bytes) -> HandshakeResult:
+        """Accept the reply or reject it as a retryable attempt."""
+        if not self._validate_response(resp):
+            log.warning("HidLcd handshake: invalid response (len=%d, first 16: %s)",
+                        len(resp), resp[:16].hex() if resp else "empty")
+            raise HandshakeError(
+                f"Invalid handshake response for {self.info.key}"
+            )
+        return self._parse_response(resp)
 
     def _connect_streaming_firmware(self) -> HandshakeResult:
         """Handshake a firmware that reboots on the init packet and streams
@@ -187,7 +140,7 @@ class HidLcd(Device[BulkTransport]):
         resp = b""
         try:
             resp = self._transport.read(
-                _EP_READ, self._response_size(), _HANDSHAKE_TIMEOUT_MS,
+                self._EP_READ, self._response_size(), HANDSHAKE_TIMEOUT_MS,
             )
         except Exception as e:
             log.info("HidLcd %s: no unsolicited handshake (%s) — using fingerprint",
@@ -202,14 +155,12 @@ class HidLcd(Device[BulkTransport]):
         base = self._base_profile(fbl, pm)
         profile = self._portrait_native(base)
         self._profile = profile
-        result = HandshakeResult(
+        log.info("HidLcd %s: streaming connect OK, portrait-native %s",
+                 self.info.key, profile.resolution)
+        return HandshakeResult(
             resolution=profile.resolution, model_id=pm, serial="",
             pm_byte=pm, sub_byte=sub, fbl=fbl, raw_response=bytes(resp[:64]),
         )
-        self._handshake = result
-        log.info("HidLcd %s: streaming connect OK, portrait-native %s",
-                 self.info.key, profile.resolution)
-        return result
 
     def _base_profile(self, fbl: int | None, pm: int) -> DeviceProfile:
         """Resolve the pre-quirk geometry profile: from the FBL when known,
@@ -232,69 +183,54 @@ class HidLcd(Device[BulkTransport]):
             base, width=min(w, h), height=max(w, h), rotate=False,
         )
 
-    def send(self, payload: bytes) -> bool:
-        """Send one image frame (RGB565 or JPEG bytes, protocol-specific)."""
-        if not self._transport.is_open:
-            log.error("HidLcd %s: send() called before connect()", self.info.key)
-            raise HandshakeError(
-                f"HidLcd {self.info.key} not connected — call connect() first"
-            )
-
+    def _prepare_frame(self, payload: bytes) -> bytes:
+        """Build the type-specific packet (RGB565 or JPEG bytes inside)."""
         if self.info.device_type == 2:
             packet = self._build_frame_type2(payload)
         else:
             packet = self._build_frame_type3(payload)
-
-        timeout = _frame_timeout_ms(len(packet))
         log.debug("HidLcd %s (type %d): sending %d-byte packet",
                   self.info.key, self.info.device_type, len(packet))
-        def _write_frame() -> bool:
-            if self.info.device_type == 2:
-                # The C# ThreadSendDeviceData2 (hidList2) delivers the picture
-                # as a sequence of 512-byte writes, never one blob — the
-                # firmware reads fixed-size reports and only latches the frame
-                # when it arrives that way. A single bulk write of the whole
-                # frame handshakes clean and reports every byte transferred,
-                # yet the panel stays on its boot logo (#150). The packet is
-                # 512-aligned, so every chunk is exactly full. Slice through a
-                # memoryview so the chunking is zero-copy — this runs ~300×
-                # per frame at video framerate.
-                view = memoryview(packet)
-                for offset in range(0, len(packet), _USB_BULK_ALIGNMENT):
-                    chunk = view[offset:offset + _USB_BULK_ALIGNMENT]
-                    # A SHORT write (< chunk) is the real failure.  On Windows
-                    # the HID driver prepends a 1-byte Report ID, so a full
-                    # 512-byte write reports 513 transferred — that's NOT short,
-                    # it's the whole chunk plus the report byte, so ``>=`` passes
-                    # it (an ``!= len`` check wrongly failed every Windows HID
-                    # Type-2 frame with "short chunk write", #240).
-                    if self._transport.write(_EP_WRITE, chunk, timeout) < len(chunk):
-                        log.warning("HidLcd %s: short chunk write at offset %d",
-                                    self.info.key, offset)
-                        return False
-                time.sleep(_DELAY_FRAME_TYPE2_S)
-                return True
-            transferred = self._transport.write(_EP_WRITE, packet, timeout)
-            if transferred == 0:
-                log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
-                return False
-            ack = self._transport.read(
-                _EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
-            )
-            if not ack:
-                log.warning("HidLcd %s: Type 3 ACK read returned empty", self.info.key)
-            return len(ack) > 0
+        return packet
 
-        # Shared reconnect + recovery policy (base Device): a transport error
-        # gets one in-place close→open→handshake retry (heals a stale handle
-        # after resume, #189) before escalating to the recovery tracker.
-        return self._send_with_recovery(_write_frame)
-
-    def disconnect(self) -> None:
-        log.info("HidLcd %s: disconnecting", self.info.key)
-        self._transport.close()
-        self._handshake = None
-        self._profile = None
+    def _write_frame(self, frame: bytes) -> bool:
+        """Type 2 streams 512-byte reports; Type 3 writes one blob + reads ACK."""
+        timeout = _frame_timeout_ms(len(frame))
+        if self.info.device_type == 2:
+            # The C# ThreadSendDeviceData2 (hidList2) delivers the picture
+            # as a sequence of 512-byte writes, never one blob — the
+            # firmware reads fixed-size reports and only latches the frame
+            # when it arrives that way. A single bulk write of the whole
+            # frame handshakes clean and reports every byte transferred,
+            # yet the panel stays on its boot logo (#150). The packet is
+            # 512-aligned, so every chunk is exactly full. Slice through a
+            # memoryview so the chunking is zero-copy — this runs ~300×
+            # per frame at video framerate.
+            view = memoryview(frame)
+            for offset in range(0, len(frame), _USB_BULK_ALIGNMENT):
+                chunk = view[offset:offset + _USB_BULK_ALIGNMENT]
+                # A SHORT write (< chunk) is the real failure.  On Windows
+                # the HID driver prepends a 1-byte Report ID, so a full
+                # 512-byte write reports 513 transferred — that's NOT short,
+                # it's the whole chunk plus the report byte, so ``>=`` passes
+                # it (an ``!= len`` check wrongly failed every Windows HID
+                # Type-2 frame with "short chunk write", #240).
+                if self._transport.write(self._EP_WRITE, chunk, timeout) < len(chunk):
+                    log.warning("HidLcd %s: short chunk write at offset %d",
+                                self.info.key, offset)
+                    return False
+            time.sleep(_DELAY_FRAME_TYPE2_S)
+            return True
+        transferred = self._transport.write(self._EP_WRITE, frame, timeout)
+        if transferred == 0:
+            log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
+            return False
+        ack = self._transport.read(
+            self._EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
+        )
+        if not ack:
+            log.warning("HidLcd %s: Type 3 ACK read returned empty", self.info.key)
+        return len(ack) > 0
 
     # ── Wire protocol — Type 2 variant ────────────────────────────────
 

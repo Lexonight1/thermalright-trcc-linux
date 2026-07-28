@@ -12,8 +12,6 @@ import pytest
 
 from trcc.adapters.device import DeviceFactory
 from trcc.adapters.device.ali_lcd import (
-    _EP_READ,
-    _EP_WRITE,
     _FRAME_BYTES,
     _FRAME_HEADER,
     _HANDSHAKE_REQUEST,
@@ -69,8 +67,9 @@ def test_frame_header_bytes():
 
 
 def test_endpoints():
-    assert _EP_WRITE == 0x02   # WriteEndpointID.Ep02 (cs:569)
-    assert _EP_READ == 0x81
+    # Endpoints live on the class (BaseBulkDevice reads them for _exchange).
+    assert AliLcd._EP_WRITE == 0x02   # WriteEndpointID.Ep02 (cs:569)
+    assert AliLcd._EP_READ == 0x81
 
 
 # ── Factory dispatch ─────────────────────────────────────────────────
@@ -96,7 +95,7 @@ def test_connect_accepts_valid_identity(identity):
     assert result.pm_byte == identity
     assert dev.is_connected
     # Handshake request went out on the write endpoint.
-    assert transport.writes[0][0] == _EP_WRITE
+    assert transport.writes[0][0] == AliLcd._EP_WRITE
     assert transport.writes[0][1] == _HANDSHAKE_REQUEST
 
 
@@ -146,7 +145,7 @@ def test_send_writes_header_plus_payload_and_reads_ack():
 
     # Last write is the frame: header + payload, on the write endpoint.
     ep, data = transport.writes[-1]
-    assert ep == _EP_WRITE
+    assert ep == AliLcd._EP_WRITE
     assert data == _FRAME_HEADER + payload
     assert len(data) == 16 + _FRAME_BYTES
 

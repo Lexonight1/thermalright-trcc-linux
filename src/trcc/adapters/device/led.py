@@ -17,12 +17,10 @@ import json
 import logging
 import struct
 import threading
-import time
 from pathlib import Path
 
 from ...core.errors import (
     HandshakeError,
-    TransportError,
     UnsupportedOperationError,
 )
 from ...core.led_models import LedPayload
@@ -34,16 +32,14 @@ from ...core.led_protocol import (
     resolve_pm,
 )
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
-from ...core.ports import BulkTransport, Device
+from ...core.ports import BulkTransport
 from . import DeviceFactory
+from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
-
-_EP_WRITE = 0x02
-_EP_READ = 0x81
 
 _MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
 _HID_REPORT_SIZE = 64
@@ -52,11 +48,6 @@ _CMD_INIT = 1
 _CMD_DATA = 2
 _COLOR_SCALE = 0.4
 
-_HANDSHAKE_TIMEOUT_MS = 5000
-_HANDSHAKE_MAX_RETRIES = 3
-_HANDSHAKE_RETRY_DELAY_S = 0.5
-_DELAY_PRE_INIT_S = 0.050
-_DELAY_POST_INIT_S = 0.200
 _DEFAULT_TIMEOUT_MS = 100
 
 
@@ -165,8 +156,10 @@ def _probe_cache_load(
 
 
 @DeviceFactory.register(Wire.LED)
-class Led(Device[BulkTransport]):
+class Led(BaseBulkDevice):
     """RGB LED controller over HID 64-byte reports."""
+
+    _EP_WRITE = 0x02
 
     def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
         super().__init__(info, transport)
@@ -184,152 +177,143 @@ class Led(Device[BulkTransport]):
         """LED-specific handshake info (pm, sub_type, style)."""
         return self._led_handshake
 
+    def _reset_state(self) -> None:
+        """An LED has no canvas — its handshake product is the style, not a
+        profile, so that is what a disconnect drops."""
+        self._led_handshake = None
+
+    def _handshake_detail(self, result: HandshakeResult) -> str:
+        """The resolved style + model — an LED's whole identity."""
+        if self._led_handshake is None:
+            return ""
+        style = self._led_handshake.style
+        return (f" style={style.value if style else '—'}"
+                f" model={self._led_handshake.model_name or '—'}")
+
     # ── Device ABC ────────────────────────────────────────────────────
 
-    def connect(self) -> HandshakeResult:
-        log.info("Led %s: opening transport", self.info.key)
-        if not self._transport.open():
-            log.error("Led %s: transport open failed", self.info.key)
-            raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
+    def _do_handshake(self) -> HandshakeResult:
+        """Live handshake, falling back to the disk cache when it won't answer.
 
-        last_err: Exception | None = None
-        init_pkt = self._build_init_packet()
+        The LED firmware publishes its identity ONCE per power cycle, so a
+        second app launch gets garbage from every retry — that's not a broken
+        device, it's a device that already spoke.  Hence the cache path below
+        rather than a hard failure.
+        """
+        try:
+            return self._handshake_retry(
+                self._build_init_packet(), _HID_REPORT_SIZE, self._parse_reply,
+            )
+        except HandshakeError as e:
+            return self._handshake_from_cache(e)
 
-        for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):
-            try:
-                time.sleep(_DELAY_PRE_INIT_S)
-                self._transport.write(_EP_WRITE, init_pkt, _HANDSHAKE_TIMEOUT_MS)
-                time.sleep(_DELAY_POST_INIT_S)
+    def _parse_reply(self, resp: bytes) -> HandshakeResult:
+        """Resolve style + model from the reply, or reject it as retryable."""
+        if len(resp) < 7:
+            raise HandshakeError(f"Response too short ({len(resp)} bytes)")
 
-                resp = self._transport.read(
-                    _EP_READ, _HID_REPORT_SIZE, _HANDSHAKE_TIMEOUT_MS,
-                )
+        # Windows DeviceDataReceived1 doesn't validate magic/cmd — we
+        # accept regardless.  A recognised fingerprint header (e.g. the
+        # Magic Qube's DC DD AA 01) is expected, so only warn on a truly
+        # unknown magic / cmd byte.
+        header = bytes(resp[0:4])
+        recognised = is_fingerprint_header(header)
+        if header != _MAGIC and not recognised:
+            log.warning("Led handshake: unexpected magic %s", header.hex())
+        if len(resp) > 12 and resp[12] != 1 and not recognised:
+            log.warning("Led handshake: unexpected cmd byte %d", resp[12])
 
-                if len(resp) < 7:
-                    last_err = HandshakeError(
-                        f"Response too short ({len(resp)} bytes)"
-                    )
-                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
-                    continue
+        # PM and SUB extraction — matches Windows UCDevice.cs offsets:
+        # raw resp[5] = PM, raw resp[4] = SUB
+        self._pm = resp[5]
+        self._sub = resp[4]
 
-                # Windows DeviceDataReceived1 doesn't validate magic/cmd — we
-                # accept regardless.  A recognised fingerprint header (e.g. the
-                # Magic Qube's DC DD AA 01) is expected, so only warn on a truly
-                # unknown magic / cmd byte.
-                header = bytes(resp[0:4])
-                recognised = is_fingerprint_header(header)
-                if header != _MAGIC and not recognised:
-                    log.warning("Led handshake: unexpected magic %s", header.hex())
-                if len(resp) > 12 and resp[12] != 1 and not recognised:
-                    log.warning("Led handshake: unexpected cmd byte %d", resp[12])
+        # Handshake → device style + readable model name.  The header
+        # fingerprint wins first (some SKUs reuse a PM byte but ship a
+        # distinct handshake header — e.g. the Magic Qube shares PM=208
+        # with CZ1 but answers with DC DD AA 01), then the PM registry.
+        # Falls back to the registry's ``led_style`` / ``product`` when
+        # the firmware reports a PM not in PmRegistry (e.g. a new SKU).
+        entry = resolve_handshake(header, self._pm, self._sub)
+        if entry is not None:
+            style = entry.style
+            model_name = entry.model_name
+            style_sub = entry.style_sub
+        else:
+            log.warning("Led handshake: unknown PM=%d (sub=%d); "
+                        "falling back to registry defaults",
+                        self._pm, self._sub)
+            style = self.info.led_style
+            model_name = self.info.product
+            style_sub = 0
 
-                # PM and SUB extraction — matches Windows UCDevice.cs offsets:
-                # raw resp[5] = PM, raw resp[4] = SUB
-                self._pm = resp[5]
-                self._sub = resp[4]
+        self._led_handshake = LedHandshakeResult(
+            pm=self._pm, sub_type=self._sub,
+            style=style,
+            model_name=model_name,
+            style_sub=style_sub,
+            raw_response=bytes(resp[:64]),
+        )
+        # Cache the result so a second app launch on the same
+        # power cycle can skip the now-broken handshake.  The
+        # LED firmware only answers the HID handshake once per
+        # power-on; subsequent handshakes return garbage.
+        _probe_cache_save(
+            self.info.vid, self.info.pid,
+            self._pm, self._sub, model_name,
+        )
+        return HandshakeResult(
+            resolution=(0, 0),        # LEDs have no screen resolution
+            model_id=self._pm,
+            pm_byte=self._pm,
+            sub_byte=self._sub,
+            raw_response=bytes(resp[:64]),
+        )
 
-                # Handshake → device style + readable model name.  The header
-                # fingerprint wins first (some SKUs reuse a PM byte but ship a
-                # distinct handshake header — e.g. the Magic Qube shares PM=208
-                # with CZ1 but answers with DC DD AA 01), then the PM registry.
-                # Falls back to the registry's ``led_style`` / ``product`` when
-                # the firmware reports a PM not in PmRegistry (e.g. a new SKU).
-                entry = resolve_handshake(header, self._pm, self._sub)
-                if entry is not None:
-                    style = entry.style
-                    model_name = entry.model_name
-                    style_sub = entry.style_sub
-                else:
-                    log.warning("Led handshake: unknown PM=%d (sub=%d); "
-                                "falling back to registry defaults",
-                                self._pm, self._sub)
-                    style = self.info.led_style
-                    model_name = self.info.product
-                    style_sub = 0
+    def _handshake_from_cache(self, failure: HandshakeError) -> HandshakeResult:
+        """Reconstruct the handshake from disk, or re-raise *failure*.
 
-                self._led_handshake = LedHandshakeResult(
-                    pm=self._pm, sub_type=self._sub,
-                    style=style,
-                    model_name=model_name,
-                    style_sub=style_sub,
-                    raw_response=bytes(resp[:64]),
-                )
-                result = HandshakeResult(
-                    resolution=(0, 0),        # LEDs have no screen resolution
-                    model_id=self._pm,
-                    pm_byte=self._pm,
-                    sub_byte=self._sub,
-                    raw_response=bytes(resp[:64]),
-                )
-                self._handshake = result
-                log.info("Led handshake OK: PM=%d SUB=%d style=%s model=%s",
-                         self._pm, self._sub,
-                         style.value if style else "—",
-                         model_name or "—")
-                # Cache the result so a second app launch on the same
-                # power cycle can skip the now-broken handshake.  The
-                # LED firmware only answers the HID handshake once per
-                # power-on; subsequent handshakes return garbage.
-                _probe_cache_save(
-                    self.info.vid, self.info.pid,
-                    self._pm, self._sub, model_name,
-                )
-                return result
-
-            except Exception as e:
-                last_err = e
-                log.warning("Led handshake attempt %d/%d failed: %s",
-                            attempt, _HANDSHAKE_MAX_RETRIES, e)
-                if attempt < _HANDSHAKE_MAX_RETRIES:
-                    time.sleep(_HANDSHAKE_RETRY_DELAY_S)
-
-        # All live handshake attempts exhausted — the firmware likely
-        # already published its identity earlier in this power cycle.
-        # Fall back to the disk cache (if any) and reconstruct the
-        # handshake result from it so the device is usable instead of
-        # crashing out.
+        Reached when every live attempt was exhausted — the firmware most
+        likely already published its identity earlier in this power cycle, so
+        the cached fingerprint is the truth and the device stays usable.
+        """
         cached = _probe_cache_load(self.info.vid, self.info.pid)
-        if cached is not None:
-            cpm, csub, cname = cached
-            # A fingerprint device (e.g. Magic Qube) shares its PM byte with
-            # another product, so recover it by cached model name first — the
-            # cache doesn't persist the handshake header — then by PM byte.
-            entry = resolve_model_name(cname) or resolve_pm(cpm, csub)
-            log.warning(
-                "Led handshake: live failed after %d retries — using "
-                "disk cache (PM=%d SUB=%d model=%s, last_err=%s)",
-                _HANDSHAKE_MAX_RETRIES, cpm, csub, cname, last_err,
-            )
-            self._pm = cpm
-            self._sub = csub
-            self._led_handshake = LedHandshakeResult(
-                pm=cpm, sub_type=csub,
-                style=entry.style if entry else self.info.led_style,
-                model_name=cname,
-                style_sub=entry.style_sub if entry else 0,
-                raw_response=b"",
-            )
-            result = HandshakeResult(
-                resolution=(0, 0),
-                model_id=cpm,
-                pm_byte=cpm,
-                sub_byte=csub,
-                raw_response=b"",
-            )
-            self._handshake = result
-            return result
+        if cached is None:
+            raise failure
 
-        raise HandshakeError(
-            f"Led handshake failed after {_HANDSHAKE_MAX_RETRIES} attempts"
-        ) from last_err
+        cpm, csub, cname = cached
+        # A fingerprint device (e.g. Magic Qube) shares its PM byte with
+        # another product, so recover it by cached model name first — the
+        # cache doesn't persist the handshake header — then by PM byte.
+        entry = resolve_model_name(cname) or resolve_pm(cpm, csub)
+        log.warning(
+            "Led handshake: live failed — using disk cache "
+            "(PM=%d SUB=%d model=%s, last_err=%s)",
+            cpm, csub, cname, failure.__cause__ or failure,
+        )
+        self._pm = cpm
+        self._sub = csub
+        self._led_handshake = LedHandshakeResult(
+            pm=cpm, sub_type=csub,
+            style=entry.style if entry else self.info.led_style,
+            model_name=cname,
+            style_sub=entry.style_sub if entry else 0,
+            raw_response=b"",
+        )
+        return HandshakeResult(
+            resolution=(0, 0),
+            model_id=cpm,
+            pm_byte=cpm,
+            sub_byte=csub,
+            raw_response=b"",
+        )
 
     def send(self, payload: LedPayload) -> bool:
         """Send one LED color update.  Payload must be a LedPayload.
 
-        Colors arrive in logical (UI / segment-display) order; the
-        per-style wire-remap table reorders them to physical-wire order
-        before the packet is built. Styles without a remap table (and
-        the pre-handshake / unknown-PM cases) pass through unchanged.
+        Wraps the shared send Template Method in the single-flight lock: the
+        LED firmware can't take a second packet while one is in flight, so a
+        colliding tick is dropped rather than queued.
         """
         if not isinstance(payload, LedPayload):
             log.error("Led %s: send() got %s, expected LedPayload",
@@ -338,12 +322,24 @@ class Led(Device[BulkTransport]):
                 "Led.send() requires a LedPayload; "
                 f"got {type(payload).__name__}"
             )
-        if not self._transport.is_open:
-            log.error("Led %s: send() called before connect()", self.info.key)
-            raise TransportError(
-                f"Led {self.info.key} not connected — call connect() first"
-            )
+        if not self._send_lock.acquire(blocking=False):
+            log.debug("Led %s: already sending — skipped", self.info.key)
+            return False
+        try:
+            # Shared policy on the base: connected-guard → _prepare_frame →
+            # _write_frame under the reconnect + recovery escalation.
+            return super().send(payload)
+        finally:
+            self._send_lock.release()
 
+    def _prepare_frame(self, payload: LedPayload) -> bytes:
+        """Remap colours to physical-wire order, then build the HID packet.
+
+        Colors arrive in logical (UI / segment-display) order; the
+        per-style wire-remap table reorders them to physical-wire order
+        before the packet is built. Styles without a remap table (and
+        the pre-handshake / unknown-PM cases) pass through unchanged.
+        """
         # Apply wire-order remap using the handshake-resolved style.
         # Both colors AND the optional is_on mask arrive in logical
         # (UI / segment-display) order — the per-style table reorders
@@ -371,37 +367,21 @@ class Led(Device[BulkTransport]):
         packet = self._build_packet(payload)
         log.debug("Led %s: sending %d-byte packet (%d colors)",
                   self.info.key, len(packet), len(payload.colors))
+        return packet
 
-        if not self._send_lock.acquire(blocking=False):
-            log.debug("Led %s: already sending — skipped", self.info.key)
-            return False
-
-        def _write_packet() -> bool:
-            remaining = len(packet)
-            offset = 0
-            while remaining > 0:
-                chunk_size = min(remaining, _HID_REPORT_SIZE)
-                chunk = packet[offset:offset + chunk_size]
-                if len(chunk) < _HID_REPORT_SIZE:
-                    chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
-                self._transport.write(_EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
-                remaining -= chunk_size
-                offset += chunk_size
-            return True
-
-        try:
-            # Shared reconnect + recovery policy: one in-place close→open→
-            # handshake retry heals a stale handle (e.g. EIO after resume),
-            # then escalates to the recovery tracker.  (base Device)
-            return self._send_with_recovery(_write_packet)
-        finally:
-            self._send_lock.release()
-
-    def disconnect(self) -> None:
-        log.info("Led %s: disconnecting", self.info.key)
-        self._transport.close()
-        self._handshake = None
-        self._led_handshake = None
+    def _write_frame(self, frame: bytes) -> bool:
+        """Stream the packet as 64-byte HID reports, zero-padding the last."""
+        remaining = len(frame)
+        offset = 0
+        while remaining > 0:
+            chunk_size = min(remaining, _HID_REPORT_SIZE)
+            chunk = frame[offset:offset + chunk_size]
+            if len(chunk) < _HID_REPORT_SIZE:
+                chunk = chunk + b"\x00" * (_HID_REPORT_SIZE - len(chunk))
+            self._transport.write(self._EP_WRITE, chunk, _DEFAULT_TIMEOUT_MS)
+            remaining -= chunk_size
+            offset += chunk_size
+        return True
 
     # ── Packet builders ───────────────────────────────────────────────
 

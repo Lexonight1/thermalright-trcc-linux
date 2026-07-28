@@ -280,7 +280,7 @@ def test_type2_send_chunks_frame_in_512_byte_writes(
     is 512-aligned, so every chunk must be exactly full and reassemble to the
     built packet byte-for-byte.
     """
-    from trcc.adapters.device.hid_lcd import _EP_WRITE, _USB_BULK_ALIGNMENT
+    from trcc.adapters.device.hid_lcd import _USB_BULK_ALIGNMENT
 
     fake_bulk.read_script.append(_type2_response(pm=58))
     device = _make_type2(fake_bulk)
@@ -298,7 +298,7 @@ def test_type2_send_chunks_frame_in_512_byte_writes(
     assert len(chunks) == len(packet) // _USB_BULK_ALIGNMENT, (
         "frame must be split into one write per 512-byte chunk"
     )
-    assert all(ep == _EP_WRITE for ep, _ in chunks), "every chunk goes to EP 0x02"
+    assert all(ep == HidLcd._EP_WRITE for ep, _ in chunks), "every chunk goes to EP 0x02"
     assert all(len(data) == _USB_BULK_ALIGNMENT for _, data in chunks), (
         "every chunk is exactly 512 bytes"
     )

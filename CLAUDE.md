@@ -33,22 +33,27 @@ The dated "RESUME …" blocks below are legacy handoff state being superseded by
 `SESSION.md`; they will age out. Trust `SESSION.md` first when they conflict.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **RESUME 2026-07-28 — UNIFIED ABSTRACTION REFACTOR, Increment 1 COMMITTED (not pushed).
+- **RESUME 2026-07-28 — UNIFIED ABSTRACTION REFACTOR, Increments 1+2 COMMITTED (not pushed).
   READ `memory/SESSION.md` + `memory/project_unified_abstraction_refactor.md`
   + `memory/feedback_one_abstraction_per_family.md` FIRST.** On v9.9.3. User mandate: **every
   adapter family = ONE abstract base (ABC) + factory children overriding only the differing
-  method internals; same method names; future-proof for new OS/device/UI.** Inc 1 (OS edge):
-  new `src/trcc/adapters/system/_base.py` — `BaseOS(Platform)` (factory ABC, shared bodies +
-  `_build_*` abstract hooks) + `BasePaths(Paths)` (4 accessors once); the 4 OS files refit to
-  `class XPlatform(BaseOS)` with only their internals. Verified: ruff/pyright clean,
-  `dev/smoke_factories.py` green, full suite 2971 pass / 4 skip / 1 xfail.
-  **NEXT:** Inc 2 (Device edge — `adapters/device/_base.py`: `BaseDevice` lifecycle +
-  send Template Method, `BaseBulkDevice` exchange/retry), Inc 3 (UI edge — shared
-  `BusBridge`/Qt base + cli↔api layer), Inc 4 (Data edge — API schemas derive from
-  Result dataclasses, `OverlayElement` single-source; Agent D findings in the memo).
-  **Inc 2 log contract:** `dev/tools/diagnose.py:197,216` + `diagnostics/debug_report.py:45`
-  PARSE `\b(Scsi|Bulk|Hid|Ly)Lcd handshake OK` and `handshake OK: PM=N SUB=M …
-  resolution=(w, h)` — any unified handshake log line must keep that exact shape.
+  method internals; same method names; future-proof for new OS/device/UI.**
+  **Inc 1 (OS edge, `53c7522a`):** new `adapters/system/_base.py` — `BaseOS(Platform)`
+  (factory ABC, shared bodies + `_build_*` abstract hooks) + `BasePaths(Paths)` (4 accessors
+  once); the 4 OS files refit to `class XPlatform(BaseOS)` with only their internals.
+  **Inc 2 (Device edge):** new `adapters/device/_base.py` — `BaseDevice(Device[T])`
+  (connect + send Template Methods, `disconnect`, `_profile`) + `BaseBulkDevice`
+  (endpoint class attrs, `_exchange`, `_handshake_retry`); all 6 wires refit.
+  Clone rate 0.59% → 0.47%. Both verified: ruff/pyright clean, `dev/smoke_factories.py` +
+  `smoke_anything --device all` + the byte-level smokes green, suite 2971 pass, real GUI
+  connects/renders/disconnects clean.
+  **NEXT:** Inc 3 (UI edge — shared `BusBridge`/Qt base + cli↔api layer), Inc 4 (Data edge —
+  API schemas derive from Result dataclasses, `OverlayElement` single-source; Agent D
+  findings in the memo).
+  **Device handshake LOG CONTRACT (load-bearing):** `dev/tools/diagnose.py:197,216` +
+  `diagnostics/debug_report.py:45` PARSE `\b(Scsi|Bulk|Hid|Ly)Lcd handshake OK` and
+  `handshake OK: PM=N SUB=M … resolution=(w, h)`. `BaseDevice.connect` emits exactly that
+  shape once — don't reword it. (`AliLcd` is still absent from that wire alternation.)
 - **RESUME 2026-07-16 — fan RPM always 0 FIXED+PUSHED (`701bf9bc`). READ
   `memory/project_fan_rpm_snapshot_fix.md` FIRST.** main==origin, tree clean. On
   v9.9.1 (fix NOT yet tagged — ships next bump). Root cause: `snapshot()`

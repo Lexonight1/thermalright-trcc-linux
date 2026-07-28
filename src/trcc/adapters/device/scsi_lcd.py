@@ -13,14 +13,12 @@ import struct
 import time
 import zlib
 
-from ...core.errors import (
-    HandshakeError,
-    TransportError,
-)
-from ...core.models import HandshakeResult, ProductInfo, Wire
-from ...core.ports import Device, ScsiTransport
-from ...core.protocol import DeviceProfile, get_profile
+from ...core.errors import TransportError
+from ...core.models import HandshakeResult, Wire
+from ...core.ports import ScsiTransport
+from ...core.protocol import get_profile
 from . import DeviceFactory
+from ._base import BaseDevice
 
 log = logging.getLogger(__name__)
 
@@ -74,38 +72,23 @@ _BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 
 
 @DeviceFactory.register(Wire.SCSI)
-class ScsiLcd(Device[ScsiTransport]):
+class ScsiLcd(BaseDevice[ScsiTransport]):
     """SCSI LCD device.
 
     connect():   poll (with boot-retry) + init handshake → FBL
     send(data):  RGB565 frame in 16-byte-CDB chunked writes
     disconnect(): close transport
+
+    ``self._profile`` (set below from the reported FBL) carries PM-derived
+    geometry + encoding flags, so ``send`` and the DisplayService pipeline
+    honor what the device actually claims — not the registry's static
+    ``native_resolution``.
     """
-
-    def __init__(self, info: ProductInfo, transport: ScsiTransport) -> None:
-        super().__init__(info, transport)
-        # Populated by connect() from the FBL byte the device reports.
-        # Carries PM-derived geometry + encoding flags so send() / the
-        # DisplayService pipeline honor what the device actually claims,
-        # not the static native_resolution from the registry.
-        self._profile: DeviceProfile | None = None
-
-    @property
-    def profile(self) -> DeviceProfile | None:
-        """Handshake-derived profile; None pre-handshake."""
-        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
-    def connect(self) -> HandshakeResult:
-        """Open transport, perform poll + init handshake, return FBL."""
-        log.info("ScsiLcd %s: opening transport", self.info.key)
-        if not self._transport.open():
-            log.error("ScsiLcd %s: transport open failed", self.info.key)
-            raise HandshakeError(
-                f"Failed to open SCSI transport for {self.info.key}"
-            )
-
+    def _do_handshake(self) -> HandshakeResult:
+        """Poll (with boot-retry) + init, then resolve geometry from the FBL."""
         # Step 1: Poll (data-in) with boot-state check
         poll_cdb = self._build_cdb(_POLL_CMD, _POLL_SIZE)
         response = b""
@@ -136,7 +119,7 @@ class ScsiLcd(Device[ScsiTransport]):
         # reports e.g. FBL=102 surfaces its resolution from the profile,
         # not the registry's static native_resolution. SCSI uses PM=FBL.
         self._profile = get_profile(fbl, fbl)
-        result = HandshakeResult(
+        return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=fbl,
             pm_byte=fbl,
@@ -144,68 +127,50 @@ class ScsiLcd(Device[ScsiTransport]):
             fbl=fbl,
             raw_response=bytes(response[:64]),
         )
-        self._handshake = result
-        log.info("SCSI handshake OK: FBL=%d, resolution=%s",
-                 fbl, result.resolution)
-        return result
 
-    def send(self, payload: bytes) -> bool:
-        """Send one RGB565 frame, chunked by resolution class.
+    def _handshake_detail(self, result: HandshakeResult) -> str:
+        """SCSI reports one byte — call it FBL, since PM *is* FBL here."""
+        return f" (FBL {result.fbl})"
 
-        Wrapped with auto-recovery: a disconnect-class errno on the
-        third consecutive send closes the transport and raises
-        :class:`DeviceDisconnectedError` so the caller publishes
-        ``DeviceDisconnected``.  Single-error blips don't escalate;
-        a subsequent successful send resets the counter.
+    def _frame_size(self) -> tuple[int, int]:
+        """The resolution the device reported, or the registry default."""
+        return (self._handshake.resolution if self._handshake
+                else self.info.native_resolution)
+
+    def _prepare_frame(self, payload: bytes) -> bytes:
+        """Pad the RGB565 payload out to the full frame the CDBs will ask for.
+
+        The chunk sizes are derived from the resolution, so a short payload
+        would leave the last CDB waiting for bytes that never arrive.
         """
-        if not self._transport.is_open:
-            log.error("ScsiLcd %s: send() called before connect()", self.info.key)
-            raise TransportError(
-                f"ScsiLcd {self.info.key} not connected — call connect() first"
-            )
+        width, height = self._frame_size()
+        total = width * height * 2       # RGB565 = 2 bytes per pixel
+        if len(payload) >= total:
+            return payload
+        log.debug("ScsiLcd %s: payload %d < expected %d; padding with zeros",
+                  self.info.key, len(payload), total)
+        return payload + b"\x00" * (total - len(payload))
 
-        width, height = (self._handshake.resolution if self._handshake
-                         else self.info.native_resolution)
-        chunks = self._frame_chunks(width, height)
-        total = sum(size for _, size in chunks)
-
-        data = payload
-        if len(data) < total:
-            log.debug(
-                "ScsiLcd %s: payload %d < expected %d; padding with zeros",
-                self.info.key, len(data), total,
-            )
-            data = data + b"\x00" * (total - len(data))
-
+    def _write_frame(self, frame: bytes) -> bool:
+        """Write the frame as 16-byte-CDB chunks sized by resolution class."""
+        chunks = self._frame_chunks(*self._frame_size())
         log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
-                  self.info.key, total, len(chunks))
-        def _write_frame() -> bool:
-            offset = 0
-            for cmd, size in chunks:
-                cdb = self._build_cdb(cmd, size)
-                ok = self._transport.send_cdb(
-                    cdb, data[offset:offset + size], _FRAME_TIMEOUT_MS,
+                  self.info.key, len(frame), len(chunks))
+        offset = 0
+        for cmd, size in chunks:
+            cdb = self._build_cdb(cmd, size)
+            ok = self._transport.send_cdb(
+                cdb, frame[offset:offset + size], _FRAME_TIMEOUT_MS,
+            )
+            if not ok:
+                log.warning(
+                    "ScsiLcd %s: chunk write failed at offset %d "
+                    "(cmd=0x%x size=%d)",
+                    self.info.key, offset, cmd, size,
                 )
-                if not ok:
-                    log.warning(
-                        "ScsiLcd %s: chunk write failed at offset %d "
-                        "(cmd=0x%x size=%d)",
-                        self.info.key, offset, cmd, size,
-                    )
-                    return False
-                offset += size
-            return True
-
-        # Shared reconnect + recovery policy (base Device): a transport error
-        # gets one in-place close→open→handshake retry (heals a stale handle
-        # after resume, #189) before escalating to the recovery tracker.
-        return self._send_with_recovery(_write_frame)
-
-    def disconnect(self) -> None:
-        log.info("ScsiLcd %s: disconnecting", self.info.key)
-        self._transport.close()
-        self._handshake = None
-        self._profile = None
+                return False
+            offset += size
+        return True
 
     # ── Boot animation ────────────────────────────────────────────────
 

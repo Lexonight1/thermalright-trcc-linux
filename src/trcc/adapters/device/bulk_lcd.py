@@ -19,7 +19,7 @@ from ...core.errors import (
     TransportError,
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
-from ...core.ports import BulkTransport, Device
+from ...core.ports import BulkTransport
 from ...core.protocol import (
     DeviceProfile,
     get_profile,
@@ -28,14 +28,12 @@ from ...core.protocol import (
     resolve_encode_sub,
 )
 from . import DeviceFactory
+from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
-
-_EP_WRITE = 0x01
-_EP_READ = 0x81
 
 _HANDSHAKE_PAYLOAD = bytes([
     0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0, 0, 0,
@@ -127,38 +125,27 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
 
 
 @DeviceFactory.register(Wire.BULK)
-class BulkLcd(Device[BulkTransport]):
-    """Raw USB bulk LCD device (USBLCDNew protocol)."""
+class BulkLcd(BaseBulkDevice):
+    """Raw USB bulk LCD device (USBLCDNew protocol).
+
+    ``self._profile`` is cached at handshake.  It carries PM-derived resolution
+    from the FBL tables plus the Bulk-specific JPEG-vs-RGB565 override —
+    USBLCDNew uses JPEG (cmd=2) for every PM except 32, which forces RGB565
+    (cmd=3), and ``FBL_PROFILES`` alone wouldn't capture that.
+    """
+
+    _EP_WRITE = 0x01
 
     def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
         super().__init__(info, transport)
         self._pm: int = 0
         self._sub: int = 0
-        # Cached at handshake. Carries PM-derived resolution from the FBL
-        # tables, with the Bulk-specific JPEG-vs-RGB565 override:
-        # USBLCDNew uses JPEG (cmd=2) for every PM except 32, which forces
-        # RGB565 (cmd=3). FBL_PROFILES alone wouldn't capture that.
-        self._profile: DeviceProfile | None = None
-
-    @property
-    def profile(self) -> DeviceProfile | None:
-        """Handshake-derived profile; None pre-handshake."""
-        return self._profile
 
     # ── Device ABC ────────────────────────────────────────────────────
 
-    def connect(self) -> HandshakeResult:
-        log.info("BulkLcd %s: opening transport", self.info.key)
-        if not self._transport.open():
-            log.error("BulkLcd %s: transport open failed", self.info.key)
-            raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
-
-        try:
-            self._transport.write(_EP_WRITE, _HANDSHAKE_PAYLOAD, _HANDSHAKE_TIMEOUT_MS)
-            resp = self._transport.read(_EP_READ, _HANDSHAKE_READ_SIZE, _HANDSHAKE_TIMEOUT_MS)
-        except TransportError as e:
-            log.error("BulkLcd %s: handshake I/O failed: %s", self.info.key, e)
-            raise HandshakeError(f"BulkLcd handshake I/O failed: {e}") from e
+    def _do_handshake(self) -> HandshakeResult:
+        resp = self._exchange(_HANDSHAKE_PAYLOAD, _HANDSHAKE_READ_SIZE,
+                              _HANDSHAKE_TIMEOUT_MS)
 
         if len(resp) < 41 or resp[24] == 0:
             log.error(
@@ -176,7 +163,7 @@ class BulkLcd(Device[BulkTransport]):
 
         fbl, self._profile = bulk_profile(self._pm, self._sub, self.info.key)
 
-        result = HandshakeResult(
+        return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=self._pm,
             pm_byte=self._pm,
@@ -184,22 +171,31 @@ class BulkLcd(Device[BulkTransport]):
             fbl=fbl,
             raw_response=bytes(resp[:64]),
         )
-        self._handshake = result
-        log.info("BulkLcd handshake OK: PM=%d SUB=%d resolution=%s (%s)",
-                 self._pm, self._sub, result.resolution,
-                 "JPEG" if self._profile.jpeg else "RGB565")
-        return result
 
-    def send(self, payload: bytes) -> bool:
-        if not self._transport.is_open or self._profile is None:
+    def _handshake_detail(self, result: HandshakeResult) -> str:
+        """Which encoder the PM byte selected — the Bulk-specific divergence."""
+        if self._profile is None:
+            return ""
+        return " (JPEG)" if self._profile.jpeg else " (RGB565)"
+
+    def _require_connected(self) -> None:
+        """Also demand the handshake profile — the header needs its geometry."""
+        super()._require_connected()
+        if self._profile is None:
             log.error("BulkLcd %s: send() called before connect()", self.info.key)
             raise TransportError(
                 f"BulkLcd {self.info.key} not connected — call connect() first"
             )
 
-        # Resolution + encoding come from the handshake-derived profile.
-        # USBLCDNew header carries actual w/h (used by the device firmware
-        # for de-blocking JPEG / interpreting the RGB565 buffer).
+    def _prepare_frame(self, payload: bytes) -> bytes:
+        """64-byte USBLCDNew header + payload.
+
+        Resolution + encoding come from the handshake-derived profile; the
+        header carries the actual w/h, which the firmware uses to de-block the
+        JPEG or interpret the RGB565 buffer.
+        """
+        if self._profile is None:      # pragma: no cover — _require_connected
+            raise TransportError(f"BulkLcd {self.info.key} has no profile")
         width, height = self._profile.resolution
         cmd = 2 if self._profile.jpeg else 3
 
@@ -215,27 +211,16 @@ class BulkLcd(Device[BulkTransport]):
         log.debug("BulkLcd %s: sending %d-byte frame (%s, %dx%d)",
                   self.info.key, len(frame),
                   "JPEG" if self._profile.jpeg else "RGB565", width, height)
+        return frame
 
-        def _write_frame() -> bool:
-            for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
-                self._transport.write(
-                    _EP_WRITE, frame[offset:offset + _WRITE_CHUNK_SIZE],
-                    _WRITE_TIMEOUT_MS,
-                )
-            # Zero-length packet on 512-byte alignment (frame delimiter)
-            if len(frame) % 512 == 0:
-                self._transport.write(_EP_WRITE, b"", _WRITE_TIMEOUT_MS)
-            return True
-
-        # Shared reconnect + recovery policy (base Device): one in-place
-        # close→open→handshake retry absorbs the intermittent NAKs that KVM
-        # USB passthrough / slow hubs produce (legacy ``BulkDevice.send_frame``
-        # did the same) and heals a stale handle after resume, before
-        # escalating the final error to the recovery tracker.
-        return self._send_with_recovery(_write_frame)
-
-    def disconnect(self) -> None:
-        log.info("BulkLcd %s: disconnecting", self.info.key)
-        self._transport.close()
-        self._handshake = None
-        self._profile = None
+    def _write_frame(self, frame: bytes) -> bool:
+        """16 KiB bulk writes, with a ZLP delimiter on 512-byte alignment."""
+        for offset in range(0, len(frame), _WRITE_CHUNK_SIZE):
+            self._transport.write(
+                self._EP_WRITE, frame[offset:offset + _WRITE_CHUNK_SIZE],
+                _WRITE_TIMEOUT_MS,
+            )
+        # Zero-length packet on 512-byte alignment (frame delimiter)
+        if len(frame) % 512 == 0:
+            self._transport.write(self._EP_WRITE, b"", _WRITE_TIMEOUT_MS)
+        return True
