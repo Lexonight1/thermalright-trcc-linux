@@ -17,24 +17,18 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-import usb.util
-
 from ...core.errors import TransportError
-from ...core.models import DeviceInfo, memory_form_factor, memory_type
+from ...core.models import memory_form_factor, memory_type
 from ...core.ports import (
     AutostartManager,
-    BulkTransport,
     HotplugMonitor,
     Paths,
-    Platform,
     ScsiTransport,
     SensorEnumerator,
 )
-from ...core.registry import ALL_DEVICES
-from ..device._pyusb_find import find as usb_find
-from ..device.transport import PyUsbBulkTransport
 from ..sensors.windows import build_windows_sensors
 from . import PlatformFactory
+from ._base import BaseOS, BasePaths
 from ._windows_wmi import wmi_handle
 
 log = logging.getLogger(__name__)
@@ -45,7 +39,7 @@ log = logging.getLogger(__name__)
 # =========================================================================
 
 
-class WindowsPaths(Paths):
+class WindowsPaths(BasePaths):
     """Windows user-data locations via APPDATA / LOCALAPPDATA."""
 
     def __init__(self) -> None:
@@ -55,22 +49,6 @@ class WindowsPaths(Paths):
         self._user_content = Path(local) / "trcc-user"
         log.info("WindowsPaths: root=%s user_content=%s",
                  self._root, self._user_content)
-
-    def config_dir(self) -> Path:
-        log.debug("config_dir: called")
-        return self._root
-
-    def data_dir(self) -> Path:
-        log.debug("data_dir: called")
-        return self._root / "data"
-
-    def user_content_dir(self) -> Path:
-        log.debug("user_content_dir: called")
-        return self._user_content
-
-    def log_file(self) -> Path:
-        log.debug("log_file: called")
-        return self._root / "trcc.log"
 
 
 # =========================================================================
@@ -365,20 +343,27 @@ _WIN_INSTALL_HINTS: dict[str, str] = {
 
 
 @PlatformFactory.register("win32")
-class WindowsPlatform(Platform):
-    """Windows implementation of Platform."""
+class WindowsPlatform(BaseOS):
+    """Windows implementation — same OS contract; only internals below differ."""
 
-    def __init__(self) -> None:
-        log.info("WindowsPlatform: initialising")
-        self._paths = WindowsPaths()
-        self._sensors: SensorEnumerator | None = None
-        self._autostart: AutostartManager | None = None
-        self._hotplug: HotplugMonitor | None = None
+    _INSTALL_HINTS = _WIN_INSTALL_HINTS
 
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
-        return PyUsbBulkTransport(vid, pid, serial)
+    # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
+
+    def _make_paths(self) -> Paths:
+        return WindowsPaths()
+
+    def _build_sensors(self) -> SensorEnumerator:
+        """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
+        return build_windows_sensors(thread_context=self.worker_thread_context)
+
+    def _build_autostart(self) -> AutostartManager:
+        from ._autostart import WindowsAutostart
+        return WindowsAutostart()
+
+    def _build_hotplug(self) -> HotplugMonitor:
+        from ._hotplug import WindowsHotplugMonitor
+        return WindowsHotplugMonitor()
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
@@ -392,53 +377,11 @@ class WindowsPlatform(Platform):
         log.debug("WindowsPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return WindowsScsiTransport(path)
 
-    def scan_devices(self) -> list[DeviceInfo]:
-        log.info("scan_devices: scanning %d known VID/PID pairs",
-                 len(ALL_DEVICES))
-        found: list[DeviceInfo] = []
-        for (vid, pid) in ALL_DEVICES:
-            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
-                serial_idx = getattr(dev, "iSerialNumber", 0)
-                serial = ""
-                try:
-                    if serial_idx:
-                        serial = usb.util.get_string(dev, serial_idx) or ""
-                except Exception:
-                    serial = ""
-                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None))
-        return found
-
-    def paths(self) -> Paths:
-        log.debug("paths: called")
-        return self._paths
-
-    def sensors(self) -> SensorEnumerator:
-        """Strategy chain: HWiNFO → LHM → MSAcpi → psutil/NVML baseline."""
-        log.info("sensors: cached=%s", self._sensors is not None)
-        if self._sensors is None:
-            self._sensors = build_windows_sensors(
-                thread_context=self.worker_thread_context)
-        return self._sensors
-
     def worker_thread_context(self) -> AbstractContextManager[None]:
         """Open a COM apartment for a worker thread so WMI sensor reads
         work off the main thread (overrides the Platform no-op default)."""
         log.debug("worker_thread_context: COM apartment")
         return _ComApartment()
-
-    def autostart(self) -> AutostartManager:
-        log.info("autostart: cached=%s", self._autostart is not None)
-        if self._autostart is None:
-            from ._autostart import WindowsAutostart
-            self._autostart = WindowsAutostart()
-        return self._autostart
-
-    def hotplug(self) -> HotplugMonitor:
-        log.info("hotplug: cached=%s", self._hotplug is not None)
-        if self._hotplug is None:
-            from ._hotplug import WindowsHotplugMonitor
-            self._hotplug = WindowsHotplugMonitor()
-        return self._hotplug
 
     def setup(self, interactive: bool = True) -> int:
         """Diagnose WinUSB driver state and print Zadig instructions.
@@ -465,29 +408,6 @@ class WindowsPlatform(Platform):
     def distro_name(self) -> str:
         log.info("distro_name: called")
         return "Windows"
-
-    def install_method(self) -> str:
-        """How this package got here — delegated to the one honest detector.
-
-        Was a per-OS guess: this returned "source" for every pip install
-        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
-        rpm/deb/venv/source checkouts all reported "pip"). The reading of
-        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
-        implement — see adapters/diagnostics/install.detect_installer.
-        """
-        from ..diagnostics.install import detect_installer
-        method = detect_installer()
-        log.info("install_method: %s", method)
-        return method
-
-    # ── Per-OS diagnostic hints (winget / WinUSB) ─────────────────────
-
-    def software_install_hint(self, tool: str) -> str:
-        log.debug("software_install_hint: tool=%s", tool)
-        hint = _WIN_INSTALL_HINTS.get(tool)
-        if hint is None:
-            return f"Install {tool} and ensure it is on PATH"
-        return f"{tool} not found — install it:\n  {hint}"
 
     def permission_denied_hint(self) -> str:
         log.debug("WindowsPlatform.permission_denied_hint: called")

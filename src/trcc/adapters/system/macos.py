@@ -17,28 +17,23 @@ from collections.abc import Callable
 from pathlib import Path
 
 import psutil  # pyright: ignore[reportMissingImports]
-import usb.util
 
-from ...core.models import DeviceInfo
 from ...core.ports import (
     AutostartManager,
-    BulkTransport,
     HotplugMonitor,
     Paths,
-    Platform,
     ScsiTransport,
     SensorEnumerator,
 )
-from ...core.registry import ALL_DEVICES
-from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
 from . import PlatformFactory
+from ._base import BaseOS, BasePaths
 
 log = logging.getLogger(__name__)
 
 
-class MacOSPaths(Paths):
+class MacOSPaths(BasePaths):
     """~/Library/Application Support style paths."""
 
     def __init__(self) -> None:
@@ -48,21 +43,11 @@ class MacOSPaths(Paths):
         log.info("MacOSPaths: root=%s user_content=%s",
                  self._root, self._user_content)
 
-    def config_dir(self) -> Path:
-        log.debug("config_dir: called")
-        return self._root
-
-    def data_dir(self) -> Path:
-        log.debug("data_dir: called")
-        return self._root / "data"
-
-    def user_content_dir(self) -> Path:
-        log.debug("user_content_dir: called")
-        return self._user_content
-
     def log_file(self) -> Path:
-        log.debug("log_file: called")
-        return self._root / "Logs" / "trcc.log"
+        # macOS convention: logs live under ~/Library/.../trcc/Logs/.
+        path = self._root / "Logs" / "trcc.log"
+        log.debug("MacOSPaths.log_file → %s", path)
+        return path
 
 
 # tool → Homebrew one-liner (consumed by software_install_hint).
@@ -75,20 +60,41 @@ _MAC_INSTALL_HINTS: dict[str, str] = {
 
 
 @PlatformFactory.register("darwin")
-class MacOSPlatform(Platform):
-    """macOS implementation of Platform — BOT-only SCSI via libusb."""
+class MacOSPlatform(BaseOS):
+    """macOS implementation — BOT-only SCSI via libusb.
 
-    def __init__(self) -> None:
-        log.info("MacOSPlatform: initialising")
-        self._paths = MacOSPaths()
-        self._sensors: SensorEnumerator | None = None
-        self._autostart: AutostartManager | None = None
-        self._hotplug: HotplugMonitor | None = None
+    Same OS contract as every other platform; only the internals below differ.
+    """
 
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
-        return PyUsbBulkTransport(vid, pid, serial)
+    _INSTALL_HINTS = _MAC_INSTALL_HINTS
+
+    # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
+
+    def _make_paths(self) -> Paths:
+        return MacOSPaths()
+
+    def _build_sensors(self) -> SensorEnumerator:
+        """SMC temperature on top of the psutil / NVML baseline.
+
+        Intel keys ship enabled by default; Apple Silicon keys are gated
+        behind ``TRCC_NEXT_APPLE_SILICON_SMC=1`` until reporter-confirmed.
+        """
+        from ..sensors.macos import build_macos_sensors
+        return build_macos_sensors()
+
+    def _build_autostart(self) -> AutostartManager:
+        from ._autostart import MacOSAutostart
+        return MacOSAutostart()
+
+    def _build_hotplug(self) -> HotplugMonitor:
+        """Polling fallback — 1 s ``scan_devices`` diff.
+
+        Native IOKit ``IOServiceAddMatchingNotification`` + CFRunLoop would
+        need ~250 lines of fragile ctypes or a 50 MB pyobjc dep; polling once
+        a second hits the same UX (≤1 s attach/detach latency) at zero cost.
+        """
+        from ._hotplug import PollingHotplugMonitor
+        return PollingHotplugMonitor(scan=self._scan_vid_pid_set)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
@@ -96,60 +102,6 @@ class MacOSPlatform(Platform):
         log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
-
-    def scan_devices(self) -> list[DeviceInfo]:
-        log.info("scan_devices: scanning %d known VID/PID pairs",
-                 len(ALL_DEVICES))
-        found: list[DeviceInfo] = []
-        for (vid, pid) in ALL_DEVICES:
-            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
-                serial_idx = getattr(dev, "iSerialNumber", 0)
-                serial = ""
-                try:
-                    if serial_idx:
-                        serial = usb.util.get_string(dev, serial_idx) or ""
-                except Exception:
-                    serial = ""
-                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None))
-        return found
-
-    def paths(self) -> Paths:
-        log.debug("paths: called")
-        return self._paths
-
-    def sensors(self) -> SensorEnumerator:
-        """SMC temperature on top of the psutil / NVML baseline.
-
-        Intel keys ship enabled by default; Apple Silicon keys are
-        gated behind ``TRCC_NEXT_APPLE_SILICON_SMC=1`` until reporter-
-        confirmed.
-        """
-        log.info("sensors: cached=%s", self._sensors is not None)
-        if self._sensors is None:
-            from ..sensors.macos import build_macos_sensors
-            self._sensors = build_macos_sensors()
-        return self._sensors
-
-    def autostart(self) -> AutostartManager:
-        log.info("autostart: cached=%s", self._autostart is not None)
-        if self._autostart is None:
-            from ._autostart import MacOSAutostart
-            self._autostart = MacOSAutostart()
-        return self._autostart
-
-    def hotplug(self) -> HotplugMonitor:
-        """Polling fallback — 1 s ``scan_devices`` diff.
-
-        Native IOKit ``IOServiceAddMatchingNotification`` + CFRunLoop
-        would require either ~250 lines of fragile ctypes or a 50 MB
-        pyobjc dep; polling once a second hits the same UX (≤1 s
-        attach/detach latency) at zero new cost.
-        """
-        log.info("hotplug: cached=%s", self._hotplug is not None)
-        if self._hotplug is None:
-            from ._hotplug import PollingHotplugMonitor
-            self._hotplug = PollingHotplugMonitor(scan=self._scan_vid_pid_set)
-        return self._hotplug
 
     def _scan_vid_pid_set(self) -> set[tuple[int, int]]:
         """Snapshot of currently-attached registry vid:pid combos.
@@ -185,29 +137,6 @@ class MacOSPlatform(Platform):
     def distro_name(self) -> str:
         log.info("distro_name: called")
         return "macOS"
-
-    def install_method(self) -> str:
-        """How this package got here — delegated to the one honest detector.
-
-        Was a per-OS guess: this returned "source" for every pip install
-        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
-        rpm/deb/venv/source checkouts all reported "pip"). The reading of
-        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
-        implement — see adapters/diagnostics/install.detect_installer.
-        """
-        from ..diagnostics.install import detect_installer
-        method = detect_installer()
-        log.info("install_method: %s", method)
-        return method
-
-    # ── Per-OS diagnostic hints (Homebrew) ────────────────────────────
-
-    def software_install_hint(self, tool: str) -> str:
-        log.debug("software_install_hint: tool=%s", tool)
-        hint = _MAC_INSTALL_HINTS.get(tool)
-        if hint is None:
-            return f"Install {tool} and ensure it is on PATH"
-        return f"{tool} not found — install it:\n  {hint}"
 
     def permission_denied_hint(self) -> str:
         log.debug("MacOSPlatform.permission_denied_hint: called")

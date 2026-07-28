@@ -14,28 +14,23 @@ from collections.abc import Callable
 from pathlib import Path
 
 import psutil  # pyright: ignore[reportMissingImports]
-import usb.util
 
-from ...core.models import DeviceInfo
 from ...core.ports import (
     AutostartManager,
-    BulkTransport,
     HotplugMonitor,
     Paths,
-    Platform,
     ScsiTransport,
     SensorEnumerator,
 )
-from ...core.registry import ALL_DEVICES
-from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
 from . import PlatformFactory
+from ._base import BaseOS, BasePaths
 
 log = logging.getLogger(__name__)
 
 
-class BSDPaths(Paths):
+class BSDPaths(BasePaths):
     """XDG-style paths on BSD (falls back to HOME)."""
 
     def __init__(self) -> None:
@@ -44,22 +39,6 @@ class BSDPaths(Paths):
         self._user_content = home / ".trcc-user"
         log.info("BSDPaths: root=%s user_content=%s",
                  self._root, self._user_content)
-
-    def config_dir(self) -> Path:
-        log.debug("config_dir: called")
-        return self._root
-
-    def data_dir(self) -> Path:
-        log.debug("data_dir: called")
-        return self._root / "data"
-
-    def user_content_dir(self) -> Path:
-        log.debug("user_content_dir: called")
-        return self._user_content
-
-    def log_file(self) -> Path:
-        log.debug("log_file: called")
-        return self._root / "trcc.log"
 
 
 # tool → pkg one-liner (FreeBSD/OpenBSD/NetBSD; consumed by software_install_hint).
@@ -72,79 +51,46 @@ _BSD_INSTALL_HINTS: dict[str, str] = {
 
 
 @PlatformFactory.register("bsd")
-class BSDPlatform(Platform):
-    """FreeBSD / OpenBSD implementation of Platform — BOT-only SCSI."""
+class BSDPlatform(BaseOS):
+    """FreeBSD / OpenBSD implementation — BOT-only SCSI.
 
-    def __init__(self) -> None:
-        log.info("BSDPlatform: initialising")
-        self._paths = BSDPaths()
-        self._sensors: SensorEnumerator | None = None
-        self._autostart: AutostartManager | None = None
-        self._hotplug: HotplugMonitor | None = None
+    Same OS contract as every other platform; only the internals below differ.
+    """
 
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        log.info("open_bulk: %04x:%04x serial=%r", vid, pid, serial)
-        return PyUsbBulkTransport(vid, pid, serial)
+    _INSTALL_HINTS = _BSD_INSTALL_HINTS
+
+    # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
+
+    def _make_paths(self) -> Paths:
+        return BSDPaths()
+
+    def _build_sensors(self) -> SensorEnumerator:
+        """sysctl CPU temp on top of the psutil/NVML baseline."""
+        from ..sensors.bsd import build_bsd_sensors
+        return build_bsd_sensors()
+
+    def _build_autostart(self) -> AutostartManager:
+        # XDG .desktop — the BSD desktops (GNOME/KDE/XFCE on FreeBSD et al.)
+        # honour the same spec as Linux; legacy shared this code.
+        from ._autostart import XdgDesktopAutostart
+        return XdgDesktopAutostart()
+
+    def _build_hotplug(self) -> HotplugMonitor:
+        """devd seqpacket socket on FreeBSD; noop on OpenBSD/NetBSD."""
+        import platform as _platform
+        if _platform.system() in ("FreeBSD", "DragonFly"):
+            from ._hotplug import FreeBSDHotplugMonitor
+            return FreeBSDHotplugMonitor()
+        from ._hotplug import NoopHotplugMonitor
+        return NoopHotplugMonitor(
+            reason=f"hotplug listener not implemented for {_platform.system()}",
+        )
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
-
-    def scan_devices(self) -> list[DeviceInfo]:
-        log.info("scan_devices: scanning %d known VID/PID pairs",
-                 len(ALL_DEVICES))
-        found: list[DeviceInfo] = []
-        for (vid, pid) in ALL_DEVICES:
-            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
-                serial_idx = getattr(dev, "iSerialNumber", 0)
-                serial = ""
-                try:
-                    if serial_idx:
-                        serial = usb.util.get_string(dev, serial_idx) or ""
-                except Exception:
-                    serial = ""
-                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None))
-        return found
-
-    def paths(self) -> Paths:
-        log.debug("paths: called")
-        return self._paths
-
-    def sensors(self) -> SensorEnumerator:
-        """sysctl CPU temp on top of the psutil/NVML baseline."""
-        log.info("sensors: cached=%s", self._sensors is not None)
-        if self._sensors is None:
-            from ..sensors.bsd import build_bsd_sensors
-            self._sensors = build_bsd_sensors()
-        return self._sensors
-
-    def autostart(self) -> AutostartManager:
-        log.info("autostart: cached=%s", self._autostart is not None)
-        if self._autostart is None:
-            # XDG .desktop — the BSD desktops (GNOME/KDE/XFCE on FreeBSD et
-            # al.) honour the same spec as Linux; legacy shared this code.
-            from ._autostart import XdgDesktopAutostart
-            self._autostart = XdgDesktopAutostart()
-        return self._autostart
-
-    def hotplug(self) -> HotplugMonitor:
-        """devd seqpacket socket on FreeBSD; noop on OpenBSD/NetBSD."""
-        log.info("hotplug: cached=%s", self._hotplug is not None)
-        if self._hotplug is None:
-            import platform as _platform
-
-            if _platform.system() in ("FreeBSD", "DragonFly"):
-                from ._hotplug import FreeBSDHotplugMonitor
-                self._hotplug = FreeBSDHotplugMonitor()
-            else:
-                from ._hotplug import NoopHotplugMonitor
-                self._hotplug = NoopHotplugMonitor(
-                    reason=f"hotplug listener not implemented for {_platform.system()}",
-                )
-        return self._hotplug
 
     def setup(self, interactive: bool = True) -> int:
         """Install FreeBSD devd rules so non-root users can talk to the cooler.
@@ -177,29 +123,6 @@ class BSDPlatform(Platform):
         log.info("distro_name: called")
         import sys
         return "FreeBSD" if "freebsd" in sys.platform else "BSD"
-
-    def install_method(self) -> str:
-        """How this package got here — delegated to the one honest detector.
-
-        Was a per-OS guess: this returned "source" for every pip install
-        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
-        rpm/deb/venv/source checkouts all reported "pip"). The reading of
-        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
-        implement — see adapters/diagnostics/install.detect_installer.
-        """
-        from ..diagnostics.install import detect_installer
-        method = detect_installer()
-        log.info("install_method: %s", method)
-        return method
-
-    # ── Per-OS diagnostic hints (pkg) ─────────────────────────────────
-
-    def software_install_hint(self, tool: str) -> str:
-        log.debug("software_install_hint: tool=%s", tool)
-        hint = _BSD_INSTALL_HINTS.get(tool)
-        if hint is None:
-            return f"Install {tool} and ensure it is on PATH"
-        return f"{tool} not found — install it:\n  {hint}"
 
     def no_devices_hint(self) -> str:
         log.debug("no_devices_hint: called")

@@ -19,31 +19,25 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import usb.util
-
 if TYPE_CHECKING:
     from ._imc_timings import ImcTimings
 
 from ...core.errors import TransportError
-from ...core.models import DeviceInfo, UsbPowerState
+from ...core.models import UsbPowerState
 from ...core.ports import (
     AutostartManager,
-    BulkTransport,
     HotplugMonitor,
     Paths,
-    Platform,
     ScsiTransport,
     SensorEnumerator,
 )
-from ...core.registry import ALL_DEVICES
-from ..device._pyusb_find import find as usb_find
-from ..device.transport import PyUsbBulkTransport
 from ..sensors.aggregator import build_linux_sensors
 from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
 from . import PlatformFactory
+from ._base import BaseOS, BasePaths
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
@@ -55,7 +49,7 @@ log = logging.getLogger(__name__)
 # =========================================================================
 
 
-class LinuxPaths(Paths):
+class LinuxPaths(BasePaths):
     """XDG + HOME locations for user data."""
 
     def __init__(self) -> None:
@@ -64,24 +58,6 @@ class LinuxPaths(Paths):
         self._user_content = home / ".trcc-user"
         log.info("LinuxPaths: root=%s user_content=%s",
                  self._root, self._user_content)
-
-    def config_dir(self) -> Path:
-        log.debug("LinuxPaths.config_dir → %s", self._root)
-        return self._root
-
-    def data_dir(self) -> Path:
-        path = self._root / "data"
-        log.debug("LinuxPaths.data_dir → %s", path)
-        return path
-
-    def user_content_dir(self) -> Path:
-        log.debug("LinuxPaths.user_content_dir → %s", self._user_content)
-        return self._user_content
-
-    def log_file(self) -> Path:
-        path = self._root / "trcc.log"
-        log.debug("LinuxPaths.log_file → %s", path)
-        return path
 
 
 # =========================================================================
@@ -369,27 +345,31 @@ _LINUX_PKG_BY_MANAGER: dict[str, dict[str, str]] = {
 
 
 @PlatformFactory.register("linux")
-class LinuxPlatform(Platform):
-    """Linux implementation of Platform.
+class LinuxPlatform(BaseOS):
+    """Linux implementation — same OS contract; only internals below differ.
 
     USB access via pyusb (libusb).  Udev rules installed by setup() give
     non-root users access to the devices listed in the product registry.
     """
 
-    def __init__(self) -> None:
-        log.info("LinuxPlatform: initialising")
-        self._paths = LinuxPaths()
-        self._sensors: SensorEnumerator | None = None
-        self._autostart: AutostartManager | None = None
-        self._hotplug: HotplugMonitor | None = None
+    # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
+
+    def _make_paths(self) -> Paths:
+        return LinuxPaths()
+
+    def _build_sensors(self) -> SensorEnumerator:
+        return build_linux_sensors()
+
+    def _build_autostart(self) -> AutostartManager:
+        # XDG .desktop — ~/.config/autostart/trcc.desktop.
+        from ._autostart import XdgDesktopAutostart
+        return XdgDesktopAutostart()
+
+    def _build_hotplug(self) -> HotplugMonitor:
+        from ._hotplug import LinuxHotplugMonitor
+        return LinuxHotplugMonitor()
 
     # ── Transport factories ──────────────────────────────────────────
-
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        """Return an unopened PyUsbBulkTransport for HID/BULK/LY/LED."""
-        log.info("LinuxPlatform.open_bulk: %04x:%04x serial=%r", vid, pid, serial)
-        return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
@@ -411,67 +391,6 @@ class LinuxPlatform(Platform):
             )
         log.info("LinuxPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return LinuxScsiTransport(path)
-
-    def scan_devices(self) -> list[DeviceInfo]:
-        """Walk ALL_DEVICES and return a DeviceInfo for each present VID/PID.
-
-        No kernel-subsystem filtering — we ask pyusb whether the device
-        physically enumerated and let the Device subclass handle any
-        per-OS driver detach on connect().
-        """
-        log.info("LinuxPlatform.scan_devices: scanning %d known VID/PID pairs",
-                 len(ALL_DEVICES))
-        found: list[DeviceInfo] = []
-        for (vid, pid) in ALL_DEVICES:
-            for dev in (usb_find(find_all=True, idVendor=vid, idProduct=pid) or []):
-                serial_idx = getattr(dev, 'iSerialNumber', 0)
-                serial: str = ""
-                try:
-                    if serial_idx:
-                        serial = usb.util.get_string(dev, serial_idx) or ""
-                except Exception:
-                    serial = ""
-                bcd = int(getattr(dev, 'bcdDevice', 0) or 0)
-                found.append(DeviceInfo(vid=vid, pid=pid, serial=serial or None,
-                                        bcd_device=bcd))
-                log.info("  found %04x:%04x serial=%r bcdDevice=%#06x",
-                         vid, pid, serial, bcd)
-        log.info("LinuxPlatform.scan_devices: %d device(s) total", len(found))
-        return found
-
-    # ── Filesystem ────────────────────────────────────────────────────
-
-    def paths(self) -> Paths:
-        log.debug("LinuxPlatform.paths()")
-        return self._paths
-
-    # ── Sensors / Autostart (stubs; real impls later) ─────────────────
-
-    def sensors(self) -> SensorEnumerator:
-        if self._sensors is None:
-            log.info("LinuxPlatform.sensors: building sensor enumerator")
-            self._sensors = build_linux_sensors()
-        else:
-            log.debug("LinuxPlatform.sensors: returning cached enumerator")
-        return self._sensors
-
-    def autostart(self) -> AutostartManager:
-        if self._autostart is None:
-            from ._autostart import XdgDesktopAutostart
-            log.info("LinuxPlatform.autostart: building XdgDesktopAutostart")
-            self._autostart = XdgDesktopAutostart()
-        else:
-            log.debug("LinuxPlatform.autostart: returning cached manager")
-        return self._autostart
-
-    def hotplug(self) -> HotplugMonitor:
-        if self._hotplug is None:
-            from ._hotplug import LinuxHotplugMonitor
-            log.info("LinuxPlatform.hotplug: building LinuxHotplugMonitor")
-            self._hotplug = LinuxHotplugMonitor()
-        else:
-            log.debug("LinuxPlatform.hotplug: returning cached monitor")
-        return self._hotplug
 
     # ── Setup / permissions ──────────────────────────────────────────
 
@@ -605,20 +524,6 @@ class LinuxPlatform(Platform):
             return state
         log.debug("usb_power_state: %04x:%04x not present on the bus", vid, pid)
         return None
-
-    def install_method(self) -> str:
-        """How this package got here — delegated to the one honest detector.
-
-        Was a per-OS guess: this returned "source" for every pip install
-        (and Linux returned "pip" whenever `trcc` was merely on PATH, so
-        rpm/deb/venv/source checkouts all reported "pip"). The reading of
-        `INSTALLER` metadata is OS-agnostic, so there is nothing per-OS to
-        implement — see adapters/diagnostics/install.detect_installer.
-        """
-        from ..diagnostics.install import detect_installer
-        method = detect_installer()
-        log.info("install_method: %s", method)
-        return method
 
     # ── Per-OS diagnostic hints (distro package manager) ──────────────
 
