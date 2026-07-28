@@ -53,9 +53,17 @@ The dated "RESUME …" blocks below are legacy handoff state being superseded by
   Clone rate 0.59% → 0.27%. All verified: ruff/pyright clean, `dev/smoke_factories.py` +
   `smoke_anything --device all` + the byte-level smokes green, suite 2971 pass, real GUI
   connects/renders/disconnects clean, both skins boot headless via `dev/mock.py --ui …`.
-  **NEXT:** Inc 4 (Data edge — API schemas derive from Result dataclasses,
-  `OverlayElement` single-source; Agent D findings in the memo). Also open: qtgui now
-  RECEIVES the 6 new bus events but nothing CONNECTS to them — parity work, separate job.
+  **Inc 4 (Data edge) parts a+b DONE (`831d9523`):** routes return the Result the
+  Command produced; Response classes 76→14, `to_*_response` 67→8, `_shared.py`
+  812→168, `schemas.py` 1008→600. The 61 `*Request` validators KEPT. Proved wire-safe
+  by an OpenAPI snapshot/diff (115 routes, 0 fields lost); one deliberate addition —
+  `GET /theme/list` entries now carry `origin`+`preview`, closing a hole where the
+  mirror stripped the preview every other UI reads.
+  **NEXT:** Inc 4 **c** (the narrowing schemas — user chose to EXPOSE handshake bytes
+  as hex; the blocker is doing it without importing pydantic into core, since
+  `raw_response: bytes` genuinely cannot JSON-serialize) and **d** (`OverlayElement`
+  single-source + `_PAN_MULTIPLIERS`→models). Also open: qtgui now RECEIVES the 6 new
+  bus events but nothing CONNECTS to them — parity work, separate job.
   **Device handshake LOG CONTRACT (load-bearing):** `dev/tools/diagnose.py:197,216` +
   `diagnostics/debug_report.py:45` PARSE `\b(Scsi|Bulk|Hid|Ly)Lcd handshake OK` and
   `handshake OK: PM=N SUB=M … resolution=(w, h)`. `BaseDevice.connect` emits exactly that
