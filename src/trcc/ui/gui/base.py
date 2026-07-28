@@ -16,7 +16,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..qt_periodic import PeriodicUpdater
 from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class BasePanel(QFrame):
         # Resource directory (legacy)
         self._resource_dir = None
         # Periodic update timer
-        self._update_timer: QTimer | None = None
+        self._updates = PeriodicUpdater(self)
 
     def __init_subclass__(cls, **kwargs):
         """Enforce that concrete subclasses implement _setup_ui()."""
@@ -129,32 +130,14 @@ class BasePanel(QFrame):
     ) -> None:
         """Start a periodic timer calling `callback` every `interval_ms`.
 
-        Creates a QTimer on first call. Subsequent calls restart with
+        Creates the timer on first call. Subsequent calls restart with
         the new interval and callback.
         """
-        log.info(
-            "%s.start_periodic_updates: interval_ms=%d callback=%s",
-            type(self).__name__, interval_ms,
-            getattr(callback, '__qualname__', repr(callback)),
-        )
-        if self._update_timer is None:
-            self._update_timer = QTimer(self)
-        else:
-            self._update_timer.stop()
-            try:
-                self._update_timer.timeout.disconnect()
-            except RuntimeError:
-                pass
-        self._update_timer.timeout.connect(callback)
-        self._update_timer.start(interval_ms)
+        self._updates.start(interval_ms, callback)
 
     def stop_periodic_updates(self) -> None:
         """Stop the periodic update timer if running."""
-        log.info("%s.stop_periodic_updates: active=%s",
-                 type(self).__name__,
-                 self._update_timer is not None and self._update_timer.isActive())
-        if self._update_timer is not None:
-            self._update_timer.stop()
+        self._updates.stop()
 
     # === Legacy ===
 

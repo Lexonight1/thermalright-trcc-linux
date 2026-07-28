@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QPushButton,
     QSpinBox,
@@ -43,13 +42,13 @@ from ....core.commands import (
     UploadCustomMask,
 )
 from ..assets import thumbnail_icon
-from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+from ._browser_base import AssetBrowserPanel
 
 log = logging.getLogger(__name__)
 
 
-class MaskBrowser(BasePanel):
+class MaskBrowser(AssetBrowserPanel):
     """List + apply + edit position / visibility of masks."""
 
     def _setup_ui(self) -> None:
@@ -62,18 +61,9 @@ class MaskBrowser(BasePanel):
         key_form.addRow("Device key:", self._picker)
 
         # ── Mask list + actions ─────────────────────────────────────
-        self._list = QListWidget(self)
-        self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._list.itemDoubleClicked.connect(lambda _item: self._on_apply())
-        # Thumbnail grid (parity with the gui skin): each mask shows its
-        # Theme.png preview (falling back to the 01.png overlay).
-        self._list.setViewMode(QListWidget.ViewMode.IconMode)
-        self._list.setIconSize(QSize(96, 96))
-        self._list.setGridSize(QSize(124, 140))
-        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self._list.setMovement(QListWidget.Movement.Static)
-        self._list.setSpacing(6)
-        self._list.setWordWrap(True)
+        # Thumbnail grid: each mask shows its Theme.png preview
+        # (falling back to the 01.png overlay).
+        self._list = self._build_asset_list()
 
         self._refresh_btn = QPushButton("Refresh", self)
         self._refresh_btn.clicked.connect(self.refresh)
@@ -190,32 +180,6 @@ class MaskBrowser(BasePanel):
             )
             return None
         return key
-
-    def _target_resolution(self, key: str) -> tuple[int, int] | None:
-        """Resolve the device's resolution from the handshake profile."""
-        device = self.app.devices.get(key)
-        if device is not None and device.profile is not None:
-            return device.profile.resolution
-        if device is not None and device.info.native_resolution != (0, 0):
-            return device.info.native_resolution
-        try:
-            vid_s, pid_s = key.split(":")
-            vid = int(vid_s, 16)
-            pid = int(pid_s, 16)
-        except ValueError:
-            self._status.setText(
-                f"Device key {key!r} isn't shaped like 'vid:pid'.",
-            )
-            return None
-        from ....core.registry import find_product
-        product = find_product(vid, pid)
-        if product is None or product.native_resolution == (0, 0):
-            self._status.setText(
-                f"No registry entry for {key} — connect the device first "
-                "so we know the target resolution.",
-            )
-            return None
-        return product.native_resolution
 
     def _on_apply(self) -> None:
         log.info("_on_apply")

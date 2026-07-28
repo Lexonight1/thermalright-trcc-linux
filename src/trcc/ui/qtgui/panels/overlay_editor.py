@@ -450,7 +450,7 @@ class _ElementDialog(QDialog):
 
     def _pick_color_from_screen(self) -> None:
         """Freeze the desktop and let the user pick a pixel colour."""
-        from ..eyedropper import EyedropperOverlay
+        from ...eyedropper import EyedropperOverlay
 
         overlay = EyedropperOverlay(self)
         overlay.color_picked.connect(self._on_eyedropper_picked)

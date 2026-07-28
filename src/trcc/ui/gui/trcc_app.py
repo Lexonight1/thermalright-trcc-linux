@@ -48,13 +48,13 @@ from ...core.commands import (
     StopVideo,
 )
 from ...core.models import HardwareMetrics, Kind
+from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
 from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
 from .base_handler import BaseHandler
-from .bus_bridge import BusBridge
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
@@ -204,7 +204,7 @@ class ScreencastHandler:
         self._audio_enabled = event.audio
         self._active = True
 
-        from .screen_capture import is_wayland
+        from ..screen_overlay import is_wayland
         if is_wayland() and self._pipewire_cast is None:
             self._try_start_pipewire()
         if self._audio_enabled and self._audio is None:
@@ -2440,7 +2440,7 @@ class TRCCApp(QMainWindow):
 
     def _on_eyedropper_requested(self) -> None:
         log.info("_on_eyedropper_requested")
-        from .eyedropper import EyedropperOverlay
+        from ..eyedropper import EyedropperOverlay
         self._eyedropper_overlay = EyedropperOverlay()
         self._eyedropper_overlay.color_picked.connect(self._eyedropper_pick)
         self._eyedropper_overlay.cancelled.connect(self._eyedropper_cancelled)

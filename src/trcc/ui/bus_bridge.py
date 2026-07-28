@@ -1,29 +1,32 @@
-"""EventBus → Qt signals bridge for the legacy-style GUI.
+"""EventBus → Qt signals bridge — one bridge, every Qt skin.
 
-next/ EventBus calls are synchronous and arrive from arbitrary threads
-(sensor poller, device worker, daemon IPC server).  Qt widgets must
-update on the main thread.  This bridge subscribes once per Event type
-and re-emits each event as a Qt signal; widgets connect to the Qt
-signals with ``Qt.ConnectionType.QueuedConnection`` to marshal onto
-the main thread.
+``EventBus`` calls are synchronous and arrive from arbitrary threads (the
+sensor poller, a device worker, the daemon IPC server).  Qt widgets must
+update on the main thread.  This bridge subscribes once per event type and
+re-emits each event as a Qt signal; widgets connect with
+``Qt.ConnectionType.QueuedConnection`` to marshal onto the main thread.
 
-Layered + DRY: this is the same pattern :mod:`next.ui.qtgui.bus_bridge`
-uses, with one extra ``system_suspending`` / ``system_resumed`` pair
-(legacy gui subscribed to ``Topic.SYSTEM_SUSPENDED`` and the next port
-needs the same hook).
+**One bridge for both skins.**  ``ui/gui`` and ``ui/qtgui`` each carried a
+copy, and they had drifted: the qtgui copy was a strict *subset* — no
+``video_*``, no ``screencast_*``, no ``system_*`` — so that skin could not
+learn a video had started or that the machine was suspending, whatever its
+widgets did.  A shared bridge means a new event is one row here and both
+skins can see it.  Lives beside ``ui/qt_tray.py`` and ``ui/qapp.py``, the
+established home for Qt code both skins share.
 """
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, SignalInstance
 
-from ...core.events import (
+from ..core.events import (
     BrightnessChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
     ErrorOccurred,
+    Event,
     EventBus,
     FrameSent,
     LedColorsChanged,
@@ -47,12 +50,13 @@ log = logging.getLogger(__name__)
 class BusBridge(QObject):
     """Qt signals mirroring EventBus events.
 
-    Construct once at MainWindow boot, attach to ``app.events``.  Widgets
+    Construct once at window boot, attached to ``app.events``.  Widgets
     connect to the Qt signals — no widget should ``app.events.subscribe``
-    directly, that keeps all Qt code in the GUI layer.
+    directly; that is what keeps all Qt code in the UI layer.
     """
 
-    # One signal per event type, payload is the event dataclass itself.
+    # One signal per event type; the payload is the event dataclass itself.
+    # ``object`` (rather than a concrete type) keeps this layer framework-neutral.
     device_discovered = Signal(object)         # DeviceDiscovered
     device_connected = Signal(object)          # DeviceConnected
     device_disconnected = Signal(object)       # DeviceDisconnected
@@ -80,7 +84,7 @@ class BusBridge(QObject):
         self._wire()
 
     def _wire(self) -> None:
-        pairs = (
+        pairs: tuple[tuple[type[Event], SignalInstance], ...] = (
             (DeviceDiscovered, self.device_discovered),
             (DeviceConnected, self.device_connected),
             (DeviceDisconnected, self.device_disconnected),
@@ -102,11 +106,29 @@ class BusBridge(QObject):
             (SystemResumed, self.system_resumed),
         )
         for event_type, signal in pairs:
-            # Default-arg capture: the lambda binds ``sig`` at definition
-            # time, not call time, so each subscriber forwards to the
-            # right signal.
             self._bus.subscribe(
-                event_type,
-                lambda e, sig=signal: sig.emit(e),
+                event_type, _SignalForwarder(signal, event_type.__name__),
             )
         log.info("BusBridge._wire: subscribed %d event types", len(pairs))
+
+
+class _SignalForwarder:
+    """Callable that re-emits one event type on one Qt signal.
+
+    A named object rather than a default-arg lambda: each subscriber has to
+    remember *its own* signal, and a lambda that closes over the loop variable
+    would forward every event to the last one.  This also gives the EventBus a
+    subscriber with a readable ``repr`` when a handler misbehaves.
+    """
+
+    __slots__ = ("_event_name", "_signal")
+
+    def __init__(self, signal: SignalInstance, event_name: str) -> None:
+        self._signal = signal
+        self._event_name = event_name
+
+    def __call__(self, event: Event) -> None:
+        self._signal.emit(event)
+
+    def __repr__(self) -> str:
+        return f"<BusBridge forwarder for {self._event_name}>"

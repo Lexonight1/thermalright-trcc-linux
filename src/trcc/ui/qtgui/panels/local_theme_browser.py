@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
     QDialog,
@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
@@ -40,13 +39,13 @@ from ....core.commands import (
     SaveTheme,
 )
 from ..assets import thumbnail_icon
-from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
+from ._browser_base import AssetBrowserPanel
 
 log = logging.getLogger(__name__)
 
 
-class LocalThemeBrowser(BasePanel):
+class LocalThemeBrowser(AssetBrowserPanel):
     """List + apply + delete themes from the user content directory."""
 
     def _setup_ui(self) -> None:
@@ -58,18 +57,8 @@ class LocalThemeBrowser(BasePanel):
         key_form = QFormLayout()
         key_form.addRow("Device key:", self._picker)
 
-        self._list = QListWidget(self)
-        self._list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._list.itemDoubleClicked.connect(lambda _item: self._on_apply())
-        # Thumbnail grid (parity with the gui skin): each theme shows its
-        # Theme.png preview instead of a bare text row.
-        self._list.setViewMode(QListWidget.ViewMode.IconMode)
-        self._list.setIconSize(QSize(96, 96))
-        self._list.setGridSize(QSize(124, 140))
-        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self._list.setMovement(QListWidget.Movement.Static)
-        self._list.setSpacing(6)
-        self._list.setWordWrap(True)
+        # Thumbnail grid: each theme shows its Theme.png preview.
+        self._list = self._build_asset_list()
 
         self._refresh_btn = QPushButton("Refresh", self)
         self._refresh_btn.clicked.connect(self.refresh)
@@ -149,7 +138,7 @@ class LocalThemeBrowser(BasePanel):
                 "Pick a device first to list themes at its resolution.",
             )
             return
-        resolution = self._target_size(key)
+        resolution = self._target_resolution(key)
         if resolution is None:
             return
         result = self.dispatch(ListThemes(resolution=resolution))
@@ -287,40 +276,12 @@ class LocalThemeBrowser(BasePanel):
 
     # ── Create-from-… ─────────────────────────────────────────────────
 
-    def _target_size(self, key: str) -> tuple[int, int] | None:
-        """Resolve the device's native canvas, or report why we can't."""
-        device = self.app.devices.get(key)
-        if device is not None:
-            if device.profile is not None:
-                return device.profile.resolution
-            if device.info.native_resolution != (0, 0):
-                return device.info.native_resolution
-        # Pre-attach: look up the product registry by key.
-        try:
-            vid_s, pid_s = key.split(":")
-            vid = int(vid_s, 16)
-            pid = int(pid_s, 16)
-        except ValueError:
-            self._status.setText(
-                f"Device key {key!r} isn't shaped like 'vid:pid'.",
-            )
-            return None
-        from ....core.registry import find_product
-        product = find_product(vid, pid)
-        if product is None or product.native_resolution == (0, 0):
-            self._status.setText(
-                f"No registry entry for {key} — connect the device first "
-                "so we know the target resolution.",
-            )
-            return None
-        return product.native_resolution
-
     def _on_create_from_image(self) -> None:
         log.info("_on_create_from_image")
         key = self._device_key()
         if key is None:
             return
-        size = self._target_size(key)
+        size = self._target_resolution(key)
         if size is None:
             return
         target_w, target_h = size
@@ -374,7 +335,7 @@ class LocalThemeBrowser(BasePanel):
         key = self._device_key()
         if key is None:
             return
-        size = self._target_size(key)
+        size = self._target_resolution(key)
         if size is None:
             return
         target_w, target_h = size

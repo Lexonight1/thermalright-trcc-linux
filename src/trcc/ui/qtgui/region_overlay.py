@@ -24,7 +24,7 @@ import logging
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 
-from .screen_overlay import BaseScreenOverlay
+from ..screen_overlay import BaseScreenOverlay
 
 log = logging.getLogger(__name__)
 

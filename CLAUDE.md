@@ -33,7 +33,7 @@ The dated "RESUME …" blocks below are legacy handoff state being superseded by
 `SESSION.md`; they will age out. Trust `SESSION.md` first when they conflict.
 
 **Open threads to pick up (details + commits in MEMORY.md "Resume here next"):**
-- **RESUME 2026-07-28 — UNIFIED ABSTRACTION REFACTOR, Increments 1+2 COMMITTED (not pushed).
+- **RESUME 2026-07-28 — UNIFIED ABSTRACTION REFACTOR, Increments 1+2+3 COMMITTED (not pushed).
   READ `memory/SESSION.md` + `memory/project_unified_abstraction_refactor.md`
   + `memory/feedback_one_abstraction_per_family.md` FIRST.** On v9.9.3. User mandate: **every
   adapter family = ONE abstract base (ABC) + factory children overriding only the differing
@@ -44,12 +44,18 @@ The dated "RESUME …" blocks below are legacy handoff state being superseded by
   **Inc 2 (Device edge):** new `adapters/device/_base.py` — `BaseDevice(Device[T])`
   (connect + send Template Methods, `disconnect`, `_profile`) + `BaseBulkDevice`
   (endpoint class attrs, `_exchange`, `_handshake_retry`); all 6 wires refit.
-  Clone rate 0.59% → 0.47%. Both verified: ruff/pyright clean, `dev/smoke_factories.py` +
+  **Inc 3 (UI edge):** shared `ui/bus_bridge.py` (ONE `BusBridge`, 19 signals — the qtgui
+  copy had only 13, so that skin never saw `video_*`/`screencast_*`/`system_*`),
+  `ui/screen_overlay.py`, `ui/eyedropper.py`, `ui/qt_periodic.py` (`PeriodicUpdater`,
+  shared by composition), `ui/qtgui/panels/_browser_base.py`. Deliberately NOT done:
+  a cli↔api "command layer" (those clone hits are import lists, not logic) and merging
+  the two `BasePanel`s (a redesign, not a lift).
+  Clone rate 0.59% → 0.27%. All verified: ruff/pyright clean, `dev/smoke_factories.py` +
   `smoke_anything --device all` + the byte-level smokes green, suite 2971 pass, real GUI
-  connects/renders/disconnects clean.
-  **NEXT:** Inc 3 (UI edge — shared `BusBridge`/Qt base + cli↔api layer), Inc 4 (Data edge —
-  API schemas derive from Result dataclasses, `OverlayElement` single-source; Agent D
-  findings in the memo).
+  connects/renders/disconnects clean, both skins boot headless via `dev/mock.py --ui …`.
+  **NEXT:** Inc 4 (Data edge — API schemas derive from Result dataclasses,
+  `OverlayElement` single-source; Agent D findings in the memo). Also open: qtgui now
+  RECEIVES the 6 new bus events but nothing CONNECTS to them — parity work, separate job.
   **Device handshake LOG CONTRACT (load-bearing):** `dev/tools/diagnose.py:197,216` +
   `diagnostics/debug_report.py:45` PARSE `\b(Scsi|Bulk|Hid|Ly)Lcd handshake OK` and
   `handshake OK: PM=N SUB=M … resolution=(w, h)`. `BaseDevice.connect` emits exactly that

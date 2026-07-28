@@ -27,15 +27,16 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeVar
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFrame, QWidget
 
 from ...core.results import Result
+from ..qt_periodic import PeriodicUpdater
 
 if TYPE_CHECKING:
     from ...app import App
     from ...core.commands import Command
-    from .bus_bridge import BusBridge
+    from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class BasePanel(QFrame):
         super().__init__(parent)
         self._app = app
         self._bus = bus
-        self._update_timer: QTimer | None = None
+        self._updates = PeriodicUpdater(self)
         self._setup_ui()
 
     def __init_subclass__(cls, **kwargs: object) -> None:
@@ -124,23 +125,9 @@ class BasePanel(QFrame):
         interval_ms: int,
         callback: Callable[[], None],
     ) -> None:
-        """Run *callback* every *interval_ms* on the Qt main thread.
-
-        Stopping + restarting cleans up the prior timer + connection so
-        subscribers can repeat-call with a new cadence.
-        """
-        if self._update_timer is None:
-            self._update_timer = QTimer(self)
-        else:
-            self._update_timer.stop()
-            try:
-                self._update_timer.timeout.disconnect()
-            except RuntimeError:
-                # No previous connection — fresh timer, ignore.
-                pass
-        self._update_timer.timeout.connect(callback)
-        self._update_timer.start(interval_ms)
+        """Run *callback* every *interval_ms* on the Qt main thread."""
+        self._updates.start(interval_ms, callback)
 
     def stop_periodic_updates(self) -> None:
-        if self._update_timer is not None:
-            self._update_timer.stop()
+        """Stop the periodic update timer if running."""
+        self._updates.stop()

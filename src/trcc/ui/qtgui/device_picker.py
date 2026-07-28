@@ -37,7 +37,7 @@ from ...core.commands import DiscoverDevices
 
 if TYPE_CHECKING:
     from ...app import App
-    from .bus_bridge import BusBridge
+    from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
 

@@ -8,81 +8,27 @@ Matches Windows FormScreenshot functionality but adapted for Linux:
 - Cropped region emitted as QImage
 
 Works on both X11 and Wayland via fallback chain.
+
+The frozen-screen primitives this builds on — ``grab_full_screen``,
+``is_wayland`` and ``BaseScreenOverlay`` — live in ``ui/screen_overlay``
+and are shared with the qtgui skin.  What stays here is region capture:
+``grab_screen_region`` (the screencast timer's per-tick grab) and the
+drag-a-rectangle ``ScreenCaptureOverlay``.
 """
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication
+
+from ..screen_overlay import BaseScreenOverlay, grab_full_screen
 
 log = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=1)
-def is_wayland() -> bool:
-    """Detect if the current session is running on Wayland.
-
-    Checks XDG_SESSION_TYPE and WAYLAND_DISPLAY environment variables.
-    Result is cached since the session type doesn't change at runtime.
-    """
-    return (os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland'
-            or bool(os.environ.get('WAYLAND_DISPLAY')))
-
-
-def grab_full_screen() -> QPixmap:
-    """Capture the full screen, X11 + Wayland compatible.
-
-    Tries QScreen.grabWindow() first (works on X11).
-    Falls back to grim/gnome-screenshot/scrot for Wayland.
-
-    Returns:
-        QPixmap of the full screen, or null pixmap on failure.
-    """
-    # Try Qt native capture first (works on X11, may be blank on Wayland)
-    if (screen := QApplication.primaryScreen()):
-        pixmap = screen.grabWindow(0)  # type: ignore[arg-type]
-        if not pixmap.isNull() and pixmap.width() > 1:
-            return pixmap
-
-    # Wayland fallback: try external tools
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
-        tmp_path = f.name
-
-    try:
-        for cmd in [
-            ['grim', tmp_path],                          # Wayland (wlroots)
-            ['gnome-screenshot', '-f', tmp_path],        # GNOME
-            ['scrot', tmp_path],                         # X11 fallback
-        ]:
-            tool = cmd[0]
-            try:
-                result = subprocess.run(cmd, capture_output=True, timeout=5)
-                if result.returncode == 0 and Path(tmp_path).stat().st_size > 0:
-                    pixmap = QPixmap(tmp_path)
-                    if not pixmap.isNull():
-                        log.debug("Screen capture via %s", tool)
-                        return pixmap
-                else:
-                    log.debug("Screen capture tool %s failed (exit %d)", tool, result.returncode)
-            except FileNotFoundError:
-                log.debug("Screen capture tool %s not installed", tool)
-            except subprocess.TimeoutExpired:
-                log.warning("Screen capture tool %s timed out", tool)
-    finally:
-        try:
-            Path(tmp_path).unlink()
-        except OSError:
-            pass
-
-    log.error("Screen capture failed — no working tool found (tried grim, gnome-screenshot, scrot)")
-    return QPixmap()
 
 
 def grab_screen_region(x: int, y: int, w: int, h: int) -> QPixmap:
@@ -139,53 +85,6 @@ def grab_screen_region(x: int, y: int, w: int, h: int) -> QPixmap:
             pass
 
     return QPixmap()
-
-
-class BaseScreenOverlay(QWidget):
-    """Fullscreen frozen-screenshot overlay base.
-
-    Captures the screen, goes fullscreen, handles ESC cancel.
-    Subclasses override ``_emit_cancel()`` and implement their own
-    ``paintEvent`` / mouse interaction.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.setMouseTracking(True)
-        self.setCursor(Qt.CursorShape.CrossCursor)
-        self._screenshot: QPixmap = QPixmap()
-
-    def show(self):
-        """Capture screen then show fullscreen overlay."""
-        self._screenshot = grab_full_screen()
-        if self._screenshot.isNull():
-            self._emit_cancel()
-            return
-
-        if (screen := QApplication.primaryScreen()):
-            self.setGeometry(screen.geometry())
-
-        self.showFullScreen()
-        self.raise_()
-        self.activateWindow()
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
-            self._cancel()
-
-    def _cancel(self):
-        """Close overlay and emit cancel signal."""
-        self.hide()
-        self._emit_cancel()
-        self.deleteLater()
-
-    def _emit_cancel(self):
-        """Emit the appropriate cancel signal. Override in subclasses."""
-        raise NotImplementedError
 
 
 class ScreenCaptureOverlay(BaseScreenOverlay):

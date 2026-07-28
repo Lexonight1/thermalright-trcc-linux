@@ -73,7 +73,7 @@ def test_bus_bridge_subscribes_to_every_event_type(qapp: object) -> None:
     import in bus_bridge.py."""
     del qapp
     from trcc.core.events import EventBus
-    from trcc.ui.qtgui.bus_bridge import BusBridge
+    from trcc.ui.bus_bridge import BusBridge
 
     bus = EventBus()
     bridge = BusBridge(bus)
@@ -93,7 +93,7 @@ def test_bus_bridge_forwards_events_to_qt_signals(qapp: object) -> None:
     matching Qt signal.  Smokes the subscribe → emit pipeline."""
     del qapp
     from trcc.core.events import DeviceConnected, EventBus
-    from trcc.ui.qtgui.bus_bridge import BusBridge
+    from trcc.ui.bus_bridge import BusBridge
 
     bus = EventBus()
     bridge = BusBridge(bus)
@@ -115,7 +115,7 @@ def test_bus_bridge_forwards_events_to_qt_signals(qapp: object) -> None:
 
 def _bus(gui_app: App):
     """Single BusBridge for panel-construction tests."""
-    from trcc.ui.qtgui.bus_bridge import BusBridge
+    from trcc.ui.bus_bridge import BusBridge
     return BusBridge(gui_app.events)
 
 
@@ -852,7 +852,7 @@ def test_load_video_command_zt_passthrough(gui_app: App, tmp_path) -> None:
 
 def test_screen_overlay_is_wayland_returns_bool() -> None:
     """is_wayland() is callable + returns a bool regardless of env."""
-    from trcc.ui.qtgui.screen_overlay import is_wayland
+    from trcc.ui.screen_overlay import is_wayland
 
     assert isinstance(is_wayland(), bool)
 

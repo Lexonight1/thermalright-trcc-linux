@@ -39,8 +39,8 @@ from ...core.events import (
     FrameSent,
     ThemeLoaded,
 )
+from ..bus_bridge import BusBridge
 from ..qt_tray import TrayController
-from .bus_bridge import BusBridge
 from .panels import (
     AboutPanel,
     ActivitySidebar,
