@@ -72,16 +72,19 @@ _PROTO_MAP = {
     "LY":   "ly",
     "HID":  "hid",
     "LED":  "hid",
+    "ALI":  "bulk",
 }
 
 # Current reports print the wire lowercase (``wire=bulk``); LED shares the HID
-# test surface, everything else maps to its own protocol key.
+# test surface and the Ali variant shares the bulk one, everything else maps to
+# its own protocol key.
 _WIRE_TO_PROTOCOL = {
-    "scsi": "scsi",
-    "bulk": "bulk",
-    "hid":  "hid",
-    "ly":   "ly",
-    "led":  "hid",
+    "scsi":     "scsi",
+    "bulk":     "bulk",
+    "bulk_ali": "bulk",
+    "hid":      "hid",
+    "ly":       "ly",
+    "led":      "hid",
 }
 
 _SCSI_TEST = {
@@ -194,7 +197,7 @@ def parse_report(text: str) -> ParsedReport:
     # line (protocol only matters to the pytest runner — the mock derives the
     # wire from the vid/pid registry regardless).
     if not report.devices:
-        protos = re.findall(r"\b(Scsi|Bulk|Hid|Ly)Lcd handshake OK", text)
+        protos = re.findall(r"\b(Scsi|Bulk|Ali|Hid|Ly)Lcd handshake OK", text)
         seen: set[tuple[int, int]] = set()
         for m in re.finditer(
             r"found\s+([0-9a-fA-F]{4}):([0-9a-fA-F]{4})\b", text
@@ -204,7 +207,10 @@ def parse_report(text: str) -> ParsedReport:
                 continue
             seen.add((vid, pid))
             idx = len(report.devices)
-            proto = protos[idx].lower() if idx < len(protos) else ""
+            wire = protos[idx] if idx < len(protos) else ""
+            # Through _PROTO_MAP so the class name lands on the same protocol
+            # key the "wire=" row would have produced (AliLcd → bulk surface).
+            proto = _PROTO_MAP.get(wire.upper(), wire.lower())
             report.devices.append(DeviceProfile(protocol=proto, vid=vid, pid=pid))
 
     # Handshake bytes — every wire logs "... handshake OK: PM=N SUB=M ...".
