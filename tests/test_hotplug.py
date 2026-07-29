@@ -256,3 +256,103 @@ def test_linux_monitor_skips_when_pyudev_missing(
     monitor.start(EventBus())
 
     assert monitor.is_running is False
+
+
+# ── App reaction to hotplug events (#254, #246) ──────────────────────
+#
+# The monitor tests above prove the events are PUBLISHED.  These prove the
+# App reacts: before the fix nothing subscribed to DeviceDetached, so an
+# unplugged device kept a dead transport in app.devices, its DeviceSender
+# spun forever, and the replug hit "already connected" and never recovered.
+
+_REPLUG_SPEC = {"type": "lcd", "vid": "0402", "pid": "3922", "fbl": 100}
+_REPLUG_KEY = "0402:3922"
+
+
+def _connected_app(tmp_path: Path) -> App:
+    from trcc.core.commands import ConnectDevice
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([_REPLUG_SPEC], tmp_path))
+    assert app.dispatch(ConnectDevice(key=_REPLUG_KEY)).ok
+    return app
+
+
+def _detach(app: App) -> None:
+    app.events.publish(DeviceDetached(key=_REPLUG_KEY, vid=0x0402, pid=0x3922))
+
+
+def _attach(app: App) -> None:
+    app.events.publish(DeviceAttached(key=_REPLUG_KEY, vid=0x0402, pid=0x3922))
+
+
+def test_detach_releases_the_device(tmp_path: Path) -> None:
+    """DeviceDetached must drop the dead handle — it used to be ignored."""
+    app = _connected_app(tmp_path)
+    _detach(app)
+    assert _REPLUG_KEY not in app.devices
+    assert _REPLUG_KEY not in app.senders, "sender must stop spinning"
+
+
+def test_replug_reconnects_with_a_fresh_device(tmp_path: Path) -> None:
+    """The #254 / #246 cycle: unplug then replug must yield a NEW, live
+    device, not the corpse of the old one."""
+    app = _connected_app(tmp_path)
+    original = app.devices[_REPLUG_KEY]
+
+    _detach(app)
+    _attach(app)
+
+    rebuilt = app.devices.get(_REPLUG_KEY)
+    assert rebuilt is not None, "replug did not reconnect"
+    assert rebuilt is not original, "reused the stale device object"
+    assert rebuilt.is_connected
+
+
+def test_replug_reconnects_even_if_the_detach_event_was_missed(
+    tmp_path: Path,
+) -> None:
+    """udev events can coalesce or drop, and some monitors only report adds.
+
+    A present-but-disconnected entry must be torn down and rebuilt rather
+    than short-circuited by the idempotency guard.
+    """
+    app = _connected_app(tmp_path)
+    original = app.devices[_REPLUG_KEY]
+    original.disconnect()          # device died; no DeviceDetached arrived
+    assert not original.is_connected
+
+    _attach(app)
+
+    rebuilt = app.devices.get(_REPLUG_KEY)
+    assert rebuilt is not None and rebuilt is not original
+    assert rebuilt.is_connected
+
+
+def test_attach_stays_idempotent_for_a_live_device(tmp_path: Path) -> None:
+    """Coldplug replays + duplicate adds must NOT churn a healthy device."""
+    app = _connected_app(tmp_path)
+    original = app.devices[_REPLUG_KEY]
+
+    _attach(app)
+    _attach(app)
+
+    assert app.devices[_REPLUG_KEY] is original, "healthy device was rebuilt"
+
+
+def test_detach_keeps_content_so_the_panel_repaints_on_replug(
+    tmp_path: Path,
+) -> None:
+    """Unlike App.detach, the hotplug release preserves active theme / LED
+    runtime / media — otherwise the panel comes back blank (the same choice
+    _on_system_resumed makes)."""
+    app = _connected_app(tmp_path)
+    app.active_themes[_REPLUG_KEY] = object()
+
+    _detach(app)
+
+    assert _REPLUG_KEY in app.active_themes, (
+        "hotplug release must not drop the active theme — that is what the "
+        "heavier App.detach is for"
+    )

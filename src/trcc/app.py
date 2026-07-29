@@ -23,6 +23,7 @@ from .core.events import (
     BrightnessChanged,
     DateFormatChanged,
     DeviceAttached,
+    DeviceDetached,
     DeviceDisconnected,
     ErrorOccurred,
     EventBus,
@@ -218,6 +219,11 @@ class App:
         # launch (or present-but-not-ready during the boot discover) never
         # connects (#139).  Core-level so CLI / API / GUI / daemon all benefit.
         self.events.subscribe(DeviceAttached, self._on_device_attached)
+        # ...and release it the moment it goes away.  Every hotplug monitor
+        # PUBLISHED DeviceDetached but nothing subscribed, so an unplugged
+        # device kept a dead transport in self.devices — the sender spun
+        # forever and the replug could never reconnect (#254, #246).
+        self.events.subscribe(DeviceDetached, self._on_device_detached)
         # Rotation reload: when a device's orientation flips, reload its
         # active theme + mask from the orientation-keyed resolution dir
         # (theme1280480 ↔ theme4801280, web/zt1280480 ↔ web/zt4801280).
@@ -255,17 +261,64 @@ class App:
         from .core.commands._helpers import persist_user_mask_dc
         persist_user_mask_dc(self, event.key)
 
+    def _release_stale_device(self, key: str) -> None:
+        """Stop the sender and close a dead transport, keeping the content.
+
+        The teardown half of a replug.  Deliberately NOT :meth:`detach` —
+        that also drops ``active_themes`` / ``led_runtime`` / media /
+        slideshow, so the panel would come back BLANK.  Same choice
+        :meth:`_on_system_resumed` makes: release only what the vanished USB
+        node invalidated, so the next render repaints the same content.
+
+        Sender first, then close, matching :meth:`detach` — otherwise an
+        in-flight write races the disconnect.
+        """
+        self.stop_sender(key)
+        device = self.devices.pop(key, None)
+        if device is None:
+            return
+        try:
+            device.disconnect()
+        except Exception:
+            log.exception("_release_stale_device: disconnect %s raised", key)
+
+    def _on_device_detached(self, event: Any) -> None:
+        """Hotplug ``DeviceDetached`` → release the handle the unplug killed.
+
+        Without this the device stayed in ``self.devices`` holding a dead
+        transport, so (a) its ``DeviceSender`` spun forever logging a write
+        failure every ~150 ms, and (b) the replug's ``DeviceAttached`` hit the
+        "already connected" guard below and never reconnected — the panel only
+        recovered by restarting the process (#254, #246).
+        """
+        if event.key not in self.devices:
+            log.debug("_on_device_detached: %s not attached", event.key)
+            return
+        log.info("_on_device_detached: %s unplugged — stopping sender + "
+                 "releasing stale transport", event.key)
+        self._release_stale_device(event.key)
+
     def _on_device_attached(self, event: Any) -> None:
         """Hotplug ``DeviceAttached`` → connect the device.
 
         Runs on the hotplug poll thread (same off-main-thread pattern the
-        splash ``BootstrapWorker`` already uses for ``ConnectDevice``).  Guarded
-        idempotent so coldplug replays + duplicate adds are no-ops.  On success
-        ``ConnectDevice`` emits ``DeviceConnected``, which UIs already observe.
+        splash ``BootstrapWorker`` already uses for ``ConnectDevice``).  A
+        genuinely-connected device is a no-op, so coldplug replays and
+        duplicate adds stay idempotent.  On success ``ConnectDevice`` emits
+        ``DeviceConnected``, which UIs already observe.
         """
-        if event.key in self.devices:
+        existing = self.devices.get(event.key)
+        if existing is not None and existing.is_connected:
             log.debug("_on_device_attached: %s already connected", event.key)
             return
+        if existing is not None:
+            # Present but DEAD: the detach event never arrived (coalesced or
+            # dropped udev event, or a monitor that only reports adds).  The
+            # entry is a corpse holding a stale transport, so tear it down
+            # rather than bail — bailing here was the #254 / #246 bug.
+            log.info("_on_device_attached: %s present but not connected — "
+                     "releasing stale transport before reconnect", event.key)
+            self._release_stale_device(event.key)
         log.info("_on_device_attached: connecting %s", event.key)
         from .core.commands import ConnectDevice
         self.dispatch(ConnectDevice(key=event.key))
