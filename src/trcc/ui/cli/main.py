@@ -482,6 +482,35 @@ def _alias_sensors() -> None:
     sensors()
 
 
+@app.command("version", rich_help_panel="Diagnostics")
+def _version() -> None:
+    """Print the installed TRCC version."""
+    log.info("cli version")
+    from ...__version__ import __version__
+    typer.echo(f"trcc {__version__}")
+
+
+def _version_callback(value: bool) -> None:
+    """Eager ``--version`` handler — prints and exits before any subcommand.
+
+    RESTORED, not new: legacy had this exact callback
+    (``legacy/ui/cli/__init__.py:128``) and the cutover dropped it, so 9.9.3
+    answered ``--version`` with "No such option" and had no ``version``
+    subcommand either — the only way to learn the installed version was to
+    read it out of ``trcc report`` / ``trcc doctor``.  Same output format as
+    legacy so returning users and scripts see what they expect.
+
+    That is a triage problem as much as a UX one: a reporter who cannot state
+    their version cheaply guesses, and "I'm on latest" has repeatedly turned
+    out to be several releases stale.  (#247)
+    """
+    if not value:
+        return
+    from ...__version__ import __version__
+    typer.echo(f"trcc {__version__}")
+    raise typer.Exit
+
+
 @app.callback()
 def _root(
     verbose: int = typer.Option(
@@ -489,6 +518,11 @@ def _root(
         help="Terminal log verbosity: -v shows INFO, -vv shows DEBUG. "
              "Without it the terminal stays quiet (warnings + errors only); "
              "the rotating log file always keeps the detail.",
+    ),
+    version: bool = typer.Option(
+        False, "--version", "-V",
+        callback=_version_callback, is_eager=True,
+        help="Print the installed TRCC version and exit.",
     ),
 ) -> None:
     """Root callback — sets up logging for every subcommand.
