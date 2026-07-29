@@ -1782,3 +1782,95 @@ def test_save_at_90_landscape_content_saves_to_landscape_folder(
         "landscape content @90 must save into theme320240, not the portrait folder"
     )
     assert not portrait_dir.exists()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# LoadImage staging (#245)
+# ─────────────────────────────────────────────────────────────────────
+#
+# LoadImage kept the source basename, but the background resolver only
+# accepts the convention name ``00.png`` (its sibling LoadVideo already
+# stages ``Theme.zt``).  The panel therefore showed a solid black canvas
+# while the CLI still reported success — a silent wrong result.
+
+
+def _png(path: Path, rgb: tuple[int, int, int]) -> Path:
+    from PySide6.QtGui import QColor, QImage
+
+    img = QImage(320, 320, QImage.Format.Format_RGB888)
+    img.fill(QColor(*rgb))
+    img.save(str(path))
+    return path
+
+
+def _staged_dir(app: App, stem: str) -> Path:
+    return app.platform.paths().user_content_dir() / "single-image" / stem
+
+
+def test_load_image_stages_as_00png_whatever_the_source_name(
+    app: App, tmp_path: Path,
+) -> None:
+    """Any source filename must land as 00.png (#245)."""
+    from trcc.core.commands import LoadImage
+
+    src = _png(tmp_path / "my-test-card.png", (237, 28, 36))
+    assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=src)).ok
+
+    staged = _staged_dir(app, "my-test-card")
+    assert (staged / "00.png").is_file(), (
+        f"expected 00.png, staged: {sorted(p.name for p in staged.iterdir())}"
+    )
+
+
+def test_load_image_stages_a_jpeg_source_as_00png(
+    app: App, tmp_path: Path,
+) -> None:
+    """Non-PNG sources stage under the .png convention name too — the
+    renderer sniffs content, so the extension is cosmetic."""
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.core.commands import LoadImage
+
+    src = tmp_path / "photo.jpg"
+    img = QImage(320, 320, QImage.Format.Format_RGB888)
+    img.fill(QColor(10, 200, 90))
+    img.save(str(src), "JPEG")
+
+    assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=src)).ok
+
+    staged_png = _staged_dir(app, "photo") / "00.png"
+    assert staged_png.is_file()
+    assert not QImage(str(staged_png)).isNull(), "staged image must load"
+
+
+def test_load_image_background_actually_reaches_the_frame(
+    app: App, tmp_path: Path,
+) -> None:
+    """The regression that byte-count checks miss.
+
+    The wire frame is a fixed size either way, so 'sent N bytes' proves
+    nothing.  Two different source images must produce DIFFERENT frames;
+    identical frames mean the resolver ignored the image and painted the
+    solid black canvas of #245.
+    """
+    from trcc.core.commands import LoadImage
+    from trcc.core.registry import find_product
+
+    # Same registry fallback the other tests in this file rely on — the
+    # test device is not attached, only known to the registry.
+    info = find_product(0x0402, 0x3922)
+
+    red = _png(tmp_path / "red.png", (237, 28, 36))
+    assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=red)).ok
+    red_frame = app.display.build_frame(
+        info, app.active_themes[_TEST_DEVICE_KEY], {})
+
+    black = _png(tmp_path / "black.png", (0, 0, 0))
+    assert app.dispatch(LoadImage(key=_TEST_DEVICE_KEY, path=black)).ok
+    black_frame = app.display.build_frame(
+        info, app.active_themes[_TEST_DEVICE_KEY], {})
+
+    assert bytes(red_frame) != bytes(black_frame), (
+        "red and black sources produced identical frames — the background "
+        "is not reaching the wire (#245)"
+    )

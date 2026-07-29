@@ -1855,7 +1855,14 @@ class LoadImage(Command[ThemeResult]):
             )
         try:
             theme_dir.mkdir(parents=True, exist_ok=True)
-            target_image = theme_dir / self.path.name
+            # ALWAYS stage as 00.png — the strict theme-dir convention the
+            # background resolver reads (sibling LoadVideo stages Theme.zt
+            # for the same reason).  Keeping the source basename produced a
+            # dir the resolver could not see, so the panel showed a solid
+            # black canvas while the CLI still reported success (#245).
+            # The extension is cosmetic: the renderer sniffs content, so a
+            # staged JPEG/BMP/WebP loads fine under the .png name.
+            target_image = theme_dir / "00.png"
             if (
                 not target_image.is_file()
                 or target_image.stat().st_size != self.path.stat().st_size

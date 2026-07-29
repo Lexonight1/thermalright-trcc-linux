@@ -613,7 +613,11 @@ def test_load_image_command_via_tmpfile(
         / "single-image" / "test_image"
     )
     assert staged.is_dir()
-    assert (staged / "test_image.png").is_file()
+    # Staged under the theme-dir convention name, NOT the source basename —
+    # the background resolver only reads 00.png, so keeping "test_image.png"
+    # produced a dir it could not see and the panel went black (#245).
+    assert (staged / "00.png").is_file()
+    assert not (staged / "test_image.png").exists()
 
 
 def test_load_image_command_rejects_missing_file(gui_app: App) -> None:
