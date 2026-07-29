@@ -393,6 +393,25 @@ def test_led_color_persists(cli_runner: CliRunner, cli_app) -> None:
     assert result.exit_code == 0
 
 
+def test_led_color_on_an_lcd_key_fails_loudly(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """The reporter's own command (#252), end to end through the real edge.
+
+    ``trcc led color <lcd-key> <hex>`` used to print "LED color set to
+    #ffffff" and exit 0 on a device with no LED hardware.  The gate lives in
+    the Command, so this asserts the whole chain: Command refuses ->
+    ``dispatch_echo`` sees ok=False -> non-zero exit for scripts.
+    """
+    del cli_app
+    result = cli_runner.invoke(
+        _app(), ["led", "color", "0402:3922", "ffffff"],
+    )
+    assert result.exit_code == 1
+    assert "is not an LED device" in result.stdout
+    assert "LED color set" not in result.stdout
+
+
 def test_led_brightness_persists(cli_runner: CliRunner, cli_app) -> None:
     del cli_app
     result = cli_runner.invoke(

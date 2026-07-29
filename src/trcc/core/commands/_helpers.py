@@ -14,7 +14,7 @@ from ..events import (
     LedColorsChanged,
     LedSettingsChanged,
 )
-from ..models import OverlayElement, oriented_resolution
+from ..models import Kind, OverlayElement, oriented_resolution
 from ..registry import find_product
 from ..results import (
     HealthCheckEntry,
@@ -330,6 +330,50 @@ def _resolve_mask_path(path: Path) -> Path | None:
         if legacy.is_file():
             return legacy
     return None
+
+
+def _not_an_led(app: App, key: str) -> str | None:
+    """Refusal message when *key* is provably not an LED device, else ``None``.
+
+    Every settings-only LED Command wrote straight to ``app.settings`` without
+    checking what it was aimed at, so ``trcc led color <lcd-key> ffffff``
+    answered "LED color set to #ffffff" and exited 0 — on a device with no LED
+    hardware at all — while quietly stashing LED settings under an LCD's key
+    (#252).  Only the two wire-touching Commands (``SetLedColors``,
+    ``RenderLed``) ever checked; this is their guard for the settings half, so
+    the whole LED surface refuses in one voice.
+
+    Gating in the Command rather than at each UI is what makes it uniform:
+    CLI, API, GUI and qtgui all dispatch these same Commands, and both
+    command-only edges already translate a failed Result on their own
+    (``dispatch_echo`` exits 1, ``http_error_if_failed`` raises).
+
+    Deliberately ternary — "not an LED" and "cannot tell" are different
+    answers:
+
+    * **attached** — the device object answers ``is_led`` authoritatively.
+    * **not attached** — the VID/PID registry answers, so an *unplugged* LCD
+      is refused too.
+    * **unknown VID/PID** — allowed.  We cannot prove anything about a key the
+      registry has never seen, and settings are legitimately written before a
+      device is ever attached (the GUI seeds a profile, the CLI pre-configures
+      one), so refusing here would break a real flow to guess at a fake one.
+    """
+    log.debug("_not_an_led: key=%s", key)
+    refusal = f"{key} is not an LED device"
+    device = app.devices.get(key)
+    if device is not None:
+        return None if device.is_led else refusal
+    try:
+        vid_s, pid_s = key.split(":")
+        vid = int(vid_s, 16)
+        pid = int(pid_s, 16)
+    except ValueError:
+        return None
+    product = find_product(vid, pid)
+    if product is None:
+        return None
+    return None if product.kind is Kind.LED else refusal
 
 
 def _publish_led_settings_changed(app: App, key: str) -> None:

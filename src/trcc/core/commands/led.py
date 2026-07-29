@@ -37,6 +37,7 @@ from ..results import (
 )
 from ._base import Command
 from ._helpers import (
+    _not_an_led,
     _publish_if_disconnect,
     _publish_led_settings_changed,
 )
@@ -427,6 +428,9 @@ class SetLedMode(Command[LedColorsResult]):
     mode: LEDMode
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         zone_count = _multi_zone_count(app, self.key)
         if zone_count is not None:
             app.settings.set_led_zone_count(self.key, zone_count)
@@ -491,6 +495,9 @@ class SetLedColor(Command[LedColorsResult]):
     color: tuple[int, int, int]
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         for label, value in zip("rgb", self.color, strict=False):
             if not 0 <= value <= 255:
                 return LedColorsResult(
@@ -534,6 +541,9 @@ class SetLedBrightness(Command[LedColorsResult]):
     percent: int
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         if not 0 <= self.percent <= 100:
             return LedColorsResult(
                 ok=False, key=self.key, colors=[],
@@ -553,6 +563,9 @@ class EnableLedTestMode(Command[LedColorsResult]):
     enabled: bool
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         app.settings.set_led_test_mode(self.key, self.enabled)
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         runtime.test_timer = 0
@@ -570,6 +583,9 @@ class SetLedTempSource(Command[LedColorsResult]):
     source: str
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_temp_source(self.key, self.source)
         except ValueError as e:
@@ -596,6 +612,9 @@ class ToggleLed(Command[LedColorsResult]):
     zone: int | None = None
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         if self.zone is None:
             app.settings.set_led_global_on(self.key, self.on)
             target = "global"
@@ -621,6 +640,9 @@ class SetLedLoadSource(Command[LedColorsResult]):
     source: str
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_load_source(self.key, self.source)
         except ValueError as e:
@@ -641,6 +663,9 @@ class SetLedZoneColor(Command[LedColorsResult]):
     color: tuple[int, int, int]
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         for label, value in zip("rgb", self.color, strict=False):
             if not 0 <= value <= 255:
                 return LedColorsResult(
@@ -674,6 +699,9 @@ class SetLedZoneMode(Command[LedColorsResult]):
     mode: LEDMode
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_zone(self.key, self.zone, mode=self.mode)
         except IndexError as e:
@@ -699,6 +727,9 @@ class SetLedZoneBrightness(Command[LedColorsResult]):
     percent: int
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         if not 0 <= self.percent <= 100:
             return LedColorsResult(
                 ok=False, key=self.key, colors=[],
@@ -725,6 +756,9 @@ class SetLedZoneSync(Command[LedColorsResult]):
     enabled: bool
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         app.settings.set_led_zone_sync(self.key, self.enabled)
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
         runtime.zone_sync_ticks = 0
@@ -743,6 +777,9 @@ class SetLedZoneSyncInterval(Command[LedColorsResult]):
     ticks: int
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         if self.ticks < 1:
             return LedColorsResult(
                 ok=False, key=self.key, colors=[],
@@ -769,6 +806,9 @@ class SetLedZoneSyncZones(Command[LedColorsResult]):
     zones: tuple[bool, ...]
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         log.info("SetLedZoneSyncZones %s: zones=%s", self.key, list(self.zones))
         app.settings.set_led_zone_sync_zones(self.key, list(self.zones))
         _publish_led_settings_changed(app, self.key)
@@ -784,6 +824,9 @@ class SelectZone(Command[LedColorsResult]):
     zone: int
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_selected_zone(self.key, self.zone)
         except ValueError as e:
@@ -804,6 +847,9 @@ class ToggleSegment(Command[LedColorsResult]):
     on: bool
 
     def execute(self, app: App) -> LedColorsResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_segment_on(self.key, self.index, self.on)
         except IndexError as e:
@@ -824,6 +870,9 @@ class SetClockFormat(Command[ClockFormatResult]):
     is_24h: bool
 
     def execute(self, app: App) -> ClockFormatResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return ClockFormatResult(ok=False, key=self.key,
+                                     is_24h=self.is_24h, message=why)
         app.settings.set_led_clock_24h(self.key, self.is_24h)
         _publish_led_settings_changed(app, self.key)
         fmt = "24h" if self.is_24h else "12h"
@@ -839,6 +888,9 @@ class SetWeekStart(Command[WeekStartResult]):
     sunday_first: bool
 
     def execute(self, app: App) -> WeekStartResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return WeekStartResult(ok=False, key=self.key,
+                                   sunday_first=self.sunday_first, message=why)
         app.settings.set_led_week_start(self.key, self.sunday_first)
         _publish_led_settings_changed(app, self.key)
         which = "Sunday" if self.sunday_first else "Monday"
@@ -854,6 +906,9 @@ class SetMemoryRatio(Command[MemoryRatioResult]):
     ratio: int
 
     def execute(self, app: App) -> MemoryRatioResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return MemoryRatioResult(ok=False, key=self.key,
+                                     ratio=self.ratio, message=why)
         if self.ratio not in (1, 2, 4):
             return MemoryRatioResult(
                 ok=False, key=self.key, ratio=self.ratio,
@@ -873,6 +928,9 @@ class SetDiskIndex(Command[DiskIndexResult]):
     index: int
 
     def execute(self, app: App) -> DiskIndexResult:
+        if (why := _not_an_led(app, self.key)) is not None:
+            return DiskIndexResult(ok=False, key=self.key,
+                                   index=self.index, message=why)
         try:
             app.settings.set_led_disk_index(self.key, self.index)
         except ValueError as e:
