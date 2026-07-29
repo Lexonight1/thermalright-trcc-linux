@@ -108,6 +108,6 @@ If you own any of the untested devices above and run Linux:
 1. Install: `pip install trcc-linux`
 2. Run the setup wizard: `trcc system setup` (checks deps, installs udev rules, desktop entry)
 3. Unplug/replug USB cable
-4. Run detection: `trcc detect --all`
+4. Run detection: `trcc detect`
 5. Try the GUI: `trcc gui`
 6. Report what you see at https://github.com/Lexonight1/thermalright-trcc-linux/issues

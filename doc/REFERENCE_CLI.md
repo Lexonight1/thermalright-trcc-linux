@@ -41,37 +41,37 @@ The default window is frameless (matching the Windows TRCC layout). Use `--decor
 
 ### `trcc detect`
 
-Detect connected LCD devices.
+List every supported device attached to the host. Takes no options — it is a
+top-level alias for `trcc device list`.
 
 ```bash
-trcc detect            # show active device
-trcc detect --all      # list all detected devices
+trcc detect
 ```
-
-| Option | Description |
-|--------|-------------|
-| `--all`, `-a` | List all devices (not just the active one) |
 
 **Example output:**
 
 ```text
-* [1] /dev/sg2 — Thermalright LCD Display [87cd:70db] (SCSI)
-  [2] /dev/sg3 — ALi Corp LCD Display [0416:5406] (SCSI)
+3 device(s) found:
+  0402:3922  Thermalright LCD Display  (wire=scsi, resolution=320×320)
+  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
+  0416:8001  Winbond LED Controller  (wire=led, resolution=0×0)
 ```
 
-The `*` marks the currently active device.
+Exits non-zero when nothing is found, so it can gate a script.
 
 ---
 
-### `trcc select`
+### `trcc device select`
 
-Switch the active device (when multiple LCDs are connected).
+Switch the active device (when several are connected).
 
 ```bash
-trcc select 2          # select device number 2
+trcc device select 2          # select the 2nd device
 ```
 
-Device numbers correspond to the `[N]` shown in `trcc detect --all`.
+The argument is a **1-based ordinal into the `trcc detect` listing** — the
+second line above is `2`. Commands identify a device by its `VID:PID` key
+everywhere else; the ordinal exists only for this selection.
 
 ---
 
@@ -245,7 +245,7 @@ trcc report
 
 - TRCC version, Python version, OS/kernel info
 - `lsusb` output (all USB devices)
-- `trcc detect --all` (detected TRCC devices with protocol info)
+- `trcc detect` (detected TRCC devices with protocol info)
 - HID handshake results (PM byte, resolution, serial)
 - Udev rules status
 - CPU package-power (RAPL) status — whether the counter exists and is readable (diagnoses blank CPU wattage)

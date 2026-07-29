@@ -636,7 +636,7 @@ Stored under `"devices"` keyed by index-only `"0"`, `"1"`, etc. The `vid_pid` is
 trcc system setup                        # interactive setup wizard (deps, udev, desktop)
 trcc setup-gui                    # GUI setup wizard
 trcc system setup                   # install udev rules (auto-prompts sudo)
-trcc detect --all                 # list all devices
+trcc detect                       # list all devices
 
 # Display
 trcc send image.png               # send image to LCD

@@ -77,7 +77,7 @@ trcc --version
 4. Check if the device appears: `ls /dev/sg*`
 5. Check kernel messages: `dmesg | tail -20` right after plugging in
 
-> **HID devices** (0416:5302, 0418:5303, 0418:5304, 0416:8001) don't use `/dev/sg*`. Use `trcc detect --all` instead.
+> **HID devices** (0416:5302, 0418:5303, 0418:5304, 0416:8001) don't use `/dev/sg*`. Use `trcc detect` instead.
 
 ---
 

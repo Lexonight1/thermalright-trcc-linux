@@ -771,7 +771,7 @@ Download [`trcc-latest-setup.exe`](https://github.com/Lexonight1/thermalright-tr
 
 **Verify:**
 ```powershell
-trcc detect --all
+trcc detect
 trcc doctor
 ```
 
@@ -907,15 +907,14 @@ trcc detect
 ```
 
 You should see something like:
-```json
-[1] 0402:3922  ALi Corp  (SCSI)  path=/dev/sg1
-```
-or for HID devices:
-```json
-[1] 0416:5302  USBDISPLAY  (HID)  path=1-8.1
+```text
+2 device(s) found:
+  0402:3922  Thermalright LCD Display  (wire=scsi, resolution=320×320)
+  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
 ```
 
-Use `trcc detect --all` to see all connected devices.
+`trcc detect` always lists every connected device; it exits non-zero when it
+finds none.
 
 ### Quick test
 

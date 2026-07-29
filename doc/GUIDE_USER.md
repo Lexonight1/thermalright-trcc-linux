@@ -217,30 +217,33 @@ These same metrics power the overlay elements on your LCD.
 
 Everything the GUI does, the CLI can do too. Useful for scripting, headless servers, or SSH sessions.
 
+Commands that act on a device take its `VID:PID` key as the first argument —
+`trcc detect` prints the keys.
+
 ```bash
 # Device management
-trcc detect              # list connected devices
-trcc select 0            # select device by index
+trcc detect                                   # list connected devices
+trcc device select 1                          # pick the active device (1-based)
 
 # Display
-trcc send image.png      # send an image to the LCD
-trcc theme-load Theme1   # load a theme by name
-trcc brightness 80       # set brightness to 80%
-trcc rotation 90         # rotate display
+trcc display send-image 0402:3922 image.png   # send an image to the LCD
+trcc display load-theme 0402:3922 Theme1      # load a theme
+trcc display set-brightness 0402:3922 80      # set brightness to 80%
+trcc display set-orientation 0402:3922 90     # rotate display
 
 # LED
-trcc led-color ff0000    # set LED to red
-trcc led-mode breathing  # breathing effect
-trcc led-off             # turn off LEDs
+trcc led color 0416:8001 ff0000               # set LED to red
+trcc led mode 0416:8001 breathing             # breathing effect
+trcc led toggle 0416:8001 off                 # turn off LEDs
 
 # System
-trcc doctor              # check dependencies
-trcc report              # generate diagnostic report
-trcc info                # show system info
+trcc doctor                                   # check dependencies
+trcc report                                   # generate diagnostic report
+trcc system info                              # show system info
 
 # Interactive
-trcc shell               # interactive shell with tab completion
-trcc serve               # start REST API server
+trcc shell                                    # interactive shell with tab completion
+trcc serve                                    # start REST API server
 ```
 
 See the full [CLI Reference](REFERENCE_CLI.md) for all commands.

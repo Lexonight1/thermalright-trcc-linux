@@ -68,7 +68,7 @@ layer doesn't break the existing in-process behaviour for their device.
 
 In a comment on this issue:
 
-- **Your VID:PID + protocol** (the line from `trcc detect --all`)
+- **Your VID:PID + protocol** (the line from `trcc detect`)
 - **Did each command produce visible/audible effect on the device?** (yes/no per command)
 - **Anything in `~/.trcc/trcc.log` that looks wrong** (paste tracebacks if any)
 - **Time it took for `trcc kill` to return** (should be < 500 ms)

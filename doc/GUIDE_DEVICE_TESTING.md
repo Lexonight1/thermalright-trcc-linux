@@ -35,16 +35,17 @@ For per-distro manual install commands, see the [Install Guide](GUIDE_INSTALL.md
 HID devices are auto-detected — no special flags needed:
 
 ```bash
-trcc detect --all
+trcc detect
 ```
 
 You should see your device listed. Example:
 
 ```text
-* [1] No device path found — USBDISPLAY (HID) [0416:5302] (HID)
+1 device(s) found:
+  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
 ```
 
-The "No device path found" is normal for HID devices — they don't use `/dev/sgX` like SCSI devices.
+`wire=hid` is expected here — HID devices don't use `/dev/sgX` like SCSI devices do.
 
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH.
 
@@ -136,7 +137,7 @@ After the HID handshake, the sidebar button updates based on the PM (product mod
 
 ### GUI opens but device isn't in the sidebar
 
-1. Run `trcc detect --all` — if the device appears there but not in the GUI, it may be a routing issue
+1. Run `trcc detect` — if the device appears there but not in the GUI, it may be a routing issue
 2. Run `trcc gui -vv` for debug logging and share the terminal output
 
 ## What to Report
@@ -147,7 +148,13 @@ The fastest way to report is:
 trcc report
 ```
 
-This runs `lsusb`, `detect --all`, and `hid-debug` in one command. Copy-paste the entire output into a [GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues).
+That is an alias for `trcc system debug-report`. It gathers the install and
+platform details, resolved paths, detected devices, the handshake probe
+(PM byte, resolution, serial), sensor readings, powercap state, your
+settings, the health checks, and the tail of `~/.trcc/trcc.log` — everything
+needed to diagnose a device, in one dump. Copy-paste the entire output into a
+[GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues),
+or use `trcc report -o report.txt` to write it to a file.
 
 **Also include:**
 
