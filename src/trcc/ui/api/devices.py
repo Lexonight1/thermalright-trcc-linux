@@ -5,18 +5,21 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ...core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
-from ...core.results import (
-    DisconnectResult,
+from ...core.commands import (
+    ConnectDevice,
+    DeviceConnectionIssues,
+    DisconnectDevice,
+    DiscoverDevices,
 )
+from ...core.results import DisconnectResult
 from ._shared import (
     http_error_if_failed,
     product_to_schema,
-    to_connect_response,
     to_discover_response,
 )
 from .schemas import (
-    ConnectResponse,
+    ConnectionIssuesView,
+    ConnectView,
     DiscoverResponse,
     ProductSchema,
 )
@@ -33,6 +36,21 @@ def list_devices(request: Request) -> DiscoverResponse:
     return to_discover_response(result)
 
 
+@router.get("/issues", response_model=ConnectionIssuesView)
+def connection_issues(request: Request):
+    """Every device that failed to connect, and why.
+
+    The same ``DeviceConnectionIssues`` query the GUIs run — a connect can
+    fail before any client is watching, so the failure has to be pullable
+    rather than only published on the bus.
+
+    Declared BEFORE ``/{key}``: FastAPI matches in declaration order, so a
+    static segment must come first or "issues" is swallowed as a key.
+    """
+    log.info("api GET /devices/issues")
+    return request.app.state.trcc.dispatch(DeviceConnectionIssues())
+
+
 @router.get("/{key}", response_model=ProductSchema)
 def device_detail(key: str, request: Request) -> ProductSchema:
     """Detail for one discovered device — 404 if not currently present."""
@@ -44,12 +62,14 @@ def device_detail(key: str, request: Request) -> ProductSchema:
     raise HTTPException(status_code=404, detail=f"device {key} not found")
 
 
-@router.post("/{key}/connect", response_model=ConnectResponse)
-def connect(key: str, request: Request) -> ConnectResponse:
+@router.post("/{key}/connect", response_model=ConnectView)
+def connect(key: str, request: Request):
+    """Connect *key*.  Returns the full handshake — including the raw
+    device response as hex, the field issue triage always asks for."""
     log.info("api POST /devices/{key}/connect: key=%s", key)
     result = request.app.state.trcc.dispatch(ConnectDevice(key=key))
     http_error_if_failed(result)
-    return to_connect_response(result)
+    return result
 
 
 @router.post("/{key}/disconnect")

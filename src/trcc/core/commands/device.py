@@ -34,7 +34,16 @@ from ..events import (
     VideoStarted,
     VideoStopped,
 )
-from ..models import FitMode, OverlayElement, Wire, oriented_resolution
+from ..models import (
+    OVERLAY_DEFAULT_CLOCK_SOURCE,
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_FORMAT,
+    OVERLAY_DEFAULT_SIZE,
+    FitMode,
+    OverlayElement,
+    Wire,
+    oriented_resolution,
+)
 from ..registry import find_product
 from ..results import (
     ActiveDeviceResult,
@@ -1602,15 +1611,15 @@ class AddOverlayElement(Command[OverlayElementResult]):
     type: str = "text"
     x: int = 0
     y: int = 0
-    color: str = "#ffffff"
-    size: int = 16
+    color: str = OVERLAY_DEFAULT_COLOR
+    size: int = OVERLAY_DEFAULT_SIZE
     bold: bool = False
     italic: bool = False
     text: str = ""
     metric: str = ""
-    format: str = "{value}"
+    format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
-    source: str = "time"
+    source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
     element_id: str = ""
 
     def execute(self, app: App) -> OverlayElementResult:

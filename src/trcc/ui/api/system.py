@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -31,7 +32,9 @@ from ...core.commands import (
 from ...core.results import (
     AutostartResult,
     ControlCenterSnapshotResult,
+    DebugReportPayload,
     DisksListResult,
+    DoctorResultPayload,
     FansListResult,
     FirstRunStatusResult,
     FontsListResult,
@@ -40,27 +43,19 @@ from ...core.results import (
     HealthReportResult,
     LanguageResult,
     LanguagesListResult,
+    SensorsListResult,
+    SensorsResult,
     SetupResult,
     UpdateCheckResult,
     UpgradeResult,
 )
-from ._shared import (
-    http_error_if_failed,
-    to_debug_report_response,
-    to_doctor_response,
-    to_sensor_catalog_response,
-    to_sensors_response,
-)
+from ._shared import http_error_if_failed
 from .schemas import (
     AppStatusEntry,
     AppStatusResponse,
     AutostartRequest,
     DebugReportRequest,
-    DebugReportResponse,
-    DoctorResponse,
     HddEnabledRequest,
-    SensorCatalogResponse,
-    SensorsResponse,
     UpgradeRequest,
 )
 
@@ -76,8 +71,8 @@ def setup(request: Request) -> SetupResult:
     return result
 
 
-@router.get("/sensors/catalog", response_model=SensorCatalogResponse)
-def sensor_catalog(request: Request) -> SensorCatalogResponse:
+@router.get("/sensors/catalog")
+def sensor_catalog(request: Request) -> SensorsListResult:
     """Every sensor this machine can measure — identities, no values.
 
     /system/sensors answers "what do they read"; this answers "what exists".
@@ -89,13 +84,12 @@ def sensor_catalog(request: Request) -> SensorCatalogResponse:
     as a {category} value (it was — the route returned readings).
     """
     log.info("api GET /system/sensors/catalog")
-    result = request.app.state.trcc.dispatch(ListSensors())
-    return to_sensor_catalog_response(result)
+    return request.app.state.trcc.dispatch(ListSensors())
 
 
-@router.get("/sensors/{category}", response_model=SensorsResponse)
+@router.get("/sensors/{category}")
 def sensors_by_category(category: str,
-                        request: Request) -> SensorsResponse:
+                        request: Request) -> SensorsResult:
     """Filter the live sensor list by category prefix.
 
     Convenience wrapper around ``GET /system/sensors``: keeps the same
@@ -110,26 +104,21 @@ def sensors_by_category(category: str,
     """
     log.info("api GET /system/sensors/{category}: category=%s", category)
     result = request.app.state.trcc.dispatch(ReadSensors())
-    filtered_readings = [
-        r for r in result.readings
-        if r.category.startswith(category)
-    ]
-    response = to_sensors_response(result)
-    response.readings = [
-        r for r in response.readings if r.category.startswith(category)
-    ]
-    response.message = (
-        f"{len(filtered_readings)} {category!r} reading(s) "
-        f"(filtered from {len(result.readings)})"
+    filtered = [r for r in result.readings if r.category.startswith(category)]
+    # ``metrics`` is the whole-box snapshot, not per-category — it rides
+    # along unfiltered so a dashboard can scope the list without losing it.
+    return replace(
+        result,
+        readings=filtered,
+        message=(f"{len(filtered)} {category!r} reading(s) "
+                 f"(filtered from {len(result.readings)})"),
     )
-    return response
 
 
-@router.get("/sensors", response_model=SensorsResponse)
-def sensors(request: Request) -> SensorsResponse:
+@router.get("/sensors")
+def sensors(request: Request) -> SensorsResult:
     log.info("api GET /system/sensors")
-    result = request.app.state.trcc.dispatch(ReadSensors())
-    return to_sensors_response(result)
+    return request.app.state.trcc.dispatch(ReadSensors())
 
 
 @router.get("/metrics")
@@ -321,17 +310,16 @@ def health(request: Request) -> HealthReportResult:
     return result
 
 
-@router.get("/doctor", response_model=DoctorResponse)
-def doctor(request: Request) -> DoctorResponse:
+@router.get("/doctor")
+def doctor(request: Request) -> DoctorResultPayload:
     """Same as `/health` but adds an exit code + a rendered text view."""
     log.info("api GET /system/doctor")
-    result = request.app.state.trcc.dispatch(RunDoctor())
-    return to_doctor_response(result)
+    return request.app.state.trcc.dispatch(RunDoctor())
 
 
-@router.post("/debug-report", response_model=DebugReportResponse)
+@router.post("/debug-report")
 def debug_report(body: DebugReportRequest,
-                 request: Request) -> DebugReportResponse:
+                 request: Request) -> DebugReportPayload:
     """Generate a debug report bundle.
 
     With ``output_path`` set, the report is also written to that
@@ -347,7 +335,7 @@ def debug_report(body: DebugReportRequest,
         output_path=out, log_tail_lines=body.log_tail_lines,
     ))
     http_error_if_failed(result)
-    return to_debug_report_response(result)
+    return result
 
 
 @router.get("/check-update")

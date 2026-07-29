@@ -44,6 +44,18 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS issues
+.PP
+\fBtrcc device issues\fR
+.PP
+Show devices that failed to connect, and why. A connect can fail before anything is watching the bus, so the failure is pulled with a query rather than only published  \-  the same one the GUIs and GET /devices/issues use.
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS list
 .PP
 \fBtrcc device list\fR

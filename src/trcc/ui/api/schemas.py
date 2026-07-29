@@ -5,17 +5,75 @@ not domain concerns.  Core ports stay framework-blind.
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Generic, TypeVar
 
-from ...core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
+from pydantic import BaseModel, ConfigDict, Field, RootModel
+
+from ...core.models import (
+    MAX_REFRESH_INTERVAL_S,
+    MIN_REFRESH_INTERVAL_S,
+    OVERLAY_DEFAULT_CLOCK_SOURCE,
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_FORMAT,
+    OVERLAY_DEFAULT_SIZE,
+)
+from ...core.results import ConnectionIssuesResult, ConnectResult
+
+# =========================================================================
+# Wire views — a Result serialized verbatim, with device bytes as hex
+# =========================================================================
+
+T = TypeVar("T")
+
+
+class WireView(RootModel[T], Generic[T]):
+    """A Command Result on the wire, with raw device bytes as lowercase hex.
+
+    ``bytes`` has no JSON form, so every text boundary must choose an
+    encoding: the IPC socket picks base64 (lossless round-trip), and the
+    diagnostics print hex.  HTTP follows the diagnostics — a handshake read
+    off ``/devices/{key}/connect`` then matches, character for character,
+    the one in a ``trcc report`` pasted into an issue.
+
+    The choice is declared HERE, in the adapter, rather than on the Result:
+    ``core`` stays framework-blind (no pydantic import, no pydantic naming),
+    and pydantic propagates this config into the nested dataclasses it
+    serializes.  Subclass per Result — that binds ``T`` and gives the
+    OpenAPI component a name.
+    """
+    model_config = ConfigDict(ser_json_bytes="hex")
+
+
+class ConnectView(WireView[ConnectResult]):
+    """``POST /devices/{key}/connect`` — the whole ConnectResult.
+
+    Carries the handshake (including ``raw_response`` as hex), the LED
+    handshake, and the per-OS ``hints`` shown when a connect fails.
+    """
+
+
+class ConnectionIssuesView(WireView[ConnectionIssuesResult]):
+    """``GET /devices/issues`` — every device that failed to connect, with
+    the same per-OS hints the GUIs show."""
+
 
 # =========================================================================
 # Response shapes
 # =========================================================================
 
 
+class ResultBase(BaseModel):
+    ok: bool
+    message: str = ""
+
+
 class ProductSchema(BaseModel):
-    """Flat view of ProductInfo for HTTP clients."""
+    """HTTP view of ``ProductInfo`` — a projection, NOT a mirror.
+
+    Kept deliberately: ``ProductInfo.key`` is a derived ``@property``, and
+    serializing the dataclass directly emits fields only, so the identifier
+    every client keys on would silently vanish.  This view materializes it.
+    """
     key: str
     vid: int
     pid: int
@@ -27,68 +85,27 @@ class ProductSchema(BaseModel):
     orientations: tuple[int, ...]
 
 
-class HandshakeSchema(BaseModel):
-    resolution: tuple[int, int]
-    model_id: int
-    serial: str = ""
-    pm_byte: int = 0
-    sub_byte: int = 0
-    fbl: int | None = None
-
-
-class ResultBase(BaseModel):
-    ok: bool
-    message: str = ""
-
-
 class DiscoverResponse(ResultBase):
     products: list[ProductSchema] = []
 
 
-class ConnectResponse(ResultBase):
-    key: str = ""
-    handshake: HandshakeSchema | None = None
-
-
 class ThemeResponse(ResultBase):
+    """Deliberately narrower than ``ThemeResult``: ``theme_path`` is a
+    server-side absolute path and is not disclosed over HTTP."""
     key: str = ""
     theme_name: str = ""
-
-
-class SensorReadingSchema(BaseModel):
-    sensor_id: str
-    category: str
-    value: float
-    unit: str
-    label: str = ""
-
-
-class SensorsResponse(ResultBase):
-    readings: list[SensorReadingSchema] = []
-
-
-class SensorInfoSchema(BaseModel):
-    """A sensor's identity — no value.  Mirrors core SensorInfoEntry."""
-    sensor_id: str
-    category: str
-    unit: str = ""
-    label: str = ""
-
-
-class SensorCatalogResponse(ResultBase):
-    """What sensors EXIST, as opposed to what they currently read.
-
-    /system/sensors answers "what are the values"; this answers "what can this
-    machine measure at all".  The CLI has had `system list-sensors` since
-    forever; the API could not ask (#unified-ui contract hole).
-    """
-    sensors: list[SensorInfoSchema] = []
+    # SaveTheme sets this when the save was refused ONLY because a theme of
+    # that name exists — lets a REST client offer the same one-click
+    # overwrite the GUIs offer, instead of guessing from the message text.
+    target_exists: bool = False
 
 
 # ── Control-center settings ──────────────────────────────────────────
 
 
 class ImportConfigResponse(ResultBase):
+    """Deliberately narrower than ``ImportConfigResult``: ``input_path`` is a
+    server-side absolute path and is not disclosed over HTTP."""
     key: str = ""
 
 
@@ -235,34 +252,39 @@ class MaskUploadRequest(BaseModel):
 
 # Overlay element CRUD
 class OverlayElementSchema(BaseModel):
+    """One element inside a ``SetOverlayConfig`` body — request-side only.
+
+    Responses carry the domain ``OverlayElementEntry`` verbatim; this is the
+    validated *input* shape.
+    """
     id: str
     type: str
     x: int = 0
     y: int = 0
-    color: str = "#ffffff"
-    size: int = 16
+    color: str = OVERLAY_DEFAULT_COLOR
+    size: int = OVERLAY_DEFAULT_SIZE
     bold: bool = False
     italic: bool = False
     text: str = ""
     metric: str = ""
-    format: str = "{value}"
+    format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
-    source: str = "time"
+    source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
 
 
 class OverlayElementAddRequest(BaseModel):
     type: str = Field(..., pattern="^(text|metric|clock)$")
     x: int = 0
     y: int = 0
-    color: str = "#ffffff"
-    size: int = Field(16, ge=1)
+    color: str = OVERLAY_DEFAULT_COLOR
+    size: int = Field(OVERLAY_DEFAULT_SIZE, ge=1)
     bold: bool = False
     italic: bool = False
     text: str = ""
     metric: str = ""
-    format: str = "{value}"
+    format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
-    source: str = "time"
+    source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
     element_id: str = ""
 
 
@@ -302,15 +324,6 @@ class WebThemeSchema(BaseModel):
     download_url: str
 
 
-class EnsureDataResponse(ResultBase):
-    """Result of a per-resolution data prefetch (``POST /theme/init``)."""
-    width: int = 0
-    height: int = 0
-    themes_ok: bool = False
-    web_ok: bool = False
-    masks_ok: bool = False
-
-
 class CloudThemeLoadRequest(BaseModel):
     theme_id: str
 
@@ -327,29 +340,9 @@ class ThemeDcExportRequest(BaseModel):
 
 
 # Diagnostics
-class HealthCheckEntrySchema(BaseModel):
-    name: str
-    severity: str
-    message: str
-    fix_hint: str = ""
-
-
-class DoctorResponse(ResultBase):
-    checks: list[HealthCheckEntrySchema] = []
-    fail_count: int = 0
-    warn_count: int = 0
-    exit_code: int = 0
-    rendered: str = ""
-
-
 class DebugReportRequest(BaseModel):
     output_path: str | None = None
     log_tail_lines: int = Field(1000, ge=0, le=100_000)
-
-
-class DebugReportResponse(ResultBase):
-    output_path: str = ""
-    rendered_text: str = ""
 
 
 # Update + upgrade

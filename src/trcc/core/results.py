@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .models import (
+    OVERLAY_DEFAULT_CLOCK_SOURCE,
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_FORMAT,
+    OVERLAY_DEFAULT_SIZE,
     DeviceInfo,
     HandshakeResult,
     HardwareMetrics,
@@ -602,20 +606,30 @@ class DisksListResult(Result):
 # Overlay element CRUD
 @dataclass(frozen=True, slots=True)
 class OverlayElementEntry:
-    """Flat view of one OverlayElement (id + type + fields)."""
+    """Frozen snapshot of one :class:`OverlayElement`.
+
+    NOT redundant with the domain object, despite the identical fields:
+    ``OverlayElement`` is MUTABLE and lives inside ``Settings`` (see
+    ``Settings.update_user_overlay_element``, which ``setattr``s it in
+    place).  Handing that object out on a Result would let any UI mutate
+    persisted app state through a return value.  This is the copy that
+    crosses the boundary.
+
+    Defaults come from ``core.models`` so the two cannot drift.
+    """
     id: str
     type: str
     x: int = 0
     y: int = 0
-    color: str = "#ffffff"
-    size: int = 16
+    color: str = OVERLAY_DEFAULT_COLOR
+    size: int = OVERLAY_DEFAULT_SIZE
     bold: bool = False
     italic: bool = False
     text: str = ""
     metric: str = ""
-    format: str = "{value}"
+    format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
-    source: str = "time"
+    source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
 
 
 @dataclass(frozen=True, slots=True)

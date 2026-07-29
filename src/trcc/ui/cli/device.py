@@ -7,6 +7,7 @@ import typer
 
 from ...core.commands import (
     ConnectDevice,
+    DeviceConnectionIssues,
     DisconnectDevice,
     DiscoverDevices,
     ResetDevice,
@@ -53,6 +54,27 @@ def connect(key: str = typer.Argument(..., help="Device key, e.g. 0402:3922")) -
         typer.echo(f"  model_id:   {h.model_id}")
         if h.serial:
             typer.echo(f"  serial:     {h.serial}")
+
+
+@app.command("issues")
+def issues() -> None:
+    """Show devices that failed to connect, and why.
+
+    A connect can fail before anything is watching the bus, so the failure
+    is pulled with a query rather than only published — the same one the
+    GUIs and ``GET /devices/issues`` use.
+    """
+    log.info("cli device issues")
+    result = get_app().dispatch(DeviceConnectionIssues())
+    if not result.issues:
+        typer.echo("No connection issues.")
+        return
+    typer.echo(f"{len(result.issues)} device(s) failed to connect:")
+    for issue in result.issues:
+        typer.echo(f"  {issue.key}  {issue.message}")
+        for hint in issue.hints:
+            typer.echo(f"    hint: {hint}")
+    raise typer.Exit(code=1)
 
 
 @app.command("disconnect")

@@ -166,6 +166,23 @@ SPLIT_OVERLAY_MAP: dict[tuple[int, int], str] = {
 
 
 # =========================================================================
+# Image-crop pan sensitivity
+# =========================================================================
+# How far one drag pixel in a crop editor moves the source image, per target
+# canvas resolution — the editor previews at a fixed size, so a bigger canvas
+# needs a bigger step to stay responsive.  Shared by both crop editors
+# (``ui/gui/uc_image_cut.py``, ``ui/qtgui/image_crop.py``); a resolution the
+# table doesn't name pans 1:1.
+
+PAN_MULTIPLIERS: dict[tuple[int, int], int] = {
+    (240, 240): 1, (320, 320): 1, (360, 360): 1,
+    (480, 480): 2, (640, 480): 2, (800, 480): 3,
+    (854, 480): 3, (960, 540): 3, (1280, 480): 4,
+    (1600, 720): 4, (1920, 462): 4,
+}
+
+
+# =========================================================================
 # LED styles / segment displays (categorical, enumerable)
 # =========================================================================
 
@@ -592,6 +609,18 @@ class DeviceSettings:
 OverlayElementType = Literal["text", "metric", "clock"]
 ClockSource = Literal["time", "weekday", "date"]
 
+# The element field vocabulary is restated wherever an overlay element
+# crosses a boundary — the domain object below, the flat Result view
+# (``results.OverlayElementEntry``), the ``AddOverlayElement`` Command, and
+# the API request bodies.  The DEFAULTS are single-sourced here so those
+# copies cannot drift: a default that differed between the Command and the
+# domain object would silently split a DC-parsed element from an API-added
+# one, with nothing to catch it.
+OVERLAY_DEFAULT_COLOR = "#ffffff"
+OVERLAY_DEFAULT_SIZE = 16
+OVERLAY_DEFAULT_FORMAT = "{value}"
+OVERLAY_DEFAULT_CLOCK_SOURCE: ClockSource = "time"
+
 
 @dataclass
 class OverlayElement:
@@ -611,22 +640,22 @@ class OverlayElement:
     type: OverlayElementType = "text"
     x: int = 0
     y: int = 0
-    color: str = "#ffffff"
-    size: int = 16
+    color: str = OVERLAY_DEFAULT_COLOR
+    size: int = OVERLAY_DEFAULT_SIZE
     bold: bool = False
     italic: bool = False
     # type == "text"
     text: str = ""
     # type == "metric"
     metric: str = ""
-    format: str = "{value}"
+    format: str = OVERLAY_DEFAULT_FORMAT
     # type == "metric" — draw the unit glyph (°C/%/MHz/RPM) after the number,
     # or the bare number when the unit is baked into the theme art.  Mirrors
     # the Windows unit-switch (myModeSub == 1); the universal per-element unit
     # toggle flips this in every UI.
     show_unit: bool = True
     # type == "clock"
-    source: ClockSource = "time"
+    source: ClockSource = OVERLAY_DEFAULT_CLOCK_SOURCE
 
     def to_dict(self) -> dict:
         """Flat dict — the shape ``OverlayService.render`` consumes."""

@@ -21,7 +21,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from ...core.models import panel_asset_dims
+from ...core.models import PAN_MULTIPLIERS, panel_asset_dims
 from .assets import Assets
 from .base import make_icon_button
 
@@ -49,14 +49,6 @@ BTN_WIDTH_FIT = (233, 656, 34, 26)
 BTN_ROTATE = (297, 656, 34, 26)
 BTN_OK = (446, 656, 34, 26)
 BTN_CLOSE = (474, 510, 16, 16)
-
-# Pan multipliers per resolution
-_PAN_MULTIPLIERS = {
-    (240, 240): 1, (320, 320): 1, (360, 360): 1,
-    (480, 480): 2, (640, 480): 2, (800, 480): 3,
-    (854, 480): 3, (960, 540): 3, (1280, 480): 4,
-    (1600, 720): 4, (1920, 462): 4,
-}
 
 
 class UCImageCut(QWidget):
@@ -139,7 +131,7 @@ class UCImageCut(QWidget):
         self._rotation = 0
         self._pan_x = 0
         self._pan_y = 0
-        self._pan_multiplier = _PAN_MULTIPLIERS.get((target_w, target_h), 1)
+        self._pan_multiplier = PAN_MULTIPLIERS.get((target_w, target_h), 1)
 
         # Auto-fit: portrait → height fit, landscape → width fit
         if self._source_image.height() > self._source_image.width():
@@ -153,7 +145,7 @@ class UCImageCut(QWidget):
     def set_resolution(self, w: int, h: int) -> None:
         self._target_w = w
         self._target_h = h
-        self._pan_multiplier = _PAN_MULTIPLIERS.get((w, h), 1)
+        self._pan_multiplier = PAN_MULTIPLIERS.get((w, h), 1)
         self._load_panel_background(w, h)
 
     def _load_panel_background(self, w: int, h: int) -> None:

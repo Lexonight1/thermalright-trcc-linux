@@ -41,18 +41,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.models import PAN_MULTIPLIERS
+
 log = logging.getLogger(__name__)
 
 _PREVIEW_W = 480
 _PREVIEW_H = 480
 
-
-_PAN_MULTIPLIERS: dict[tuple[int, int], int] = {
-    (240, 240): 1, (320, 320): 1, (360, 360): 1,
-    (480, 480): 2, (640, 480): 2, (800, 480): 3,
-    (854, 480): 3, (960, 540): 3, (1280, 480): 4,
-    (1600, 720): 4, (1920, 462): 4,
-}
 
 
 class _CropCanvas(QWidget):
@@ -162,7 +157,7 @@ class ImageCropDialog(QDialog):
         self._rotation = 0
         self._pan_x = 0
         self._pan_y = 0
-        self._pan_multiplier = _PAN_MULTIPLIERS.get((target_w, target_h), 1)
+        self._pan_multiplier = PAN_MULTIPLIERS.get((target_w, target_h), 1)
         self._target_label.setText(
             f"Target: {target_w}×{target_h}px",
         )

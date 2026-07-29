@@ -41,6 +41,7 @@ from ...core.results import (
     CloudThemeLoadResult,
     CloudThemesListResult,
     DeleteThemeResult,
+    EnsureDataDownloadResult,
     ThemeDcExportResult,
     ThemeExportResult,
     ThemeImportResult,
@@ -54,7 +55,6 @@ from ._shared import (
 from .schemas import (
     CloudThemeLoadRequest,
     DeleteThemeRequest,
-    EnsureDataResponse,
     ImportConfigResponse,
     ThemeDcExportRequest,
     ThemeExportRequest,
@@ -364,11 +364,11 @@ def web_gallery(
     ]
 
 
-@router.post("/init", response_model=EnsureDataResponse)
+@router.post("/init")
 def init_data(
     request: Request,
     resolution: str,
-) -> EnsureDataResponse:
+) -> EnsureDataDownloadResult:
     """Prefetch theme/web/mask archives for a resolution (idempotent).
 
     For remote clients to call on startup before browsing — works with
@@ -377,14 +377,8 @@ def init_data(
     """
     w, h = _parse_resolution(resolution)
     log.info("api POST /theme/init: resolution=%dx%d", w, h)
-    result = request.app.state.trcc.dispatch(
+    return request.app.state.trcc.dispatch(
         EnsureDataDownload(width=w, height=h),
-    )
-    return EnsureDataResponse(
-        ok=result.ok, message=result.message,
-        width=result.width, height=result.height,
-        themes_ok=result.themes_ok, web_ok=result.web_ok,
-        masks_ok=result.masks_ok,
     )
 
 
