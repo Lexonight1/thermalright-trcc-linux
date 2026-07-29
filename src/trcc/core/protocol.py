@@ -66,6 +66,15 @@ class DeviceProfile:
     encode_base: int = 0
     encode_invert: bool = True
     encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...) — unused
+    # Largest JPEG the firmware will actually display, in bytes.  0 = uncapped
+    # (every panel's behaviour to date, so the default changes nothing).  Set
+    # by the WIRE adapter at handshake, because this is a firmware limit, not a
+    # property of the resolution: LY silently DROPS an oversized frame — send()
+    # completes, the ACK reads back fine, and the glass keeps the previous
+    # image with nothing in the log.  Renderer.encode_payload feeds this to
+    # encode_jpeg's existing shrink-quality loop so oversized content degrades
+    # in quality instead of vanishing.  (#251)
+    max_frame_bytes: int = 0
 
     @property
     def resolution(self) -> tuple[int, int]:

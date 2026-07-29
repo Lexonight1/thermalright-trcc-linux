@@ -1024,7 +1024,10 @@ class Renderer(ABC):
         if profile.encode_baseline:
             surface = self.rotate(surface, profile.encode_baseline)
         if profile.jpeg:
-            return self.encode_jpeg(surface)
+            # max_frame_bytes drives encode_jpeg's shrink-quality loop.  It is
+            # 0 (uncapped) for every panel except those whose firmware silently
+            # drops oversized frames — see DeviceProfile.max_frame_bytes (#251).
+            return self.encode_jpeg(surface, max_size=profile.max_frame_bytes)
         return self.encode_rgb565(surface, profile.byte_order)
 
     # ── Fonts ─────────────────────────────────────────────────────────

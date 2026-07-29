@@ -188,3 +188,68 @@ def test_profile_property_is_none_pre_handshake(
 ) -> None:
     device = _make_ly(fake_bulk)
     assert device.profile is None
+
+
+# ── Wire-frame size cap (#251) ────────────────────────────────────────
+#
+# The LY firmware silently DROPS a JPEG over roughly half a megabyte:
+# send() completes, the ACK reads back, and the glass keeps the previous
+# frame with nothing in the log.  encode_jpeg has always had a
+# shrink-quality loop; the wire path just never passed it a target.
+
+
+def test_ly_handshake_sets_the_firmware_frame_cap(
+    fake_bulk: FakeBulkTransport,
+) -> None:
+    """The cap is a WIRE property, so LyLcd sets it at handshake."""
+    from trcc.adapters.device.ly_lcd import _MAX_FRAME_BYTES
+
+    fake_bulk.read_script.append(_ly_response(resp20=4))
+    device = _make_ly(fake_bulk, pid=0x5408)
+    device.connect()
+
+    assert device.profile is not None
+    assert device.profile.max_frame_bytes == _MAX_FRAME_BYTES
+    assert 0 < _MAX_FRAME_BYTES <= 1024 * 1024, "sane firmware limit"
+
+
+def test_other_wires_stay_uncapped_by_default() -> None:
+    """Default 0 = uncapped, so no other panel's output changes."""
+    from trcc.core.protocol import DeviceProfile, get_profile
+
+    assert DeviceProfile(width=320, height=320).max_frame_bytes == 0
+    assert get_profile(100).max_frame_bytes == 0
+
+
+def test_encode_payload_shrinks_an_oversized_frame() -> None:
+    """An oversized JPEG must degrade in quality, not vanish (#251)."""
+    import random
+
+    from PySide6.QtGui import QColor, QGuiApplication, QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.protocol import DeviceProfile
+
+    _ = QGuiApplication.instance() or QGuiApplication([])
+    renderer = QtRenderer()
+
+    # High-entropy noise — the worst case for JPEG, and what the reporter
+    # hit with dithered collages.  Small canvas keeps the test fast; the
+    # cap is scaled down to match so the ratio is realistic.
+    random.seed(7)
+    img = QImage(480, 480, QImage.Format.Format_RGB888)
+    for y in range(img.height()):
+        for x in range(img.width()):
+            img.setPixelColor(x, y, QColor(random.randint(0, 255),
+                                           random.randint(0, 255),
+                                           random.randint(0, 255)))
+
+    uncapped = renderer.encode_payload(
+        img, DeviceProfile(width=480, height=480, jpeg=True))
+    cap = len(uncapped) // 2
+    capped = renderer.encode_payload(
+        img, DeviceProfile(width=480, height=480, jpeg=True,
+                           max_frame_bytes=cap))
+
+    assert len(capped) < len(uncapped), "cap had no effect"
+    assert len(capped) <= cap, "capped frame still exceeds the firmware limit"

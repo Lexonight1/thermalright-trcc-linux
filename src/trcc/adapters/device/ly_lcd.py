@@ -51,6 +51,16 @@ _HANDSHAKE_TIMEOUT_MS = 1000
 _WRITE_TIMEOUT_MS = 5000
 _READ_TIMEOUT_MS = 1000
 
+# Largest JPEG this firmware will actually put on the glass.  Above roughly
+# half a megabyte it DROPS the frame silently — send() completes, the ACK
+# reads back, and the panel keeps showing the previous image with nothing in
+# the log, which is why it went unnoticed.  Reporter measurements on a Trofeo
+# Vision 9.16 (#251): ~360 KB displayed, ~570 KB ignored; 512 KB sits between
+# the two and is the value they proposed.  Feeding it to encode_jpeg's
+# shrink-quality loop degrades busy content instead of losing the frame.
+# NOTE: bench-unverifiable — no LY panel here; refine if a reporter narrows it.
+_MAX_FRAME_BYTES = 512 * 1024
+
 _CHUNK_SIZE = 512
 _CHUNK_HEADER_SIZE = 16
 _CHUNK_DATA_SIZE = 496
@@ -112,6 +122,7 @@ class LyLcd(BaseBulkDevice):
             base,
             encode_base=resolve_encode_sub(base, self._sub),
             encode_sub_bases=(),
+            max_frame_bytes=_MAX_FRAME_BYTES,
         )
 
         return HandshakeResult(
