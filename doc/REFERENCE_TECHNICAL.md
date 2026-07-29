@@ -631,52 +631,54 @@ Stored under `"devices"` keyed by index-only `"0"`, `"1"`, etc. The `vid_pid` is
 
 ## Quick Commands
 
+Device commands take the device `KEY` (its `VID:PID`, from `trcc detect`).
+`0402:3922` and `0416:8001` below are examples — substitute your own.
+
 ```bash
 # Setup
-trcc system setup                        # interactive setup wizard (deps, udev, desktop)
-trcc setup-gui                    # GUI setup wizard
-trcc system setup                   # install udev rules (auto-prompts sudo)
-trcc detect                       # list all devices
+trcc setup                                    # setup wizard (deps, udev, desktop)
+trcc detect                                   # list all devices
 
 # Display
-trcc send image.png               # send image to LCD
-trcc display color ff0000                 # solid color
-trcc display test --loop                  # color cycle
-trcc video clip.mp4               # play video
-trcc screencast                   # stream screen to LCD
-trcc brightness 2                 # 50% brightness
-trcc rotation 90                  # rotate display
+trcc display send-image 0402:3922 image.png   # send image to LCD
+trcc display color 0402:3922 ff0000           # solid color
+trcc display test 0402:3922                   # colour-cycle test
+trcc display load-video 0402:3922 clip.mp4    # play video
+trcc display screencast 0402:3922 0 0 640 480 # stream a screen region to LCD
+trcc display set-brightness 0402:3922 50      # 50% brightness
+trcc display set-orientation 0402:3922 90     # rotate display
 
 # Themes
-trcc theme-list                   # list local themes
-trcc theme-load 003a              # load and send theme
-trcc theme-save MyTheme           # save current as custom
-trcc theme-export 003a out.tr     # export to .tr file
-trcc theme-import out.tr          # import from .tr file
-trcc mask /path/mask.png          # apply mask
-trcc mask --clear                 # remove mask
+trcc theme list 0402:3922                     # list local themes
+trcc display load-theme 0402:3922 003a        # load and send theme
+trcc theme save 0402:3922 MyTheme             # save current as custom
+trcc theme export 0402:3922 003a out.tr       # export to .tr file
+trcc theme import 0402:3922 out.tr            # import from .tr file
+trcc display apply-mask 0402:3922 mask.png    # apply mask
+trcc display mask-visible 0402:3922 off       # hide the mask
 
 # LED
-trcc led-color ff0000             # set LED color
-trcc led-mode breathing           # set LED effect
-trcc led-brightness 50            # set LED brightness
-trcc led-sensor cpu               # sensor source for linked modes
-trcc led-off                      # turn LEDs off
+trcc led color 0416:8001 ff0000               # set LED color
+trcc led mode 0416:8001 breathing             # set LED effect
+trcc led brightness 0416:8001 50              # set LED brightness
+trcc led temp-source 0416:8001 cpu            # sensor source for linked modes
+trcc led toggle 0416:8001 off                 # turn LEDs off
 
 # Diagnostics
-trcc report                       # full diagnostic report
-trcc doctor                       # check deps and permissions
-trcc system hid-debug                    # HID handshake dump
-trcc system led-debug --test             # LED diagnostic
+trcc report                                   # full diagnostic report
+trcc doctor                                   # check deps and permissions
+trcc system hid-debug                         # HID handshake dump
+trcc system led-debug --test                  # LED diagnostic
 
 # GUI / API
-trcc gui                          # launch GUI
-trcc serve                        # start REST API server
-
-# Uninstall
-trcc uninstall                    # remove config, udev, desktop, pip package
-trcc uninstall --yes              # non-interactive (for scripts/GUI)
+trcc gui                                      # launch GUI
+trcc serve                                    # start REST API server
 ```
+
+> **Uninstalling:** there is no `trcc uninstall` command — it was dropped in
+> the rebuild and has not been restored. Remove the package with your package
+> manager (or `pip uninstall trcc-linux`), then delete `~/.trcc/`,
+> `~/.trcc-user/`, and the udev rule at `/etc/udev/rules.d/99-trcc.rules`.
 
 ## Troubleshooting
 

@@ -29,4 +29,20 @@ if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/|^src/trcc/__version__\.
     git add man/man1/*.1
 fi
 
+# ── CLI reference ──────────────────────────────────────────────────────
+# doc/REFERENCE_CLI.md is generated from the same Typer tree
+# (dev/gen_cli_reference.py).  Hand-written, it drifted a whole cutover
+# behind the code — documenting `trcc send` / `trcc led-color` and two
+# commands that had been deleted — so it is derived now, not maintained.
+# Unlike the man pages it carries no version string, so the CLI tree is
+# its only trigger.
+if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/'; then
+    echo "pre-commit: CLI changed — regenerating doc/REFERENCE_CLI.md"
+    if ! PYTHONPATH=src python3 dev/gen_cli_reference.py >/dev/null; then
+        echo "pre-commit: CLI reference generation FAILED (dev/gen_cli_reference.py)" >&2
+        exit 1
+    fi
+    git add doc/REFERENCE_CLI.md
+fi
+
 exit 0

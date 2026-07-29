@@ -814,7 +814,7 @@ alias trcc='/Applications/TRCC.app/Contents/MacOS/TRCC'
 pkg install py311-pip libusb py311-pyusb py311-hid
 pip install trcc-linux
 trcc system setup
-trcc serve    # or trcc detect, trcc lcd, etc.
+trcc serve    # or trcc detect, trcc display …, etc.
 ```
 
 ```bash
@@ -1004,11 +1004,18 @@ Something not working? See the **[Troubleshooting Guide](GUIDE_TROUBLESHOOTING.m
 
 ### Quick uninstall
 
+There is no `trcc uninstall` command — it was dropped in the rebuild and has
+not been restored. Remove the pieces directly:
+
 ```bash
-trcc uninstall
+trcc system autostart disable                 # drop the autostart entry
+pip uninstall trcc-linux                      # or your package manager
+sudo rm -f /etc/udev/rules.d/99-trcc.rules    # udev rule
+rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
 
-Removes config, autostart, desktop files, udev rules (auto-elevates with sudo), and the pip package. Use `--yes` to skip prompts.
+`~/.trcc-user/` holds themes and backgrounds **you** authored — back it up
+first if you want to keep them.
 
 ### Manual removal (if `trcc` command is unavailable)
 

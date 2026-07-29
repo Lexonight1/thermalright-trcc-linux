@@ -262,7 +262,7 @@ This works the same on AMD (Zen) and Intel — the counter lives at the vendor-a
 ### LCD stays blank or shows old image
 
 ```bash
-trcc reset
+trcc device reset 0402:3922    # your key from `trcc detect`
 ```
 
 ### GUI looks wrong / elements overlapping
@@ -281,9 +281,11 @@ QT_AUTO_SCREEN_SCALE_FACTOR=0 trcc gui
 pip install --upgrade trcc-linux
 ```
 
-If the issue persists after upgrading, do a clean reinstall:
+If the issue persists after upgrading, do a clean reinstall (there is no
+`trcc uninstall` — remove the pieces directly):
 ```bash
-trcc uninstall
+pip uninstall trcc-linux
+rm -rf ~/.trcc                 # keeps ~/.trcc-user (your own themes)
 pip install trcc-linux
 trcc system setup
 ```
@@ -418,8 +420,8 @@ Then rebuild: `sudo nixos-rebuild switch`
 Run the setup wizard to check all dependencies at once:
 
 ```bash
-trcc system setup        # CLI — shows all checks with install prompts
-trcc setup-gui    # GUI — visual check panel with Install buttons
+trcc system setup    # CLI — shows all checks with install prompts
+trcc doctor          # health checks only, no prompts
 ```
 
 ---

@@ -107,10 +107,11 @@ You should see the same familiar interface you know from Windows. Click your dev
 
 **Want it to start automatically when you log in?**
 ```bash
-trcc install-desktop
+trcc system autostart enable
 ```
 
-This creates a desktop shortcut and autostart entry.
+This adds the autostart entry (no sudo needed). `trcc system autostart status`
+tells you whether it is on, and `disable` removes it again.
 
 ---
 

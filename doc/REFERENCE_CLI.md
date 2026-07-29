@@ -1,1142 +1,1771 @@
 # CLI Reference
 
-Complete reference for the `trcc` command-line interface.
+<!-- GENERATED FILE -- do not edit by hand.
+     Source: the Typer command tree in src/trcc/ui/cli/.
+     Regenerate: PYTHONPATH=src python3 dev/gen_cli_reference.py
+     A command's text here IS its docstring; edit that. -->
 
-## Usage
+TRCC — Thermalright LCD/LED cooler control (clean-slate build).
+
+Commands that act on a device take its **`KEY`** — the USB `VID:PID` shown by `trcc detect`, e.g. `0402:3922` — as the first argument.
 
 ```bash
-trcc [--version] [-v] <command> [options]
+trcc [OPTIONS] COMMAND [ARGS]...
 ```
 
-### Global Options
+## Global options
 
 | Option | Description |
-|--------|-------------|
-| `--version` | Show version and exit |
-| `-v` | Increase verbosity (`-v` info, `-vv` debug) |
+|---|---|
+| `--verbose`, `-v` `VERBOSE` | Terminal log verbosity: -v shows INFO, -vv shows DEBUG. Without it the terminal stays quiet (warnings + errors only); the rotating log file always keeps the detail. |
+| `--version`, `-V` | Print the installed TRCC version and exit. |
 
----
+## Contents
+
+- [`trcc api`](#trcc-api)
+- [`trcc daemon`](#trcc-daemon)
+- [`trcc daemon-status`](#trcc-daemon-status)
+- [`trcc detect`](#trcc-detect)
+- [`trcc doctor`](#trcc-doctor)
+- [`trcc gui`](#trcc-gui)
+- [`trcc kill`](#trcc-kill)
+- [`trcc qtgui`](#trcc-qtgui)
+- [`trcc quickstart`](#trcc-quickstart)
+- [`trcc report`](#trcc-report)
+- [`trcc sensors`](#trcc-sensors)
+- [`trcc serve`](#trcc-serve)
+- [`trcc setup`](#trcc-setup)
+- [`trcc shell`](#trcc-shell)
+- [`trcc status`](#trcc-status)
+- [`trcc version`](#trcc-version)
+- [`trcc config`](#trcc-config) — command group
+- [`trcc device`](#trcc-device) — command group
+- [`trcc display`](#trcc-display) — command group
+- [`trcc led`](#trcc-led) — command group
+- [`trcc system`](#trcc-system) — command group
+- [`trcc theme`](#trcc-theme) — command group
 
 ## Commands
 
-### `trcc gui`
+### `trcc api`
 
-Launch the graphical interface.
+Launch the REST API (FastAPI + uvicorn). Three operating modes: * `trcc api` — loopback only (127.0.0.1), no auth. Dev default. * `trcc api --host 0.0.0.0 --token <secret>` — public bind, token required on every request. Use a long random secret. * `trcc api --host 0.0.0.0 --token <secret> --pair` — same as above plus the pairing endpoint; a 6-char code is shown so a remote app can fetch the token without out-of-band copy/paste. Refusal: `--host` other than `127.0.0.1` / `localhost` without `--token` exits 2 — would otherwise expose every endpoint to LAN.
 
 ```bash
-trcc gui
-trcc gui --decorated
-trcc gui --resume     # autostart: start hidden in tray, restore last theme
-trcc gui -vv          # debug logging
+trcc api [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--decorated`, `-d` | Show window with titlebar (can minimize/resize) |
-| `--resume` | Start hidden in system tray and restore the last-used theme (for autostart) |
+|---|---|
+| `--host`, `-H` `HOST` | Bind address |
+| `--port`, `-p` `PORT` | Bind port |
+| `--token`, `-t` `TOKEN` | Persistent API token. When set, every request must carry `X-API-Token: <token>`. When omitted with --host 127.0.0.1, the API is unauth'd (loopback dev mode). Omitting it with any other --host is REJECTED — refusing to bind a public interface without auth. Use --token random:<n> to generate. |
+| `--pair` | Show a one-time 6-char pairing code in the terminal. Remote devices POST it to /pair to exchange for the API token. Requires --token. |
 
-The default window is frameless (matching the Windows TRCC layout). Use `--decorated` for debugging or if your window manager has trouble with frameless windows.
+### `trcc daemon`
 
----
+Run the background daemon that owns USB + serves CLI/API clients. One process per user. Binds a Unix socket at `$XDG_RUNTIME_DIR/trcc.sock` and serves Commands until SIGTERM / SIGINT or a remote `trcc kill`. Sets `TRCC_DAEMON=1` to route clients through this daemon.
+
+```bash
+trcc daemon
+```
+
+### `trcc daemon-status`
+
+Report whether the background daemon socket is reachable. Replaces the previous top-level `status` command, which conflated daemon reachability with app state. Use `trcc status` for the unified app + device snapshot.
+
+```bash
+trcc daemon-status
+```
 
 ### `trcc detect`
 
-List every supported device attached to the host. Takes no options — it is a
-top-level alias for `trcc device list`.
+Alias for `trcc device list` — list attached devices.
 
 ```bash
 trcc detect
 ```
 
-**Example output:**
-
-```text
-3 device(s) found:
-  0402:3922  Thermalright LCD Display  (wire=scsi, resolution=320×320)
-  0416:5302  Winbond USBDISPLAY  (wire=hid, resolution=240×320)
-  0416:8001  Winbond LED Controller  (wire=led, resolution=0×0)
-```
-
-Exits non-zero when nothing is found, so it can gate a script.
-
----
-
-### `trcc device select`
-
-Switch the active device (when several are connected).
-
-```bash
-trcc device select 2          # select the 2nd device
-```
-
-The argument is a **1-based ordinal into the `trcc detect` listing** — the
-second line above is `2`. Commands identify a device by its `VID:PID` key
-everywhere else; the ordinal exists only for this selection.
-
----
-
-### `trcc send`
-
-Send an image to the LCD.
-
-```bash
-trcc send image.png
-trcc send photo.jpg --device /dev/sg2
-trcc send image.png --preview       # show ANSI preview in terminal
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--preview`, `-p` | Show ANSI art preview in terminal (for headless/SSH) |
-
-The image is automatically resized and cropped to fit the LCD resolution.
-
----
-
-### `trcc color`
-
-Display a solid color on the LCD.
-
-```bash
-trcc color ff0000      # red
-trcc color 00ff00      # green
-trcc color '#0000ff'   # blue (quote the # in shell)
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--preview`, `-p` | Show ANSI art preview in terminal |
-
----
-
-### `trcc test`
-
-Test the display with a color cycle (red, green, blue, yellow, magenta, cyan, white).
-
-```bash
-trcc test
-trcc test --loop       # cycle continuously until Ctrl+C
-trcc test --preview    # show ANSI preview for each color
-```
-
-| Option | Description |
-|--------|-------------|
-| `--loop`, `-l` | Loop colors continuously (Ctrl+C to stop) |
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--preview`, `-p` | Show ANSI art preview in terminal |
-
----
-
-### `trcc reset`
-
-Reset/reinitialize the LCD device. Sends a red test frame with force-init.
-
-```bash
-trcc reset
-trcc reset --device /dev/sg2
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--preview`, `-p` | Show ANSI art preview in terminal |
-
----
-
-### `trcc info`
-
-Show live system metrics (CPU, GPU, memory, date/time).
-
-```bash
-trcc info
-```
-
-**Example output:**
-
-```text
-System Information
-========================================
-
-CPU:
-  cpu_temp: 52°C
-  cpu_percent: 12%
-  cpu_freq: 3.6 GHz
-
-GPU:
-  gpu_temp: 45°C
-
-Memory:
-  mem_percent: 34%
-  mem_used: 5.4 GB
-  mem_total: 16.0 GB
-
-Date/Time:
-  date: 2026-02-07
-  time: 14:30:00
-  weekday: Saturday
-```
-
----
-
-### `trcc system setup`
-
-Install udev rules and USB storage quirks (required once after first install).
-
-```bash
-# Install (auto-prompts for sudo)
-trcc system setup
-
-# Non-interactive (assume yes to prompts)
-trcc system setup --yes
-```
-
-| Option | Description |
-|--------|-------------|
-| `--yes`, `-y` | Non-interactive — assume yes to prompts |
-
-**What this does:**
-
-1. Creates `/etc/udev/rules.d/99-trcc-lcd.rules` — grants your user permission to access the LCD, plus read access to the CPU package-power (RAPL) counter so CPU wattage works without root
-2. Creates `/etc/modprobe.d/trcc-lcd.conf` — USB quirk that forces bulk-only transport (required for device detection)
-3. Creates `/etc/modules-load.d/trcc-rapl.conf` and loads `intel_rapl_msr` — exposes the CPU power counter (the same module on AMD and Intel)
-4. Reloads udev rules
-
-After running, **unplug and replug the USB cable** (or reboot).
-
----
-
-### `trcc install-desktop`
-
-Install the application menu entry (`.desktop` file) and icon so TRCC appears in your app launcher.
-
-```bash
-trcc install-desktop
-```
-
-Creates:
-- `~/.local/share/applications/trcc.desktop`
-- Copies the TRCC icon to the appropriate location
-
----
-
-### `trcc resume`
-
-Send the last-used theme to each detected device, then exit. Designed for headless use (autostart, cron, scripts).
-
-```bash
-trcc resume
-```
-
-This is what `~/.config/autostart/trcc.desktop` calls on login with `trcc gui --resume` (which launches the GUI minimized to tray and sends the last theme).
-
----
-
-### `trcc report`
-
-Generate a full diagnostic report for bug reports. Collects everything needed to diagnose device issues in one command — users can copy-paste the entire output into a GitHub issue.
-
-```bash
-trcc report
-```
-
-**What it collects:**
-
-- TRCC version, Python version, OS/kernel info
-- `lsusb` output (all USB devices)
-- `trcc detect` (detected TRCC devices with protocol info)
-- HID handshake results (PM byte, resolution, serial)
-- Udev rules status
-- CPU package-power (RAPL) status — whether the counter exists and is readable (diagnoses blank CPU wattage)
-- USB descriptor details for relevant devices
-
----
-
-### `trcc system hid-debug`
-
-HID handshake diagnostic — prints hex dump and resolved device info for bug reports.
-
-```bash
-trcc system hid-debug
-trcc system hid-debug --test-frame   # send red test frame after handshake
-```
-
-| Option | Description |
-|--------|-------------|
-| `--test-frame`, `-t` | Send a solid red test frame after handshake |
-
-**Example output:**
-
-```text
-HID Debug — Handshake Diagnostic
-============================================================
-
-Device: ALi Corp LCD Display
-  VID:PID = 0416:52e2
-  Type = 2
-  Implementation = hid_lcd
-
-  Attempting handshake...
-  Handshake OK!
-  PM byte  = 100 (0x64)
-  SUB byte = 0 (0x00)
-  FBL      = 100 (0x64)
-  Serial   = ABCDEF0123456789
-  Resolution = 320x320
-  Button image = A1FROZEN WARFRAME PRO
-  FBL 100 = known resolution
-
-  Raw handshake response (first 64 bytes):
-  0000: da db dc dd 64 00 00 00 ...
-```
-
----
-
-### `trcc system led-debug`
-
-Diagnose an LED device — performs handshake and reports PM byte, style, and segment count.
-
-```bash
-trcc system led-debug             # handshake only
-trcc system led-debug --test      # handshake + send test colors
-```
-
-| Option | Description |
-|--------|-------------|
-| `--test` | Send test colors to the device after handshake |
-
----
-
-### `trcc perf`
-
-Run CPU + memory performance benchmarks. Measures rendering, encoding, and compositing pipeline times.
-
-```bash
-trcc perf                  # software benchmarks only
-trcc perf --device         # include hardware USB I/O benchmarks
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device` | Include hardware device send benchmarks (requires connected LCD) |
-
-Software benchmarks run without a device. Hardware benchmarks pause any running GUI daemon, take exclusive device access, then resume.
-
----
-
-### `trcc setup-winusb`
-
-Guide users through WinUSB driver installation for bulk USB devices on Windows.
-
-```bash
-trcc setup-winusb
-```
-
-Detects devices needing WinUSB (bulk protocol devices like GrandVision, Stream Vision, Wonder Vision) and provides step-by-step Zadig instructions. SCSI devices use the default Windows USB Mass Storage driver and don't need this.
-
-> **Windows only.** On Linux/macOS this command exits with a message that WinUSB is not needed.
-
----
-
-### `trcc setup`
-
-Interactive setup wizard — checks system dependencies, GPU packages, udev rules, and desktop integration. Offers to install anything missing.
-
-```bash
-trcc setup             # interactive (prompts for each missing dep)
-trcc setup --yes       # auto-accept all (non-interactive)
-```
-
-| Option | Description |
-|--------|-------------|
-| `--yes`, `-y` | Accept all defaults without prompting |
-
-**Steps:**
-1. System dependencies (Python modules + binaries)
-2. GPU detection (NVIDIA/AMD/Intel) and optional sensor packages
-3. USB device permissions (udev rules)
-4. Desktop integration (app menu entry)
-
----
-
-### `trcc setup-gui`
-
-Launch the setup wizard as a PySide6 GUI. Shows the same checks as `trcc setup` with Install buttons and a terminal output pane.
-
-```bash
-trcc setup-gui
-```
-
-If trcc-linux is not installed, shows a dialog offering to install it via pip. After installing, Re-check reveals the full system checks.
-
----
-
-### `trcc setup-polkit`
-
-Install a polkit policy for passwordless `dmidecode` and `smartctl` access. Avoids repeated sudo prompts when the GUI reads motherboard/disk info.
-
-```bash
-trcc setup-polkit
-```
-
-**What this does:**
-
-1. Installs an XML polkit policy (`com.trcc.pkexec.policy`) allowing your user to run `dmidecode` and `smartctl` without a password
-2. On XFCE (where `allow_active=yes` doesn't work), installs a JavaScript `.rules` file scoped to your user
-3. Runs `restorecon` on SELinux systems to fix file contexts
-
-After running, hardware info panels in the GUI will populate without sudo prompts.
-
----
-
-### `trcc setup-selinux`
-
-Install a SELinux policy module that allows USB device access on SELinux-enforcing systems (Bazzite, Silverblue, Fedora Atomic).
-
-```bash
-trcc setup-selinux
-```
-
-**What this does:**
-
-1. Checks if SELinux is enforcing (`getenforce`)
-2. Compiles and installs the `trcc_usb` policy module that allows `unconfined_t` to access USB device files
-3. Auto-elevates with sudo if not root
-
-After running, **unplug and replug the USB cable**.
-
-**Prerequisites:** `checkmodule` and `semodule_package` must be installed:
-```bash
-# Fedora / Bazzite
-sudo dnf install checkpolicy
-
-# Debian / Ubuntu
-sudo apt install checkpolicy semodule-utils
-
-# Arch
-sudo pacman -S checkpolicy semodule-utils
-```
-
-> **When is this needed?** Only on SELinux-enforcing systems. Run `getenforce` — if it says "Enforcing" and bulk devices fail with EBUSY, you need this. Non-SELinux distros can skip it entirely.
-
----
-
 ### `trcc doctor`
 
-Check dependencies, libraries, and permissions. Useful for diagnosing installation issues.
+Alias for `trcc system doctor` — health checks.
 
 ```bash
 trcc doctor
 ```
 
-Reports status of: Python version, PySide6, PIL/Pillow, numpy, pyusb, sg_raw, udev rules, and device access permissions.
+### `trcc gui`
 
----
+Launch the legacy Windows-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area — enough to prove the legacy-on-next/-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. `--resume` starts hidden in the tray (XDG autostart-on-login); bare `trcc gui` shows the window.
+
+```bash
+trcc gui [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--resume`, `--tray`, `--minimized` | Start hidden in the system tray instead of showing the window — used by XDG autostart on login. The last-used theme is restored automatically. |
+
+### `trcc kill`
+
+Ask the running daemon to shut down, return when its socket is gone.
+
+```bash
+trcc kill
+```
+
+### `trcc qtgui`
+
+Launch the Qt-native GUI (clean-slate, layout-driven). This is the rebuild's GUI — built up over G1–G5 and used during development. See `gui` for the legacy Windows-style port.
+
+```bash
+trcc qtgui
+```
+
+### `trcc quickstart`
+
+Guided first-session flow for new users. Runs the doctor, scans for devices, and walks you through what to do next. Pass `--yes` to also test-connect to the first device found. Safe to re-run any time.
+
+```bash
+trcc quickstart [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--yes`, `-y` | If a device is found, also connect + push a green test frame. Default: stop after scan so you can inspect what's there. |
+
+### `trcc report`
+
+Alias for `trcc system debug-report` — full diagnostic dump.
+
+```bash
+trcc report [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--output`, `-o` `OUTPUT` | Write the report to this path instead of stdout. |
+| `--log-lines` `LOG_LINES` | How many trailing log lines to include. |
+
+### `trcc sensors`
+
+Alias for `trcc system sensors` — print sensor readings.
+
+```bash
+trcc sensors
+```
+
+### `trcc serve`
+
+Alias for `trcc api` — launches the REST API + uvicorn. The `serve` name matches legacy CLI ergonomics; `api` still works for backwards-compat with existing scripts.
+
+```bash
+trcc serve [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--host`, `-H` `HOST` | Bind address |
+| `--port`, `-p` `PORT` | Bind port |
+| `--token`, `-t` `TOKEN` | Same semantics as `trcc api --token` — see `trcc api --help`. |
+| `--pair` | Same semantics as `trcc api --pair` — see `trcc api --help`. |
+
+### `trcc setup`
+
+Alias for `trcc system setup` — OS-specific setup (udev rules on Linux, WinUSB guide on Windows). New users reach for the short form. (#194)
+
+```bash
+trcc setup [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--yes`, `-y` | Non-interactive (assume yes to prompts) |
 
 ### `trcc shell`
 
-Interactive TRCC shell with tab completion. Type commands without the `trcc` prefix.
+Open an interactive prompt sharing one App across commands. Each line is parsed as if it were a fresh `trcc` invocation, but the App is built once and reused — no per-command handshake. In daemon mode the App is an AppProxy that round-trips each line to the running daemon. Ctrl-D or `exit` quits.
 
 ```bash
 trcc shell
 ```
 
-Inside the shell:
-```text
-trcc> detect
-  [1] 0402:3922  Frozen Warframe  (SCSI)  path=/dev/sg0
-trcc> brightness 80
-  Brightness: 80%
-trcc> theme-list
-  Theme1  Theme2  Theme3
-trcc> exit
-```
+### `trcc status`
 
-Features:
-- Tab completion for all commands
-- Command history (saved to `~/.trcc/data/shell_history`)
-- No need to type `trcc` before each command
-
----
-
-### `trcc serve`
-
-Start the REST API server for remote LCD/LED control.
+Show unified app + LCD + LED state. Composes `ControlCenterSnapshot` (app prefs) with per-device `LcdSnapshot` / `LedSnapshot` — one round-trip for "what state is everything in right now?". Pass `--json` for scripts. Use `trcc daemon-status` for daemon reachability checks.
 
 ```bash
-trcc serve                              # localhost:9876
-trcc serve --host 0.0.0.0 --port 3000  # LAN on custom port
-trcc serve --token mysecret             # require auth token
-trcc serve --tls                        # HTTPS with auto-generated self-signed cert
-trcc serve --cert cert.pem --key key.pem  # custom TLS certificate
+trcc status [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--host` | Bind address (default: `127.0.0.1`, use `0.0.0.0` for LAN) |
-| `--port` | Listen port (default: `9876`) |
-| `--token` | API bearer token for authentication |
-| `--tls` | Enable HTTPS with auto-generated self-signed certificate |
-| `--cert` | Path to custom TLS certificate (PEM) |
-| `--key` | Path to custom TLS private key (PEM) |
+|---|---|
+| `--json` | Emit JSON instead of human text. |
 
-**QR Code:** When the `qrcode` package is installed (`pip install qrcode`), a terminal QR code is printed at startup containing connection details (host, port, token, TLS) as compact JSON. Scan with the TRCC Remote app to connect instantly. When bound to `0.0.0.0` or `::`, the QR code auto-detects your LAN IP.
+### `trcc version`
 
----
-
-### `trcc api`
-
-List all REST API endpoints with method, path, and description.
+Print the installed TRCC version.
 
 ```bash
-trcc api
+trcc version
 ```
 
----
+## `trcc config`
 
-### `trcc lang`
+App-global preferences: temp unit, language, GPU, refresh interval.
 
-Show the current application language.
+### `trcc config date-format`
+
+Set the global LCD overlay date format.
 
 ```bash
-trcc lang
+trcc config date-format FMT
 ```
 
-**Example output:**
-```text
-en (English)
-```
+| Argument | Description |
+|---|---|
+| `FMT` | LCD date format, e.g. 'yyyy/MM/dd', 'dd.MM.yyyy', 'MM/dd/yyyy' |
 
----
+### `trcc config gpu`
 
-### `trcc lang-set`
-
-Set the application language by ISO 639-1 code.
+Pick the primary GPU for sensor overlays. Empty string = auto.
 
 ```bash
-trcc lang-set de        # German
-trcc lang-set ja        # Japanese
-trcc lang-set zh        # Chinese
+trcc config gpu [KEY]
 ```
 
-Persists to config. Affects GUI labels and localized assets.
+| Argument | Description |
+|---|---|
+| `KEY` | GPU sensor key (e.g. 'nvidia:0') or '' to clear *(optional)* |
 
----
+### `trcc config language`
 
-### `trcc lang-list`
-
-List all available languages with ISO codes and native names.
+Set the UI language.
 
 ```bash
-trcc lang-list
+trcc config language LANG
 ```
 
-**Example output:**
-```text
-Available languages (38):
-  de     Deutsch
-  en     English
-  es     Español
-  fr     Français
-  ja     日本語
-  ko     한국어
-  ...
-```
+| Argument | Description |
+|---|---|
+| `LANG` | ISO 639-1 code, e.g. 'en', 'zh', 'fr' |
 
----
+### `trcc config refresh-interval`
 
-### `trcc brightness`
-
-Set display brightness level.
+Set the global metrics-refresh / render-and-send tick interval.
 
 ```bash
-trcc brightness 1       # 25%
-trcc brightness 2       # 50%
-trcc brightness 3       # 100%
+trcc config refresh-interval SECONDS
+```
+
+| Argument | Description |
+|---|---|
+| `SECONDS` | Seconds between metric refreshes (1 to 100) |
+
+### `trcc config temp-unit`
+
+Set the global temperature unit (propagates to every device).
+
+```bash
+trcc config temp-unit UNIT
+```
+
+| Argument | Description |
+|---|---|
+| `UNIT` | Either 'C' or 'F' |
+
+### `trcc config time-format`
+
+Set the global LCD overlay clock format.
+
+```bash
+trcc config time-format FMT
+```
+
+| Argument | Description |
+|---|---|
+| `FMT` | LCD clock format: '12h' or '24h' |
+
+## `trcc device`
+
+Discover and connect to TRCC devices.
+
+### `trcc device connect`
+
+Open USB transport and perform the wire-protocol handshake.
+
+```bash
+trcc device connect KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc device disconnect`
+
+Close the transport and drop the device.
+
+```bash
+trcc device disconnect KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | -- |
+
+### `trcc device issues`
+
+Show devices that failed to connect, and why. A connect can fail before anything is watching the bus, so the failure is pulled with a query rather than only published — the same one the GUIs and `GET /devices/issues` use.
+
+```bash
+trcc device issues
+```
+
+### `trcc device list`
+
+List devices currently attached to the host.
+
+```bash
+trcc device list
+```
+
+### `trcc device reset`
+
+Disconnect + clear cached state for a device. Use this when the LCD seems stuck — drops any cached frame, theme, and runtime counters. Re-running `connect` after this starts completely fresh.
+
+```bash
+trcc device reset KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | -- |
+
+### `trcc device select`
+
+Persist the active-device selection by ordinal. Multi-device hosts (e.g. two LCDs + one LED controller) need a way to point CLI commands at "the one I'm steering today". Resolves the ordinal against `device list` and stores the resulting key in `AppSettings.active_device`.
+
+```bash
+trcc device select ORDINAL
+```
+
+| Argument | Description |
+|---|---|
+| `ORDINAL` | 1-based ordinal of the attached device to mark active (matches `device list` output) |
+
+## `trcc display`
+
+Configure device display (theme / orientation / brightness).
+
+### `trcc display apply-mask`
+
+Override the active theme's mask with a user-supplied image.
+
+```bash
+trcc display apply-mask KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Image file path (png/jpg/jpeg/bmp/webp) |
+
+### `trcc display background-mode`
+
+Pick what fills the LCD behind overlays.
+
+```bash
+trcc display background-mode KEY MODE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `MODE` | 'theme' / 'color' / 'transparent' |
+
+### `trcc display boot-anim`
+
+Upload a multi-frame compressed boot animation to a SCSI LCD's flash. The animation plays from device flash on every boot until overwritten. Only SCSI panels with 240×240 / 240×320 / 320×240 / 320×320 resolution support boot animations. Frame files are picked up in alphabetical order from *frames_dir* — PNG / JPG / JPEG / BMP / WebP. Each frame uses the same dwell time via --delay (per-frame delays via the API only).
+
+```bash
+trcc display boot-anim [OPTIONS] KEY FRAMES_DIR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 (SCSI only) |
+| `FRAMES_DIR` | Directory of image frames (sorted alphabetically; 1–248 frames) |
+
+| Option | Description |
+|---|---|
+| `--delay`, `-d` `DELAY_DS` | Dwell time per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s) |
+
+### `trcc display color`
+
+Display a single solid color on the LCD. Smallest path that exercises the full wire chain (handshake-derived profile + DisplayService encoder + Device.send). Useful diagnostic for confirming a device class works end-to-end on real hardware.
+
+```bash
+trcc display color KEY HEX_COLOR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `HEX_COLOR` | Hex color (e.g. ff0000 for red) |
+
+### `trcc display configure-slideshow`
+
+Set the slideshow theme list + interval.
+
+```bash
+trcc display configure-slideshow [OPTIONS] KEY THEMES
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `THEMES` | Theme names (directories under user_content_dir) — order matters |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Seconds between theme swaps (default 60). |
+
+### `trcc display keepalive`
+
+Periodically resend the device's last frame. Workaround for Bulk/LY firmware that drops the displayed image when the internal buffer ages out. Render at least once before starting the loop so there's a cached frame to resend. `count=0` (default) runs open-ended and exits cleanly on Ctrl-C — the Command itself owns the loop + signal handling so the CLI doesn't need a user-space `while` wrapper.
+
+```bash
+trcc display keepalive [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Seconds between resends. Bulk/LY firmware reverts to the built-in logo after ~2-3 s without a frame; default 0.150 s keeps the screen pinned. |
+| `--count`, `-c` `COUNT` | Number of resends; 0 means loop forever (until Ctrl-C). |
+| `--metric-interval` `METRIC_INTERVAL` | Seconds between overlay re-renders (live sensor refresh). 0 disables — last frame's metrics stay frozen on screen. |
+
+### `trcc display list-masks`
+
+List mask images for the device's resolution. By default, scans both the cloud-downloaded mask dir (`data/web/zt{W}{H}`) and the user-created mask dir (`user_content_dir/data/web/zt{W}{H}`).
+
+```bash
+trcc display list-masks [OPTIONS] [KEY]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the scan. Required unless --dir is given. *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--dir`, `-d` `DIRECTORY` | Override: scan an explicit directory instead of the device's mask dirs |
+
+### `trcc display load-image`
+
+Show a single image on the LCD. Stages the image as a one-file theme so the existing render pipeline handles fit + brightness + rotation. Re-runnable: subsequent loads of the same image are cheap (no re-copy).
+
+```bash
+trcc display load-image KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Image file (PNG / JPG / JPEG / BMP / WEBP) |
+
+### `trcc display load-theme`
+
+Load a theme: parse, persist, render+send if device is connected.
+
+```bash
+trcc display load-theme KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Theme directory |
+
+### `trcc display load-video`
+
+Play a video on the LCD as a single-video theme. Transcodes the source to a `Theme.zt` matching the device's native resolution (.zt inputs are copied as-is), stages a one-file theme, then dispatches LoadTheme. Device must be attached so we know the target resolution.
+
+```bash
+trcc display load-video [OPTIONS] KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Video file (MP4 / MOV / WEBM / MKV / AVI / ZT) |
+
+| Option | Description |
+|---|---|
+| `--start`, `-s` `START_MS` | Clip start in milliseconds (default: 0). |
+| `--end`, `-e` `END_MS` | Clip end in milliseconds (default: probe duration, fallback 10s). |
+| `--rotation`, `-r` `ROTATION` | Rotation in degrees: 0 / 90 / 180 / 270. |
+
+### `trcc display loop-video`
+
+Toggle whether video wraps at the end or sticks at the last frame.
+
+```bash
+trcc display loop-video KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key |
+| `STATE` | 'on' (loop) or 'off' (single-pass) |
+
+### `trcc display mask-position`
+
+Position the mask overlay within the canvas.
+
+```bash
+trcc display mask-position KEY X Y
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `X` | X offset in pixels (≥ 0) |
+| `Y` | Y offset in pixels (≥ 0) |
+
+### `trcc display mask-visible`
+
+Toggle mask visibility.
+
+```bash
+trcc display mask-visible KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `STATE` | 'on' or 'off' |
+
+### `trcc display media-player`
+
+Set the media-player source — a local file or a web URL/stream. Wraps `SetMediaPlayer`: a local file plays through the video pipeline; a web URL is referenced (persisted so `theme save` captures it). An empty URI clears the source.
+
+```bash
+trcc display media-player KEY [URI]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `URI` | Source: a local file path, or a web URL/stream. '' clears. *(optional)* |
+
+### `trcc display overlay`
+
+Toggle the metric overlay layer.
+
+```bash
+trcc display overlay KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `STATE` | 'on' or 'off' |
+
+### `trcc display overlay-add`
+
+Add a user-edited overlay element to a device.
+
+```bash
+trcc display overlay-add [OPTIONS] KEY TYPE_
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `TYPE_` | 'text' / 'metric' / 'clock' |
+
+| Option | Description |
+|---|---|
+| `--x` `X` | X position |
+| `--y` `Y` | Y position |
+| `--text` `TEXT` | Text content (type=text) |
+| `--metric` `METRIC` | Metric id (type=metric) |
+| `--format` `FMT` | Metric format string |
+| `--source` `SOURCE` | Clock source: time / weekday / date |
+| `--color` `COLOR` | -- |
+| `--size` `SIZE` | -- |
+| `--bold` | -- |
+| `--italic` | -- |
+| `--show-unit` | Draw the metric's unit (°C/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art |
+| `--id` `ELEMENT_ID` | Explicit element id (default: auto-generated UUID) |
+
+### `trcc display overlay-background`
+
+Set the solid color used when background-mode=color.
+
+```bash
+trcc display overlay-background KEY HEX_COLOR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `HEX_COLOR` | Hex color (e.g. 000000 for black) |
+
+### `trcc display overlay-delete`
+
+Remove a user-edited overlay element by id.
+
+```bash
+trcc display overlay-delete KEY ELEMENT_ID
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | -- |
+| `ELEMENT_ID` | ID returned by overlay-add |
+
+### `trcc display overlay-flash`
+
+Briefly highlight an overlay element in the GUI.
+
+```bash
+trcc display overlay-flash [OPTIONS] KEY ELEMENT_ID
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | -- |
+| `ELEMENT_ID` | -- |
+
+| Option | Description |
+|---|---|
+| `--duration`, `-d` `DURATION_MS` | Flash duration in milliseconds |
+
+### `trcc display overlay-render`
+
+Render a DC config to a PNG preview — no active device required. Mirrors legacy `trcc overlay` — composites every element from `config1.dc` onto a solid-black canvas at *width × height* and writes the result as PNG. Useful when iterating on a theme's metric positions without unplugging the device or sending frames.
+
+```bash
+trcc display overlay-render [OPTIONS] DC_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `DC_PATH` | DC file or theme directory containing config1.dc |
+
+| Option | Description |
+|---|---|
+| `--output`, `-o` `OUTPUT` | Output PNG path for the rendered preview. |
+| `--width`, `-w` `WIDTH` | Render canvas width (px) |
+| `--height`, `-h` `HEIGHT` | Render canvas height (px) |
+
+### `trcc display overlay-update`
+
+Mutate fields on an existing user-edited overlay element.
+
+```bash
+trcc display overlay-update [OPTIONS] KEY ELEMENT_ID
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | -- |
+| `ELEMENT_ID` | ID returned by overlay-add |
+
+| Option | Description |
+|---|---|
+| `--x` `X` | -- |
+| `--y` `Y` | -- |
+| `--color` `COLOR` | -- |
+| `--size` `SIZE` | -- |
+| `--text` `TEXT` | -- |
+| `--metric` `METRIC` | -- |
+| `--format` `FMT` | -- |
+| `--source` `SOURCE` | -- |
+| `--bold` | -- |
+| `--italic` | -- |
+| `--show-unit` | Draw the metric's unit (°C/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art |
+
+### `trcc display pause-video`
+
+Pause or resume video playback.
+
+```bash
+trcc display pause-video KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key |
+| `STATE` | 'on' (pause) or 'off' (resume) |
+
+### `trcc display play`
+
+Run the render-and-send ticker until Ctrl-C. Dispatches RenderAndSend every tick with live sensors. Keeps SCSI devices from timing out (static-blink fix) and advances video playback. Stops cleanly on SIGINT.
+
+```bash
+trcc display play [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Tick interval in seconds (default: AppSettings.refresh_interval_s) |
+
+### `trcc display play-video`
+
+Decode a video and start playing it on the device. Overrides the active theme's background until `stop-video` runs. Frames advance on each `display play` tick.
+
+```bash
+trcc display play-video [OPTIONS] KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Video path (mp4/mov/webm/mkv/avi/zt) |
+
+| Option | Description |
+|---|---|
+| `--fps` `FPS` | Decode FPS (default: 15) |
+
+### `trcc display restore-theme`
+
+Reload the device's persisted theme — convenience after restart.
+
+```bash
+trcc display restore-theme KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc display resume`
+
+Send each detected device's last-used theme (headless, no GUI). Use case: cron / systemd unit / udev hook that runs at boot or after a suspend cycle. Enumerates every TRCC-known device on the bus, connects, and replays the saved theme so the displays come back to their pre-boot / pre-suspend state without the GUI. Bulk/LY devices fade after ~2-3 s without a fresh frame — pair this with `trcc display keepalive` per device for those, or `trcc display play` for the full render-loop.
+
+```bash
+trcc display resume [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+|---|---|
+| `--retries` `RETRIES` | Discovery attempts before giving up (1 attempt = 2 s delay) |
 
-Persists to per-device config.
+### `trcc display screencast`
 
----
-
-### `trcc rotation`
-
-Set display rotation.
+Stream a screen region to the LCD until interrupted. Wraps `StartScreencast` — the GUI `ScreencastHandler` subscriber drives the per-frame Qt capture timer. Ctrl-C calls `StopScreencast` for clean teardown.
 
 ```bash
-trcc rotation 0         # no rotation
-trcc rotation 90        # 90° clockwise
-trcc rotation 180       # 180°
-trcc rotation 270       # 270° clockwise
+trcc display screencast [OPTIONS] KEY X Y W H
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `X` | Top-left X coordinate of capture region (px) |
+| `Y` | Top-left Y coordinate of capture region (px) |
+| `W` | Capture region width (px) |
+| `H` | Capture region height (px) |
+
+| Option | Description |
+|---|---|
+| `--audio` | Pipe system audio alongside the video feed (Linux: PipeWire) |
+
+### `trcc display seek-video`
+
+Jump the playback cursor to a specific frame.
+
+```bash
+trcc display seek-video KEY FRAME
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key |
+| `FRAME` | Frame index to jump to |
+
+### `trcc display send-image`
+
+Push an image to the LCD once — no theme staging, no persistence. Companion to `load-image` (which materialises a single-image theme and persists `DeviceSettings.current_theme`). Use this when you want ephemeral display: boot logos, quick previews, API upload pipelines.
+
+```bash
+trcc display send-image KEY PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PATH` | Image file (PNG/JPG/BMP/WEBP) |
+
+### `trcc display set-brightness`
+
+Set per-device display brightness.
+
+```bash
+trcc display set-brightness KEY PERCENT
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `PERCENT` | Brightness 0–100 |
+
+### `trcc display set-fit-mode`
+
+Set how the background fits the canvas.
+
+```bash
+trcc display set-fit-mode KEY MODE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `MODE` | Fit mode: 'width' (letterbox), 'height' (pillarbox), 'stretch' |
+
+### `trcc display set-orientation`
+
+Set per-device rotation.
+
+```bash
+trcc display set-orientation KEY DEGREES
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `DEGREES` | Rotation: 0, 90, 180, or 270 |
+
+### `trcc display sleep`
+
+Blank the panel so it goes dark (the shutdown / turn-off action). Sends a solid-black frame (LCD) or an all-off payload (LED) — the same Command the GUI + daemon fire at PC shutdown so the screen doesn't hold its last image lit. Idempotent; auto-connects in a fresh process.
+
+```bash
+trcc display sleep KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc display slideshow`
+
+Toggle the per-device slideshow on/off.
+
+```bash
+trcc display slideshow KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `STATE` | 'on' / 'off' |
+
+### `trcc display slideshow-run`
+
+Foreground slideshow over a directory of themes. Different from `slideshow` / `configure-slideshow` (which persist state). This is a one-shot loop: blocks until Ctrl-C, swaps to the next theme each tick. Useful for demos + smoke tests; the persisted flow is what production users want.
+
+```bash
+trcc display slideshow-run [OPTIONS] KEY THEMES_DIR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `THEMES_DIR` | Directory containing theme subdirectories |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Seconds between theme switches (default: 30.0) |
+
+### `trcc display snapshot`
+
+Print the persisted LCD state for a device.
+
+```bash
+trcc display snapshot [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--json` | Emit JSON instead of human text. |
+
+### `trcc display split-mode`
+
+Set the Dynamic Island style (widescreen panels only).
+
+```bash
+trcc display split-mode KEY MODE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `MODE` | 0 (off), 1 (style A), 2 (B), 3 (C) |
+
+### `trcc display stop-screencast`
+
+Stop an active screencast started by another process (daemon/API).
+
+```bash
+trcc display stop-screencast KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc display stop-video`
+
+Clear the video playback override (returns to the active theme).
+
+```bash
+trcc display stop-video KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc display test`
+
+Color-cycle the LCD: red → green → blue → black. Smallest end-to-end exercise of the wire chain. Useful when porting a new device class to confirm handshake → frame build → USB send all work before fighting overlay/theme bugs.
+
+```bash
+trcc display test [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--seconds`, `-s` `SECONDS` | Hold each color for this many seconds. |
+
+### `trcc display test-lcd`
+
+Print an ANSI true-color preview of the LCD's current render. Same pipeline as `display play` but stops at the renderer surface — no wire send. Useful for headless / sshell debugging where you can't see the physical device.
+
+```bash
+trcc display test-lcd [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+| Option | Description |
+|---|---|
+| `--cols`, `-c` `COLS` | Width of the ANSI preview in terminal cells. |
+
+### `trcc display toggle-video`
+
+Flip video playback between paused / playing (single-verb helper).
+
+```bash
+trcc display toggle-video KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key |
+
+### `trcc display upload-mask`
+
+Copy a mask into user_content_dir/masks and apply it to the device.
+
+```bash
+trcc display upload-mask KEY SOURCE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key |
+| `SOURCE` | Mask image file to copy + apply |
+
+## `trcc led`
+
+RGB LED control.
+
+### `trcc led brightness`
+
+Set the global LED brightness (persists).
+
+```bash
+trcc led brightness KEY PERCENT
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `PERCENT` | Brightness 0-100 |
+
+### `trcc led clock-format`
+
+Set the 12h/24h clock display for LC2-style segment devices.
+
+```bash
+trcc led clock-format KEY FMT
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `FMT` | '12h' or '24h' |
+
+### `trcc led color`
+
+Set the LED color used by STATIC / BREATHING / COLORFUL modes.
+
+```bash
+trcc led color KEY COLOR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `COLOR` | Hex color (#rrggbb) |
+
+### `trcc led disk-index`
+
+Pick which disk's read/write stats to surface.
+
+```bash
+trcc led disk-index KEY INDEX
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `INDEX` | Disk index (0-based) |
+
+### `trcc led initialize`
+
+Connect + render one initial frame in a single dispatch. Convenience for boot scripts — equivalent to `device connect` followed by `led render`, but in one Command so the caller only inspects one Result. Use this on app start; use the individual commands for finer control.
+
+```bash
+trcc led initialize KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+
+### `trcc led list-modes`
+
+List every animation mode (STATIC, BREATHING, RAINBOW, …).
+
+```bash
+trcc led list-modes
+```
+
+### `trcc led list-styles`
+
+List every LED style registered in the PM byte registry.
+
+```bash
+trcc led list-styles
+```
+
+### `trcc led load-source`
+
+Pick the sensor source for LOAD_LINKED mode.
+
+```bash
+trcc led load-source KEY SOURCE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `SOURCE` | 'cpu' or 'gpu' |
+
+### `trcc led memory-ratio`
+
+Set the DDR memory multiplier for the LED memory gauge.
+
+```bash
+trcc led memory-ratio KEY RATIO
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `RATIO` | DDR multiplier: 1, 2, or 4 |
+
+### `trcc led mode`
+
+Set the LED animation mode (persists).
+
+```bash
+trcc led mode KEY MODE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `MODE` | One of: static, breathing, colorful, rainbow, temp_linked, load_linked |
+
+### `trcc led play`
+
+Run the LED render ticker until Ctrl-C. Mirrors `display play` — dispatches `RenderLed` every tick so BREATHING / COLORFUL / RAINBOW animations advance. Stops cleanly on SIGINT.
+
+```bash
+trcc led play [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Tick interval in seconds (default: AppSettings.refresh_interval_s) |
+
+### `trcc led render`
+
+Render one LED frame from current settings + sensors and send. Reads the device's saved mode / color / brightness from Settings, advances the engine's phase counters on `app.led_runtime`, and sends one tick. Pass `--color` to override the saved color (treated as STATIC at full brightness — diagnostic shape).
+
+```bash
+trcc led render [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+
+| Option | Description |
+|---|---|
+| `--color`, `-c` `COLOR` | Override hex color (#rrggbb); omit to use the saved color |
+| `--phase`, `-p` `PHASE` | Rotation phase for multi-phase displays |
+
+### `trcc led select-zone`
+
+Set the currently-selected zone (UI state).
+
+```bash
+trcc led select-zone KEY ZONE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `ZONE` | Zone index to select |
+
+### `trcc led set-colors`
+
+Push a full LED color update.
+
+```bash
+trcc led set-colors [OPTIONS] KEY COLORS
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `COLORS` | Hex colors (#rrggbb), one per LED |
+
+| Option | Description |
+|---|---|
+| `--brightness`, `-b` `BRIGHTNESS` | Global brightness 0–100 |
+| `--off` | Force all LEDs off (overrides colors) |
+
+### `trcc led snapshot`
+
+Print the persisted LED state for a device.
+
+```bash
+trcc led snapshot [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+
+| Option | Description |
+|---|---|
+| `--json` | Emit JSON instead of human text. |
+
+### `trcc led temp-source`
+
+Pick the sensor source for TEMP_LINKED mode.
+
+```bash
+trcc led temp-source KEY SOURCE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `SOURCE` | 'cpu' or 'gpu' |
+
+### `trcc led test-led`
+
+Print an ANSI true-color preview of the LED zones in the terminal. Reads the current zone color list from `LedSnapshot` and paints each zone as a coloured square — handy for visualising multi-zone strips during headless debugging.
+
+```bash
+trcc led test-led KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+
+### `trcc led test-mode`
+
+Toggle the 4-color diagnostic test cycle.
+
+```bash
+trcc led test-mode KEY ON
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `ON` | Enable (true) or disable (false) |
+
+### `trcc led toggle`
+
+Turn the LED device (or one zone) on/off.
+
+```bash
+trcc led toggle [OPTIONS] KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `STATE` | 'on' or 'off' (or use --zone N to target one zone) |
+
+| Option | Description |
+|---|---|
+| `--zone`, `-z` `ZONE` | Toggle a single zone (omit for global toggle) |
+
+### `trcc led toggle-segment`
+
+Flip one segment on/off (segment-display devices).
+
+```bash
+trcc led toggle-segment KEY INDEX STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `INDEX` | Segment index |
+| `STATE` | 'on' or 'off' |
+
+### `trcc led week-start`
+
+Pick the week-start day on devices that show a day-of-week display.
+
+```bash
+trcc led week-start KEY DAY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `DAY` | 'sunday' or 'monday' |
+
+### `trcc led zone-brightness`
+
+Set one zone's persistent brightness.
+
+```bash
+trcc led zone-brightness KEY ZONE PERCENT
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `ZONE` | Zone index (0-based) |
+| `PERCENT` | Brightness 0-100 |
+
+### `trcc led zone-color`
+
+Set one zone's persistent color.
+
+```bash
+trcc led zone-color KEY ZONE COLOR
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `ZONE` | Zone index (0-based) |
+| `COLOR` | Hex color (#rrggbb) |
+
+### `trcc led zone-mode`
+
+Set one zone's persistent animation mode.
+
+```bash
+trcc led zone-mode KEY ZONE MODE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+| `ZONE` | Zone index (0-based) |
+| `MODE` | One of: static, breathing, colorful, rainbow, temp_linked, load_linked |
+
+### `trcc led zone-sync`
+
+Toggle the zone-sync carousel (optionally set the interval).
+
+```bash
+trcc led zone-sync [OPTIONS] KEY STATE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key |
+| `STATE` | 'on' or 'off' |
+
+| Option | Description |
+|---|---|
+| `--interval`, `-i` `INTERVAL` | Set ticks-per-rotation alongside the toggle |
+
+## `trcc system`
+
+System-level operations (setup, sensors, info).
+
+### `trcc system autostart`
+
+Manage auto-launch-on-login (XDG .desktop on Linux).
+
+```bash
+trcc system autostart
+```
+
+### `trcc system check-update`
+
+Ask GitHub Releases whether a newer version is available.
+
+```bash
+trcc system check-update
+```
+
+### `trcc system debug-report`
+
+Generate a debug report bundle for GitHub issues.
+
+```bash
+trcc system debug-report [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
+|---|---|
+| `--output`, `-o` `OUTPUT` | Write the report to this path instead of stdout. Recommended when filing a GitHub issue — attach the file. |
+| `--log-lines` `LOG_LINES` | How many trailing log lines to include (default 1000). |
 
-Persists to per-device config.
+### `trcc system doctor`
 
----
-
-### `trcc video`
-
-Play a video, GIF, or ZT file on the LCD. No overlay support — for overlays, use `trcc theme`.
+Run health checks — exits 1 on any FAIL. The reporter-friendly summary tells you what's wrong + how to fix it. For a copy-paste GitHub-issue dump, use `system debug-report` instead.
 
 ```bash
-trcc video clip.mp4
-trcc video animation.gif --no-loop
-trcc video clip.mp4 --duration 30
+trcc system doctor
+```
+
+### `trcc system download`
+
+Pre-fetch the theme + cloud + mask archives for a resolution. DiscoverDevices runs this implicitly the first time a device of a given resolution attaches. Call it directly to populate the local cache while you have network — handy for headless setups that'll later run offline. Idempotent.
+
+```bash
+trcc system download WIDTH HEIGHT
+```
+
+| Argument | Description |
+|---|---|
+| `WIDTH` | Display width (px), e.g. 320 |
+| `HEIGHT` | Display height (px), e.g. 320 |
+
+### `trcc system first-run-status`
+
+Show whether trcc has been set up on this machine yet.
+
+```bash
+trcc system first-run-status
+```
+
+### `trcc system hdd-enabled`
+
+Toggle inclusion of HDD metrics in sensor broadcasts.
+
+```bash
+trcc system hdd-enabled STATE
+```
+
+| Argument | Description |
+|---|---|
+| `STATE` | 'on' or 'off' |
+
+### `trcc system health`
+
+Quick read-only health report — same checks as `doctor`, no exit code.
+
+```bash
+trcc system health
+```
+
+### `trcc system hid-debug`
+
+Connect to *key* + print handshake details for a GitHub issue paste. Composes `ConnectDevice` (returns handshake bytes + parsed resolution / model id / serial) and `LcdSnapshot` to dump the persisted state. Output is plain text — copy + paste-friendly.
+
+```bash
+trcc system hid-debug KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
+### `trcc system info`
+
+Show current sensor metrics (CPU/GPU/fan/disk/net readings). Mirrors legacy `trcc info` — dispatches `ReadSensors` and prints each reading. Use `--metric <prefix>` to narrow the output; pass no args for everything. For paths / install info / permissions, see `trcc system platform-info`.
+
+```bash
+trcc system info [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--no-loop` | Play once instead of looping |
-| `--duration` | Stop after N seconds (default: 0 = forever) |
-| `--preview`, `-p` | Animate ANSI preview in terminal |
+|---|---|
+| `--metric`, `-m` `METRIC` | Filter readings whose `sensor_id` startswith this prefix (e.g. cpu, gpu, mem, disk, net, fan, time). |
 
----
+### `trcc system lang`
 
-### `trcc theme`
-
-Play a background (image, GIF, or video) with optional mask overlay and live system metrics. Same flags as `trcc theme-save` — use `--save` to persist as a reusable theme.
+Print the currently-active UI language code. Read-only — for "what language is TRCC in right now?" without digging through `snapshot`. Use `set-language` to change it.
 
 ```bash
-# Static image with metrics overlay
-trcc theme --background wallpaper.png \
-  --metric "cpu_temp:10,20" \
-  --metric "gpu_temp:10,50"
+trcc system lang
+```
 
-# Animated GIF with mask + metrics
-trcc theme --background animated.gif \
-  --mask ~/.trcc/data/web/zt320320/001a \
-  --metric "time:50,30:ffffff:24" \
-  --metric "cpu_temp:30,60:ff0000:14"
+### `trcc system led-debug`
 
-# Custom font, color, and size
-trcc theme --background animated.gif \
-  --metric "gpu_usage:10,20" \
-  --font Arial --font-style bold --font-size 18 --color 00ff00
+LED device handshake + zone/segment dump + optional test cycle. Composes `ConnectDevice` and `LedSnapshot` for a one- shot diagnostic. Pass `--test-colors` to cycle the device's test pattern so you can confirm wire-up visually.
 
-# Play + save in one shot
-trcc theme --background animated.gif \
-  --mask ~/.trcc/data/web/zt320320/001a \
-  --metric "time:50,30:ffffff:24" \
-  --save MyTheme
+```bash
+trcc system led-debug [OPTIONS] KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | LED device key, e.g. 0416:8001 |
+
+| Option | Description |
+|---|---|
+| `--test-colors` | After handshake, enable the 4-color test cycle (Ctrl-C to stop). |
+
+### `trcc system list-disks`
+
+List disk partitions (for use with `led disk-index`).
+
+```bash
+trcc system list-disks
+```
+
+### `trcc system list-endpoints`
+
+Enumerate every HTTP route the REST API exposes. Builds the FastAPI app (no uvicorn) and walks its router so the output reflects what `trcc api` / `trcc serve` would serve.
+
+```bash
+trcc system list-endpoints
+```
+
+### `trcc system list-fans`
+
+List fans the sensors aggregator exposes, with live readings. Read-only diagnostic (#145/#207) — snapshot() maps fans to theme slots automatically (GPU slot follows the picked GPU); this shows what the box exposes.
+
+```bash
+trcc system list-fans
+```
+
+### `trcc system list-fonts`
+
+List font families Qt can see.
+
+```bash
+trcc system list-fonts
+```
+
+### `trcc system list-gpus`
+
+List GPUs exposed by the sensors aggregator.
+
+```bash
+trcc system list-gpus
+```
+
+### `trcc system list-languages`
+
+List every UI language the i18n table supports.
+
+```bash
+trcc system list-languages
+```
+
+### `trcc system list-sensors`
+
+Print every sensor the platform enumerates — descriptors only. Read-only enumeration: no polling, no values. Pair with `system sensors` (or `system info --metric <prefix>`) when you want the current readings instead.
+
+```bash
+trcc system list-sensors
+```
+
+### `trcc system mark-setup-done`
+
+Tell trcc the welcome flow has been completed.
+
+```bash
+trcc system mark-setup-done
+```
+
+### `trcc system platform-info`
+
+Show platform info (distro, install method, config dir, permissions).
+
+```bash
+trcc system platform-info
+```
+
+### `trcc system sensors`
+
+Print current sensor readings.
+
+```bash
+trcc system sensors
+```
+
+### `trcc system setup`
+
+Run the OS-specific setup (udev rules on Linux, WinUSB guide on Windows).
+
+```bash
+trcc system setup [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--background`, `-b` | Background image/video/GIF (required) |
-| `--metric`, `-m` | Overlay metric: `key:x,y[:color[:size]]` (repeatable) |
-| `--mask` | Mask PNG file or directory (auto-resized to LCD) |
-| `--font` | Font family name (default: Microsoft YaHei) |
-| `--font-style` | Font style: `regular` or `bold` (default: regular) |
-| `--font-size` | Font size in pixels (default: 14) |
-| `--color`, `-c` | Hex color for overlay text (default: ffffff) |
-| `--temp-unit` | Temperature unit: 0=Celsius, 1=Fahrenheit |
-| `--time-format` | Time format: 0=24h HH:MM, 1=12h hh:MM |
-| `--date-format` | Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy |
-| `--save`, `-s` | Save as named theme (e.g. `--save MyTheme`) |
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--no-loop` | Play once instead of looping |
-| `--duration` | Stop after N seconds (default: 0 = forever) |
-| `--preview`, `-p` | Animate ANSI preview in terminal |
+|---|---|
+| `--yes`, `-y` | Non-interactive (assume yes to prompts) |
 
-**Metric spec format:** `key:x,y[:color[:size[:font[:style]]]]`
+### `trcc system snapshot`
 
-- `gpu_temp:10,20` — uses global defaults
-- `cpu_temp:10,50:ff0000` — red, global font size
-- `time:150,10:ffffff:24` — white, 24px
-- `gpu_temp:10,20:ff0000:18:Arial:bold` — red, 18px, Arial bold
-- `cpu_temp:10,50::16:Courier` — default color, 16px, Courier
-
-Per-metric values override the globals (`--color`, `--font-size`, `--font`, `--font-style`). Empty fields (double colon `::`) fall through to the global default.
-
-**Available metric keys:**
-
-| Category | Keys |
-|----------|------|
-| CPU | `cpu_temp`, `cpu_percent`, `cpu_freq`, `cpu_power` |
-| GPU | `gpu_temp`, `gpu_usage`, `gpu_clock`, `gpu_power` |
-| Memory | `mem_percent`, `mem_clock`, `mem_available`, `mem_temp` |
-| Disk | `disk_read`, `disk_write`, `disk_activity`, `disk_temp` |
-| Network | `net_down`, `net_up`, `net_total_down`, `net_total_up` |
-| Fan | `fan_cpu`, `fan_gpu`, `fan_ssd`, `fan_sys2` |
-| Time | `time`, `date`, `weekday` |
-
----
-
-### `trcc theme-save` *(deprecated)*
-
-Alias for `trcc theme --save NAME`. Use `trcc theme --save` instead.
+Print the AppSettings snapshot (language, GPU, refresh interval).
 
 ```bash
-# These are equivalent:
-trcc theme-save MyTheme --background animated.gif --metric "cpu_temp:10,20"
-trcc theme --save MyTheme --background animated.gif --metric "cpu_temp:10,20"
-```
-
----
-
-### `trcc screencast`
-
-Stream a screen region to the LCD.
-
-```bash
-trcc screencast                           # full screen
-trcc screencast --x 100 --y 100 --w 320 --h 320
-trcc screencast --fps 15
+trcc system snapshot [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--x`, `--y` | Top-left corner of capture region |
-| `--w`, `--h` | Width/height of capture region (0 = full screen) |
-| `--fps` | Frames per second (default: 10) |
-| `--preview`, `-p` | Animate ANSI preview in terminal |
+|---|---|
+| `--json` | Emit JSON instead of human text. |
 
----
+### `trcc system upgrade`
 
-### `trcc mask`
-
-Load a mask overlay and send to LCD.
+Upgrade trcc-linux via the detected package manager.
 
 ```bash
-trcc mask /path/to/mask.png
-trcc mask /path/to/theme/dir
-trcc mask --clear                 # remove mask (send solid black)
+trcc system upgrade [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--clear` | Clear mask (send solid black) |
-| `--preview`, `-p` | Show ANSI art preview in terminal |
+|---|---|
+| `--yes`, `-y` | Skip confirmation and run the upgrade subprocess. |
+| `--dry-run` | Print the command that would run, don't execute it. |
 
----
+## `trcc theme`
 
-### `trcc overlay`
+Save / export / import themes.
 
-Render overlay from a DC config file.
+### `trcc theme cloud-list`
+
+List themes in Thermalright's hosted catalog.
 
 ```bash
-trcc overlay /path/to/config1.dc
-trcc overlay /path/to/theme/dir --send
-trcc overlay /path/to/theme/dir --output rendered.png
+trcc theme cloud-list [OPTIONS]
 ```
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--send`, `-s` | Send rendered result to LCD |
-| `--output`, `-o` | Save rendered image to file |
-| `--preview`, `-p` | Show ANSI art preview in terminal |
+|---|---|
+| `--category`, `-c` `CATEGORY` | Category prefix: 'all' / 'a' / 'b' / 'c' / 'd' / 'e' / 'y' |
 
----
+### `trcc theme cloud-load`
 
-### `trcc theme-list`
-
-List available themes for the current device resolution.
+Download a cloud theme and load it on a device.
 
 ```bash
-trcc theme-list                   # local themes
-trcc theme-list --cloud           # cloud themes
-trcc theme-list --cloud --category a   # gallery category only
+trcc theme cloud-load KEY THEME_ID
 ```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `THEME_ID` | Cloud theme id, e.g. a001 |
+
+### `trcc theme create`
+
+One-shot theme builder: bg + optional mask + overlay metrics → save. Mirrors legacy `trcc theme --save`. Dispatches a chain of existing Commands: `LoadImage` for the background, `UploadCustomMask` if `--mask` given, `AddOverlayElement` per `--metric` arg, then `SaveTheme` to persist the result. Stops on the first failure and leaves the device in whatever state was reached.
+
+```bash
+trcc theme create [OPTIONS] KEY NAME
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `NAME` | Theme name to save as |
 
 | Option | Description |
-|--------|-------------|
-| `--cloud`, `-c` | List cloud themes instead of local |
-| `--category` | Filter by category (a=Gallery, b=Tech, c=HUD, d=Light, e=Nature, y=Aesthetic) |
+|---|---|
+| `--bg`, `-b` `BACKGROUND` | Background image (PNG/JPG/BMP/WEBP) |
+| `--mask` `MASK` | Optional mask PNG to overlay (custom_<name>/01.png) |
+| `--metric`, `-m` `METRIC` | Overlay metric spec: 'metric_key:x,y[:color[:size]]' — e.g. 'cpu:temp:160,90:#ff8800:24'. color defaults to '#ffffff', size defaults to 16. Repeatable. |
 
-Scans both `~/.trcc/data/` (stock themes) and `~/.trcc-user/` (user-created themes).
+### `trcc theme delete`
 
----
-
-### `trcc mask-list`
-
-List available mask overlays for the current device resolution.
+Delete a theme directory. Path-based to match legacy's `delete_theme(lcd, path)` — the caller already has the resolved path from `theme list` output.
 
 ```bash
-trcc mask-list
+trcc theme delete PATH
 ```
 
-Scans both cloud masks (`~/.trcc/data/web/zt{W}{H}/`) and user masks (`~/.trcc-user/data/web/zt{W}{H}/`). Custom masks are tagged `[custom]`.
+| Argument | Description |
+|---|---|
+| `PATH` | Absolute path to the theme directory to delete |
 
----
+### `trcc theme export`
 
-### `trcc theme-load`
-
-Load a theme by name and send to LCD.
+Zip a theme into an archive file.
 
 ```bash
-trcc theme-load 003a              # exact name
-trcc theme-load "Custom_MyTheme"  # custom theme
-trcc theme-load warframe          # partial match
+trcc theme export KEY THEME_NAME ARCHIVE_PATH
 ```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) whose resolution scopes the lookup |
+| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `ARCHIVE_PATH` | Destination archive path (e.g. theme.tr) |
+
+### `trcc theme export-config`
+
+Snapshot one device's settings to a JSON file. Captures everything in `DeviceSettings`: active theme path, brightness, orientation, overlay edits, mask choice, format prefs. Pair with `trcc theme import-config` to restore on another host or after a wipe.
+
+```bash
+trcc theme export-config KEY OUTPUT_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `OUTPUT_PATH` | Destination JSON path (e.g. mydevice.json) |
+
+### `trcc theme export-dc`
+
+Write a theme out as legacy `config1.dc` for Windows TRCC users.
+
+```bash
+trcc theme export-dc KEY THEME_NAME OUTPUT_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the lookup and layers the user's overlay elements into the export |
+| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `OUTPUT_PATH` | Where to write the config1.dc file |
+
+### `trcc theme export-overlay`
+
+Export just a theme's overlay layout (the metric grid) for sharing — lighter than the whole-theme zip and distinct from the DC binary.
+
+```bash
+trcc theme export-overlay KEY THEME_NAME OUTPUT_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the lookup |
+| `THEME_NAME` | Theme name (directory under user_theme_dir(w, h)) |
+| `OUTPUT_PATH` | Where to write the overlay layout file |
+
+### `trcc theme import`
+
+Unpack a theme archive into the device's per-resolution theme dir.
+
+```bash
+trcc theme import KEY ARCHIVE_PATH [NAME]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) whose resolution scopes the target |
+| `ARCHIVE_PATH` | Archive to unpack |
+| `NAME` | Theme name (defaults to archive filename stem) *(optional)* |
+
+### `trcc theme import-config`
+
+Restore one device's settings from an export-config JSON file.
+
+```bash
+trcc theme import-config KEY INPUT_PATH
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `INPUT_PATH` | Source JSON written by `trcc theme export-config` |
+
+### `trcc theme list`
+
+List themes for a device resolution. By default scans both `data/theme{W}{H}` (pkg + GitHub-downloaded) and `user_content_dir/data/theme{W}{H}` (legacy user-saved location) so installed-user themes show up alongside fresh downloads.
+
+```bash
+trcc theme list [OPTIONS] [KEY]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key (e.g. 0402:3922) — its resolution scopes the scan. Required unless --dir is given. *(optional)* |
 
 | Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--preview`, `-p` | Live ANSI preview in terminal (updates with metrics) |
+|---|---|
+| `--dir`, `-d` `DIRECTORY` | Override: scan an explicit directory instead of the device's theme dirs. |
 
-Handles both static and animated themes. Loads overlay config (DC/config.json), wires metrics, applies mask. Static themes enter a keep-alive loop; animated themes play video with overlay. `-p` shows live-updating ANSI preview for both.
+### `trcc theme save`
 
----
-
-### `trcc theme-save`
-
-Save current display state as a custom theme.
+Duplicate the device's active theme directory under a new name.
 
 ```bash
-trcc theme-save MyTheme
-trcc theme-save AnimTheme --video /path/to/clip.mp4
+trcc theme save KEY NAME
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-| `--video`, `-v` | Video path for animated theme |
-
-Saves to `~/.trcc/data/theme{W}{H}/Custom_{name}/`.
-
----
-
-### `trcc theme-export`
-
-Export a theme as a `.tr` file.
-
-```bash
-trcc theme-export 003a /tmp/mytheme.tr
-trcc theme-export Custom_MyTheme ~/backup.tr
-```
-
----
-
-### `trcc theme-import`
-
-Import a theme from a `.tr` file.
-
-```bash
-trcc theme-import /tmp/mytheme.tr
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (determines resolution for import target) |
-
----
-
-### `trcc led-color`
-
-Set LED static color.
-
-```bash
-trcc led-color ff0000      # red
-trcc led-color 00ff00      # green
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show LED zone colors as ANSI blocks in terminal |
-
----
-
-### `trcc led-mode`
-
-Set LED effect mode.
-
-```bash
-trcc led-mode static       # solid color
-trcc led-mode breathing    # fade in/out (Ctrl+C to stop)
-trcc led-mode colorful     # cycle colors (Ctrl+C to stop)
-trcc led-mode rainbow      # rotating hue (Ctrl+C to stop)
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show LED zone colors as ANSI blocks in terminal (animates for breathing/colorful/rainbow) |
-
-Animated modes run until Ctrl+C.
-
----
-
-### `trcc led-brightness`
-
-Set LED brightness.
-
-```bash
-trcc led-brightness 50     # 50%
-trcc led-brightness 100    # full
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show LED zone colors as ANSI blocks in terminal |
-
-Range: 0-100.
-
----
-
-### `trcc led-off`
-
-Turn LEDs off.
-
-```bash
-trcc led-off
-```
-
----
-
-### `trcc led-sensor`
-
-Set sensor source for temperature/load linked LED modes.
-
-```bash
-trcc led-sensor cpu        # CPU temp/load drives LED color
-trcc led-sensor gpu        # GPU temp/load drives LED color
-```
-
----
-
-### `trcc led-zone-color`
-
-Set color for a specific LED zone.
-
-```bash
-trcc led-zone-color 0 ff0000      # zone 0 = red
-trcc led-zone-color 1 00ff00      # zone 1 = green
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show ANSI terminal preview |
-
-Zone indices are 0-based.
-
----
-
-### `trcc led-zone-mode`
-
-Set effect mode for a specific LED zone.
-
-```bash
-trcc led-zone-mode 0 static       # zone 0 = solid color
-trcc led-zone-mode 1 breathing    # zone 1 = fade in/out
-trcc led-zone-mode 2 colorful     # zone 2 = cycle colors
-trcc led-zone-mode 3 rainbow      # zone 3 = rotating hue
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show ANSI terminal preview |
-
----
-
-### `trcc led-zone-brightness`
-
-Set brightness for a specific LED zone.
-
-```bash
-trcc led-zone-brightness 0 50     # zone 0 at 50%
-trcc led-zone-brightness 1 100    # zone 1 at full
-```
-
-| Option | Description |
-|--------|-------------|
-| `--preview`, `-p` | Show ANSI terminal preview |
-
-Range: 0-100.
-
----
-
-### `trcc led-zone-toggle`
-
-Toggle a specific LED zone on or off.
-
-```bash
-trcc led-zone-toggle 0 true       # turn zone 0 on
-trcc led-zone-toggle 1 false      # turn zone 1 off
-```
-
----
-
-### `trcc led-zone-sync`
-
-Enable or disable LED zone sync (circulate/select-all mode).
-
-```bash
-trcc led-zone-sync true            # enable zone sync
-trcc led-zone-sync false           # disable zone sync
-trcc led-zone-sync true --interval 2  # sync every 2 seconds
-```
-
-| Option | Description |
-|--------|-------------|
-| `--interval`, `-i` | Sync interval in seconds |
-
----
-
-### `trcc led-segment`
-
-Toggle a specific LED segment on or off.
-
-```bash
-trcc led-segment 0 true           # turn segment 0 on
-trcc led-segment 3 false          # turn segment 3 off
-```
-
-Segment indices are 0-based.
-
----
-
-### `trcc led-clock`
-
-Set LED segment display clock format.
-
-```bash
-trcc led-clock true                # 24-hour format
-trcc led-clock false               # 12-hour format
-```
-
----
-
-### `trcc led-temp-unit`
-
-Set LED segment display temperature unit.
-
-```bash
-trcc led-temp-unit C               # Celsius
-trcc led-temp-unit F               # Fahrenheit
-```
-
----
-
-### `trcc split`
-
-Set split mode (Dynamic Island) for widescreen displays.
-
-```bash
-trcc split 0                       # off
-trcc split 1                       # Dynamic Island style 1
-trcc split 2                       # Dynamic Island style 2
-trcc split 3                       # Dynamic Island style 3
-```
-
-| Option | Description |
-|--------|-------------|
-| `--device`, `-d` | Device path (default: auto-detect) |
-
-Only applies to non-square widescreen LCDs.
-
----
-
-### `trcc test-led`
-
-Test LED ANSI preview with real system metrics. No device needed.
-
-```bash
-trcc test-led                      # cycle all modes
-trcc test-led static               # test static mode only
-trcc test-led breathing --duration 10
-trcc test-led --segments 30        # simulate 30-LED device
-```
-
-| Option | Description |
-|--------|-------------|
-| `--segments`, `-s` | Number of LED segments to simulate (default: 64) |
-| `--duration`, `-t` | Animation duration in seconds (default: auto) |
-
----
-
-### `trcc test-lcd`
-
-Test LCD ANSI preview with real system metrics. No device needed.
-
-```bash
-trcc test-lcd
-trcc test-lcd --cols 80            # wider terminal output
-```
-
-| Option | Description |
-|--------|-------------|
-| `--cols`, `-c` | Terminal width in columns (default: 60) |
-
----
-
-### `trcc download`
-
-Download theme packs for all supported LCD resolutions.
-
-```bash
-trcc download                        # list available packs
-trcc download --list                 # same as above
-trcc download themes-320x320        # download 320x320 theme pack
-trcc download themes-320             # shorthand for 320x320 (square)
-trcc download themes-240x320        # non-square resolution
-trcc download themes-320x320 --force # re-download even if exists
-trcc download themes-320x320 --info  # show pack details
-```
-
-Pack names follow the format `themes-{W}x{H}`. Square resolutions have a shorthand alias (e.g., `themes-320` → `themes-320x320`).
-
-| Option | Description |
-|--------|-------------|
-| `--list`, `-l` | List available theme packs |
-| `--force`, `-f` | Force re-download |
-| `--info`, `-i` | Show pack info without downloading |
-
----
-
-### `trcc uninstall`
-
-Remove all TRCC configuration, udev rules, autostart files, and the pip package.
-
-```bash
-trcc uninstall             # interactive (prompts before pip uninstall)
-trcc uninstall --yes       # skip all prompts (for scripts / GUI)
-```
-
-| Option | Description |
-|--------|-------------|
-| `--yes`, `-y` | Skip confirmation prompts (non-interactive) |
-
-**Removes:**
-
-| Item | Path |
-|------|------|
-| Config + data directory | `~/.trcc/` |
-| Autostart entry | `~/.config/autostart/trcc*.desktop` |
-| Desktop shortcut | `~/.local/share/applications/trcc*.desktop` |
-| Udev rules (root) | `/etc/udev/rules.d/99-trcc-lcd.rules` |
-| USB quirks (root) | `/etc/modprobe.d/trcc-lcd.conf` |
-| pip package | `trcc-linux` |
-
-Auto-elevates with sudo for root files. The `--yes` flag is used by `trcc setup-gui` for non-interactive uninstall via pkexec.
-
----
-
-## Troubleshooting
-
-### `trcc: command not found`
-
-pip installs to `~/.local/bin/` which may not be on your PATH. Either:
-
-- **Open a new terminal** (Fedora/Ubuntu add `~/.local/bin` to PATH on shell startup if the directory exists)
-- Run directly: `PYTHONPATH=src python3 -m trcc.cli gui`
-- Add to PATH permanently: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
-
-### `sudo trcc: command not found` / `No module named 'trcc'` with sudo
-
-This was fixed in v1.2.0 — `trcc system setup` now automatically re-invokes itself with sudo and the correct PYTHONPATH. Just run:
-
-```bash
-trcc system setup
-```
+| Argument | Description |
+|---|---|
+| `KEY` | Device key whose active theme to save |
+| `NAME` | New theme name (directory under user_content_dir) |
+
+## Files
+
+| Path | Contents |
+|---|---|
+| `~/.trcc/` | Program + cloud data and config (`config.json`, logs) |
+| `~/.trcc-user/` | User-authored themes, backgrounds, and masks |
+
+Report bugs at <https://github.com/Lexonight1/thermalright-trcc-linux/issues> — include the output of `trcc report`.

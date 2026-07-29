@@ -75,17 +75,17 @@ Toggle a panel ON to enable it. Only one of Background/Screencast/Media Player c
 ### Local Themes
 Click a theme thumbnail to apply it. Themes are stored per resolution (320x320, 480x480, etc.).
 
-On first launch, TRCC downloads theme packs automatically. If themes are missing:
+On first launch, TRCC downloads theme packs automatically. If themes are missing,
+fetch the pack for your panel's resolution:
 ```bash
-trcc download
+trcc system download 320 320
 ```
 
-CLI:
+CLI (`0402:3922` is an example key — use your own from `trcc detect`):
 ```bash
-trcc theme-list                   # list local themes
-trcc theme-load Theme1            # load by name
-trcc theme-load Theme1 -p        # load with live ANSI preview
-trcc mask-list                    # list available masks
+trcc theme list 0402:3922                  # list local themes
+trcc display load-theme 0402:3922 Theme1   # load by name
+trcc display list-masks 0402:3922          # list available masks
 ```
 
 ### Cloud Themes
@@ -289,10 +289,10 @@ rm -rf ~/.trcc
 
 To change language:
 ```bash
-trcc lang-set de    # German
-trcc lang-set ja    # Japanese
-trcc lang-set zh    # Chinese
-trcc lang-list      # show all available languages
+trcc config language de          # German
+trcc config language ja          # Japanese
+trcc config language zh          # Chinese
+trcc system list-languages       # show all available languages
 ```
 
 ---
@@ -301,16 +301,18 @@ trcc lang-list      # show all available languages
 
 ### Autostart on Login
 ```bash
-trcc install-desktop
+trcc system autostart enable     # per-user, no sudo
+trcc system autostart status     # check whether it is on
 ```
-Creates a `.desktop` file and autostart entry. TRCC starts minimized to tray and restores your last theme.
+Installs the autostart entry. TRCC starts minimized to tray and restores your last theme.
 
 ### Run in Background (Headless)
 ```bash
-trcc theme-load Theme1
-trcc resume
+trcc display load-theme 0402:3922 Theme1
+trcc display resume
 ```
-No GUI needed — theme plays directly on the LCD.
+No GUI needed — theme plays directly on the LCD. `resume` re-discovers the
+device and restores its last theme, so it is what an autostart/service unit runs.
 
 ### Debug Mode
 ```bash
@@ -325,8 +327,8 @@ TRCC supports multiple LCD/LED devices simultaneously. Each device gets its own 
 Set brightness from the CLI or API on a cron job:
 ```bash
 # Low brightness at night (crontab -e)
-0 22 * * * trcc brightness 30
-0 8  * * * trcc brightness 100
+0 22 * * * trcc display set-brightness 0402:3922 30
+0 8  * * * trcc display set-brightness 0402:3922 100
 ```
 
 ### Custom Overlay Fonts
