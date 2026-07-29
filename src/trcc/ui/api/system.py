@@ -224,7 +224,10 @@ def current_language(request: Request) -> LanguageResult:
     ``GET /i18n/language``.
     """
     log.info("api GET /system/language")
-    lang = request.app.state.trcc.settings.app.language
+    # Via the Command bus, not .settings — the API's App is an AppProxy
+    # under TRCC_DAEMON=1, and that exposes dispatch() only (same shape
+    # as #249's play-video crash).
+    lang = request.app.state.trcc.dispatch(ControlCenterSnapshot()).language
     return LanguageResult(ok=True, language=lang, message=lang)
 
 
@@ -241,7 +244,11 @@ def app_status(request: Request) -> AppStatusResponse:
     """
     log.info("api GET /system/status")
     trcc = request.app.state.trcc
-    app_settings = trcc.settings.app
+    # App prefs via the bus, not .settings (#249).  NOTE: the ``trcc.platform``
+    # / ``trcc.devices`` reads below are still in-process-only, so this route
+    # remains daemon-unsafe as a whole — tracked separately; converting it
+    # needs an autostart-state + attached-device Command.
+    app_settings = trcc.dispatch(ControlCenterSnapshot())
     autostart_enabled = trcc.platform.autostart().is_enabled()
 
     lcd_devices: list[AppStatusEntry] = []

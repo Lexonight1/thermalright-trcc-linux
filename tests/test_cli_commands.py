@@ -1190,6 +1190,27 @@ def test_every_sub_app_has_commands_registered() -> None:
 
 # ── `display play` on a VIDEO theme (#150) ────────────────────────────
 
+def _render_dispatch_stub(*, theme_name: str):
+    """Dispatch stub for the `display play` loop.
+
+    `play` dispatches more than one Command: RestoreDeviceState + RenderAndSend
+    per tick, and ControlCenterSnapshot to read the refresh interval (it used to
+    read app.settings directly, which crashed under TRCC_DAEMON=1 — #249).  A
+    stub that returns RenderResult for EVERYTHING makes the interval read blow
+    up with AttributeError, so answer each Command with its own Result type.
+    """
+    from trcc.core.commands import ControlCenterSnapshot
+    from trcc.core.results import ControlCenterSnapshotResult, RenderResult
+
+    def _dispatch(cmd):
+        if isinstance(cmd, ControlCenterSnapshot):
+            return ControlCenterSnapshotResult(ok=True, refresh_interval_s=2.0)
+        return RenderResult(ok=True, key="0416:5302", message="ok",
+                            bytes_sent=153600, theme_name=theme_name)
+
+    return _dispatch
+
+
 def test_display_play_advances_an_active_video(
     cli_runner: CliRunner, cli_app, monkeypatch,
 ) -> None:
@@ -1205,7 +1226,6 @@ def test_display_play_advances_an_active_video(
     Drives the real command body: `play` loops forever, so time.sleep is the
     seam -- raise KeyboardInterrupt there and the handler exits after one tick.
     """
-    from trcc.core.results import RenderResult
     from trcc.ui.cli import display as cli_display
 
     class _FakePlayback:
@@ -1231,8 +1251,7 @@ def test_display_play_advances_an_active_video(
     monkeypatch.setattr(_time, "sleep", _one_tick)   # `play` does `import time` inside
     monkeypatch.setattr(
         cli_app, "dispatch",
-        lambda cmd: RenderResult(ok=True, key="0416:5302", message="ok",
-                               bytes_sent=153600, theme_name="Misfiled"),
+        _render_dispatch_stub(theme_name="Misfiled"),
     )
 
     result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])
@@ -1249,7 +1268,6 @@ def test_display_play_stays_quiet_for_a_normal_theme(
     cli_runner: CliRunner, cli_app, monkeypatch,
 ) -> None:
     """No nag on a still theme — the note must mean something when it appears."""
-    from trcc.core.results import RenderResult
     from trcc.ui.cli import display as cli_display
 
     def _one_tick(_s):
@@ -1259,8 +1277,7 @@ def test_display_play_stays_quiet_for_a_normal_theme(
     monkeypatch.setattr(_time, "sleep", _one_tick)
     monkeypatch.setattr(
         cli_app, "dispatch",
-        lambda cmd: RenderResult(ok=True, key="0416:5302", message="ok",
-                               bytes_sent=153600, theme_name="Theme1"),
+        _render_dispatch_stub(theme_name="Theme1"),
     )
 
     result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])

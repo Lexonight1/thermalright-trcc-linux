@@ -308,11 +308,7 @@ def play_video(key: str, body: PlayVideoRequest,
         "api POST /devices/{key}/display/play-video: key=%s path=%s fps=%s",
         key, body.path, body.fps,
     )
-    # Persist the override BEFORE playing — mirrors ``LoadCloudTheme`` /
-    # ``SetBackground``.  Without this a later ``SaveTheme`` has nothing
-    # in ``DeviceSettings.background_path`` to bake in and the saved
-    # theme reloads with no background.
-    request.app.state.trcc.settings.set_background_path(key, body.path)
+    # PlayVideo persists the background path itself (#249).
     result = request.app.state.trcc.dispatch(
         PlayVideo(key=key, path=Path(body.path), fps=body.fps),
     )
@@ -712,14 +708,7 @@ async def create_theme(
 
     animated = bg_suffix in _CREATE_THEME_VID_EXTS
     if animated:
-        # Persist the background override BEFORE playing it — mirrors
-        # ``LoadCloudTheme`` / ``SetBackground``.  Without this, a later
-        # ``SaveTheme`` has nothing in ``DeviceSettings.background_path``
-        # to bake into the saved theme dir and the reload comes back
-        # with no background.
-        request.app.state.trcc.settings.set_background_path(
-            key, str(bg_path),
-        )
+        # PlayVideo persists the background path itself (#249).
         play_result = request.app.state.trcc.dispatch(
             PlayVideo(key=key, path=bg_path),
         )

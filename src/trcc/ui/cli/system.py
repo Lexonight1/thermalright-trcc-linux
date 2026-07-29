@@ -153,7 +153,8 @@ def lang() -> None:
     digging through ``snapshot``.  Use ``set-language`` to change it.
     """
     log.info("cli system lang")
-    typer.echo(get_app().settings.app.language)
+    # Via the bus, not .settings — AppProxy exposes dispatch() only (#249).
+    typer.echo(get_app().dispatch(ControlCenterSnapshot()).language)
 
 
 @app.command("doctor")

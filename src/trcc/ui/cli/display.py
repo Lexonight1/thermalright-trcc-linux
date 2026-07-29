@@ -12,6 +12,7 @@ from ...core.commands import (
     ApplyMask,
     ConfigureSlideshow,
     ConnectDevice,
+    ControlCenterSnapshot,
     DeleteOverlayElement,
     DiscoverDevices,
     EnableOverlay,
@@ -309,11 +310,9 @@ def play_video(
     log.info("cli display play-video: key=%s path=%s fps=%s", key, path, fps)
     app_obj = get_app()
     ensure_connected(app_obj, key)
-    # Persist the override BEFORE playing — mirrors ``LoadCloudTheme`` /
-    # ``SetBackground``.  Without this a later ``theme save`` has nothing
-    # in ``DeviceSettings.background_path`` to bake in and the saved
-    # theme reloads with no background.
-    app_obj.settings.set_background_path(key, str(path))
+    # PlayVideo persists the background path itself — reaching for
+    # app_obj.settings here crashed under TRCC_DAEMON=1, where AppProxy
+    # exposes dispatch() only (#249).
     result = app_obj.dispatch(PlayVideo(key=key, path=path, fps=fps))
     typer.echo(result.message)
     if not result.ok:
@@ -458,7 +457,14 @@ def play(
     if not restore.ok:
         typer.echo(restore.message, err=True)
         raise typer.Exit(code=1)
-    tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
+    if interval is not None:
+        tick_s = interval
+    else:
+        # Via the Command bus, not app_obj.settings — under TRCC_DAEMON=1
+        # app_obj is an AppProxy that exposes dispatch() only, so touching
+        # .settings raised AttributeError and `display play` died before the
+        # first frame (#249).
+        tick_s = app_obj.dispatch(ControlCenterSnapshot()).refresh_interval_s
     tick_s = max(0.05, tick_s)
 
     typer.echo(f"Playing on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")

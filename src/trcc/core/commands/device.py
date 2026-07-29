@@ -802,6 +802,18 @@ class PlayVideo(Command[VideoResult]):
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
 
+        # Persist the override now that we know it LOADS.  Without this a
+        # later ``theme save`` has nothing in ``DeviceSettings.background_path``
+        # to bake in and the saved theme reloads with no background.
+        #
+        # This belongs to the Command, not its callers: the CLI and the two
+        # API routes each wrote it themselves before dispatching (qtgui never
+        # did, so that skin silently lost the background on save), and under
+        # ``TRCC_DAEMON=1`` the CLI's write crashed outright — ``AppProxy``
+        # exposes only ``dispatch``, so ``app.settings`` raised AttributeError
+        # and play-video never even reached the wire (#249).
+        app.settings.set_background_path(self.key, str(self.path))
+
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
 

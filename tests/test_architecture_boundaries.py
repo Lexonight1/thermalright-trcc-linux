@@ -600,3 +600,40 @@ def test_local_theme_browser_view_does_no_filesystem_walk() -> None:
         "theme browser View does filesystem traversal — listing must come from "
         f"ListThemes (set_themes), deletion from DeleteTheme: {offenders}"
     )
+
+
+# =========================================================================
+# Daemon-safety: CLI / API must reach App state through Commands only
+# =========================================================================
+
+
+def test_cli_and_api_never_touch_app_settings_directly() -> None:
+    """The command-only UIs must not read/write ``app.settings``.
+
+    Under ``TRCC_DAEMON=1`` those adapters hold an ``AppProxy``, which exposes
+    ``dispatch(cmd)`` and raises ``AttributeError`` for everything else.  So a
+    bare ``app.settings.…`` works in-process and CRASHES against a daemon —
+    exactly how ``display play-video`` died before reaching the wire, and
+    ``display play`` / ``led play`` / ``GET /system/language`` alongside it
+    (#249).  It is also a hexagonal breach: state changes belong to Commands,
+    which every UI already dispatches, so routing through the bus keeps
+    CLI / API / GUI / qtgui identical AND daemon-safe.
+
+    Detects ``<anything>.settings`` attribute access in ui/cli + ui/api.  The
+    fix is always a Command: ``ControlCenterSnapshot`` to read app prefs,
+    ``Set*`` / the owning Command to write.
+    """
+    offenders: list[str] = []
+    for path in _files_under("trcc/ui/cli", "trcc/ui/api"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "settings":
+                offenders.append(
+                    f"{path.relative_to(_SRC)}:{node.lineno} — "
+                    f"reaches .settings directly"
+                )
+    assert not offenders, (
+        "CLI/API must query + mutate App state via Commands, never "
+        "app.settings (AppProxy exposes dispatch() only, so these crash "
+        "under TRCC_DAEMON=1):\n  " + "\n  ".join(offenders)
+    )

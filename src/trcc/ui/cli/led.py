@@ -7,6 +7,7 @@ import typer
 
 from ...core._colors import parse_hex
 from ...core.commands import (
+    ControlCenterSnapshot,
     EnableLedTestMode,
     InitializeLed,
     LedSnapshot,
@@ -438,7 +439,13 @@ def play(
 
     app_obj = get_app()
     ensure_connected(app_obj, key)   # once, before the loop (not per tick)
-    tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
+    if interval is not None:
+        tick_s = interval
+    else:
+        # Via the Command bus, not app_obj.settings — AppProxy exposes
+        # dispatch() only, so touching .settings crashes under
+        # TRCC_DAEMON=1 (same shape as #249's play-video).
+        tick_s = app_obj.dispatch(ControlCenterSnapshot()).refresh_interval_s
     tick_s = max(0.05, tick_s)
 
     typer.echo(f"Animating LED on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
