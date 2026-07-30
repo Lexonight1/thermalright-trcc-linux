@@ -115,16 +115,30 @@ def configure_logging(
     setattr(file_handler, _HANDLER_TAG, True)
     root.addHandler(file_handler)
 
-    # Per-run log: a SECOND file truncated fresh on open (mode="w").
+    # Per-run log: a SECOND file holding THIS run alone.
     # ``configure_logging`` runs once per process (CLI root callback /
     # launch entry point), so the truncate happens exactly once per app
-    # init and the file holds this run alone.  Still a RotatingFileHandler
-    # so a long-lived ``-v`` session (video DEBUG can emit ~30–90 lines/s)
-    # can't grow the file without bound — it rolls at ``latest_max_bytes``
-    # keeping one backup (worst case 2× the cap on disk).
+    # init.  Still a RotatingFileHandler so a long-lived ``-v`` session
+    # (video DEBUG can emit ~30–90 lines/s) can't grow the file without
+    # bound — it rolls at ``latest_max_bytes`` keeping one backup (worst
+    # case 2× the cap on disk).
+    #
+    # The truncate is done HERE, explicitly, and not via ``mode="w"``:
+    # ``RotatingFileHandler`` SILENTLY discards the mode whenever
+    # ``maxBytes > 0`` (CPython forces ``"a"`` so a rollover has something to
+    # append to).  Passing ``mode="w"`` looked right and did nothing, so the
+    # per-run file was append-only and spanned days.  Reading a stale window
+    # as if it were the current run caused three separate misdiagnoses — the
+    # file said what you expected because a PREVIOUS run had put it there.
     latest_file = log_file.with_name(f"{log_file.stem}.latest{log_file.suffix}")
+    truncate_error: OSError | None = None
+    try:
+        latest_file.parent.mkdir(parents=True, exist_ok=True)
+        latest_file.write_bytes(b"")
+    except OSError as e:      # read-only dir / permissions — keep logging
+        truncate_error = e
     latest_handler = RotatingFileHandler(
-        latest_file, mode="w", maxBytes=latest_max_bytes, backupCount=1,
+        latest_file, maxBytes=latest_max_bytes, backupCount=1,
         encoding="utf-8",
     )
     latest_handler.setLevel(level)
@@ -145,6 +159,14 @@ def configure_logging(
         log_file, latest_file, logging.getLevelName(level),
         max_bytes, backup_count, logging.getLevelName(stderr_level),
     )
+    if truncate_error is not None:
+        # Deliberately loud: a latest-log that still holds a previous run is
+        # exactly what makes a diagnosis read the wrong window.
+        log.warning(
+            "configure_logging: could not truncate %s (%s) — it still holds "
+            "EARLIER runs; check timestamps before trusting any line in it",
+            latest_file, truncate_error,
+        )
 
 
 def tail_log(log_file: Path, n_lines: int = 1000) -> list[str]:

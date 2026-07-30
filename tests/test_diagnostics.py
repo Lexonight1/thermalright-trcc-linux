@@ -48,6 +48,39 @@ def test_configure_logging_is_idempotent(tmp_path: Path) -> None:
     assert initial == after
 
 
+def test_latest_log_holds_only_the_current_run(tmp_path: Path) -> None:
+    """``<stem>.latest.log`` must be truncated per run — the whole point of it.
+
+    It was not, for a long time: ``RotatingFileHandler`` SILENTLY discards
+    ``mode="w"`` when ``maxBytes > 0`` (CPython forces ``"a"``), so the
+    per-run file quietly accumulated days of runs.  Reading a stale window as
+    the current run caused repeated misdiagnoses — the file contained what you
+    expected because an EARLIER run had written it.
+    """
+    import logging
+
+    log_file = tmp_path / "trcc.log"
+    latest = tmp_path / "trcc.latest.log"
+
+    configure_logging(log_file)
+    logging.getLogger("trcc.test").warning("run-one-marker")
+    assert "run-one-marker" in latest.read_text(encoding="utf-8")
+
+    # A second process/init: the previous run's lines must be GONE.
+    configure_logging(log_file)
+    logging.getLogger("trcc.test").warning("run-two-marker")
+
+    body = latest.read_text(encoding="utf-8")
+    assert "run-two-marker" in body
+    assert "run-one-marker" not in body, (
+        "latest.log still holds the previous run — it is append-only again, "
+        "and any diagnosis reading it can land on a stale window"
+    )
+    # The cumulative history file keeps BOTH — that is its job.
+    history = log_file.read_text(encoding="utf-8")
+    assert "run-one-marker" in history and "run-two-marker" in history
+
+
 def test_tail_log_handles_missing_file(tmp_path: Path) -> None:
     assert tail_log(tmp_path / "absent.log") == []
 
