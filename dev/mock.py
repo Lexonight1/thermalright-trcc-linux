@@ -77,7 +77,12 @@ def _run_qtgui() -> int:
             mock_gui._auto_connect(app, spec)
 
     from trcc.ui.qtgui import run
-    return run(platform, on_ready=_on_ready if specs else None)
+    # ``force_exit=False`` so the mock returns normally instead of ``os._exit``
+    # — same contract mock_gui uses for the gui skin, and what lets a harness
+    # assert on the exit code.
+    return run(
+        platform, on_ready=_on_ready if specs else None, force_exit=False,
+    )
 
 
 def main() -> None:

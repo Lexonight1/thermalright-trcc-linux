@@ -62,3 +62,114 @@ def test_gui_direct_entry_shows_window(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit):
         gui()
     assert captured["start_hidden"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────
+# qtgui: a genuine close must END THE EVENT LOOP
+#
+# ``quitOnLastWindowClosed`` is False in both skins so a window-close hides
+# to the tray.  That makes ``event.accept()`` insufficient on a real quit:
+# ``qapp.exec()`` never returns, so ``run``'s ``finally: app.close()`` never
+# runs — the metrics thread kept polling, the panel stayed lit and /dev/sgN
+# stayed held.  gui always called ``app.quit()`` here; qtgui did not.
+#
+# Exercised on an uninitialised instance (the pattern in
+# test_qtgui_video_ticker): closeEvent touches only _tray / _ticker / _video.
+# ─────────────────────────────────────────────────────────────────────
+
+
+class _FakeEvent:
+    def __init__(self) -> None:
+        self.accepted = False
+        self.ignored = False
+
+    def accept(self) -> None:
+        self.accepted = True
+
+    def ignore(self) -> None:
+        self.ignored = True
+
+
+class _FakeTray:
+    """``intercept_close`` returns True when the close is diverted to tray."""
+
+    def __init__(self, *, divert: bool) -> None:
+        self._divert = divert
+
+    def intercept_close(self, event: object) -> bool:
+        return self._divert
+
+
+class _StopCounter:
+    def __init__(self) -> None:
+        self.stopped = 0
+
+    def stop(self) -> None:
+        self.stopped += 1
+
+
+def _make_window(*, divert: bool):
+    from trcc.ui.qtgui.app import MainWindow
+
+    win = MainWindow.__new__(MainWindow)
+    win._tray = _FakeTray(divert=divert)      # type: ignore[attr-defined]
+    win._ticker = _StopCounter()              # type: ignore[attr-defined]
+    win._video = {"0402:3922": _StopCounter()}  # type: ignore[attr-defined]
+    return win
+
+
+def _patch_qapp(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record ``quit()`` on the session's real QApplication.
+
+    Spying on the method rather than replacing ``QApplication.instance``:
+    the instance is shared session-wide (the ``_qapplication`` fixture), so
+    swapping it out breaks unrelated teardown.
+    """
+    quits: list[str] = []
+
+    import trcc.ui.qtgui.app as qtgui_app
+
+    def _record(_self: object) -> None:
+        quits.append("quit")
+
+    monkeypatch.setattr(qtgui_app.QApplication, "quit", _record)
+    return quits
+
+
+def test_qtgui_genuine_close_quits_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reported bug: exiting qtgui left the process running forever."""
+    quits = _patch_qapp(monkeypatch)
+    win = _make_window(divert=False)
+    event = _FakeEvent()
+
+    win.closeEvent(event)
+
+    assert event.accepted is True
+    assert quits == ["quit"], (
+        "a genuine close did not quit the event loop — qapp.exec() never "
+        "returns, so App.close() (panel blank + device release) never runs"
+    )
+    assert win._ticker.stopped == 1              # type: ignore[attr-defined]
+    assert win._video["0402:3922"].stopped == 1  # type: ignore[attr-defined]
+
+
+def test_qtgui_close_to_tray_does_not_quit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hide-to-tray must still hide, not exit.
+
+    The guard against over-fixing the above: closing the window with a tray
+    available keeps the LCD running, so quitting here would be a worse bug
+    than the one being fixed.
+    """
+    quits = _patch_qapp(monkeypatch)
+    win = _make_window(divert=True)
+    event = _FakeEvent()
+
+    win.closeEvent(event)
+
+    assert quits == [], "a close diverted to the tray must NOT quit the app"
+    assert event.accepted is False
+    assert win._ticker.stopped == 0              # type: ignore[attr-defined]

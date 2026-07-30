@@ -11,6 +11,7 @@ same key the sidebar emits, and add an entry to ``sidebar._ENTRIES``.
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 from collections.abc import Callable
 from functools import partial
@@ -169,6 +170,16 @@ class MainWindow(QMainWindow):
         for updater in self._video.values():
             updater.stop()
         event.accept()
+        # End the event loop so ``run``'s ``finally: app.close()`` actually
+        # runs.  ``quitOnLastWindowClosed`` is False (hide-to-tray), so
+        # accepting the close does NOT return from ``qapp.exec()`` — without
+        # this the process lived on with the metrics thread still polling, the
+        # panel still lit, and /dev/sgN still held.  Same last two lines as
+        # gui's closeEvent; App teardown stays in ``run``'s finally so it
+        # happens exactly once.
+        log.info("MainWindow.closeEvent: real quit — quitting the event loop")
+        if (qapp := QApplication.instance()) is not None:
+            qapp.quit()
 
     def _show_platform_info(self) -> None:
         platform = self._app.platform
@@ -278,6 +289,8 @@ class MainWindow(QMainWindow):
 def run(
     platform: Platform | None = None,
     on_ready: Callable[[MainWindow], None] | None = None,
+    *,
+    force_exit: bool = True,
 ) -> int:
     """Start the qtgui skin from an injected ``Platform``.  Returns the exit code.
 
@@ -324,24 +337,52 @@ def run(
     if on_ready is not None:
         on_ready(window)
 
+    def _on_quit_signal(*_args: object) -> None:
+        """SIGINT / SIGTERM — quit the Qt event loop cleanly.
+
+        SIGTERM is what the session manager / systemd sends at PC shutdown;
+        without it the process is killed before ``qapp.exec()`` returns, so the
+        ``finally`` cleanup never runs and the LCD is left mid-stream showing
+        its last frame (#143).  Parity with ``run_gui`` — qtgui had no signal
+        handling at all, so Ctrl-C and PC shutdown both skipped teardown.
+        """
+        log.info("qtgui: quit signal — stopping the event loop")
+        qapp.quit()
+    signal.signal(signal.SIGINT, _on_quit_signal)
+    signal.signal(signal.SIGTERM, _on_quit_signal)
+
     try:
-        return qapp.exec()
+        exit_code = qapp.exec()
     finally:
-        # Stop the metrics / hotplug / LED threads + disconnect devices so the
-        # process exits cleanly (parity with run_gui's finally: app.close()).
+        # Stop the metrics / hotplug / LED threads, blank + disconnect every
+        # device (parity with run_gui's finally: app.close()).
         app.close()
+        log.info("qtgui run: cleanup complete — process exit")
+
+    # Belt-and-suspenders, same as run_gui: Qt's metrics/sensor/render threads
+    # occasionally outlive ``qapp.exec()``'s return when native libraries
+    # (pynvml, psutil's ffi handles, pyusb) hold the GIL on shutdown.
+    # ``os._exit`` skips atexit handlers and finalizers — cleanup already ran
+    # in the finally above, so this is the safe place to force the kernel to
+    # reap the process.  The dev mock returns normally (``force_exit=False``).
+    if force_exit:
+        import os as _os
+        _os._exit(exit_code)
+    return exit_code
 
 
 def launch(
     platform: Platform | None = None,
     on_ready: Callable[[MainWindow], None] | None = None,
+    *,
+    force_exit: bool = True,
 ) -> int:
     """Back-compat entry — ``trcc qtgui`` and the direct entry points call this.
 
     Identical to :func:`run`; kept as the historical name until the CLI router
     dispatches ``run`` directly.
     """
-    return run(platform, on_ready)
+    return run(platform, on_ready, force_exit=force_exit)
 
 
 # Silence unused-import warnings for QGuiApplication (kept for reference).
