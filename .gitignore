@@ -109,3 +109,6 @@ doc/*.pdf
 
 # C# audit docs (reference only, not for distribution)
 doc/audit/
+
+# Panel pixel-gate snapshots (dev/tools/panel_snapshot.py scratch)
+dev/.panel_snapshots/
