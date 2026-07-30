@@ -1249,3 +1249,53 @@ def test_brightness_slider_debounces_to_one_send(qapp: object) -> None:
 
     assert emitted == [42], emitted
     panel.deleteLater()
+
+
+def test_uc_device_spec_places_every_control_at_its_layout_rect(qapp) -> None:
+    """The sidebar is built from a PanelSpec — its rects must stay Layout's.
+
+    ``UCDevice._setup_ui`` no longer writes coordinates: it renders
+    ``_SPEC_CHROME`` / ``_SPEC_CONTENT`` (``ui/presentation/panel_spec.py``),
+    which is the panel stated as data — a backdrop plus controls at the rects
+    the Windows ``InitializeComponent()`` used.  This pins the spec to
+    ``Layout`` so an edit to either cannot silently move a control, which a
+    render-only check would miss until someone looked at the window.
+    """
+    del qapp
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.constants import Layout
+    from trcc.ui.gui.uc_device import _SPEC_CHROME, _SPEC_CONTENT, UCDevice
+    set_assets_dir(_PKG_ASSETS_DIR)
+
+    panel = UCDevice()
+
+    expected = {
+        "sensor_btn": Layout.SENSOR_BTN,
+        "about_btn": Layout.ABOUT_BTN,
+        "no_devices_label": Layout.NO_DEVICES_LABEL,
+        "hint_label": Layout.HINT_LABEL,
+    }
+    widgets = {
+        "sensor_btn": panel.sensor_btn,
+        "about_btn": panel.about_btn,
+        "no_devices_label": panel.no_devices_label,
+        "hint_label": panel.hint_label,
+    }
+    for name, rect in expected.items():
+        geo = widgets[name].geometry()
+        assert (geo.x(), geo.y(), geo.width(), geo.height()) == rect, (
+            f"{name} is not at Layout.{name.upper()} — the spec and the "
+            f"coordinate table have diverged"
+        )
+
+    # Every control the spec declares was actually built and reachable.
+    declared = {c.id for c in (*_SPEC_CHROME.controls, *_SPEC_CONTENT.controls)}
+    assert declared == set(expected), (
+        f"spec declares {declared}, test pins {set(expected)} — a control "
+        f"was added to the spec without being pinned here"
+    )
+
+    # The empty-state labels belong INSIDE the scroll content, not the panel:
+    # parented to the panel they would float over the device list.
+    assert panel.no_devices_label.parent() is panel.device_area
+    assert panel.hint_label.parent() is panel.device_area
