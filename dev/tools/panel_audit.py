@@ -16,6 +16,11 @@ rather than matters of taste:
                describe the whole skin; a curve that keeps climbing means
                every panel is a special case and the abstraction is wrong.
 
+    intents    Does the INTENT vocabulary close?  Same curve, applied to
+               what activating a control DOES.  A spec control has to say
+               that; if it resolves to a handful of intents the wiring can
+               be declared, and if every handler is a snowflake it cannot.
+
     readiness  Which panels are ready NOW?  A panel is convertible when
                everything it needs is already NAMED.  Anything still written
                as a one-off literal is work to do first — countable, so
@@ -24,6 +29,7 @@ rather than matters of taste:
 Usage::
 
     PYTHONPATH=src python3 dev/tools/panel_audit.py vocab
+    PYTHONPATH=src python3 dev/tools/panel_audit.py intents
     PYTHONPATH=src python3 dev/tools/panel_audit.py readiness
 
 Run ``readiness`` after each conversion: the blocker total is the backlog
@@ -32,6 +38,7 @@ and should visibly fall.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -145,6 +152,84 @@ def vocab() -> int:
     return 0
 
 
+def _intent_of(fn: ast.FunctionDef) -> str:
+    """What does this handler ultimately DO?
+
+    Most specific first: a handler that opens a dialog AND dispatches is a
+    "dialog -> dispatch", not a plain dispatch.  "widget-local only" is not
+    an intent — it is a slider updating its own label, which no spec needs
+    to describe.
+    """
+    body = ast.unparse(fn)
+    dialog = bool(re.search(
+        r"QFileDialog|QMessageBox|QColorDialog|QInputDialog|\.exec\(\)", body))
+    dispatch = "_app.dispatch(" in body or "self.dispatch(" in body
+    handler = bool(re.search(r"\bh\.\w+\(|_active_lcd\(\)|_handlers\[", body))
+    navigate = bool(re.search(
+        r"_show_panel\(|setCurrentIndex\(|\.show\(\)|\.hide\(\)", body))
+
+    if dialog and dispatch:
+        return "dialog -> dispatch"
+    if dialog:
+        return "dialog only"
+    if dispatch:
+        return "dispatch"
+    if handler:
+        return "call device handler"
+    if "invoke_delegate(" in body:
+        return "invoke_delegate (bubble up)"
+    if re.search(r"\.emit\(", body):
+        return "emit signal (bubble up)"
+    if navigate:
+        return "navigate / show-hide"
+    if "settings.set_" in body or "conf.save" in body:
+        return "write settings"
+    return "widget-local only"
+
+
+def intents() -> int:
+    """Novelty curve over handler INTENTS — can the wiring be declared?"""
+    files = sorted(SRC.glob("*.py"), key=lambda p: p.stat().st_size,
+                   reverse=True)
+    seen: set[str] = set()
+    counts: Counter[str] = Counter()
+    total = 0
+
+    print(f"{'file':26}{'handlers':>9}{'new intents':>13}")
+    print("-" * 50)
+    for path in files:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        kinds = [
+            _intent_of(n) for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name.startswith("_on_")
+        ]
+        if not kinds:
+            continue
+        new = set(kinds) - seen
+        seen |= new
+        counts.update(kinds)
+        total += len(kinds)
+        print(f"{path.stem:26}{len(kinds):9}{len(new):13}")
+
+    print(f"\n{total} handlers, {len(seen)} distinct intents\n")
+    widest = max(counts.values()) if counts else 1
+    for kind, n in counts.most_common():
+        print(f"  {n:4} {kind:28} {'#' * (n * 40 // widest)}")
+
+    tail = sum(n for k, n in counts.items() if n <= 2)
+    local = counts.get("widget-local only", 0)
+    print(f"\nlong tail (intents used <=2 times): {tail}/{total} handlers")
+    print(f"widget-local (need no intent at all): {local}/{total}")
+    print(f"actual wiring surface: {total - local} handlers")
+    print("\nA decaying curve with a small tail means the wiring can be "
+          "declared.\nA flat curve, or a fat tail, means every handler is a "
+          "special case.")
+    return 0
+
+
 @dataclass
 class Readiness:
     name: str
@@ -227,6 +312,8 @@ def main() -> int:
     action = sys.argv[1] if len(sys.argv) > 1 else ""
     if action == "vocab":
         return vocab()
+    if action == "intents":
+        return intents()
     if action == "readiness":
         return readiness()
     print(__doc__)
