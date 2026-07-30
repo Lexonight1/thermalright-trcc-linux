@@ -144,8 +144,27 @@ class LoadTheme(Command[ThemeResult]):
         # keep-alive) the user's current cloud background + playback must
         # survive, otherwise picking the System-Info tab silently reverted the
         # background to the theme's bundled one (StopVideo cleared the override).
-        if self.reset_overrides:
+        #
+        # A video-backed new theme is a REPLACE, not a stop-then-start, so it
+        # skips the unload: ``PlayVideo`` below overwrites the playback AND the
+        # background_path override atomically (``MediaService.load_video``
+        # assigns ``_playbacks[key]``; ``PlayVideo`` persists the new path).
+        # Unloading first opened a window where the device was mid-load with no
+        # playback at all — every render fired in that window (MaskApplied,
+        # MaskPositionChanged, and any SensorsUpdated off the metrics thread)
+        # found none and re-decoded the whole video just to paint one frame,
+        # which is what made one theme apply cost three full decodes.  The
+        # static path still stops, so an animated→static switch clears the old
+        # animation exactly as before.
+        video_path = app.themes.video_path(theme)
+        if self.reset_overrides and video_path is None:
             StopVideo(key=self.key).execute(app)
+        elif video_path is not None:
+            log.info(
+                "LoadTheme: %s is video-backed (%s) — replacing the playback "
+                "in place, not stopping it first",
+                theme.name, video_path.name,
+            )
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         log.info(
             "LoadTheme: %s loaded — prior playback + cloud-bg override "
@@ -293,7 +312,8 @@ class LoadTheme(Command[ThemeResult]):
         # local + cloud + user-loaded videos — UI handler subscribes
         # once and starts its animation timer for any of them.  Static
         # themes (00.png) keep the build-frame-and-send path below.
-        video_path = app.themes.video_path(theme)
+        # ``video_path`` was resolved up top — it decides both the
+        # stop-vs-replace branch and this dispatch, so it is read once.
         if video_path is not None:
             log.info(
                 "LoadTheme: %s has bundled video %s — dispatching PlayVideo",

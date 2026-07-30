@@ -1026,25 +1026,18 @@ class DisplayService:
                 path = override
                 ext = path.suffix.lower()
                 if ext in _VIDEO_EXTS:
-                    try:
-                        playback = self._media.load_video(
-                            device_key=info.key, path=path, size=visual_size,
-                        )
-                    except Exception as e:
-                        log.warning(
-                            "resolve_background %s: override video decode "
-                            "failed for %s: %s: %s",
-                            info.key, path.name, type(e).__name__, e,
-                        )
-                        return None
-                    log.debug(
-                        "resolve_background %s: override video loaded "
-                        "(%d frames)", info.key, len(playback.frames),
+                    # A video background is owned by ``PlayVideo`` — the only
+                    # decoder.  Reaching here means the override names a video
+                    # with no playback loaded, so there is no frame to paint;
+                    # decoding it HERE is what a render must never do (see the
+                    # note on the theme-video branch below).
+                    log.warning(
+                        "resolve_background %s: override %s is a video with "
+                        "no playback loaded — PlayVideo owns the decode, "
+                        "skipping background this frame",
+                        info.key, path.name,
                     )
-                    frame = playback.current
-                    return (
-                        self._r.from_raw_rgb24(frame) if frame else None
-                    )
+                    return None
                 if ext in _IMAGE_EXTS:
                     return self._r.open_image(path)
             else:
@@ -1067,21 +1060,25 @@ class DisplayService:
                   info.key, theme.name, path)
 
         if ext in _VIDEO_EXTS:
-            try:
-                playback = self._media.load_video(
-                    device_key=info.key, path=path, size=visual_size,
-                )
-            except Exception as e:
-                log.warning("resolve_background %s: video decode failed for "
-                            "%s: %s: %s",
-                            info.key, path.name, type(e).__name__, e)
-                return None
-            log.debug(
-                "resolve_background %s: video loaded (%d frames) from %s",
-                info.key, len(playback.frames), path,
+            # Rendering is a READ.  ``PlayVideo`` is the single decoder — it
+            # owns the decode-size policy (oriented canvas, native for user
+            # assets), and every path that wants a video playing dispatches it
+            # (LoadTheme, SetBackground, LoadCloudTheme, RestoreLastTheme).
+            #
+            # This branch used to call ``load_video`` itself, which meant a
+            # render could cost a full decode.  Two renders racing (the GUI
+            # thread inside LoadTheme, and the metrics thread — EventBus
+            # publishes on the caller's thread) both found no playback and both
+            # decoded the same file, then PlayVideo decoded it a third time.
+            # It also decoded at ``visual_size`` rather than PlayVideo's canvas
+            # size, so which path won changed how a user upload got scaled.
+            log.warning(
+                "resolve_background %s: theme %r background %s is a video "
+                "with no playback loaded — PlayVideo owns the decode, "
+                "skipping background this frame",
+                info.key, theme.name, path.name,
             )
-            frame = playback.current
-            return self._r.from_raw_rgb24(frame) if frame else None
+            return None
 
         if ext in _IMAGE_EXTS:
             return self._r.open_image(path)

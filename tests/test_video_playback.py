@@ -888,3 +888,150 @@ def test_tick_display_honours_pause(
 
 
 _ = FitMode   # keep ruff happy
+
+
+# ─────────────────────────────────────────────────────────────────────
+# One decode per apply — the 33-second theme apply
+#
+# Applying a video theme decoded the SAME file three times: LoadTheme
+# unloaded the playback, and every render that fired before PlayVideo
+# reloaded it (``_resolve_background`` used to call ``load_video``
+# itself).  Two of those renders raced — the GUI thread inside LoadTheme
+# and the metrics thread, since EventBus publishes on the caller's
+# thread.  Measured on real hardware: 33 s for one apply.
+# ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def rendering_app(connected_app: App) -> App:
+    """``connected_app`` with a real Renderer attached.
+
+    The module's ``app`` fixture deliberately runs renderer-free (playback
+    behaviour is tested by stubbing).  These tests need one: LoadTheme
+    returns "no Renderer attached" before it ever reaches the video branch,
+    and RenderAndSend needs a DisplayService.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+
+    connected_app.set_renderer(QtRenderer())
+    return connected_app
+
+
+def _write_video_theme(directory: Path, name: str) -> Path:
+    """A theme dir whose background is a bundled video."""
+    import json
+
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True, exist_ok=True)
+    (theme_dir / "trcc.json").write_text(
+        json.dumps({"name": name, "width": 320, "height": 320,
+                    "elements": []}), encoding="utf-8",
+    )
+    (theme_dir / "Theme.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    return theme_dir
+
+
+def _write_static_theme(directory: Path, name: str) -> Path:
+    """A theme dir with a static 00.png background."""
+    import json
+
+    theme_dir = directory / name
+    theme_dir.mkdir(parents=True, exist_ok=True)
+    (theme_dir / "trcc.json").write_text(
+        json.dumps({"name": name, "width": 320, "height": 320,
+                    "elements": []}), encoding="utf-8",
+    )
+    (theme_dir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    return theme_dir
+
+
+def test_video_theme_apply_decodes_exactly_once(
+    rendering_app: App, stub_media: list, tmp_home: Path,
+) -> None:
+    """Each apply of a video theme costs ONE decode — including repeats.
+
+    The regression this pins is the repeat apply: the first-ever load was
+    always one decode, but re-applying (or switching between video themes)
+    unloaded the playback and let the intervening renders decode it back,
+    then PlayVideo decoded it again.
+    """
+    from trcc.core.commands import LoadTheme
+
+    theme = _write_video_theme(tmp_home, "vid")
+
+    for attempt in range(1, 4):
+        before = len(stub_media)
+        result = rendering_app.dispatch(LoadTheme(key=_KEY, path=theme))
+        assert result.ok, result.message
+        decodes = len(stub_media) - before
+        assert decodes == 1, (
+            f"apply #{attempt} decoded {decodes}x, expected 1 — a render is "
+            f"decoding again, or the playback is being unloaded first"
+        )
+
+
+def test_render_never_decodes_a_video(
+    rendering_app: App, stub_media: list, tmp_home: Path,
+) -> None:
+    """Rendering is a READ — ``PlayVideo`` is the only decoder.
+
+    A render of a video-backed theme with no playback loaded must paint no
+    background rather than decode one.  Decoding here is what let a render
+    cost 16 seconds, and it used the wrong size policy (``visual_size``
+    instead of PlayVideo's oriented canvas).
+    """
+    from trcc.core.commands import RenderAndSend
+    from trcc.services.theme import ThemeService
+
+    theme = _write_video_theme(tmp_home, "vid")
+    rendering_app.active_themes[_KEY] = ThemeService().load(theme)
+    rendering_app.media.unload(_KEY)
+    stub_media.clear()
+
+    rendering_app.dispatch(RenderAndSend(key=_KEY))
+
+    assert stub_media == [], (
+        "a render decoded a video — _resolve_background must not call "
+        "load_video"
+    )
+
+
+def test_video_theme_replaces_playback_static_theme_stops_it(
+    rendering_app: App, stub_media: list, tmp_home: Path,
+) -> None:
+    """Switching TO a video replaces in place; switching to static stops.
+
+    Replacing avoids a window where the device is mid-load with no playback
+    (every render in that window re-decoded).  The static path must keep
+    stopping, or an animated→static switch silently keeps showing the old
+    animation — a bug LoadTheme's ordering was written to fix.
+    """
+    from trcc.core.commands import LoadTheme
+
+    stopped: list[VideoStopped] = []
+    rendering_app.events.subscribe(
+        VideoStopped, stopped.append,  # type: ignore[arg-type]
+    )
+
+    first = _write_video_theme(tmp_home, "vid1")
+    rendering_app.dispatch(LoadTheme(key=_KEY, path=first))
+    assert rendering_app.media.playback(_KEY) is not None
+    stopped.clear()
+
+    # video → video: replaced, never stopped.
+    second = _write_video_theme(tmp_home, "vid2")
+    rendering_app.dispatch(LoadTheme(key=_KEY, path=second))
+    assert stopped == [], (
+        "a video→video switch published VideoStopped — the playback was "
+        "unloaded instead of replaced"
+    )
+    assert rendering_app.media.playback(_KEY) is not None
+
+    # video → static: stopped, and the playback is gone.
+    static = _write_static_theme(tmp_home, "still")
+    rendering_app.dispatch(LoadTheme(key=_KEY, path=static))
+    assert len(stopped) == 1, (
+        "a video→static switch must stop the video, or the old animation "
+        "keeps playing under the new theme"
+    )
+    assert rendering_app.media.playback(_KEY) is None
