@@ -663,6 +663,14 @@ class TickDisplay(Command[RenderResult]):
         # frame without moving the cursor), so pause needs no check here — and
         # the callers that used to hand-roll one lose it rather than move it.
         playback.advance()
+        # Resolved values, not intent: the frame actually reached is what
+        # reproduces "the video is stuck" / "it plays at the wrong speed"
+        # from a reporter's log alone.  Per-tick, so DEBUG.
+        log.debug(
+            "TickDisplay %s: advanced to frame %d/%d (interval=%dms, paused=%s)",
+            self.key, playback.cursor, playback.frame_count,
+            playback.interval_ms, playback.paused,
+        )
         result = RenderAndSend(key=self.key).execute(app)
         return replace(
             result,

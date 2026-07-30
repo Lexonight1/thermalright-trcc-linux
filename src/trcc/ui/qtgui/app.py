@@ -242,7 +242,12 @@ class MainWindow(QMainWindow):
             updater.stop()
 
     def _on_video_tick(self, key: str) -> None:
-        """One video frame for *key* — advance the cursor, render, send."""
+        """One video frame for *key* — advance the cursor, render, send.
+
+        Per-tick (~30 Hz), so DEBUG — never INFO, or one video buries every
+        user-action line in the log.
+        """
+        log.debug("_on_video_tick: key=%s", key)
         try:
             self._app.dispatch(TickDisplay(key=key))
         except Exception as e:
