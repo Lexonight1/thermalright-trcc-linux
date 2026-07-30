@@ -61,6 +61,26 @@ class ImageButton:
 
 
 @dataclass(frozen=True, slots=True)
+class IconButton:
+    """A toolbar button: one icon, text fallback when the asset is missing.
+
+    Distinct from :class:`ImageButton`, which carries a normal/active image
+    PAIR for a checkable sidebar control.  This is the single-icon toolbar
+    shape the cut panels use — different enough that folding them into one
+    kind would mean a field that is meaningless half the time.
+
+    ``image`` is a bare filename here rather than an ``Assets`` attribute
+    name, because that is what these panels already pass; the renderer
+    accepts either.
+    """
+    id: str
+    rect: Rect
+    image: str
+    fallback: str = ""
+    parent: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Label:
     """Static text at a rect.
 
@@ -78,7 +98,7 @@ class Label:
     parent: str | None = None
 
 
-Control = ImageButton | Label
+Control = ImageButton | IconButton | Label
 
 
 @dataclass(frozen=True, slots=True)

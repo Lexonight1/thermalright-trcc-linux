@@ -49,6 +49,11 @@ def _build_uc_device(devices: list[dict]) -> Any:
     return panel
 
 
+def _build_uc_image_cut() -> Any:
+    from trcc.ui.gui.uc_image_cut import UCImageCut
+    return UCImageCut()
+
+
 # Add a row per panel as it is converted.  Keep builders deterministic — no
 # real device scan, no host-dependent strings.
 #
@@ -60,6 +65,7 @@ def _build_uc_device(devices: list[dict]) -> Any:
 PANELS: dict[str, Callable[[], Any]] = {
     "uc_device": lambda: _build_uc_device(_fake_fleet()),
     "uc_device_empty": lambda: _build_uc_device([]),
+    "uc_image_cut": _build_uc_image_cut,
 }
 
 

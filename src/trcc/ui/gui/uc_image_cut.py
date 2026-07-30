@@ -22,8 +22,9 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from ...core.models import PAN_MULTIPLIERS, panel_asset_dims
+from ..presentation.panel_spec import IconButton, PanelSpec
 from .assets import Assets
-from .base import make_icon_button
+from .panel_renderer import render as render_spec
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,25 @@ BTN_WIDTH_FIT = (233, 656, 34, 26)
 BTN_ROTATE = (297, 656, 34, 26)
 BTN_OK = (446, 656, 34, 26)
 BTN_CLOSE = (474, 510, 16, 16)
+
+
+# ── Panel description ────────────────────────────────────────────────
+# The crop toolbar as data: five icon buttons at the rects defined above.
+# Order matches the original construction sequence — Qt stacks siblings in
+# creation order.
+
+_SPEC = PanelSpec(controls=(
+    IconButton(id="btn_height_fit", rect=BTN_HEIGHT_FIT,
+               image="display_mode_fit_height.png", fallback="H"),
+    IconButton(id="btn_width_fit", rect=BTN_WIDTH_FIT,
+               image="display_mode_fit_width.png", fallback="W"),
+    IconButton(id="btn_rotate", rect=BTN_ROTATE,
+               image="display_mode_rotate.png", fallback="R"),
+    IconButton(id="btn_ok", rect=BTN_OK,
+               image="display_mode_crop.png", fallback="OK"),
+    IconButton(id="btn_close", rect=BTN_CLOSE,
+               image="shared_close.png", fallback="\u2715"),
+))
 
 
 class UCImageCut(QWidget):
@@ -98,16 +118,24 @@ class UCImageCut(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        self._btn_height_fit = make_icon_button(
-            self, BTN_HEIGHT_FIT, 'display_mode_fit_height.png', "H", self._on_height_fit)
-        self._btn_width_fit = make_icon_button(
-            self, BTN_WIDTH_FIT, 'display_mode_fit_width.png', "W", self._on_width_fit)
-        self._btn_rotate = make_icon_button(
-            self, BTN_ROTATE, 'display_mode_rotate.png', "R", self._on_rotate)
-        self._btn_ok = make_icon_button(
-            self, BTN_OK, 'display_mode_crop.png', "OK", self._on_ok)
-        self._btn_close = make_icon_button(
-            self, BTN_CLOSE, 'shared_close.png', "\u2715", self._on_close)
+        """Build the toolbar from ``_SPEC`` — five icon buttons at fixed rects.
+
+        The panel is stated as data (``ui/presentation/panel_spec.py``); the
+        handlers stay here, passed in by control id, because a spec describes
+        controls and not behaviour.
+        """
+        built = render_spec(self, _SPEC, handlers={
+            "btn_height_fit": self._on_height_fit,
+            "btn_width_fit": self._on_width_fit,
+            "btn_rotate": self._on_rotate,
+            "btn_ok": self._on_ok,
+            "btn_close": self._on_close,
+        })
+        self._btn_height_fit = built.button("btn_height_fit")
+        self._btn_width_fit = built.button("btn_width_fit")
+        self._btn_rotate = built.button("btn_rotate")
+        self._btn_ok = built.button("btn_ok")
+        self._btn_close = built.button("btn_close")
 
     # =========================================================================
     # Public API

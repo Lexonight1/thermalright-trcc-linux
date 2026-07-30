@@ -15,6 +15,7 @@ spec layer must not import ``assets.py`` — it pulls in Qt.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -22,12 +23,13 @@ from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
 from ..presentation.panel_spec import (
     Background,
+    IconButton,
     ImageButton,
     Label,
     PanelSpec,
 )
 from .assets import Assets
-from .base import create_image_button, set_background_pixmap
+from .base import create_image_button, make_icon_button, set_background_pixmap
 
 log = logging.getLogger(__name__)
 
@@ -38,13 +40,47 @@ _LABEL_QSS = "color: {color}; font-size: {size}px; background: transparent;"
 
 
 def _asset(name: str) -> str:
-    """Resolve an ``Assets`` attribute name to its filename."""
+    """Resolve an ``Assets`` attribute name to its filename.
+
+    A value that already looks like a filename passes straight through —
+    the cut panels name their icons directly ("shared_close.png") rather
+    than via an ``Assets`` attribute, and warning about those would be
+    noise about correct code.
+    """
+    if "." in name:
+        return name
     value = getattr(Assets, name, None)
     if value is None:
         log.warning("panel_renderer: no Assets.%s — control will fall back",
                     name)
         return name
     return value
+
+
+def _noop() -> None:
+    """Placeholder click handler.
+
+    ``make_icon_button`` connects its handler unconditionally, and a spec
+    carries no behaviour by design.  A control with no handler supplied gets
+    this, so the panel can connect its own afterwards.
+    """
+
+
+def _logged(
+    panel: str, control_id: str, handler: Callable[[], None],
+) -> Callable[[], None]:
+    """Wrap a handler so activating the control logs WHICH control it was.
+
+    A spec control has a stable id, so the log line comes for free and reads
+    the same in every skin — where today each panel hand-writes its own, and
+    the ones nobody wrote are the blind spots CLAUDE.md's logging rules exist
+    to prevent ("a silent panel is a debugging blind spot").  One line per
+    user action, at INFO: these are clicks, not per-frame ticks.
+    """
+    def fire() -> None:
+        log.info("%s.%s activated", panel, control_id)
+        handler()
+    return fire
 
 
 class RenderedPanel:
@@ -94,6 +130,7 @@ def render(
     panel: QWidget,
     spec: PanelSpec,
     containers: dict[str, QWidget] | None = None,
+    handlers: dict[str, Callable[[], None]] | None = None,
 ) -> RenderedPanel:
     """Realise *spec* onto *panel*; return the built widgets by control id.
 
@@ -104,6 +141,7 @@ def render(
     would move it somewhere plausible and wrong.
     """
     containers = containers or {}
+    handlers = handlers or {}
     log.info("render: %s — bg=%s controls=%d containers=%s",
              type(panel).__name__,
              spec.background.asset if spec.background else None,
@@ -128,13 +166,17 @@ def render(
                     "supplied — parenting to the panel instead",
                     control.id, control.parent,
                 )
-        built[control.id] = _build(control, parent)
+        built[control.id] = _build(
+            control, parent, handlers, type(panel).__name__,
+        )
         log.debug("render: built %s %s at %s",
                   type(control).__name__, control.id, control.rect)
     return RenderedPanel(built)
 
 
-def _build(control: Any, parent: QWidget) -> QWidget:
+def _build(control: Any, parent: QWidget,
+           handlers: dict[str, Callable[[], None]],
+           panel_name: str) -> QWidget:
     if isinstance(control, ImageButton):
         widget = create_image_button(
             parent, *control.rect,
@@ -145,6 +187,13 @@ def _build(control: Any, parent: QWidget) -> QWidget:
         if control.tooltip:
             widget.setToolTip(control.tooltip)
         return widget
+
+    if isinstance(control, IconButton):
+        handler = handlers.get(control.id)
+        return make_icon_button(
+            parent, control.rect, _asset(control.image), control.fallback,
+            _logged(panel_name, control.id, handler) if handler else _noop,
+        )
 
     if isinstance(control, Label):
         widget = QLabel(control.text, parent)
