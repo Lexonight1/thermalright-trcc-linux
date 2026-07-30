@@ -236,10 +236,16 @@ def main() -> None:
     # presents unless we auto-connect it.  Resolve the reported specs (vid:pid +
     # handshake PM/SUB recovered by the diagnose parser) so _on_ready can boot
     # the reporter's device on screen instead of a blank window.
-    report_specs: list[dict] = []
-    if report_path and device_spec is None and not all_devices:
+    auto_specs: list[dict] = []
+    if device_spec is None and not all_devices:
         from _mock_bootstrap import load_device_specs
-        report_specs = load_device_specs(report_path)
+        # ``load_device_specs`` resolves a --report file OR dev/devices.json.
+        # Passing None here is what makes the plain ``dev/mock_gui.py -v``
+        # present the fleet the README promises: DevMockPlatform scans to []
+        # by dev rule, so without this the window boots BLANK even with three
+        # devices configured — while ``dev/mock.py --ui qtgui`` connected them,
+        # because that path already called this. Same fleet, two behaviours.
+        auto_specs = load_device_specs(report_path)
 
     def _on_ready(window: Any) -> None:
         # Headless ``--check`` skips the dev console: it kicks off a full
@@ -257,7 +263,7 @@ def main() -> None:
             connected.append(_auto_connect(app, device_spec))
         else:
             # Same path for every device recovered from a ``--report`` file.
-            for spec in report_specs:
+            for spec in auto_specs:
                 connected.append(_auto_connect(app, spec))
             # ``--replay`` then re-runs the reporter's own action sequence
             # (SetOrientation / LoadTheme / ApplyMask …) through the same
