@@ -12,11 +12,18 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QScrollArea, QWidget
+from PySide6.QtWidgets import QFrame, QPushButton, QScrollArea, QWidget
 
+from ..presentation.panel_spec import (
+    Background,
+    ImageButton,
+    Label,
+    PanelSpec,
+)
 from .assets import Assets
-from .base import BasePanel, create_image_button, set_background_pixmap
-from .constants import Colors, Layout, Sizes
+from .base import BasePanel, create_image_button
+from .constants import Colors, Layout, Sizes, Styles
+from .panel_renderer import render as render_spec
 
 log = logging.getLogger(__name__)
 
@@ -157,6 +164,62 @@ def _get_device_images(device_info: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+# ── Panel description ────────────────────────────────────────────────
+# The sidebar as data: a backdrop plus controls at the rects the Windows
+# ``InitializeComponent()`` used (already mined into ``Layout``).  Split in
+# two because Qt stacks siblings in creation order, and the empty-state
+# labels are built between the scroll area and the About button — the
+# original hand-written order, preserved exactly.
+
+_SPEC_CHROME = PanelSpec(
+    background=Background(
+        asset="SIDEBAR_BG",
+        size=(Sizes.SIDEBAR_W, Sizes.SIDEBAR_H),
+        fallback_style=f"""
+                UCDevice {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #252525, stop:0.5 {Colors.BASE_BG}, stop:1 {Colors.THUMB_BG}
+                    );
+                    border-right: 1px solid {Colors.THUMB_BORDER};
+                }}
+            """,
+    ),
+    controls=(
+        ImageButton(
+            id="sensor_btn", rect=Layout.SENSOR_BTN,
+            normal="SENSOR_BTN", active="SENSOR_BTN_ACTIVE",
+            checkable=True, fallback_text="Sensor",
+            tooltip="System sensors",
+        ),
+    ),
+)
+
+_SPEC_CONTENT = PanelSpec(
+    controls=(
+        Label(
+            id="no_devices_label", rect=Layout.NO_DEVICES_LABEL,
+            text="No devices found", color=Colors.EMPTY_TEXT,
+            font_size=10, word_wrap=True, parent="device_area",
+        ),
+        Label(
+            id="hint_label", rect=Layout.HINT_LABEL,
+            # Per-OS hint is a full sentence — replaced at runtime by
+            # ``set_no_devices_hint`` from ``Platform.no_devices_hint()``.
+            text="Connect a Thermalright\nLCD cooler via USB",
+            color=Colors.MUTED_TEXT, font_size=9, word_wrap=True,
+            parent="device_area",
+        ),
+        ImageButton(
+            id="about_btn", rect=Layout.ABOUT_BTN,
+            normal="ABOUT_BTN", active="ABOUT_BTN_ACTIVE",
+            checkable=True, fallback_text="About",
+            tooltip="Control Center",
+        ),
+    ),
+)
+
+
 class UCDevice(BasePanel):
     """Device sidebar panel.
 
@@ -186,26 +249,21 @@ class UCDevice(BasePanel):
         self._detect_devices()
 
     def _setup_ui(self) -> None:
-        """Build the UI matching Windows UCDevice layout."""
-        set_background_pixmap(self, Assets.SIDEBAR_BG,
-            Sizes.SIDEBAR_W, Sizes.SIDEBAR_H,
-            fallback_style=f"""
-                UCDevice {{
-                    background: qlineargradient(
-                        x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #252525, stop:0.5 {Colors.BASE_BG}, stop:1 {Colors.THUMB_BG}
-                    );
-                    border-right: 1px solid {Colors.THUMB_BORDER};
-                }}
-            """)
+        """Build the UI matching Windows UCDevice layout.
 
-        # Sensor / Home button
-        self.sensor_btn = create_image_button(
-            self, *Layout.SENSOR_BTN,
-            Assets.SENSOR_BTN, Assets.SENSOR_BTN_ACTIVE,
-            checkable=True, fallback_text="Sensor"
-        )
-        self.sensor_btn.setToolTip("System sensors")
+        The backdrop and the flat controls come from ``_SPEC_CHROME`` /
+        ``_SPEC_CONTENT`` (see ``ui/presentation/panel_spec.py``) — a panel
+        is a background plus controls at ``Layout`` rects, so it is stated as
+        data rather than re-derived here.  The scroll area and its content
+        widget stay imperative: they are structural containers with bespoke
+        Qt properties, and modelling those is how a spec turns into a widget
+        framework.
+
+        Signal wiring is unchanged and still lives here — the spec describes
+        controls, not behaviour.
+        """
+        built = render_spec(self, _SPEC_CHROME)
+        self.sensor_btn = built.button("sensor_btn")
         self.sensor_btn.clicked.connect(self._on_home_clicked)
 
         # Device buttons area — scrollable (overflow-y: auto).  The scroll
@@ -222,36 +280,20 @@ class UCDevice(BasePanel):
         self.device_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.device_scroll.setStyleSheet(_DEVICE_SCROLL_QSS)
-        self.device_scroll.viewport().setStyleSheet("background: transparent;")
+        self.device_scroll.viewport().setStyleSheet(Styles.TRANSPARENT_BG)
 
         self.device_area = QWidget()
-        self.device_area.setStyleSheet("background: transparent;")
+        self.device_area.setStyleSheet(Styles.TRANSPARENT_BG)
         self.device_scroll.setWidget(self.device_area)
 
-        # "No devices" labels
-        self.no_devices_label = QLabel("No devices found", self.device_area)
-        self.no_devices_label.setGeometry(*Layout.NO_DEVICES_LABEL)
-        self.no_devices_label.setStyleSheet(
-            f"color: {Colors.EMPTY_TEXT}; font-size: 10px; background: transparent;"
-        )
-        self.no_devices_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.no_devices_label.setWordWrap(True)
-
-        self.hint_label = QLabel("Connect a Thermalright\nLCD cooler via USB", self.device_area)
-        self.hint_label.setGeometry(*Layout.HINT_LABEL)
-        self.hint_label.setStyleSheet(
-            f"color: {Colors.MUTED_TEXT}; font-size: 9px; background: transparent;"
-        )
-        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hint_label.setWordWrap(True)  # per-OS hint is a full sentence
-
-        # About / Control Center button
-        self.about_btn = create_image_button(
-            self, *Layout.ABOUT_BTN,
-            Assets.ABOUT_BTN, Assets.ABOUT_BTN_ACTIVE,
-            checkable=True, fallback_text="About"
-        )
-        self.about_btn.setToolTip("Control Center")
+        # The empty-state labels live INSIDE the scroll content, and the About
+        # button after them — built in that order because sibling creation
+        # order is Qt's stacking order.
+        built = render_spec(self, _SPEC_CONTENT,
+                            containers={"device_area": self.device_area})
+        self.no_devices_label = built.label("no_devices_label")
+        self.hint_label = built.label("hint_label")
+        self.about_btn = built.button("about_btn")
         self.about_btn.clicked.connect(self._on_about_clicked)
 
     def set_no_devices_hint(self, text: str) -> None:

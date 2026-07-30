@@ -1249,3 +1249,75 @@ def test_brightness_slider_debounces_to_one_send(qapp: object) -> None:
 
     assert emitted == [42], emitted
     panel.deleteLater()
+
+
+def test_uc_device_spec_matches_the_layout_table() -> None:
+    """The sidebar is built from a PanelSpec — its rects must stay Layout's.
+
+    ``UCDevice._setup_ui`` no longer writes coordinates: it renders
+    ``_SPEC_CHROME`` / ``_SPEC_CONTENT`` (``ui/presentation/panel_spec.py``),
+    the panel stated as data.  This pins the spec to ``Layout`` so an edit to
+    either cannot silently move a control.
+
+    Deliberately Qt-FREE — it asserts the spec, not a built widget.  An
+    earlier version constructed a second ``UCDevice`` and segfaulted the
+    xdist worker intermittently (PySide6 does not enjoy repeated panel
+    instantiation across a shared QApplication).  The rendered geometry is
+    covered by ``dev/tools/panel_snapshot.py``, which compares real pixels;
+    this covers the invariant that tool cannot see — that the coordinates
+    came from the table rather than being retyped.
+    """
+    from trcc.ui.gui.constants import Layout
+    from trcc.ui.gui.uc_device import _SPEC_CHROME, _SPEC_CONTENT
+
+    expected = {
+        "sensor_btn": Layout.SENSOR_BTN,
+        "about_btn": Layout.ABOUT_BTN,
+        "no_devices_label": Layout.NO_DEVICES_LABEL,
+        "hint_label": Layout.HINT_LABEL,
+    }
+    declared = {
+        c.id: c for c in (*_SPEC_CHROME.controls, *_SPEC_CONTENT.controls)
+    }
+    assert set(declared) == set(expected), (
+        f"spec declares {sorted(declared)}, test pins {sorted(expected)} — a "
+        f"control was added to the spec without being pinned here"
+    )
+    for name, rect in expected.items():
+        assert declared[name].rect == rect, (
+            f"{name} is not at its Layout entry — the spec and the "
+            f"coordinate table have diverged"
+        )
+
+    # The empty-state labels belong INSIDE the scroll content; parented to
+    # the panel they would float over the device list.
+    assert declared["no_devices_label"].parent == "device_area"
+    assert declared["hint_label"].parent == "device_area"
+
+    # The backdrop is named, not a path — the spec layer must stay Qt-free.
+    assert _SPEC_CHROME.background is not None
+    assert _SPEC_CHROME.background.asset == "SIDEBAR_BG"
+
+
+def test_uc_image_cut_spec_declares_every_toolbar_button() -> None:
+    """The crop toolbar's five icon buttons, stated as data.
+
+    Same invariant as the sidebar, on the second converted panel: the rects
+    come from the module's BTN_* constants, so a retyped coordinate fails
+    here rather than surfacing as a button in the wrong place.
+    """
+    from trcc.ui.gui import uc_image_cut as mod
+
+    expected = {
+        "btn_height_fit": mod.BTN_HEIGHT_FIT,
+        "btn_width_fit": mod.BTN_WIDTH_FIT,
+        "btn_rotate": mod.BTN_ROTATE,
+        "btn_ok": mod.BTN_OK,
+        "btn_close": mod.BTN_CLOSE,
+    }
+    declared = {c.id: c for c in mod._SPEC.controls}
+    assert set(declared) == set(expected)
+    for name, rect in expected.items():
+        assert declared[name].rect == rect, f"{name} moved off its constant"
+    # Every toolbar button carries a text fallback for a missing asset.
+    assert all(c.fallback for c in mod._SPEC.controls)
