@@ -86,7 +86,7 @@ class UCPreview(BasePanel):
 
         # Status label
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet(f"color: {Colors.STATUS_TEXT}; font-size: 11px;")
+        self.status_label.setStyleSheet(Styles.STATUS_LABEL)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -117,9 +117,7 @@ class UCPreview(BasePanel):
         # Time label
         self.time_label = QLabel("00:00 / 00:00", self.progress_container)
         self.time_label.setGeometry(*Layout.TIME_LABEL)
-        self.time_label.setStyleSheet(
-            f"color: {Colors.STATUS_TEXT}; font-size: 10px; background: transparent;"
-        )
+        self.time_label.setStyleSheet(Styles.STATUS_LABEL_OVER_IMAGE)
 
         # Progress slider
         self.progress_slider = QSlider(Qt.Orientation.Horizontal, self.progress_container)

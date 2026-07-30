@@ -54,6 +54,13 @@ def _build_uc_image_cut() -> Any:
     return UCImageCut()
 
 
+def _build_uc_preview() -> Any:
+    from trcc.ui.gui.uc_preview import UCPreview
+    # A fixed 320x320 LCD — the preview's layout keys on the panel size, so
+    # pinning it keeps the snapshot independent of any attached device.
+    return UCPreview(320, 320)
+
+
 # Add a row per panel as it is converted.  Keep builders deterministic — no
 # real device scan, no host-dependent strings.
 #
@@ -66,6 +73,7 @@ PANELS: dict[str, Callable[[], Any]] = {
     "uc_device": lambda: _build_uc_device(_fake_fleet()),
     "uc_device_empty": lambda: _build_uc_device([]),
     "uc_image_cut": _build_uc_image_cut,
+    "uc_preview": _build_uc_preview,
 }
 
 

@@ -22,7 +22,7 @@ from ..presentation.panel_spec import (
 )
 from .assets import Assets
 from .base import BasePanel, create_image_button
-from .constants import Colors, Layout, Sizes
+from .constants import Colors, Layout, Sizes, Styles
 from .panel_renderer import render as render_spec
 
 log = logging.getLogger(__name__)
@@ -280,10 +280,10 @@ class UCDevice(BasePanel):
         self.device_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.device_scroll.setStyleSheet(_DEVICE_SCROLL_QSS)
-        self.device_scroll.viewport().setStyleSheet("background: transparent;")
+        self.device_scroll.viewport().setStyleSheet(Styles.TRANSPARENT_BG)
 
         self.device_area = QWidget()
-        self.device_area.setStyleSheet("background: transparent;")
+        self.device_area.setStyleSheet(Styles.TRANSPARENT_BG)
         self.device_scroll.setWidget(self.device_area)
 
         # The empty-state labels live INSIDE the scroll content, and the About

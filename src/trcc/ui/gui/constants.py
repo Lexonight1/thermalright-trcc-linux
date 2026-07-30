@@ -373,6 +373,20 @@ class Styles:
 
     THUMB_IMAGE = "background-color: #1A1A1A; border: 1px solid #333;"
 
+    # A widget that must not paint its own background, so a parent's QPalette
+    # image shows through.  Ancestor stylesheets block palette backgrounds
+    # (see the note in uc_device), which is why this is set per-child rather
+    # than inherited.
+    TRANSPARENT_BG = "background: transparent;"
+
+    # Preview status text — one colour, two sizes.  The OVER_IMAGE variant
+    # sits on top of the preview bitmap and must not paint a backdrop.
+    STATUS_LABEL = f"color: {Colors.STATUS_TEXT}; font-size: 11px;"
+    STATUS_LABEL_OVER_IMAGE = (
+        f"color: {Colors.STATUS_TEXT}; font-size: 10px; "
+        f"background: transparent;"
+    )
+
     THUMB_NAME = "color: #C6C6C6; font-size: 9px; font-weight: bold; background: transparent;"
 
     INPUT_FIELD = (
