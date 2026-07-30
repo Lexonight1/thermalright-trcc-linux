@@ -952,21 +952,38 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
 1. `ruff check .` + `pyright` — 0 errors
 2. `PYTHONPATH=src pytest tests/ -n 8 -x -q` — all pass
 3. Commit + push existing changes to `main`
-4. Bump version in `src/trcc/__version__.py`, `pyproject.toml`, AND `flake.nix`
-5. Add version history entry in `__version__.py`
-6. Update `doc/CHANGELOG.md`
+4. Bump the version — **exactly two literals**: `src/trcc/__version__.py` and
+   `pyproject.toml`.  **Do NOT add one to `flake.nix`** — it derives the version
+   from `pyproject.toml` (`builtins.fromTOML`, PR #209), and re-introducing a
+   literal there re-creates the drift that PR removed.
+5. Regenerate the man pages — `PYTHONPATH=src python3.12 dev/gen_manpages.py`.
+   All 7 carry the version in their `.TH` line, so
+   `tests/test_manpages.py::test_committed_manpages_are_current` FAILS at step 7
+   until you do.  (`doc/REFERENCE_CLI.md` is generated too but carries no
+   version — it must come back byte-identical; if it moves on a version-only
+   bump, its output is not deterministic and that's a bug.)
+6. Update `doc/CHANGELOG.md` — **this is the version history**.  `__version__.py`
+   no longer holds a history block; its docstring points here.
 7. Lint + test again
 8. Commit + push version bump to `main`
 9. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
 10. `gh release create v{version} --target main --title "v{version}"`
-11. Comment on relevant GitHub issues
+11. Verify the release landed — `gh run list` all green, and PyPI actually
+    serves the new version — BEFORE telling any reporter to upgrade.
+12. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
+    never announce an unconfirmed change as "the fix" (see
+    `memory/feedback_fix_then_bump_then_reply.md`).  Upgrade commands must be
+    copy-paste ready and matched to how that reporter actually installed
+    (pacman / dnf / apt / `pipx upgrade`) — real URLs from
+    `gh release view v{version} --json assets`.
 
 ### Trigger Words
 Bare `patch`, `minor`, or `major` → full release workflow:
 1. Lint + test uncommitted changes first
 2. Commit + push existing changes to `main`
-3. Bump version in `__version__.py`, `pyproject.toml`, `flake.nix`
-4. Version history + changelog
+3. Bump version in `__version__.py` + `pyproject.toml` (two files — `flake.nix`
+   derives it; see the Release list above)
+4. Regenerate man pages (`dev/gen_manpages.py`) + changelog entry
 5. Update `release.yml` inline package specs (download URLs use fixed-name aliases — no version in guide/README URLs)
 6. Lint + test again
 7. Commit + push version bump + tag + GitHub release
