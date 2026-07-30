@@ -1,5 +1,44 @@
 # Changelog
 
+## v9.9.4
+
+**Frozen Warframe SE and other HID panels crash on connect — fixed.** Every pip,
+Fedora and Arch install crashed with `AttributeError: 'hid.device' object has no
+attribute 'nonblocking'` the moment one of these panels connected; only Debian
+escaped it. Two different PyPI packages both import as `hid` with incompatible
+APIs, and TRCC drove one against the other. It now detects which one is
+installed and speaks its API. (#244, #253)
+
+**Unplug and replug your panel — it comes back.** Before, the device never
+recovered: TRCC logged a write failure every ~150 ms (one report counted 1800+
+in two minutes) and only restarting the app fixed it. Nothing was listening for
+the unplug, so the dead connection was never released. (#254, #246)
+
+**`display load-image` shows your image instead of a black screen.** Unless your
+file happened to be named `00.png`, the panel went black while the command
+reported success. (#245)
+
+**Daemon mode stops crashing on common commands.** With `TRCC_DAEMON=1`, video
+playback, slideshow, LED play and two API endpoints raised an error instead of
+working. (#249)
+
+**Large backgrounds display on Trofeo Vision panels.** Above roughly 512 KB the
+firmware silently ignored the image and the glass kept showing the previous
+frame. Big images are now compressed to fit rather than vanishing. (#251)
+
+**LED commands aimed at a non-LED device now refuse.** `trcc led color
+<lcd-key> ffffff` used to answer "LED color set" and exit 0, quietly saving LED
+settings under an LCD's key. All 21 LED commands now answer in one voice. (#252)
+
+**`trcc --version` works again** — plus `-V` and `trcc version`. The rebuild
+dropped it, which made it needlessly hard to say which version you are on when
+filing an issue. (#247)
+
+**The CLI documentation matches the CLI.** The reference page is now generated
+from the commands themselves so it cannot drift again, and 40 stale commands
+across the guides were corrected — a test checks every documented invocation
+against the real CLI. (#247)
+
 ## v9.9.3
 
 **Your custom themes finally stick.** If you saved a theme with your own video
