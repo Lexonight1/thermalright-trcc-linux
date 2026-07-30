@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -621,6 +621,57 @@ class RenderAndSend(Command[RenderResult]):
                      if ok else "Render built frame but send returned False"),
         )
 
+
+@dataclass(frozen=True, slots=True)
+class TickDisplay(Command[RenderResult]):
+    """Advance a video playback one frame, then render + send (one tick).
+
+    The *animation* tick, as distinct from :class:`RenderAndSend`, which is the
+    *re-render* tick.  Keeping them as two Commands rather than one with an
+    ``advance`` flag is deliberate: ``RenderAndSend`` has six call sites in two
+    roles, and a flag makes passing the wrong value easy and its failure silent
+    (``DeviceRenderObserver`` fires on every ``SensorsUpdated`` — were it to
+    advance, a playing video would speed up whenever sensors moved).
+
+    Exists because the advance used to live in the UIs: the GUI timer, the CLI
+    ``display play`` loop and the REST tick route each reached
+    ``app.media.playback(key)`` and advanced it by hand.  Three transcriptions
+    of one behaviour, none of them daemon-safe — ``AppProxy`` exposes
+    ``dispatch`` and nothing else, so ``app.media`` raises under
+    ``TRCC_DAEMON=1`` (#249).  qtgui, having no such copy, never advanced at all
+    and showed frame 0 forever.
+
+    Deliberately does NOT dispatch ``RestoreDeviceState``: the REST route needs
+    that per tick because a stateless poller may arrive with no theme loaded,
+    but the GUI would then pay a restore 15-30 times a second.  Self-priming is
+    the caller's concern; advancing is this Command's.
+
+    Per-tick: logged at DEBUG so a default INFO run isn't drowned.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+
+    def execute(self, app: App) -> RenderResult:
+        playback = app.media.playback(self.key)
+        if playback is None or not playback.frames:
+            # No video on this device — a plain re-render.  Video fields stay
+            # None so a UI can tell "not a video" from "frame 0 of a video".
+            log.debug("TickDisplay %s: no playback — plain render", self.key)
+            return RenderAndSend(key=self.key).execute(app)
+
+        # ``Playback.advance`` self-guards on ``paused`` (returns the current
+        # frame without moving the cursor), so pause needs no check here — and
+        # the callers that used to hand-roll one lose it rather than move it.
+        playback.advance()
+        result = RenderAndSend(key=self.key).execute(app)
+        return replace(
+            result,
+            cursor=playback.cursor,
+            frame_count=playback.frame_count,
+            interval_ms=playback.interval_ms,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RenderDcStandalone(Command[RenderDcResult]):
     """Render a DC config standalone — no active device, no theme load.
@@ -838,10 +889,10 @@ class PlayVideo(Command[VideoResult]):
             )
 
         # Per-frame interval derived from playback fps — handler observer
-        # uses this to start the Qt animation timer.  Clamped to >=1 ms
-        # so a degenerate fps=0 cannot stall the event loop.
+        # uses this to start the Qt animation timer.  ``Playback.interval_ms``
+        # owns the 1000/fps clamp so TickDisplay reports the same cadence.
         fps = getattr(playback, "fps", 0) or 30
-        interval_ms = max(1, int(1000 / fps))
+        interval_ms = playback.interval_ms
         log.info(
             "PlayVideo.execute: playback loaded — %d frames @ %d fps "
             "(interval=%dms, VideoStarted published)",

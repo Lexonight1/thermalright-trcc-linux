@@ -1209,23 +1209,38 @@ def test_every_sub_app_has_commands_registered() -> None:
 
 # ── `display play` on a VIDEO theme (#150) ────────────────────────────
 
-def _render_dispatch_stub(*, theme_name: str):
+def _render_dispatch_stub(*, theme_name: str, playback=None):
     """Dispatch stub for the `display play` loop.
 
-    `play` dispatches more than one Command: RestoreDeviceState + RenderAndSend
-    per tick, and ControlCenterSnapshot to read the refresh interval (it used to
-    read app.settings directly, which crashed under TRCC_DAEMON=1 — #249).  A
-    stub that returns RenderResult for EVERYTHING makes the interval read blow
-    up with AttributeError, so answer each Command with its own Result type.
+    `play` dispatches more than one Command: RestoreDeviceState once before the
+    loop, TickDisplay per tick, and ControlCenterSnapshot to read the refresh
+    interval (it used to read app.settings directly, which crashed under
+    TRCC_DAEMON=1 — #249).  A stub that returns RenderResult for EVERYTHING
+    makes the interval read blow up with AttributeError, so answer each Command
+    with its own Result type.
+
+    ``playback`` opts into TickDisplay's contract — advance the cursor, then
+    report it on the Result.  The loop reads its counters and its pacing from
+    that Result now rather than from ``app.media`` (an AppProxy attribute error
+    under a daemon — #249), so the stub is what proves the loop no longer needs
+    a MediaService handle at all.
     """
-    from trcc.core.commands import ControlCenterSnapshot
+    from trcc.core.commands import ControlCenterSnapshot, TickDisplay
     from trcc.core.results import ControlCenterSnapshotResult, RenderResult
 
     def _dispatch(cmd):
         if isinstance(cmd, ControlCenterSnapshot):
             return ControlCenterSnapshotResult(ok=True, refresh_interval_s=2.0)
+        video: dict = {}
+        if isinstance(cmd, TickDisplay) and playback is not None:
+            playback.advance()
+            video = {
+                "cursor": playback.cursor,
+                "frame_count": playback.frame_count,
+                "interval_ms": max(1, int(1000 / playback.fps)),
+            }
         return RenderResult(ok=True, key="0416:5302", message="ok",
-                            bytes_sent=153600, theme_name=theme_name)
+                            bytes_sent=153600, theme_name=theme_name, **video)
 
     return _dispatch
 
@@ -1237,10 +1252,11 @@ def test_display_play_advances_an_active_video(
 
     #150 shipped a nag ("`play` redraws a video as a still every tick — use
     play-video") because outside the GUI nothing advanced the playback cursor,
-    so `display play` sent frame 0 forever.  The real fix is to advance it: the
-    play loop calls ``playback.advance()`` each tick when a playback is active
-    and paces at the video's fps, so the video actually plays.  This asserts the
-    cursor advances and the frame is surfaced, and that the obsolete nag is gone.
+    so `display play` sent frame 0 forever.  The real fix is to advance it —
+    which ``TickDisplay`` now does App-side, so the loop dispatches ONE Command
+    and reads the cursor + pacing off its Result instead of reaching for
+    ``app.media`` (an AttributeError under TRCC_DAEMON=1 — #249).  This asserts
+    the cursor advances and the frame is surfaced, and that the nag is gone.
 
     Drives the real command body: `play` loops forever, so time.sleep is the
     seam -- raise KeyboardInterrupt there and the handler exits after one tick.
@@ -1250,18 +1266,18 @@ def test_display_play_advances_an_active_video(
     class _FakePlayback:
         frames = [b"x"] * 30
         paused = False
-        cursor = 3
         frame_count = 30
         fps = 15
 
         def __init__(self) -> None:
             self.advanced = 0
+            self.cursor = 2
 
         def advance(self) -> None:
             self.advanced += 1
+            self.cursor += 1
 
     fake = _FakePlayback()
-    monkeypatch.setattr(cli_app.media, "playback", lambda key: fake)
 
     def _one_tick(_s):
         raise KeyboardInterrupt
@@ -1270,8 +1286,15 @@ def test_display_play_advances_an_active_video(
     monkeypatch.setattr(_time, "sleep", _one_tick)   # `play` does `import time` inside
     monkeypatch.setattr(
         cli_app, "dispatch",
-        _render_dispatch_stub(theme_name="Misfiled"),
+        _render_dispatch_stub(theme_name="Misfiled", playback=fake),
     )
+    # The loop must NOT touch MediaService any more: blow up if it does, which
+    # is exactly what an AppProxy does under a daemon.
+    def _no_media(self):
+        raise AssertionError(
+            "`display play` reached app.media — that crashes under TRCC_DAEMON=1"
+        )
+    monkeypatch.setattr(type(cli_app), "media", property(_no_media), raising=False)
 
     result = cli_runner.invoke(cli_display.app, ["play", "0416:5302"])
 

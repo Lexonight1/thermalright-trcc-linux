@@ -16,7 +16,13 @@ from typing import Any
 import pytest
 
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, PlayVideo, StopVideo
+from trcc.core.commands import (
+    ConnectDevice,
+    PlayVideo,
+    RenderAndSend,
+    StopVideo,
+    TickDisplay,
+)
 from trcc.core.errors import ThemeError
 from trcc.core.events import VideoStarted, VideoStopped
 from trcc.core.models import (
@@ -774,6 +780,111 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
 
     display.invalidate(_KEY)
     assert display.rendered_surface(_KEY) is None       # cleared with the scene
+
+
+# ── TickDisplay vs RenderAndSend — the two tick ROLES ─────────────────
+#
+# TickDisplay is the ANIMATION tick; RenderAndSend is the RE-RENDER tick.  They
+# are two Commands rather than one with an ``advance`` flag because
+# RenderAndSend has six call sites in two roles, and a flag makes passing the
+# wrong value easy and its failure silent.  These tests pin the split.
+
+
+def _playback_for(app: App, video_file: Path) -> Playback:
+    """Start a 3-frame playback on the connected device and return it."""
+    assert app.dispatch(PlayVideo(key=_KEY, path=video_file)).ok
+    playback = app.media.playback(_KEY)
+    assert playback is not None
+    return playback
+
+
+def test_tick_display_advances_the_cursor(
+    connected_app: App, stub_media: Any, video_file: Path,
+) -> None:
+    """The animation tick moves the cursor — this is what makes video play.
+
+    Before this Command the advance lived in three UIs (GUI timer, CLI play
+    loop, REST tick route); qtgui had no copy and so showed frame 0 forever.
+    """
+    playback = _playback_for(connected_app, video_file)
+    start = playback.cursor
+
+    connected_app.dispatch(TickDisplay(key=_KEY))
+
+    assert playback.cursor != start, "TickDisplay must advance the playback"
+
+
+def test_render_and_send_never_advances_the_cursor(
+    connected_app: App, stub_media: Any, video_file: Path,
+) -> None:
+    """ROLE PIN: the re-render tick must NOT advance.
+
+    ``DeviceRenderObserver`` dispatches RenderAndSend on every SensorsUpdated,
+    and the gui's ``_render_and_send`` does the same for static themes.  Were
+    either to advance, a playing video would speed up whenever the sensors
+    moved — erratic playback with no obvious cause.  If this test ever fails,
+    someone has merged the two roles.
+    """
+    playback = _playback_for(connected_app, video_file)
+    start = playback.cursor
+
+    for _ in range(5):
+        connected_app.dispatch(RenderAndSend(key=_KEY))
+
+    assert playback.cursor == start, (
+        "RenderAndSend advanced the cursor — the animation and re-render "
+        "roles have been merged"
+    )
+
+
+def test_tick_display_reports_video_state_on_the_result(
+    connected_app: App, stub_media: Any, video_file: Path,
+) -> None:
+    """The Result carries cursor/frame_count/interval_ms.
+
+    This is what lets a UI draw its progress bar and pace its own timer
+    WITHOUT reaching for ``app.media`` — which is an AttributeError under
+    TRCC_DAEMON=1, where the UI holds an AppProxy (#249).
+    """
+    playback = _playback_for(connected_app, video_file)
+
+    result = connected_app.dispatch(TickDisplay(key=_KEY))
+
+    assert result.frame_count == 3
+    assert result.cursor == playback.cursor
+    assert result.interval_ms == playback.interval_ms
+
+
+def test_tick_display_without_a_playback_reports_no_video(
+    connected_app: App,
+) -> None:
+    """No playback → the video fields stay None, NOT zero.
+
+    A UI needs to tell "this theme is not a video" from "frame 0 of a video":
+    the gui stops its animation timer on exactly that transition.
+    """
+    result = connected_app.dispatch(TickDisplay(key=_KEY))
+
+    assert result.cursor is None
+    assert result.frame_count is None
+    assert result.interval_ms is None
+
+
+def test_tick_display_honours_pause(
+    connected_app: App, stub_media: Any, video_file: Path,
+) -> None:
+    """Paused playback holds its cursor — the guard lives in Playback.advance.
+
+    The three UI copies each hand-rolled a ``not playback.paused`` check; they
+    lose it here rather than move it, because the playback already self-guards.
+    """
+    playback = _playback_for(connected_app, video_file)
+    playback.pause(True)
+    start = playback.cursor
+
+    connected_app.dispatch(TickDisplay(key=_KEY))
+
+    assert playback.cursor == start
 
 
 _ = FitMode   # keep ruff happy

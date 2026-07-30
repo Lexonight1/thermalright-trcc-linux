@@ -707,7 +707,7 @@ trcc display pause-video KEY STATE
 
 ### `trcc display play`
 
-Run the render-and-send ticker until Ctrl-C. Dispatches RenderAndSend every tick with live sensors. Keeps SCSI devices from timing out (static-blink fix) and advances video playback. Stops cleanly on SIGINT.
+Run the render-and-send ticker until Ctrl-C. Dispatches TickDisplay every tick with live sensors — that Command advances an active video playback and renders, so the loop needs no handle on MediaService. Keeps SCSI devices from timing out (static-blink fix). Stops cleanly on SIGINT.
 
 ```bash
 trcc display play [OPTIONS] KEY

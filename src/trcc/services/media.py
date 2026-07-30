@@ -343,6 +343,19 @@ class Playback:
         return len(self.frames)
 
     @property
+    def interval_ms(self) -> int:
+        """Milliseconds per frame — the cadence a ticker should run at.
+
+        Clamped to >=1 ms so a degenerate ``fps=0`` cannot stall an event loop,
+        and defaulted to 30 fps when a decoder reported nothing.  Lives on the
+        playback because the playback is what knows its own rate: both
+        ``PlayVideo`` (for ``VideoStarted``) and ``TickDisplay`` (for the
+        ``RenderResult`` a UI paces itself from) read it here rather than each
+        re-deriving ``1000 / fps``.
+        """
+        return max(1, int(1000 / (self.fps or 30)))
+
+    @property
     def current(self) -> RawFrame | None:
         return self.frames[self.cursor] if self.frames else None
 

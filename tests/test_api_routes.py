@@ -1191,3 +1191,43 @@ def test_theme_list_finds_themes_in_dir(
     assert len(body["themes"]) == 1
     assert body["themes"][0]["name"] == "MyTheme"
     assert body["themes"][0]["resolution"] == [480, 480]
+
+
+# =========================================================================
+# Display tick — the headless animation poller
+# =========================================================================
+
+
+def test_display_tick_restores_then_ticks(api_client: TestClient) -> None:
+    """``POST /display/tick`` self-primes, then dispatches the ANIMATION tick.
+
+    The route had no coverage at all until the tick became a Command.  Two
+    things matter and both are easy to break:
+
+    * ``RestoreDeviceState`` stays HERE rather than inside ``TickDisplay`` — a
+      stateless poller may arrive with no theme loaded, but the GUI's animation
+      timer would otherwise pay a restore 15-30 times a second.
+    * the tick itself must be ``TickDisplay``; with ``RenderAndSend`` the
+      cursor never moves and a polled video sits on frame 0 (#239).
+    """
+    from trcc.core.commands import RestoreDeviceState, TickDisplay
+
+    trcc = api_client.app.state.trcc          # type: ignore[attr-defined]
+    seen: list[str] = []
+    real_dispatch = trcc.dispatch
+
+    def _recording_dispatch(cmd):             # type: ignore[no-untyped-def]
+        seen.append(type(cmd).__name__)
+        return real_dispatch(cmd)
+
+    trcc.dispatch = _recording_dispatch       # type: ignore[method-assign]
+    try:
+        # No device attached, so the tick reports failure — the ORDER and the
+        # choice of Commands is what this pins, not the render succeeding.
+        api_client.post("/devices/dead:beef/display/tick")
+    finally:
+        trcc.dispatch = real_dispatch         # type: ignore[method-assign]
+
+    assert seen == [RestoreDeviceState.__name__, TickDisplay.__name__], (
+        f"expected restore-then-animation-tick, got {seen}"
+    )

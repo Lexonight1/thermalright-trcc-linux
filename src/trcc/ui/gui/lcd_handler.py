@@ -790,7 +790,7 @@ class LCDHandler(BaseHandler):
         only — same skip reason in a row stays DEBUG so a disconnected
         device doesn't spam 15 lines/s.
         """
-        from ...core.commands import RenderAndSend
+        from ...core.commands import TickDisplay
 
         if not self._animation_first_tick_logged:
             self.log.info(
@@ -799,44 +799,57 @@ class LCDHandler(BaseHandler):
             )
             self._animation_first_tick_logged = True
 
-        playback = self._app.media.playback(self._device_key)
-        if playback is None or not playback.frames:
+        # ONE Command does advance + render + send.  The cursor deliberately
+        # advances before the connected-check inside the Command, preserving
+        # the old order: an unplugged device's video keeps running so it
+        # resumes in sync rather than frozen where it dropped.
+        result = self._app.dispatch(TickDisplay(key=self._device_key))
+
+        if result.frame_count is None or result.cursor is None:
             # Animation timer is firing but the playback was cleared —
             # WARN once (state-transition); the timer should have been
-            # stopped when the playback was cleared.
+            # stopped when the playback was cleared.  TickDisplay sets the
+            # video fields as a set, so either being None means "no playback";
+            # testing both is what lets the type checker prove it too.
             self.log.warning(
-                "_on_video_tick: timer firing but playback=%s frames=%d — "
+                "_on_video_tick: timer firing but device %s has no playback — "
                 "stopping animation timer",
-                playback, len(playback.frames) if playback else 0,
+                self._device_key,
             )
             self._stop_animation_timer(reason="playback-cleared")
             return
-        playback.advance()
 
+        # MULTI-DISPLAY GATE — load-bearing.  Every LCDHandler shares ONE
+        # preview/progress widget set, so only the handler that owns the panel
+        # may write to it.  The DISPATCH above is deliberately NOT gated: a
+        # background device must keep ticking or its LCD freezes while another
+        # device owns the GUI (see ``set_inactive``).
         if self._pm.ui_active:
-            total = playback.frame_count
-            cursor = playback.cursor
-            percent = self._pm.progress_fraction(cursor, total)
-            self._w['preview'].set_progress(percent, cursor, total)
-
-        device = self._app.devices.get(self._device_key)
-        if device is None or not device.is_connected:
-            self._log_tick_skip(
-                reason="device-not-connected",
-                detail=f"device {self._device_key} not connected — skip send",
+            percent = self._pm.progress_fraction(
+                result.cursor, result.frame_count,
             )
-            return
+            self._w['preview'].set_progress(
+                percent, result.cursor, result.frame_count,
+            )
+
+        if not result.ok:
+            device = self._app.devices.get(self._device_key)
+            if device is None or not device.is_connected:
+                self._log_tick_skip(
+                    reason="device-not-connected",
+                    detail=f"device {self._device_key} not connected — skip send",
+                )
+                return
 
         # Cleared on the happy path so a subsequent disconnect re-logs.
         self._animation_last_skip_reason = None
 
-        result = self._app.dispatch(RenderAndSend(key=self._device_key))
         if not result.ok:
             # Render failure during animation playback is a real user-
             # visible bug (frozen / stuttering LCD).  WARN, not DEBUG.
             self.log.warning(
                 "_on_video_tick: render failed cursor=%d/%d — %s",
-                playback.cursor, playback.frame_count, result.message,
+                result.cursor, result.frame_count, result.message,
             )
 
     def _log_tick_skip(self, *, reason: str, detail: str) -> None:

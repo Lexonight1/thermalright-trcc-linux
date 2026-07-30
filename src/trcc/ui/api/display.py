@@ -35,7 +35,6 @@ from ...core.commands import (
     LoopVideo,
     PauseVideo,
     PlayVideo,
-    RenderAndSend,
     RestoreDeviceState,
     SeekVideo,
     SendColor,
@@ -54,6 +53,7 @@ from ...core.commands import (
     StartScreencast,
     StopScreencast,
     StopVideo,
+    TickDisplay,
     UpdateOverlayElement,
     UploadBootAnimation,
     UploadCustomMask,
@@ -813,16 +813,18 @@ def tick(key: str, request: Request) -> RenderResult:
     Self-primes and advances video the way the CLI ``display play`` loop does,
     so a headless poller Just Works (#239): (1) ``RestoreDeviceState`` is
     idempotent — a no-op once a theme is active — so the first tick can't fail
-    "No active theme"; (2) a play-video override's cursor advances each tick
-    (nothing else advances it outside the GUI), so successive ticks animate it.
+    "No active theme"; (2) ``TickDisplay`` advances a play-video override's
+    cursor before rendering, so successive ticks animate it.
+
+    The restore stays HERE rather than inside ``TickDisplay``: a stateless
+    poller may arrive with nothing loaded, but the GUI's animation timer would
+    otherwise pay a restore 15-30 times a second.  Self-priming is this
+    route's concern; advancing is the Command's.
     """
     log.info("api POST /devices/{key}/display/tick: key=%s", key)
     app = request.app.state.trcc
     app.dispatch(RestoreDeviceState(key=key))
-    playback = app.media.playback(key)
-    if playback is not None and playback.frames and not playback.paused:
-        playback.advance()
-    result = app.dispatch(RenderAndSend(key=key))
+    result = app.dispatch(TickDisplay(key=key))
     http_error_if_failed(result)
     return result
 

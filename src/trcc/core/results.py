@@ -72,10 +72,24 @@ class SendResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class RenderResult(Result):
-    """Built + sent one frame through the render pipeline."""
+    """Built + sent one frame through the render pipeline.
+
+    The three video fields are ``None`` when the device has no playback —
+    distinct from ``0``, which a UI needs in order to tell "this theme is not a
+    video" from "frame 0 of a video".  They exist so a ticking UI can render its
+    own progress/counter and pace its own timer WITHOUT reaching into
+    ``MediaService``: under ``TRCC_DAEMON=1`` the UI holds an ``AppProxy`` that
+    exposes ``dispatch`` and nothing else, so ``app.media`` is a crash (#249).
+
+    Same shape, and the same reason, as ``VideoStarted.interval_ms`` — derived
+    server-side "so UIs don't have to query MediaService themselves".
+    """
     key: str = ""
     bytes_sent: int = 0
     theme_name: str = ""
+    cursor: int | None = None
+    frame_count: int | None = None
+    interval_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

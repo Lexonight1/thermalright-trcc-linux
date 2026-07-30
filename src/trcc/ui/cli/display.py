@@ -26,7 +26,6 @@ from ...core.commands import (
     LoopVideo,
     PauseVideo,
     PlayVideo,
-    RenderAndSend,
     RenderDcStandalone,
     RestoreDeviceState,
     RestoreLastTheme,
@@ -47,6 +46,7 @@ from ...core.commands import (
     StartScreencast,
     StopScreencast,
     StopVideo,
+    TickDisplay,
     ToggleVideo,
     UpdateOverlayElement,
     UploadBootAnimation,
@@ -441,9 +441,10 @@ def play(
 ) -> None:
     """Run the render-and-send ticker until Ctrl-C.
 
-    Dispatches RenderAndSend every tick with live sensors.  Keeps SCSI
-    devices from timing out (static-blink fix) and advances video
-    playback.  Stops cleanly on SIGINT.
+    Dispatches TickDisplay every tick with live sensors — that Command
+    advances an active video playback and renders, so the loop needs no
+    handle on MediaService.  Keeps SCSI devices from timing out
+    (static-blink fix).  Stops cleanly on SIGINT.
     """
     log.info("cli display play: key=%s interval=%s", key, interval)
     import time
@@ -470,26 +471,22 @@ def play(
     typer.echo(f"Playing on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
     try:
         while True:
-            # Video-paced tick: a play-video override only animates if SOMETHING
-            # advances its cursor every frame — and outside the GUI's video timer
-            # nothing did, so headless `display play` sent frame 0 forever and the
-            # video looked frozen (#239).  When a playback is active, advance it
-            # (GUI parity) and pace the loop at the video's fps; otherwise stay on
-            # the metrics interval.
-            playback = app_obj.media.playback(key)
-            video_active = (playback is not None and bool(playback.frames)
-                            and not playback.paused)
-            if playback is not None and video_active:
-                playback.advance()
-            result = app_obj.dispatch(RenderAndSend(key=key))
+            # Video-paced tick: ONE Command advances the cursor and renders, so
+            # a play-video override animates headlessly (#239) without this loop
+            # reaching into MediaService — `app_obj.media` raised AttributeError
+            # under TRCC_DAEMON=1, where app_obj is an AppProxy exposing
+            # dispatch() only (#249).  The Result carries the cursor and the
+            # per-frame interval, so the loop paces itself off the video when
+            # one is playing and off the metrics interval otherwise.
+            result = app_obj.dispatch(TickDisplay(key=key))
             if not result.ok:
                 typer.echo(f"  tick failed: {result.message}", err=True)
                 raise typer.Exit(code=1)
-            if playback is not None and video_active:
+            if result.frame_count is not None:
                 typer.echo(
                     f"  sent {result.bytes_sent} bytes (theme={result.theme_name!r}"
-                    f", video frame {playback.cursor}/{playback.frame_count})")
-                time.sleep(max(0.02, 1.0 / max(1, playback.fps)))
+                    f", video frame {result.cursor}/{result.frame_count})")
+                time.sleep(max(0.02, (result.interval_ms or 33) / 1000.0))
             else:
                 typer.echo(f"  sent {result.bytes_sent} bytes "
                            f"(theme={result.theme_name!r})")

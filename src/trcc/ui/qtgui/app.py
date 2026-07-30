@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...app import App
-from ...core.commands import RenderAndSend
+from ...core.commands import RenderAndSend, TickDisplay
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -38,8 +39,11 @@ from ...core.events import (
     ErrorOccurred,
     FrameSent,
     ThemeLoaded,
+    VideoStarted,
+    VideoStopped,
 )
 from ..bus_bridge import BusBridge
+from ..qt_periodic import PeriodicUpdater
 from ..qt_tray import TrayController
 from .panels import (
     AboutPanel,
@@ -126,14 +130,22 @@ class MainWindow(QMainWindow):
         self._bus.frame_sent.connect(self._on_frame_sent, type=qconn)
         self._bus.theme_loaded.connect(self._on_theme_loaded, type=qconn)
         self._bus.error_occurred.connect(self._on_error, type=qconn)
+        self._bus.video_started.connect(self._on_video_started, type=qconn)
+        self._bus.video_stopped.connect(self._on_video_stopped, type=qconn)
 
-        # Playback ticker — dispatches RenderAndSend to every device with
-        # an active theme, at AppSettings.refresh_interval_s.  Started
-        # lazily when a theme gets loaded; stops when no active themes
-        # remain.
+        # Metrics ticker — dispatches RenderAndSend to every device with an
+        # active theme, at AppSettings.refresh_interval_s.  Started lazily when
+        # a theme gets loaded; stops when no active themes remain.
         self._ticker = QTimer(self)
         self._ticker.setSingleShot(False)
         self._ticker.timeout.connect(self._on_tick)
+
+        # Per-device VIDEO tickers, keyed by device.  A video needs its own
+        # cadence (~33 ms at 30 fps), which the metrics ticker above cannot
+        # provide — it runs at refresh_interval_s, 2 s by default, so driving
+        # video from it would advance one frame every two seconds.  Matches the
+        # gui skin, which likewise keeps a separate per-device animation timer.
+        self._video: dict[str, PeriodicUpdater] = {}
 
         self._show_platform_info()
 
@@ -151,9 +163,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: Any) -> None:
         if self._tray.intercept_close(event):
             return
-        # Genuine quit: stop the playback ticker; the daemon-thread loops die
-        # with the process.
+        # Genuine quit: stop the metrics ticker AND every per-device video
+        # ticker; the daemon-thread loops die with the process.
         self._ticker.stop()
+        for updater in self._video.values():
+            updater.stop()
         event.accept()
 
     def _show_platform_info(self) -> None:
@@ -202,12 +216,54 @@ class MainWindow(QMainWindow):
         if not self._ticker.isActive() or self._ticker.interval() != interval_ms:
             self._ticker.start(interval_ms)
 
+    def _on_video_started(self, event: VideoStarted) -> None:
+        """A video began on a device — give it its own frame-rate ticker.
+
+        Without this qtgui rendered a video theme repeatedly but never advanced
+        its cursor, so the panel showed frame 0 forever.  ``interval_ms`` comes
+        off the event (derived from the playback's fps server-side), so this
+        skin never has to query MediaService.
+        """
+        log.info("_on_video_started: key=%s interval_ms=%d frames=%d",
+                 event.key, event.interval_ms, event.frame_count)
+        updater = self._video.get(event.key)
+        if updater is None:
+            updater = PeriodicUpdater(self)
+            self._video[event.key] = updater
+        # PeriodicUpdater drops the previous connection on restart, so a
+        # re-started video re-paces instead of firing twice per tick.
+        updater.start(event.interval_ms, partial(self._on_video_tick, event.key))
+
+    def _on_video_stopped(self, event: VideoStopped) -> None:
+        """Video ended on a device — stop its ticker; metrics keep it alive."""
+        log.info("_on_video_stopped: key=%s", event.key)
+        updater = self._video.pop(event.key, None)
+        if updater is not None:
+            updater.stop()
+
+    def _on_video_tick(self, key: str) -> None:
+        """One video frame for *key* — advance the cursor, render, send."""
+        try:
+            self._app.dispatch(TickDisplay(key=key))
+        except Exception as e:
+            log.exception("Video tick failed for %s: %s", key, e)
+
     def _on_tick(self) -> None:
-        """Fire one render+send for every device with an active theme."""
+        """Fire one render+send for every device with an active theme.
+
+        Skips any device currently driven by its own video ticker — that
+        ticker already renders at frame rate, and rendering the same device
+        from both would double its wire traffic.  Same rule the gui skin
+        states as "animation timer owns the wire".
+        """
         if not self._app.active_themes:
             self._ticker.stop()
             return
         for key in list(self._app.active_themes):
+            updater = self._video.get(key)
+            if updater is not None and updater.is_active:
+                log.debug("_on_tick: %s driven by its video ticker — skip", key)
+                continue
             try:
                 self._app.dispatch(RenderAndSend(key=key))
             except Exception as e:
