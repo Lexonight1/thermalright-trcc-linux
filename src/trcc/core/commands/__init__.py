@@ -13,6 +13,7 @@ from ._base import (
 from .device import (
     AddOverlayElement,
     ApplyMask,
+    BuildPreview,
     ConnectDevice,
     DeleteOverlayElement,
     DeviceConnectionIssues,
@@ -142,6 +143,7 @@ from .theme import (
 __all__ = [
     "AddOverlayElement",
     "ApplyMask",
+    "BuildPreview",
     "CheckForUpdate",
     "Command",
     "ConfigureSlideshow",

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from ..errors import (
     DeviceNotConnectedError,
@@ -70,6 +70,7 @@ from ..results import (
     OverlayElementResult,
     OverlayResult,
     PauseVideoResult,
+    PreviewResult,
     RenderDcResult,
     RenderResult,
     ScreencastResult,
@@ -680,6 +681,130 @@ class TickDisplay(Command[RenderResult]):
             frame_count=playback.frame_count,
             interval_ms=playback.interval_ms,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class BuildPreview(Command[PreviewResult]):
+    """Render the device's active theme and stop before the wire.
+
+    The third member of the render family — :class:`RenderAndSend` renders and
+    pushes, :class:`TickDisplay` advances then renders and pushes, this one
+    renders and hands the frame back.
+
+    Exists because all four UIs had transcribed the same four-step block:
+    look up the device, look up its active theme, read the sensors, call
+    ``display.build_preview_surface``.  Four copies, none daemon-safe
+    (``AppProxy`` exposes ``dispatch`` and nothing else, #249) — and they had
+    already drifted apart: three fed the renderer RAW readings while the wire
+    path fed PERSONALIZED ones, so a user on °F saw the Celsius number under a
+    °F glyph, and a user with HDD disabled saw disk metrics the panel omitted.
+    Personalizing here is what makes the preview agree with the glass.
+
+    ``encode`` selects what the caller gets back, because that is the only
+    thing the four differed by:
+
+      * ``""``    — surface only.  No encode cost; the Qt skins render it.
+      * ``"png"`` — lossless bytes; overlay text + CJK glyphs stay legible.
+      * ``"jpeg"``— lossy bytes for streaming, where a PNG per frame would
+        burn the bandwidth.
+
+    ``sample_cols`` additionally returns a row-major RGB grid, sized from the
+    surface's own aspect ratio, for terminal previews.  The surface always
+    comes back too when it exists — it is the thing that was built.
+
+    Polled by preview panels, so logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+    encode: Literal["", "png", "jpeg"] = ""
+    sample_cols: int = 0
+
+    def execute(self, app: App) -> PreviewResult:
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return PreviewResult(ok=False, key=self.key, message=str(e))
+
+        theme = app.active_themes.get(self.key)
+        if theme is None:
+            log.debug("BuildPreview: %s has no active theme", self.key)
+            return PreviewResult(
+                ok=True, key=self.key,
+                message="No active theme — nothing to preview",
+            )
+
+        # Same personalization the wire path applies (RenderAndSend, and
+        # SaveTheme when it snapshots the thumbnail): sources deliver °C and
+        # every disk key, the user's prefs are applied once, here.
+        from ...services.metrics_personalize import personalize_readings
+        s = app.settings.app
+        sensors = personalize_readings(
+            app.platform.sensors().read_all(),
+            temp_unit=s.temp_unit,
+            hdd_enabled=s.hdd_enabled,
+        )
+
+        try:
+            surface = app.display.build_preview_surface(
+                info=device.info, theme=theme, sensors=sensors,
+                profile=device.profile,
+            )
+            width, height = app.renderer.surface_size(surface)
+            image, media_type = self._encode(app, surface)
+            pixels = self._sample(app, surface, width, height)
+        except Exception as e:
+            # A preview that raises must not take the panel down with it —
+            # every UI wrapped this call for that reason.  Covers the encode
+            # and the sample too: a Renderer that implements neither (a bare
+            # test double) is a failed Result, not a crashed panel.  Surfaced
+            # through App.dispatch's WARNING, never swallowed.
+            log.warning("BuildPreview %s: render raised — %s: %s",
+                        self.key, type(e).__name__, e)
+            return PreviewResult(
+                ok=False, key=self.key, theme_name=theme.name,
+                message=f"Preview render failed — {type(e).__name__}: {e}",
+            )
+
+        log.debug(
+            "BuildPreview %s: theme=%s %dx%d encode=%s bytes=%d grid=%s",
+            self.key, theme.name, width, height,
+            self.encode or "none", len(image),
+            f"{self.sample_cols}x{len(pixels)}" if pixels else "none",
+        )
+        return PreviewResult(
+            ok=True, key=self.key, surface=surface,
+            image=image, media_type=media_type,
+            width=width, height=height, theme_name=theme.name,
+            pixels=pixels,
+            message=f"Preview {width}x{height} of {theme.name}",
+        )
+
+    def _encode(self, app: App, surface: Any) -> tuple[bytes, str]:
+        """Encode *surface* to the requested container, or nothing at all."""
+        log.debug("BuildPreview %s: encode=%s", self.key, self.encode or "none")
+        if self.encode == "png":
+            return app.display.encode_png(surface), "image/png"
+        if self.encode == "jpeg":
+            return app.display.encode_jpeg(surface), "image/jpeg"
+        return b"", ""
+
+    def _sample(
+        self, app: App, surface: Any, width: int, height: int,
+    ) -> list[list[tuple[int, int, int]]]:
+        """Sample *surface* into a ``sample_cols``-wide row-major RGB grid.
+
+        Rows follow the surface's real aspect ratio so a 1920x462 panel does
+        not come back as a square, and are kept even because the half-block
+        renderer at the other end packs two rows per terminal cell.
+        """
+        if self.sample_cols <= 0:
+            return []
+        rows = max(2, round(self.sample_cols * height / width) if width else 2)
+        if rows % 2:
+            rows += 1
+        log.debug("BuildPreview %s: sampling %dx%d grid from %dx%d surface",
+                  self.key, self.sample_cols, rows, width, height)
+        return app.renderer.get_pixels_rgb(surface, self.sample_cols, rows)
 
 
 @dataclass(frozen=True, slots=True)

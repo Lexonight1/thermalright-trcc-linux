@@ -6,7 +6,7 @@ render.  Every Command has one concrete Result type.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from .models import (
     OVERLAY_DEFAULT_CLOCK_SOURCE,
@@ -90,6 +90,38 @@ class RenderResult(Result):
     cursor: int | None = None
     frame_count: int | None = None
     interval_ms: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewResult(Result):
+    """One rendered frame, stopped before the wire — what the panel shows.
+
+    Every UI previews the same way, so every UI needs a different carrier for
+    it: the two Qt skins want the renderer surface, the REST routes want
+    encoded bytes, the terminal wants sampled pixels.  All three ride here and
+    the caller reads the one it asked for — a second Command per output format
+    would be the same render three times.
+
+    ``surface`` is the live Renderer surface (``QImage`` under ``QtRenderer``)
+    and is **in-process only** — ``ipc._to_wire`` drops it to ``None`` with a
+    warning, the same contract ``FrameSent.surface`` already has.  A daemon
+    client asks with ``encode="png"`` and reads :attr:`image` instead.
+
+    ``ok=True`` with ``surface=None`` means "nothing to preview yet" (no theme
+    loaded) — a normal pre-load state, not a failure, same ruling as
+    ``VideoStatus`` on a device with no playback.  ``ok=False`` is reserved for
+    a device that isn't attached or a render that raised.
+    """
+    key: str = ""
+    surface: Any = None
+    image: bytes = b""
+    media_type: str = ""
+    width: int = 0
+    height: int = 0
+    theme_name: str = ""
+    # Row-major ``[y][x] -> (r, g, b)``, populated only when the caller asks
+    # for a sample grid (the CLI's ANSI preview).  JSON-safe, unlike surface.
+    pixels: list[list[tuple[int, int, int]]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
