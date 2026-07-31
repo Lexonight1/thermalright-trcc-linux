@@ -395,9 +395,18 @@ def bootstrap(report_path: str | None = None,
         specs = load_device_specs(report_path)
     platform = _build_dev_platform(specs or None)
 
+    # Same policy the shipping app uses (``ui/cli/main:_root``): the FILE
+    # always keeps DEBUG, only the terminal level rises with -v.  This harness
+    # kept the old ``DEBUG if -v else INFO`` rule, so a mock run's log was
+    # missing exactly the branch/decision lines it exists to show — and the
+    # qtgui path calls ``bootstrap()`` with no verbosity at all, so -v could
+    # not reach it even when passed.
     configure_logging(
         platform.paths().log_file(),
-        level=logging.DEBUG if verbosity >= 1 else logging.INFO,
+        level=logging.DEBUG,
+        stderr_level=logging.DEBUG if verbosity >= 2
+        else logging.INFO if verbosity == 1
+        else logging.WARNING,
     )
     log.info(
         "dev bootstrap: platform=%s paths.config=%s specs=%d",
