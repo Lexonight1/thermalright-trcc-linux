@@ -25,6 +25,7 @@ from PySide6.QtGui import QPixmap
 
 from ...core.commands import (
     ApplyMask,
+    BuildPreview,
     EnableOverlay,
     ExportTheme,
     ImportTheme,
@@ -1324,38 +1325,24 @@ class LCDHandler(BaseHandler):
         return image
 
     def _build_preview_surface(self) -> Any:
-        """Build a preview surface from the App's render pipeline.
+        """Ask the bus for a preview surface — one Command, every UI.
 
-        Returns None when the device has no active theme yet (pre-load)
-        or the device key no longer points at a live Device.
+        Returns None when the device has no active theme yet (pre-load) or
+        the key no longer points at a live Device.  The lookups, the sensor
+        read and the render guard all moved into :class:`BuildPreview`, which
+        also personalizes the readings the way the wire path does — this GUI
+        used to draw °C numbers under a °F glyph.
         """
-        device = self._app.devices.get(self._device_key)
-        if device is None:
-            self.log.debug(
-                "_build_preview_surface: device %s gone — return None",
-                self._device_key,
-            )
+        result = self._app.dispatch(BuildPreview(key=self._device_key))
+        if not result.ok:
+            # Blank preview is user-visible; the Command already logged why.
+            self.log.warning("_build_preview_surface: %s — %s",
+                             self._device_key, result.message)
             return None
-        theme = self._app.active_themes.get(self._device_key)
-        if theme is None:
-            self.log.debug(
-                "_build_preview_surface: %s has no active theme — return None",
-                self._device_key,
-            )
-            return None
-        sensors = self._app.platform.sensors().read_all()
-        try:
-            return self._app.display.build_preview_surface(
-                info=device.info, theme=theme, sensors=sensors,
-                profile=device.profile,
-            )
-        except Exception as e:
-            # Surface failures are user-visible (blank preview).  WARN.
-            self.log.warning(
-                "_build_preview_surface: %s raised — %s: %s",
-                self._device_key, type(e).__name__, e,
-            )
-            return None
+        if result.surface is None:
+            self.log.debug("_build_preview_surface: %s — %s",
+                           self._device_key, result.message)
+        return result.surface
 
     # ── Helpers ─────────────────────────────────────────────────────
 
