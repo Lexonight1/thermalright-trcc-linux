@@ -22,7 +22,7 @@ choice rather than an accident of whoever wrote the lookup:
 ===============  =========================================================
 ``Reject``       raise — an unregistered key is a bug (unknown wire)
 ``FallBackTo``   substitute another key + WARN — degrade, don't crash
-``find()``       return ``None`` — absence is a normal answer (unknown VID/PID)
+``.get()``       return ``None`` — absence is a normal answer (unknown VID/PID)
 ===============  =========================================================
 """
 from __future__ import annotations
@@ -90,12 +90,13 @@ class FallBackTo(MissPolicy[K, V]):
             ) from None
 
 
-class Registry(Generic[K, V]):
+class Registry(Mapping[K, V]):
     """A ``key → value`` table with self-registration and one miss policy.
 
-    Supports ``in``, ``len()`` and iteration so the data describes itself —
-    callers ask the registry what it holds instead of reaching for a private
-    dict.
+    **It is a ``Mapping``**, so it behaves like one: ``in``, ``len()``,
+    iteration, ``keys()`` / ``values()`` / ``items()`` all come from the stdlib
+    ABC rather than being hand-written here.  The data describes itself, and
+    callers never reach for a private dict.
     """
 
     def __init__(self, name: str, *, on_missing: MissPolicy[K, V]) -> None:
@@ -119,41 +120,41 @@ class Registry(Generic[K, V]):
             return value
         return deco
 
+    # ── Mapping protocol ──────────────────────────────────────────────
+    # Subclassing ``Mapping`` means these three are the ONLY accessors we
+    # write; ``keys`` / ``values`` / ``items`` / ``__contains__`` / ``__eq__``
+    # come from the stdlib ABC, correct and view-based, for free.
+
     def __getitem__(self, key: K) -> V:
         """``registry[key]`` — the lookup, applying the miss policy if absent.
 
-        A registry *is* a mapping, so it reads as one.  This is the primary
-        accessor; :meth:`get` is kept as a named alias for call sites where
-        the verb reads better than the subscript.
+        Subscript is where the policy lives, exactly as ``dict[k]`` is where
+        ``KeyError`` lives: the caller who subscripts is asserting the key is
+        there, so a miss is theirs to hear about.
         """
         try:
             return self._table[key]
         except KeyError:
             return self._on_missing.resolve(self._name, key, self._table)
 
-    def get(self, key: K) -> V:
-        """Alias for ``registry[key]``."""
-        return self[key]
-
-    def find(self, key: K) -> V | None:
-        """Return the value for *key*, or ``None`` — the miss policy is skipped.
-
-        For callers where absence is a normal answer rather than a fault.
-        """
-        return self._table.get(key)
-
-    def keys(self) -> list[K]:
-        """Every registered key — for diagnostics and error messages."""
-        return list(self._table)
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._table
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._table)
 
     def __len__(self) -> int:
         return len(self._table)
 
-    def __iter__(self) -> Iterator[K]:
-        return iter(self._table)
+    def get(self, key: K, default: V | None = None) -> V | None:
+        """``registry.get(key)`` — **never raises**, the miss policy is skipped.
+
+        Overridden rather than inherited because ``Mapping.get`` catches only
+        ``KeyError``, and ``Reject`` raises a domain error (``TrccError``) that
+        would sail straight through it — a class advertising the Mapping
+        protocol while violating it.
+
+        The split is Python's own, kept honest: ``registry[key]`` is the
+        assertion, ``registry.get(key)`` is the question.
+        """
+        return self._table.get(key, default)
 
     def __repr__(self) -> str:
         return f"<Registry {self._name}: {len(self._table)} entries>"
