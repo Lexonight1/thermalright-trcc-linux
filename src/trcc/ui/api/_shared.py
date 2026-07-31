@@ -7,8 +7,12 @@ view genuinely differs from the domain Result — see each converter.
 """
 from __future__ import annotations
 
-from fastapi import HTTPException
+import logging
+from pathlib import Path
 
+from fastapi import HTTPException, Request
+
+from ...core.commands import GetPaths
 from ...core.models import ProductInfo
 from ...core.results import (
     DiscoverResult,
@@ -22,6 +26,8 @@ from .schemas import (
     ProductSchema,
     ThemeResponse,
 )
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # Converters
@@ -77,3 +83,29 @@ def http_error_if_failed(result: Result, status_code: int = 400) -> None:
     """Raise HTTPException with the result message if ok is False."""
     if not result.ok:
         raise HTTPException(status_code=status_code, detail=result.message)
+
+
+def staging_dir(request: Request) -> Path:
+    """The upload staging directory, created if absent.
+
+    Four routes staged multipart uploads into
+    ``platform.paths().user_content_dir() / "uploads"`` with the same three
+    lines each — and that reach does not exist on the ``AppProxy`` a
+    daemon-mode client holds (#249).  One helper, one ``GetPaths`` dispatch,
+    and the location is the app's answer rather than each route's assumption.
+    """
+    result = request.app.state.trcc.dispatch(GetPaths())
+    if not result.uploads_dir:
+        # Empty is ABSENT, not a location.  ``Path("")`` is ``Path(".")``, so
+        # a falsy value here would silently stage user uploads into whatever
+        # directory the process happens to be running in.  Refuse instead —
+        # and say so, because the alternative failure mode is uploads landing
+        # somewhere nobody chose, with nothing raised and nothing logged.
+        log.warning("staging_dir: GetPaths returned no uploads_dir (%s) — "
+                    "refusing to stage into the working directory",
+                    result.message)
+        raise HTTPException(500, "upload staging directory unavailable")
+    path = Path(result.uploads_dir).resolve()
+    log.debug("staging_dir: %s", path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path

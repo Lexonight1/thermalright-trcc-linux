@@ -1549,6 +1549,18 @@ Tell trcc the welcome flow has been completed.
 trcc system mark-setup-done
 ```
 
+### `trcc system paths`
+
+Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`.
+
+```bash
+trcc system paths [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--resolution`, `-r` `RESOLUTION` | WxH (e.g. 854x480) — also show the per-resolution theme/mask dirs |
+
 ### `trcc system platform-info`
 
 Show platform info (distro, install method, config dir, permissions).

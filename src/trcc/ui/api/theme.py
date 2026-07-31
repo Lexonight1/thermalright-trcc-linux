@@ -49,6 +49,7 @@ from ...core.results import (
 )
 from ._shared import (
     http_error_if_failed,
+    staging_dir,
     to_import_config_response,
     to_theme_response,
 )
@@ -153,9 +154,7 @@ async def import_upload(
         "api POST /theme/import-upload: key=%s filename=%s name=%s",
         key, archive.filename, name,
     )
-    paths = request.app.state.trcc.platform.paths()
-    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = staging_dir(request)
     suffix = Path(archive.filename or "theme.tr").suffix.lower() or ".tr"
     staged = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
     try:
@@ -253,9 +252,7 @@ async def config_import_upload(
         "api POST /theme/config/import-upload: key=%s filename=%s",
         key, config.filename,
     )
-    paths = request.app.state.trcc.platform.paths()
-    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = staging_dir(request)
     staged = uploads_dir / f"{uuid.uuid4().hex}.json"
     try:
         with staged.open("wb") as f:

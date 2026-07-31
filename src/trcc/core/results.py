@@ -265,6 +265,45 @@ class VideoResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class PathsResult(Result):
+    """Where this install keeps things — the answer to "where do I put it?".
+
+    A UI has legitimate reasons to know a directory: stage an HTTP upload,
+    open the log, point a file picker at the user's backgrounds.  Every one of
+    them reached ``app.platform.paths()`` to find out, which is a crash under
+    ``TRCC_DAEMON=1`` where the UI holds an ``AppProxy`` exposing ``dispatch``
+    and nothing else (#249).
+
+    Paths travel as **strings**, not ``Path``: this Result crosses the daemon
+    socket as JSON, and a caller that wants a ``Path`` says so at the point of
+    use.
+
+    The resolution-scoped fields are ``None`` — **not ``""``** — when the
+    Command was given no resolution.  An empty string is falsy and
+    indistinguishable from a real empty path, so it collapses "you did not ask
+    for this" into the same value as "this is empty", exactly the way
+    ``fps or 30`` collapses "no video" into "30 fps".  ``None`` means the
+    question was not asked; a string is an answer.
+    """
+    # Roots — always populated, so a plain str is honest.
+    config_dir: str = ""
+    data_dir: str = ""
+    user_content_dir: str = ""
+    user_data_dir: str = ""
+    log_file: str = ""
+    uploads_dir: str = ""
+    media_player_dir: str = ""
+    screencast_dir: str = ""
+    # Resolution-scoped — None until ``GetPaths.resolution`` is supplied.
+    theme_dir: str | None = None
+    user_theme_dir: str | None = None
+    user_mask_dir: str | None = None
+    user_background_dir: str | None = None
+    cloud_theme_dir: str | None = None
+    cloud_mask_dir: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class VideoStatusResult(Result):
     """Read-only playback state for a device — the QUESTION, not the tick.
 

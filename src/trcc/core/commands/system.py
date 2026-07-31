@@ -40,6 +40,7 @@ from ..results import (
     LanguageEntry,
     LanguageResult,
     LanguagesListResult,
+    PathsResult,
     PlatformInfoResult,
     QuickstartResult,
     QuickstartStepEntry,
@@ -924,4 +925,51 @@ class SetRefreshInterval(Command[RefreshIntervalResult]):
         return RefreshIntervalResult(
             ok=True, seconds=self.seconds,
             message=f"refresh interval set to {self.seconds:.2f}s",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GetPaths(Command[PathsResult]):
+    """Report where this install keeps things.  Read-only.
+
+    Every UI needs a directory sometimes — stage an upload, open the log, point
+    a picker at the user's backgrounds — and each one reached
+    ``app.platform.paths()`` to get it.  That attribute does not exist on the
+    ``AppProxy`` a daemon-mode UI holds, so all of it raised under
+    ``TRCC_DAEMON=1`` (#249).  Asking the bus works in every mode.
+
+    ``resolution`` fills the resolution-scoped fields (theme / mask /
+    background / cloud dirs, which are per-canvas-size).  Omit it and those
+    come back empty rather than guessed at.
+    """
+    resolution: tuple[int, int] | None = None
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # asked on every upload
+
+    def execute(self, app: App) -> PathsResult:
+        p = app.platform.paths()
+        scoped: dict[str, str] = {}
+        if self.resolution is not None:
+            w, h = self.resolution
+            scoped = {
+                "theme_dir": str(p.theme_dir(w, h)),
+                "user_theme_dir": str(p.user_theme_dir(w, h)),
+                "user_mask_dir": str(p.user_mask_dir(w, h)),
+                "user_background_dir": str(p.user_background_dir(w, h)),
+                "cloud_theme_dir": str(p.cloud_theme_dir(w, h)),
+                "cloud_mask_dir": str(p.cloud_mask_dir(w, h)),
+            }
+        log.debug("GetPaths.execute: resolution=%s scoped=%d",
+                  self.resolution, len(scoped))
+        return PathsResult(
+            ok=True,
+            config_dir=str(p.config_dir()),
+            data_dir=str(p.data_dir()),
+            user_content_dir=str(p.user_content_dir()),
+            user_data_dir=str(p.user_data_dir()),
+            log_file=str(p.log_file()),
+            uploads_dir=str(p.user_content_dir() / "uploads"),
+            media_player_dir=str(p.user_media_player_dir()),
+            screencast_dir=str(p.user_screencast_dir()),
+            message=f"paths for {p.config_dir()}",
+            **scoped,
         )

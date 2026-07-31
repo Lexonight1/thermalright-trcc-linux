@@ -90,6 +90,7 @@ from ...core.results import (
 )
 from ._shared import (
     http_error_if_failed,
+    staging_dir,
     to_theme_response,
 )
 from .schemas import (
@@ -371,9 +372,7 @@ async def send_image(
         "api POST /devices/{key}/display/send-image: key=%s filename=%s",
         key, image.filename,
     )
-    paths = request.app.state.trcc.platform.paths()
-    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = staging_dir(request)
     suffix = Path(image.filename or "image.png").suffix.lower() or ".png"
     if suffix not in _CREATE_THEME_IMG_EXTS:
         raise HTTPException(
@@ -650,9 +649,7 @@ async def create_theme(
         overlay.filename if overlay is not None else None,
         loop,
     )
-    paths = request.app.state.trcc.platform.paths()
-    uploads_dir = (paths.user_content_dir() / "uploads").resolve()
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = staging_dir(request)
 
     bg_name = Path(background.filename or "background").name
     bg_suffix = Path(bg_name).suffix.lower() or ".jpg"

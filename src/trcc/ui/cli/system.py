@@ -15,6 +15,7 @@ from ...core.commands import (
     GenerateDebugReport,
     GetAutostartStatus,
     GetFirstRunStatus,
+    GetPaths,
     GetPlatformInfo,
     ListDisks,
     ListFans,
@@ -546,3 +547,41 @@ def autostart_disable() -> None:
     log.info("cli system autostart disable")
     r = get_app().dispatch(DisableAutostart())
     typer.echo(r.message)
+
+
+@app.command("paths")
+def paths(
+    resolution: str = typer.Option(
+        "", "--resolution", "-r",
+        help="WxH (e.g. 854x480) — also show the per-resolution theme/mask dirs",
+    ),
+) -> None:
+    """Show where this install keeps config, data, logs and user content.
+
+    Answers "where did my theme go?" and "which log do I attach to an issue?"
+    without the user guessing at ``~/.trcc`` versus ``~/.trcc-user``.
+    """
+    log.info("cli system paths: resolution=%s", resolution or "(none)")
+    size: tuple[int, int] | None = None
+    if resolution:
+        try:
+            w, h = (int(v) for v in resolution.lower().split("x", 1))
+            size = (w, h)
+        except ValueError:
+            log.warning("cli system paths: bad --resolution %r "
+                        "(expected WxH, e.g. 854x480)", resolution)
+            typer.echo(f"Bad --resolution {resolution!r}; expected WxH e.g. 854x480")
+            raise typer.Exit(code=1) from None
+    result = get_app().dispatch(GetPaths(resolution=size))
+    for field in (
+        "config_dir", "data_dir", "user_content_dir", "user_data_dir",
+        "log_file", "uploads_dir", "media_player_dir", "screencast_dir",
+        "theme_dir", "user_theme_dir", "user_mask_dir",
+        "user_background_dir", "cloud_theme_dir", "cloud_mask_dir",
+    ):
+        value = getattr(result, field)
+        # None means "not asked for" — a resolution-scoped dir with no
+        # resolution given.  Print nothing rather than an empty line that
+        # would read as "this directory is unset".
+        if value is not None:
+            typer.echo(f"{field:22} {value}")
