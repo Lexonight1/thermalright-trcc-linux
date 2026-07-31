@@ -24,7 +24,6 @@ from ...core.errors import (
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
-from . import DeviceFactory
 from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -75,8 +74,7 @@ def _frame_timeout_ms(packet_size: int) -> int:
 # =========================================================================
 
 
-@DeviceFactory.register(Wire.HID)
-class HidLcd(BaseBulkDevice):
+class HidLcd(BaseBulkDevice, wire=Wire.HID):
     """HID-protocol LCD device (Type 2 or Type 3 firmware variants).
 
     Selection is by `info.device_type` (2 or 3); both variants share the

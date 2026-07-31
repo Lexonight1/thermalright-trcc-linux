@@ -1,6 +1,6 @@
 """Verify the disk/SSD-temperature sensor end to end on THIS machine.
 
-Drives the real composition path — ``PlatformFactory.current().sensors()`` — so
+Drives the real composition path — ``current_platform().sensors()`` — so
 it reports exactly what the app would render, then prints the per-drive detail
 for the active OS backend:
 
@@ -23,13 +23,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from trcc.adapters.system import PlatformFactory
+from trcc.adapters.system import current_platform
 
 
 def main() -> int:
     print(f"OS: {sys.platform}\n")
 
-    sensors = PlatformFactory.current().sensors()
+    sensors = current_platform().sensors()
     readings = sensors.read_all()          # one poll
     disk_readings = {k: v for k, v in readings.items() if k.startswith("disk:")}
     snap = sensors.snapshot()

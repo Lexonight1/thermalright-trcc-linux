@@ -36,7 +36,6 @@ from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
-from . import PlatformFactory
 from ._base import BaseOS, BasePaths
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
@@ -344,8 +343,7 @@ _LINUX_PKG_BY_MANAGER: dict[str, dict[str, str]] = {
 }
 
 
-@PlatformFactory.register("linux")
-class LinuxPlatform(BaseOS):
+class LinuxPlatform(BaseOS, key="linux"):
     """Linux implementation — same OS contract; only internals below differ.
 
     USB access via pyusb (libusb).  Udev rules installed by setup() give
@@ -371,7 +369,7 @@ class LinuxPlatform(BaseOS):
 
     # ── Transport factories ──────────────────────────────────────────
 
-    def open_scsi(self, vid: int, pid: int,
+    def _open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         """Return an unopened SG_IO-backed SCSI transport.
 
@@ -626,7 +624,7 @@ def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
 
 
 # Sentinel so a failed/unsupported live read is cached too (timings are static
-# per boot; PlatformFactory builds a fresh LinuxPlatform each call, so the cache
+# per boot; current_platform() builds a fresh LinuxPlatform each call, so the cache
 # lives at module scope, not on the instance).
 _UNREAD: object = object()
 _live_imc_cache: object = _UNREAD

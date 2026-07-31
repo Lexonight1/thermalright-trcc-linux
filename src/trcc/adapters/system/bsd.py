@@ -24,7 +24,6 @@ from ...core.ports import (
 )
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from . import PlatformFactory
 from ._base import BaseOS, BasePaths
 
 log = logging.getLogger(__name__)
@@ -50,8 +49,7 @@ _BSD_INSTALL_HINTS: dict[str, str] = {
 }
 
 
-@PlatformFactory.register("bsd")
-class BSDPlatform(BaseOS):
+class BSDPlatform(BaseOS, key="bsd"):
     """FreeBSD / OpenBSD implementation — BOT-only SCSI.
 
     Same OS contract as every other platform; only the internals below differ.
@@ -86,7 +84,7 @@ class BSDPlatform(BaseOS):
             reason=f"hotplug listener not implemented for {_platform.system()}",
         )
 
-    def open_scsi(self, vid: int, pid: int,
+    def _open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         bulk = PyUsbBulkTransport(vid, pid, serial)

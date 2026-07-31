@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         RenderContent,
         SensorReading,
         UsbPowerState,
+        Wire,
     )
     from .protocol import DeviceProfile
 
@@ -125,6 +126,12 @@ class ScsiTransport(ABC):
 # Each Device subclass binds T to the transport it needs, so
 # `self._transport.write(...)` narrows correctly per device.
 T = TypeVar("T", BulkTransport, ScsiTransport)
+
+# Any transport a Platform can hand back.  The two ABCs describe genuinely
+# different protocols and deliberately share no base — this union is what
+# `Platform.open_transport` returns, so the port stays wire-agnostic while
+# the caller still gets a precisely-typed object.
+Transport = BulkTransport | ScsiTransport
 
 
 # =========================================================================
@@ -1267,22 +1274,28 @@ class Platform(ABC):
         - Run OS-specific setup (udev, WinUSB guide, etc.).
     """
 
-    # ── Transport factories — one per wire family ────────────────────
+    # ── Transport factory — ONE method, wire-agnostic ─────────────────
     @abstractmethod
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        """Return an unopened BulkTransport for a USB-bulk device.
+    def open_transport(self, wire: Wire, vid: int, pid: int,
+                       serial: str | None = None) -> Transport:
+        """Return an unopened transport for *wire*.
 
-        Used by HID / BULK / LY / LED protocols.  Every OS can do this
-        via libusb, so the concrete class is usually shared.
-        """
+        **The port must not name a wire.**  It used to: separate
+        ``open_bulk`` / ``open_scsi`` abstract methods meant every OS
+        implemented a wire-named method, and both callers branched on
+        ``wire is Wire.SCSI`` to choose between them — so a seventh wire
+        needing a new kernel interface cost a new abstract method here plus
+        an implementation in all four OS adapters.  Wire × OS, the one place
+        in this design where two axes multiplied.
 
-    @abstractmethod
-    def open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
-        """Return an unopened ScsiTransport for a SCSI-LCD device.
+        Which kernel interface a wire needs is a per-``(OS, wire)`` fact, and
+        it belongs in a *table inside the OS adapter* — exactly how
+        ``adapters/system/_udev.py`` already keys subsystem names by ``Wire``.
+        ``BaseOS`` provides that table plus the shared bulk path; an OS only
+        supplies the bodies that genuinely differ.
 
-        Used by SCSI protocols.  Each OS has a native path:
+        Bulk (libusb) serves HID / BULK / BULK_ALI / LY / LED identically on
+        every OS.  SCSI is the one wire needing a native path per OS:
             Linux   → SG_IO ioctl on /dev/sgN
             Windows → DeviceIoControl on the raw volume
             macOS   → USB BOT (no SG equivalent)

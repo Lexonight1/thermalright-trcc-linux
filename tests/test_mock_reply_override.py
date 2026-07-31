@@ -10,6 +10,7 @@ from tests.mock_platform import MockPlatform
 from trcc.adapters.infra.send_scheduler import SyncSendScheduler
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
+from trcc.core.models import Wire
 from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.variants import _VARIANT_REGISTRY
 
@@ -23,10 +24,10 @@ def test_set_active_reply_switches_handshake_bytes(tmp_path) -> None:
                         tmp_path)
 
     plat.set_active_reply(_VID, _PID, pm=10, sub=0, fbl=58)
-    first = plat.open_bulk(_VID, _PID).read_script[0]
+    first = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
 
     plat.set_active_reply(_VID, _PID, pm=20, sub=1, fbl=58)
-    second = plat.open_bulk(_VID, _PID).read_script[0]
+    second = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
 
     assert first and second
     assert first != second          # different reply → different handshake bytes
@@ -39,15 +40,15 @@ def test_override_is_used_verbatim_not_truthy_gated(tmp_path) -> None:
         [{"vid": "87ad", "pid": "70db", "pm": 99, "sub": 5, "name": "x"}],
         tmp_path)
 
-    spec_default = plat.open_bulk(_VID, _PID).read_script[0]   # uses spec pm=99/sub=5
+    spec_default = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]   # uses spec pm=99/sub=5
 
     plat.set_active_reply(_VID, _PID, pm=0, sub=0, fbl=58)
-    forced_zero = plat.open_bulk(_VID, _PID).read_script[0]    # exact pm=0/sub=0
+    forced_zero = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]    # exact pm=0/sub=0
 
     assert forced_zero != spec_default        # override won, verbatim
 
     # And it's deterministic for the same injected reply.
-    again = plat.open_bulk(_VID, _PID).read_script[0]
+    again = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
     assert again == forced_zero
 
 
@@ -55,8 +56,8 @@ def test_clearing_back_to_default(tmp_path) -> None:
     # No override set → falls back to the spec/geometry path (unchanged behaviour).
     plat = MockPlatform([{"vid": "87ad", "pid": "70db", "pm": 7, "name": "x"}],
                         tmp_path)
-    a = plat.open_bulk(_VID, _PID).read_script[0]
-    b = plat.open_bulk(_VID, _PID).read_script[0]
+    a = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
+    b = plat.open_transport(Wire.BULK, _VID, _PID).read_script[0]
     assert a == b and a            # stable default reply, no override in play
 
 

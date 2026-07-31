@@ -29,10 +29,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ...core.errors import HandshakeError, TransportError
-from ...core.models import Kind, ProductInfo, Wire
+from ...core.models import Kind, ProductInfo
 from ...core.ports import Platform
 from ...core.registry import find_product
-from ..device import DeviceFactory
+from ..device import DEVICES
 from ..infra.logging import tail_log
 from .health import HealthReport, run_health_checks
 from .install import InstallInfo, collect_install_info
@@ -248,11 +248,8 @@ def _probe_handshake(
         return None
     device = None
     try:
-        cls = DeviceFactory.for_wire(product.wire)
-        if product.wire is Wire.SCSI:
-            transport = platform.open_scsi(product.vid, product.pid)
-        else:
-            transport = platform.open_bulk(product.vid, product.pid)
+        cls = DEVICES[product.wire]
+        transport = platform.open_transport(product.wire, product.vid, product.pid)
         device = cls(product, transport)
         result = device.connect()
     except (OSError, HandshakeError, TransportError, RuntimeError) as e:

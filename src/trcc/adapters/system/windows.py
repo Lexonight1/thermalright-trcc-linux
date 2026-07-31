@@ -27,7 +27,6 @@ from ...core.ports import (
     SensorEnumerator,
 )
 from ..sensors.windows import build_windows_sensors
-from . import PlatformFactory
 from ._base import BaseOS, BasePaths
 from ._windows_wmi import wmi_handle
 
@@ -342,8 +341,7 @@ _WIN_INSTALL_HINTS: dict[str, str] = {
 }
 
 
-@PlatformFactory.register("win32")
-class WindowsPlatform(BaseOS):
+class WindowsPlatform(BaseOS, key="win32"):
     """Windows implementation — same OS contract; only internals below differ."""
 
     _INSTALL_HINTS = _WIN_INSTALL_HINTS
@@ -365,7 +363,7 @@ class WindowsPlatform(BaseOS):
         from ._hotplug import WindowsHotplugMonitor
         return WindowsHotplugMonitor()
 
-    def open_scsi(self, vid: int, pid: int,
+    def _open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         path = _find_physical_drive(vid, pid)

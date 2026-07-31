@@ -9,7 +9,7 @@ issue, and we run ::
     PYTHONPATH=src python3 dev/smoke_anything.py --from-report report.txt
 
 to reproduce the failing path against the *real* composition stack —
-``Platform`` → ``DeviceFactory.for_wire`` → ``Device`` → a scripted
+``Platform`` → ``DEVICES[wire]`` → ``Device`` → a scripted
 transport — and print "Bad code surfaced: <device> → <probe>: <detail>".
 
 Each probe is a real-bug class we've already paid for.  If any probe
@@ -20,13 +20,13 @@ cycles, and the Windows COM-init invariant.  Drop a function in
 ``PROBES`` to add one — it runs in every future invocation.
 
 Architecture note: devices are built exactly how the composition root
-(``App.attach``) builds them — ``DeviceFactory.for_wire(info.wire)`` picks
+(``App.attach``) builds them — ``DEVICES[info.wire]`` picks
 the class, a DI'd transport feeds it.  The only difference is the
 transport is a ``tests/conftest`` fake whose ``read_script`` we prime
 with a synthetic handshake.  Per-wire handshake shapes come from one
 ``WireDriver`` Strategy dict keyed by the same ``Wire`` enum the
 production factory dispatches on — a new wire is one new row here, same
-as it is one new ``@DeviceFactory.register`` row in the adapter layer.
+as it is one new ``class X(BaseDevice, wire=...)`` in the adapter layer.
 
 Usage::
 
@@ -233,7 +233,7 @@ def _hid_type3_ack() -> bytes:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Wire drivers — one Strategy per Wire, dispatched by the same enum the
-# production DeviceFactory uses.  Each knows how to make the right fake
+# production DEVICES registry uses.  Each knows how to make the right fake
 # transport and prime ONE handshake onto its read_script.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -311,10 +311,10 @@ def _build_device(info: ProductInfo):
     driver = _WIRE_DRIVERS.get(info.wire)
     if driver is None:
         return None
-    from trcc.adapters.device import DeviceFactory  # fires @register imports
+    from trcc.adapters.device import DEVICES  # fires @register imports
 
     transport = driver.make_transport()
-    device_cls = DeviceFactory.for_wire(info.wire)
+    device_cls = DEVICES[info.wire]
     device = device_cls(info, transport)
     return device, transport, driver
 
@@ -391,16 +391,16 @@ def probe_factory_resolves(_platform, info: ProductInfo) -> ProbeResult:
     """Every registry wire resolves to a concrete Device subclass.
 
     The OCP invariant: a registry row's ``wire`` must dispatch through
-    ``DeviceFactory.for_wire`` to a real ``Device``.  A registry entry
+    ``DEVICES[wire]`` to a real ``Device``.  A registry entry
     for a wire nobody registered would crash ``App.attach`` at runtime —
     this catches it statically across the whole registry.
     """
-    from trcc.adapters.device import DeviceFactory
+    from trcc.adapters.device import DEVICES
     from trcc.core.errors import DeviceNotFoundError
     from trcc.core.ports import Device
 
     try:
-        cls = DeviceFactory.for_wire(info.wire)
+        cls = DEVICES[info.wire]
     except DeviceNotFoundError:
         return _bad(f"wire={info.wire.value} has no registered Device subclass "
                     "— App.attach would crash for this product")

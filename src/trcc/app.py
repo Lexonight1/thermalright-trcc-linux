@@ -12,7 +12,7 @@ from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Any, TypeVar
 
-from .adapters.device import DeviceFactory
+from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
@@ -48,7 +48,6 @@ from .core.models import (
     DeviceQuirks,
     HardwareMetrics,
     Theme,
-    Wire,
     oriented_resolution,
     quirks_for,
 )
@@ -523,19 +522,19 @@ class App:
             raise DeviceNotFoundError(
                 f"Unknown product: {vid:04x}:{pid:04x}"
             )
-        cls = DeviceFactory.for_wire(info.wire)
+        cls = DEVICES[info.wire]
         quirks = self._quirks_for(vid, pid)
-        # SCSI needs a kernel-native passthrough transport; a firmware that
-        # only accepts HID output reports needs the hidapi backend (#228);
-        # everything else speaks plain USB bulk.  Platform picks the OS impl.
-        if info.wire is Wire.SCSI:
-            transport = self.platform.open_scsi(vid, pid)
-        elif quirks.hid_reports:
+        # Which transport a WIRE needs is the Platform's business — it owns the
+        # Wire→opener table, so this no longer branches on Wire.SCSI.  What
+        # remains is a FIRMWARE override: one revision accepts only HID output
+        # reports (#228), and that is keyed on (vid, pid, bcdDevice), not on
+        # wire — so it belongs here with the rest of quirk resolution.
+        if quirks.hid_reports:
             from .adapters.device.transport import HidApiTransport
             log.info("attach: %04x:%04x uses HID output reports (quirk)", vid, pid)
             transport = HidApiTransport(vid, pid)
         else:
-            transport = self.platform.open_bulk(vid, pid)
+            transport = self.platform.open_transport(info.wire, vid, pid)
         device = cls(info, transport)
         # Hand down the OS-specific EACCES hint (resolved here, where Platform
         # is in scope) so the device's recovery tracker can surface it without

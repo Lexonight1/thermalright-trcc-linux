@@ -66,16 +66,16 @@ def _probe_imports() -> Section:
 
 def _probe_platform() -> Section:
     s = Section('platform')
-    from trcc.adapters.system import PlatformFactory
-    s.run('PlatformFactory.current()',
-          lambda: f'returned {type(PlatformFactory.current()).__name__}')
+    from trcc.adapters.system import current_platform
+    s.run('current_platform()',
+          lambda: f'returned {type(current_platform()).__name__}')
     return s
 
 
 def _probe_devices() -> Section:
     s = Section('devices')
-    from trcc.adapters.system import PlatformFactory
-    p = PlatformFactory.current()
+    from trcc.adapters.system import current_platform
+    p = current_platform()
     try:
         devices = list(p.scan_devices())
     except BaseException as exc:
@@ -92,8 +92,8 @@ def _probe_devices() -> Section:
 
 def _probe_sensors() -> Section:
     s = Section('sensors')
-    from trcc.adapters.system import PlatformFactory
-    p = PlatformFactory.current()
+    from trcc.adapters.system import current_platform
+    p = current_platform()
     try:
         enum = p.sensors()
         s.ok('sensors()',

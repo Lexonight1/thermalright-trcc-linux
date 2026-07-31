@@ -33,7 +33,6 @@ from ...core.led_protocol import (
 )
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
-from . import DeviceFactory
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -155,8 +154,7 @@ def _probe_cache_load(
 # ── Led Device ────────────────────────────────────────────────────────
 
 
-@DeviceFactory.register(Wire.LED)
-class Led(BaseBulkDevice):
+class Led(BaseBulkDevice, wire=Wire.LED):
     """RGB LED controller over HID 64-byte reports."""
 
     _EP_WRITE = 0x02

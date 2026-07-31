@@ -541,9 +541,9 @@ def _root(
     file by default but only reach the terminal with ``-v``.
     """
     from ...adapters.infra.logging import configure_logging
-    from ...adapters.system import PlatformFactory
+    from ...adapters.system import current_platform
 
-    platform = PlatformFactory.current()
+    platform = current_platform()
     # Windows consoles default to cp1252 and crash on non-ASCII log
     # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
     # attaches the StreamHandler.  No-op on other OSes.

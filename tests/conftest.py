@@ -11,6 +11,7 @@ from typing import Iterator, List, Optional, Tuple
 
 import pytest
 
+from trcc.core.models import Wire
 from trcc.core.ports import (
     AutostartManager,
     BulkTransport,
@@ -23,6 +24,7 @@ from trcc.core.ports import (
     Renderer,
     ScsiTransport,
     SensorEnumerator,
+    Transport,
     WriteBuffer,
 )
 
@@ -218,11 +220,8 @@ class FakePlatform(Platform):
         self._autostart = FakeAutostart()
         self._sensors: Optional[SensorEnumerator] = None
 
-    def open_bulk(self, vid, pid, serial=None) -> BulkTransport:
-        return self.bulk
-
-    def open_scsi(self, vid, pid, serial=None) -> ScsiTransport:
-        return self.scsi
+    def open_transport(self, wire, vid, pid, serial=None) -> Transport:
+        return self.scsi if wire is Wire.SCSI else self.bulk
 
     def scan_devices(self) -> List:
         return []

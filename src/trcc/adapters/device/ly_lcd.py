@@ -29,7 +29,6 @@ from ...core.protocol import (
     pm_to_fbl,
     resolve_encode_sub,
 )
-from . import DeviceFactory
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -67,8 +66,7 @@ _CHUNK_DATA_SIZE = 496
 _USB_WRITE_SIZE = 4096
 
 
-@DeviceFactory.register(Wire.LY)
-class LyLcd(BaseBulkDevice):
+class LyLcd(BaseBulkDevice, wire=Wire.LY):
     """LY-series USB bulk LCD (Trofeo Vision 9.16).
 
     ``self._profile`` is cached at handshake.  FBL 192 (the Trofeo Vision 9.16

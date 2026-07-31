@@ -11,7 +11,7 @@ What it covers:
 
 * Imports — every per-OS Platform / SensorSource pair loads without
   raising.
-* :meth:`PlatformFactory.current` returns the right concrete class on the
+* :func:`current_platform` returns the right concrete class on the
   current OS (no silent fallback to a stub).
 * App boots end-to-end against the real Platform (no FakePlatform).
 * ``DiscoverDevices`` returns a list (count is informational —
@@ -127,12 +127,12 @@ def _probe_gui_imports() -> Section:
 
 
 def _probe_factory() -> Section:
-    """``PlatformFactory.current()`` must return the right class for sys.platform."""
-    s = Section("PlatformFactory.current()")
+    """``current_platform()`` must return the right class for sys.platform."""
+    s = Section("current_platform()")
     try:
-        from trcc.adapters.system import PlatformFactory
+        from trcc.adapters.system import current_platform
     except BaseException as exc:
-        s.fail("PlatformFactory import", exc)
+        s.fail("current_platform import", exc)
         return s
 
     expected_substring = {
@@ -145,7 +145,7 @@ def _probe_factory() -> Section:
     }
 
     try:
-        platform_obj = PlatformFactory.current()
+        platform_obj = current_platform()
         cls_name = type(platform_obj).__name__
         s.ok("current()", f"returned {cls_name}")
     except BaseException as exc:
@@ -182,14 +182,14 @@ def _probe_app_boot() -> Section:
     try:
         from trcc.adapters.render.qt import QtRenderer
         from trcc.app import App
-        from trcc.adapters.system import PlatformFactory
+        from trcc.adapters.system import current_platform
         from trcc.core.commands import DiscoverDevices, ReadSensors
     except BaseException as exc:
         s.fail("imports", exc)
         return s
 
     try:
-        platform_obj = PlatformFactory.current()
+        platform_obj = current_platform()
         renderer = QtRenderer()
         app = App(platform=platform_obj, renderer=renderer)
     except BaseException as exc:
@@ -233,8 +233,8 @@ def _probe_paths() -> Section:
     """``platform.paths()`` must point at a writable, OS-appropriate location."""
     s = Section("Paths")
     try:
-        from trcc.adapters.system import PlatformFactory
-        platform_obj = PlatformFactory.current()
+        from trcc.adapters.system import current_platform
+        platform_obj = current_platform()
         paths = platform_obj.paths()
     except BaseException as exc:
         s.fail("paths()", exc)

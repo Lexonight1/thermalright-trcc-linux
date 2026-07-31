@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.adapters.device import DeviceFactory
+from trcc.adapters.device import DEVICES
 from trcc.adapters.device.ali_lcd import (
     _FRAME_BYTES,
     _FRAME_HEADER,
@@ -76,7 +76,7 @@ def test_endpoints():
 
 
 def test_factory_dispatches_bulk_ali_to_ali_lcd():
-    assert DeviceFactory.for_wire(Wire.BULK_ALI) is AliLcd
+    assert DEVICES[Wire.BULK_ALI] is AliLcd
 
 
 # ── Handshake ────────────────────────────────────────────────────────

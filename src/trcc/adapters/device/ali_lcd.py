@@ -21,7 +21,6 @@ from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile
-from . import DeviceFactory
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -60,8 +59,7 @@ _VALID_IDENTITY = (101, 102)     # resp[0] (cs:610)
 _PROFILE = DeviceProfile(_WIDTH, _HEIGHT, jpeg=False, big_endian=True)
 
 
-@DeviceFactory.register(Wire.BULK_ALI)
-class AliLcd(BaseBulkDevice):
+class AliLcd(BaseBulkDevice, wire=Wire.BULK_ALI):
     """USBLCDNew "Ali" bulk LCD (fixed 320x320 RGB565)."""
 
     _EP_WRITE = 0x02   # WriteEndpointID.Ep02 (cs:569) — NOT 0x01 (GrandVision)

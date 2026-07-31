@@ -27,7 +27,6 @@ from ...core.protocol import (
     resolve_encode_base,
     resolve_encode_sub,
 )
-from . import DeviceFactory
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -124,8 +123,7 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
     )
 
 
-@DeviceFactory.register(Wire.BULK)
-class BulkLcd(BaseBulkDevice):
+class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
     """Raw USB bulk LCD device (USBLCDNew protocol).
 
     ``self._profile`` is cached at handshake.  It carries PM-derived resolution

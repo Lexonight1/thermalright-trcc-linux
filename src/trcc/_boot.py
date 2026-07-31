@@ -82,10 +82,10 @@ def _build_local_app(
     """Construct an in-process App.  Used by ``trcc`` and the daemon."""
     log.info("_build_local_app: platform=%s renderer=%s",
              platform is not None, renderer is not None)
-    from .adapters.system import PlatformFactory
+    from .adapters.system import current_platform
     from .app import App
 
-    real_platform = platform if platform is not None else PlatformFactory.current()
+    real_platform = platform if platform is not None else current_platform()
     real_renderer = renderer
     if real_renderer is None:
         try:

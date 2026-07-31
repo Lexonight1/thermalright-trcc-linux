@@ -17,7 +17,6 @@ from ...core.errors import TransportError
 from ...core.models import HandshakeResult, Wire
 from ...core.ports import ScsiTransport
 from ...core.protocol import get_profile
-from . import DeviceFactory
 from ._base import BaseDevice
 
 log = logging.getLogger(__name__)
@@ -71,8 +70,7 @@ _BOOT_ANIM_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 # =========================================================================
 
 
-@DeviceFactory.register(Wire.SCSI)
-class ScsiLcd(BaseDevice[ScsiTransport]):
+class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
     """SCSI LCD device.
 
     connect():   poll (with boot-retry) + init handshake → FBL

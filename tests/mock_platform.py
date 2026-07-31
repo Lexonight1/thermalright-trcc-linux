@@ -38,7 +38,10 @@ from trcc.adapters.device.hid_lcd import (
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
 from trcc.core.models import DeviceInfo, ProductInfo, Wire
-from trcc.core.ports import BulkTransport, ScsiTransport, SensorEnumerator
+from trcc.core.ports import (
+    SensorEnumerator,
+    Transport,
+)
 from trcc.core.protocol import get_profile, pm_to_fbl
 from trcc.core.registry import find_product
 
@@ -403,10 +406,11 @@ class MockPlatform(FakePlatform):
         log.info("MockPlatform.scan_devices: %d spec(s)", len(self._specs))
         return scan_device_infos(self._specs)
 
-    def open_scsi(self, vid: int, pid: int,
-                  serial: str | None = None) -> ScsiTransport:
-        return scripted_scsi_transport(self._by_key, vid, pid, self._reply_override)
-
-    def open_bulk(self, vid: int, pid: int,
-                  serial: str | None = None) -> BulkTransport:
-        return scripted_bulk_transport(self._by_key, vid, pid, self._reply_override)
+    def open_transport(self, wire: Wire, vid: int, pid: int,
+                       serial: str | None = None) -> Transport:
+        """Hand back the scripted transport for *wire* (see Platform.open_transport)."""
+        if wire is Wire.SCSI:
+            return scripted_scsi_transport(
+                self._by_key, vid, pid, self._reply_override)
+        return scripted_bulk_transport(
+            self._by_key, vid, pid, self._reply_override)

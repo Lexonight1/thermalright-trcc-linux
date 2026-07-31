@@ -27,7 +27,6 @@ from ...core.ports import (
 )
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
-from . import PlatformFactory
 from ._base import BaseOS, BasePaths
 
 log = logging.getLogger(__name__)
@@ -59,8 +58,7 @@ _MAC_INSTALL_HINTS: dict[str, str] = {
 }
 
 
-@PlatformFactory.register("darwin")
-class MacOSPlatform(BaseOS):
+class MacOSPlatform(BaseOS, key="darwin"):
     """macOS implementation — BOT-only SCSI via libusb.
 
     Same OS contract as every other platform; only the internals below differ.
@@ -96,7 +94,7 @@ class MacOSPlatform(BaseOS):
         from ._hotplug import PollingHotplugMonitor
         return PollingHotplugMonitor(scan=self._scan_vid_pid_set)
 
-    def open_scsi(self, vid: int, pid: int,
+    def _open_scsi(self, vid: int, pid: int,
                   serial: str | None = None) -> ScsiTransport:
         """SCSI via USB BOT over libusb — macOS has no kernel SCSI passthrough."""
         log.info("open_scsi: %04x:%04x serial=%r", vid, pid, serial)

@@ -57,8 +57,8 @@ def launch(verbosity: int = 0, decorated: bool = False,
     level.  Re-configuring here would silently downgrade DEBUG back to INFO.
     """
     del verbosity
-    from ...adapters.system import PlatformFactory
-    platform = PlatformFactory.current()
+    from ...adapters.system import current_platform
+    platform = current_platform()
     return run(platform, decorated=decorated, start_hidden=start_hidden)
 
 

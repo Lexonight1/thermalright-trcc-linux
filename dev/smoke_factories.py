@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Two-factory chain smoke — PlatformFactory + DeviceFactory dispatch.
+"""Two-registry chain smoke — PLATFORMS + DEVICES dispatch.
 
 The cutover unified legacy's separate Protocol + Device layers into one
 ``Device`` ABC, so the chain is two factories, not three:
 
-  * ``PlatformFactory.current()`` picks the OS-appropriate ``Platform``
-    subclass via ``@PlatformFactory.register(sys.platform)``.
-  * ``DeviceFactory.for_wire(wire)`` returns the ``Device`` subclass for
-    a wire via ``@DeviceFactory.register(Wire.X)``.
+  * ``current_platform()`` picks the OS-appropriate ``Platform``
+    subclass, registered by ``class XPlatform(BaseOS, key=...)``.
+  * ``DEVICES[wire]`` returns the ``Device`` subclass for a wire,
+    registered by ``class XLcd(BaseDevice, wire=Wire.X)``.
 
 No real USB activity — this asserts registry population + dispatch only,
 so it runs anywhere ``ruff + pyright`` does.  Add a check when you add a
@@ -27,41 +27,41 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
 def main() -> int:
-    from trcc.adapters.device import DeviceFactory
+    from trcc.adapters.device import DEVICES
     from trcc.adapters.device.bulk_lcd import BulkLcd
     from trcc.adapters.device.hid_lcd import HidLcd
     from trcc.adapters.device.led import Led
     from trcc.adapters.device.ly_lcd import LyLcd
     from trcc.adapters.device.scsi_lcd import ScsiLcd
-    from trcc.adapters.system import PlatformFactory
+    from trcc.adapters.system import PLATFORMS, current_platform
     from trcc.core.errors import DeviceNotFoundError
     from trcc.core.models import Wire
     from trcc.core.ports import Device, Platform
 
     failures: list[str] = []
 
-    # 1. PlatformFactory registry has all four OS keys.
+    # 1. PLATFORMS registry has all four OS keys.
     expected_os = {"linux", "win32", "darwin", "bsd"}
-    actual_os = set(PlatformFactory._REGISTRY)
+    actual_os = set(PLATFORMS)
     if actual_os != expected_os:
         failures.append(
-            f"PlatformFactory registry = {sorted(actual_os)} "
+            f"PLATFORMS registry = {sorted(actual_os)} "
             f"(expected {sorted(expected_os)})",
         )
     else:
-        print(f"OK  PlatformFactory registry → {sorted(actual_os)}")
+        print(f"OK  PLATFORMS registry → {sorted(actual_os)}")
 
-    # 2. current() builds a Platform subclass for THIS OS.
-    real_platform = PlatformFactory.current()
+    # 2. current_platform() builds a Platform subclass for THIS OS.
+    real_platform = current_platform()
     if not isinstance(real_platform, Platform):
         failures.append(
-            f"PlatformFactory.current → {type(real_platform).__name__} "
+            f"current_platform() → {type(real_platform).__name__} "
             "is not a Platform subclass",
         )
     else:
-        print(f"OK  PlatformFactory.current → {type(real_platform).__name__}")
+        print(f"OK  current_platform() → {type(real_platform).__name__}")
 
-    # 3. DeviceFactory registry binds every wire to the right class.
+    # 3. DEVICES registry binds every wire to the right class.
     expected_device: dict[Wire, type[Device]] = {
         Wire.SCSI: ScsiLcd,
         Wire.HID: HidLcd,
@@ -71,29 +71,29 @@ def main() -> int:
     }
     for wire, expected_cls in expected_device.items():
         try:
-            actual = DeviceFactory.for_wire(wire)
+            actual = DEVICES[wire]
         except DeviceNotFoundError as e:
-            failures.append(f"DeviceFactory.for_wire({wire.value}) raised {e}")
+            failures.append(f"DEVICES[{wire.value}] raised {e}")
             continue
         if actual is not expected_cls:
             failures.append(
-                f"DeviceFactory.for_wire({wire.value}) → {actual.__name__} "
+                f"DEVICES[{wire.value}] → {actual.__name__} "
                 f"(expected {expected_cls.__name__})",
             )
         else:
-            print(f"OK  DeviceFactory.for_wire({wire.value}) → {actual.__name__}")
+            print(f"OK  DEVICES[{wire.value}] → {actual.__name__}")
 
-    # 4. for_wire raises (not returns None) on an unregistered wire.
+    # 4. lookup raises (not returns None) on an unregistered wire.
     class _FakeWire:
         value = "nonexistent"
 
     try:
-        DeviceFactory.for_wire(_FakeWire())  # type: ignore[arg-type]
+        DEVICES[_FakeWire()]  # type: ignore[arg-type]
     except DeviceNotFoundError:
-        print("OK  DeviceFactory.for_wire(unregistered) → DeviceNotFoundError")
+        print("OK  DEVICES[unregistered] → DeviceNotFoundError")
     else:
         failures.append(
-            "DeviceFactory.for_wire(unregistered) did not raise "
+            "DEVICES[unregistered] did not raise "
             "DeviceNotFoundError",
         )
 

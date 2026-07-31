@@ -6,13 +6,17 @@ identical across wires lives here **once**, and each factory child overrides onl
 the bodies whose internals genuinely differ — the handshake exchange and the
 bytes it writes.
 
-Adding a new wire is therefore one ``@DeviceFactory.register`` child that
+Adding a new wire is therefore one subclass that names its wire in its own
+class line — ``class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI)`` — and
 implements the abstract hooks, with nothing copied.  That is the future-proofing:
 new panel family = new subclass, no touched callers.
 
 The split mirrors ``adapters/system/_base.py`` on the OS edge: a concrete
 Template Method on the base calls an ``@abstractmethod`` hook on the child —
 the idiom already used by ``Device._send_with_recovery``.
+
+:data:`DEVICES` lives here rather than in the package ``__init__`` so the base
+class can register its own children without importing its own package (a cycle).
 """
 from __future__ import annotations
 
@@ -23,12 +27,20 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, ClassVar
 
-from ...core.errors import HandshakeError, TransportError
-from ...core.models import HandshakeResult, ProductInfo
+from ...core.errors import DeviceNotFoundError, HandshakeError, TransportError
+from ...core.factory import Registry, Reject
+from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport, Device, T
 from ...core.protocol import DeviceProfile
 
 log = logging.getLogger(__name__)
+
+# The wire table.  A miss RAISES — unlike the OS table, an unregistered wire is
+# a defect (the product registry named a wire nothing implements), not something
+# to degrade through.  See ``core.factory.Reject``.
+DEVICES: Registry[Wire, type[Device]] = Registry(
+    "wire", on_missing=Reject(DeviceNotFoundError),
+)
 
 
 # Handshake pacing for the report-style wires (HID LCD + LED), from the C#:
@@ -49,6 +61,24 @@ class BaseDevice(Device[T]):
     :meth:`_do_handshake`.  Still abstract: ``_do_handshake`` plus the inherited
     ``send`` keep it from instantiating on its own.
     """
+
+    def __init_subclass__(cls, wire: Wire | None = None, **kwargs: Any) -> None:
+        """Register the subclass under the ``wire=`` it declares.
+
+        A wire adapter states its own key in its class line::
+
+            class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI): ...
+
+        which puts the key where it belongs — in the class definition, not in a
+        decorator floating above it — and makes the registration impossible to
+        separate from the class it registers.
+
+        ``wire=None`` means "intermediate base, don't register", which is what
+        :class:`BaseBulkDevice` is.
+        """
+        super().__init_subclass__(**kwargs)
+        if wire is not None:
+            DEVICES.register(wire)(cls)
 
     def __init__(self, info: ProductInfo, transport: T) -> None:
         super().__init__(info, transport)

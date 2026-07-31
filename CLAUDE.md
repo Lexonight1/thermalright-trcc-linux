@@ -395,15 +395,15 @@ bug.  Don't call them "cloud themes" in code or analysis.
 - **Models** (`core/models.py`): Pure dataclasses, enums, domain constants — zero logic, zero I/O, zero framework deps.
 - **Services** (`services/`): Core hexagon — all business logic, pure Python. `DisplayService` (`services/display.py`) delegates to the active `Renderer`; `OverlayService` uses the injected Renderer for compositing/text.
 - **Paths** (`core/ports.py`): `Paths` ABC — per-OS subpaths (theme/web/mask/user dirs) derived from `data_dir`/`config_dir`/`user_content_dir`. Each `Platform` returns its concrete `Paths`. Zero adapter imports.
-- **Devices** (`core/ports.py` ABCs + `adapters/device/`): one unified `Device` ABC. Wire adapters `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd` (`adapters/device/{scsi,hid,bulk,ly}_lcd.py`) + `Led` (`led.py`), each *is* the device that speaks its wire. Built by `DeviceFactory.for_wire(info.wire)`.
+- **Devices** (`core/ports.py` ABCs + `adapters/device/`): one unified `Device` ABC. Wire adapters `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd` (`adapters/device/{scsi,hid,bulk,ly}_lcd.py`) + `Led` (`led.py`), each *is* the device that speaks its wire. Built by `DEVICES[info.wire]`.
 - **Composition root** (`_boot.py` + `app.py`): `_boot.trcc()` builds the in-process `App` (or an `AppProxy` in daemon mode). `App` owns the services, the `EventBus`, and the one Command bus (`app.dispatch`). Replaces the old `ControllerBuilder`.
 - **Views** (`ui/gui/`): PySide6 GUI adapter. `TRCCApp` (`ui/gui/trcc_app.py`, thin shell) + `LCDHandler`/`LEDHandler` (one per device). `ui/qtgui/` is the in-progress native-skin rebuild.
 - **CLI** (`ui/cli/`): Typer CLI adapter (package). Thin wrappers that build Commands and `app.dispatch(...)` them.
 - **API** (`ui/api/`): FastAPI REST adapter (package). ~105 routes incl. WebSocket preview stream + cloud themes + export. Dispatches Commands on the App.
 - **Config** (`services/settings.py`): `Settings` — mutable app + per-device state (resolution, language, orientation, format prefs, mask/theme), persisted to `config.json`. Reached via `app.settings`; widgets read it, never store copies.
-- **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `PlatformFactory.current()` + `DeviceFactory.for_wire()`).
+- **Entry**: `trcc._entry:main` (console script / `python -m trcc`) → `ui/cli` → `_boot.trcc()` → `App` (composition root: `current_platform()` + `DEVICES[wire]`).
 - **Wires**: each device adapter speaks its protocol — SCSI (LCD frames), HID (handshake/resolution), Bulk, LY, LED (RGB effects + segment displays). See "Two-Factory Chain" + the ABC tables below.
-- **Platform** (`core/ports.py` + `adapters/system/`): `Platform` ABC in core; per-OS subclass in `adapters/system/{linux,windows,macos,bsd}.py`, dispatched by `PlatformFactory.current()` (`sys.platform`). DI'd everywhere as `app.platform`.
+- **Platform** (`core/ports.py` + `adapters/system/`): `Platform` ABC in core; per-OS subclass in `adapters/system/{linux,windows,macos,bsd}.py`, dispatched by `current_platform()` (`sys.platform`). DI'd everywhere as `app.platform`.
 - **Sensors** (`adapters/sensors/`): `SensorEnumerator` (ABC in `core/ports.py`) built per-OS by the aggregator (`adapters/sensors/aggregator.py`) — hwmon, LHM, SMC, sysctl, psutil, pynvml plugins, each self-guarding at runtime. `snapshot()` yields the typed `HardwareMetrics` every consumer observes.
 - **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg), plus `ci.yml`/`tests.yml`/`codeql.yml`.
 - **On-demand download**: Theme/Web/Mask archives fetched from GitHub at runtime by `DataInstallService` (`services/data_install.py`) via the repo adapters (`adapters/repo/`: `github_releases.py`, `http.py`).
@@ -483,30 +483,42 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 - Services own ALL business logic — pure Python, no Qt, no framework deps
 - Views own ONLY rendering — read from Settings/Models, call Services, display results
 
-### Two-Factory Chain (OS → Device)
+### Two-Registry Chain (OS → Device)
 
-The composition pipeline is a chain of two factories, **same idiom** in every layer: a registry class + `@<Name>Factory.register(key)` self-registering subclasses + a single classmethod chokepoint that dispatches by key. Read one, you've read both.
+The composition pipeline is a chain of two registries, **same idiom** in every layer: one shared `Registry` (`core/factory.py`), subclasses that name their own key **in their class line**, and a mapping lookup. Read one, you've read both.
+
+There is no `PlatformFactory` / `DeviceFactory` class any more — both were shells around a dict. `Registry` is that dict, written once, parameterised by what happens on a **miss** (`Reject` raises · `FallBackTo` substitutes + warns · `.find()` returns `None`).
 
 The cutover unified legacy's separate Protocol + Device layers into one `Device` ABC, so there is **no `ProtocolFactory`** — `ScsiLcd`/`HidLcd`/`BulkLcd`/`LyLcd`/`Led` each *are* the device that speaks their wire. A separate protocol factory would wrap nothing.
 
-| Factory | Defined in | Subclasses | Dispatch key | Chokepoint |
-|---|---|---|---|---|
-| `PlatformFactory` | `adapters/system/__init__.py` | `LinuxPlatform`, `WindowsPlatform`, `MacOSPlatform`, `BSDPlatform` | `sys.platform` (BSD variants → `"bsd"`) | `.current()` |
-| `DeviceFactory` | `adapters/device/__init__.py` | `ScsiLcd`, `HidLcd`, `BulkLcd`, `LyLcd`, `Led` | `info.wire` (the `Wire` enum) | `.for_wire(wire)` |
+| Registry | Defined in | Subclasses | Dispatch key | Lookup | On miss |
+|---|---|---|---|---|---|
+| `PLATFORMS` | `adapters/system/_base.py` | `LinuxPlatform`, `WindowsPlatform`, `MacOSPlatform`, `BSDPlatform` | `sys.platform` (BSD variants → `"bsd"`) | `current_platform()` | fall back to linux + warn |
+| `DEVICES` | `adapters/device/_base.py` | `ScsiLcd`, `HidLcd`, `BulkLcd`, `AliLcd`, `LyLcd`, `Led` | `info.wire` (the `Wire` enum) | `DEVICES[wire]` | raise `DeviceNotFoundError` |
 
-Both factories live in the **adapter layer**, not core — the factory is the only place that names concrete adapter classes, so core (`Platform` / `Device` ABCs) never imports an adapter. Importing each package fires the side-effect imports of its OS / device modules, which fire the `@register` decorators, which populate the registry.
+Each registry lives beside the base class that registers into it (`_base.py`), so the base can register its own children without importing its own package — that would be a cycle. Both are in the **adapter layer**, not core: the registry is the only place naming concrete adapter classes, so core (`Platform` / `Device` ABCs) never imports an adapter. Importing each package fires the side-effect imports of its OS / device modules, which *define* those classes, which is what registers them.
+
+**Registration is a class keyword, not a decorator.** `__init_subclass__` on the base reads it:
+
+```python
+class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI): ...
+class LinuxPlatform(BaseOS, key="linux"): ...
+```
+
+The key sits in the class definition rather than floating above it, so it cannot drift from the class or be forgotten separately. Omitting it means "intermediate base, don't register" — which is what `BaseBulkDevice` is.
 
 **The chain** (top to bottom of the composition root):
 
 ```
-PlatformFactory.current()           ← OS dispatch    → Platform
+current_platform()                  ← OS dispatch    → Platform
     Platform.scan_devices()         ← OS-specific    → list[DeviceInfo]
         App.attach(vid, pid)        ← composition root
-            DeviceFactory.for_wire(info.wire)  ← wire → Device subclass
-                ScsiLcd(info, transport)  (or HidLcd / BulkLcd / LyLcd / Led)
+            DEVICES[info.wire]      ← wire           → Device subclass
+                Platform.open_transport(wire, …)     → Transport (Wire→opener table)
+                    ScsiLcd(info, transport)  (or HidLcd / BulkLcd / AliLcd / LyLcd / Led)
 ```
 
-**Why two factories**: OCP at every layer. New OS = `@PlatformFactory.register('haiku')` + subclass, one new file. New wire = `@DeviceFactory.register(Wire.WHATEVER)` + subclass, one new file. Zero touchpoints in callers (`_boot.trcc`, `App.attach`).
+**Why registries**: OCP at every layer, and the axes **add** rather than multiply. New OS = one subclass, one new file. New wire = one subclass, one new file. New wire needing a *new kernel interface* = one row in `BaseOS._transport_openers` — not a new abstract method on `Platform` implemented four times. Zero touchpoints in callers (`_boot.trcc`, `App.attach`).
 
 **Verification**: `dev/smoke_factories.py` asserts both registries are populated and dispatch correctly — runs on the dev box without any OS-specific tooling installed.
 
@@ -531,7 +543,7 @@ What `trcc()` returns depends on environment:
 
 | Environment | Returns | Behaviour |
 |---|---|---|
-| `TRCC_DAEMON` unset | real `App` | in-process `App` built from the passed `platform` / `renderer` (both auto-detected — `PlatformFactory.current()` / `QtRenderer` — when omitted) |
+| `TRCC_DAEMON` unset | real `App` | in-process `App` built from the passed `platform` / `renderer` (both auto-detected — `current_platform()` / `QtRenderer` — when omitted) |
 | `TRCC_DAEMON=1` + `AF_UNIX` available | `AppProxy` | auto-spawns daemon via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
 | `TRCC_DAEMON=1` on Windows < 17063 | real `App` | silent in-process fallback (no `AF_UNIX`), no error |
 
@@ -708,7 +720,7 @@ on the next bug.
 
 ### SOLID
 - **SRP** — services own logic, views own rendering, models own data
-- **OCP** — `@PlatformFactory.register(...)` / `@DeviceFactory.register(...)` for self-registering OS + wire subclasses. New device = new registry row, not modified logic.
+- **OCP** — subclasses self-register by naming their key in the class line (`class LinuxPlatform(BaseOS, key="linux")`, `class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI)`); `__init_subclass__` on the base does the rest. New device = new registry row, not modified logic.
 - **LSP** — no fake implementations. If a subclass can't fulfill the contract, don't inherit.
 - **ISP** — `LCDMixin` + `LEDMixin` instead of one fat `DeviceProtocol`
 - **DIP** — inject dependencies at runtime. Core never imports concrete adapters.

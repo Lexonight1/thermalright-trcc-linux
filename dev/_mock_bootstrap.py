@@ -283,8 +283,8 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
     # Pick the host's production Platform impl as the base so sensors +
     # autostart + setup + distro all work the way the packaged app does.
     # Mirrors production launch (ui/gui/__init__.run_gui + _boot).
-    from trcc.adapters.system import PlatformFactory
-    host = PlatformFactory.current()
+    from trcc.adapters.system import current_platform
+    host = current_platform()
     # ``Any`` so pyright accepts the runtime-computed concrete base class
     # (it can't see that ``type(host)`` is a concrete LinuxPlatform, not the
     # abstract ``Platform``).
@@ -346,12 +346,15 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
             log.info("DevMockPlatform.set_active_reply: %04x:%04x pm=%d sub=%d fbl=%d",
                      vid, pid, pm, sub, fbl)
 
-        def open_scsi(self, vid: int, pid: int,
-                      serial: str | None = None) -> ScsiTransport:
+        # Only the two OPENERS are scripted — ``BaseOS.open_transport`` and its
+        # Wire→opener table are inherited from the real host platform, so the
+        # mock exercises the production dispatch rather than a copy of it.
+        def _open_scsi(self, vid: int, pid: int,
+                       serial: str | None = None) -> ScsiTransport:
             return scripted_scsi_transport(by_key, vid, pid, self._reply_override)
 
-        def open_bulk(self, vid: int, pid: int,
-                      serial: str | None = None) -> BulkTransport:
+        def _open_bulk(self, vid: int, pid: int,
+                       serial: str | None = None) -> BulkTransport:
             return scripted_bulk_transport(by_key, vid, pid, self._reply_override)
 
     log.info("DevMockPlatform: %d simulated device(s) on real %s base",
