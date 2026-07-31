@@ -334,11 +334,6 @@ def _max_value(sensors: list[Any]) -> float | None:
     return max(values) if values else None
 
 
-def _sum_value(sensors: list[Any]) -> float | None:
-    values = [float(s.Value) for s in sensors if s.Value is not None]
-    return sum(values) if values else None
-
-
 def _named_value(sensors: list[Any], name_contains: str) -> float | None:
     """First sensor whose Name contains *name_contains* (case-insensitive)."""
     needle = name_contains.lower()

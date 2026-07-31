@@ -1571,16 +1571,9 @@ class TRCCApp(QMainWindow):
         self._show_view('form')
         self.uc_device.restore_device_selection()
 
-    def _active_handler(self) -> BaseHandler | None:
-        return self._handlers.get(self._active_key)
-
     def _active_lcd(self) -> LCDHandler | None:
         h = self._handlers.get(self._active_key)
         return h if isinstance(h, LCDHandler) else None
-
-    def _active_led(self) -> LEDHandler | None:
-        h = self._handlers.get(self._active_key)
-        return h if isinstance(h, LEDHandler) else None
 
     # ── Handshake (LCD resolution discovery) ────────────────────────
 
@@ -2202,10 +2195,6 @@ class TRCCApp(QMainWindow):
                 key=h.device_key, enabled=enabled,
             ))
 
-    def _active_device_key(self) -> str:
-        """Return the active device key, or '' if no active device."""
-        return self._active_key
-
     def _on_element_flash(self, index: int, config: dict) -> None:
         log.info("_on_element_flash: index=%s", index)
         h = self._active_lcd()
@@ -2455,18 +2444,6 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting.color_panel._apply_color(r, g, b)
 
     # ── Carousel Config ─────────────────────────────────────────────
-
-    def _load_carousel_config(self, theme_dir: Path) -> None:
-        """Restore the legacy ``Theme.dc`` carousel config into the UI.
-
-        next/'s slideshow lives in :class:`SlideshowService` and is
-        driven by :class:`ConfigureSlideshow` / :class:`SetSlideshow`
-        Commands.  The handler is responsible for restoring per-device
-        slideshow state on connect; this method becomes a no-op stub
-        until Phase 5's lcd_handler rewire surfaces ``set_slideshow``
-        directly to the local-theme widget.
-        """
-        del theme_dir  # carousel restore moved into LCDHandler
 
     # ── Window Events ───────────────────────────────────────────────
 

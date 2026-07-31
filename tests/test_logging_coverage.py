@@ -31,10 +31,11 @@ sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
 import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 
-#: Silent functions when the ratchet landed (2026-07-31).  LOWER THIS as
+#: Silent functions as of 2026-07-31 (landed at 1451; -5 by deleting
+#: six dead functions, which is the cheapest way to improve this number).  LOWER THIS as
 #: coverage improves; never raise it.  Worst areas at that point:
 #: ui 693, adapters 444, core 147, services 143.
-MAX_SILENT = 1451
+MAX_SILENT = 1446
 
 
 def test_logging_coverage_only_improves() -> None:

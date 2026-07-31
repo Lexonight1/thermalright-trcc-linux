@@ -45,7 +45,6 @@ class BasePanel(QFrame):
 
     Provides:
         invoke_delegate() — delegate signal emission (MVC pattern).
-        _apply_background(asset_name) — background image helper.
         start_periodic_updates() / stop_periodic_updates() — timer management.
     """
 
@@ -118,12 +117,6 @@ class BasePanel(QFrame):
         )
 
     # === Concrete helpers ===
-
-    def _apply_background(self, asset_name: str) -> QPixmap | None:
-        """Apply a background image using set_background_pixmap."""
-        log.debug("%s._apply_background: asset=%r",
-                  type(self).__name__, asset_name)
-        return set_background_pixmap(self, asset_name)
 
     def start_periodic_updates(
         self, interval_ms: int, callback: Callable[[], None],
