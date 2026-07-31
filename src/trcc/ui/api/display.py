@@ -27,6 +27,7 @@ from ...core.commands import (
     DeleteOverlayElement,
     EnableOverlay,
     FlashOverlayElement,
+    GetPaths,
     KeepAliveLoop,
     LcdSnapshot,
     ListMasks,
@@ -242,8 +243,12 @@ def apply_mask(key: str, body: MaskApplyRequest,
         "api POST /devices/{key}/display/mask: key=%s path=%s",
         key, body.path,
     )
-    platform = request.app.state.trcc.platform
-    masks_root = (platform.paths().user_content_dir() / "masks").resolve()
+    user_content = request.app.state.trcc.dispatch(GetPaths()).user_content_dir
+    if not user_content:
+        log.warning("apply_mask: GetPaths returned no user_content_dir — "
+                    "refusing (an empty path resolves to the process cwd)")
+        raise HTTPException(500, "user content directory unavailable")
+    masks_root = (Path(user_content) / "masks").resolve()
     if not masks_root.is_dir():
         raise HTTPException(400, "masks directory missing")
     requested_name = Path(body.path).name
@@ -561,10 +566,12 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
         "frames_dir=%s delay_ds=%s",
         key, body.frames_dir, body.delay_ds,
     )
-    allowed_root = (
-        request.app.state.trcc.platform.paths().user_content_dir()
-        .resolve(strict=True)
-    )
+    user_content = request.app.state.trcc.dispatch(GetPaths()).user_content_dir
+    if not user_content:
+        log.warning("frames dir: GetPaths returned no user_content_dir — "
+                    "refusing (an empty path resolves to the process cwd)")
+        raise HTTPException(500, "user content directory unavailable")
+    allowed_root = Path(user_content).resolve(strict=True)
     requested_name = Path(body.frames_dir).name
     if not requested_name:
         raise HTTPException(400, "frames_dir required")

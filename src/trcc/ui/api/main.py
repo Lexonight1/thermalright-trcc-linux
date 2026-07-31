@@ -21,6 +21,7 @@ from __future__ import annotations
 import hmac
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ...__version__ import __version__
 from ...app import App
+from ...core.commands import GetPaths
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -178,7 +180,10 @@ def build_app(trcc: App | None = None) -> FastAPI:
     # Created if absent so the mount succeeds before the first
     # /theme/init download; StaticFiles serves whatever lands there.
     try:
-        web_root = trcc.platform.paths().data_dir() / "web"
+        data_dir = trcc.dispatch(GetPaths()).data_dir
+        if not data_dir:
+            raise RuntimeError("GetPaths returned no data_dir")
+        web_root = Path(data_dir) / "web"
         web_root.mkdir(parents=True, exist_ok=True)
         api.mount(
             "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
