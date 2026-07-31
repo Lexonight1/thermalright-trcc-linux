@@ -1,5 +1,35 @@
 # Changelog
 
+## v9.9.5
+
+**Applying a video theme is instant.** It took over half a minute — 33 seconds
+on a 228-frame theme, measured on real hardware. The decoder was launching a
+separate `ffmpeg` process for every single frame, the file was being decoded
+three times over on each apply, and two of those decodes raced each other on
+different threads. The whole archive is now decoded in one pass, and rendering
+never decodes at all. Same theme, same hardware: **33.56s → 0.21s**.
+
+**Video themes play in the native skin.** In `trcc qtgui` a video theme
+rendered frame 0 over and over and never advanced — it looked like a still
+image. The frame advance had been written separately in the GUI, the CLI and
+the REST API, and the native skin simply had no copy of it. All four now share
+one command, so playback behaves identically everywhere and works in daemon
+mode too. (#249)
+
+**The native skin actually exits, and your panel goes dark on shutdown.**
+Quitting `trcc qtgui` left the process running indefinitely — one report had it
+still polling sensors and holding the display 1h41m after quitting. It also
+ignored `SIGTERM`, which is what your system sends at shutdown, so the panel
+was left lit showing its last frame instead of blanking. Closing, `Ctrl-C` and
+PC shutdown all now release the device cleanly.
+
+**`trcc.latest.log` covers the latest run.** It was never truncated, so it
+accumulated days of launches — meaning a log that looked like it described your
+current run could actually be showing you a previous one. If you have sent us a
+log before, this is why some diagnoses missed. Frame, interval and pause state
+are now recorded on the animation tick too, so a stuck or wrong-speed video can
+be diagnosed from the log alone.
+
 ## v9.9.4
 
 **Frozen Warframe SE and other HID panels crash on connect — fixed.** Every pip,
