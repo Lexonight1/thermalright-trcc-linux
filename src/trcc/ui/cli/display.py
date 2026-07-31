@@ -10,6 +10,7 @@ from ...core._colors import parse_hex
 from ...core.commands import (
     AddOverlayElement,
     ApplyMask,
+    BuildPreview,
     ConfigureSlideshow,
     ConnectDevice,
     ControlCenterSnapshot,
@@ -1003,27 +1004,16 @@ def test_lcd(
     """
     log.info("cli display test-lcd: key=%s cols=%s", key, cols)
     from ...services._ansi import image_to_ansi
-    from ...services._clock import compute_clock
 
-    app_obj = get_app()
-    try:
-        device = app_obj.devices[key]
-    except KeyError:
-        typer.echo(f"Device {key} not attached", err=True)
-        raise typer.Exit(code=1) from None
-
-    theme = app_obj.active_themes.get(key)
-    if theme is None:
+    result = get_app().dispatch(BuildPreview(key=key, sample_cols=cols))
+    if not result.ok:
+        typer.echo(result.message, err=True)
+        raise typer.Exit(code=1)
+    if not result.pixels:
+        # Attached, but nothing loaded to sample — ok, just not printable.
         typer.echo(f"No active theme on {key} — load one first", err=True)
         raise typer.Exit(code=1)
-
-    enum = app_obj.platform.sensors()
-    sensors = enum.read_all()
-    del compute_clock  # build_preview_surface computes its own clock
-    surface = app_obj.display.build_preview_surface(
-        device.info, theme, sensors, profile=device.profile,
-    )
-    typer.echo(image_to_ansi(app_obj.renderer, surface, cols=cols))
+    typer.echo(image_to_ansi(result.pixels))
 
 
 @app.command("send-image")

@@ -12,7 +12,6 @@ detect that here.
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
 
 log = logging.getLogger(__name__)
 
@@ -20,14 +19,6 @@ log = logging.getLogger(__name__)
 # the top half (foreground) and bottom half (background) separately.
 _HALF_BLOCK = "▀"
 _ANSI_RESET = "\033[0m"
-
-
-class _PixelSampler(Protocol):
-    """Minimal renderer surface ``get_pixels_rgb`` exposes."""
-
-    def get_pixels_rgb(
-        self, surface: Any, cols: int, rows: int,
-    ) -> list[list[tuple[int, int, int]]]: ...
 
 
 def zones_to_ansi(colors: list[tuple[int, int, int]]) -> str:
@@ -47,35 +38,23 @@ def zones_to_ansi(colors: list[tuple[int, int, int]]) -> str:
     return "".join(parts)
 
 
-def image_to_ansi(
-    renderer: _PixelSampler, surface: Any, cols: int = 60,
-) -> str:
-    """Render a surface as ANSI true-color block art.
+def image_to_ansi(pixels: list[list[tuple[int, int, int]]]) -> str:
+    """Render a sampled RGB grid as ANSI true-color block art.
 
-    Samples the surface into a ``cols × rows`` grid via the renderer's
-    ``get_pixels_rgb`` (rows derived from the surface aspect ratio so
-    the preview isn't squashed), then collapses each pair of rows
-    into a single half-block character.  Result fits in ``rows//2 + 1``
-    terminal lines.
+    Takes the grid ``BuildPreview(sample_cols=…)`` returns — row-major
+    ``pixels[y][x] -> (r, g, b)``, already sized to the surface's aspect
+    ratio — and collapses each pair of rows into one half-block
+    character, so the output is ``rows // 2`` terminal lines.
+
+    Pure formatting: the sampling lives behind the Command (the renderer
+    is the only thing that can read a surface, and a UI must not hold
+    one).  An empty grid renders as an empty string.
     """
-    log.debug("image_to_ansi: cols=%d", cols)
-    if cols <= 0:
+    rows = len(pixels)
+    cols = len(pixels[0]) if rows else 0
+    log.debug("image_to_ansi: grid=%dx%d", cols, rows)
+    if not cols:
         return ""
-    # The renderer's get_pixels_rgb returns row-major output.  We need
-    # to know the surface aspect ratio to pick a row count — sample
-    # a tiny probe to get dimensions, then re-sample at the target
-    # grid in one shot.
-    probe = renderer.get_pixels_rgb(surface, 1, 1)
-    del probe  # only the call confirms the surface is valid
-    # Aspect from the surface itself — caller renders the LCD canvas
-    # so the natural ratio is whatever the device's profile produced.
-    # We approximate using a 1:1 default when no width/height
-    # property is queryable here; production renderer (QtRenderer)
-    # honours the requested grid size directly.
-    rows = max(2, cols)
-    if rows % 2:
-        rows += 1
-    pixels = renderer.get_pixels_rgb(surface, cols, rows)
 
     lines: list[str] = []
     for y in range(0, rows, 2):
