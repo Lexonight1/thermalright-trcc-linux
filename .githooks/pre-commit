@@ -45,4 +45,19 @@ if printf '%s\n' "$staged" | grep -qE '^src/trcc/ui/cli/'; then
     git add doc/REFERENCE_CLI.md
 fi
 
+# ── Port reference ─────────────────────────────────────────────────────
+# doc/REFERENCE_PORTS.md is generated from the live ABCs
+# (dev/gen_ports_reference.py).  The hand-written table in CLAUDE.md listed
+# FOUR ports when the tree had 28, and two of those four pointed at files
+# that no longer contained them — so this is derived, not maintained.
+# Any ABC or implementation can move, so the trigger is the whole tree.
+if printf '%s\n' "$staged" | grep -qE '^src/trcc/'; then
+    echo "pre-commit: src changed — regenerating doc/REFERENCE_PORTS.md"
+    if ! PYTHONPATH=src python3 dev/gen_ports_reference.py >/dev/null; then
+        echo "pre-commit: port reference generation FAILED (dev/gen_ports_reference.py)" >&2
+        exit 1
+    fi
+    git add doc/REFERENCE_PORTS.md
+fi
+
 exit 0
