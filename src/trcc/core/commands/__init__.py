@@ -52,6 +52,7 @@ from .device import (
     ToggleVideo,
     UpdateOverlayElement,
     UploadBootAnimation,
+    VideoStatus,
 )
 from .led import (
     EnableLedTestMode,
@@ -255,4 +256,5 @@ __all__ = [
     "UpdateOverlayElement",
     "UploadBootAnimation",
     "UploadCustomMask",
+    "VideoStatus",
 ]

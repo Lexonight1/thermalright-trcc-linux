@@ -10,7 +10,9 @@ Self-contained handler for a single LCD device.  Holds:
 
 Every device mutation goes through ``self._app.dispatch(Command(...))``.
 Animation state (playing, interval, current frame) comes from
-``app.media.playback(key)`` — handler delegates rather than caches.
+``VideoStatus`` / ``TickDisplay`` on the same bus — handler delegates
+rather than caches, and never reaches into ``app.media`` (which does not
+exist on the ``AppProxy`` a daemon-mode UI holds, #249).
 """
 from __future__ import annotations
 
@@ -40,6 +42,7 @@ from ...core.commands import (
     SetSplitMode,
     StopVideo,
     UploadCustomMask,
+    VideoStatus,
 )
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
@@ -52,7 +55,7 @@ from .base_handler import BaseHandler
 if TYPE_CHECKING:
     from ...app import App
     from ...core.models import DeviceSettings, ProductInfo
-    from ...core.results import ThemeResult
+    from ...core.results import ThemeResult, VideoStatusResult
 
 log = logging.getLogger(__name__)
 
@@ -177,11 +180,25 @@ class LCDHandler(BaseHandler):
         """
         return self._pm.state.lcd_size
 
-    @property
+    def _video_status(self) -> VideoStatusResult:
+        """Ask the bus what this device's playback is doing.
+
+        One dispatch instead of six reaches into ``app.media`` — which is a
+        crash under ``TRCC_DAEMON=1``, where the handler holds an ``AppProxy``
+        exposing ``dispatch`` and nothing else (#249).
+        """
+        return self._app.dispatch(VideoStatus(key=self._device_key))
+
     def has_video_playback(self) -> bool:
-        """True iff MediaService has frames bound for this device."""
-        playback = self._app.media.playback(self._device_key)
-        return playback is not None and bool(playback.frames)
+        """True iff MediaService has frames bound for this device.
+
+        ``playing`` alone is not enough: a bound playback that decoded zero
+        frames is not something to animate, which is why this tests the count
+        as well — and why ``frame_count`` is ``None`` rather than ``0`` when
+        there is no playback at all.
+        """
+        status = self._video_status()
+        return status.playing and bool(status.frame_count)
 
     # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
@@ -420,7 +437,7 @@ class LCDHandler(BaseHandler):
         self._pm.state.current_theme_path = (
             Path(result.theme_path) if result.theme_path else None
         )
-        if self._app.media.playback(self._device_key) is None:
+        if not self._video_status().playing:
             self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
@@ -739,9 +756,7 @@ class LCDHandler(BaseHandler):
         ``VideoStarted`` event payload instead (DIP: don't query the
         service if the event already carries the answer).
         """
-        playback = self._app.media.playback(self._device_key)
-        fps = getattr(playback, 'fps', None) if playback is not None else None
-        return self._pm.video_interval_ms(fps)
+        return self._pm.video_interval_ms(self._video_status().fps)
 
     def _start_animation_timer(self, interval_ms: int, reason: str) -> None:
         """Single entry point for starting the per-frame video timer.
@@ -1125,8 +1140,7 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
         self._render_and_send()
-        playback = self._app.media.playback(self._device_key)
-        kind = "video" if playback is not None else "image"
+        kind = "video" if self._video_status().playing else "image"
         self._w['preview'].set_status(
             f"Background: {'On' if enabled else 'Off'} ({kind})",
         )

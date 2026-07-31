@@ -76,6 +76,7 @@ from ..results import (
     SendResult,
     SplitModeResult,
     VideoResult,
+    VideoStatusResult,
 )
 from ._base import Command
 from ._helpers import (
@@ -1873,6 +1874,48 @@ class PauseVideo(Command[PauseVideoResult]):
             ok=True, key=self.key, paused=self.paused,
             message=f"Video {state}",
         )
+
+@dataclass(frozen=True, slots=True)
+class VideoStatus(Command[VideoStatusResult]):
+    """Ask what a device's video playback is doing.  Read-only.
+
+    The query half of the video surface: :class:`PlayVideo` /
+    :class:`StopVideo` / :class:`PauseVideo` / :class:`SeekVideo` /
+    :class:`LoopVideo` change it, this one reports it, and
+    :class:`TickDisplay` advances it.  Without this, a UI wanting only to
+    *know* had to reach for ``app.media.playback(key)`` — which raises under
+    ``TRCC_DAEMON=1``, where the UI holds an ``AppProxy``.
+
+    A device with no playback is ``ok=True, playing=False`` with the optional
+    fields ``None`` — absence is a normal answer here, not a failure.
+    """
+    key: str
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # polled by status panels
+
+    def execute(self, app: App) -> VideoStatusResult:
+        playback = app.media.playback(self.key)
+        if playback is None:
+            log.debug("VideoStatus: %s has no playback", self.key)
+            return VideoStatusResult(
+                ok=True, key=self.key, playing=False,
+                message="no playback loaded",
+            )
+        log.debug("VideoStatus: %s frame %s/%s @ %s fps paused=%s",
+                  self.key, playback.cursor, playback.frame_count,
+                  playback.fps, playback.paused)
+        return VideoStatusResult(
+            ok=True, key=self.key,
+            playing=True,
+            paused=playback.paused,
+            cursor=playback.cursor,
+            frame_count=playback.frame_count,
+            fps=playback.fps,
+            loop=playback.loop,
+            message=(f"playing frame {playback.cursor}/{playback.frame_count} "
+                     f"@ {playback.fps} fps"
+                     f"{' (paused)' if playback.paused else ''}"),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ToggleVideo(Command[PauseVideoResult]):

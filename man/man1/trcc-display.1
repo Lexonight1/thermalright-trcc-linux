@@ -1050,6 +1050,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS video\-status
+.PP
+\fBtrcc display video\-status\fR \fIKEY\fR
+.PP
+Report what the device's video playback is doing (read\-only). Answers "is a video loaded, where is it, how fast" without rendering a frame  \-  the query half of the video surface, alongside play\-video / stop\-video / pause\-video / seek\-video / loop\-video.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SH SEE ALSO
 \fBtrcc\fR(1)
 .SH REPORTING BUGS

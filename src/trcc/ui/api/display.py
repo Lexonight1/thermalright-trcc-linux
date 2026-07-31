@@ -57,6 +57,7 @@ from ...core.commands import (
     UpdateOverlayElement,
     UploadBootAnimation,
     UploadCustomMask,
+    VideoStatus,
 )
 from ...core.results import (
     BackgroundModeResult,
@@ -335,23 +336,17 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
     control an active playback.
     """
     log.info("api GET /devices/{key}/display/video-status: key=%s", key)
-    playback = request.app.state.trcc.media.playback(key)
-    if playback is None:
-        return VideoStatusResponse(
-            ok=True, key=key, playing=False,
-            message="no playback loaded",
-        )
+    result = request.app.state.trcc.dispatch(VideoStatus(key=key))
+    # The Result keeps None for "no playback" (distinct from frame 0 / 0 fps);
+    # this response has always sent 0 there, so map at the wire and leave the
+    # published shape untouched.
     return VideoStatusResponse(
-        ok=True, key=key,
-        playing=True,
-        paused=playback.paused,
-        cursor=playback.cursor,
-        frame_count=playback.frame_count,
-        fps=playback.fps,
-        loop=playback.loop,
-        message=(f"playing frame {playback.cursor}/{playback.frame_count} "
-                 f"@ {playback.fps} fps"
-                 f"{' (paused)' if playback.paused else ''}"),
+        ok=result.ok, key=result.key, message=result.message,
+        playing=result.playing, paused=result.paused,
+        cursor=result.cursor or 0,
+        frame_count=result.frame_count or 0,
+        fps=result.fps or 0,
+        loop=result.loop,
     )
 
 

@@ -51,6 +51,7 @@ from ...core.commands import (
     UpdateOverlayElement,
     UploadBootAnimation,
     UploadCustomMask,
+    VideoStatus,
 )
 from ._ctx import (
     dispatch_echo,
@@ -529,6 +530,20 @@ def seek_video(
     """Jump the playback cursor to a specific frame."""
     log.info("cli display seek-video: key=%s frame=%s", key, frame)
     dispatch_echo(SeekVideo(key=key, frame=frame))
+
+
+@app.command("video-status")
+def video_status(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Report what the device's video playback is doing (read-only).
+
+    Answers "is a video loaded, where is it, how fast" without rendering a
+    frame — the query half of the video surface, alongside ``play-video`` /
+    ``stop-video`` / ``pause-video`` / ``seek-video`` / ``loop-video``.
+    """
+    log.info("cli display video-status: key=%s", key)
+    dispatch_echo(VideoStatus(key=key))
 
 
 @app.command("loop-video")

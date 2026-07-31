@@ -265,6 +265,33 @@ class VideoResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class VideoStatusResult(Result):
+    """Read-only playback state for a device — the QUESTION, not the tick.
+
+    ``TickDisplay`` already returns cursor / frame_count / interval_ms, but it
+    *renders and sends a frame* to do it.  A UI that only wants to know
+    "is there a video, and what is it doing?" — to label a status line, choose
+    a timer interval, or decide whether to show transport controls — had no way
+    to ask, so every UI reached into ``app.media.playback(key)`` directly.  That
+    is a crash under ``TRCC_DAEMON=1``, where the UI holds an ``AppProxy`` that
+    exposes ``dispatch`` and nothing else (#249).
+
+    **The optional fields are ``None`` when there is no playback — distinct
+    from ``0``.** Same rule, and the same reason, as :class:`RenderResult`: a
+    caller has to be able to tell "this theme is not a video" from "frame 0 of a
+    video", and "fps unknown" from "fps is zero".  Collapsing those with a
+    falsy test is how a still image ends up driving a 30 fps timer.
+    """
+    key: str = ""
+    playing: bool = False
+    paused: bool = False
+    cursor: int | None = None
+    frame_count: int | None = None
+    fps: int | None = None
+    loop: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ScreencastResult(Result):
     """Result of ``StartScreencast`` / ``StopScreencast`` — lifecycle of
     the per-device screen-capture session.

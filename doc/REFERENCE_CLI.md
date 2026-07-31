@@ -999,6 +999,18 @@ trcc display upload-mask KEY SOURCE
 | `KEY` | Device key |
 | `SOURCE` | Mask image file to copy + apply |
 
+### `trcc display video-status`
+
+Report what the device's video playback is doing (read-only). Answers "is a video loaded, where is it, how fast" without rendering a frame — the query half of the video surface, alongside `play-video` / `stop-video` / `pause-video` / `seek-video` / `loop-video`.
+
+```bash
+trcc display video-status KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
 ## `trcc led`
 
 RGB LED control.
