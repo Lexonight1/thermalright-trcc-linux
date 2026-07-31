@@ -106,6 +106,25 @@ Options:
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS state
+.PP
+\fBtrcc device state\fR \fIKEY\fR
+.PP
+Show what a device IS  \-  identity, connection, handshake geometry. native_resolution is what the product registry claims; resolution is what the panel answered at handshake. When they differ, the handshake wins and the difference is usually the thing worth reporting.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SH SEE ALSO
 \fBtrcc\fR(1)
 .SH REPORTING BUGS

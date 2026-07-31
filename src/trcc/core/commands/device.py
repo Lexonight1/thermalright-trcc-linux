@@ -53,6 +53,7 @@ from ..results import (
     BrightnessResult,
     ConnectionIssuesResult,
     ConnectResult,
+    DeviceStateResult,
     DisconnectResult,
     DiscoverResult,
     FitModeResult,
@@ -2055,4 +2056,57 @@ class SetActiveDevice(Command[ActiveDeviceResult]):
             ok=True, active_device=self.key,
             message=("active device cleared" if self.key is None
                      else f"active device set to {self.key}"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceState(Command[DeviceStateResult]):
+    """Report what a device is — identity, connection, handshake geometry.
+
+    The query every UI was doing by hand: ``app.devices.get(key)`` followed by
+    reads of ``.info`` / ``.profile`` / ``.is_connected``.  CLAUDE.md forbids a
+    UI holding the Device, and ``app.devices`` is absent on the ``AppProxy`` a
+    daemon-mode UI holds, so all 25 of those sites raised under
+    ``TRCC_DAEMON=1`` (#249).
+
+    An UNKNOWN key is ``ok=False``; a KNOWN but unconnected device is
+    ``ok=True, connected=False`` with the handshake fields ``None`` — absence
+    is a normal answer for a device we simply have not talked to yet.
+    """
+    key: str
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # panels poll this
+
+    def execute(self, app: App) -> DeviceStateResult:
+        device = app.devices.get(self.key)
+        if device is None:
+            log.debug("DeviceState: %s is not attached", self.key)
+            return DeviceStateResult(
+                ok=False, key=self.key,
+                message=f"No device attached for {self.key}",
+            )
+        info = device.info
+        profile = device.profile
+        handshake = device.handshake
+        log.debug("DeviceState: %s %s connected=%s profile=%s",
+                  self.key, info.product, device.is_connected,
+                  profile.resolution if profile else None)
+        return DeviceStateResult(
+            ok=True, key=self.key,
+            vid=info.vid, pid=info.pid,
+            vendor=info.vendor, product=info.product,
+            wire=info.wire.value, kind=info.kind.value,
+            model=info.model or "",
+            button_image=info.button_image or "",
+            native_resolution=info.native_resolution,
+            connected=device.is_connected,
+            is_led=device.is_led,
+            resolution=profile.resolution if profile else None,
+            jpeg=profile.jpeg if profile else None,
+            rotate=profile.rotate if profile else None,
+            widescreen=profile.widescreen if profile else None,
+            pm_byte=handshake.pm_byte if handshake else None,
+            sub_byte=handshake.sub_byte if handshake else None,
+            fbl=info.fbl if handshake else None,
+            led_style=getattr(info, "led_style", None),
+            message=f"{info.product} ({info.wire.value})",
         )

@@ -24,6 +24,7 @@ from starlette.background import BackgroundTask
 
 from ...core.commands import (
     DeleteTheme,
+    DeviceState,
     EnsureDataDownload,
     ExportConfig,
     ExportDcTheme,
@@ -301,14 +302,14 @@ def list_(
     else:
         resolution: tuple[int, int] | None = None
         if key is not None:
-            device = request.app.state.trcc.devices.get(key)
-            if device is None or device.profile is None:
+            state = request.app.state.trcc.dispatch(DeviceState(key=key))
+            if not state.ok or state.resolution is None:
                 return ThemesListResult(
                     ok=False, directory="", themes=[],
                     message=(f"Device {key} not connected — connect first "
                              "so we know the target resolution"),
                 )
-            resolution = device.profile.resolution
+            resolution = state.resolution
         elif width is not None and height is not None:
             resolution = (width, height)
         result = request.app.state.trcc.dispatch(

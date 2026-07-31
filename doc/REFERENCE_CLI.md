@@ -354,6 +354,18 @@ trcc device select ORDINAL
 |---|---|
 | `ORDINAL` | 1-based ordinal of the attached device to mark active (matches `device list` output) |
 
+### `trcc device state`
+
+Show what a device IS — identity, connection, handshake geometry. `native_resolution` is what the product registry claims; `resolution` is what the panel answered at handshake. When they differ, the handshake wins and the difference is usually the thing worth reporting.
+
+```bash
+trcc device state KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
 ## `trcc display`
 
 Configure device display (theme / orientation / brightness).

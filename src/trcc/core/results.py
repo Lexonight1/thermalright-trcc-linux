@@ -265,6 +265,51 @@ class VideoResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class DeviceStateResult(Result):
+    """What a device IS — identity, live connection, handshake-derived geometry.
+
+    Twenty-five sites across all four UIs did ``app.devices.get(key)`` and then
+    read attributes off the live ``Device``.  Two problems with that: CLAUDE.md
+    says plainly *"UIs never hold Device references directly"*, and
+    ``app.devices`` does not exist on the ``AppProxy`` a daemon-mode UI holds,
+    so every one of them raised under ``TRCC_DAEMON=1`` (#249).
+
+    Flattened deliberately.  Handing back ``ProductInfo`` and ``DeviceProfile``
+    objects would keep the UI holding domain objects and would not survive the
+    daemon socket; every field here is what a UI actually read.
+
+    **The handshake-derived fields are ``None`` before a handshake — not 0 and
+    not False.**  ``resolution`` unknown is a different state from a 0x0 panel,
+    and ``rotate=None`` ("we have not asked the hardware yet") is different
+    from ``rotate=False`` ("this panel does not rotate").  A UI drawing a
+    preview must be able to tell those apart.
+    """
+    key: str = ""
+    # Identity — from the product registry, known before any handshake.
+    vid: int = 0
+    pid: int = 0
+    vendor: str = ""
+    product: str = ""
+    wire: str = ""
+    kind: str = ""
+    model: str = ""
+    button_image: str = ""
+    native_resolution: tuple[int, int] = (0, 0)
+    # Live connection state.
+    connected: bool = False
+    is_led: bool = False
+    # Handshake-derived — None until the device has answered.
+    resolution: tuple[int, int] | None = None
+    pm_byte: int | None = None
+    sub_byte: int | None = None
+    fbl: int | None = None
+    jpeg: bool | None = None
+    rotate: bool | None = None
+    widescreen: bool | None = None
+    led_style: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PathsResult(Result):
     """Where this install keeps things — the answer to "where do I put it?".
 

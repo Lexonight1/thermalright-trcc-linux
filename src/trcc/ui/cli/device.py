@@ -8,6 +8,7 @@ import typer
 from ...core.commands import (
     ConnectDevice,
     DeviceConnectionIssues,
+    DeviceState,
     DisconnectDevice,
     DiscoverDevices,
     ResetDevice,
@@ -75,6 +76,32 @@ def issues() -> None:
         for hint in issue.hints:
             typer.echo(f"    hint: {hint}")
     raise typer.Exit(code=1)
+
+
+@app.command("state")
+def state(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+) -> None:
+    """Show what a device IS — identity, connection, handshake geometry.
+
+    ``native_resolution`` is what the product registry claims; ``resolution``
+    is what the panel answered at handshake.  When they differ, the handshake
+    wins and the difference is usually the thing worth reporting.
+    """
+    log.info("cli device state: key=%s", key)
+    result = get_app().dispatch(DeviceState(key=key))
+    if not result.ok:
+        typer.echo(result.message)
+        raise typer.Exit(code=1)
+    for field in (
+        "vendor", "product", "wire", "kind", "model", "native_resolution",
+        "connected", "is_led", "resolution", "pm_byte", "sub_byte", "fbl",
+        "jpeg", "rotate", "widescreen", "led_style",
+    ):
+        value = getattr(result, field)
+        # None means "not handshaken yet" — distinct from 0 / False.  Say so
+        # rather than printing a value the device never gave us.
+        typer.echo(f"{field:20} {'(not handshaken)' if value is None else value}")
 
 
 @app.command("disconnect")

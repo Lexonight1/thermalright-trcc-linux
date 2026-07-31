@@ -25,6 +25,7 @@ from ...core.commands import (
     ApplyMask,
     ConfigureSlideshow,
     DeleteOverlayElement,
+    DeviceState,
     EnableOverlay,
     FlashOverlayElement,
     GetPaths,
@@ -740,13 +741,16 @@ async def create_theme(
     # Resolve the device's resolution for the response — same lookup
     # ``_resolve_resolution`` does in core/commands.py, kept inline so
     # the route doesn't reach into private helpers.
-    device = request.app.state.trcc.devices.get(key)
-    if device is not None and device.profile is not None:
-        w, h = device.profile.resolution
-    elif device is not None:
-        w, h = device.info.native_resolution
-    else:
+    state = request.app.state.trcc.dispatch(DeviceState(key=key))
+    # Handshake resolution wins; the registry's native size is the fallback
+    # for an attached-but-not-yet-handshaken device.  `resolution is None`
+    # is what distinguishes those — a 0x0 panel would be a real answer.
+    if not state.ok:
         w, h = 0, 0
+    elif state.resolution is not None:
+        w, h = state.resolution
+    else:
+        w, h = state.native_resolution
 
     return CreateThemeResponse(
         ok=True,
@@ -1112,14 +1116,14 @@ def list_masks(
     )
     resolution: tuple[int, int] | None = None
     if key is not None:
-        device = request.app.state.trcc.devices.get(key)
-        if device is None or device.profile is None:
+        state = request.app.state.trcc.dispatch(DeviceState(key=key))
+        if not state.ok or state.resolution is None:
             return MasksListResult(
                 ok=False, directory="", masks=[],
                 message=(f"Device {key} not connected — connect first "
                          "so we know the target resolution"),
             )
-        resolution = device.profile.resolution
+        resolution = state.resolution
     elif width is not None and height is not None:
         resolution = (width, height)
     result = request.app.state.trcc.dispatch(ListMasks(resolution=resolution))
