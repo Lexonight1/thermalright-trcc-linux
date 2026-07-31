@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import LcdSnapshot, ReadSensors
+from ....core.commands import BuildPreview, LcdSnapshot
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -112,28 +112,21 @@ class PreviewPanel(BasePanel):
         self._orientation_label.setText(f"{snapshot.orientation}°")
         self._brightness_label.setText(f"{snapshot.brightness}%")
 
-        # Find an attached device + active theme for the preview.
-        device = self.app.devices.get(key)
-        theme = self.app.active_themes.get(key)
-        if device is None or theme is None:
+        # The render every UI shows — one Command, sensors included.
+        preview = self.dispatch(BuildPreview(key=key))
+        if not preview.ok:
+            # Not attached, or the render raised — say which.  "Load a theme"
+            # would be a lie for a device that isn't plugged in.
+            self._set_placeholder(f"No data for {key} — {preview.message}")
+            self._size_label.setText("—")
+            return
+        if preview.surface is None:
             self._set_placeholder(
                 f"Load a theme for {key} to see a live preview here.",
             )
             self._size_label.setText("—")
             return
-        readings = self.dispatch(ReadSensors())
-        sensors = {r.sensor_id: r.value for r in readings.readings}
-        try:
-            surface = self.app.display.build_preview_surface(
-                info=device.info,
-                theme=theme,
-                sensors=sensors,
-                profile=device.profile,
-            )
-        except (RuntimeError, OSError) as e:
-            self._set_placeholder(f"Preview failed: {e}")
-            return
-        pix = _surface_to_pixmap(surface, _PREVIEW_MAX)
+        pix = _surface_to_pixmap(preview.surface, _PREVIEW_MAX)
         if pix is None:
             self._set_placeholder(
                 "Preview surface couldn't be rendered to a pixmap.",
