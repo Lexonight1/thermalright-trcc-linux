@@ -77,8 +77,11 @@ class BaseDevice(Device[T]):
         :class:`BaseBulkDevice` is.
         """
         super().__init_subclass__(**kwargs)
-        if wire is not None:
-            DEVICES.register(wire)(cls)
+        if wire is None:
+            log.debug("%s: intermediate device base, not registered", cls.__name__)
+            return
+        log.debug("%s: registering as wire %s", cls.__name__, wire.value)
+        DEVICES.register(wire)(cls)
 
     def __init__(self, info: ProductInfo, transport: T) -> None:
         super().__init__(info, transport)

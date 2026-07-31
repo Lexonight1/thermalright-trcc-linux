@@ -610,6 +610,49 @@ and serializes the Result back:
   in-process flow, just with JSON serialization in front. Real-hardware donors
   close the matrix.
 
+## THE RULE: every function gets a log line — new code AND old code
+
+**Every function or method you write gets a log line. Every function you touch
+that hasn't got one, gets one.** Not "every service method", not "every
+Command" — every function.
+
+**Why it is absolute:** users diagnose through `trcc report`, which pastes the
+log file. For hardware we do not own and cannot reproduce on, **that paste is
+the entire diagnosis**. A function with no log line is a bug report we cannot
+answer and a round-trip asking someone to reproduce with a flag they didn't
+know existed.
+
+**It is gated, not remembered** — `tests/test_logging_coverage.py`, a
+**ratchet**:
+
+* add a silent function → the count rises → **FAIL**
+* give a silent function a log line → the count falls → **FAIL**, telling you
+  to lower `MAX_SILENT` so the ground is not given back
+
+It could not start green: **1451 of 3074 countable functions were silent** when
+it landed (ui 693, adapters 444, core 147, services 143). That number lives in
+the test so every diff shows the direction of travel. **It only ever goes down.**
+
+```
+PYTHONPATH=src python3 dev/tools/logging_coverage.py --list      # name them
+PYTHONPATH=src python3 dev/tools/logging_coverage.py --area ui   # one area
+```
+
+**Only two exclusions, both for cause:**
+
+* **abstract methods and stubs** — no body ran, so nothing happened to report.
+* **dunders the logger invokes while formatting** (`__repr__`, `__str__`,
+  `__len__`, `__eq__`, …) — a log call inside one recurses forever. This is a
+  technical impossibility, not a preference. `__init__`, `__enter__`,
+  `__getitem__` and `__init_subclass__` are **not** exempt and are counted.
+
+**The file always keeps DEBUG, at every verbosity.** It used to be `DEBUG if
+verbose else INFO`, so a user who ran the app normally, hit a problem and sent
+a report shipped us a log with every DEBUG line already discarded — the branch
+decisions, the resolved values, the silent-skip reasons. Exactly what we needed,
+gone. The rotating file is capped (1 MB × 5, `latest` at 10 MB), so per-frame
+DEBUG rolls over rather than growing without limit.
+
 ## Logging coverage is mandatory
 
 Without logs we can't debug what we can't see.  Legacy had 828 log

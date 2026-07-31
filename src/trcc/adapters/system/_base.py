@@ -103,8 +103,11 @@ class BaseOS(Platform):
         ``key=None`` means "intermediate base, don't register".
         """
         super().__init_subclass__(**kwargs)
-        if key is not None:
-            PLATFORMS.register(key)(cls)
+        if key is None:
+            log.debug("%s: intermediate OS base, not registered", cls.__name__)
+            return
+        log.debug("%s: registering as OS %r", cls.__name__, key)
+        PLATFORMS.register(key)(cls)
 
     #: tool → install one-liner; the default :meth:`software_install_hint`
     #: reads this.  Dict-driven OSes (macOS/Windows/BSD) set it; Linux
@@ -152,7 +155,10 @@ class BaseOS(Platform):
         new abstract method on the port and an implementation in every OS.  An
         OS whose mapping genuinely differs overrides this one method.
         """
-        return {Wire.SCSI: self._open_scsi}
+        openers = {Wire.SCSI: self._open_scsi}
+        log.debug("%s._transport_openers: %s (all other wires -> bulk)",
+                  type(self).__name__, [w.value for w in openers])
+        return openers
 
     def open_transport(self, wire: Wire, vid: int, pid: int,
                        serial: str | None = None) -> Transport:

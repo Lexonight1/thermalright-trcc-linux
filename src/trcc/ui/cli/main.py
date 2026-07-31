@@ -533,12 +533,14 @@ def _root(
 
     | flag   | terminal (stderr) | file        |
     |--------|-------------------|-------------|
-    | (none) | WARNING+          | INFO+       |
+    | (none) | WARNING+          | **DEBUG+**  |
     | ``-v`` | INFO+             | DEBUG+      |
     | ``-vv``| DEBUG+            | DEBUG+      |
 
     So per-action INFO lines (theme load, overlay edit, …) land in the
-    file by default but only reach the terminal with ``-v``.
+    file by default but only reach the terminal with ``-v`` — and the file
+    keeps DEBUG at every verbosity, because ``trcc report`` pastes that file
+    and a reporter should not have to have known to pass a flag.
     """
     from ...adapters.infra.logging import configure_logging
     from ...adapters.system import current_platform
@@ -548,8 +550,22 @@ def _root(
     # output — wrap stdout/stderr UTF-8 BEFORE configure_logging
     # attaches the StreamHandler.  No-op on other OSes.
     platform.configure_stdout()
-    # File keeps detail; the terminal level rises one step per -v.
-    file_level = logging.DEBUG if verbose else logging.INFO
+    # The file ALWAYS keeps DEBUG; only the terminal level rises per -v.
+    #
+    # This used to be ``DEBUG if verbose else INFO``, which meant a user who
+    # ran the app normally, hit a problem and sent `trcc report` shipped us a
+    # log with every DEBUG line already discarded — the branch decisions, the
+    # resolved values, the silent-skip reasons.  Exactly the lines the logging
+    # rules exist to produce, missing from the one artifact we diagnose from.
+    # They only appeared if the reporter already knew to pass -vv, and anyone
+    # who knew that rarely needed to file.
+    #
+    # Cost is bounded and already paid for: the rotating file is capped at
+    # 1 MB x 5 backups and the per-run `latest` at 10 MB, so per-frame DEBUG
+    # (video ticks run 30-90 lines/s) rolls over instead of growing without
+    # limit.  A capped 10 MB is cheap next to a round-trip asking someone to
+    # reproduce with a flag.
+    file_level = logging.DEBUG
     stderr_level = (
         logging.DEBUG if verbose >= 2
         else logging.INFO if verbose == 1

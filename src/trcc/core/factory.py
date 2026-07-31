@@ -55,6 +55,7 @@ class Reject(MissPolicy[K, V]):
     """
 
     def __init__(self, exc: type[Exception]) -> None:
+        log.debug("Reject: misses will raise %s", exc.__name__)
         self._exc = exc
 
     def resolve(self, name: str, key: K, table: Mapping[K, V]) -> V:
@@ -76,6 +77,7 @@ class FallBackTo(MissPolicy[K, V]):
     """
 
     def __init__(self, key: K) -> None:
+        log.debug("FallBackTo: misses will substitute %r", key)
         self._key = key
 
     def resolve(self, name: str, key: K, table: Mapping[K, V]) -> V:
@@ -100,6 +102,8 @@ class Registry(Mapping[K, V]):
     """
 
     def __init__(self, name: str, *, on_missing: MissPolicy[K, V]) -> None:
+        log.debug("Registry %r created (on_missing=%s)",
+                  name, type(on_missing).__name__)
         self._name = name
         self._on_missing = on_missing
         self._table: dict[K, V] = {}
@@ -133,9 +137,12 @@ class Registry(Mapping[K, V]):
         there, so a miss is theirs to hear about.
         """
         try:
-            return self._table[key]
+            value = self._table[key]
         except KeyError:
             return self._on_missing.resolve(self._name, key, self._table)
+        log.debug("%s[%r] -> %s", self._name, key,
+                  getattr(value, "__name__", value))
+        return value
 
     def __iter__(self) -> Iterator[K]:
         return iter(self._table)
@@ -154,7 +161,10 @@ class Registry(Mapping[K, V]):
         The split is Python's own, kept honest: ``registry[key]`` is the
         assertion, ``registry.get(key)`` is the question.
         """
-        return self._table.get(key, default)
+        value = self._table.get(key, default)
+        log.debug("%s.get(%r) -> %s", self._name, key,
+                  getattr(value, "__name__", value))
+        return value
 
     def __repr__(self) -> str:
         return f"<Registry {self._name}: {len(self._table)} entries>"

@@ -187,7 +187,11 @@ class LCDHandler(BaseHandler):
         crash under ``TRCC_DAEMON=1``, where the handler holds an ``AppProxy``
         exposing ``dispatch`` and nothing else (#249).
         """
-        return self._app.dispatch(VideoStatus(key=self._device_key))
+        status = self._app.dispatch(VideoStatus(key=self._device_key))
+        self.log.debug("_video_status: playing=%s frame=%s/%s fps=%s",
+                       status.playing, status.cursor, status.frame_count,
+                       status.fps)
+        return status
 
     def has_video_playback(self) -> bool:
         """True iff MediaService has frames bound for this device.
@@ -198,7 +202,10 @@ class LCDHandler(BaseHandler):
         there is no playback at all.
         """
         status = self._video_status()
-        return status.playing and bool(status.frame_count)
+        answer = status.playing and bool(status.frame_count)
+        self.log.debug("has_video_playback: %s (playing=%s frames=%s)",
+                       answer, status.playing, status.frame_count)
+        return answer
 
     # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
