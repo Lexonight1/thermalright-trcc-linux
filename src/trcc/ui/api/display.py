@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from ...core.commands import (
     AddOverlayElement,
     ApplyMask,
+    BuildPreview,
     ConfigureSlideshow,
     DeleteOverlayElement,
     DeviceState,
@@ -416,7 +417,6 @@ async def preview_stream(ws: WebSocket, key: str) -> None:
     """
     import asyncio
 
-    from ...core.errors import DeviceNotFoundError
     from .main import _api_token
 
     # Token check FIRST — accept the WS handshake only when auth
@@ -429,9 +429,7 @@ async def preview_stream(ws: WebSocket, key: str) -> None:
             return
 
     trcc = ws.app.state.trcc
-    try:
-        device = trcc.get(key)
-    except DeviceNotFoundError:
+    if not trcc.dispatch(DeviceState(key=key)).ok:
         await ws.close(code=1008)
         return
 
@@ -439,17 +437,12 @@ async def preview_stream(ws: WebSocket, key: str) -> None:
     frame_interval_s = 0.200  # 5 fps — see docstring
     try:
         while True:
-            theme = trcc.active_themes.get(key)
-            if theme is not None:
-                sensors_full = trcc.platform.sensors().read_all()
-                surface = trcc.display.build_preview_surface(
-                    info=device.info,
-                    theme=theme,
-                    sensors=sensors_full,
-                    profile=device.profile,
-                )
-                jpeg_bytes = trcc.display.encode_jpeg(surface)
-                await ws.send_bytes(jpeg_bytes)
+            # One Command renders the frame every UI previews, personalized
+            # to the user's prefs; a device with no theme yet answers ok with
+            # no image, and the stream simply waits for one.
+            result = trcc.dispatch(BuildPreview(key=key, encode="jpeg"))
+            if result.image:
+                await ws.send_bytes(result.image)
             await asyncio.sleep(frame_interval_s)
     except WebSocketDisconnect:
         log.debug("preview_stream %s: client disconnected", key)
@@ -468,24 +461,15 @@ def preview(key: str, request: Request) -> Response:
     chew them up at typical 320×320 panel resolutions.
     """
     log.info("api GET /devices/{key}/display/preview: key=%s", key)
-    from ...core.errors import DeviceNotFoundError
-    trcc = request.app.state.trcc
-    try:
-        device = trcc.get(key)
-    except DeviceNotFoundError as e:
-        raise HTTPException(404, f"Device {key} not attached") from e
-    theme = trcc.active_themes.get(key)
-    if theme is None:
-        raise HTTPException(404, "No active theme — load one first")
-    sensors_full = trcc.platform.sensors().read_all()
-    surface = trcc.display.build_preview_surface(
-        info=device.info,
-        theme=theme,
-        sensors=sensors_full,
-        profile=device.profile,
+    result = request.app.state.trcc.dispatch(
+        BuildPreview(key=key, encode="png"),
     )
-    png_bytes = trcc.display.encode_png(surface)
-    return Response(content=png_bytes, media_type="image/png")
+    if not result.ok:
+        raise HTTPException(404, result.message)
+    if not result.image:
+        # ok with no image = attached, nothing loaded to show yet.
+        raise HTTPException(404, "No active theme — load one first")
+    return Response(content=result.image, media_type=result.media_type)
 
 
 @router.post("/screencast/start")
