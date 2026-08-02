@@ -9,7 +9,14 @@ focused, copy-paste-friendly format:
 * sensor enumeration snapshot (sensor_id + label + current value)
 * persisted Settings (config.json contents)
 * health check report
-* log tail (last 1000 lines)
+* action history (INFO and above, scanned from the WHOLE log)
+* log tail (last 1000 lines, every level)
+
+The log is carried two ways on purpose.  Every function here logs, so a
+single rendered frame costs ~43 DEBUG lines — a recency-selected tail
+remembers about twenty frames, and the reporter's actual actions have
+usually scrolled out of it by the time they run the report.  The action
+history selects by significance instead and reaches back through the file.
 
 All sections degrade gracefully — if devices can't enumerate, that
 section just says "scan failed: <reason>" rather than aborting the
@@ -33,7 +40,7 @@ from ...core.models import Kind, ProductInfo
 from ...core.ports import Platform
 from ...core.registry import find_product
 from ..device import DEVICES
-from ..infra.logging import tail_log
+from ..infra.logging import tail_log, tail_log_actions
 from .health import HealthReport, run_health_checks
 from .install import InstallInfo, collect_install_info
 
@@ -61,6 +68,7 @@ class DebugReport:
     settings_error: str = ""
     health: HealthReport = field(default_factory=HealthReport)
     log_tail: list[str] = field(default_factory=list)
+    log_actions: list[str] = field(default_factory=list)
     handshake_log: list[str] = field(default_factory=list)
 
     def render_text(self) -> str:
@@ -81,6 +89,9 @@ class DebugReport:
         sections.append(_render_powercap(self.powercap))
         sections.append(_render_settings(self.settings_json, self.settings_error))
         sections.append(_render_health(self.health))
+        # Narrative before detail: what the reporter DID reaches back through
+        # the whole log, the raw tail is only the last moments before it.
+        sections.append(_render_log_actions(self.log_actions))
         sections.append(_render_log_tail(self.log_tail))
         return "\n\n".join(sections) + "\n"
 
@@ -95,10 +106,11 @@ def build_debug_report(
     *,
     settings_path: Path | None = None,
     log_tail_lines: int = 1000,
+    log_action_lines: int = 500,
 ) -> DebugReport:
     """Collect every section into a DebugReport."""
-    log.info("build_debug_report: gathering sections (log_tail=%d)",
-             log_tail_lines)
+    log.info("build_debug_report: gathering sections "
+             "(log_tail=%d actions=%d)", log_tail_lines, log_action_lines)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Best-effort like every other collector: a report from a broken install is
@@ -121,6 +133,7 @@ def build_debug_report(
     health = run_health_checks(platform)
     log_path = platform.paths().log_file()
     log_lines = tail_log(log_path, n_lines=log_tail_lines)
+    action_lines = tail_log_actions(log_path, n_lines=log_action_lines)
     handshake_log = _scrape_handshake_lines(log_path)
 
     return DebugReport(
@@ -137,6 +150,7 @@ def build_debug_report(
         settings_error=settings_err,
         health=health,
         log_tail=log_lines,
+        log_actions=action_lines,
         handshake_log=handshake_log,
     )
 
@@ -513,8 +527,25 @@ def _render_health(report: HealthReport) -> str:
     return f"## Health {summary}\n" + "\n".join(lines)
 
 
+def _render_log_actions(lines: list[str]) -> str:
+    """The action history — significant lines from the whole log."""
+    log.debug("_render_log_actions: %d line(s)", len(lines))
+    if not lines:
+        return "## Actions\n  (no log file yet)"
+    body = "\n".join(f"  {line}" for line in lines)
+    return (
+        f"## Actions ({len(lines)} lines, INFO and above, from the WHOLE log)\n"
+        f"  # What was done, reaching further back than the tail below.\n"
+        f"{body}"
+    )
+
+
 def _render_log_tail(lines: list[str]) -> str:
+    log.debug("_render_log_tail: %d line(s)", len(lines))
     if not lines:
         return "## Log tail\n  (no log file yet)"
     body = "\n".join(f"  {line}" for line in lines)
-    return f"## Log tail ({len(lines)} lines)\n{body}"
+    return (
+        f"## Log tail ({len(lines)} lines, every level, most recent only)\n"
+        f"{body}"
+    )

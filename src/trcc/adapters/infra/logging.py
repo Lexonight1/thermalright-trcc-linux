@@ -22,6 +22,7 @@ from __future__ import annotations
 import inspect
 import logging
 import sys
+from collections import deque
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -185,3 +186,77 @@ def tail_log(log_file: Path, n_lines: int = 1000) -> list[str]:
         return []
     lines = text.splitlines()
     return lines[-n_lines:]
+
+
+# Every level name our own formatter can emit, and the subset worth keeping
+# as an action history.  ``_LOG_FORMAT`` puts the level second, so a line
+# whose second token is one of these is a record START; anything else is a
+# continuation (a traceback body) belonging to the record above it.
+_ALL_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+_SIGNIFICANT_LEVELS = frozenset({"INFO", "WARNING", "ERROR", "CRITICAL"})
+
+
+def _log_level_of(line: str) -> str | None:
+    """The level name of *line*, or None when it is a continuation line."""
+    parts = line.split(maxsplit=2)
+    if len(parts) >= 2 and parts[1] in _ALL_LEVELS:
+        return parts[1]
+    return None
+
+
+def tail_log_actions(log_file: Path, n_lines: int = 500) -> list[str]:
+    """The last *n_lines* non-DEBUG records from the WHOLE log.
+
+    ``tail_log`` selects by recency, which is the wrong axis for a bug
+    report.  Every function in this project logs, so one rendered frame
+    costs ~43 DEBUG lines and one overlay click ~125 — meaning a 1000-line
+    tail remembers roughly twenty frames.  A reporter who hits a problem and
+    then keeps using the app for another minute sends us a file where what
+    they DID has already scrolled out, and we spend a round trip asking them
+    to do it again.
+
+    So this selects by significance instead: the user-action lines
+    (INFO), the silent-skip warnings and the failures, however far back they
+    are.  Tracebacks are kept with the record they belong to — an
+    ``ERROR`` whose stack was dropped is the half of the answer that
+    matters least.
+
+    Streams the file with a bounded ``deque`` rather than reading it whole,
+    so it stays flat in memory on a rotated 10 MB ``latest`` log.  Same
+    shape as ``_scrape_handshake_lines``, which solved this for one line
+    type after the tail window ate it.
+
+    The default is deliberately HALF the tail's budget, not a tenth.  The
+    ratio of DEBUG to significant lines swings enormously with what the app
+    is doing — measured on two real logs, one was 980 DEBUG / 20 INFO per
+    thousand and the other 562 / 438.  A small window is a clear win against
+    the first and a REGRESSION against the second, handing the reporter
+    fewer significant lines than the plain tail already contained.  500
+    keeps this section at least comparable to the tail's significant content
+    in the worst case, while still reaching tens of thousands of raw lines
+    back in the render-loop case, and keeps the pasted report a sane size.
+    """
+    log.info("tail_log_actions: file=%s n_lines=%d", log_file, n_lines)
+    if not log_file.is_file():
+        log.debug("tail_log_actions: %s does not exist", log_file)
+        return []
+    kept: deque[str] = deque(maxlen=n_lines)
+    keeping_record = False
+    try:
+        with log_file.open("r", encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                line = raw.rstrip("\n")
+                level = _log_level_of(line)
+                if level is None:
+                    # Continuation — rides along iff its record was kept.
+                    if keeping_record:
+                        kept.append(line)
+                    continue
+                keeping_record = level in _SIGNIFICANT_LEVELS
+                if keeping_record:
+                    kept.append(line)
+    except OSError as e:
+        log.warning("tail_log_actions: could not read %s — %s", log_file, e)
+        return []
+    log.info("tail_log_actions: kept %d significant line(s)", len(kept))
+    return list(kept)

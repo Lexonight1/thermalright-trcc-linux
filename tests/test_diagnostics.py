@@ -20,7 +20,11 @@ from trcc.adapters.diagnostics.health import (
     package_install_hint,
     run_health_checks,
 )
-from trcc.adapters.infra.logging import configure_logging, tail_log
+from trcc.adapters.infra.logging import (
+    configure_logging,
+    tail_log,
+    tail_log_actions,
+)
 
 # =========================================================================
 # Logging adapter
@@ -91,6 +95,106 @@ def test_tail_log_returns_last_n_lines(tmp_path: Path) -> None:
     tail = tail_log(log_file, n_lines=10)
     assert len(tail) == 10
     assert tail[-1] == "line 499"
+
+
+# =========================================================================
+# Action history — selecting by significance, not recency
+# =========================================================================
+
+
+def _record(level: str, msg: str, i: int = 0) -> str:
+    """One line in this project's real format (level is the 2nd token)."""
+    return f"2026-08-02T12:00:{i % 60:02d} {level:<7} trcc.mod:fn:{i}: {msg}"
+
+
+def test_tail_log_actions_handles_missing_file(tmp_path: Path) -> None:
+    assert tail_log_actions(tmp_path / "absent.log") == []
+
+
+def test_tail_log_actions_reaches_past_the_tail_window(tmp_path: Path) -> None:
+    """The reason this exists.
+
+    A render loop buries the user's actions: here one action is followed by
+    2000 DEBUG lines, so a 1000-line tail cannot see it at all while the
+    action history returns it as the only entry.
+    """
+    log_file = tmp_path / "trcc.log"
+    log_file.write_text("\n".join(
+        [_record("INFO", "LoadTheme ok: Theme1")]
+        + [_record("DEBUG", f"draw_text {i}", i) for i in range(2000)],
+    ))
+
+    assert not any("LoadTheme" in line for line in tail_log(log_file, 1000))
+    assert [line.split(": ", 1)[-1]
+            for line in tail_log_actions(log_file)] == ["LoadTheme ok: Theme1"]
+
+
+def test_tail_log_actions_keeps_every_level_above_debug(
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "trcc.log"
+    log_file.write_text("\n".join(
+        _record(lvl, lvl.lower())
+        for lvl in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    ))
+
+    kept = tail_log_actions(log_file)
+
+    assert [line.split()[1] for line in kept] == [
+        "INFO", "WARNING", "ERROR", "CRITICAL",
+    ]
+
+
+def test_tail_log_actions_keeps_a_traceback_with_its_error(
+    tmp_path: Path,
+) -> None:
+    """``log.exception`` writes the stack as continuation lines with no level
+    token of their own.  An ERROR whose stack was dropped is the half of the
+    answer that matters least."""
+    log_file = tmp_path / "trcc.log"
+    log_file.write_text("\n".join([
+        _record("ERROR", "connect failed"),
+        "Traceback (most recent call last):",
+        '  File "x.py", line 1, in <module>',
+        "USBError: [Errno 13] Access denied",
+    ]))
+
+    kept = tail_log_actions(log_file)
+
+    assert len(kept) == 4
+    assert "Access denied" in kept[-1]
+
+
+def test_tail_log_actions_drops_a_debug_records_continuation(
+    tmp_path: Path,
+) -> None:
+    """A continuation rides on its record — so a DEBUG one is dropped too,
+    otherwise the filter leaks whatever a per-frame line happened to wrap."""
+    log_file = tmp_path / "trcc.log"
+    log_file.write_text("\n".join([
+        _record("DEBUG", "per-frame detail"),
+        "  continuation of the debug line",
+        _record("INFO", "the action"),
+    ]))
+
+    kept = tail_log_actions(log_file)
+
+    assert len(kept) == 1
+    assert kept[0].endswith("the action")
+
+
+def test_tail_log_actions_is_bounded_and_keeps_the_most_recent(
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "trcc.log"
+    log_file.write_text("\n".join(
+        _record("INFO", f"action {i}", i) for i in range(300)
+    ))
+
+    kept = tail_log_actions(log_file, n_lines=10)
+
+    assert len(kept) == 10
+    assert kept[-1].endswith("action 299")
 
 
 # =========================================================================
@@ -268,7 +372,8 @@ def test_debug_report_renders_paste_ready_text(fake_platform) -> None:
     report = build_debug_report(fake_platform)
     text = report.render_text()
     # Markers a reporter / triager visually scans for.
-    for header in ("Platform", "Paths", "Devices", "Sensors", "Health", "Log tail"):
+    for header in ("Platform", "Paths", "Devices", "Sensors", "Health",
+                   "Actions", "Log tail"):
         assert f"## {header}" in text
 
 
