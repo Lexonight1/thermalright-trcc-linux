@@ -1,0 +1,207 @@
+"""ResolveOverlay — asking what is actually on a device's screen.
+
+The read side of overlay.  Seven overlay Commands mutate; none could
+answer, so both Qt skins reached past the bus and cli/api could not ask at
+all.
+
+The load-bearing case is a theme-supplied layout.  A theme's elements come
+from a ``config1.dc`` parse and carry NO id — every shipped theme is in
+that state — so "flash element 3" had nothing to name, and the id the GUI
+invented (a bare index) matched nothing.  ``test_theme_layout_ids_are_``
+``flashable`` is that bug, reproduced against real parsed DC bytes.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from trcc.adapters.render.qt import QtRenderer
+from trcc.app import App
+from trcc.core.commands import (
+    ConnectDevice,
+    EnableOverlay,
+    FlashOverlayElement,
+    ResolveOverlay,
+    SetOverlayConfig,
+)
+from trcc.core.models import OverlayElement, Theme
+from trcc.services.overlay import effective_overlay_layout, overlay_source
+
+from .mock_platform import MockPlatform
+
+_SPEC = {"type": "lcd", "vid": "0416", "pid": "5302",
+         "resolution": "320x320", "pm": 51, "sub": 0}
+_VID, _PID = 0x0416, 0x5302
+_KEY = "0416:5302"
+
+# The shape a config1.dc parse produces: no "id" key anywhere.
+_THEME_ELEMENTS = [
+    {"type": "metric", "metric": "cpu:temp", "x": 10, "y": 20, "size": 24},
+    {"type": "text", "text": "CPU", "x": 10, "y": 50, "size": 16},
+    {"type": "clock", "source": "time", "x": 10, "y": 80, "size": 20},
+]
+
+
+@pytest.fixture
+def app(tmp_path: Path) -> App:
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    app.attach(_VID, _PID)
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    return app
+
+
+def _load_theme(app: App, tmp_path: Path, elements: list[dict]) -> Theme:
+    theme = Theme(
+        path=tmp_path / "theme", name="Theme1", resolution=(320, 320),
+        config={"elements": elements},
+    )
+    app.active_themes[_KEY] = theme
+    return theme
+
+
+# ── The bug this Command exists to close ─────────────────────────────────
+
+
+def test_theme_layout_ids_are_flashable(app: App, tmp_path: Path) -> None:
+    """A stock theme, nothing edited, no mask — the default state.
+
+    Before: the theme's elements had no id, the GUI fell back to the bare
+    index, and FlashOverlayElement answered "element '2' not found".
+    """
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.ok
+    assert layout.source == "theme"
+    assert [e.id for e in layout.elements] == ["el_0", "el_1", "el_2"]
+
+    # The id handed out here must be the id looked up there.
+    for entry in layout.elements:
+        flashed = app.dispatch(FlashOverlayElement(
+            key=_KEY, element_id=entry.id,
+        ))
+        assert flashed.ok, flashed.message
+
+
+def test_ids_are_stable_across_calls(app: App, tmp_path: Path) -> None:
+    """Positional, not random — a uuid would differ on the second resolve
+    and the id a UI is holding would stop matching."""
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+
+    first = app.dispatch(ResolveOverlay(key=_KEY)).elements
+    second = app.dispatch(ResolveOverlay(key=_KEY)).elements
+
+    assert [e.id for e in first] == [e.id for e in second]
+
+
+def test_a_real_id_is_never_shadowed_by_a_mint() -> None:
+    """A theme element literally named ``el_0`` must keep the name, and the
+    id-less element at index 0 must be given a different one."""
+    config = {"elements": [
+        {"type": "text", "text": "no id", "x": 0, "y": 0},
+        {"type": "text", "text": "owns el_0", "x": 0, "y": 0, "id": "el_0"},
+    ]}
+
+    out = effective_overlay_layout(config, None, [])
+
+    assert out[1]["id"] == "el_0"
+    assert out[0]["id"] != "el_0"
+    assert len({e["id"] for e in out}) == 2
+
+
+# ── Precedence: one layer wins, never stacked ────────────────────────────
+
+
+def test_user_layer_wins_and_reports_itself(app: App, tmp_path: Path) -> None:
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+    app.dispatch(SetOverlayConfig(key=_KEY, elements=(
+        {"id": "mine", "type": "text", "text": "edited", "x": 1, "y": 2},
+    )))
+
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.source == "user"
+    assert [e.id for e in layout.elements] == ["mine"]
+
+
+def test_mask_layer_wins_over_theme(app: App, tmp_path: Path) -> None:
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+    app.settings.set_mask_overlay_elements(_KEY, [
+        OverlayElement(id="m1", type="text", text="mask", x=3, y=4),
+    ])
+
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.source == "mask"
+    assert [e.id for e in layout.elements] == ["m1"]
+
+
+def test_an_emptied_mask_is_distinguishable_from_a_theme(
+    app: App, tmp_path: Path,
+) -> None:
+    """Both answer zero elements; ``source`` is what tells them apart."""
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+    app.settings.set_mask_overlay_elements(_KEY, [])
+
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.ok
+    assert layout.elements == []
+    assert layout.source == "mask"
+
+
+# ── The empty answers, which are not failures ────────────────────────────
+
+
+def test_no_theme_is_ok_and_empty(app: App) -> None:
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.ok
+    assert layout.elements == []
+    assert layout.theme_name == ""
+
+
+def test_unknown_device_is_ok_not_a_failure(app: App) -> None:
+    """Overlay layout is a settings concern, not a device-attachment one —
+    and ok=False escalates to WARNING on every poll."""
+    layout = app.dispatch(ResolveOverlay(key="dead:beef"))
+
+    assert layout.ok
+    assert layout.elements == []
+
+
+def test_disabled_overlay_still_reports_its_elements(
+    app: App, tmp_path: Path,
+) -> None:
+    """``enabled`` reports state; it does not filter.  The renderer gates on
+    the same flag, so a caller needs both to know what is on the glass."""
+    _load_theme(app, tmp_path, _THEME_ELEMENTS)
+    assert app.dispatch(EnableOverlay(key=_KEY, enabled=False)).ok
+
+    layout = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert layout.ok
+    assert layout.enabled is False
+    assert len(layout.elements) == 3
+    assert "overlay disabled" in layout.message
+
+
+# ── overlay_source: the precedence, reported rather than applied ─────────
+
+
+@pytest.mark.parametrize(("mask", "user", "expected"), [
+    (None, [], "theme"),
+    ([], [], "mask"),
+    ([OverlayElement(id="m", type="text")], [], "mask"),
+    (None, [OverlayElement(id="u", type="text")], "user"),
+    ([OverlayElement(id="m", type="text")],
+     [OverlayElement(id="u", type="text")], "user"),
+])
+def test_overlay_source_names_the_winning_layer(
+    mask: list[OverlayElement] | None,
+    user: list[OverlayElement],
+    expected: str,
+) -> None:
+    assert overlay_source(mask, user) == expected

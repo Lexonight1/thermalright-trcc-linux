@@ -79,6 +79,74 @@ def resolve_overlay_elements(
     return list(theme_config.get("elements") or [])
 
 
+def overlay_source(
+    mask_elements: list[OverlayElement] | None,
+    user_elements: list[OverlayElement],
+) -> str:
+    """Name the layer ``resolve_overlay_elements`` returns for these inputs.
+
+    The same precedence, reported instead of applied, so a log line, a
+    Result field and a save manifest all name the winning layer identically
+    rather than each restating the ternary.
+    """
+    source = (
+        "user" if user_elements
+        else "mask" if mask_elements is not None
+        else "theme"
+    )
+    log.debug("overlay_source: %s", source)
+    return source
+
+
+def effective_overlay_layout(
+    theme_config: dict[str, Any],
+    mask_elements: list[OverlayElement] | None,
+    user_elements: list[OverlayElement],
+) -> list[dict[str, Any]]:
+    """The effective layout with every element addressable by ``id``.
+
+    :func:`resolve_overlay_elements` answers what DRAWS — the renderer needs
+    no ids and runs this per frame.  This answers what can be ADDRESSED:
+    flash, select, edit.  The two differ because a theme's own elements come
+    from a ``config1.dc`` parse and carry no ``id`` at all — every shipped
+    theme is in that state — so a UI offering to highlight "element 3" had
+    nothing to name it by, and the Command that looked the name up never
+    matched it.  User and mask layers are :class:`OverlayElement` objects and
+    always carry a real id, which is why the bug only ever showed on an
+    untouched theme.
+
+    Minted ids are POSITIONAL (``el_{i}``), never random: a caller resolves
+    the layout, hands an id back in a Command, and that Command re-resolves
+    through here — the two answers have to agree.
+    ``OverlayElement.from_dict`` mints a uuid, which would differ on the
+    second call.  A name a real id already owns is skipped, so a mint can
+    never shadow a genuine element.
+    """
+    elements = resolve_overlay_elements(
+        theme_config, mask_elements, user_elements,
+    )
+    taken = {str(e["id"]) for e in elements if e.get("id")}
+    out: list[dict[str, Any]] = []
+    minted = 0
+    for i, element in enumerate(elements):
+        entry = dict(element)
+        if not entry.get("id"):
+            candidate = f"el_{i}"
+            n = i
+            while candidate in taken:
+                n += 1
+                candidate = f"el_{n}"
+            entry["id"] = candidate
+            taken.add(candidate)
+            minted += 1
+        out.append(entry)
+    log.debug(
+        "effective_overlay_layout: %d element(s), %d id(s) minted",
+        len(out), minted,
+    )
+    return out
+
+
 class OverlayService:
     """Compose text/metric overlays onto a base surface."""
 

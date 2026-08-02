@@ -809,6 +809,31 @@ class OverlayConfigResult(Result):
     elements: list[OverlayElementEntry] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class OverlayLayoutResult(Result):
+    """What is actually on screen for a device — the read side of overlay.
+
+    Every other overlay Result reports a mutation.  This one answers the
+    question the GUIs were reaching past the bus to ask, and that cli/api
+    could not ask at all: which layer is live, what is drawn, and whether
+    it draws.
+
+    :attr:`enabled` is part of the answer rather than a separate lookup —
+    ``DisplayService`` gates the whole overlay on the device's own
+    ``overlay_enabled``, so with it off the honest answer to "what is on
+    screen" is *nothing*, whatever :attr:`elements` lists.
+
+    :attr:`source` is the winning layer (``"user"`` / ``"mask"`` /
+    ``"theme"``), so a caller can tell a theme layout of zero elements from
+    a user layout that was deliberately emptied.
+    """
+    key: str = ""
+    elements: list[OverlayElementEntry] = field(default_factory=list)
+    source: str = ""
+    enabled: bool = True
+    theme_name: str = ""
+
+
 # Cloud themes
 @dataclass(frozen=True, slots=True)
 class CloudCategoryEntry:

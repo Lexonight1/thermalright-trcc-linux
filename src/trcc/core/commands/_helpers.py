@@ -19,6 +19,7 @@ from ..registry import find_product
 from ..results import (
     HealthCheckEntry,
     OverlayElementEntry,
+    OverlayLayoutResult,
     SlideshowResult,
 )
 
@@ -386,6 +387,45 @@ def _publish_led_settings_changed(app: App, key: str) -> None:
     log.debug("_publish_led_settings_changed: key=%s", key)
     app.events.publish(LedColorsChanged(key=key, color_count=0))
     app.events.publish(LedSettingsChanged(key=key))
+
+
+def resolve_overlay_layout(app: App, key: str) -> OverlayLayoutResult:
+    """What is on ``key``'s screen — the ONE place that answer is built.
+
+    The lookup half of :func:`services.overlay.effective_overlay_layout`:
+    reads the device's three layers off the App once and hands the pure data
+    to the service.  Returns the finished Result so ``ResolveOverlay`` (which
+    reports an id to a UI) and ``FlashOverlayElement`` (which receives that
+    id back) cannot resolve differently — if they could, a highlight would
+    silently miss the element the user clicked.
+
+    One settings read and one source computation serve both, which is why
+    this returns the whole answer rather than just the elements.
+    """
+    from ...services.overlay import effective_overlay_layout, overlay_source
+
+    s = app.settings.for_device(key)
+    theme = app.active_themes.get(key)
+    elements = effective_overlay_layout(
+        theme.config if theme is not None else {},
+        s.mask_overlay_elements, s.user_overlay_elements,
+    )
+    source = overlay_source(s.mask_overlay_elements, s.user_overlay_elements)
+    log.debug(
+        "resolve_overlay_layout: key=%s source=%s elements=%d enabled=%s",
+        key, source, len(elements), s.overlay_enabled,
+    )
+    return OverlayLayoutResult(
+        ok=True, key=key,
+        elements=[
+            _element_to_entry(OverlayElement.from_dict(e)) for e in elements
+        ],
+        source=source,
+        enabled=s.overlay_enabled,
+        theme_name=theme.name if theme is not None else "",
+        message=f"{len(elements)} element(s) from the {source} layer"
+                f"{'' if s.overlay_enabled else ' (overlay disabled)'}",
+    )
 
 
 def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:

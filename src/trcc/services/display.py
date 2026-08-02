@@ -42,7 +42,7 @@ from ..core.protocol import (
 )
 from ._clock import compute_clock
 from .media import MediaService
-from .overlay import OverlayService, resolve_overlay_elements
+from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
 from .theme import ThemeService
 from .video_cache import VideoFrameCache
@@ -1126,10 +1126,8 @@ class DisplayService:
             **theme.config, "elements": elements,
             "overlay_enabled": s.overlay_enabled,
         }
-        layout = (
-            "user" if s.user_overlay_elements
-            else "mask" if s.mask_overlay_elements is not None
-            else "theme"
+        layout = overlay_source(
+            s.mask_overlay_elements, s.user_overlay_elements,
         )
         log.debug(
             "build_overlay %s: theme=%r layout=%s (%d element(s)) "

@@ -68,6 +68,7 @@ from ..results import (
     OverlayConfigResult,
     OverlayElementDeleteResult,
     OverlayElementResult,
+    OverlayLayoutResult,
     OverlayResult,
     PauseVideoResult,
     PreviewResult,
@@ -91,6 +92,7 @@ from ._helpers import (
     _publish_if_disconnect,
     _require_connected_device,
     _resolve_mask_path,
+    resolve_overlay_layout,
 )
 
 if TYPE_CHECKING:
@@ -1929,16 +1931,17 @@ class FlashOverlayElement(Command[OverlayElementResult]):
         # theme), not just the user layer — a mask/theme supplies the live
         # elements while the user layer is empty, so a user-only lookup
         # never matched them (the "element 'N' not found" flash bug).
-        for e in app.effective_overlay_elements(self.key):
-            if e.get("id") == self.element_id:
+        # Same helper ResolveOverlay uses, so the id a UI was given there is
+        # the id looked up here.
+        for entry in resolve_overlay_layout(app, self.key).elements:
+            if entry.id == self.element_id:
                 app.events.publish(OverlayChanged(
                     key=self.key, enabled=True,
                     flash_element_id=self.element_id,
                     flash_duration_ms=self.duration_ms,
                 ))
                 return OverlayElementResult(
-                    ok=True, key=self.key,
-                    element=_element_to_entry(OverlayElement.from_dict(e)),
+                    ok=True, key=self.key, element=entry,
                     message=f"Flashing overlay element {self.element_id} "
                             f"for {self.duration_ms}ms",
                 )
@@ -1946,6 +1949,38 @@ class FlashOverlayElement(Command[OverlayElementResult]):
             ok=False, key=self.key, element=None,
             message=f"Overlay element {self.element_id!r} not found",
         )
+
+@dataclass(frozen=True, slots=True)
+class ResolveOverlay(Command[OverlayLayoutResult]):
+    """Ask what is on the device's screen — the read side of overlay.
+
+    The other seven overlay Commands all mutate.  Nothing could ASK, so both
+    Qt skins reached past the bus for the answer (one through an App method,
+    one by importing the service outright) and cli/api simply had no way to
+    find out what a device is displaying.
+
+    Every element comes back with an id, minted positionally where a theme
+    supplied none — see ``services.overlay.effective_overlay_layout``.  That
+    id is what :class:`FlashOverlayElement` and
+    :class:`UpdateOverlayElement` take, and both resolve through the same
+    helper, so an id handed to a UI here is addressable there.
+
+    Always ``ok=True``.  An empty layout is a normal answer, not a failure —
+    a device with no theme loaded genuinely has nothing on screen, and
+    ``ok=False`` escalates to WARNING through ``App.dispatch``, which would
+    warn on every poll of a device sitting at its pre-load state.  Callers
+    distinguish the empty answers with :attr:`~OverlayLayoutResult.source`
+    and :attr:`~OverlayLayoutResult.enabled`.
+    """
+    key: str
+
+    def execute(self, app: App) -> OverlayLayoutResult:
+        # The whole answer is built in one place so Flash resolves the same
+        # ids this hands out.  DEBUG because dispatch already logs entry and
+        # outcome at INFO — this line only marks which caller asked.
+        log.debug("ResolveOverlay: key=%s", self.key)
+        return resolve_overlay_layout(app, self.key)
+
 
 @dataclass(frozen=True, slots=True)
 class SetOverlayConfig(Command[OverlayConfigResult]):

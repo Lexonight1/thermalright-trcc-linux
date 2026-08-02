@@ -669,7 +669,10 @@ class SaveTheme(Command[ThemeResult]):
         reads it directly, no binary DC round-trip.  (Legacy baked the
         single ``self.config`` it was rendering, for the same reason.)
         """
-        from ...services.overlay import resolve_overlay_elements
+        from ...services.overlay import (
+            overlay_source,
+            resolve_overlay_elements,
+        )
 
         elements = resolve_overlay_elements(
             theme.config, s.mask_overlay_elements, s.user_overlay_elements,
@@ -677,8 +680,7 @@ class SaveTheme(Command[ThemeResult]):
         log.info(
             "SaveTheme: baking %d overlay element(s) [source=%s]",
             len(elements),
-            "user" if s.user_overlay_elements
-            else "mask" if s.mask_overlay_elements is not None else "theme",
+            overlay_source(s.mask_overlay_elements, s.user_overlay_elements),
         )
         return elements
 
