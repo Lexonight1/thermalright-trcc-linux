@@ -43,7 +43,7 @@ from ..results import (
     ThemesListResult,
     WebThemesListResult,
 )
-from ._base import Command
+from ._base import Command, Query
 from ._helpers import (
     _IMAGE_EXTS,
     _LEGACY_MASK_FILENAME,
@@ -1191,7 +1191,7 @@ class ImportTheme(Command[ThemeImportResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListThemes(Command[ThemesListResult]):
+class ListThemes(Query[ThemesListResult]):
     """Enumerate themes for a device resolution.
 
     With ``resolution=(w, h)`` (the GUI/CLI default), walks both
@@ -1246,7 +1246,7 @@ class ListThemes(Command[ThemesListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListWebThemes(Command[WebThemesListResult]):
+class ListWebThemes(Query[WebThemesListResult]):
     """List the downloaded cloud-theme previews for a resolution.
 
     Pure disk read of ``paths.cloud_theme_dir(w, h)`` — works with no
@@ -1460,7 +1460,7 @@ class UploadCustomMask(Command[MaskUploadResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListMasks(Command[MasksListResult]):
+class ListMasks(Query[MasksListResult]):
     """Enumerate masks for a device resolution.
 
     With ``resolution=(w, h)`` (default for the GUI), scans both the
@@ -1652,7 +1652,7 @@ class RestoreDeviceState(Command[ThemeResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListCloudThemes(Command[CloudThemesListResult]):
+class ListCloudThemes(Query[CloudThemesListResult]):
     """List themes available in Thermalright's hosted catalog.
 
     Pass ``category="a"`` (or any registered prefix) to scope the list,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ._base import (
     Command,
+    Query,
 )
 from .device import (
     AddOverlayElement,
@@ -198,6 +199,7 @@ __all__ = [
     "MarkFirstRunDone",
     "PauseVideo",
     "PlayVideo",
+    "Query",
     "ReadSensors",
     "RenderAndSend",
     "RenderDcStandalone",

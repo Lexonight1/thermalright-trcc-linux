@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from .._version import is_newer
 from ..errors import (
@@ -55,7 +55,7 @@ from ..results import (
     UpdateCheckResult,
     UpgradeResult,
 )
-from ._base import Command
+from ._base import Command, Query
 from ._helpers import (
     _UPGRADE_COMMANDS,
     _autostart_path,
@@ -144,7 +144,7 @@ class SetDateFormat(Command[DateFormatResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListFonts(Command[FontsListResult]):
+class ListFonts(Query[FontsListResult]):
     """List font families the renderer can draw with.
 
     Delegates to the injected ``Renderer`` port (``app.renderer.list_fonts``) —
@@ -171,7 +171,7 @@ class ListFonts(Command[FontsListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListDisks(Command[DisksListResult]):
+class ListDisks(Query[DisksListResult]):
     """Enumerate disks via psutil — used by SetDiskIndex callers."""
 
     def execute(self, app: App) -> DisksListResult:
@@ -201,7 +201,7 @@ class ListDisks(Command[DisksListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListGpus(Command[GpusListResult]):
+class ListGpus(Query[GpusListResult]):
     """Enumerate every GPU the sensors aggregator exposes."""
 
     def execute(self, app: App) -> GpusListResult:
@@ -222,7 +222,7 @@ class ListGpus(Command[GpusListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListFans(Command[FansListResult]):
+class ListFans(Query[FansListResult]):
     """Enumerate every fan the sensors aggregator exposes, with live readings.
 
     Read-only diagnostic (#145/#207): Linux has no reliable ``fanN_label``, so
@@ -243,12 +243,11 @@ class ListFans(Command[FansListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ControlCenterSnapshot(Command[ControlCenterSnapshotResult]):
+class ControlCenterSnapshot(Query[ControlCenterSnapshotResult]):
     """App-wide settings snapshot.
 
     Polled by UIs to refresh state — logged at DEBUG.
     """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> ControlCenterSnapshotResult:
         a = app.settings.app
@@ -264,7 +263,7 @@ class ControlCenterSnapshot(Command[ControlCenterSnapshotResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ReadSensors(Command[SensorsResult]):
+class ReadSensors(Query[SensorsResult]):
     """Return current sensor readings — personalized to user prefs.
 
     Pulls descriptor metadata (label / unit / category) from
@@ -286,7 +285,6 @@ class ReadSensors(Command[SensorsResult]):
     isn't drowned.
     """
 
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
 
     def execute(self, app: App) -> SensorsResult:
         from ...services.metrics_personalize import (
@@ -341,7 +339,7 @@ class ReadSensors(Command[SensorsResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListSensors(Command[SensorsListResult]):
+class ListSensors(Query[SensorsListResult]):
     """Enumerate every sensor the platform knows — descriptors only.
 
     Distinct from :class:`ReadSensors` which carries fresh values.
@@ -391,7 +389,7 @@ class RunSetup(Command[SetupResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class RunHealthCheck(Command[HealthReportResult]):
+class RunHealthCheck(Query[HealthReportResult]):
     """Run the full health check suite and return the structured report.
 
     Cheap (every check times out fast) — safe to call from a GUI panel
@@ -411,7 +409,7 @@ class RunHealthCheck(Command[HealthReportResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class RunDoctor(Command[DoctorResultPayload]):
+class RunDoctor(Query[DoctorResultPayload]):
     """Run health checks + render a CLI-friendly summary + exit code."""
 
     def execute(self, app: App) -> DoctorResultPayload:
@@ -496,7 +494,7 @@ class RunQuickstart(Command[QuickstartResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class GetFirstRunStatus(Command[FirstRunStatusResult]):
+class GetFirstRunStatus(Query[FirstRunStatusResult]):
     """Has trcc finished onboarding on this machine?
 
     GUI uses this on launch to decide whether to surface a welcome
@@ -533,7 +531,7 @@ class MarkFirstRunDone(Command[FirstRunStatusResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class CheckForUpdate(Command[UpdateCheckResult]):
+class CheckForUpdate(Query[UpdateCheckResult]):
     """Ask GitHub Releases whether a newer trcc-linux is available.
 
     Network call — uses the App's shared HttpFetcher.  Comparison is
@@ -726,7 +724,7 @@ class KeepAliveLoop(Command[KeepaliveResult]):
             )
 
 @dataclass(frozen=True, slots=True)
-class GetPlatformInfo(Command[PlatformInfoResult]):
+class GetPlatformInfo(Query[PlatformInfoResult]):
     """Snapshot of OS identity + paths + permission warnings.
 
     Used by diagnostic UIs (`trcc info`, GUI about panel).  Keeps UIs
@@ -750,7 +748,7 @@ class GetPlatformInfo(Command[PlatformInfoResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class GetAutostartStatus(Command[AutostartResult]):
+class GetAutostartStatus(Query[AutostartResult]):
     """Report whether auto-launch-on-login is enabled."""
 
     def execute(self, app: App) -> AutostartResult:
@@ -812,7 +810,7 @@ class SetTempUnit(Command[TempUnitResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListLanguages(Command[LanguagesListResult]):
+class ListLanguages(Query[LanguagesListResult]):
     """Enumerate every language code the i18n table supports.
 
     Pure read — no I/O.  UIs use the returned list to populate language
@@ -929,7 +927,7 @@ class SetRefreshInterval(Command[RefreshIntervalResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class GetPaths(Command[PathsResult]):
+class GetPaths(Query[PathsResult]):
     """Report where this install keeps things.  Read-only.
 
     Every UI needs a directory sometimes — stage an upload, open the log, point
@@ -943,7 +941,6 @@ class GetPaths(Command[PathsResult]):
     come back empty rather than guessed at.
     """
     resolution: tuple[int, int] | None = None
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # asked on every upload
 
     def execute(self, app: App) -> PathsResult:
         p = app.platform.paths()

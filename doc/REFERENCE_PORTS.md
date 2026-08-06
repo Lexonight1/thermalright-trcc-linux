@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-29 ports.
+30 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -14,6 +14,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 1 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
+| [`Query`](#query) | 1 | 0 | 28 |
 | [`ScreenCapture`](#screencapture) | 1 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
@@ -97,6 +98,20 @@ resolve(name: 'str', key: 'K', table: 'Mapping[K, V]') -> V
 ```
 
 **Implementations (2):** `FallBackTo` · `Reject`
+
+## Query
+
+`core/commands/_base.py`
+
+A question.  Answers, and changes nothing.
+
+**You implement (1):**
+
+```python
+execute(app: 'App') -> R_co
+```
+
+**Implementations (28):** `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListSensors` · `ListThemes` · `ListWebThemes` · `ReadSensors` · `ResolveOverlay` · `RunDoctor` · `RunHealthCheck` · `VideoStatus`
 
 ## ScreenCapture
 

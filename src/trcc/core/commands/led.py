@@ -35,7 +35,7 @@ from ..results import (
     MemoryRatioResult,
     WeekStartResult,
 )
-from ._base import Command
+from ._base import Command, Query
 from ._helpers import (
     _not_an_led,
     _publish_if_disconnect,
@@ -962,7 +962,7 @@ class SetHddEnabled(Command[HddEnabledResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListLedStyles(Command[LedStylesListResult]):
+class ListLedStyles(Query[LedStylesListResult]):
     """Enumerate every LED style the PM registry can resolve."""
 
     def execute(self, app: App) -> LedStylesListResult:
@@ -995,7 +995,7 @@ class ListLedStyles(Command[LedStylesListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ListLedModes(Command[LedModesListResult]):
+class ListLedModes(Query[LedModesListResult]):
     """Enumerate the LEDMode enum names (STATIC, BREATHING, RAINBOW, …)."""
 
     def execute(self, app: App) -> LedModesListResult:
@@ -1007,12 +1007,11 @@ class ListLedModes(Command[LedModesListResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class LedSnapshot(Command[LedSnapshotResult]):
+class LedSnapshot(Query[LedSnapshotResult]):
     """Per-device LED state snapshot.
 
     Polled by UIs to refresh state — logged at DEBUG.
     """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
 
     def execute(self, app: App) -> LedSnapshotResult:

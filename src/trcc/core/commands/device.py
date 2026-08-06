@@ -81,7 +81,7 @@ from ..results import (
     VideoResult,
     VideoStatusResult,
 )
-from ._base import Command
+from ._base import Command, Query
 from ._helpers import (
     _BG_IMAGE_EXTS,
     _IMAGE_EXTS,
@@ -328,7 +328,7 @@ class EnsureConnected(Command[ConnectResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class DeviceConnectionIssues(Command[ConnectionIssuesResult]):
+class DeviceConnectionIssues(Query[ConnectionIssuesResult]):
     """Query devices that were found but failed to connect (with per-OS hints).
 
     The bus-pure way for any UI to learn *current* connect failures — used on
@@ -686,7 +686,7 @@ class TickDisplay(Command[RenderResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class BuildPreview(Command[PreviewResult]):
+class BuildPreview(Query[PreviewResult]):
     """Render the device's active theme and stop before the wire.
 
     The third member of the render family — :class:`RenderAndSend` renders and
@@ -716,7 +716,6 @@ class BuildPreview(Command[PreviewResult]):
 
     Polled by preview panels, so logged at DEBUG.
     """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
     encode: Literal["", "png", "jpeg"] = ""
     sample_cols: int = 0
@@ -1951,7 +1950,7 @@ class FlashOverlayElement(Command[OverlayElementResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class ResolveOverlay(Command[OverlayLayoutResult]):
+class ResolveOverlay(Query[OverlayLayoutResult]):
     """Ask what is on the device's screen — the read side of overlay.
 
     The other seven overlay Commands all mutate.  Nothing could ASK, so both
@@ -2037,7 +2036,7 @@ class PauseVideo(Command[PauseVideoResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class VideoStatus(Command[VideoStatusResult]):
+class VideoStatus(Query[VideoStatusResult]):
     """Ask what a device's video playback is doing.  Read-only.
 
     The query half of the video surface: :class:`PlayVideo` /
@@ -2051,7 +2050,6 @@ class VideoStatus(Command[VideoStatusResult]):
     fields ``None`` — absence is a normal answer here, not a failure.
     """
     key: str
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # polled by status panels
 
     def execute(self, app: App) -> VideoStatusResult:
         playback = app.media.playback(self.key)
@@ -2147,12 +2145,11 @@ class LoopVideo(Command[LoopVideoResult]):
         )
 
 @dataclass(frozen=True, slots=True)
-class LcdSnapshot(Command[LcdSnapshotResult]):
+class LcdSnapshot(Query[LcdSnapshotResult]):
     """Per-device LCD state snapshot — what settings.for_device holds.
 
     Polled by UIs to refresh state — logged at DEBUG.
     """
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG
     key: str
 
     def execute(self, app: App) -> LcdSnapshotResult:
@@ -2220,7 +2217,7 @@ class SetActiveDevice(Command[ActiveDeviceResult]):
 
 
 @dataclass(frozen=True, slots=True)
-class DeviceState(Command[DeviceStateResult]):
+class DeviceState(Query[DeviceStateResult]):
     """Report what a device is — identity, connection, handshake geometry.
 
     The query every UI was doing by hand: ``app.devices.get(key)`` followed by
@@ -2234,7 +2231,6 @@ class DeviceState(Command[DeviceStateResult]):
     is a normal answer for a device we simply have not talked to yet.
     """
     key: str
-    LOG_LEVEL: ClassVar[int] = logging.DEBUG   # panels poll this
 
     def execute(self, app: App) -> DeviceStateResult:
         device = app.devices.get(self.key)

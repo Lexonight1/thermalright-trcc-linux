@@ -393,6 +393,59 @@ def test_presentation_layer_is_qt_app_and_adapter_free() -> None:
     )
 
 
+# ── Query purity ─────────────────────────────────────────────────────────────
+# A Query answers and changes nothing.  Stated in its docstring, enforced here,
+# because a docstring is not a contract.  Detection is AST-based, on the CALLED
+# ATTRIBUTE NAME — a substring scan flags `"%s is not attached"` and
+# `p.install_method()` as mutations, which is exactly the false-positive class
+# that has cost this project real time.
+
+_MUTATING_CALLS = frozenset({
+    "publish",       # an event means something changed
+    "invalidate",    # scene cache mutation
+    "write_text", "write_bytes", "mkdir", "unlink", "rmtree", "touch",
+})
+_MUTATING_PREFIXES = ("set_", "save", "store_", "delete_", "clear_")
+
+_COMMANDS_TREE = _SRC / "trcc" / "core" / "commands"
+
+
+def _query_mutations(source: str) -> list[str]:
+    """Mutating calls inside every ``Query`` subclass's ``execute`` in *source*."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.ClassDef)
+                and any("Query[" in ast.unparse(b) for b in node.bases)):
+            continue
+        for body in node.body:
+            if not (isinstance(body, ast.FunctionDef) and body.name == "execute"):
+                continue
+            for call in ast.walk(body):
+                if not (isinstance(call, ast.Call)
+                        and isinstance(call.func, ast.Attribute)):
+                    continue
+                attr = call.func.attr
+                if attr in _MUTATING_CALLS or attr.startswith(_MUTATING_PREFIXES):
+                    found.append(f"{node.name}.execute -> .{attr}()")
+    return found
+
+
+def test_a_query_never_mutates() -> None:
+    """``Query`` is the read half of the bus; a read that writes is a lie.
+
+    Without this, "Query" is a naming convention, and the next author to add a
+    ``publish`` to one gets a silent event on a call a UI polls once a second.
+    """
+    breaches: list[str] = []
+    for path in sorted(_COMMANDS_TREE.glob("*.py")):
+        for hit in _query_mutations(path.read_text(encoding="utf-8")):
+            breaches.append(f"  {path.name}: {hit}")
+    assert not breaches, (
+        "a Query must not mutate — publish an event, write a setting or touch "
+        "the filesystem.  Make it a Command instead:\n" + "\n".join(breaches)
+    )
+
+
 # ── Gate self-tests (the watchmen) ───────────────────────────────────────────
 # A boundary gate with a logic bug that silently stops detecting is worse than
 # no gate — everything goes green and breaches slip through unseen.  These feed
@@ -403,6 +456,43 @@ def _imports_in(source: str, module: str = "trcc.core.commands.system") -> list[
     collector = _ImportCollector(module)
     collector.visit(ast.parse(source))
     return [tgt for _ln, tgt in collector.found]
+
+
+def test_selftest_query_purity_predicate_has_teeth() -> None:
+    """Feed the scanner a Query that publishes; it must catch it."""
+    bad = (
+        "class Naughty(Query[Result]):\n"
+        "    def execute(self, app):\n"
+        "        app.events.publish(ThemeLoaded(key='k'))\n"
+        "        return Result(ok=True)\n"
+    )
+    assert _query_mutations(bad) == ["Naughty.execute -> .publish()"]
+
+
+def test_selftest_query_purity_ignores_commands() -> None:
+    """A Command publishing is correct — the scanner must not flag it."""
+    fine = (
+        "class Proper(Command[Result]):\n"
+        "    def execute(self, app):\n"
+        "        app.events.publish(ThemeLoaded(key='k'))\n"
+        "        return Result(ok=True)\n"
+    )
+    assert _query_mutations(fine) == []
+
+
+def test_selftest_query_purity_ignores_words_in_strings() -> None:
+    """The false-positive class this predicate exists to avoid.
+
+    ``'%s is not attached'`` and ``p.install_method()`` are not mutations; a
+    substring scan says they are.  Detection keys on the CALLED attribute.
+    """
+    innocent = (
+        "class Reader(Query[Result]):\n"
+        "    def execute(self, app):\n"
+        "        log.debug('%s is not attached; nothing to set_ or save', k)\n"
+        "        return Result(ok=True, method=app.platform.install_method())\n"
+    )
+    assert _query_mutations(innocent) == []
 
 
 def test_selftest_relative_import_resolution() -> None:
