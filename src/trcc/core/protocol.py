@@ -160,9 +160,18 @@ _PM_TO_FBL_OVERRIDES: dict[int, int] = {
 }
 
 
-# FBL 224 is shared by 5 resolutions — PM byte disambiguates
+# FBL 224 is shared by 5 resolutions — PM byte disambiguates.
+#
+# 9 and 11 are stated even though they equal the fallback below.  The C#
+# names them outright — `pm == 9 || pm == 11 → is854x480` (FormCZTV.cs:729)
+# — so 854x480 is the KNOWN answer here, not a coincidence that the default
+# happened to match.  Left out, the code cannot tell "catalogued" from
+# "guessed", and tells a user whose cooler we fully support that it is
+# unrecognised (#248).
 _FBL_224_BY_PM: dict[int, tuple[int, int]] = {
+    9:  (854, 480),
     10: (960, 540),
+    11: (854, 480),
     12: (800, 480),
     13: (960, 320),
     15: (640, 172),
@@ -171,8 +180,22 @@ _FBL_224_BY_PM: dict[int, tuple[int, int]] = {
 }
 
 
-# FBL 192 is shared by 3 resolutions — PM byte disambiguates
+# FBL 192 is shared by 3 resolutions — PM byte disambiguates.
+#
+# PM 1 and PM 65 are one branch in the C#, not two:
+# `pm == 65 || (pm == 1 && pmSub == 49)` (FormCZTV.cs:715).  PM 1 reaches
+# this table through _PM_SUB_TO_FBL[(1, 49)]; PM 65 is Trofeo Vision 9.16
+# (0416:5408, SUB=5).  Both are stated for the reason given above.
+#
+# PM 66 is deliberately ABSENT.  The variant table names it (ELITE VISION /
+# LF14 / LD7) and _PM_TO_FBL_OVERRIDES routes it here on inherited
+# authority, but FormCZTV.cs has no `pm == 66` branch anywhere — the vendor
+# app never drives that byte, so 1920x462 would be OUR guess wearing a
+# catalogued row's clothing.  Omitting it is what lets the warning tell the
+# truth: we route PM 66 to this FBL and do not know its geometry.
 _FBL_192_BY_PM: dict[int, tuple[int, int]] = {
+    1:  (1920, 462),
+    65: (1920, 462),
     68: (1280, 480),
     69: (1920, 440),
 }
@@ -197,10 +220,55 @@ def pm_to_fbl(pm: int, sub: int = 0) -> int:
     Overrides for the few PM values where PM ≠ FBL.
     Compound (PM, SUB) key checked first for sub-dependent mappings.
     """
-    log.info("pm_to_fbl: pm=%d sub=%d", pm, sub)
+    # DEBUG, not INFO: a pure table lookup called in loops during catalog
+    # enumeration.  At INFO it was one of the two largest emitters in the
+    # whole log, crowding real actions out of the report's action history.
+    log.debug("pm_to_fbl: pm=%d sub=%d", pm, sub)
     if (pm, sub) in _PM_SUB_TO_FBL:
         return _PM_SUB_TO_FBL[(pm, sub)]
     return _PM_TO_FBL_OVERRIDES.get(pm, pm)
+
+
+def _warn_unknown(
+    what: str, value: int, context: str, assumed: tuple[int, int],
+) -> None:
+    """Announce that the catalog did not recognise a device and guessed.
+
+    The tables map a handshake byte to a resolution, and every lookup used a
+    plain ``.get(key, default)`` — so an unrecognised panel rendered at a
+    plausible-but-invented size, forever, with nothing in the log admitting
+    a guess had been made.  The user then sees a picture that is subtly the
+    wrong shape and has no way to attribute it; one reporter resorted to
+    photographing 1px test gratings and running an FFT on them to work out
+    what our own log could have told him (#248).
+
+    WARNING because the whole diagnostic loop rests on ``trcc report``: this
+    line makes an unsupported device SELF-diagnosing — the reporter's own
+    paste names the byte we did not know and the size we assumed.
+    """
+    log.warning(
+        "get_profile: UNKNOWN %s=%d (%s) — no catalog entry, assuming "
+        "%dx%d.  The panel may render at the wrong size; please report this "
+        "line at https://github.com/Lexonight1/thermalright-trcc-linux/issues "
+        "so the device can be added.",
+        what, value, context, assumed[0], assumed[1],
+    )
+
+
+def _resolution_by_pm(
+    table: dict[int, tuple[int, int]],
+    pm: int,
+    fallback: tuple[int, int],
+    fbl: int,
+) -> tuple[int, int]:
+    """Resolution for *pm* within a shared FBL, warning when it is a guess."""
+    known = table.get(pm)
+    if known is not None:
+        log.debug("get_profile: fbl=%d pm=%d → %dx%d (catalogued)",
+                  fbl, pm, known[0], known[1])
+        return known
+    _warn_unknown("PM", pm, f"fbl={fbl}", fallback)
+    return fallback
 
 
 def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
@@ -210,10 +278,12 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
     that share the FBL. All other FBL values map 1:1 to a profile.
     Unknown FBLs fall back to the 320×320 big-endian default.
     """
-    log.info("get_profile: fbl=%d pm=%d", fbl, pm)
+    log.debug("get_profile: fbl=%d pm=%d", fbl, pm)
     profile = FBL_PROFILES.get(fbl, _DEFAULT_PROFILE)
+    if fbl not in FBL_PROFILES:
+        _warn_unknown("FBL", fbl, f"pm={pm}", (profile.width, profile.height))
     if fbl == 224:
-        w, h = _FBL_224_BY_PM.get(pm, (854, 480))
+        w, h = _resolution_by_pm(_FBL_224_BY_PM, pm, (854, 480), fbl)
         return DeviceProfile(
             w, h,
             jpeg=profile.jpeg,
@@ -226,7 +296,7 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
             encode_pm_bases=profile.encode_pm_bases,
         )
     if fbl == 192:
-        w, h = _FBL_192_BY_PM.get(pm, (1920, 462))
+        w, h = _resolution_by_pm(_FBL_192_BY_PM, pm, (1920, 462), fbl)
         return DeviceProfile(
             w, h,
             jpeg=profile.jpeg,
