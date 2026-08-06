@@ -408,6 +408,19 @@ Thanks for carrying the torch — these folks forked the repo to build on it.
 
 **[capiazmi](https://github.com/capiazmi)** · **[dabombUSA](https://github.com/dabombUSA)** · **[danleyb2](https://github.com/danleyb2)** · **[DasFlogetier](https://github.com/DasFlogetier)** · **[elsiedotcafe](https://github.com/elsiedotcafe)** · **[jaminmc](https://github.com/jaminmc)** · **[jemte](https://github.com/jemte)** · **[jezzaw007](https://github.com/jezzaw007)** · **[JoshWrites](https://github.com/JoshWrites)** · **[jwcrowley](https://github.com/jwcrowley)** · **[maniwaroka](https://github.com/maniwaroka)** · **[taillis](https://github.com/taillis)** · **[TuxLux40](https://github.com/TuxLux40)**
 
+## Related projects
+
+Other people solving the same problem their own way. Thermalright shipped Windows-only
+software for hardware plenty of us run Linux on; the more good answers to that, the better.
+
+- **[OpenThermalright](https://github.com/francesco19772509-del/OpenThermalright)** by
+  [francesco19772509-del](https://github.com/francesco19772509-del) — a PySide6 GUI for
+  Thermalright USB displays with live CPU/GPU monitoring, written from scratch on top of
+  this project's protocol reverse engineering. GPL-3.0, and
+  [on the AUR](https://aur.archlinux.org/packages/openthermalright).
+
+Built something? Open an issue and I'll add it.
+
 ## Donations
 
 If this project saved you from keeping a Windows partition around, consider **[buying me a cold one](https://buymeacoffee.com/Lexonight1)**.
