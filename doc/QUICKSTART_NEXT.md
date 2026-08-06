@@ -61,7 +61,7 @@ If `doctor` flags missing udev rules on Linux, run setup:
 trcc-next system setup
 ```
 
-This drops `/etc/udev/rules.d/99-trcc.rules` and reloads udev so your
+This drops `/etc/udev/rules.d/99-trcc-lcd.rules` and reloads udev so your
 user account can write to the device without `sudo`.
 
 ## Plug in your device

@@ -41,7 +41,10 @@ from ._elevate import reexec_as_root
 log = logging.getLogger(__name__)
 
 
-_RULES_PATH = Path("/etc/udev/rules.d/99-trcc-lcd.rules")
+# Public: the health check reads this rather than restating the filename.
+# It restated it once, got it wrong ("99-trcc.rules"), and every correctly
+# installed Linux box was told its udev rules were missing (#258).
+RULES_PATH = Path("/etc/udev/rules.d/99-trcc-lcd.rules")
 _MODPROBE_PATH = Path("/etc/modprobe.d/trcc-lcd.conf")
 _MODULES_LOAD_PATH = Path("/etc/modules-load.d/trcc-sg.conf")
 _MODULES_LOAD_RAPL_PATH = Path("/etc/modules-load.d/trcc-rapl.conf")
@@ -156,7 +159,7 @@ def install(dry_run: bool = False) -> int:
     modprobe = build_modprobe_conf()
 
     if dry_run:
-        print(f"--- would write {_RULES_PATH} ---")
+        print(f"--- would write {RULES_PATH} ---")
         print(rules, end="")
         if modprobe:
             print(f"\n--- would write {_MODPROBE_PATH} ---")
@@ -174,8 +177,8 @@ def install(dry_run: bool = False) -> int:
         )
 
     try:
-        _write_atomic(_RULES_PATH, rules)
-        log.info("Wrote %s", _RULES_PATH)
+        _write_atomic(RULES_PATH, rules)
+        log.info("Wrote %s", RULES_PATH)
         if modprobe:
             _write_atomic(_MODPROBE_PATH, modprobe)
             log.info("Wrote %s", _MODPROBE_PATH)

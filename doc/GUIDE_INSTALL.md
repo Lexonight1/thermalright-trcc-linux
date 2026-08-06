@@ -1010,7 +1010,7 @@ not been restored. Remove the pieces directly:
 ```bash
 trcc system autostart disable                 # drop the autostart entry
 pip uninstall trcc-linux                      # or your package manager
-sudo rm -f /etc/udev/rules.d/99-trcc.rules    # udev rule
+sudo rm -f /etc/udev/rules.d/99-trcc-lcd.rules    # udev rule
 rm -rf ~/.trcc ~/.trcc-user                   # config, data, your themes
 ```
 

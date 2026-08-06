@@ -678,7 +678,7 @@ trcc serve                                    # start REST API server
 > **Uninstalling:** there is no `trcc uninstall` command — it was dropped in
 > the rebuild and has not been restored. Remove the package with your package
 > manager (or `pip uninstall trcc-linux`), then delete `~/.trcc/`,
-> `~/.trcc-user/`, and the udev rule at `/etc/udev/rules.d/99-trcc.rules`.
+> `~/.trcc-user/`, and the udev rule at `/etc/udev/rules.d/99-trcc-lcd.rules`.
 
 ## Troubleshooting
 

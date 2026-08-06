@@ -559,9 +559,10 @@ class LinuxPlatform(BaseOS, key="linux"):
 
     def no_devices_hint(self) -> str:
         log.debug("LinuxPlatform.no_devices_hint: called")
+        from ._udev import RULES_PATH
         return (
-            "Run `trcc system setup` to install the udev rules "
-            "(/etc/udev/rules.d/99-trcc.rules), then replug the device."
+            f"Run `trcc system setup` to install the udev rules "
+            f"({RULES_PATH}), then replug the device."
         )
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────
