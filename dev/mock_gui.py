@@ -84,7 +84,7 @@ def _print_device_catalog() -> None:
     coolers told apart by the handshake PM/SUB.  ``pm`` (and ``sub`` when shown)
     are what you put in ``devices.json`` to pick that exact model.
     """
-    from _mock_bootstrap import device_catalog
+    from _mock_bootstrap import NO_PANEL, device_catalog
     rows = device_catalog()
     print(f"Device catalog — {len(rows)} cooler variants the app supports:\n")
     print(f"  {'MODEL':24} {'VID:PID':11} {'PM':>3} {'SUB':>4} RESOLUTION")
@@ -94,7 +94,9 @@ def _print_device_catalog() -> None:
         vid, pid = vids[0]
         vid_str = f"{vid:04x}:{pid:04x}" + (f" +{len(vids) - 1}" if len(vids) > 1 else "")
         sub_str = "-" if sub is None else str(sub)
-        print(f"  {model:24} {vid_str:11} {pm:>3} {sub_str:>4} {w}x{h}")
+        # LED segment displays report NO_PANEL — printing "0x0" reads as a bug.
+        res_str = "no panel" if (w, h) == NO_PANEL else f"{w}x{h}"
+        print(f"  {model:24} {vid_str:11} {pm:>3} {sub_str:>4} {res_str}")
     print("\nTo simulate one: add {\"vid\":\"..\",\"pid\":\"..\",\"pm\":N} to "
           "dev/devices.json (copy dev/devices.json.example), then run "
           "`python dev/mock_gui.py`.  Or `--all` to load the whole catalog.")

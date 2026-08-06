@@ -218,9 +218,13 @@ def ensure_all_data(app) -> None:
     """
     import threading
 
-    from _mock_bootstrap import device_catalog
+    from _mock_bootstrap import NO_PANEL, device_catalog
 
-    resolutions = sorted({(w, h) for *_rest, (w, h) in device_catalog()})
+    # LED coolers drive a segment display, not a canvas — they have no theme
+    # data to fetch, and NO_PANEL is not a resolution ensure_all can serve.
+    resolutions = sorted({
+        res for *_rest, res in device_catalog() if res != NO_PANEL
+    })
 
     def _worker() -> None:
         log.info("dev data: ensuring %d resolution(s) downloaded…", len(resolutions))

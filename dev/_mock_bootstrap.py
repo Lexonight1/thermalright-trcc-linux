@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from trcc.core.models import DeviceInfo
+    from trcc.core.models import DeviceInfo, Wire
     from trcc.core.ports import (
         BulkTransport,
         HotplugMonitor,
@@ -196,17 +196,60 @@ def apply_fake_gpus(platform: Platform, specs: list[tuple[str, bool]]) -> None:
 
 # ─── Device catalog (the REAL device space — variants, not bare vid:pid) ─────
 
+NO_PANEL: tuple[int, int] = (0, 0)
+"""Resolution reported for a wire that drives no panel (LED segment displays)."""
+
+
+def variant_resolution(wire: Wire, pm: int, sub: int) -> tuple[int, int]:
+    """Geometry a ``(pm, sub)`` handshake on *wire* resolves to, without USB.
+
+    This must agree with what that wire's adapter computes at ``connect()``,
+    and is gated by ``test_dev_catalog_agrees_with_the_connect_path``.
+
+    Bulk is the reason this function exists.  Resolving it as
+    ``get_profile(pm_to_fbl(pm, sub), pm)`` — which is what this module used
+    to do — disagrees with the shipping path for every square bulk cooler:
+    :func:`bulk_profile` diverts any PM outside ``_BULK_KNOWN_PMS`` to the
+    480x480 base *precisely so* an unknown PM is not echoed into
+    ``get_profile`` as a bogus FBL.  Skipping it mocked GRAND VISION, CORE
+    VISION, HYPER VISION and PA120 at 320x320 while the app drove them at
+    480x480, and manufactured a bogus-FBL warning for each.
+
+    That divergence is the exact failure ``bulk_profile``'s own docstring
+    records — a hand-copy of these rules in the auditor drifted, invented a
+    phantom FBL 6, and reported our reporter-confirmed FW360 rotation as a
+    180° bug.  Ask the shipping resolver; never restate its rules.
+    """
+    from trcc.adapters.device.bulk_lcd import bulk_profile
+    from trcc.core.models import Wire
+    from trcc.core.protocol import get_profile, pm_to_fbl
+
+    if wire is Wire.LED:
+        return NO_PANEL
+    if wire in (Wire.BULK, Wire.BULK_ALI):
+        return bulk_profile(pm, sub, "catalog")[1].resolution
+    return get_profile(pm_to_fbl(pm, sub), pm).resolution
+
+
 def device_catalog() -> list[tuple[list[tuple[int, int]], int, int | None, str, tuple[int, int]]]:
     """Every cooler variant the app knows: ``(vids, pm, sub, model, (w, h))``.
 
     The true device space is the per-(PM, SUB) ``VariantOverride`` table, NOT
     the handful of USB vid:pid rows — one vid:pid (e.g. the bulk 0x87AD:0x70DB)
     fronts dozens of distinct coolers that the handshake PM/SUB fingerprint
-    tells apart.  The 4 bulk vid:pids share one PM table, so it's listed once
-    with all its vid:pids in ``vids``.  ``model`` is the registry button-image
-    name; the resolution is resolved through the same model path connect() uses.
+    tells apart.  vid:pids sharing a PM table are listed once, under all of
+    them in ``vids``.  ``model`` is the registry button-image name.
+
+    Geometry comes from :func:`variant_resolution`, keyed on the wire of
+    ``vids[0]`` — the vid:pid ``all_variant_specs`` actually simulates.  A
+    shared table can span wires (the bulk PM table is aliased by two SCSI
+    vid:pids), and the same PM resolves differently per wire, so the row
+    describes the device the mock fleet builds.  LED rows carry
+    :data:`NO_PANEL`: a segment display has no canvas, and asking the FBL
+    tables for one is a category error that used to answer 320x320.
     """
-    from trcc.core.protocol import get_profile, pm_to_fbl
+    from trcc.core.models import Wire
+    from trcc.core.registry import find_product
     from trcc.core.variants import _VARIANT_REGISTRY
 
     by_table: dict[int, tuple[dict, list[tuple[int, int]]]] = {}
@@ -215,10 +258,11 @@ def device_catalog() -> list[tuple[list[tuple[int, int]], int, int | None, str, 
 
     rows: list[tuple[list[tuple[int, int]], int, int | None, str, tuple[int, int]]] = []
     for table, vids in by_table.values():
+        product = find_product(*vids[0])
+        wire = product.wire if product is not None else Wire.SCSI
         for pm in sorted(table):
             for sub, override in table[pm].items():
-                resolved_sub = sub if sub is not None else 0
-                res = get_profile(pm_to_fbl(pm, resolved_sub), pm).resolution
+                res = variant_resolution(wire, pm, sub if sub is not None else 0)
                 rows.append((vids, pm, sub, override.button_image, res))
     return rows
 

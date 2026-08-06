@@ -13,6 +13,7 @@ Wire transport lifecycle (send/close/resume) is covered per vid:pid by
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,11 @@ from trcc.core.commands import ConnectDevice
 from trcc.core.models import Wire
 from trcc.core.registry import ALL_DEVICES
 from trcc.core.variants import _VARIANT_REGISTRY
+
+# The dev mock fleet sizes its fake panels without USB; this file owns the
+# real connect path, so it is where the two are held to the same answer.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev"))
+from _mock_bootstrap import NO_PANEL, variant_resolution
 
 
 def _catalog() -> list:
@@ -74,9 +80,19 @@ def test_device_variant_handshakes_and_resolves_geometry(
 
     Asserts the device CONNECTS (the wire parses the scripted return bytes for
     this PM/SUB without failing) and — for LCD wires — resolves a valid, non-zero
-    canvas.  Exact dimensions are the device's own resolution logic (verified at
-    runtime by ``mock_gui --all``); re-deriving them here would just re-implement
-    that logic in the oracle.
+    canvas.  Exact dimensions are still not hardcoded here: the device's own
+    resolution logic owns them, and restating it in the oracle would prove
+    nothing.
+
+    What IS asserted is that the dev mock fleet agrees with the answer connect()
+    just produced.  ``dev/_mock_bootstrap`` has to size panels with no USB, so it
+    resolves geometry a second way — and it drifted: it asked
+    ``get_profile(pm_to_fbl(pm, sub), pm)`` for every wire, while bulk actually
+    ships ``bulk_profile``, which diverts an unknown PM to the 480x480 base
+    rather than echoing it into ``get_profile`` as a bogus FBL.  So GRAND VISION,
+    CORE VISION, HYPER VISION and PA120 mocked at 320x320 while the app drove
+    them at 480x480 — silently, in the harness we lean on to verify geometry.
+    Comparing two implementations is not re-deriving one.
     """
     spec: dict = {"vid": f"{vid:04x}", "pid": f"{pid:04x}"}
     if pm is not None:
@@ -98,8 +114,41 @@ def test_device_variant_handshakes_and_resolves_geometry(
             assert device.profile is not None, f"{model}: no profile after handshake"
             w, h = device.profile.resolution
             assert w > 0 and h > 0, f"{model}: invalid canvas {(w, h)}"
+
+        # Registry devices carrying no variant table are tested at their default
+        # handshake and have no catalog row to compare against.
+        if pm is None:
+            return
+        mocked = variant_resolution(wire, pm, sub if sub is not None else 0)
+        real = NO_PANEL if wire is Wire.LED else device.profile.resolution
+        assert mocked == real, (
+            f"{model}: dev mock fleet sizes this cooler {mocked} but connect() "
+            f"resolved {real} — dev/_mock_bootstrap.variant_resolution has "
+            f"drifted from the {wire.name} adapter"
+        )
     finally:
         app.close()
+
+
+def test_the_mock_fleet_gate_has_teeth() -> None:
+    """The wire dispatch above must be load-bearing, not decoration.
+
+    If ``variant_resolution`` ever collapses back to one ``get_profile`` call
+    for every wire, the assertion in the connect test must fail rather than
+    keep passing.  Bulk PM 1 is the witness: the shipping ``bulk_profile``
+    answers 480x480, the naive lookup answers 320x320.
+    """
+    from trcc.core.protocol import get_profile, pm_to_fbl
+
+    naive = get_profile(pm_to_fbl(1, 0), 1).resolution
+    assert variant_resolution(Wire.BULK, 1, 0) != naive, (
+        "variant_resolution now agrees with the naive per-wire-agnostic lookup "
+        "— the bulk divergence it exists to carry has been lost"
+    )
+    assert variant_resolution(Wire.LED, 1, 0) == NO_PANEL, (
+        "LED coolers drive a segment display and must report NO_PANEL, not a "
+        "resolution invented by the FBL tables"
+    )
 
 
 def test_catalog_is_non_trivial() -> None:
