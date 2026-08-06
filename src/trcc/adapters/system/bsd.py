@@ -103,10 +103,22 @@ class BSDPlatform(BaseOS, key="bsd"):
 
         OpenBSD has no devd; the installer logs a pointer to the right
         manual setup path and returns 0.
+
+        Also registers the applications-menu entry, exactly as Linux does —
+        the BSD desktops are the same XDG desktops, and a pip install
+        leaves the same gap there (#231).
         """
         log.info("setup: interactive=%s", interactive)
+        from ._desktop_entry import XdgDesktopEntry
         from ._devd import install
-        return install(dry_run=not interactive)
+        rc = install(dry_run=not interactive)
+        if interactive:
+            # Convenience, never a reason to fail setup.
+            XdgDesktopEntry().install()
+        else:
+            log.info("would install the desktop entry: %s",
+                     XdgDesktopEntry().path)
+        return rc
 
     def check_permissions(self) -> list[str]:
         log.info("check_permissions: called")

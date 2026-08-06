@@ -37,6 +37,7 @@ from ..sensors.gpu_detect import (
     install_matching_gpu_extras,
 )
 from ._base import BaseOS, BasePaths
+from ._desktop_entry import XdgDesktopEntry
 from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
@@ -395,7 +396,7 @@ class LinuxPlatform(BaseOS, key="linux"):
     def setup(self, interactive: bool = True) -> int:
         """Run one-time Linux setup.
 
-        Three things happen here and none can silently no-op:
+        Four things happen here and none can silently no-op:
           1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
              every device in the registry + modprobe quirks + sg autoload.
              Requires root; re-execs via sudo when not already root.
@@ -404,6 +405,11 @@ class LinuxPlatform(BaseOS, key="linux"):
           3. SELinux policy — on enforcing systems, build + load the
              ``trcc_usb`` module so the bulk/SCSI USB ioctls aren't blocked.
              No-op off SELinux.  (RPM installs already load it in %post.)
+          4. Desktop entry — register the app in the applications menu.
+             Our packages do this; a pip/pipx install does not, so without
+             it the app installs, autostarts, and cannot be launched from
+             the menu (#231).  Per-user, no root, skipped when a package
+             already provides it.
 
         Non-interactive mode prints what would be done and returns 0
         without touching the system.
@@ -416,6 +422,8 @@ class LinuxPlatform(BaseOS, key="linux"):
             log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
             install_matching_gpu_extras(vendors, dry_run=True)
             install_selinux_policy(dry_run=True)
+            log.info("would install the desktop entry: %s",
+                     XdgDesktopEntry().path)
             return 0
 
         rc_udev = install_udev_rules(dry_run=False)
@@ -430,6 +438,9 @@ class LinuxPlatform(BaseOS, key="linux"):
                         "is unaffected; GPU readings stay unavailable until the "
                         "reader installs", rc_gpu)
         rc_selinux = install_selinux_policy(dry_run=False)
+        # Desktop integration is a convenience, never a reason to report
+        # failure — the device still works from the CLI without a menu icon.
+        XdgDesktopEntry().install()
         return rc_udev or rc_selinux
 
     def check_permissions(self) -> list[str]:

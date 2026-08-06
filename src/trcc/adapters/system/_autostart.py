@@ -74,7 +74,7 @@ Name=TRCC (next)
 GenericName=Thermalright Cooler Control
 Comment=Auto-start TRCC GUI on login
 Exec={exec_cmd}
-Icon=trcc-linux
+Icon=trcc
 Terminal=false
 Categories=System;Settings;
 X-GNOME-Autostart-enabled=true
@@ -134,23 +134,35 @@ class XdgDesktopAutostart(AutostartManager):
 
     @staticmethod
     def _exec_cmd() -> str:
-        """Build the launch command.
-
-        Preference order:
-          1. ``trcc`` console script if installed and on PATH
-          2. ``<sys.executable> -m trcc gui``
-
-        The second form is robust across pipx / venv / system-python
-        installs because ``sys.executable`` is always the right interpreter.
+        """The autostart launch command.
 
         ``--resume`` makes the autostarted instance start hidden in the
         system tray (restoring the last-used theme) instead of popping a
         window on every login — the long-standing autostart behaviour that
         regressed when the flag was dropped (#201).
         """
-        if (resolved := shutil.which("trcc")):
-            return f"{resolved} gui --resume"
-        return f"{sys.executable} -m trcc gui --resume"
+        return gui_launch_command("--resume")
+
+
+def gui_launch_command(*args: str) -> str:
+    """Build a command line that launches the GUI, with *args* appended.
+
+    Preference order:
+      1. ``trcc`` console script if installed and on PATH
+      2. ``<sys.executable> -m trcc gui``
+
+    The second form is robust across pipx / venv / system-python installs
+    because ``sys.executable`` is always the right interpreter.
+
+    Shared by the autostart entry and the application-menu entry — both
+    write an ``Exec=`` line and both are wrong in the same way if they
+    assume ``trcc`` is on PATH.
+    """
+    resolved = shutil.which("trcc")
+    base = f"{resolved} gui" if resolved else f"{sys.executable} -m trcc gui"
+    cmd = " ".join((base, *args))
+    log.debug("gui_launch_command: %s", cmd)
+    return cmd
 
 
 # =========================================================================
