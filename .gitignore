@@ -104,6 +104,9 @@ src/trcc/data/ui_*.json
 # Dev tooling (root-level scratch only — dev/tools/ is tracked source)
 /tools/
 
+# Drafted issue replies awaiting review before posting
+/ISSUE_REPLIES.md
+
 # Large binary docs
 doc/*.pdf
 
