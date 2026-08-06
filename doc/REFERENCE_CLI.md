@@ -96,7 +96,7 @@ trcc doctor
 
 ### `trcc gui`
 
-Launch the legacy Windows-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area — enough to prove the legacy-on-next/-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. `--resume` starts hidden in the tray (XDG autostart-on-login); bare `trcc gui` shows the window.
+Launch the legacy Windows-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area — enough to prove the legacy-on-next/-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. `--resume` starts hidden in the tray (XDG autostart-on-login); bare `trcc gui` shows the window. `--decorated` asks the window manager for a normal frame. The default shell is frameless and drags by its top strip, which some window managers will not move at all — leaving the window pinned where it opened with no way to shift it (#231). The capability already existed and two guides already documented the flag; only the flag itself was missing (#247).
 
 ```bash
 trcc gui [OPTIONS]
@@ -105,6 +105,7 @@ trcc gui [OPTIONS]
 | Option | Description |
 |---|---|
 | `--resume`, `--tray`, `--minimized` | Start hidden in the system tray instead of showing the window — used by XDG autostart on login. The last-used theme is restored automatically. |
+| `--decorated` | Draw the window with your desktop's normal title bar and borders instead of the frameless Windows-style shell. Use it if the window will not move or your window manager does not decorate frameless windows. |
 
 ### `trcc kill`
 

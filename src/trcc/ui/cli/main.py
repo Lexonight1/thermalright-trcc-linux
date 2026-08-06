@@ -145,6 +145,15 @@ def gui(
             "restored automatically."
         ),
     ),
+    decorated: bool = typer.Option(
+        False, "--decorated",
+        help=(
+            "Draw the window with your desktop's normal title bar and "
+            "borders instead of the frameless Windows-style shell.  Use it "
+            "if the window will not move or your window manager does not "
+            "decorate frameless windows."
+        ),
+    ),
 ) -> None:
     """Launch the legacy Windows-style GUI (port in progress).
 
@@ -155,18 +164,26 @@ def gui(
 
     ``--resume`` starts hidden in the tray (XDG autostart-on-login);
     bare ``trcc gui`` shows the window.
+
+    ``--decorated`` asks the window manager for a normal frame.  The
+    default shell is frameless and drags by its top strip, which some
+    window managers will not move at all — leaving the window pinned
+    where it opened with no way to shift it (#231).  The capability
+    already existed and two guides already documented the flag; only
+    the flag itself was missing (#247).
     """
     # gui() is ALSO a direct entry point — the `trcc-gui` console script and
     # the frozen ``trcc-gui.exe`` (__main__.py) call it OUTSIDE typer with no
     # args, so `resume` arrives as typer's OptionInfo sentinel (truthy!), not
     # a bool.  `is True` is the parsed-flag only; direct calls show the window.
     start_hidden = resume is True
-    log.info("cli gui: start_hidden=%s", start_hidden)
+    want_frame = decorated is True
+    log.info("cli gui: start_hidden=%s decorated=%s", start_hidden, want_frame)
     from ..gui import launch
     # SystemExit (not typer.Exit) — see qtgui above: this is a direct entry
     # point too (the Windows trcc-gui.exe calls gui() outside typer), so
     # typer.Exit would escape unhandled and crash the frozen build (#187).
-    raise SystemExit(launch(start_hidden=start_hidden))
+    raise SystemExit(launch(start_hidden=start_hidden, decorated=want_frame))
 
 
 @app.command("api")

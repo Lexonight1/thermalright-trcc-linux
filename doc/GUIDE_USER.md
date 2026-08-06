@@ -258,7 +258,6 @@ Control TRCC from any language, script, or home automation system.
 # Start the server
 trcc serve                    # localhost:9876
 trcc serve --token secret     # with authentication
-trcc serve --tls              # HTTPS
 
 # Examples
 curl http://localhost:9876/devices
@@ -316,7 +315,7 @@ device and restores its last theme, so it is what an autostart/service unit runs
 
 ### Debug Mode
 ```bash
-trcc gui -vv
+trcc -vv gui
 ```
 Verbose logging — useful for bug reports. Check `~/.trcc/trcc.log` for details.
 

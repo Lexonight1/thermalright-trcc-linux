@@ -25,7 +25,7 @@ Alias for trcc device list  \-  list attached devices.
 Alias for trcc system doctor  \-  health checks.
 .TP
 \fBgui\fR
-Launch the legacy Windows\-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area  \-  enough to prove the legacy\-on\-next/\-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. \-\-resume starts hidden in the tray (XDG autostart\-on\-login); bare trcc gui shows the window.
+Launch the legacy Windows\-style GUI (port in progress). Today's shell hosts the device sidebar + a diagnostic content area  \-  enough to prove the legacy\-on\-next/\-bus pattern end to end on real hardware. Real feature panels (LCD handler, theme settings, mask, video, LED) land in subsequent passes. \-\-resume starts hidden in the tray (XDG autostart\-on\-login); bare trcc gui shows the window. \-\-decorated asks the window manager for a normal frame. The default shell is frameless and drags by its top strip, which some window managers will not move at all  \-  leaving the window pinned where it opened with no way to shift it (#231). The capability already existed and two guides already documented the flag; only the flag itself was missing (#247).
 .TP
 \fBkill\fR
 Ask the running daemon to shut down, return when its socket is gone.

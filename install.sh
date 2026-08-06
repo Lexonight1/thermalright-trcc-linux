@@ -311,9 +311,9 @@ print_success() {
     fi
     echo ""
     echo "Troubleshooting:"
-    echo "  trcc detect       # check if device is found"
-    echo "  trcc detect --all # show all devices"
-    echo "  trcc test         # color cycle test"
+    echo "  trcc detect                    # check if the device is found"
+    echo "  trcc display test <vid:pid>    # color cycle test"
+    echo "  trcc report -o trcc-report.txt # full diagnostic, attach to an issue"
     echo ""
     echo "Full guide: doc/GUIDE_INSTALL.md"
 }

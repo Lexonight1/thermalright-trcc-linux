@@ -668,7 +668,7 @@ trcc led toggle 0416:8001 off                 # turn LEDs off
 trcc report                                   # full diagnostic report
 trcc doctor                                   # check deps and permissions
 trcc system hid-debug                         # HID handshake dump
-trcc system led-debug --test                  # LED diagnostic
+trcc system led-debug --test-colors           # LED diagnostic
 
 # GUI / API
 trcc gui                                      # launch GUI
