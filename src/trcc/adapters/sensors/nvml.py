@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from typing import Any
 
 from ...core.ports import GpuSource
@@ -155,6 +156,13 @@ class _NvmlRuntime:
 #: correct — the point of the class is that it is no longer the *only* one
 #: constructible.
 _runtime = _NvmlRuntime(pynvml, _import_error)
+
+
+#: The shape of :func:`nvml_init_state` — ``(reader_available, initialized,
+#: last_error)``.  Callers that want to be testable take one of these rather
+#: than reaching for the module function, so a health check can be asked
+#: "what would you say about a card whose driver is fine?" without one.
+GpuStateFn = Callable[[], tuple[bool, bool, str | None]]
 
 
 def nvml_init_state() -> tuple[bool, bool, str | None]:

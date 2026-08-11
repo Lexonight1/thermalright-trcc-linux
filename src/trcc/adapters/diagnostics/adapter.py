@@ -27,12 +27,18 @@ log = logging.getLogger(__name__)
 class DiagnosticsAdapter(Diagnostics):
     """Platform-bound diagnostics, exposed through the core port."""
 
-    def __init__(self, platform: Platform) -> None:
+    def __init__(
+        self, platform: Platform,
+        gpu_state: _nvml.GpuStateFn = _nvml.nvml_init_state,
+    ) -> None:
         self._platform = platform
+        self._gpu_state = gpu_state
+        log.info("DiagnosticsAdapter: platform=%s gpu_state=%s",
+                 type(platform).__name__, getattr(gpu_state, "__name__", gpu_state))
 
     def health(self) -> HealthReport:
         log.info("DiagnosticsAdapter.health")
-        return _health.run_health_checks(self._platform)
+        return _health.run_health_checks(self._platform, self._gpu_state)
 
     def doctor(self) -> DoctorResult:
         log.info("DiagnosticsAdapter.doctor")
@@ -60,7 +66,7 @@ class DiagnosticsAdapter(Diagnostics):
         return pm
 
     def gpu_reader_state(self) -> GpuReaderState:
-        reader_installed, initialized, _ = _nvml.nvml_init_state()
+        reader_installed, initialized, _ = self._gpu_state()
         present = _health.nvidia_gpu_present()
         log.info(
             "DiagnosticsAdapter.gpu_reader_state: present=%s installed=%s init=%s",

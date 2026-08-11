@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from trcc.adapters.diagnostics import health as health_mod
+from trcc.adapters.diagnostics.adapter import DiagnosticsAdapter
 from trcc.adapters.diagnostics.debug_report import build_debug_report
 from trcc.adapters.diagnostics.doctor import (
     render_doctor_output,
@@ -284,11 +285,22 @@ def test_health_report_aggregates_severities() -> None:
     assert HealthReport(checks=[a, b, c]).worst_severity == "FAIL"
 
 
-def test_gpu_check_ok_when_nvml_initialized(
-    fake_platform, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (True, True, None))
-    result = check_gpu_sensors(fake_platform)
+# ``gpu_state`` is passed explicitly rather than monkeypatched onto the
+# module.  It is a default argument, bound when the function is defined, so
+# patching ``health_mod.nvml_init_state`` afterwards would NOT reach it — the
+# check would quietly probe this machine's real NVIDIA driver and these cases
+# would assert against whatever it happens to say.
+
+
+def _state(available: bool, initialized: bool, error: str | None = None):
+    """A stand-in for ``nvml_init_state`` reporting a chosen driver state."""
+    def _read() -> tuple[bool, bool, str | None]:
+        return available, initialized, error
+    return _read
+
+
+def test_gpu_check_ok_when_nvml_initialized(fake_platform) -> None:
+    result = check_gpu_sensors(fake_platform, _state(True, True))
     assert result.severity == "OK"
     assert "NVML initialized" in result.message
 
@@ -296,9 +308,8 @@ def test_gpu_check_ok_when_nvml_initialized(
 def test_gpu_check_ok_when_no_nvidia_card(
     fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (False, False, None))
     monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: False)
-    result = check_gpu_sensors(fake_platform)
+    result = check_gpu_sensors(fake_platform, _state(False, False))
     assert result.severity == "OK"
     assert "No discrete NVIDIA GPU" in result.message
 
@@ -306,9 +317,8 @@ def test_gpu_check_ok_when_no_nvidia_card(
 def test_gpu_check_warns_when_reader_missing(
     fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (False, False, None))
     monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
-    result = check_gpu_sensors(fake_platform)
+    result = check_gpu_sensors(fake_platform, _state(False, False))
     assert result.severity == "WARN"
     assert "pynvml reader is not installed" in result.message
     # Hint now comes from the DI'd platform's software_install_hint("pynvml")
@@ -320,12 +330,40 @@ def test_gpu_check_warns_with_reload_hint_on_init_failure(
     fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     err = "NVMLError_LibRmVersionMismatch: RM has detected an NVML/RM version mismatch"
-    monkeypatch.setattr(health_mod, "nvml_init_state", lambda: (True, False, err))
     monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
-    result = check_gpu_sensors(fake_platform)
+    result = check_gpu_sensors(fake_platform, _state(True, False, err))
     assert result.severity == "WARN"
     assert err in result.message
     assert "modprobe" in result.fix_hint
+
+
+def test_the_injected_gpu_state_reaches_the_check_through_the_whole_report(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seam is threaded, not just present on the leaf function.
+
+    ``DiagnosticsAdapter`` → ``run_health_checks`` → ``check_gpu_sensors`` is
+    three hops, and a seam that stops at any of them still leaves the report
+    reading the real driver.  Asserting on the leaf alone would not notice.
+    """
+    monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
+    calls: list[str] = []
+
+    def _reader() -> tuple[bool, bool, str | None]:
+        calls.append("asked")
+        return True, False, "a driver state this machine is not in"
+
+    report = DiagnosticsAdapter(fake_platform, _reader).health()
+
+    assert calls, "the report never asked the injected reader"
+    gpu = next(c for c in report.checks if c.name == "gpu-sensors")
+    assert "a driver state this machine is not in" in gpu.message
+
+
+def test_gpu_reader_state_uses_the_injected_reader(fake_platform) -> None:
+    """The other reach — the port method the GPU-offer decision consumes."""
+    state = DiagnosticsAdapter(fake_platform, _state(True, True)).gpu_reader_state()
+    assert (state.reader_installed, state.initialized) == (True, True)
 
 
 def test_package_install_hint_returns_a_string() -> None:

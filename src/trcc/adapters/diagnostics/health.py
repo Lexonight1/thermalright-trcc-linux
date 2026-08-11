@@ -25,7 +25,7 @@ from pathlib import Path
 
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
 from ...core.ports import Paths, Platform
-from ..sensors.nvml import NVML_RELOAD_HINT, nvml_init_state
+from ..sensors.nvml import NVML_RELOAD_HINT, GpuStateFn, nvml_init_state
 from .install import collect_install_info
 
 log = logging.getLogger(__name__)
@@ -230,7 +230,9 @@ def nvidia_gpu_present() -> bool:
     return False
 
 
-def check_gpu_sensors(platform: Platform) -> HealthCheckResult:
+def check_gpu_sensors(
+    platform: Platform, gpu_state: GpuStateFn = nvml_init_state,
+) -> HealthCheckResult:
     """NVIDIA GPU present but no metrics → guide the user to the fix.
 
     The foolproof-install check: a discrete NVIDIA card with empty GPU
@@ -238,9 +240,15 @@ def check_gpu_sensors(platform: Platform) -> HealthCheckResult:
     NVML version mismatch after a driver update without reboot.  Both are
     actionable, so this WARNs (not FAILs) with a distro-specific hint.  No
     NVIDIA card → OK (AMD reads via hwmon, no extra package needed).
+
+    ``gpu_state`` is injected so this check can be asked about a driver state
+    the running machine isn't in.  Reading the module function directly meant
+    every test of this check — and of every report that contains it — probed
+    the real NVIDIA driver, which is how a developer box with a genuine
+    version mismatch made unrelated tests fail.
     """
     log.info("check_gpu_sensors: called")
-    reader_available, initialized, last_error = nvml_init_state()
+    reader_available, initialized, last_error = gpu_state()
     if initialized:
         return HealthCheckResult(
             name="gpu-sensors", severity="OK",
@@ -362,8 +370,14 @@ def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
 # =========================================================================
 
 
-def run_health_checks(platform: Platform) -> HealthReport:
-    """Run every registered check; collect results into a HealthReport."""
+def run_health_checks(
+    platform: Platform, gpu_state: GpuStateFn = nvml_init_state,
+) -> HealthReport:
+    """Run every registered check; collect results into a HealthReport.
+
+    ``gpu_state`` is threaded through to :func:`check_gpu_sensors` — see there
+    for why it is injectable rather than read off the module.
+    """
     log.info("run_health_checks: starting")
     paths = platform.paths()
     checks: list[HealthCheckResult] = [
@@ -375,7 +389,7 @@ def run_health_checks(platform: Platform) -> HealthReport:
         check_config_writable(paths),
         check_devices_visible(platform),
         check_sensors_enumerable(platform),
-        check_gpu_sensors(platform),
+        check_gpu_sensors(platform, gpu_state),
         check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
