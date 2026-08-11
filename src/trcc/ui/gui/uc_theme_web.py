@@ -122,10 +122,18 @@ class UCThemeWeb(DownloadableThemeBrowser):
         self._set_movies_running(False)
 
     def _set_movies_running(self, running: bool) -> None:
-        """Start or stop all QMovie animations on cloud thumbnails."""
-        for widget in self.item_widgets:
-            if (movie := getattr(widget, '_movie', None)):
-                movie.start() if running else movie.stop()
+        """Start or stop all QMovie animations on cloud thumbnails.
+
+        This is what makes a downloaded entry's tile APPEAR, not merely what
+        animates it: ``setMovie`` alone paints nothing, so a QMovie that has
+        never been started shows an empty label.
+        """
+        movies = [m for w in self.item_widgets
+                  if (m := getattr(w, '_movie', None)) is not None]
+        log.debug("_set_movies_running: running=%s — %d movie(s) of %d thumbnail(s)",
+                  running, len(movies), len(self.item_widgets))
+        for movie in movies:
+            movie.start() if running else movie.stop()
 
     def _create_filter_buttons(self):
         """Seven category buttons matching Windows positions."""
@@ -233,6 +241,14 @@ class UCThemeWeb(DownloadableThemeBrowser):
             self.current_category, len(themes), len(cached), self.web_directory,
         )
         self._populate_grid(themes)
+        # A rebuilt grid holds BRAND NEW QMovie objects, and a movie that was
+        # never started paints nothing.  showEvent fires only when the panel
+        # BECOMES visible, so any rebuild while it is ALREADY visible left every
+        # downloaded entry a blank tile until the user switched tabs and back:
+        # a display-angle change (set_web_directory), a category button
+        # (_set_category), or a finished download.  One call here serves all
+        # three callers instead of each remembering for itself.
+        self._set_movies_running(self.isVisible())
 
     def _on_item_clicked(self, item_info: CloudThemeItem):
         """Handle click — play cached themes, download non-cached ones.
@@ -296,11 +312,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
         log.info("_on_download_complete: theme_id=%s success=%s", theme_id, success)
         super()._on_download_complete(theme_id, success)
         if success:
-            self.load_themes()
-            # Restart QMovie animations — showEvent won't fire since panel
-            # is already visible, so newly created movies need manual start.
-            if self.isVisible():
-                self._set_movies_running(True)
+            self.load_themes()      # starts the new movies (see load_themes)
             # Auto-select the newly downloaded theme
             for item in self.items:
                 if item.id == theme_id:
