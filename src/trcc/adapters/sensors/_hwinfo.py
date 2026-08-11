@@ -357,15 +357,6 @@ def _shared(
     return _shared_snapshot
 
 
-def reset_snapshot() -> None:
-    """Drop the cached snapshot — tests reset between cases."""
-    log.info("reset_snapshot: called")
-    global _shared_snapshot
-    if _shared_snapshot is not None:
-        _shared_snapshot._mapping.close()
-        _shared_snapshot = None
-
-
 # =========================================================================
 # HwinfoCpu / HwinfoGpu
 # =========================================================================
@@ -549,7 +540,6 @@ __all__ = [
     "_parse_header",
     "_snapshot_from_bytes",
     "discover_hwinfo_gpus",
-    "reset_snapshot",
 ]
 
 
