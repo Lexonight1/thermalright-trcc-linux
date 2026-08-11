@@ -359,23 +359,31 @@ class DisplayService:
             return encoded
 
         # ── Wire rotation (0/180 for rotate panels; all angles for squares) ──
-        # The composite so far is upright on the oriented canvas.  Two things
-        # rotate it: the user-selected display orientation (a preview + wire
-        # concern) and the panel's physical mount (a WIRE-only concern — the C#
-        # applies RotateImg solely in the encoder, never in the compose/preview
-        # path, RotateFlip count = 0).  ``portrait`` content is authored portrait
-        # (orientation baked in) so it is never re-rotated.  (#136/#169)
+        # The composite so far is upright on the oriented canvas.  Rotation is a
+        # WIRE concern and only a wire concern — both halves of it, the user's
+        # display angle and the panel's physical mount.  The C# is unambiguous:
+        # every RotateImg/Hei/Bu call site sits in a wire encoder (ImageToJpg,
+        # ImageTo565, GifToJPG, GifTo565), the compose path contains no rotation
+        # at all — no call, no Matrix — and RotateFlip appears nowhere in the
+        # decompile.  ``portrait`` content is authored portrait (orientation
+        # baked in) so it is never re-rotated.  (#136/#169)
         composite = surface
 
-        # PREVIEW = composite + user orientation ONLY.  No mount rotation: the
-        # on-screen bezel shows what the viewer sees on the physically-rotated
-        # glass, which is upright.  (FBL 50 at angle 0 → a 320×240 landscape
-        # control.)  Storing the mount-rotated surface here was the sideways-in-
-        # an-upright-bezel bug.
-        if s.orientation and not portrait:
-            preview_surface = self._r.rotate(composite, 360 - s.orientation)
-        else:
-            preview_surface = composite
+        # PREVIEW = the composite, exactly as composed.  The display angle does
+        # NOT turn it, because in the C# it does not: SetMyUCScreenImage uses
+        # the angle only to size and place the control (0 and 180 take the same
+        # branch), GenerateImage uses it only to choose the canvas SHAPE and
+        # draws content upright at raw coords either way, and SetUCState hands
+        # that very image to the encoder, which rotates a copy for the glass.
+        #
+        # An upright preview is what makes the display angle usable as a mount
+        # correction: an owner whose panel is bolted in rotated turns the dial
+        # until the GLASS reads right, and the preview still tells the truth
+        # (#224 Levita, #256).  It is also what keeps this surface EDITABLE —
+        # overlay drag maps widget→LCD by scale alone with no angle term, so a
+        # rotated preview inverts every drag — and SaveTheme snapshots this
+        # surface into Theme.png, which must not be stored upside down.
+        preview_surface = composite
 
         # WIRE rotation:
         #  * Non-widescreen rotate panels (320×240 RGB565 + JPEG/Mjolnir, 640×480)
@@ -427,7 +435,10 @@ class DisplayService:
                   info.key, theme.name)
         resolved_profile = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
-        visual_size, portrait, post_rotate = self._compose_geometry(
+        # ``_portrait`` is deliberately unused: the preview needs the canvas
+        # size and the landscape-at-portrait-angle spin, but the portrait
+        # content flag only ever gated rotations this path no longer applies.
+        visual_size, _portrait, post_rotate = self._compose_geometry(
             resolved_profile, s.orientation,
             self._content_is_portrait(theme, resolved_profile, s),
         )
@@ -456,19 +467,26 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        if s.brightness != 100:
+            surface = self._r.apply_brightness(surface, s.brightness)
         if post_rotate:
-            # Landscape-only theme at a portrait angle: the preview shows the
-            # whole composite rotated (matches build_frame + the glass), brightness
-            # included — there is no upright portrait layout to show instead.
-            if s.brightness != 100:
-                surface = self._r.apply_brightness(surface, s.brightness)
+            # Landscape-only theme at a portrait angle: the whole composite was
+            # deliberately composed on the native landscape canvas and is spun
+            # into the portrait buffer as one unit, so the preview shows that
+            # same spin — there is no upright portrait layout to show instead.
+            # (The C# would draw solid black here; we do better on purpose.)
+            log.debug("build_preview_surface %s: post_rotate %d° "
+                      "(landscape theme at a portrait angle)",
+                      info.key, post_rotate)
             return self._r.rotate(surface, post_rotate)
-        # Preview stays upright — the device-mount 90° is a wire concern only
-        # (matches build_frame's preview_surface, captured pre-device-rotate).
-        return self._apply_post_processing(
-            surface, s, resolved_profile, compose_portrait=portrait,
-            device_rotate=False,
-        )
+        # Composed upright, and returned upright.  The display angle sizes the
+        # canvas but never turns the picture — see build_frame for the C# call
+        # sites.  Logged with the angle that did NOT move it, so a report can
+        # prove which behaviour the user was running.
+        log.debug("build_preview_surface %s: composed upright, orientation=%d "
+                  "not applied to the preview (wire-only)",
+                  info.key, s.orientation)
+        return surface
 
     def _resolve_bg_overlay(
         self,
@@ -624,37 +642,35 @@ class DisplayService:
         surface: Any,
         s: DeviceSettings,
         resolved: DeviceProfile,
-        *,
-        compose_portrait: bool = False,
-        device_rotate: bool = True,
     ) -> Any:
         """Apply user brightness, user orientation, and device-side rotation.
 
-        Shared tail of every frame build that respects per-device
-        settings (build_frame, build_screencast_frame, build_image_frame).
-        ``build_solid_color_frame`` intentionally calls only the
-        brightness step because user-orientation on a uniform fill is a
-        no-op and the helper's extra rotate calls would burn cycles for
-        no visible change.  ``compose_portrait`` skips the device 90° rotate
-        when the canvas was already composed at portrait dims (#136).
+        Shared tail of the two WIRE builds that own no rotation model of their
+        own — ``build_screencast_frame`` and ``build_image_frame``, both of
+        which encode a single supplied image rather than a composed theme.
+        ``build_solid_color_frame`` intentionally calls only the brightness step
+        because user-orientation on a uniform fill is a no-op and the extra
+        rotate calls would burn cycles for no visible change.
 
-        ``device_rotate=False`` skips the device-mount 90° entirely — the
-        PREVIEW path passes this so the on-screen image stays upright (the
-        rotation is a WIRE concern; the physical glass is mounted rotated, so
-        the viewer sees the upright content).  The C# never rotates the preview
-        image (RotateFlip count = 0).
+        Wire only.  No preview path calls this: a preview is returned exactly
+        as composed (see ``build_preview_surface``), because the C# rotates in
+        its encoders and nowhere else.  The ``device_rotate`` /
+        ``compose_portrait`` flags that used to carve a preview out of this
+        method went with that caller.
+
+        NOTE (pre-existing, not this method's to fix): the angle applied here is
+        the older ``360 − orientation`` + blanket 90° model, while
+        ``build_frame`` resolves its wire angle through ``wire_angle`` and the
+        C#-derived per-panel table.  A screencast and a theme at the same angle
+        can therefore disagree on a panel whose ``encode_base`` isn't 0.
         """
-        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s "
-                  "compose_portrait=%s device_rotate=%s",
-                  s.brightness, s.orientation, resolved.rotate, compose_portrait,
-                  device_rotate)
+        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s",
+                  s.brightness, s.orientation, resolved.rotate)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
-        # Portrait-composed content is authored portrait (orientation baked in)
-        # → skip BOTH the user-orientation and device rotates. (#136)
-        if s.orientation and not compose_portrait:
+        if s.orientation:
             surface = self._r.rotate(surface, 360 - s.orientation)
-        if device_rotate and resolved.rotate and not compose_portrait:
+        if resolved.rotate:
             surface = self._r.rotate(surface, 90)
         return surface
 
