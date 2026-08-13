@@ -273,7 +273,7 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 **Bulk USB devices** — raw USB protocol:
 | USB ID | Devices |
 |--------|---------|
-| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro |
+| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro, Phantom Spirit 120 Vision EVO |
 
 **LY USB devices** — chunked bulk protocol:
 | USB ID | Devices |
