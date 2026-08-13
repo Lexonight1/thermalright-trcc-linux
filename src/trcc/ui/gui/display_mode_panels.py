@@ -291,6 +291,10 @@ class DisplayModePanel(QFrame):
         self.toggle_btn.blockSignals(False)
         self._set_actions_enabled(enabled)
 
+    @property
+    def is_enabled(self) -> bool:
+        return self.toggle_btn.isChecked()
+
     def set_title(self, text: str) -> None:
         """Update the title label text."""
         self._title_lbl.setText(text)
@@ -681,6 +685,10 @@ class ScreenCastPanel(DisplayModePanel):
     def set_resolution(self, width, height):
         """Set LCD resolution for aspect ratio calculations."""
         self._resolution = (width, height)
+        if not self.entry_w.text() or self.entry_w.text() == "0":
+            self.entry_w.setText(str(width))
+        if not self.entry_h.text() or self.entry_h.text() == "0":
+            self.entry_h.setText(str(height))
 
     def set_aspect_lock(self, enabled):
         self._aspect_lock = enabled

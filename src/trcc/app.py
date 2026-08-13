@@ -891,6 +891,13 @@ class _DeviceRenderObserver:
                     type(event).__name__, key,
                 )
                 continue
+            ds = self._app.settings.for_device(key)
+            if ds.screencast_region is not None:
+                log.debug(
+                    "DeviceRenderObserver: skip %s for %s (screencast active)",
+                    type(event).__name__, key,
+                )
+                continue
             log.debug(
                 "DeviceRenderObserver: %s for %s → RenderAndSend",
                 type(event).__name__, key,

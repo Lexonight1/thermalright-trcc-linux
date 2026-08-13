@@ -42,7 +42,6 @@ from ...core.commands import (
     SetOverlayConfig,
     SetSplitMode,
     StopVideo,
-    UploadCustomMask,
     VideoStatus,
 )
 from ..presentation.lcd_presentation_model import LcdPresentationModel
@@ -563,17 +562,13 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
             return
         mask_dir = Path(mask_info.path)
-        # DC first — sets overlay resolution + element positions for this mask
-        self._load_theme_overlay_config(mask_dir, persist=False)
-        is_custom = getattr(mask_info, 'is_custom', False)
-        if is_custom:
-            r = self._app.dispatch(UploadCustomMask(
-                key=self._device_key, source=mask_dir,
-            ))
-        else:
-            r = self._app.dispatch(ApplyMask(
-                key=self._device_key, path=mask_dir,
-            ))
+        # DC first — sets overlay resolution + element positions for this mask (if present)
+        overlay_config = dc_as_legacy_overlay_config(mask_dir)
+        if overlay_config:
+            self._load_theme_overlay_config(mask_dir, persist=False)
+        r = self._app.dispatch(ApplyMask(
+            key=self._device_key, path=mask_dir,
+        ))
         if r.ok:
             self._w['preview'].set_status(r.message)
         else:
@@ -983,6 +978,9 @@ class LCDHandler(BaseHandler):
                 self._device_key,
             )
             return
+        theme_setting = self._w.get('theme_setting')
+        if theme_setting and getattr(theme_setting, 'screencast_panel', None) and theme_setting.screencast_panel.is_enabled:
+            return
         image = self._app.display.rendered_surface(self._device_key)
         if image is None:
             # No frame rendered yet (pre-load) — build a one-off surface.
@@ -1179,7 +1177,7 @@ class LCDHandler(BaseHandler):
             return
         try:
             data = self._app.display.build_screencast_frame(
-                info=device.info, frame=image,
+                info=device.info, frame=image, profile=device.profile,
             )
         except Exception as e:
             self.log.warning(
@@ -1305,6 +1303,12 @@ class LCDHandler(BaseHandler):
         if self._animation_timer.isActive():
             self.log.debug(
                 "_render_and_send: skipped — animation timer owns the wire",
+            )
+            return
+        theme_setting = self._w.get('theme_setting')
+        if theme_setting and getattr(theme_setting, 'screencast_panel', None) and theme_setting.screencast_panel.is_enabled:
+            self.log.debug(
+                "_render_and_send: skipped — screencast owns the wire",
             )
             return
         device = self._app.devices.get(self._device_key)

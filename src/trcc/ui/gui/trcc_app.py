@@ -564,7 +564,7 @@ class TRCCApp(QMainWindow):
             handler.handle_frame(surface)
         elif colors:
             handler.handle_frame({"display_colors": list(colors)})
-        else:
+        elif not self._screencast.active:
             handler.rebuild_preview()
 
     def _on_bus_video_started(self, event: Any) -> None:
@@ -1823,6 +1823,11 @@ class TRCCApp(QMainWindow):
             # render hint, not a session-lifecycle fact.
             self._screencast.set_lcd_size(w, hw)
             x, y, sw, sh = self._screencast.params
+            if sw <= 0 or sh <= 0:
+                sw, sh = w, hw
+                self._screencast.set_params(x, y, sw, sh)
+                if hasattr(self, 'uc_theme_setting'):
+                    self.uc_theme_setting.screencast_panel.set_coords(x=x, y=y, w=sw, h=sh)
             result = self._app.dispatch(StartScreencast(
                 key=h.device_key, x=x, y=y, w=sw, h=sh,
                 audio=self._screencast.audio_enabled,

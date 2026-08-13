@@ -572,6 +572,13 @@ class RenderAndSend(Command[RenderResult]):
         except DeviceNotFoundError as e:
             return RenderResult(ok=False, key=self.key, message=str(e))
 
+        ds_dev = app.settings.for_device(self.key)
+        if ds_dev.screencast_region is not None:
+            return RenderResult(
+                ok=True, key=self.key,
+                message="screencast active — theme render skipped",
+            )
+
         theme = app.active_themes.get(self.key)
         if theme is None:
             return RenderResult(

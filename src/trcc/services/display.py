@@ -50,7 +50,7 @@ from .video_cache import VideoFrameCache
 log = logging.getLogger(__name__)
 
 
-_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"}
+_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt", ".gif"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
