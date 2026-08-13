@@ -66,7 +66,8 @@ These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, vid
 | Peerless Assassin 120 Vision | — |
 | Royal Lord 120 Vision | — |
 | Royal Knight 130 Vision | — |
-| Phantom Spirit 120 Vision | — |
+| Phantom Spirit 120 Vision / EVO | 幻灵 120 Vision |
+| Phantom Spirit 120 Vision EVO | Bulk (87AD:70DB, PM 4 SUB 4 A1LF10V) | [alan7383](https://github.com/alan7383) |
 
 ### LED + Segment Display Products (Digital Series)
 

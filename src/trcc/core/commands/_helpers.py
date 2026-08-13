@@ -70,10 +70,10 @@ def oriented_theme_path(
     return cand if cand.exists() else stored
 
 
-_VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
+_VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi", ".gif"})
 
 
-_VIDEO_EXTS_OK = frozenset({".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"})
+_VIDEO_EXTS_OK = frozenset({".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt", ".gif"})
 
 
 _BG_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
@@ -92,7 +92,7 @@ _IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
 
 _VIDEO_EXTS_FOR_LOAD = frozenset({
-    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt",
+    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt", ".gif",
 })
 
 

@@ -561,7 +561,7 @@ class LinuxPlatform(BaseOS, key="linux"):
         log.debug("LinuxPlatform.no_devices_hint: called")
         return (
             "Run `trcc system setup` to install the udev rules "
-            "(/etc/udev/rules.d/99-trcc.rules), then replug the device."
+            "(/etc/udev/rules.d/99-trcc-lcd.rules), then replug the device."
         )
 
     # ── Hardware probes (LED memory + disk widgets) ───────────────────

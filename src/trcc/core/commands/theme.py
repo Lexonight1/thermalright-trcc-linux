@@ -1556,21 +1556,33 @@ class RestoreLastTheme(Command[ThemeResult]):
             # the same name, so restore must NOT re-resolve a shipped pointer to
             # the user one — it loads whatever the user last selected.
             candidate = oriented_theme_path(app, self.key, candidate)
-            return LoadTheme(
+            result = LoadTheme(
                 key=self.key, path=candidate, reset_overrides=False,
             ).execute(app)
+        else:
+            # Legacy bare-name value — search the known theme roots.
+            resolved = _search_theme_by_name(app, self.key, stored)
+            if resolved is None:
+                return ThemeResult(
+                    ok=False, key=self.key, theme_name=stored,
+                    message=(f"Persisted theme {stored!r} not found in any "
+                             "known theme root for this device"),
+                )
+            result = LoadTheme(
+                key=self.key, path=resolved, reset_overrides=False,
+            ).execute(app)
 
-        # Legacy bare-name value — search the known theme roots.
-        resolved = _search_theme_by_name(app, self.key, stored)
-        if resolved is None:
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=stored,
-                message=(f"Persisted theme {stored!r} not found in any "
-                         "known theme root for this device"),
-            )
-        return LoadTheme(
-            key=self.key, path=resolved, reset_overrides=False,
-        ).execute(app)
+        if result.ok:
+            bg = app.settings.for_device(self.key).background_path
+            if bg and Path(bg).exists():
+                ext = Path(bg).suffix.lower()
+                if ext in _VIDEO_EXTS_FOR_LOAD:
+                    log.info(
+                        "RestoreLastTheme: %s replaying persisted background video %s",
+                        self.key, bg,
+                    )
+                    PlayVideo(key=self.key, path=Path(bg)).execute(app)
+        return result
 
 @dataclass(frozen=True, slots=True)
 class RestoreDeviceState(Command[ThemeResult]):

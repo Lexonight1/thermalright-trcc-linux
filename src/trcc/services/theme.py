@@ -78,7 +78,7 @@ _DC_CONFIG_FILE = "config1.dc"
 # JPEG-sequence archive UCVideoCut writes).  No ``background.*`` —
 # that name never existed in legacy or Windows TRCC.
 _VIDEO_CANDIDATES = (
-    "Theme.mp4", "Theme.mov", "Theme.webm", "Theme.zt",
+    "Theme.mp4", "Theme.mov", "Theme.webm", "Theme.zt", "Theme.gif",
 )
 # Video container extensions we ship (derived from _VIDEO_CANDIDATES so the
 # two never drift); the background allowlist is those plus the static PNG.

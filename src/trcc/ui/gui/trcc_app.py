@@ -564,7 +564,7 @@ class TRCCApp(QMainWindow):
             handler.handle_frame(surface)
         elif colors:
             handler.handle_frame({"display_colors": list(colors)})
-        else:
+        elif not self._screencast.active:
             handler.rebuild_preview()
 
     def _on_bus_video_started(self, event: Any) -> None:
@@ -1823,6 +1823,11 @@ class TRCCApp(QMainWindow):
             # render hint, not a session-lifecycle fact.
             self._screencast.set_lcd_size(w, hw)
             x, y, sw, sh = self._screencast.params
+            if sw <= 0 or sh <= 0:
+                sw, sh = w, hw
+                self._screencast.set_params(x, y, sw, sh)
+                if hasattr(self, 'uc_theme_setting'):
+                    self.uc_theme_setting.screencast_panel.set_coords(x=x, y=y, w=sw, h=sh)
             result = self._app.dispatch(StartScreencast(
                 key=h.device_key, x=x, y=y, w=sw, h=sh,
                 audio=self._screencast.audio_enabled,
@@ -2153,15 +2158,26 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
+            import shutil
+            target_dir = (
+                self._app.platform.paths().user_content_dir() / "backgrounds"
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+            safe_key = h.device_key.replace(":", "_") or "default"
+            target = target_dir / f"{safe_key}.zt"
+            try:
+                shutil.copy2(zt_path, target)
+                final_path = target
+            except Exception as e:
+                log.warning("_on_video_cut_done: failed to copy %s to %s: %s", zt_path, target, e)
+                final_path = Path(zt_path)
+
             # ``SetBackground`` persists the .zt as the device's
             # background override (``DeviceSettings.background_path``)
             # THEN delegates to ``PlayVideo`` for the decode/animate
             # pipeline — same as the image cutter's ``_on_image_cut_done``.
-            # Dispatching ``PlayVideo`` directly here (the old code) left
-            # no override for ``SaveTheme`` to bake in, so a saved theme
-            # lost the video and reloaded with a black background.
             result = self._app.dispatch(SetBackground(
-                key=h.device_key, path=Path(zt_path),
+                key=h.device_key, path=final_path,
             ))
             if result.ok:
                 self.uc_preview.set_playing(True)

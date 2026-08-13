@@ -309,9 +309,13 @@ def check_udev_rules_linux() -> HealthCheckResult:
             message="Not applicable on this OS",
         )
     candidate_paths = [
+        Path("/etc/udev/rules.d/99-trcc-lcd.rules"),
         Path("/etc/udev/rules.d/99-trcc.rules"),
         Path("/etc/udev/rules.d/90-trcc.rules"),
+        Path("/lib/udev/rules.d/99-trcc-lcd.rules"),
         Path("/lib/udev/rules.d/99-trcc.rules"),
+        Path("/usr/lib/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/usr/lib/udev/rules.d/99-trcc.rules"),
     ]
     found = [p for p in candidate_paths if p.is_file()]
     if not found:
@@ -319,7 +323,7 @@ def check_udev_rules_linux() -> HealthCheckResult:
             name="udev-rules", severity="WARN",
             message="No TRCC udev rules found under /etc/udev/rules.d/",
             fix_hint="Run `trcc system setup` (or install via the distro "
-                     "package) to lay down /etc/udev/rules.d/99-trcc.rules",
+                     "package) to lay down /etc/udev/rules.d/99-trcc-lcd.rules",
         )
     return HealthCheckResult(
         name="udev-rules", severity="OK",

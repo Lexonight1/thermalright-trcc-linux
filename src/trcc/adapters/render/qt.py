@@ -371,7 +371,9 @@ class QtRenderer(Renderer):
 
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
-    def from_raw_rgb24(self, frame: RawFrame) -> Any:
+    def from_raw_rgb24(self, frame: Any) -> Any:
+        if isinstance(frame, QImage):
+            return frame.convertToFormat(QImage.Format.Format_ARGB32)
         log.debug("from_raw_rgb24: %dx%d", frame.width, frame.height)
         qimg = QImage(
             frame.data, frame.width, frame.height,
