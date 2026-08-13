@@ -217,6 +217,13 @@ class DeviceSpec:
     ``pm`` / ``sub`` drive the scripted handshake for bulk + LED wires; ``fbl``
     (optional) overrides the SCSI poll byte when the registry default isn't the
     panel we want to simulate.  ``resolution`` / ``name`` are informational.
+
+    ``bcd`` is the USB ``bcdDevice`` (firmware revision).  It is what
+    ``DEVICE_QUIRKS`` is keyed on, so without it no simulated device could ever
+    take a quirked path — the five #228 divergences (HID output reports, skipped
+    init, short handshake, portrait-native, keepalive) were unreachable in the
+    mock, which is how a quirk that broke four reporters' panels shipped
+    unnoticed (#244).  Give a spec ``"bcd": "0407"`` to simulate that firmware.
     """
     vid: int
     pid: int
@@ -224,6 +231,7 @@ class DeviceSpec:
     pm: int = 0
     sub: int = 0
     fbl: int | None = None
+    bcd: int = 0
     resolution: str | None = None
 
     @classmethod
@@ -233,11 +241,13 @@ class DeviceSpec:
         pid = int(str(raw["pid"]), 16)
         name = str(raw.get("name", f"{vid:04x}:{pid:04x}"))
         fbl = raw.get("fbl")
+        bcd = raw.get("bcd")
         return cls(
             vid=vid, pid=pid, name=name,
             pm=int(raw.get("pm", 0)),
             sub=int(raw.get("sub", 0)),
             fbl=int(fbl) if fbl is not None else None,
+            bcd=int(str(bcd), 16) if bcd is not None else 0,
             resolution=raw.get("resolution"),
         )
 
@@ -265,9 +275,9 @@ def scan_device_infos(specs: list[DeviceSpec]) -> list[DeviceInfo]:
                 spec.vid, spec.pid, spec.name,
             )
             continue
-        out.append(DeviceInfo(vid=spec.vid, pid=spec.pid))
-        log.info("mock scan: + %s [%04x:%04x] wire=%s",
-                 spec.name, spec.vid, spec.pid, product.wire.value)
+        out.append(DeviceInfo(vid=spec.vid, pid=spec.pid, bcd_device=spec.bcd))
+        log.info("mock scan: + %s [%04x:%04x] wire=%s bcdDevice=0x%04x",
+                 spec.name, spec.vid, spec.pid, product.wire.value, spec.bcd)
     return out
 
 

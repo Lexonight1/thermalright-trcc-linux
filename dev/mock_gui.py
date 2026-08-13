@@ -194,14 +194,22 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]
             decorated = True
         elif arg.startswith('device='):
             device_spec = _device_spec_from_token(arg.split('=', 1)[1])
-        elif arg.startswith(('pm=', 'sub=', 'fbl=')):
+        elif arg.startswith(('pm=', 'sub=', 'fbl=', 'bcd=')):
             if device_spec is None:
                 print(f"Error: {arg} needs a device first, "
                       f"e.g. device=0416:5302 {arg}")
                 sys.exit(1)
             key, val = arg.split('=', 1)
             try:
-                device_spec[key] = int(val, 0)   # accepts 9 or 0x09
+                if key == 'bcd':
+                    # The USB bcdDevice, always hex — as lsusb and a trcc
+                    # report print it (0407).  DeviceSpec.parse owns the hex
+                    # conversion (as it does for vid/pid), so pass the string
+                    # through; converting here too would read 0407 as 4145.
+                    int(val, 16)                 # validate only
+                    device_spec[key] = val
+                else:
+                    device_spec[key] = int(val, 0)   # accepts 9 or 0x09
             except ValueError:
                 print(f"Error: {arg} — {val!r} is not a number")
                 sys.exit(1)
@@ -310,18 +318,28 @@ def _auto_connect(app: Any, spec: dict) -> bool:
         log.warning("_auto_connect: platform has no set_active_reply — skip")
         return False
     from trcc.core.commands import ConnectDevice
+    from trcc.core.models import DeviceInfo
     from trcc.core.protocol import pm_to_fbl
     vid = int(str(spec["vid"]), 16)
     pid = int(str(spec["pid"]), 16)
     pm = int(spec.get("pm", 0))
     sub = int(spec.get("sub", 0))
     fbl = int(spec.get("fbl", pm_to_fbl(pm, sub)))
+    bcd = int(str(spec.get("bcd", 0)), 16)
     key = f"{vid:04x}:{pid:04x}"
     platform.set_active_reply(vid, pid, pm=pm, sub=sub, fbl=fbl)
+    # Firmware quirks are resolved from what a SCAN remembered
+    # (``App._quirks_for`` reads ``_scanned``), and the dev rule is that
+    # ``DevMockPlatform.scan_devices`` returns nothing so the GUI boots blank.
+    # Without this the mock could never take a quirked path at all — which is
+    # exactly how a quirk that broke four reporters' panels shipped unseen
+    # (#244).  An explicit ``device=`` IS the statement "this device is
+    # present", so remember its fingerprint before connecting.
+    app.remember_scan([DeviceInfo(vid=vid, pid=pid, bcd_device=bcd)])
     result = app.dispatch(ConnectDevice(key=key))
     ok = bool(getattr(result, "ok", False))
-    log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d → ok=%s",
-             key, pm, sub, fbl, ok)
+    log.info("mock_gui._auto_connect: %s pm=%d sub=%d fbl=%d bcd=0x%04x → ok=%s",
+             key, pm, sub, fbl, bcd, ok)
     return ok
 
 
