@@ -111,15 +111,44 @@ def test_streaming_connect_skips_init_and_pins_portrait(monkeypatch) -> None:
     assert dev.profile is not None and dev.profile.rotate is False
 
 
-def test_streaming_connect_works_without_any_reply(monkeypatch) -> None:
-    # A firmware that volunteers nothing: identify by fingerprint, still connect.
+def test_a_silent_quirked_panel_falls_through_to_the_standard_handshake(
+    monkeypatch,
+) -> None:
+    """A reply identifies a panel; silence identifies nothing. (#244/#267/#268)
+
+    ``bcdDevice`` 4.07 is NOT unique to the Frozen Warframe SE — Thermalright
+    ships several different panels as ``0416:5302`` firmware 4.07, and the only
+    thing separating them is the PM byte the streaming read exists to fetch.
+    This test used to assert the opposite (silent → identify by fingerprint →
+    pin the registry placeholder), and that assertion WAS the bug: a 1280×480
+    Trofeo Vision got locked to 240×320 and never displayed anything, for four
+    reporters on #244 plus #268, while #267 — the SE fingerprint the quirk was
+    written for — stayed broken too.  Their own logs show the standard
+    handshake answering ``PM=128 SUB=1 resolution=(1280, 480)`` moments later
+    on the very same hardware.
+
+    MUTATION CHECK — make ``_connect_streaming_firmware`` return a result
+    instead of ``None`` when the reply is missing, and this fails with
+    ``(240, 320)``.
+    """
     monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", lambda *_: None)
-    transport = FakeBulkTransport()               # empty read_script → b""
+    full = bytearray(512)
+    full[0:4] = b"\xda\xdb\xdc\xdd"
+    full[4], full[5], full[12] = 1, 128, 0x01     # SUB=1, PM=128 — Trofeo Vision
+    transport = FakeBulkTransport()
+    transport.read_script = [b"", bytes(full)]    # silent, then the real reply
     dev = _make_type2(transport)
     dev.set_quirks(quirks_for(*_WF_SE))
+
     result = dev.connect()
+
     assert dev.is_connected
-    assert result.resolution == (240, 320)        # registry FBL 58, transposed
+    assert result.resolution == (1280, 480), (
+        "the registry placeholder was pinned onto a panel that never identified "
+        "itself — the #244 regression"
+    )
+    assert result.pm_byte == 128 and result.sub_byte == 1
+    assert transport.writes, "the fall-through must send the standard init packet"
 
 
 # ── Seam 5: keepalive ─────────────────────────────────────────────────

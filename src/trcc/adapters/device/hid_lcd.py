@@ -104,9 +104,20 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         return f" (type {self.info.device_type})"
 
     def _do_handshake(self) -> HandshakeResult:
-        """Perform the type-specific handshake, retrying a bad exchange."""
+        """Perform the type-specific handshake, retrying a bad exchange.
+
+        The streaming-firmware path (#228) is *offered* to a quirked firmware,
+        not forced on it: it only succeeds if the panel actually volunteers a
+        reply identifying itself.  A quirked fingerprint that says nothing has
+        told us nothing, so we fall through to the ordinary handshake rather
+        than guess — see :meth:`_connect_streaming_firmware`.
+        """
         if self._quirks.skip_init:
-            return self._connect_streaming_firmware()
+            if (result := self._connect_streaming_firmware()) is not None:
+                return result
+            log.info("HidLcd %s: streaming firmware volunteered nothing — "
+                     "falling through to the standard handshake",
+                     self.info.key)
         return self._handshake_retry(
             self._build_init_packet(), self._response_size(),
             self._validate_and_parse,
@@ -122,15 +133,28 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             )
         return self._parse_response(resp)
 
-    def _connect_streaming_firmware(self) -> HandshakeResult:
+    def _connect_streaming_firmware(self) -> HandshakeResult | None:
         """Handshake a firmware that reboots on the init packet and streams
         without the normal exchange (#228 Frozen Warframe SE, bcdDevice 4.07).
 
         Faithful to the reporter's working driver: no init packet, let the
-        panel settle, best-effort-read its short (8-byte) reply for PM/SUB, and
-        pin a portrait-native profile (the panel self-orients, so we must NOT
-        pre-rotate).  The device is identified by fingerprint, so a missing or
-        short reply is fine — we fall back to the registry FBL.
+        panel settle, and read the short (8-byte) reply it volunteers for
+        PM/SUB.  When that reply names a PM we pin a portrait-native profile —
+        the panel self-orients, so we must NOT pre-rotate.
+
+        Returns ``None`` when the panel volunteered nothing, so the caller can
+        run the ordinary handshake instead.
+
+        **Why silence must not be treated as identification (#244/#267/#268).**
+        ``bcdDevice`` 4.07 is NOT unique to the Frozen Warframe SE — Thermalright
+        ships several different panels as ``0416:5302`` firmware 4.07, and the
+        only thing separating them is the PM byte this method exists to read.
+        Trusting the fingerprint alone meant a silent panel got the registry's
+        placeholder geometry: the Trofeo Vision, a 1280×480 device, was pinned
+        to 240×320 and never displayed anything, for four reporters.  Their own
+        logs show the standard handshake answering ``PM=128 SUB=1
+        resolution=(1280, 480)`` moments later on the very same hardware.
+        A reply identifies a panel; silence identifies nothing.
         """
         log.info("HidLcd %s: streaming-firmware connect (init skipped)",
                  self.info.key)
@@ -141,17 +165,23 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
                 self._EP_READ, self._response_size(), HANDSHAKE_TIMEOUT_MS,
             )
         except Exception as e:
-            log.info("HidLcd %s: no unsolicited handshake (%s) — using fingerprint",
-                     self.info.key, e)
+            log.info("HidLcd %s: no unsolicited handshake (%s)", self.info.key, e)
 
-        pm, sub = 0, 0
-        if len(resp) >= 6 and resp[0:4] == _TYPE2_MAGIC:
-            pm, sub = resp[5], resp[4]
-            log.info("HidLcd %s: short handshake reply PM=%d SUB=%d",
-                     self.info.key, pm, sub)
-        fbl = pm_to_fbl(pm, sub) if pm else self.info.fbl
-        base = self._base_profile(fbl, pm)
-        profile = self._portrait_native(base)
+        if not (len(resp) >= 6 and resp[0:4] == _TYPE2_MAGIC):
+            log.info("HidLcd %s: no streaming handshake reply (%d byte(s)) — "
+                     "the fingerprint alone does not identify the panel",
+                     self.info.key, len(resp))
+            return None
+        pm, sub = resp[5], resp[4]
+        if not pm:
+            log.info("HidLcd %s: streaming reply carried PM=0 — no panel identity",
+                     self.info.key)
+            return None
+        log.info("HidLcd %s: short handshake reply PM=%d SUB=%d",
+                 self.info.key, pm, sub)
+
+        fbl = pm_to_fbl(pm, sub)
+        profile = self._portrait_native(self._base_profile(fbl, pm))
         self._profile = profile
         log.info("HidLcd %s: streaming connect OK, portrait-native %s",
                  self.info.key, profile.resolution)
@@ -262,13 +292,21 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
         Geometry comes from the PM byte via ``pm_to_fbl`` + ``get_profile``
         — a device that reports e.g. PM=58 surfaces as 320×240, not the
         registry's static native_resolution.
+
+        The portrait-native transpose is deliberately NOT applied here.  It
+        describes one self-orienting streaming firmware, and a panel earns it
+        by *volunteering* the short reply that proves it is that firmware —
+        see :meth:`_connect_streaming_firmware`.  Applying it on this path
+        instead keyed it on ``bcdDevice`` alone, which several different
+        panels share: a 1280×480 Trofeo Vision answering PM=128 was transposed
+        to 480×1280 and never displayed (#244/#268).
         """
         pm = resp[5]
         sub = resp[4]
         has_serial = len(resp) > 36 and resp[16] == 0x10
         serial = resp[20:36].hex().upper() if has_serial else ""
         fbl = pm_to_fbl(pm, sub)
-        self._profile = self._portrait_native(get_profile(fbl, pm))
+        self._profile = get_profile(fbl, pm)
         return HandshakeResult(
             resolution=self._profile.resolution,
             model_id=pm,
