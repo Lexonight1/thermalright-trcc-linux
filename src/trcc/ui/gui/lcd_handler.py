@@ -1485,7 +1485,7 @@ class LCDHandler(BaseHandler):
     def _cleanup_device(self) -> None:
         """Release LCD resources via Commands."""
         from ...core.commands import SendColor
-        self._app.dispatch(StopVideo(key=self._device_key))
+        self._app.dispatch(StopVideo(key=self._device_key, keep_override=True))
         try:
             # Best-effort black-frame so the screen visibly goes blank.
             self._app.dispatch(SendColor(

@@ -1056,20 +1056,16 @@ class PlayVideo(Command[VideoResult]):
 
 @dataclass(frozen=True, slots=True)
 class StopVideo(Command[VideoResult]):
-    """Clear the device's playback override AND the persisted bg override.
+    """Clear the device's playback override AND optionally the persisted bg override.
 
     Idempotent — calling on a device with no playback is a no-op + ok=True
     so scripts can use it as a defensive cleanup.
 
-    Clears ``DeviceSettings.background_path`` so the next render falls
-    back to the active theme's bundled background.  Without this, the
-    next ``RenderAndSend`` (triggered by ``VideoStopped`` via
-    ``DeviceRenderObserver``) would find ``background_path`` still set,
-    take the override branch in ``DisplayService._resolve_background``,
-    and silently re-decode the same video via ``MediaService.load_video``
-    — turning "stop" into "rewind to frame 0".
+    Clears ``DeviceSettings.background_path`` (unless ``keep_override=True``)
+    so the next render falls back to the active theme's bundled background.
     """
     key: str
+    keep_override: bool = False
 
     def execute(self, app: App) -> VideoResult:
         had_playback = app.media.playback(self.key) is not None
@@ -1077,7 +1073,7 @@ class StopVideo(Command[VideoResult]):
             app.settings.for_device(self.key).background_path is not None
         )
         app.media.unload(self.key)
-        if had_override:
+        if had_override and not self.keep_override:
             log.info(
                 "StopVideo: clearing background_path override for %s",
                 self.key,
