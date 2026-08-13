@@ -2158,15 +2158,26 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
+            import shutil
+            target_dir = (
+                self._app.platform.paths().user_content_dir() / "backgrounds"
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+            safe_key = h.device_key.replace(":", "_") or "default"
+            target = target_dir / f"{safe_key}.zt"
+            try:
+                shutil.copy2(zt_path, target)
+                final_path = target
+            except Exception as e:
+                log.warning("_on_video_cut_done: failed to copy %s to %s: %s", zt_path, target, e)
+                final_path = Path(zt_path)
+
             # ``SetBackground`` persists the .zt as the device's
             # background override (``DeviceSettings.background_path``)
             # THEN delegates to ``PlayVideo`` for the decode/animate
             # pipeline — same as the image cutter's ``_on_image_cut_done``.
-            # Dispatching ``PlayVideo`` directly here (the old code) left
-            # no override for ``SaveTheme`` to bake in, so a saved theme
-            # lost the video and reloaded with a black background.
             result = self._app.dispatch(SetBackground(
-                key=h.device_key, path=Path(zt_path),
+                key=h.device_key, path=final_path,
             ))
             if result.ok:
                 self.uc_preview.set_playing(True)
