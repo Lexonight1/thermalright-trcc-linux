@@ -301,25 +301,27 @@ def check_qt_importable() -> HealthCheckResult:
 
 
 def check_udev_rules_linux() -> HealthCheckResult:
-    """Linux-only: look for installed udev rules under /etc/udev/rules.d/."""
+    """Linux-only: look for the canonical rule in standard install paths."""
     log.info("check_udev_rules_linux: called")
     if sys.platform != "linux":
         return HealthCheckResult(
             name="udev-rules", severity="OK",
             message="Not applicable on this OS",
         )
-    candidate_paths = [
-        Path("/etc/udev/rules.d/99-trcc.rules"),
-        Path("/etc/udev/rules.d/90-trcc.rules"),
-        Path("/lib/udev/rules.d/99-trcc.rules"),
-    ]
-    found = [p for p in candidate_paths if p.is_file()]
+    udev_rule_paths = (
+        Path("/etc/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/run/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/usr/local/lib/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/usr/lib/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/lib/udev/rules.d/99-trcc-lcd.rules"),
+    )
+    found = [p for p in udev_rule_paths if p.is_file()]
     if not found:
         return HealthCheckResult(
             name="udev-rules", severity="WARN",
-            message="No TRCC udev rules found under /etc/udev/rules.d/",
-            fix_hint="Run `trcc system setup` (or install via the distro "
-                     "package) to lay down /etc/udev/rules.d/99-trcc.rules",
+            message="No TRCC udev rules found",
+            fix_hint="Run `trcc system setup` or reinstall the distro package "
+                     "to install 99-trcc-lcd.rules",
         )
     return HealthCheckResult(
         name="udev-rules", severity="OK",
