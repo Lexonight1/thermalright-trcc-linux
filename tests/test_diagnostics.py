@@ -17,6 +17,7 @@ from trcc.adapters.diagnostics.health import (
     check_gpu_sensors,
     check_log_writable,
     check_python_version,
+    check_udev_rules_linux,
     package_install_hint,
     run_health_checks,
 )
@@ -260,6 +261,44 @@ def test_log_writable_check_passes_on_tmp_dir(
     assert result.severity == "OK"
 
 
+@pytest.mark.parametrize(
+    "installed_rule",
+    (
+        Path("/etc/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/run/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/usr/local/lib/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/usr/lib/udev/rules.d/99-trcc-lcd.rules"),
+        Path("/lib/udev/rules.d/99-trcc-lcd.rules"),
+    ),
+)
+def test_udev_check_accepts_canonical_rule_in_standard_location(
+    installed_rule: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        health_mod.Path,
+        "is_file",
+        lambda path: path == installed_rule,
+    )
+
+    result = check_udev_rules_linux()
+
+    assert result.severity == "OK"
+    assert str(installed_rule) in result.message
+
+
+def test_udev_check_warns_with_current_rule_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(health_mod.Path, "is_file", lambda path: False)
+
+    result = check_udev_rules_linux()
+
+    assert result.severity == "WARN"
+    assert "99-trcc-lcd.rules" in result.fix_hint
+    assert "99-trcc.rules" not in result.fix_hint
+
+
 def test_run_health_checks_returns_full_report(fake_platform) -> None:
     report = run_health_checks(fake_platform)
     names = {c.name for c in report.checks}
@@ -386,6 +425,23 @@ def test_debug_report_writes_to_disk(fake_platform, tmp_path: Path) -> None:
     assert written == out
     body = out.read_text(encoding="utf-8")
     assert "Paths" in body
+
+
+def test_debug_report_reads_canonical_settings_file(fake_platform) -> None:
+    config_dir = fake_platform.paths().config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "config.json").write_text(
+        '{"source": "obsolete"}', encoding="utf-8",
+    )
+    (config_dir / "trcc.json").write_text(
+        '{"source": "canonical"}', encoding="utf-8",
+    )
+
+    report = build_debug_report(fake_platform)
+
+    assert report.settings_error == ""
+    assert '"source": "canonical"' in report.settings_json
+    assert "obsolete" not in report.settings_json
 
 
 def test_debug_report_captures_live_handshake(tmp_path: Path) -> None:

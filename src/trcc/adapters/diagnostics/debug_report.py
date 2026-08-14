@@ -128,7 +128,7 @@ def build_debug_report(
     sensors, sensors_err = _collect_sensors(platform)
     powercap = _collect_powercap()
     settings_text, settings_err = _read_settings_file(
-        settings_path or platform.paths().config_dir() / "config.json",
+        settings_path or platform.paths().config_dir() / "trcc.json",
     )
     health = run_health_checks(platform)
     log_path = platform.paths().log_file()
