@@ -1,5 +1,38 @@
 # Changelog
 
+## v9.9.7
+
+**Video themes no longer eat your memory.** Applying one froze the app for
+several seconds and then held gigabytes of RAM for as long as the theme stayed
+loaded — measured at just under 7 GB for a one-minute video on a 1600×720
+panel. On a machine with 8 or 16 GB that is most of your headroom, and once the
+system starts swapping *everything* gets slow, which is why some of you saw the
+app stutter when doing something unrelated like switching panels. TRCC was
+preparing every single frame of the video in advance and keeping them all as
+uncompressed images. It now prepares each frame as it plays it, the way
+Thermalright's own Windows software does. Same video, same panel: **the freeze
+is gone and memory is under 100 MB.** (#264, #256)
+
+This was never only about long videos — a stock cloud theme from the gallery
+was costing 1.8 GB on a widescreen panel.
+
+**Video themes also load faster.** Applying one takes about a quarter of the
+time it used to, because the frames are kept compressed instead of being
+expanded the moment the theme opens.
+
+**Live readings stopped being frozen.** If you run TRCC from the command line
+rather than the app — `trcc led play` for a LED cooler, `trcc display play` for
+an LCD — every sensor value was read once at startup and then never again. A
+memory-temperature readout would sit at whatever it was when you launched,
+forever. It refreshes properly now. The desktop app and the background daemon
+were never affected. (#270, thank you [@rjstanford-it] for diagnosing this
+precisely from the outside.)
+
+**Diagnostic reports keep the part that matters.** With a cloud theme applied,
+one line was being written to the log for every frame rendered — a hundred a
+second — so by the time you sent us a report, the record of what you had
+actually done had already scrolled away. That noise is gone.
+
 ## v9.9.6
 
 **Widescreen panels that showed nothing now display.** A 1280x480 panel could
