@@ -1,5 +1,43 @@
 # Changelog
 
+## v9.9.8
+
+**Command-line users with a Frozen Warframe SE: your panel should respond
+now.** Commands like `trcc display color` or `set-brightness` reported success
+and did nothing. That firmware restarts if it receives the normal startup
+packet, and TRCC knows to skip it — but only worked that out after scanning
+for devices, which the desktop app does and the command line doesn't. So the
+command line was sending the one packet that reboots the panel, then talking
+to a device that was no longer listening. (#267, #150)
+
+A related crash is gone too: if hidapi was missing, or was the wrong one of
+the two Python packages that share that name, connecting could take the whole
+app down instead of telling you what to install.
+
+**Saved themes stop resetting on Bazzite, Silverblue and other atomic
+systems.** On those distributions `/home` is a shortcut to `/var/home`, so the
+same folder has two names — and TRCC compared the text of the two paths rather
+than checking whether they were the same place. Your own saved theme was
+mistaken for a built-in one, so on restart it loaded the built-in theme of the
+same name instead of yours. If you had a theme called `Theme1`, that's why it
+kept coming back changed. (#261)
+
+**Your cooler tells you its own name.** Every panel sharing the `87AD:70DB`
+USB id introduced itself as "GrandVision 360 AIO", whatever it actually was —
+that name was stored once for the whole USB id, which covers dozens of
+different coolers. The handshake already knows which one you have, so it now
+says so. Confirmed so far for the Hyper Vision 360 and Peerless Vision 360,
+both added to the supported-devices list. (#272, #274)
+
+**Reports say when a screen is mounted sideways.** Thermalright fits some
+854x480, 960x540 and 800x480 panels rotated inside the cooler. That has always
+been readable from the handshake, and TRCC never mentioned it — so two people
+with the identical panel spent a month on separate reports about rotation
+without anyone realising they had the same hardware. Diagnostic reports now
+say `portrait-mounted` when they are. Nothing about the display changes; if
+you already rotate to 90 degrees to get an upright picture, keep doing that.
+(#262, #203)
+
 ## v9.9.7
 
 **Video themes no longer eat your memory.** Applying one froze the app for
