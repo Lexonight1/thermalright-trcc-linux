@@ -952,11 +952,17 @@ class DisplayService:
             )
             canvas = self._r.composite(canvas, mask, position=position)
         else:
+            # NB: no ``self._themes.mask_path(theme)`` here.  Arguments are
+            # evaluated eagerly, so naming it in a DEBUG call did real
+            # filesystem work on EVERY frame to build a string that is
+            # usually discarded — and when mask_visible is False it did the
+            # very lookup ``_resolve_mask_source`` had just decided to skip.
+            # It adds nothing either: reaching this branch with a visible
+            # mask means the theme mask resolved to None. (#264)
             log.debug(
                 "build_bg_mask %s: no mask composited (visible=%s, "
-                "override=%r, theme_mask=%r)",
+                "override=%r)",
                 info.key, s.mask_visible, s.mask_path,
-                self._themes.mask_path(theme),
             )
 
         return canvas

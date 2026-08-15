@@ -783,3 +783,58 @@ def test_landscape_theme_at_orientation_0_is_unchanged(
     assert [(x, y) for x, y, _ in draws] == [(250, 120)]
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
     assert rotations == [90], f"orientation 0 keeps the device 90°, got {rotations}"
+
+
+# ── #264: the no-mask branch must do no filesystem work ──────────────
+
+
+class _CountingThemes(ThemeService):
+    """ThemeService that records how often the render path asked for a mask."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mask_path_calls = 0
+
+    def mask_path(self, theme: Theme) -> Path | None:
+        self.mask_path_calls += 1
+        return super().mask_path(theme)
+
+
+def test_composing_without_a_mask_does_not_look_one_up_twice(
+    renderer: RecordingRenderer, tmp_home: Path,
+) -> None:
+    """``_resolve_mask_source`` already decides the mask; the branch that logs
+    "no mask composited" must not go and resolve it a SECOND time.
+
+    Log-call arguments are evaluated eagerly, so naming ``mask_path(theme)``
+    inside a ``log.debug`` did real filesystem work on every rendered frame to
+    build a string that is normally discarded — and when ``mask_visible`` is
+    False it performed the very lookup ``_resolve_mask_source`` had just
+    decided to skip (#264).
+
+    MUTATION CHECK: put ``self._themes.mask_path(theme)`` back into that
+    log.debug and this fails with 1 != 0 (or 2 != 1 on the visible path).
+    """
+    from .conftest import FakePaths
+
+    paths = FakePaths(tmp_home)
+    settings = Settings(paths)
+    themes = _CountingThemes()
+    display = DisplayService(
+        renderer=renderer, themes=themes, overlay=_StubOverlay(renderer),
+        settings=settings, media=MediaService(), paths=paths,
+    )
+
+    theme_dir = tmp_home / "PlainTheme"
+    theme_dir.mkdir(parents=True, exist_ok=True)
+    (theme_dir / "config.json").write_text('{"elements": []}')
+    theme = themes.load(theme_dir)          # a theme with no mask on disk
+    themes.mask_path_calls = 0              # ignore any lookups during load
+
+    info = _hid_type2_info()
+    settings.set_mask_visible(info.key, False)
+
+    display._build_bg_mask(info, theme, (240, 320))
+
+    # mask_visible=False: _resolve_mask_source returns before looking at all.
+    assert themes.mask_path_calls == 0

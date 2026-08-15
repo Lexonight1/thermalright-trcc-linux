@@ -536,8 +536,15 @@ class ThemeService:
             if resolved is not None:
                 td = ThemeDir(resolved if resolved.is_dir() else resolved.parent)
                 if td.mask.exists():
-                    log.info("mask_path: %s → referenced mask %s",
-                             theme.name, td.mask)
+                    # DEBUG, not INFO: ``_resolve_mask_source`` calls this on
+                    # every rendered frame, so an INFO line here floods the
+                    # log we ask reporters to send us — one report showed ten
+                    # identical lines inside a single second, and the capped
+                    # tail is then all frames and no user actions.  The
+                    # one-shot callers (LoadTheme, SaveTheme) log their own
+                    # INFO entry, so no signal is lost. (#264)
+                    log.debug("mask_path: %s → referenced mask %s",
+                              theme.name, td.mask)
                     return td.mask
             log.warning("mask_path: %s references %r but it did not "
                         "resolve — falling back to in-dir convention",

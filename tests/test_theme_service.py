@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import struct
 from pathlib import Path
 
@@ -266,3 +267,46 @@ def test_list_web_previews_missing_dir_returns_empty(tmp_path: Path) -> None:
 # Keep the unused `struct` import alive even if tests don't use it directly —
 # it's there for future parametrization of binary DC buffers.
 _ = struct
+
+
+# ── Per-frame logging — the report tail is the diagnostic instrument ──
+
+
+def _reference_theme(tmp_path: Path) -> tuple[ThemeService, Path]:
+    """A theme whose config names a library mask, as cloud themes do."""
+    from .conftest import FakePaths
+
+    paths = FakePaths(tmp_path)
+    mask_dir = paths.data_dir() / "web" / "zt1600720" / "000a"
+    mask_dir.mkdir(parents=True)
+    (mask_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    theme_dir = tmp_path / "Theme1"
+    theme_dir.mkdir()
+    (theme_dir / "config.json").write_text(json.dumps({
+        "mask": "web/zt1600720/000a", "elements": [],
+    }))
+    return ThemeService(paths), theme_dir
+
+
+def test_resolving_a_referenced_mask_does_not_log_at_info(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``mask_path`` sits on the per-frame render path — ``_resolve_mask_source``
+    calls it for every frame composed — so an INFO line here floods the log we
+    ask reporters to send us.  One report (#264) carried ten identical
+    ``mask_path`` INFO lines inside a single second, which is how a capped tail
+    ends up all frames and no user actions.
+
+    MUTATION CHECK: put the log.info back and this fails with 1 != 0.
+    """
+    svc, theme_dir = _reference_theme(tmp_path)
+    theme = svc.load(theme_dir)
+
+    with caplog.at_level(logging.DEBUG, logger="trcc.services.theme"):
+        resolved = svc.mask_path(theme)
+
+    assert resolved is not None and resolved.name == "01.png"   # still resolves
+    info_lines = [r for r in caplog.records
+                  if r.levelno >= logging.INFO and "mask_path" in r.message]
+    assert info_lines == []
