@@ -58,6 +58,17 @@ class DeviceSender(SendTask):
         "_wire_lock",
     )
 
+    @property
+    def device(self) -> Device:
+        """The device this worker drives.
+
+        Read by ``App.start_sender`` to tell "a sender exists" from "the RIGHT
+        sender exists" — a distinction that cost a user five minutes of dead
+        panel per replug before it was drawn (#254).
+        """
+        log.debug("DeviceSender.device: %s", self._device.key)
+        return self._device
+
     def __init__(
         self, device: Device, *, volatile: bool,
         keepalive_interval: float = _DEFAULT_KEEPALIVE_S,

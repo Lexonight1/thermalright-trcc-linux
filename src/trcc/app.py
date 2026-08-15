@@ -657,8 +657,24 @@ class App:
         if device is None:
             log.warning("start_sender: %s not attached", key)
             return
-        if key in self.senders:
-            return
+        existing = self.senders.get(key)
+        if existing is not None:
+            if existing.device is device:
+                return
+            # A sender for a device we no longer hold.  An unstable replug
+            # produces several `add` events in a row, and this method runs on
+            # the hotplug thread: one pass can register a sender just after
+            # another has released the device it was built for.  Treating
+            # "a sender exists" as "the right sender exists" then wedged the
+            # panel permanently — the stale worker logged `send() called
+            # before connect()` thousands of times while the freshly
+            # reconnected device never got a worker at all, because this
+            # returned early.  Only killing the process recovered it (#254).
+            log.warning(
+                "start_sender: %s has a sender bound to a released device — "
+                "replacing it (unstable replug)", key,
+            )
+            self.stop_sender(key)
         sender = DeviceSender(
             device, volatile=device.needs_keepalive,
             on_failure=self._on_sender_failure,
