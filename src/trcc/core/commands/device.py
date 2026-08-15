@@ -285,6 +285,12 @@ class ConnectDevice(Command[ConnectResult]):
                 patch["button_image"] = override.button_image
             if override.panel_cutout is not None:
                 patch["panel_cutout"] = override.panel_cutout
+            if override.display_name:
+                # The registry's ``product`` is one string for a USB id that
+                # covers dozens of coolers, so it names the wrong one for most
+                # of them (#272).  The handshake knows which cooler this is;
+                # when we have a confirmed name for that fingerprint, use it.
+                patch["product"] = override.display_name
             if patch:
                 device.info = _dc_replace(device.info, **patch)
                 log.info(

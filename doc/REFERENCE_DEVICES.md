@@ -24,6 +24,8 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | Elite Vision 360 ARGB Black | SCSI (0402:3922) | — | [tensaiteki](https://github.com/tensaiteki) |
 | Frozen Warframe Pro | Bulk (87AD:70DB) | — | [loosethoughts19-hash](https://github.com/loosethoughts19-hash) |
 | Trofeo Vision 9.16 LCD | LY (0416:5408) | — | [Mr-Renegade](https://github.com/Mr-Renegade) |
+| Hyper Vision 360 | Bulk (87AD:70DB) | 480x480 | [Seryogaberkut](https://github.com/Seryogaberkut) |
+| Peerless Vision 360 | Bulk (87AD:70DB) | 480x480 | [Ziusz](https://github.com/Ziusz) |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)
 
@@ -53,10 +55,8 @@ These have a full pixel LCD (240x240 to 1920x462) for custom themes, images, vid
 | Core Matrix VISION | 矩阵视界 |
 | Mjolnir Vision PRO | 雷神之锤 PRO |
 | Elite Vision | 精英视界 |
-| Hyper Vision | 终越视界 |
 | Stream Vision | 风擎视界 |
 | Rainbow Vision | 彩虹视界 |
-| Peerless Vision | 无双视界 |
 | Levita Vision | 悠浮视界 |
 | TL-M10 VISION | — |
 | TR-A70 Vision | — |
@@ -89,7 +89,7 @@ All devices connect through one of these USB VID:PIDs:
 | VID:PID | Protocol | Display | Products |
 |---------|----------|---------|----------|
 | 87CD:70DB | SCSI | Full LCD | Older LCD screens |
-| 87AD:70DB | Bulk | Full LCD | GrandVision 360 AIO, Mjolnir Vision 360 |
+| 87AD:70DB | Bulk | Full LCD | GrandVision 360 AIO, Mjolnir Vision 360, Hyper Vision 360, Peerless Vision 360, … (one USB id, many coolers — the handshake tells them apart) |
 | 0402:3922 | SCSI | Full LCD | Frozen Warframe series (360/SE/PRO/Ultra) |
 | 0416:5406 | SCSI | Full LCD | Winbond LCD variant |
 | 0416:5302 | HID Type 2 | Full LCD | Vision/Warframe (newer HW) |

@@ -55,6 +55,25 @@ def _v(button_image: str) -> VariantOverride:
     return VariantOverride(button_image=button_image)
 
 
+def _named(button_image: str, display_name: str) -> VariantOverride:
+    """A variant whose marketed product name someone has CONFIRMED on glass.
+
+    The registry stores one ``product`` string per (VID, PID), but a single
+    USB id covers dozens of coolers — every ``87ad:70db`` panel therefore
+    introduced itself as "GrandVision 360 AIO" no matter which cooler it
+    actually was (#272).
+
+    The name is not derived from ``button_image``.  Those strings are the C#'s
+    own button asset ids, and while some read as product names
+    (``A1GRAND VISION``) others are internal codes (``A1LM19SE``) that no
+    owner would recognise — so stripping the prefix would trade a wrong name
+    for an opaque one.  A row gets a display name only when a reporter has
+    told us what is printed on the cooler in their hand.
+    """
+    log.debug("_named: %s → %r", button_image, display_name)
+    return VariantOverride(button_image=button_image, display_name=display_name)
+
+
 # Bulk USBLCDNEW family (C# case 257) — the largest PM table.  Bulk
 # (0x87AD:0x70DB) is the canonical home; SCSI thermalright VID/PIDs alias
 # to this same dict.
@@ -62,8 +81,13 @@ _BULK_VARIANTS: dict[int, dict[int | None, VariantOverride]] = {
     1:   {0: _v('A1GRAND VISION'), 1: _v('A1GRAND VISION'),
           48: _v('A1LM22'), 49: _v('A1LF14'), None: _v('A1GRAND VISION')},
     3:   {None: _v('A1CORE VISION')},
-    4:   {1: _v('A1HYPER VISION'), 2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
-          4: _v('A1LF10V'), 5: _v('A1LM19SE'), 6: _v('A1LF014')},   # 2.1.6: +sub6
+    # sub 1 confirmed by Seryogaberkut (#274), sub 5 by Ziusz (#272) — both
+    # working on real hardware, both reporting what the cooler is sold as.
+    4:   {1: _named('A1HYPER VISION', 'Hyper Vision 360'),
+          2: _v('A1RP130 VISION'), 3: _v('A1LM16SE'),
+          4: _v('A1LF10V'),
+          5: _named('A1LM19SE', 'Peerless Vision 360'),
+          6: _v('A1LF014')},   # 2.1.6: +sub6
     5:   {None: _v('A1Mjolnir VISION')},
     6:   {1: _v('frozen_warframe_ultra'), 2: _v('A1FROZEN VISION V2')},
     7:   {1: _v('A1Stream Vision'), 2: _v('A1Mjolnir VISION PRO')},
