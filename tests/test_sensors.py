@@ -749,3 +749,94 @@ def test_rapl_rediscovery_is_throttled(monkeypatch) -> None:
     rapl.read()                                       # discover #2 (throttle was 0)
     rapl.read()                                       # throttled — no discover
     assert calls["n"] == 2
+
+
+# ── Cache freshness — read_all/read_one must not serve boot-time values ──
+
+
+class CountingCpu(FakeCpu):
+    """FakeCpu that records how many times the aggregator actually polled it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads = 0
+
+    def temp(self) -> float | None:
+        self.reads += 1
+        return self.values["temp"]
+
+
+def _counting_sensors() -> tuple[BaselineSensors, CountingCpu]:
+    cpu = CountingCpu()
+    return BaselineSensors(cpu=cpu, memory=FakeMemory(), gpus=[], fans=[]), cpu
+
+
+def test_read_all_refreshes_a_cache_older_than_the_poll_interval() -> None:
+    """A stale cache must be re-polled, or a headless render loop runs forever
+    on the values it read at launch.
+
+    ``read_all`` used to return its cached dict unconditionally once filled,
+    and only ``start_polling`` — whose sole caller is ``MetricsLoop``, started
+    by the daemon/gui/qtgui and by no CLI or API entry point — ever refreshed
+    it.  So ``trcc led play`` drove an LED cooler's colours and segment readout
+    from the temperature at launch, indefinitely (#270).
+
+    MUTATION CHECK: restore the early ``if self._readings: return`` in
+    ``read_all`` and this fails with 42.0 != 77.0 — the reported symptom.
+    """
+    s, cpu = _counting_sensors()
+
+    assert s.read_all()["cpu:temp"] == 42.0
+    cpu.values["temp"] = 77.0                 # the hardware moved
+    s._last_poll -= s._interval_s + 1.0       # age the cache past its interval
+
+    assert s.read_all()["cpu:temp"] == 77.0
+
+
+def test_read_all_serves_a_still_fresh_cache_without_repolling() -> None:
+    """Freshness is a TTL, not "poll every call" — the cache still does its job.
+
+    Guards the opposite regression: deleting the cache instead of expiring it
+    would re-poll every hwmon node on each frame of a 30 Hz render loop.
+    """
+    s, cpu = _counting_sensors()
+
+    s.read_all()
+    polled = cpu.reads
+    cpu.values["temp"] = 77.0                 # moved, but the TTL has not run out
+
+    assert s.read_all()["cpu:temp"] == 42.0   # served from cache
+    assert cpu.reads == polled                # and nothing was re-read
+
+
+def test_a_live_poll_thread_owns_the_cadence_so_readers_never_inline_poll() -> None:
+    """The gui/daemon path must be untouched: a running poll thread already
+    keeps the cache current, so a reader must never pay for an inline poll —
+    even when the cache looks ancient by the clock."""
+    s, cpu = _counting_sensors()
+    s.start_polling(60.0)                     # polls once, then waits out the interval
+    try:
+        idle = threading.Event()
+        for _ in range(500):                  # bounded: never hang the suite
+            if s._last_poll:                  # the thread committed a poll
+                break
+            idle.wait(0.01)
+        assert s._last_poll, "background poll never landed"
+        settled = cpu.reads
+        s._last_poll = 0.0                    # ancient — would force a poll if checked
+
+        s.read_all()
+        s.read_one("cpu:temp")
+
+        assert cpu.reads == settled           # the thread owns it; readers paid nothing
+    finally:
+        s.stop_polling()
+
+
+def test_read_one_polls_instead_of_returning_none_forever() -> None:
+    """``read_one`` read the cache without ever polling, so on a fresh
+    enumerator — one nobody had called ``read_all`` on — it returned None for
+    every sensor, for the life of the process."""
+    s, _ = _counting_sensors()
+
+    assert s.read_one("cpu:temp") == 42.0

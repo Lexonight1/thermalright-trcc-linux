@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
@@ -168,6 +169,9 @@ class BaselineSensors(SensorEnumerator):
         self._io = ComputedIo()
         self._lock = threading.Lock()
         self._readings: dict[str, float] = {}
+        # When ``_readings`` was last filled (monotonic).  0.0 = never, which
+        # reads as infinitely stale — see ``_refresh_if_stale``.
+        self._last_poll: float = 0.0
         self._poll_thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._interval_s: float = 2.0
@@ -281,18 +285,50 @@ class BaselineSensors(SensorEnumerator):
         return readings
 
     def read_all(self) -> dict[str, float]:
+        """Every current reading, refreshing the cache first if it is stale."""
         log.debug("read_all: cached=%d", len(self._readings))
-        with self._lock:
-            if self._readings:
-                return dict(self._readings)
-        self._poll_once()
+        self._refresh_if_stale()
         with self._lock:
             return dict(self._readings)
 
     def read_one(self, sensor_id: str) -> float | None:
+        """One current reading, refreshing the cache first if it is stale."""
         log.debug("read_one: sensor_id=%s", sensor_id)
+        self._refresh_if_stale()
         with self._lock:
             return self._readings.get(sensor_id)
+
+    def _refresh_if_stale(self) -> None:
+        """Poll inline when nothing else is keeping ``_readings`` current.
+
+        The cache had no expiry: ``read_all`` polled once, when it was empty,
+        then returned that same dict for the life of the process.  Only
+        ``start_polling`` refreshed it, and its one caller is ``MetricsLoop``
+        — which the daemon, gui and qtgui start and no CLI or API entry point
+        does.  So every long-running headless render loop ran on boot-time
+        values: ``trcc led play`` drove an LED cooler's colours and its
+        segment readout from the temperature at launch (#270), and ``display
+        play`` did the same to LCD metric overlays.  ``read_one`` was worse
+        still — it read the cache without ever polling, so on a fresh
+        enumerator it returned None indefinitely.
+
+        A live poll thread owns the cadence and its cache is fresh by
+        definition, so the gui/daemon path returns here without taking the
+        lock and pays nothing.
+        """
+        if self._poll_thread is not None and self._poll_thread.is_alive():
+            log.debug("_refresh_if_stale: poll thread owns the cadence")
+            return
+        with self._lock:
+            age = time.monotonic() - self._last_poll
+            fresh = bool(self._readings) and age < self._interval_s
+        if fresh:
+            log.debug("_refresh_if_stale: cache %.2fs old < %.2fs interval",
+                      age, self._interval_s)
+            return
+        log.debug("_refresh_if_stale: cache %.2fs old >= %.2fs interval "
+                  "and no poll thread — polling inline", age, self._interval_s)
+        self._poll_once()
 
     # ── Polling ────────────────────────────────────────────────────
 
@@ -432,6 +468,7 @@ class BaselineSensors(SensorEnumerator):
 
         with self._lock:
             self._readings = r
+            self._last_poll = time.monotonic()
 
     def _poll_extra(self, readings: dict[str, float]) -> None:
         """Override to add OS-native readings not covered by cpu/memory/gpus/fans."""
