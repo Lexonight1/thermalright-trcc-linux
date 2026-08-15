@@ -250,7 +250,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
             style=style,
             model_name=model_name,
             style_sub=style_sub,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
         # Cache the result so a second app launch on the same
         # power cycle can skip the now-broken handshake.  The
@@ -265,7 +265,7 @@ class Led(BaseBulkDevice, wire=Wire.LED):
             model_id=self._pm,
             pm_byte=self._pm,
             sub_byte=self._sub,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
 
     def _handshake_from_cache(self, failure: HandshakeError) -> HandshakeResult:

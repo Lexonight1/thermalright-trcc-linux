@@ -95,7 +95,7 @@ class AliLcd(BaseBulkDevice, wire=Wire.BULK_ALI):
             model_id=model_id,
             pm_byte=resp[0],
             fbl=self.info.fbl,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
 
     def _handshake_detail(self, result: HandshakeResult) -> str:

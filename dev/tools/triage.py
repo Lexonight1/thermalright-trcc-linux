@@ -61,6 +61,38 @@ _KNOWN_FIXES = {
 }
 
 
+_RAW = re.compile(r'"?raw"?[:=]\s*"?([0-9a-fA-F]{16,})"?')
+
+
+def scan_self_description(blob: bytes, resolution: tuple[int, int]) -> list[str]:
+    """Where a panel's own dimensions appear in the bytes it sent us.
+
+    The device replies with up to a kilobyte and we have only ever read six
+    bytes of it -- the PM and SUB that index our hand-maintained geometry
+    tables.  Whether the panel states its own size in there has never been
+    checked, because every adapter truncated the reply to 64 bytes before
+    anyone could look.
+
+    It matters more than a curiosity.  Today a cooler we have no row for is
+    unsupported until a reporter measures it -- one of them resorted to
+    photographing test gratings and running an FFT.  If the dimensions are in
+    the reply, an unknown panel could describe itself and the catalog problem
+    largely dissolves.
+
+    Reports both endiannesses at every offset, and stays quiet when it finds
+    nothing: a false hit here would send someone building on sand.
+    """
+    hits: list[str] = []
+    for label, value in (("width", resolution[0]), ("height", resolution[1])):
+        for endian in ("little", "big"):
+            needle = value.to_bytes(2, endian)
+            start = 0
+            while (i := blob.find(needle, start)) >= 0:
+                hits.append(f"{label}={value} as uint16-{endian} at offset {i}")
+                start = i + 1
+    return hits
+
+
 def _sh(*args: str) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=False).stdout.strip()
 
@@ -135,6 +167,27 @@ def triage(number: int) -> None:
         print(f"  handshake  PM={pm} SUB={sub}  {note}{flag}")
     if not seen:
         print("  handshake  (NONE — ask for `trcc report -o report.txt`, attached)")
+
+    # The experiment nobody has run: does the panel state its own size?
+    for hexblob in dict.fromkeys(_RAW.findall(text)):
+        try:
+            blob = bytes.fromhex(hexblob)
+        except ValueError:
+            continue
+        print(f"\n  self-description: {len(blob)} bytes from the device")
+        if len(blob) <= 64:
+            print("    (truncated at 64 — this report predates v9.9.9; "
+                  "a newer one carries the whole reply)")
+        for pm, sub, w, h in _HANDSHAKE.findall(text):
+            if not w:
+                continue
+            found = scan_self_description(blob, (int(w), int(h)))
+            for hit in found:
+                print(f"    *** {hit}")
+            if not found:
+                print(f"    no {w}x{h} anywhere in the reply "
+                      "(so geometry stays a catalog fact for this panel)")
+            break
 
     version = _first(_VERSION.search(text))
     if version != "?":

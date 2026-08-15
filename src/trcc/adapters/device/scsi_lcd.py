@@ -123,7 +123,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
             pm_byte=fbl,
             sub_byte=0,
             fbl=fbl,
-            raw_response=bytes(response[:64]),
+            raw_response=bytes(response),
         )
 
     def _handshake_detail(self, result: HandshakeResult) -> str:

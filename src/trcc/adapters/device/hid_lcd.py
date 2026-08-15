@@ -187,7 +187,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
                  self.info.key, profile.resolution)
         return HandshakeResult(
             resolution=profile.resolution, model_id=pm, serial="",
-            pm_byte=pm, sub_byte=sub, fbl=fbl, raw_response=bytes(resp[:64]),
+            pm_byte=pm, sub_byte=sub, fbl=fbl, raw_response=bytes(resp),
         )
 
     def _base_profile(self, fbl: int | None, pm: int) -> DeviceProfile:
@@ -314,7 +314,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             pm_byte=pm,
             sub_byte=sub,
             fbl=fbl,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
 
     def _build_frame_type2(self, image_data: bytes) -> bytes:
@@ -375,7 +375,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             pm_byte=fbl,
             sub_byte=0,
             fbl=fbl,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
 
     def _build_frame_type3(self, image_data: bytes) -> bytes:

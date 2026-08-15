@@ -129,7 +129,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             pm_byte=self._pm,
             sub_byte=self._sub,
             fbl=fbl,
-            raw_response=bytes(resp[:64]),
+            raw_response=bytes(resp),
         )
 
     def _handshake_detail(self, result: HandshakeResult) -> str:

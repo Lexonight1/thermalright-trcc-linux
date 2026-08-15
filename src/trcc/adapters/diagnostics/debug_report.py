@@ -279,7 +279,7 @@ def _probe_handshake(
         "sub": str(result.sub_byte),
         "fbl": str(result.fbl) if result.fbl is not None else "?",
         "resolution": f"{result.resolution[0]}x{result.resolution[1]}",
-        "raw": result.raw_response[:64].hex(),
+        "raw": result.raw_response.hex(),
     }
     log.info("_probe_handshake: %s → PM=%s SUB=%s fbl=%s resolution=%s",
              key, handshake["pm"], handshake["sub"], handshake["fbl"],
