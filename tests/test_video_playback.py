@@ -10,6 +10,7 @@ monkeypatched to return a synthetic Playback so tests run without ffmpeg.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -537,89 +538,12 @@ def test_video_decoder_accepts_valid_dimension(
 # ── VideoFrameCache pixel-parity gate ────────────────────────────────
 
 
-def test_video_cache_frames_byte_identical_to_direct_build(
-    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The cache path must produce byte-identical frames to the direct path.
-
-    This is the gate for wiring the VideoFrameCache into ``build_frame``:
-    ``get_surface(cursor)`` returns exactly what ``_build_bg_mask`` builds
-    for that cursor, so the encoded wire bytes are identical whether the
-    bg came from the cache or a fresh per-frame rebuild.  A real
-    ``QtRenderer`` is used so the comparison is on actual encoded bytes,
-    not stand-in surfaces; three distinct solid-colour frames prove the
-    cursor maps to the right frame (not the same one returned thrice).
-    """
+def _video_display(tmp_home: Path, n_frames: int):
+    """A DisplayService with a real renderer and an *n_frames* playback."""
     from trcc.adapters.render.qt import QtRenderer
 
     renderer = QtRenderer()
     media = MediaService()
-    # Three distinct solid-colour frames → distinct backgrounds.  Values
-    # are spread across the high bits (64 / 128 / 192) so they survive
-    # RGB565 quantisation — 0x01..0x03 would all round to black.
-    frames = [
-        RawFrame(data=bytes([64 * (i + 1)]) * (320 * 320 * 3),
-                 width=320, height=320)
-        for i in range(3)
-    ]
-    media._playbacks[_KEY] = Playback(frames=frames, fps=15)
-    playback = media._playbacks[_KEY]
-
-    display = DisplayService(
-        renderer=renderer,
-        themes=ThemeService(),
-        overlay=OverlayService(renderer),
-        settings=Settings(FakePaths(tmp_home)),
-        media=media,
-        paths=FakePaths(tmp_home),
-    )
-    info = ProductInfo(
-        vid=0x0402, pid=0x3922,
-        vendor="ALi Corp", product="LCD",
-        wire=Wire.SCSI, kind=Kind.LCD,
-        device_type=1, fbl=100, native_resolution=(320, 320),
-        orientations=(0,),
-    )
-    theme = Theme(
-        path=tmp_home / "theme", name="t",
-        resolution=(320, 320), config={"elements": []},
-    )
-    profile = get_profile(100)
-
-    def render_each_cursor() -> list[bytes]:
-        out: list[bytes] = []
-        for index in range(len(frames)):
-            playback.cursor = index
-            out.append(display.build_frame(
-                info=info, theme=theme, sensors={}, profile=profile,
-            ))
-        return out
-
-    # Cache path (the new default for multi-frame video).
-    cached = render_each_cursor()
-
-    # Direct path: clear both caches, force ``_video_cache`` to opt out,
-    # re-render the same cursors through ``_build_bg_mask`` each tick.
-    display.invalidate_all()
-    monkeypatch.setattr(display, "_video_cache", lambda *a, **k: None)
-    direct = render_each_cursor()
-
-    assert cached == direct                    # byte-identical
-    assert len(set(cached)) == 3               # cursor genuinely maps per-frame
-
-
-def test_video_cache_builds_once_then_serves_lookups(
-    tmp_home: Path,
-) -> None:
-    """The CPU win: ``_build_bg_mask`` runs once per frame (at the single
-    cache build), then every later tick is a list lookup — NOT a fresh
-    rebuild.  15 ticks over a 9-frame loop must call ``_build_bg_mask``
-    exactly 9 times (the build), not 15."""
-    from trcc.adapters.render.qt import QtRenderer
-
-    renderer = QtRenderer()
-    media = MediaService()
-    n_frames = 9
     media._playbacks[_KEY] = Playback(
         frames=[
             RawFrame(data=bytes([64 * (i % 3 + 1)]) * (320 * 320 * 3),
@@ -628,7 +552,6 @@ def test_video_cache_builds_once_then_serves_lookups(
         ],
         fps=15,
     )
-    playback = media._playbacks[_KEY]
     display = DisplayService(
         renderer=renderer,
         themes=ThemeService(),
@@ -648,85 +571,95 @@ def test_video_cache_builds_once_then_serves_lookups(
         path=tmp_home / "theme", name="t",
         resolution=(320, 320), config={"elements": []},
     )
-    profile = get_profile(100)
+    return display, media._playbacks[_KEY], info, theme, get_profile(100)
 
-    builds = 0
+
+def _count_composites(display: DisplayService) -> Callable[[], int]:
+    """Wrap ``_build_bg_mask`` so a test can read how many composites ran."""
+    calls = 0
     original = display._build_bg_mask
 
-    def counting_build_bg_mask(*args: Any, **kwargs: Any) -> Any:
-        nonlocal builds
-        builds += 1
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
         return original(*args, **kwargs)
 
-    display._build_bg_mask = counting_build_bg_mask  # type: ignore[method-assign]
+    display._build_bg_mask = counting            # type: ignore[method-assign]
+    return lambda: calls
 
-    for tick in range(15):
-        playback.cursor = tick % n_frames
+
+def test_each_cursor_renders_its_own_frame(tmp_home: Path) -> None:
+    """Moving the cursor must change the bg the tick composes.
+
+    With the pre-composited VideoFrameCache gone, the one thing stopping a
+    video freezing on frame 0 is that ``_bg_mask_key`` carries the playback
+    cursor, so a moving cursor misses the single-surface scene cache and
+    composes fresh.  The frame cache used to mask that; it is now
+    load-bearing, so it gets its own guard.
+
+    Real ``QtRenderer``, so the comparison is on actual encoded wire bytes.
+    Frame values are spread across the high bits (64/128/192) to survive
+    RGB565 quantisation — 0x01..0x03 would all round to black.
+
+    MUTATION CHECK: drop ``cursor`` from ``_bg_mask_key`` and this fails with
+    all three renders identical.
+    """
+    display, playback, info, theme, profile = _video_display(tmp_home, 3)
+
+    rendered = []
+    for cursor in range(3):
+        playback.cursor = cursor
+        rendered.append(
+            display.build_frame(info=info, theme=theme, sensors={}, profile=profile))
+
+    assert len(set(rendered)) == 3
+
+
+def test_composing_never_scales_with_video_length(tmp_home: Path) -> None:
+    """A tick composes ONE frame, however long the video is.
+
+    We used to pre-composite every frame before showing the first one.  On a
+    1600x720 panel that froze the UI for 3.96s and retained 4.13GB — 1.84GB
+    even for a stock 228-frame cloud theme (#264, #256).  The C# never does
+    this: ``GenerateImage`` (UCScreenImage.cs:634) composes background + mask
+    + text afresh for every frame it sends, holding ONE mask bitmap rather
+    than a copy per frame.
+
+    "One composite per tick" is what makes the cost independent of video
+    length, which is the whole fix.
+
+    MUTATION CHECK: restore the pre-build and this fails with 40 != 4 — the
+    entire video is composed on the first tick.
+    """
+    display, playback, info, theme, profile = _video_display(tmp_home, 40)
+    composites = _count_composites(display)
+
+    ticks = 4
+    for tick in range(ticks):
+        playback.cursor = tick
         display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
 
-    # Built once (one _build_bg_mask per frame), then 15 ticks served as
-    # lookups — not 15 rebuilds.
-    assert builds == n_frames
+    assert composites() == ticks
 
 
-def test_build_preview_surface_uses_the_video_cache(tmp_home: Path) -> None:
-    """The GUI preview path goes through the same VideoFrameCache as the wire
-    path — so a video theme's preview is a cache lookup, not a fresh
-    per-tick decode.  15 preview calls over a 9-frame loop call
-    ``_build_bg_mask`` exactly 9 times (the single cache build)."""
-    from trcc.adapters.render.qt import QtRenderer
+def test_preview_also_composes_one_frame_per_tick(tmp_home: Path) -> None:
+    """The GUI preview shares ``_resolve_bg_overlay`` with the wire path, so it
+    inherits the same per-tick cost and never pre-builds the whole video.
 
-    renderer = QtRenderer()
-    media = MediaService()
-    n_frames = 9
-    media._playbacks[_KEY] = Playback(
-        frames=[
-            RawFrame(data=bytes([64 * (i % 3 + 1)]) * (320 * 320 * 3),
-                     width=320, height=320)
-            for i in range(n_frames)
-        ],
-        fps=15,
-    )
-    playback = media._playbacks[_KEY]
-    display = DisplayService(
-        renderer=renderer,
-        themes=ThemeService(),
-        overlay=OverlayService(renderer),
-        settings=Settings(FakePaths(tmp_home)),
-        media=media,
-        paths=FakePaths(tmp_home),
-    )
-    info = ProductInfo(
-        vid=0x0402, pid=0x3922,
-        vendor="ALi Corp", product="LCD",
-        wire=Wire.SCSI, kind=Kind.LCD,
-        device_type=1, fbl=100, native_resolution=(320, 320),
-        orientations=(0,),
-    )
-    theme = Theme(
-        path=tmp_home / "theme", name="t",
-        resolution=(320, 320), config={"elements": []},
-    )
-    profile = get_profile(100)
+    MUTATION CHECK: restore the pre-build and this fails with 40 != 4.
+    """
+    display, playback, info, theme, profile = _video_display(tmp_home, 40)
+    composites = _count_composites(display)
 
-    builds = 0
-    original = display._build_bg_mask
-
-    def counting_build_bg_mask(*args: Any, **kwargs: Any) -> Any:
-        nonlocal builds
-        builds += 1
-        return original(*args, **kwargs)
-
-    display._build_bg_mask = counting_build_bg_mask  # type: ignore[method-assign]
-
-    for tick in range(15):
-        playback.cursor = tick % n_frames
+    ticks = 4
+    for tick in range(ticks):
+        playback.cursor = tick
         surface = display.build_preview_surface(
             info=info, theme=theme, sensors={}, profile=profile,
         )
         assert surface is not None
 
-    assert builds == n_frames   # the cache, not 15 fresh decodes
+    assert composites() == ticks
 
 
 def test_rendered_surface_exposes_sent_frame_for_preview(

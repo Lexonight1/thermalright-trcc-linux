@@ -45,7 +45,6 @@ from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
 from .theme import ThemeService
-from .video_cache import VideoFrameCache
 
 log = logging.getLogger(__name__)
 
@@ -153,13 +152,6 @@ class DisplayService:
         # scaling.  Same axis as the PlayVideo decode-size gate.
         self._paths = paths
         self._scenes: dict[str, SceneCache] = {}
-        # Per-device pre-composited animation-frame cache (bg+mask for
-        # every video frame, built once).  Decouples the animation loop
-        # from the per-frame ``_build_bg_mask`` rebuild — a tick after
-        # the first build is a list lookup, not a decode+fit+composite.
-        # Built lazily, dropped by ``invalidate`` alongside the scene
-        # cache so any Command that changes the bg+mask layer rebuilds.
-        self._video_caches: dict[str, VideoFrameCache] = {}
         # Cache of loaded split-overlay surfaces keyed by
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
@@ -502,34 +494,27 @@ class DisplayService:
         """Resolve the (bg+mask, overlay) surfaces for a tick.
 
         Shared by ``build_frame`` (wire) and ``build_preview_surface``
-        (GUI) so both go through the same caches — most importantly the
-        VideoFrameCache: a multi-frame video draws a new bg every tick
-        (the cursor is in ``bg_key`` → always a single-surface scene
-        MISS), so without the frame cache every tick re-ran the full
-        decode+fit+composite.  ``get_surface`` returns exactly what
-        ``_build_bg_mask`` produced for that cursor (the parity gate).
+        (GUI) so both go through the same cache.
+
+        A multi-frame video puts its cursor in ``bg_key``, so it MISSES
+        the single-surface scene cache every tick and composes fresh.
+        That is deliberate and matches the C#: ``GenerateImage``
+        (UCScreenImage.cs:634) allocates a bitmap, draws background →
+        mask → text, for every frame it sends, holding ONE mask bitmap
+        rather than baking it into a copy per frame.
+
+        We used to pre-composite every frame of the video up front
+        instead.  On a 1600x720 panel that froze the UI for 3.96s and
+        retained 4.13GB — and 1.84GB even for a stock 228-frame cloud
+        theme (#264, #256).  Composing per tick costs 4.41ms more on
+        that same panel, against a 41.7ms budget at the 24fps real
+        themes report.  Static themes are unaffected: they still hit the
+        scene cache above, because their ``bg_key`` does not move.
         """
         if scene is not None and scene.bg_mask_key == bg_key:
             bg_surface = scene.bg_mask_surface
         else:
-            video_cache = self._video_cache(info, theme, visual_size)
-            if video_cache is not None:
-                pb = self._media.playback(info.key)
-                cursor = pb.cursor if pb is not None else 0
-                bg_surface = video_cache.get_surface(cursor)
-                if bg_surface is None:
-                    log.warning(
-                        "resolve_bg_overlay %s: video cache miss at cursor "
-                        "%d (frames=%d) — rebuilding bg directly",
-                        info.key, cursor, video_cache.frame_count,
-                    )
-                    bg_surface = self._build_bg_mask(info, theme, visual_size)
-                else:
-                    log.debug("resolve_bg_overlay %s: bg from video cache "
-                              "(cursor=%d/%d)", info.key, cursor,
-                              video_cache.frame_count)
-            else:
-                bg_surface = self._build_bg_mask(info, theme, visual_size)
+            bg_surface = self._build_bg_mask(info, theme, visual_size)
 
         if scene is not None and scene.overlay_key == overlay_key:
             overlay_surface = scene.overlay_surface
@@ -692,21 +677,14 @@ class DisplayService:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
         log.info("invalidate: key=%s", key)
         self._scenes.pop(key, None)
-        # Drop the animation-frame cache too — every Command that mutates
-        # the bg+mask layer (PlayVideo / ApplyMask / SetFitMode /
-        # SetBackgroundMode / LoadTheme …) already calls this, so the
-        # cache rebuilds from the new layer on the next video tick.
-        self._video_caches.pop(key, None)
         # Reset the transition tracker too, so the next build_frame for
         # this key logs INFO when the cache state first appears
         # post-invalidation (instead of comparing against stale state).
         self._cache_state.pop(key, None)
 
     def invalidate_all(self) -> None:
-        log.info("invalidate_all: scenes=%d video_caches=%d",
-                 len(self._scenes), len(self._video_caches))
+        log.info("invalidate_all: scenes=%d", len(self._scenes))
         self._scenes.clear()
-        self._video_caches.clear()
         self._cache_state.clear()
 
     def _log_cache_transition(self, key: str, bg_hit: bool,
@@ -769,64 +747,6 @@ class DisplayService:
         return self._r.encode_jpeg(surface, quality)
 
     # ── Layer 1: background + mask ────────────────────────────────────
-
-    def _video_cache(
-        self,
-        info: ProductInfo,
-        theme: Theme,
-        visual_size: tuple[int, int],
-    ) -> VideoFrameCache | None:
-        """Lazily build (and return) the animation-frame cache for *info*.
-
-        Gated on a multi-frame video playback rendered as the theme
-        background.  For ``color`` / ``transparent`` / static-image
-        themes there's nothing per-frame to cache, so this returns None
-        and the caller keeps the single-surface scene cache.
-
-        The cache holds, per cursor, exactly what ``_build_bg_mask``
-        produces for that frame: built by seeking the playback to each
-        cursor and reusing ``_build_bg_mask`` itself — so a cached
-        surface is byte-identical to the live path (the parity gate).
-        Brightness stays at 100 (passthrough): ``build_frame`` keeps
-        applying brightness on the composited surface, so a brightness
-        change needs no rebuild — matching ``_bg_mask_key`` which omits
-        brightness.  Invalidation is explicit (``invalidate``), so once
-        an active cache exists it's valid until a layer Command drops it.
-        """
-        s = self._settings.for_device(info.key)
-        if s.background_mode != "theme":
-            return None
-        playback = self._media.playback(info.key)
-        if playback is None or len(playback.frames) <= 1:
-            return None
-
-        cache = self._video_caches.get(info.key)
-        if (
-            cache is not None
-            and cache.active
-            and cache.frame_count == len(playback.frames)
-        ):
-            return cache
-
-        log.info(
-            "_video_cache %s: building %d-frame cache (theme=%r, %dx%d)",
-            info.key, len(playback.frames), theme.name,
-            visual_size[0], visual_size[1],
-        )
-        cache = VideoFrameCache()
-        masked: list[Any] = []
-        saved_cursor = playback.cursor
-        try:
-            for index in range(len(playback.frames)):
-                playback.cursor = index
-                masked.append(self._build_bg_mask(info, theme, visual_size))
-        finally:
-            playback.cursor = saved_cursor
-        # ``_build_bg_mask`` already produced finished bg+mask surfaces per
-        # cursor — the cache just holds them for per-tick lookup.
-        cache.build(masked)
-        self._video_caches[info.key] = cache
-        return cache
 
     def _build_bg_mask(
         self,
