@@ -77,6 +77,23 @@ No hardware needed, and fully reproducible — a maintainer re-runs the same
 `devices.json` and sees exactly what you saw. That reproducibility is what lets
 the project accept fixes for devices nobody on the team owns.
 
+## Triage an issue
+
+```bash
+PYTHONPATH=src python3.12 dev/tools/triage.py 262        # or several numbers
+```
+
+Pulls the thread, **downloads any attached `trcc report`** (the useful ones
+are attached, not pasted), and prints the version, distro, installer, device
+and every handshake it can find — then resolves each fingerprint through the
+*shipping* `bulk_profile` / `get_profile`, so the geometry it shows is the
+geometry the app would use, not a second implementation that can drift.
+
+It flags what is easy to miss by eye: a `PM=0` handshake that identified
+nothing, a `PORTRAIT-MOUNTED` panel, and which released fixes post-date the
+reporter's version — that last one is the check people skip, and skipping it
+is how someone gets told to test a fix that was not in their build.
+
 ## Other harnesses
 
 `mock_cli.py` / `mock_api.py` are the CLI/API equivalents of `mock_gui.py`.
