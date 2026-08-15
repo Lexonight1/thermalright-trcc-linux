@@ -71,6 +71,41 @@ _BULK_BASE_FBL = 72
 _BULK_KNOWN_PMS: frozenset[int] = frozenset({5, 7, 9, 10, 11, 12, 32, 64, 65})
 
 
+# JPEG start-of-frame markers carry the image's real dimensions.  C4/C8/CC
+# are Huffman/extension segments, not frames, so they are excluded.
+_JPEG_SOF_MARKERS = frozenset(
+    m for m in range(0xC0, 0xD0) if m not in (0xC4, 0xC8, 0xCC)
+)
+
+
+def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Read a JPEG's ``(width, height)`` from its SOF segment, or None.
+
+    Header-only: it walks the segment markers rather than decoding pixels, so
+    it is cheap enough to run on every frame and needs no imaging library at
+    the wire layer.  Returns None for RGB565 payloads and anything malformed.
+    """
+    if len(data) < 4 or data[0] != 0xFF or data[1] != 0xD8:
+        return None
+    i, n = 2, len(data)
+    while i + 9 < n:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker == 0xD8 or marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        if marker in _JPEG_SOF_MARKERS:
+            height = int.from_bytes(data[i + 5:i + 7], "big")
+            width = int.from_bytes(data[i + 7:i + 9], "big")
+            log.debug("jpeg_dimensions: %dx%d", width, height)
+            return (width, height)
+        i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    log.debug("jpeg_dimensions: no SOF segment in %d bytes", n)
+    return None
+
+
 def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]:
     """Resolve a bulk handshake's PM/SUB bytes to its ``(FBL, profile)``.
 
@@ -206,6 +241,45 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
                 f"BulkLcd {self.info.key} not connected — call connect() first"
             )
 
+    def _warn_if_payload_shape_disagrees(
+        self, payload: bytes, width: int, height: int, *, jpeg: bool,
+    ) -> None:
+        """Say so when the frame we are about to send is not the shape we claim.
+
+        The header declares the profile's resolution, and the firmware uses it
+        to de-block the JPEG or interpret the RGB565 buffer — so a payload of a
+        different shape is painted only where the two overlap.  That is #262:
+        ``display send-image`` on an 854x480 panel emits a 480x854 JPEG under
+        an 854x480 header, and roughly a third of the screen lights up.
+
+        It failed silently, which is the worst part: the command reports
+        success, the log says the frame went out, and only the glass disagrees.
+        A warning here makes it self-reporting from any user's ``trcc report``,
+        with both shapes named, before anyone has to reproduce it.
+
+        Diagnostic only — the frame is still sent.  This must never be the
+        thing that stops a panel drawing.
+        """
+        actual = jpeg_dimensions(payload) if jpeg else None
+        if actual is not None and actual != (width, height):
+            log.warning(
+                "BulkLcd %s: frame is %dx%d but the header declares %dx%d — "
+                "the panel will paint only the overlap (#262)",
+                self.info.key, actual[0], actual[1], width, height,
+            )
+            return
+        if not jpeg:
+            expected = width * height * 2      # RGB565
+            if payload and len(payload) != expected:
+                log.warning(
+                    "BulkLcd %s: RGB565 frame is %d bytes but %dx%d needs %d "
+                    "— the panel will paint only part of it (#262)",
+                    self.info.key, len(payload), width, height, expected,
+                )
+                return
+        log.debug("_warn_if_payload_shape_disagrees: %s matches %dx%d",
+                  self.info.key, width, height)
+
     def _prepare_frame(self, payload: bytes) -> bytes:
         """64-byte USBLCDNew header + payload.
 
@@ -217,6 +291,8 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
             raise TransportError(f"BulkLcd {self.info.key} has no profile")
         width, height = self._profile.resolution
         cmd = 2 if self._profile.jpeg else 3
+        self._warn_if_payload_shape_disagrees(
+            payload, width, height, jpeg=self._profile.jpeg)
 
         header = bytearray(64)
         header[0:4] = _HANDSHAKE_PAYLOAD[0:4]
