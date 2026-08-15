@@ -114,6 +114,9 @@ class RecordingRenderer(Renderer):
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(frame.width, frame.height)
 
+    def decode_image(self, data: bytes) -> Any:
+        return _Surface(100, 100)
+
 
 # ── Fakes that don't matter for what we're testing ────────────────────
 

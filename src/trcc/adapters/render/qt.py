@@ -369,6 +369,14 @@ class QtRenderer(Renderer):
             out.append(row_out)
         return out
 
+    def decode_image(self, data: bytes) -> Any:
+        """Decode JPEG/PNG bytes to an ARGB32 surface (see Renderer.decode_image)."""
+        log.debug("decode_image: %d byte(s)", len(data))
+        qimg = QImage()
+        if not qimg.loadFromData(data):
+            raise ValueError(f"could not decode a {len(data)}-byte image")
+        return qimg.convertToFormat(QImage.Format.Format_ARGB32)
+
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
     def from_raw_rgb24(self, frame: RawFrame) -> Any:

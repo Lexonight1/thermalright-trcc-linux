@@ -39,7 +39,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
 | [`Platform`](#platform) | 10 | 9 | 4 |
-| [`Renderer`](#renderer) | 12 | 6 | 1 |
+| [`Renderer`](#renderer) | 13 | 6 | 1 |
 
 ---
 
@@ -569,12 +569,13 @@ setup(interactive: 'bool' = True) -> int
 
 Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py).
 
-**You implement (12):**
+**You implement (13):**
 
 ```python
 apply_brightness(surface: 'Any', percent: 'int') -> Any
 composite(base: 'Any', overlay: 'Any', position: 'tuple[int, int]', mask: 'Any | None' = None) -> Any
 create_surface(width: 'int', height: 'int', color: 'tuple[int, ...] | None' = None) -> Any
+decode_image(data: 'bytes') -> Any
 draw_text(surface: 'Any', x: 'int', y: 'int', text: 'str', color: 'str', size: 'int', bold: 'bool' = False, italic: 'bool' = False) -> None
 encode_jpeg(surface: 'Any', quality: 'int' = 95, max_size: 'int' = 0) -> bytes
 encode_rgb565(surface: 'Any', byte_order: 'str' = '>') -> bytes

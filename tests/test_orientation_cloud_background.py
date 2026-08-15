@@ -24,6 +24,8 @@ from trcc.app import App
 from trcc.core.commands import ConnectDevice, LoadCloudTheme, SetOrientation
 from trcc.services.media import MediaService
 
+from .test_video_playback import _encoded_frame
+
 _KEY = "87ad:70db"
 _VID, _PID = 0x87AD, 0x70DB
 # Bulk panel scripted to 854×480 (pm=11) — non-square + rotatable.
@@ -66,12 +68,10 @@ def connected(
     decode_sizes: list[tuple[int, int] | None] = []
 
     def _fake_load(self, device_key, path, size=None, **kwargs):  # type: ignore[no-untyped-def]
-        from trcc.core.models import RawFrame
         from trcc.services.media import Playback
         decode_sizes.append(size)
         w, h = size if size is not None else (854, 480)
-        pb = Playback(frames=[RawFrame(data=b"\x00" * (w * h * 3),
-                                       width=w, height=h)], fps=15)
+        pb = Playback(frames=[_encoded_frame(0xFF000000, w, h)], fps=15)
         self._playbacks[device_key] = pb
         return pb
 

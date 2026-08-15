@@ -439,6 +439,9 @@ class _CliRenderer(Renderer):
     def from_raw_rgb24(self, frame):
         return _Surface(100, 100)
 
+    def decode_image(self, data):
+        return _Surface(100, 100)
+
 
 class _Surface:
     def __init__(self, w: int = 100, h: int = 100) -> None:

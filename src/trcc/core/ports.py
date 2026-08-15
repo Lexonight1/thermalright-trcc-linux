@@ -1053,6 +1053,17 @@ class Renderer(ABC):
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
+    @abstractmethod
+    def decode_image(self, data: bytes) -> Any:
+        """Decode encoded image *bytes* (JPEG/PNG) to a surface.
+
+        The counterpart to :meth:`encode_jpeg` / :meth:`encode_png`, and the
+        reason a video playback can hold its frames compressed: one frame is
+        decoded per tick instead of the whole animation being held as raw
+        pixels.  Lives behind the port because ``services/`` must not import
+        an imaging toolkit.
+        """
+
 
 # =========================================================================
 # Diagnostics — health / doctor / debug-report / package-mgr / gpu-reader

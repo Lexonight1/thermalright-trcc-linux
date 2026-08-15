@@ -96,6 +96,9 @@ class _TestRenderer(Renderer):
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _TestRenderer._Surface(100, 100)
 
+    def decode_image(self, data: bytes) -> Any:
+        return _TestRenderer._Surface(100, 100)
+
 
 # ── Server-lifecycle fixture ─────────────────────────────────────────
 

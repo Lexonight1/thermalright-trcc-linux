@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.errors import ThemeError
-from ..core.models import RawFrame
 
 log = logging.getLogger(__name__)
 
@@ -57,10 +56,14 @@ class VideoDecoder:
         self.fps = fps
         self.rotation_degrees = rotation_degrees
         self.duration_s = duration_s
-        self.frames: list[RawFrame] = []
+        self.frames: list[bytes] = []
 
-    def decode(self) -> list[RawFrame]:
-        """Run ffmpeg, return the decoded frames."""
+    def decode(self) -> list[bytes]:
+        """Run ffmpeg, return the frames as ENCODED (JPEG) bytes.
+
+        One is decoded per tick via ``Renderer.decode_image`` rather than the
+        whole animation being held as raw pixels — see :class:`Playback`.
+        """
         if not self.path.exists():
             raise ThemeError(f"Video path does not exist: {self.path}")
         if not _ffmpeg_available():
@@ -110,9 +113,17 @@ class VideoDecoder:
         # dimensions, which we already pinned (w, h) via ffprobe.
         if self.size is not None:
             cmd += ["-s", f"{w}x{h}"]
+        # Ask ffmpeg for ENCODED frames rather than rawvideo.  Counter-
+        # intuitively this is also FASTER: pushing ~45 MB of JPEG through the
+        # pipe beats pushing 3.1 GB of raw RGB24, and the pipe was always the
+        # bottleneck.  Measured on 897 real frames at 1600x720: 2.77s -> 0.58s
+        # to decode, held in 45 MB instead of 3100 MB.  q:v 3 keeps the loss
+        # under what an RGB565 panel can show — mean error 0.55/255 against
+        # quantisation steps of 4-8.  (#264, #256)
         cmd += [
-            "-f", "rawvideo",
-            "-pix_fmt", "rgb24",
+            "-c:v", "mjpeg",
+            "-q:v", str(_MJPEG_QUALITY),
+            "-f", "image2pipe",
             "pipe:1",
         ]
 
@@ -127,22 +138,44 @@ class VideoDecoder:
         except FileNotFoundError as e:
             raise ThemeError("ffmpeg not found on PATH") from e
 
-        frame_bytes = _FRAME_SIZE_RGB24(w, h)
-        raw = proc.stdout
-        if len(raw) % frame_bytes != 0:
-            log.warning("VideoDecoder: output %d bytes is not a multiple of "
-                        "frame_size %d — truncating tail",
-                        len(raw), frame_bytes)
-        count = len(raw) // frame_bytes
-
-        self.frames = [
-            RawFrame(data=raw[i * frame_bytes:(i + 1) * frame_bytes],
-                     width=w, height=h)
-            for i in range(count)
-        ]
-        log.info("VideoDecoder: decoded %d frame(s) at %dx%d from %s",
-                 count, w, h, self.path.name)
+        self.frames = _split_jpeg_stream(proc.stdout)
+        log.info("VideoDecoder: decoded %d frame(s) at %dx%d from %s "
+                 "(%.1f MB encoded)",
+                 len(self.frames), w, h, self.path.name,
+                 sum(len(f) for f in self.frames) / 1e6)
         return self.frames
+
+
+_JPEG_SOI = b"\xff\xd8"
+_JPEG_EOI = b"\xff\xd9"
+_MJPEG_QUALITY = 3       # ffmpeg -q:v; 2 = best .. 31 = worst
+
+
+def _split_jpeg_stream(data: bytes) -> list[bytes]:
+    """Split ffmpeg's ``image2pipe`` mjpeg output into one blob per frame.
+
+    Frames are delimited by SOI (``ff d8``) / EOI (``ff d9``).  Inside
+    entropy-coded data a literal ``ff`` is byte-stuffed as ``ff 00``, so a bare
+    EOI cannot appear mid-scan; the one thing that could fool this is an
+    embedded EXIF thumbnail carrying its own JPEG, which ffmpeg's mjpeg encoder
+    does not emit.  Verified against 897 real frames at four quality levels —
+    897 of 897 each time — but that is evidence about ffmpeg's output, not a
+    proof, so a short read is logged rather than passed off as a full decode.
+    """
+    frames: list[bytes] = []
+    pos = 0
+    while (start := data.find(_JPEG_SOI, pos)) >= 0:
+        end = data.find(_JPEG_EOI, start + 2)
+        if end < 0:
+            log.warning("_split_jpeg_stream: %d trailing byte(s) with no EOI "
+                        "after frame %d — dropping the partial frame",
+                        len(data) - start, len(frames))
+            break
+        frames.append(data[start:end + 2])
+        pos = end + 2
+    log.debug("_split_jpeg_stream: %d frame(s) from %d byte(s)",
+              len(frames), len(data))
+    return frames
 
 
 def _ffmpeg_available() -> bool:
@@ -221,13 +254,13 @@ class ZtDecoder:
     def __init__(self, path: Path, size: tuple[int, int]) -> None:
         self.path = path
         self.size = size
-        self.frames: list[RawFrame] = []
+        self.frames: list[bytes] = []
         self.timestamps: list[int] = []
         self.delays: list[int] = []
         self.fps: int = _DEFAULT_FPS
 
-    def decode(self) -> list[RawFrame]:
-        """Read header + JPEG payloads, decode each, return frames."""
+    def decode(self) -> list[bytes]:
+        """Read header + payloads, returning the ENCODED frames unchanged."""
         if not self.path.exists():
             raise ThemeError(f".zt path does not exist: {self.path}")
         if not _ffmpeg_available():
@@ -277,7 +310,13 @@ class ZtDecoder:
         except struct.error as e:
             raise ThemeError(f".zt parse error in {self.path}: {e}") from e
 
-        self.frames = self._decode_payloads(payloads)
+        # Already encoded on disk (the shipped archives carry JPEG), so this
+        # is where the compression used to be thrown away: ``_decode_payloads``
+        # expanded every one to raw RGB24 up front — 3.1 GB for an 897-frame
+        # 1600x720 animation.  Keeping the bytes and decoding one per tick is
+        # smaller AND what the C# does (FormCZTV.cs:1946 reads Theme.zt
+        # straight into imageArray without decoding).
+        self.frames = payloads
 
         # Per-frame delays from timestamps (last frame inherits previous).
         for i, ts in enumerate(self.timestamps):
@@ -297,93 +336,6 @@ class ZtDecoder:
         )
         return self.frames
 
-    def _decode_payloads(self, payloads: list[bytes]) -> list[RawFrame]:
-        """Decode every JPEG in ONE ffmpeg run — the whole animation.
-
-        A ``.zt`` body is a concatenated JPEG stream, which ffmpeg's
-        ``image2pipe`` demuxer reads frame by frame, so the archive costs
-        **one** process instead of one per frame.  Output is chunked by
-        ``w*h*3`` exactly like :class:`VideoDecoder` does for ffmpeg's
-        rawvideo — same decoder, same scaler, so the frames are
-        byte-identical to the per-frame path.  Only the spawns go away
-        (measured: 228 frames, 16.65s → 0.16s).
-
-        A corrupt or truncated payload can desync the stream, so the
-        frame count is verified against the header's.  On any mismatch
-        we fall back to :meth:`_decode_jpeg` per frame, which substitutes
-        a blank frame for the bad JPEG and keeps every good one.
-        """
-        if not payloads:
-            return []
-
-        w, h = self.size
-        frame_bytes = _FRAME_SIZE_RGB24(w, h)
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "image2pipe", "-i", "pipe:0",
-            "-vf", f"scale={w}:{h}",
-            "-f", "rawvideo", "-pix_fmt", "rgb24",
-            "pipe:1",
-        ]
-        log.debug("ZtDecoder: %s (%d payloads)", " ".join(cmd), len(payloads))
-        try:
-            proc = subprocess.run(
-                cmd, input=b"".join(payloads), capture_output=True,
-                check=False,
-            )
-        except FileNotFoundError as e:
-            raise ThemeError("ffmpeg not found on PATH") from e
-
-        count = len(proc.stdout) // frame_bytes if frame_bytes else 0
-        if proc.returncode == 0 and count == len(payloads):
-            raw = proc.stdout
-            return [
-                RawFrame(data=raw[i * frame_bytes:(i + 1) * frame_bytes],
-                         width=w, height=h)
-                for i in range(count)
-            ]
-
-        stderr = proc.stderr.decode("utf-8", errors="replace").strip()
-        log.warning(
-            "ZtDecoder: batch decode of %s yielded %d/%d frame(s) (rc=%d, %s) "
-            "— falling back to per-frame decode",
-            self.path.name, count, len(payloads), proc.returncode,
-            stderr[:120] or "no stderr",
-        )
-        return [self._decode_jpeg(jpeg) for jpeg in payloads]
-
-    def _decode_jpeg(self, jpeg: bytes) -> RawFrame:
-        """One ffmpeg run per JPEG → scaled RGB24 frame.
-
-        The per-frame fallback for :meth:`_decode_payloads` — used only
-        when the single-run decode desyncs, so one bad JPEG costs a blank
-        frame instead of the whole animation.
-        """
-        w, h = self.size
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "jpeg_pipe", "-i", "pipe:0",
-            "-vf", f"scale={w}:{h}",
-            "-f", "rawvideo", "-pix_fmt", "rgb24",
-            "pipe:1",
-        ]
-        try:
-            proc = subprocess.run(
-                cmd, input=jpeg, capture_output=True,
-                timeout=10, check=False,
-            )
-        except FileNotFoundError as e:
-            raise ThemeError("ffmpeg not found on PATH") from e
-
-        if proc.returncode != 0 or not proc.stdout:
-            stderr = proc.stderr.decode("utf-8", errors="replace").strip()
-            log.warning(
-                "ZtDecoder: JPEG decode failed (%s) — substituting blank frame",
-                stderr[:120] or "no stderr",
-            )
-            return RawFrame(data=bytes(w * h * 3), width=w, height=h)
-
-        return RawFrame(data=proc.stdout[:w * h * 3], width=w, height=h)
 
 
 # =========================================================================
@@ -393,8 +345,16 @@ class ZtDecoder:
 
 @dataclass
 class Playback:
-    """Current playback cursor for a video-backed theme."""
-    frames: list[RawFrame]
+    """Current playback cursor for a video-backed theme.
+
+    ``frames`` are **encoded** (JPEG/PNG) bytes, not raw pixels, and exactly
+    one is decoded per tick via ``Renderer.decode_image``.  Held raw, an
+    897-frame 1600x720 animation cost 3.1 GB (#264, #256); encoded it is
+    45 MB.  This is also what the C# does — ``imageArray`` holds the bytes
+    and ``ByteToBitmap`` decodes one per timer tick, disposing the previous
+    (FormCZTV.cs:2176).
+    """
+    frames: list[bytes]
     fps: int = _DEFAULT_FPS
     cursor: int = 0
     paused: bool = False
@@ -418,11 +378,12 @@ class Playback:
         return max(1, int(1000 / (self.fps or 30)))
 
     @property
-    def current(self) -> RawFrame | None:
+    def current(self) -> bytes | None:
+        """The current frame's ENCODED bytes (decode via Renderer.decode_image)."""
         return self.frames[self.cursor] if self.frames else None
 
-    def advance(self) -> RawFrame | None:
-        """Return the current frame and advance the cursor.
+    def advance(self) -> bytes | None:
+        """Return the current frame's encoded bytes and advance the cursor.
 
         Honors ``paused`` (returns current frame without advancing) and
         ``loop`` (when False, sticks at the last frame instead of wrapping).

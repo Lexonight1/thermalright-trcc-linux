@@ -946,13 +946,17 @@ class DisplayService:
         # wall-clock tick — playback looked 2-3× too fast.
         playback = self._media.playback(info.key)
         if playback is not None and playback.frames:
-            frame: RawFrame | None = playback.current
+            payload: bytes | None = playback.current
             log.debug(
                 "resolve_background %s: video playback active "
-                "(%d frames, cursor=%d)",
+                "(%d frames, cursor=%d, %d encoded bytes)",
                 info.key, len(playback.frames), playback.cursor,
+                len(payload) if payload else 0,
             )
-            return self._r.from_raw_rgb24(frame) if frame else None
+            # Frames are held ENCODED and exactly one is decoded per tick —
+            # the C#'s ByteToBitmap(imageArray[gifCount]) (FormCZTV.cs:2176).
+            # Holding them raw cost 3.1 GB on a 897-frame 1600x720 video.
+            return self._r.decode_image(payload) if payload else None
 
         # Cloud-background override (DeviceSettings.background_path) —
         # takes precedence over the active theme's own bg.  Set by

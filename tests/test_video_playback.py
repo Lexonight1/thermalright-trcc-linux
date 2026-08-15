@@ -30,7 +30,6 @@ from trcc.core.models import (
     FitMode,
     Kind,
     ProductInfo,
-    RawFrame,
     Theme,
     Wire,
 )
@@ -43,6 +42,25 @@ from trcc.services.settings import Settings
 from trcc.services.theme import ThemeService
 
 from .conftest import FakePaths, FakePlatform
+
+
+def _encoded_frame(value: int, w: int = 320, h: int = 320) -> bytes:
+    """A real solid-colour JPEG — playbacks hold ENCODED frames now.
+
+    Values are spread across the high bits by callers so they survive both
+    JPEG and the panel's RGB565 quantisation.
+    """
+    from PySide6.QtCore import QBuffer, QByteArray
+    from PySide6.QtGui import QImage
+
+    img = QImage(w, h, QImage.Format.Format_RGB888)
+    img.fill(value)
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+    img.save(buf, "JPEG", 100)
+    buf.close()
+    return bytes(ba)
 
 _KEY = "0402:3922"
 
@@ -93,8 +111,7 @@ def stub_media(
         # the fake doesn't actually run ffprobe.
         w, h = size if size is not None else (640, 480)
         frames = [
-            RawFrame(data=b"\x00" * (w * h * 3),
-                     width=w, height=h)
+            _encoded_frame(0xFF000000, w, h)
             for _ in range(3)
         ]
         playback = Playback(frames=frames, fps=kwargs.get("fps", 15))
@@ -247,8 +264,7 @@ def test_play_video_single_frame_is_static_no_animation(
 
     def fake_load(self, device_key, path, size, **kwargs):   # type: ignore[no-untyped-def]
         pb = Playback(
-            frames=[RawFrame(data=b"\x00" * (320 * 320 * 3),
-                             width=320, height=320)],
+            frames=[_encoded_frame(0xFF000000)],
             fps=15,
         )
         self._playbacks[device_key] = pb
@@ -390,6 +406,10 @@ class _RecordingRenderer(Renderer):
         self._record("from_raw_rgb24", frame)
         return _Surface(frame.width, frame.height)
 
+    def decode_image(self, data: bytes) -> Any:
+        self._record("decode_image", data)
+        return _Surface(100, 100)
+
 
 class _StubOverlay(OverlayService):
     def render(self, canvas: Any, config: Any, sensors: dict[str, float],
@@ -407,8 +427,7 @@ def test_display_resolves_background_from_playback_when_present(
     renderer = _RecordingRenderer()
     media = MediaService()
     media._playbacks[_KEY] = Playback(
-        frames=[RawFrame(data=b"\x00" * (320 * 320 * 3),
-                         width=320, height=320)],
+        frames=[_encoded_frame(0xFF000000)],
         fps=15,
     )
     display = DisplayService(
@@ -435,9 +454,12 @@ def test_display_resolves_background_from_playback_when_present(
     display.build_frame(info=info, theme=theme, sensors={},
                         profile=get_profile(100))
 
-    # Renderer was asked to convert the Playback frame to a surface
-    rgb_calls = [c for c in renderer.calls if c[0] == "from_raw_rgb24"]
-    assert rgb_calls, "Playback frame should be converted via from_raw_rgb24"
+    # Playback frames are held ENCODED, so the renderer is asked to decode
+    # one — not to convert a raw RGB24 buffer (#264/#256).
+    decode_calls = [c for c in renderer.calls if c[0] == "decode_image"]
+    assert decode_calls, "Playback frame should be decoded via decode_image"
+    assert not [c for c in renderer.calls if c[0] == "from_raw_rgb24"], \
+        "a playback frame must not go through the raw-pixel path any more"
 
 
 def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
@@ -520,19 +542,23 @@ def test_video_decoder_rejects_zero_dimension(
 def test_video_decoder_accepts_valid_dimension(
     tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A positive ``size`` decodes the expected frame count past the guard."""
+    """A positive ``size`` decodes the expected frame count past the guard.
+
+    ffmpeg now emits an mjpeg stream rather than rawvideo, so the fake stands
+    in two real JPEGs and the decoder must split them on SOI/EOI.
+    """
     clip = tmp_home / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    two = _encoded_frame(0xFF102030, 320, 480) + _encoded_frame(0xFF405060, 320, 480)
     monkeypatch.setattr("trcc.services.media._ffmpeg_available", lambda: True)
     monkeypatch.setattr(
         "trcc.services.media.subprocess.run",
-        lambda *a, **k: _FakeProc(b"\x00" * (320 * 480 * 3)),
+        lambda *a, **k: _FakeProc(two),
     )
 
     frames = VideoDecoder(clip, size=(320, 480)).decode()
-    assert len(frames) == 1
-    assert frames[0].width == 320
-    assert frames[0].height == 480
+    assert len(frames) == 2
+    assert all(f.startswith(b"\xff\xd8") and f.endswith(b"\xff\xd9") for f in frames)
 
 
 # ── VideoFrameCache pixel-parity gate ────────────────────────────────
@@ -546,8 +572,7 @@ def _video_display(tmp_home: Path, n_frames: int):
     media = MediaService()
     media._playbacks[_KEY] = Playback(
         frames=[
-            RawFrame(data=bytes([64 * (i % 3 + 1)]) * (320 * 320 * 3),
-                     width=320, height=320)
+            _encoded_frame(0xFF404040 + 0x00404040 * (i % 3))
             for i in range(n_frames)
         ],
         fps=15,
@@ -676,8 +701,7 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
     renderer = QtRenderer()
     media = MediaService()
     media._playbacks[_KEY] = Playback(
-        frames=[RawFrame(data=bytes([90]) * (320 * 320 * 3),
-                         width=320, height=320)],
+        frames=[_encoded_frame(0xFF5A5A5A)],
         fps=15,
     )
     display = DisplayService(
