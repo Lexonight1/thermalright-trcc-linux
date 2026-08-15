@@ -580,7 +580,9 @@ class DisplayService:
         """
         log.debug("build_screencast_frame: key=%s", info.key)
         resolved = self._resolve_profile(info, profile)
-        target_w, target_h = resolved.resolution
+        s0 = self._settings.for_device(info.key)
+        target_w, target_h = plan_orientation(
+            resolved, s0.orientation, False).canvas
 
         surface = self._r.from_raw_rgb24(frame)
         if (
@@ -590,6 +592,7 @@ class DisplayService:
 
         s = self._settings.for_device(info.key)
         surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
 
     def build_image_frame(
@@ -613,7 +616,10 @@ class DisplayService:
         """
         log.info("build_image_frame: key=%s path=%s", info.key, path)
         resolved = self._resolve_profile(info, profile)
-        target_w, target_h = resolved.resolution
+        s0 = self._settings.for_device(info.key)
+        # The ORIENTED canvas, not the native one — see ``_orient_for_wire``.
+        target_w, target_h = plan_orientation(
+            resolved, s0.orientation, False).canvas
 
         surface = self._r.open_image(path)
         if self._r.surface_size(surface) != (target_w, target_h):
@@ -621,6 +627,7 @@ class DisplayService:
 
         s = self._settings.for_device(info.key)
         surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
 
     def _apply_post_processing(
@@ -650,14 +657,33 @@ class DisplayService:
         C#-derived per-panel table.  A screencast and a theme at the same angle
         can therefore disagree on a panel whose ``encode_base`` isn't 0.
         """
-        log.debug("_apply_post_processing: brightness=%d orientation=%d rotate=%s",
-                  s.brightness, s.orientation, resolved.rotate)
+        log.debug("_apply_post_processing: brightness=%d", s.brightness)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
-        if s.orientation:
-            surface = self._r.rotate(surface, 360 - s.orientation)
-        if resolved.rotate:
-            surface = self._r.rotate(surface, 90)
+        return surface
+
+    def _orient_for_wire(
+        self, surface: Any, s: DeviceSettings, resolved: DeviceProfile,
+        info: ProductInfo,
+    ) -> Any:
+        """Rotate a single supplied image onto the device's wire buffer.
+
+        The canvas and the angle are ONE pair: compose on the oriented canvas
+        that ``plan_orientation`` picks, then rotate by ``wire_angle`` and the
+        result lands on the device's native buffer at every angle.  Take the
+        angle without the canvas and the shape transposes -- an 854x480 panel
+        gets a 480x854 frame under an 854x480 header, and the firmware paints
+        only the overlap (#262).
+
+        ``portrait_content=False``: these callers scale a supplied image onto
+        the device canvas rather than loading an authored portrait theme, so
+        the content is native-shaped by construction.
+        """
+        angle = wire_angle(resolved, s.orientation, False)
+        log.debug("_orient_for_wire %s: orientation=%d → wire %d°",
+                  info.key, s.orientation, angle)
+        if angle % 360:
+            surface = self._r.rotate(surface, angle)
         return surface
 
     def rendered_surface(self, key: str) -> Any | None:

@@ -36,17 +36,28 @@ def _ensure_qt_app() -> None:
         _ = QGuiApplication.instance() or QGuiApplication(sys.argv)
 
 
-def _make_raw_frame(rgb: tuple[int, int, int]):
-    """Build a RawFrame of solid colour at CANVAS_W × CANVAS_H."""
-    from trcc.core.models import RawFrame
+def _make_raw_frame(rgb: tuple[int, int, int]) -> bytes:
+    """An ENCODED solid-colour frame at CANVAS_W × CANVAS_H.
+
+    A ``Playback`` holds encoded bytes and decodes one per tick, so this
+    harness has to hand it what the decoders now produce.  It used to build a
+    ``RawFrame`` and stopped matching when playback frames stopped being raw
+    (0c7e7119) — the suite was updated and this was not, so it broke silently
+    until the next person ran it.  JPEG at quality 100 keeps the solid colour
+    exact, which is what the pixel comparison below depends on.
+    """
+    from PySide6.QtCore import QBuffer, QByteArray
+    from PySide6.QtGui import QImage
 
     r, g, b = rgb
-    pixel = bytes([r, g, b])
-    return RawFrame(
-        data=pixel * (CANVAS_W * CANVAS_H),
-        width=CANVAS_W,
-        height=CANVAS_H,
-    )
+    img = QImage(CANVAS_W, CANVAS_H, QImage.Format.Format_RGB888)
+    img.fill((0xFF << 24) | (r << 16) | (g << 8) | b)
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+    img.save(buf, "JPEG", 100)
+    buf.close()
+    return bytes(ba)
 
 
 def _decode_first_pixel(buf: bytes) -> tuple[int, int, int]:

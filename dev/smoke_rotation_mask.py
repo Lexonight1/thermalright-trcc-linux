@@ -147,8 +147,15 @@ def main() -> int:
     s90 = app.display.build_preview_surface(info, theme, {}, profile=profile)
     d0 = app.display._r.surface_size(s0)
     d90 = app.display._r.surface_size(s90)
-    _check(d0 == (480, 854) and d90 == (480, 854),
-           "device-buffer surface is (480, 854) both orientations",
+    # The preview follows the COMPOSED canvas, not the device buffer: since
+    # v9.9.6 the display angle turns the wire and never the preview, so an
+    # owner sees what they authored while the glass gets the rotation
+    # (157d85e8, #224/#256).  This used to assert the device buffer in both
+    # orientations, which was the pre-fix behaviour and has been failing
+    # silently ever since — a harness restating a rule the code no longer
+    # follows.
+    _check(d0 == (854, 480) and d90 == (480, 854),
+           "preview follows the composed canvas, not the device buffer",
            f"{d0} / {d90}")
     _check(s0 != s90, "preview pixel-rotates: content differs 0° vs 90°")
 
