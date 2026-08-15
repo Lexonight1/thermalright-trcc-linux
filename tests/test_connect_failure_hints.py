@@ -68,12 +68,19 @@ def _awake():
 def _failing_handshake(app, monkeypatch):
     """Make attach() succeed and connect() time out — armangido's exact shape."""
     from trcc.core.errors import HandshakeError
+    from trcc.core.models import DeviceQuirks
 
     class _Asleep:
+        # Stands in for a Device, so it carries what the connect path reads off
+        # one: ``quirks`` decides whether a failed handshake earns a retry on a
+        # firmware's overriding transport.  Empty here — this panel is merely
+        # asleep, not quirked.
+        quirks = DeviceQuirks()
+
         def connect(self):
             raise HandshakeError("USB read failed: [Errno 110] Operation timed out")
 
-    monkeypatch.setattr(app, "attach", lambda vid, pid: _Asleep())
+    monkeypatch.setattr(app, "attach", lambda vid, pid, **kw: _Asleep())
     monkeypatch.setattr(app, "detach", lambda key: None)
     monkeypatch.setattr(app, "note_connect_issue", lambda result: None)
 

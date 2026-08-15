@@ -179,3 +179,154 @@ def test_normal_type2_still_uses_full_handshake(monkeypatch) -> None:
     assert len(transport.writes) == 1
     assert result.resolution == (320, 240)        # landscape, rotate=True path
     assert dev.needs_keepalive is False
+
+
+# ── A quirk must not depend on which OTHER command ran first (#267) ──
+
+
+def _quirk_app(tmp_path, scanned: bool):
+    """An App whose platform reports the SE fingerprint, optionally pre-scanned."""
+    from trcc.app import App
+    from trcc.core.models import DeviceInfo
+
+    from .mock_platform import MockPlatform
+
+    platform = MockPlatform(
+        [{"type": "lcd", "name": "Frozen Warframe SE", "vid": "0416",
+          "pid": "5302", "pm": 58, "sub": 0, "bcd": "0x0407"}],
+        tmp_path,
+    )
+    app = App(platform=platform)
+    if scanned:                     # what DiscoverDevices would have cached
+        app.remember_scan([DeviceInfo(vid=0x0416, pid=0x5302, bcd_device=0x0407)])
+    return app
+
+
+def test_quirks_resolve_on_a_direct_connect_with_no_prior_discovery(
+    tmp_path,
+) -> None:
+    """Connecting straight to a device must resolve its firmware quirks.
+
+    Quirks are keyed on ``(vid, pid, bcdDevice)`` and only ``DiscoverDevices``
+    populated the fingerprint cache — but no CLI wire command runs it.
+    ``trcc display color`` / ``load-theme`` / ``led render`` and ``trcc device
+    connect`` all go straight to ``ConnectDevice``, so a quirked panel got its
+    quirks in the GUI and none at all from the CLI.  For the Frozen Warframe SE
+    that meant being sent the very init packet its quirk exists to suppress:
+    the firmware reboots on it, and the frame then goes to a device that is no
+    longer listening — "153600 bytes sent", blank screen (#267).
+
+    MUTATION CHECK: drop the enumerate-when-missing branch in
+    ``App._quirks_for`` and this fails — every quirk flag comes back False.
+    """
+    app = _quirk_app(tmp_path, scanned=False)
+
+    quirks = app._quirks_for(0x0416, 0x5302)
+
+    assert quirks.skip_init, "the SE's init packet reboots it — must be skipped"
+    assert quirks.hid_reports and quirks.short_handshake
+    assert quirks.portrait_native and quirks.keepalive_stream
+
+
+def test_a_prior_discovery_is_still_honoured_and_costs_no_rescan(
+    tmp_path,
+) -> None:
+    """The GUI path already cached the fingerprint at splash — resolving quirks
+    must use it and not enumerate USB again on every connect."""
+    app = _quirk_app(tmp_path, scanned=True)
+    scans = 0
+    real = app.platform.scan_devices
+
+    def counting_scan():
+        nonlocal scans
+        scans += 1
+        return real()
+
+    app.platform.scan_devices = counting_scan   # type: ignore[method-assign]
+
+    quirks = app._quirks_for(0x0416, 0x5302)
+
+    assert quirks.skip_init
+    assert scans == 0, "a cached fingerprint must not trigger an enumeration"
+
+
+def test_an_unknown_fingerprint_still_yields_no_quirks(tmp_path) -> None:
+    """Enumerating must not invent quirks for a device that has none —
+    the empty default is still the answer for an unlisted fingerprint."""
+    app = _quirk_app(tmp_path, scanned=False)
+
+    quirks = app._quirks_for(0x0402, 0x3922)     # a SCSI panel, no quirks
+
+    assert not quirks.skip_init and not quirks.hid_reports
+
+
+def test_a_missing_hidapi_does_not_break_a_connect_that_does_not_need_it(
+    tmp_path, monkeypatch,
+) -> None:
+    """The transport override is opt-in, so hidapi only matters if it is used.
+
+    ``hid_reports`` used to switch the transport on fingerprint alone, before
+    any handshake — so every ``0416:5302`` firmware 4.07 panel was forced onto
+    hidapi whether or not it needed it, and a missing or wrong ``hid`` module
+    (#244, #253) failed the connect outright.  The ordinary transport now goes
+    first, so a panel it can serve never touches hidapi at all.
+
+    MUTATION CHECK: make ``attach`` build the quirk transport unconditionally
+    again and this fails — the connect comes back not-ok with an ImportError
+    message.
+    """
+    from trcc.core.commands import ConnectDevice
+
+    monkeypatch.setattr(
+        "trcc.adapters.device.transport.HIDAPI_AVAILABLE", False, raising=False)
+    app = _quirk_app(tmp_path, scanned=False)
+
+    result = app.dispatch(ConnectDevice(key="0416:5302"))
+
+    assert result.ok, f"ordinary transport should have served this: {result.message}"
+
+
+def test_the_quirk_transport_is_tried_only_after_the_ordinary_one_fails(
+    tmp_path, monkeypatch,
+) -> None:
+    """The unproven path goes second, so it can only ever help.
+
+    That fingerprint is shared by several different panels; at least one
+    handshakes correctly on the ordinary transport at its true landscape size
+    (#267), while the override has never been confirmed to drive real hardware
+    by anyone.  Trying it first could take away a path that was working, so a
+    failed handshake earns it exactly one retry.
+
+    MUTATION CHECK: drop the retry from ``_handshake_with_quirk_retry`` and
+    this fails — the connect reports the first failure instead of recovering.
+    """
+    from trcc.adapters.device.hid_lcd import HidLcd
+    from trcc.core.commands import ConnectDevice
+    from trcc.core.errors import HandshakeError
+    from trcc.core.models import Wire
+
+    app = _quirk_app(tmp_path, scanned=False)
+    # hidapi is not installed in the test environment, and this test is about
+    # the RETRY, not about hidapi — so stand the override transport in with the
+    # same scripted one the ordinary path uses.
+    monkeypatch.setattr(
+        "trcc.adapters.device.transport.HidApiTransport",
+        lambda vid, pid, serial=None: app.platform.open_transport(
+            Wire.HID, vid, pid),
+    )
+    real_connect = HidLcd.connect
+    attempts = []
+
+    def failing_first(self):
+        attempts.append(self)
+        if len(attempts) == 1:
+            raise HandshakeError("ordinary transport said nothing")
+        return real_connect(self)
+
+    monkeypatch.setattr(HidLcd, "connect", failing_first)
+
+    result = app.dispatch(ConnectDevice(key="0416:5302"))
+
+    assert len(attempts) == 2, "the override should have earned one retry"
+    assert attempts[0] is not attempts[1], "the retry must rebuild the device"
+    assert result.ok, f"the retry should have recovered: {result.message}"

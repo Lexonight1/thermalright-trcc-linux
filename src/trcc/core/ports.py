@@ -177,6 +177,16 @@ class Device(ABC, Generic[T]):
         """
         self._recovery.set_permission_hint(hint)
 
+    @property
+    def quirks(self) -> DeviceQuirks:
+        """The firmware overrides resolved for this exact device.
+
+        Read by the composition root's connect path to decide whether a failed
+        handshake is worth retrying on a firmware's overriding transport.
+        """
+        log.debug("Device %s: quirks read", self.info.key)
+        return self._quirks
+
     def set_quirks(self, quirks: DeviceQuirks) -> None:
         """Inject firmware-specific behavior overrides for this exact device.
 

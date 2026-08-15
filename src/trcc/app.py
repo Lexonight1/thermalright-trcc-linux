@@ -481,14 +481,26 @@ class App:
 
     # ── Device lifecycle ──────────────────────────────────────────────
 
-    def attach(self, vid: int, pid: int) -> Device:
+    def attach(self, vid: int, pid: int, *,
+               quirk_transport: bool = False) -> Device:
         """Build and cache a Device for (vid, pid).  Does not connect.
 
         Resolves the right transport for the device's wire via the
         Platform, then DI's it into the Device constructor.  Device
         classes never touch Platform — they only know their transport.
+
+        *quirk_transport* opts in to a firmware's overriding transport (the
+        HID output-report one, #228).  It is **off by default on purpose**:
+        that override is keyed on ``(vid, pid, bcdDevice)``, and that
+        fingerprint is NOT unique — Thermalright ships several panels as
+        ``0416:5302`` firmware 4.07.  At least one of them (#267) handshakes
+        correctly on the ordinary transport, at its true landscape size, while
+        the override has never been confirmed to drive any real panel by
+        anyone, including the reporter who supplied it.  So the proven path
+        goes first and ``ConnectDevice`` retries with the override only if
+        that fails — an unproven path can then only ever help.
         """
-        log.info("attach: %04x:%04x", vid, pid)
+        log.info("attach: %04x:%04x quirk_transport=%s", vid, pid, quirk_transport)
         info = find_product(vid, pid)
         if info is None:
             raise DeviceNotFoundError(
@@ -501,11 +513,15 @@ class App:
         # remains is a FIRMWARE override: one revision accepts only HID output
         # reports (#228), and that is keyed on (vid, pid, bcdDevice), not on
         # wire — so it belongs here with the rest of quirk resolution.
-        if quirks.hid_reports:
+        if quirks.hid_reports and quirk_transport:
             from .adapters.device.transport import HidApiTransport
-            log.info("attach: %04x:%04x uses HID output reports (quirk)", vid, pid)
+            log.info("attach: %04x:%04x retrying on HID output reports (quirk)",
+                     vid, pid)
             transport = HidApiTransport(vid, pid)
         else:
+            if quirks.hid_reports:
+                log.debug("attach: %04x:%04x has a HID output-report quirk, "
+                          "trying the ordinary transport first", vid, pid)
             transport = self.platform.open_transport(info.wire, vid, pid)
         device = cls(info, transport)
         # Hand down the OS-specific EACCES hint (resolved here, where Platform
@@ -525,15 +541,40 @@ class App:
             self._scanned[info.key] = info
 
     def _quirks_for(self, vid: int, pid: int) -> DeviceQuirks:
-        """Resolve firmware quirks from the last-scanned fingerprint for a key.
+        """Resolve firmware quirks from the device's live fingerprint.
 
-        Falls back to the empty default when the device wasn't scanned (e.g. a
-        direct connect with no prior discovery) — so quirk devices are handled
-        on the normal discover→connect path and everything else is unaffected.
+        Quirks are keyed on ``(vid, pid, bcdDevice)``, and bcdDevice comes off
+        the USB descriptor — so it is knowable at connect time whether or not
+        anything scanned first.  We look in the scan cache, and **enumerate to
+        fill it when the key is missing** rather than assuming bcdDevice 0.
+
+        That assumption was a real bug (#267).  ``DiscoverDevices`` is the only
+        thing that populates the cache, and no CLI wire command runs it —
+        ``trcc display color`` / ``load-theme`` / ``led render`` and
+        ``trcc device connect`` all go straight to ``ConnectDevice``.  So a
+        quirked panel got its quirks in the GUI (which discovers at splash) and
+        none at all from the CLI: the Frozen Warframe SE was sent the very init
+        packet its quirk exists to suppress, rebooted mid-connect, and the
+        frame went to a device that was no longer listening — "153600 bytes
+        sent", blank screen.  A Command must not behave differently because
+        some *other* Command happened to run first.
+
+        Best-effort: an enumeration failure logs and falls back to the empty
+        default, because a quirk lookup must never be the thing that breaks a
+        connect.
         """
         key = f"{vid:04x}:{pid:04x}"
+        if key not in self._scanned:
+            log.debug("_quirks_for: %s not scanned — enumerating for its "
+                      "fingerprint", key)
+            try:
+                self.remember_scan(self.platform.scan_devices())
+            except Exception as e:
+                log.warning("_quirks_for: scan for %s failed (%s) — resolving "
+                            "quirks without a fingerprint", key, e)
         info = self._scanned.get(key)
         bcd = info.bcd_device if info is not None else 0
+        log.debug("_quirks_for: %s bcdDevice=0x%04x", key, bcd)
         return quirks_for(vid, pid, bcd)
 
     def get(self, key: str) -> Device:

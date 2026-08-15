@@ -40,6 +40,7 @@ from ..models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     FitMode,
+    HandshakeResult,
     OverlayElement,
     Wire,
     oriented_resolution,
@@ -97,6 +98,7 @@ from ._helpers import (
 
 if TYPE_CHECKING:
     from ...app import App
+    from ..ports import Device
 
 log = logging.getLogger(__name__)
 
@@ -183,6 +185,35 @@ class ConnectDevice(Command[ConnectResult]):
     """Attach + handshake with a discovered device."""
     key: str
 
+    def _handshake_with_quirk_retry(self, app: App, device: Device,
+                                    vid: int, pid: int) -> HandshakeResult:
+        """Handshake, retrying once on a firmware's overriding transport.
+
+        The override goes SECOND, never first.  It is keyed on
+        ``(vid, pid, bcdDevice)`` and that fingerprint is not unique —
+        Thermalright ships several different panels as ``0416:5302`` firmware
+        4.07.  At least one of them handshakes correctly on the ordinary
+        transport at its true landscape size (#267), while the override has
+        never been confirmed to drive real hardware by anyone, including the
+        reporter who supplied it.  Trying the proven path first means an
+        unproven one can only ever help: it cannot take away a path that was
+        already working.
+        """
+        try:
+            return device.connect()
+        except (HandshakeError, TransportError) as e:
+            if not device.quirks.hid_reports:
+                raise
+            log.info("ConnectDevice %s: ordinary transport failed (%s) — "
+                     "retrying on the firmware's HID output-report transport",
+                     self.key, e)
+            app.detach(self.key)
+            retried = app.attach(vid, pid, quirk_transport=True)
+            result = retried.connect()
+            log.info("ConnectDevice %s: the quirk transport handshook where "
+                     "the ordinary one did not", self.key)
+            return result
+
     def execute(self, app: App) -> ConnectResult:
         try:
             vid_str, pid_str = self.key.split(":")
@@ -203,10 +234,28 @@ class ConnectDevice(Command[ConnectResult]):
                                    hints=hints)
             app.note_connect_issue(result)
             return result
+        except (ImportError, OSError) as e:
+            # Building the transport can fail for reasons that are the user's
+            # environment, not a missing device: a firmware quirk selects the
+            # HID output-report transport, and hidapi may be absent or be the
+            # wrong one of the two PyPI packages that both import as ``hid``
+            # (#244, #253).  Those raise from the transport constructor, and an
+            # uncaught raise here takes the GUI down instead of telling anyone
+            # what to install — so report it like any other connect failure.
+            hints = app.platform.check_permissions()
+            log.warning("ConnectDevice %s: transport unavailable — %s",
+                        self.key, e)
+            app.events.publish(ErrorOccurred(message=str(e), kind="transport",
+                                             key=self.key, hints=hints))
+            result = ConnectResult(ok=False, key=self.key, message=str(e),
+                                   hints=hints)
+            app.note_connect_issue(result)
+            return result
 
         try:
-            handshake = device.connect()
-        except (HandshakeError, TransportError) as e:
+            handshake = self._handshake_with_quirk_retry(app, device, vid, pid)
+            device = app.devices[self.key]      # the retry may have rebuilt it
+        except (HandshakeError, TransportError, ImportError, OSError) as e:
             app.detach(self.key)   # clears any prior issue for this key first
             hints = app.platform.check_permissions()
             hints += _suspended_panel_hints(app, vid, pid)
