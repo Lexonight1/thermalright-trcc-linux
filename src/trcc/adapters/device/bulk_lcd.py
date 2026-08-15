@@ -23,6 +23,7 @@ from ...core.ports import BulkTransport
 from ...core.protocol import (
     DeviceProfile,
     get_profile,
+    is_portrait_mounted,
     pm_to_fbl,
     resolve_encode_base,
     resolve_encode_sub,
@@ -115,6 +116,12 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
         jpeg=(pm not in _RGB565_PMS),
         big_endian=base.big_endian, rotate=base.rotate,
         widescreen=base.widescreen,
+        # The SUB byte also says how the panel is MOUNTED: on three
+        # resolutions a sub of 5+ means it is turned portrait in its cooler,
+        # so its content catalog is the transposed one from orientation 0.
+        # (#262, #203 — both PM=11 SUB=5 on 854x480.)
+        portrait_mounted=is_portrait_mounted(
+            (base.width, base.height), sub),
         encode_baseline=encode_baseline,
         encode_base=resolve_encode_sub(base, sub),
         encode_sub_bases=(),  # folded into encode_base above
@@ -171,10 +178,24 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
         )
 
     def _handshake_detail(self, result: HandshakeResult) -> str:
-        """Which encoder the PM byte selected — the Bulk-specific divergence."""
+        """Which encoder the PM byte selected, and how the panel is mounted.
+
+        Appended to the ``handshake OK: PM=… SUB=… resolution=…`` line that
+        ``dev/tools/diagnose.py`` and ``diagnostics/debug_report.py`` scrape —
+        so the prefix shape is fixed and only this suffix may grow.
+
+        The mount is worth saying out loud.  It is knowable from the SUB byte
+        (see :func:`is_portrait_mounted`), it explains why an owner has to
+        rotate to 90° to get an upright picture, and it was invisible in every
+        report we had: #262 and #203 turned out to share ``PM=11 SUB=5`` and
+        nobody could see it, including me, until I read the C# catalog rule.
+        """
         if self._profile is None:
             return ""
-        return " (JPEG)" if self._profile.jpeg else " (RGB565)"
+        encoder = " (JPEG)" if self._profile.jpeg else " (RGB565)"
+        if self._profile.portrait_mounted:
+            return f"{encoder} portrait-mounted"
+        return encoder
 
     def _require_connected(self) -> None:
         """Also demand the handshake profile — the header needs its geometry."""

@@ -47,6 +47,19 @@ class DeviceProfile:
     # Mjolnir) negotiates JPEG yet rotates like its RGB565 siblings, not like a
     # widescreen panel.  (#176 — was conflated with ``jpeg`` pre-fix.)
     widescreen: bool = False
+    # The panel is physically mounted PORTRAIT in its cooler, so its content
+    # catalog is the transposed one at user-orientation 0.  Resolved at
+    # handshake from the SUB byte — the C# tests ``pmSub < 5`` for exactly
+    # three resolutions and picks the transposed theme directory when it fails
+    # (FormCZTV.cs FormCZTVInit: 854x480 -> 480854\\, 960x540 -> 540960\\,
+    # 800x480 -> 480800\\).  Every other resolution gets one unconditional
+    # catalog with no sub test, which is why this is scoped, not general.
+    #
+    # This is a CONTENT/CATALOG property, not a wire one: the C# rotation
+    # tables never read the sub byte, and the device's framebuffer is still
+    # its native landscape size, so ``resolution`` and the wire header are
+    # unchanged.  (#262, #203)
+    portrait_mounted: bool = False
     # Resolved device-only encode rotation, applied to the WIRE frame only (not
     # the preview) in _encode_for_wire.  Resolved at handshake from
     # encode_pm_bases via resolve_encode_base() once the PM byte is known.  0 =
@@ -411,6 +424,31 @@ def wire_rotation(profile: DeviceProfile, orientation: int, pm: int = 0) -> int:
     log.debug("wire_rotation: %dx%d jpeg=%s pm=%d base=%d orient=%d → %d°",
               w, h, profile.jpeg, pm, base, orientation, angle)
     return angle
+
+
+# The three resolutions whose SUB byte encodes a portrait physical mount.
+# From FormCZTVInit: every OTHER resolution assigns its catalog
+# unconditionally, so this is a scoped rule and must not be generalised.
+_PORTRAIT_MOUNT_RESOLUTIONS = frozenset({(854, 480), (960, 540), (800, 480)})
+_PORTRAIT_MOUNT_MIN_SUB = 5
+
+
+def is_portrait_mounted(resolution: tuple[int, int], sub: int) -> bool:
+    """Whether a panel of *resolution* reporting *sub* is mounted portrait.
+
+    The C# asks ``pmSub < 5`` for exactly three resolutions and, when that
+    fails, loads the transposed theme catalog — ``854480\\`` becomes
+    ``480854\\``, and likewise for 960x540 and 800x480.  So a sub of 5 or
+    more on one of those panels means the screen is turned in its cooler and
+    its content is authored portrait from the start, at user-orientation 0.
+
+    Pure function of the handshake bytes so an auditor can resolve it with no
+    USB, exactly like ``bulk_profile`` around it.  (#262, #203)
+    """
+    mounted = (resolution in _PORTRAIT_MOUNT_RESOLUTIONS
+               and sub >= _PORTRAIT_MOUNT_MIN_SUB)
+    log.debug("is_portrait_mounted: %s sub=%d → %s", resolution, sub, mounted)
+    return mounted
 
 
 def wire_angle(
