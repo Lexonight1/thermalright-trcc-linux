@@ -83,7 +83,7 @@ pkg_postinst() {
 	elog ""
 	elog "To get started:"
 	elog "  1. Unplug and replug the USB cable (or reboot)"
-	elog "  2. Run: trcc detect --all"
+	elog "  2. Run: trcc detect"
 	elog "  3. Run: trcc gui"
 	elog ""
 	elog "If your device is not detected, ensure the sg kernel module is loaded:"

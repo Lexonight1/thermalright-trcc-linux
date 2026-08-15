@@ -174,10 +174,10 @@ See the **[CLI Reference](doc/REFERENCE_CLI.md)** for the full command list.
 Start the API server and control your devices remotely:
 
 ```bash
-trcc serve                    # Start on http://localhost:9876
-trcc serve --port 8080        # Custom port
-trcc serve --tls              # HTTPS with auto-generated self-signed cert
+trcc serve                    # Start on http://127.0.0.1:8080
+trcc serve --port 9876        # Custom port
 trcc serve --host 0.0.0.0     # Listen on all interfaces (LAN access)
+trcc serve --token SECRET     # Require a bearer token (see `trcc api --token`)
 ```
 
 78 endpoints covering devices, display, LED, themes, and system metrics. Use `trcc api` to list all endpoints.

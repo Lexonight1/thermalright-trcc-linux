@@ -92,6 +92,15 @@ _SOURCES = [
     _DOC_DIR / "REFERENCE_DEVICES.md",
     _DOC_DIR / "REFERENCE_TECHNICAL.md",
     _ROOT / "install.sh",
+    _ROOT / "README.md",
+    # Packaging post-install text is the FIRST thing a user reads after
+    # installing, and it is the last place anyone thinks to check.  A Gentoo
+    # ebuild kept telling people to run `trcc detect --all` long after that
+    # flag stopped existing, because the gate stopped at doc/ and install.sh
+    # (#247).
+    *sorted(_ROOT.glob("packaging/**/*.ebuild")),
+    *sorted(_ROOT.glob("packaging/**/*.spec")),
+    *sorted(_ROOT.glob("packaging/**/PKGBUILD")),
 ]
 
 # `trcc <word>` optionally followed by a subcommand.  Options are excluded by
@@ -171,7 +180,9 @@ def _fenced_lines(text: str):
             yield number, line
 
 
-_ECHO = re.compile(r"""^\s*echo\s+(?:-e\s+)?["'](.*)["']\s*$""")
+# ``echo`` in a shell script, ``elog`` in a Gentoo ebuild — both print a
+# line to someone who has just finished installing.
+_ECHO = re.compile(r"""^\s*(?:echo|elog)\s+(?:-e\s+)?["'](.*)["']\s*$""")
 
 
 def _echoed_lines(text: str):
@@ -192,7 +203,14 @@ def _echoed_lines(text: str):
 def _user_facing_lines(path: Path):
     """The lines of *path* that actually instruct a user."""
     text = path.read_text(encoding="utf-8")
-    return _echoed_lines(text) if path.suffix == ".sh" else _fenced_lines(text)
+    # Markdown instructs inside fences; a script or package recipe instructs
+    # by printing.  Getting this wrong is silent: route an ebuild through the
+    # fence reader and it yields nothing, so the file is "checked" and every
+    # bad command in it passes.  That is how `trcc detect --all` survived a
+    # gate that already listed the file (#247).
+    if path.suffix in {".sh", ".ebuild", ".spec"} or path.name == "PKGBUILD":
+        return _echoed_lines(text)
+    return _fenced_lines(text)
 
 
 @pytest.mark.parametrize("source", _SOURCES, ids=lambda p: p.name)
