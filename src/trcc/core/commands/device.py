@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from .._safe import is_under
 from ..errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
@@ -1008,7 +1009,7 @@ class PlayVideo(Command[VideoResult]):
         if self.path.suffix.lower() != ".zt":
             try:
                 user_root = app.platform.paths().user_content_dir().resolve()
-                is_user_asset = self.path.resolve().is_relative_to(user_root)
+                is_user_asset = is_under(self.path, user_root)
             except (OSError, AttributeError):
                 # ``user_content_dir`` lookup or resolve failed (broken
                 # platform paths, missing dir).  Default to canvas-size

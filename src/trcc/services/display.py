@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core._safe import is_under
 from ..core.geometry import content_is_portrait, plan_orientation
 from ..core.models import (
     SPLIT_OVERLAY_MAP,
@@ -812,9 +813,7 @@ class DisplayService:
                 dst_w, dst_h = visual_size
                 is_user = (
                     theme.path is not None
-                    and Path(theme.path).is_relative_to(
-                        self._paths.user_content_dir()
-                    )
+                    and is_under(Path(theme.path), self._paths.user_content_dir())
                 )
                 if is_user:
                     # User upload — native resolution; honor the user's chosen

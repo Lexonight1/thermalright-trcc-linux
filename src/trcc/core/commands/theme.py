@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .._safe import is_safe_user_name
+from .._safe import is_safe_user_name, is_under
 from ..errors import (
     HttpFetchError,
     ThemeError,
@@ -742,7 +742,7 @@ class SaveTheme(Command[ThemeResult]):
         # library asset by URI — no in-dir copy.
         for root in (paths.user_background_dir(width, height),
                      paths.cloud_theme_dir(width, height)):
-            if src_resolved.is_relative_to(root.resolve()):
+            if is_under(src_resolved, root):
                 ref = f"web/{width}{height}/{src.name}"
                 break
         else:
@@ -786,7 +786,7 @@ class SaveTheme(Command[ThemeResult]):
 
         for root in (paths.user_mask_dir(width, height),
                      paths.cloud_mask_dir(width, height)):
-            if mask_dir.is_relative_to(root.resolve()):
+            if is_under(mask_dir, root):
                 ref = f"web/zt{width}{height}/{mask_dir.name}"
                 break
         else:
@@ -1237,7 +1237,7 @@ class ListThemes(Query[ThemesListResult]):
                     name=theme.name, resolution=theme.resolution,
                     path=str(theme.path),
                     preview=str(_theme_preview(theme.path)),
-                    origin="user" if resolved.is_relative_to(user_root) else "shipped",
+                    origin="user" if is_under(resolved, user_root) else "shipped",
                 ))
         target_str = "; ".join(str(r) for r in roots)
         return ThemesListResult(

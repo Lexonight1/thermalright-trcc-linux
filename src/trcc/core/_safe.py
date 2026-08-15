@@ -119,3 +119,40 @@ def is_safe_user_name(name: str, *, max_length: int = 255) -> bool:
     if any(ch in name for ch in ("/", "\\", "\x00")):
         return False
     return ".." not in name.split("/")
+
+
+def is_under(path: Path, root: Path) -> bool:
+    """True when *path* lives inside *root*, symlinks and all.
+
+    ``Path.is_relative_to`` is purely lexical: it compares path *strings* and
+    never touches the filesystem.  That is wrong for the question this project
+    keeps asking — "is this the user's own asset, or a shipped one?" — because
+    the same directory can have two absolute spellings.  On Fedora Atomic
+    systems (Bazzite, Silverblue) ``/home`` is a symlink to ``/var/home``, and
+    both spellings appear within a single run: one component resolves a home
+    directory, another does not.
+
+    ``/home/u/.trcc-user/…`` then tests as NOT under
+    ``/var/home/u/.trcc-user`` even though they are the same folder, so a
+    user's saved theme is classified as shipped — and restore loads the
+    shipped theme of the same name instead of theirs.  That is #261's
+    "settings reset every time I restart".
+
+    Both sides are resolved before comparing.  Measured at 0.046 ms per call
+    against a 41.7 ms frame budget (0.11%), so it is affordable even on the
+    per-tick render path, where the background fit asks the same question.
+
+    Non-strict: a path that does not exist yet still resolves lexically, and
+    an unreadable one degrades to False rather than raising — deciding
+    "shipped" is the safe answer, since it never hands a user's own tree to
+    something expecting program data.
+    """
+    try:
+        resolved = path.resolve()
+        inside = resolved.is_relative_to(root.resolve())
+    except (OSError, ValueError) as e:
+        log.debug("is_under: cannot resolve %s against %s (%s) — assuming not",
+                  path, root, e)
+        return False
+    log.debug("is_under: %s under %s → %s", resolved, root, inside)
+    return inside

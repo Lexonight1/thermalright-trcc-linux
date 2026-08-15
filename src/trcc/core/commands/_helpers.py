@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .._safe import is_under
 from ..errors import (
     DeviceDisconnectedError,
     DeviceNotConnectedError,
@@ -62,7 +63,7 @@ def oriented_theme_path(
     # same name on every rotation/restore, losing their changes. Fall back to
     # ``stored`` when the same-name oriented variant isn't on disk in that tree
     # (the renderer pixel-rotates the art).
-    if stored.is_relative_to(paths.user_content_dir()):
+    if is_under(stored, paths.user_content_dir()):
         base = paths.user_theme_dir(bw, bh)
     else:
         base = paths.theme_dir(bw, bh)
