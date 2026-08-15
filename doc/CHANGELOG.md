@@ -1,5 +1,68 @@
 # Changelog
 
+## v9.9.6
+
+**Widescreen panels that showed nothing now display.** A 1280x480 panel could
+come up locked to 240x320 — wrong preview, wrong theme list, and nothing on the
+glass at all. TRCC was treating a firmware revision as if it identified the
+panel: several different coolers ship as `0416:5302` firmware 4.07, and the only
+thing telling them apart is a byte TRCC was skipping past. When the panel said
+nothing, TRCC filled in a placeholder size and committed to it. It now asks, and
+a panel that answers is believed. If you worked around this by starting the app
+with the cooler unplugged, or by using `trcc device connect`, you no longer need
+to — those worked because both skip the scan that caused it. (#244, #267, #268)
+
+**The rotation dial works, and the preview stops arguing with it.** Turning the
+display angle rotated the picture inside the app as well as the picture on the
+cooler, so the one control that fixes an upside-down screen looked broken to
+exactly the people who needed it. Thermalright mounts the same panel different
+ways round in different coolers — their own Windows software ships some of them
+upside down — and the display angle is how you correct that. The preview now
+shows what you authored while the angle turns only what is sent to the glass.
+Two more things came right with it: dragging an overlay no longer moves the
+wrong way at 90 and 270, and saved theme thumbnails are no longer stored upside
+down. (#224, #256)
+
+**"No TRCC udev rules found" was wrong on every Linux report.** The health check
+looked for a filename this project has never written, so a correctly set up
+machine was told its setup was incomplete — inside the report we ask you to send
+us when your device is not detected. At least three people went looking for a
+bug that was not there. The uninstall step in the install guide named the same
+missing file, so it removed nothing and left the real rules behind. (#258)
+
+**An unrecognised cooler now says so in the log.** A panel TRCC did not know
+rendered at an invented size and never admitted it had guessed — one reporter
+resorted to photographing test patterns and running an FFT on them to work out
+what our own log could have told him. Unknown hardware now names the byte it did
+not recognise and the size it assumed, so a `trcc report` paste diagnoses
+itself. Four coolers that were quietly relying on that fallback (LC2JD, LF14 and
+the 854x480 pair) are now catalogued properly. (#248)
+
+**Clicking an overlay element highlights it again.** On any theme you had not
+edited — which is every theme, until you change something — clicking an element
+to find it on screen did nothing at all. A fix in July only ever covered themes
+with a mask applied, which is why it looked fixed and was not.
+
+**Cloud theme thumbnails stop going blank.** Downloaded animated thumbnails went
+blank whenever the gallery was rebuilt while you were looking at it — changing
+the display angle, switching category, or finishing a download — and only came
+back if you switched tabs and returned.
+
+**TRCC appears in your applications menu after a pip install.** Our RPM, DEB and
+Arch packages register the app with your desktop; pip could not, so on distros
+where pip is the only route (SteamOS, for one) the app installed, autostarted,
+and then could not be found to launch again. `trcc system setup` now installs
+the menu entry and its icons. `trcc gui --decorated` also exists at last — two
+of our own guides documented that flag for giving the window a normal title bar,
+and it had never actually been added. (#231, #247)
+
+**Reports carry more of what we need.** The log file now always keeps its
+debug detail regardless of how you launched TRCC, so a report captures the
+branch decisions and resolved values that diagnose a problem rather than
+discarding them. Reports also carry a short history of what you actually did —
+a thousand lines of frame ticks used to remember about twenty seconds of
+activity, which was rarely the twenty seconds that mattered.
+
 ## v9.9.5
 
 **Applying a video theme is instant.** It took over half a minute — 33 seconds
