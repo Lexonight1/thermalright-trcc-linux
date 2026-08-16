@@ -444,6 +444,7 @@ class TRCCApp(QMainWindow):
         self._bus.video_started.connect(self._on_bus_video_started, type=qconn)
         self._bus.video_stopped.connect(self._on_bus_video_stopped, type=qconn)
         self._bus.system_suspending.connect(self._on_bus_system_suspending, type=qconn)
+        self._bus.data_installed.connect(self._on_bus_data_installed, type=qconn)
         # Live errors → transient tray balloon (spam-safe; render/transport
         # errors can fire per-tick, so a dialog here would storm).
         self._bus.error_occurred.connect(self._on_bus_error, type=qconn)
@@ -533,6 +534,21 @@ class TRCCApp(QMainWindow):
         self._add_handler(device)
         self._refresh_sidebar()
         self._configure_inactive_lcd(event.key)
+
+    def _on_bus_data_installed(self, event: Any) -> None:
+        """First-run archives landed — re-list every LCD device's grids.
+
+        The install runs in the background now so the window opens without
+        waiting on ~30 MB of downloads, which means the theme / mask browsers
+        are built BEFORE the data exists.  This is what fills them in.  A
+        partial install still refreshes: whatever did land is worth showing.
+        (#275)
+        """
+        log.info("_on_bus_data_installed: %s ok=%s",
+                 event.resolution, event.ok)
+        for handler in self._handlers.values():
+            if isinstance(handler, LCDHandler):
+                handler.notify_data_ready()
 
     def _on_bus_device_disconnected(self, event: Any) -> None:
         """One device just detached.  Drop its handler."""

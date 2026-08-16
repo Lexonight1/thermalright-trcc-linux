@@ -22,6 +22,7 @@ from PySide6.QtCore import QObject, Signal, SignalInstance
 
 from ..core.events import (
     BrightnessChanged,
+    DataInstalled,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
@@ -76,6 +77,7 @@ class BusBridge(QObject):
     screencast_stopped = Signal(object)        # ScreencastStopped
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
+    data_installed = Signal(object)            # DataInstalled
 
     def __init__(self, bus: EventBus) -> None:
         super().__init__()
@@ -104,6 +106,7 @@ class BusBridge(QObject):
             (ScreencastStopped, self.screencast_stopped),
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),
+            (DataInstalled, self.data_installed),
         )
         for event_type, signal in pairs:
             self._bus.subscribe(

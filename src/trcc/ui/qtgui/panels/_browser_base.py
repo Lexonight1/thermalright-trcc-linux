@@ -12,12 +12,18 @@ catching up to a pattern that skin already established, not a new invention.
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QLabel, QListWidget
 
 from ..base import BasePanel
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
+
+    from ....app import App
+    from ...bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +48,38 @@ class AssetBrowserPanel(BasePanel):
     _abstract: ClassVar[bool] = True
 
     _status: QLabel
+
+    def __init__(
+        self,
+        app: App,
+        bus: BusBridge,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(app, bus, parent)
+        # The first-run archives download in the background now, so this grid
+        # is built BEFORE its assets exist and would otherwise stay empty for
+        # the whole session.  The gui skin re-lists via ``notify_data_ready``;
+        # qtgui had no equivalent at all until #275.  Queued: the event is
+        # published from the install worker thread.
+        log.info("%s: subscribing to DataInstalled", type(self).__name__)
+        bus.data_installed.connect(
+            self._on_data_installed,
+            type=Qt.ConnectionType.QueuedConnection,
+        )
+
+    def _on_data_installed(self, event: object) -> None:
+        """First-run archives landed — re-list the grid.  (#275)"""
+        log.info("_on_data_installed: %s → refreshing %s",
+                 getattr(event, "resolution", None), type(self).__name__)
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Re-list the grid from disk.  Every asset browser implements it."""
+        log.error("%s does not implement refresh() — its grid cannot "
+                  "re-list when the first-run data lands", type(self).__name__)
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement refresh()"
+        )
 
     def _build_asset_list(self) -> QListWidget:
         """The thumbnail grid, configured identically for every asset kind.

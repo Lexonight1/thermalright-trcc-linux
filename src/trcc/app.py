@@ -51,7 +51,14 @@ from .core.models import (
     oriented_resolution,
     quirks_for,
 )
-from .core.ports import Device, Diagnostics, Platform, Renderer, SendScheduler
+from .core.ports import (
+    DataInstallRunner,
+    Device,
+    Diagnostics,
+    Platform,
+    Renderer,
+    SendScheduler,
+)
 from .core.registry import find_product
 from .core.results import ConnectResult, Result
 from .services.cloud_theme import CloudThemeService
@@ -93,7 +100,8 @@ class App:
 
     def __init__(self, platform: Platform,
                  renderer: Renderer | None = None,
-                 send_scheduler: SendScheduler | None = None) -> None:
+                 send_scheduler: SendScheduler | None = None,
+                 data_install_runner: DataInstallRunner | None = None) -> None:
         self.platform = platform
         self.devices: dict[str, Device] = {}
         # Last scan's live DeviceInfo per key — carries the firmware fingerprint
@@ -153,6 +161,21 @@ class App:
             paths=platform.paths(),
             installer=HttpDataInstaller(http=self.http),
         )
+        # ...and the worker that runs it OFF the caller's thread.  Six
+        # archives (~30 MB for a non-square panel) used to download inline
+        # from ConnectDevice, which put them on the GUI's startup path — the
+        # splash blocked until the last byte landed.  Submitting instead lets
+        # connect return immediately; ``DataInstalled`` tells every UI when
+        # the grids are worth re-listing.  Injected so tests stay synchronous.
+        # (#275)
+        if data_install_runner is None:
+            from .adapters.infra.data_install_runner import (
+                ThreadDataInstallRunner,
+            )
+            data_install_runner = ThreadDataInstallRunner(
+                self.data_install, self.events,
+            )
+        self.data_install_runner: DataInstallRunner = data_install_runner
         # Per-device slideshow cursor — tick-driven, no background thread.
         self.slideshow = SlideshowService()
         # Per-device send workers (actors) — one owns each device's wire,
@@ -644,6 +667,7 @@ class App:
         for key in list(self.devices):
             self.detach(key)
         self._send_scheduler.shutdown()
+        self.data_install_runner.shutdown()
 
     # ── Send workers ──────────────────────────────────────────────────
 

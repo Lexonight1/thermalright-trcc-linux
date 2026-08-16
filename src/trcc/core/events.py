@@ -135,6 +135,18 @@ class ThemeImported(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class DataInstalled(Event):
+    """A resolution's theme / cloud-preview / mask archives finished.
+
+    Published by the background installer, never on the caller's thread —
+    every UI listens for this to re-list its theme + mask grids, which are
+    empty until the first-run download lands.
+    """
+    resolution: tuple[int, int]
+    ok: bool
+
+
+@dataclass(frozen=True, slots=True)
 class VideoStarted(Event):
     """Published by ``PlayVideo`` after a playback is loaded.
 

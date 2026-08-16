@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-30 ports.
+31 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -17,6 +17,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Query`](#query) | 1 | 0 | 28 |
 | [`ScreenCapture`](#screencapture) | 1 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
+| [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 5 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 6 |
@@ -140,6 +141,21 @@ open(vid: 'int', pid: 'int', serial: 'str | None') -> Any
 ```
 
 **Implementations (2):** `_ApmortonHidBinding` · `_CythonHidBinding`
+
+## DataInstallRunner
+
+`core/ports.py`
+
+Runs per-resolution data installs OFF the caller's thread.
+
+**You implement (2):**
+
+```python
+shutdown() -> None
+submit(resolution: 'tuple[int, int]') -> None
+```
+
+**Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`
 
 ## _MappingPort
 

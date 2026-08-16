@@ -306,6 +306,18 @@ class LCDHandler(BaseHandler):
             return
         self._restore_theme_and_preview(first_load=first_load)
 
+    def notify_data_ready(self) -> None:
+        """Background install finished — re-list this device's grids.
+
+        Safe from ANY thread: the refresh is emitted through a QObject
+        signal, so it always runs on the Qt main thread no matter who calls
+        (the install worker, the bus bridge, a test).  Until #275 nothing
+        ever called this — the install ran inline before the window existed,
+        so ``_on_data_ready`` sat connected and unreachable.
+        """
+        log.info("notify_data_ready: %s", self._device_key)
+        self._data_notifier.ready.emit()
+
     def _on_data_ready(self) -> None:
         """Background data extraction finished — re-probe dirs and update UI."""
         log.info("_on_data_ready")

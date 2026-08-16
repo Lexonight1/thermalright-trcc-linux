@@ -309,6 +309,19 @@ def _stub_data_install(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(DataInstallService, "ensure_all", _noop)
 
+    # ...and keep the install SYNCHRONOUS under test.  Production runs it on a
+    # daemon worker so the GUI's startup never waits on ~30 MB of archives
+    # (#275); a background thread in the suite would make every assertion on
+    # installed data a race.  Same shape as SyncSendScheduler.  App imports
+    # ThreadDataInstallRunner lazily inside __init__, so patching the module
+    # attribute here reaches every App built after this fixture runs.
+    from trcc.adapters.infra import data_install_runner
+
+    monkeypatch.setattr(
+        data_install_runner, "ThreadDataInstallRunner",
+        data_install_runner.SyncDataInstallRunner,
+    )
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _qapplication() -> Iterator[object]:

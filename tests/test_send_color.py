@@ -554,8 +554,14 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
     resolution. Non-square bulk panels report native_resolution=(0,0) and only
     learn their real size at handshake, so this is the only place their data
     (both orientations, via ensure_all) gets installed. Port of legacy's
-    _ensure_data_background(device, w, h). (#136)"""
+    _ensure_data_background(device, w, h). (#136)
+
+    Since #275 it goes through ``data_install_runner`` rather than being called
+    inline, so the runner is rebuilt around the spy too -- it captured the real
+    service when the App was constructed."""
+    from trcc.adapters.infra.data_install_runner import SyncDataInstallRunner
     from trcc.core.commands import ConnectDevice
+    from trcc.services.data_install import EnsureDataResult
 
     platform = FakePlatform(tmp_home)
     platform.scsi.read_script.append(_scsi_poll_response(100))   # FBL 100 → 320×320
@@ -564,10 +570,17 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
     installed: list[tuple[int, int]] = []
 
     class _SpyInstall:
-        def ensure_all(self, resolution: tuple[int, int]) -> None:
+        def ensure_all(self, resolution: tuple[int, int]) -> EnsureDataResult:
             installed.append(resolution)
+            return EnsureDataResult(
+                resolution=resolution,
+                themes_ok=True, web_ok=True, masks_ok=True,
+            )
 
     app.data_install = _SpyInstall()   # type: ignore[assignment]
+    app.data_install_runner = SyncDataInstallRunner(
+        app.data_install, app.events,
+    )
 
     assert app.dispatch(ConnectDevice(key="0402:3922")).ok
     assert installed == [(320, 320)]   # the handshake-resolved resolution

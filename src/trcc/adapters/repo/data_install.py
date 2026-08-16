@@ -46,6 +46,23 @@ _GITHUB_BASE = (
 )
 
 
+# Bounds a STALL, not the transfer.  urllib applies its ``timeout`` to each
+# blocking socket operation (connect, and every read), never to the download
+# as a whole -- so a steady 8 MB archive on a slow link never trips this,
+# while a dead route gives up in seconds instead of minutes.
+#
+# It is not the whole wall-clock either: ``socket.create_connection`` walks
+# EVERY address ``getaddrinfo`` returns and applies the timeout per address,
+# and raw.githubusercontent.com publishes four A records -- so one unreachable
+# host costs 4x this value.  At the old 120s that was 8 minutes for a single
+# archive, and ensure_all fetches six of them.  (#275)
+#
+# DNS itself stays unbounded: getaddrinfo runs before any timeout is set and
+# the stdlib exposes no hook.  That is survivable only because the install no
+# longer runs on the startup path -- see ``ThreadDataInstallRunner``.
+_STALL_TIMEOUT_S = 30.0
+
+
 # Hide the console window on Windows when shelling out to 7z (parity
 # with the legacy installer's ``CREATE_NO_WINDOW`` flag).
 _NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -168,7 +185,7 @@ class HttpDataInstaller(DataInstaller):
 
         log.info("install: fetching %s from GitHub", archive_name)
         try:
-            data = self._http.fetch(url, timeout_s=120.0)
+            data = self._http.fetch(url, timeout_s=_STALL_TIMEOUT_S)
         except HttpFetchError as e:
             log.warning("install: %s download failed: %s",
                         archive_name, e)

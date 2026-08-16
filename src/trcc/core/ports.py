@@ -1546,3 +1546,32 @@ class SendScheduler(ABC):
     @abstractmethod
     def shutdown(self) -> None:
         """Stop driving every task (app teardown)."""
+
+
+class DataInstallRunner(ABC):
+    """Runs per-resolution data installs OFF the caller's thread.
+
+    ``ensure_all`` fetches six archives (~30 MB for a non-square panel)
+    straight from GitHub.  Calling it inline from ``ConnectDevice`` put that
+    on the GUI's startup path: the splash blocks until the last byte lands,
+    so a slow link delayed the main window by minutes and an unreachable one
+    by far longer.  The install is best-effort -- an empty theme grid is a
+    degraded app, a window that never opens is a broken one.  (#275)
+
+    Concrete: ``ThreadDataInstallRunner`` (a daemon worker) for production,
+    ``SyncDataInstallRunner`` (installs inline) for deterministic tests.
+    Injected at the composition root so no Command names a thread.
+    """
+
+    @abstractmethod
+    def submit(self, resolution: tuple[int, int]) -> None:
+        """Queue *resolution* for install.  Returns immediately.
+
+        Idempotent per resolution: re-submitting one already queued, running
+        or done is a no-op, so the discover -> connect sequence (which sees
+        the same panel twice) downloads once.
+        """
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Stop the worker and drop anything still queued (app teardown)."""

@@ -116,6 +116,7 @@ class DiscoverDevices(Command[DiscoverResult]):
     """
 
     def execute(self, app: App) -> DiscoverResult:
+        log.info("DiscoverDevices: scanning")
         live = app.platform.scan_devices()
         # Cache the fingerprints so ConnectDevice→attach can resolve per-device
         # firmware quirks (bcdDevice isn't in the static registry).  (#228)
@@ -131,16 +132,16 @@ class DiscoverDevices(Command[DiscoverResult]):
                 ))
                 if product.native_resolution != (0, 0):
                     seen_resolutions.add(product.native_resolution)
-        # One install pass per unique resolution.  Each install is itself
-        # idempotent (skips populated dirs), so this is safe to re-run.
+        # One install pass per unique resolution, handed to the background
+        # runner: discovery must not wait on ~30 MB of archives, and the
+        # runner de-duplicates so ConnectDevice re-submitting the same panel
+        # costs nothing.  Grids fill in when ``DataInstalled`` lands.  (#275)
         for resolution in seen_resolutions:
-            try:
-                app.data_install.ensure_all(resolution)
-            except Exception:
-                # Data install is best-effort — GUI degrades gracefully
-                # to empty grids rather than blocking discovery.
-                log.exception("DiscoverDevices: ensure_all(%s) failed",
-                              resolution)
+            app.data_install_runner.submit(resolution)
+        log.info(
+            "DiscoverDevices: %d live, %d recognised, resolutions=%s",
+            len(live), len(products), sorted(seen_resolutions),
+        )
         return DiscoverResult(
             ok=True,
             message=f"{len(products)} device(s) found",
@@ -328,17 +329,16 @@ class ConnectDevice(Command[ConnectResult]):
         # Non-square bulk panels report native_resolution=(0,0) and only learn
         # their real size here, so DiscoverDevices' static-resolution pass
         # skipped them — they'd have no data on disk.  ensure_all installs BOTH
-        # orientations for non-square panels (so portrait themes/masks exist),
-        # is idempotent, and is the port of legacy's
-        # ``_ensure_data_background(device, w, h)``.  Best-effort: a download
-        # failure must not block the connect. (#136)
+        # orientations for non-square panels (so portrait themes/masks exist).
+        #
+        # SUBMITTED, not called: this is the port of legacy's
+        # ``_ensure_data_background(device, w, h)`` — background is the whole
+        # point of it.  Run inline it downloaded six archives before connect
+        # returned, and since the GUI's splash waits on connect, the main
+        # window could not appear until then. (#136, #275)
         w, h = handshake.resolution
         if w and h:
-            try:
-                app.data_install.ensure_all((w, h))
-            except Exception:
-                log.exception("ConnectDevice %s: ensure_all(%dx%d) failed",
-                              self.key, w, h)
+            app.data_install_runner.submit((w, h))
 
         # Hand the wire to a per-device send worker — it owns every write
         # from here (serialization + Bulk/LY keepalive) until disconnect.
