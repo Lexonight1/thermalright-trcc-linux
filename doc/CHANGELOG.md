@@ -1,5 +1,57 @@
 # Changelog
 
+## v9.9.9
+
+**First launch no longer sits on "Connecting..." doing nothing.** The first
+time TRCC sees a screen it downloads that screen's themes, previews and masks
+— about 30 MB for a rectangular panel, in six pieces. It was doing that before
+opening the window, so on a slow connection you got a static "Connecting
+Thermalright LCD Display..." for minutes with no sign it was working, and on a
+connection that stalled, for very much longer. TRCC also asked for a two-minute
+limit per download and did not get one: the limit it set never covered looking
+the address up, and applied separately to each of the four addresses GitHub
+answers with, so a single unreachable download could hold the window shut for
+the better part of an hour.
+
+The download now happens in the background. The window opens straight away,
+and your themes and masks appear in their grids as they arrive. If a download
+fails you get a working app with an empty grid instead of an app that never
+opens. (#275)
+
+**Images and screen mirroring were cropped on wide panels.** On 1600x720,
+1280x480, 1920x462 and 854x480 screens, `display send-image` and screen
+mirroring sent a picture the wrong way round for the panel at the two most
+common angles, 0 and 180 degrees — the firmware then painted only the part
+that overlapped, so roughly a third of the screen lit up. Themes were always
+correct; only these two paths were wrong, which is why it looked like
+"works rotated, broken straight". Now checked on all ten affected panels at
+all four angles. If it still looks wrong on the glass, say so — the last
+unconfirmed detail is which way round it lands on a real screen. (#262, #203)
+
+TRCC also warns in the log when it is about to send a picture whose shape
+disagrees with what it told the panel, instead of reporting success and
+lighting up a third of the display.
+
+**Unplugging and replugging a screen no longer leaves it dead.** If the
+cooler re-enumerated messily on reconnect — a couple of failed attempts before
+it settled — TRCC kept talking to the handle from the first attempt. The panel
+dropped to its own idle screen and stayed there, the log filled with `send()
+called before connect()`, and only restarting TRCC fixed it, even though the
+device was connected and command-line sends worked fine. (#254)
+
+**Diagnostic reports keep everything the panel says.** A screen introduces
+itself with 1024 bytes and TRCC kept 64 of them. Those bytes may well say what
+size the screen is — which would mean new coolers being supported by reading
+the answer rather than by someone measuring their panel by hand. Nobody could
+check, because the bytes were thrown away before anyone could look. They are
+kept now.
+
+**Documentation fixes:** the Gentoo package no longer suggests a `trcc detect
+--all` flag that does not exist, and the README's `trcc serve` example no
+longer shows an option the command never had, nor the wrong default port. The
+check meant to catch exactly this had stopped reading the files it was
+supposed to be checking. (#247)
+
 ## v9.9.8
 
 **Command-line users with a Frozen Warframe SE: your panel should respond
