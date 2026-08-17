@@ -1,0 +1,504 @@
+{
+ "Form1.cs": {
+  "changed": [
+   "CheckDirectoryExist",
+   "ClearButtonBouns",
+   "DelegateFormCZTVHid",
+   "DelegateUCAbout",
+   "DelegateUCDevice",
+   "Form1",
+   "Form1_FormClosing",
+   "HideDeviceEvent",
+   "InitializeComponent",
+   "KaijiQidong",
+   "KaijiQidongSet",
+   "OnPowerModeChanged",
+   "ResetAllDevice",
+   "ShowDeviceEvent",
+   "Timer_Form_event",
+   "Timer_RGB_LCD_event",
+   "UpSystemInfo",
+   "buttonNet60_Click",
+   "\u9000\u51faToolStripMenuItem_Click"
+  ],
+  "gone": [],
+  "new": [
+   "AddDataFilePath",
+   "ApplyOwnerDrawControl",
+   "EnsureDataDirectoryWritable",
+   "EnsureModifyAcl",
+   "IsTaskSetAutoStart",
+   "OwnerDrawButton_Paint",
+   "RemoveReadOnlyRecursive",
+   "ResetFormLCD",
+   "TaskChenge",
+   "TaskQueryAndChenge",
+   "TaskSetAutoCreate",
+   "TaskSetAutoDelete",
+   "TestWritable"
+  ]
+ },
+ "FormCZTV.cs": {
+  "changed": [
+   "ChangeFileTheme",
+   "FormCZTV",
+   "FormCZTVInit",
+   "FormCZTVLanguageSet",
+   "FormCZTVRemove",
+   "GetEncoder",
+   "GetFileListMBDir",
+   "GetSystemInfo",
+   "GetWebBackgroundHttpDirectory",
+   "GetWebBackgroundImageDirectory",
+   "ImageTo565",
+   "ImageToJpg",
+   "InitializeComponent",
+   "MengBanSelect_Open",
+   "ReadFileTheme",
+   "ReadFileThemeSub",
+   "ReadSystemConfiguration",
+   "ThemeLocal",
+   "Theme_Click_Event",
+   "Timer_event",
+   "UpDateUCComboBox1",
+   "buttonBCZT_Click",
+   "buttonDaoRu_Click",
+   "buttonFXTB_Click",
+   "buttonSelectBackgroundImage"
+  ],
+  "gone": [],
+  "new": [
+   "GetNowDeviceDirection",
+   "SafeDeleteDirectory",
+   "SetNowDeviceDirection",
+   "SetThemeInfo_ThemeML",
+   "StartPipeline",
+   "UpDateUCScrollB"
+  ]
+ },
+ "FormKVMALED6.cs": {
+  "changed": [
+   "CheckDirectoryExist"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "FormLED.cs": {
+  "changed": [
+   "CHMS_Timer5",
+   "DSCL_Timer5",
+   "DSHX_Timer5",
+   "FZLD_Timer5",
+   "FormLEDInit",
+   "FormLEDLanguageSet",
+   "GetSystemInfo",
+   "InitializeComponent",
+   "QCJB_Timer5",
+   "SendHidVal",
+   "SetMyNameFile",
+   "WDLD_Timer5"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "FormScreenImage.cs": {
+  "changed": [
+   "FormScreenImage",
+   "InitializeComponent",
+   "delegateFScreenImage"
+  ],
+  "gone": [],
+  "new": [
+   "OnPaint",
+   "buttonPower_Paint"
+  ]
+ },
+ "FormSystemInfo.cs": {
+  "changed": [
+   "GetSystemInfo"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCBoFangQiKongZhi.cs": {
+  "changed": [
+   "FFmpeg_Video_Bmp",
+   "LongToTimer",
+   "SetImage",
+   "UCBoFangQiKongZhi",
+   "buttonTPJCH_Click",
+   "buttonTPJCW_Click"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCDevice.cs": {
+  "changed": [
+   "ADDUserButton",
+   "AddhidDeviceList",
+   "DelhidDeviceList",
+   "DeviceDataReceived1",
+   "DeviceDataReceived2",
+   "DeviceDataReceived4",
+   "DeviceOnConnected1",
+   "DeviceOnConnected2",
+   "DoUsbHidEvent",
+   "Remove_RGB_Device",
+   "ThreadSendDeviceData1",
+   "ThreadSendDeviceData2",
+   "Timer_event",
+   "UCDevice_MouseDown",
+   "UCDevice_MouseMove",
+   "UCDevice_MouseUp",
+   "button1_Click",
+   "buttonSetting_Click",
+   "userButton_Click"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCImageCut.cs": {
+  "changed": [
+   "ImageBiliBianhuan",
+   "ImageBiliBianhuanUp",
+   "OnPaint",
+   "SetImage",
+   "UCImageCut_MouseMove",
+   "buttonTPJCH_Click",
+   "buttonTPJCW_Click"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCInfoImage.cs": {
+  "changed": [
+   "UCInfoImage"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCScreenImage.cs": {
+  "changed": [
+   "GenerateImage",
+   "OnPaint",
+   "SetMyUCScreenImage",
+   "UCScreenImage",
+   "UCScreenImage_KeyDown",
+   "UCScreenImage_MouseDown",
+   "UCScreenImage_MouseMove",
+   "delegateUCScreenImage"
+  ],
+  "gone": [],
+  "new": [
+   "GenerateImage1",
+   "GenerateImage2",
+   "MyImageSet",
+   "SetUCStateTask1",
+   "SetUCStateTask2"
+  ]
+ },
+ "UCSystemInfo.cs": {
+  "changed": [
+   "FormInitDc",
+   "OnPaint",
+   "SetSystemVal",
+   "UCSystemInfo"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCSystemInfoOptions.cs": {
+  "changed": [
+   "GetMyNameFile",
+   "SetMyNameFile"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCThemeLocal.cs": {
+  "changed": [
+   "InitializeComponent",
+   "OnPaint",
+   "SetThemeLocal",
+   "UCThemeLocal",
+   "UCThemeLocal_MouseDown",
+   "delegateThemeLocal"
+  ],
+  "gone": [],
+  "new": [
+   "buttonDaoChu_Click",
+   "buttonDaoRu_Click",
+   "buttonGame_Click",
+   "buttonGame_Set",
+   "textBoxCPU_Leave",
+   "textBoxCPU_TextChanged"
+  ]
+ },
+ "UCThemeMask.cs": {
+  "changed": [
+   "UCThemeMask",
+   "delegateThemeMask"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCThemeSetting.cs": {
+  "changed": [
+   "InitializeComponent",
+   "UCThemeSetting",
+   "XiTongXianShi",
+   "XiTongXianShiAdd"
+  ],
+  "gone": [],
+  "new": [
+   "MyShortcut"
+  ]
+ },
+ "UCThemeWeb.cs": {
+  "changed": [
+   "UCThemeWeb",
+   "delegateThemeWeb"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCTouPingXianShi.cs": {
+  "changed": [
+   "TouPingXianShiBackgroundImageSet90du",
+   "textBoxH_TextChanged",
+   "textBoxW_TextChanged"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCVideoCut.cs": {
+  "changed": [
+   "GetOneImage",
+   "SetImage",
+   "UCVideoCut",
+   "UCVideoCut_LongToTimer",
+   "ZhuanMaPanDuan",
+   "buttonTPJCH_Click",
+   "buttonTPJCW_Click",
+   "buttonYulan_Click",
+   "delegateUCVideoCut"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCXiTongXianShi.cs": {
+  "changed": [
+   "UCXiTongXianShiAdd",
+   "UCXiTongXianShiSelect",
+   "UCXiTongXianShiSet_UCXiTongXianShiSubArray",
+   "XiTongXianShiSub"
+  ],
+  "gone": [],
+  "new": [
+   "SetXiTongNowSub"
+  ]
+ },
+ "UCXiTongXianShiAdd.cs": {
+  "changed": [
+   "InitializeComponent",
+   "UCXiTongXianShiAdd",
+   "delegateXiTongXianShiAdd"
+  ],
+  "gone": [],
+  "new": [
+   "UpdateUCXiTongXianShiAdd",
+   "buttonLink_Click"
+  ]
+ },
+ "UCXiTongXianShiColor.cs": {
+  "changed": [
+   "InitializeComponent",
+   "UCXiTongXianShiColor"
+  ],
+  "gone": [],
+  "new": []
+ },
+ "UCXiTongXianShiSub.cs": {
+  "changed": [
+   "InitUCXiTongXianShiSub",
+   "InitializeComponent",
+   "UCXiTongXianShiSub",
+   "UCXiTongXianShiSubTimer",
+   "delegateXiTongXianShiSub"
+  ],
+  "gone": [],
+  "new": [
+   "LoadIconForPathOrName",
+   "ResolveExecutablePath"
+  ]
+ },
+ "FormLCD.cs": {
+  "unaudited": [
+   "BitmapToByte",
+   "ButtonNewMode",
+   "ByteToBitmap",
+   "BytesToFont",
+   "ChangeFileTheme",
+   "CheakMaskFile",
+   "CheakWebFile",
+   "CheckDirectoryExist",
+   "ClearMemoryAll",
+   "ClearMemoryMy",
+   "ClearMemorySelf",
+   "CloseShareMemory",
+   "CopyDireToDire",
+   "DeviceDataReceived",
+   "Dispose",
+   "DownLoadFile",
+   "EmptyWorkingSet",
+   "FontToBytes",
+   "FormCZTVInit",
+   "FormCZTVLanguageSet",
+   "FormCZTVRemove",
+   "FormCZTV_MouseDown",
+   "FormCZTV_MouseMove",
+   "FormCZTV_MouseUp",
+   "FormLCD",
+   "FupingJiance",
+   "GetConfigurationToMemory",
+   "GetDeviceCaps",
+   "GetDirList",
+   "GetFileList",
+   "GetFileListMB",
+   "GetFileListMBDir",
+   "GetNowDeviceDirection",
+   "GetScreenScalingFactor",
+   "GetSystemInfo",
+   "GetWebBackgroundHttpDirectory",
+   "GetWebBackgroundImageDirectory",
+   "ImageCut_Open",
+   "InitMemorySize",
+   "InitializeComponent",
+   "MengBanSelect_Open",
+   "My_Video_Generate_Event",
+   "My_Video_To_Theme",
+   "ReadFileTheme",
+   "ReadFileThemeSub",
+   "ReadShareMemory",
+   "ReadSystemConfiguration",
+   "SafeDeleteDirectory",
+   "SetConfigurationToMemory",
+   "SetNowDeviceDirection",
+   "SetProcessWorkingSetSize",
+   "SetThemeInfo_ThemeML",
+   "StringToBytes",
+   "ThemeLocal",
+   "ThemeMask",
+   "ThemeSetting",
+   "ThemeWeb",
+   "Theme_Click",
+   "Theme_Click_Event",
+   "Timer_event",
+   "UpDateFormGetColor",
+   "UpDateFormScreenshot",
+   "UpDateUCComboBox1",
+   "UpDateUCImageCut",
+   "UpDateUCScrollB",
+   "UpDateUCVideoCut",
+   "VideoCut_Open",
+   "VideoSelect_Open_Generate",
+   "WriteShareMemory",
+   "buttonBCZT_Click",
+   "buttonBDZT_Click",
+   "buttonDaoChu_Click",
+   "buttonDaoRu_Click",
+   "buttonHelp_Click",
+   "buttonLDD_Click",
+   "buttonLDD_Set",
+   "buttonMS_Mode",
+   "buttonPower_Click",
+   "buttonPower_MouseEnter",
+   "buttonPower_MouseLeave",
+   "buttonSelectBackgroundImage",
+   "buttonYDMB_Click",
+   "buttonYDZT_Click",
+   "buttonZTSZ_Click",
+   "delegateFormLCD",
+   "textBoxCMM_KeyPress"
+  ]
+ },
+ "FormLCDImageCut.cs": {
+  "unaudited": [
+   "Dispose",
+   "FormLCDImageCut",
+   "FormLCDImageCut_FormClosing",
+   "InitializeComponent",
+   "OnPaint"
+  ]
+ },
+ "UCImageCutF.cs": {
+  "unaudited": [
+   "Dispose",
+   "ImageBiliBianhuan",
+   "ImageBiliBianhuanUp",
+   "InitializeComponent",
+   "OnPaint",
+   "RotateImg",
+   "SetImage",
+   "UCImageCutF",
+   "UCImageCut_MouseDown",
+   "UCImageCut_MouseMove",
+   "UCImageCut_MouseUp",
+   "button1_Click",
+   "buttonClose_Click",
+   "buttonTPJCH_Click",
+   "buttonTPJCOK_Click",
+   "buttonTPJCW_Click",
+   "delegateUCImageCut"
+  ]
+ },
+ "UCShortcut.cs": {
+  "unaudited": [
+   "ChangedScrollC1",
+   "ChangedText",
+   "ChangedTextBoxXY",
+   "Dispose",
+   "GetTailFit",
+   "InitializeComponent",
+   "Shortcut_KeyPress",
+   "TextBoxXY_TextChanged",
+   "UCShortcut",
+   "UcScrollC1_upDateUCScroll",
+   "buttonShortcut_Click",
+   "delegateUCShortcut"
+  ]
+ },
+ "UCVideoCutF.cs": {
+  "unaudited": [
+   "BitmapToByte",
+   "BmpToThemeFile",
+   "Dispose",
+   "GetOneImage",
+   "GetVideoRatio",
+   "InitializeComponent",
+   "KillFFmpegYulan",
+   "OnPaint",
+   "ResetAllTempFile",
+   "SetImage",
+   "Timer_event",
+   "UCVideoCutF",
+   "UCVideoCut_LongToTimer",
+   "UCVideoCut_MouseDown",
+   "UCVideoCut_MouseMove",
+   "UCVideoCut_MouseTimer",
+   "UCVideoCut_MouseUp",
+   "UCVideoCut_TimerMouse",
+   "UCVideoCut_TimerToLong",
+   "ZhuanMaPanDuan",
+   "button1_Click",
+   "button2_Click",
+   "buttonClose_Click",
+   "buttonTPJCH_Click",
+   "buttonTPJCOK_Click",
+   "buttonTPJCW_Click",
+   "buttonXuanzhuan_Click",
+   "buttonYulan_Click",
+   "delegateUCVideoCut"
+  ]
+ }
+}

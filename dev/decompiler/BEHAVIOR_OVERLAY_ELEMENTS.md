@@ -15,13 +15,8 @@ These four controls form the **overlay-element authoring surface**:
 - **`UCXiTongXianShi`** — the *grid container*: holds the list of overlay elements
   (`UCXiTongXianShiSub` tiles) in a 7-wide grid, plus a master on/off toggle and an
   "add" button. Fans events up to the owner (`Form1`) via `delegateXiTong`.
-- **`UCXiTongXianShiColor`** — the *property inspector*: X/Y textboxes, R/G/B textboxes,
-  a color wheel (`UCColorB`/`UCColorC`), a font picker, 11 preset swatches + 11
-  MRU (most-recently-used) swatches persisted to a `.dc`-adjacent binary file,
-  and an eyedropper. Fans property edits up via `ucdelegateColor`.
-- **`UCXiTongXianShiAdd`** — the *"add element" popup*: an owner-drawn, scrollable
-  catalog of every available metric (from `Form1.ucSystemInfoOptions1.configArrayList`)
-  with a custom scrollbar; clicking a "+" row emits an add-element command via `delegateAdd`.
+- `UCXiTongXianShiColor` (UCXiTongXianShiColor.cs:135) — constructor for the overlay element's colour/position/font editor. Sets the two re-entry guards `isTextXYEnabled` and `isTextEnabled` true, the working font to 微软雅黑 9pt GraphicsUnit Point (3) charset 134, `isGetRGB` false (eyedropper idle) and `myColorChange` false (nothing to persist yet), runs `InitializeComponent`, then calls `ClearButtonBouns` and hands its own two callbacks to the child pickers — `UCColorBDelegate` to the brightness/bar picker `ucColorB1` and `UCColorCDelegate` to the colour-wheel picker `ucColorC1`. No branches. EXTERNAL: UCColorB.cs, UCColorC.cs.
+- `UCXiTongXianShiAdd` (UCXiTongXianShiAdd.cs:86) — constructor for the "add content" popup (the picker that inserts a new overlay element into the LCD layout). Initializes drawing state before the designer runs: text font 微软雅黑 9pt, GraphicsUnit Point (3), charset 134; a solid brush seeded from `UCSystemInfoOptionsOne.myColorZDY`; a `StringFormat` later set to LineAlignment centre (1) and Alignment near (0); `isMouseDown`/`isMouseDownButton` false; `imageY` and `offsetY` 0; `nowCoutMain`/`nowCoutSub` -1; `myX`/`myY` 0; `isFanLcd` false and `fanLcdVal` 0. After `InitializeComponent` it clears the flat border colour (ARGB 0,0,0,0) on the Timer/Week/Date/Text buttons, loads the row artwork `P点选框` and `P点选框A`, the scrollbar thumb `P滚动条按钮` and the top mask `P01增加内容遮罩`, sets the scroll thumb start position to 64 + thumbHeight/2, and subscribes the mouse-wheel handler. No branches.
 - **`UCXiTongXianShiTable`** — the *format-mode switch strip*: a single-row control that
   shows ONE of {unit toggle, 12/24H toggle, date-order cycle, free-text box} depending
   on which element type is selected; emits format changes via `delegateXiTongTable`.
@@ -89,9 +84,7 @@ Delegate command vocabulary is integer-`cmd`-based (see per-method notes). The c
   currently-selected tile (used when a format switch resolves a sub-mode + label); branch:
   `nowCount != -1` guard + swallow-all `catch`.
 - `Dispose` (UCXiTongXianShi.cs:409) — standard WinForms dispose; branch: `disposing && components != null`.
-- `InitializeComponent` (UCXiTongXianShi.cs:418) — designer boilerplate: builds `buttonOnOff` (36×18 at
-  5,5, image `P滑动开`) and `buttonAdd` (60×60 at 5,35, image `P增加内容`), wires their Clicks, sets the
-  control background `P01内容`, size 472×430, DoubleBuffered. No logic branches.
+- `InitializeComponent` (UCXiTongXianShiColor.cs:539) — designer plumbing: constructs the editor's controls — the X and Y position boxes, two labels (font name and rounded font size), the R/G/B boxes, the eleven fixed swatch buttons buttonC1..buttonC11, the eleven recent-colour buttons button1..button11, the eyedropper button and the font button, plus the child pickers `UCColorB` and `UCColorC` — then suspends layout. The property/geometry assignments continue past line 689, which was outside the read range.
 
 ---
 
@@ -277,3 +270,5 @@ format sub-value.
   are clamped to ≤1920 on load.
 - **0xDC (=220) magic byte** gates the MRU-swatch file (Color.cs:198 read / :240 write), same family
   marker as the DC theme/config files.
+- `UpdateUCXiTongXianShiAdd` (UCXiTongXianShiAdd.cs:126) — re-lays the popup's five element buttons into the compact five-across strip used when the icon/link button is available: makes `buttonLink` visible, sets the button lefts to 13, 55, 97, 139 and 181 with `buttonLink` top 31, and sets all four of Timer/Week/Date/Text (and by the chained assignment `buttonLink`'s value 36) to width 36 — narrower than the designer's 46 so five fit in the 230-wide popup. No branches.
+- `buttonLink_Click` (UCXiTongXianShiAdd.cs:168) — the icon/link element button: raises `delegateAdd` with element-kind code 96 and immediately hides the popup. No branches.

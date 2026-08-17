@@ -119,11 +119,7 @@ matching `UCSystemInfoOptionsOne` widgets), kept index-aligned.
   labelN.Text`.
 - `Dispose` (UCSystemInfoOptions.cs:526) — standard designer dispose (dispose
   `components` if disposing, chain to base).
-- `InitializeComponent` (UCSystemInfoOptions.cs:535) — designer: builds Add/Up/Down
-  buttons (transparent flat, resource background images `A增加数组/A上一页a/A下一页a`),
-  Add at `(44,36)` size `266×189`, Up `(145,653)`, Down `(1045,653)`, all
-  `Visible=false`; panel size `1254×692`, background `A0数据列表`, DoubleBuffered.
-  Wires the three Click handlers.
+- `InitializeComponent` (UCThemeSetting.cs:308) — Designer plumbing: instantiates and positions thirteen child user controls over the `Resources.P0主题设置` background (BackgroundImageLayout 0 = None, AutoScaleMode 3 = Inherit, transparent BackColor). Fixed layout — `ucXiTongXianShi1` 472x430 at (10,1); the overlapping right column all at (492,1): `ucXiTongXianShiColor1` 230x374, `ucXiTongXianShiAdd1` 230x430 (hidden), `ucShortcut1` 230x430 (hidden); `ucXiTongXianShiTable1` 230x54 at (492,376); the 351x100 row controls `ucMengBanXianShi1` (10,441), `ucBeiJingXianShi1` (371,441), `ucTouPingXianShi1` (10,551), `ucShiPingBoFangQi1` (371,551); and the hidden 682x84 strips `ucDongHuaLianDong1` (10,690), `ucJianPanLianDongA1` (10,780), `ucJianPanLianDongB1` (10,870), `ucJianPanLianDongC1` (10,960). The method body continues past line 458, the end of the assigned range.
 
 ---
 
@@ -180,12 +176,7 @@ child's callback to a local handler that translates the child's local `(cmd,info
 data,data1)` into a numeric command on the ONE owner delegate `delegateUCSetting`.
 This is the command-code fan-out the UI-contract audit maps to render commands.
 
-- `UCThemeSetting` ctor (UCThemeSetting.cs:51) — `InitializeComponent`, then wires 8
-  child delegates to the 8 handler methods below (TouPing→`TouPingXianShi`,
-  BeiJing→`BeiJingXianShi`, MengBan→`MengBanXianShi`, ShiPing→`ShiPingBoFangQi`,
-  XiTongAdd→`XiTongXianShiAdd`, XiTong→`XiTongXianShi`, Color→`XianShiColor`,
-  Table→`XiTongTable`). Note the keyboard-linkage (JianPanLianDong A/B/C) + DongHua
-  children are hosted but NOT wired here.
+- `UCThemeSetting` (UCThemeSetting.cs:53) — Constructor; runs `InitializeComponent` then wires this control as the single hub for nine child user controls by assigning its own private methods to their delegate fields: `ucTouPingXianShi1.delegateUCTouPing` -> `TouPingXianShi`, `ucBeiJingXianShi1.delegateUCBeiJing` -> `BeiJingXianShi`, `ucMengBanXianShi1.delegateUCMengBan` -> `MengBanXianShi`, `ucShiPingBoFangQi1.delegateUCShiPing` -> `ShiPingBoFangQi`, `ucXiTongXianShiAdd1.delegateAdd` -> `XiTongXianShiAdd`, `ucXiTongXianShi1.delegateXiTong` -> `XiTongXianShi`, `ucXiTongXianShiColor1.ucdelegateColor` -> `XianShiColor`, `ucXiTongXianShiTable1.delegateXiTongTable` -> `XiTongTable`, `ucShortcut1.ucdelegateShortcut` -> `MyShortcut` (56-64). Every child event therefore funnels through this class and is re-emitted upward on `delegateUCSetting`. No branches.
 - `XiTongTable` (UCThemeSetting.cs:83) — table sub-panel → element-selection. `cmd`
   0/1/2/3 → `ucXiTongXianShi1.SetXiTongNowSub((int)info)`; `cmd 4` →
   `SetXiTongNowSub((int)info,(string)data)` (with a text arg). Routes the table's
@@ -207,11 +198,7 @@ This is the command-code fan-out the UI-contract audit maps to render commands.
   a 4-way switch, mixes visibility, table config, color backup, and two owner
   commands. Key branches: `cmd 0=add(128) / 1=show-add / 3=show-color+configure-table
   (info 0-4) / 4=xy-change`.
-- `XiTongXianShiAdd` (UCThemeSetting.cs:144) — the Add sub-panel's kind buttons.
-  `cmd 16`→`ucXiTongXianShi1.UCXiTongXianShiAdd(0,1,(int)info,(int)data)` (add with
-  position args); `32/48/64/80`→`UCXiTongXianShiAdd(1/2/3/4)` (add fixed element
-  kind). After the switch, always show Color+Table panels. Key branch: `cmd → which
-  element kind added`.
+- `XiTongXianShiAdd` (UCThemeSetting.cs:189) — Handles the "add element" palette (`ucXiTongXianShiAdd1`) by calling `ucXiTongXianShi1.UCXiTongXianShiAdd` with a fixed element-type code per command, then restoring the right-hand editor stack. Key branches: `cmd == 16 -> UCXiTongXianShiAdd(0, 1, info, data)` — the four-argument overload, `info`/`data` cast to int (194); `cmd == 32 -> type 1` (197); `cmd == 48 -> type 2` (200); `cmd == 64 -> type 3` (203); `cmd == 80 -> type 4` (206); `cmd == 96 -> type 5 with second argument 64, then shows ucShortcut1 and RETURNS`, deliberately skipping the color/table reveal (208-211); `any other cmd -> falls through the switch with no add performed`. All non-96 paths end by showing `ucXiTongXianShiColor1` and `ucXiTongXianShiTable1` (213-214). EXTERNAL: UCXiTongXianShi.cs.
 - `MengBanXianShi` (UCThemeSetting.cs:217) — mask panel. `cmd 0`→`delegateUCSetting(96,
   info)` (apply mask); `1`→`(97)`; `3`→`(99)`. Key branch: `cmd → owner command 96/97/99`.
 - `BeiJingXianShi` (UCThemeSetting.cs:233) — background panel. `cmd 0` first turns
@@ -270,3 +257,4 @@ This is the command-code fan-out the UI-contract audit maps to render commands.
 - `nowPage` is only ever 0 or 1 (Up/Down), so the pager is hard-capped at 24 sources
   (2 pages × 12); `buttonAdd` hides at `count>=24`. Whether >24 was ever intended is
   unclear — no third page exists.
+- `MyShortcut` (UCThemeSetting.cs:67) — Relay for the shortcut panel (`ucShortcut1`), forwarding to the element list `ucXiTongXianShi1`. Signature carries `mode`, `X`, `Y` and a string `addr`. Key branches: `mode == 1 -> SetXiTongNowSub(X)` (72); `mode == 2 -> SetXiTongNowSub(addr)` — the string overload (75); `mode == 3 -> UCXiTongXianShiSetOneXY(X, Y)`, moving the selected element (78); `any other mode -> nothing happens, no default arm`. EXTERNAL: UCXiTongXianShi.cs owns the actual mutation.
