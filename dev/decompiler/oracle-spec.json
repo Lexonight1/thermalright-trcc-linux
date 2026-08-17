@@ -1,9 +1,23 @@
 {
-  "decompile": "TRCC_decompiled",
+  "decompile": "TRCC_2.1.6_decompiled",
   "frame_headers": [
     {
       "encoder": "ImageToJpg",
-      "condition": "is480x480",
+      "condition": "myDevicePingMu == 100",
+      "header_len": 20,
+      "magic": [
+        218,
+        219,
+        220,
+        221
+      ],
+      "declared_w": 480,
+      "declared_h": 480,
+      "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "else_default",
       "header_len": 64,
       "magic": [
         18,
@@ -41,6 +55,20 @@
       ],
       "declared_w": 640,
       "declared_h": 480,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is640x172",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 640,
+      "declared_h": 172,
       "length_slot": "60:64"
     },
     {
@@ -115,7 +143,21 @@
     },
     {
       "encoder": "ImageToJpg",
-      "condition": "is1920x462",
+      "condition": "is960x320",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 960,
+      "declared_h": 320,
+      "length_slot": "60:64"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "is1920x462 || is1920x440",
       "header_len": 64,
       "magic": [
         18,
@@ -129,7 +171,7 @@
     },
     {
       "encoder": "ImageToJpg",
-      "condition": "is1280x480",
+      "condition": "mySubMode <= 2",
       "header_len": 20,
       "magic": [
         218,
@@ -140,6 +182,20 @@
       "declared_w": 1280,
       "declared_h": 480,
       "length_slot": "16:20"
+    },
+    {
+      "encoder": "ImageToJpg",
+      "condition": "else_default",
+      "header_len": 64,
+      "magic": [
+        18,
+        52,
+        86,
+        120
+      ],
+      "declared_w": 1920,
+      "declared_h": 462,
+      "length_slot": "60:64"
     },
     {
       "encoder": "ImageToJpg",
@@ -226,6 +282,16 @@
     {
       "encoder": "ImageTo565",
       "condition": "myDeviceMode == 1",
+      "bytes": [
+        0,
+        1,
+        1,
+        30
+      ]
+    },
+    {
+      "encoder": "ImageTo565",
+      "condition": "myDeviceMode == 3",
       "bytes": [
         0,
         1,

@@ -27,7 +27,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-CS_ROOT = Path("/home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled")
+from core.csharp import DECOMPILE_ROOT as CS_ROOT
 OUT_DIR = Path(__file__).resolve().parent
 OUT_JSON = OUT_DIR / "control-flow.json"
 OUT_MD = OUT_DIR / "CONTROL_FLOW.md"
@@ -120,9 +120,40 @@ def _scan_branches(body: str, base_line: int) -> list[Branch]:
         if marm and "switch" not in s:
             out.append(Branch("arm", ln, marm.group("key"), []))
         # ternary decision points (spaced ' ? ' — nullable '?.'/'int?' have no space)
-        for _ in re.finditer(r"\S \? ", raw):
-            out.append(Branch("ternary", ln, s[:120], _drivers(s)))
+        for m in re.finditer(r"\S \? ", raw):
+            out.append(Branch("ternary", ln, _test_before(s, m.start() + 1),
+                              _drivers(s)))
     return out
+
+
+def _test_before(stmt: str, q: int) -> str:
+    """The condition a ternary tests, without the statement wrapped around it.
+
+    This map documents "the condition a branch tests". Every other branch kind
+    already emits just that; the ternary emitted the whole line, so entries read
+    `delegateForm?.Invoke(0, (is320x320 ? (2 * j) : j) + 1, array3, num);` where
+    the decision is `is320x320`. That over-capture reproduces the vendor's source
+    rather than describing its behaviour — see AUDIT_INDEX.md "Source policy" —
+    and it buries the fact under the plumbing.
+
+    Walks left from the `?` to the start of the tested expression, balancing
+    parentheses so a condition inside a call argument comes out whole.
+    """
+    depth = 0
+    start = 0
+    for i in range(q - 1, -1, -1):
+        ch = stmt[i]
+        if ch in ")]":
+            depth += 1
+        elif ch in "([":
+            if depth == 0:
+                start = i + 1
+                break
+            depth -= 1
+        elif depth == 0 and ch in "=;,":
+            start = i + 1
+            break
+    return stmt[start:q].strip().lstrip("> ").rstrip("?").strip()
 
 
 def scan_file(path: Path) -> list[Method]:

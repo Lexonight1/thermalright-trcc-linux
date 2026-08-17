@@ -3,12 +3,23 @@
 
 Cross-references the structural map (control-flow.json — every method) against
 the behavioral docs (AUDIT_*.md subsystem prose + BEHAVIOR_*.md per-method
-grind) by line citation. A method counts as "covered" when a doc cites at least
-one line inside it. That is a LOWER bound on understanding and an UPPER bound on
-completeness (a cited method may still have undocumented branches), so it never
-flatters us. The mandate: know how the C# does everything before consolidating
-its poorly-written methods — so this meter must reach ~100% on behavior-bearing
-files before the consolidation starts.
+grind) by line citation, parsed by ``core.citations`` — which knows all four of
+our citation styles.  It used to know two, so `AUDIT_LED_CORE.md` (line-prefixed
+code fences) and `AUDIT_VIDEO.md` (prose ``(line N)``) contributed nothing and
+their subjects read as DARK: a formatting accident reported as an audit gap.
+
+A method counts as "covered" when a doc cites at least one line inside it. That
+is a LOWER bound on understanding and an UPPER bound on completeness (a cited
+method may still have undocumented branches), so it never flatters us. The
+mandate: know how the C# does everything before consolidating its poorly-written
+methods — so this meter must reach ~100% on behavior-bearing files before the
+consolidation starts.
+
+The number is only meaningful against the release the docs describe.  These
+docs were written against TRCC 2.0.3 (`audit_provenance.py` measures that) while
+the miners now read 2.1.6, so the same docs score 100% of the older map and 54%
+of the current one.  The docs did not get worse; the denominator became the
+right one.
 
 Run:  python3.12 dev/decompiler/audit_coverage.py            # overall %
       python3.12 dev/decompiler/audit_coverage.py --dark FormCZTV.cs   # worklist
@@ -17,47 +28,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
+
+from core.citations import by_file, parse_all
+from core.releases import BOILERPLATE as _BOILERPLATE
 
 DEC = Path(__file__).resolve().parent
 _HUGE = 10**9
-
-# WinForms designer/boilerplate — not ported to Linux, excluded from the
-# behavior-bearing denominator. Marked, never silently skipped.
-_BOILERPLATE = frozenset({
-    "Resources.cs", "Program.cs", "FormStart.cs", "UCButton.cs", "UCScrollA.cs",
-    "UCComboBoxA.cs", "UCComboBoxB.cs", "UCComboBoxC.cs", "UCColorA.cs",
-    "UCColorB.cs", "UCColorC.cs", "FormGetColor.cs", "UCAbout.cs",
-})
-
-
-def _cited_lines() -> dict[str, set[int]]:
-    """Line citations per .cs file, tolerant of both doc styles:
-    explicit ``File.cs:123`` (AUDIT / BEHAVIOR_FORMCZTV), and a section header
-    ``## … File.cs`` followed by bare ``(`:123-456`)`` bullets (BEHAVIOR_METRICS
-    / LED_SCREEN). Bare refs bind to the nearest preceding .cs mention, so the
-    meter measures real coverage instead of one citation format."""
-    cited: dict[str, set[int]] = {}
-    explicit = re.compile(r"([A-Za-z0-9_]+\.cs)[:\sL]*?(\d{2,5})")
-    csfile = re.compile(r"([A-Za-z0-9_]+\.cs)")
-    bare = re.compile(r"[`(]:(\d{2,5})")
-    for pattern in ("AUDIT_*.md", "BEHAVIOR_*.md"):
-        for md in DEC.glob(pattern):
-            cur: str | None = None
-            for line in md.read_text().splitlines():
-                had_explicit = False
-                for m in explicit.finditer(line):
-                    cited.setdefault(m.group(1), set()).add(int(m.group(2)))
-                    had_explicit = True
-                files = csfile.findall(line)
-                if files:
-                    cur = files[-1]
-                if cur and not had_explicit:
-                    for m in bare.finditer(line):
-                        cited.setdefault(cur, set()).add(int(m.group(1)))
-    return cited
-
 
 def _is_covered(method: dict, nxt: int, lines: list[int]) -> bool:
     return any(method["line"] <= c < nxt for c in lines)
@@ -66,9 +43,15 @@ def _is_covered(method: dict, nxt: int, lines: list[int]) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dark", help="list undocumented methods for this .cs basename")
+    ap.add_argument("--fail-under", type=int, default=None, metavar="PCT",
+                    help="exit non-zero if behaviour-bearing coverage drops "
+                         "below PCT.  This is what makes the meter a RATCHET "
+                         "instead of a number nobody reads: audited C# that "
+                         "stops being audited fails the build.")
     args = ap.parse_args()
     cf = json.loads((DEC / "control-flow.json").read_text())
-    cited = _cited_lines()
+    cited = by_file(parse_all(
+        list(DEC.glob("AUDIT_*.md")) + list(DEC.glob("BEHAVIOR_*.md"))))
 
     if args.dark:
         for rel, methods in cf.items():
@@ -101,6 +84,12 @@ def main() -> int:
     print(f"BEHAVIOR-BEARING only:  {bhv_c}/{bhv_m} cited = {100 * bhv_c // bhv_m}%  "
           f"(excludes {tot_m - bhv_m} designer/boilerplate methods)")
     print("Coverage = a method has >=1 line cited in an AUDIT_*.md / BEHAVIOR_*.md doc.")
+    pct = 100 * bhv_c // bhv_m
+    if args.fail_under is not None and pct < args.fail_under:
+        print(f"\nFAIL — behaviour-bearing coverage {pct}% is below the "
+              f"--fail-under floor of {args.fail_under}%.  Either the audit "
+              f"lost citations, or new C# arrived unaudited.")
+        return 1
     return 0
 
 

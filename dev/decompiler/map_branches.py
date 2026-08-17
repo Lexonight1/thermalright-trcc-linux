@@ -26,18 +26,18 @@ from pathlib import Path
 
 from core.csharp import CSharpSource, Method
 
-_DEFAULT = Path.home() / "Downloads/TRCCCAPEN"
+from core.csharp import DECOMPILE_ROOT as _DEFAULT
 
 # (relative-path, [wire-relevant methods]) — the decision points that shape the
 # wire.  Everything else in these 7000-line forms is UI noise we skip.
 TARGETS: list[tuple[str, list[str]]] = [
-    ("TRCC_decompiled/TRCC.CZTV/FormCZTV.cs",
+    ("TRCC.CZTV/FormCZTV.cs",
      ["FormCZTVInit", "ImageToJpg", "ImageTo565"]),
-    ("TRCC_decompiled/TRCC/UCDevice.cs",
+    ("TRCC/UCDevice.cs",
      ["DeviceOnConnected2", "DeviceDataReceived2",
       "ThreadSendDeviceData1", "ThreadSendDeviceData2"]),
     ("USBLCDNEW.decompiled.cs/USBLCDNEW.decompiled.cs", ["*"]),  # F5 type-3 wire
-    ("TRCC_decompiled/TRCC.LED/FormLED.cs", ["SendHidVal"]),
+    ("TRCC.LED/FormLED.cs", ["SendHidVal"]),
 ]
 
 # What a branch guards — the first meaningful statement inside it.

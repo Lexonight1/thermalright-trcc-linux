@@ -37,7 +37,7 @@ from pathlib import Path
 
 from core.csharp import CSharpSource
 
-_DEFAULT_DECOMPILE = Path.home() / "Downloads/TRCCCAPEN/TRCC_decompiled"
+from core.csharp import DECOMPILE_ROOT as _DEFAULT_DECOMPILE
 
 _FORM_CZTV = "TRCC.CZTV/FormCZTV.cs"      # LCD frame encoders (all wires)
 _UC_DEVICE = "TRCC/UCDevice.cs"           # HID USB handshake + chunk threads
