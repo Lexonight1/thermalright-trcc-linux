@@ -1,4 +1,10 @@
-# BEHAVIOR — System-Info Options panels (TRCC 2.1.6)
+# BEHAVIOR — System-Info Options panels
+
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> 6 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `GetMyNameFile`, `InitializeComponent`, `SetMyNameFile`, `UCThemeSetting`, `XiTongXianShi`, `XiTongXianShiAdd` — read those entries as TRCC 2.0.3 history.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
 
 Per-method behavioral grind of the three "system info options" user controls: the
 outer paged grid (`UCSystemInfoOptions`), the single per-source card
@@ -180,11 +186,11 @@ This is the command-code fan-out the UI-contract audit maps to render commands.
   XiTongAdd→`XiTongXianShiAdd`, XiTong→`XiTongXianShi`, Color→`XianShiColor`,
   Table→`XiTongTable`). Note the keyboard-linkage (JianPanLianDong A/B/C) + DongHua
   children are hosted but NOT wired here.
-- `XiTongTable` (UCThemeSetting.cs:64) — table sub-panel → element-selection. `cmd`
+- `XiTongTable` (UCThemeSetting.cs:83) — table sub-panel → element-selection. `cmd`
   0/1/2/3 → `ucXiTongXianShi1.SetXiTongNowSub((int)info)`; `cmd 4` →
   `SetXiTongNowSub((int)info,(string)data)` (with a text arg). Routes the table's
   current-sub selection into the system-display panel.
-- `XianShiColor` (UCThemeSetting.cs:80) — color sub-panel → element styling.
+- `XianShiColor` (UCThemeSetting.cs:99) — color sub-panel → element styling.
   `mode 1`→`delegateUCSetting(112)` (owner-level, no element mutate — likely
   "font-picker open"); `2`→`ucXiTongXianShi1.UCXiTongXianShiSetOneColor(r,g,b)`;
   `3`→`...SetOneXY(r,g)` (x,y carried in r,g); `4`→`...SetOneFont(font)`. Key
@@ -206,23 +212,23 @@ This is the command-code fan-out the UI-contract audit maps to render commands.
   position args); `32/48/64/80`→`UCXiTongXianShiAdd(1/2/3/4)` (add fixed element
   kind). After the switch, always show Color+Table panels. Key branch: `cmd → which
   element kind added`.
-- `MengBanXianShi` (UCThemeSetting.cs:168) — mask panel. `cmd 0`→`delegateUCSetting(96,
+- `MengBanXianShi` (UCThemeSetting.cs:217) — mask panel. `cmd 0`→`delegateUCSetting(96,
   info)` (apply mask); `1`→`(97)`; `3`→`(99)`. Key branch: `cmd → owner command 96/97/99`.
-- `BeiJingXianShi` (UCThemeSetting.cs:184) — background panel. `cmd 0` first turns
+- `BeiJingXianShi` (UCThemeSetting.cs:233) — background panel. `cmd 0` first turns
   OFF the projection (`ucTouPingXianShi1.buttonOnOff_Set(false)`) AND video
   (`ucShiPingBoFangQi1.buttonOnOff_Set(false)`) — mutual-exclusion between bg /
   projection / video — then `delegateUCSetting(1, info)` (set background); `1/2/3/4`
   → owner `49/50/51/52` (background sub-options, e.g. fit modes). Key branch: `cmd 0
   = exclusive-select bg + cmd1; 1-4 = sub-option 49-52`.
-- `TouPingXianShi` (UCThemeSetting.cs:208) — projection (screen-cast) panel. `cmd 0`
+- `TouPingXianShi` (UCThemeSetting.cs:257) — projection (screen-cast) panel. `cmd 0`
   turns off bg+video then `delegateUCSetting(2, info)`; `1/2/3/4/5`→owner
   `65/66/67/68/69` each carrying `info`. Same mutual-exclusion shape as background.
   Key branch: `cmd 0=exclusive-select projection+cmd2; 1-5=65-69`.
-- `ShiPingBoFangQi` (UCThemeSetting.cs:235) — video-player panel. `cmd 0` turns off
+- `ShiPingBoFangQi` (UCThemeSetting.cs:284) — video-player panel. `cmd 0` turns off
   bg+projection then `delegateUCSetting(3, info)`; `cmd 1`→owner `10`. Third member
   of the bg/projection/video mutual-exclusion trio. Key branch: `cmd 0=exclusive-
   select video+cmd3; 1=10`.
-- `Dispose` (UCThemeSetting.cs:250) — standard designer dispose.
+- `Dispose` (UCThemeSetting.cs:299) — standard designer dispose.
 - `InitializeComponent` (UCThemeSetting.cs:259) — designer: constructs & lays out all
   12 child controls with background images from `ComponentResourceManager` /
   `Resources.*`; system-display `ucXiTongXianShi1` at `(10,1)` 472×430; Color panel

@@ -1,6 +1,12 @@
-# AUDIT — LED Device Core (`TRCC.LED/FormLED.cs`, TRCC 2.1.6)
+# AUDIT — LED Device Core (`TRCC.LED/FormLED.cs`)
 
-Source: `/home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.LED/FormLED.cs` (16,751 lines).
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> 2 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `GetSystemInfo`, `SendHidVal` — read those entries as TRCC 2.0.3 history.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
+
+Source: `/home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.LED/FormLED.cs` (17,434 lines).
 Every claim below is line-cited against that file. Quotes are verbatim. No speculation —
 where behaviour lives in a *different* file (`UCScreenLED`, `Form1`, `UCSystemInfo`) it is
 flagged as EXTERNAL and not asserted.
@@ -15,14 +21,19 @@ USB send path. It does **not** own the USB handle or the master timer — it emi
 a delegate to the host (`Form1`), which owns the tick and the device I/O.
 
 ### Delegate seam (host owns the wire)
-```
-15:	public delegate void delegateFormLED(int cmd, object info = null, object data = null, object data1 = null);
-47:	public delegateFormLED delegateForm;
-```
+- `delegateFormLED` (FormLED.cs:15) — the host-callback delegate type. It takes an `int cmd` plus
+  three optional object slots (`info`, `data`, `data1`), each defaulting to null, so a call site may
+  pass anywhere from one to four arguments.
+- `delegateForm` (FormLED.cs:47) — the public field holding the host's callback instance. FormLED
+  only reads it; the host (`Form1`) assigns it.
+
 Every frame is pushed with `cmd=16`, `info=myDeviceCount`, `data=<byte[]>`, `data1=<length>`:
-```
-4361:			delegateForm?.Invoke(16, myDeviceCount, array, array.Length);
-```
+
+- Frame push (FormLED.cs:4361) — the last statement of every send branch invokes `delegateForm`
+  with those four values: command `16`, the device index, the finished frame buffer, and that
+  buffer's length. The invocation is null-conditional, so with no host attached the frame is
+  dropped silently instead of throwing.
+
 `myDeviceCount` (`43: public int myDeviceCount = 0;`) is the device index the host uses to route
 the frame to the correct USB endpoint. FormLED never calls libusb/HID directly.
 
@@ -33,21 +44,27 @@ settings filename suffix. The method:
 1. Sets `nowNo = NO` (1601) and localizes labels (`1602: FormLEDLanguageSet();`).
 2. Selects the **product skin + `nowLedStyle`** from `NO` (1603–1802 — the product table, §2).
 3. Loads persisted user state from `Data\Digital\Setting<name>` (1804–1902).
-4. Enables the save-on-change guard: `1911: isSaveTimer = true;`.
+4. Enables the save-on-change guard by setting `isSaveTimer` true (`:1911`).
 
 There is **no handshake performed here** — see §3; the handshake byte (`NO`) arrives already
 parsed by the host.
 
 ### Per-tick engine — `MyTimer_Event()` (4069)
-The host's timer calls this. One tick = read sensors → compute effect → paint preview → send:
-```
-4071:		GetSystemInfo();
-4072:		GetVal();
-...      (per-nowLedStyle: DSCL/DSHX/QCJB/CHMS/WDLD/FZLD timer)
-4304:		LedValToScreenLed();
-4305:		SendHidVal();
-4306:		((Control)this).Invalidate();
-```
+The host's timer calls this. One tick = read sensors → compute effect → paint preview → send, in
+this fixed order:
+
+- `GetSystemInfo` (FormLED.cs:4135) — refreshes the cached sensor readings (itself throttled to
+  every 6th tick, §5).
+- `GetVal` (FormLED.cs:4136) — routes those readings onto the segment-digit groups and the
+  per-segment on/off flags.
+- the per-`nowLedStyle` effect timer runs next — one of the DSCL / DSHX / QCJB / CHMS / WDLD / FZLD
+  families, chosen by `myLedMode` (dispatch at 4073–4303, §5).
+- `LedValToScreenLed` (FormLED.cs:4368) — converts the effect buffer (`ledVal*`) into the preview
+  control's `ledColor`, applying the user-brightness stage on the way.
+- `SendHidVal` (FormLED.cs:4369) — builds header + payload and pushes the frame through the
+  delegate.
+- `Invalidate` on the form itself (FormLED.cs:4370) — repaints the preview, after the frame has
+  already gone out to the wire.
 
 ---
 
@@ -73,7 +90,7 @@ every effect timer, the preview `ReSetUCScreenLEDn()`, and the send framing. Map
 | `160` (1772) | `DLF13` | `ReSetUCScreenLEDLF13()` | **12** | |
 | `208` (1784) | `DCZ1` | `ReSetUCScreenLED8()` | **8** | |
 
-`nowLedStyleSub` is set to `1` only for `NO==129` (`1732: nowLedStyleSub = 1;`); it switches the
+`nowLedStyleSub` is set to `1` only for `NO==129` (`:1732`); it switches the
 memory-style logic to hard-disk sources in `GetVal`/`WDLD_Timer4`/`FZLD_Timer4`.
 
 ### Effect enum (`myLedMode`, 1–6)
@@ -93,19 +110,23 @@ Temp unit (`myTempMode`, `buttonCF_Click` 2357): `1`=Celsius (`buttonC_Click` 23
 (`buttonF_Click` 2380).
 
 ### Per-style LED counts (the effect buffers, 851–879)
-```
-851:	private byte[,] ledVal = new byte[10, 3];            // style 1 (base)
-861:	private byte[,] ledValCaihong = new byte[18, 3];     // style 2 rainbow ring
-863:	private byte[,] ledVal4 = new byte[14, 3];           // style 4 (LC1)
-865:	private byte[,] ledVal5 = new byte[23, 3];           // style 5 (LF8)
-867:	private byte[,] ledVal6 = new byte[72, 3];           // style 6 (LF12)
-869:	private byte[,] ledValCaihong7 = new byte[12, 3];    // style 7 rainbow ring
-871:	private byte[,] ledVal8 = new byte[13, 3];           // style 8 (CZ1)
-873:	private byte[,] ledVal9 = new byte[31, 3];           // style 9 (LC2)
-875:	private byte[,] ledVal10 = new byte[17, 3];          // style 10 (LF11)
-877:	private byte[,] ledValLF15 = new byte[72, 3];        // style 11 (LF15)
-879:	private byte[,] ledValLF13 = new byte[62, 3];        // style 12 (LF13)
-```
+Each style owns one private 2-D byte buffer, `[LED count, 3]` — one row per LED, three columns
+holding R, G, B. All are allocated once at field-initialisation time and reused every tick:
+
+| Buffer field | Line | Dimensions | LEDs | Style |
+|---|---|---|---|---|
+| `ledVal` | `:851` | `[10, 3]` | 10 | 1 (base) |
+| `ledValCaihong` | `:861` | `[18, 3]` | 18 | 2 (rainbow ring) |
+| `ledVal4` | `:863` | `[14, 3]` | 14 | 4 (LC1) |
+| `ledVal5` | `:865` | `[23, 3]` | 23 | 5 (LF8) |
+| `ledVal6` | `:867` | `[72, 3]` | 72 | 6 (LF12) |
+| `ledValCaihong7` | `:869` | `[12, 3]` | 12 | 7 (rainbow ring) |
+| `ledVal8` | `:871` | `[13, 3]` | 13 | 8 (CZ1) |
+| `ledVal9` | `:873` | `[31, 3]` | 31 | 9 (LC2) |
+| `ledVal10` | `:875` | `[17, 3]` | 17 | 10 (LF11) |
+| `ledValLF15` | `:877` | `[72, 3]` | 72 | 11 (LF15) |
+| `ledValLF13` | `:879` | `[62, 3]` | 62 | 12 (LF13) |
+
 These loop bounds are confirmed by every `DSCL_Timer*` (e.g. `7621: for (int i = 0; i < 10; i++)`,
 `7631:… < 14`, `7641:… < 23`, `7651:… < 72`, `7661:… < 13`, `7671:… < 31`, `7681:… < 17`,
 `7691:… < 72`, `7701:… < 62`).
@@ -120,24 +141,24 @@ handshake bytes** itself. The device-identify/handshake lives in the host (`Form
 
 ### Packet framing — 20-byte header + RGB payload
 Every send branch prepends the **identical 20-byte header** then a payload of `N*3` RGB bytes,
-concatenates, and pushes via the delegate. Verbatim (test branch, 4326):
-```
-4326:			byte[] obj = new byte[20]
-4327:			{
-4328:				218, 219, 220, 221, 0, 0, 0, 0, 0, 0,
-4329:				0, 0, 2, 0, 0, 0, 0, 0, 0, 0
-4330:			};
-4331:			obj[16] = (byte)array.Length;
-```
+concatenates, and pushes via the delegate. The test branch shows the shape:
+
+- header allocation (FormLED.cs:4326-4330) — a 20-byte array (the local `obj`) filled from a
+  two-row initialiser (braces at FormLED.cs:4327 and FormLED.cs:4330). Row one (FormLED.cs:4328)
+  is `218, 219, 220, 221` followed by six zeros; row two (FormLED.cs:4329) is two zeros, then `2`,
+  then seven zeros. After the four-byte preamble, index 12 is the only non-zero slot and it
+  holds `2`.
+- length patch (FormLED.cs:4331) — index 16 of that header is then overwritten with the payload
+  array's length, cast to a byte.
 - Header bytes `0..3` = **`0xDA 0xDB 0xDC 0xDD`** (218,219,220,221) — the magic preamble.
   (`49: private const byte USB_PACKED_Head = 220;` names the 0xDC byte specifically.)
 - Header byte `12` = **`2`** (constant command/type).
 - Header byte `16` = **payload length** = `array.Length` (the RGB byte count, NOT incl. header).
 - All other header bytes = `0`.
 - Frame on the wire = `header(20) ++ payload(N*3)` via `.Concat(...).ToArray()` (e.g.
-  `4360: array = first.Concat(array).ToArray();`).
+  the header array is concatenated in front of the payload, `:4360`).
 
-### Per-product payload sizes (SendHidVal branches, one `if (nowLedStyle==…)` each)
+### Per-product payload sizes (SendHidVal branches, one per `nowLedStyle` value)
 | `nowLedStyle` | Payload bytes | LEDs (bytes/3) | Branch head |
 |---|---|---|---|
 | test (`checkBox1.Checked`) | 252 | 84 | 4325 |
@@ -187,40 +208,51 @@ Two multipliers stack:
 
 ## 4. Effects — exact algorithms + timing constants
 
-Timing constants (top of file):
-```
-71:	private const int RGB_BREATHING_TIMER = 33;
-73:	private const int RGB_COLORFUL_TIMER = 28;
-77:	private const int RGBTableCount = 768;
-```
+Timing constants (private `const int`s at the top of the file):
+
+- `RGB_BREATHING_TIMER` (FormLED.cs:71) — `33`, the half-period of the breathe sawtooth in ticks
+  (so a full up-down cycle is 66).
+- `RGB_COLORFUL_TIMER` (FormLED.cs:73) — `28`, the ticks spent in each phase of the 6-phase colour
+  wheel.
+- `RGBTableCount` (FormLED.cs:77) — `768`, the number of entries in the precomputed rainbow table.
 
 ### 4.1 Static — `DSCL_Timer*` (7619+)
 Fills every LED of the style's buffer with the raw user color; no time term:
-```
-7623:			ledVal[i, 0] = (byte)rgbR1;
-7624:			ledVal[i, 1] = (byte)rgbG1;
-7625:			ledVal[i, 2] = (byte)rgbB1;
-```
+
+- `DSCL_Timer` loop body (FormLED.cs:8270) — for LED index `i`, the user red component `rgbR1` is
+  cast to byte and stored in `ledVal[i, 0]`; FormLED.cs:8271 stores `rgbG1` in `ledVal[i, 1]` and
+  FormLED.cs:8272 stores `rgbB1` in `ledVal[i, 2]`. No tick counter, no scaling, no mixing — the
+  buffer comes out identical every tick.
+
 One variant per style (`DSCL_Timer4/5/6/8/9/10/TimerLF15/TimerLF13`), differing only in loop
 bound (§2 counts).
 
 ### 4.2 Breathe — `DSHX_Timer*` (7709+)
 A 0→33→66 sawtooth on `rgbTimer` (period 66 ticks), ramping the user color up then down, then
 **mixed 80/20 with the static color** so it never goes fully dark:
-```
-7711:		rgbTimer++;
-7715:		if (rgbTimer < 33) {   b = (byte)(rgbR1 * rgbTimer / 33); …ramp up }
-7721:		else if (rgbTimer < 66) { b = (byte)(rgbR1 * (66 - rgbTimer) / 33); …ramp down }
-7727:		else { rgbTimer = 0; b = b2 = b3 = 0; }
-7734:			ledVal[i, 0] = (byte)((double)(int)b * 0.8 + (double)rgbR1 * 0.2);
-```
+
+- (FormLED.cs:8364) — `rgbTimer` is incremented once per tick, at the top of the method.
+- (FormLED.cs:8368) — below 33, the ramp-up branch: each channel scratch value (`b`, `b2`, `b3`)
+  is the user colour component multiplied by `rgbTimer` and divided by 33, in integer maths, cast
+  to byte.
+- (FormLED.cs:8374) — from 33 up to 66, the ramp-down branch: the same expression with
+  `66 - rgbTimer` in place of `rgbTimer`.
+- (FormLED.cs:8380) — at 66 and beyond, `rgbTimer` resets to 0 and `b`, `b2`, `b3` are all set to 0
+  for that one tick.
+- (FormLED.cs:8387) — what actually lands in `ledVal[i,*]` is not the ramp alone: it is
+  `ramp × 0.8 + userColour × 0.2`, computed in double precision and cast to byte. The 20% static
+  floor is why the strip never reaches black.
+
 **Ring variant** `DSHX_Timer_New` (7988) drives a single scalar `ledHuxi` (used by the rainbow
 rings, styles 2/7) with a **floor of 51** and 0.8 gain:
-```
-7993:			ledHuxi = (byte)(51.0 + (double)(255 * rgbTimer1 / 33) * 0.8);   // up
-7998:			ledHuxi = (byte)(51.0 + (double)(255 * (66 - rgbTimer1) / 33) * 0.8); // down
-8002:		ledHuxi = 51;   // trough
-```
+
+- rising half (FormLED.cs:8652) — `ledHuxi` becomes `51.0` plus `0.8 ×` the integer quotient
+  `255 × rgbTimer1 / 33`, the whole sum computed as a double and cast to byte. Peak is therefore
+  `51 + 204 = 255`.
+- falling half (FormLED.cs:8657) — the same formula with `66 - rgbTimer1` substituted for
+  `rgbTimer1`.
+- trough (FormLED.cs:8661) — outside both halves `ledHuxi` is assigned the literal `51`, never 0.
+
 (`853: private byte ledHuxi = byte.MaxValue;`.) Uses a **separate** counter `rgbTimer1`.
 
 ### 4.3 Color-cycle / gradient — `QCJB_Timer*` (8005+)
@@ -240,11 +272,16 @@ identical phase machine.
 Spatial rainbow from the precomputed **768-entry `RGBTable`** (`79: byte[768,3]`, a full
 R→Y→G→C→B→M→R wheel in steps of 2). Scrolls by `rgbTimer += 4` per tick, reversed LED order,
 per-LED phase offset:
-```
-9214:		if (rgbTimer >= 768) rgbTimer = 0;
-9220:			ledVal[10 - i - 1, 0] = RGBTable[(rgbTimer + i * 768 / 10 / 6) % 768, 0];
-9224:		rgbTimer += 4;
-```
+
+- wrap (FormLED.cs:9879) — before writing, `rgbTimer` is reset to 0 once it reaches 768, so the
+  scroll position stays a valid `RGBTable` row index.
+- per-LED write (FormLED.cs:9885) — LED `10 - i - 1` (the strip is walked in **reversed** order)
+  takes its channel from `RGBTable` at row `(rgbTimer + i * 768 / 10 / 6) % 768`: the scroll
+  position plus a per-LED phase offset, here with style 1's LED count `10` and the extra `/6`.
+  The same statement repeats for columns 1 and 2 (G and B).
+- advance (FormLED.cs:9889) — `rgbTimer` is increased by `4` per tick, so the wheel takes 192 ticks
+  to travel its 768 entries.
+
 The spatial spread divisor differs per product — **caveat, not uniform**:
 - style1 `i*768/10/6` (9220), style4 `i*768/14/6` (9235), style5 `i*768/23/6` (9250),
   style8 `i*768/13/2` (9280), style10 `i*768/17/6` (9310)
@@ -254,14 +291,17 @@ The spatial spread divisor differs per product — **caveat, not uniform**:
 **third** counter `rgbTimer2`; `CHMS_Timer_New_7` (9362) → `ledValCaihong7[12]` with `i*768/12/6`.
 
 ### 4.5 Temperature-linked — `WDLD_Timer*` (9377+)
-5 fixed color bands keyed on `ucInfoImage1.myVal` (the CPU-temp reading):
-```
-9382:		if (myVal < 30)      { 0,255,255 }   // cyan
-9388:		else if (< 50)       { 0,255,0 }     // green
-9394:		else if (< 70)       { 255,255,0 }   // yellow
-9400:		else if (< 90)       { 255,110,0 }   // orange (G=110!)
-9406:		else                 { 255,0,0 }     // red
-```
+5 fixed color bands keyed on `ucInfoImage1.myVal` (the CPU-temp reading). The bands are a plain
+if / else-if chain, each arm writing one constant RGB triplet to every LED of the buffer:
+
+| Band on `myVal` | Line | R, G, B | Colour |
+|---|---|---|---|
+| `< 30` | `:10053` | 0, 255, 255 | cyan |
+| `< 50` | `:10059` | 0, 255, 0 | green |
+| `< 70` | `:10065` | 255, 255, 0 | yellow |
+| `< 90` | `:10071` | 255, 110, 0 | orange — note G is **110**, not 128 |
+| otherwise | `:10077` | 255, 0, 0 | red |
+
 `WDLD_Timer4` (9420) reads `MemTemperature` (sub=0) or `HardDiskInfo[hardDiskCount-1][1]` (sub=1).
 Ring variant `WDLD_Timer_New` (9784) writes `ledWendu[0..2]` (857).
 
@@ -302,9 +342,11 @@ the actual 7-seg mask. Key branches:
 ### Rotation ("轮播" LunBo) timing
 `isLunBo` cycles the enabled sources. Advance gate is **`ValCount >= 6 * <seconds>`** where
 seconds comes from `textBoxTimer.Text`:
-```
-3425:				if (ValCount >= 6 * Convert.ToInt32(((Control)textBoxTimer).Text))
-```
+
+- rotation gate (FormLED.cs:3489) — the source only advances once `ValCount` has reached `6 ×` the
+  integer parsed out of the `textBoxTimer` text box (the user's rotation period in seconds). The
+  parse is unguarded, so a non-numeric text box throws here.
+
 The `6 *` implies the master tick is **6 Hz (~166 ms)** — corroborated by `GetSystemInfo`
 throttling sensor refresh to every 6th tick (`3044: if (InfoCount < 6) return;` → ~1 Hz sensors).
 (The QTimer interval itself is EXTERNAL, owned by `Form1`.)
@@ -355,4 +397,3 @@ bools, then per-channel modes/colors (`myLedMode1..4`, `rgb*_1..4`, `myOnOff1..4
     (`3142: if (val.Contains("℃"))` … `℉`/`RPM`/`MHz`/`%`), which also flips `ucInfoImage1`
     text-mode and `myTempMode`. C→F is `*9/5+32` done in integer math in several places (3542,
     3609, 3121) — truncation matters for exact digit parity.
-```

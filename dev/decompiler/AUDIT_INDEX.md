@@ -1,16 +1,131 @@
 # C# Decompile Audit — master index
 
-Line-cited audit of TRCC 2.1.6 (`~/Downloads/TRCCCAPEN/TRCC_decompiled/`), the
-protocol/behavior oracle for the hexagonal consolidation. Each subsystem doc was
-produced by a focused per-file agent (read end-to-end, every claim quoted +
-line-cited) and **spot-verified against the source** — one load-bearing claim per
-doc re-read by hand. Method + rationale: `project_cs_full_audit` (memory).
+Line-cited audit of the Windows app, the protocol/behavior oracle for the
+hexagonal consolidation. Each subsystem doc was produced by a focused per-file
+agent (read end-to-end, every claim quoted + line-cited) and **spot-verified
+against the source** — one load-bearing claim per doc re-read by hand. Method +
+rationale: `project_cs_full_audit` (memory).
+
+**These docs were written against TRCC 2.0.3. Their citations now address TRCC
+2.1.6, which is what we build against.** 135 of the methods they document
+changed between the two and are flagged, per doc, in each file's state block.
+Read [Provenance](#provenance) before relying on any of them.
+
+## Provenance
+
+Every audit below used to open with "TRCC 2.1.6". None were written against it.
+They describe `~/Downloads/TRCCCAPEN/TRCC_decompiled/`, whose `AssemblyVersion`
+is **2.0.3.0** and whose `TRCC.exe` predates the 2.1.6 installer by four months.
+The label was prose: it cost nothing to write and nothing checked it.
+
+It is checked now. `audit_release.py` measures each doc's release from its own
+evidence, records the answer in the doc, and fails CI when doc and evidence
+disagree:
+
+    python3.12 dev/decompiler/audit_release.py             # status table
+    python3.12 dev/decompiler/audit_release.py --rebase    # re-anchor onto the current tree
+    python3.12 dev/decompiler/audit_release.py --check     # CI gate
+    python3.12 dev/decompiler/audit_release.py --worklist worklist.json
+
+Each doc carries a generated block recording two different facts that are easy
+to conflate:
+
+- **origin** — the release it was *read from*. History. Measured once from the
+  file sizes it states about its sources (exact: `UCScreenLED` is 10,141 lines in
+  2.0.3, 10,143 in 2.1.6) and then frozen, because the other evidence for it —
+  citation line numbers — is destroyed the moment those citations are re-anchored.
+- **addresses** — the release its line numbers *point at*. Changed by `--rebase`.
+
+Verify the trees yourself; never trust a folder name, the folder name is what lied:
+
+    grep -rh AssemblyVersion ~/Downloads/TRCCCAPEN/TRCC_decompiled/Properties/*.cs
+    grep -rh AssemblyVersion ~/Downloads/TRCC_2.1.6_decompiled/Properties/*.cs
+
+| | these docs' origin | what we build against |
+|---|---|---|
+| path | `TRCCCAPEN/TRCC_decompiled/` | `TRCC_2.1.6_decompiled/` |
+| `AssemblyVersion` | **2.0.3.0** | **2.1.6.0** |
+| C# files / lines | 56 / 70,662 | 62 / 87,011 |
+| `UCDevice` | 1,438 lines | 1,747 |
+| `FormCZTV` | 7,218 | 8,829 |
+| `TRCC.LCD` namespace | absent | 5,156 lines, new |
+| device models | 44 | ~65 (matches ours) |
+
+### What was re-anchored, and what was not
+
+**1,237 citations moved** onto 2.1.6. Only where the method's body is
+byte-identical across the two releases — 828 of the documented methods are, so
+their prose is still true and only the pointer was wrong.
+
+**135 documented methods changed** and were deliberately *not* moved. Re-pointing
+those would leave a citation that looks current beside prose describing code that
+no longer exists — worse than an obviously stale number, because nothing signals
+it. Each doc's state block names its own; the heaviest are `BEHAVIOR_DISCOVERY`
+(36), `BEHAVIOR_FORMCZTV` (21), `BEHAVIOR_THEME` (19), `BEHAVIOR_VIDEO` (13),
+`BEHAVIOR_FORMLED` (12).
+
+**4 citations were already mis-anchored** before any of this ran — e.g.
+`AUDIT_LCD_PIPELINE` labels a `RotateImgHei` line range `RotateImgBu`. They are
+recorded as `known-bad` in the state blocks so a real regression cannot hide
+behind them.
+
+### What 2.1.6 adds that no doc covers
+
+**7 files, 8,154 lines, entirely unaudited** — absent from the tree these docs
+read: `TRCC.LCD/FormLCD` (5,082 — a second LCD host with its own `FormCZTVInit`),
+`UCVideoCutF` (1,651), `UCImageCutF` (726), `UCShortcut` (275), `UCScrollB`/`C`
+(218/128), `FormLCDImageCut` (74).
+
+Plus rewrites inside files that do exist: `FormCZTVInit` (`case 5:`/`case 7:` →
+else-if chain; new pm 50/63/66/68/69; `is1920x440`), and `mySubMode` — which
+branches *before* the rotation switch in six resolution families, contradicting
+this audit's "`pmSub` never touches rotation".
+
+`audit_release.py --worklist` writes the full list: **148 changed, 38 new, 149
+unaudited** behaviour-bearing methods across 28 files.
+
+## Source policy — facts, not source text
+
+**The decompile stays on the machine that made it. It is never committed, and
+neither is anything pasted out of it.**
+
+These docs describe behaviour and cite where to find it. They do not reproduce
+the vendor's source:
+
+- **Keep — functional facts a port depends on**: byte sequences and magic numbers
+  (`0xDA DB DC DD`, `{170,187,204,221}`), header layouts and offsets, resolutions,
+  angles, PM/SUB values, thresholds, timer intervals, resource and file names,
+  and the identifier names of the methods being described.
+- **Drop — expression**: statements, declarations and control flow as source text.
+  A line citation replaces it. `FormCZTV.cs:2646` tells a reader exactly where to
+  look **in their own extraction** and carries none of the source with it.
+
+Two reasons, in order of weight. A takedown against the repository would take the
+releases, the issue tracker and the distro packages down with it, and the cost of
+not being worth arguing about is an afternoon of editing. And it reads better:
+prose describing what a method does is usable by a contributor who has not
+extracted anything, which pasted C# never was.
+
+`csharp_oracle/Oracle.cs` follows the same rule. Its rotation step is written from
+the described behaviour rather than copied, and it is checked: across all 416
+combinations of the 13 supported geometries × both encoders × pm × angle it
+returns byte-identical quadrant mappings to the version it replaced. An
+independent implementation that agrees with our Python is evidence; a copy
+agreeing with itself was not.
+
+Extraction is reproducible from the vendor installer — the recipe lives in the
+decompile's own `README.md`, outside this repository.
 
 ## Coverage
 
-**Audited: ~53,000 of 70,662 lines (≈75% total; ≈84% of behavior-bearing code).**
-The unaudited ~17.5K is mostly `Resources.cs` (7,420 — generated accessors, no
-logic) + small UI controls (color pickers, comboboxes, options panels, About).
+Measured by `audit_coverage.py` against the 2.1.6 control-flow map:
+
+**787 / 1,033 behaviour-bearing methods cited = 76%.**
+
+It read 54% before the re-anchor. That rise is **not new understanding** — it is
+the same understanding, correctly addressed: citations that had been pointing
+into the wrong release now land on the methods their prose describes. Real gains
+come only from re-auditing the worklist above.
 
 | Doc | Subsystem | Files (lines) | Verified |
 |---|---|---|---|

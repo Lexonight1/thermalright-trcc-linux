@@ -1,4 +1,10 @@
-# Behavioral annotation — FormScreenshot.cs + FormScreenImage.cs (TRCC 2.1.6)
+# Behavioral annotation — FormScreenshot.cs + FormScreenImage.cs
+
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> 2 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `FormScreenImage`, `InitializeComponent` — read those entries as TRCC 2.0.3 history.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
 
 Decompiled path: `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.CZTV/`.
 Two sibling borderless top-most preview/overlay windows. Both are draggable-by-body
@@ -25,12 +31,12 @@ both files — a decompiler quirk of the same hand-rolled drag pattern.
 ## FormScreenImage.cs — 8 dark methods (all covered)
 
 - `FormScreenImage` ctor (FormScreenImage.cs:26) — constructor; calls `InitializeComponent()` only. No branches. Note field `ucScreenImage1` (a `UCScreenImage`, declared but not attached here) + delegate `ucScreenImage`.
-- `ResetFormScreenImage` (FormScreenImage.cs:31) — resizes the form to its current `BackgroundImage` dimensions (`Width/Height = BackgroundImage.Width/Height`), then repositions the power button to `Left = Width - 44` (pins it 44px from the right edge). Used after the preview image is swapped to a device-specific resolution. No branches (will NRE if `BackgroundImage` is null — no guard).
-- `FormScreenImage_MouseDown` (FormScreenImage.cs:38) — begins drag; branches: `e.Button == 1048576` (Middle) → compute `num = -e.X`; **nested branch** `sender == null` → `num -= 180` (an extra 180px horizontal grab-offset fudge when invoked programmatically with a null sender — likely the widescreen/half-panel case); store `_mousePoint = (num, -e.Y)`, set `isMouseDown = true`. Non-middle → no-op.
-- `FormScreenImage_MouseMove` (FormScreenImage.cs:55) — drag-move; identical shape to FormScreenshot: `isMouseDown` true → move window to `Control.MousePosition` offset by `_mousePoint`. **[COPY-PASTE]** of `FormScreenshot_MouseMove`.
-- `FormScreenImage_MouseUp` (FormScreenImage.cs:65) — ends drag; branch: `e.Button == 1048576` (Middle) → set `isMouseDown = false`, then an EMPTY `if (_mousePoint.IsEmpty) { }` block (dead/vestigial — no body, no else; the FormScreenshot sibling's mode-1 delegate report was stripped here). Non-middle → no-op.
-- `buttonPower_Click` (FormScreenImage.cs:78) — power/close button handler; `Hide()`s the form then fires `ucScreenImage?.Invoke(0)` (mode 0 = notify owner the preview popup was dismissed). Null-conditional guards the delegate. No branches.
-- `Dispose` (FormScreenImage.cs:84) — standard WinForms dispose; branch: `disposing && components != null` → dispose; always base `Dispose(disposing)`. **[COPY-PASTE]** identical to FormScreenshot.Dispose.
+- `ResetFormScreenImage` (FormScreenImage.cs:32) — resizes the form to its current `BackgroundImage` dimensions (`Width/Height = BackgroundImage.Width/Height`), then repositions the power button to `Left = Width - 44` (pins it 44px from the right edge). Used after the preview image is swapped to a device-specific resolution. No branches (will NRE if `BackgroundImage` is null — no guard).
+- `FormScreenImage_MouseDown` (FormScreenImage.cs:39) — begins drag; branches: `e.Button == 1048576` (Middle) → compute `num = -e.X`; **nested branch** `sender == null` → `num -= 180` (an extra 180px horizontal grab-offset fudge when invoked programmatically with a null sender — likely the widescreen/half-panel case); store `_mousePoint = (num, -e.Y)`, set `isMouseDown = true`. Non-middle → no-op.
+- `FormScreenImage_MouseMove` (FormScreenImage.cs:56) — drag-move; identical shape to FormScreenshot: `isMouseDown` true → move window to `Control.MousePosition` offset by `_mousePoint`. **[COPY-PASTE]** of `FormScreenshot_MouseMove`.
+- `FormScreenImage_MouseUp` (FormScreenImage.cs:66) — ends drag; branch: `e.Button == 1048576` (Middle) → set `isMouseDown = false`, then an EMPTY `if (_mousePoint.IsEmpty) { }` block (dead/vestigial — no body, no else; the FormScreenshot sibling's mode-1 delegate report was stripped here). Non-middle → no-op.
+- `buttonPower_Click` (FormScreenImage.cs:79) — power/close button handler; `Hide()`s the form then fires `ucScreenImage?.Invoke(0)` (mode 0 = notify owner the preview popup was dismissed). Null-conditional guards the delegate. No branches.
+- `Dispose` (FormScreenImage.cs:99) — standard WinForms dispose; branch: `disposing && components != null` → dispose; always base `Dispose(disposing)`. **[COPY-PASTE]** identical to FormScreenshot.Dispose.
 - `InitializeComponent` (FormScreenImage.cs:93) — designer setup: builds `buttonPower` (40×40, transparent, flat, background = `Resources.Alogout默认` "logout default" glyph, initial Location (776,2)), wires its `Click`. Form: 820×420 client, borderless, `TopMost=true`, `DoubleBuffered`, `BackColor=White`, `BackgroundImage = Resources.P0预览弹窗800X360` ("P0 preview-popup 800×360"), `StartPosition=CenterScreen(1)`, AutoScaleMode=DPI(3). Wires MouseDown/MouseMove/MouseUp (no FormClosing/DoubleClick handlers here, unlike the sibling). No branches.
 
 ## Cross-file notes

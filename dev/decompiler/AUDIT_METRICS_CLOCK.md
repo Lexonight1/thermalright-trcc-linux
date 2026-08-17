@@ -1,4 +1,10 @@
-# C# Oracle Audit — Metrics / Overlay-Element / Clock Subsystem (TRCC 2.1.6)
+# C# Oracle Audit — Metrics / Overlay-Element / Clock Subsystem
+
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> 2 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `FormInitDc`, `SetSystemVal` — read those entries as TRCC 2.0.3 history.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
 
 Source root: `~/Downloads/TRCCCAPEN/TRCC_decompiled/`
 
@@ -21,24 +27,11 @@ Every claim below quotes the exact line(s). No inference is presented as fact.
 ### 1.1 `UCSystemInfo.cs` — the metric engine
 Owns a Windows named memory-mapped file and drives `HWINFO.exe` as the sensor backend.
 
-- Shared-memory constants (`:23-31`):
-  ```
-  private const int shareMemorySize0 = 1048576;
-  private const int shareMemorySize = 2097152;
-  private const string shareMemoryName = "shareMemory_SysInfo";
-  private MemoryMappedFile shareMemory;
-  private byte[] shareMemoryVal = new byte[1048576];
-  ```
-- Create/open the MMF (`:109-112`): `shareMemory = MemoryMappedFile.CreateOrOpen("shareMemory_SysInfo", 2097152L);`
-- Lifecycle: `ThreadStart()` (`:227-231`) spawns a background thread on `FormInitDc`.
-- `FormInitDc` (`:135-209`) kills any existing `HWINFO` process (`:143-145`), launches `HWINFO.exe` hidden from `Application.StartupPath` (`:153-159`), then polls the MMF up to 60× waiting for the handshake string `HWi32_GetNumberOfDetectedSensors` in the first 100 bytes (`:164-199`), re-launching HWiNFO if the process died. On success it starts a 1000 ms auto-reset timer (`:200-203`):
-  ```
-  m_timer = new System.Timers.Timer(1000.0);
-  m_timer.Elapsed += timer_event;
-  m_timer.AutoReset = true;
-  m_timer.Start();
-  ```
-- Teardown `ucSystemInfoClose()` (`:962-983`) stops/disposes the timer, disposes the MMF, and kills every `HWINFO` process.
+- Shared-memory constants (`:23-31`) — `shareMemorySize0` = 1048576 (1 MiB) is the length of the `shareMemoryVal` byte array the reader copies the view into; `shareMemorySize` = 2097152 (2 MiB) is the size of the mapping itself, so the staging buffer covers only the first half of the view; `shareMemoryName` = `"shareMemory_SysInfo"` is the Windows named-MMF identifier both TRCC and HWiNFO agree on; `shareMemory` is the `MemoryMappedFile` handle field.
+- Create/open the MMF (`:109-112`) — a memory-mapped file named `"shareMemory_SysInfo"`, **2,097,152** bytes (2 MiB), opened if present and created otherwise.
+- Lifecycle: `ThreadStart()` (`:248-252`) spawns a background thread on `FormInitDc`.
+- `FormInitDc` (`:135-209`) kills any existing `HWINFO` process (`:143-145`), launches `HWINFO.exe` hidden from `Application.StartupPath` (`:153-159`), then polls the MMF up to 60× waiting for the handshake string `HWi32_GetNumberOfDetectedSensors` in the first 100 bytes (`:164-199`), re-launching HWiNFO if the process died. On success it creates a `System.Timers.Timer` with a 1000.0 ms interval, subscribes `timer_event` to its `Elapsed` event, sets `AutoReset` true so it re-arms itself, and starts it — one metric refresh per second for the life of the control (`:200-203`).
+- Teardown `ucSystemInfoClose()` (`:988-1009`) stops/disposes the timer, disposes the MMF, and kills every `HWINFO` process.
 
 **Port caveat:** the entire metric source is HWiNFO's JSON blob in a Windows MMF. On Linux this maps to the hwmon/pynvml aggregator; the string-parsing rules below are the *contract* the Linux side must reproduce for display strings/units, not the transport.
 
@@ -52,7 +45,7 @@ UserControl 60×60 (`:351`) representing ONE draggable on-screen element. Holds 
 UserControl 712×100 (`:821`), background `Resources.P01时间显示` (`:792`). Config surface for the time element: 12/24h (`sjMode`), date order (`nyrMode` 1–4), and three independent on/off toggles (date `isNyr`, hour `isXs`, week `isXq`). Emits via `delegateUCShiJian` (`:11-13`). Cmd codes in §4.4.
 
 ### 1.5 `FormSystemInfo.cs` — the sensor picker dialog
-Form (490×800, `:427`) hosting one `UCSystemInfo` (`:387`, `:419-422`). Purpose: let the user pick which HWiNFO sensor row feeds a given metric slot, with a **name-priority fallback chain** per metric (§2.4). `GetSystemInfo(int n)` (`:57-251`) returns the canonical sensor *name* for slot `n`; `GetSystemInfoVal` (`:253-278`) returns its current value string; `buttonOK_Click` (`:297-312`) reports the selected row back via `upDateInfo?.Invoke(1, num, text)`.
+Form (490×800, `:443`) hosting one `UCSystemInfo` (`:403`, `:435-438`). Purpose: let the user pick which HWiNFO sensor row feeds a given metric slot, with a **name-priority fallback chain** per metric (§2.4). `GetSystemInfo(int n)` (`:57-251`) returns the canonical sensor *name* for slot `n`; `GetSystemInfoVal` (`:269-294`) returns its current value string; `buttonOK_Click` (`:313-328`) reports the selected row back via `upDateInfo?.Invoke(1, num, text)`.
 
 ---
 
@@ -76,7 +69,7 @@ Form (490×800, `:427`) hosting one `UCSystemInfo` (`:387`, `:419-422`). Purpose
 Each parsed row is `arrayList2 = [0, name, valueString]` — index 0 is inserted last via `arrayList2.Insert(0, 0)` (e.g. `:735`, `:779`) and is the per-row selected-flag used by `SetSystemInfoVal`/button state.
 
 ### 2.3 Temperature unit toggle (`myWendu`)
-`public int myWendu = 1;` (`:61`). C→F conversion is integer: `num5 * 9 / 5 + 32` (`:724`). Truncation to int happens BEFORE unit conversion (`:716-717`): `text3 = text3.Substring(0, text3.IndexOf(".")); int num5 = (int)float.Parse(text3);`.
+the `myWendu` unit field, default **1** (`:61`). C→F conversion is integer: `num5 * 9 / 5 + 32` (`:724`). Truncation to int happens BEFORE unit conversion (`:716-717`): the reading string is cut at its decimal point and only then parsed to an int, so `38.9` becomes **38**, not 39..
 
 ### 2.4 "core" filtering — per-core rows are dropped
 Both temperature and usage scans discard any sensor whose name contains `"core "` (lowercased):
@@ -86,16 +79,17 @@ Both temperature and usage scans discard any sensor whose name contains `"core "
 ### 2.5 Named-scalar reads (`SetSystemVal`) — CPU/GPU power + memory timings
 `SetSystemVal(strjs, str, types, ref float sysVal, n)` (`:534-559`) finds `str`, parses the following `{...}` as JSON, and if its `"type"` contains `types`, stores `value` truncated-at-`.` times `n`. Direct-field reads at end of `timer_event`:
 - CPU power (`:941`): `SetSystemVal(text2, "\"CPU Package Power\"", "power", ref CpuPower);`
-- GPU power fallback chain (`:942-945`): tries `"Total Graphics Power (TGP)"` → `"GPU Power"` → `"GPU ASIC Power"`; if **all fail, `GpuPower = CpuPower;`** (deliberate fallback).
-- Memory scalars (`:946-956`), all default `100000f` (`:71-91`), all typed `"other"` except temp/clock:
-  ```
-  "SPD Hub Temperature" → temperature → MemTemperature
-  "Memory Clock"        → clock       → MemClock
-  "Physical Memory Used"→ other       → MemUsed
-  "Memory Clock Ratio"  → other       → MemRatio
-  "Tcas"/"Trcd"/"Trp"/"Tras"/"Trc"/"Trfc" → other → Mem*
-  "Physical Memory Load"→ other       → MemLoad
-  ```
+- GPU power fallback chain (`:942-945`): tries `"Total Graphics Power (TGP)"` → `"GPU Power"` → `"GPU ASIC Power"`; if **all fail, the GPU-power field is assigned the CPU-power value** (deliberate fallback).
+- Memory scalars (`:946-956`), all defaulting to `100000f` (`:71-91`), all typed `"other"` except the temperature and clock rows. Each is one `SetSystemVal` call naming the HWiNFO sensor string to search for, the `"type"` substring the matched object must carry, and the destination field:
+
+| HWiNFO sensor name | required `"type"` | Destination field |
+|---|---|---|
+| `"SPD Hub Temperature"` | `temperature` | `MemTemperature` |
+| `"Memory Clock"` | `clock` | `MemClock` |
+| `"Physical Memory Used"` | `other` | `MemUsed` |
+| `"Memory Clock Ratio"` | `other` | `MemRatio` |
+| `"Tcas"`, `"Trcd"`, `"Trp"`, `"Tras"`, `"Trc"`, `"Trfc"` | `other` | one `Mem*` timing field each |
+| `"Physical Memory Load"` | `other` | `MemLoad` |
 
 ### 2.6 Disk (`GetHarddiskInfo`, `:561-644`)
 Parsed from `head` (not the JSON). Builds `HardDiskInfo` rows once (drive name via `"drive: "` `:566`, SMART id via `"s.m.a.r.t.: "` `:584`). Each tick reads per drive: `"Total Activity"`(usage) `:625`, `"Read Rate"`(other) `:628`, `"Write Rate"`(other) `:631`, `"Drive Temperature"`(temperature) `:637`. Sentinel default `10000f`/`100000` for unread values (`:624`, `:574-577`).
@@ -115,55 +109,56 @@ Parsed from `head` (not the JSON). Builds `HardDiskInfo` rows once (drive name v
 | 8 | GPU fan | "GPU Fan1" (`:235`) → "GPU Fan" (`:242`) |
 
 ### 2.8 List rebuild vs refresh
-`SetSystemInfoVal` (`:280-435`) builds the label rows on first data AND pre-creates **30 spare hidden rows** (`:377-434`) so later ticks only mutate text. `ResetSystemInfoVal` (`:244-278`) is the per-tick fast path: sets name/value text, shows/hides rows, resizes panel. `DoSystemInfoUI` (`:500-526`) gates first-build vs refresh via `first` (`:502-507`) and drives a 3-tick `myDCount` countdown that fires `upDateUCInfo?.Invoke(0/16/254/255)` (`:506`,`:516`,`:520`,`:524`).
+`SetSystemInfoVal` (`:296-451`) builds the label rows on first data AND pre-creates **30 spare hidden rows** (`:393-450`) so later ticks only mutate text. `ResetSystemInfoVal` (`:244-294`) is the per-tick fast path: sets name/value text, shows/hides rows, resizes panel. `DoSystemInfoUI` (`:500-526`) gates first-build vs refresh via `first` (`:502-507`) and drives a 3-tick `myDCount` countdown that fires `upDateUCInfo?.Invoke(0/16/254/255)` (`:506`,`:516`,`:520`,`:524`).
 
 ---
 
 ## 3. Overlay Element Model (`UCXiTongXianShiSub.cs`)
 
 ### 3.1 Per-element fields (`:17-37`)
-```
-public int myMode = 0;        // element kind: 0=data,1=time,2=week,3=date,4=text
-public int myModeSub = 0;     // sub-format within kind (time 12/24h, date order)
-public int myX = 100;         // position X
-public int myY = 100;         // position Y
-public int myMainCount = 0;   // metric category (0=CPU,1=GPU,2=MEM,3=HDD,4=NET,5=FAN; 10000=FAN sentinel)
-public int mySubCount = 1;    // which of the 4 sub-metrics within the category (1..4)
-public Color myColor = Color.FromArgb(255, 255, 255);
-public Font myFont = new Font("微软雅黑", 36f, (FontStyle)0, (GraphicsUnit)3, (byte)134);
-public bool isSelect = false;
-public string myText = "";
-```
+Ten public fields, all initialised inline at declaration — this is the whole persisted state of one overlay element:
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `myMode` | int | 0 | element kind: 0=data, 1=time, 2=week, 3=date, 4=text |
+| `myModeSub` | int | 0 | sub-format within the kind (time 12/24h, date order) |
+| `myX` | int | 100 | position X |
+| `myY` | int | 100 | position Y |
+| `myMainCount` | int | 0 | metric category: 0=CPU, 1=GPU, 2=MEM, 3=HDD, 4=NET, 5=FAN; 10000=FAN sentinel |
+| `mySubCount` | int | 1 | which of the 4 sub-metrics within the category (1..4) |
+| `myColor` | Color | RGB (255, 255, 255) — white | element text colour |
+| `myFont` | Font | family `微软雅黑`, size 36f, style 0 (Regular), unit 3 (Point), GDI charset 134 | element font |
+| `isSelect` | bool | false | whether this element is the selected one in the editor |
+| `myText` | string | `""` (empty) | the literal string drawn in text mode (`myMode` 4) |
+
 `GraphicsUnit)3` = **Point** (System.Drawing.GraphicsUnit.Point). Default overlay font is Microsoft YaHei, **36 Point**. (Contrast: the config-panel labels use 10.5f Point, `:307`,`:319`,`:331`.)
 
 ### 3.2 Three-label composition (`label1`=name, `label2`=numeric, `label3`=unit)
 Init layout (`:301-340`): label1 at (2,1), label2 at (2,21), label3 at (2,41), all 56×18, all default font `微软雅黑 10.5pt` Point, all default color `(50,197,255)`. `myMode` selects which are shown (`InitUCXiTongXianShiSub` `:55-117`): mode 0 shows all three; modes 1/2/3/4 **hide label1 & label3** and show only label2 (`:93-114`).
 
 Per-tick text build `UCXiTongXianShiSubTimer(string val, string dw)` (`:188-272`), for `myMode==0` (`:199-225`) pulls from `Form1.ucSystemInfoOptions1.UCSystemInfoOptionsOneList[myMainCount]` and splits by `mySubCount` (1..4). **The number/unit split is a regex:**
-```
-label2.Text = Regex.Replace(optionsOne.labelN.Text, "[^\\d]", "");   // digits only  (:206)
-label3.Text = optionsOne.labelN.Text.Replace(label2.Text, "");        // the remainder = unit (:207)
-```
+- `label2` numeric text (`:206`) — a `Regex.Replace` over the source label's text with the pattern `[^\d]` and an empty replacement string: every non-digit character is deleted, so only the digits survive.
+- `label3` unit text (`:207`) — the same source text with the digit string just computed removed from it by a plain string replace; whatever is left over is taken to be the unit.
 So the composed HWiNFO string like `"55℃"` is re-split: label2=`"55"`, label3=`"℃"`. label1 = the metric's own name textbox.
 
 ### 3.3 The FAN sentinel `myMainCount == 10000`
-`UCXiTongXianShiSubTimer` short-circuits BEFORE the mode switch (`:190-196`):
-```
-if (myMainCount == 10000)
-{
-    ((Control)label1).Text = "FAN";
-    ((Control)label2).Text = val;    // caller-supplied value
-    ((Control)label3).Text = dw;     // caller-supplied unit
-    return;
-}
-```
+`UCXiTongXianShiSubTimer` short-circuits BEFORE the mode switch (`:190-196`) — when `myMainCount` equals 10000 it writes the literal string `"FAN"` into label1, the caller-supplied `val` argument into label2 and the caller-supplied `dw` argument into label3, then returns immediately, so the `myMode` switch below is never reached for a fan element.
 FAN elements do NOT read the options list; the caller passes `val`/`dw` directly. Also in `InitUCXiTongXianShiSub` both `myMainCount==5` and `==10000` map to `myColorFan` (`:78-83`).
 
 ### 3.4 Category → default label1 color (`InitUCXiTongXianShiSub` mode 0, `:61-87`)
-```
-0→myColorCpu 1→myColorGpu 2→myColorMem 3→myColorHdd 4→myColorNet 5→myColorFan
-10000→myColorFan  default→myColorZDY (custom)
-```
+A switch on `myMainCount` picks which shared colour field label1 is painted with:
+
+| `myMainCount` | label1 colour field |
+|---|---|
+| 0 (CPU) | `myColorCpu` |
+| 1 (GPU) | `myColorGpu` |
+| 2 (MEM) | `myColorMem` |
+| 3 (HDD) | `myColorHdd` |
+| 4 (NET) | `myColorNet` |
+| 5 (FAN) | `myColorFan` |
+| 10000 (FAN sentinel) | `myColorFan` |
+| anything else (default arm) | `myColorZDY` (custom) |
+
 label2/label3 always take `myColor` (`:88-89`). These colors come from `UCSystemInfoOptionsOne` static fields (not in the audited files).
 
 ### 3.5 Config-panel command map (`UCXiTongXinXi.cs`, `delegateUCXinxi`)
@@ -186,32 +181,36 @@ label2/label3 always take `myColor` (`:88-89`). These colors come from `UCSystem
 ## 4. Clock (`UCXiTongXianShiSub` runtime) + config (`UCShiJianXianShi`)
 
 ### 4.1 Time format tokens (`myMode==1`, `:227-241`)
-```
-case 0: myText = DateTime.Now.ToString("HH:mm");                                  // 24h
-case 1: myText = DateTime.Now.ToString("hh:mm tt", CultureInfo.InvariantCulture);// 12h + AM/PM
-case 2: myText = DateTime.Now.ToString("HH:mm");                                  // 24h (dup)
-```
+A switch on `myModeSub` formats the current time into `myText`, three arms:
+
+| `myModeSub` | Format string | Result |
+|---|---|---|
+| 0 | `"HH:mm"` | 24-hour, zero-padded hour, no seconds |
+| 1 | `"hh:mm tt"` with `CultureInfo.InvariantCulture` | 12-hour, zero-padded hour, AM/PM designator |
+| 2 | `"HH:mm"` | 24-hour — a duplicate of arm 0 |
+
 `myModeSub` selects. 12h uses `"hh:mm tt"` with **InvariantCulture** → AM/PM literal "AM"/"PM". label2 gets the whole string (`:240`).
 
 ### 4.2 Week format (`myMode==2`, `:242-247`)
-```
-string[] array = (Form1.Language == 1)
-    ? new[]{"星期日","星期一",…,"星期六"}          // Chinese
-    : (Form1.Language != 2
-        ? new[]{"SUN","MON",…,"SAT"}                 // English
-        : new[]{"SUN","MON",…,"SAT"});               // Language==2 also SUN..SAT
-myText = array[Convert.ToInt32(DateTime.Now.DayOfWeek.ToString("d"))];
-```
+A nested conditional on the static `Form1.Language` picks one seven-entry string array of weekday names, then indexes it:
+
+- Language `1` → the Chinese names `星期日`, `星期一` … `星期六`.
+- Language `2` → the English abbreviations `SUN`, `MON` … `SAT`.
+- Any other language value → the same `SUN` … `SAT` abbreviations, so the two non-Chinese branches are identical arrays.
+- The index is `DateTime.Now.DayOfWeek` rendered with the `"d"` format specifier and converted back to an int, and the array entry at that index becomes `myText`.
+
 `DayOfWeek.ToString("d")` gives 0=Sunday..6=Saturday. Language 0/2 → English abbreviations; 1 → Chinese.
 
 ### 4.3 Date format tokens (`myMode==3`, `:249-267`)
-```
-case 0:
-case 1: myText = DateTime.Now.ToString("yyyy/MM/dd");
-case 2: myText = DateTime.Now.ToString("dd/MM/yyyy");
-case 3: myText = DateTime.Now.ToString("MM/dd");
-case 4: myText = DateTime.Now.ToString("dd/MM");
-```
+A switch on `myModeSub` formats today's date into `myText`; the 0 arm falls through into the 1 arm, so both yield the same string:
+
+| `myModeSub` | Format string | Result |
+|---|---|---|
+| 0, 1 | `"yyyy/MM/dd"` | four-digit year first, slash-separated |
+| 2 | `"dd/MM/yyyy"` | day first, four-digit year last |
+| 3 | `"MM/dd"` | month then day, year omitted |
+| 4 | `"dd/MM"` | day then month, year omitted |
+
 `myModeSub` selects (0 and 1 both → yyyy/MM/dd). Text-mode `myMode==4` just echoes `myText` (`:268-270`).
 
 ### 4.4 Clock config panel (`UCShiJianXianShi.cs`) — the source of `myModeSub`
@@ -233,7 +232,7 @@ No explicit AM/PM font-size manipulation exists in these files. `myMode==1 case 
 
 ## 5. Caveats a naive port misses
 
-1. **GPU-power falls back to CPU-power** when all three GPU-power names miss (`:944` `GpuPower = CpuPower;`) — a port that returns 0/None diverges from the C#.
+1. **GPU-power falls back to CPU-power** when all three GPU-power names miss (`:944` — the GPU-power field is assigned the CPU-power value) — a port that returns 0/None diverges from the C#.
 2. **FAN sentinel `myMainCount == 10000`** bypasses the options list entirely and takes caller-supplied `val`/`dw`, forcing label1=`"FAN"` (`:190-196`). `5` and `10000` are distinct code paths that only share a color.
 3. **Number/unit split is regex, not semantic** (`:206-207`): label2 = `[^\d]`-stripped digits, label3 = the leftover. A value like `"1.2GHz"` would split as label2=`"12"`, label3=`".GHz"` — but values are pre-truncated at `.` upstream (`:716`,`:846`) so fractions never reach here. Port must truncate at the decimal BEFORE the digit/unit split.
 4. **`"core "` filter differs in case** between temp (`.ToLower().Contains("core ")` `:736`) and usage (`Contains("core ")` `:854`). Copying one to both changes which rows survive.

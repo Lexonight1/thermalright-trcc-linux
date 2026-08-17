@@ -1,7 +1,13 @@
 # Behavioral annotation — LED info panels + keyboard-linkage + video player
 
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> Every method it documents is byte-identical in TRCC 2.1.6.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
+
 Exhaustive per-method behavioral pass over 6 WinForms `UserControl`s in
-`TRCC.DCUserControl` (TRCC 2.1.6 decompile). Every DARK method reported by
+`TRCC.DCUserControl`. Every DARK method reported by
 `audit_coverage.py --dark` is documented below with an explicit `File.cs:LINE`
 citation. These are **pure View widgets** (WinForms designer + a couple of thin
 event slots) — no protocol/wire logic lives here; behaviour is label-text
@@ -35,7 +41,7 @@ The only widget here with real interaction. A 351×100 panel whose background is
 
 - `UCShiPingBoFangQi` (UCShiPingBoFangQi.cs:23) — ctor; `InitializeComponent()` then zeroes both buttons' `FlatAppearance.BorderColor` to fully-transparent ARGB(0,0,0,0) (borderless look). No branches.
 - `buttonOnOff_Set` (UCShiPingBoFangQi.cs:30) — public state applier; sets field `buttonOn = bl`, sets `button1.Enabled = bl` (the load-video button is only usable while the player is ON), then branch on `bl`: `true` → `buttonOnOff.BackgroundImage = Resources.P功能选择a` (active art), `false` → `Resources.P功能选择` (inactive art). This is how the parent forces the toggle state programmatically.
-- `buttonOnOff_Click` (UCShiPingBoFangQi.cs:44) — toggle handler. **[DECOMPILE ARTIFACT]** the flip is written as dead-code: `buttonOn = false;` then `if (buttonOn) buttonOn=false; else buttonOn=true;` — since `buttonOn` was just forced to `false`, the result is unconditionally `true`. Net effect: **every click turns the player ON** (it never toggles OFF via this path — OFF only comes from `buttonOnOff_Set(false)` called by the parent). Then applies `buttonOnOff_Set(buttonOn)` and fires `delegateUCShiPing?.Invoke(0, buttonOn)` — cmd 0 = "on/off changed", payload = the new bool. Null-conditional so a parent that never assigned the delegate is safe.
+- `buttonOnOff_Click` (UCShiPingBoFangQi.cs:44) — toggle handler. **[DECOMPILE ARTIFACT]** the flip is written as dead-code: an assignment to `buttonOn` then `if (buttonOn) buttonOn=false; else buttonOn=true;` — since `buttonOn` was just forced to `false`, the result is unconditionally `true`. Net effect: **every click turns the player ON** (it never toggles OFF via this path — OFF only comes from `buttonOnOff_Set(false)` called by the parent). Then applies `buttonOnOff_Set(buttonOn)` and fires `delegateUCShiPing?.Invoke(0, buttonOn)` — cmd 0 = "on/off changed", payload = the new bool. Null-conditional so a parent that never assigned the delegate is safe.
 - `button1_Click` (UCShiPingBoFangQi.cs:59) — load-video button; fires `delegateUCShiPing?.Invoke(1)` — cmd 1 = "load/browse video", no payload. Only reachable while enabled (i.e. player ON). No branches.
 - `Dispose` (UCShiPingBoFangQi.cs:64) — boilerplate; branch `disposing && components != null` → `components.Dispose()`; always `base.Dispose(disposing)`.
 - `InitializeComponent` (UCShiPingBoFangQi.cs:73) — **[DESIGNER]** builds `button1` (bg `P直播视频载入`, 40×40 @ (149,30), `Enabled=false`, `Click += button1_Click`) and `buttonOnOff` (bg `P功能选择`, 50×50 @ (0,0), `Click += buttonOnOff_Click`); both flat/borderless/transparent-hover. Panel bg `P01播放器`, size 351×100. Encodes the initial state: player OFF art + load button disabled.

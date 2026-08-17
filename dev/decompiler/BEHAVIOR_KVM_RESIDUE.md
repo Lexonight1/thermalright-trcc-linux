@@ -1,4 +1,10 @@
-# Behavioral annotation — KVM/DC dark residue (TRCC 2.1.6)
+# Behavioral annotation — KVM/DC dark residue
+
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> Every method it documents is byte-identical in TRCC 2.1.6.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
 
 Final residue pass. Every method below was flagged DARK by
 `dev/decompiler/audit_coverage.py --dark <file>`; all others in these files are

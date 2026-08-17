@@ -1,11 +1,17 @@
-# BEHAVIOR — LED screen controls, per-method (TRCC 2.1.6 decompile)
+# BEHAVIOR — LED screen controls, per-method
+
+<!-- audit-state: origin=2.0.3.0 addresses=2.1.6.0 known-bad=none -->
+> **Audited against TRCC 2.0.3; citations re-anchored to TRCC 2.1.6.**
+> 1 method(s) documented here changed in TRCC 2.1.6 and have NOT been re-read: `CheckDirectoryExist` — read those entries as TRCC 2.0.3 history.
+> [`AUDIT_INDEX.md`](AUDIT_INDEX.md#provenance)
+<!-- /audit-state -->
 
 Exhaustive per-method behavioral annotation. Builds on `AUDIT_LED_SEGMENT.md`
 (segment/13-seg truth tables, `ReSet*` zone-remap table, wire format) — that doc
 owns the *data tables*; this one owns *what every method does*.
 
 Sources (verbatim, line-cited):
-- `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.DCUserControl/UCScreenLED.cs` (10,141 lines) — **25 methods**. Segment/matrix METRIC preview UserControl. No USB send (preview-only; wire lives in `FormLED`, out of scope).
+- `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.DCUserControl/UCScreenLED.cs` (10,143 lines) — **25 methods**. Segment/matrix METRIC preview UserControl. No USB send (preview-only; wire lives in `FormLED`, out of scope).
 - `~/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.KVMALED6/FormKVMALED6.cs` (2,084 lines) — **71 methods**. Separate ARGB 10-channel lighting controller, persisted to `proMode.dc`. NOT a segment display.
 
 Coverage: **UCScreenLED 25/25**, **FormKVMALED6 71/71**.
@@ -16,69 +22,69 @@ Coverage: **UCScreenLED 25/25**, **FormKVMALED6 71/71**.
 
 ### Lifecycle / style selection
 
-- `UCScreenLED()` (UCScreenLED.cs:2152) — ctor; `InitializeComponent()`, then points the three active buffers at style-1 arrays (`ledPosition=ledPosition1; isOn=isOn1; ledColor=ledColor1`), sets `imageBk=Resources.DFROZEN_HORIZON_PRO`, seeds display with `SetMyNumeral(36)`. Style 1 is the constructor default; no `nowLedStyle` write (stays field default `1`). No branches.
+- `UCScreenLED()` (UCScreenLED.cs:2154) — ctor; `InitializeComponent()`, then points the three active buffers at style-1 arrays (`ledPosition=ledPosition1; isOn=isOn1; ledColor=ledColor1`), sets `imageBk=Resources.DFROZEN_HORIZON_PRO`, seeds display with `SetMyNumeral(36)`. Style 1 is the constructor default; no `nowLedStyle` write (stays field default `1`). No branches.
 
-- `ReSetUCScreenLED1()` (UCScreenLED.cs:2162) — **empty body**. Style 1 == the ctor default, so nothing to re-point. **[COPY-PASTE]** (part of the 12-method `ReSet*` family).
+- `ReSetUCScreenLED1()` (UCScreenLED.cs:2164) — **empty body**. Style 1 == the ctor default, so nothing to re-point. **[COPY-PASTE]** (part of the 12-method `ReSet*` family).
 
-- `ReSetUCScreenLED2()` (UCScreenLED.cs:2166) — style 2: repoints buffers to `ledPosition2/isOn2/ledColor2`, `nowLedStyle=2`, remaps zone+segment indices (Cpu1=0…BFB1=9, LEDA1=10..LEDG3=30). 3 digit-rows, dual SSD/HSD/BFB markers. No artwork. **[COPY-PASTE]**.
+- `ReSetUCScreenLED2()` (UCScreenLED.cs:2168) — style 2: repoints buffers to `ledPosition2/isOn2/ledColor2`, `nowLedStyle=2`, remaps zone+segment indices (Cpu1=0…BFB1=9, LEDA1=10..LEDG3=30). 3 digit-rows, dual SSD/HSD/BFB markers. No artwork. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED3()` (UCScreenLED.cs:2205) — style 3: `ledPosition3` etc., `nowLedStyle=3`; zone order Cpu1=0 WATT=1 SSD=2 HSD=3 BFB=4 Gpu1=5, then 8 digit-rows LEDA1=6..LEDC9=63. No artwork. **[COPY-PASTE]**.
+- `ReSetUCScreenLED3()` (UCScreenLED.cs:2207) — style 3: `ledPosition3` etc., `nowLedStyle=3`; zone order Cpu1=0 WATT=1 SSD=2 HSD=3 BFB=4 Gpu1=5, then 8 digit-rows LEDA1=6..LEDC9=63. No artwork. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED4()` (UCScreenLED.cs:2277) — style 4: `nowLedStyle=4`; zone SSD=0 MTNo=1 GNo=2 (MT/G unit markers), 4 digit-rows LEDA1=3..LEDG4=30. **[COPY-PASTE]**.
+- `ReSetUCScreenLED4()` (UCScreenLED.cs:2279) — style 4: `nowLedStyle=4`; zone SSD=0 MTNo=1 GNo=2 (MT/G unit markers), 4 digit-rows LEDA1=3..LEDG4=30. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED5()` (UCScreenLED.cs:2316) — style 5: `nowLedStyle=5`; full unit set Cpu1=0 Gpu1=1 SSD=2 HSD=3 WATT=4 MHz=5 BFB=6, 12 digit-rows +LEDB13/LEDC13 (LEDA1=7..LEDC13=92). Largest 7-seg layout. **[COPY-PASTE]**.
+- `ReSetUCScreenLED5()` (UCScreenLED.cs:2318) — style 5: `nowLedStyle=5`; full unit set Cpu1=0 Gpu1=1 SSD=2 HSD=3 WATT=4 MHz=5 BFB=6, 12 digit-rows +LEDB13/LEDC13 (LEDA1=7..LEDC13=92). Largest 7-seg layout. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED6()` (UCScreenLED.cs:2417) — style 6: `nowLedStyle=6`; **loads 3 artwork images** `imageBk61=Dch2, imageBk62=Dch3, imageBk63=Dch4`; same zone/segment map as style 5 (Cpu1=0..LEDC13=92). Paint overlays the 3 images at fixed offsets. **[COPY-PASTE]** + artwork.
+- `ReSetUCScreenLED6()` (UCScreenLED.cs:2419) — style 6: `nowLedStyle=6`; **loads 3 artwork images** `imageBk61=Dch2, imageBk62=Dch3, imageBk63=Dch4`; same zone/segment map as style 5 (Cpu1=0..LEDC13=92). Paint overlays the 3 images at fixed offsets. **[COPY-PASTE]** + artwork.
 
-- `ReSetUCScreenLED7()` (UCScreenLED.cs:2521) — style 7: `nowLedStyle=7`; loads `imageBk71=Dch1`; **13-segment product** — remaps LEDA1..LEDM1 (H–M extra segments) across 6 digit-rows, plus 32 `ZhuangShi*` decoration segments (84..115). Paint gates the artwork on `isOn[ZhuangShi21]`. **[COPY-PASTE]**.
+- `ReSetUCScreenLED7()` (UCScreenLED.cs:2523) — style 7: `nowLedStyle=7`; loads `imageBk71=Dch1`; **13-segment product** — remaps LEDA1..LEDM1 (H–M extra segments) across 6 digit-rows, plus 32 `ZhuangShi*` decoration segments (84..115). Paint gates the artwork on `isOn[ZhuangShi21]`. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED8()` (UCScreenLED.cs:2646) — style 8 = **CZ1**: `nowLedStyle=8`, loads `imageBk81=Dchcz1`; minimal map Cpu1=0 Gpu1=1 Cpu2=2 Gpu2=3, only 2 digit-rows (LEDA1=4..LEDG2=17). Paint = "artwork minus dark segments". **[COPY-PASTE]**.
+- `ReSetUCScreenLED8()` (UCScreenLED.cs:2648) — style 8 = **CZ1**: `nowLedStyle=8`, loads `imageBk81=Dchcz1`; minimal map Cpu1=0 Gpu1=1 Cpu2=2 Gpu2=3, only 2 digit-rows (LEDA1=4..LEDG2=17). Paint = "artwork minus dark segments". **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED9()` (UCScreenLED.cs:2673) — style 9: `nowLedStyle=9`; no zone units, 7 digit-rows (LEDA1=3..LEDC8=53) + 7 `ZhuangShi` (54..60). No artwork. **[COPY-PASTE]**.
+- `ReSetUCScreenLED9()` (UCScreenLED.cs:2675) — style 9: `nowLedStyle=9`; no zone units, 7 digit-rows (LEDA1=3..LEDC8=53) + 7 `ZhuangShi` (54..60). No artwork. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLED10()` (UCScreenLED.cs:2739) — style 10: `nowLedStyle=10`; **aliased unit markers** `MTNo=(BFB=1)` and `GNo=(MHz=2)` (same index drives two logical names), SSD=0, 5 digit-rows LEDA1=3..LEDG5=37. **[COPY-PASTE]**.
+- `ReSetUCScreenLED10()` (UCScreenLED.cs:2741) — style 10: `nowLedStyle=10`; **aliased unit markers** `MTNo=(BFB=1)` and `GNo=(MHz=2)` (same index drives two logical names), SSD=0, 5 digit-rows LEDA1=3..LEDG5=37. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLEDLF15()` (UCScreenLED.cs:2785) — style 11 = **LF15**: buffers→`ledPositionLF15` etc., `nowLedStyle=11`; unit set Cpu1=0..BFB=6, 12 digit-rows +LEDB13/C13 (identical layout to style 5). No artwork. **[COPY-PASTE]**.
+- `ReSetUCScreenLEDLF15()` (UCScreenLED.cs:2787) — style 11 = **LF15**: buffers→`ledPositionLF15` etc., `nowLedStyle=11`; unit set Cpu1=0..BFB=6, 12 digit-rows +LEDB13/C13 (identical layout to style 5). No artwork. **[COPY-PASTE]**.
 
-- `ReSetUCScreenLEDLF13()` (UCScreenLED.cs:2886) — style 12 = **LF13**: buffers→`ledPositionLF13` (single 460×460 cell), loads `imageLF13=D0rgblf13`, `nowLedStyle=12`. **No index remap** — whole panel is one RGB cell (`isOn[0]`). Shortest ReSet. **[COPY-PASTE]** (degenerate).
+- `ReSetUCScreenLEDLF13()` (UCScreenLED.cs:2888) — style 12 = **LF13**: buffers→`ledPositionLF13` (single 460×460 cell), loads `imageLF13=D0rgblf13`, `nowLedStyle=12`. **No index remap** — whole panel is one RGB cell (`isOn[0]`). Shortest ReSet. **[COPY-PASTE]** (degenerate).
 
 ### Rendering
 
-- `OnPaint(PaintEventArgs pe)` (UCScreenLED.cs:2895) — the compose/preview. 16 branches. Calls base, gets `Graphics`, then style-specific pre-passes:
-  - `nowLedStyle==6` (:2911): `myLedMode==4`→draw imageBk61/62/63 at (26,17)/(23,221)/(293,274); else fill those rects with `ledColor[0]`.
-  - `==7` (:2941): gated on `isOn[ZhuangShi21]`; mode4→draw imageBk71 at (30,217); else fill rects (30,217,w,70)+(195,268,70,170) with `ledColor[ZhuangShi21]`.
-  - `==8` CZ1 (:2973): mode4→draw imageBk81 at (0,0) then **black-fill every OFF segment**; else fill only ON segments (artwork-minus-dark).
-  - `==12` LF13 (:3007): single cell `isOn[0]`; mode4→draw imageLF13; else fill whole cell with `ledColor[0]`.
-  - **Generic tail** (:3029, all styles except 8 & 12): loop every `ledPosition` row, if `isOn[k]` fill its rect with per-segment `ledColor[k]` `[R,G,B]`.
-  - Always ends `graphics.DrawImage(imageBk,0,0)` (:3041) — background/mask artwork overlaid LAST. `myLedMode==4`=artwork mode, else solid-color mode.
+- `OnPaint(PaintEventArgs pe)` (UCScreenLED.cs:2897) — the compose/preview. 16 branches. Calls base, gets `Graphics`, then style-specific pre-passes:
+  - `nowLedStyle==6` (:2913): `myLedMode==4`→draw imageBk61/62/63 at (26,17)/(23,221)/(293,274); else fill those rects with `ledColor[0]`.
+  - `==7` (:2943): gated on `isOn[ZhuangShi21]`; mode4→draw imageBk71 at (30,217); else fill rects (30,217,w,70)+(195,268,70,170) with `ledColor[ZhuangShi21]`.
+  - `==8` CZ1 (:2975): mode4→draw imageBk81 at (0,0) then **black-fill every OFF segment**; else fill only ON segments (artwork-minus-dark).
+  - `==12` LF13 (:3009): single cell `isOn[0]`; mode4→draw imageLF13; else fill whole cell with `ledColor[0]`.
+  - **Generic tail** (:3031, all styles except 8 & 12): loop every `ledPosition` row, if `isOn[k]` fill its rect with per-segment `ledColor[k]` `[R,G,B]`.
+  - Always ends `graphics.DrawImage(imageBk,0,0)` (:3043) — background/mask artwork overlaid LAST. `myLedMode==4`=artwork mode, else solid-color mode.
 
 ### Metric → segment writers (the SetMyNumeral family) **[GOD] / [COPY-PASTE]**
 
 All share the digit-decompose idiom (`num=v/100; num2=v%100/10; num3=v%10`) and the identical per-digit 7-seg switch (table in AUDIT_LED_SEGMENT §3.1), copy-pasted per metric block. Leading-zero suppression: hundreds `case 0`=blank; tens `case 0`=blank iff hundreds==0 else glyph "0"; ones never blanks.
 
-- `SetMyNumeral(int val)` (UCScreenLED.cs:3044) — 124 br. Generic 3-digit value → digit-rows 1/2/3 (LED1=hundreds, LED2=tens, LED3=ones), leading-zero suppressed. The ctor's seed path. **[GOD]** (single-metric, one full 3-digit switch triple).
+- `SetMyNumeral(int val)` (UCScreenLED.cs:3046) — 124 br. Generic 3-digit value → digit-rows 1/2/3 (LED1=hundreds, LED2=tens, LED3=ones), leading-zero suppressed. The ctor's seed path. **[GOD]** (single-metric, one full 3-digit switch triple).
 
-- `SetMyNumeral(int cpuTemp,int cpuUse,int gpuTemp,int gpuUse)` (UCScreenLED.cs:3352) — 4 metrics, each its own copy-pasted 3-digit switch block: cpuTemp→3354, cpuUse→3658, gpuTemp→3875, gpuUse→4179. **[GOD]/[COPY-PASTE]** — four repetitions of the same switch triple.
+- `SetMyNumeral(int cpuTemp,int cpuUse,int gpuTemp,int gpuUse)` (UCScreenLED.cs:3354) — 4 metrics, each its own copy-pasted 3-digit switch block: cpuTemp→3354, cpuUse→3658, gpuTemp→3875, gpuUse→4179. **[GOD]/[COPY-PASTE]** — four repetitions of the same switch triple.
 
-- `SetMyNumeral(int watt,int temp,int use)` (UCScreenLED.cs:4398) — 3 metrics: watt→4400, temp→4704, use→5008. Same repeated switch pattern. **[GOD]/[COPY-PASTE]**.
+- `SetMyNumeral(int watt,int temp,int use)` (UCScreenLED.cs:4400) — 3 metrics: watt→4400, temp→4704, use→5008. Same repeated switch pattern. **[GOD]/[COPY-PASTE]**.
 
-- `SetMyNumeral(int mode,int val)` (UCScreenLED.cs:5227) — unit-switched value. `mode<=0`(:5229): light `isOn[SSD]`, clear MTNo/GNo, draw temp-unit LETTER on digit-4 (`mode==0`→"C" glyph, else "F" glyph, LEDA4..LEDG4), then 3-digit value. `mode==1`→`isOn[MTNo]` marker, 4-digit value (`/1000`). `else`→`isOn[GNo]` marker, 4-digit value. Branches: mode→unit marker + glyph. **[GOD]** (unit-marker mutual-exclusion + C/F letter glyph).
+- `SetMyNumeral(int mode,int val)` (UCScreenLED.cs:5229) — unit-switched value. `mode<=0`(:5229): light `isOn[SSD]`, clear MTNo/GNo, draw temp-unit LETTER on digit-4 (`mode==0`→"C" glyph, else "F" glyph, LEDA4..LEDG4), then 3-digit value. `mode==1`→`isOn[MTNo]` marker, 4-digit value (`/1000`). `else`→`isOn[GNo]` marker, 4-digit value. Branches: mode→unit marker + glyph. **[GOD]** (unit-marker mutual-exclusion + C/F letter glyph).
 
-- `SetMyNumeralHardDisk(int mode,int val)` (UCScreenLED.cs:5994) — disk metric, sibling of the above but writes digit-row 5 and uses `BFB`/`MHz` markers. `mode<=0`→SSD marker + C/F glyph on LEDA5..; else BFB/MHz marker; **5-digit** value (`/10000`). **[GOD]/[COPY-PASTE]** (near-duplicate of the mode/val overload).
+- `SetMyNumeralHardDisk(int mode,int val)` (UCScreenLED.cs:5996) — disk metric, sibling of the above but writes digit-row 5 and uses `BFB`/`MHz` markers. `mode<=0`→SSD marker + C/F glyph on LEDA5..; else BFB/MHz marker; **5-digit** value (`/10000`). **[GOD]/[COPY-PASTE]** (near-duplicate of the mode/val overload).
 
-- `SetMyNumeral(int temp,int watt,int mhz,byte use)` (UCScreenLED.cs:6875) — 145 br (largest). 4 metrics incl. MHz; note `num=temp/100%10` (masks hundreds to 1 digit). Four copy-pasted switch blocks + a `byte use` metric. **[GOD]/[COPY-PASTE]** (widest fan-out).
+- `SetMyNumeral(int temp,int watt,int mhz,byte use)` (UCScreenLED.cs:6877) — 145 br (largest). 4 metrics incl. MHz; note `num=temp/100%10` (masks hundreds to 1 digit). Four copy-pasted switch blocks + a `byte use` metric. **[GOD]/[COPY-PASTE]** (widest fan-out).
 
-- `SetMyNumeralNew(int cpuTemp,int gpuTemp)` (UCScreenLED.cs:8124) — **13-segment** product (styles 7/9). Uses the COMPLETELY DIFFERENT A–M glyph set (AUDIT_LED_SEGMENT §3.3, NOT the 7-seg table). 2 metrics: cpuTemp digit1 (A..M), gpuTemp. Reusing the 7-seg table here renders wrong glyphs. **[GOD]** (distinct glyph table).
+- `SetMyNumeralNew(int cpuTemp,int gpuTemp)` (UCScreenLED.cs:8126) — **13-segment** product (styles 7/9). Uses the COMPLETELY DIFFERENT A–M glyph set (AUDIT_LED_SEGMENT §3.3, NOT the 7-seg table). 2 metrics: cpuTemp digit1 (A..M), gpuTemp. Reusing the 7-seg table here renders wrong glyphs. **[GOD]** (distinct glyph table).
 
-- `SetMyNumeralNew(int val)` (UCScreenLED.cs:9180) — 24 br. **2-digit** 7-seg: switches on `num2`(tens→LED1) then `num3`(ones→LED2); `num2 case 0` blanks iff `num==0`. Compact variant. **[COPY-PASTE]** (subset of the 3-digit switch).
+- `SetMyNumeralNew(int val)` (UCScreenLED.cs:9182) — 24 br. **2-digit** 7-seg: switches on `num2`(tens→LED1) then `num3`(ones→LED2); `num2 case 0` blanks iff `num==0`. Compact variant. **[COPY-PASTE]** (subset of the 3-digit switch).
 
-- `SetMyTimer(int M,int d,int h,int m,int w)` (UCScreenLED.cs:9395) — clock/date writer. `h`→digit-rows 1/2 (`num=h%100/10`,`num2=h%10`; note hour "0" digit lights as full glyph, not blanked — clock keeps leading zero), `m`→rows 3/4, plus month `M`, day `d`, weekday `w` marker segments. Same 7-seg switch family. **[GOD]/[COPY-PASTE]** (clock-specific but reuses the digit switch).
+- `SetMyTimer(int M,int d,int h,int m,int w)` (UCScreenLED.cs:9397) — clock/date writer. `h`→digit-rows 1/2 (`num=h%100/10`,`num2=h%10`; note hour "0" digit lights as full glyph, not blanked — clock keeps leading zero), `m`→rows 3/4, plus month `M`, day `d`, weekday `w` marker segments. Same 7-seg switch family. **[GOD]/[COPY-PASTE]** (clock-specific but reuses the digit switch).
 
 ### Framework
 
-- `Dispose(bool disposing)` (UCScreenLED.cs:10118) — standard WinForms dispose; `if (disposing && components!=null) components.Dispose()`, then base. 1 branch.
+- `Dispose(bool disposing)` (UCScreenLED.cs:10120) — standard WinForms dispose; `if (disposing && components!=null) components.Dispose()`, then base. 1 branch.
 
-- `InitializeComponent()` (UCScreenLED.cs:10127) — designer boilerplate; sets `imageBk` for LF13 background (`Resources.DLF13` region) + control props. No branches.
+- `InitializeComponent()` (UCScreenLED.cs:10129) — designer boilerplate; sets `imageBk` for LF13 background (`Resources.DLF13` region) + control props. No branches.
 
 ---
 
@@ -136,7 +142,7 @@ ARGB 10-channel lighting controller. State: `myChannel[10]` (which channels sele
 - `ButtonMode_Click(int mode)` (FormKVMALED6.cs:867) — 16 br. Resets all 12 mode + 3 light-show button images to default, then a switch highlights the button matching `mode` with its "-a" (active) image. **Mode→button map is scrambled**: 100→btn1, 0→btn2, 1→btn3, 2→btn4, 7→btn5, 6→btn6, 5→btn7, 4→btn8, 3→btn9, 10→btn10, 9→btn11, 8→btn12, 201/202/203→DGX1/2/3. Pure UI selection state.
 - `button1_Click` (FormKVMALED6.cs:934) — special: `myMode=100`→`ButtonMode_Click(100)` (highlight), set warm-white rgb(255,175,100), `myMode=0`, `SendLEDData()`. The "custom color" entry.
 - `button2_Click`..`button12_Click` (FormKVMALED6.cs:945..1015) — **[COPY-PASTE]** 11-fold. Each sets `myMode=<scrambled n>`, `ButtonMode_Click(myMode)`, `SendLEDData()`. Modes per the map above (btn2→0, btn3→1, … btn12→8).
-- `buttonDGX1/2/3_Click` (FormKVMALED6.cs:1022/1032/1042) — **[COPY-PASTE]** 3-fold light-show modes 201/202/203; each guarded `if(!my_6_10_Ch)` (disabled in external-output mode), then mode+highlight+send. 1 branch each.
+- `buttonDGX1/2/3_Click` (FormKVMALED6.cs:1022/1032/1042) — **[COPY-PASTE]** 3-fold light-show modes 201/202/203; each guarded a guard on `my_6_10_Ch` (disabled in external-output mode), then mode+highlight+send. 1 branch each.
 
 ### Mode-slot save/recall (KJMS + MS buttons)
 
