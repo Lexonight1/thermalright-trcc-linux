@@ -73,8 +73,8 @@ the `myWendu` unit field, default **1** (`:61`). C→F conversion is integer: `n
 
 ### 2.4 "core" filtering — per-core rows are dropped
 Both temperature and usage scans discard any sensor whose name contains `"core "` (lowercased):
-- temp (`:736-739`): `if (((string)arrayList2[1]).ToLower().Contains("core ")) { arrayList2.Clear(); }`
-- usage (`:854-857`): `if (((string)arrayList2[1]).Contains("core "))` — **note: usage check is case-sensitive, temp is `.ToLower()`.**
+- temp (`:736-739`): the row is dropped when its name lower-cased contains `"core "`
+- usage (`:854-857`): a case-sensitive test for `"core "` — **note: usage check is case-sensitive, temp is `.ToLower()`.**
 
 ### 2.5 Named-scalar reads (`SetSystemVal`) — CPU/GPU power + memory timings
 `SetSystemVal(strjs, str, types, ref float sysVal, n)` (`:534-559`) finds `str`, parses the following `{...}` as JSON, and if its `"type"` contains `types`, stores `value` truncated-at-`.` times `n`. Direct-field reads at end of `timer_event`:

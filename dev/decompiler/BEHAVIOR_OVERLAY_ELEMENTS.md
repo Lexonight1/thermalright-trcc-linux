@@ -65,7 +65,7 @@ Delegate command vocabulary is integer-`cmd`-based (see per-method notes). The c
   each; branch: `nowCount>=0` → fire `delegateXiTong(3,...)` with the selected tile's
   [X,Y,color,font,text,nowCount]. Two branches: per-tile match, and the ≥0 emit guard.
 - `XiTongXianShiSub` (UCXiTongXianShi.cs:246) — **the child→container event router** (`delegateXiTongSub`
-  target). `switch(cmd)`: **[GOD]** (dispatch hub) —
+  target). `cmd`: **[GOD]** (dispatch hub) —
   - `case 0`: no-op.
   - `case 1` (a tile was clicked/selected): loop marks the sender tile `isSelect=true` + records its
     index in `nowCount`, all others false, invalidates each; then fires `delegateXiTong(3, mode,

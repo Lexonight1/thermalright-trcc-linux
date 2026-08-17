@@ -34,12 +34,12 @@ Every frame is pushed with `cmd=16`, `info=myDeviceCount`, `data=<byte[]>`, `dat
   buffer's length. The invocation is null-conditional, so with no host attached the frame is
   dropped silently instead of throwing.
 
-`myDeviceCount` (`43: public int myDeviceCount = 0;`) is the device index the host uses to route
+`myDeviceCount` (the `myDeviceCount` field, default **0** (`:43`)) is the device index the host uses to route
 the frame to the correct USB endpoint. FormLED never calls libusb/HID directly.
 
 ### Onboarding — `FormLEDInit(int NO, int mode, int count, string name)` (1598)
 Called by the host once per attached LED cooler. `NO` is the **product id** (the PM/handshake
-byte); `count` is the device index (`1600: myDeviceCount = count;`); `name` is the per-device
+byte); `count` is the device index (`myDeviceCount` is assigned the caller's count (`:1600`)); `name` is the per-device
 settings filename suffix. The method:
 1. Sets `nowNo = NO` (1601) and localizes labels (`1602: FormLEDLanguageSet();`).
 2. Selects the **product skin + `nowLedStyle`** from `NO` (1603–1802 — the product table, §2).
@@ -70,7 +70,7 @@ this fixed order:
 
 ## 2. Device / Product table — `NO → skin + nowLedStyle` (FormLEDInit 1603–1802)
 
-`nowLedStyle` (`883: private byte nowLedStyle = 1;`) is the **internal product family** that keys
+`nowLedStyle` (the `nowLedStyle` byte, default **1** (`:883`)) is the **internal product family** that keys
 every effect timer, the preview `ReSetUCScreenLEDn()`, and the send framing. Mapping is verbatim:
 
 | `NO` (product id / PM) | Resource skin | `ReSet…` call | `nowLedStyle` | Notes |
@@ -127,7 +127,7 @@ holding R, G, B. All are allocated once at field-initialisation time and reused 
 | `ledValLF15` | `:877` | `[72, 3]` | 72 | 11 (LF15) |
 | `ledValLF13` | `:879` | `[62, 3]` | 62 | 12 (LF13) |
 
-These loop bounds are confirmed by every `DSCL_Timer*` (e.g. `7621: for (int i = 0; i < 10; i++)`,
+These loop bounds are confirmed by every `DSCL_Timer*` (e.g. a 10-iteration loop (`:7621`),
 `7631:… < 14`, `7641:… < 23`, `7651:… < 72`, `7661:… < 13`, `7671:… < 31`, `7681:… < 17`,
 `7691:… < 72`, `7701:… < 62`).
 
@@ -151,7 +151,7 @@ concatenates, and pushes via the delegate. The test branch shows the shape:
 - length patch (FormLED.cs:4331) — index 16 of that header is then overwritten with the payload
   array's length, cast to a byte.
 - Header bytes `0..3` = **`0xDA 0xDB 0xDC 0xDD`** (218,219,220,221) — the magic preamble.
-  (`49: private const byte USB_PACKED_Head = 220;` names the 0xDC byte specifically.)
+  (the `USB_PACKED_Head` constant, **220** / 0xDC (`:49`) names the 0xDC byte specifically.)
 - Header byte `12` = **`2`** (constant command/type).
 - Header byte `16` = **payload length** = `array.Length` (the RGB byte count, NOT incl. header).
 - All other header bytes = `0`.
@@ -175,9 +175,9 @@ concatenates, and pushes via the delegate. The test branch shows the shape:
 | 12 | 186 | 62 | 7586 (via array23 loop `< 62`, 7574) |
 | default (style 1) | 90 | 30 | 7586 |
 
-(Sizes taken verbatim from the `new byte[N]` allocations and the `for (int … < N/3)` loops in
-SendHidVal, e.g. `4649: byte[] array4 = new byte[192];` / `4657: for (int k = 0; k < 64; k++)`;
-`7586: byte[] array24 = new byte[90];` / `7594: for (int num18 = 0; num18 < 30; num18++)`.)
+(Sizes taken verbatim from the `new byte[N]` allocations and the `int … < N/3` loops in
+SendHidVal, e.g. `4649: byte[] array4 = new byte[192];` / a 64-iteration loop (`:4657`);
+`7586: byte[] array24 = new byte[90];` / a 30-iteration loop (`:7594`).)
 
 ### Per-product byte REORDER (physical wiring map)
 The buffer is filled in **logical** LED order (`ucScreenLED1.ledColor[j,*]`) then copied into a
@@ -201,8 +201,8 @@ Two multipliers stack:
    `7577: array23[num17*3] = (byte)((float)(ledValLF13[num17,0] * myBrightness) * 0.01f * num + (float)(int)b);`.
 - `myOnOff==0` short-circuits the payload to all-zero per LED (`4659`, `7596`).
 
-`myBrightness` is 0–100 (`2221: myBrightness = (byte)(val * 100 / 255);`); default `65`
-(`25: private byte myBrightness = 65;`).
+`myBrightness` is 0–100 (brightness is rescaled from 0-255 to 0-100 as `val * 100 / 255` (`:2221`)); default `65`
+(the `myBrightness` byte, default **65** (`:25`)).
 
 ---
 
@@ -253,7 +253,7 @@ rings, styles 2/7) with a **floor of 51** and 0.8 gain:
   `rgbTimer1`.
 - trough (FormLED.cs:8661) — outside both halves `ledHuxi` is assigned the literal `51`, never 0.
 
-(`853: private byte ledHuxi = byte.MaxValue;`.) Uses a **separate** counter `rgbTimer1`.
+(the `ledHuxi` byte, default **255** (`:853`).) Uses a **separate** counter `rgbTimer1`.
 
 ### 4.3 Color-cycle / gradient — `QCJB_Timer*` (8005+)
 6-phase RGB wheel, `RGB_COLORFUL_TIMER = 28` ticks per phase, driven by `nowJianbian` (phase 0–5)
@@ -319,8 +319,8 @@ in `FZLD_Timer4` (9867). Ring variant `FZLD_Timer_New` (10231) writes `ledFuzai[
   (`4075: DSHX_Timer_New(); 4076: QCJB_Timer_New(); 4079: CHMS_Timer_New(); …`), because the ring
   shows breathe + gradient + rainbow scalars simultaneously and `LedValToScreenLed` picks per
   `myLedMode1..4`.
-- **Styles 4/5/6/8/9/10/11/12:** `switch(myLedMode)` → the matching `_Timer<style>()` (4088–4279).
-- **Default (style 1):** `switch(myLedMode)` → base `_Timer()` (4282–4302).
+- **Styles 4/5/6/8/9/10/11/12:** `myLedMode` → the matching `_Timer<style>()` (4088–4279).
+- **Default (style 1):** `myLedMode` → base `_Timer()` (4282–4302).
 
 ### Segment-digit source routing — `GetVal()` (3368)
 Selects which `ucInfoImageN.val1` feeds which digit group and sets the segment on/off flags
@@ -348,12 +348,12 @@ seconds comes from `textBoxTimer.Text`:
   parse is unguarded, so a non-numeric text box throws here.
 
 The `6 *` implies the master tick is **6 Hz (~166 ms)** — corroborated by `GetSystemInfo`
-throttling sensor refresh to every 6th tick (`3044: if (InfoCount < 6) return;` → ~1 Hz sensors).
+throttling sensor refresh to every 6th tick (an early return when `InfoCount` is below **6** (`:3044`) → ~1 Hz sensors).
 (The QTimer interval itself is EXTERNAL, owned by `Form1`.)
 
 ### Settings persistence
 `FormLEDInit` reads and `SetMyNameFile()` (1941) writes `Data\Digital\Setting<name>`, a binary
-blob guarded by leading byte `220` (0xDC): `1809: if (binaryReader.ReadByte() == 220)`. Field order
+blob guarded by leading byte `220` (0xDC): a guard on the first byte being **220** (`:1809`). Field order
 is fixed (1811–1894 read / 1945–1988 write): rgb, onOff, brightness, ledMode, tempMode, 5×LunBo
 bools, then per-channel modes/colors (`myLedMode1..4`, `rgb*_1..4`, `myOnOff1..4`,
 `myBrightness1..4`), timer text, `memoryRatio`, `hardDiskCount`, and (style 9 only)
@@ -394,6 +394,6 @@ bools, then per-channel modes/colors (`myLedMode1..4`, `rgb*_1..4`, `myOnOff1..4
 10. **Style 8 (CZ1) sends a second `byte[48]` buffer** in the same call (secondary segment/icon
     plane) — not a single flat payload like the others.
 11. **Temp unit detection is string-sniffed** from the sensor label in `GetSystemInfoVal`
-    (`3142: if (val.Contains("℃"))` … `℉`/`RPM`/`MHz`/`%`), which also flips `ucInfoImage1`
+    (a test for the `℃` suffix (`:3142`)` … `℉`/`RPM`/`MHz`/`%`), which also flips `ucInfoImage1`
     text-mode and `myTempMode`. C→F is `*9/5+32` done in integer math in several places (3542,
     3609, 3121) — truncation matters for exact digit parity.

@@ -16,7 +16,7 @@ Every claim below quotes the code or cites `file:line`. Where a table is long, t
 
 ## 0. Scope correction — the two files are different device classes
 
-- **`UCScreenLED`** (`UCScreenLED.cs:8` `public class UCScreenLED : UserControl`) is the segment/matrix METRIC display. It computes which segments are lit (`isOn[]`), their colors (`ledColor[]`), and their rectangles (`ledPosition[]`), then paints them in `OnPaint`. **It contains no USB send** (grep for `usb|SendData|WriteFile|byte[]` in method bodies returns nothing) — it is preview-only. The wire send for these panels lives in `FormLED` (out of scope for this audit).
+- **`UCScreenLED`** (`UCScreenLED.cs:8` `UCScreenLED`, a WinForms `UserControl`) is the segment/matrix METRIC display. It computes which segments are lit (`isOn[]`), their colors (`ledColor[]`), and their rectangles (`ledPosition[]`), then paints them in `OnPaint`. **It contains no USB send** (grep for `usb|SendData|WriteFile|byte[]` in method bodies returns nothing) — it is preview-only. The wire send for these panels lives in `FormLED` (out of scope for this audit).
 - **`FormKVMALED6`** is an ARGB channel controller (10 RGB channels, modes, brightness), persisted to `proMode.dc`. It is **not** a 7-segment metric display; it is the "6/10-channel lighting" device. Included here only for its wire format (§6).
 
 ---

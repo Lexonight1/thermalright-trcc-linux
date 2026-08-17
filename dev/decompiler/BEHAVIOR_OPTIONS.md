@@ -35,7 +35,7 @@ matching `UCSystemInfoOptionsOne` widgets), kept index-aligned.
   `GetMyNameFile`).
 - `InitUCSystemInfoOptionsOneVal` (UCSystemInfoOptions.cs:66) — **default-row
   factory**. Builds one 14-slot `ArrayList` for source `n` and appends to
-  `configArrayList`. `switch(n)`: `1`→CPU (TEMP=`GetSystemInfo(1)`,
+  `configArrayList`. `n`: `1`→CPU (TEMP=`GetSystemInfo(1)`,
   Usage=`GetSystemInfo(2)`, Clock=`GetSystemInfo(3)`, Power="CPU Package Power");
   `2`→GPU (all four via `GetSystemInfo(4..7)`); `3`→Memory ("SPD Hub Temperature",
   "Physical Memory Load", "Memory Clock", "Physical Memory Available" — hardcoded
@@ -91,7 +91,7 @@ matching `UCSystemInfoOptionsOne` widgets), kept index-aligned.
   (`Top=36+j/4*199`, `Left=44+j%4*300`, page-wrap subtract); `ButtonSetTopLeftAndHideShow()`
   + `SetMyNameFile()`. **[COPY-PASTE]** grid-position formula (3rd copy).
 - `UpdateOne` (UCSystemInfoOptions.cs:373) — **central delegate dispatch** from any
-  card. `switch(mode)`: `0`→`FormSystemDelete(val)`; `1/2/3/4`→`FormSystemInfoShow(mode,val)`
+  card. `mode`: `0`→`FormSystemDelete(val)`; `1/2/3/4`→`FormSystemInfoShow(mode,val)`
   (open picker for that metric row); `16`→if `myTextChengeEn`, harvest all cards'
   live TextBox text back into slots `1,2,5,8,11` of every row then `SetMyNameFile()`
   (the debounced "name edited" persist). Key branches: `mode 0=delete / 1-4=pick /
@@ -113,7 +113,7 @@ matching `UCSystemInfoOptionsOne` widgets), kept index-aligned.
 - `buttonUp_Click` (UCSystemInfoOptions.cs:494) — `nowPage=0; ButtonSetTopLeftAndHideShow()`.
 - `buttonDown_Click` (UCSystemInfoOptions.cs:500) — `nowPage=1; ButtonSetTopLeftAndHideShow()`.
 - `GetSystemInfoVal` (UCSystemInfoOptions.cs:506) — reads a card's **already-rendered
-  label text** back out: `switch(sub)` 1→label1.Text … 4→label4.Text into `ref val`.
+  label text** back out: `sub` 1→label1.Text … 4→label4.Text into `ref val`.
   Note `main` here indexes the WIDGET list; this is the outer form querying a card's
   displayed value (used to feed the composited theme image). Key branch: `sub → which
   labelN.Text`.
@@ -143,7 +143,7 @@ object val=null)`).
 - `UCSystemInfoOptionsOne` ctor (UCSystemInfoOptionsOne.cs:61) — `InitializeComponent`
   then zeroes `FlatAppearance.BorderColor` on button1..4 + buttonDelete.
 - `SetUCSystemInfoOptionsOneColor` (UCSystemInfoOptionsOne.cs:71) — stores `myMode`,
-  then `switch(myMode)` picks `foreColor` from the static above AND sets the card's
+  then `myMode` picks `foreColor` from the static above AND sets the card's
   background image (`Resources.A自定义/Acpu/Agpu/Adram/Ahdd/Anet/Afan`). Mode 0
   additionally `buttonDelete.Show()` (only Custom cards are deletable). `default`
   → Custom color+image. Finally applies `foreColor` to all 5 TextBoxes + 4 Labels.
@@ -198,7 +198,7 @@ This is the command-code fan-out the UI-contract audit maps to render commands.
 - `XiTongXianShi` (UCThemeSetting.cs:99) — **the busiest router** (system-display
   panel). `cmd 0`→`delegateUCSetting(128, info)` (add/select element to render);
   `cmd 1`→show the Add sub-panel, hide Color+Table; `cmd 3`→hide Add, show Color+
-  Table, then `switch((int)info)` 0..4 calls the matching
+  Table, then a dispatch on `info` cast to int 0..4 calls the matching
   `ucXiTongXianShiTable1.UCXiTongXianShiTable{0..4}(k,(int)data)` to configure the
   table for that element kind — case 4 additionally seeds `table.textBox1.Text` from
   `((ArrayList)data1)[4]`; afterward backs up + sets the color panel from `data1`

@@ -63,7 +63,7 @@ This is the only place in these four files that parses the DC/Theme binary. The
 observed on-disk shape of the `fileName` file — `:261-270`:
 - byte 0: a header/magic byte, compared to `USB_PACKED_Head` (passed in) — `:261-262`.
 - int32: `num` = a count of leading int32 records — `:264`.
-- `num` × int32: skipped (`binaryReader.ReadInt32();` in a loop) — `:277-280`.
+- `num` × int32: skipped (a 32-bit little-endian read in a loop) — `:277-280`.
 - int32: `count` = byte length of the embedded image — `:269`.
 - `count` bytes: a PNG/image blob → `ByteToBitmap` — `:282`.
 
@@ -438,7 +438,7 @@ all resolutions) — `:2629`.
    or panning speed will be wrong per device.
 
 9. **All three browsers share ONE 120×120 / 5-column grid engine** with identical
-   fit math (`if (width > height) …120…`) and identical scroll/offset code. In
+   fit math (the landscape test, fitting the long edge to 120) and identical scroll/offset code. In
    the Python port this is one reusable component, not three.
 
 10. **Zoom factor is linear-ish around a 248px slider center**, `0.03`/px, with

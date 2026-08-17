@@ -91,7 +91,7 @@ scan. **This is the only OS hotplug hook; the shared-memory LCD channel has no
 hotplug — it is discovered by continuous polling (§4).**
 
 ### 1.5 Power / sleep handling
-`Form1.cs:319-357` — `OnPowerModeChanged`. `switch (val - 1)`: `case 0` (Suspend)
+`Form1.cs:319-357` — `OnPowerModeChanged`. `val - 1`: `case 0` (Suspend)
 sets `myPowerMode = true`; `case 2` (Resume) kills `USBLCD` processes, sets
 `myPowerMode = false`, calls `ResetAllDevice()`. On resume the LCD helper
 processes are re-spawned by `Timer_One_LCD_event` (`Form1.cs:955-1019`, gated on
@@ -306,7 +306,7 @@ shared-memory `FormCZTV`s live in the separate `formCZTVArray`.
 ### 5.1 pm → product name (sidebar) — the fullest device table
 `UCDevice.ADDUserButton` (`UCDevice.cs:317-749`) switches `ID` then `pm` (and often
 `sub`) to pick a bitmap. This is the richest VID/PID→model map in the codebase.
-Representative (verbatim mapping, `switch (pm)`):
+Representative (verbatim mapping, `pm`):
 
 - **ID 1 (LED, 0x0416/0x8001)** `UCDevice.cs:334-424`: pm 1=FROZEN_HORIZON_PRO,
   2=FROZEN_MAGIC_PRO, 3=AX120_DIGITAL, 16=PA120_DIGITAL, 23=RK120_DIGITAL,

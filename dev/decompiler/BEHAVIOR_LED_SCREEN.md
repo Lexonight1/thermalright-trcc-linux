@@ -82,7 +82,7 @@ All share the digit-decompose idiom (`num=v/100; num2=v%100/10; num3=v%10`) and 
 
 ### Framework
 
-- `Dispose(bool disposing)` (UCScreenLED.cs:10120) — standard WinForms dispose; `if (disposing && components!=null) components.Dispose()`, then base. 1 branch.
+- `Dispose(bool disposing)` (UCScreenLED.cs:10120) — standard WinForms dispose; the designer dispose: components are disposed only when `disposing` and the container is non-null, then base. 1 branch.
 
 - `InitializeComponent()` (UCScreenLED.cs:10129) — designer boilerplate; sets `imageBk` for LF13 background (`Resources.DLF13` region) + control props. No branches.
 
@@ -109,7 +109,7 @@ ARGB 10-channel lighting controller. State: `myChannel[10]` (which channels sele
 
 - `SetMyChannel()` (FormKVMALED6.cs:290) — set channels 0..7 (`Length-2`) to 1, restore all 5 TK helmet + DGJH "aggregate-on" background images. No branches (loop).
 - `ClrMyChannel()` (FormKVMALED6.cs:304) — inverse: channels 0..7 =0, clear TK backgrounds, set DGJH "aggregate-off" image. No branches (loop).
-- `buttonTK0_Click`..`buttonTK4_Click` (FormKVMALED6.cs:318/344/370/396/422) — **[COPY-PASTE]** 5-fold. Each toggles `myChannel[n]` and its helmet image; then if all of ch0..4==1 shows DGJH "aggregate-a" image else default; then `if(my_6_10_Ch) buttonWBSR_Click(...)` (re-arm external-output). Branches: channel toggle → image + aggregate state.
+- `buttonTK0_Click`..`buttonTK4_Click` (FormKVMALED6.cs:318/344/370/396/422) — **[COPY-PASTE]** 5-fold. Each toggles `myChannel[n]` and its helmet image; then if all of ch0..4==1 shows DGJH "aggregate-a" image else default; then `my_6_10_Ch` gates a forwarded `buttonWBSR_Click` (re-arm external-output). Branches: channel toggle → image + aggregate state.
 - `buttonDGJH_Click` (FormKVMALED6.cs:448) — "light aggregate": `SetMyChannel()`, then re-arm WBSR if in 6/10-ch mode. 1 branch.
 - `buttonWBSR_Click` (FormKVMALED6.cs:457) — toggles `my_6_10_Ch` (external-output / 6-vs-10-channel). ON→set image-a, `myChannel[8]=1`, `ClrMyChannel()`; OFF→default image, `myChannel[8]=0`. Ends `delegateForm.Invoke(my_6_10_Ch?161:160)`. 2 branches.
 
