@@ -267,21 +267,100 @@ def device_catalog() -> list[tuple[list[tuple[int, int]], int, int | None, str, 
     return rows
 
 
-def all_variant_specs() -> list[dict]:
-    """One ``devices.json`` spec per cooler variant — simulate the WHOLE catalog.
+def _fingerprint_is_catalogued(wire: Wire, pm: int, sub: int) -> bool:
+    """Would this ``(pm, sub)`` resolve on this wire WITHOUT the catalog guessing?
 
-    Bulk variants are emitted once (under their first shared vid:pid) so the
-    fleet has no 4x duplicate models.
+    A vid:pid may share a variant table with a different wire — the two SCSI ids
+    alias the bulk PM table — and a PM that means something on bulk is just an
+    unknown FBL on SCSI, where the convention is PM == FBL.  Simulating those
+    produces devices that only exercise ``_warn_unknown``'s 320x320 fallback,
+    which floods the log and tests the guess rather than a panel.
+
+    So the fleet only emits fingerprints the shipping tables actually know.
+    ``get_profile`` warns exactly when the FBL is absent from ``FBL_PROFILES``;
+    bulk is the one wire with its own fallback (unknown PM → FBL 72), so it is
+    asked its own question.
     """
+    from trcc.adapters.device.bulk_lcd import _BULK_KNOWN_PMS
+    from trcc.core.models import Wire as _W
+    from trcc.core.protocol import FBL_PROFILES, pm_to_fbl
+
+    if wire is _W.BULK:
+        return pm in _BULK_KNOWN_PMS or (pm == 1 and sub in (48, 49))
+    return pm_to_fbl(pm, sub) in FBL_PROFILES
+
+
+def all_variant_specs() -> list[dict]:
+    """One spec per distinct PANEL, across every USB id and every wire.
+
+    Sourced from what we can SIMULATE — the device registry crossed with the
+    PM→geometry tables — not from what we can NAME.
+
+    It used to iterate :func:`device_catalog`, which is built from
+    ``_VARIANT_REGISTRY`` (the marketing-name table) and groups vid:pids that
+    SHARE a PM table, emitting only ``vids[0]``.  Both choices cost coverage:
+
+      * five of the ten registry vid:pids have no variant rows at all, so LY,
+        ALI and two HID panels were never simulated;
+      * the two SCSI ids alias the bulk PM table, so they collapsed into the
+        bulk group and the SCSI wire never ran either.
+
+    Net effect: ``--all`` was 132 specs across **3** vid:pids and 3 wires.  A
+    mock does not need a cooler's name to fake it — it needs a vid:pid and a
+    handshake fingerprint, both of which we have for every supported panel.
+
+    Deduped on ``(resolution, portrait-mounted)`` per device: two PMs that land
+    on the same geometry and mount are the same panel to everything downstream,
+    and emitting both only doubles the sidebar.
+
+    LED devices are the exception and keep every PM.  A segment display has no
+    canvas — every row is :data:`NO_PANEL` — so a geometry key collapses all 31
+    catalogued LED models into one, discarding the axis that actually
+    distinguishes them.  For them the PM *is* the identity.
+    """
+    from trcc.core.protocol import _FBL_192_BY_PM, _FBL_224_BY_PM
+    from trcc.core.registry import ALL_DEVICES
+    from trcc.core.variants import _VARIANT_REGISTRY
+
+    # PMs the geometry tables name but no variant row reaches — 960x320,
+    # 800x480, 1920x440, 640x172, 1280x480 …  These are exactly the panels
+    # with open questions against the C#, so they matter most.
+    table_pms = sorted(set(_FBL_224_BY_PM) | set(_FBL_192_BY_PM))
+
     specs: list[dict] = []
-    for vids, pm, sub, model, _res in device_catalog():
-        vid, pid = vids[0]
-        spec: dict[str, Any] = {
-            "vid": f"{vid:04x}", "pid": f"{pid:04x}", "pm": pm, "name": model,
-        }
-        if sub is not None:
-            spec["sub"] = sub
-        specs.append(spec)
+    for (vid, pid), info in sorted(ALL_DEVICES.items()):
+        fingerprints: set[tuple[int, int]] = set()
+        for pm, subs in _VARIANT_REGISTRY.get((vid, pid), {}).items():
+            for sub in subs:
+                fingerprints.add((pm, sub if sub is not None else 0))
+        fingerprints.update((pm, 0) for pm in table_pms)
+        if not fingerprints:                      # no table reaches this id
+            fingerprints.add((info.fbl or 0, 0))
+
+        # Key shape differs by device kind (see the LED note above), so
+        # this is deliberately a heterogeneous set of tuples.
+        seen: set[tuple] = set()
+        for pm, sub in sorted(fingerprints):
+            if not _fingerprint_is_catalogued(info.wire, pm, sub):
+                continue
+            try:
+                res = variant_resolution(info.wire, pm, sub)
+            except Exception:                     # noqa: BLE001 — unsupported
+                continue
+            # A panel is identified by its geometry + mount; an LED by its PM.
+            sig = ((pm, sub) if res == NO_PANEL else (res, sub >= 5))
+            if sig in seen:
+                continue
+            seen.add(sig)
+            label = "no panel" if res == NO_PANEL else f"{res[0]}x{res[1]}"
+            spec: dict[str, Any] = {
+                "vid": f"{vid:04x}", "pid": f"{pid:04x}", "pm": pm,
+                "name": f"{info.wire.value} {label} pm{pm}"
+                        + (f" sub{sub}" if sub else ""),
+            }
+            if sub:
+                spec["sub"] = sub
+            specs.append(spec)
     return specs
 
 
@@ -410,7 +489,8 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
 
 def bootstrap(report_path: str | None = None,
               verbosity: int = 0, all_devices: bool = False,
-              specs: list[dict] | None = None) -> Platform:
+              specs: list[dict] | None = None,
+              hardware: bool = False) -> Platform:
     """Wire up logging + paths and return a ``Platform`` rooted at
     ``dev/.trcc/``.
 
@@ -418,26 +498,62 @@ def bootstrap(report_path: str | None = None,
     drives the rest of the composition root — same shape production
     uses, just with the dev platform instance.
 
-    Spec source precedence: an explicit ``specs`` list (e.g. the ``device=``
-    CLI form) wins; then ``all_devices`` (the WHOLE variant catalog); then a
-    ``--report`` file; then ``dev/devices.json``.
+    Spec source precedence, narrowest first::
+
+        specs=          the ``device=VID:PID`` CLI form — one device
+        hardware=True   drive the real cooler plugged into this box
+        report_path=    replay a reporter's fleet from their trcc report
+        devices.json    a local hand-written fleet, when the file exists
+        (default)       THE WHOLE FLEET — every vid:pid, every wire
+
+    **The whole fleet is the default.**  It used to be ``devices.json``, falling
+    back to real hardware — which meant the harness silently tested whatever
+    three devices happened to be in a gitignored local file.  On this box that
+    was 2 of the 15 panel geometries, and nothing said so.  A mock exists to
+    cover the device space; covering it should not require remembering a flag.
+
+    Real hardware is still reachable, now by asking for it (``--hardware``).
+    That path is worth keeping — the harness can drive a plugged-in cooler with
+    dev paths — but it is the exception, not what you get by forgetting.
     """
     from trcc.adapters.infra.logging import configure_logging
 
-    # Specs present → simulate that fleet with scripted USB on a real host base
-    # (DevMockPlatform).  No specs → drive real attached hardware (DevPlatform).
-    # The mock is the tool to GUI-verify device-specific render/geometry (#136
-    # portrait panels, widescreen, LED) with zero hardware; the real path stays
-    # the default so the harness still works against a plugged-in cooler.
+    # Specs → simulate that fleet with scripted USB on a real host base
+    # (DevMockPlatform).  No specs at all → DevPlatform, which drives whatever
+    # cooler is really plugged in.  Only ``--hardware`` reaches that now.
     if specs:
         source = "device= CLI"
-    elif all_devices:
-        source = "--all catalog"
-        specs = all_variant_specs()
-    else:
-        source = "--report" if report_path else "devices.json"
+    elif hardware:
+        source = "--hardware (real attached device)"
+        specs = None
+    elif report_path:
+        source = "--report"
         specs = load_device_specs(report_path)
+    elif all_devices:
+        # --all still means something now that the fleet is the default: it
+        # OVERRIDES a local devices.json, so you can get full coverage without
+        # moving your own file out of the way.
+        source = "full fleet (--all)"
+        specs = all_variant_specs()
+    elif (local := load_device_specs(None)):
+        source = "devices.json"
+        specs = local
+    else:
+        source = "full fleet (default)"
+        specs = all_variant_specs()
     platform = _build_dev_platform(specs or None)
+
+    # Say what was NOT covered.  The old banner named the source and stopped
+    # there, so a 3-device devices.json read as "the mock" rather than as 2 of
+    # 15 geometries.  A harness that reports what it looked at owes you what it
+    # skipped — the same failing that let 95% audit coverage mean one binary
+    # out of three.
+    if specs and not source.startswith("full fleet"):
+        full = len(all_variant_specs())
+        if len(specs) < full:
+            log.info("fleet: %d of %d simulable device(s) — run without "
+                     "--hardware/--report and with no dev/devices.json for "
+                     "the full fleet", len(specs), full)
 
     # Same policy the shipping app uses (``ui/cli/main:_root``): the FILE
     # always keeps DEBUG, only the terminal level rises with -v.  This harness
@@ -453,8 +569,9 @@ def bootstrap(report_path: str | None = None,
         else logging.WARNING,
     )
     log.info(
-        "dev bootstrap: platform=%s paths.config=%s specs=%d",
-        type(platform).__name__, platform.paths().config_dir(), len(specs),
+        "dev bootstrap: platform=%s paths.config=%s source=%s specs=%d",
+        type(platform).__name__, platform.paths().config_dir(), source,
+        len(specs or []),          # --hardware leaves specs None on purpose
     )
     # A simulated GPU fleet is orthogonal to the device fleet — it fakes what
     # the box HAS, not what's plugged into USB — so it applies to either

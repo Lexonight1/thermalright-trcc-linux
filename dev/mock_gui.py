@@ -147,7 +147,7 @@ def _fetch_issue_report(number: str) -> str:
     return str(path)
 
 
-def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]:
+def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool, bool]:
     decorated = False
     verbosity = 0
     report_path: str | None = None
@@ -155,6 +155,7 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]
     device_spec: dict | None = None
     replay = False
     check = False
+    hardware = False
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -171,7 +172,9 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]
             _print_device_catalog()
             sys.exit(0)
         elif arg == '--all':
-            all_devices = True
+            all_devices = True          # now the default; kept so it still works
+        elif arg == '--hardware':
+            hardware = True
         elif arg == '--report':
             i += 1
             if i < len(args):
@@ -214,12 +217,13 @@ def _parse_args() -> tuple[bool, int, str | None, bool, dict | None, bool, bool]
                 print(f"Error: {arg} — {val!r} is not a number")
                 sys.exit(1)
         i += 1
-    return decorated, verbosity, report_path, all_devices, device_spec, replay, check
+    return (decorated, verbosity, report_path, all_devices, device_spec,
+            replay, check, hardware)
 
 
 def main() -> None:
     (decorated, verbosity, report_path, all_devices, device_spec,
-     replay, check) = _parse_args()
+     replay, check, hardware) = _parse_args()
 
     # Bootstrap: dev paths + rotating log at dev/.trcc/trcc.log.  This is the
     # ONLY thing the mock does differently — substitute the dev platform and
@@ -227,7 +231,7 @@ def main() -> None:
     # app never runs here).  Everything else is the REAL composition so the
     # mock exercises real code paths and surfaces real bugs.
     platform = bootstrap(report_path=report_path, verbosity=verbosity,
-                         all_devices=all_devices,
+                         all_devices=all_devices, hardware=hardware,
                          specs=[device_spec] if device_spec else None)
 
     print(f"\nConfig:  {DEV_TRCC / 'config.json'}")

@@ -70,6 +70,11 @@ class VariantPanel(QWidget):
         super().__init__(parent)
         self._window = window
         self._dicts = _variant_dicts()
+        # Click IS the selection here — these buttons are not a checkbox group
+        # and nothing else tracks which device you are looking at — so the panel
+        # has to remember the current one in order to un-highlight it.
+        self._buttons: list[QPushButton] = []
+        self._current: QPushButton | None = None
         # The variant list REPLACES the real device-button area: hide the
         # sidebar's own device scroll so its buttons (current and any summoned
         # later — they're its children) can't show behind the scrollable list.
@@ -140,7 +145,7 @@ class VariantPanel(QWidget):
         outer.addWidget(scroll)
 
     def _variant_button(self, d: dict, get_images, assets, colors) -> QPushButton:
-        normal, _active = get_images(d)
+        normal, active = get_images(d)
         btn = QPushButton(inner_text(d))
         btn.setFixedHeight(_BTN_H)
         # Mouse-only: deny keyboard focus + default-button status, so focus
@@ -153,25 +158,49 @@ class VariantPanel(QWidget):
             f"{d['model']}  ·  pm={d['pm']} sub={d['sub']} fbl={d['fbl']}  "
             f"·  {d['res']}")
         pixmap = assets.load_pixmap(normal, _BTN_W, _BTN_H) if normal else None
+        # Checkable so the CURRENT variant reads as current.  The vendor ships
+        # an "a" variant of every button image at roughly twice the brightness
+        # (43/255 -> ~85/255); it was being fetched into `_active` and dropped,
+        # so this panel had no selected state at all.  Not a broken highlight —
+        # an absent one.
+        btn.setCheckable(True)
         if pixmap is not None and not pixmap.isNull():
             btn.setText("")
-            btn.setIcon(QIcon(pixmap))
+            icon = QIcon(pixmap)
+            active_pix = (assets.load_pixmap(active, _BTN_W, _BTN_H)
+                          if active else None)
+            if active_pix is not None and not active_pix.isNull():
+                # The same mechanism base.py::create_image_button uses for the
+                # sidebar's device buttons — one idiom for "this one is on".
+                icon.addPixmap(active_pix, QIcon.Mode.Normal, QIcon.State.On)
+            btn.setIcon(icon)
             btn.setIconSize(QSize(_BTN_W, _BTN_H))
             btn.setFlat(True)
+            # The transparent border on the normal state keeps the geometry
+            # steady, so checking cannot nudge the icon sideways.
             btn.setStyleSheet(
-                "QPushButton{border:none;background:transparent;}"
-                f"QPushButton:hover{{background:{colors.HOVER_BG};border-radius:4px;}}")
+                "QPushButton{border:2px solid transparent;background:transparent;}"
+                f"QPushButton:hover{{background:{colors.HOVER_BG};border-radius:4px;}}"
+                f"QPushButton:checked{{border:2px solid {colors.ACCENT_BORDER};"
+                "border-radius:4px;}")
         else:
+            # Text fallback — _get_device_images returns (None, None) for a HID
+            # whose button_image is still the generic A1CZTV, so these need a
+            # checked state of their own or those devices never highlight.
             btn.setStyleSheet(
                 f"QPushButton{{color:{colors.TEXT};font-size:10px;text-align:left;"
                 f"padding:2px 6px;background:{colors.PANEL_FALLBACK};border:none;}}"
-                f"QPushButton:hover{{background:{colors.HOVER_BG};}}")
-        btn.clicked.connect(functools.partial(self._on_click, d))
+                f"QPushButton:hover{{background:{colors.HOVER_BG};}}"
+                f"QPushButton:checked{{background:{colors.DEVICE_SELECTED_TOP};"
+                "color:white;font-weight:bold;}")
+        btn.clicked.connect(functools.partial(self._on_click, d, btn))
+        self._buttons.append(btn)
         return btn
 
     # ── click → inject reply + reconnect + present ──────────────────────
 
-    def _on_click(self, d: dict, _checked: bool = False) -> None:
+    def _on_click(self, d: dict, btn: QPushButton,
+                  _checked: bool = False) -> None:
         from trcc.core.commands import ConnectDevice
 
         w = self._window
@@ -194,6 +223,18 @@ class VariantPanel(QWidget):
         device = app.devices.get(key)
         if device is None:
             return
+        # Mark the selection only NOW.  A failed handshake returns above, and a
+        # button left looking current while the status line reads "handshake
+        # failed" is worse than no highlight.  Explicit tracking rather than
+        # setAutoExclusive: Qt groups auto-exclusive buttons by PARENT, and
+        # every variant shares one column split only by QLabel headers — that
+        # would be right today by accident and wrong the moment the layout
+        # gains a per-device container.
+        if self._current is not None and self._current is not btn:
+            self._current.setChecked(False)
+        btn.setChecked(True)
+        self._current = btn
+
         w._add_handler(device)
         w._active_key = ""
         w._activate_device(key)
