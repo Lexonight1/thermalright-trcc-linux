@@ -1421,15 +1421,35 @@ class LCDHandler(BaseHandler):
         theme_res = (self._pm.state.canvas_size if dirs.portrait_fallback
                      else dirs.catalog_size)
         themes = self._app.dispatch(ListThemes(resolution=theme_res)).themes
-        self._w['theme_local'].set_themes(themes)
-        if web_dir:
-            self._w['theme_web'].set_web_directory(web_dir)
-        self._w['theme_web'].set_resolution(f'{bw}x{bh}')
-        if masks_dir:
-            self._w['theme_mask'].set_mask_directory(masks_dir)
-        self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
-        self._w['image_cut'].set_resolution(bw, bh)
-        self._w['video_cut'].set_resolution(bw, bh)
+        # SHARED widgets — only the active handler may write them.  The theme
+        # browser is one widget set for every LCD, so an inactive handler
+        # refreshing it leaves ITS catalog on screen while a DIFFERENT device
+        # is selected; the next click then dispatches LoadTheme with the wrong
+        # device's path.  It fails silently because the stock catalogs all
+        # contain "Theme1".."Theme5", so the path resolves to a real theme of
+        # the wrong SIZE — the background then fails bg_fit's width test and
+        # the panel goes black with no error.
+        #
+        # Same rule the preview and progress widgets already follow.  Both
+        # activation paths (apply_device_config / reactivate) set ui_active
+        # before _refresh, so the handler taking the panel always repopulates
+        # and no stale catalog survives a device switch.
+        if self._pm.ui_active:
+            self._w['theme_local'].set_themes(themes)
+            if web_dir:
+                self._w['theme_web'].set_web_directory(web_dir)
+            self._w['theme_web'].set_resolution(f'{bw}x{bh}')
+            if masks_dir:
+                self._w['theme_mask'].set_mask_directory(masks_dir)
+            self._w['theme_mask'].set_resolution(f'{bw}x{bh}')
+            self._w['image_cut'].set_resolution(bw, bh)
+            self._w['video_cut'].set_resolution(bw, bh)
+        else:
+            self.log.info(
+                "_update_theme_directories: %s is not the active panel — "
+                "leaving the shared theme browser alone (writing it would "
+                "offer this device's %dx%d catalog to whichever panel IS "
+                "selected)", self._device_key, bw, bh)
 
         # First-install auto-load: nothing rendered yet AND no saved theme →
         # load the first listed theme (user-precedence already applied by

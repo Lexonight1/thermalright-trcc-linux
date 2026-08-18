@@ -118,6 +118,12 @@ class _FakeApp:
 
         return _Media()
 
+    # `_update_theme_directories` resolves the browser's directories through
+    # the platform's Paths.  Set by the theme-browser tests below; the video
+    # tick never touches it.
+    platform: Any = None
+    settings: Any = None
+
     def dispatch(self, cmd: Any) -> Any:
         name = type(cmd).__name__
         key = getattr(cmd, "key", "")
@@ -132,7 +138,7 @@ class _FakeApp:
         device = self.devices.get(key)
         ok = device is not None and device.is_connected
         return type("_R", (), {
-            "ok": ok, "bytes_sent": 1234, "theme_name": "T",
+            "ok": ok, "bytes_sent": 1234, "theme_name": "T", "themes": [],
             "message": "ok" if ok else "not connected",
             "cursor": cursor, "frame_count": frame_count,
             "interval_ms": interval_ms,
@@ -251,3 +257,119 @@ def test_disconnected_device_still_advances_its_cursor(
     handler_a._on_video_tick()
 
     assert app._playbacks[_KEY_A].advanced == 1
+
+
+# ── The shared THEME BROWSER, same gate, different widget set ────────────
+#
+# Found in dev/mock_gui.py logs, 2026-08-18, on the devices.json fleet: a
+# 320x320 SCSI panel rendered solid black because every LoadTheme it dispatched
+# carried a path under `theme480854` — the 854x480 device's catalog.
+#
+# Each handler resolved ITS OWN directories correctly.  The defect is that an
+# INACTIVE handler wrote them into the shared browser, so the grid on screen
+# belonged to one device while the selection belonged to another.  It fails
+# silently because every stock catalog contains "Theme1".."Theme5": the click
+# resolves to a real theme of the WRONG SIZE, the background fails bg_fit's
+# width test, and the panel goes black with nothing logged as an error.
+#
+# `bg_fit` was correct throughout, and so was the per-device path resolution.
+# Only the widget ownership was wrong.
+#
+# MUTATION CHECK -- change the `if self._pm.ui_active:` guard in
+# `LCDHandler._update_theme_directories` to `if True:`.  MEASURED:
+# 1 failed, 7 passed -- only
+# `test_inactive_handler_never_writes_the_shared_theme_browser` goes red.
+# The active-handler test must keep passing: a gate that silences the
+# handler owning the panel leaves the browser empty, which is worse than
+# the bug it fixes.
+
+
+class _RecordingThemeList:
+    """The SHARED theme browser widget."""
+
+    def __init__(self) -> None:
+        self.set_themes_calls: list[Any] = []
+
+    def set_themes(self, themes: Any) -> None:
+        self.set_themes_calls.append(themes)
+
+    def __getattr__(self, name: str) -> Any:
+        def _noop(*a: Any, **k: Any) -> None:
+            return None
+        return _noop
+
+
+def _theme_widgets(preview: _FakePreview) -> tuple[Any, _RecordingThemeList]:
+    browser = _RecordingThemeList()
+    widgets = _Widgets({"preview": preview, "theme_local": browser})
+    return widgets, browser
+
+
+def _with_paths(app: _FakeApp, root: Path) -> _FakeApp:
+    """Give the fake a real ``Paths`` so directory resolution is genuine."""
+    from .conftest import FakePaths
+
+    class _Platform:
+        def paths(self) -> Any:
+            return FakePaths(root)
+
+    class _Settings:
+        """Only what the auto-load block reads — which is deliberately OUTSIDE
+        the ui_active gate, because it is per-device state, not shared UI."""
+
+        def for_device(self, key: str) -> Any:
+            return type("_DS", (), {"current_theme": "T"})()
+
+    app.platform = _Platform()
+    app.settings = _Settings()
+    return app
+
+
+def test_inactive_handler_never_writes_the_shared_theme_browser(
+    tmp_path: Path,
+) -> None:
+    """An unfocused device must not offer ITS catalog to the selected panel."""
+    from trcc.ui.gui.lcd_handler import LCDHandler
+
+    preview = _FakePreview()
+    widgets, browser = _theme_widgets(preview)
+    app = _with_paths(_FakeApp(), tmp_path)
+    app.devices[_KEY_A] = _FakeDevice(_KEY_A)
+
+    handler = LCDHandler(app.devices[_KEY_A], widgets,
+                         lambda cb, *a, **k: _FakeTimer(), tmp_path,
+                         app=app, lcd_idx=_KEY_A)
+    handler._pm.ui_active = False
+
+    handler._update_theme_directories()
+
+    assert browser.set_themes_calls == [], (
+        "an inactive handler repopulated the shared theme browser — the next "
+        "click hands ITS catalog path to whichever device is selected, and "
+        "the panel renders black (mock_gui, 2026-08-18)"
+    )
+
+
+def test_active_handler_does_write_the_shared_theme_browser(
+    tmp_path: Path,
+) -> None:
+    """The gate must not silence the handler that owns the panel — otherwise
+    the browser never populates at all and the fix is worse than the bug.
+    """
+    from trcc.ui.gui.lcd_handler import LCDHandler
+
+    preview = _FakePreview()
+    widgets, browser = _theme_widgets(preview)
+    app = _with_paths(_FakeApp(), tmp_path)
+    app.devices[_KEY_B] = _FakeDevice(_KEY_B)
+
+    handler = LCDHandler(app.devices[_KEY_B], widgets,
+                         lambda cb, *a, **k: _FakeTimer(), tmp_path,
+                         app=app, lcd_idx=_KEY_B)
+    handler._pm.ui_active = True
+
+    handler._update_theme_directories()
+
+    assert len(browser.set_themes_calls) == 1, (
+        "the active handler must populate the browser it owns"
+    )
