@@ -219,6 +219,50 @@ class Settings:
                 )
             return self._devices[key]
 
+    def seed_mount_orientation(self, key: str, portrait_mounted: bool) -> int:
+        """First-boot only: start a portrait-MOUNTED panel at 90 degrees.
+
+        Some coolers bolt a landscape panel in sideways, and the SUB byte says
+        so — ``pmSub >= 5`` on the three resolutions ``is_portrait_mounted``
+        covers.  The C# spends that byte immediately: ``SetThemeInfo_ThemeML``
+        seeds ``themeDirection = 90`` and the portrait catalog for such a
+        device, so the owner's picture is upright the first time they plug it
+        in.  We resolved the same fact at handshake and spent it on a log line,
+        which is why two reporters with the same panel (PM=11 SUB=5, #203 and
+        #262) both described having to rotate the dial by hand to read their
+        screen.
+
+        FIRST BOOT ONLY, and that is the whole safety argument.  The C# gates
+        this on ``themeDirection == -1``, its "no saved angle" sentinel; ours
+        is "this key has no persisted DeviceSettings".  A device the user has
+        already used has an entry loaded from ``config.json``, so it is never
+        re-seeded and nobody's working-around-it 270 gets overwritten.
+
+        Returns the orientation in force for *key* afterwards, so the caller
+        can log what the owner will actually see.
+        """
+        log.info("seed_mount_orientation: key=%s portrait_mounted=%s",
+                 key, portrait_mounted)
+        with self._lock:
+            if key in self._devices:
+                current = self._devices[key].orientation
+                log.info("seed_mount_orientation: %s already configured "
+                         "(orientation=%d) — not re-seeding", key, current)
+                return current
+            degrees = 90 if portrait_mounted else 0
+            self._devices[key] = DeviceSettings(
+                orientation=degrees,
+                time_format=self._app.time_format,
+                date_format=self._app.date_format,
+                temp_unit=self._app.temp_unit,
+            )
+            if degrees:
+                log.info("seed_mount_orientation: %s is portrait-mounted — "
+                         "starting at %d° so it reads upright without the "
+                         "owner rotating it by hand (#203/#262)", key, degrees)
+            self._save()
+            return degrees
+
     def set_orientation(self, key: str, degrees: int) -> None:
         log.info("set_orientation: key=%s degrees=%d", key, degrees)
         with self._lock:

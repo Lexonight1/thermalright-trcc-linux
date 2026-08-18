@@ -32,6 +32,12 @@ def app(tmp_path: Path) -> App:
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     app.attach(_VID, _PID)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    # SUB 5 means this panel is portrait-MOUNTED, so connect seeds it to 90
+    # the way the vendor app does.  These tests assert ASPECT, so the angle
+    # has to be stated rather than inherited — otherwise they quietly re-test
+    # the mount rule instead of the contract they are named for.  The mount
+    # rule has its own guard in tests/test_mount_orientation_seed.py.
+    app.settings.set_orientation(_KEY, 0)
     return app
 
 

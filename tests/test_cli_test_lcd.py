@@ -35,6 +35,10 @@ def lcd_app(tmp_path: Path) -> Iterator[App]:
     app = _ctx.get_app()
     app.attach(0x87AD, 0x70DB)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    # SUB 5 = portrait-MOUNTED, so connect seeds 90 like the vendor app does.
+    # This test asserts the printed art's ASPECT, so state the angle rather
+    # than inherit it (mount rule: tests/test_mount_orientation_seed.py).
+    app.settings.set_orientation(_KEY, 0)
     yield app
 
 

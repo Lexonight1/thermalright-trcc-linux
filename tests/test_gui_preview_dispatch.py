@@ -65,6 +65,10 @@ def handler(tmp_path: Path) -> tuple[Any, App, _CapturingPreview]:
     app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
     app.attach(0x87AD, 0x70DB)
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
+    # SUB 5 = portrait-MOUNTED, so connect seeds 90 like the vendor app does.
+    # This test asserts the rendered surface's ASPECT, so state the angle
+    # rather than inherit it (mount rule: tests/test_mount_orientation_seed.py).
+    app.settings.set_orientation(_KEY, 0)
 
     preview = _CapturingPreview()
     widgets = _Widgets({"preview": preview})

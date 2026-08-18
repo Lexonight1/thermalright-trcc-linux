@@ -336,6 +336,16 @@ class ConnectDevice(Command[ConnectResult]):
         # point of it.  Run inline it downloaded six archives before connect
         # returned, and since the GUI's splash waits on connect, the main
         # window could not appear until then. (#136, #275)
+        # First boot for this panel: if the cooler bolted it in sideways, start
+        # the owner at 90 degrees instead of making them find the dial.  The
+        # SUB byte already told us at handshake; the C# spends it here too
+        # (SetThemeInfo_ThemeML seeds themeDirection).  Re-connects are a
+        # no-op — the device already has persisted settings by then.
+        profile = getattr(device, "profile", None)
+        if profile is not None:
+            app.settings.seed_mount_orientation(
+                self.key, profile.portrait_mounted)
+
         w, h = handshake.resolution
         if w and h:
             app.data_install_runner.submit((w, h))
