@@ -1,5 +1,51 @@
 # Changelog
 
+## v9.9.10
+
+**Some coolers were being turned the wrong way, and we had been reading the
+wrong version of Thermalright's own software to decide which way was right.**
+
+The rotation rules in TRCC are copied from the Windows app, because that is
+what the screens were built for. It turns out the copy we had been reading was
+four months older than the release users actually run, and Thermalright changed
+those rules in between. Re-reading the current one fixed several screens:
+
+* **Levita Vision (#224)** — your picture now comes up the right way round on
+  its own. You no longer need to set the display angle to 180 to read it.
+  Thermalright fixed this for the Levita specifically, and we had been copying
+  the older behaviour that did not. If you already set 180 by hand, TRCC leaves
+  your setting alone — change it back to 0 when you are ready.
+* **Assassin 120 / Peerless Assassin Vision Max (#203, #262)** — the picture
+  was upside down at the 90 and 270 display angles. It matched at 0 and 180,
+  which is why this took so long to spot.
+* **Panels mounted sideways in their cooler** now start upright. Some coolers
+  bolt a wide screen in rotated, and the screen says so when TRCC first talks to
+  it — TRCC just was not listening. New devices now begin at the right angle
+  instead of leaving you to find the rotation control. Devices you have already
+  set up keep exactly the angle you chose.
+* **Wonder Vision UB 360** is deliberately unchanged. It shares a screen with
+  the Levita and reports itself differently, so only the Levita moves.
+
+**Frames that were too large no longer vanish (#251).** The screens refuse
+anything over a certain size — the picture simply never arrives, with no error
+anywhere. TRCC already shrank oversized pictures for one model, because that is
+the one an owner measured. The limit is actually the same for every screen that
+takes JPEG, so it now applies to all of them: a busy picture loses a little
+quality instead of silently not appearing.
+
+**Multi-screen setups: the theme list belonged to the wrong screen.** With more
+than one display connected, the theme browser could show one screen's themes
+while a different one was selected. Picking a theme then loaded a picture of the
+wrong size and the panel went black. Each screen now keeps its own list.
+
+### Known limitation
+
+Two panel families — 960x540 and 1920x462, in certain configurations — also
+have their rotation corrected in this release, but nobody with one of those has
+been able to check it on real hardware. If your picture is upside down after
+upgrading and it was not before, please open an issue with `trcc report` and we
+will revert that part quickly.
+
 ## v9.9.9
 
 **First launch no longer sits on "Connecting..." doing nothing.** The first
