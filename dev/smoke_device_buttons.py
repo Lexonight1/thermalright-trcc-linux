@@ -45,8 +45,8 @@ sys.path.insert(0, str(_DEV.parent / "src"))
 sys.path.insert(0, str(_DEV.parent))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QImage  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QApplication
 
 # A selection you can see.  5% of pixels moving, or 8/255 of mean brightness,
 # is the floor for "visibly different" — the shipped active image is roughly
@@ -113,7 +113,8 @@ def main() -> int:
 
         off_m = sum(off) / max(len(off), 1)
         on_m = sum(on) / max(len(on), 1)
-        changed = (100.0 * sum(1 for a, b in zip(off, on) if abs(a - b) > 6)
+        changed = (100.0 * sum(1 for a, b in zip(off, on, strict=True)
+                              if abs(a - b) > 6)
                    / max(len(off), 1)) if len(off) == len(on) else 0.0
         visible = changed >= _MIN_CHANGED_PCT or abs(on_m - off_m) >= _MIN_MEAN_DELTA
         if not visible:

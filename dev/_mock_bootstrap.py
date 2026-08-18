@@ -345,7 +345,7 @@ def all_variant_specs() -> list[dict]:
                 continue
             try:
                 res = variant_resolution(info.wire, pm, sub)
-            except Exception:                     # noqa: BLE001 — unsupported
+            except Exception:                     # unsupported fingerprint
                 continue
             # A panel is identified by its geometry + mount; an LED by its PM.
             sig = ((pm, sub) if res == NO_PANEL else (res, sub >= 5))
