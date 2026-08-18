@@ -82,15 +82,26 @@ class DeviceProfile:
     # invert flags disagree.  That mismatch is #203/#169/#171.
     encode_base: int = 0
     encode_invert: bool = True
-    # Largest JPEG the firmware will actually display, in bytes.  0 = uncapped
-    # (every panel's behaviour to date, so the default changes nothing).  Set
-    # by the WIRE adapter at handshake, because this is a firmware limit, not a
-    # property of the resolution: LY silently DROPS an oversized frame — send()
-    # completes, the ACK reads back fine, and the glass keeps the previous
-    # image with nothing in the log.  Renderer.encode_payload feeds this to
-    # encode_jpeg's existing shrink-quality loop so oversized content degrades
-    # in quality instead of vanishing.  (#251)
-    max_frame_bytes: int = 0
+    # Largest JPEG the firmware will actually display, in bytes.
+    #
+    # TRCC 2.1.6 ``ImageToJpg`` never sends a payload of 450000 bytes or more:
+    # it drops the encoder quality by 5 and discards the frame.  That test sits
+    # in the JPEG path with no device condition on it, so it applies to EVERY
+    # JPEG panel — it is a firmware ceiling, not a per-device quirk.
+    #
+    # We first met it as #251 (LY silently dropping frames over ~0.5 MB) and
+    # ported it as an LY-only field, leaving every other JPEG panel uncapped.
+    # That is the same silent frame loss waiting to happen on bulk and HID, and
+    # it is invisible: send() completes, the ACK reads back fine, the glass
+    # keeps the previous image, and nothing appears in the log.  Nobody reports
+    # it because there is nothing to see.
+    #
+    # Renderer.encode_payload feeds this to encode_jpeg's shrink-quality loop.
+    # DELIBERATE DIVERGENCE: the C# discards the frame and leaves the quality
+    # lowered until reconnect; we shrink and send, and re-evaluate per frame.
+    # A degraded frame beats a frozen panel, which is what #251 asked for.
+    # Only the ceiling and its universality are ported, not the drop.
+    max_frame_bytes: int = 450_000
 
     @property
     def resolution(self) -> tuple[int, int]:

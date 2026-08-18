@@ -922,7 +922,7 @@ class Renderer(ABC):
     @abstractmethod
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
-                  italic: bool = False) -> None: ...
+                  italic: bool = False, family: str = "") -> None: ...
 
     # ── Encoding ──────────────────────────────────────────────────────
     @abstractmethod
@@ -1041,9 +1041,11 @@ class Renderer(ABC):
         if profile.encode_baseline:
             surface = self.rotate(surface, profile.encode_baseline)
         if profile.jpeg:
-            # max_frame_bytes drives encode_jpeg's shrink-quality loop.  It is
-            # 0 (uncapped) for every panel except those whose firmware silently
-            # drops oversized frames — see DeviceProfile.max_frame_bytes (#251).
+            # max_frame_bytes drives encode_jpeg's shrink-quality loop, and is
+            # the C#'s 450000 ceiling for EVERY JPEG panel — the test in
+            # ImageToJpg carries no device condition.  It used to default to 0
+            # (uncapped) with only LY setting it, which left every other JPEG
+            # panel able to ship a frame the firmware silently discards (#251).
             return self.encode_jpeg(surface, max_size=profile.max_frame_bytes)
         return self.encode_rgb565(surface, profile.byte_order)
 

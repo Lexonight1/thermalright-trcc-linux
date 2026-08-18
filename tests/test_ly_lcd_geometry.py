@@ -201,24 +201,43 @@ def test_profile_property_is_none_pre_handshake(
 def test_ly_handshake_sets_the_firmware_frame_cap(
     fake_bulk: FakeBulkTransport,
 ) -> None:
-    """The cap is a WIRE property, so LyLcd sets it at handshake."""
-    from trcc.adapters.device.ly_lcd import _MAX_FRAME_BYTES
+    """A connected LY panel carries the JPEG ceiling.
 
+    It used to come from an LY-only ``_MAX_FRAME_BYTES = 512 * 1024``, on the
+    reading that the cap was a per-wire property.  It is not: the C#'s test
+    lives in ``ImageToJpg`` with no device condition, so it applies to every
+    JPEG panel and ``DeviceProfile`` carries it by default.  LY keeps the cap —
+    it just no longer owns it, and the value tightened to the vendor's own.
+    """
     fake_bulk.read_script.append(_ly_response(resp20=4))
     device = _make_ly(fake_bulk, pid=0x5408)
     device.connect()
 
     assert device.profile is not None
-    assert device.profile.max_frame_bytes == _MAX_FRAME_BYTES
-    assert 0 < _MAX_FRAME_BYTES <= 1024 * 1024, "sane firmware limit"
+    assert device.profile.max_frame_bytes == 450_000
+    assert 0 < device.profile.max_frame_bytes <= 1024 * 1024
 
 
-def test_other_wires_stay_uncapped_by_default() -> None:
-    """Default 0 = uncapped, so no other panel's output changes."""
+def test_no_wire_is_left_uncapped() -> None:
+    """Every panel carries the ceiling — this assertion is deliberately the
+    inverse of what it used to say.
+
+    It read ``max_frame_bytes == 0`` on the premise that leaving other wires
+    uncapped changed nothing.  It changed nothing *visible*, which is the
+    problem: an uncapped JPEG panel ships frames the firmware discards in
+    silence — ``send()`` completes, the ACK reads clean, the glass keeps the
+    previous image, nothing is logged.  #251 was that bug found on the one wire
+    someone happened to measure.
+
+    The field is present on RGB565 profiles too and is simply unused there;
+    ``encode_payload`` only consults it on the JPEG path.  One default is
+    simpler than a conditional and cannot be forgotten for a new panel.
+    """
     from trcc.core.protocol import DeviceProfile, get_profile
 
-    assert DeviceProfile(width=320, height=320).max_frame_bytes == 0
-    assert get_profile(100).max_frame_bytes == 0
+    assert DeviceProfile(width=320, height=320).max_frame_bytes == 450_000
+    assert get_profile(100).max_frame_bytes == 450_000
+    assert get_profile(224).max_frame_bytes == 450_000   # 854x480 JPEG
 
 
 def test_encode_payload_shrinks_an_oversized_frame() -> None:

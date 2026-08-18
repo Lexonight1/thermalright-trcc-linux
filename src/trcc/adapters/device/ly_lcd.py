@@ -50,15 +50,16 @@ _HANDSHAKE_TIMEOUT_MS = 1000
 _WRITE_TIMEOUT_MS = 5000
 _READ_TIMEOUT_MS = 1000
 
-# Largest JPEG this firmware will actually put on the glass.  Above roughly
-# half a megabyte it DROPS the frame silently — send() completes, the ACK
-# reads back, and the panel keeps showing the previous image with nothing in
-# the log, which is why it went unnoticed.  Reporter measurements on a Trofeo
-# Vision 9.16 (#251): ~360 KB displayed, ~570 KB ignored; 512 KB sits between
-# the two and is the value they proposed.  Feeding it to encode_jpeg's
-# shrink-quality loop degrades busy content instead of losing the frame.
-# NOTE: bench-unverifiable — no LY panel here; refine if a reporter narrows it.
-_MAX_FRAME_BYTES = 512 * 1024
+# NOTE: the JPEG size ceiling that used to live here as `_MAX_FRAME_BYTES =
+# 512 * 1024` is gone — `DeviceProfile.max_frame_bytes` now carries the C#'s
+# own 450000 for every JPEG panel, which is both stricter and better grounded.
+#
+# It is worth recording why, because the two numbers agree: the #251 reporter
+# measured this exact panel at ~360 KB displayed and ~570 KB ignored, and
+# proposed 512 KB as a midpoint.  TRCC 2.1.6 `ImageToJpg` never sends 450000
+# bytes or more — and 450000 falls inside the reporter's measured window.  A
+# bench measurement on a Trofeo Vision 9.16 and the vendor's own constant
+# bracket each other, so the guess is now a citation.
 
 _CHUNK_SIZE = 512
 _CHUNK_HEADER_SIZE = 16
@@ -163,7 +164,6 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             base,
             encode_base=rotation.base,
             encode_invert=rotation.invert,
-            max_frame_bytes=_MAX_FRAME_BYTES,
         )
 
         return HandshakeResult(
