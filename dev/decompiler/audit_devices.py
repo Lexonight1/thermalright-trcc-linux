@@ -63,8 +63,12 @@ class Fingerprint:
     (it only rewrites it in the ``switch(pm)`` special cases).  ``pm_driven``
     marks the wires (BULK/HID/LY) whose FBL our port derives from the PM byte
     via ``pm_to_fbl``; SCSI and the fan-hub LCD report the FBL directly.
-    ``oracle_models`` is False when ``FormCZTVInit`` has no branch for this
-    fingerprint (its resolution is disambiguated elsewhere in the C#).
+    Whether the C# models a fingerprint is DERIVED (see ``Row.oracle_models``),
+    never declared.  It used to be a hand-set flag, and five rows carried
+    ``oracle_models=False`` long after the tracer grew branches for all five —
+    so the tool printed "FormCZTVInit has no branch for this PM" about branches
+    that were sitting in the file it imports.  A claim a tool makes about
+    itself has to be recomputed, or it rots exactly like the citations did.
     """
     label: str
     fbl: int
@@ -72,7 +76,6 @@ class Fingerprint:
     mode: int = 1
     sub: int = 0
     pm_driven: bool = True
-    oracle_models: bool = True
 
 
 # The corpus — every shipping registry device plus each distinct FormCZTVInit
@@ -110,13 +113,21 @@ CORPUS: tuple[Fingerprint, ...] = (
     # --- 1280x480 (fbl=128, mode3 pm100) -------------------------------------
     Fingerprint("1280x480 (fbl128)",                   fbl=128, pm=100, mode=3,
                 pm_driven=False),
-    # --- FBL 224/192 by-PM sub-splits — NOT modelled by FormCZTVInit ---------
-    Fingerprint("960x540 pm16 (224 by-PM)",  fbl=224, pm=16, oracle_models=False),
-    Fingerprint("800x480 pm12 (224 by-PM)",  fbl=224, pm=12, mode=2,
-                oracle_models=False),
-    Fingerprint("960x320 pm13 (224 by-PM)",  fbl=224, pm=13, oracle_models=False),
-    Fingerprint("640x172 pm15 (224 by-PM)",  fbl=224, pm=15, oracle_models=False),
-    Fingerprint("1280x480 pm68 (192 by-PM)", fbl=192, pm=68, oracle_models=False),
+    # --- FBL 224/192 by-PM sub-splits ---------------------------------------
+    # 2.1.6 DOES model every one of these; the 2.0.3 tracer did not, which is
+    # why they were once marked oracle-gap.  All five branches are guarded by
+    # `myDeviceMode == 2`, so a mode-1 fingerprint misses them and the tool
+    # reports a gap that is really a wrong input.
+    Fingerprint("960x540 pm16 (224 by-PM)",  fbl=224, pm=16, mode=2),
+    Fingerprint("800x480 pm12 (224 by-PM)",  fbl=224, pm=12, mode=2),
+    Fingerprint("960x320 pm13 (224 by-PM)",  fbl=224, pm=13, mode=2),
+    Fingerprint("640x172 pm15 (224 by-PM)",  fbl=224, pm=15, mode=2),
+    Fingerprint("1280x480 pm68 (192 by-PM)", fbl=192, pm=68, mode=2),
+    # --- 1600x720 pm64 sub3 — the Levita.  The per-SKU mount lives here: -----
+    # mySubMode is assigned by SetThemeInfo_ThemeML for pmSub 2/3/4 only, and
+    # sub 3 is the one the rotation switch tests.
+    Fingerprint("1600x720 pm64 sub3 (Levita)", fbl=0, pm=64, mode=2, sub=3),
+    Fingerprint("960x540 pm10 sub5 (PS140)",   fbl=0, pm=10, mode=2, sub=5),
 )
 
 
@@ -131,6 +142,10 @@ class Row:
     our_res: tuple[int, int]
     our_wide: bool
     our_thememl: str
+    # The DERIVED per-SKU mount the C# resolved.  Printed on every row because
+    # it is the term that decides the wire rotation for six families and is
+    # invisible in the handshake bytes themselves.
+    their_sub_mode: int = 0
 
     @property
     def fbl_ok(self) -> bool:
@@ -145,9 +160,20 @@ class Row:
         return self.their_wide == self.our_wide
 
     @property
+    def oracle_models(self) -> bool:
+        """Did ``FormCZTVInit`` actually resolve geometry for this fingerprint?
+
+        Derived, not declared: the tracer resolves a geometry for every
+        fingerprint it has a branch for, and falls through to the bare 240x320
+        default for one it does not.  So "the C# does not model this" is
+        exactly "no resolution flag was set and it is not the pm==5 panel".
+        """
+        return self.their_res != (240, 320) or self.fp.pm == 5
+
+    @property
     def diverges(self) -> bool:
         """True only for oracle-modelled rows with a verdict-axis mismatch."""
-        if not self.fp.oracle_models:
+        if not self.oracle_models:
             return False
         return not (self.fbl_ok and self.res_ok and self.wide_ok)
 
@@ -163,6 +189,7 @@ def audit(fp: Fingerprint) -> Row:
     their_res = resolution_of(st)
     their_wide = st.isBiliPingmu
     their_thememl = st.ThemeML.strip("\\")
+    their_sub_mode = st.mySubMode
 
     # ours — the shipping port for the same fingerprint.
     our_fbl = pm_to_fbl(fp.pm, fp.sub) if fp.pm_driven else fp.fbl
@@ -176,7 +203,7 @@ def audit(fp: Fingerprint) -> Row:
     our_thememl = f"{ow}{oh}"
 
     return Row(fp, their_fbl, their_res, their_wide, their_thememl,
-               our_fbl, our_res, our_wide, our_thememl)
+               our_fbl, our_res, our_wide, our_thememl, their_sub_mode)
 
 
 def _res(r: tuple[int, int]) -> str:
@@ -185,11 +212,12 @@ def _res(r: tuple[int, int]) -> str:
 
 def _print(row: Row) -> None:
     fp = row.fp
-    tag = "" if fp.oracle_models else "   [oracle-gap]"
+    tag = "" if row.oracle_models else "   [oracle-gap]"
     print(f"\n{fp.label}{tag}")
     print(f"  fingerprint: fbl={fp.fbl} pm={fp.pm} mode={fp.mode} "
-          f"sub={fp.sub} pm_driven={fp.pm_driven}")
-    if not fp.oracle_models:
+          f"sub={fp.sub} pm_driven={fp.pm_driven} "
+          f"-> mySubMode={row.their_sub_mode}")
+    if not row.oracle_models:
         print("  FormCZTVInit has no branch for this PM — resolution is "
               "disambiguated in FormCZTV.cs:682-821, not ported here.")
         print(f"  ours: fbl={row.our_fbl} res={_res(row.our_res)} "
@@ -272,9 +300,9 @@ def main() -> int:
     for row in rows:
         _print(row)
 
-    modelled = [r for r in rows if r.fp.oracle_models]
+    modelled = [r for r in rows if r.oracle_models]
     diffs = [r for r in modelled if r.diverges]
-    gaps = [r for r in rows if not r.fp.oracle_models]
+    gaps = [r for r in rows if not r.oracle_models]
     info = [r for r in modelled if r.thememl_differs]
 
     print(f"\n{'=' * 60}")
@@ -285,8 +313,8 @@ def main() -> int:
         for r in info:
             print(f"  - {r.fp.label}: C#={r.their_thememl} ours={r.our_thememl}")
     if gaps:
-        print(f"oracle-gap: {len(gaps)} device(s) not modelled by FormCZTVInit "
-              "(224/192 by-PM — see FormCZTV.cs:682-821).")
+        print(f"oracle-gap: {len(gaps)} device(s) FormCZTVInit resolves no "
+              "geometry for — they fell through to the 240x320 default.")
     if diffs:
         print(f"\nMISMATCH: {len(diffs)}/{len(modelled)} modelled device(s) "
               "diverge from the C#:")
