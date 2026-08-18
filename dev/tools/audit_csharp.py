@@ -6,8 +6,16 @@ re-runnable command that tells you exactly what's new and what to pull. Inputs:
 
     --resx       extracted .resx (Forms + Resources, from ``ilspycmd -p <exe>``)
     --installer  the installer .exe (its ``Data/USBLCD`` data tree, read via 7z)
-    --cs         the single-file decompile (``ilspycmd <exe>``) for the
-                 resolution-fingerprint parser
+    --cs         the decompiled C# for the resolution-fingerprint parser —
+                 a project tree (``ilspycmd -p``) or a single-file dump
+                 (``ilspycmd``); ``decompile_text`` reads both the same
+
+Both decompile inputs default to :data:`core.csharp.DECOMPILE_ROOT` — the ONE
+definition of "where the oracle lives", overridable with ``TRCC_DECOMPILE``.
+They used to default to a pair of ``/tmp`` scratch paths, which is how three
+C#-parity tests in ``tests/`` sat permanently skipped: a wiped scratch dir is
+indistinguishable from "no decompile installed", so the gate reported itself
+absent instead of broken.
 
 It diffs each dimension against our registries and reports new / missing:
 
@@ -24,9 +32,8 @@ for every genuinely-new device, resolution, and asset.  The tool REPORTS;
 device data still gets dev-console validation before it lands in variants.py.
 
     PYTHONPATH=src python3 dev/tools/audit_csharp.py
-    PYTHONPATH=src python3 dev/tools/audit_csharp.py --resx /tmp/trcc216_proj \
-        --installer "/home/ignorant/Downloads/TRCC 2.1.6-Setup/TRCC 2.1.6-Setup.exe" \
-        --cs /tmp/trcc216_src/TRCC.decompiled.cs
+    TRCC_DECOMPILE=~/Downloads/TRCC_2.0.3_decompiled \
+        PYTHONPATH=src python3 dev/tools/audit_csharp.py
 """
 from __future__ import annotations
 
@@ -37,6 +44,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "decompiler"))
+from core.csharp import (  # pyright: ignore[reportMissingImports]
+    DECOMPILE_ROOT,
+    decompile_text,
+)
 from rename_assets import RENAME_MAP  # C# (Chinese) name → our English name
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -170,7 +182,7 @@ def _function_bodies(text: str, name: str) -> list[str]:
 
 def _csharp_resolutions(cs: Path) -> set[tuple[int, int]]:
     """Every panel resolution the C# supports — the ``is{W}x{H}`` flag universe."""
-    text = cs.read_text(errors="ignore")
+    text = decompile_text(cs)
     return {(int(w), int(h)) for w, h in re.findall(r"\bis(\d+)x(\d+)\b", text)}
 
 
@@ -199,7 +211,7 @@ def _resolution_fingerprints(cs: Path) -> dict[tuple[int, int], list[str]]:
         if guard not in out[res]:
             out[res].append(guard)
 
-    for body in _function_bodies(cs.read_text(errors="ignore"), "FormCZTVInit"):
+    for body in _function_bodies(decompile_text(cs), "FormCZTVInit"):
         cur = ""
         for raw in body.splitlines():
             s = raw.strip()
@@ -219,7 +231,7 @@ def _handshake_convention(cs: Path) -> str:
     silently assumed.
     """
     m = re.search(r"ADDUserButton\(ID,\s*receive\[(\d+)\],\s*receive\[(\d+)\]\)",
-                  cs.read_text(errors="ignore"))
+                  decompile_text(cs))
     return (f"pm=receive[{m.group(1)}], sub=receive[{m.group(2)}]"
             if m else "(AddhidDeviceList pattern not found)")
 
@@ -259,7 +271,7 @@ def _led_panel_composition(cs: Path) -> list[dict]:
     """
     rows: list[dict] = []
     cur: dict | None = None
-    for body in _function_bodies(cs.read_text(errors="ignore"), "FormLEDInit"):
+    for body in _function_bodies(decompile_text(cs), "FormLEDInit"):
         for raw in body.splitlines():
             s = raw.strip()
             nos = [int(n) for n in re.findall(r"NO ==\s*(\d+)", s)]
@@ -308,7 +320,7 @@ def _led_zone_styles(cs: Path) -> set[int]:
     set: the authoritative ZONE classification driving the in-code display
     model (``ui.presentation.led_display``).
     """
-    for body in _function_bodies(cs.read_text(errors="ignore"), "ucColor1Delegate"):
+    for body in _function_bodies(decompile_text(cs), "ucColor1Delegate"):
         for raw in body.splitlines():
             s = raw.strip()
             if s.startswith(("if", "else if")) and "nowLedStyle ==" in s:
@@ -329,7 +341,7 @@ def _lcd_panel_composition(cs: Path) -> dict[tuple[int, int], dict]:
     handshake resolves to, so the gui picks the right LCD preview/panel.
     """
     out: dict[tuple[int, int], dict] = {}
-    for body in _function_bodies(cs.read_text(errors="ignore"), "FormCZTVInit"):
+    for body in _function_bodies(decompile_text(cs), "FormCZTVInit"):
         res: tuple[int, int] | None = None
         wide = False
         popup: str | None = None
@@ -360,12 +372,15 @@ def _show(label: str, only_new: set, only_ours: set) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--resx", default="/tmp/trcc216_proj")
+    ap.add_argument("--resx", default=str(DECOMPILE_ROOT),
+                    help="decompile carrying the .resx files (ilspycmd -p <exe>)")
     ap.add_argument("--installer",
-                    default="/home/ignorant/Downloads/TRCC 2.1.6-Setup/TRCC 2.1.6-Setup.exe")
-    ap.add_argument("--cs", default="/tmp/trcc216_src/TRCC.decompiled.cs",
-                    help="single-file .cs decompile (ilspycmd <exe>) for the "
-                         "resolution-fingerprint parser")
+                    default=str(Path.home() / "Downloads/TRCC 2.1.6-Setup"
+                                              "/TRCC 2.1.6-Setup.exe"))
+    ap.add_argument("--cs", default=str(DECOMPILE_ROOT),
+                    help="the C# decompile for the resolution-fingerprint "
+                         "parser — a project tree (ilspycmd -p) or a "
+                         "single-file dump (ilspycmd); both read the same")
     a = ap.parse_args()
     resx_dir, setup, cs = Path(a.resx), Path(a.installer), Path(a.cs)
     if not resx_dir.is_dir():
@@ -406,7 +421,7 @@ def main() -> None:
 
     res_gap: list[tuple[int, int]] = []
     res_fps: dict[tuple[int, int], list[str]] = {}
-    if cs.is_file():
+    if cs.exists():
         _h("RESOLUTIONS (C# is{W}x{H} universe vs our resolved device catalog)")
         cs_res = _csharp_resolutions(cs)
         ours = _our_catalog_resolutions()
@@ -423,10 +438,10 @@ def main() -> None:
             print(f"  ({len(only_ours)} ours-only — derived rotations / legacy: "
                   + ", ".join(f"{w}x{h}" for w, h in only_ours) + ")")
     else:
-        print(f"\n(.cs decompile not found at {cs} — skipping resolution diff; "
-              f"run `ilspycmd <exe>` and pass --cs)")
+        print(f"\n(C# decompile not found at {cs} — skipping resolution diff; "
+              f"run `ilspycmd -p <exe>` and pass --cs)")
 
-    if cs.is_file():
+    if cs.exists():
         _h("PANELS — LED composition (C# FormLEDInit, by handshake NO → style)")
         comp = _led_panel_composition(cs)
         print(f"  {'NO':>12}  {'style':>5}  {'preview':<22} sections")

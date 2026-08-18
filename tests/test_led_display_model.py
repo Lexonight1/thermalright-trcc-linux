@@ -24,7 +24,13 @@ from trcc.ui.presentation.led_display import (
 )
 
 _REPO = Path(__file__).resolve().parent.parent
-_DECOMPILE = Path("/tmp/trcc216_src/TRCC.decompiled.cs")
+sys.path.insert(0, str(_REPO / "dev" / "tools"))
+# See test_lcd_panel_model.py — the decompile location lives in ONE place
+# (`core.csharp.DECOMPILE_ROOT`), never spelled in a test.
+from audit_csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    DECOMPILE_ROOT,
+    _led_zone_styles,
+)
 
 _ALL_IDS = sorted(LEGACY_STYLE_ID.values())
 
@@ -75,14 +81,16 @@ def test_clock_and_solid_are_none() -> None:
     assert led_display_for(12).selector is LedSelector.NONE  # LF13 solid
 
 
-@pytest.mark.skipif(not _DECOMPILE.is_file(),
-                    reason="C# decompile not present (run ilspycmd)")
+@pytest.mark.skipif(not DECOMPILE_ROOT.exists(),
+                    reason=f"C# decompile not present at {DECOMPILE_ROOT} "
+                           f"(run `ilspycmd -p <exe>`, or set TRCC_DECOMPILE)")
 def test_zone_styles_match_csharp_audit() -> None:
-    """Model's ZONE styles == the C# ucColor1Delegate per-zone-colour gate."""
-    sys.path.insert(0, str(_REPO / "dev" / "tools"))
-    from audit_csharp import _led_zone_styles  # type: ignore[import-not-found]
+    """Model's ZONE styles == the C# ucColor1Delegate per-zone-colour gate.
 
-    cs_zone = _led_zone_styles(_DECOMPILE)
+    MUTATION CHECK -- flip style 7 (LF10) from ZONE to PAGE in ``_MODELS``.
+    MEASURED 2026-08-18 against the real 2.1.6 tree: **1 failed**.
+    """
+    cs_zone = _led_zone_styles(DECOMPILE_ROOT)
     assert cs_zone, "audit parsed no ZONE styles from ucColor1Delegate"
     model_zone = {sid for sid in _ALL_IDS
                   if led_display_for(sid).selector is LedSelector.ZONE}

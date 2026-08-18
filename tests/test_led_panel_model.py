@@ -17,7 +17,13 @@ from trcc.core.led_models import LED_STYLES, LEGACY_STYLE_ID
 from trcc.ui.presentation.led_panel import led_panel_for
 
 _REPO = Path(__file__).resolve().parent.parent
-_DECOMPILE = Path("/tmp/trcc216_src/TRCC.decompiled.cs")
+sys.path.insert(0, str(_REPO / "dev" / "tools"))
+# See test_lcd_panel_model.py — the decompile location lives in ONE place
+# (`core.csharp.DECOMPILE_ROOT`), never spelled in a test.
+from audit_csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    DECOMPILE_ROOT,
+    _led_panel_composition,
+)
 
 
 def test_lc1_shows_memory_not_gauges() -> None:
@@ -56,14 +62,16 @@ def test_exactly_one_device_subpanel_per_style() -> None:
                     p.show_clock_panel)) <= 1
 
 
-@pytest.mark.skipif(not _DECOMPILE.is_file(),
-                    reason="C# decompile not present (run ilspycmd)")
+@pytest.mark.skipif(not DECOMPILE_ROOT.exists(),
+                    reason=f"C# decompile not present at {DECOMPILE_ROOT} "
+                           f"(run `ilspycmd -p <exe>`, or set TRCC_DECOMPILE)")
 def test_model_matches_csharp_audit() -> None:
-    """Each C# FormLEDInit block's sections match led_panel_for(style)."""
-    sys.path.insert(0, str(_REPO / "dev" / "tools"))
-    from audit_csharp import _led_panel_composition  # type: ignore[import-not-found]
+    """Each C# FormLEDInit block's sections match led_panel_for(style).
 
-    rows = _led_panel_composition(_DECOMPILE)
+    MUTATION CHECK -- set ``show_disk_panel=False`` in ``led_panel_for``.
+    MEASURED 2026-08-18 against the real 2.1.6 tree: **1 failed**.
+    """
+    rows = _led_panel_composition(DECOMPILE_ROOT)
     assert rows, "audit parsed no LED panel blocks"
     for row in rows:
         style = row["style"] if row["style"] is not None else 1

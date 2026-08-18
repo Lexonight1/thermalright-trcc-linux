@@ -22,7 +22,15 @@ from trcc.ui.presentation.lcd_panel import (
 )
 
 _REPO = Path(__file__).resolve().parent.parent
-_DECOMPILE = Path("/tmp/trcc216_src/TRCC.decompiled.cs")
+sys.path.insert(0, str(_REPO / "dev" / "tools"))
+# The decompile location is NOT spelled here: it is `core.csharp.DECOMPILE_ROOT`,
+# re-exported by the audit tool this test already parses with.  This file used to
+# hardcode a /tmp scratch path, so the parity check below skipped itself for two
+# months and read as "decompile not installed" rather than "guard is broken".
+from audit_csharp import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    DECOMPILE_ROOT,
+    _lcd_panel_composition,
+)
 
 # C#-canonical (landscape) widescreen panels — see lcd_panel._WIDESCREEN.
 _WIDE = [
@@ -62,14 +70,18 @@ def test_rotated_widescreen_also_widescreen(res) -> None:
     assert lcd_panel_for((h, w)).widescreen
 
 
-@pytest.mark.skipif(not _DECOMPILE.is_file(),
-                    reason="C# decompile not present (run ilspycmd)")
+@pytest.mark.skipif(not DECOMPILE_ROOT.exists(),
+                    reason=f"C# decompile not present at {DECOMPILE_ROOT} "
+                           f"(run `ilspycmd -p <exe>`, or set TRCC_DECOMPILE)")
 def test_model_matches_csharp_audit() -> None:
-    """Each C# FormCZTVInit resolution's widescreen flag matches the model."""
-    sys.path.insert(0, str(_REPO / "dev" / "tools"))
-    from audit_csharp import _lcd_panel_composition  # type: ignore[import-not-found]
+    """Each C# FormCZTVInit resolution's widescreen flag matches the model.
 
-    rows = _lcd_panel_composition(_DECOMPILE)
+    MUTATION CHECK -- comment out ``(1280, 480),`` in ``lcd_panel._WIDESCREEN``.
+    MEASURED 2026-08-18 against the real 2.1.6 tree: **1 failed**.  Recorded
+    because this gate spent two months skipping, and a green run is not evidence
+    a guard works -- only a red one on a known-bad tree is.
+    """
+    rows = _lcd_panel_composition(DECOMPILE_ROOT)
     assert rows, "audit parsed no LCD panel blocks"
     for res, attrs in rows.items():
         assert lcd_panel_for(res).widescreen == attrs["widescreen"], (res, attrs)
