@@ -59,6 +59,7 @@ class Row:
     resolution: tuple[int, int]
     jpeg: bool
     pm: int
+    sub: int
     ours: dict[int, int]
     theirs: dict[int, int]
 
@@ -81,15 +82,19 @@ def audit(pm: int, sub: int, label: str = "") -> Row:
     # SUM is comparable — auditing either half alone reports a phantom 180°.
     ours = {o: (wire_angle(p, o, portrait_content=False) + p.encode_baseline) % 360
             for o in _ORIENTS}
+    # SUB is part of the oracle's key now: the C# varies the base by
+    # `mySubMode` in six families, and `mySubMode` is derived from this byte.
     theirs = {o: csharp_wire_rotation(p.resolution, jpeg=p.jpeg, pm=pm,
-                                      orientation=o) for o in _ORIENTS}
+                                      sub=sub, orientation=o)
+              for o in _ORIENTS}
     return Row(label or f"pm={pm} sub={sub}", fbl, p.resolution, p.jpeg, pm,
-               ours, theirs)
+               sub, ours, theirs)
 
 
 def _print(row: Row) -> None:
     enc = "JPEG" if row.jpeg else "RGB565"
-    base = csharp_encode_base(row.resolution, jpeg=row.jpeg, pm=row.pm)
+    base = csharp_encode_base(row.resolution, jpeg=row.jpeg, pm=row.pm,
+                              sub=row.sub)
     print(f"\n{row.label}  (fbl={row.fbl}, {row.resolution[0]}x{row.resolution[1]} "
           f"{enc}, pm={row.pm}, C# base={base}°)")
     print(f"  {'orient':>7} {'ours':>6} {'C#':>6}   verdict")

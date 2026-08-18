@@ -18,10 +18,20 @@ hard way on 2026-07-15:
    disambiguate and was correct all along.  I proposed building a fix for
    nothing.  A green test says "already right" before the hunt starts.
 
-Every constant below is transcribed from the decompile with its line cited, so
-the next reader verifies against the C# rather than trusting this file.
-Source: /home/ignorant/Downloads/TRCCCAPEN/TRCC_decompiled/TRCC.CZTV/FormCZTV.cs
-(TRCC 2.1.6 — see memory ``reference_cs_decompile_path``.)
+Source: **TRCC 2.1.6**, ``~/Downloads/TRCC_2.1.6_decompiled/``.  Verify the
+tree before trusting a citation — ``grep -rh AssemblyVersion
+~/Downloads/TRCC_2.1.6_decompiled/Properties/*.cs`` must say ``2.1.6.0``.  This
+header used to name ``TRCCCAPEN/TRCC_decompiled`` as 2.1.6; that tree is
+**2.0.3**, carved from an executable four months older than the 2.1.6
+installer, and every rotation conclusion drawn from it was drawn from the wrong
+release.  See memory ``project_csharp_oracle_was_the_wrong_version``.
+
+The ROTATION constants are no longer transcribed here.  They come from
+``dev/decompiler/encode_reference.py``, the one 2.1.6 transcription, because
+this file holding a second copy of them is how they drifted: it asserted a
+sub-independent encode base that the real switch contradicts in six families.
+What stays here is what this file uniquely checks — the PM byte to geometry
+map, and the angle a real handshake fingerprint puts on the wire.
 
 If a test here fails, ONE of these is true, in likelihood order:
   * our table drifted (fix the table);
@@ -31,6 +41,9 @@ If a test here fails, ONE of these is true, in likelihood order:
 Never "fix" a failure by loosening the assertion.
 """
 from __future__ import annotations
+
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -43,24 +56,18 @@ from trcc.core.protocol import (
     wire_angle,
 )
 
-# ── FormCZTV.cs::ImageToJpg — the `directionB` switch, per resolution ──
-#
-# Each branch maps the user's display angle to the angle the frame is rotated
-# by before it goes on the wire.  Transcribed verbatim; the C# writes
-# 180.00002f / 90.00002f (float nudges), which are 180 / 90.
-#
-#   :2677  is1600x720                                    → 0:180 90:90 180:0 270:270
-#   :2683  is1280x480 || is800x480 || is854x480 || is960x540
-#                                                        → 0:0 90:270 180:180 270:90
-#   :2690  is1920x462                                    → 0:180 90:90 180:0 270:270
-#   :2697  is640x480                                     → 0:0 90:270 180:180 270:90
-_CSHARP_ENCODE_ANGLES: dict[tuple[int, int], dict[int, int]] = {
-    (1600, 720): {0: 180, 90: 90, 180: 0, 270: 270},
-    (1920, 462): {0: 180, 90: 90, 180: 0, 270: 270},
-    (1280, 480): {0: 0, 90: 270, 180: 180, 270: 90},
-    (854, 480):  {0: 0, 90: 270, 180: 180, 270: 90},
-    (640, 480):  {0: 0, 90: 270, 180: 180, 270: 90},
-}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
+
+from encode_reference import (  # pyright: ignore[reportMissingImports]
+    csharp_encode_angles,
+)
+
+# The resolutions this file checks a wire angle for.  The ANGLES come from the
+# oracle; only the list of panels to sweep lives here.
+_ENCODE_PANELS: tuple[tuple[int, int], ...] = (
+    (1600, 720), (1920, 462), (1280, 480), (854, 480), (640, 480),
+)
+
 
 # ── FormCZTV.cs:697-762 — myDeviceMode == 2: the PM byte → panel geometry ──
 #
@@ -83,14 +90,15 @@ _CSHARP_PM_TO_RESOLUTION: dict[int, tuple[int, int]] = {
 }
 
 
-@pytest.mark.parametrize("resolution,angles", sorted(_CSHARP_ENCODE_ANGLES.items()))
+@pytest.mark.parametrize("resolution", _ENCODE_PANELS)
 def test_encode_angles_match_the_csharp_switch(
-    resolution: tuple[int, int], angles: dict[int, int],
+    resolution: tuple[int, int],
 ) -> None:
     """Wire rotation must equal the C# ImageToJpg directionB switch.
 
-    #169/#203 were exactly this drifting: a sub-byte base folded into the
-    widescreen encode that the C# does not have, putting 90/270 out by 180.
+    Reached through the FBL that resolves to this panel, so it checks the whole
+    lookup — FBL and PM to profile to angle — rather than the table alone.
+    ``tests/test_encode_rotation.py`` sweeps the table itself, at every SUB.
     """
     fbls = [f for f in (64, 114, 128, 192, 224)
             if fbl_to_resolution(f, _pm_for(f)) == resolution]
@@ -98,6 +106,7 @@ def test_encode_angles_match_the_csharp_switch(
     for fbl in fbls:
         profile = get_profile(fbl, _pm_for(fbl))
         got = {deg: resolve_encode_angle(profile, deg) for deg in (0, 90, 180, 270)}
+        angles = csharp_encode_angles(resolution, jpeg=profile.jpeg)
         assert got == angles, (
             f"FBL {fbl} ({resolution[0]}x{resolution[1]}) encode angles drifted "
             f"from the C#: ours={got} C#={angles}"
@@ -140,14 +149,30 @@ def test_every_csharp_resolution_has_a_profile() -> None:
 
 
 def test_oracle_tables_are_not_silently_empty() -> None:
-    """Guard the guard: an emptied table would make every test above vacuous."""
-    assert len(_CSHARP_ENCODE_ANGLES) >= 5
+    """Guard the guard: a hollow oracle makes every test above vacuous.
+
+    This matters MORE now that the expectations are generated rather than
+    written out.  A hand-written table that goes missing fails loudly at
+    import; an oracle that quietly returns an empty or constant answer would
+    make every comparison above assert nothing at all, and stay green.
+    """
     assert len(_CSHARP_PM_TO_RESOLUTION) >= 6
-    for angles in _CSHARP_ENCODE_ANGLES.values():
-        assert sorted(angles) == [0, 90, 180, 270]
-    assert len(_CSHARP_BULK_WIRE_ANGLES) >= 6
-    for _, _, angles in _CSHARP_BULK_WIRE_ANGLES:
-        assert sorted(angles) == [0, 90, 180, 270]
+    assert len(_ENCODE_PANELS) >= 5
+    assert len(_CSHARP_BULK_FINGERPRINTS) >= 6
+    for resolution in _ENCODE_PANELS:
+        angles = csharp_encode_angles(resolution, jpeg=True)
+        assert sorted(angles) == [0, 90, 180, 270], resolution
+        assert sorted(angles.values()) == [0, 90, 180, 270], (
+            f"{resolution}: the oracle returned {angles} — a real switch arm "
+            f"is a permutation of the four right angles, so this one is a stub"
+        )
+    # Not every panel answers alike: an oracle collapsed to one arm would pass
+    # everything above while proving nothing.
+    distinct = {tuple(sorted(csharp_encode_angles(r, jpeg=True).items()))
+                for r in _ENCODE_PANELS}
+    assert len(distinct) >= 2, (
+        "every panel got the same arm — the oracle is not discriminating"
+    )
     assert sorted(_CSHARP_360_FAN_ANGLES) == [0, 90, 180, 270]
 
 
@@ -168,33 +193,32 @@ def test_oracle_tables_are_not_silently_empty() -> None:
 #
 # Expected angles transcribed from FormCZTV.cs with the encoder that
 # ``myDeviceMode == 2`` selects at the call site (:2178 → ImageToJpg, else
-# ImageTo565); USBLCDNew sends JPEG for every bulk PM except 32:
+# ImageTo565); USBLCDNew sends JPEG for every bulk PM except 32.
 #
-#   :2655  is320x320 || is480x480, myDevicePingMu == 6  → 0:180 90:90 180:0 270:270
-#   :2661  is320x320 || is480x480, otherwise            → 0:0 90:270 180:180 270:90
-#   :2669  myDevicePingMu == 5 (Mjolnir 320x240)        → 0:0 90:270 180:180 270:90
-#   :2677  is1600x720                                   → 0:180 90:90 180:0 270:270
-#   :2683  is854x480 || is960x540                       → 0:0 90:270 180:180 270:90
+# Only the FINGERPRINTS are written here.  The angles come from the oracle,
+# keyed by the resolution + encoder the shipping ``bulk_profile`` resolves the
+# fingerprint to, so this asserts the whole handshake path without holding a
+# second copy of the switch.
 #
 # (pm, sub) are the bytes the panel reports at handshake — resp[24]/resp[36].
-_CSHARP_BULK_WIRE_ANGLES: tuple[tuple[str, tuple[int, int], dict[int, int]], ...] = (
+_CSHARP_BULK_FINGERPRINTS: tuple[tuple[str, tuple[int, int]], ...] = (
     # FW360 Ultra: the PM-keyed 180° mount offset.  DO NOT "fix" this to 0 on a
     # reading of ImageTo565 — it is JPEG (PM 6 != 32), so ImageToJpg's pm==6
     # branch applies, and satoru8 confirmed it upright on the panel (#137).
-    ("FW360 Ultra",         (6, 0),   {0: 180, 90: 90, 180: 0, 270: 270}),
-    ("Mjolnir",             (5, 1),   {0: 0, 90: 270, 180: 180, 270: 90}),
+    ("FW360 Ultra",         (6, 0)),
+    ("Mjolnir",             (5, 1)),
     # Unknown bulk PM → stays on the 480x480 base, never echoes PM as FBL (#176).
-    ("GrandVision 360",     (50, 0),  {0: 0, 90: 270, 180: 180, 270: 90}),
-    ("widescreen 854x480",  (11, 5),  {0: 0, 90: 270, 180: 180, 270: 90}),
-    ("widescreen 960x540",  (10, 0),  {0: 0, 90: 270, 180: 180, 270: 90}),
-    ("bulk 1600x720",       (1, 48),  {0: 180, 90: 90, 180: 0, 270: 270}),
+    ("GrandVision 360",     (50, 0)),
+    ("widescreen 854x480",  (11, 5)),
+    ("widescreen 960x540",  (10, 0)),
+    ("bulk 1600x720",       (1, 48)),
 )
 
 
-@pytest.mark.parametrize("label,fingerprint,expected",
-                         _CSHARP_BULK_WIRE_ANGLES, ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize("label,fingerprint", _CSHARP_BULK_FINGERPRINTS,
+                         ids=lambda v: v if isinstance(v, str) else "")
 def test_bulk_wire_angle_matches_the_csharp(
-    label: str, fingerprint: tuple[int, int], expected: dict[int, int],
+    label: str, fingerprint: tuple[int, int],
 ) -> None:
     """The angle a real bulk fingerprint puts on the wire == the C#'s.
 
@@ -206,6 +230,8 @@ def test_bulk_wire_angle_matches_the_csharp(
     """
     pm, sub = fingerprint
     fbl, profile = bulk_profile(pm, sub)
+    expected = csharp_encode_angles(
+        profile.resolution, jpeg=profile.jpeg, pm=pm, sub=sub)
     for orientation, want in expected.items():
         got = (wire_angle(profile, orientation, portrait_content=False)
                + profile.encode_baseline) % 360
@@ -216,42 +242,32 @@ def test_bulk_wire_angle_matches_the_csharp(
         )
 
 
-# ── FBL 54 360×360 fan-hub LCD — the ONE family that diverges from the C# ──
+# ── FBL 54 360×360 fan-hub LCD — NOT a divergence.  Retired 2026-08-17. ──
 #
-# 360×360 matches NO resolution guard in either C# rotation switch:
-#   * ImageToJpg (isFanLcd → mode 2 → JPEG) tests `is320x320 || is480x480`
-#   * ImageTo565 tests `is240x240 || is320x320 || is480x480`
-# so it falls through to the DEFAULT branch → BASE 90 (FormCZTV.cs:2706-2710,
-# 0:90 90:0 180:270 270:180).  Our ``wire_rotation`` lumps 360 with the other
-# squares (BASE 0), so we send every frame 90° rotated from the C#.  Confirmed
-# the sole divergence by ``dev/decompiler/rotation_trace.py`` (18/19 devices
-# agree).
+# This carried an ``xfail(strict)`` asserting the C# rotates 360×360 by base 90
+# while we send base 0, on the reading that 360×360 matches no resolution guard
+# in either switch and falls to the DEFAULT branch.
 #
-# xfail(strict) — NOT a hard failure and NOT a loosened assertion.  The assertion
-# below is the true C# value; the marker records that our shipping code does not
-# match it *yet*, deliberately: there is no 360×360 reporter to confirm which way
-# is upright on glass, and flipping a device path blind breaks "no definites
-# without hardware".  When ``wire_rotation`` is corrected to base 90 (or a 360
-# owner confirms it), this XPASSES → strict turns that into a failure → delete the
-# marker and the drift is closed.  Do not remove this test to make CI quiet.
-_CSHARP_360_FAN_ANGLES: dict[int, int] = {0: 90, 90: 0, 180: 270, 270: 180}
+# That reading is correct for TRCC **2.0.3** and wrong for 2.1.6, which is the
+# release we port.  2.1.6's ``ImageToJpg`` has an arm naming it outright —
+# ``is640x480 || is360x360 || is640x172`` → 0/270/180/90, base 0 — the same
+# angles we already ship.  The tripwire was firing on a difference between two
+# C# releases, not between us and the C#, and it labelled correct shipping code
+# as known-broken for as long as it stood.
+#
+# Kept as a live assertion rather than deleted: the panel still has no reporter,
+# so the value of a bench check against the oracle is unchanged.  It simply
+# passes now.
+_CSHARP_360_FAN_ANGLES: dict[int, int] = {0: 0, 90: 270, 180: 180, 270: 90}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="360x360 fan-hub (FBL 54) hits the C# ImageToJpg DEFAULT branch "
-    "(base 90, FormCZTV.cs:2706); wire_rotation sends base 0. No 360 reporter "
-    "to confirm on glass — see dev/decompiler/rotation_trace.py. Fix = base 90 "
-    "in wire_rotation, then drop this marker.",
-)
 def test_360_fan_hub_matches_the_csharp_default_branch() -> None:
-    """The 360×360 fan-hub wire angle must equal the C# default-branch switch.
-
-    FBL 54 is square + JPEG but is excluded from BOTH rotation switches' square
-    guards, so the C# rotates it via the default branch (base 90).  Currently
-    xfailing: our table gives base 0.  This is the CI tripwire for that drift.
-    """
+    """The 360×360 fan-hub wire angle must equal the C# arm that names it."""
     profile = get_profile(54, 54)
     got = {deg: wire_angle(profile, deg, portrait_content=False)
            for deg in (0, 90, 180, 270)}
     assert got == _CSHARP_360_FAN_ANGLES
+    assert got == csharp_encode_angles((360, 360), jpeg=profile.jpeg), (
+        "the oracle and the hand-written row above disagree — one of them is "
+        "a stale transcription"
+    )

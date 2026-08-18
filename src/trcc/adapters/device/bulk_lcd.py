@@ -26,7 +26,7 @@ from ...core.protocol import (
     is_portrait_mounted,
     pm_to_fbl,
     resolve_encode_base,
-    resolve_encode_sub,
+    resolve_encode_rotation,
 )
 from ._base import BaseBulkDevice
 
@@ -139,16 +139,23 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
     if encode_baseline:
         log.info("BulkLcd %s: PM=%d encode baseline %d° (wire-only)",
                  key, pm, encode_baseline)
-    # Fold the sub-byte override into encode_base now that SUB is known, so the
-    # render-time resolve_encode_angle only needs the user orientation
-    # (C# ImageToJpg mySubMode branch — e.g. FBL 224 sub=2 → 180°). (#169)
+    # The Bulk-specific override: USBLCDNew uses JPEG (cmd=2) for every PM
+    # except 32, which forces RGB565 (cmd=3).  It has to be settled BEFORE the
+    # rotation is resolved, because the two C# switches disagree on the same
+    # resolution — 320x240 is base 0 under ImageToJpg and base 90 under
+    # ImageTo565 — so resolving from ``base.jpeg`` (the FBL_PROFILES default)
+    # would answer for the wrong encoder on every PM this line overrides.
+    jpeg = pm not in _RGB565_PMS
+    # Resolve the wire rotation now that resolution, encoder and SUB are all
+    # known, so the render path reads a value and branches on nothing.  The C#
+    # varies the base by SUB in six families (its ``mySubMode`` arms).
+    rotation = resolve_encode_rotation((base.width, base.height), jpeg, sub)
+    log.info("BulkLcd %s: %dx%d jpeg=%s sub=%d → encode base %d° invert=%s",
+             key, base.width, base.height, jpeg, sub,
+             rotation.base, rotation.invert)
     return fbl, DeviceProfile(
         width=base.width, height=base.height,
-        # The Bulk-specific override: USBLCDNew uses JPEG (cmd=2) for every PM
-        # except 32, which forces RGB565 (cmd=3).  This flag is what the C#
-        # rotation switches key on (ImageToJpg vs ImageTo565) — FBL_PROFILES
-        # alone wouldn't capture it.
-        jpeg=(pm not in _RGB565_PMS),
+        jpeg=jpeg,
         big_endian=base.big_endian, rotate=base.rotate,
         widescreen=base.widescreen,
         # The SUB byte also says how the panel is MOUNTED: on three
@@ -158,10 +165,9 @@ def bulk_profile(pm: int, sub: int, key: str = "?") -> tuple[int, DeviceProfile]
         portrait_mounted=is_portrait_mounted(
             (base.width, base.height), sub),
         encode_baseline=encode_baseline,
-        encode_base=resolve_encode_sub(base, sub),
-        encode_sub_bases=(),  # folded into encode_base above
+        encode_base=rotation.base,
+        encode_invert=rotation.invert,
         encode_pm_bases=base.encode_pm_bases,
-        encode_invert=base.encode_invert,
     )
 
 

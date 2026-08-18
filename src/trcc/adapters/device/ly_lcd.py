@@ -27,7 +27,7 @@ from ...core.ports import BulkTransport
 from ...core.protocol import (
     get_profile,
     pm_to_fbl,
-    resolve_encode_sub,
+    resolve_encode_rotation,
 )
 from ._base import BaseBulkDevice
 
@@ -69,10 +69,15 @@ _USB_WRITE_SIZE = 4096
 class LyLcd(BaseBulkDevice, wire=Wire.LY):
     """LY-series USB bulk LCD (Trofeo Vision 9.16).
 
-    ``self._profile`` is cached at handshake.  FBL 192 (the Trofeo Vision 9.16
-    family) carries both ``jpeg=True`` and the multi-sub rotation table —
-    DisplayService reads ``profile.jpeg`` / ``.rotate`` / ``.encode_sub_bases``
-    from there.
+    ``self._profile`` is cached at handshake, carrying the encode rotation
+    already resolved for this panel's resolution, encoder and SUB byte —
+    DisplayService reads ``profile.jpeg`` / ``.rotate`` / ``.encode_base`` /
+    ``.encode_invert`` from there and resolves nothing per frame.
+
+    FBL 192 is shared by 1920x462, 1920x440 and 1280x480, and the C# gives the
+    first two a base of 180 at most SUB bytes but 0 at 2, 3 and 4 — which is
+    why the rotation is keyed on the resolution the PM byte lands on, never on
+    the FBL.
     """
 
     _EP_WRITE = 0x01
@@ -106,20 +111,58 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
             if raw <= 3:
                 raw = 1
             self._pm = 64 + raw
-            self._sub = resp[22] + 1 if len(resp) > 22 else 0
+            raw_sub = resp[22] if len(resp) > 22 else 0
+            # The +1 carries no citation in either tree — it arrived with the
+            # cutover (4fa876be) from the legacy adapter, which cites the C#
+            # for the PM line directly above it and nothing for this one, and
+            # neither decompile has an LY handshake parse to check it against
+            # (the C# takes PM/SUB from the HID discovery report,
+            # `receive[6]`/`receive[5]`, never from this 512-byte response).
+            #
+            # It is nonetheless CORRECT, established 2026-08-17 without
+            # hardware:
+            #
+            #   * #248's reporter states `handshake PM=65 SUB=5` on a real
+            #     Trofeo Vision 9.16 — that is this line's OUTPUT, so their
+            #     panel puts 4 in resp[22].
+            #   * `ADDUserButton` case 65 (UCDevice.cs) keys the cooler's own
+            #     button image on the C#'s pmSub: 3 and 5 both give A1LD7,
+            #     captioned "Trofeo Vision LCD 9.16"; 4 gives A1LD11, "Trofeo
+            #     Vision LCD_9.16 ARGB" — a different SKU.
+            #   * For 1920x462 the encode base is 180 at sub 5 and 0 at sub 4.
+            #     180 is what every release has shipped for this panel, and
+            #     that reporter filed six detailed issues about it (blur
+            #     measured by photo-FFT, dropped frames, reconnect, black
+            #     canvas, docs, video) without ever reporting an upside-down
+            #     image.
+            #
+            # So resp[22] + 1 reproduces the C#'s pmSub, and this panel's
+            # rotation is unchanged by the sub-aware encode table.
+            self._sub = raw_sub + 1
         else:
+            raw_sub = resp[22] if len(resp) > 22 else 0
             self._pm = 50 + resp[36]
-            self._sub = resp[22] if len(resp) > 22 else 0
+            self._sub = raw_sub
 
         fbl = pm_to_fbl(self._pm, self._sub)
-        # Fold the sub-byte override into encode_base now that SUB is known so
-        # render-time resolve_encode_angle only needs the user orientation
-        # (C# ImageToJpg mySubMode branch — FBL 192 sub 2/3/4 → 0°). (#169)
+        # Resolve the wire rotation now that resolution, encoder and SUB are
+        # all known, so the render path reads a value and branches on nothing.
+        # The C# varies the base by SUB in six families (its ``mySubMode``
+        # arms); 1920x462 — this wire's panel — takes base 0 at SUB 2/3/4 and
+        # base 180 everywhere else.
         base = get_profile(fbl, self._pm)
+        rotation = resolve_encode_rotation(
+            base.resolution, base.jpeg, self._sub)
+        log.info(
+            "LyLcd %s: %dx%d jpeg=%s raw resp[22]=%d → sub=%d → encode "
+            "base %d° invert=%s",
+            self.info.key, base.width, base.height, base.jpeg, raw_sub,
+            self._sub, rotation.base, rotation.invert)
+
         self._profile = dataclasses.replace(
             base,
-            encode_base=resolve_encode_sub(base, self._sub),
-            encode_sub_bases=(),
+            encode_base=rotation.base,
+            encode_invert=rotation.invert,
             max_frame_bytes=_MAX_FRAME_BYTES,
         )
 

@@ -14,6 +14,7 @@ Locks the post-profile pipeline behaviour:
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,12 @@ from trcc.services.media import MediaService
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 from trcc.services.theme import ThemeService
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
+
+from encode_reference import (  # pyright: ignore[reportMissingImports]
+    csharp_encode_angles,
+)
 
 # ── A tiny Renderer that records every call ───────────────────────────
 
@@ -97,7 +104,7 @@ class RecordingRenderer(Renderer):
     # ── Text ──────────────────────────────────────────────────────────
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
-                  italic: bool = False) -> None:
+                  italic: bool = False, family: str = "") -> None:
         self._record("draw_text", x, y, text)
 
     # ── Encoding ──────────────────────────────────────────────────────
@@ -414,26 +421,33 @@ def _widescreen_info(fbl: int, native: tuple[int, int]) -> ProductInfo:
 
 
 @pytest.mark.parametrize(
-    "fbl,native,orientation,wire_deg",
+    "fbl,native,orientation",
     [
-        # FBL 114 (1600×720, WillVinzant's panel — encode_base 180): 90→90, 270→270
-        (114, (1600, 720), 90, 90),
-        (114, (1600, 720), 270, 270),
-        # FBL 224 (854×480 — encode_base 0): 90→270, 270→90 (covers the other base)
-        (224, (854, 480), 90, 270),
-        (224, (854, 480), 270, 90),
+        # FBL 114 (1600×720, WillVinzant's panel — encode base 180).
+        (114, (1600, 720), 90),
+        (114, (1600, 720), 270),
+        # FBL 224 (854×480 — encode base 0, and the one family that does NOT
+        # invert, so it covers the other sign as well as the other base).
+        (224, (854, 480), 90),
+        (224, (854, 480), 270),
     ],
 )
 def test_widescreen_panel_applies_wire_rotation_on_live_path(
     display: DisplayService, renderer: RecordingRenderer,
-    fbl: int, native: tuple[int, int], orientation: int, wire_deg: int,
+    fbl: int, native: tuple[int, int], orientation: int,
 ) -> None:
     """A widescreen panel at 90/270 must rotate the composite by the C# angle and
     encode a LANDSCAPE frame — proving resolve_encode_angle reaches the live
-    path (portrait_content=True no longer suppresses it). (#169)"""
+    path (portrait_content=True no longer suppresses it). (#169)
+
+    The expected angle comes from the C# oracle, not from a number typed here.
+    It was typed here, and it was wrong for 854×480 at both angles — the same
+    stale table this test was meant to defend. (#203/#171)
+    """
     info = _widescreen_info(fbl, native)
     profile = get_profile(fbl)
     assert profile.widescreen and profile.jpeg and profile.rotate
+    wire_deg = csharp_encode_angles(native, jpeg=True)[orientation]
     settings = display._settings.for_device(info.key)
     settings.orientation = orientation
 
@@ -566,8 +580,17 @@ def test_rotate_panel_at_90_composes_portrait_and_skips_device_rotate(
 
     canvases = [c[1][:2] for c in renderer.calls if c[0] == "create_surface"]
     assert (480, 854) in canvases, f"expected a 480×854 canvas, got {canvases}"
-    rot90 = [c for c in renderer.calls if c[0] == "rotate" and c[1][1] == 90]
-    assert rot90 == [], f"portrait compose must skip the device rotate, got {rot90}"
+    # ONE rotation, the wire one.  This used to read "no rotate by 90°", which
+    # was a proxy for "no compose-time device rotate on top of the wire
+    # rotate" — true only while the wire angle here happened not to be 90.
+    # Correcting 854×480 made it 90 and the proxy started reporting a bug that
+    # was not there.  Assert the invariant itself: the composite is turned
+    # exactly once, by the C# angle.
+    rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
+    assert rotations == [csharp_encode_angles((854, 480), jpeg=True)[90]], (
+        f"expected exactly one wire rotation, got {rotations} — two means the "
+        f"compose step is rotating as well as the encoder"
+    )
 
 
 def test_widescreen_at_orientation90_applies_csharp_wire_rotation(
@@ -585,6 +608,7 @@ def test_widescreen_at_orientation90_applies_csharp_wire_rotation(
     reports the unrotated output is wrong on glass. (#169)"""
     info = _wide_info()
     profile = get_profile(224)                       # 854×480, rotate=True
+    want = csharp_encode_angles((854, 480), jpeg=True)[90]
     display._settings.for_device(info.key).orientation = 90
 
     display.build_frame(
@@ -592,8 +616,8 @@ def test_widescreen_at_orientation90_applies_csharp_wire_rotation(
     )
 
     rotations = [c[1][1] for c in renderer.calls if c[0] == "rotate"]
-    assert rotations == [270], (
-        f"854×480 @ 90° → C# RotateImg 270° to reach landscape wire dims, "
+    assert rotations == [want], (
+        f"854×480 @ 90° → C# RotateImg {want}° to reach landscape wire dims, "
         f"got {rotations}"
     )
 

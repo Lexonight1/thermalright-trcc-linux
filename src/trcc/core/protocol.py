@@ -16,6 +16,7 @@ parity locked by ``tests/next/test_protocol_parity.py``.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 
@@ -68,17 +69,19 @@ class DeviceProfile:
     # encode_pm_bases is the LIVE source for encode_baseline: a PM (PingMu)
     # keyed hardware-mount rotation (e.g. PM=6 → 180° for the FW360 Ultra).
     encode_pm_bases: tuple[tuple[int, int], ...] = ()   # ((pm, base), ...) LIVE
-    # encode_base / encode_invert are LIVE for widescreen JPEG panels: wire_angle
-    # routes them to resolve_encode_angle = (encode_base − orientation) [invert
-    # defaults True], the C# ImageToJpg per-resolution switch (854×480→base 0,
-    # 1600×720/1920×462→base 180).  The C# base is FIXED per resolution and
-    # sub-INDEPENDENT (TRCC.decompiled.cs:65285+), so encode_sub_bases stays
-    # empty for every profile — folding sub into the base was a phantom that put
-    # widescreen 180° off at 90/270 (#203/#169).  Kept for a future device only
-    # if the C# is ever found to vary the base by sub; do not populate blind.
+    # The RESOLVED wire rotation — an answer, not a rule.  Both come from
+    # ENCODE_ROTATIONS, keyed on the panel's resolution + encoder (+ SUB byte
+    # where the C# has an arm for it), and are set by get_profile or, for a
+    # device whose encoder is only known at handshake, by its wire adapter.
+    # resolve_encode_angle reads them per frame and asks nothing further.
+    #
+    # They used to be written per FBL in FBL_PROFILES, alongside an
+    # ``encode_sub_bases`` rule that was documented as a phantom and left empty.
+    # It was not a phantom: the C# does vary the base by SUB in six families,
+    # and FBL cannot key any of it — FBL 224 alone spans five resolutions whose
+    # invert flags disagree.  That mismatch is #203/#169/#171.
     encode_base: int = 0
     encode_invert: bool = True
-    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...) — unused
     # Largest JPEG the firmware will actually display, in bytes.  0 = uncapped
     # (every panel's behaviour to date, so the default changes nothing).  Set
     # by the WIRE adapter at handshake, because this is a firmware limit, not a
@@ -120,27 +123,188 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     100: DeviceProfile(320,  320,  big_endian=True),
     101: DeviceProfile(320,  320,  big_endian=True),
     102: DeviceProfile(320,  320,  big_endian=True),
-    # Widescreen encode base is FIXED per resolution, sub-INDEPENDENT — the C#
-    # ImageToJpg switch keys only on the resolution flag + user orientation
-    # (TRCC.decompiled.cs:65285+): is854x480/is960x540/is1280x480/is800x480 → 0,
-    # is1600x720/is1920x462 → 180.  Every value is base + default encode_invert
-    # (=True) so resolve_encode_angle sends (base − orientation), matching the C#
-    # at EVERY sub.  The old encode_sub_bases overrides (folding sub into base)
-    # + FBL 224's encode_invert=False were a phantom — no C# basis — and put the
-    # frame 180° off at 90/270 for the affected subs. (#203/#169)
-    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True, widescreen=True,
-                       encode_base=180),
+    # No encode rotation is written here.  These four share their FBL with
+    # other resolutions (224 with five, 192 with three) whose bases and invert
+    # flags differ, so the rotation is resolved from ENCODE_ROTATIONS by the
+    # resolution get_profile lands on — see that table's header.
+    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True, widescreen=True),
     128: DeviceProfile(1280, 480,  jpeg=True, rotate=True, widescreen=True),
     129: DeviceProfile(480,  480,
                        encode_pm_bases=((6, 180),)),                # alias for 72
-    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True, widescreen=True,
-                       encode_base=180),
+    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True, widescreen=True),
     224: DeviceProfile(854,  480,  jpeg=True, rotate=True, widescreen=True),
 }
 # fmt: on
 
 
 _DEFAULT_PROFILE = DeviceProfile(320, 320, big_endian=True)
+
+
+# =============================================================================
+# ENCODE_ROTATIONS — the ONE authority for wire-frame rotation
+# =============================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class EncodeRotation:
+    """The C# dir-0 mount offset for one (resolution, encoder) pair.
+
+    The wire frame is turned clockwise by ``(base ± orientation) mod 360``
+    immediately before encoding — ``+`` when :attr:`invert` is False, ``−`` when
+    it is True.  That is the whole of the C# ``directionB`` switch in
+    ``ImageToJpg`` / ``ImageTo565``; :func:`resolve_encode_angle` is the formula.
+
+    ``alt_base`` applies instead of :attr:`base` when the handshake SUB byte is
+    in :attr:`alt_subs`.  The C# spells this as a ``mySubMode`` test guarding a
+    second ``directionB`` switch, and ``mySubMode`` is DERIVED from the SUB byte
+    in ``FormCZTVInit`` — assigned for some resolutions and never assigned (so
+    permanently 0) for others.  A resolution the C# never assigns it for simply
+    carries no ``alt_subs`` here, which is why the derivation needs no second
+    mechanism: a rule that can never fire is a rule that is not written down.
+
+    ``invert`` is constant per resolution — verified across all seven families
+    that have a sub rule, both arms agree on the sign — so only the base varies.
+    """
+    base: int
+    invert: bool = True
+    alt_base: int | None = None
+    alt_subs: frozenset[int] = frozenset()
+
+    def for_sub(self, sub: int) -> EncodeRotation:
+        """This rotation with the SUB-byte arm applied.
+
+        Returns ``self`` unchanged when the panel has no sub rule or the byte
+        is not in it, so a caller never has to ask whether one exists.
+        """
+        if self.alt_base is None or sub not in self.alt_subs:
+            log.debug("EncodeRotation.for_sub: sub=%d → base %d° (no alt arm)",
+                      sub, self.base)
+            return self
+        log.debug("EncodeRotation.for_sub: sub=%d in %s → alt base %d° "
+                  "(was %d°)", sub, sorted(self.alt_subs), self.alt_base,
+                  self.base)
+        return EncodeRotation(self.alt_base, self.invert)
+
+
+# (width, height, jpeg) → the C# rotation for that panel.
+#
+# Source: TRCC 2.1.6, TRCC.CZTV/FormCZTV.cs — ``ImageToJpg`` (the jpeg=True
+# rows) and ``ImageTo565`` (the jpeg=False rows).  The encoder is part of the
+# key because the two switches disagree on the same resolution: 320×240 is
+# base 0 under JPEG (the ``myDevicePingMu == 5`` Mjolnir arm) and base 90 under
+# RGB565 (the default arm), and 640×172 is base 0 under JPEG and base 270 under
+# RGB565.  ``pm == 5`` and ``pm == 50`` both collapse to FBL 50 yet rotate
+# oppositely, so FBL cannot key this and neither can resolution alone.
+#
+# Keyed on RESOLUTION, never on FBL: FBL 224 spans five resolutions whose
+# invert flags differ (854/800 do not invert; 960×540 and 960×320 do) and
+# FBL 192 spans three whose bases differ.  One row per FBL cannot express
+# that, and trying to is how these values were lost (see the alt_subs note
+# on 854/800 below).
+#
+# The PM=6 mount offset (FW360 Ultra, #137) is deliberately NOT here.  It is a
+# physical-mount baseline, not an encoder switch: it lives in
+# ``DeviceProfile.encode_pm_bases`` → ``encode_baseline`` and is applied once
+# in ``Renderer.encode_payload``.  Writing it in both places is what made the
+# square ``pm == 6`` arm of ``wire_rotation`` a second, unreachable copy.
+_JPEG = True
+_565 = False
+
+ENCODE_ROTATIONS: dict[tuple[int, int, bool], EncodeRotation] = {
+    # ── ImageToJpg ────────────────────────────────────────────────────────
+    # Squares: `is320x320 || is480x480` → 0/270/180/90.
+    (320, 320, _JPEG): EncodeRotation(0),
+    (480, 480, _JPEG): EncodeRotation(0),
+    # The C# reaches this arm by `myDevicePingMu == 5`, tested before any
+    # resolution guard.  Keying it on (320x240, JPEG) instead is faithful, not
+    # a generalisation: enumerating every PM byte shows exactly six resolve to
+    # 320x240 — 5, 50, 51, 52, 53, 58 — and only PM 5 is a bulk PM, so PM 5 is
+    # the only one that ever reaches an encoder with jpeg=True (bulk sets
+    # `jpeg = pm not in _RGB565_PMS`, and _RGB565_PMS is {32}).  The other five
+    # are SCSI/HID panels that stay RGB565 and take the default arm below.
+    # `pm == 5` and `320x240 JPEG` therefore pick out the same single panel.
+    (320, 240, _JPEG): EncodeRotation(0),
+    # `is1600x720`: mySubMode == 3 → 0, else 180.  mySubMode is set from the
+    # SUB byte by SetThemeInfo_ThemeML, and only for SUB in {2,3,4}; the arm
+    # tests 3, so {3} is the whole rule.
+    (1600, 720, _JPEG): EncodeRotation(180, alt_base=0, alt_subs=frozenset({3})),
+    # `is854x480 || is800x480`: NON-INVERTED, and no sub arm.
+    #
+    # The C# arm reads `mySubMode == 2 → base 180`, but FormCZTVInit never
+    # assigns mySubMode on the branches that set these resolutions (pm 9/11 →
+    # is854x480, pm 12 → is800x480 — every sibling branch assigns it, these two
+    # do not), so it is permanently 0 and that arm is unreachable.  Both
+    # therefore always take the else arm: 0/90/180/270, which is base 0 with
+    # the sign NOT inverted — the only two families in either switch that count
+    # up with the display angle instead of down.
+    #
+    # Shipping this inverted is #203/#169/#171: 180° off at 90° and 270°.
+    (854, 480, _JPEG): EncodeRotation(0, invert=False),
+    (800, 480, _JPEG): EncodeRotation(0, invert=False),
+    # `is1280x480`: mySubMode == 2 → 90, else 0.  Reached as FBL 192 (pm 68)
+    # and as FBL 128 (mode 3); both assign mySubMode = SUB, and keying on the
+    # resolution is what makes one row serve both.
+    (1280, 480, _JPEG): EncodeRotation(0, alt_base=90, alt_subs=frozenset({2})),
+    # `is960x320`: mySubMode < 5 → 0, else 180.  Written with the polarity
+    # reversed so the set stays finite — SUB is a byte, so "not < 5" is every
+    # value the panel can send that is not listed.
+    (960, 320, _JPEG): EncodeRotation(
+        180, alt_base=0, alt_subs=frozenset({0, 1, 2, 3, 4})),
+    # `is960x540`: mySubMode == 5 || == 7 → 180, else 0.
+    (960, 540, _JPEG): EncodeRotation(
+        0, alt_base=180, alt_subs=frozenset({5, 7})),
+    # `is1920x462 || is1920x440`: mySubMode < 2 || > 4 → 180, else 0.
+    (1920, 462, _JPEG): EncodeRotation(
+        180, alt_base=0, alt_subs=frozenset({2, 3, 4})),
+    (1920, 440, _JPEG): EncodeRotation(
+        180, alt_base=0, alt_subs=frozenset({2, 3, 4})),
+    # `is640x480 || is360x360 || is640x172` — one arm, all base 0.
+    #
+    # 360×360 being NAMED here is what retires the long-standing "360 fan-hub
+    # diverges from the C#" tripwire: it was read off a decompile that predated
+    # this build, where 360×360 matched no guard and fell to the base-90
+    # default.  2.1.6 gives it an arm of its own and we already ship base 0.
+    (640, 480, _JPEG): EncodeRotation(0),
+    (360, 360, _JPEG): EncodeRotation(0),
+    (640, 172, _JPEG): EncodeRotation(0),
+    # ── ImageTo565 ────────────────────────────────────────────────────────
+    # `is240x240 || is320x320 || is480x480` → 0/270/180/90.
+    (240, 240, _565): EncodeRotation(0),
+    (320, 320, _565): EncodeRotation(0),
+    (480, 480, _565): EncodeRotation(0),
+    # `is640x172` → 270/180/90/0.  No panel reaches this today (PM 15 hands us
+    # a JPEG 640×172), but the switch has the arm and leaving it out would make
+    # the next RGB565 640×172 silently take the base-90 default.
+    (640, 172, _565): EncodeRotation(270),
+}
+
+# Both switches end in the same default arm: 90/0/270/180.  It is what the
+# 320×240 RGB565 panels (the Frozen Warframe family) actually use, so this is a
+# live value, not a safety net.
+_DEFAULT_ENCODE_ROTATION = EncodeRotation(90)
+
+
+def resolve_encode_rotation(
+    resolution: tuple[int, int], jpeg: bool, sub: int = 0,
+) -> EncodeRotation:
+    """The wire rotation for a panel, with any SUB-byte arm already applied.
+
+    The single entry point to :data:`ENCODE_ROTATIONS`.  Callers pass the
+    resolution and encoder they will actually ship with — for a bulk device
+    that is the PM-derived JPEG/RGB565 override, not whatever ``FBL_PROFILES``
+    defaulted to — and get back the resolved rotation to store on the profile.
+    """
+    w, h = resolution
+    rotation = ENCODE_ROTATIONS.get((w, h, jpeg))
+    if rotation is None:
+        log.debug("resolve_encode_rotation: %dx%d jpeg=%s not in the C# "
+                  "switch → default base %d°", w, h, jpeg,
+                  _DEFAULT_ENCODE_ROTATION.base)
+        return _DEFAULT_ENCODE_ROTATION
+    resolved = rotation.for_sub(sub)
+    log.debug("resolve_encode_rotation: %dx%d jpeg=%s sub=%d → base=%d "
+              "invert=%s", w, h, jpeg, sub, resolved.base, resolved.invert)
+    return resolved
 
 
 # =============================================================================
@@ -221,6 +385,18 @@ _PM_SUB_TO_FBL: dict[tuple[int, int], int] = {
 }
 
 
+# The FBL codes shared by several resolutions → (PM table, fallback).
+#
+# One row each rather than one ``if fbl == …`` branch each: the two branches
+# were byte-identical apart from these two values, and each rebuilt the whole
+# DeviceProfile field by field — so a field added to the dataclass was silently
+# dropped for exactly the two FBLs that need the most care.
+_SHARED_FBLS: dict[int, tuple[dict[int, tuple[int, int]], tuple[int, int]]] = {
+    192: (_FBL_192_BY_PM, (1920, 462)),
+    224: (_FBL_224_BY_PM, (854, 480)),
+}
+
+
 # =============================================================================
 # Public lookups
 # =============================================================================
@@ -295,33 +471,14 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
     profile = FBL_PROFILES.get(fbl, _DEFAULT_PROFILE)
     if fbl not in FBL_PROFILES:
         _warn_unknown("FBL", fbl, f"pm={pm}", (profile.width, profile.height))
-    if fbl == 224:
-        w, h = _resolution_by_pm(_FBL_224_BY_PM, pm, (854, 480), fbl)
-        return DeviceProfile(
-            w, h,
-            jpeg=profile.jpeg,
-            big_endian=profile.big_endian,
-            rotate=profile.rotate,
-            widescreen=profile.widescreen,
-            encode_base=profile.encode_base,
-            encode_invert=profile.encode_invert,
-            encode_sub_bases=profile.encode_sub_bases,
-            encode_pm_bases=profile.encode_pm_bases,
-        )
-    if fbl == 192:
-        w, h = _resolution_by_pm(_FBL_192_BY_PM, pm, (1920, 462), fbl)
-        return DeviceProfile(
-            w, h,
-            jpeg=profile.jpeg,
-            big_endian=profile.big_endian,
-            rotate=profile.rotate,
-            widescreen=profile.widescreen,
-            encode_base=profile.encode_base,
-            encode_invert=profile.encode_invert,
-            encode_sub_bases=profile.encode_sub_bases,
-            encode_pm_bases=profile.encode_pm_bases,
-        )
-    return profile
+    shared = _SHARED_FBLS.get(fbl)
+    if shared is not None:
+        by_pm, fallback = shared
+        w, h = _resolution_by_pm(by_pm, pm, fallback, fbl)
+        profile = dataclasses.replace(profile, width=w, height=h)
+    rotation = resolve_encode_rotation(profile.resolution, profile.jpeg)
+    return dataclasses.replace(
+        profile, encode_base=rotation.base, encode_invert=rotation.invert)
 
 
 def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:
@@ -349,80 +506,26 @@ def resolve_encode_base(profile: DeviceProfile, pm_byte: int) -> int:
     return 0
 
 
-def resolve_encode_sub(profile: DeviceProfile, sub_byte: int) -> int:
-    """Resolve a widescreen panel's encode base, applying any sub-byte override.
-
-    The widescreen JPEG panels override their base wire rotation per sub-byte —
-    the C# ``ImageToJpg`` ``mySubMode`` branch (e.g. FBL 224 sub=2 → base 180°,
-    FBL 128 sub=2 → 90°).  Returns the matching ``encode_sub_bases`` override,
-    else the static ``encode_base``.  Resolved once at handshake (where SUB is
-    known) and folded into ``DeviceProfile.encode_base`` so the render-time
-    :func:`resolve_encode_angle` only needs the user orientation.
-    """
-    for sub, base in profile.encode_sub_bases:
-        if sub_byte == sub:
-            log.debug("resolve_encode_sub: sub=%d → base %d°", sub_byte, base)
-            return base
-    return profile.encode_base
-
-
 def resolve_encode_angle(profile: DeviceProfile, orientation: int) -> int:
-    """Wire rotation for a widescreen panel = base ± the user orientation.
+    """Wire rotation for a panel = its encode base ± the user orientation.
 
-    Ports the C# ``ImageToJpg`` ``directionB`` switch:
-    ``send = (encode_base + (orientation if not invert else -orientation)) % 360``.
-    ``encode_base`` must already carry any sub-byte override (folded at handshake
-    via :func:`resolve_encode_sub`); ``encode_invert`` is the per-resolution sign.
-    Replaces the cutover's blanket ``rotate→90°``.  FBL 224 (854×480) at
-    orientation 0 → 0° (landscape, unrotated); at 90° → 90°. (#169)
+    ``send = (encode_base + (orientation if not invert else -orientation)) % 360``
+    — the whole of the C# ``directionB`` switch in ``ImageToJpg`` /
+    ``ImageTo565``.  Both terms are already resolved on the profile (see
+    :data:`ENCODE_ROTATIONS`), so this branches on nothing and is safe to call
+    per frame.
+
+    There used to be a second function beside this one, ``wire_rotation``,
+    computing the same angle from its own inline resolution table.  It carried
+    no invert term and no SUB term, so the two disagreed on exactly the panels
+    that need both: 854x480 and 800x480 count UP with the display angle
+    (``invert=False``) and every other family counts down.  One formula, one
+    table.
     """
     signed = orientation if not profile.encode_invert else -orientation
     angle = (profile.encode_base + signed) % 360
     log.debug("resolve_encode_angle: base=%d invert=%s orient=%d → %d°",
               profile.encode_base, profile.encode_invert, orientation, angle)
-    return angle
-
-
-def wire_rotation(profile: DeviceProfile, orientation: int, pm: int = 0) -> int:
-    """Whole-composite rotation for the WIRE frame only, applied before encode.
-
-    The C#-faithful unification of the ``ImageToJpg`` (FormCZTV.cs:2655-2711)
-    and ``ImageTo565`` (FormCZTV.cs:2976-2990) ``directionB`` switches into one
-    formula: ``wire_angle = (BASE - orientation) mod 360``.  ``BASE`` is the
-    panel's physical-mount offset — the angle the C# rotates by at
-    ``directionB == 0`` — derived purely from resolution + encoder (JPEG vs
-    RGB565) + the ``pm == 6`` square special case:
-
-        * squares (``w == h``, 240/320/360/480): 0, except a JPEG panel with
-          ``pm == 6`` → 180 (C# ``is320x320 || is480x480`` + ``myDevicePingMu
-          == 6``, FormCZTV.cs:2655-2661).  Round-480 / ``pm == 3`` use the C#
-          ``RotateImgHei`` / ``RotateImgBu`` border-fill variants — same angle,
-          only the border differs, so that fill is a separate round-panel
-          concern, not part of this rotation.
-        * 1600×720 / 1920×462: 180 (C# FormCZTV.cs:2678 / 2692).
-        * 320×240: 0 when JPEG (``pm == 5`` Mjolnir, FormCZTV.cs:2669-2675),
-          else 90 (RGB565 small panel, C# default ``ImageTo565``,
-          FormCZTV.cs:2985-2989).  The discriminator is the encoder, NOT the
-          FBL code — ``pm == 5`` (Mjolnir, JPEG) and ``pm == 50`` (Frozen
-          Warframe, RGB565) both collapse to FBL 50 yet rotate oppositely.
-        * everything else (640×480, 854×480, 1280×480, 800×480, 960×540): 0
-          (C# FormCZTV.cs:2683-2704).
-
-    The preview never rotates — ``GenerateImage`` composes on the oriented
-    canvas — so this is the *only* rotation, and it touches the wire alone.
-    """
-    w, h = profile.resolution
-    if w == h:
-        base = 180 if (profile.jpeg and pm == 6) else 0
-    elif (w, h) in {(1600, 720), (1920, 462)}:
-        base = 180
-    elif (w, h) == (320, 240):
-        base = 0 if profile.jpeg else 90
-    else:
-        base = 0
-    angle = (base - orientation) % 360
-    log.debug("wire_rotation: %dx%d jpeg=%s pm=%d base=%d orient=%d → %d°",
-              w, h, profile.jpeg, pm, base, orientation, angle)
     return angle
 
 
@@ -459,14 +562,17 @@ def wire_angle(
     Collapses ``DisplayService.build_frame``'s three-way selection into one
     pure decision so the render path and any auditor share it (DRY):
 
-      * non-widescreen rotate panels → :func:`wire_rotation` (``base − orient``)
-      * widescreen JPEG rotate panels → :func:`resolve_encode_angle` (the
-        C#-source-verified per-resolution encode base, #203/#169)
+      * rotate panels → :func:`resolve_encode_angle` (the C#-source-verified
+        per-resolution encode base, #203/#169)
       * squares / non-rotate panels → user orientation only (``360 − orient``)
 
+    The first bullet used to be two, split on ``widescreen``: non-widescreen
+    panels went to a ``wire_rotation`` that read its own resolution table and
+    widescreen JPEG ones came here.  Both were the same C# switch read twice,
+    and only one of the two copies knew that 854/800 do not invert.
+
     Portrait content on a rotate panel is composed UPRIGHT (``post_rotate=0``)
-    and rides the SAME ``wire_rotation`` as landscape content — it is NOT opted
-    out.  This is the #234 fix: gating the wire rotation on ``not
+    and rides the SAME angle as landscape content — it is NOT opted out.  This is the #234 fix: gating the wire rotation on ``not
     portrait_content`` sent a base-0 panel's upright portrait canvas (480×640) to
     the device unrotated, which the fixed 640×480 panel then squeezed.  Letting
     portrait content ride ``base − orientation`` transposes it (270° @90 / 90°
@@ -476,15 +582,7 @@ def wire_angle(
     ``portrait_content`` now only distinguishes the square / non-rotate fallback
     (where content is never portrait, so it is a no-op in practice).
     """
-    wire_rotate_panel = (
-        profile.rotate and not profile.widescreen
-    )
-    fold_into_encode = (
-        profile.rotate and profile.widescreen and profile.jpeg
-    )
-    if wire_rotate_panel:
-        return wire_rotation(profile, orientation)
-    if fold_into_encode:
+    if profile.rotate:
         return resolve_encode_angle(profile, orientation)
     if orientation and not portrait_content:
         return (360 - orientation) % 360

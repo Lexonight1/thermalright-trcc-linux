@@ -592,7 +592,7 @@ apply_brightness(surface: 'Any', percent: 'int') -> Any
 composite(base: 'Any', overlay: 'Any', position: 'tuple[int, int]', mask: 'Any | None' = None) -> Any
 create_surface(width: 'int', height: 'int', color: 'tuple[int, ...] | None' = None) -> Any
 decode_image(data: 'bytes') -> Any
-draw_text(surface: 'Any', x: 'int', y: 'int', text: 'str', color: 'str', size: 'int', bold: 'bool' = False, italic: 'bool' = False) -> None
+draw_text(surface: 'Any', x: 'int', y: 'int', text: 'str', color: 'str', size: 'int', bold: 'bool' = False, italic: 'bool' = False, family: 'str' = '') -> None
 encode_jpeg(surface: 'Any', quality: 'int' = 95, max_size: 'int' = 0) -> bytes
 encode_rgb565(surface: 'Any', byte_order: 'str' = '>') -> bytes
 flip_horizontal(surface: 'Any') -> Any
