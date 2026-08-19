@@ -173,6 +173,48 @@ video — so a single "online theme" click can chain `ApplyMask →
 LoadTheme → ApplyMask + PlayVideo`.  That's the flow shape, not a
 bug.  Don't call them "cloud themes" in code or analysis.
 
+## The C# oracle — we port TRCC **2.1.6**, and only 2.1.6
+
+**The release we port is TRCC 2.1.6 (`AssemblyVersion 2.1.6.0`).** Any statement
+about "what the C# does" is about 2.1.6. A reading from any other release is not
+evidence and must not reach a commit, a doc, or a reporter.
+
+**One constant, and everything derives from it** — in
+`dev/decompiler/core/csharp.py`:
+
+| | |
+|---|---|
+| `ORACLE_RELEASE` | `"2.1.6"` — **the single source. Changing releases is this one line.** |
+| `ORACLE_VERSION` | derived: `f"{ORACLE_RELEASE}.0"` — the `AssemblyVersion` the tree must declare |
+| `DECOMPILE_ROOT` | derived: `~/Downloads/TRCC_{ORACLE_RELEASE}_decompiled` · override `TRCC_DECOMPILE` |
+| `assembly_version()` | reads the tree's OWN `AssemblyVersion` — never infers from the directory name |
+| Gated by | `tests/test_oracle_version.py` — wrong version **FAILS**, absent **skips**, right runs |
+
+**Never spell the release or the path a second time — import the constant.**
+Not in code, not in a doc header, not in a docstring. The version is a fact, and
+a fact expressed twice will drift ([[feedback_one_fact_expressed_twice_will_drift]]).
+This one already did:
+
+* **2026-06-05** — the 2.1.6 installer lands in `~/Downloads`. From here on, 2.1.6
+  is the release users run and the one we port.
+* **June → 2026-08-16** — every tool, test and audit doc keeps reading a **2.0.3**
+  decompile from March and calling it the oracle. Nothing notices: the folder was
+  labelled 2.1.6 in the docs, and no test checks what is inside it.
+* **2026-08-15** — a reporter (#224) is told his cooler is "equally broken on
+  Windows". It is not; 2.1.6 fixed his SKU specifically. We read the old release
+  and told a user it was the current one.
+* **2026-08-16** — the real 2.1.6 is finally extracted. Audit coverage falls
+  **100% → 54%**, because the "100%" was measured against the wrong program.
+* **2026-08-18** — the 2.0.3 tree is deleted. This section is written because
+  `CLAUDE.md` had named a *fourth* release (`v2.1.4_decompiled/`, a path that did
+  not exist) and never once said which release we actually port.
+
+The lesson is not "be careful". It is that **a version label is prose — free to
+write and checked by nobody** ([[feedback_one_fact_expressed_twice_will_drift]]).
+Measuring 163 green tests against a 2.0.3 tree proved the whole oracle suite
+passes on the wrong program. That is why the row above ends in a gate, not a
+reminder.
+
 ## Architecture — Hexagonal (Ports & Adapters)
 
 ### Layer Map
@@ -755,7 +797,7 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
 1. **Reproduce or get a log first.** No code changes until you have either a stack trace from the reporter / VM, or a deterministic repro. "I think Windows does X" without a log = stop.
 2. **Read the log to find the broken link.** Trace `OS → memory → transport → device` in that order. Fix the FIRST broken step, not the loudest symptom.
 3. **Web-research the canonical pattern before inventing.** For any claim of the form "Windows/macOS/BSD doesn't support X" or "this API behaves differently on Y":
-   - Step 1: Check the C# decompile (`/home/ignorant/Downloads/v2.1.4_decompiled/`) — the original Windows app already solved it.
+   - Step 1: Check the C# oracle (see **The C# oracle** above) — the original Windows app already solved it.
    - Step 2: Web-search authoritative docs (MSDN, Apple Developer, FreeBSD handbook) AND how shipping projects in the same space solve it (Rainmeter, Hass.Agent, OpenRGB, OpenHardwareMonitor, Zabbix, Glances).
    - Step 3: Propose the canonical pattern. **Only invent a custom approach when nothing fits** — and document why in the commit.
    - Past failure: v9.6.0 added pythonnet + HardwareMonitor (50 MB, 3 deps) for a Windows sensor problem the WMI namespace pattern already solved cleanly.

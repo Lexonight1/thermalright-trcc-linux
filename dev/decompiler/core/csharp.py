@@ -27,16 +27,52 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+# The C# release we port.  ONE constant -- the path below, the identity check,
+# the gate and CLAUDE.md all derive from it, so "which release?" has exactly one
+# answer and changing releases is a one-line edit here.
+#
+# It is a constant rather than a comment because a version label is prose: free
+# to write and checked by nobody.  For ten weeks every miner, test and audit doc
+# read a 2.0.3 tree while calling it 2.1.6 -- the installer for the real one had
+# been on disk since 2026-06-05 -- and the whole oracle suite ran GREEN against
+# the wrong program (measured: 163 passed).  A reporter (#224) was told his
+# hardware was equally broken on Windows on the strength of that reading.
+ORACLE_RELEASE = "2.1.6"
+# The ``AssemblyVersion`` literal the decompile must carry -- the tree's own
+# statement of what it is, as opposed to what its directory is named.  The old
+# tree was NAMED 2.1.6 in the docs and said 2.0.3 inside; only this discriminates.
+ORACLE_VERSION = f"{ORACLE_RELEASE}.0"
+
 # The decompile every miner reads.  ONE definition: the three readers each
 # spelled this differently (one of them hardcoded /home/ignorant), so when the
-# real 2.1.6 tree was re-extracted they would have drifted apart -- and the
-# tree they all pointed at turned out to predate the 2.1.6 installer by four
-# months, which silently invalidated every conclusion drawn from it.
-# Override with ``TRCC_DECOMPILE`` to audit a different version.
+# real tree was re-extracted they would have drifted apart.
+# Override with ``TRCC_DECOMPILE`` to audit a different version -- doing so is
+# what ``tests/test_oracle_version.py`` exists to catch when it is not deliberate.
 DECOMPILE_ROOT = Path(
     os.environ.get("TRCC_DECOMPILE")
-    or Path.home() / "Downloads/TRCC_2.1.6_decompiled"
+    or Path.home() / f"Downloads/TRCC_{ORACLE_RELEASE}_decompiled"
 )
+
+_ASSEMBLY_VERSION = re.compile(r'AssemblyVersion\("([\d.]+)"\)')
+
+
+def assembly_version(root: Path | None = None) -> str | None:
+    """The ``AssemblyVersion`` the tree at *root* declares, or ``None``.
+
+    The tree's identity, read from the tree -- never inferred from its directory
+    name, which is exactly the inference that let a 2.0.3 decompile be cited as
+    2.1.6 for ten weeks.  ``None`` means "no decompile here", which callers must
+    distinguish from "the wrong one is here": absent is a skip, wrong is a fail.
+    """
+    target = root or DECOMPILE_ROOT
+    if target.is_file():
+        m = _ASSEMBLY_VERSION.search(target.read_text(errors="replace"))
+        return m.group(1) if m else None
+    for path in sorted(target.glob("Properties/*.cs")):
+        if m := _ASSEMBLY_VERSION.search(path.read_text(errors="replace")):
+            return m.group(1)
+    return None
+
 
 @cache
 def decompile_text(root: Path | None = None) -> str:
