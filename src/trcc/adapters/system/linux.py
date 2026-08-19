@@ -1,4 +1,4 @@
-"""LinuxPlatform — concrete Platform implementation for Linux.
+"""LinuxOS — concrete Platform implementation for Linux.
 
 This file owns every Linux-specific thing: sysfs walks, SG_IO ioctl,
 XDG paths, udev-rule checks, autostart.  Other OSes have their own
@@ -8,7 +8,7 @@ Key pieces:
     LinuxPaths             — XDG + HOME resolution
     LinuxScsiTransport     — SCSI over /dev/sgN via SG_IO ioctl
     _resolve_scsi_path     — vid:pid → /dev/sg* via sysfs walk
-    LinuxPlatform          — the Platform ABC wiring
+    LinuxOS          — the Platform ABC wiring
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ class LinuxPaths(BasePaths):
 # ``XdgDesktopAutostart`` (writes ~/.config/autostart/trcc.desktop) now
 # lives in ``._autostart`` so ``BSDPlatform`` can share the same XDG
 # mechanism (legacy ran the identical code on both).  See
-# ``LinuxPlatform.autostart()`` below.
+# ``LinuxOS.autostart()`` below.
 
 
 # =========================================================================
@@ -313,7 +313,7 @@ class LinuxScsiTransport(ScsiTransport):
 
 
 # =========================================================================
-# LinuxPlatform
+# LinuxOS
 # =========================================================================
 
 # logical tool → distro package name (consumed by software_install_hint).
@@ -322,6 +322,14 @@ _LINUX_INSTALL_PKGS: dict[str, str] = {
     "7z": "p7zip",
     "python": "python3",
     "pynvml": "python3-pynvml",
+}
+
+#: Tools whose distro package name is confirmed to differ per family, and the
+#: honest answer when a family has not confirmed one.  Without this an
+#: unconfirmed family silently inherits Debian's name — a command that looks
+#: right and fails (#207).
+_UNCONFIRMED_FALLBACK: dict[str, str] = {
+    "pynvml": "pip install nvidia-ml-py",
 }
 
 # Tools whose package name DIFFERS per distro.  One name for all of Linux is a
@@ -334,17 +342,12 @@ _LINUX_INSTALL_PKGS: dict[str, str] = {
 # the NVIDIA driver stack on every AMD/Intel owner (#216) and breaks installs
 # where contrib is not enabled.  The reader is optional; the ADVICE is what
 # has to be right.
-_LINUX_PKG_BY_MANAGER: dict[str, dict[str, str]] = {
-    "pynvml": {
-        "pacman": "python-nvidia-ml-py",
-        "apt": "python3-pynvml",
-        "dnf": "python3-pynvml",
-        "zypper": "python3-pynvml",
-    },
-}
+#
+# These now live on the family classes at the bottom of this file — one class
+# per package manager, each owning its own command and names.  They used to be
+# four parallel tables in three files, and one had already drifted short by two.
 
-
-class LinuxPlatform(BaseOS, key="linux"):
+class LinuxOS(BaseOS, key="linux"):
     """Linux implementation — same OS contract; only internals below differ.
 
     USB access via pyusb (libusb).  Udev rules installed by setup() give
@@ -378,17 +381,17 @@ class LinuxPlatform(BaseOS, key="linux"):
         transport.  Raises TransportError if the device isn't present
         as a SCSI generic or sd block device.
         """
-        log.info("LinuxPlatform.open_scsi: %04x:%04x serial=%r", vid, pid, serial)
+        log.info("LinuxOS.open_scsi: %04x:%04x serial=%r", vid, pid, serial)
         path = _resolve_scsi_path(vid, pid)
         if path is None:
-            log.error("LinuxPlatform.open_scsi: no /dev/sg* node for %04x:%04x",
+            log.error("LinuxOS.open_scsi: no /dev/sg* node for %04x:%04x",
                       vid, pid)
             raise TransportError(
                 f"No SCSI device node found for {vid:04x}:{pid:04x} — "
                 "check that the device is attached and the scsi_generic "
                 "kernel module is loaded"
             )
-        log.info("LinuxPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
+        log.info("LinuxOS.open_scsi: %04x:%04x → %s", vid, pid, path)
         return LinuxScsiTransport(path)
 
     # ── Setup / permissions ──────────────────────────────────────────
@@ -414,7 +417,7 @@ class LinuxPlatform(BaseOS, key="linux"):
         Non-interactive mode prints what would be done and returns 0
         without touching the system.
         """
-        log.info("LinuxPlatform.setup: interactive=%s", interactive)
+        log.info("LinuxOS.setup: interactive=%s", interactive)
         if not interactive:
             log.info("=== dry run (pass interactive=True to apply) ===")
             install_udev_rules(dry_run=True)
@@ -445,14 +448,14 @@ class LinuxPlatform(BaseOS, key="linux"):
 
     def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
-        log.info("LinuxPlatform.check_permissions: probing")
+        log.info("LinuxOS.check_permissions: probing")
         warnings: list[str] = []
         if not Path("/etc/udev/rules.d/99-trcc-lcd.rules").exists():
             warnings.append(
                 "udev rules not installed — device access may require root. "
                 "Run 'python -m trcc system setup' to install them."
             )
-        log.info("LinuxPlatform.check_permissions: %d warning(s)", len(warnings))
+        log.info("LinuxOS.check_permissions: %d warning(s)", len(warnings))
         return warnings
 
     # ── OS identity ───────────────────────────────────────────────────
@@ -461,17 +464,17 @@ class LinuxPlatform(BaseOS, key="linux"):
         """Parse /etc/os-release for the pretty name."""
         path = Path("/etc/os-release")
         if not path.exists():
-            log.info("LinuxPlatform.distro_name: /etc/os-release missing, "
+            log.info("LinuxOS.distro_name: /etc/os-release missing, "
                      "defaulting to 'Linux'")
             return "Linux"
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.startswith("PRETTY_NAME="):
                     name = line.split("=", 1)[1].strip().strip('"')
-                    log.info("LinuxPlatform.distro_name → %s", name)
+                    log.info("LinuxOS.distro_name → %s", name)
                     return name
         except Exception as e:
-            log.warning("LinuxPlatform.distro_name: parse failed (%s) — "
+            log.warning("LinuxOS.distro_name: parse failed (%s) — "
                         "defaulting to 'Linux'", e)
         return "Linux"
 
@@ -536,29 +539,77 @@ class LinuxPlatform(BaseOS, key="linux"):
 
     # ── Per-OS diagnostic hints (distro package manager) ──────────────
 
-    def software_install_hint(self, tool: str) -> str:
-        """Distro-package-manager install line for ``tool``.
+    #: Set by each family below — the parent owns the methods, the child the
+    #: data.  Empty on the base so an unresolved Linux says so rather than
+    #: quietly answering as somebody else's distro.
+    _NAME: str = "Linux"
+    _MANAGER: str = ""
+    _INSTALL_CMD: str = ""
+    _UPGRADE_CMD: tuple[str, ...] = ()
+    #: logical tool -> this family's package name, where it differs from
+    #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
+    #: "same as Debian" — guessing is what #207 was.
+    _PKG_NAMES: dict[str, str] = {}
 
-        Reuses the existing pkg-manager detection (also used by the Linux
-        setup commands) — maps the logical tool to its distro package name.
+    @classmethod
+    def resolve(cls) -> type[BaseOS]:
+        """Which Linux family this is — probed, because sys.platform can't say.
+
+        ``sys.platform`` is "linux" on every distro, so the family is decided by
+        which package manager is installed.  Hundreds of distros, a handful of
+        managers: the manager is the axis, which is why these are families and
+        not one class per distro.
         """
-        log.debug("LinuxPlatform.software_install_hint: tool=%s", tool)
-        from ..diagnostics.health import detect_package_manager, package_install_hint
-        by_manager = _LINUX_PKG_BY_MANAGER.get(tool)
-        if by_manager is not None:
-            pm = detect_package_manager() or ""
-            pkg = by_manager.get(pm) or _LINUX_INSTALL_PKGS.get(tool, tool)
-        else:
-            pkg = _LINUX_INSTALL_PKGS.get(tool, tool)
-        log.info("software_install_hint: tool=%s → package=%s", tool, pkg)
-        return package_install_hint(pkg)
+        import shutil
+        for child in _LINUX_FAMILIES:
+            if shutil.which(child._MANAGER):
+                log.info("LinuxOS.resolve: found %s -> %s",
+                         child._MANAGER, child.__name__)
+                return child
+        log.warning("LinuxOS.resolve: no known package manager (%s) — "
+                    "install advice will be generic",
+                    ", ".join(c._MANAGER for c in _LINUX_FAMILIES))
+        return GenericLinux
+
+    def package_command(self, pkg: str) -> str:
+        """This family's install line for *pkg*, or an honest generic."""
+        if not self._INSTALL_CMD:
+            log.info("package_command: no manager on this host — generic advice")
+            return f"Install {pkg} via your package manager"
+        return self._INSTALL_CMD.format(pkg=pkg)
+
+    def package_manager(self) -> str:
+        """This family's manager — "" on a Linux we did not recognise."""
+        log.debug("package_manager: %s", self._MANAGER or "(none)")
+        return self._MANAGER
+
+    def upgrade_command(self) -> tuple[str, ...]:
+        """Argv that upgrades trcc-linux on this family, or empty if unknown."""
+        log.debug("upgrade_command: %s", self._UPGRADE_CMD)
+        return self._UPGRADE_CMD
+
+    def software_install_hint(self, tool: str) -> str:
+        """Install line for a logical tool, in this family's package manager.
+
+        A tool whose name is known to differ per family, and which THIS family
+        has not confirmed, gets the fallback rather than another family's name.
+        Advising Debian's ``python3-pynvml`` on Arch is #207.
+        """
+        log.debug("software_install_hint: tool=%s manager=%s",
+                  tool, self._MANAGER or "(none)")
+        pkg = self._PKG_NAMES.get(tool)
+        if pkg is None and tool in _UNCONFIRMED_FALLBACK:
+            log.info("software_install_hint: no confirmed %s package for %s",
+                     tool, self._NAME)
+            return _UNCONFIRMED_FALLBACK[tool]
+        return self.package_command(pkg or _LINUX_INSTALL_PKGS.get(tool, tool))
 
     def permission_denied_hint(self) -> str:
-        log.debug("LinuxPlatform.permission_denied_hint: called")
+        log.debug("LinuxOS.permission_denied_hint: called")
         return "run 'trcc system setup' to install udev rules"
 
     def no_devices_hint(self) -> str:
-        log.debug("LinuxPlatform.no_devices_hint: called")
+        log.debug("LinuxOS.no_devices_hint: called")
         from ._udev import RULES_PATH
         return (
             f"Run `trcc system setup` to install the udev rules "
@@ -569,21 +620,122 @@ class LinuxPlatform(BaseOS, key="linux"):
 
     def memory_info(self) -> list[dict[str, str]]:
         """DRAM slot probe via dmidecode; psutil fallback for totals only."""
-        log.info("LinuxPlatform.memory_info: probing")
+        log.info("LinuxOS.memory_info: probing")
         slots = _linux_memory_info()
-        log.info("LinuxPlatform.memory_info: %d slot(s)", len(slots))
+        log.info("LinuxOS.memory_info: %d slot(s)", len(slots))
         return slots
 
     def disk_info(self) -> list[dict[str, str]]:
         """Disk probe via lsblk + smartctl health."""
-        log.info("LinuxPlatform.disk_info: probing")
+        log.info("LinuxOS.disk_info: probing")
         disks = _linux_disk_info()
-        log.info("LinuxPlatform.disk_info: %d disk(s)", len(disks))
+        log.info("LinuxOS.disk_info: %d disk(s)", len(disks))
         return disks
 
 
 # =========================================================================
-# Linux hardware-probe helpers — used by LinuxPlatform.memory_info/disk_info
+# Linux families — one class per package manager, not per distro
+# =========================================================================
+#
+# Hundreds of distros, a handful of managers.  Ubuntu/Mint/Pop/Kali all answer
+# "apt", so the manager is the axis; a class per distro would be hundreds of
+# subclasses differing by one string.  These replace four parallel tables that
+# lived in three files, one of which had already drifted short by two entries.
+
+
+class AptLinux(LinuxOS):
+    """Debian · Ubuntu · Mint · Pop!_OS · Kali · Raspberry Pi OS."""
+
+    _NAME = "Debian-family"
+    _MANAGER = "apt"
+    _INSTALL_CMD = "sudo apt install {pkg}"
+    _UPGRADE_CMD = ("sudo", "apt", "upgrade", "-y", "trcc-linux")
+    _PKG_NAMES = {"pynvml": "python3-pynvml"}
+
+
+class DnfLinux(LinuxOS):
+    """Fedora · RHEL · CentOS Stream · Rocky · AlmaLinux."""
+
+    _NAME = "Fedora-family"
+    _MANAGER = "dnf"
+    _INSTALL_CMD = "sudo dnf install {pkg}"
+    _UPGRADE_CMD = ("sudo", "dnf", "upgrade", "-y", "trcc-linux")
+    _PKG_NAMES = {"pynvml": "python3-pynvml"}
+
+
+class PacmanLinux(LinuxOS):
+    """Arch · Manjaro · CachyOS · EndeavourOS · Garuda."""
+
+    _NAME = "Arch-family"
+    _MANAGER = "pacman"
+    _INSTALL_CMD = "sudo pacman -S {pkg}"
+    _UPGRADE_CMD = ("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux")
+    # Arch names it differently, and advising Debian's name here is #207.
+    _PKG_NAMES = {"pynvml": "python-nvidia-ml-py"}
+
+
+class ZypperLinux(LinuxOS):
+    """openSUSE · SUSE Linux Enterprise."""
+
+    _NAME = "SUSE-family"
+    _MANAGER = "zypper"
+    _INSTALL_CMD = "sudo zypper install {pkg}"
+    _UPGRADE_CMD = ("sudo", "zypper", "update", "-y", "trcc-linux")
+    _PKG_NAMES = {"pynvml": "python3-pynvml"}
+
+
+class ApkLinux(LinuxOS):
+    """Alpine · postmarketOS.
+
+    No ``pynvml`` row: the package name is unconfirmed, so the generic
+    fallback answers instead of inventing one.
+    """
+
+    _NAME = "Alpine"
+    _MANAGER = "apk"
+    _INSTALL_CMD = "sudo apk add {pkg}"
+    _UPGRADE_CMD = ("sudo", "apk", "upgrade", "trcc-linux")
+
+
+class XbpsLinux(LinuxOS):
+    """Void Linux.  ``pynvml`` name unconfirmed — see :class:`ApkLinux`."""
+
+    _NAME = "Void"
+    _MANAGER = "xbps-install"
+    _INSTALL_CMD = "sudo xbps-install {pkg}"
+    _UPGRADE_CMD = ("sudo", "xbps-install", "-u", "trcc-linux")
+
+
+class NixLinux(LinuxOS):
+    """NixOS.  We ship a ``flake.nix`` and recognised no ``nix`` until now, so
+    a user we package for got the generic "install via your package manager"."""
+
+    _NAME = "NixOS"
+    _MANAGER = "nix-env"
+    _INSTALL_CMD = "nix-env -iA nixpkgs.{pkg}"
+    _UPGRADE_CMD = ()          # flake-managed; there is no one upgrade line
+
+
+class GenericLinux(LinuxOS):
+    """A Linux whose package manager we do not recognise.
+
+    Explicit rather than inherited: it answers "I do not know" instead of
+    quietly returning another family's command.
+    """
+
+    _NAME = "Linux"
+
+
+#: Probed in order by :meth:`LinuxOS.resolve`.  Order is the old
+#: ``detect_package_manager`` candidate order, preserved so a host with two
+#: managers resolves the way it always did.
+_LINUX_FAMILIES: tuple[type[LinuxOS], ...] = (
+    DnfLinux, AptLinux, PacmanLinux, ZypperLinux, XbpsLinux, ApkLinux, NixLinux,
+)
+
+
+# =========================================================================
+# Linux hardware-probe helpers — used by LinuxOS.memory_info/disk_info
 # =========================================================================
 
 _DMI_MEMORY_FIELDS: frozenset[str] = frozenset({
@@ -636,7 +788,7 @@ def _enrich_with_spd_timings(slots: list[dict[str, str]]) -> None:
 
 
 # Sentinel so a failed/unsupported live read is cached too (timings are static
-# per boot; current_platform() builds a fresh LinuxPlatform each call, so the cache
+# per boot; current_platform() builds a fresh LinuxOS each call, so the cache
 # lives at module scope, not on the instance).
 _UNREAD: object = object()
 _live_imc_cache: object = _UNREAD

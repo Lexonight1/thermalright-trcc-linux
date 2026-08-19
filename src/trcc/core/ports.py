@@ -1398,6 +1398,31 @@ class Platform(ABC):
     # (``adapters/diagnostics/health.py``) call these through the injected
     # Platform — they NEVER hardcode a distro command, so the advice is
     # correct on Windows / macOS / BSD, not just the Linux dev box.
+    def package_manager(self) -> str:
+        """The system package manager, or "" when this OS has none of ours.
+
+        Only Linux ships trcc through a distro manager today, so the others
+        answer "" — an honest "not applicable" rather than a guess.
+        """
+        log.debug("Platform.package_manager: none on this OS")
+        return ""
+
+    def upgrade_command(self) -> tuple[str, ...]:
+        """Argv that upgrades trcc on this OS, or empty when there is none."""
+        log.debug("Platform.upgrade_command: none on this OS")
+        return ()
+
+    @classmethod
+    def resolve(cls) -> type[Platform]:
+        """The concrete class for this host — usually ``cls`` itself.
+
+        ``sys.platform`` names most OSes precisely enough, but says only
+        "linux" for every distro, so an OS whose variants differ overrides this
+        to pick one.  One seam, so the factory never grows an ``if`` per OS.
+        """
+        log.debug("%s.resolve: no refinement needed", cls.__name__)
+        return cls
+
     def software_install_hint(self, tool: str) -> str:
         """OS-correct one-line hint for installing a missing CLI tool.
 

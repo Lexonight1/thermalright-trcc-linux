@@ -85,7 +85,7 @@ StartupNotify=false
 class XdgDesktopAutostart(AutostartManager):
     """XDG Autostart adapter — writes/removes ~/.config/autostart/trcc.desktop.
 
-    OS-agnostic: used by both ``LinuxPlatform`` and the BSDs (the
+    OS-agnostic: used by both ``LinuxOS`` and the BSDs (the
     XDG spec is identical on each).
     """
 

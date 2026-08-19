@@ -1,7 +1,7 @@
 """Generate udev rules + usb-storage quirks for TRCC devices on Linux.
 
 Pure string generation + atomic file I/O.  Called from
-`LinuxPlatform.setup()` so first-run users get non-root access to
+`LinuxOS.setup()` so first-run users get non-root access to
 devices registered in `core.registry.ALL_DEVICES`.
 
 Per-wire subsystem mapping:

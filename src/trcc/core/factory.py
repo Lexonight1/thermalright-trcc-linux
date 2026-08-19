@@ -13,7 +13,7 @@ Adding a factory becomes a declaration:
 
 **Core-safe by construction.**  This module names no concrete adapter and
 imports nothing below it — it is generic in the key and the value, so the
-adapter layer stays the only place that knows ``LinuxPlatform`` or ``ScsiLcd``
+adapter layer stays the only place that knows ``LinuxOS`` or ``ScsiLcd``
 (see CLAUDE.md, "Two-Factory Chain").
 
 A miss is a *ternary*, not a boolean, and each of the three is a deliberate

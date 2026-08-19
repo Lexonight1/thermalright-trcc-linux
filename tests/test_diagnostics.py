@@ -244,11 +244,11 @@ def test_each_os_platform_answers_its_own_no_devices_hint() -> None:
 def test_each_os_platform_answers_its_own_permission_denied_hint() -> None:
     """EACCES USB hint moved off a core sys.platform sniff onto the Platform port."""
     from trcc.adapters.system.bsd import FreeBsdOS, OpenBsdOS
-    from trcc.adapters.system.linux import LinuxPlatform
+    from trcc.adapters.system.linux import LinuxOS
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
 
-    assert "udev" in LinuxPlatform().permission_denied_hint()
+    assert "udev" in LinuxOS().permission_denied_hint()
     assert "WinUSB" in WindowsPlatform().permission_denied_hint()
     macos_hint = MacOSPlatform().permission_denied_hint()
     assert "sudo" in macos_hint or "Privacy" in macos_hint

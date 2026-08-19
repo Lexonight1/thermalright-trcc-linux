@@ -98,7 +98,7 @@ class BaseOS(Platform):
 
         An OS states its own ``sys.platform`` key in its class line::
 
-            class LinuxPlatform(BaseOS, key="linux"): ...
+            class LinuxOS(BaseOS, key="linux"): ...
 
         ``key=None`` means "intermediate base, don't register".
         """
@@ -108,6 +108,33 @@ class BaseOS(Platform):
             return
         log.debug("%s: registering as OS %r", cls.__name__, key)
         PLATFORMS.register(key)(cls)
+
+    def package_manager(self) -> str:
+        """The system package manager, or "" when this OS has none of ours.
+
+        Only Linux ships trcc through a distro manager, so the other OSes
+        answer "" — an honest "not applicable", not a guess.
+        """
+        log.debug("%s.package_manager: none", type(self).__name__)
+        return ""
+
+    def upgrade_command(self) -> tuple[str, ...]:
+        """Argv that upgrades trcc on this OS, or empty when there is none."""
+        log.debug("%s.upgrade_command: none", type(self).__name__)
+        return ()
+
+    @classmethod
+    def resolve(cls) -> type[BaseOS]:
+        """The concrete class for this host — usually ``cls`` itself.
+
+        ``sys.platform`` names the OS precisely enough for most: "freebsd14" is
+        FreeBSD and nothing else.  It says only "linux" for every distro, so
+        ``LinuxOS`` overrides this to probe for its package manager and return
+        the family class.  One seam, so ``current_platform()`` never grows an
+        ``if`` per OS.
+        """
+        log.debug("%s.resolve: no refinement needed", cls.__name__)
+        return cls
 
     #: tool → install one-liner; the default :meth:`software_install_hint`
     #: reads this.  Dict-driven OSes (macOS/Windows/BSD) set it; Linux

@@ -63,7 +63,7 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section("imports (per-OS Platform adapters)")
     for module, label in (
-        ("trcc.adapters.system.linux", "LinuxPlatform"),
+        ("trcc.adapters.system.linux", "LinuxOS"),
         ("trcc.adapters.system.windows", "WindowsPlatform"),
         ("trcc.adapters.system.macos", "MacOSPlatform"),
         ("trcc.adapters.system.bsd", "BSDPlatform"),
@@ -107,11 +107,14 @@ def _probe_gui_imports() -> Section:
     for module, label in (
         ("trcc.ui.qtgui.sensor_picker",     "G1 sensor_picker"),
         ("trcc.ui.qtgui.splash",            "G1 splash"),
-        ("trcc.ui.qtgui.eyedropper",        "G2 eyedropper"),
+        # Shared by both skins since the UI-edge unification — they live in
+        # ``ui/``, not under ``ui/qtgui/``.  The old paths sat here failing
+        # silently because nothing ran this harness.
+        ("trcc.ui.eyedropper",              "G2 eyedropper"),
         ("trcc.ui.qtgui.color_wheel",       "G2 color_wheel"),
         ("trcc.ui.qtgui.image_crop",        "G2 image_crop"),
         ("trcc.ui.qtgui.video_crop",        "G2 video_crop"),
-        ("trcc.ui.qtgui.screen_overlay",    "G2 screen_overlay"),
+        ("trcc.ui.screen_overlay",          "G2 screen_overlay"),
         ("trcc.ui.qtgui.panels.led",        "G3 LED sub-tabs"),
         ("trcc.ui.qtgui.device_picker",     "G4 device_picker"),
         ("trcc.ui.qtgui.region_overlay",    "G5 region_overlay"),
@@ -136,7 +139,7 @@ def _probe_factory() -> Section:
         return s
 
     expected_substring = {
-        "linux":   "LinuxPlatform",
+        "linux":   "LinuxOS",
         "win32":   "WindowsPlatform",
         "darwin":  "MacOSPlatform",
         "freebsd": "BSDPlatform",

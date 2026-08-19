@@ -77,7 +77,7 @@ _CURRENT = """\
   87ad:70db       GrandVision 360 AIO             wire=bulk
 
 ## Log tail (1000 lines)
-  2026-06-28T13:20:39 INFO    trcc.adapters.system.linux:LinuxPlatform.scan_devices:401:   found 87ad:70db serial='110702190133e003'
+  2026-06-28T13:20:39 INFO    trcc.adapters.system.linux:LinuxOS.scan_devices:401:   found 87ad:70db serial='110702190133e003'
   2026-06-28T13:20:39 INFO    trcc.adapters.device.bulk_lcd:BulkLcd.connect:165: BulkLcd handshake OK: PM=11 SUB=5 resolution=(854, 480) (JPEG)
 """
 
@@ -86,8 +86,8 @@ _TRUNCATED = """\
   gpu:primary:temp                    27.00 °C  (temperature)
 
 ## Log tail (1000 lines)
-  2026-06-28T13:20:39 INFO    trcc.adapters.system:PlatformFactory.current:63: PlatformFactory.current: building LinuxPlatform
-  2026-06-28T13:20:39 INFO    trcc.adapters.system.linux:LinuxPlatform.scan_devices:401:   found 87ad:70db serial='110702190133e003'
+  2026-06-28T13:20:39 INFO    trcc.adapters.system:PlatformFactory.current:63: PlatformFactory.current: building LinuxOS
+  2026-06-28T13:20:39 INFO    trcc.adapters.system.linux:LinuxOS.scan_devices:401:   found 87ad:70db serial='110702190133e003'
   2026-06-28T13:20:39 INFO    trcc.adapters.device.bulk_lcd:BulkLcd.connect:165: BulkLcd handshake OK: PM=11 SUB=5 resolution=(854, 480) (JPEG)
 """
 
@@ -121,7 +121,7 @@ def test_truncated_report_recovers_device_from_log_tail(parse_report):
     # GitHub clipped the "## Devices" section — the scan line in the log tail is
     # the only surviving device id, and the handshake still supplies PM/SUB/res.
     report = parse_report(_TRUNCATED)
-    assert report.os_name == "Linux"          # recovered from "building LinuxPlatform"
+    assert report.os_name == "Linux"          # recovered from "building LinuxOS"
     assert len(report.devices) == 1
     dev = report.devices[0]
     assert (dev.vid, dev.pid) == (0x87AD, 0x70DB)

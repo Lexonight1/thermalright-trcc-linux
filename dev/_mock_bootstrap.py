@@ -4,7 +4,7 @@ session never touches the user's real config.
 
 The post-cutover ``Platform`` port is the only seam we need.
 ``DevPlatform`` subclasses the host's production platform (just
-``LinuxPlatform`` here — Mac/Windows/BSD can extend later) and overrides
+``LinuxOS`` here — Mac/Windows/BSD can extend later) and overrides
 only ``paths()`` to point at the dev directories.  Real USB, real
 sensors, real autostart — same code paths a packaged install runs, just
 isolated to a throwaway data root.
@@ -409,7 +409,7 @@ def _build_dev_platform(specs: list[dict] | None = None) -> Platform:
     from trcc.adapters.system import current_platform
     host = current_platform()
     # ``Any`` so pyright accepts the runtime-computed concrete base class
-    # (it can't see that ``type(host)`` is a concrete LinuxPlatform, not the
+    # (it can't see that ``type(host)`` is a concrete LinuxOS, not the
     # abstract ``Platform``).
     host_cls: Any = type(host)
     dev_paths = DevPaths()

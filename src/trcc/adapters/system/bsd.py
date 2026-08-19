@@ -63,13 +63,14 @@ _PKG_ADD_INSTALL_HINTS: dict[str, str] = {
 }
 
 
-class BsdOS(BaseOS):
+class BsdOS(BaseOS, key="bsd"):
     """What every BSD shares — BOT-only SCSI, XDG autostart, sysctl probes.
 
-    Intermediate base (no ``key=``): the BSDs differ in COMMAND, not data —
-    FreeBSD installs with ``pkg`` and permits via devd, OpenBSD installs with
-    ``pkg_add`` and permits via hotplugd(8) — so each registers its own child
-    below rather than one class branching on ``sys.platform`` four times.
+    Registered once as ``"bsd"``; :meth:`resolve` picks the variant, because
+    the BSDs differ in COMMAND, not data — FreeBSD installs with ``pkg`` and
+    permits via devd, OpenBSD installs with ``pkg_add`` and permits via
+    hotplugd(8).  One class branching on ``sys.platform`` four times is what
+    that used to cost.
     """
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
@@ -104,7 +105,7 @@ class BsdOS(BaseOS):
     def setup(self, interactive: bool = True) -> int:
         """Install FreeBSD devd rules so non-root users can talk to the cooler.
 
-        Mirrors LinuxPlatform.setup(): writes a config file under
+        Mirrors the Linux setup(): writes a config file under
         ``/usr/local/etc/devd/`` that chmod's the USB device node 0666
         on attach for every device in :data:`ALL_DEVICES`.  Re-execs via
         sudo/doas when called as a normal user.
@@ -139,6 +140,21 @@ class BsdOS(BaseOS):
                 "run with doas/sudo or adjust devd permissions.",
             ]
         return []
+
+    @classmethod
+    def resolve(cls) -> type[BaseOS]:
+        """Which BSD this is — sys.platform carries it ("freebsd14")."""
+        import sys
+        for child in (FreeBsdOS, OpenBsdOS, NetBsdOS):
+            if sys.platform.startswith(child._PLATFORM_PREFIX):
+                log.info("BsdOS.resolve: %s -> %s", sys.platform, child.__name__)
+                return child
+        log.warning("BsdOS.resolve: %s is an unknown BSD — using the shared base",
+                    sys.platform)
+        return cls
+
+    #: The ``sys.platform`` prefix that selects this BSD.
+    _PLATFORM_PREFIX: str = "bsd"
 
     #: Set by each BSD below — the parent owns the method, the child the data.
     _NAME: str = "BSD"
@@ -182,9 +198,10 @@ class BsdOS(BaseOS):
         return disks
 
 
-class FreeBsdOS(BsdOS, key="freebsd"):
+class FreeBsdOS(BsdOS):
     """FreeBSD — ``pkg``, and devd for device permissions."""
 
+    _PLATFORM_PREFIX = "freebsd"
     _NAME = "FreeBSD"
     _INSTALL_HINTS = _FREEBSD_INSTALL_HINTS
     _PERMISSION_HINT = "run 'trcc system setup' to install devd rules"
@@ -196,23 +213,25 @@ class FreeBsdOS(BsdOS, key="freebsd"):
         return FreeBSDHotplugMonitor()
 
 
-class OpenBsdOS(BsdOS, key="openbsd"):
+class OpenBsdOS(BsdOS):
     """OpenBSD — ``pkg_add``, and hotplugd(8) for device permissions.
 
     Was served FreeBSD's ``pkg install`` until 2026-08-19: a command OpenBSD
     does not have.
     """
 
+    _PLATFORM_PREFIX = "openbsd"
     _NAME = "OpenBSD"
     _INSTALL_HINTS = _PKG_ADD_INSTALL_HINTS
     _PERMISSION_HINT = ("grant your user the device node: chgrp/chmod "
                         "/dev/ugen* (hotplugd(8) can do it on attach)")
 
 
-class NetBsdOS(BsdOS, key="netbsd"):
+class NetBsdOS(BsdOS):
     """NetBSD — ``pkg_add`` ships by default; ``pkgin`` is the recommended
     frontend, which wants a reporter rather than a guess."""
 
+    _PLATFORM_PREFIX = "netbsd"
     _NAME = "NetBSD"
     _INSTALL_HINTS = _PKG_ADD_INSTALL_HINTS
     _PERMISSION_HINT = "grant your user the device node: chgrp/chmod /dev/ugen*"

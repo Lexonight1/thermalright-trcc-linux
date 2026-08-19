@@ -79,7 +79,7 @@ def test_setup_succeeds_when_only_gpu_extras_fail(
                         lambda vendors, dry_run: 1)         # GPU install fails
     monkeypatch.setattr(linux, "install_selinux_policy", lambda dry_run: 0)
 
-    rc = linux.LinuxPlatform().setup(interactive=True)
+    rc = linux.LinuxOS().setup(interactive=True)
 
     assert rc == 0
 
@@ -94,6 +94,6 @@ def test_setup_fails_when_udev_fails(monkeypatch: pytest.MonkeyPatch) -> None:
                         lambda vendors, dry_run: 0)
     monkeypatch.setattr(linux, "install_selinux_policy", lambda dry_run: 0)
 
-    rc = linux.LinuxPlatform().setup(interactive=True)
+    rc = linux.LinuxOS().setup(interactive=True)
 
     assert rc != 0

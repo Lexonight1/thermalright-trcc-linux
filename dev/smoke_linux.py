@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Linux runtime smoke — exercises the real ``LinuxPlatform`` end to end.
+"""Linux runtime smoke — exercises the real ``LinuxOS`` end to end.
 
 Run on a Linux box (any distro).  No Thermalright hardware required —
 hardware-dependent probes report SKIP, not FAIL.  Output is a
 structured report a reporter can paste into a GitHub issue.
 
 What it actually does on Linux:
-- Imports + instantiates ``LinuxPlatform``
+- Imports + instantiates ``LinuxOS``
 - Calls ``scan_devices()`` and reports count (SKIP-style if 0)
 - Builds the sensor enumerator, runs ``discover()`` + ``read_all()``
 - Verifies hwmon directory exists, RAPL readable, pyusb importable,
@@ -40,8 +40,8 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section('imports')
     try:
-        from trcc.adapters.system.linux import LinuxPlatform  # noqa: F401
-        s.ok('trcc.adapters.system.linux', 'LinuxPlatform importable')
+        from trcc.adapters.system.linux import LinuxOS  # noqa: F401
+        s.ok('trcc.adapters.system.linux', 'LinuxOS importable')
     except BaseException as exc:
         s.fail('trcc.adapters.system.linux', exc)
 

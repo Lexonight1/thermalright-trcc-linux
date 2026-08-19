@@ -39,10 +39,8 @@ def current_platform() -> Platform:
     rather than returned as a class.  An unknown platform falls back to Linux
     with a warning via the registry's ``FallBackTo`` policy.
     """
-    # sys.platform carries the major on BSD ("freebsd14", "openbsd7"), so strip
-    # it to reach the family key.  Only for BSD — "win32" must not become "win".
-    key = sys.platform.rstrip("0123456789") if "bsd" in sys.platform else sys.platform
-    platform_cls = PLATFORMS[key]
+    key = "bsd" if "bsd" in sys.platform else sys.platform
+    platform_cls = PLATFORMS[key].resolve()
     log.info("current_platform: %s → building %s", key, platform_cls.__name__)
     return platform_cls()
 

@@ -36,10 +36,10 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 5 | 0 | 10 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`BaseOS`](#baseos) | 8 | 8 | 7 |
+| [`BaseOS`](#baseos) | 8 | 10 | 15 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`Platform`](#platform) | 10 | 9 | 7 |
+| [`Platform`](#platform) | 10 | 11 | 15 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
 
 ---
@@ -495,9 +495,9 @@ distro_name() -> str
 setup(interactive: 'bool' = True) -> int
 ```
 
-**You inherit (8):** `autostart` · `hotplug` · `install_method` · `open_transport` · `paths` · `scan_devices` · `sensors` · `software_install_hint`
+**You inherit (10):** `autostart` · `hotplug` · `install_method` · `open_transport` · `package_manager` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command`
 
-**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxPlatform` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
+**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
 
 ## SensorEnumerator
 
@@ -575,9 +575,9 @@ sensors() -> SensorEnumerator
 setup(interactive: 'bool' = True) -> int
 ```
 
-**You inherit (9):** `configure_stdout` · `disk_info` · `memory_info` · `minimize_on_close` · `no_devices_hint` · `permission_denied_hint` · `software_install_hint` · `usb_power_state` · `worker_thread_context`
+**You inherit (11):** `configure_stdout` · `disk_info` · `memory_info` · `minimize_on_close` · `no_devices_hint` · `package_manager` · `permission_denied_hint` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
-**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxPlatform` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
+**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
 
 ## Renderer
 

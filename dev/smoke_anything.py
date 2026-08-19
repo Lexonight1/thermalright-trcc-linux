@@ -134,7 +134,7 @@ def _make_platform(os_label: str):
     on Linux) returns (None, error_str) so the caller can fall back.
     """
     matrix = {
-        "linux": ("trcc.adapters.system.linux", "LinuxPlatform"),
+        "linux": ("trcc.adapters.system.linux", "LinuxOS"),
         "windows": ("trcc.adapters.system.windows", "WindowsPlatform"),
         "macos": ("trcc.adapters.system.macos", "MacOSPlatform"),
         "bsd": ("trcc.adapters.system.bsd", "BSDPlatform"),
@@ -708,6 +708,12 @@ def main() -> int:
                         "--device with the system and VID:PIDs found inside")
     p.add_argument("--probe", default=None,
                    help="run only the named probe (see --list-probes)")
+    p.add_argument("--skip-probe", action="append", default=[],
+                   metavar="NAME",
+                   help="quarantine a probe that fails on a KNOWN open defect "
+                        "(repeatable).  Never a way to hide a new failure — "
+                        "every skip is named loudly in the header and the "
+                        "summary so a quarantine cannot pass as coverage.")
     p.add_argument("--list-probes", action="store_true")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
@@ -728,14 +734,26 @@ def main() -> int:
     if plat_err:
         print(f"{_COLOR[ERROR]}OS load failed{_RESET}: --os {os_label} → {plat_err}")
         print("  → continuing with platform=None; OS-specific probes will SKIP.\n")
-    probes = [pr for pr in PROBES if args.probe in (None, pr.name)]
+    known = {pr.name for pr in PROBES}
+    skipped = list(dict.fromkeys(args.skip_probe))
+    if unknown := [n for n in skipped if n not in known]:
+        # Fail loudly: a typo'd quarantine silently stops quarantining, and
+        # the stale name then outlives the defect it was covering for.
+        raise SystemExit(
+            f"unknown --skip-probe {unknown} — see --list-probes")
+    probes = [pr for pr in PROBES
+              if args.probe in (None, pr.name) and pr.name not in skipped]
     if args.probe and not probes:
         raise SystemExit(f"unknown probe {args.probe!r} — see --list-probes")
 
     print(f"{_BOLD}TRCC any-OS-any-device smoke{_RESET}")
     print(f"  OS     : {os_label} ({type(platform).__name__ if platform else 'load failed'})")
     print(f"  devices: {len(devices)}")
-    print(f"  probes : {len(probes)}\n")
+    print(f"  probes : {len(probes)}")
+    for name in skipped:
+        print(f"  {_COLOR[BAD]}QUARANTINED{_RESET}: {name} — known open "
+              f"defect, NOT covered by this run")
+    print()
 
     counts = {PASS: 0, BAD: 0, ERROR: 0, SKIP: 0}
     bad_rows: list[tuple[str, str, str]] = []
@@ -770,6 +788,15 @@ def main() -> int:
         print(f"{_COLOR[BAD]}Bad code surfaced:{_RESET}")
         for dev, probe_name, detail in bad_rows:
             print(f"  • {dev} → {probe_name}: {detail}")
+    if skipped:
+        # Repeated at the bottom on purpose: the summary line is the part
+        # people read, and "PASS=n BAD=0" next to a silent quarantine is
+        # exactly the kind of green that means nothing.
+        print()
+        print(f"{_COLOR[BAD]}NOT COVERED by this run{_RESET} "
+              f"({len(skipped)} quarantined probe(s) — known open defects):")
+        for name in skipped:
+            print(f"  • {name}")
     print("=" * 76)
     return 1 if counts[BAD] else 0
 

@@ -157,11 +157,15 @@ def parse_report(text: str) -> ParsedReport:
         report.python_version = m.group(1)
 
     # OS — current "## Platform" row "  system  Linux", else legacy "OS: …",
-    # else recover it from the log tail ("building LinuxPlatform") so a report
+    # else recover it from the log tail ("building LinuxOS") so a report
     # that got clipped above the Platform section still resolves the OS.
+    # The last pattern accepts BOTH spellings: the classes were renamed
+    # *Platform -> *OS on 2026-08-19, and reports predating that are still the
+    # ones users paste.  A parser for historical files may never stop reading
+    # the old form.
     m = re.search(r"^\s*system\s+(\S+)", text, re.MULTILINE) or \
         re.search(r"OS:\s+(.+)", text) or \
-        re.search(r"building (\w+)Platform", text)
+        re.search(r"building (\w+?)(?:Platform|OS)\b", text)
     if m:
         report.os_name = m.group(1).strip()
 

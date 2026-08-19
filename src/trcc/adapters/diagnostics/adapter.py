@@ -61,9 +61,10 @@ class DiagnosticsAdapter(Diagnostics):
         return path
 
     def package_manager(self) -> str | None:
-        pm = _health.detect_package_manager()
+        """The OS's own answer; None when it has no manager of ours."""
+        pm = self._platform.package_manager() if self._platform else None
         log.info("DiagnosticsAdapter.package_manager: %s", pm)
-        return pm
+        return pm or None
 
     def gpu_reader_state(self) -> GpuReaderState:
         reader_installed, initialized, _ = self._gpu_state()

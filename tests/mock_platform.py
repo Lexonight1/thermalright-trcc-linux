@@ -404,7 +404,7 @@ class MockPlatform(FakePlatform):
         application.  So the overlay + System-Info show THIS dev computer's
         actual CPU/GPU/memory/fan metrics, not the deterministic fakes
         ``FakePlatform`` hands to unit tests.  Built the same way the real
-        ``LinuxPlatform.sensors`` builds it (``build_linux_sensors``).
+        ``LinuxOS.sensors`` builds it (``build_linux_sensors``).
         """
         if self._sensors is None:
             from trcc.adapters.sensors.aggregator import build_linux_sensors

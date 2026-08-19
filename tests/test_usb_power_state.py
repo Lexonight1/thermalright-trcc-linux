@@ -76,8 +76,8 @@ def _fake_sysfs(root: Path, *, vid="0402", pid="3922", control="auto",
 
 @pytest.fixture
 def linux_platform():
-    from trcc.adapters.system.linux import LinuxPlatform
-    return LinuxPlatform()
+    from trcc.adapters.system.linux import LinuxOS
+    return LinuxOS()
 
 
 def test_linux_reads_a_suspended_panel(

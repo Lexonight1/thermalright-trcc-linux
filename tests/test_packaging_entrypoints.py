@@ -217,12 +217,21 @@ def test_nvidia_reader_advice_names_a_package_that_exists() -> None:
     python-nvidia-ml-py, Debian/Ubuntu's is python3-pynvml. Advising the wrong
     one sends the user to a command that fails, which is #207 with extra steps.
     """
-    from trcc.adapters.system.linux import _LINUX_PKG_BY_MANAGER
+    from trcc.adapters.system.linux import (
+        ApkLinux,
+        AptLinux,
+        DnfLinux,
+        PacmanLinux,
+    )
 
-    by_mgr = _LINUX_PKG_BY_MANAGER["pynvml"]
-    assert by_mgr["pacman"] == "python-nvidia-ml-py", (
+    # Asserted through the shipping path, not a table: the per-manager names
+    # moved onto the family classes on 2026-08-19.
+    assert "python-nvidia-ml-py" in PacmanLinux().software_install_hint("pynvml"), (
         "Arch's package is python-nvidia-ml-py; python3-pynvml does not exist "
         "there and pacman will fail"
     )
-    assert by_mgr["apt"] == "python3-pynvml"
-    assert by_mgr["dnf"] == "python3-pynvml"
+    assert "python3-pynvml" in AptLinux().software_install_hint("pynvml")
+    assert "python3-pynvml" in DnfLinux().software_install_hint("pynvml")
+    # A family with no CONFIRMED name must not borrow Debian's — that is #207
+    # in the other direction.  Alpine gets the pip fallback instead.
+    assert "python3-pynvml" not in ApkLinux().software_install_hint("pynvml")

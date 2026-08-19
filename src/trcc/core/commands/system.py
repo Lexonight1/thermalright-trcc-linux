@@ -57,7 +57,6 @@ from ..results import (
 )
 from ._base import Command, Query
 from ._helpers import (
-    _UPGRADE_COMMANDS,
     _autostart_path,
     _health_entries,
     _slideshow_snapshot,
@@ -582,14 +581,17 @@ class RunUpgrade(Command[UpgradeResult]):
     def execute(self, app: App) -> UpgradeResult:
         import subprocess
 
+        # pm is observed (the diagnostics port reports it, and now delegates to
+        # the OS for the answer); the RECIPE comes from the OS itself, which
+        # used to be a module table keyed on the probed string.
         pm = app.diagnostics.package_manager()
-        if pm is None:
+        if not pm:
             return UpgradeResult(
                 ok=False, package_manager="",
                 message="No supported package manager detected on this system",
             )
-        cmd = _UPGRADE_COMMANDS.get(pm)
-        if cmd is None:
+        cmd = app.platform.upgrade_command()
+        if not cmd:
             return UpgradeResult(
                 ok=False, package_manager=pm,
                 message=f"No upgrade recipe for package manager {pm!r}",
