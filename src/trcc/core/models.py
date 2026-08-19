@@ -20,7 +20,6 @@ class Wire(str, Enum):
     SCSI = "scsi"
     HID = "hid"
     BULK = "bulk"
-    BULK_ALI = "bulk_ali"
     LY = "ly"
     LED = "led"
 

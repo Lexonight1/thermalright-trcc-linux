@@ -33,7 +33,6 @@ log = logging.getLogger(__name__)
 
 # Side-effect imports: load each device module so defining its class registers
 # it.  Anything that imports ``trcc.adapters.device`` triggers them all.
-from . import ali_lcd as _ali_lcd  # noqa: E402, F401
 from . import bulk_lcd as _bulk_lcd  # noqa: E402, F401
 from . import hid_lcd as _hid_lcd  # noqa: E402, F401
 from . import led as _led  # noqa: E402, F401

@@ -133,7 +133,7 @@ def ly_reply(pm: int, sub: int = 0, *, is_ly1: bool = False,
 
 
 def ali_handshake_reply(*, size: int = _f5.RESPONSE_SIZE) -> bytes:
-    """F5-protocol reply — identity at ``resp[0]``, shared by AliLcd and HID type 3.
+    """F5-protocol reply — identity at ``resp[0]``, for HID type-3 panels.
 
     The identity bytes and buffer size come from ``_f5``, not from a copy: this
     docstring used to restate the rule ("accepts ``resp[0] ∈ {101, 102}``") and
@@ -168,8 +168,6 @@ def mock_handshake(product: ProductInfo, *, pm: int, sub: int, fbl: int) -> byte
                 else hid_type3_reply(fbl))
     if wire is Wire.LY:
         return ly_reply(pm, sub, is_ly1=(product.pid != _PID_LY))
-    if wire is Wire.BULK_ALI:
-        return ali_handshake_reply()
     return bulk_handshake_reply(pm, sub)  # BULK + synthesized fallback
 
 

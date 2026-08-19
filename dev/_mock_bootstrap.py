@@ -226,7 +226,7 @@ def variant_resolution(wire: Wire, pm: int, sub: int) -> tuple[int, int]:
 
     if wire is Wire.LED:
         return NO_PANEL
-    if wire in (Wire.BULK, Wire.BULK_ALI):
+    if wire is Wire.BULK:
         return bulk_profile(pm, sub, "catalog")[1].resolution
     return get_profile(pm_to_fbl(pm, sub), pm).resolution
 

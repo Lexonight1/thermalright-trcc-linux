@@ -214,7 +214,7 @@ class BaseDevice(Device[T]):
 
         Default drops the profile, which is what every wire that *derives* its
         geometry from the handshake wants.  A wire whose profile is a fixed
-        constant (AliLcd) or that caches something else (Led) overrides.
+        constant, or that caches something else (Led), overrides.
         """
         self._profile = None
 

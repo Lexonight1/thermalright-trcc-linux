@@ -51,12 +51,15 @@ ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
         vid=0x0416, pid=0x5406,
         vendor="Winbond",
         product="LCD Display",
-        # Elite Vision 360 ARGB (#212): USBLCDNew "Ali" variant — driven by its
-        # own C# worker (ThreadSendDeviceDataALi), a DISTINCT bulk protocol from
-        # GrandVision (write EP 0x02, F5-handshake, validate resp[0]∈{101,102},
-        # fixed 320x320 RGB565).  Not PM-table-driven — see adapters/device/ali_lcd.py.
-        wire=Wire.BULK_ALI, kind=Kind.LCD,
-        device_type=4, fbl=100,
+        # Elite Vision 360 ARGB (#212).  Driven by the C# worker
+        # ThreadSendDeviceDataALi, which speaks the F5 protocol — the SAME one
+        # HidLcd's type 3 speaks for 0418:5303/5304 (identical init packet,
+        # frame header and identity bytes; see adapters/device/_f5.py).  It had
+        # its own Wire and its own class until 2026-08-19; the only thing
+        # keeping them apart was a keepalive policy keyed on the wire, which is
+        # now the per-device volatile_frames below.
+        wire=Wire.HID, kind=Kind.LCD,
+        device_type=3, fbl=100,
         volatile_frames=True,
         native_resolution=(320, 320),
         orientations=(0, 90, 180, 270),

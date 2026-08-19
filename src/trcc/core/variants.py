@@ -183,8 +183,8 @@ _VARIANT_REGISTRY: dict[
     (0x87AD, 0x70DB): _BULK_VARIANTS,
     (0x87CD, 0x70DB): _BULK_VARIANTS,
     (0x0402, 0x3922): _BULK_VARIANTS,
-    # 0416:5406 (Elite Vision 360) is the Wire.BULK_ALI variant — fixed
-    # 320x320 RGB565, no PM table (see adapters/device/ali_lcd.py). (#212)
+    # 0416:5406 (Elite Vision 360) has no PM table — a fixed 320x320 RGB565
+    # canvas, handshaked as a HidLcd type-3 (F5) panel. (#212)
 }
 
 

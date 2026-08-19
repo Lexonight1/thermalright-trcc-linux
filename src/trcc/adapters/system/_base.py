@@ -148,7 +148,7 @@ class BaseOS(Platform):
 
         The same shape as ``_udev._WIRE_SUBSYSTEMS``: a per-``(OS, wire)`` fact
         stated as a table row rather than as control flow.  Only SCSI needs a
-        native path; HID / BULK / BULK_ALI / LY / LED all speak plain USB bulk
+        native path; HID / BULK / LY / LED all speak plain USB bulk
         via libusb, identically everywhere, so they need no rows at all.
 
         A new wire needing a new kernel interface is one row **here** — not a

@@ -1323,7 +1323,7 @@ class Platform(ABC):
         ``BaseOS`` provides that table plus the shared bulk path; an OS only
         supplies the bodies that genuinely differ.
 
-        Bulk (libusb) serves HID / BULK / BULK_ALI / LY / LED identically on
+        Bulk (libusb) serves HID / BULK / LY / LED identically on
         every OS.  SCSI is the one wire needing a native path per OS:
             Linux   → SG_IO ioctl on /dev/sgN
             Windows → DeviceIoControl on the raw volume

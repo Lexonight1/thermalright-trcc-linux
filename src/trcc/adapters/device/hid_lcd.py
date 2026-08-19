@@ -3,8 +3,11 @@
 Two firmware variants share one wire family:
     Type 2 ("H")   — VID 0x0416, PID 0x5302.  DA/DB/DC/DD magic +
                      512-byte init, 20-byte header + 512-aligned frame.
-    Type 3 ("ALi") — VID 0x0418, PID 0x5303/0x5304.  F5-prefixed 1040-
-                     byte init, 204816-byte fixed-size frames with ACK.
+    Type 3 (F5)    — 0418:5303, 0418:5304 and 0416:5406.  F5-prefixed
+                     1040-byte init, 204816-byte fixed-size frames with ACK.
+                     0416:5406 (Elite Vision 360, #212) reached this class on
+                     2026-08-19; it had a byte-identical implementation of the
+                     same protocol on a wire of its own.
 
 Type discriminator is `info.device_type` (2 or 3).  Everything else —
 handshake template, packet building, endpoint addresses — lives in one
@@ -19,6 +22,7 @@ import time
 
 from ...core.errors import (
     HandshakeError,
+    TransportError,
     UnsupportedOperationError,
 )
 from ...core.models import HandshakeResult, ProductInfo, Wire
@@ -39,9 +43,9 @@ _TYPE2_MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
 _TYPE2_INIT_SIZE = 512
 _TYPE2_RESPONSE_SIZE = 512
 
-# Type 3 speaks the F5 protocol — the same one ``AliLcd`` speaks.  Its bytes
-# live in ``_f5``, once, so a correction to either device cannot leave the other
-# behind; ``tests/test_f5_protocol.py`` asserts both paths still agree.
+# Type 3 speaks the F5 protocol; its bytes live in ``_f5``.  0416:5406 had a
+# second, byte-identical implementation on its own wire until 2026-08-19 —
+# see ``_f5`` for what that cost and ``tests/test_f5_protocol.py`` for the gate.
 
 _USB_BULK_ALIGNMENT = 512
 
@@ -99,6 +103,31 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
     def _handshake_detail(self, result: HandshakeResult) -> str:
         """Which firmware variant answered — the two speak different packets."""
         return f" (type {self.info.device_type})"
+
+    def _require_connected(self) -> None:
+        """Also demand a completed handshake — the panel ignores frames until
+        it has answered its identity exchange.
+
+        Carried over when ``AliLcd`` merged into this class (0416:5406), where
+        it was load-bearing rather than decorative.  ``connect()`` sets
+        ``_handshake`` only AFTER ``_do_handshake()`` returns, so a connect that
+        RAISED leaves the transport open with no handshake — the base guard
+        passes and frames go to a panel that never identified itself.
+
+        MEASURED across all six classes rather than assumed: ``BulkLcd``
+        guards the same window but on ``_profile``, not ``_handshake``;
+        ``ScsiLcd`` / ``LyLcd`` / ``Led`` do not guard it at all and will send
+        frames after a failed connect.  Three of six, in two different
+        spellings, is a leftover rather than a design — worth unifying on the
+        base once someone can exercise the LY and SCSI failure paths.
+        """
+        super()._require_connected()
+        if self._handshake is None:
+            log.error("HidLcd %s: send() called before a completed handshake",
+                      self.info.key)
+            raise TransportError(
+                f"HidLcd {self.info.key} not connected — call connect() first"
+            )
 
     def _do_handshake(self) -> HandshakeResult:
         """Perform the type-specific handshake, retrying a bad exchange.

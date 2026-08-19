@@ -72,7 +72,6 @@ _WIRE_SUBSYSTEMS: dict[Wire, tuple[str, ...]] = {
     Wire.HID:  ("hidraw", "usb"),
     Wire.LED:  ("hidraw", "usb"),
     Wire.BULK: ("usb",),
-    Wire.BULK_ALI: ("usb",),
     Wire.LY:   ("usb",),
 }
 
