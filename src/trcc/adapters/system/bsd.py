@@ -1,4 +1,4 @@
-"""BSDPlatform — concrete Platform for FreeBSD / OpenBSD.
+"""The BSDs — FreeBSD, OpenBSD and NetBSD, one class each.
 
 Like macOS, BSD lacks a kernel SCSI-passthrough interface the user can
 drive without the block-device claim.  We detach the `umass` driver and
@@ -40,22 +40,37 @@ class BSDPaths(BasePaths):
                  self._root, self._user_content)
 
 
-# tool → pkg one-liner (FreeBSD/OpenBSD/NetBSD; consumed by software_install_hint).
-_BSD_INSTALL_HINTS: dict[str, str] = {
+# tool → install one-liner, per BSD.  The COMMAND differs by variant and this
+# table used to claim "FreeBSD/OpenBSD/NetBSD" while spelling all three
+# `pkg install` — which exists only on FreeBSD, so OpenBSD and NetBSD users were
+# told to run a command their system does not have (the #207 failure mode).
+#
+# Package NAMES are unverified off FreeBSD; only the commands are researched.
+_FREEBSD_INSTALL_HINTS: dict[str, str] = {
     "ffmpeg": "pkg install ffmpeg",
     "7z": "pkg install p7zip",
     "python": "pkg install python311",
     "pynvml": "pip install nvidia-ml-py",
 }
 
+# OpenBSD and NetBSD both ship pkg_add; NetBSD additionally offers pkgin as the
+# recommended higher-level tool, which a reporter can confirm before we prefer it.
+_PKG_ADD_INSTALL_HINTS: dict[str, str] = {
+    "ffmpeg": "pkg_add ffmpeg",
+    "7z": "pkg_add p7zip",
+    "python": "pkg_add python",
+    "pynvml": "pip install nvidia-ml-py",
+}
 
-class BSDPlatform(BaseOS, key="bsd"):
-    """FreeBSD / OpenBSD implementation — BOT-only SCSI.
 
-    Same OS contract as every other platform; only the internals below differ.
+class BsdOS(BaseOS):
+    """What every BSD shares — BOT-only SCSI, XDG autostart, sysctl probes.
+
+    Intermediate base (no ``key=``): the BSDs differ in COMMAND, not data —
+    FreeBSD installs with ``pkg`` and permits via devd, OpenBSD installs with
+    ``pkg_add`` and permits via hotplugd(8) — so each registers its own child
+    below rather than one class branching on ``sys.platform`` four times.
     """
-
-    _INSTALL_HINTS = _BSD_INSTALL_HINTS
 
     # ── Per-OS internals (the add-a-new-OS interface) ────────────────────
 
@@ -74,14 +89,10 @@ class BSDPlatform(BaseOS, key="bsd"):
         return XdgDesktopAutostart()
 
     def _build_hotplug(self) -> HotplugMonitor:
-        """devd seqpacket socket on FreeBSD; noop on OpenBSD/NetBSD."""
-        import platform as _platform
-        if _platform.system() in ("FreeBSD", "DragonFly"):
-            from ._hotplug import FreeBSDHotplugMonitor
-            return FreeBSDHotplugMonitor()
+        """No hotplug source by default; FreeBSD overrides with devd."""
         from ._hotplug import NoopHotplugMonitor
         return NoopHotplugMonitor(
-            reason=f"hotplug listener not implemented for {_platform.system()}",
+            reason=f"no hotplug listener for {self.distro_name()}",
         )
 
     def _open_scsi(self, vid: int, pid: int,
@@ -129,10 +140,17 @@ class BSDPlatform(BaseOS, key="bsd"):
             ]
         return []
 
+    #: Set by each BSD below — the parent owns the method, the child the data.
+    _NAME: str = "BSD"
+    _PERMISSION_HINT: str = "grant your user access to the USB device node"
+
     def distro_name(self) -> str:
         log.info("distro_name: called")
-        import sys
-        return "FreeBSD" if "freebsd" in sys.platform else "BSD"
+        return self._NAME
+
+    def permission_denied_hint(self) -> str:
+        log.debug("permission_denied_hint: called")
+        return self._PERMISSION_HINT
 
     def no_devices_hint(self) -> str:
         log.debug("no_devices_hint: called")
@@ -151,17 +169,53 @@ class BSDPlatform(BaseOS, key="bsd"):
         this returns a single ``Total`` entry rather than per-DIMM
         slots (matching legacy behaviour).
         """
-        log.info("BSDPlatform.memory_info: probing")
+        log.info("%s.memory_info: probing", type(self).__name__)
         slots = _bsd_memory_info()
-        log.info("BSDPlatform.memory_info: %d slot(s)", len(slots))
+        log.info("%s.memory_info: %d slot(s)", type(self).__name__, len(slots))
         return slots
 
     def disk_info(self) -> list[dict[str, str]]:
         """Physical-disk probe via ``geom disk list`` (FreeBSD only)."""
-        log.info("BSDPlatform.disk_info: probing")
+        log.info("%s.disk_info: probing", type(self).__name__)
         disks = _bsd_disk_info()
-        log.info("BSDPlatform.disk_info: %d disk(s)", len(disks))
+        log.info("%s.disk_info: %d disk(s)", type(self).__name__, len(disks))
         return disks
+
+
+class FreeBsdOS(BsdOS, key="freebsd"):
+    """FreeBSD — ``pkg``, and devd for device permissions."""
+
+    _NAME = "FreeBSD"
+    _INSTALL_HINTS = _FREEBSD_INSTALL_HINTS
+    _PERMISSION_HINT = "run 'trcc system setup' to install devd rules"
+
+    def _build_hotplug(self) -> HotplugMonitor:
+        """The one BSD with a hotplug source — devd's seqpacket socket."""
+        log.info("FreeBsdOS._build_hotplug: devd socket")
+        from ._hotplug import FreeBSDHotplugMonitor
+        return FreeBSDHotplugMonitor()
+
+
+class OpenBsdOS(BsdOS, key="openbsd"):
+    """OpenBSD — ``pkg_add``, and hotplugd(8) for device permissions.
+
+    Was served FreeBSD's ``pkg install`` until 2026-08-19: a command OpenBSD
+    does not have.
+    """
+
+    _NAME = "OpenBSD"
+    _INSTALL_HINTS = _PKG_ADD_INSTALL_HINTS
+    _PERMISSION_HINT = ("grant your user the device node: chgrp/chmod "
+                        "/dev/ugen* (hotplugd(8) can do it on attach)")
+
+
+class NetBsdOS(BsdOS, key="netbsd"):
+    """NetBSD — ``pkg_add`` ships by default; ``pkgin`` is the recommended
+    frontend, which wants a reporter rather than a guess."""
+
+    _NAME = "NetBSD"
+    _INSTALL_HINTS = _PKG_ADD_INSTALL_HINTS
+    _PERMISSION_HINT = "grant your user the device node: chgrp/chmod /dev/ugen*"
 
 
 # =========================================================================

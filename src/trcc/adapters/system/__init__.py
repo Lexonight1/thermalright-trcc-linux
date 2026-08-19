@@ -33,12 +33,15 @@ def current_platform() -> Platform:
     """Construct a fresh :class:`Platform` for the running OS.
 
     The only part of OS dispatch that is not a plain table lookup: the key has
-    to be *derived* (BSD variants — ``freebsd14``, ``openbsd7`` — all normalise
-    to the shared ``"bsd"`` registration), and the result is *instantiated*
+    to be *derived* (``freebsd14`` -> ``freebsd``, ``openbsd7`` -> ``openbsd``:
+    each BSD registers its own class, because they differ in command — ``pkg``
+    vs ``pkg_add`` — not merely in data), and the result is *instantiated*
     rather than returned as a class.  An unknown platform falls back to Linux
     with a warning via the registry's ``FallBackTo`` policy.
     """
-    key = "bsd" if "bsd" in sys.platform else sys.platform
+    # sys.platform carries the major on BSD ("freebsd14", "openbsd7"), so strip
+    # it to reach the family key.  Only for BSD — "win32" must not become "win".
+    key = sys.platform.rstrip("0123456789") if "bsd" in sys.platform else sys.platform
     platform_cls = PLATFORMS[key]
     log.info("current_platform: %s → building %s", key, platform_cls.__name__)
     return platform_cls()

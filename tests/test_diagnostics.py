@@ -211,25 +211,31 @@ def test_python_version_check_passes_on_311_plus(fake_platform) -> None:
 
 def test_each_os_platform_answers_its_own_install_hint() -> None:
     """The cutover Linux-hardcoded these; now each OS answers via the ABC."""
-    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
 
     assert "winget" in WindowsPlatform().software_install_hint("ffmpeg")
     assert "brew" in MacOSPlatform().software_install_hint("ffmpeg")
-    assert "pkg install" in BSDPlatform().software_install_hint("ffmpeg")
+    # The BSDs differ in COMMAND, not data: FreeBSD has pkg, OpenBSD and
+    # NetBSD have pkg_add.  One class served all three "pkg install" until
+    # 2026-08-19, telling OpenBSD users to run something they do not have.
+    assert "pkg install" in FreeBsdOS().software_install_hint("ffmpeg")
+    assert "pkg_add" in OpenBsdOS().software_install_hint("ffmpeg")
+    assert "pkg_add" in NetBsdOS().software_install_hint("ffmpeg")
+    assert "pkg install" not in OpenBsdOS().software_install_hint("ffmpeg")
     # Unknown tool falls back to the generic ABC default, never crashes.
     assert "PATH" in WindowsPlatform().software_install_hint("nonesuch")
 
 
 def test_each_os_platform_answers_its_own_no_devices_hint() -> None:
-    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.bsd import FreeBsdOS
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
 
     assert "WinUSB" in WindowsPlatform().no_devices_hint()
     assert "macOS" in MacOSPlatform().no_devices_hint()
-    assert "usbconfig" in BSDPlatform().no_devices_hint()
+    assert "usbconfig" in FreeBsdOS().no_devices_hint()
     # No Linux-isms (udev) leaking onto the non-Linux platforms.
     assert "udev" not in WindowsPlatform().no_devices_hint()
     assert "udev" not in MacOSPlatform().no_devices_hint()
@@ -237,7 +243,7 @@ def test_each_os_platform_answers_its_own_no_devices_hint() -> None:
 
 def test_each_os_platform_answers_its_own_permission_denied_hint() -> None:
     """EACCES USB hint moved off a core sys.platform sniff onto the Platform port."""
-    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.bsd import FreeBsdOS, OpenBsdOS
     from trcc.adapters.system.linux import LinuxPlatform
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
@@ -246,7 +252,8 @@ def test_each_os_platform_answers_its_own_permission_denied_hint() -> None:
     assert "WinUSB" in WindowsPlatform().permission_denied_hint()
     macos_hint = MacOSPlatform().permission_denied_hint()
     assert "sudo" in macos_hint or "Privacy" in macos_hint
-    assert BSDPlatform().permission_denied_hint()           # non-empty
+    assert "devd" in FreeBsdOS().permission_denied_hint()
+    assert "ugen" in OpenBsdOS().permission_denied_hint()
     # No Linux-isms leaking onto the non-Linux platforms.
     assert "udev" not in WindowsPlatform().permission_denied_hint()
     assert "udev" not in MacOSPlatform().permission_denied_hint()

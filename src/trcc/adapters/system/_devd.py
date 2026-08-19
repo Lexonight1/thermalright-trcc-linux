@@ -2,7 +2,7 @@
 
 FreeBSD analog of the Linux udev installer at ``_udev.py``.  Pure
 string generation + atomic file I/O, called from
-``BSDPlatform.setup()`` so first-run BSD users get non-root access to
+``FreeBsdOS.setup()`` so first-run BSD users get non-root access to
 the cooler over USB.
 
 OpenBSD doesn't ship devd — it uses /dev/MAKEDEV or static permissions

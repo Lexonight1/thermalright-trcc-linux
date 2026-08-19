@@ -36,10 +36,10 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 5 | 0 | 10 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`BaseOS`](#baseos) | 8 | 8 | 4 |
+| [`BaseOS`](#baseos) | 8 | 8 | 7 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`Platform`](#platform) | 10 | 9 | 4 |
+| [`Platform`](#platform) | 10 | 9 | 7 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
 
 ---
@@ -497,7 +497,7 @@ setup(interactive: 'bool' = True) -> int
 
 **You inherit (8):** `autostart` · `hotplug` · `install_method` · `open_transport` · `paths` · `scan_devices` · `sensors` · `software_install_hint`
 
-**Implementations (4):** `BSDPlatform` · `LinuxPlatform` · `MacOSPlatform` · `WindowsPlatform`
+**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxPlatform` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
 ## SensorEnumerator
 
@@ -577,7 +577,7 @@ setup(interactive: 'bool' = True) -> int
 
 **You inherit (9):** `configure_stdout` · `disk_info` · `memory_info` · `minimize_on_close` · `no_devices_hint` · `permission_denied_hint` · `software_install_hint` · `usb_power_state` · `worker_thread_context`
 
-**Implementations (4):** `BSDPlatform` · `LinuxPlatform` · `MacOSPlatform` · `WindowsPlatform`
+**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxPlatform` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
 ## Renderer
 

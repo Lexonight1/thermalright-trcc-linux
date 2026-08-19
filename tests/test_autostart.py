@@ -101,8 +101,9 @@ def test_refresh_noops_when_file_absent(tmp_home: Path) -> None:
 
 def test_linux_and_bsd_platforms_share_the_xdg_manager(tmp_home: Path) -> None:
     """Both Linux and BSD return the shared XDG autostart (BSD was Noop)."""
-    from trcc.adapters.system.bsd import BSDPlatform
+    from trcc.adapters.system.bsd import FreeBsdOS, OpenBsdOS
     from trcc.adapters.system.linux import LinuxPlatform
 
     assert isinstance(LinuxPlatform().autostart(), XdgDesktopAutostart)
-    assert isinstance(BSDPlatform().autostart(), XdgDesktopAutostart)
+    assert isinstance(FreeBsdOS().autostart(), XdgDesktopAutostart)
+    assert isinstance(OpenBsdOS().autostart(), XdgDesktopAutostart)
