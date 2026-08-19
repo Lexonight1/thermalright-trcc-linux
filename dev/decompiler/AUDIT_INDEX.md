@@ -120,12 +120,32 @@ decompile's own `README.md`, outside this repository.
 
 Measured by `audit_coverage.py` against the 2.1.6 control-flow map:
 
-**787 / 1,033 behaviour-bearing methods cited = 76%.**
+**988 / 1,033 behaviour-bearing methods cited = 95%** (988/1,205 = 81% of all
+methods, excluding 172 designer/boilerplate). Re-measured 2026-08-19; this
+section read 76% until then, which was itself a stale number.
 
-It read 54% before the re-anchor. That rise is **not new understanding** — it is
-the same understanding, correctly addressed: citations that had been pointing
-into the wrong release now land on the methods their prose describes. Real gains
-come only from re-auditing the worklist above.
+**A false claim was propping that number up.** Retiring the falsified G1 row
+dropped the count by one and exposed `FormCZTV::StartPipeline` — 7 branches,
+now correctly reported DARK by `audit_coverage.py --dark FormCZTV.cs`. Its only
+"coverage" had ever been the line citation attached to a claim that was wrong
+about the code it pointed at. Coverage falling when a falsehood is deleted is
+the meter working. Do not restore the digit by re-citing a method nobody has
+described — and note the meter reads *any* citation in these files, including
+one written incidentally in a sentence like this one, so quote line numbers only
+where you mean to assert coverage.
+
+**Read that 95% precisely: it counts citations that RESOLVE, not prose that is
+TRUE.** It was 54% before the re-anchor, and the rise bought no new
+understanding — the same sentences now point at the methods they describe. The
+docs remain **20-of-21 `origin=2.0.3.0`** (only `BEHAVIOR_FORMLCD.md` was read
+from 2.1.6), so their reasoning is still the old release's wherever a method
+changed. Real gains come only from re-auditing the worklist above.
+
+The cost of conflating the two is measured, not hypothetical: the gap list this
+index used to carry was 4-of-8 wrong when checked against the tree, while
+sitting under a coverage figure that looked like near-total knowledge. **Treat
+these docs as an index that tells you where to look; the decompile tells you
+what it says.**
 
 | Doc | Subsystem | Files (lines) | Verified |
 |---|---|---|---|
@@ -147,17 +167,20 @@ come only from re-auditing the worklist above.
 
 ## Gap list — our code vs the C# (the consolidation work plan)
 
-From `AUDIT_LCD_PIPELINE.md` (device render):
-- **G1** 360×360 → base 90 (C# default branch), we send base 0. xfail test landed. No reporter.
-- **G2** Mjolnir 320×240 letterboxes at 90°; C# draws native-bg-or-black + **upright** text (post_rotate path is WRONG — it rotates text).
-- **G3** fbl 51/53 RGB565 byte order — C# SPIMode=2 → big-endian; our profile little-endian. VERIFY, don't flip blind.
-- **G4** round-480 Hei/Bu edge fill unimplemented (cosmetic).
-- **G5** widescreen animated `.zt` themes squeezed into 320×240 (no widescreen branch in prep) — confirmed by 2 agents.
+**The list lives in [`AUDIT_LCD_PIPELINE.md`](AUDIT_LCD_PIPELINE.md#gap-list--where-our-code-diverges-from-the-c-for-the-consolidation), once.**
+It used to be copied here too, and the copy is what rotted: it still described
+G1 as open after 2.1.6 falsified it, and still called G6/G7/G8 unverified
+candidates after they were checked. A gap list maintained in two files is the
+same defect this corpus exists to catch.
 
-New from this pass (candidates — verify before acting):
-- **G6** GPU-power silent fallback to CPU power — does our sensor port replicate it, or return 0?
-- **G7** LED global `*0.4f` brightness cap — do we apply it? (color mismatch if not.)
-- **G8** per-resolution crop aspect thresholds — are ours the verbatim C# literals?
+Re-verified against real 2.1.6 + current `src/` on 2026-08-19 — of the eight
+rows, **3 REAL** (G3 byte order, G6 GPU→CPU power, G8 crop thresholds), **1
+OPEN cosmetic** (G4), **1 divergent by design** (G5), **2 CLOSED** (G2, G7),
+**1 FALSIFIED** (G1). Oracle-verified, none glass-verified.
+
+**G3 is gated by nothing** — `tests/test_csharp_conformance.py` is bulk-only and
+requires a wire's C# call site be pinned before it can be covered; FBL 51/49 sit
+on wires that are unpinned. That is the prerequisite, not the fix.
 
 ## NOT covered (honest)
 - `Resources.cs` (7,420, generated), and small UI controls: `UCXiTongXianShiColor`,

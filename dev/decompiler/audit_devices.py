@@ -252,11 +252,16 @@ def exhaustive_bulk() -> int:
     """Sweep the ENTIRE bulk PM space against the C# ``FormCZTVInit(72, 2, …)``.
 
     The bulk path is the one wire whose resolution is 100% ``FormCZTVInit``
-    (TRCC.decompiled.cs:742 passes the PM straight in), so it is fully
-    bench-decidable.  Zero divergence over every PM means the bulk device axis
-    is a closed, C#-faithful wall — every bulk panel the C# supports resolves
-    correctly in our port before anyone plugs one in.  Non-zero exit = a PM
-    drifted from the C# (e.g. a poll-byte value re-added to ``_BULK_KNOWN_PMS``).
+    (``FormCZTV.cs:858``, reached from ``Form1.cs:1071``, which passes the PM
+    straight in), so it is fully bench-decidable.
+
+    It read ZERO on 2026-07-11 — against the 2.0.3 decompile, five weeks before
+    the real 2.1.6 was extracted.  Against 2.1.6 it reads **11**: the PMs
+    2.1.6's ladder added (13, 14, 15, 16, 17, 18, 50, 63, 66, 68, 69) that
+    ``_BULK_KNOWN_PMS`` does not list.  That is a known, latent divergence
+    owned by ``BULK_PM_GAP`` in ``tests/test_csharp_conformance.py`` — this
+    tool measures it, it does not adjudicate it.  Read a CHANGE in the count as
+    the signal, not the count itself.
     """
     cases = [(pm, 0) for pm in range(256)] + [(1, 48), (1, 49)]
     diverge = [

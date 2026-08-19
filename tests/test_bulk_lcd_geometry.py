@@ -61,12 +61,20 @@ def _make_bulk(transport: FakeBulkTransport, *,
     (10, (960, 540), 224),   # pm 10 → is960x540
     (12, (800, 480), 224),   # pm 12 → is800x480
     (65, (1920, 462), 192),  # pm 65 → is1920x462
-    # PM=50 — a poll-byte "SPI mode 2" value the GrandVision 360 (87ad:70db)
-    # reports.  FormCZTVInit has NO case 50 → stays 480×480.  Previously the
-    # accreted _BULK_KNOWN_PMS mis-mapped it to 320×240. (#176)
+    # ── KNOWN LATENT DIVERGENCE from 2.1.6 — our behaviour, NOT C# parity ──
+    # These three rows pin what our code DOES today.  TRCC 2.1.6 maps all of
+    # them in the FormCZTVInit ladder (FormCZTV.cs:858) — pm 50 → SPIMode=2 +
+    # mode 3 + fbl 50, pm 13 → is960x320, pm 63 → is1600x720 — and we keep
+    # them on the 480x480 base because _BULK_KNOWN_PMS is short.
+    #
+    # The reason lives in exactly ONE place: BULK_PM_GAP in
+    # tests/test_csharp_conformance.py, which measures the whole
+    # 258-fingerprint sweep against the oracle and ratchets it.  Do not
+    # restate it here.  The comment that used to sit on these rows did, and
+    # got it wrong — it asserted "FormCZTVInit has NO case 50", read off the
+    # 2.0.3 decompile, and told the next maintainer to preserve the gap as
+    # though it were parity.
     (50, (480, 480), 72),
-    # 224/192-by-PM poll-byte values (HID/LY resolve these via pm_to_fbl, but
-    # FormCZTVInit never maps them on the bulk path) → 480×480. (#176)
     (13, (480, 480), 72),
     (63, (480, 480), 72),
     # PM unknown to the bulk FBL table → C# FormCZTVInit (myDeviceMode==2)

@@ -913,9 +913,11 @@ class Renderer(ABC):
     def apply_brightness(self, surface: Any, percent: int) -> Any: ...
 
     # ── Text ──────────────────────────────────────────────────────────
-    # NOTE: (x, y) is the text CENTER, not top-left.  Matches the C#
-    # reference (``TRCC.decompiled.cs:52829``) where every overlay
-    # element is drawn into ``RectangleF(myX - w/2, myY - h/2, w, h)``.
+    # NOTE: (x, y) is the text CENTER, not top-left.  Matches TRCC 2.1.6
+    # (``UCScreenImage.cs:1137`` and ``:1544``), where every overlay element
+    # is drawn into ``RectangleF(myX - w/2, myY - h/2, w, h)``.  Re-verified
+    # against 2.1.6 on 2026-08-19; the previous citation pointed at the
+    # wiped single-file 2.0.3 extraction and could not be checked.
     # DC files store element coordinates as centers; the renderer is
     # the only layer that knows font metrics, so the center-to-baseline
     # math lives here, not in OverlayService.

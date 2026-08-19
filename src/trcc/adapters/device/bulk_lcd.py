@@ -55,18 +55,27 @@ _RGB565_PMS: set[int] = {32}
 
 # Bulk base FBL is 72 (480x480, hardcoded by USBLCDNew.exe).  The C# resolves
 # every bulk panel through ``FormCZTVInit(fbl=72, m=2, pm, pmSub)``
-# (TRCC.decompiled.cs:742) — base 480x480, overridden ONLY for the PM values
-# its ``switch(pm)`` handles.  This set is exactly those values:
-#     case 5 → 50 (320x240)   case 7 → 64 (640x480)
-#     m==2 default: pm==32 → 100 (320x320);  pm==64 → 114 (1600x720);
-#     pm==65 → 192 (1920x462);  pm∈{9,11} → 224 (854x480);
-#     pm==10 → 224 (960x540);   pm==12 → 224 (800x480)
+# (``FormCZTV.cs:858``, reached from the one proven call site ``Form1.cs:1071``)
+# — base 480x480, overridden for the PM values its ladder handles.  This set is
+# NINE of them:
+#     pm 5 → 50 (320x240)     pm 7 → 64 (640x480)
+#     pm 32 → 100 (320x320)   pm 64 → 114 (1600x720)
+#     pm 65 → 192 (1920x462)  pm∈{9,11} → 224 (854x480)
+#     pm 10 → 224 (960x540)   pm 12 → 224 (800x480)
 # (PM=1 with SUB 48/49 is handled by the separate SUB guard in ``connect()``.)
-# EVERY other PM stays 480x480 — including PM=50 (a poll-byte "SPI mode 2"
-# value the GrandVision 360 reports, #176) and the 224/192-by-PM poll-byte
-# values (13-17, 63, 66, 68, 69) that HID/LY resolve via ``pm_to_fbl`` but
-# ``FormCZTVInit`` never maps on the bulk path.  Keep this set == FormCZTVInit's
-# branches; do not re-add poll-byte PMs, or bulk panels misread again. (#176/#169)
+#
+# TRCC 2.1.6's ladder handles TWENTY.  The eleven we do not map — 13, 14, 15,
+# 16, 17, 18, 50, 63, 66, 68, 69 — stay on the 480x480 base, and each one is a
+# KNOWN, MEASURED divergence owned by ``BULK_PM_GAP`` in
+# ``tests/test_csharp_conformance.py``, which sweeps all 258 fingerprints
+# against the oracle and ratchets the count.  Latent, not live: every bulk
+# fingerprint observed across all issues is PM 4, 5, 7, 11, 32 or 64.
+#
+# Widening this set is a device-identification behaviour change and belongs
+# with that gate.  What must not happen again is a justification invented
+# locally: this comment used to claim ``FormCZTVInit`` "never maps" those PMs
+# on the bulk path and told maintainers to keep it that way.  That was read off
+# the 2.0.3 decompile, and 2.1.6 falsifies it. (#176/#169)
 _BULK_BASE_FBL = 72
 _BULK_KNOWN_PMS: frozenset[int] = frozenset({5, 7, 9, 10, 11, 12, 32, 64, 65})
 
