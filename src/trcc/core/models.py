@@ -25,11 +25,16 @@ class Wire(str, Enum):
     LED = "led"
 
 
-# Wires whose firmware does NOT latch a frame — it reverts to the built-in
-# Thermalright logo after ~2-3 s unless frames keep arriving.  The per-device
-# send worker keepalive-resends the last frame for these.  SCSI/HID latch;
-# LED has no screen.  (Legacy ``run_static_loop`` covered exactly Bulk + LY.)
-VOLATILE_FRAME_WIRES: frozenset[Wire] = frozenset({Wire.BULK, Wire.BULK_ALI, Wire.LY})
+# Whether a panel's firmware latches a frame is a property of the PANEL, so it
+# is declared per device on ``ProductInfo.volatile_frames`` — not here.
+#
+# It lived here as a ``VOLATILE_FRAME_WIRES`` set keyed on ``Wire`` until
+# 2026-08-19.  That read as though the wire caused the behaviour, and it made
+# the wire load-bearing for something it does not describe: two devices sharing
+# a protocol could not share a class if their firmware differed, and moving a
+# device between wires silently changed whether we kept its screen alive.
+# ``Device.needs_keepalive`` already OR-ed a per-firmware quirk alongside it,
+# so half the fact was per-device already.
 
 
 class Kind(str, Enum):
@@ -285,6 +290,13 @@ class ProductInfo:
     native_resolution: tuple[int, int] = (0, 0)
     orientations: tuple[int, ...] = (0,)
     led_style: LedStyle | None = None
+    # True when the firmware does NOT latch a frame — it reverts to the built-in
+    # Thermalright logo after ~2-3 s unless frames keep arriving, so the send
+    # worker keepalive-resends the last frame.  A panel fact, declared per
+    # device: SCSI and HID panels latch, LED has no screen, and the bulk / LY
+    # families do not.  Read by ``Device.needs_keepalive``, which OR-s it with
+    # the per-firmware ``keepalive_stream`` quirk.
+    volatile_frames: bool = False
     model: str = "CZTV"                 # GUI sidebar button-image lookup
     button_image: str = "A1CZTV"        # asset base name (no .png)
     panel_cutout: PanelCutout | None = None  # set post-handshake

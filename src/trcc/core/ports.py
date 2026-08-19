@@ -226,11 +226,15 @@ class Device(ABC, Generic[T]):
     @property
     def needs_keepalive(self) -> bool:
         """True if this device's firmware drops frames and needs a periodic
-        resend (Bulk/LY, or a per-firmware ``keepalive_stream`` quirk).  Drives
-        the send worker's keepalive."""
-        from .models import VOLATILE_FRAME_WIRES
-        return (self.info.wire in VOLATILE_FRAME_WIRES
-                or self._quirks.keepalive_stream)
+        resend.  Drives the send worker's keepalive.
+
+        Two per-device sources, never the wire: the panel's own
+        ``volatile_frames`` (registry) and the per-firmware ``keepalive_stream``
+        quirk (resolved from ``bcdDevice``).  The first used to be a set of
+        Wires, which made a protocol choice decide whether we kept a screen
+        alive — see ``ProductInfo.volatile_frames``.
+        """
+        return (self.info.volatile_frames or self._quirks.keepalive_stream)
 
     @property
     def profile(self) -> DeviceProfile | None:

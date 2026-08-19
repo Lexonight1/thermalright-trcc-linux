@@ -19,9 +19,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
-| [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 5 |
-| [`BaseDevice`](#basedevice) | 3 | 4 | 6 |
-| [`Device`](#device) | 3 | 12 | 6 |
+| [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
+| [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
+| [`Device`](#device) | 3 | 12 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
@@ -186,7 +186,7 @@ _prepare_frame(payload: 'Any') -> bytes
 _write_frame(frame: 'bytes') -> bool
 ```
 
-**Implementations (5):** `AliLcd` · `BulkLcd` · `HidLcd` · `Led` · `LyLcd`
+**Implementations (4):** `BulkLcd` · `HidLcd` · `Led` · `LyLcd`
 
 ## BaseDevice
 
@@ -204,7 +204,7 @@ _write_frame(frame: 'bytes') -> bool
 
 **You inherit (4):** `connect` · `disconnect` · `profile` · `send`
 
-**Implementations (6):** `AliLcd` · `BulkLcd` · `HidLcd` · `Led` · `LyLcd` · `ScsiLcd`
+**Implementations (5):** `BulkLcd` · `HidLcd` · `Led` · `LyLcd` · `ScsiLcd`
 
 ## Device
 
@@ -230,7 +230,7 @@ send(payload: 'Any') -> bool
 
 **You inherit (12):** `can_boot_animate` · `handshake` · `is_connected` · `is_led` · `key` · `led_handshake` · `needs_keepalive` · `profile` · `quirks` · `send_boot_animation` · `set_permission_hint` · `set_quirks`
 
-**Implementations (6):** `AliLcd` · `BulkLcd` · `HidLcd` · `Led` · `LyLcd` · `ScsiLcd`
+**Implementations (5):** `BulkLcd` · `HidLcd` · `Led` · `LyLcd` · `ScsiLcd`
 
 ## DiskSource
 
