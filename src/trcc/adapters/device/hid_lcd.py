@@ -24,6 +24,7 @@ from ...core.errors import (
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
+from . import _f5
 from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice
 
 log = logging.getLogger(__name__)
@@ -38,13 +39,9 @@ _TYPE2_MAGIC = bytes([0xDA, 0xDB, 0xDC, 0xDD])
 _TYPE2_INIT_SIZE = 512
 _TYPE2_RESPONSE_SIZE = 512
 
-# Type 3 command / frame prefixes and sizes
-_TYPE3_CMD_PREFIX = bytes([0xF5, 0x00, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8])
-_TYPE3_FRAME_PREFIX = bytes([0xF5, 0x01, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8])
-_TYPE3_INIT_SIZE = 1040
-_TYPE3_RESPONSE_SIZE = 1024
-_TYPE3_DATA_SIZE = 204800   # 320*320*2
-_TYPE3_ACK_SIZE = 16
+# Type 3 speaks the F5 protocol — the same one ``AliLcd`` speaks.  Its bytes
+# live in ``_f5``, once, so a correction to either device cannot leave the other
+# behind; ``tests/test_f5_protocol.py`` asserts both paths still agree.
 
 _USB_BULK_ALIGNMENT = 512
 
@@ -254,7 +251,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             log.warning("HidLcd %s: write returned 0 transferred", self.info.key)
             return False
         ack = self._transport.read(
-            self._EP_READ, _TYPE3_ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
+            self._EP_READ, _f5.ACK_SIZE, _DEFAULT_FRAME_TIMEOUT_MS,
         )
         if not ack:
             log.warning("HidLcd %s: Type 3 ACK read returned empty", self.info.key)
@@ -353,8 +350,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
     def _build_init_packet_type3(self) -> bytes:
         """Type 3 1040-byte handshake: F5 prefix + 16-byte header + 1024 zeros."""
-        prefix = _TYPE3_CMD_PREFIX + b'\x00\x00\x00\x00' + b'\x00\x04\x00\x00'
-        return prefix + b'\x00' * 1024
+        return _f5.init_packet()
 
     def _validate_response_type3(self, resp: bytes) -> bool:
         """Type 3: resp[0] ∈ {0x65, 0x66} and len >= 14."""
@@ -380,11 +376,11 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
 
     def _build_frame_type3(self, image_data: bytes) -> bytes:
         """Type 3 frame: 16-byte prefix + exactly 204800 bytes data."""
-        prefix = _TYPE3_FRAME_PREFIX + b'\x00\x00\x00\x00' + struct.pack('<I', _TYPE3_DATA_SIZE)
-        if len(image_data) < _TYPE3_DATA_SIZE:
-            payload = image_data + b'\x00' * (_TYPE3_DATA_SIZE - len(image_data))
+        prefix = _f5.frame_header()
+        if len(image_data) < _f5.DATA_SIZE:
+            payload = image_data + b'\x00' * (_f5.DATA_SIZE - len(image_data))
         else:
-            payload = image_data[:_TYPE3_DATA_SIZE]
+            payload = image_data[:_f5.DATA_SIZE]
         return prefix + payload
 
     # ── Type-dispatching helpers ──────────────────────────────────────
@@ -397,7 +393,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
     def _response_size(self) -> int:
         return (_TYPE2_RESPONSE_SIZE
                 if self.info.device_type == 2
-                else _TYPE3_RESPONSE_SIZE)
+                else _f5.RESPONSE_SIZE)
 
     def _validate_response(self, resp: bytes) -> bool:
         return (self._validate_response_type2(resp)

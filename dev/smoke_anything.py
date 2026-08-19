@@ -83,7 +83,8 @@ from trcc.core.registry import ALL_DEVICES
 # Synthetic-handshake magics + sizes referenced (never copied) from the
 # device modules, so a magic-byte change there can't silently rot this
 # harness.
-from trcc.adapters.device.hid_lcd import _TYPE2_MAGIC, _TYPE3_ACK_SIZE
+from trcc.adapters.device import _f5
+from trcc.adapters.device.hid_lcd import _TYPE2_MAGIC
 from trcc.adapters.device.led import (
     _HID_REPORT_SIZE as _LED_REPORT_SIZE,
     _MAGIC as _LED_MAGIC,
@@ -228,7 +229,7 @@ def _hid_type3_ack() -> bytes:
     """HID Type 3 per-frame ACK — ``send()`` reads this off EP_READ and
     treats any non-empty response as success.  Real hardware returns it;
     the fake transport must too, or the send path can't be exercised."""
-    return b"\x01" * _TYPE3_ACK_SIZE
+    return b"\x01" * _f5.ACK_SIZE
 
 
 # ─────────────────────────────────────────────────────────────────────────────

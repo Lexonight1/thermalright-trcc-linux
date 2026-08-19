@@ -10,13 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from trcc.adapters.device import DEVICES
-from trcc.adapters.device.ali_lcd import (
-    _FRAME_BYTES,
-    _FRAME_HEADER,
-    _HANDSHAKE_REQUEST,
-    AliLcd,
-)
+from trcc.adapters.device import DEVICES, _f5
+from trcc.adapters.device.ali_lcd import AliLcd
 from trcc.core.errors import HandshakeError, TransportError
 from trcc.core.models import Kind, ProductInfo, Wire
 
@@ -48,12 +43,12 @@ def _make_ali(transport: FakeBulkTransport) -> AliLcd:
 
 def test_handshake_request_bytes():
     # 16-byte command (cs:571-577) + 1024-byte zero pad.
-    assert _HANDSHAKE_REQUEST[:16] == bytes([
+    assert _f5.init_packet()[:16] == bytes([
         0xF5, 0x00, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
     ])
-    assert len(_HANDSHAKE_REQUEST) == 16 + 1024
-    assert _HANDSHAKE_REQUEST[16:] == bytes(1024)
+    assert len(_f5.init_packet()) == 16 + 1024
+    assert _f5.init_packet()[16:] == bytes(1024)
 
 
 def test_frame_header_bytes():
@@ -62,8 +57,8 @@ def test_frame_header_bytes():
         0xF5, 0x01, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x03, 0x00,
     ])
-    assert expected_header == _FRAME_HEADER
-    assert int.from_bytes(_FRAME_HEADER[12:16], "little") == _FRAME_BYTES == 204800
+    assert expected_header == _f5.frame_header()
+    assert int.from_bytes(_f5.frame_header()[12:16], "little") == _f5.DATA_SIZE == 204800
 
 
 def test_endpoints():
@@ -96,7 +91,7 @@ def test_connect_accepts_valid_identity(identity):
     assert dev.is_connected
     # Handshake request went out on the write endpoint.
     assert transport.writes[0][0] == AliLcd._EP_WRITE
-    assert transport.writes[0][1] == _HANDSHAKE_REQUEST
+    assert transport.writes[0][1] == _f5.init_packet()
 
 
 @pytest.mark.parametrize("bad", [0, 1, 100, 103, 200])
@@ -140,17 +135,17 @@ def test_send_writes_header_plus_payload_and_reads_ack():
     dev = _make_ali(transport)
     dev.connect()
 
-    payload = bytes(_FRAME_BYTES)          # 204800-B RGB565 canvas
+    payload = bytes(_f5.DATA_SIZE)          # 204800-B RGB565 canvas
     assert dev.send(payload) is True
 
     # Last write is the frame: header + payload, on the write endpoint.
     ep, data = transport.writes[-1]
     assert ep == AliLcd._EP_WRITE
-    assert data == _FRAME_HEADER + payload
-    assert len(data) == 16 + _FRAME_BYTES
+    assert data == _f5.frame_header() + payload
+    assert len(data) == 16 + _f5.DATA_SIZE
 
 
 def test_send_before_connect_raises():
     dev = _make_ali(FakeBulkTransport())
     with pytest.raises(TransportError):
-        dev.send(bytes(_FRAME_BYTES))
+        dev.send(bytes(_f5.DATA_SIZE))

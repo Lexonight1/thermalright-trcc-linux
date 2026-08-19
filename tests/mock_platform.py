@@ -29,11 +29,10 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from trcc.adapters.device import _f5
 from trcc.adapters.device.hid_lcd import (
     _TYPE2_MAGIC,
     _TYPE2_RESPONSE_SIZE,
-    _TYPE3_ACK_SIZE,
-    _TYPE3_RESPONSE_SIZE,
 )
 from trcc.adapters.device.led import _HID_REPORT_SIZE, _MAGIC
 from trcc.adapters.device.ly_lcd import _PID_LY
@@ -105,7 +104,7 @@ def hid_type3_reply(fbl: int) -> bytes:
     Mirrors ``HidLcd._validate_response_type3`` (``[0] ∈ {0x65, 0x66}``,
     i.e. FBL 100/101) + ``_parse_response_type3`` (``fbl = [0] - 1``).
     """
-    resp = bytearray(_TYPE3_RESPONSE_SIZE)
+    resp = bytearray(_f5.RESPONSE_SIZE)
     resp[0] = (fbl + 1) & 0xFF
     return bytes(resp)
 
@@ -133,15 +132,19 @@ def ly_reply(pm: int, sub: int = 0, *, is_ly1: bool = False,
     return bytes(resp)
 
 
-def ali_handshake_reply(*, size: int = 1024) -> bytes:
-    """USBLCDNew "Ali" reply — identity at ``resp[0]`` (101 or 102).
+def ali_handshake_reply(*, size: int = _f5.RESPONSE_SIZE) -> bytes:
+    """F5-protocol reply — identity at ``resp[0]``, shared by AliLcd and HID type 3.
 
-    Mirrors ``AliLcd.connect``: the validator accepts ``resp[0] ∈ {101, 102}``
-    and derives ``model_id = resp[0] - 1``.  No PM/SUB — the Ali device has a
-    fixed 320x320 RGB565 canvas.
+    The identity bytes and buffer size come from ``_f5``, not from a copy: this
+    docstring used to restate the rule ("accepts ``resp[0] ∈ {101, 102}``") and
+    hardcode ``size=1024``, which is how a harness drifts from the code it is
+    meant to stand in for — it has produced a false bug report here before.
+    ``_f5.VALID_IDENTITY[0]`` is 0x65 (101) → ``model_id = 100``.
+
+    No PM/SUB — this device has a fixed 320x320 RGB565 canvas.
     """
     resp = bytearray(size)
-    resp[0] = 101
+    resp[0] = _f5.VALID_IDENTITY[0]
     return bytes(resp)
 
 
@@ -342,15 +345,15 @@ class _AckingBulkTransport(FakeBulkTransport):
     send failure.  The base fake only scripts the one handshake reply, so the
     post-handshake ACK read would come back empty and every frame would
     "fail" — a simulation gap, not a device bug.  We supply a canned non-empty
-    ACK for reads of exactly ``_TYPE3_ACK_SIZE`` once the script is exhausted;
+    ACK for reads of exactly ``_f5.ACK_SIZE`` once the script is exhausted;
     the content isn't validated (only ``len(ack) > 0``), and every other read
     size still falls through to the base ``b""`` behaviour, so no other wire's
     handshake is perturbed.
     """
 
     def read(self, endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
-        if not self.read_script and length == _TYPE3_ACK_SIZE:
-            return bytes(_TYPE3_ACK_SIZE)
+        if not self.read_script and length == _f5.ACK_SIZE:
+            return bytes(_f5.ACK_SIZE)
         return super().read(endpoint, length, timeout_ms)
 
 
