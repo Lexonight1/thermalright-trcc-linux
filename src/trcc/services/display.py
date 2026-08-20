@@ -379,18 +379,18 @@ class DisplayService:
         preview_surface = composite
 
         # WIRE rotation:
-        #  * Non-widescreen rotate panels (320×240 RGB565 + JPEG/Mjolnir, 640×480)
-        #    fold mount + orientation into ONE C#-faithful angle via wire_rotation
-        #    (= base - orientation; base is the dir-0 mount angle — 90° RGB565,
-        #    0° JPEG — ImageTo565:2983-2989 / ImageToJpg:2669-2704).  Portrait
-        #    content composes upright (post_rotate=0) and rides this SAME angle:
-        #    a base-0 panel gets 270°/90° to transpose the portrait canvas onto
-        #    the device's landscape buffer (the #234 640×480 squeeze fix); a
-        #    base-90 panel gets 0°/180° (unchanged).  A landscape-only theme at
-        #    90/270 returned early via ``post_rotate`` above.
-        #  * Widescreen JPEG panels (854×480, 1280×480, 1600×720, 1920×462) keep
-        #    the per-resolution encode TABLE (resolve_encode_angle) — the
-        #    hardware-verified #169 path, unchanged.
+        #  * Every rotate panel folds mount + orientation into ONE C#-faithful
+        #    angle from the encode table (``ENCODE_ROTATIONS`` →
+        #    ``resolve_encode_angle``), resolved at handshake for the panel's
+        #    resolution, encoder and SUB byte.  This used to be two paths — a
+        #    ``wire_rotation`` for non-widescreen panels and the encode table
+        #    for widescreen JPEG ones — which was the same C# switch read twice,
+        #    and only one of the two copies carried the invert axis.
+        #    Portrait content composes upright (post_rotate=0) and rides this
+        #    SAME angle: a base-0 panel gets 270°/90° to transpose the portrait
+        #    canvas onto the device's landscape buffer (the #234 640×480 squeeze
+        #    fix); a base-90 panel gets 0°/180° (unchanged).  A landscape-only
+        #    theme at 90/270 returned early via ``post_rotate`` above.
         #  * Squares + non-rotate panels: user orientation only.
         angle = wire_angle(resolved_profile, s.orientation, portrait)
         if angle % 360:
@@ -534,29 +534,35 @@ class DisplayService:
     ) -> bytes:
         """Build a frame of a single solid color, ready for ``Device.send``.
 
-        Bypasses the theme/overlay scene cache — just creates a uniform
-        surface at the profile's resolution, applies device rotation if
-        the profile demands it, and encodes for the wire. Used by the
-        ``SendColor`` Command + diagnostic CLI ``display color`` path.
+        Bypasses the theme/overlay scene cache — composes a uniform surface on
+        the oriented canvas and lands it on the device's wire buffer through
+        the same tail every other single-image producer uses.  Used by the
+        ``SendColor`` Command, ``SleepDevice`` (the shutdown blank) and the
+        diagnostic CLI ``display color`` path.
 
-        Apply brightness from per-device settings too, so a user who's
-        dimmed their display still sees a dimmed color test instead of
-        a bright wash.
+        Brightness comes from per-device settings, so a user who has dimmed
+        their display sees a dimmed color test instead of a bright wash.
+
+        This method used to rotate a blanket 90° whenever ``profile.rotate``
+        was set, and was deliberately exempted from the orientation tail on
+        the grounds that turning a uniform fill changes no pixel.  True of the
+        COLOUR and false of the DIMENSIONS — the header declares a shape, and a
+        transposed buffer is painted only where the two overlap, which is what
+        left part of the glass lit after ``SleepDevice`` (#262).  Gated by
+        ``tests/test_solid_color_frame_shape.py``.
         """
         log.info("build_solid_color_frame: key=%s color=%s", info.key, color)
         resolved = self._resolve_profile(info, profile)
-        w, h = resolved.resolution
-        # Surface is opaque RGB; alpha not needed for solid fill.
-        surface = self._r.create_surface(w, h, color=(*color, 255))
-
         s = self._settings.for_device(info.key)
-        if s.brightness != 100:
-            surface = self._r.apply_brightness(surface, s.brightness)
-
-        # Device-side rotation transposes the buffer for portrait panels.
-        if resolved.rotate:
-            surface = self._r.rotate(surface, 90)
-
+        # The ORIENTED canvas, not the native one — the canvas and the wire
+        # angle are one pair (see ``_orient_for_wire``).
+        target_w, target_h = plan_orientation(
+            resolved, s.orientation, False).canvas
+        # Surface is opaque RGB; alpha not needed for solid fill.
+        surface = self._r.create_surface(
+            target_w, target_h, color=(*color, 255))
+        surface = self._apply_post_processing(surface, s, resolved)
+        surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
 
     def build_screencast_frame(
@@ -639,11 +645,9 @@ class DisplayService:
         """Apply user brightness, user orientation, and device-side rotation.
 
         Shared tail of the two WIRE builds that own no rotation model of their
-        own — ``build_screencast_frame`` and ``build_image_frame``, both of
-        which encode a single supplied image rather than a composed theme.
-        ``build_solid_color_frame`` intentionally calls only the brightness step
-        because user-orientation on a uniform fill is a no-op and the extra
-        rotate calls would burn cycles for no visible change.
+        own — ``build_screencast_frame``, ``build_image_frame`` and
+        ``build_solid_color_frame`` — each encodes a single supplied or
+        generated image rather than a composed theme.
 
         Wire only.  No preview path calls this: a preview is returned exactly
         as composed (see ``build_preview_surface``), because the C# rotates in
@@ -651,11 +655,10 @@ class DisplayService:
         ``compose_portrait`` flags that used to carve a preview out of this
         method went with that caller.
 
-        NOTE (pre-existing, not this method's to fix): the angle applied here is
-        the older ``360 − orientation`` + blanket 90° model, while
-        ``build_frame`` resolves its wire angle through ``wire_angle`` and the
-        C#-derived per-panel table.  A screencast and a theme at the same angle
-        can therefore disagree on a panel whose ``encode_base`` isn't 0.
+        Brightness only.  It applied a ``360 − orientation`` + blanket 90° angle
+        until ``8cc1520e`` moved wire rotation into ``_orient_for_wire``; every
+        caller now pairs this with that method, so there is one wire-rotation
+        authority rather than a per-caller model.
         """
         log.debug("_apply_post_processing: brightness=%d", s.brightness)
         if s.brightness != 100:
@@ -678,6 +681,25 @@ class DisplayService:
         ``portrait_content=False``: these callers scale a supplied image onto
         the device canvas rather than loading an authored portrait theme, so
         the content is native-shaped by construction.
+
+        ``wire_angle`` ALONE, deliberately.  A ``post_rotate`` branch was
+        drafted here on the reasoning that ``plan_orientation`` answers 90/270
+        with post_rotate while leaving ``wire_angle`` at 0/180, so the latter
+        would emit 320x240 under a 240x320 header.  MEASURED 2026-08-19: it
+        does not.  On the 6 base-90 profiles (50/51/52/53/58 at 320x240, 64 at
+        640x480) -- the only 12 (panel, angle) pairs where post_rotate is
+        non-zero at all with ``portrait_content=False`` -- ``wire_angle``
+        answers **270 at 90deg and 90 at 270deg**, not 0/180.  Both swap the
+        axes, so the two paths emit the SAME shape on every live pair and the
+        branch changed no dimension anywhere.
+
+        What it did change is the rotation DIRECTION on those 12 pairs, by
+        180deg, for ``build_image_frame`` and ``build_screencast_frame``.
+        Whether the table's direction or post_rotate's is the one the glass
+        wants is a real question, but it is a direction question on the
+        base-90 family -- ``ENCODE_ROTATIONS`` territory, hardware-gated with
+        #169/#203 -- and no shape gate can see it.  It does not belong in a
+        shape fix, so it is not here.
         """
         angle = wire_angle(resolved, s.orientation, False)
         log.debug("_orient_for_wire %s: orientation=%d → wire %d°",
