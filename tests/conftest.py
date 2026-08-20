@@ -440,7 +440,7 @@ class _CliRenderer(Renderer):
         return surface
 
     def draw_text(self, surface, x, y, text, color, size,
-                  bold=False, italic=False):
+                  bold=False, italic=False, family=""):
         pass
 
     def encode_rgb565(self, surface, byte_order=">"):

@@ -147,6 +147,21 @@ def effective_overlay_layout(
     return out
 
 
+def _element_family(element: dict[str, Any]) -> str:
+    """The element's own font family, or "" for the renderer's theme default.
+
+    Both parsers have always written it under ``name`` (``_dc.py`` for DC
+    themes, ``theme.py`` for the JSON/legacy shape) and nothing ever read it,
+    so every overlay drew in the theme default no matter what the DC stored or
+    the user picked.  ``name`` is the established key -- the serializer round-
+    trips it (``ui/presentation/overlay_serialization.py``) -- so it stays, and
+    this is the one place that reads it.
+    """
+    family = str(element.get("name", ""))
+    log.debug("_element_family: %r", family)
+    return family
+
+
 class OverlayService:
     """Compose text/metric overlays onto a base surface."""
 
@@ -356,6 +371,7 @@ class OverlayService:
             size=size,
             bold=bool(element.get("bold", False)),
             italic=bool(element.get("italic", False)),
+            family=_element_family(element),
         )
 
     def _draw_metric(
@@ -403,6 +419,7 @@ class OverlayService:
             size=int(element.get("size", 16)),
             bold=bool(element.get("bold", False)),
             italic=bool(element.get("italic", False)),
+            family=_element_family(element),
         )
 
     def _draw_clock(
@@ -447,4 +464,5 @@ class OverlayService:
             size=int(element.get("size", 16)),
             bold=bool(element.get("bold", False)),
             italic=bool(element.get("italic", False)),
+            family=_element_family(element),
         )

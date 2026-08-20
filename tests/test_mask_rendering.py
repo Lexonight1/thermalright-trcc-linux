@@ -84,7 +84,7 @@ class RecordingRenderer(Renderer):
 
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
-                  italic: bool = False) -> None:
+                  italic: bool = False, family: str = "") -> None:
         self._record("draw_text", x, y, text, color, size, bold, italic)
 
     def encode_rgb565(self, surface: Any, byte_order: str = ">") -> bytes:

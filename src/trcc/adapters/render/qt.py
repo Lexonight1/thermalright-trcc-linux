@@ -214,13 +214,19 @@ class QtRenderer(Renderer):
 
     def draw_text(self, surface: Any, x: int, y: int, text: str,
                   color: str, size: int, bold: bool = False,
-                  italic: bool = False) -> None:
+                  italic: bool = False, family: str = "") -> None:
         """Draw *text* centered on ``(x, y)`` — matches C# DrawString
         with ``RectangleF(myX - w/2, myY - h/2, w, h)``.
+
+        ``family`` is the element's own font.  Both theme parsers have always
+        put it in the element dict (as ``name``) and it was dropped here, so
+        every overlay drew in the theme default no matter what the DC said or
+        the user picked.  Empty falls back to that default, which is what the
+        elements that carry no font still want.
         """
-        log.debug("draw_text: %r at (%d, %d) size=%d color=%s",
-                  text, x, y, size, color)
-        font = self._get_font(size, bold, italic)
+        log.debug("draw_text: %r at (%d, %d) size=%d color=%s family=%r",
+                  text, x, y, size, color, family)
+        font = self._get_font(size, bold, italic, family)
         painter = QPainter(surface)
         painter.setPen(QPen(QColor(color)))
         painter.setFont(font)

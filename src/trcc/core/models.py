@@ -655,6 +655,11 @@ class OverlayElement:
     size: int = OVERLAY_DEFAULT_SIZE
     bold: bool = False
     italic: bool = False
+    # Font family.  Serialized as ``name`` -- the key both theme parsers
+    # already write and the overlay serializer round-trips -- so a user-edited
+    # element keeps the font instead of silently reverting to the theme
+    # default the way it did when this field did not exist.
+    font: str = ""
     # type == "text"
     text: str = ""
     # type == "metric"
@@ -677,6 +682,8 @@ class OverlayElement:
             "color": self.color, "size": self.size,
             "bold": self.bold, "italic": self.italic,
         }
+        if self.font:
+            out["name"] = self.font
         if self.type == "text":
             out["text"] = self.text
         elif self.type == "metric":
