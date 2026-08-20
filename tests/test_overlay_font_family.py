@@ -18,12 +18,14 @@ it still passes, this file is guarding nothing.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from trcc.core.models import OverlayElement
 from trcc.services.overlay import OverlayService
+from trcc.services.settings import Settings
 
 from .test_overlay_clock import _config, _DrawRecorder
 
@@ -81,9 +83,52 @@ def test_an_element_without_a_font_gets_the_renderer_default() -> None:
 
 def test_a_user_edited_element_round_trips_its_font() -> None:
     """``OverlayElement`` serializes the family under ``name`` — the key both
-    parsers write and the overlay serializer reads — so an edited element does
-    not silently revert to the theme default.
+    parsers write and the renderer resolves.
     """
     el = OverlayElement(id="e1", type="text", text="x", font="Noto Sans")
     assert el.to_dict()["name"] == "Noto Sans"
     assert "name" not in OverlayElement(id="e2", type="text").to_dict()
+
+
+@pytest.mark.parametrize("key", ["font", "name"])
+def test_from_dict_reads_the_family_under_either_key(key: str) -> None:
+    """Two writers, two keys, and both are real.
+
+    ``asdict`` persists the dataclass FIELD name (``font``) into trcc.json;
+    ``to_dict`` and both theme parsers use ``name``.  ``from_dict`` is the one
+    reader they share, so it has to accept both — it read NEITHER until
+    2026-08-19, which is the defect the next test measures.
+    """
+    assert OverlayElement.from_dict(
+        {"id": "e1", "type": "text", key: "Noto Sans"}).font == "Noto Sans"
+    assert OverlayElement.from_dict({"id": "e2", "type": "text"}).font == ""
+
+
+def test_a_user_element_keeps_its_font_across_a_restart(tmp_path: Path) -> None:
+    """THE user-visible claim, measured through real Settings — not to_dict.
+
+    Asserting ``to_dict()["name"]`` alone passes while the round-trip is
+    broken, because it exercises the WRITE half of a pair whose READ half was
+    missing: `asdict` wrote `font` to trcc.json and `from_dict` dropped it, so
+    every user overlay element rendered in its own font for the session and
+    reverted to the theme default on the next start.  That is why this test
+    goes through a real save/load rather than a serializer call.
+
+    MUTATION CHECK -- drop the ``font=`` line from ``OverlayElement.from_dict``
+    and this fails while the to_dict assertions above keep passing.
+    """
+    from tests.conftest import FakePlatform
+
+    paths = FakePlatform(tmp_path).paths()
+    Settings(paths).add_user_overlay_element("0402:3922", OverlayElement(
+        id="e1", type="text", text="hi", font="Comic Sans MS"))
+
+    reloaded = Settings(paths).for_device("0402:3922").user_overlay_elements[0]
+    assert reloaded.font == "Comic Sans MS", (
+        f"after a restart the element's font is {reloaded.font!r} — it was "
+        "persisted and then dropped on load, so the element reverts to the "
+        "theme default and the user's choice survives only until they quit."
+    )
+    assert reloaded.to_dict()["name"] == "Comic Sans MS", (
+        "the reloaded element must still hand the renderer its family"
+    )

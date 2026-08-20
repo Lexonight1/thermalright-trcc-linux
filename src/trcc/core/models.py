@@ -716,6 +716,14 @@ class OverlayElement:
             size=int(data.get("size", 16)),
             bold=bool(data.get("bold", False)),
             italic=bool(data.get("italic", False)),
+            # Font family, under EITHER key, because two writers are real:
+            # ``asdict`` persists the dataclass FIELD name (``font``) into
+            # trcc.json, while ``to_dict`` and both theme parsers use ``name``
+            # -- the key the renderer resolves.  Reading one and not the other
+            # dropped the family on reload, so a user element rendered in its
+            # own font all session and reverted to the theme default on the
+            # next start.  Gated by ``test_overlay_font_family.py``.
+            font=str(data.get("font") or data.get("name") or ""),
             text=str(data.get("text", "")),
             metric=str(data.get("metric", "")),
             format=str(data.get("format", "{value}")),
