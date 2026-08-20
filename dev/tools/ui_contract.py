@@ -22,6 +22,7 @@ Usage::
 """
 from __future__ import annotations
 
+import argparse
 import ast
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,6 +124,13 @@ def _print_ui(surface: UiSurface) -> None:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--max-bypasses", type=int, default=None, metavar="N",
+                    help="exit non-zero if the total contract bypass count "
+                         "exceeds N.  A ratchet, like MAX_SILENT: a UI that "
+                         "reaches past the Command bus for something new "
+                         "fails the build, and fixing one lets you lower N.")
+    args = ap.parse_args()
     commands = command_names()
     print(f"{_B}Command-surface completeness audit{_RST}")
     print(f"  contract = {len(commands)} Command(s) + read-only port properties\n")
@@ -150,6 +158,16 @@ def main() -> int:
             flagged = True
     if not flagged:
         print(f"  {_G}none — every service/adapter a GUI reaches, cli/api reach too{_RST}")
+
+    total = sum(len(s.service_imports) + len(s.adapter_imports)
+                for s in surfaces)
+    print(f"\n{_B}total contract bypasses:{_RST} {total}")
+    if args.max_bypasses is not None and total > args.max_bypasses:
+        print(f"{_R}FAIL{_RST} — {total} bypass(es) exceeds the "
+              f"--max-bypasses ceiling of {args.max_bypasses}.  A UI is "
+              f"reaching past the Command bus; route it through a Command "
+              f"or lower the ceiling if you fixed one.")
+        return 1
     return 0
 
 

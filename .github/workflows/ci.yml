@@ -71,6 +71,98 @@ jobs:
           name: pytest-output
           path: pytest-output.txt
 
+  smokes:
+    # The dev/ harnesses and meters, which until now ran only when someone
+    # remembered.  That is why smoke_rotation_mask asserted a behaviour the
+    # app had not had for two months, and why smoke_video_playback_bytes
+    # broke the same day it was broken -- both are harnesses whose whole job
+    # is catching silent failures.  Nothing that depends on memory survives.
+    name: dev harnesses + meters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # 3.12 only: the project's dev gate (see CLAUDE.md "Development
+      # Environment").  The harnesses drive the real app, not the packaging
+      # surface, so the 3.10/3.11 matrix adds runtime without adding signal.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      # Every harness runs even after one fails, so a red build names ALL of
+      # them instead of only the first -- the failures are usually related.
+      # smoke_real_hardware needs a physical panel; smoke_anything runs below
+      # with its quarantine.
+      - name: Smoke harnesses
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: src:.
+        run: |
+          failed=""
+          for s in dev/smoke_*.py; do
+            n=$(basename "$s")
+            case "$n" in smoke_real_hardware.py|smoke_anything.py) continue;; esac
+            echo "::group::$n"
+            if python3 "$s"; then echo "PASS $n"; else failed="$failed $n"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::failing harnesses:$failed"
+            exit 1
+          fi
+
+      # KNOWN OPEN DEFECT, quarantined so the rest of the matrix can gate:
+      #   video.size.portrait -- "portrait 320x480 decoded zero frames --
+      #   pipeline drops portrait", reproduces identically on all 10 devices,
+      #   so it is the video pipeline and not any panel.  The probe is named
+      #   in the run header AND the summary; it is never silently dropped.
+      #   DELETE the --skip-probe when the decode bug is fixed.
+      - name: Device probe matrix (1 probe quarantined)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: src:.
+        run: |
+          python3 dev/smoke_anything.py --device all \
+            --skip-probe video.size.portrait
+
+      # Ratchets, in the shape MAX_SILENT already proves works: the number
+      # only ever moves one way, and moving it is a deliberate edit here.
+      #
+      # 95 = 988 of the 1033 behaviour-bearing methods in TRCC 2.1.6, measured
+      # on the tree this ratchet actually runs against.
+      #
+      # It was first set to 100 against a control-flow.json extracted from a
+      # decompile that PREDATED the 2.1.6 installer by four months (1000
+      # methods where 2.1.6 has 1205), then lowered to 54 -- the honest score
+      # once the real tree was measured, with the note that the docs' line
+      # citations still pointed into the OLD files' numbering and had to be
+      # re-verified subsystem by subsystem before the number could rise.
+      #
+      # That re-verification happened (81b81ebb..27ff87ba): 1,237 citations
+      # re-anchored onto 2.1.6, 274 methods re-read, zero pasted C# left in the
+      # repo.  Leaving the floor at 54 would let every bit of it be deleted
+      # without failing a build -- which is the one thing a ratchet exists to
+      # prevent.  Raise it only after measuring; never to make a build pass.
+      - name: Ratchet — C# audit coverage
+        run: python3 dev/decompiler/audit_coverage.py --fail-under 95
+
+      - name: Ratchet — UI contract bypasses
+        env:
+          PYTHONPATH: src
+        run: python3 dev/tools/ui_contract.py --max-bypasses 20
+
   update-badges:
     name: Update README badges
     runs-on: ubuntu-latest
