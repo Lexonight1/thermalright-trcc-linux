@@ -130,22 +130,25 @@ def _probe_gui_imports() -> Section:
 
 
 def _probe_factory() -> Section:
-    """``current_platform()`` must return the right class for sys.platform."""
+    """``current_platform()`` must return the OS the registry serves this host.
+
+    This asked ``"LinuxOS" in type(obj).__name__`` against a hand-written table
+    of class NAMES until 2026-08-19, when it failed on a Fedora box that had
+    just started returning ``DnfLinux`` -- the package-manager family split.  Its
+    BSD rows were stale too, naming ``BSDPlatform`` for a class since renamed
+    ``BsdOS``, so the same failure was waiting on every BSD; nothing noticed
+    because nothing ran this file.
+
+    A name is prose.  ``PLATFORMS`` is the authority -- it holds the base class
+    registered for each ``sys.platform`` key -- and ``isinstance`` is the actual
+    contract, so family subclasses and renames both pass without an edit here.
+    """
     s = Section("current_platform()")
     try:
-        from trcc.adapters.system import current_platform
+        from trcc.adapters.system import PLATFORMS, current_platform
     except BaseException as exc:
         s.fail("current_platform import", exc)
         return s
-
-    expected_substring = {
-        "linux":   "LinuxOS",
-        "win32":   "WindowsPlatform",
-        "darwin":  "MacOSPlatform",
-        "freebsd": "BSDPlatform",
-        "openbsd": "BSDPlatform",
-        "netbsd":  "BSDPlatform",
-    }
 
     try:
         platform_obj = current_platform()
@@ -155,25 +158,30 @@ def _probe_factory() -> Section:
         s.fail("current()", exc)
         return s
 
-    for prefix, want in expected_substring.items():
-        if sys.platform.startswith(prefix):
-            if want in cls_name:
-                s.ok(
-                    "class matches sys.platform",
-                    f"{cls_name} matches {sys.platform!r}",
-                )
-            else:
-                s.fail(
-                    "class matches sys.platform",
-                    RuntimeError(
-                        f"got {cls_name} on {sys.platform!r}; expected {want}",
-                    ),
-                )
-            break
-    else:
+    # The one derived key in OS dispatch, mirroring ``current_platform``:
+    # every BSD registers its own class but they share the "bsd" registry key.
+    key = "bsd" if "bsd" in sys.platform else sys.platform
+    if key not in PLATFORMS:
         s.warn(
-            "class matches sys.platform",
-            f"sys.platform={sys.platform!r} isn't in the expected-substring table",
+            "registered for sys.platform",
+            f"sys.platform={sys.platform!r} has no registered OS; "
+            f"the registry falls back to linux",
+        )
+        return s
+
+    base = PLATFORMS[key]
+    if isinstance(platform_obj, base):
+        s.ok(
+            "instance of the registered OS",
+            f"{cls_name} is a {base.__name__} — registered for {key!r}",
+        )
+    else:
+        s.fail(
+            "instance of the registered OS",
+            RuntimeError(
+                f"got {cls_name} on {sys.platform!r}; {key!r} is registered "
+                f"to {base.__name__}, and the object is not one",
+            ),
         )
 
     return s
