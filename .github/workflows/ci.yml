@@ -177,6 +177,17 @@ jobs:
           PYTHONPATH: src
         run: python3 dev/tools/ui_contract.py --max-bypasses 20
 
+      # Not a count that may drift down -- a floor of zero.  dev/ and tests/
+      # must not name a trcc module, symbol or Platform attribute that no
+      # longer exists.  Static, because importing is exactly what the per-OS
+      # harnesses' sys.platform guards and the optional dependencies defeat:
+      # three of them had been importing renamed modules for months while
+      # exiting 0 on this runner by skipping.
+      - name: Ratchet — stale references
+        env:
+          PYTHONPATH: src
+        run: python3 dev/tools/stale_refs.py --check
+
   update-badges:
     name: Update README badges
     runs-on: ubuntu-latest
