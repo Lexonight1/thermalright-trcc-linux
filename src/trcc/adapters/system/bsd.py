@@ -177,9 +177,9 @@ class BsdOS(BaseOS, key="bsd"):
             if sys.platform.startswith(child._PLATFORM_PREFIX):
                 log.info("BsdOS.resolve: %s -> %s", sys.platform, child.__name__)
                 return child
-        log.warning("BsdOS.resolve: %s is an unknown BSD — using the shared base",
+        log.warning("BsdOS.resolve: %s is an unknown BSD — using GenericBsd",
                     sys.platform)
-        return cls
+        return GenericBsd
 
     #: The ``sys.platform`` prefix that selects this BSD.
     _PLATFORM_PREFIX: str = "bsd"
@@ -263,6 +263,31 @@ class NetBsdOS(BsdOS):
     _NAME = "NetBSD"
     _INSTALL_HINTS = _NETBSD_INSTALL_HINTS
     _PERMISSION_HINT = "grant your user the device node: chgrp/chmod /dev/ugen*"
+
+
+class GenericBsd(BsdOS):
+    """A BSD we do not recognise — DragonFly, MidnightBSD, something new.
+
+    Exists so :meth:`BsdOS.resolve` has a PRODUCT to return.  It used to
+    return ``cls``, which shipped the factory as its own product: ``BsdOS`` is
+    registered under ``"bsd"`` and is instantiable, so an unrecognised BSD
+    silently became the base class and nothing in the output said so.  The same
+    reason ``_GENERIC_FAMILY`` exists on the Linux side.
+
+    It sets NO install hints, so ``software_install_hint`` falls through to
+    "Install X and ensure it is on PATH".  That is deliberate and was checked
+    rather than assumed: an unknown BSD is not a pkg_add BSD.  DragonFly uses
+    ``pkg`` like FreeBSD, MidnightBSD uses ``mport``, and handing either of
+    them ``pkg_add`` would be the #207 failure -- a command the system does not
+    have -- which is the same mistake ab2ff630 fixed when one class was telling
+    OpenBSD to run ``pkg install``.
+
+    ``_NAME`` says which BSD it is NOT, so a ``trcc report`` names the gap
+    instead of looking like a supported platform.
+    """
+
+    _PLATFORM_PREFIX = "bsd"
+    _NAME = "BSD (unrecognised)"
 
 
 # =========================================================================

@@ -216,3 +216,44 @@ def test_detection_actually_selects_the_el_family(
 
     monkeypatch.setattr(linux_mod, "_is_enterprise_linux", lambda text=None: False)
     assert LinuxOS._detect_family().name == "Fedora-family"
+
+
+def test_an_unrecognised_bsd_gets_a_product_not_the_factory() -> None:
+    """resolve() must return something it MADE, not itself.
+
+    It returned ``cls``: BsdOS is registered under "bsd" and is instantiable,
+    so a DragonFly or MidnightBSD user silently became the base class and
+    nothing in the output said so.
+    """
+    import inspect
+
+    from trcc.adapters.system.bsd import BsdOS, GenericBsd
+
+    resolved = BsdOS.resolve()
+    assert resolved is not BsdOS, "the factory is still returning itself"
+    assert resolved is GenericBsd
+    assert not inspect.isabstract(GenericBsd)
+
+
+def test_an_unknown_bsd_is_not_told_to_run_pkg_add() -> None:
+    """An unknown BSD is not a pkg_add BSD.
+
+    DragonFly uses ``pkg``, MidnightBSD uses ``mport``.  Guessing pkg_add here
+    would be the #207 failure -- a command the system does not have -- which is
+    what ab2ff630 fixed when one class told OpenBSD to run ``pkg install``.
+    """
+    from trcc.adapters.system.bsd import GenericBsd
+
+    hint = GenericBsd().software_install_hint("7z")
+    for guess in ("pkg_add", "pkg install", "mport"):
+        assert guess not in hint, f"GenericBsd guessed {guess!r}: {hint!r}"
+    assert "PATH" in hint
+
+
+def test_the_named_bsds_still_answer_for_themselves() -> None:
+    """Adding the generic must not change the three that are recognised."""
+    from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
+
+    assert "pkg install" in FreeBsdOS().software_install_hint("7z")
+    assert "pkg_add" in OpenBsdOS().software_install_hint("7z")
+    assert "pkg_add ffmpeg7" in NetBsdOS().software_install_hint("ffmpeg")
