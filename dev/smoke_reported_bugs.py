@@ -233,12 +233,23 @@ def repro_201_gui_resume_flag() -> ReproResult:
 
     from trcc.ui.cli.main import app as cli
 
-    out = CliRunner().invoke(cli, ["gui", "--help"]).output
+    # Report the EVIDENCE, not just the verdict.  This probe answered "absent"
+    # on a CI runner and "present" on the dev box, deterministically, and a
+    # verdict carrying no context cost a session of guessing at the cause.
+    # ``--decorated`` is the sibling option declared immediately after
+    # ``--resume`` on the same command: if it renders and ``--resume`` does
+    # not, the fault is in how this one multi-alias option is displayed; if
+    # neither renders, the options table is absent and the help never built.
+    result = CliRunner().invoke(cli, ["gui", "--help"])
+    out = result.output
+    seen = (f"exit={result.exit_code} len={len(out)} "
+            f"--decorated={'--decorated' in out} "
+            f"exc={type(result.exception).__name__ if result.exception else 'none'}")
     if "No such option" in out:
-        return _bug("`trcc gui --help` reports no --resume option")
+        return _bug(f"`trcc gui --help` reports no --resume option [{seen}]")
     if "--resume" not in out:
-        return _bug("--resume absent from `trcc gui` options")
-    return _ok("`trcc gui --resume` registered (start_hidden path present)")
+        return _bug(f"--resume absent from `trcc gui` options [{seen}]")
+    return _ok(f"`trcc gui --resume` registered [{seen}]")
 
 
 # ── Repro 9: #162 TuxLux40 — TRCC_DAEMON=1 fork-bomb ─────────────────────────
