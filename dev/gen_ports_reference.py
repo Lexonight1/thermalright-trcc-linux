@@ -53,12 +53,17 @@ _REGISTRATION = {
     "Platform": 'class MyPlatform(BaseOS, key="myos"):',
 }
 
-# Ports whose base class supplies most of the work — point the reader at it, so
-# they extend the base rather than the raw port and re-implement the shared half.
+# Ports whose base class supplies most of the work — port name -> the class a
+# contributor actually extends.  The note under such a port is COUNTED from that
+# class, never written by hand: a page that says "extend BaseOS" and then lists
+# the port's own methods states a cost the reader will not pay, and the numbers
+# on both sides move independently.  (Platform is why: it went 10 abstract ->
+# 21 when the port stopped answering its own questions, while the job of
+# writing a new OS did not change at all.)
 _PREFERRED_BASE = {
-    "Device": "BaseDevice / BaseBulkDevice (adapters/device/_base.py)",
-    "Platform": "BaseOS (adapters/system/_base.py)",
-    "Paths": "BasePaths (adapters/system/_base.py) — implements all four",
+    "Device": "BaseDevice",
+    "Platform": "BaseOS",
+    "Paths": "BasePaths",
 }
 
 
@@ -121,9 +126,34 @@ def _rel(cls: type) -> str:
     return cls.__module__.replace("trcc.", "").replace(".", "/") + ".py"
 
 
+def _extend_note(port: type, base: type) -> str:
+    """One line telling the reader what extending *base* actually costs.
+
+    Both numbers are read off the live classes, so the sentence cannot drift
+    from either of them.  ``base`` may leave members abstract that the port
+    never declared (``BaseOS``'s five internal build hooks) — those are part of
+    the job, so the count is ``base.__abstractmethods__``, not an intersection.
+    """
+    port_abstract = set(port.__abstractmethods__)
+    owed = sorted(getattr(base, "__abstractmethods__", ()))
+    answered = len(port_abstract - set(owed))
+    where = (f" (listed under [`{base.__name__}`](#{base.__name__.lower()}))"
+             if inspect.isabstract(base) else "")
+    if not owed:
+        tail = f"it implements all {len(port_abstract)} of these."
+    else:
+        covered = ("all " + str(answered) if answered == len(port_abstract)
+                   else f"{answered} of these {len(port_abstract)}")
+        tail = (f"it answers {covered}, leaving you "
+                f"{len(owed)} of its own to write{where}.")
+    return (f"**Extend `{base.__name__}` (`{_rel(base)}`)**, not this port "
+            f"directly — {tail}")
+
+
 def generate() -> str:
     _import_everything()
     everything = _all_classes()
+    by_name = {c.__name__: c for c in everything}
     abcs = sorted(
         {c for c in everything if inspect.isabstract(c)},
         key=lambda c: (len(c.__abstractmethods__), c.__name__),
@@ -173,9 +203,13 @@ def generate() -> str:
         if doc:
             lines += [doc.split("\n\n")[0].replace("\n", " "), ""]
 
-        if base := _PREFERRED_BASE.get(cls.__name__):
-            lines += [f"**Extend `{base}`**, not this port directly — "
-                      "it already implements the shared half.", ""]
+        if base_name := _PREFERRED_BASE.get(cls.__name__):
+            base = by_name.get(base_name)
+            if base is None:
+                raise SystemExit(
+                    f"_PREFERRED_BASE names {base_name!r} for {cls.__name__}, "
+                    f"but no such class exists — fix the table")
+            lines += [_extend_note(cls, base), ""]
 
         if reg := _REGISTRATION.get(cls.__name__):
             lines += ["**Register by naming your key in the class line:**", "",

@@ -36,11 +36,11 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 5 | 0 | 10 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 3 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`BaseOS`](#baseos) | 8 | 10 | 15 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`Platform`](#platform) | 10 | 11 | 15 |
+| [`BaseOS`](#baseos) | 12 | 14 | 15 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
+| [`Platform`](#platform) | 21 | 0 | 15 |
 
 ---
 
@@ -212,7 +212,7 @@ _write_frame(frame: 'bytes') -> bool
 
 A physical USB device we control.
 
-**Extend `BaseDevice / BaseBulkDevice (adapters/device/_base.py)`**, not this port directly — it already implements the shared half.
+**Extend `BaseDevice` (`adapters/device/_base.py`)**, not this port directly — it answers all 3, leaving you 3 of its own to write (listed under [`BaseDevice`](#basedevice)).
 
 **Register by naming your key in the class line:**
 
@@ -370,7 +370,7 @@ used() -> float | None
 
 Filesystem locations.  Each OS resolves these differently.
 
-**Extend `BasePaths (adapters/system/_base.py) — implements all four`**, not this port directly — it already implements the shared half.
+**Extend `BasePaths` (`adapters/system/_base.py`)**, not this port directly — it implements all 4 of these.
 
 **You implement (4):**
 
@@ -476,29 +476,6 @@ write_debug_report(rendered: 'str', path: 'Path') -> Path
 
 **Implementations (1):** `DiagnosticsAdapter`
 
-## BaseOS
-
-`adapters/system/_base.py`
-
-Shared skeleton for every concrete OS :class:`Platform`.
-
-**You implement (8):**
-
-```python
-_build_autostart() -> AutostartManager
-_build_hotplug() -> HotplugMonitor
-_build_sensors() -> SensorEnumerator
-_make_paths() -> Paths
-_open_scsi(vid: 'int', pid: 'int', serial: 'str | None' = None) -> ScsiTransport
-check_permissions() -> list[str]
-distro_name() -> str
-setup(interactive: 'bool' = True) -> int
-```
-
-**You inherit (10):** `autostart` · `hotplug` · `install_method` · `open_transport` · `package_manager` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command`
-
-**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
-
 ## SensorEnumerator
 
 `core/ports.py`
@@ -546,36 +523,30 @@ vram_used() -> float | None
 
 **Implementations (10):** `AmdGpu` · `GpuSourceChain` · `HwinfoGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 
-## Platform
+## BaseOS
 
-`core/ports.py`
+`adapters/system/_base.py`
 
-OS abstraction.  DI'd into App at startup.
+Shared skeleton for every concrete OS :class:`Platform`.
 
-**Extend `BaseOS (adapters/system/_base.py)`**, not this port directly — it already implements the shared half.
-
-**Register by naming your key in the class line:**
+**You implement (12):**
 
 ```python
-class MyPlatform(BaseOS, key="myos"):
-```
-
-**You implement (10):**
-
-```python
-autostart() -> AutostartManager
+_build_autostart() -> AutostartManager
+_build_hotplug() -> HotplugMonitor
+_build_sensors() -> SensorEnumerator
+_make_paths() -> Paths
+_open_scsi(vid: 'int', pid: 'int', serial: 'str | None' = None) -> ScsiTransport
 check_permissions() -> list[str]
+disk_info() -> list[dict[str, str]]
 distro_name() -> str
-hotplug() -> HotplugMonitor
-install_method() -> str
-open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None) -> Transport
-paths() -> Paths
-scan_devices() -> list[DeviceInfo]
-sensors() -> SensorEnumerator
+memory_info() -> list[dict[str, str]]
+no_devices_hint() -> str
+permission_denied_hint() -> str
 setup(interactive: 'bool' = True) -> int
 ```
 
-**You inherit (11):** `configure_stdout` · `disk_info` · `memory_info` · `minimize_on_close` · `no_devices_hint` · `package_manager` · `permission_denied_hint` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (14):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
 
@@ -606,4 +577,46 @@ surface_size(surface: 'Any') -> tuple[int, int]
 **You inherit (6):** `bg_fit` · `build_frame` · `encode_payload` · `encode_png` · `get_pixels_rgb` · `list_fonts`
 
 **Implementations (1):** `QtRenderer`
+
+## Platform
+
+`core/ports.py`
+
+OS abstraction.  DI'd into App at startup.
+
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 14 of these 21, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+
+**Register by naming your key in the class line:**
+
+```python
+class MyPlatform(BaseOS, key="myos"):
+```
+
+**You implement (21):**
+
+```python
+autostart() -> AutostartManager
+check_permissions() -> list[str]
+configure_stdout() -> None
+disk_info() -> list[dict[str, str]]
+distro_name() -> str
+hotplug() -> HotplugMonitor
+install_method() -> str
+memory_info() -> list[dict[str, str]]
+minimize_on_close() -> bool
+no_devices_hint() -> str
+open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None) -> Transport
+package_manager() -> str
+paths() -> Paths
+permission_denied_hint() -> str
+scan_devices() -> list[DeviceInfo]
+sensors() -> SensorEnumerator
+setup(interactive: 'bool' = True) -> int
+software_install_hint(tool: 'str') -> str
+upgrade_command() -> tuple[str, ...]
+usb_power_state(vid: 'int', pid: 'int') -> UsbPowerState | None
+worker_thread_context() -> AbstractContextManager[None]
+```
+
+**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
 

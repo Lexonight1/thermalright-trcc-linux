@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -1374,43 +1374,54 @@ class Platform(ABC):
     def install_method(self) -> str:
         """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
 
-    # ── USB runtime power (diagnostics; read-only) ────────────────────
+    # ── Every remaining question, asked of every OS ───────────────────
     #
-    # Concrete default = None ("this OS does not expose it"), the same shape
-    # as the hints below.  An honest None beats four stubs inventing a value:
-    # only Linux publishes runtime PM per device (sysfs), and a wrong answer
-    # here would mislead exactly the debugging it exists to serve.
+    # These carried concrete bodies here until 2026-08-21, which read as
+    # generosity and worked as a trap: an OS that never implemented one still
+    # returned a plausible value, so "this OS cannot tell" and "nobody wrote it
+    # yet" produced identical output.  ``disk_info`` / ``memory_info`` were
+    # advertised on the generated port page as free inheritance — and
+    # inheriting them means reporting no disks and no memory.
+    #
+    # MEASURED: deleting ``LinuxOS.memory_info`` left the whole suite green
+    # (3840 passed) and the GUI's DRAM panel silently blank, because the port
+    # answered ``[]`` on its behalf.  All four OSes already implement all four
+    # of the no-default group, which is the proof they were never optional.
+    #
+    # So the port asks; it does not answer.  Where a real shared default
+    # exists it lives on ``BaseOS`` (``adapters/system/_base.py``), one MRO
+    # step below, so a new OS still inherits it — but a new OS that skips one
+    # of these fails at instantiation with a ``TypeError`` naming it, which is
+    # the to-do list this contract exists to hand over.  There is no C# oracle
+    # for the OS layer (TRCC has one OS and never abstracted it) and no VM for
+    # macOS/BSD, so the interface is the entire substitute.
+
+    @abstractmethod
     def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
-        """The device's USB runtime-power state, or None if unknowable.
+        """The device's USB runtime-power state, or ``None`` if unknowable.
 
         Read-only.  TRCC never sets power policy — that is the udev rules'
         job (``adapters/system/_udev.py``); this only reports what the kernel
         currently thinks, so a failed handshake can be told apart from a
         SUSPENDED panel (#150).
+
+        An OS with no such notion returns ``None`` — but it says so itself,
+        because "this OS does not expose it" is an answer and silence is not.
         """
-        log.debug("Platform.usb_power_state: not exposed on this OS")
-        return None
 
     # ── Per-OS diagnostic hints (DI'd into the doctor / health checks) ──
     #
-    # Concrete defaults so every Platform answers safely; each OS overrides
-    # with its native package manager / driver guidance.  Shared consumers
-    # (``adapters/diagnostics/health.py``) call these through the injected
-    # Platform — they NEVER hardcode a distro command, so the advice is
-    # correct on Windows / macOS / BSD, not just the Linux dev box.
+    # Shared consumers (``adapters/diagnostics/health.py``) reach these through
+    # the injected Platform — they NEVER hardcode a distro command, so the
+    # advice is correct on Windows / macOS / BSD, not just the Linux dev box.
+
+    @abstractmethod
     def package_manager(self) -> str:
-        """The system package manager, or "" when this OS has none of ours.
+        """The system package manager, or "" when this OS has none of ours."""
 
-        Only Linux ships trcc through a distro manager today, so the others
-        answer "" — an honest "not applicable" rather than a guess.
-        """
-        log.debug("Platform.package_manager: none on this OS")
-        return ""
-
+    @abstractmethod
     def upgrade_command(self) -> tuple[str, ...]:
         """Argv that upgrades trcc on this OS, or empty when there is none."""
-        log.debug("Platform.upgrade_command: none on this OS")
-        return ()
 
     @classmethod
     def resolve(cls) -> type[Platform]:
@@ -1419,54 +1430,61 @@ class Platform(ABC):
         ``sys.platform`` names most OSes precisely enough, but says only
         "linux" for every distro, so an OS whose variants differ overrides this
         to pick one.  One seam, so the factory never grows an ``if`` per OS.
+
+        The one concrete member of this port: returning ``cls`` is a genuine
+        shared default, and making six classes write ``return cls`` would be
+        boilerplate holding no decision.
         """
         log.debug("%s.resolve: no refinement needed", cls.__name__)
         return cls
 
+    @abstractmethod
     def software_install_hint(self, tool: str) -> str:
         """OS-correct one-line hint for installing a missing CLI tool.
 
         ``tool`` is a logical name — ``"ffmpeg"``, ``"7z"``, ``"python"``,
-        ``"pynvml"``.  Override per OS (Linux → package manager, Windows →
-        winget, macOS → brew, BSD → pkg).
+        ``"pynvml"``.  Linux → package manager, Windows → winget, macOS →
+        brew, BSD → pkg / pkg_add.
         """
-        return f"Install {tool} and ensure it is on your PATH"
 
+    @abstractmethod
     def no_devices_hint(self) -> str:
         """OS-correct guidance shown when no device is detected.
 
-        Override per OS (Linux → udev rules, Windows → WinUSB driver, …).
+        Linux → udev rules, Windows → WinUSB driver, macOS → replug/Privacy.
+        Lands in ``trcc report``, so a generic sentence naming no command is
+        a round-trip we cannot afford.
         """
-        return "Plug in a supported device and re-run."
 
+    @abstractmethod
     def permission_denied_hint(self) -> str:
         """OS-correct guidance for an ``EACCES`` USB error.
 
         Surfaces inline in the recovery tracker's WARNING log so users see the
         actionable next step (Linux → udev rules, Windows → WinUSB, macOS →
-        sudo/Privacy).  Override per OS; the default is a generic fallback.
+        sudo/Privacy).
         """
-        return "ensure you have permission to access USB devices"
 
     # ── GUI / hardware-probe convenience ──────────────────────────────
+
+    @abstractmethod
     def minimize_on_close(self) -> bool:
         """True if the GUI should minimize-to-tray on close instead of hiding.
 
-        Default ``False`` (hide-to-tray) matches Linux/macOS/BSD behaviour.
-        Windows overrides to ``True`` to match user expectations there.
+        Windows expects minimize; Linux/macOS/BSD hide-to-tray.
         """
-        return False
 
+    @abstractmethod
     def configure_stdout(self) -> None:
         """Adjust the interpreter's stdout/stderr at startup if the OS
         needs it (Windows ↔ cp1252 console).
 
-        Default no-op for Linux / macOS / BSD — their consoles already
-        speak UTF-8.  Called from every UI entry point BEFORE
-        ``configure_logging`` so the StreamHandler attaches to an
-        already-UTF-8-safe stream.
+        Called from every UI entry point BEFORE ``configure_logging`` so the
+        StreamHandler attaches to an already-UTF-8-safe stream.  Consoles that
+        already speak UTF-8 need nothing.
         """
 
+    @abstractmethod
     def worker_thread_context(self) -> AbstractContextManager[None]:
         """Per-thread OS setup a background worker needs before OS API calls.
 
@@ -1475,35 +1493,29 @@ class Platform(ABC):
             with platform.worker_thread_context():
                 <loop>
 
-        Default OSes need nothing — returns a null context.  Windows
-        overrides to open a COM apartment (``CoInitialize``) so WMI sensor
-        reads work off the main thread.
-
-        Concrete default rather than ``@abstractmethod`` so existing and
-        future Platform subclasses inherit the safe no-op and only an OS
-        that genuinely needs thread setup overrides.  (Making the whole
-        ``Platform`` ABC fully-abstract — "every OS answers every method"
-        — is a separate deliberate ABC-policy pass; see memory
-        ``project_three_axis_uniformity``.)
+        Windows opens a COM apartment (``CoInitialize``) so WMI sensor reads
+        work off the main thread; an OS needing nothing returns a null context.
         """
-        return nullcontext()
 
+    @abstractmethod
     def memory_info(self) -> list[dict[str, str]]:
         """Return DRAM slot descriptors for LC1-style memory displays.
 
         Each dict carries keys like ``size`` / ``type`` / ``speed`` /
-        ``manufacturer`` / ``tcas`` / ``trcd`` / … as discovered.  An OS
-        with no probe yields an empty list — the caller renders ``NC``.
+        ``manufacturer`` / ``tcas`` / ``trcd`` / … as discovered.  An OS with
+        no probe returns an empty list — deliberately, in its own body, so the
+        caller's ``NC`` means "measured nothing" and not "never asked".
         """
-        return []
 
+    @abstractmethod
     def disk_info(self) -> list[dict[str, str]]:
         """Return attached-disk descriptors for LF11-style disk displays.
 
         Each dict carries ``name`` / ``model`` / ``size`` / ``type`` /
-        optional ``health``.  An OS with no probe yields an empty list.
+        optional ``health``.  Same rule as :meth:`memory_info`: an OS with no
+        probe returns an empty list from its own body.
         """
-        return []
+
 
 # =========================================================================
 # Callable type aliases (infrastructure DI)

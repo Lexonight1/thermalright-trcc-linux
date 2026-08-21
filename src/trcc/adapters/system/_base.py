@@ -7,10 +7,16 @@ the method bodies whose internals genuinely differ.
 
 Adding a new OS — Solaris, Haiku, whatever ships next — is therefore one
 subclass that names its key in its own class line — ``class HaikuPlatform(BaseOS,
-key="haiku")`` — implements the abstract hooks (``_make_paths`` /
-``_build_sensors`` / ``_build_autostart`` / ``_build_hotplug``) plus
-``_open_scsi`` and the handful of genuinely-divergent bodies, with nothing
-copied.  That is the future-proofing: new OS = new subclass, no touched callers.
+key="haiku")`` — and implements the twelve members this class leaves abstract,
+with nothing copied.  Five are internal hooks (``_make_paths`` /
+``_build_sensors`` / ``_build_autostart`` / ``_build_hotplug`` / ``_open_scsi``);
+seven are the port's own questions that have no shared answer (``setup`` /
+``check_permissions`` / ``distro_name`` / ``memory_info`` / ``disk_info`` /
+``no_devices_hint`` / ``permission_denied_hint``).  Miss one and the class
+refuses to instantiate, naming it — that ``TypeError`` is the to-do list, and
+for this layer it is the only one there is: TRCC's C# original has exactly one
+OS and never abstracted it, so there is no oracle to check a port against.
+That is the future-proofing: new OS = new subclass, no touched callers.
 
 :data:`PLATFORMS` lives here rather than in the package ``__init__`` so the base
 class can register its own children without importing its own package (a cycle).
@@ -20,8 +26,9 @@ from __future__ import annotations
 import logging
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import usb.util  # pyright: ignore[reportMissingImports]
 
@@ -39,6 +46,9 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device._pyusb_find import find as usb_find
 from ..device.transport import PyUsbBulkTransport
+
+if TYPE_CHECKING:
+    from ...core.models import UsbPowerState
 
 log = logging.getLogger(__name__)
 
@@ -88,9 +98,9 @@ class BaseOS(Platform):
     Owns the behaviour identical across OSes — USB bulk transport, device
     scan, memoised sensor/autostart/hotplug enumerators, install detection,
     dict-based install hints — and delegates the genuinely-different internals
-    to abstract hooks the factory children implement.  Still abstract: the
-    per-OS bodies (``_open_scsi`` / ``setup`` / ``check_permissions`` /
-    ``distro_name``) keep it from instantiating on its own.
+    to abstract hooks the factory children implement.  Twelve members stay
+    abstract (see the module docstring), which is what keeps this class from
+    instantiating on its own and what tells a new OS's author what to write.
     """
 
     def __init_subclass__(cls, key: str | None = None, **kwargs: Any) -> None:
@@ -109,6 +119,23 @@ class BaseOS(Platform):
         log.debug("%s: registering as OS %r", cls.__name__, key)
         PLATFORMS.register(key)(cls)
 
+    # ── Shared answers to port questions ─────────────────────────────────
+    #
+    # The port asks every OS all 21 of its questions (``core/ports.py``); these
+    # are the ones with a real shared answer, so they live here — one MRO step
+    # below the contract.  A new OS inherits them and overrides only what
+    # genuinely differs, which is the whole point of this class.
+    #
+    # The port deliberately keeps NO body of its own: a default up there let an
+    # unimplemented method return a plausible value, making "this OS cannot
+    # tell" indistinguishable from "nobody wrote it yet".  Down here the same
+    # default is a decision an OS layer made, not a hole the contract papered
+    # over.  The four with no shared answer — ``memory_info`` / ``disk_info`` /
+    # ``no_devices_hint`` / ``permission_denied_hint``, all four of which every
+    # OS already implements — get no body here either, so they stay abstract
+    # alongside ``setup`` / ``check_permissions`` / ``distro_name`` and a new OS
+    # is told about them at instantiation.
+
     def package_manager(self) -> str:
         """The system package manager, or "" when this OS has none of ours.
 
@@ -123,18 +150,37 @@ class BaseOS(Platform):
         log.debug("%s.upgrade_command: none", type(self).__name__)
         return ()
 
-    @classmethod
-    def resolve(cls) -> type[BaseOS]:
-        """The concrete class for this host — usually ``cls`` itself.
+    def usb_power_state(self, vid: int, pid: int) -> UsbPowerState | None:
+        """Not exposed by default — only Linux publishes runtime PM per device.
 
-        ``sys.platform`` names the OS precisely enough for most: "freebsd14" is
-        FreeBSD and nothing else.  It says only "linux" for every distro, so
-        ``LinuxOS`` overrides this to probe for its package manager and return
-        the family class.  One seam, so ``current_platform()`` never grows an
-        ``if`` per OS.
+        An honest ``None`` beats a stub inventing a value: this exists so a
+        timed-out handshake can be told apart from a SUSPENDED panel (#150),
+        and a wrong answer would mislead exactly the debugging it serves.
         """
-        log.debug("%s.resolve: no refinement needed", cls.__name__)
-        return cls
+        log.debug("%s.usb_power_state: not exposed on this OS (%04x:%04x)",
+                  type(self).__name__, vid, pid)
+        return None
+
+    def minimize_on_close(self) -> bool:
+        """Hide-to-tray — Linux / macOS / BSD behaviour.  Windows overrides."""
+        log.debug("%s.minimize_on_close: False (hide to tray)",
+                  type(self).__name__)
+        return False
+
+    def configure_stdout(self) -> None:
+        """Nothing to do — this OS's console already speaks UTF-8.
+
+        Windows overrides to rewrap cp1252 streams before the logging
+        StreamHandler attaches to them.
+        """
+        log.debug("%s.configure_stdout: console already UTF-8, no-op",
+                  type(self).__name__)
+
+    def worker_thread_context(self) -> AbstractContextManager[None]:
+        """No per-thread setup needed.  Windows overrides (COM apartment)."""
+        log.debug("%s.worker_thread_context: null context",
+                  type(self).__name__)
+        return nullcontext()
 
     #: tool → install one-liner; the default :meth:`software_install_hint`
     #: reads this.  Dict-driven OSes (macOS/Windows/BSD) set it; Linux

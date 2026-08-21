@@ -6,12 +6,13 @@ touching USB / SG_IO / ioctl.
 """
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
-from trcc.core.models import Wire
+from trcc.core.models import UsbPowerState, Wire
 from trcc.core.ports import (
     AutostartManager,
     BulkTransport,
@@ -259,6 +260,48 @@ class FakePlatform(Platform):
 
     def install_method(self) -> str:
         return "test"
+
+    # ── The rest of the port ──────────────────────────────────────────
+    #
+    # This double stays on ``Platform`` rather than extending ``BaseOS``,
+    # deliberately: ``BaseOS.scan_devices`` calls libusb, and the fake exists
+    # to be an OS without being a real one.  The price is answering the whole
+    # contract here — and that price is the point.  When the port grows a
+    # question, this class stops instantiating with a ``TypeError`` naming it,
+    # which is the same message a new OS's author gets, delivered to us first.
+
+    def usb_power_state(self, vid: int, pid: int) -> Optional[UsbPowerState]:
+        return None
+
+    def package_manager(self) -> str:
+        return ""
+
+    def upgrade_command(self) -> Tuple[str, ...]:
+        return ()
+
+    def software_install_hint(self, tool: str) -> str:
+        return f"fake platform: install {tool}"
+
+    def no_devices_hint(self) -> str:
+        return "fake platform: no devices attached"
+
+    def permission_denied_hint(self) -> str:
+        return "fake platform: no USB permission"
+
+    def minimize_on_close(self) -> bool:
+        return False
+
+    def configure_stdout(self) -> None:
+        """Nothing to rewrap — the test runner's streams are already UTF-8."""
+
+    def worker_thread_context(self) -> AbstractContextManager[None]:
+        return nullcontext()
+
+    def memory_info(self) -> List[Dict[str, str]]:
+        return []
+
+    def disk_info(self) -> List[Dict[str, str]]:
+        return []
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────

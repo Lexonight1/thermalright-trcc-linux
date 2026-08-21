@@ -31,11 +31,13 @@ sys.path.insert(0, str(_ROOT / "dev" / "tools"))
 
 import logging_coverage  # noqa: E402  # pyright: ignore[reportMissingImports]
 
-#: Silent functions as of 2026-07-31 (landed at 1451; -5 by deleting
-#: six dead functions, which is the cheapest way to improve this number).  LOWER THIS as
-#: coverage improves; never raise it.  Worst areas at that point:
-#: ui 693, adapters 444, core 147, services 143.
-MAX_SILENT = 1434
+#: Silent functions as of 2026-08-21 (landed at 1451; -5 by deleting six dead
+#: functions, -7 by promoting eleven ``Platform`` members to ``@abstractmethod``
+#: — an abstract method has no body, so it stops being countable, and the seven
+#: silent ones among them stopped being excuses).  LOWER THIS as coverage
+#: improves; never raise it.  Worst areas now:
+#: ui 688, adapters 436, core 140, services 140.
+MAX_SILENT = 1427
 
 
 def test_logging_coverage_only_improves() -> None:
