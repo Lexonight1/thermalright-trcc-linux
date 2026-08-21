@@ -1260,6 +1260,21 @@ def _os_classes() -> list[object]:
             MacOSPlatform, WindowsPlatform]
 
 
+def _aliases_of(binary: str) -> tuple[str, ...]:
+    """Every executable name that counts as *binary*, from the app's own table.
+
+    Imported lazily so this tool still runs when src/ is not importable -- it
+    is a pre-release check and must degrade to "the literal name only" rather
+    than crash.
+    """
+    try:
+        sys.path.insert(0, str(_ROOT / "src"))
+        from trcc.core.toolchain import TOOL_ALIASES
+    except ImportError:
+        return (binary,)
+    return TOOL_ALIASES.get(binary, (binary,))
+
+
 def check_install_hints() -> list[Finding]:
     """Does every hint we print actually deliver the binary the app probes for?"""
     findings: list[Finding] = []
@@ -1320,11 +1335,28 @@ def check_install_hints() -> list[Finding]:
                         f"{pkg!r} in EL baseos/appstream/epel — RHEL/Rocky/"
                         f"Alma users get no package at all"))
 
-            missing = [b for b in needed if b not in shipped]
+            # A binary counts as delivered under ANY of its aliases: the app
+            # resolves them (core.toolchain), so pkgsrc's ffmpeg7 satisfies
+            # "ffmpeg" and Fedora's 7za satisfies "7z".  Checking the literal
+            # name would report a false MISSING for a hint that works.
+            #
+            # IMPORTED, not restated: the alias table lives in core.toolchain
+            # and a second copy here would drift from the code it describes.
+            missing = [b for b in needed
+                       if not any(a in shipped for a in _aliases_of(b))]
             # Report the NEEDED binaries, present or not -- an alphabetical
             # sample of a 54-executable formula says nothing about ffprobe.
-            got = ",".join(f"{b}{'' if b in shipped else '(MISSING)'}"
-                           for b in needed)
+            # Same alias rule as `missing` above -- computing them two ways is
+            # how the row printed "ffmpeg(MISSING)" for a hint that satisfied
+            # the check.  Name the alias that satisfied it, so a NetBSD row
+            # reads ffmpeg7 rather than a bare ffmpeg the box does not have.
+            def _shown(binary: str) -> str:
+                for alias in _aliases_of(binary):
+                    if alias in shipped:
+                        return alias if alias == binary else f"{alias}={binary}"
+                return f"{binary}(MISSING)"
+
+            got = ",".join(_shown(b) for b in needed)
             print(f"  {name:14} {tool:8} {hint[:42]:44} {got:22}")
             if missing:
                 findings.append(Finding(

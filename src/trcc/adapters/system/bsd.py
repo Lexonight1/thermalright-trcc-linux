@@ -77,6 +77,19 @@ _PKG_ADD_INSTALL_HINTS: dict[str, str] = {
     "pynvml": "pip install nvidia-ml-py",
 }
 
+# NetBSD overrides where pkgsrc diverges from OpenBSD's ports.  Sharing one
+# table made `pkg_add ffmpeg` look correct for both; it is correct for exactly
+# one.  Verified 2026-08-21 against NetBSD's own package directory:
+#   OpenBSD 7.9   ffmpeg-8.0.1p1v1.tgz          exists
+#   NetBSD  10.0  ffmpeg3/4/5/6/7 only          no package named ffmpeg
+# The versioned package installs a versioned binary (bin/ffmpeg7), which the
+# app now resolves (core.toolchain), so naming it here is a complete fix
+# rather than a command that succeeds while the check still fails.
+_NETBSD_INSTALL_HINTS: dict[str, str] = {
+    **_PKG_ADD_INSTALL_HINTS,
+    "ffmpeg": "pkg_add ffmpeg7",
+}
+
 
 class BsdOS(BaseOS, key="bsd"):
     """What every BSD shares — BOT-only SCSI, XDG autostart, sysctl probes.
@@ -248,7 +261,7 @@ class NetBsdOS(BsdOS):
 
     _PLATFORM_PREFIX = "netbsd"
     _NAME = "NetBSD"
-    _INSTALL_HINTS = _PKG_ADD_INSTALL_HINTS
+    _INSTALL_HINTS = _NETBSD_INSTALL_HINTS
     _PERMISSION_HINT = "grant your user the device node: chgrp/chmod /dev/ugen*"
 
 
