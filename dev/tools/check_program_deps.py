@@ -248,6 +248,15 @@ def in_ubuntu(pkg: str) -> str | None:
 
 
 def in_debian(pkg: str) -> str | None:
+    """Debian archive version for *pkg*, or None.
+
+    madison appends the COMPONENT to the suite key for anything outside main:
+    a main package answers ``stable``, a contrib one answers ``stable/contrib``.
+    An exact-key match therefore read every contrib and non-free package as
+    absent -- including python3-pynvml, nvidia-driver and virtualbox.  The
+    checker was blind to precisely the component our NVIDIA advice lives in,
+    so it blessed whatever was written there.  Match the prefix.
+    """
     body = _get(
         f"https://api.ftp-master.debian.org/madison?package={pkg}&f=json"
     )
@@ -259,10 +268,295 @@ def in_debian(pkg: str) -> str | None:
         return None
     for entry in entries:
         for suites in entry.values():
-            for suite in ("stable", "testing", "unstable"):
-                if suite in suites:
-                    return f"{suite} {next(iter(suites[suite]))}"
+            for want in ("stable", "testing", "unstable"):
+                for key, versions in suites.items():
+                    # "stable" matches "stable" and "stable/contrib", but must
+                    # NOT match "oldstable" or "stable-debug".
+                    if key == want or key.startswith(f"{want}/"):
+                        return f"{key} {next(iter(versions))}"
     return None
+
+
+# ── the external programs the app needs, and what actually ships them ──
+#
+# The checks above ask "is our PYTHON dependency declared by each distro spec?"
+# Nothing asked the other half: when the app tells a user how to install an
+# external program, does that command deliver the binary the app then probes
+# for?  A hint that installs successfully and leaves the check still failing is
+# worse than no hint at all -- the user follows it, nothing improves, and the
+# report says the same thing twice.  Fedora shipped exactly that: our
+# `dnf install p7zip` resolves to 7zip-standalone, which ships /usr/bin/7za and
+# no /usr/bin/7z, so shutil.which("7z") keeps failing after a successful install.
+#
+# We check the STRING THE USER SEES, not an internal table.  An internal table
+# can be right while the rendered command is wrong, and the rendered command is
+# the thing that has to be true.
+
+#: hint key (what ``software_install_hint`` is called with) -> the binaries
+#: that hint MUST put on PATH.  Keys with no binary to deliver map to () and
+#: are reported as "nothing to verify" rather than silently skipped:
+#:   python  -- the check is a VERSION check on the running interpreter; no
+#:              install command can change it mid-run.
+#:   pynvml  -- a Python module, not a binary.  Its real file dependency is
+#:              libnvidia-ml.so.1, which comes from the driver stack, not from
+#:              the binding (that is #216).
+_HINT_BINARIES: dict[str, tuple[str, ...]] = {
+    "ffmpeg": ("ffmpeg", "ffprobe"),
+    "7z": ("7z",),
+    "python": (),
+    "pynvml": (),
+}
+
+
+def hint_keys_in_source() -> set[str]:
+    """Every tool the app actually advises on, read out of the source.
+
+    Derived rather than listed, so a new ``software_install_hint("x")`` call
+    cannot appear without this tool noticing: an unmapped key becomes a GAP,
+    the same way an unmapped dependency does.
+    """
+    keys: set[str] = set()
+    for path in (_ROOT / "src" / "trcc").rglob("*.py"):
+        keys.update(re.findall(r'software_install_hint\(\s*"([^"]+)"',
+                               path.read_text(encoding="utf-8")))
+    return keys
+
+
+def package_from_hint(hint: str) -> str | None:
+    """The package name out of a rendered hint, or None when there is none.
+
+    None means "nothing for a repo to verify", and covers two honest cases: a
+    generic fallback naming no command, and ``pip install`` -- a Python package,
+    which no distro repo can be asked about.
+    """
+    if not hint or hint.startswith(("Install ", "pip install")):
+        return None
+    pkg = hint.split()[-1]
+    return pkg.rsplit("nixpkgs.", 1)[-1]        # nix-env -iA nixpkgs.<pkg>
+
+
+# ── per-channel file lists: what does this package actually install? ────
+#
+# Each returns the basenames the package puts in a bin dir, or None for "this
+# channel cannot be asked".  None is NOT "fine" -- it is reported, because an
+# unverifiable channel is where wrong advice survives.
+
+def arch_package_files(pkg: str) -> list[str] | None:
+    """Arch: search resolves a `provides` name (p7zip -> 7zip), then list files.
+
+    Resolving provides FIRST matters: `pacman -S p7zip` really does work,
+    because 7zip declares `provides`/`replaces` for it.  A name-existence check
+    calls that broken; the package it resolves to is what must be inspected.
+    """
+    body = _get(f"https://archlinux.org/packages/search/json/?q={pkg}")
+    if not body:
+        return None
+    try:
+        results = json.loads(body).get("results", [])
+    except json.JSONDecodeError:
+        return None
+    hit = next((r for r in results
+                if r["pkgname"] == pkg or pkg in (r.get("provides") or [])), None)
+    if hit is None:
+        return None
+    files = _get(f"https://archlinux.org/packages/{hit['repo']}/"
+                 f"{hit['arch']}/{hit['pkgname']}/files/json/")
+    if not files:
+        return None
+    try:
+        listing = json.loads(files).get("files", [])
+    except json.JSONDecodeError:
+        return None
+    return [f.rsplit("/", 1)[-1] for f in listing if "/bin/" in f and not f.endswith("/")]
+
+
+def fedora_package_files(pkg: str) -> list[str] | None:
+    """Fedora: resolve provides with dnf, then list the resolved package.
+
+    `repoquery -l p7zip` is EMPTY -- p7zip is a capability, not a package -- so
+    the two steps are not optional.  Needs dnf, i.e. the Fedora dev box.
+    """
+    if not shutil.which("dnf"):
+        return None
+
+    # STOCK repos only.  The dev box has RPM Fusion enabled, and querying with
+    # it on made `dnf install ffmpeg` verify clean while a stock Fedora answers
+    # "No match for argument: ffmpeg" -- the tool was reporting on this machine
+    # rather than on a user's.  Pinning the repo set is what makes the answer
+    # about Fedora instead of about whoever runs the tool.
+    stock = ["--disablerepo=*", "--enablerepo=fedora", "--enablerepo=updates"]
+
+    def _run(args: list[str]) -> str:
+        try:
+            return subprocess.run(args, capture_output=True, text=True,
+                                  timeout=120, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    names = sorted(set(_run(
+        ["dnf", "repoquery", "--quiet", *stock, "--whatprovides", pkg,
+         "--qf", "%{name}"]).split()))
+    if not names:
+        return None
+    out: list[str] = []
+    for name in names:
+        out += [ln.rsplit("/", 1)[-1] for ln in
+                _run(["dnf", "repoquery", "--quiet", *stock, "-l",
+                      name]).splitlines()
+                if "/bin/" in ln]
+    return out
+
+
+def debian_package_files(pkg: str, _depth: int = 0) -> list[str] | None:
+    """Debian stable: the published per-package file list.
+
+    Follows a TRANSITIONAL package to what it pulls in.  Debian's p7zip is
+    `16.02+transitional.1`: it exists, ships no files at all, and depends on
+    7zip -- so `apt install p7zip` really does deliver /usr/bin/7z.  Reading
+    "no files" as "absent" reported that working hint as broken, which is the
+    same false negative a bare name check gives (see arch_package_files).
+    """
+    body = _get(f"https://packages.debian.org/stable/amd64/{pkg}/filelist")
+    if not body:
+        return None
+    found = re.findall(r"(/usr/s?bin/[\w.+-]+)", body)
+    if found:
+        return [f.rsplit("/", 1)[-1] for f in found]
+    if _depth:                       # one hop only; transitional chains are 1 deep
+        return None
+    page = _get(f"https://packages.debian.org/stable/amd64/{pkg}") or ""
+    out: list[str] = []
+    for dep in dict.fromkeys(re.findall(r'href="/trixie/amd64/([\w.+-]+)"', page)):
+        if dep != pkg:
+            out += debian_package_files(dep, _depth + 1) or []
+    return out or None
+
+
+def brew_formula_files(formula: str) -> list[str] | None:
+    """Homebrew publishes the executable list per formula -- no install needed.
+
+    Load-bearing here: p7zip installs 7z/7za/7zr while sevenzip installs only
+    7zz.  Since the app probes for `7z`, the DEPRECATED-looking name is the
+    correct one on macOS and the modern one would break it.
+    """
+    body = _get(f"https://formulae.brew.sh/api/formula/{formula}.json")
+    if not body:
+        return None
+    try:
+        return list(json.loads(body).get("executables") or []) or None
+    except json.JSONDecodeError:
+        return None
+
+
+def winget_package_commands(package_id: str) -> list[str] | None:
+    """winget: the manifest declares the commands a package provides.
+
+    winget has no file DATABASE, but winget-pkgs manifests carry `Commands:`
+    and, for portable/zip installers, `PortableCommandAlias:` per nested file.
+    That is a published binary list, so Windows is verifiable after all.
+    """
+    parts = package_id.split(".")
+    base = ("https://raw.githubusercontent.com/microsoft/winget-pkgs/master/"
+            f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
+    api = ("https://api.github.com/repos/microsoft/winget-pkgs/contents/"
+           f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
+    body = _get(api)
+    if not body:
+        return None
+    try:
+        versions = [e["name"] for e in json.loads(body)
+                    if e.get("type") == "dir" and e["name"][:1].isdigit()]
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not versions:
+        return None
+    newest = sorted(versions, key=lambda v: [
+        int(x) if x.isdigit() else 0 for x in v.split(".")])[-1]
+    text = ""
+    for suffix in ("installer", "locale.en-US", ""):
+        name = f"{package_id}.{suffix}.yaml" if suffix else f"{package_id}.yaml"
+        text += _get(f"{base}/{newest}/{name}") or ""
+    cmds = re.findall(r"^\s*PortableCommandAlias:\s*(\S+)", text, re.M)
+    block = re.search(r"^Commands:\n((?:\s*-\s*\S+\n)+)", text, re.M)
+    if block:
+        cmds += re.findall(r"-\s*(\S+)", block.group(1))
+    return sorted(set(cmds)) or None
+
+
+#: OS class -> (channel label, file-list probe).  Only channels with a
+#: published file list can be verified; the rest are reported as UNVERIFIED.
+_VERIFIABLE_CHANNELS: dict[str, tuple[str, object]] = {
+    "PacmanLinux": ("arch", arch_package_files),
+    "DnfLinux": ("fedora", fedora_package_files),
+    "AptLinux": ("debian", debian_package_files),
+    "MacOSPlatform": ("homebrew", brew_formula_files),
+    "WindowsPlatform": ("winget", winget_package_commands),
+}
+
+
+def _os_classes() -> list[object]:
+    """Every concrete OS whose install hints we can render."""
+    sys.path.insert(0, str(_ROOT / "src"))
+    from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
+    from trcc.adapters.system.linux import _LINUX_FAMILIES, GenericLinux
+    from trcc.adapters.system.macos import MacOSPlatform
+    from trcc.adapters.system.windows import WindowsPlatform
+    return [*_LINUX_FAMILIES, GenericLinux, FreeBsdOS, OpenBsdOS, NetBsdOS,
+            MacOSPlatform, WindowsPlatform]
+
+
+def check_install_hints() -> list[Finding]:
+    """Does every hint we print actually deliver the binary the app probes for?"""
+    findings: list[Finding] = []
+
+    for key in sorted(hint_keys_in_source() - set(_HINT_BINARIES)):
+        findings.append(Finding(
+            "GAP", key,
+            f"software_install_hint({key!r}) is called in src but is not in "
+            f"_HINT_BINARIES — nothing verifies what that hint delivers"))
+
+    print(f"{'os':16} {'tool':8} {'hint':44} {'delivers':22}")
+    print("-" * 94)
+    for cls in _os_classes():
+        name = cls.__name__
+        channel = _VERIFIABLE_CHANNELS.get(name)
+        for tool, needed in sorted(_HINT_BINARIES.items()):
+            hint = cls().software_install_hint(tool)
+            pkg = package_from_hint(hint)
+            if not needed:
+                continue                       # nothing on PATH to deliver
+            if pkg is None:
+                print(f"  {name:14} {tool:8} {hint[:42]:44} {'(no package)':22}")
+                continue
+            if channel is None:
+                print(f"  {name:14} {tool:8} {hint[:42]:44} {'UNVERIFIED':22}")
+                findings.append(Finding(
+                    "GAP", f"{name}/{tool}",
+                    f"no published file list for this channel — {hint!r} is "
+                    f"unverified; confirm by hand that it provides "
+                    f"{'/'.join(needed)}"))
+                continue
+            label, probe = channel
+            shipped = probe(pkg)               # type: ignore[operator]
+            if shipped is None:
+                print(f"  {name:14} {tool:8} {hint[:42]:44} {'— absent':22}")
+                findings.append(Finding(
+                    "STALE", f"{name}/{tool}",
+                    f"{label} has no package {pkg!r} (and nothing provides it) "
+                    f"— we print {hint!r}"))
+                continue
+            missing = [b for b in needed if b not in shipped]
+            # Report the NEEDED binaries, present or not -- an alphabetical
+            # sample of a 54-executable formula says nothing about ffprobe.
+            got = ",".join(f"{b}{'' if b in shipped else '(MISSING)'}"
+                           for b in needed)
+            print(f"  {name:14} {tool:8} {hint[:42]:44} {got:22}")
+            if missing:
+                findings.append(Finding(
+                    "STALE", f"{name}/{tool}",
+                    f"{label}: {hint!r} installs {pkg!r}, which does NOT ship "
+                    f"{'/'.join(missing)} — the check that printed this hint "
+                    f"will still fail after the user runs it"))
+    return findings
 
 
 # ── findings ───────────────────────────────────────────────────────────
@@ -455,6 +749,9 @@ def main() -> int:
     report_matrix()
     print()
     findings = check() + check_pip_resolved_targets()
+    print()
+    print("Install hints — does the command we print deliver the binary?\n")
+    findings += check_install_hints()
     print()
     if not findings:
         print("All packaging claims still hold.")
