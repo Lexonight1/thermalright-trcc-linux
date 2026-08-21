@@ -843,26 +843,41 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
 **Release** — validated and ready for users:
 1. `ruff check .` + `pyright` — 0 errors
 2. `PYTHONPATH=src pytest tests/ -n 8 -x -q` — all pass
-3. Commit + push existing changes to `main`
-4. Bump the version — **exactly two literals**: `src/trcc/__version__.py` and
+3. **`PYTHONPATH=src python3.12 dev/tools/check_program_deps.py`** — every
+   install hint still delivers the binary the app probes for.  ONLINE, so it
+   cannot be a test and cannot run in CI; this is the only moment it runs, and
+   a release is exactly when distro drift matters.  Run `--gate` first if the
+   results look surprising: it re-proves each channel against known answers
+   before you trust a verdict.
+   **Findings are not automatically blockers** — the EL/EPEL caveat is a
+   standing GAP, not a regression.  What blocks is a **STALE** row, which means
+   a command we print no longer works.  Four such rows were found on
+   2026-08-21: `dnf install p7zip` (installs 7za, not 7z), `dnf install ffmpeg`
+   (not in stock Fedora), `pkg install p7zip` (deleted from FreeBSD as
+   vulnerable), `pkg_add ffmpeg` (no such package on NetBSD).  Every one had
+   been shipping.
+4. Commit + push existing changes to `main`
+5. Bump the version — **exactly two literals**: `src/trcc/__version__.py` and
    `pyproject.toml`.  **Do NOT add one to `flake.nix`** — it derives the version
    from `pyproject.toml` (`builtins.fromTOML`, PR #209), and re-introducing a
    literal there re-creates the drift that PR removed.
-5. Regenerate the man pages — `PYTHONPATH=src python3.12 dev/gen_manpages.py`.
+6. Regenerate the man pages — `PYTHONPATH=src python3.12 dev/gen_manpages.py`.
    All 7 carry the version in their `.TH` line, so
-   `tests/test_manpages.py::test_committed_manpages_are_current` FAILS at step 7
+   `tests/test_manpages.py::test_committed_manpages_are_current` FAILS at the
+   second lint+test below
    until you do.  (`doc/REFERENCE_CLI.md` is generated too but carries no
    version — it must come back byte-identical; if it moves on a version-only
    bump, its output is not deterministic and that's a bug.)
-6. Update `doc/CHANGELOG.md` — **this is the version history**.  `__version__.py`
+7. Update `doc/CHANGELOG.md` — **this is the version history**.  `__version__.py`
    no longer holds a history block; its docstring points here.
-7. Lint + test again
-8. Commit + push version bump to `main`
-9. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
-10. `gh release create v{version} --target main --title "v{version}"`
-11. Verify the release landed — `gh run list` all green, and PyPI actually
+8. Update `release.yml` inline package specs — download URLs use fixed-name aliases, so no version appears in guide/README URLs.
+9. Lint + test again
+10. Commit + push version bump to `main`
+11. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
+12. `gh release create v{version} --target main --title "v{version}"`
+13. Verify the release landed — `gh run list` all green, and PyPI actually
     serves the new version — BEFORE telling any reporter to upgrade.
-12. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
+14. Comment on relevant GitHub issues.  Order is **fix → verify → bump → reply**;
     never announce an unconfirmed change as "the fix" (see
     `memory/feedback_fix_then_bump_then_reply.md`).  Upgrade commands must be
     copy-paste ready and matched to how that reporter actually installed
@@ -870,15 +885,13 @@ Non-Linux bugs get the slowest, most disciplined approach in this repo. The Linu
     `gh release view v{version} --json assets`.
 
 ### Trigger Words
-Bare `patch`, `minor`, or `major` → full release workflow:
-1. Lint + test uncommitted changes first
-2. Commit + push existing changes to `main`
-3. Bump version in `__version__.py` + `pyproject.toml` (two files — `flake.nix`
-   derives it; see the Release list above)
-4. Regenerate man pages (`dev/gen_manpages.py`) + changelog entry
-5. Update `release.yml` inline package specs (download URLs use fixed-name aliases — no version in guide/README URLs)
-6. Lint + test again
-7. Commit + push version bump + tag + GitHub release
+Bare `patch`, `minor`, or `major` → **run the Release list above, every step.**
+
+It is not restated here.  It used to be, as a seven-step summary, and the two
+copies had already drifted: the summary carried a `release.yml` step the real
+list did not, and the real list would have gained the dependency check while
+the summary silently did not.  One list, or they disagree
+([[feedback_one_fact_expressed_twice_will_drift]]).
 
 ## GUI Standards
 - **Overlay enabled**: `_load_theme_overlay_config()` must call `set_overlay_enabled(True)`
