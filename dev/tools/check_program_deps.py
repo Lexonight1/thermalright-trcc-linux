@@ -1249,15 +1249,31 @@ _NO_CHANNEL_REASON: dict[str, str] = {
 }
 
 
-def _os_classes() -> list[object]:
-    """Every concrete OS whose install hints we can render."""
+def _os_instances() -> list[tuple[str, object]]:
+    """(label, OS) for every hint-rendering target, built not just detected.
+
+    The Linux families are injected rather than probed: this tool must be able
+    to ask what a Debian box would be told while running on Fedora, and it
+    used to get that from eight LinuxOS subclasses.  Those were records with
+    zero methods and are now rows in _FAMILIES; the label keeps the old class
+    names so the report and its findings stay comparable across the change.
+    """
     sys.path.insert(0, str(_ROOT / "src"))
     from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
-    from trcc.adapters.system.linux import _LINUX_FAMILIES, GenericLinux
+    from trcc.adapters.system.linux import _FAMILIES, _GENERIC_FAMILY, LinuxOS
     from trcc.adapters.system.macos import MacOSPlatform
     from trcc.adapters.system.windows import WindowsPlatform
-    return [*_LINUX_FAMILIES, GenericLinux, FreeBsdOS, OpenBsdOS, NetBsdOS,
-            MacOSPlatform, WindowsPlatform]
+
+    labels = {"dnf": "DnfLinux", "apt": "AptLinux", "pacman": "PacmanLinux",
+              "zypper": "ZypperLinux", "xbps-install": "XbpsLinux",
+              "apk": "ApkLinux", "nix-env": "NixLinux"}
+    out: list[tuple[str, object]] = [
+        (labels[f.manager], LinuxOS(f)) for f in _FAMILIES
+    ]
+    out.append(("GenericLinux", LinuxOS(_GENERIC_FAMILY)))
+    out += [(c.__name__, c()) for c in
+            (FreeBsdOS, OpenBsdOS, NetBsdOS, MacOSPlatform, WindowsPlatform)]
+    return out
 
 
 def _aliases_of(binary: str) -> tuple[str, ...]:
@@ -1287,11 +1303,10 @@ def check_install_hints() -> list[Finding]:
 
     print(f"{'os':16} {'tool':8} {'hint':44} {'delivers':22}")
     print("-" * 94)
-    for cls in _os_classes():
-        name = cls.__name__
+    for name, os_obj in _os_instances():
         channel = _VERIFIABLE_CHANNELS.get(name)
         for tool, needed in sorted(_HINT_BINARIES.items()):
-            hint = cls().software_install_hint(tool)
+            hint = os_obj.software_install_hint(tool)
             pkg = package_from_hint(hint)
             if not needed:
                 continue                       # nothing on PATH to deliver

@@ -16,6 +16,8 @@ import ctypes
 import errno
 import logging
 import os
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -325,6 +327,100 @@ _LINUX_INSTALL_PKGS: dict[str, str] = {
     "pynvml": "python3-pynvml",
 }
 
+@dataclass(frozen=True)
+class LinuxFamily:
+    """One Linux package-manager family: a record, not a subclass.
+
+    These were eight classes -- AptLinux, DnfLinux, PacmanLinux and so on --
+    each subclassing LinuxOS.  Measured before the change: **all eight defined
+    zero methods.**  Every attribute was a package-manager fact.  A child whose
+    entire content is data is not a subclass; it is a record that has not been
+    given a type yet, and reading "DATA over the parent's methods" as a design
+    rather than an alarm is how eight of them accumulated.
+
+    A package manager is also not an operating system.  Windows and macOS never
+    grew this because they have exactly one manager each, so there was nothing
+    to subclass along -- which is the diagnosis: the axis was never an OS axis.
+
+    ``pacman`` is a package manager.  ``LinuxOS`` is one class that *has* one.
+    """
+
+    #: Human label for logs and hints ("Fedora-family").
+    name: str
+    #: The binary probed to detect this family — and the detection order in
+    #: :data:`_FAMILIES` is load-bearing, first hit wins.
+    manager: str
+    #: Install one-liner with a ``{pkg}`` slot.
+    install_cmd: str
+    #: Argv that upgrades trcc-linux, or empty where there is no single line.
+    upgrade_cmd: tuple[str, ...] = ()
+    #: tool -> this family's package name, where it differs from
+    #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
+    #: "same as Debian" — guessing is what #207 was.
+    packages: Mapping[str, str] = field(default_factory=dict)
+
+
+#: Probe order, first match wins.  Preserved exactly from the class tuple it
+#: replaced: it is NOT definition order, and a machine with two managers gets
+#: the first listed.
+_FAMILIES: tuple[LinuxFamily, ...] = (
+    LinuxFamily(
+        name="Fedora-family", manager="dnf",
+        install_cmd="sudo dnf install {pkg}",
+        upgrade_cmd=("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
+        # Advised by BINARY PATH, not package name.  Both shared names are
+        # wrong here and both fail in a way that looks like success:
+        #   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z
+        #   ffmpeg -> not in stock Fedora at all (that is RPM Fusion)
+        # A corrected NAME only trades one wrong answer for another, because
+        # which package owns the binary depends on the user's repos:
+        #   /usr/bin/ffmpeg  stock -> ffmpeg-free  ·  +RPM Fusion -> ffmpeg
+        # On RHEL/Rocky/Alma both are EPEL-only (el9/el10_2/el10_3).
+        packages={"pynvml": "python3-pynvml",
+                  "7z": "/usr/bin/7z",
+                  "ffmpeg": "/usr/bin/ffmpeg"},
+    ),
+    LinuxFamily(
+        name="Debian-family", manager="apt",
+        install_cmd="sudo apt install {pkg}",
+        upgrade_cmd=("sudo", "apt", "upgrade", "-y", "trcc-linux"),
+        packages={"pynvml": "python3-pynvml"},
+    ),
+    LinuxFamily(
+        name="Arch-family", manager="pacman",
+        install_cmd="sudo pacman -S {pkg}",
+        upgrade_cmd=("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux"),
+        # Arch names it differently, and advising Debian's name here is #207.
+        packages={"pynvml": "python-nvidia-ml-py"},
+    ),
+    LinuxFamily(
+        name="SUSE-family", manager="zypper",
+        install_cmd="sudo zypper install {pkg}",
+        upgrade_cmd=("sudo", "zypper", "update", "-y", "trcc-linux"),
+        packages={"pynvml": "python3-pynvml"},
+    ),
+    LinuxFamily(
+        name="Void", manager="xbps-install",
+        install_cmd="sudo xbps-install {pkg}",
+        upgrade_cmd=("sudo", "xbps-install", "-u", "trcc-linux"),
+    ),
+    LinuxFamily(
+        name="Alpine", manager="apk",
+        install_cmd="sudo apk add {pkg}",
+        upgrade_cmd=("sudo", "apk", "upgrade", "trcc-linux"),
+    ),
+    LinuxFamily(
+        name="NixOS", manager="nix-env",
+        install_cmd="nix-env -iA nixpkgs.{pkg}",
+        upgrade_cmd=(),            # flake-managed; there is no one upgrade line
+    ),
+)
+
+#: No recognised manager.  Empty rather than borrowed: an unresolved Linux must
+#: say so, not answer as somebody else's distro.
+_GENERIC_FAMILY = LinuxFamily(name="Linux", manager="", install_cmd="")
+
+
 #: Tools whose distro package name is confirmed to differ per family, and the
 #: honest answer when a family has not confirmed one.  Without this an
 #: unconfirmed family silently inherits Debian's name — a command that looks
@@ -540,44 +636,50 @@ class LinuxOS(BaseOS, key="linux"):
 
     # ── Per-OS diagnostic hints (distro package manager) ──────────────
 
-    #: Set by each family below — the parent owns the methods, the child the
-    #: data.  Empty on the base so an unresolved Linux says so rather than
-    #: quietly answering as somebody else's distro.
-    _NAME: str = "Linux"
-    _MANAGER: str = ""
-    _INSTALL_CMD: str = ""
-    _UPGRADE_CMD: tuple[str, ...] = ()
-    #: logical tool -> this family's package name, where it differs from
-    #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
-    #: "same as Debian" — guessing is what #207 was.
-    _PKG_NAMES: dict[str, str] = {}
+    def __init__(self, family: LinuxFamily | None = None) -> None:
+        """Detect the package-manager family once, or accept one.
 
-    @classmethod
-    def resolve(cls) -> type[BaseOS]:
-        """Which Linux family this is — probed, because sys.platform can't say.
+        ``family`` is for tests and ``dev/tools/check_program_deps.py``, which
+        must be able to ask what a Debian box would be told while running on
+        Fedora.  Production passes nothing: ``current_platform()`` builds this
+        with ``cls()`` and the probe runs.
+        """
+        super().__init__()
+        self._family = family if family is not None else self._detect_family()
+        log.info("LinuxOS: family=%s manager=%s",
+                 self._family.name, self._family.manager or "(none)")
 
-        ``sys.platform`` is "linux" on every distro, so the family is decided by
-        which package manager is installed.  Hundreds of distros, a handful of
-        managers: the manager is the axis, which is why these are families and
-        not one class per distro.
+    @staticmethod
+    def _detect_family() -> LinuxFamily:
+        """First installed manager wins — the order in :data:`_FAMILIES`.
+
+        ``sys.platform`` is "linux" on every distro, so the manager is the only
+        thing that distinguishes them.  Hundreds of distros, a handful of
+        managers.
         """
         import shutil
-        for child in _LINUX_FAMILIES:
-            if shutil.which(child._MANAGER):
-                log.info("LinuxOS.resolve: found %s -> %s",
-                         child._MANAGER, child.__name__)
-                return child
-        log.warning("LinuxOS.resolve: no known package manager (%s) — "
+        for candidate in _FAMILIES:
+            if shutil.which(candidate.manager):
+                log.debug("LinuxOS._detect_family: found %s",
+                          candidate.manager)
+                return candidate
+        log.warning("LinuxOS._detect_family: no known package manager (%s) — "
                     "install advice will be generic",
-                    ", ".join(c._MANAGER for c in _LINUX_FAMILIES))
-        return GenericLinux
+                    ", ".join(f.manager for f in _FAMILIES))
+        return _GENERIC_FAMILY
+
+    @property
+    def family(self) -> LinuxFamily:
+        """This machine's package-manager family."""
+        log.debug("LinuxOS.family: %s", self._family.name)
+        return self._family
 
     def package_command(self, pkg: str) -> str:
         """This family's install line for *pkg*, or an honest generic."""
-        if not self._INSTALL_CMD:
+        if not self._family.install_cmd:
             log.info("package_command: no manager on this host — generic advice")
             return f"Install {pkg} via your package manager"
-        return self._INSTALL_CMD.format(pkg=pkg)
+        return self._family.install_cmd.format(pkg=pkg)
 
     def _build_packages(self) -> PackageManager:
         """Only the rpm families can be asked so far.
@@ -587,22 +689,22 @@ class LinuxOS(BaseOS, key="linux"):
         put four wrong package names in the tables this replaces.
         """
         from ._packages import NoPackageManager, Rpm
-        if self._MANAGER == "dnf":
+        if self._family.manager == "dnf":
             log.info("%s._build_packages: rpm", type(self).__name__)
             return Rpm()
         log.info("%s._build_packages: %s not implemented yet — cannot be asked",
-                 type(self).__name__, self._MANAGER or "(none)")
+                 type(self).__name__, self._family.manager or "(none)")
         return NoPackageManager()
 
     def package_manager(self) -> str:
         """This family's manager — "" on a Linux we did not recognise."""
-        log.debug("package_manager: %s", self._MANAGER or "(none)")
-        return self._MANAGER
+        log.debug("package_manager: %s", self._family.manager or "(none)")
+        return self._family.manager
 
     def upgrade_command(self) -> tuple[str, ...]:
         """Argv that upgrades trcc-linux on this family, or empty if unknown."""
-        log.debug("upgrade_command: %s", self._UPGRADE_CMD)
-        return self._UPGRADE_CMD
+        log.debug("upgrade_command: %s", self._family.upgrade_cmd)
+        return self._family.upgrade_cmd
 
     def software_install_hint(self, tool: str) -> str:
         """Install line for a logical tool, in this family's package manager.
@@ -612,11 +714,11 @@ class LinuxOS(BaseOS, key="linux"):
         Advising Debian's ``python3-pynvml`` on Arch is #207.
         """
         log.debug("software_install_hint: tool=%s manager=%s",
-                  tool, self._MANAGER or "(none)")
-        pkg = self._PKG_NAMES.get(tool)
+                  tool, self._family.manager or "(none)")
+        pkg = self._family.packages.get(tool)
         if pkg is None and tool in _UNCONFIRMED_FALLBACK:
             log.info("software_install_hint: no confirmed %s package for %s",
-                     tool, self._NAME)
+                     tool, self._family.name)
             return _UNCONFIRMED_FALLBACK[tool]
         return self.package_command(pkg or _LINUX_INSTALL_PKGS.get(tool, tool))
 
@@ -659,115 +761,12 @@ class LinuxOS(BaseOS, key="linux"):
 # lived in three files, one of which had already drifted short by two entries.
 
 
-class AptLinux(LinuxOS):
-    """Debian · Ubuntu · Mint · Pop!_OS · Kali · Raspberry Pi OS."""
+# The eight LinuxOS subclasses that used to live here -- AptLinux, DnfLinux,
+# PacmanLinux, ZypperLinux, XbpsLinux, ApkLinux, NixLinux, GenericLinux -- are
+# now rows in :data:`_FAMILIES` above.  Measured before removing them: all
+# eight defined ZERO methods.  See :class:`LinuxFamily` for why that is the
+# defect and not the design.
 
-    _NAME = "Debian-family"
-    _MANAGER = "apt"
-    _INSTALL_CMD = "sudo apt install {pkg}"
-    _UPGRADE_CMD = ("sudo", "apt", "upgrade", "-y", "trcc-linux")
-    _PKG_NAMES = {"pynvml": "python3-pynvml"}
-
-
-class DnfLinux(LinuxOS):
-    """Fedora · RHEL · CentOS Stream · Rocky · AlmaLinux."""
-
-    _NAME = "Fedora-family"
-    _MANAGER = "dnf"
-    _INSTALL_CMD = "sudo dnf install {pkg}"
-    _UPGRADE_CMD = ("sudo", "dnf", "upgrade", "-y", "trcc-linux")
-    #: Advised by BINARY PATH, not package name.  Both shared names are wrong
-    #: here and both fail in a way that LOOKS like success:
-    #:   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z, so it installs
-    #:             cleanly and `which 7z` still fails -- the doctor then
-    #:             reports the same fault and prints the same advice again
-    #:   ffmpeg -> not in stock Fedora at all (that is RPM Fusion); the user
-    #:             gets "No match for argument"
-    #: A corrected NAME only trades one wrong answer for another, because which
-    #: package owns the binary depends on which repos the user enabled:
-    #:   /usr/bin/ffmpeg  stock -> ffmpeg-free  ·  +RPM Fusion -> ffmpeg
-    #:   /usr/bin/7z      stock -> 7zip         ·  +RPM Fusion -> 7zip
-    #: The path is right in both, hands an RPM Fusion user their own full build
-    #: instead of pushing a swap onto ffmpeg-free, and asks dnf the same
-    #: question we ask the OS -- `shutil.which(tool)` wants a binary.
-    #: On RHEL/Rocky/Alma both packages are EPEL-only (verified el9/el10_2/
-    #: el10_3), so without EPEL this finds nothing -- as today's advice also
-    #: does.  Saying "enable EPEL first" needs EL told apart from Fedora, which
-    #: is a new capability and not this fix.
-    _PKG_NAMES = {"pynvml": "python3-pynvml",
-                  "7z": "/usr/bin/7z",
-                  "ffmpeg": "/usr/bin/ffmpeg"}
-
-
-class PacmanLinux(LinuxOS):
-    """Arch · Manjaro · CachyOS · EndeavourOS · Garuda."""
-
-    _NAME = "Arch-family"
-    _MANAGER = "pacman"
-    _INSTALL_CMD = "sudo pacman -S {pkg}"
-    _UPGRADE_CMD = ("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux")
-    # Arch names it differently, and advising Debian's name here is #207.
-    _PKG_NAMES = {"pynvml": "python-nvidia-ml-py"}
-
-
-class ZypperLinux(LinuxOS):
-    """openSUSE · SUSE Linux Enterprise."""
-
-    _NAME = "SUSE-family"
-    _MANAGER = "zypper"
-    _INSTALL_CMD = "sudo zypper install {pkg}"
-    _UPGRADE_CMD = ("sudo", "zypper", "update", "-y", "trcc-linux")
-    _PKG_NAMES = {"pynvml": "python3-pynvml"}
-
-
-class ApkLinux(LinuxOS):
-    """Alpine · postmarketOS.
-
-    No ``pynvml`` row: the package name is unconfirmed, so the generic
-    fallback answers instead of inventing one.
-    """
-
-    _NAME = "Alpine"
-    _MANAGER = "apk"
-    _INSTALL_CMD = "sudo apk add {pkg}"
-    _UPGRADE_CMD = ("sudo", "apk", "upgrade", "trcc-linux")
-
-
-class XbpsLinux(LinuxOS):
-    """Void Linux.  ``pynvml`` name unconfirmed — see :class:`ApkLinux`."""
-
-    _NAME = "Void"
-    _MANAGER = "xbps-install"
-    _INSTALL_CMD = "sudo xbps-install {pkg}"
-    _UPGRADE_CMD = ("sudo", "xbps-install", "-u", "trcc-linux")
-
-
-class NixLinux(LinuxOS):
-    """NixOS.  We ship a ``flake.nix`` and recognised no ``nix`` until now, so
-    a user we package for got the generic "install via your package manager"."""
-
-    _NAME = "NixOS"
-    _MANAGER = "nix-env"
-    _INSTALL_CMD = "nix-env -iA nixpkgs.{pkg}"
-    _UPGRADE_CMD = ()          # flake-managed; there is no one upgrade line
-
-
-class GenericLinux(LinuxOS):
-    """A Linux whose package manager we do not recognise.
-
-    Explicit rather than inherited: it answers "I do not know" instead of
-    quietly returning another family's command.
-    """
-
-    _NAME = "Linux"
-
-
-#: Probed in order by :meth:`LinuxOS.resolve`.  Order is the old
-#: ``detect_package_manager`` candidate order, preserved so a host with two
-#: managers resolves the way it always did.
-_LINUX_FAMILIES: tuple[type[LinuxOS], ...] = (
-    DnfLinux, AptLinux, PacmanLinux, ZypperLinux, XbpsLinux, ApkLinux, NixLinux,
-)
 
 
 # =========================================================================

@@ -29,6 +29,17 @@ from trcc.core.toolchain import TOOL_ALIASES, present, resolve
 _SEVEN_ZIP_PRESENT = [a for a in TOOL_ALIASES["7z"] if shutil.which(a)]
 
 
+def _dnf():
+    """A LinuxOS built as the Fedora family, whatever this box runs.
+
+    The eight LinuxOS subclasses these tests used to name are gone -- they held
+    data and no methods -- so the family is injected instead of subclassed.
+    """
+    from trcc.adapters.system.linux import _FAMILIES, LinuxOS
+
+    return LinuxOS(next(f for f in _FAMILIES if f.manager == "dnf"))
+
+
 @pytest.fixture(scope="module")
 def archive(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A real .7z, built by whichever 7-Zip this box has."""
@@ -156,7 +167,6 @@ def test_health_says_unreachable_not_missing(monkeypatch: pytest.MonkeyPatch,
     different faults, and "install it" is wrong advice for one of them.
     """
     from trcc.adapters.diagnostics import health
-    from trcc.adapters.system.linux import DnfLinux
 
     planted = tmp_path / "7za"
     planted.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -164,7 +174,7 @@ def test_health_says_unreachable_not_missing(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr("trcc.core.toolchain.shutil.which", lambda name: None)
     monkeypatch.setattr("trcc.core.toolchain._OFF_PATH_DIRS", (str(tmp_path),))
 
-    result = health.check_seven_zip_present(DnfLinux())
+    result = health.check_seven_zip_present(_dnf())
     assert "installed at" in result.message, result.message
     assert str(tmp_path) in result.message
     assert "will not help" in result.fix_hint, (
@@ -178,12 +188,11 @@ def test_health_says_missing_when_it_really_is(monkeypatch: pytest.MonkeyPatch,
     "7z not on PATH" does not tell a reporter that 7za and 7zz were tried too.
     """
     from trcc.adapters.diagnostics import health
-    from trcc.adapters.system.linux import DnfLinux
 
     monkeypatch.setattr("trcc.core.toolchain.shutil.which", lambda name: None)
     monkeypatch.setattr("trcc.core.toolchain._OFF_PATH_DIRS", (str(tmp_path),))
 
-    result = health.check_seven_zip_present(DnfLinux())
+    result = health.check_seven_zip_present(_dnf())
     assert "not found" in result.message
     assert "7za" in result.message, "the message does not say what was tried"
     assert "dnf install" in result.fix_hint
@@ -223,8 +232,7 @@ class _StubPackages:
 
 
 def _platform_with(monkeypatch, stub):
-    from trcc.adapters.system.linux import DnfLinux
-    plat = DnfLinux()
+    plat = _dnf()
     monkeypatch.setattr(plat, "packages", lambda: stub)
     return plat
 

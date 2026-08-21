@@ -1,0 +1,25 @@
+[
+  {
+    "type": "lcd",
+    "name": "Frozen Warframe (SCSI 320x320, verified path)",
+    "vid": "0402",
+    "pid": "3922",
+    "fbl": 100
+  },
+  {
+    "type": "lcd",
+    "name": "Bulk 854x480 portrait panel (#136 target)",
+    "vid": "87ad",
+    "pid": "70db",
+    "resolution": "854x480",
+    "pm": 11,
+    "sub": 5
+  },
+  {
+    "type": "led",
+    "name": "AX120 Digital",
+    "vid": "0416",
+    "pid": "8001",
+    "pm": 1
+  }
+]

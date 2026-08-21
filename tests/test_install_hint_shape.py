@@ -37,17 +37,25 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
-from trcc.adapters.system.linux import _LINUX_FAMILIES, GenericLinux
+from trcc.adapters.system.linux import _FAMILIES, _GENERIC_FAMILY, LinuxOS
 from trcc.adapters.system.macos import MacOSPlatform
 from trcc.adapters.system.windows import WindowsPlatform
 from trcc.core.ports import Platform
 
+
+def _os_id(os_obj: Platform) -> str:
+    """Test id: the class, plus the Linux family it was built with."""
+    family = getattr(os_obj, "family", None)
+    return f"{type(os_obj).__name__}[{family.name}]" if family else type(os_obj).__name__
+
 #: Every concrete OS, not just the one this suite happens to run on.  The
 #: defect lived for months precisely because it could not reproduce on Linux.
-ALL_OS: tuple[type[Platform], ...] = (
-    FreeBsdOS, OpenBsdOS, NetBsdOS,
-    MacOSPlatform, WindowsPlatform,
-    *_LINUX_FAMILIES, GenericLinux,
+ALL_OS: tuple[Platform, ...] = (
+    FreeBsdOS(), OpenBsdOS(), NetBsdOS(),
+    MacOSPlatform(), WindowsPlatform(),
+    # Every Linux family, injected into the one LinuxOS -- they were eight
+    # classes with zero methods between them.
+    *(LinuxOS(f) for f in _FAMILIES), LinuxOS(_GENERIC_FAMILY),
 )
 
 #: Every key any caller passes, plus one that is deliberately unmapped so the
@@ -56,21 +64,21 @@ ALL_OS: tuple[type[Platform], ...] = (
 TOOLS = ("ffmpeg", "7z", "python", "pynvml", "definitely-not-a-tool")
 
 
-@pytest.mark.parametrize("os_cls", ALL_OS, ids=lambda c: c.__name__)
+@pytest.mark.parametrize("os_obj", ALL_OS, ids=_os_id)
 @pytest.mark.parametrize("tool", TOOLS)
-def test_install_hint_is_a_single_line(os_cls: type[Platform], tool: str) -> None:
+def test_install_hint_is_a_single_line(os_obj: Platform, tool: str) -> None:
     """No newline, no carriage return — the renderer supplies the line."""
-    hint = os_cls().software_install_hint(tool)
+    hint = os_obj.software_install_hint(tool)
     assert "\n" not in hint and "\r" not in hint, (
-        f"{os_cls.__name__}.software_install_hint({tool!r}) is multi-line: "
+        f"{_os_id(os_obj)}.software_install_hint({tool!r}) is multi-line: "
         f"{hint!r}\nIt is rendered as `hint: {{fix_hint}}` on one line; a "
         f"newline breaks the remainder out of the label and the indent."
     )
 
 
-@pytest.mark.parametrize("os_cls", ALL_OS, ids=lambda c: c.__name__)
+@pytest.mark.parametrize("os_obj", ALL_OS, ids=_os_id)
 @pytest.mark.parametrize("tool", TOOLS)
-def test_install_hint_is_not_empty_or_padded(os_cls: type[Platform],
+def test_install_hint_is_not_empty_or_padded(os_obj: Platform,
                                              tool: str) -> None:
     """A hint that renders as blank or ragged is worse than none.
 
@@ -78,9 +86,9 @@ def test_install_hint_is_not_empty_or_padded(os_cls: type[Platform],
     (the label prints with nothing after it) and leading/trailing whitespace
     (the indent the renderer already applied gets doubled).
     """
-    hint = os_cls().software_install_hint(tool)
-    assert hint, f"{os_cls.__name__}.software_install_hint({tool!r}) is empty"
+    hint = os_obj.software_install_hint(tool)
+    assert hint, f"{_os_id(os_obj)}.software_install_hint({tool!r}) is empty"
     assert hint == hint.strip(), (
-        f"{os_cls.__name__}.software_install_hint({tool!r}) has surrounding "
+        f"{_os_id(os_obj)}.software_install_hint({tool!r}) has surrounding "
         f"whitespace: {hint!r} — the renderer supplies the indent."
     )

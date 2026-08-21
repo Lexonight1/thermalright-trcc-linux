@@ -21,43 +21,53 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
-from trcc.adapters.system.linux import _LINUX_FAMILIES, GenericLinux, LinuxOS
+from trcc.adapters.system.linux import (
+    _FAMILIES,
+    _GENERIC_FAMILY,
+    LinuxFamily,
+    LinuxOS,
+)
 
 
-@pytest.mark.parametrize("family", _LINUX_FAMILIES, ids=lambda c: c.__name__)
-def test_linux_family_uses_its_own_manager(family: type[LinuxOS]) -> None:
-    """The install line names this family's manager and no other's."""
-    hint = family().software_install_hint("ffmpeg")
-    assert family._MANAGER.split("-")[0] in hint, (
-        f"{family.__name__} does not name its own manager {family._MANAGER!r}")
+@pytest.mark.parametrize("family", _FAMILIES, ids=lambda f: f.name)
+def test_linux_family_uses_its_own_manager(family: LinuxFamily) -> None:
+    """The install line names this family's manager and no other's.
 
-    others = {f._MANAGER.split("-")[0] for f in _LINUX_FAMILIES} - {
-        family._MANAGER.split("-")[0]}
+    Parametrised over RECORDS now, not classes.  The eight LinuxOS subclasses
+    this used to iterate defined zero methods between them; the family is data
+    and is injected into the one class.
+    """
+    hint = LinuxOS(family).software_install_hint("ffmpeg")
+    assert family.manager.split("-")[0] in hint, (
+        f"{family.name} does not name its own manager {family.manager!r}")
+
+    others = {f.manager.split("-")[0] for f in _FAMILIES} - {
+        family.manager.split("-")[0]}
     # "apk add" must not appear in a pacman hint, etc.
     for other in others:
         assert f"{other} " not in hint, (
-            f"{family.__name__} emits {other}'s command: {hint!r}")
+            f"{family.name} emits {other}'s command: {hint!r}")
 
 
-@pytest.mark.parametrize("family", _LINUX_FAMILIES, ids=lambda c: c.__name__)
-def test_linux_family_upgrade_targets_our_package(family: type[LinuxOS]) -> None:
+@pytest.mark.parametrize("family", _FAMILIES, ids=lambda f: f.name)
+def test_linux_family_upgrade_targets_our_package(family: LinuxFamily) -> None:
     """Every family that has an upgrade recipe upgrades trcc-linux with it."""
-    cmd = family().upgrade_command()
+    cmd = LinuxOS(family).upgrade_command()
     if not cmd:                       # NixOS is flake-managed — no single line
-        assert family._MANAGER == "nix-env", (
-            f"{family.__name__} has no upgrade command and is not NixOS")
+        assert family.manager == "nix-env", (
+            f"{family.name} has no upgrade command and is not NixOS")
         return
     assert "trcc-linux" in cmd
-    assert family._MANAGER in cmd or family._MANAGER.split("-")[0] in cmd
+    assert family.manager in cmd or family.manager.split("-")[0] in cmd
 
 
 def test_unrecognised_linux_says_so_rather_than_guessing() -> None:
     """GenericLinux must not answer as somebody else's distro."""
-    hint = GenericLinux().software_install_hint("ffmpeg")
+    hint = LinuxOS(_GENERIC_FAMILY).software_install_hint("ffmpeg")
     assert "your package manager" in hint
     for mgr in ("apt", "dnf", "pacman", "zypper", "apk", "xbps"):
         assert f"{mgr} " not in hint
-    assert GenericLinux().package_manager() == ""
+    assert LinuxOS(_GENERIC_FAMILY).package_manager() == ""
 
 
 def test_unconfirmed_package_name_is_not_borrowed_from_debian() -> None:
@@ -66,12 +76,14 @@ def test_unconfirmed_package_name_is_not_borrowed_from_debian() -> None:
     Advising ``python3-pynvml`` where it does not exist is #207.  Alpine and
     Void have no confirmed pynvml package, so they get the pip fallback.
     """
-    from trcc.adapters.system.linux import ApkLinux, PacmanLinux, XbpsLinux
+    by_manager = {f.manager: f for f in _FAMILIES}
 
-    assert "python3-pynvml" not in ApkLinux().software_install_hint("pynvml")
-    assert "python3-pynvml" not in XbpsLinux().software_install_hint("pynvml")
+    for manager in ("apk", "xbps-install"):
+        hint = LinuxOS(by_manager[manager]).software_install_hint("pynvml")
+        assert "python3-pynvml" not in hint, f"{manager} borrowed Debian's name"
     # Arch HAS a confirmed name and must use it.
-    assert "python-nvidia-ml-py" in PacmanLinux().software_install_hint("pynvml")
+    assert "python-nvidia-ml-py" in (
+        LinuxOS(by_manager["pacman"]).software_install_hint("pynvml"))
 
 
 @pytest.mark.parametrize(

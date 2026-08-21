@@ -109,6 +109,13 @@ _DEV_TOOLS_DIR = _ROOT / "dev" / "tools"
 if str(_DEV_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_DEV_TOOLS_DIR))
 
+def _fam(manager: str):
+    """The LinuxFamily row for *manager* — families are records, not classes."""
+    from trcc.adapters.system.linux import _FAMILIES
+
+    return next(f for f in _FAMILIES if f.manager == manager)
+
+
 from check_program_deps import (  # noqa: E402
     _PKG_NAMES,
     DELIBERATELY_OPTIONAL,
@@ -218,20 +225,17 @@ def test_nvidia_reader_advice_names_a_package_that_exists() -> None:
     one sends the user to a command that fails, which is #207 with extra steps.
     """
     from trcc.adapters.system.linux import (
-        ApkLinux,
-        AptLinux,
-        DnfLinux,
-        PacmanLinux,
+        LinuxOS,
     )
 
     # Asserted through the shipping path, not a table: the per-manager names
     # moved onto the family classes on 2026-08-19.
-    assert "python-nvidia-ml-py" in PacmanLinux().software_install_hint("pynvml"), (
+    assert "python-nvidia-ml-py" in LinuxOS(_fam("pacman")).software_install_hint("pynvml"), (
         "Arch's package is python-nvidia-ml-py; python3-pynvml does not exist "
         "there and pacman will fail"
     )
-    assert "python3-pynvml" in AptLinux().software_install_hint("pynvml")
-    assert "python3-pynvml" in DnfLinux().software_install_hint("pynvml")
+    assert "python3-pynvml" in LinuxOS(_fam("apt")).software_install_hint("pynvml")
+    assert "python3-pynvml" in LinuxOS(_fam("dnf")).software_install_hint("pynvml")
     # A family with no CONFIRMED name must not borrow Debian's — that is #207
     # in the other direction.  Alpine gets the pip fallback instead.
-    assert "python3-pynvml" not in ApkLinux().software_install_hint("pynvml")
+    assert "python3-pynvml" not in LinuxOS(_fam("apk")).software_install_hint("pynvml")

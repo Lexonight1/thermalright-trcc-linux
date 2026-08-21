@@ -39,9 +39,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`BaseOS`](#baseos) | 12 | 15 | 15 |
+| [`BaseOS`](#baseos) | 12 | 15 | 7 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
-| [`Platform`](#platform) | 22 | 0 | 15 |
+| [`Platform`](#platform) | 22 | 0 | 7 |
 
 ---
 
@@ -565,7 +565,7 @@ setup(interactive: 'bool' = True) -> int
 
 **You inherit (15):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
-**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
+**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
 ## Renderer
 
@@ -636,5 +636,5 @@ usb_power_state(vid: 'int', pid: 'int') -> UsbPowerState | None
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
+**Implementations (7):** `BsdOS` · `FreeBsdOS` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
