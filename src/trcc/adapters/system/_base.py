@@ -332,4 +332,11 @@ class BaseOS(Platform):
         hint = self._INSTALL_HINTS.get(tool)
         if hint is None:
             return f"Install {tool} and ensure it is on PATH"
-        return f"{tool} not found — install it:\n  {hint}"
+        # ONE LINE.  Every consumer appends this to a list that is later
+        # "\n".join-ed under a `hint: ` label -- doctor.py:39,
+        # debug_report.py:522, qtgui/system_panel.py:182 -- so an embedded
+        # newline broke the second half out of both the indent and the label,
+        # in the very output reporters paste to us.  The "{tool} not found"
+        # preamble is dropped with it: the renderer already printed the
+        # message ("7z not on PATH") on the line above.
+        return hint
