@@ -42,11 +42,13 @@ Exit: 0 = every claim still true, 1 = at least one claim has rotted.
 """
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 import urllib.error
 import urllib.request
@@ -493,33 +495,85 @@ class HomebrewChannel(Channel):
             return None
 
 
+#: repo -> {provided name: real package}.  Fetched once per run; APKINDEX is
+#: 500 KB for main and 2.1 MB for community, gzipped.
+_ALPINE_PROVIDES: dict[str, dict[str, str]] = {}
+
+
+def _alpine_provides(repo: str) -> dict[str, str]:
+    """Alpine's own provides map for one repo, from APKINDEX.
+
+    ``P:`` is the package, ``p:`` its provided names -- each optionally
+    ``=version``, which is stripped.  This is Alpine's metadata rather than a
+    rendered page, so it answers the question apk itself answers.
+    """
+    if repo in _ALPINE_PROVIDES:
+        return _ALPINE_PROVIDES[repo]
+    table: dict[str, str] = {}
+    try:
+        url = (f"https://dl-cdn.alpinelinux.org/alpine/{_ALPINE_BRANCH}/"
+               f"{repo}/x86_64/APKINDEX.tar.gz")
+        with urllib.request.urlopen(url, timeout=_TIMEOUT) as r:
+            raw = r.read()
+        with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+            member = tar.extractfile("APKINDEX")
+            text = member.read().decode("utf-8", "replace") if member else ""
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+            OSError, tarfile.TarError, KeyError):
+        text = ""
+    name = ""
+    for line in text.splitlines():
+        if line.startswith("P:"):
+            name = line[2:]
+        elif line.startswith("p:") and name:
+            for token in line[2:].split():
+                table[token.split("=")[0]] = name
+    _ALPINE_PROVIDES[repo] = table
+    return table
+
+
 class AlpineChannel(Channel):
     LABEL = "alpine"
 
-    def binaries(self, pkg: str) -> list[str] | None:
-        """Alpine publishes a per-package file list at pkgs.alpinelinux.org.
-
-        Searched by NAME, giving the files a package ships; the same endpoint
-        answers the inverse (which package owns a file) via ``file=``.
-
-        Measured 2026-08-21, and the reason this channel was written first:
-        ``p7zip`` does not exist in Alpine at all -- 404 in main AND community
-        -- while ``7zip`` (main) ships /usr/bin/7z and /usr/bin/7zz.  So
-        ``apk add p7zip``, which the app printed, fails outright.  ``ffmpeg``
-        does exist but lives in **community**, not main, which is why
-        provenance is a real question and not bookkeeping.
-        """
+    def _files(self, pkg: str) -> list[str]:
+        """Files ``pkg`` ships, by NAME, from the published contents index."""
         body = _get(f"https://pkgs.alpinelinux.org/contents?file=&path=&"
                     f"name={pkg}&branch={_ALPINE_BRANCH}&repo=&arch=x86_64")
         if not body:
-            return None
-        # The file cell is the only pre-wrap td; the package/branch/repo cells
-        # are links.  Anchoring on the style keeps a layout change loud rather
-        # than silently returning nothing.
-        files = re.findall(r'<td style="white-space: pre-wrap;">([^<]+)</td>',
-                           body)
+            return []
+        # The file cell is the only pre-wrap td; package/branch/repo are links.
+        # Anchoring on the style keeps a layout change loud rather than
+        # silently returning nothing.
+        return re.findall(r'<td style="white-space: pre-wrap;">([^<]+)</td>',
+                          body)
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Binaries ``pkg`` puts on PATH, resolving `provides` first.
+
+        Resolving provides is not optional, and getting it wrong here produced
+        a false user-facing bug report on 2026-08-21: a name-only lookup finds
+        no package called ``p7zip`` and concludes ``apk add p7zip`` is broken.
+        Alpine's own index says otherwise --
+
+            P:7zip
+            p:7zip-virtual p7zip=24.09-r0 cmd:7z=24.09-r0 cmd:7zz=24.09-r0
+
+        -- so apk resolves the provider and the command works.  This is the
+        same trap ArchChannel documents directly above, hit while editing the
+        file that documents it.
+
+        ``cmd:7z`` in that list is Alpine's exact analogue of
+        ``dnf install /usr/bin/7z``: a provider named for the binary.
+        """
+        files = self._files(pkg)
         if not files:
-            return None                        # absent, or ships no files
+            for repo in ("main", "community"):
+                owner = _alpine_provides(repo).get(pkg)
+                if owner:
+                    files = self._files(owner)
+                    break
+        if not files:
+            return None                        # genuinely absent
         return [f.rsplit("/", 1)[-1] for f in files if "/bin/" in f]
 
 
@@ -582,8 +636,9 @@ _VERIFIABLE_CHANNELS: dict[str, Channel] = {
 #: (channel, package, must_contain, must_not_contain, why)
 _CHANNEL_CASES: list[tuple[str, str, tuple[str, ...], tuple[str, ...], str]] = [
     ("alpine", "7zip", ("7z",), (), "Alpine ships 7z from 7zip, in main"),
-    ("alpine", "p7zip", (), ("7z",),
-     "p7zip does not exist in Alpine at all — 404 in main and community"),
+    ("alpine", "p7zip", ("7z",), (),
+     "no package is NAMED p7zip, but 7zip provides it — apk resolves it, so "
+     "the hint works; a name-only lookup called this broken"),
     ("fedora", "7zip", ("7z",), (), "the package that actually ships 7z"),
     ("fedora", "p7zip", ("7za",), ("7z",),
      "resolves to 7zip-standalone: ships 7za and NO 7z, the #1 defect"),
