@@ -138,6 +138,7 @@ def _summon_and_check(window: Any, d: dict, snapshot: Any) -> Finding:
 
 def _run_audit(window: Any) -> None:
     """on_ready hook — summon every variant, print the report, quit the loop."""
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
     from dev_console import _variant_dicts
@@ -198,7 +199,15 @@ def _run_audit(window: Any) -> None:
 
     qapp = QApplication.instance()
     if qapp is not None:
-        qapp.quit()
+        # ``run_gui`` calls on_ready(window) synchronously BEFORE it enters
+        # qapp.exec(), so a bare quit() here is issued with no event loop
+        # running and Qt discards it.  The audit then printed its result and
+        # blocked forever: the pytest wrapper reported a 600s timeout for work
+        # that had finished in ~2 minutes, so TRCC_GUI_AUDIT=1 could never
+        # pass and the 132-variant gate has never gated anything.  Measured:
+        # quit() before exec() is dropped; a zero-timer defers it into the
+        # loop the instant it starts.
+        QTimer.singleShot(0, qapp.quit)
 
 
 def _catalog_specs() -> list[dict]:
