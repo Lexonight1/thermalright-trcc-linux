@@ -117,35 +117,52 @@ def _probe_devices() -> Section:
 
 
 def _probe_sensor_chain() -> Section:
-    s = Section('sensor sources (strategy chain)')
+    """Which CPU sources are wired, and which of them answer on this machine.
+
+    On Windows this is the most useful single diagnostic: whether CPU
+    temperature comes from HWiNFO, LHM, WMI-ACPI, or falls through to psutil.
+
+    The registry, priority ordering and probe()/stop() this used to walk are
+    gone.  Sources are now ordinary objects composed into a chain by
+    ``build_windows_sensors``; "priority" is list order, and "available" means
+    "returns a value", which is how the chain falls through.  ``_sources`` is
+    private, as ``WindowsSensorSource._registry`` was -- composition is the
+    fact a per-OS smoke exists to report.
+    """
+    s = Section('sensor sources (chain composition)')
     try:
-        from trcc.adapters.system.windows.sources import WindowsSensorSource
+        from trcc.adapters.sensors.windows import build_windows_sensors
     except BaseException as exc:
-        s.fail('WindowsSensorSource import', exc)
+        s.fail('build_windows_sensors import', exc)
         return s
 
-    sources = WindowsSensorSource.in_priority_order()
-    if len(sources) == 0:
-        s.fail('registry',
-               RuntimeError('0 sources registered — windows/sources/__init__.py guard issue?'))
+    try:
+        enum = build_windows_sensors()
+    except BaseException as exc:
+        s.fail('build_windows_sensors()', exc)
         return s
-    keys = list(WindowsSensorSource._registry.keys())
-    s.ok('registry', f'{len(sources)} source(s): {", ".join(keys)}')
 
-    for src in sources:
+    chain = enum.cpu()
+    members = list(getattr(chain, '_sources', []))
+    if not members:
+        s.fail('chain', RuntimeError('CPU chain built with 0 sources'))
+        return s
+    s.ok('chain', f'{len(members)} CPU source(s), in priority order: '
+                  f'{", ".join(type(m).__name__ for m in members)}')
+
+    for m in members:
+        name = type(m).__name__
         try:
-            available = src.probe()
-            if available:
-                s.ok(f'{src.name} (priority {src.priority})', 'probe returned True — source live')
+            temp = m.temp()
+            if temp is None:
+                s.skip(name, 'no reading — not available on this machine')
             else:
-                s.skip(f'{src.name} (priority {src.priority})', 'probe returned False — not available on this machine')
+                s.ok(name, f'live: temp = {temp:.1f}')
         except BaseException as exc:
-            s.fail(f'{src.name} (priority {src.priority})', exc)
-        finally:
-            try:
-                src.stop()
-            except Exception:
-                pass
+            s.fail(name, exc)
+
+    s.ok('gpu / fan chains',
+         f'{len(enum.gpus())} gpu chain(s), {len(enum.fans())} fan source(s)')
     return s
 
 
