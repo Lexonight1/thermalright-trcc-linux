@@ -33,6 +33,7 @@ import subprocess
 from pathlib import Path
 from typing import Protocol
 
+from ...core import toolchain
 from ...core._safe import is_safe_zip_member
 from ...core.errors import HttpFetchError, TrccError
 from ...core.ports import DataInstaller, HttpFetcher
@@ -88,7 +89,8 @@ class SevenZipExtractor:
         target.mkdir(parents=True, exist_ok=True)
         try:
             listing = subprocess.run(
-                ["7z", "l", "-slt", str(archive)],
+                [toolchain.resolve("7z") or "7z", "l", "-slt",
+                 str(archive)],
                 capture_output=True, text=True, timeout=30,
                 creationflags=_NO_WINDOW,
             )
@@ -119,7 +121,8 @@ class SevenZipExtractor:
                 return False
         try:
             result = subprocess.run(
-                ["7z", "x", str(archive), f"-o{target}", "-y"],
+                [toolchain.resolve("7z") or "7z", "x", str(archive),
+                 f"-o{target}", "-y"],
                 capture_output=True, timeout=120,
                 creationflags=_NO_WINDOW,
             )

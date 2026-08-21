@@ -23,6 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ...core import toolchain
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
 from ...core.ports import Paths, Platform
 from ..sensors.nvml import NVML_RELOAD_HINT, GpuStateFn, nvml_init_state
@@ -278,7 +279,7 @@ def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
     log.info("check_ffmpeg_present: called")
-    if shutil.which("ffmpeg"):
+    if toolchain.present("ffmpeg"):
         return HealthCheckResult(
             name="ffmpeg", severity="OK",
             message="ffmpeg on PATH (video themes will decode)",
@@ -353,7 +354,7 @@ def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
     """``7z`` is required for theme-pack extraction.  Absence is WARN —
     user can still install themes via tarballs or the cloud catalog."""
     log.info("check_seven_zip_present: called")
-    if shutil.which("7z"):
+    if toolchain.present("7z"):
         return HealthCheckResult(
             name="7z", severity="OK",
             message="7z on PATH (theme-pack extraction available)",

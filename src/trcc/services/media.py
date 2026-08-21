@@ -19,6 +19,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core import toolchain
 from ..core.errors import ThemeError
 
 log = logging.getLogger(__name__)
@@ -99,7 +100,8 @@ class VideoDecoder:
                 "width and height must both be positive"
             )
 
-        cmd: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+        cmd: list[str] = [toolchain.resolve("ffmpeg") or "ffmpeg",
+                          "-hide_banner", "-loglevel", "error"]
         if self.rotation_degrees:
             cmd += ["-display_rotation", str(self.rotation_degrees)]
         if self.duration_s:
@@ -196,8 +198,7 @@ def _probe_video_size(path: Path) -> tuple[int, int] | None:
     pattern as ``services/video_export._probe_video_duration``.
     """
     log.debug("_probe_video_size: path=%s", path)
-    import shutil
-    if shutil.which("ffprobe") is None:
+    if not toolchain.present("ffprobe"):
         log.warning("_probe_video_size: ffprobe not on PATH")
         return None
     cmd = [

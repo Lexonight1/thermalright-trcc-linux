@@ -30,6 +30,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core import toolchain
+
 log = logging.getLogger(__name__)
 
 
@@ -68,7 +70,7 @@ class VideoExporter:
     """ffmpeg-driven ``Theme.zt`` encoder."""
 
     def __init__(self) -> None:
-        if shutil.which("ffmpeg") is None:
+        if not toolchain.present("ffmpeg"):
             log.warning(
                 "VideoExporter: ffmpeg not on PATH — exports will fail until "
                 "you install it (e.g. 'dnf install ffmpeg' / 'apt install ffmpeg').",
@@ -96,7 +98,7 @@ class VideoExporter:
     # ── Internals ────────────────────────────────────────────────────
 
     def _validate(self, req: VideoExportRequest) -> None:
-        if shutil.which("ffmpeg") is None:
+        if not toolchain.present("ffmpeg"):
             raise VideoExportError(
                 "ffmpeg not found on PATH.  Install it via your package "
                 "manager (e.g. 'dnf install ffmpeg' / 'apt install ffmpeg').",
@@ -243,7 +245,7 @@ def probe_duration_ms(source: Path) -> int:
     (e.g. "5 seconds from the start").
     """
     log.info("probe_duration_ms: source=%s", source)
-    if shutil.which("ffprobe") is None:
+    if not toolchain.present("ffprobe"):
         return 0
     cmd = [
         "ffprobe", "-v", "error",

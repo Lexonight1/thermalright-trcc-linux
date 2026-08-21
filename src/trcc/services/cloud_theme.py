@@ -25,6 +25,7 @@ import logging
 import subprocess
 from pathlib import Path
 
+from ..core import toolchain
 from ..core.models import CloudCategory, CloudThemeEntry
 from ..core.ports import CloudCatalog, Paths
 
@@ -152,7 +153,8 @@ def _extract_first_frame_png(mp4: Path, png: Path) -> None:
     """Write the MP4's first frame to *png*.  Best-effort."""
     log.info("materialise: extracting first-frame PNG → %s", png)
     _run_ffmpeg_or_warn(
-        ["ffmpeg", "-i", str(mp4), "-vframes", "1", "-y", str(png)],
+        [toolchain.resolve("ffmpeg") or "ffmpeg",
+         "-i", str(mp4), "-vframes", "1", "-y", str(png)],
         timeout=10, label=f"first-frame PNG for {mp4.name}",
     )
 
