@@ -7,7 +7,7 @@ issue.
 
 What it actually does on Windows:
 - Imports + instantiates ``WindowsPlatform``
-- Calls ``detect_devices()`` (SetupAPI), reports count
+- Calls ``scan_devices()`` (SetupAPI), reports count
 - Walks the ``WindowsSensorSource`` strategy chain — each registered
   source's ``probe()`` reports live status
 - Verifies the ``wmi`` package + ``pywin32`` work
@@ -43,10 +43,10 @@ from _smoke_runtime import (
 def _probe_imports() -> Section:
     s = Section('imports')
     try:
-        from trcc.adapters.system.windows_platform import WindowsPlatform  # noqa: F401
-        s.ok('trcc.adapters.system.windows_platform', 'WindowsPlatform importable')
+        from trcc.adapters.system.windows import WindowsPlatform  # noqa: F401
+        s.ok('trcc.adapters.system.windows', 'WindowsPlatform importable')
     except BaseException as exc:
-        s.fail('trcc.adapters.system.windows_platform', exc)
+        s.fail('trcc.adapters.system.windows', exc)
 
     for mod, note in [
         ('wmi', 'Win32 Management Instrumentation Python wrapper'),
@@ -103,16 +103,16 @@ def _probe_devices() -> Section:
     from trcc.adapters.system import current_platform
     p = current_platform()
     try:
-        devices = list(p.detect_devices())
+        devices = list(p.scan_devices())
     except BaseException as exc:
-        s.fail('detect_devices()', exc)
+        s.fail('scan_devices()', exc)
         return s
     if len(devices) == 0:
-        s.skip('detect_devices()',
+        s.skip('scan_devices()',
                '0 devices found — no Thermalright device plugged in (expected without hardware)')
     else:
         names = ', '.join(f'{d.vid:04x}:{d.pid:04x}' for d in devices)
-        s.ok('detect_devices()', f'found {len(devices)} device(s): {names}')
+        s.ok('scan_devices()', f'found {len(devices)} device(s): {names}')
     return s
 
 
@@ -154,30 +154,31 @@ def _probe_enumerator() -> Section:
     from trcc.adapters.system import current_platform
     p = current_platform()
     try:
-        enum = p._make_sensor_enumerator()
+        enum = p.sensors()
         infos = enum.discover()
         readings = enum.read_all()
         s.ok('discover() + read_all()',
              f'{len(infos)} sensors discovered, {len(readings)} live readings')
 
-        mapping = enum.map_defaults()
+        # map_defaults() returned {metric_key: sensor_id} and lived in the
+        # legacy tree, which left main in 73f4122d.  snapshot() answers the
+        # same question without the indirection: HardwareMetrics carries each
+        # metric as a typed field, so "is it resolved" and "is it live" become
+        # one check.  0.0 is the unset value the renderer treats as absent.
+        metrics = enum.snapshot()
         for key, label in [
             ('cpu_percent', 'CPU usage'),
             ('mem_percent', 'Memory usage'),
             ('cpu_temp',    'CPU temperature'),
             ('gpu_temp',    'GPU temperature'),
         ]:
-            sensor_id = mapping.get(key, '')
-            if sensor_id == '':
+            value = getattr(metrics, key, None)
+            if not value:
                 level = s.skip if key in ('cpu_temp', 'gpu_temp') else s.warn
                 level(f'metric:{key}',
-                      f'{label} — no sensor mapped (HWiNFO/LHM not running?)')
+                      f'{label} — no reading (HWiNFO/LHM not running?)')
             else:
-                value = readings.get(sensor_id, None)
-                if value is None:
-                    s.warn(f'metric:{key}', f'mapped to {sensor_id} but no live value')
-                else:
-                    s.ok(f'metric:{key}', f'{label} = {value:.1f} (via {sensor_id})')
+                s.ok(f'metric:{key}', f'{label} = {value:.1f}')
     except BaseException as exc:
         s.fail('enumerator', exc)
     return s
@@ -198,7 +199,7 @@ def _probe_windows_specifics() -> Section:
 
     # LHM namespace probe (if running).
     try:
-        from trcc.adapters.system.windows.sources.lhm import _probe_wmi_namespace
+        from trcc.adapters.sensors._lhm import _probe_wmi_namespace
         ns = _probe_wmi_namespace()
         if ns is None:
             s.skip('LHM WMI namespace', 'root\\LibreHardwareMonitor not registered (LHM not running)')
@@ -209,7 +210,7 @@ def _probe_windows_specifics() -> Section:
 
     # HWiNFO MMF probe (if running).
     try:
-        from trcc.adapters.system.windows.sources.hwinfo import _HWiNFOMapping
+        from trcc.adapters.sensors._hwinfo import _HWiNFOMapping
         m = _HWiNFOMapping()
         if m.open():
             s.ok('HWiNFO SHM (Global\\HWiNFO_SENS_SM2)', 'mapped successfully')

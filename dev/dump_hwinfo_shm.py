@@ -33,7 +33,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 
-from trcc.legacy.adapters.system.windows.sources.hwinfo import (
+from trcc.adapters.sensors._hwinfo import (
     _HWINFO_MAGIC,
     _BytesMapping,
     _HWiNFOMapping,
