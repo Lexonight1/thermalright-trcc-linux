@@ -104,7 +104,8 @@ jobs:
       # Every harness runs even after one fails, so a red build names ALL of
       # them instead of only the first -- the failures are usually related.
       # smoke_real_hardware needs a physical panel; smoke_anything runs below
-      # with its quarantine.
+      # with its quarantine; smoke_reported_bugs runs here but cannot gate --
+      # see the case block for why.
       - name: Smoke harnesses
         env:
           QT_QPA_PLATFORM: offscreen
@@ -113,7 +114,20 @@ jobs:
           failed=""
           for s in dev/smoke_*.py; do
             n=$(basename "$s")
-            case "$n" in smoke_real_hardware.py|smoke_anything.py) continue;; esac
+            case "$n" in
+              smoke_real_hardware.py|smoke_anything.py) continue;;
+              # Its exit code answers "do any reported bugs still reproduce?",
+              # which is information, not a build verdict.  It is non-zero
+              # whenever an open bug is still open -- its normal state, and the
+              # state of every newly filed report.  Gating on it would make a
+              # red build the default and the signal worthless.  So: run it,
+              # show the summary, never fail on it.
+              smoke_reported_bugs.py)
+                echo "::group::$n (informational)"
+                python3 "$s" || true
+                echo "::endgroup::"
+                continue;;
+            esac
             echo "::group::$n"
             if python3 "$s"; then echo "PASS $n"; else failed="$failed $n"; fi
             echo "::endgroup::"
