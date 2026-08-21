@@ -50,8 +50,10 @@ import sys
 import tomllib
 import urllib.error
 import urllib.request
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 _ROOT = Path(__file__).resolve().parents[2]
 _PYPROJECT = _ROOT / "pyproject.toml"
@@ -341,155 +343,200 @@ def package_from_hint(hint: str) -> str | None:
 # channel cannot be asked".  None is NOT "fine" -- it is reported, because an
 # unverifiable channel is where wrong advice survives.
 
-def arch_package_files(pkg: str) -> list[str] | None:
-    """Arch: search resolves a `provides` name (p7zip -> 7zip), then list files.
-
-    Resolving provides FIRST matters: `pacman -S p7zip` really does work,
-    because 7zip declares `provides`/`replaces` for it.  A name-existence check
-    calls that broken; the package it resolves to is what must be inspected.
-    """
-    body = _get(f"https://archlinux.org/packages/search/json/?q={pkg}")
-    if not body:
-        return None
-    try:
-        results = json.loads(body).get("results", [])
-    except json.JSONDecodeError:
-        return None
-    hit = next((r for r in results
-                if r["pkgname"] == pkg or pkg in (r.get("provides") or [])), None)
-    if hit is None:
-        return None
-    files = _get(f"https://archlinux.org/packages/{hit['repo']}/"
-                 f"{hit['arch']}/{hit['pkgname']}/files/json/")
-    if not files:
-        return None
-    try:
-        listing = json.loads(files).get("files", [])
-    except json.JSONDecodeError:
-        return None
-    return [f.rsplit("/", 1)[-1] for f in listing if "/bin/" in f and not f.endswith("/")]
+# ── the channels ──────────────────────────────────────────────────────────
+#
+# Five parallel free functions dispatched through a ``dict[str, tuple[str,
+# object]]`` and invoked as ``probe(pkg)  # type: ignore[operator]``.  The
+# ignore was the tell: a callable stored as ``object`` is a table that has
+# stopped describing itself.  Adding the EL, SUSE, Alpine, Void, Nix and BSD
+# channels would have made it thirteen of them.
+#
+# They already shared one contract -- resolve a name to a real package, then
+# list the binaries it puts on PATH, with ``None`` for "cannot answer" -- and
+# differed only in HOW.  That contract is now stated once.
 
 
-def fedora_package_files(pkg: str) -> list[str] | None:
-    """Fedora: resolve provides with dnf, then list the resolved package.
+class Channel(ABC):
+    """One package channel we can ask: what binaries does this ship?"""
 
-    `repoquery -l p7zip` is EMPTY -- p7zip is a capability, not a package -- so
-    the two steps are not optional.  Needs dnf, i.e. the Fedora dev box.
-    """
-    if not shutil.which("dnf"):
-        return None
+    #: How this channel is named in findings ("arch", "fedora", ...).
+    LABEL: ClassVar[str]
 
-    # STOCK repos only.  The dev box has RPM Fusion enabled, and querying with
-    # it on made `dnf install ffmpeg` verify clean while a stock Fedora answers
-    # "No match for argument: ffmpeg" -- the tool was reporting on this machine
-    # rather than on a user's.  Pinning the repo set is what makes the answer
-    # about Fedora instead of about whoever runs the tool.
-    stock = ["--disablerepo=*", "--enablerepo=fedora", "--enablerepo=updates"]
+    @abstractmethod
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Basenames *pkg* puts on PATH, or None when unanswerable.
 
-    def _run(args: list[str]) -> str:
+        None is "this channel cannot tell you" -- an unreachable index, a
+        missing local tool, a package that is not there.  It is never "ships
+        nothing", which is an empty list and a different fact.
+        """
+
+
+class ArchChannel(Channel):
+    LABEL = "arch"
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Arch: search resolves a `provides` name (p7zip -> 7zip), then list files.
+
+        Resolving provides FIRST matters: `pacman -S p7zip` really does work,
+        because 7zip declares `provides`/`replaces` for it.  A name-existence check
+        calls that broken; the package it resolves to is what must be inspected.
+        """
+        body = _get(f"https://archlinux.org/packages/search/json/?q={pkg}")
+        if not body:
+            return None
         try:
-            return subprocess.run(args, capture_output=True, text=True,
-                                  timeout=120, check=False).stdout
-        except (OSError, subprocess.SubprocessError):
-            return ""
-    names = sorted(set(_run(
-        ["dnf", "repoquery", "--quiet", *stock, "--whatprovides", pkg,
-         "--qf", "%{name}"]).split()))
-    if not names:
-        return None
-    out: list[str] = []
-    for name in names:
-        out += [ln.rsplit("/", 1)[-1] for ln in
-                _run(["dnf", "repoquery", "--quiet", *stock, "-l",
-                      name]).splitlines()
-                if "/bin/" in ln]
-    return out
+            results = json.loads(body).get("results", [])
+        except json.JSONDecodeError:
+            return None
+        hit = next((r for r in results
+                    if r["pkgname"] == pkg or pkg in (r.get("provides") or [])), None)
+        if hit is None:
+            return None
+        files = _get(f"https://archlinux.org/packages/{hit['repo']}/"
+                     f"{hit['arch']}/{hit['pkgname']}/files/json/")
+        if not files:
+            return None
+        try:
+            listing = json.loads(files).get("files", [])
+        except json.JSONDecodeError:
+            return None
+        return [f.rsplit("/", 1)[-1] for f in listing if "/bin/" in f and not f.endswith("/")]
 
 
-def debian_package_files(pkg: str, _depth: int = 0) -> list[str] | None:
-    """Debian stable: the published per-package file list.
+class FedoraChannel(Channel):
+    LABEL = "fedora"
 
-    Follows a TRANSITIONAL package to what it pulls in.  Debian's p7zip is
-    `16.02+transitional.1`: it exists, ships no files at all, and depends on
-    7zip -- so `apt install p7zip` really does deliver /usr/bin/7z.  Reading
-    "no files" as "absent" reported that working hint as broken, which is the
-    same false negative a bare name check gives (see arch_package_files).
-    """
-    body = _get(f"https://packages.debian.org/stable/amd64/{pkg}/filelist")
-    if not body:
-        return None
-    found = re.findall(r"(/usr/s?bin/[\w.+-]+)", body)
-    if found:
-        return [f.rsplit("/", 1)[-1] for f in found]
-    if _depth:                       # one hop only; transitional chains are 1 deep
-        return None
-    page = _get(f"https://packages.debian.org/stable/amd64/{pkg}") or ""
-    out: list[str] = []
-    for dep in dict.fromkeys(re.findall(r'href="/trixie/amd64/([\w.+-]+)"', page)):
-        if dep != pkg:
-            out += debian_package_files(dep, _depth + 1) or []
-    return out or None
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Fedora: resolve provides with dnf, then list the resolved package.
 
+        `repoquery -l p7zip` is EMPTY -- p7zip is a capability, not a package -- so
+        the two steps are not optional.  Needs dnf, i.e. the Fedora dev box.
+        """
+        if not shutil.which("dnf"):
+            return None
 
-def brew_formula_files(formula: str) -> list[str] | None:
-    """Homebrew publishes the executable list per formula -- no install needed.
+        # STOCK repos only.  The dev box has RPM Fusion enabled, and querying with
+        # it on made `dnf install ffmpeg` verify clean while a stock Fedora answers
+        # "No match for argument: ffmpeg" -- the tool was reporting on this machine
+        # rather than on a user's.  Pinning the repo set is what makes the answer
+        # about Fedora instead of about whoever runs the tool.
+        stock = ["--disablerepo=*", "--enablerepo=fedora", "--enablerepo=updates"]
 
-    Load-bearing here: p7zip installs 7z/7za/7zr while sevenzip installs only
-    7zz.  Since the app probes for `7z`, the DEPRECATED-looking name is the
-    correct one on macOS and the modern one would break it.
-    """
-    body = _get(f"https://formulae.brew.sh/api/formula/{formula}.json")
-    if not body:
-        return None
-    try:
-        return list(json.loads(body).get("executables") or []) or None
-    except json.JSONDecodeError:
-        return None
+        def _run(args: list[str]) -> str:
+            try:
+                return subprocess.run(args, capture_output=True, text=True,
+                                      timeout=120, check=False).stdout
+            except (OSError, subprocess.SubprocessError):
+                return ""
+        names = sorted(set(_run(
+            ["dnf", "repoquery", "--quiet", *stock, "--whatprovides", pkg,
+             "--qf", "%{name}"]).split()))
+        if not names:
+            return None
+        out: list[str] = []
+        for name in names:
+            out += [ln.rsplit("/", 1)[-1] for ln in
+                    _run(["dnf", "repoquery", "--quiet", *stock, "-l",
+                          name]).splitlines()
+                    if "/bin/" in ln]
+        return out
 
 
-def winget_package_commands(package_id: str) -> list[str] | None:
-    """winget: the manifest declares the commands a package provides.
+class DebianChannel(Channel):
+    LABEL = "debian"
 
-    winget has no file DATABASE, but winget-pkgs manifests carry `Commands:`
-    and, for portable/zip installers, `PortableCommandAlias:` per nested file.
-    That is a published binary list, so Windows is verifiable after all.
-    """
-    parts = package_id.split(".")
-    base = ("https://raw.githubusercontent.com/microsoft/winget-pkgs/master/"
-            f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
-    api = ("https://api.github.com/repos/microsoft/winget-pkgs/contents/"
-           f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
-    body = _get(api)
-    if not body:
-        return None
-    try:
-        versions = [e["name"] for e in json.loads(body)
-                    if e.get("type") == "dir" and e["name"][:1].isdigit()]
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not versions:
-        return None
-    newest = sorted(versions, key=lambda v: [
-        int(x) if x.isdigit() else 0 for x in v.split(".")])[-1]
-    text = ""
-    for suffix in ("installer", "locale.en-US", ""):
-        name = f"{package_id}.{suffix}.yaml" if suffix else f"{package_id}.yaml"
-        text += _get(f"{base}/{newest}/{name}") or ""
-    cmds = re.findall(r"^\s*PortableCommandAlias:\s*(\S+)", text, re.M)
-    block = re.search(r"^Commands:\n((?:\s*-\s*\S+\n)+)", text, re.M)
-    if block:
-        cmds += re.findall(r"-\s*(\S+)", block.group(1))
-    return sorted(set(cmds)) or None
+    def binaries(self, pkg: str, _depth: int = 0) -> list[str] | None:
+        """Debian stable: the published per-package file list.
+
+        Follows a TRANSITIONAL package to what it pulls in.  Debian's p7zip is
+        `16.02+transitional.1`: it exists, ships no files at all, and depends on
+        7zip -- so `apt install p7zip` really does deliver /usr/bin/7z.  Reading
+        "no files" as "absent" reported that working hint as broken, which is the
+        same false negative a bare name check gives (see arch_package_files).
+        """
+        body = _get(f"https://packages.debian.org/stable/amd64/{pkg}/filelist")
+        if not body:
+            return None
+        found = re.findall(r"(/usr/s?bin/[\w.+-]+)", body)
+        if found:
+            return [f.rsplit("/", 1)[-1] for f in found]
+        if _depth:                       # one hop only; transitional chains are 1 deep
+            return None
+        page = _get(f"https://packages.debian.org/stable/amd64/{pkg}") or ""
+        out: list[str] = []
+        for dep in dict.fromkeys(re.findall(r'href="/trixie/amd64/([\w.+-]+)"', page)):
+            if dep != pkg:
+                out += self.binaries(dep, _depth + 1) or []
+        return out or None
 
 
-#: OS class -> (channel label, file-list probe).  Only channels with a
-#: published file list can be verified; the rest are reported as UNVERIFIED.
-_VERIFIABLE_CHANNELS: dict[str, tuple[str, object]] = {
-    "PacmanLinux": ("arch", arch_package_files),
-    "DnfLinux": ("fedora", fedora_package_files),
-    "AptLinux": ("debian", debian_package_files),
-    "MacOSPlatform": ("homebrew", brew_formula_files),
-    "WindowsPlatform": ("winget", winget_package_commands),
+class HomebrewChannel(Channel):
+    LABEL = "homebrew"
+
+    def binaries(self, formula: str) -> list[str] | None:
+        """Homebrew publishes the executable list per formula -- no install needed.
+
+        Load-bearing here: p7zip installs 7z/7za/7zr while sevenzip installs only
+        7zz.  Since the app probes for `7z`, the DEPRECATED-looking name is the
+        correct one on macOS and the modern one would break it.
+        """
+        body = _get(f"https://formulae.brew.sh/api/formula/{formula}.json")
+        if not body:
+            return None
+        try:
+            return list(json.loads(body).get("executables") or []) or None
+        except json.JSONDecodeError:
+            return None
+
+
+class WingetChannel(Channel):
+    LABEL = "winget"
+
+    def binaries(self, package_id: str) -> list[str] | None:
+        """winget: the manifest declares the commands a package provides.
+
+        winget has no file DATABASE, but winget-pkgs manifests carry `Commands:`
+        and, for portable/zip installers, `PortableCommandAlias:` per nested file.
+        That is a published binary list, so Windows is verifiable after all.
+        """
+        parts = package_id.split(".")
+        base = ("https://raw.githubusercontent.com/microsoft/winget-pkgs/master/"
+                f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
+        api = ("https://api.github.com/repos/microsoft/winget-pkgs/contents/"
+               f"manifests/{parts[0][0].lower()}/{'/'.join(parts)}")
+        body = _get(api)
+        if not body:
+            return None
+        try:
+            versions = [e["name"] for e in json.loads(body)
+                        if e.get("type") == "dir" and e["name"][:1].isdigit()]
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not versions:
+            return None
+        newest = sorted(versions, key=lambda v: [
+            int(x) if x.isdigit() else 0 for x in v.split(".")])[-1]
+        text = ""
+        for suffix in ("installer", "locale.en-US", ""):
+            name = f"{package_id}.{suffix}.yaml" if suffix else f"{package_id}.yaml"
+            text += _get(f"{base}/{newest}/{name}") or ""
+        cmds = re.findall(r"^\s*PortableCommandAlias:\s*(\S+)", text, re.M)
+        block = re.search(r"^Commands:\n((?:\s*-\s*\S+\n)+)", text, re.M)
+        if block:
+            cmds += re.findall(r"-\s*(\S+)", block.group(1))
+        return sorted(set(cmds)) or None
+
+
+#: OS class -> the channel that serves it.  Only channels with a published
+#: binary list can be verified; the rest are reported as UNVERIFIED, which is
+#: an answer ("nobody has checked") and not a pass.
+_VERIFIABLE_CHANNELS: dict[str, Channel] = {
+    "PacmanLinux": ArchChannel(),
+    "DnfLinux": FedoraChannel(),
+    "AptLinux": DebianChannel(),
+    "MacOSPlatform": HomebrewChannel(),
+    "WindowsPlatform": WingetChannel(),
 }
 
 
@@ -535,8 +582,8 @@ def check_install_hints() -> list[Finding]:
                     f"unverified; confirm by hand that it provides "
                     f"{'/'.join(needed)}"))
                 continue
-            label, probe = channel
-            shipped = probe(pkg)               # type: ignore[operator]
+            label = channel.LABEL
+            shipped = channel.binaries(pkg)
             if shipped is None:
                 print(f"  {name:14} {tool:8} {hint[:42]:44} {'— absent':22}")
                 findings.append(Finding(
