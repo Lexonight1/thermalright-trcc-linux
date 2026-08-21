@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +77,83 @@ def resolve(tool: str) -> str | None:
     log.warning("toolchain.resolve: no executable for %r — tried %s",
                 tool, ", ".join(TOOL_ALIASES.get(tool, (tool,))))
     return None
+
+
+#: Directories a binary plausibly lives in while PATH does not include it.
+#:
+#: This is the difference between "install it" and "you already have it".  A
+#: user whose PATH is minimal -- a systemd unit, a cron job, a stripped login
+#: shell -- gets told to install software that is sitting on their disk, runs
+#: the command, and lands back on the same message.  Same dead end as the
+#: Fedora 7za bug, from a different direction.
+#:
+#: /usr/pkg/bin is pkgsrc (NetBSD); /snap/bin and /var/lib/flatpak/exports/bin
+#: are the sandboxed installs that most often miss a service's PATH.
+_OFF_PATH_DIRS: tuple[str, ...] = (
+    "/usr/bin", "/usr/local/bin", "/usr/local/sbin", "/bin", "/sbin",
+    "/usr/pkg/bin", "/opt/bin", "/snap/bin",
+    "/var/lib/flatpak/exports/bin", "/usr/local/opt/bin",
+)
+
+
+def locate(tool: str) -> tuple[str | None, Path | None]:
+    """``(name on PATH, path found off PATH)`` — at most one is set.
+
+    Answers the question the health checks could not: is this missing, or
+    merely unreachable?  Both used to render as "not on PATH" with an install
+    hint, which is wrong advice for the second and wastes a round-trip.
+
+    Pure filesystem, no subprocess and no package manager: asking rpm/dpkg
+    which package owns it is a different, heavier question, and this one is
+    answerable with ``is_file()``.
+    """
+    on_path = resolve(tool)
+    if on_path is not None:
+        return on_path, None
+    for candidate in TOOL_ALIASES.get(tool, (tool,)):
+        for directory in _OFF_PATH_DIRS:
+            found = Path(directory) / candidate
+            if found.is_file():
+                log.warning("toolchain.locate: %s is at %s but not on PATH",
+                            tool, found)
+                return None, found
+    log.debug("toolchain.locate: %s not found on or off PATH", tool)
+    return None, None
+
+
+def tried(tool: str) -> str:
+    """The names looked for, so a report says what was searched.
+
+    "ffmpeg not on PATH" does not tell a NetBSD reporter that ffmpeg7 was
+    tried too, and that is exactly who needs to know.
+    """
+    names = ", ".join(TOOL_ALIASES.get(tool, (tool,)))
+    log.debug("toolchain.tried: %s -> %s", tool, names)
+    return names
+
+
+def installed_elsewhere(distribution: str) -> str | None:
+    """Version of *distribution*, if it is installed but not importable here.
+
+    The module equivalent of "on disk but not on PATH", and it bites the same
+    way: a reporter installs ``nvidia-ml-py`` into one interpreter, runs trcc
+    under another, and is told to install it again (#207, #216).
+
+    ``importlib.metadata`` sees distributions on ``sys.path``, so a hit here
+    while the import fails means the package is visible and broken -- a wrong
+    build, a partial install, a native dependency missing -- rather than
+    absent.  Returns None when it genuinely is not there.
+    """
+    try:
+        import importlib.metadata as md
+
+        version = md.version(distribution)
+    except Exception:                          # PackageNotFound and friends
+        log.debug("toolchain.installed_elsewhere: %s not found", distribution)
+        return None
+    log.warning("toolchain.installed_elsewhere: %s %s is installed but did "
+                "not import", distribution, version)
+    return version
 
 
 def present(tool: str) -> bool:

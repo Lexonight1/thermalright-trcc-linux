@@ -261,6 +261,21 @@ def check_gpu_sensors(
             message="No discrete NVIDIA GPU detected (NVML check not applicable)",
         )
     if not reader_available:
+        # Distinguish absent from present-but-broken.  A reporter who installed
+        # nvidia-ml-py into a different interpreter, or whose install is
+        # missing libnvidia-ml.so.1, gets told to install it again otherwise --
+        # which is #207 and #216 arriving back on the same message.
+        version = toolchain.installed_elsewhere("nvidia-ml-py")
+        if version is not None:
+            return HealthCheckResult(
+                name="gpu-sensors", severity="WARN",
+                message=f"nvidia-ml-py {version} is installed but did not "
+                        f"import — GPU metrics will be empty",
+                fix_hint="It is installed, so installing it again will not "
+                         "help. Check you are running trcc under the same "
+                         "interpreter, and that libnvidia-ml.so.1 (the driver, "
+                         "not the binding) is present.",
+            )
         return HealthCheckResult(
             name="gpu-sensors", severity="WARN",
             message="NVIDIA GPU detected but the pynvml reader is not installed "
@@ -279,14 +294,24 @@ def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
     log.info("check_ffmpeg_present: called")
-    if toolchain.present("ffmpeg"):
+    found, off_path = toolchain.locate("ffmpeg")
+    if found:
         return HealthCheckResult(
             name="ffmpeg", severity="OK",
-            message="ffmpeg on PATH (video themes will decode)",
+            message=f"{found} on PATH (video themes will decode)",
+        )
+    if off_path is not None:
+        # Installed but unreachable.  Telling this user to install it sends
+        # them round the loop again -- they already did.
+        return HealthCheckResult(
+            name="ffmpeg", severity="WARN",
+            message=f"ffmpeg is installed at {off_path} but not on PATH",
+            fix_hint=f"Add {off_path.parent} to PATH — it is installed, so "
+                     f"installing it again will not help",
         )
     return HealthCheckResult(
         name="ffmpeg", severity="WARN",
-        message="ffmpeg not on PATH",
+        message=f"ffmpeg not found (tried: {toolchain.tried('ffmpeg')})",
         fix_hint=platform.software_install_hint("ffmpeg")
                  + " — image themes still work without it",
     )
@@ -298,6 +323,16 @@ def check_qt_importable() -> HealthCheckResult:
     try:
         import PySide6  # noqa: F401
     except ImportError:
+        version = toolchain.installed_elsewhere("PySide6")
+        if version is not None:
+            return HealthCheckResult(
+                name="pyside6", severity="WARN",
+                message=f"PySide6 {version} is installed but did not import "
+                        f"(GUI mode unavailable)",
+                fix_hint="It is installed, so reinstalling will not help. "
+                         "Usually a missing system library — check the "
+                         "traceback in the log for which .so failed.",
+            )
         return HealthCheckResult(
             name="pyside6", severity="WARN",
             message="PySide6 not installed (GUI mode unavailable)",
@@ -354,14 +389,22 @@ def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
     """``7z`` is required for theme-pack extraction.  Absence is WARN —
     user can still install themes via tarballs or the cloud catalog."""
     log.info("check_seven_zip_present: called")
-    if toolchain.present("7z"):
+    found, off_path = toolchain.locate("7z")
+    if found:
         return HealthCheckResult(
             name="7z", severity="OK",
-            message="7z on PATH (theme-pack extraction available)",
+            message=f"{found} on PATH (theme-pack extraction available)",
+        )
+    if off_path is not None:
+        return HealthCheckResult(
+            name="7z", severity="WARN",
+            message=f"7z is installed at {off_path} but not on PATH",
+            fix_hint=f"Add {off_path.parent} to PATH — it is installed, so "
+                     f"installing it again will not help",
         )
     return HealthCheckResult(
         name="7z", severity="WARN",
-        message="7z not on PATH",
+        message=f"7z not found (tried: {toolchain.tried('7z')})",
         fix_hint=platform.software_install_hint("7z"),
     )
 

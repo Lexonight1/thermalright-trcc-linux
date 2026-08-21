@@ -324,13 +324,44 @@ def test_gpu_check_ok_when_no_nvidia_card(
 def test_gpu_check_warns_when_reader_missing(
     fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Genuinely absent — nothing installed, so "install it" is right.
+
+    The distribution lookup is stubbed to absent rather than left to the host:
+    on a machine that HAS nvidia-ml-py this test used to pass while exercising
+    the other fault entirely, because "the reader did not load" and "the reader
+    is not installed" were the same branch.  They are not the same, and
+    conflating them is what sent #207 and #216 reporters back to reinstall
+    something they already had.
+    """
     monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
+    monkeypatch.setattr(health_mod.toolchain, "installed_elsewhere",
+                        lambda dist: None)
     result = check_gpu_sensors(fake_platform, _state(False, False))
     assert result.severity == "WARN"
     assert "pynvml reader is not installed" in result.message
     # Hint now comes from the DI'd platform's software_install_hint("pynvml")
     # rather than a Linux-hardcoded package name.
     assert "pynvml" in result.fix_hint
+
+
+def test_gpu_check_says_installed_when_the_binding_is_present(
+    fake_platform, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Installed but not importable — "install it" would be wrong advice.
+
+    A reporter who put nvidia-ml-py in one interpreter and runs trcc under
+    another, or whose driver is missing libnvidia-ml.so.1, must not be told to
+    install the binding again.  This is the other half of the split above.
+    """
+    monkeypatch.setattr(health_mod, "nvidia_gpu_present", lambda: True)
+    monkeypatch.setattr(health_mod.toolchain, "installed_elsewhere",
+                        lambda dist: "13.595.45")
+    result = check_gpu_sensors(fake_platform, _state(False, False))
+    assert result.severity == "WARN"
+    assert "is installed but did not import" in result.message
+    assert "13.595.45" in result.message
+    assert "will not help" in result.fix_hint
+    assert "libnvidia-ml.so.1" in result.fix_hint
 
 
 def test_gpu_check_warns_with_reload_hint_on_init_failure(

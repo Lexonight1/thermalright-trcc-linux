@@ -121,3 +121,81 @@ def test_the_fedora_case_is_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("trcc.core.toolchain.shutil.which",
                         lambda name: "/usr/bin/7za" if name == "7za" else None)
     assert resolve("7z") == "7za"
+
+
+# ── "installed but unreachable" — the fault an install hint cannot fix ─────
+
+
+def test_off_path_binary_is_found_and_named(monkeypatch: pytest.MonkeyPatch,
+                                            tmp_path: Path) -> None:
+    """A real file in a real directory, not a mocked lookup.
+
+    Mocking ``is_file`` would assert the search list against itself.  This
+    plants an actual executable in a directory that is NOT on PATH and checks
+    that locate() reports where it is.
+    """
+    planted = tmp_path / "ffmpeg7"
+    planted.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    planted.chmod(0o755)
+    monkeypatch.setattr("trcc.core.toolchain.shutil.which", lambda name: None)
+    monkeypatch.setattr("trcc.core.toolchain._OFF_PATH_DIRS", (str(tmp_path),))
+
+    on_path, off_path = resolve("ffmpeg"), None
+    assert on_path is None
+    from trcc.core.toolchain import locate
+    on_path, off_path = locate("ffmpeg")
+    assert on_path is None
+    assert off_path == planted, "the planted binary was not located"
+
+
+def test_health_says_unreachable_not_missing(monkeypatch: pytest.MonkeyPatch,
+                                             tmp_path: Path) -> None:
+    """The check must not tell a user to install what they already have.
+
+    This is the whole point of the split: same symptom (`which` fails), two
+    different faults, and "install it" is wrong advice for one of them.
+    """
+    from trcc.adapters.diagnostics import health
+    from trcc.adapters.system.linux import DnfLinux
+
+    planted = tmp_path / "7za"
+    planted.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    planted.chmod(0o755)
+    monkeypatch.setattr("trcc.core.toolchain.shutil.which", lambda name: None)
+    monkeypatch.setattr("trcc.core.toolchain._OFF_PATH_DIRS", (str(tmp_path),))
+
+    result = health.check_seven_zip_present(DnfLinux())
+    assert "installed at" in result.message, result.message
+    assert str(tmp_path) in result.message
+    assert "will not help" in result.fix_hint, (
+        "the hint still tells the user to install it")
+
+
+def test_health_says_missing_when_it_really_is(monkeypatch: pytest.MonkeyPatch,
+                                               tmp_path: Path) -> None:
+    """The other side of the branch, and it must name what was searched.
+
+    "7z not on PATH" does not tell a reporter that 7za and 7zz were tried too.
+    """
+    from trcc.adapters.diagnostics import health
+    from trcc.adapters.system.linux import DnfLinux
+
+    monkeypatch.setattr("trcc.core.toolchain.shutil.which", lambda name: None)
+    monkeypatch.setattr("trcc.core.toolchain._OFF_PATH_DIRS", (str(tmp_path),))
+
+    result = health.check_seven_zip_present(DnfLinux())
+    assert "not found" in result.message
+    assert "7za" in result.message, "the message does not say what was tried"
+    assert "dnf install" in result.fix_hint
+
+
+def test_installed_but_unimportable_is_not_reported_as_absent() -> None:
+    """A distribution on sys.path that fails to import is present-and-broken.
+
+    pytest itself is guaranteed installed here, so this asserts the mechanism
+    without inventing a fixture package.
+    """
+    from trcc.core.toolchain import installed_elsewhere
+
+    assert installed_elsewhere("pytest") is not None
+    assert installed_elsewhere("definitely-not-a-distribution-xyz") is None
