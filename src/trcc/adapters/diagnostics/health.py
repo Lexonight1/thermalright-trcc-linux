@@ -290,6 +290,38 @@ def check_gpu_sensors(
     )
 
 
+def _install_advice(platform: Platform, tool: str, binary: str) -> str:
+    """The install line, derived from the system where it can be.
+
+    Asks the package manager what would supply *binary* and builds the command
+    from the answer; falls back to the static per-OS hint when it cannot say.
+    The table stays as the floor -- a manager that is absent, uncached or slow
+    must leave the user no worse off than before.
+
+    Four static entries were verified broken on 2026-08-21 and every one had
+    shipped, which is why the derived answer is preferred when available: it
+    cannot be stale, because it is read at the moment it is printed.
+    """
+    hint = platform.software_install_hint(tool)
+    try:
+        packages = platform.packages()
+        candidate = packages.provides(binary)
+        if candidate is None:
+            log.debug("_install_advice: %s not derivable — static hint", tool)
+            return hint
+        argv = packages.install_argv(candidate)
+        if not argv:
+            return hint
+    except Exception as e:                     # a diagnostic must not raise
+        log.warning("_install_advice: %s query failed (%s) — static hint",
+                    tool, e)
+        return hint
+    derived = " ".join(argv)
+    log.info("_install_advice: %s derived %r (static was %r)",
+             tool, derived, hint)
+    return derived
+
+
 def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
     """ffmpeg is required for video themes; absence is WARN (still usable
     for image-only themes)."""
@@ -312,7 +344,7 @@ def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
     return HealthCheckResult(
         name="ffmpeg", severity="WARN",
         message=f"ffmpeg not found (tried: {toolchain.tried('ffmpeg')})",
-        fix_hint=platform.software_install_hint("ffmpeg")
+        fix_hint=_install_advice(platform, "ffmpeg", "/usr/bin/ffmpeg")
                  + " — image themes still work without it",
     )
 
@@ -405,7 +437,7 @@ def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
     return HealthCheckResult(
         name="7z", severity="WARN",
         message=f"7z not found (tried: {toolchain.tried('7z')})",
-        fix_hint=platform.software_install_hint("7z"),
+        fix_hint=_install_advice(platform, "7z", "/usr/bin/7z"),
     )
 
 

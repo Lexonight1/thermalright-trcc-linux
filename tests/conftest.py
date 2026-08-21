@@ -20,6 +20,7 @@ from trcc.core.ports import (
     GpuSource,
     HotplugMonitor,
     MemorySource,
+    PackageManager,
     Paths,
     Platform,
     Renderer,
@@ -272,6 +273,11 @@ class FakePlatform(Platform):
 
     def usb_power_state(self, vid: int, pid: int) -> Optional[UsbPowerState]:
         return None
+
+    def packages(self) -> PackageManager:
+        """Answers "cannot be asked" — a fake must not invent a package DB."""
+        from trcc.adapters.system._packages import NoPackageManager
+        return NoPackageManager()
 
     def package_manager(self) -> str:
         return ""

@@ -1243,6 +1243,50 @@ class HttpFetcher(ABC):
 # =========================================================================
 
 
+class PackageManager(ABC):
+    """What the OS's package manager can tell us about a missing tool.
+
+    Exists because a static table of package names rots, and the rot ships.
+    Four commands the app printed were verified broken on 2026-08-21 -- one
+    named a package deleted from FreeBSD as vulnerable, one named a package
+    that installs a differently-named binary, two named packages that do not
+    exist.  Every one had been in a release.
+
+    Two questions, deliberately separate because they cost differently:
+
+    ``owns`` reads the LOCAL installed-package database -- ``rpm -q
+    --whatprovides`` is 23 ms -- and never touches the network.  It answers
+    "you already have this", which is the difference between useful advice and
+    telling someone to install what is sitting on their disk.
+
+    ``provides`` asks what WOULD supply a file, which needs repository
+    metadata.  Implementations must use their manager's cache-only mode
+    (``dnf -C``, ``--no-refresh``): the doctor runs on a broken machine, often
+    offline, and must never trigger a refresh under the user.
+
+    **None means "cannot determine", never "absent".**  That distinction
+    decides whether a user is told to install something, and conflating the
+    two is the defect this port exists to remove.  A manager that cannot
+    answer says so, and the caller falls back to the static hint.
+    """
+
+    @abstractmethod
+    def owns(self, path: str) -> str | None:
+        """Installed package owning *path*, or None if none does / unknown."""
+
+    @abstractmethod
+    def provides(self, path: str) -> str | None:
+        """Package that would supply *path*, from cache only.
+
+        None when the manager cannot say — no cache, no such tool, a timeout.
+        Never a guess.
+        """
+
+    @abstractmethod
+    def install_argv(self, package: str) -> tuple[str, ...]:
+        """Argv that installs *package*.  Empty when this OS has no manager."""
+
+
 class AutostartManager(ABC):
     @abstractmethod
     def is_enabled(self) -> bool: ...
@@ -1346,6 +1390,17 @@ class Platform(ABC):
     # ── Autostart ─────────────────────────────────────────────────────
     @abstractmethod
     def autostart(self) -> AutostartManager: ...
+
+    # ── Package manager (diagnostics; read-only) ──────────────────────
+    @abstractmethod
+    def packages(self) -> PackageManager:
+        """This OS's package-manager query surface.
+
+        Declared here rather than only on ``BaseOS`` for the reason every
+        other member is: the port asks, so a new OS is told the question
+        exists.  ``BaseOS`` answers it with "cannot be asked", which is the
+        truthful default and keeps callers on the static install hint.
+        """
 
     # ── Hotplug ───────────────────────────────────────────────────────
     @abstractmethod

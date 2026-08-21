@@ -199,3 +199,101 @@ def test_installed_but_unimportable_is_not_reported_as_absent() -> None:
 
     assert installed_elsewhere("pytest") is not None
     assert installed_elsewhere("definitely-not-a-distribution-xyz") is None
+
+
+# ── derived install advice, and the floor under it ────────────────────────
+
+
+class _StubPackages:
+    """A PackageManager whose answers the test dictates."""
+
+    def __init__(self, provides=None, argv=(), raises=False):
+        self._provides, self._argv, self._raises = provides, argv, raises
+
+    def owns(self, path):
+        return None
+
+    def provides(self, path):
+        if self._raises:
+            raise RuntimeError("package manager is wedged")
+        return self._provides
+
+    def install_argv(self, package):
+        return self._argv
+
+
+def _platform_with(monkeypatch, stub):
+    from trcc.adapters.system.linux import DnfLinux
+    plat = DnfLinux()
+    monkeypatch.setattr(plat, "packages", lambda: stub)
+    return plat
+
+
+def test_advice_is_derived_when_the_manager_answers(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A derived command cannot be stale — it is read when it is printed.
+
+    Four static entries were verified broken on 2026-08-21 and every one had
+    shipped in a release.
+    """
+    from trcc.adapters.diagnostics.health import _install_advice
+
+    plat = _platform_with(monkeypatch,
+                          _StubPackages(provides="7zip",
+                                        argv=("sudo", "dnf", "install", "7zip")))
+    assert _install_advice(plat, "7z", "/usr/bin/7z") == "sudo dnf install 7zip"
+
+
+def test_advice_falls_back_when_the_manager_cannot_say(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """None means "cannot determine", and the user must be no worse off.
+
+    Offline, no cache, no such tool — all reach here, and all must leave the
+    static hint in place rather than printing nothing or a guess.
+    """
+    from trcc.adapters.diagnostics.health import _install_advice
+
+    plat = _platform_with(monkeypatch, _StubPackages(provides=None))
+    advice = _install_advice(plat, "7z", "/usr/bin/7z")
+    assert advice == plat.software_install_hint("7z")
+    assert "dnf install" in advice
+
+
+def test_a_wedged_manager_does_not_break_the_doctor(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A diagnostic must not raise.
+
+    The doctor runs on a machine that is already misbehaving; a package
+    manager holding a stale lock is exactly the state it exists to report on,
+    so it must not be the thing that stops the report.
+    """
+    from trcc.adapters.diagnostics.health import _install_advice
+
+    plat = _platform_with(monkeypatch, _StubPackages(raises=True))
+    assert _install_advice(plat, "7z", "/usr/bin/7z") == (
+        plat.software_install_hint("7z"))
+
+
+def test_empty_argv_falls_back_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A manager that names a package but no install command is still a
+    fallback, not an empty hint printed at the user."""
+    from trcc.adapters.diagnostics.health import _install_advice
+
+    plat = _platform_with(monkeypatch, _StubPackages(provides="7zip", argv=()))
+    assert _install_advice(plat, "7z", "/usr/bin/7z") == (
+        plat.software_install_hint("7z"))
+
+
+def test_queries_are_bounded() -> None:
+    """Every subprocess in the package layer carries a timeout.
+
+    Read off the module rather than asserted in prose: an unbounded query on
+    the doctor path is a hang on the machine least able to afford one.
+    """
+    from trcc.adapters.system import _packages
+
+    assert _packages._TIMEOUT_S > 0
+    source = Path(_packages.__file__).read_text(encoding="utf-8")
+    for call in source.split("subprocess.run(")[1:]:
+        assert "timeout=" in call.split(")")[0] + ")", (
+            "a subprocess.run in _packages.py has no timeout")

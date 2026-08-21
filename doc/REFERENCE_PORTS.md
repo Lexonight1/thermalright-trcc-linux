@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-31 ports.
+32 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -25,6 +25,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
+| [`PackageManager`](#packagemanager) | 3 | 0 | 2 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`AutostartManager`](#autostartmanager) | 4 | 0 | 4 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
@@ -38,9 +39,9 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`BaseOS`](#baseos) | 12 | 14 | 15 |
+| [`BaseOS`](#baseos) | 12 | 15 | 15 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
-| [`Platform`](#platform) | 21 | 0 | 15 |
+| [`Platform`](#platform) | 22 | 0 | 15 |
 
 ---
 
@@ -279,6 +280,22 @@ stop() -> None
 ```
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
+
+## PackageManager
+
+`core/ports.py`
+
+What the OS's package manager can tell us about a missing tool.
+
+**You implement (3):**
+
+```python
+install_argv(package: 'str') -> tuple[str, ...]
+owns(path: 'str') -> str | None
+provides(path: 'str') -> str | None
+```
+
+**Implementations (2):** `NoPackageManager` · `Rpm`
 
 ## SendScheduler
 
@@ -546,7 +563,7 @@ permission_denied_hint() -> str
 setup(interactive: 'bool' = True) -> int
 ```
 
-**You inherit (14):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (15):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (15):** `ApkLinux` · `AptLinux` · `BsdOS` · `DnfLinux` · `FreeBsdOS` · `GenericLinux` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `NixLinux` · `OpenBsdOS` · `PacmanLinux` · `WindowsPlatform` · `XbpsLinux` · `ZypperLinux`
 
@@ -584,7 +601,7 @@ surface_size(surface: 'Any') -> tuple[int, int]
 
 OS abstraction.  DI'd into App at startup.
 
-**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 14 of these 21, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 15 of these 22, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
 
 **Register by naming your key in the class line:**
 
@@ -592,7 +609,7 @@ OS abstraction.  DI'd into App at startup.
 class MyPlatform(BaseOS, key="myos"):
 ```
 
-**You implement (21):**
+**You implement (22):**
 
 ```python
 autostart() -> AutostartManager
@@ -607,6 +624,7 @@ minimize_on_close() -> bool
 no_devices_hint() -> str
 open_transport(wire: 'Wire', vid: 'int', pid: 'int', serial: 'str | None' = None) -> Transport
 package_manager() -> str
+packages() -> PackageManager
 paths() -> Paths
 permission_denied_hint() -> str
 scan_devices() -> list[DeviceInfo]

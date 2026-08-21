@@ -37,6 +37,7 @@ from ...core.models import DeviceInfo, Wire
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    PackageManager,
     Paths,
     Platform,
     ScsiTransport,
@@ -193,6 +194,7 @@ class BaseOS(Platform):
         self._sensors: SensorEnumerator | None = None
         self._autostart: AutostartManager | None = None
         self._hotplug: HotplugMonitor | None = None
+        self._packages: PackageManager | None = None
 
     # ── Abstract hooks — the per-OS internals ────────────────────────────
 
@@ -211,6 +213,19 @@ class BaseOS(Platform):
     @abstractmethod
     def _build_hotplug(self) -> HotplugMonitor:
         """Build this OS's hotplug monitor (called once, then memoised)."""
+
+    def _build_packages(self) -> PackageManager:
+        """Build this OS's package-manager query surface.
+
+        Concrete, unlike its five siblings, and deliberately: the default is
+        "this OS cannot be asked", which is the truthful answer for every OS
+        whose manager nobody has run.  Making it abstract would force each OS
+        to write a stub, and a stub is where a confident wrong answer comes
+        from -- which is the failure this port exists to remove.
+        """
+        from ._packages import NoPackageManager
+        log.debug("%s._build_packages: none for this OS", type(self).__name__)
+        return NoPackageManager()
 
     # ── Shared transport / scan ──────────────────────────────────────────
 
@@ -313,6 +328,16 @@ class BaseOS(Platform):
             log.debug("%s.hotplug: returning cached monitor",
                       type(self).__name__)
         return self._hotplug
+
+    def packages(self) -> PackageManager:
+        if self._packages is None:
+            log.info("%s.packages: building query surface",
+                     type(self).__name__)
+            self._packages = self._build_packages()
+        else:
+            log.debug("%s.packages: returning cached query surface",
+                      type(self).__name__)
+        return self._packages
 
     # ── Install detection (OS-agnostic) ──────────────────────────────────
 

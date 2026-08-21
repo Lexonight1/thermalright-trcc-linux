@@ -27,6 +27,7 @@ from ...core.models import UsbPowerState
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
+    PackageManager,
     Paths,
     ScsiTransport,
     SensorEnumerator,
@@ -577,6 +578,21 @@ class LinuxOS(BaseOS, key="linux"):
             log.info("package_command: no manager on this host — generic advice")
             return f"Install {pkg} via your package manager"
         return self._INSTALL_CMD.format(pkg=pkg)
+
+    def _build_packages(self) -> PackageManager:
+        """Only the rpm families can be asked so far.
+
+        Verified against dnf5 + rpm on Fedora 44.  apt/pacman/zypper/apk/xbps
+        are absent rather than guessed: writing them from documentation is what
+        put four wrong package names in the tables this replaces.
+        """
+        from ._packages import NoPackageManager, Rpm
+        if self._MANAGER == "dnf":
+            log.info("%s._build_packages: rpm", type(self).__name__)
+            return Rpm()
+        log.info("%s._build_packages: %s not implemented yet — cannot be asked",
+                 type(self).__name__, self._MANAGER or "(none)")
+        return NoPackageManager()
 
     def package_manager(self) -> str:
         """This family's manager — "" on a Linux we did not recognise."""
