@@ -45,16 +45,31 @@ class BSDPaths(BasePaths):
 # `pkg install` — which exists only on FreeBSD, so OpenBSD and NetBSD users were
 # told to run a command their system does not have (the #207 failure mode).
 #
-# Package NAMES are unverified off FreeBSD; only the commands are researched.
+# Package names verified 2026-08-21 against packagesite.pkg -- the index `pkg`
+# itself resolves against, not FreshPorts, which still serves a full-looking
+# page for a port whose own text says "This port has been deleted".
 _FREEBSD_INSTALL_HINTS: dict[str, str] = {
     "ffmpeg": "pkg install ffmpeg",
-    "7z": "pkg install p7zip",
+    # NOT p7zip: that port was DELETED ("unmaintained for years and has known
+    # vulnerabilities") and is absent from all 37,484 records, so the command
+    # failed outright -- while pointing at software withdrawn as vulnerable.
+    # archivers/7-zip replaced it and declares PLIST_FILES = bin/7z.
+    "7z": "pkg install 7-zip",
     "python": "pkg install python311",
     "pynvml": "pip install nvidia-ml-py",
 }
 
 # OpenBSD and NetBSD both ship pkg_add; NetBSD additionally offers pkgin as the
 # recommended higher-level tool, which a reporter can confirm before we prefer it.
+#
+# They share the COMMAND but not the package set, and this table conflates the
+# two.  Verified 2026-08-21: `pkg_add ffmpeg` is correct on OpenBSD 7.9 and
+# WRONG on NetBSD, which has no ffmpeg package at all -- only ffmpeg3..7, each
+# installing a versioned binary (bin/ffmpeg7).  That is not fixable here: the
+# app hardcodes the name "ffmpeg" at seven call sites, so installing ffmpeg7
+# would leave every one of them failing.  Changing this row to ffmpeg7 would
+# make the command succeed and the check still fail, which is the worse
+# outcome.  It needs binary-name resolution, not a different string.
 _PKG_ADD_INSTALL_HINTS: dict[str, str] = {
     "ffmpeg": "pkg_add ffmpeg",
     "7z": "pkg_add p7zip",
