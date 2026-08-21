@@ -376,6 +376,23 @@ class Channel(ABC):
         nothing", which is an empty list and a different fact.
         """
 
+    @abstractmethod
+    def provenance(self, pkg: str) -> str | None:
+        """Which repo within this channel serves *pkg*, or None if untracked.
+
+        "Exists" and "exists in EPEL" are different answers to a user: on
+        RHEL/Rocky/Alma both 7zip and ffmpeg-free are EPEL-only, so a hint that
+        verifies clean still finds nothing on a box without EPEL enabled.
+        Alpine has the same split (main vs community) and Debian the same
+        again (main/contrib/non-free).
+
+        Abstract rather than defaulted, for the reason the Platform port was
+        made fully abstract earlier today: a concrete default lets a channel
+        silently not answer, and silence here reads as "no caveat".  A channel
+        whose index does not carry it returns None *in its own body*, saying
+        so.
+        """
+
 
 class ArchChannel(Channel):
     LABEL = "arch"
@@ -408,6 +425,19 @@ class ArchChannel(Channel):
             return None
         return [f.rsplit("/", 1)[-1] for f in listing if "/bin/" in f and not f.endswith("/")]
 
+    def provenance(self, pkg: str) -> str | None:
+        """core / extra — the search JSON already carries it."""
+        body = _get(f"https://archlinux.org/packages/search/json/?q={pkg}")
+        if not body:
+            return None
+        try:
+            results = json.loads(body).get("results", [])
+        except json.JSONDecodeError:
+            return None
+        hit = next((r for r in results
+                    if r["pkgname"] == pkg or pkg in (r.get("provides") or [])),
+                   None)
+        return hit["repo"] if hit else None
 
 class FedoraChannel(Channel):
     LABEL = "fedora"
@@ -447,6 +477,23 @@ class FedoraChannel(Channel):
                     if "/bin/" in ln]
         return out
 
+    def provenance(self, pkg: str) -> str | None:
+        """fedora / updates — whichever stock repo resolved it."""
+        if not shutil.which("dnf"):
+            return None
+        try:
+            out = subprocess.run(
+                ["dnf", "repoquery", "--quiet", "--disablerepo=*",
+                 "--enablerepo=fedora", "--enablerepo=updates",
+                 "--whatprovides", pkg, "--qf", "%{repoid}\n"],
+                capture_output=True, text=True, timeout=120, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        # repoid, not reponame: reponame is the human string ("Fedora 44 -
+        # x86_64 - Updates") and splitting it on whitespace produces nonsense.
+        # Lines, not tokens, for the same reason.
+        names = sorted({ln.strip() for ln in out.splitlines() if ln.strip()})
+        return "/".join(names) if names else None
 
 class DebianChannel(Channel):
     LABEL = "debian"
@@ -475,6 +522,107 @@ class DebianChannel(Channel):
                 out += self.binaries(dep, _depth + 1) or []
         return out or None
 
+    def provenance(self, pkg: str) -> str | None:
+        """main / contrib / non-free — madison appends the component.
+
+        ``in_debian`` already parses it: a main package answers "stable", a
+        contrib one "stable/contrib".  Reusing that shape rather than a second
+        parser, because the first one was wrong once already -- it matched the
+        suite key exactly, so every contrib and non-free package read as
+        absent, including the NVIDIA advice.
+        """
+        answer = in_debian(pkg)
+        if answer is None:
+            return None
+        suite = answer.split()[0]
+        return suite.split("/", 1)[1] if "/" in suite else "main"
+
+#: EL is three repos, not one: BaseOS and AppStream ship with the distro,
+#: EPEL does not.  Keyed in query order so the first hit is the one a user
+#: gets without enabling anything extra.
+_EL_REPOS: dict[str, str] = {
+    "baseos": "https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/",
+    "appstream": "https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/",
+    "epel": "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/",
+}
+
+
+class ELChannel(Channel):
+    """RHEL / CentOS Stream / Rocky / AlmaLinux, via AlmaLinux + EPEL metadata.
+
+    NOT wired to an OS class.  ``DnfLinux`` serves Fedora *and* EL, and
+    ``current_platform()`` cannot tell them apart -- so this runs as an extra
+    check on the Fedora hints rather than replacing FedoraChannel.
+
+    Measured 2026-08-21, and the reason provenance exists: both binaries the
+    app probes for are EPEL-only on EL.
+
+        /usr/bin/7z      -> 7zip        (epel)     — nothing in base
+        /usr/bin/ffmpeg  -> ffmpeg-free (epel)     — nothing in base
+        /usr/bin/python3 -> python3     (baseos)   — positive control
+        /usr/bin/git     -> git-core    (appstream) — positive control
+
+    So a hint that verifies clean against Fedora still finds nothing on a
+    RHEL/Rocky/Alma box without EPEL enabled.
+
+    Remote repoquery rather than downloading filelists.xml.gz: AppStream's is
+    18.5 MB, and --repofrompath answers in a fraction of a second.  It needs
+    dnf, so like FedoraChannel it answers None off an RPM box -- "cannot tell
+    you", which is an answer.
+    """
+
+    LABEL = "el"
+
+    def _query(self, repo: str, url: str, what: str, qf: str) -> list[str]:
+        if not shutil.which("dnf"):
+            return []
+        try:
+            out = subprocess.run(
+                ["dnf", "repoquery", "--quiet",
+                 f"--repofrompath={repo},{url}", f"--repo={repo}",
+                 "--whatprovides", what, "--qf", qf],
+                capture_output=True, text=True, timeout=180, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return [ln.strip() for ln in out.splitlines() if ln.strip()]
+
+    def _files(self, repo: str, url: str, name: str) -> list[str]:
+        if not shutil.which("dnf"):
+            return []
+        try:
+            out = subprocess.run(
+                ["dnf", "repoquery", "--quiet",
+                 f"--repofrompath={repo},{url}", f"--repo={repo}", "-l", name],
+                capture_output=True, text=True, timeout=180, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return [ln.strip() for ln in out.splitlines() if "/bin/" in ln]
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Binaries *pkg* ships, from the first EL repo that carries it.
+
+        Two steps, for the same reason FedoraChannel needs two: `repoquery -l
+        p7zip` is empty because p7zip is a capability, not a package.  Resolve
+        the provider first, then list it.
+        """
+        for repo, url in _EL_REPOS.items():
+            names = sorted(set(self._query(repo, url, pkg, "%{name}\n")))
+            if not names:
+                continue
+            out: list[str] = []
+            for name in names:
+                out += [f.rsplit("/", 1)[-1]
+                        for f in self._files(repo, url, name)]
+            return sorted(set(out)) or None
+        return None
+
+    def provenance(self, pkg: str) -> str | None:
+        """baseos / appstream / epel — the first repo that answers."""
+        for repo, url in _EL_REPOS.items():
+            if self._query(repo, url, pkg, "%{name}\n"):
+                return repo
+        return None
+
 
 class HomebrewChannel(Channel):
     LABEL = "homebrew"
@@ -494,6 +642,11 @@ class HomebrewChannel(Channel):
         except json.JSONDecodeError:
             return None
 
+    def provenance(self, pkg: str) -> str | None:
+        """None: homebrew/core is one tap, and there is no split that changes
+        whether `brew install X` works.  Answered here rather than inherited
+        so the absence is a statement."""
+        return None
 
 #: repo -> {provided name: real package}.  Fetched once per run; APKINDEX is
 #: 500 KB for main and 2.1 MB for community, gzipped.
@@ -576,6 +729,22 @@ class AlpineChannel(Channel):
             return None                        # genuinely absent
         return [f.rsplit("/", 1)[-1] for f in files if "/bin/" in f]
 
+    def provenance(self, pkg: str) -> str | None:
+        """main / community — and the split is load-bearing here.
+
+        ffmpeg is in community, not main, so a minimal Alpine with only main
+        enabled will not find it however correct the package name is.
+        """
+        for repo in ("main", "community"):
+            body = _get(f"https://pkgs.alpinelinux.org/contents?file=&path=&"
+                        f"name={pkg}&branch={_ALPINE_BRANCH}&repo={repo}"
+                        f"&arch=x86_64")
+            if body and re.search(r'<td style="white-space: pre-wrap;">', body):
+                return repo
+            owner = _alpine_provides(repo).get(pkg)
+            if owner:
+                return repo
+        return None
 
 class WingetChannel(Channel):
     LABEL = "winget"
@@ -614,6 +783,10 @@ class WingetChannel(Channel):
             cmds += re.findall(r"-\s*(\S+)", block.group(1))
         return sorted(set(cmds)) or None
 
+    def provenance(self, pkg: str) -> str | None:
+        """None: winget-pkgs is a single manifest repository with no
+        sub-repos a user must enable."""
+        return None
 
 #: OS class -> the channel that serves it.  Only channels with a published
 #: binary list can be verified; the rest are reported as UNVERIFIED, which is
@@ -633,19 +806,34 @@ _VERIFIABLE_CHANNELS: dict[str, Channel] = {
 #: else -- and the pairs are chosen so a channel that silently returns nothing
 #: fails, which a "does it return a list" check would not catch.
 #:
-#: (channel, package, must_contain, must_not_contain, why)
-_CHANNEL_CASES: list[tuple[str, str, tuple[str, ...], tuple[str, ...], str]] = [
-    ("alpine", "7zip", ("7z",), (), "Alpine ships 7z from 7zip, in main"),
-    ("alpine", "p7zip", ("7z",), (),
+#: (channel, package, must_contain, must_not_contain, expected_provenance, why)
+#: expected_provenance is "" when the channel does not track one.
+_CHANNEL_CASES: list[
+    tuple[str, str, tuple[str, ...], tuple[str, ...], str, str]
+] = [
+    ("alpine", "7zip", ("7z",), (), "main", "Alpine ships 7z from 7zip"),
+    ("alpine", "p7zip", ("7z",), (), "main",
      "no package is NAMED p7zip, but 7zip provides it — apk resolves it, so "
      "the hint works; a name-only lookup called this broken"),
-    ("fedora", "7zip", ("7z",), (), "the package that actually ships 7z"),
-    ("fedora", "p7zip", ("7za",), ("7z",),
+    ("fedora", "7zip", ("7z",), (), "fedora/updates",
+     "the package that actually ships 7z"),
+    ("fedora", "p7zip", ("7za",), ("7z",), "fedora/updates",
      "resolves to 7zip-standalone: ships 7za and NO 7z, the #1 defect"),
-    ("arch", "p7zip", ("7z",), (),
+    ("arch", "p7zip", ("7z",), (), "extra",
      "Arch's 7zip declares provides/replaces p7zip, so the hint works"),
-    ("homebrew", "p7zip", ("7z",), (),
+    ("homebrew", "p7zip", ("7z",), (), "",
      "brew p7zip ships 7z/7za/7zr; the modern-looking sevenzip ships only 7zz"),
+    # EL, every value read off AlmaLinux/EPEL metadata rather than from what I
+    # expect the code to return -- the two python3/git rows are positive
+    # controls, so a repo that silently fails to load cannot pass.
+    ("el", "/usr/bin/7z", ("7z",), (), "epel",
+     "EPEL-only on EL: a Fedora-clean hint finds nothing without EPEL"),
+    ("el", "/usr/bin/ffmpeg", ("ffmpeg", "ffprobe"), (), "epel",
+     "ffmpeg-free is EPEL on EL, unlike Fedora where it is in the base repo"),
+    ("el", "/usr/bin/python3", ("python3",), (), "baseos",
+     "positive control — proves BaseOS actually loaded"),
+    ("el", "/usr/bin/git", ("git",), (), "appstream",
+     "positive control — proves AppStream actually loaded"),
 ]
 
 
@@ -656,8 +844,9 @@ def gate() -> int:
     precondition of every run: this tool is a pre-release check, not CI.
     """
     by_label = {c.LABEL: c for c in _VERIFIABLE_CHANNELS.values()}
+    by_label["el"] = ELChannel()          # not wired to an OS class; see there
     failures: list[str] = []
-    for label, pkg, must, must_not, why in _CHANNEL_CASES:
+    for label, pkg, must, must_not, prov, why in _CHANNEL_CASES:
         channel = by_label.get(label)
         if channel is None:
             failures.append(f"{label}: no channel registered")
@@ -665,13 +854,17 @@ def gate() -> int:
             continue
         got = channel.binaries(pkg)
         shipped = set(got or ())
+        where = channel.provenance(pkg)
         ok = (all(b in shipped for b in must)
-              and not any(b in shipped for b in must_not))
-        print(f"  [{'ok  ' if ok else 'FAIL'}] {label:9} {pkg:8} -> "
-              f"{sorted(shipped) or 'absent'} — {why}")
+              and not any(b in shipped for b in must_not)
+              and (not prov or where == prov))
+        print(f"  [{'ok  ' if ok else 'FAIL'}] {label:9} {pkg:16} -> "
+              f"{sorted(shipped) or 'absent'}"
+              f"{f' ({where})' if where else ''} — {why}")
         if not ok:
-            failures.append(f"{label}/{pkg}: expected {must}, not {must_not}, "
-                            f"got {sorted(shipped) or 'absent'}")
+            failures.append(f"{label}/{pkg}: expected {must} not {must_not}"
+                            f"{f' in {prov}' if prov else ''}, got "
+                            f"{sorted(shipped) or 'absent'} ({where})")
     print()
     if failures:
         print(f"CHANNEL GATE FAILED — {len(failures)}: " + "; ".join(failures))
@@ -731,6 +924,26 @@ def check_install_hints() -> list[Finding]:
                     f"{label} has no package {pkg!r} (and nothing provides it) "
                     f"— we print {hint!r}"))
                 continue
+            # EL caveat: DnfLinux serves Fedora AND RHEL/Rocky/Alma, and
+            # current_platform() cannot tell them apart.  A hint that verifies
+            # against Fedora can still find nothing on EL, because both
+            # binaries the app probes for are EPEL-only there.
+            if name == "DnfLinux":
+                where = ELChannel().provenance(pkg)
+                if where == "epel":
+                    findings.append(Finding(
+                        "GAP", f"{name}/{tool}",
+                        f"{hint!r} works on Fedora, but on RHEL/Rocky/Alma "
+                        f"{pkg!r} is in EPEL — a box without EPEL enabled "
+                        f"finds nothing.  DnfLinux serves both and cannot "
+                        f"tell them apart"))
+                elif where is None and shutil.which("dnf"):
+                    findings.append(Finding(
+                        "GAP", f"{name}/{tool}",
+                        f"{hint!r} resolves on Fedora but NOTHING provides "
+                        f"{pkg!r} in EL baseos/appstream/epel — RHEL/Rocky/"
+                        f"Alma users get no package at all"))
+
             missing = [b for b in needed if b not in shipped]
             # Report the NEEDED binaries, present or not -- an alphabetical
             # sample of a 54-executable formula says nothing about ffprobe.
