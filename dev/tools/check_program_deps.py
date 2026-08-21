@@ -45,6 +45,7 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import plistlib
 import re
 import shutil
 import subprocess
@@ -650,6 +651,7 @@ class SuseChannel(RpmRepoChannel):
 #: Per-run caches.  These indexes are megabytes and the tool asks a handful of
 #: questions, so each is fetched once.
 _BSD_INDEX: dict[str, set[str]] = {}
+_VOID_INDEX: dict[str, dict] = {}
 _NETBSD_PATHS: dict[str, str] = {}
 
 
@@ -861,6 +863,90 @@ class NetBsdChannel(BsdChannel):
                        if ln.startswith("bin/")})
 
 
+class VoidChannel(Channel):
+    """Void, via the xbps repodata index — no file list needed.
+
+    xbps records what a package puts on PATH as ``cmd:`` entries in its
+    ``provides``, so the binary list comes straight out of the index and there
+    is nothing to scrape.
+
+    Two transitional hops matter here, and both would read as broken to a
+    name-only check.  Measured 2026-08-21:
+
+        p7zip   -> run_depends ['7zip>=0']     (transitional dummy, 618 bytes)
+        7zip    -> provides cmd:7z, 7za, 7zr, 7zz
+        ffmpeg  -> run_depends ['ffmpeg6>=0']  (transitional dummy)
+        ffmpeg6 -> provides cmd:ffmpeg, cmd:ffprobe
+
+    So both Void hints work.  Following the hop is what DebianChannel already
+    does; not following it is what produced a false bug report against Alpine
+    earlier the same day.
+    """
+
+    LABEL = "void"
+
+    #: repo -> repodata URL.  index.plist carries no repository field -- it IS
+    #: one repo -- so provenance means "which index answered", and claiming
+    #: "current" without querying the others would be a guess.
+    REPOS: ClassVar[dict[str, str]] = {
+        "current": "https://repo-default.voidlinux.org/current/x86_64-repodata",
+        "nonfree": "https://repo-default.voidlinux.org/current/nonfree/"
+                   "x86_64-repodata",
+        "multilib": "https://repo-default.voidlinux.org/current/multilib/"
+                    "x86_64-repodata",
+    }
+
+    def _index(self, repo: str = "current") -> dict[str, dict]:
+        if repo in _VOID_INDEX:
+            return _VOID_INDEX[repo]
+        table: dict[str, dict] = {}
+        try:
+            with urllib.request.urlopen(self.REPOS[repo], timeout=180) as r:
+                blob = r.read()
+            raw = subprocess.run(["zstd", "-d", "-c"], input=blob,
+                                 capture_output=True, timeout=180,
+                                 check=False).stdout
+            with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+                member = tar.extractfile("index.plist")
+                if member is not None:
+                    table = plistlib.loads(member.read())
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                OSError, subprocess.SubprocessError, tarfile.TarError,
+                plistlib.InvalidFileException, KeyError):
+            table = {}
+        _VOID_INDEX[repo] = table
+        return table
+
+    def _record(self, pkg: str) -> tuple[str, dict] | None:
+        for repo in self.REPOS:
+            record = self._index(repo).get(pkg)
+            if record is not None:
+                return repo, record
+        return None
+
+    def binaries(self, pkg: str, _depth: int = 0) -> list[str] | None:
+        found = self._record(pkg)
+        if found is None:
+            return None
+        record = found[1]
+        cmds = [c.split(":", 1)[1].rsplit("-", 1)[0]
+                for c in (record.get("provides") or []) if c.startswith("cmd:")]
+        if cmds:
+            return sorted(set(cmds))
+        # Transitional dummy: follow what it depends on, bounded.
+        if _depth < 2:
+            for dep in (record.get("run_depends") or []):
+                found = self.binaries(re.split(r"[<>=]", dep)[0], _depth + 1)
+                if found:
+                    return found
+        return []
+
+    def provenance(self, pkg: str) -> str | None:
+        """current / nonfree / multilib — which index answered."""
+        found = self._record(pkg)
+        return found[0] if found else None
+
+
 class HomebrewChannel(Channel):
     LABEL = "homebrew"
 
@@ -1037,6 +1123,7 @@ _VERIFIABLE_CHANNELS: dict[str, Channel] = {
     "FreeBsdOS": FreeBsdChannel(),
     "OpenBsdOS": OpenBsdChannel(),
     "NetBsdOS": NetBsdChannel(),
+    "XbpsLinux": VoidChannel(),
     "MacOSPlatform": HomebrewChannel(),
     "WindowsPlatform": WingetChannel(),
 }
@@ -1101,6 +1188,12 @@ _CHANNEL_CASES: list[
     ("netbsd", "ffmpeg7", ("ffmpeg7",), ("ffmpeg",), "",
      "positive control AND the second half of the bug: the binary is "
      "VERSIONED, so `which ffmpeg` fails even after installing the right one"),
+    ("void", "p7zip", ("7z",), (), "current",
+     "transitional dummy depending on 7zip, whose cmd: provides carry 7z"),
+    ("void", "ffmpeg", ("ffmpeg", "ffprobe"), (), "current",
+     "transitional dummy depending on ffmpeg6 — both Void hints work"),
+    ("void", "p7zip-unrar", ("7z",), (), "nonfree",
+     "positive control — proves the nonfree index loaded, not just current"),
 ]
 
 
@@ -1138,6 +1231,22 @@ def gate() -> int:
         return 1
     print(f"CHANNEL GATE PASSED — {len(_CHANNEL_CASES)} known answers")
     return 0
+
+
+#: Why an OS has no channel.  "No published file list" was true when every
+#: unverified channel was unexamined; it is not true of Nix, and a gate that
+#: states a false reason is worse than one that states none -- whoever picks
+#: this up needs to know what exists and what it costs.
+_NO_CHANNEL_REASON: dict[str, str] = {
+    "NixLinux":
+        "nixpkgs meta.mainProgram proves the PRIMARY binary (p7zip -> 7z) but "
+        "cannot enumerate the rest, so it cannot confirm ffmpeg also ships "
+        "ffprobe; returning a partial list would report a false MISSING.  The "
+        "real index is nix-index-database (1.8 MB '-small' asset, 102 MB "
+        "full), in a custom binary format that needs a parser",
+    "GenericLinux":
+        "no manager was detected, so there is no channel to ask",
+}
 
 
 def _os_classes() -> list[object]:
@@ -1178,8 +1287,8 @@ def check_install_hints() -> list[Finding]:
                 print(f"  {name:14} {tool:8} {hint[:42]:44} {'UNVERIFIED':22}")
                 findings.append(Finding(
                     "GAP", f"{name}/{tool}",
-                    f"no published file list for this channel — {hint!r} is "
-                    f"unverified; confirm by hand that it provides "
+                    f"{_NO_CHANNEL_REASON.get(name, 'no channel')} — {hint!r} "
+                    f"is unverified; confirm by hand that it provides "
                     f"{'/'.join(needed)}"))
                 continue
             label = channel.LABEL
