@@ -42,6 +42,7 @@ Exit: 0 = every claim still true, 1 = at least one claim has rotted.
 """
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import re
@@ -537,41 +538,23 @@ class DebianChannel(Channel):
         suite = answer.split()[0]
         return suite.split("/", 1)[1] if "/" in suite else "main"
 
-#: EL is three repos, not one: BaseOS and AppStream ship with the distro,
-#: EPEL does not.  Keyed in query order so the first hit is the one a user
-#: gets without enabling anything extra.
-_EL_REPOS: dict[str, str] = {
-    "baseos": "https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/",
-    "appstream": "https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/",
-    "epel": "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/",
-}
+class RpmRepoChannel(Channel):
+    """Any RPM channel answerable by querying its published repodata remotely.
 
+    Three channels now share this: EL and openSUSE ask remote repos through
+    ``--repofrompath``, and both are two-step for the same reason Fedora is --
+    ``repoquery -l p7zip`` is empty because p7zip is a capability, not a
+    package, so the provider must be resolved before its files are listed.
 
-class ELChannel(Channel):
-    """RHEL / CentOS Stream / Rocky / AlmaLinux, via AlmaLinux + EPEL metadata.
-
-    NOT wired to an OS class.  ``DnfLinux`` serves Fedora *and* EL, and
-    ``current_platform()`` cannot tell them apart -- so this runs as an extra
-    check on the Fedora hints rather than replacing FedoraChannel.
-
-    Measured 2026-08-21, and the reason provenance exists: both binaries the
-    app probes for are EPEL-only on EL.
-
-        /usr/bin/7z      -> 7zip        (epel)     — nothing in base
-        /usr/bin/ffmpeg  -> ffmpeg-free (epel)     — nothing in base
-        /usr/bin/python3 -> python3     (baseos)   — positive control
-        /usr/bin/git     -> git-core    (appstream) — positive control
-
-    So a hint that verifies clean against Fedora still finds nothing on a
-    RHEL/Rocky/Alma box without EPEL enabled.
-
-    Remote repoquery rather than downloading filelists.xml.gz: AppStream's is
-    18.5 MB, and --repofrompath answers in a fraction of a second.  It needs
-    dnf, so like FedoraChannel it answers None off an RPM box -- "cannot tell
-    you", which is an answer.
+    Remote query rather than downloading filelists.xml.gz: AlmaLinux
+    AppStream's is 18.5 MB and this answers in a fraction of a second.  It
+    needs dnf, so it returns None off an RPM box -- "cannot tell you", which
+    is an answer and not a pass.
     """
 
-    LABEL = "el"
+    #: label -> base URL, in the order a user would get them.  The first repo
+    #: that answers is the provenance.
+    REPOS: ClassVar[dict[str, str]] = {}
 
     def _query(self, repo: str, url: str, what: str, qf: str) -> list[str]:
         if not shutil.which("dnf"):
@@ -581,7 +564,7 @@ class ELChannel(Channel):
                 ["dnf", "repoquery", "--quiet",
                  f"--repofrompath={repo},{url}", f"--repo={repo}",
                  "--whatprovides", what, "--qf", qf],
-                capture_output=True, text=True, timeout=180, check=False).stdout
+                capture_output=True, text=True, timeout=240, check=False).stdout
         except (OSError, subprocess.SubprocessError):
             return []
         return [ln.strip() for ln in out.splitlines() if ln.strip()]
@@ -593,19 +576,14 @@ class ELChannel(Channel):
             out = subprocess.run(
                 ["dnf", "repoquery", "--quiet",
                  f"--repofrompath={repo},{url}", f"--repo={repo}", "-l", name],
-                capture_output=True, text=True, timeout=180, check=False).stdout
+                capture_output=True, text=True, timeout=240, check=False).stdout
         except (OSError, subprocess.SubprocessError):
             return []
         return [ln.strip() for ln in out.splitlines() if "/bin/" in ln]
 
     def binaries(self, pkg: str) -> list[str] | None:
-        """Binaries *pkg* ships, from the first EL repo that carries it.
-
-        Two steps, for the same reason FedoraChannel needs two: `repoquery -l
-        p7zip` is empty because p7zip is a capability, not a package.  Resolve
-        the provider first, then list it.
-        """
-        for repo, url in _EL_REPOS.items():
+        """Binaries *pkg* ships, from the first repo that carries it."""
+        for repo, url in self.REPOS.items():
             names = sorted(set(self._query(repo, url, pkg, "%{name}\n")))
             if not names:
                 continue
@@ -617,11 +595,270 @@ class ELChannel(Channel):
         return None
 
     def provenance(self, pkg: str) -> str | None:
-        """baseos / appstream / epel — the first repo that answers."""
-        for repo, url in _EL_REPOS.items():
+        """Which repo answered — the whole point on EL, where it is EPEL."""
+        for repo, url in self.REPOS.items():
             if self._query(repo, url, pkg, "%{name}\n"):
                 return repo
         return None
+
+
+#: EL is three repos, not one: BaseOS and AppStream ship with the distro,
+#: EPEL does not.  Ordered so the first hit is what a user gets without
+#: enabling anything extra.
+_EL_REPOS: dict[str, str] = {
+    "baseos": "https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/",
+    "appstream": "https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/",
+    "epel": "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/",
+}
+
+
+class ELChannel(RpmRepoChannel):
+    """RHEL / CentOS Stream / Rocky / AlmaLinux, via AlmaLinux + EPEL metadata.
+
+    NOT wired to an OS class.  ``DnfLinux`` serves Fedora *and* EL, and
+    ``current_platform()`` cannot tell them apart -- so this runs as a second
+    opinion on the Fedora hints rather than replacing FedoraChannel.
+
+    Measured 2026-08-21, and the reason provenance exists: both binaries the
+    app probes for are EPEL-only on EL.
+
+        /usr/bin/7z      -> 7zip        (epel)      — nothing in base
+        /usr/bin/ffmpeg  -> ffmpeg-free (epel)      — nothing in base
+        /usr/bin/python3 -> python3     (baseos)    — positive control
+        /usr/bin/git     -> git-core    (appstream) — positive control
+    """
+
+    LABEL = "el"
+    REPOS: ClassVar[dict[str, str]] = _EL_REPOS
+
+
+class SuseChannel(RpmRepoChannel):
+    """openSUSE Tumbleweed's OSS repo — same repodata shape as EL.
+
+    Measured 2026-08-21: /usr/bin/7z comes from ``7zip``, and ``p7zip`` is a
+    name it PROVIDES, so ``zypper install p7zip`` resolves and works.  Checked
+    the provides rather than assuming, because assuming is what produced a
+    false bug report against Alpine earlier the same day.
+    """
+
+    LABEL = "suse"
+    REPOS: ClassVar[dict[str, str]] = {
+        "oss": "https://download.opensuse.org/tumbleweed/repo/oss/",
+    }
+
+
+#: Per-run caches.  These indexes are megabytes and the tool asks a handful of
+#: questions, so each is fetched once.
+_BSD_INDEX: dict[str, set[str]] = {}
+_NETBSD_PATHS: dict[str, str] = {}
+
+
+class BsdChannel(Channel):
+    """A BSD package repo, answered in two steps because no BSD index has both.
+
+    Every BSD publishes what a user can install (a package directory or a
+    package-site index) but none of them publish, in the same place, what each
+    package puts on PATH.  So existence and files come from different sources,
+    and the split is per-OS.
+
+    Existence is the half that matters most here: both bugs this found were
+    "the command names a package that is not there", not "the package ships
+    the wrong binary".
+
+    FreshPorts / openports.pl / pkgsrc.se are the browsable sites and are the
+    right place to READ about a port -- but they are not the authority for
+    "can this be installed today".  freshports.org/archivers/p7zip serves 192
+    KB of normal-looking page for a port that says, inside, "This port has
+    been deleted."  A 200 there means the port once existed.  Only the package
+    repo answers the question a hint makes a promise about.
+    """
+
+    #: Directory listing or index whose contents name the installable packages.
+    INDEX_URL: ClassVar[str] = ""
+
+    def _index(self) -> set[str]:
+        """Package names this repo can install, cached per run."""
+        raise NotImplementedError
+
+    def provenance(self, pkg: str) -> str | None:
+        """None: each BSD here is a single package set with no sub-repo a user
+        must enable.  Stated rather than inherited."""
+        return None
+
+
+class FreeBsdChannel(BsdChannel):
+    """FreeBSD, via packagesite.pkg -- the index `pkg` itself resolves against.
+
+    Measured 2026-08-21: `p7zip` is NOT among its 37,485 records.  The port was
+    DELETED -- FreshPorts gives the reason: "Unmaintained for years and has
+    known vulnerabilities" -- and replaced by `archivers/7-zip`, whose Makefile
+    declares PLIST_FILES = bin/7z.  So `pkg install p7zip`, which the app
+    printed, names a package that was withdrawn as vulnerable.
+    """
+
+    LABEL = "freebsd"
+    INDEX_URL = "https://pkg.freebsd.org/FreeBSD:14:amd64/latest/packagesite.pkg"
+    _PORTS = "https://raw.githubusercontent.com/freebsd/freebsd-ports/main"
+
+    def _index(self) -> set[str]:
+        if self.LABEL in _BSD_INDEX:
+            return _BSD_INDEX[self.LABEL]
+        names: set[str] = set()
+        try:
+            with urllib.request.urlopen(self.INDEX_URL, timeout=120) as r:
+                blob = r.read()
+            # zstd-compressed tar (magic 28 b5 2f fd); zstandard is not in the
+            # stdlib, so shell out to the tool the OS already has.
+            proc = subprocess.run(["zstd", "-d", "-c"], input=blob,
+                                  capture_output=True, timeout=180, check=False)
+            with tarfile.open(fileobj=io.BytesIO(proc.stdout)) as tar:
+                member = tar.extractfile("packagesite.yaml")
+                text = member.read().decode("utf-8", "replace") if member else ""
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                OSError, subprocess.SubprocessError, tarfile.TarError,
+                KeyError):
+            text = ""
+        for line in text.splitlines():
+            m = re.search(r'"name":"([^"]+)"', line)
+            if m:
+                names.add(m.group(1))
+        _BSD_INDEX[self.LABEL] = names
+        return names
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        index = self._index()
+        if not index or pkg not in index:
+            return None
+        # The port declares its files; most use PLIST_FILES for a handful of
+        # binaries, larger ports a pkg-plist.  Origin is not in the name, so
+        # try the obvious category first and fall back to pkg-plist.
+        for path in (f"archivers/{pkg}", f"multimedia/{pkg}", f"lang/{pkg}"):
+            for leaf in ("Makefile", "pkg-plist"):
+                body = _get(f"{self._PORTS}/{path}/{leaf}")
+                if not body:
+                    continue
+                files = re.findall(r"\bbin/([A-Za-z0-9._+-]+)", body)
+                if files:
+                    return sorted(set(files))
+        return []                              # present, files not locatable
+
+
+def _bsd_basename(filename: str) -> str:
+    """``p7zip-17.06.tgz`` -> ``p7zip``.
+
+    Both OpenBSD and pkgsrc name packages ``name-version`` where the version
+    starts with a digit -- which is the only reliable split, since names
+    themselves contain dashes (``py3-foo``, ``ffmpeg7``).
+    """
+    stem = filename[:-4] if filename.endswith(".tgz") else filename
+    m = re.match(r"^(.*?)-\d", stem)
+    return m.group(1) if m else stem
+
+
+class OpenBsdChannel(BsdChannel):
+    """OpenBSD, via the release's package directory.
+
+    Files come from the package itself: OpenBSD publishes no file index, and
+    the .tgz is the artifact `pkg_add` installs, so it cannot disagree.
+
+    Measured 2026-08-21: p7zip-17.06 ships bin/7z, 7za, 7zr, and ffmpeg is
+    present -- both OpenBSD hints are correct.  Checked per-OS rather than as
+    "BSD", because FreeBSD's p7zip is gone and NetBSD's ffmpeg is.
+    """
+
+    LABEL = "openbsd"
+    _BASE = "https://cdn.openbsd.org/pub/OpenBSD/7.9/packages/amd64/"
+    INDEX_URL = _BASE
+
+    def _index(self) -> set[str]:
+        if self.LABEL in _BSD_INDEX:
+            return _BSD_INDEX[self.LABEL]
+        body = _get(self.INDEX_URL) or ""
+        names = {_bsd_basename(f)
+                 for f in re.findall(r'href="([^"]+\.tgz)"', body)}
+        _BSD_INDEX[self.LABEL] = names
+        return names
+
+    def _filename(self, pkg: str) -> str | None:
+        body = _get(self.INDEX_URL) or ""
+        for f in re.findall(r'href="([^"]+\.tgz)"', body):
+            if _bsd_basename(f) == pkg:
+                return f
+        return None
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        if pkg not in self._index():
+            return None
+        name = self._filename(pkg)
+        if name is None:
+            return None
+        try:
+            with urllib.request.urlopen(self._BASE + name, timeout=180) as r:
+                blob = r.read()
+            with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
+                members = tar.getnames()
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                OSError, tarfile.TarError):
+            return []
+        return sorted({m.split("/")[-1] for m in members
+                       if m.startswith("bin/") or "/bin/" in m})
+
+
+class NetBsdChannel(BsdChannel):
+    """NetBSD, via the binary package directory + pkgsrc PLISTs.
+
+    Files come from pkgsrc rather than the package, because pkgsrc publishes
+    them as plain text and the mapping is available: pkg_summary.gz carries
+    PKGNAME -> PKGPATH, and PKGPATH is the PLIST's directory.
+
+    Measured 2026-08-21: there is NO package named ffmpeg -- only ffmpeg3
+    through ffmpeg7 -- and each installs a VERSIONED binary (bin/ffmpeg7).  So
+    `pkg_add ffmpeg`, which the app printed, fails twice over: no such package,
+    and even the right one leaves `which ffmpeg` failing.  p7zip is fine and
+    ships bin/7z.
+    """
+
+    LABEL = "netbsd"
+    _BASE = "https://cdn.netbsd.org/pub/pkgsrc/packages/NetBSD/amd64/10.0/All/"
+    _PKGSRC = "https://cdn.netbsd.org/pub/pkgsrc/current/pkgsrc"
+    INDEX_URL = _BASE
+
+    def _index(self) -> set[str]:
+        if self.LABEL in _BSD_INDEX:
+            return _BSD_INDEX[self.LABEL]
+        body = _get(self.INDEX_URL) or ""
+        names = {_bsd_basename(f)
+                 for f in re.findall(r'href="([^"]+\.tgz)"', body)}
+        _BSD_INDEX[self.LABEL] = names
+        return names
+
+    def _pkgpath(self, pkg: str) -> str | None:
+        """PKGNAME -> category/port, from pkg_summary.gz."""
+        if not _NETBSD_PATHS:
+            try:
+                with urllib.request.urlopen(self._BASE + "pkg_summary.gz",
+                                            timeout=180) as r:
+                    text = gzip.decompress(r.read()).decode("utf-8", "replace")
+            except (urllib.error.HTTPError, urllib.error.URLError,
+                    TimeoutError, OSError, EOFError):
+                text = ""
+            name = ""
+            for line in text.splitlines():
+                if line.startswith("PKGNAME="):
+                    name = _bsd_basename(line[8:])
+                elif line.startswith("PKGPATH=") and name:
+                    _NETBSD_PATHS[name] = line[8:]
+        return _NETBSD_PATHS.get(pkg)
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        if pkg not in self._index():
+            return None
+        path = self._pkgpath(pkg)
+        if path is None:
+            return []
+        body = _get(f"{self._PKGSRC}/{path}/PLIST") or ""
+        return sorted({ln.split("/")[-1] for ln in body.splitlines()
+                       if ln.startswith("bin/")})
 
 
 class HomebrewChannel(Channel):
@@ -796,6 +1033,10 @@ _VERIFIABLE_CHANNELS: dict[str, Channel] = {
     "DnfLinux": FedoraChannel(),
     "AptLinux": DebianChannel(),
     "ApkLinux": AlpineChannel(),
+    "ZypperLinux": SuseChannel(),
+    "FreeBsdOS": FreeBsdChannel(),
+    "OpenBsdOS": OpenBsdChannel(),
+    "NetBsdOS": NetBsdChannel(),
     "MacOSPlatform": HomebrewChannel(),
     "WindowsPlatform": WingetChannel(),
 }
@@ -834,6 +1075,32 @@ _CHANNEL_CASES: list[
      "positive control — proves BaseOS actually loaded"),
     ("el", "/usr/bin/git", ("git",), (), "appstream",
      "positive control — proves AppStream actually loaded"),
+    ("suse", "/usr/bin/7z", ("7z",), (), "oss",
+     "openSUSE ships 7z from 7zip, in the OSS repo"),
+    ("suse", "p7zip", ("7z",), (), "oss",
+     "p7zip is a name 7zip PROVIDES — zypper resolves it, so the hint works"),
+    ("suse", "/usr/bin/python3", ("python3",), (), "oss",
+     "positive control — proves the OSS repo actually loaded"),
+    # BSD, each value read off the package repo or the package itself.  The
+    # three diverge, which is why they are three channels and not one "bsd".
+    ("freebsd", "p7zip", (), ("7z",), "",
+     "DELETED port — FreshPorts: 'unmaintained for years and has known "
+     "vulnerabilities'.  We printed `pkg install p7zip`"),
+    ("freebsd", "7-zip", ("7z",), (), "",
+     "the package that replaced it, per its Makefile PLIST_FILES"),
+    ("freebsd", "ffmpeg", ("ffmpeg", "ffprobe"), (), "",
+     "positive control — proves the 37k-record index actually loaded"),
+    ("openbsd", "p7zip", ("7z",), (), "",
+     "present and correct — read from the .tgz pkg_add installs"),
+    ("openbsd", "ffmpeg", ("ffmpeg", "ffprobe"), (), "",
+     "positive control"),
+    ("netbsd", "p7zip", ("7z",), (), "",
+     "present and correct, from the pkgsrc PLIST"),
+    ("netbsd", "ffmpeg", (), ("ffmpeg",), "",
+     "NO package named ffmpeg — only ffmpeg3..7.  We printed `pkg_add ffmpeg`"),
+    ("netbsd", "ffmpeg7", ("ffmpeg7",), ("ffmpeg",), "",
+     "positive control AND the second half of the bug: the binary is "
+     "VERSIONED, so `which ffmpeg` fails even after installing the right one"),
 ]
 
 
