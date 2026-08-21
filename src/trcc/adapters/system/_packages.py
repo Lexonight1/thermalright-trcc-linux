@@ -70,6 +70,10 @@ class NoPackageManager(PackageManager):
                   path)
         return None
 
+    def installed(self, package: str) -> bool:
+        log.debug("NoPackageManager.installed: not queryable (%s)", package)
+        return False
+
     def install_argv(self, package: str) -> tuple[str, ...]:
         log.debug("NoPackageManager.install_argv: none for %s", package)
         return ()
@@ -111,6 +115,14 @@ class Rpm(PackageManager):
         name = out.splitlines()[0].strip()
         log.info("Rpm.provides: %s -> %s", path, name)
         return name
+
+    def installed(self, package: str) -> bool:
+        """``rpm -q`` — local rpmdb, no repository state, ~17 ms."""
+        if not shutil.which("rpm"):
+            return False
+        present = _run(["rpm", "-q", package]) is not None
+        log.info("Rpm.installed: %s -> %s", package, present)
+        return present
 
     def install_argv(self, package: str) -> tuple[str, ...]:
         argv = ("sudo", "dnf", "install", package)

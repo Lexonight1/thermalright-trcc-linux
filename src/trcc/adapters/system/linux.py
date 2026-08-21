@@ -16,6 +16,7 @@ import ctypes
 import errno
 import logging
 import os
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -416,6 +417,30 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
     ),
 )
 
+#: RHEL / CentOS Stream / Rocky / AlmaLinux.  Same manager as Fedora, which is
+#: why it cannot be told apart by the probe and needs /etc/os-release.
+#:
+#: Measured 2026-08-21 against AlmaLinux 9 + EPEL 9 metadata: BOTH binaries the
+#: app looks for are EPEL-only there.  Neither /usr/bin/7z nor /usr/bin/ffmpeg
+#: is in BaseOS or AppStream, so a hint that verifies clean against Fedora
+#: finds nothing on a Rocky box that has not enabled EPEL.
+_EL_FAMILY = LinuxFamily(
+    name="EL-family", manager="dnf",
+    install_cmd="sudo dnf install {pkg}",
+    upgrade_cmd=("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
+    packages={"pynvml": "python3-pynvml",
+              "7z": "/usr/bin/7z",
+              "ffmpeg": "/usr/bin/ffmpeg"},
+)
+
+#: ``ID=`` values that mean Enterprise Linux, and the ``ID_LIKE`` token that
+#: covers the rebuilds this list does not name.
+_EL_IDS = frozenset({"rhel", "rocky", "almalinux", "centos", "ol", "oracle"})
+
+#: The package whose presence decides whether the EL hints work as written.
+_EPEL = "epel-release"
+
+
 #: No recognised manager.  Empty rather than borrowed: an unresolved Linux must
 #: say so, not answer as somebody else's distro.
 _GENERIC_FAMILY = LinuxFamily(name="Linux", manager="", install_cmd="")
@@ -443,6 +468,33 @@ _UNCONFIRMED_FALLBACK: dict[str, str] = {
 # These now live on the family classes at the bottom of this file — one class
 # per package manager, each owning its own command and names.  They used to be
 # four parallel tables in three files, and one had already drifted short by two.
+
+def _is_enterprise_linux(text: str | None = None) -> bool:
+    """Does /etc/os-release describe RHEL or a rebuild of it?
+
+    Fedora and EL both answer ``dnf``, so the binary probe cannot separate
+    them -- and the difference matters, because the packages our hints name are
+    EPEL-only on EL.  ``ID`` names the distro and ``ID_LIKE`` covers rebuilds
+    this does not list by name.
+
+    *text* is injectable because there is no EL box here to test on; the tests
+    feed real os-release contents rather than mocking the outcome.
+    """
+    if text is None:
+        try:
+            text = Path("/etc/os-release").read_text(encoding="utf-8")
+        except OSError:
+            return False
+    ident, like = "", ""
+    for line in text.splitlines():
+        if line.startswith("ID="):
+            ident = line[3:].strip().strip('"')
+        elif line.startswith("ID_LIKE="):
+            like = line[8:].strip().strip('"')
+    hit = ident in _EL_IDS or "rhel" in like.split()
+    log.debug("_is_enterprise_linux: ID=%r ID_LIKE=%r -> %s", ident, like, hit)
+    return hit
+
 
 class LinuxOS(BaseOS, key="linux"):
     """Linux implementation — same OS contract; only internals below differ.
@@ -657,11 +709,14 @@ class LinuxOS(BaseOS, key="linux"):
         thing that distinguishes them.  Hundreds of distros, a handful of
         managers.
         """
-        import shutil
         for candidate in _FAMILIES:
             if shutil.which(candidate.manager):
                 log.debug("LinuxOS._detect_family: found %s",
                           candidate.manager)
+                if candidate.manager == "dnf" and _is_enterprise_linux():
+                    log.info("LinuxOS._detect_family: dnf, but os-release says "
+                             "Enterprise Linux — EL family")
+                    return _EL_FAMILY
                 return candidate
         log.warning("LinuxOS._detect_family: no known package manager (%s) — "
                     "install advice will be generic",
@@ -720,7 +775,33 @@ class LinuxOS(BaseOS, key="linux"):
             log.info("software_install_hint: no confirmed %s package for %s",
                      tool, self._family.name)
             return _UNCONFIRMED_FALLBACK[tool]
-        return self.package_command(pkg or _LINUX_INSTALL_PKGS.get(tool, tool))
+        command = self.package_command(pkg or _LINUX_INSTALL_PKGS.get(tool, tool))
+        return self._with_epel(command)
+
+    def _with_epel(self, command: str) -> str:
+        """Prepend enabling EPEL on an EL box that has not.
+
+        Both binaries the app probes for are EPEL-only on RHEL/Rocky/Alma, so
+        the command is correct there ONLY once EPEL is enabled.  Whether it is
+        is a local question -- ``rpm -q epel-release`` -- so this adapts rather
+        than warning: a user who already has EPEL sees the plain command, and a
+        user who does not gets one line that works.
+
+        One line, deliberately.  Every consumer renders fix_hint under a
+        `hint: ` label on a single line, and an embedded newline breaks out of
+        both the label and the indent (see tests/test_install_hint_shape.py).
+        """
+        if self._family is not _EL_FAMILY:
+            return command
+        try:
+            if self.packages().installed(_EPEL):
+                log.debug("_with_epel: EPEL already enabled")
+                return command
+        except Exception as e:                 # a hint must never raise
+            log.warning("_with_epel: could not check %s (%s)", _EPEL, e)
+            return command
+        log.info("_with_epel: EL without EPEL — prefixing enablement")
+        return f"sudo dnf install {_EPEL} && {command}"
 
     def permission_denied_hint(self) -> str:
         log.debug("LinuxOS.permission_denied_hint: called")

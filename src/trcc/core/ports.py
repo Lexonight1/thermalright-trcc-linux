@@ -1283,6 +1283,17 @@ class PackageManager(ABC):
         """
 
     @abstractmethod
+    def installed(self, package: str) -> bool:
+        """Whether *package* is installed, by NAME.
+
+        Distinct from :meth:`owns`, which asks by file path.  Some advice
+        depends on a package being present rather than on a binary: EPEL is
+        the case that forced this — on RHEL/Rocky/Alma the packages our hints
+        name are EPEL-only, so the correct command depends on whether
+        ``epel-release`` is already there.  Local query, never the network.
+        """
+
+    @abstractmethod
     def install_argv(self, package: str) -> tuple[str, ...]:
         """Argv that installs *package*.  Empty when this OS has no manager."""
 

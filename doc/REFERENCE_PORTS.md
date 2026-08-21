@@ -25,12 +25,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 2 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
-| [`PackageManager`](#packagemanager) | 3 | 0 | 2 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`AutostartManager`](#autostartmanager) | 4 | 0 | 4 |
 | [`CloudCatalog`](#cloudcatalog) | 4 | 0 | 1 |
 | [`FanSource`](#fansource) | 4 | 0 | 3 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
+| [`PackageManager`](#packagemanager) | 4 | 0 | 2 |
 | [`Paths`](#paths) | 4 | 9 | 5 |
 | [`SendTask`](#sendtask) | 4 | 0 | 1 |
 | [`BulkTransport`](#bulktransport) | 5 | 0 | 2 |
@@ -281,22 +281,6 @@ stop() -> None
 
 **Implementations (5):** `FreeBSDHotplugMonitor` · `LinuxHotplugMonitor` · `NoopHotplugMonitor` · `PollingHotplugMonitor` · `WindowsHotplugMonitor`
 
-## PackageManager
-
-`core/ports.py`
-
-What the OS's package manager can tell us about a missing tool.
-
-**You implement (3):**
-
-```python
-install_argv(package: 'str') -> tuple[str, ...]
-owns(path: 'str') -> str | None
-provides(path: 'str') -> str | None
-```
-
-**Implementations (2):** `NoPackageManager` · `Rpm`
-
 ## SendScheduler
 
 `core/ports.py`
@@ -380,6 +364,23 @@ used() -> float | None
 ```
 
 **Implementations (2):** `MemorySourceChain` · `PsutilMemory`
+
+## PackageManager
+
+`core/ports.py`
+
+What the OS's package manager can tell us about a missing tool.
+
+**You implement (4):**
+
+```python
+install_argv(package: 'str') -> tuple[str, ...]
+installed(package: 'str') -> bool
+owns(path: 'str') -> str | None
+provides(path: 'str') -> str | None
+```
+
+**Implementations (2):** `NoPackageManager` · `Rpm`
 
 ## Paths
 

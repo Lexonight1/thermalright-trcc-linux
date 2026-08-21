@@ -100,3 +100,119 @@ def test_each_bsd_uses_its_own_package_command(
     hint = bsd().software_install_hint("ffmpeg")
     assert command in hint
     assert forbidden not in hint
+
+
+# ── Enterprise Linux: same manager as Fedora, different package set ────────
+
+
+@pytest.mark.parametrize(("label", "text", "is_el"), [
+    ("fedora", 'ID=fedora\nVERSION_ID=44\n', False),
+    ("rocky", 'ID="rocky"\nID_LIKE="rhel centos fedora"\n', True),
+    ("almalinux", 'ID="almalinux"\nID_LIKE="rhel centos fedora"\n', True),
+    ("rhel", 'ID="rhel"\nID_LIKE="fedora"\n', True),
+    ("centos-stream", 'ID="centos"\nID_LIKE="rhel fedora"\n', True),
+    ("oracle", 'ID="ol"\nID_LIKE="fedora"\n', True),
+    ("debian", "ID=debian\n", False),
+    ("empty", "", False),
+])
+def test_enterprise_linux_is_told_apart_from_fedora(
+        label: str, text: str, is_el: bool) -> None:
+    """Real /etc/os-release contents, not a mocked verdict.
+
+    Fedora and EL both answer ``dnf``, so the binary probe cannot separate
+    them — and it matters, because both binaries the app probes for are
+    EPEL-only on EL.  There is no EL box here, so the file contents are
+    injected; mocking the outcome would assert the rule against itself.
+    """
+    from trcc.adapters.system.linux import _is_enterprise_linux
+
+    assert _is_enterprise_linux(text) is is_el, label
+
+
+class _Packages:
+    """A PackageManager whose EPEL answer the test dictates."""
+
+    def __init__(self, epel: bool) -> None:
+        self._epel = epel
+
+    def owns(self, path: str) -> None:
+        return None
+
+    def provides(self, path: str) -> None:
+        return None
+
+    def installed(self, package: str) -> bool:
+        return self._epel
+
+    def install_argv(self, package: str) -> tuple[str, ...]:
+        return ()
+
+
+def _el(epel: bool) -> LinuxOS:
+    from trcc.adapters.system.linux import _EL_FAMILY
+
+    os_obj = LinuxOS(_EL_FAMILY)
+    os_obj._packages = _Packages(epel)
+    return os_obj
+
+
+def test_el_without_epel_gets_a_command_that_works() -> None:
+    """One runnable line, not a caveat.
+
+    Whether EPEL is enabled is answerable locally (rpm -q epel-release), so
+    the advice adapts instead of warning about a condition the user would have
+    to check themselves.
+    """
+    hint = _el(epel=False).software_install_hint("7z")
+    assert hint == "sudo dnf install epel-release && sudo dnf install /usr/bin/7z"
+    assert "\n" not in hint, "fix_hint renders on one line"
+
+
+def test_el_with_epel_gets_the_plain_command() -> None:
+    """A user who already enabled EPEL must not be told to enable it again."""
+    assert _el(epel=True).software_install_hint("7z") == (
+        "sudo dnf install /usr/bin/7z")
+
+
+def test_fedora_is_never_given_the_epel_step() -> None:
+    """Fedora ships these in its own repos; the EPEL step would be noise."""
+    from trcc.adapters.system.linux import _FAMILIES
+
+    fedora = LinuxOS(next(f for f in _FAMILIES if f.manager == "dnf"))
+    assert "epel" not in fedora.software_install_hint("7z")
+
+
+def test_a_broken_package_query_never_breaks_the_hint() -> None:
+    """A hint must not raise — it is printed when things are already wrong."""
+    os_obj = LinuxOS.__new__(LinuxOS)
+    from trcc.adapters.system.linux import _EL_FAMILY
+
+    os_obj._family = _EL_FAMILY
+    os_obj._packages = None                    # forces a build, then a failure
+
+    class _Boom:
+        def installed(self, package: str) -> bool:
+            raise RuntimeError("rpmdb is locked")
+
+    os_obj._packages = _Boom()
+    assert os_obj.software_install_hint("7z") == "sudo dnf install /usr/bin/7z"
+
+
+def test_detection_actually_selects_the_el_family(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The WIRING, not the predicate and the hint separately.
+
+    Added because a mutation exposed the hole: disabling the EL branch in
+    _detect_family failed nothing.  test_enterprise_linux_is_told_apart tested
+    the predicate, and the EPEL tests injected an EL family directly, so the
+    line joining them was covered by neither and could be deleted silently.
+    """
+    import trcc.adapters.system.linux as linux_mod
+
+    monkeypatch.setattr(linux_mod.shutil, "which",
+                        lambda name: "/usr/bin/dnf" if name == "dnf" else None)
+    monkeypatch.setattr(linux_mod, "_is_enterprise_linux", lambda text=None: True)
+    assert LinuxOS._detect_family().name == "EL-family"
+
+    monkeypatch.setattr(linux_mod, "_is_enterprise_linux", lambda text=None: False)
+    assert LinuxOS._detect_family().name == "Fedora-family"
