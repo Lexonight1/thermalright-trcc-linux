@@ -660,7 +660,27 @@ class DnfLinux(LinuxOS):
     _MANAGER = "dnf"
     _INSTALL_CMD = "sudo dnf install {pkg}"
     _UPGRADE_CMD = ("sudo", "dnf", "upgrade", "-y", "trcc-linux")
-    _PKG_NAMES = {"pynvml": "python3-pynvml"}
+    #: Advised by BINARY PATH, not package name.  Both shared names are wrong
+    #: here and both fail in a way that LOOKS like success:
+    #:   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z, so it installs
+    #:             cleanly and `which 7z` still fails -- the doctor then
+    #:             reports the same fault and prints the same advice again
+    #:   ffmpeg -> not in stock Fedora at all (that is RPM Fusion); the user
+    #:             gets "No match for argument"
+    #: A corrected NAME only trades one wrong answer for another, because which
+    #: package owns the binary depends on which repos the user enabled:
+    #:   /usr/bin/ffmpeg  stock -> ffmpeg-free  ·  +RPM Fusion -> ffmpeg
+    #:   /usr/bin/7z      stock -> 7zip         ·  +RPM Fusion -> 7zip
+    #: The path is right in both, hands an RPM Fusion user their own full build
+    #: instead of pushing a swap onto ffmpeg-free, and asks dnf the same
+    #: question we ask the OS -- `shutil.which(tool)` wants a binary.
+    #: On RHEL/Rocky/Alma both packages are EPEL-only (verified el9/el10_2/
+    #: el10_3), so without EPEL this finds nothing -- as today's advice also
+    #: does.  Saying "enable EPEL first" needs EL told apart from Fedora, which
+    #: is a new capability and not this fix.
+    _PKG_NAMES = {"pynvml": "python3-pynvml",
+                  "7z": "/usr/bin/7z",
+                  "ffmpeg": "/usr/bin/ffmpeg"}
 
 
 class PacmanLinux(LinuxOS):
