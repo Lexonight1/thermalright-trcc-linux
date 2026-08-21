@@ -61,6 +61,9 @@ _RELEASE_YML = _ROOT / ".github" / "workflows" / "release.yml"
 
 _FEDORA_RELEASE = "f44"
 _UBUNTU_SERIES = "questing"
+#: Alpine stable branch.  Pinned like the two above: "edge" would make
+#: the answer depend on the day the tool ran, and users are on a release.
+_ALPINE_BRANCH = "v3.22"
 _TIMEOUT = 15
 
 
@@ -490,6 +493,36 @@ class HomebrewChannel(Channel):
             return None
 
 
+class AlpineChannel(Channel):
+    LABEL = "alpine"
+
+    def binaries(self, pkg: str) -> list[str] | None:
+        """Alpine publishes a per-package file list at pkgs.alpinelinux.org.
+
+        Searched by NAME, giving the files a package ships; the same endpoint
+        answers the inverse (which package owns a file) via ``file=``.
+
+        Measured 2026-08-21, and the reason this channel was written first:
+        ``p7zip`` does not exist in Alpine at all -- 404 in main AND community
+        -- while ``7zip`` (main) ships /usr/bin/7z and /usr/bin/7zz.  So
+        ``apk add p7zip``, which the app printed, fails outright.  ``ffmpeg``
+        does exist but lives in **community**, not main, which is why
+        provenance is a real question and not bookkeeping.
+        """
+        body = _get(f"https://pkgs.alpinelinux.org/contents?file=&path=&"
+                    f"name={pkg}&branch={_ALPINE_BRANCH}&repo=&arch=x86_64")
+        if not body:
+            return None
+        # The file cell is the only pre-wrap td; the package/branch/repo cells
+        # are links.  Anchoring on the style keeps a layout change loud rather
+        # than silently returning nothing.
+        files = re.findall(r'<td style="white-space: pre-wrap;">([^<]+)</td>',
+                           body)
+        if not files:
+            return None                        # absent, or ships no files
+        return [f.rsplit("/", 1)[-1] for f in files if "/bin/" in f]
+
+
 class WingetChannel(Channel):
     LABEL = "winget"
 
@@ -535,9 +568,61 @@ _VERIFIABLE_CHANNELS: dict[str, Channel] = {
     "PacmanLinux": ArchChannel(),
     "DnfLinux": FedoraChannel(),
     "AptLinux": DebianChannel(),
+    "ApkLinux": AlpineChannel(),
     "MacOSPlatform": HomebrewChannel(),
     "WindowsPlatform": WingetChannel(),
 }
+
+
+#: Known answers for the channels, every one measured rather than assumed.
+#: A channel that cannot answer these is not to be believed about anything
+#: else -- and the pairs are chosen so a channel that silently returns nothing
+#: fails, which a "does it return a list" check would not catch.
+#:
+#: (channel, package, must_contain, must_not_contain, why)
+_CHANNEL_CASES: list[tuple[str, str, tuple[str, ...], tuple[str, ...], str]] = [
+    ("alpine", "7zip", ("7z",), (), "Alpine ships 7z from 7zip, in main"),
+    ("alpine", "p7zip", (), ("7z",),
+     "p7zip does not exist in Alpine at all — 404 in main and community"),
+    ("fedora", "7zip", ("7z",), (), "the package that actually ships 7z"),
+    ("fedora", "p7zip", ("7za",), ("7z",),
+     "resolves to 7zip-standalone: ships 7za and NO 7z, the #1 defect"),
+    ("arch", "p7zip", ("7z",), (),
+     "Arch's 7zip declares provides/replaces p7zip, so the hint works"),
+    ("homebrew", "p7zip", ("7z",), (),
+     "brew p7zip ships 7z/7za/7zr; the modern-looking sevenzip ships only 7zz"),
+]
+
+
+def gate() -> int:
+    """Prove each channel answers its known cases before trusting a run.
+
+    Network-bound and slow, so it is an explicit ``--gate`` rather than a
+    precondition of every run: this tool is a pre-release check, not CI.
+    """
+    by_label = {c.LABEL: c for c in _VERIFIABLE_CHANNELS.values()}
+    failures: list[str] = []
+    for label, pkg, must, must_not, why in _CHANNEL_CASES:
+        channel = by_label.get(label)
+        if channel is None:
+            failures.append(f"{label}: no channel registered")
+            print(f"  [FAIL] {label:9} {pkg:8} no such channel")
+            continue
+        got = channel.binaries(pkg)
+        shipped = set(got or ())
+        ok = (all(b in shipped for b in must)
+              and not any(b in shipped for b in must_not))
+        print(f"  [{'ok  ' if ok else 'FAIL'}] {label:9} {pkg:8} -> "
+              f"{sorted(shipped) or 'absent'} — {why}")
+        if not ok:
+            failures.append(f"{label}/{pkg}: expected {must}, not {must_not}, "
+                            f"got {sorted(shipped) or 'absent'}")
+    print()
+    if failures:
+        print(f"CHANNEL GATE FAILED — {len(failures)}: " + "; ".join(failures))
+        return 1
+    print(f"CHANNEL GATE PASSED — {len(_CHANNEL_CASES)} known answers")
+    return 0
 
 
 def _os_classes() -> list[object]:
@@ -792,6 +877,8 @@ def report_matrix() -> None:
 
 
 def main() -> int:
+    if "--gate" in sys.argv:
+        return gate()
     print("Checking every shipping target against what it actually provides…\n")
     report_matrix()
     print()
