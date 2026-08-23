@@ -465,3 +465,39 @@ decompiled source as-is. **Low/none** for anything in "Not covered" — those
 claims are deliberately omitted rather than inferred, per the no-speculation
 constraint. Caveat: decompiled C# (ILSpy-style) may reorder locals; the
 `//IL_xxxx` comment noise was ignored and does not affect the logic described.
+
+## `MengBanSelect_Open` — user mask import (added 2026-08-22, read against 2.1.6)
+
+The heaviest dark method in the live path (27 branches). Full extent
+`FormCZTV.cs:5525-5729`.
+
+| step | behaviour | cite |
+|---|---|---|
+| 1 | `OpenFileDialog` filtered to **PNG only** — `Image(*.PNG)\|*.PNG` | `FormCZTV.cs:5536` |
+| 2 | target canvas resolved per panel, orientation-aware (`is1600x720` splits 1600×720 / 720×1600 on `directionB`) | `FormCZTV.cs:5546` |
+| 3 | aspect-preserving **contain fit**: width-led, then clamped if the derived height overflows | `FormCZTV.cs:5690` |
+| 4 | **never upscales** — an image smaller than the canvas on both axes keeps its native size | `FormCZTV.cs:5704` |
+| 5 | the SCALED bitmap is saved over `GifDirectory\01.png` — the active theme's mask file | `FormCZTV.cs:5715` |
+| 6 | round-tripped through `BitmapToByte`/`ByteToBitmap` to drop the file handle | `FormCZTV.cs:5716` |
+| 7 | installed as `bitmapMB`; `WvalMB`/`HvalMB` = size, `XvalMB`/`YvalMB` = **half** of each | `FormCZTV.cs:5719` |
+| 8 | the previous mask bitmap is disposed | `FormCZTV.cs:5723` |
+
+Step 7 is the one worth carrying: a freshly imported mask's position anchor
+defaults to the image's own **centre**, not to the origin and not to the
+canvas centre.
+
+### Divergence from our port — deliberate, and worth stating
+
+`UploadCustomMask` (`core/commands/theme.py`) copies the source with
+`shutil.copy2` and scales **nothing**. The C# writes a downscaled `01.png`; we
+write the user's original bytes.
+
+Both end up fitted on the glass — ours scales at composite time via `fit_mode`,
+which is the documented rule for user content (`~/.trcc-user/data` is native
+resolution, `~/.trcc/data` is pre-scaled). So this is not a defect to fix by
+copying the C#: the C# is **destructive**, permanently resampling a file the
+user chose, and a 4K source imported onto a 320×320 panel is unrecoverable
+afterwards. Ours keeps the original and can re-fit at any orientation.
+
+What we do NOT implement from step 1 is the PNG-only filter — we accept any
+image the renderer can open. That is a superset, not a gap.

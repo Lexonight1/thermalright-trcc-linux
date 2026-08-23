@@ -21,7 +21,7 @@ directly — the same protocol commands, different transport library.
 | Version | 2.3.0 |
 | Size | ~1150 lines decompiled |
 | USB API | LibUsbDotNet (→ WinUSB/libusb) |
-| Source | `/home/ignorant/Downloads/v2.1.4_decompiled/USBLCDNEW.decompiled.cs` |
+| Source | TRCC **2.1.6** installer payload → `TRCCCAP/USBLCDNEW.dll` (net8.0; `USBLCDNEW.exe` is the apphost stub, the code is in the .dll) |
 
 ## Supported Devices
 

@@ -156,6 +156,7 @@ what it says.**
 | `AUDIT_VIDEO.md` | Video/playback/animation | `UCVideoCut`,`UCBoFangQiKongZhi`,`UCDongHuaLianDong` (4.8K) | ✅ 300000 cap + ffmpeg supersample |
 | `AUDIT_LED_CORE.md` | LED protocol, effects, PM table | `FormLED` (16.8K) | ✅ `*0.4f` brightness + orange (255,110,0) + header |
 | `AUDIT_LED_SEGMENT.md` | Segment-display compose/masks | `UCScreenLED`,`FormKVMALED6` (12.2K) | ✅ SetMyNumeral overloads + LF13 460×460 |
+| `AUDIT_FORMLCD_PROJECTION.md` | Screen-projection form + its cutters | `FormLCD`,`UCVideoCutF`,`UCImageCutF`,`UCShortcut`,`FormLCDImageCut` (7.8K) | ✅ helper binary absent from the payload (13,726 files) |
 
 ## Cross-subsystem findings that shape the consolidation
 

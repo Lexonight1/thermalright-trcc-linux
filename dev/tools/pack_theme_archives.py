@@ -43,7 +43,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "src" / "trcc" / "data"
 WEB_DIR = DATA_DIR / "web"
 
-_RES = re.compile(r"^\d+$")  # a resolution dir/suffix is bare digits ("320960")
+# A resolution dir/suffix: digits, optionally a per-SKU variant letter
+# ("320960", "1600720u", "7201600l", "480480y").
+#
+# THREE letters are live, and they are keyed on different bytes:
+#   u / l  chosen by pmSub (2 and 4 -> u, 3 -> l) crossed with orientation,
+#          for 1600x720 / 720x1600            (FormCZTV.cs:1290)
+#   y      chosen by PM: is480x480 && myDevicePingMu == 3 -> zt480480y
+#          (FormCZTV.cs:5746) -- masks only, no theme or background twin
+#
+# It was ``^\d+$`` — bare digits — so the four 1600x720 variant directories
+# could never be DISCOVERED, and running this tool on a fully populated source
+# tree silently packed 28 resolutions instead of 32.  The C# picks between them
+# by pmSub (2 and 4 -> u, 3 -> l) crossed with orientation, FormCZTV.cs:1290;
+# they are distinct artwork, not aliases.  The same digits-only assumption also
+# lived in ``dev/tools/audit_csharp.py``, where it made the missing archives
+# report as parity.
+_RES = re.compile(r"^\d+[uly]?$")
 
 
 def _discover_resolutions() -> list[str]:

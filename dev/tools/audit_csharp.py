@@ -47,12 +47,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "decompiler"))
 from core.csharp import (  # pyright: ignore[reportMissingImports]
     DECOMPILE_ROOT,
+    ORACLE_RELEASE,
     decompile_text,
 )
 from rename_assets import RENAME_MAP  # C# (Chinese) name → our English name
 
 REPO = Path(__file__).resolve().parent.parent.parent
-ASSETS = REPO / "src" / "trcc" / "assets"
+# Both asset roots, because the two checks below want different halves of
+# them and a miss in either reads as "2.1.6 has art we never ported".
+#
+# This constant used to name ONLY the first one -- the packaging root: two
+# fonts, eight icons, a .desktop and a polkit policy, 17 files, and not one
+# piece of device art.  Every one of the C#'s device buttons therefore came
+# back missing, and the tool reported 68 absent coolers while the repo held
+# 176 A1* PNGs the scan could never see.  The GUI's own resolver says where
+# they really live (ui/gui/assets.py: ``_PKG_ASSETS_DIR = Path(__file__).parent
+# / 'assets'``); read that rather than guessing a second time.
+ASSET_ROOTS = (
+    REPO / "src" / "trcc" / "assets",           # packaging: fonts, icons, .desktop
+    REPO / "src" / "trcc" / "ui" / "gui" / "assets",   # the GUI art itself
+)
 DATA = REPO / "src" / "trcc" / "data"
 
 # 2.1.6 Form (.resx) → our analogue, or None if we have no panel for it.
@@ -106,6 +120,36 @@ def _resx_device_models(resx_dir: Path) -> set[str]:
     return devices
 
 
+def _selected_device_models(cs_text: str) -> set[str]:
+    """The ``A1<model>`` names 2.1.6 actually SELECTS, not merely ships.
+
+    ``Resources.cs`` declares an accessor for every image in the resx, whether
+    or not any code path assigns it to a button.  Comparing our variant table
+    against the resx alone therefore counts dead artwork as missing coolers:
+    ``A1LD10`` has both a resx entry and an accessor, and ``ADDUserButton``
+    never names it in this release -- our table was already corrected off it
+    (see variants.py "was A1LD10 in our prior table").  ``A1CZTV`` is the
+    opposite error: it IS selected, as the ``default:`` arm, so it lives in our
+    ``ProductInfo.button_image`` default rather than in a variant row.
+
+    So the honest denominator is "referenced by a chooser", which means every
+    ``.cs`` EXCEPT the generated resource accessors.
+
+    Names come back with spaces folded to underscores, because that is what
+    the generated accessor does: the resx entry ``A1FROZEN WARFRAME`` is
+    reached in code as ``Resources.A1FROZEN_WARFRAME``, since a C# identifier
+    cannot contain a space.  Comparing the two spellings directly reports 21
+    shipping coolers as dead art -- which is what this function did on its
+    first run.  (It is also why our asset dir carries both spellings.)
+    """
+    return set(re.findall(r"Resources\.(A1[A-Za-z0-9_]+)", cs_text))
+
+
+def _as_identifier(name: str) -> str:
+    """A resx entry name as the generated C# accessor spells it."""
+    return name.replace(" ", "_")
+
+
 def _resx_a1_raw(resx_dir: Path) -> set[str]:
     """Raw ``A1<...>`` resource names across all .resx — no hover-folding.
 
@@ -119,15 +163,43 @@ def _resx_a1_raw(resx_dir: Path) -> set[str]:
 
 
 def _our_device_models() -> set[str]:
+    """Every button image we can produce — variant rows AND the default.
+
+    The default matters: the C#'s ``default:`` arm is ``A1CZTV``, and ours is
+    ``ProductInfo.button_image``, whose dataclass default is the same string.
+    Reading only the variant table therefore reported the one image we are
+    guaranteed to have as the one image we were missing.
+    """
+    from trcc.core.models import ProductInfo
     from trcc.core.variants import _VARIANT_REGISTRY
-    return {ov.button_image
-            for t in _VARIANT_REGISTRY.values()
-            for subs in t.values() for ov in subs.values()}
+
+    models = {ov.button_image
+              for t in _VARIANT_REGISTRY.values()
+              for subs in t.values() for ov in subs.values()}
+    default = ProductInfo.__dataclass_fields__["button_image"].default
+    if isinstance(default, str) and default:
+        models.add(default)
+    return models
 
 
 def _our_asset_stems() -> set[str]:
-    return {p.stem for p in ASSETS.rglob("*")
-            if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".ico")}
+    """Every image stem we ship, across both roots.
+
+    Guarded rather than trusted: an empty or tiny result makes both checks
+    below vacuous -- they would report the ENTIRE C# asset list as missing and
+    look like a catastrophic porting gap, which is exactly what happened while
+    this scanned the wrong directory.  A wrong path is indistinguishable from
+    "we ported nothing" unless someone asserts the difference.
+    """
+    stems = {p.stem for root in ASSET_ROOTS for p in root.rglob("*")
+             if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".ico")}
+    if len(stems) < 100:
+        raise SystemExit(
+            f"audit_csharp: only {len(stems)} image(s) found under "
+            f"{[str(r) for r in ASSET_ROOTS]} — that is not a repo with GUI "
+            "art in it.  Fix the roots before trusting any asset verdict."
+        )
+    return stems
 
 
 def _covered(name: str, ours: set[str]) -> bool:
@@ -145,14 +217,79 @@ def _resx_all_assets(resx_dir: Path) -> set[str]:
     return names
 
 
-def _installer_resolutions(setup: Path) -> set[str]:
-    out = subprocess.run(["7z", "l", "-tzip", str(setup)],
-                         capture_output=True, text=True).stdout
-    return set(re.findall(r"Data/USBLCD/Theme(\d+)\b", out))
+# A resolution key as it appears in a directory name: digits, optionally
+# followed by the per-SKU variant letter.  1600x720 ships SIX theme
+# directories -- 1600720/u/l and 7201600/u/l -- chosen by pmSub (2 and 4 -> u,
+# 3 -> l) crossed with orientation; see FormCZTV.cs:1290-1353.  A third
+# letter ``y`` is PM-keyed and masks-only: is480x480 && myDevicePingMu
+# == 3 -> zt480480y (FormCZTV.cs:5746).
+#
+# The pattern used to be ``(\d+)\b``, which cannot match a suffixed name AT
+# ALL: ``\b`` between a digit and a letter is never a boundary, so
+# ``Theme1600720u`` returned no match rather than a partial one.  The variants
+# could therefore never enter the installer set, ``installer - ours`` was empty
+# by construction, and the check reported "0 new, 0 only-ours" while twelve
+# archives were missing across the three axes.  It was not measuring us against
+# the installer; it was measuring the digits-only names against themselves.
+_RES_KEY = r"(\d+[uly]?)"
+
+#: Directory prefix -> where our matching archives live, per data axis.
+_DATA_AXES = (
+    ("themes",          rf"Data/USBLCD/Theme{_RES_KEY}\b",  "theme{}.7z"),
+    ("web backgrounds", rf"Data/USBLCD/Web/{_RES_KEY}\b",   "web/{}.7z"),
+    ("zt masks",        rf"Data/USBLCD/Web/zt{_RES_KEY}\b", "web/zt{}.7z"),
+)
 
 
-def _our_data_resolutions() -> set[str]:
-    return {p.stem[len("theme"):] for p in DATA.glob("theme*.7z")}
+def _installer_listing(setup: Path) -> str:
+    """The installer's zip index, read once — 7z over ~880 MB is the slow part."""
+    return subprocess.run(["7z", "l", "-tzip", str(setup)],
+                          capture_output=True, text=True).stdout
+
+
+def _installer_axis(listing: str, pattern: str, label: str) -> set[str]:
+    """Resolution keys the installer carries on one axis, guarded.
+
+    Guarded for the same reason the asset scan is: a pattern that matches
+    nothing is indistinguishable from "the installer and we agree", and reads
+    as parity.  That is precisely how the suffix bug stayed invisible.
+    """
+    found = set(re.findall(pattern, listing))
+    if len(found) < 20:
+        raise SystemExit(
+            f"audit_csharp: only {len(found)} {label} director(ies) matched in "
+            f"the installer ({pattern!r}) — the installer layout changed or the "
+            "pattern is wrong.  Fix it before trusting any data verdict."
+        )
+    return found
+
+
+def _our_data_keys(template: str) -> set[str]:
+    """Resolution keys we ship on one axis, recovered from the archive names."""
+    prefix, suffix = template.split("{}")
+    keys: set[str] = set()
+    for path in DATA.glob(f"{prefix}*{suffix}"):
+        key = path.relative_to(DATA).as_posix()[len(prefix):-len(suffix)]
+        if prefix == "web/" and key.startswith("zt"):
+            continue                    # web/zt*.7z belongs to the mask axis
+        keys.add(key)
+    return keys
+
+
+def _csharp_data_keys(text: str) -> dict[str, set[str]]:
+    """The directories the C# itself names — the second, independent source.
+
+    The installer says what shipped; these constants say what the program asks
+    for.  Checking one against the other is what surfaced the gap by hand, and
+    a disagreement is worth printing rather than silently resolving.
+    """
+    return {
+        "themes": set(re.findall(r'ThemeML\w*\s*=\s*"([^"\\]+)\\\\"', text)),
+        "web backgrounds": set(re.findall(
+            r'GifDirectoryWeb(?!MB)\w*\s*=\s*"USBLCD\\\\Web\\\\([^"\\]+)\\\\"', text)),
+        "zt masks": set(re.findall(
+            r'GifDirectoryWebMB\w*\s*=\s*"USBLCD\\\\Web\\\\zt([^"\\]+)\\\\"', text)),
+    }
 
 
 # ── C# resolution-fingerprint parser (FormCZTVInit / AddhidDeviceList) ──────
@@ -388,6 +525,33 @@ def main() -> None:
 
     _h("DEVICES (by button asset)")
     new_dev = _resx_device_models(resx_dir)
+    # A name that exists only as a hover frame is not a device.  2.1.6's
+    # ``case 12`` pairs button ``A1LF167`` with hover ``A1LF17a`` -- a typo in
+    # the vendor's own code, since ``A1LF167a`` is what exists.  Folding that
+    # hover back to a base invents a cooler called A1LF17 that no release has
+    # ever had.
+    raw_names = _resx_a1_raw(resx_dir)
+    new_dev = {d for d in new_dev if d in raw_names}
+    # Keep only models some code path actually chooses.  Without this the
+    # audit reports dead resources as unported coolers -- three of them in
+    # 2.1.6, every one a false alarm that cost a real investigation.
+    if cs.exists():
+        selected = _selected_device_models(decompile_text(cs))
+        if len(selected) < 20:
+            raise SystemExit(
+                f"audit_csharp: only {len(selected)} A1* selections found in "
+                "the decompile — the chooser moved or the pattern is wrong.  "
+                "Fix it before trusting any device verdict."
+            )
+        unreferenced = {
+            d for d in new_dev
+            if _as_identifier(d) not in selected
+            and f"{_as_identifier(d)}a" not in selected
+        }
+        if unreferenced:
+            print(f"  shipped but never selected in {ORACLE_RELEASE} "
+                  f"({len(unreferenced)}): {', '.join(sorted(unreferenced))}")
+        new_dev -= unreferenced
     our_dev = _our_device_models()
     # Fold deliberate renames: a 2.1.6 device we renamed isn't "new".
     genuinely_new = {d for d in new_dev - our_dev
@@ -397,9 +561,19 @@ def main() -> None:
     _h("ASSETS — device buttons (reliable; ours keep A1<model> names)")
     our_assets = _our_asset_stems()
     missing = sorted(m for m in new_dev if not _covered(m, our_assets))
-    print(f"  device-button images missing: {len(missing)}")
-    for m in missing:
+    # Split the count the same way WHAT TO PULL does.  A model whose base art
+    # 2.1.6 does not itself ship (A1LF17 exists only as the hover frame
+    # A1LF17a) is not art we failed to port -- there is nothing to port, and
+    # counting it says we are one cooler behind when we match the C# exactly.
+    raw_a1 = _resx_a1_raw(resx_dir)
+    absent = [m for m in missing if m in raw_a1]
+    orphan = [m for m in missing if m not in raw_a1]
+    print(f"  device-button images missing: {len(absent)}")
+    for m in absent:
         print(f"    + {m} (+ {m}a hover)")
+    if orphan:
+        print(f"  hover-only in 2.1.6, no base art to port ({len(orphan)}): "
+              f"{', '.join(orphan)}")
 
     _h("ASSETS — chrome (converted via rename_assets.RENAME_MAP, then checked)")
     chrome = {n for n in _resx_all_assets(resx_dir) if n not in new_dev}
@@ -413,9 +587,21 @@ def main() -> None:
         print(f"    … +{len(chrome_missing) - 40} more")
 
     if setup.is_file():
-        _h("DATA (per-resolution archives)")
-        inst_res = _installer_resolutions(setup)
-        _show("data resolutions", inst_res - _our_data_resolutions(), set())
+        _h("DATA (per-resolution archives, all three axes)")
+        listing = _installer_listing(setup)
+        csharp_keys = _csharp_data_keys(decompile_text(cs)) if cs.exists() else {}
+        for label, pattern, template in _DATA_AXES:
+            theirs = _installer_axis(listing, pattern, label)
+            ours = _our_data_keys(template)
+            _show(label, theirs - ours, ours - theirs)
+            # The installer says what shipped; the C# constants say what the
+            # program asks for.  Print any disagreement instead of trusting
+            # whichever source happens to be read first.
+            named = csharp_keys.get(label)
+            if named and named != theirs:
+                print(f"    ! installer and C# disagree on {label}: "
+                      f"C#-only={sorted(named - theirs) or 'none'} "
+                      f"installer-only={sorted(theirs - named) or 'none'}")
     else:
         print(f"\n(installer not found at {setup} — skipping data archive diff)")
 

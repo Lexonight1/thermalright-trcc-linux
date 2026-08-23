@@ -88,3 +88,48 @@ Wire rotation for 18/19 device fingerprints (per `rotation_trace.py`): 320×240 
 - **Misc** — `UCAbout`, `UCComboBox{A,B,C}`, `UCColorA`, `Resources.cs` (generated).
 
 Audit each the same way (per-file agent, line-cited caveats, verify load-bearing claims) → fold into a `device-spec.json` + this doc → then consolidate.
+
+## `StartPipeline` — 2.1.6's frame pipeline (added 2026-08-22)
+
+**New in 2.1.6** (`worklist.json` lists it under `FormCZTV.cs` → `new`), and it
+is the shape of the whole render path in this release. `FormCZTV.cs:2730-2815`.
+
+Three `Task.Run` stages joined by three **bounded** queues:
+
+    _firstImages  (cap 2)  →  _secondImages (cap 2)  →  _thirdImages (cap 2)
+
+declared at `FormCZTV.cs:506`, `FormCZTV.cs:508`, `FormCZTV.cs:510`, with one
+shared `CancellationTokenSource` at `FormCZTV.cs:512`.
+
+| stage | does | cite |
+|---|---|---|
+| 1 | takes a decoded frame, installs it as `bitmapBGK` and **disposes the previous background**, then `SetUCStateTask1(directionB, UCXiTongXianShiSubArray, shanPingCount)` — compose the overlay elements at the current rotation | `FormCZTV.cs:2732` |
+| 2 | `SetUCStateTask2(frame)` | `FormCZTV.cs:2763` |
+| 3 | copies to `MyImageSet` + `Invalidate` (**preview**), then `myDeviceMode == 2 ? ImageToJpg : ImageTo565` (**wire**), then disposes | `FormCZTV.cs:2784` |
+
+Every stage disposes its input in a `finally`.
+
+### The three facts worth carrying
+
+1. **Memory is bounded by construction — at most ~6 frames live.** Capacity 2
+   per queue, three queues. This is the discipline whose absence cost us ~7 GB
+   on video themes (`project_video_theme_memory_and_freeze`): we pre-composited
+   every frame AND held every decoded frame. The vendor's answer is not a
+   smarter cache, it is a queue that cannot grow.
+2. **Backpressure DROPS, it does not stall.** Stages 1 and 2 each test
+   `if (_secondImages.Count < 2)` / `if (_thirdImages.Count < 2)` *before*
+   producing (`FormCZTV.cs:2738`, `FormCZTV.cs:2769`), so when the device is
+   slower than the source the pipeline sheds frames instead of blocking the
+   decoder. A bounded queue alone would block; the explicit count test is what
+   makes it lossy on purpose.
+3. **Preview and wire are the SAME composite.** Stage 3 hands one bitmap to
+   both `MyImageSet` (the on-screen preview) and the encoder — they are not
+   composed twice and cannot drift. Our split (`build_frame` captures
+   `preview_surface` before the device-rotate steps, `959b1648`) is a
+   deliberate divergence for rotate panels, not an accident, and this is the
+   line it diverges from.
+
+The encoder is selected **per frame** here (`myDeviceMode == 2`), not resolved
+once at connect. Our resolve-once seam (`DeviceProfile` carrying `jpeg`) is the
+better form and produces the same bytes; noting it so a future reader does not
+"fix" ours back toward this.
