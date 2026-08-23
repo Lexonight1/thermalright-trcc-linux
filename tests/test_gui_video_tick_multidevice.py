@@ -98,6 +98,9 @@ class _FakeDevice:
         self.info = type("_I", (), {"key": key})()
         self.is_connected = connected
         self.profile = None
+        # The Device port declares both; a stub that omits one makes the
+        # handler look broken when it reads what every real device has.
+        self.handshake = None
 
 
 class _FakeApp:
@@ -123,6 +126,17 @@ class _FakeApp:
     # tick never touches it.
     platform: Any = None
     settings: Any = None
+
+    def libraries(self, key: str) -> Any:
+        """The real resolver over the fake Paths — no per-SKU suffix.
+
+        These fakes stand in for devices with no artwork of their own, which
+        is every panel except the 1600x720 pair, so the browser resolves the
+        generic libraries exactly as it did before they existed.
+        """
+        from trcc.core.libraries import DeviceLibraries
+
+        return DeviceLibraries(self.platform.paths())
 
     def dispatch(self, cmd: Any) -> Any:
         name = type(cmd).__name__

@@ -28,6 +28,8 @@ def _install_and_publish(
     service: DataInstallService,
     events: EventBus,
     resolution: tuple[int, int],
+    variant: str = "",
+    mask_variant: str = "",
 ) -> bool:
     """Run one install and announce the outcome.  Never raises.
 
@@ -35,9 +37,10 @@ def _install_and_publish(
     the app fully usable, so it must not propagate into whatever submitted
     it (a device connect) or kill the worker thread.
     """
-    log.info("_install_and_publish: %dx%d", *resolution)
+    log.info("_install_and_publish: %dx%d variant=%r mask=%r",
+             *resolution, variant, mask_variant)
     try:
-        ok = service.ensure_all(resolution).ok
+        ok = service.ensure_all(resolution, variant, mask_variant).ok
     except Exception:
         log.exception("_install_and_publish: ensure_all(%s) failed", resolution)
         ok = False
@@ -58,18 +61,28 @@ class _SubmitOnce:
 
     def __init__(self) -> None:
         log.info("_SubmitOnce.__init__")
-        self._seen: set[tuple[int, int]] = set()
+        self._seen: set[tuple[int, int, str, str]] = set()
         self._lock = threading.Lock()
 
-    def claim(self, resolution: tuple[int, int]) -> bool:
-        """True if *resolution* is newly claimed by this caller."""
+    def claim(self, resolution: tuple[int, int],
+              variant: str = "", mask_variant: str = "") -> bool:
+        """True if this exact request is newly claimed by this caller.
+
+        Keyed on the SUFFIXES as well as the size: two coolers can share a
+        panel and want different artwork libraries (1600x720 at SUB 3 wants
+        ``1600720l``, SUB 5 wants ``1600720``).  Claiming on resolution alone
+        would let whichever connected first suppress the other's download and
+        leave that device with an empty grid.
+        """
+        key = (*resolution, variant, mask_variant)
         with self._lock:
-            if resolution in self._seen:
-                log.debug("claim: %dx%d already submitted — skipping",
-                          *resolution)
+            if key in self._seen:
+                log.debug("claim: %dx%d variant=%r mask=%r already submitted "
+                          "— skipping", *resolution, variant, mask_variant)
                 return False
-            self._seen.add(resolution)
-        log.info("claim: %dx%d accepted", *resolution)
+            self._seen.add(key)
+        log.info("claim: %dx%d variant=%r mask=%r accepted",
+                 *resolution, variant, mask_variant)
         return True
 
 
@@ -94,15 +107,17 @@ class ThreadDataInstallRunner(DataInstallRunner):
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
-    def submit(self, resolution: tuple[int, int]) -> None:
-        log.info("submit: %dx%d", *resolution)
+    def submit(self, resolution: tuple[int, int],
+               variant: str = "", mask_variant: str = "") -> None:
+        log.info("submit: %dx%d variant=%r mask=%r",
+                 *resolution, variant, mask_variant)
         if self._stop.is_set():
             log.warning("submit: %dx%d after shutdown — ignored", *resolution)
             return
-        if not self._once.claim(resolution):
+        if not self._once.claim(resolution, variant, mask_variant):
             return
         self._start()
-        self._queue.put(resolution)
+        self._queue.put((resolution, variant, mask_variant))
 
     def _start(self) -> None:
         """Spawn the worker on first use — a headless one-shot never does."""
@@ -121,7 +136,9 @@ class ThreadDataInstallRunner(DataInstallRunner):
             item = self._queue.get()
             if item is _STOP or self._stop.is_set():
                 break
-            _install_and_publish(self._service, self._events, item)
+            resolution, variant, mask_variant = item
+            _install_and_publish(self._service, self._events, resolution,
+                                 variant, mask_variant)
         log.info("_run: data-install worker stopped")
 
     def shutdown(self) -> None:
@@ -153,10 +170,13 @@ class SyncDataInstallRunner(DataInstallRunner):
         self._events = events
         self._once = _SubmitOnce()
 
-    def submit(self, resolution: tuple[int, int]) -> None:
-        log.info("submit: %dx%d (inline)", *resolution)
-        if self._once.claim(resolution):
-            _install_and_publish(self._service, self._events, resolution)
+    def submit(self, resolution: tuple[int, int],
+               variant: str = "", mask_variant: str = "") -> None:
+        log.info("submit: %dx%d variant=%r mask=%r (inline)",
+                 *resolution, variant, mask_variant)
+        if self._once.claim(resolution, variant, mask_variant):
+            _install_and_publish(self._service, self._events, resolution,
+                                 variant, mask_variant)
 
     def shutdown(self) -> None:
         log.info("shutdown: nothing to stop (inline runner)")

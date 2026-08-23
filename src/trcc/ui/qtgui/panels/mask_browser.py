@@ -156,7 +156,7 @@ class MaskBrowser(AssetBrowserPanel):
         resolution = self._target_resolution(key)
         if resolution is None:
             return
-        result = self.dispatch(ListMasks(resolution=resolution))
+        result = self.dispatch(ListMasks(resolution=resolution, key=key))
         for entry in result.masks:
             item = QListWidgetItem(thumbnail_icon(Path(entry.preview)), entry.name)
             item.setData(Qt.ItemDataRole.UserRole, entry.path)

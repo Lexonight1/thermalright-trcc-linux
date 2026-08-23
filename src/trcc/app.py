@@ -43,6 +43,7 @@ from .core.events import (
     VideoStopped,
 )
 from .core.led_models import LedRuntimeState
+from .core.libraries import DeviceLibraries
 from .core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -59,6 +60,7 @@ from .core.ports import (
     Renderer,
     SendScheduler,
 )
+from .core.protocol import artwork_variant, mask_variant
 from .core.registry import find_product
 from .core.results import ConnectResult, Result
 from .services.cloud_theme import CloudThemeService
@@ -456,11 +458,45 @@ class App:
             zt_parent = mask_path.parent.parent  # .../web/zt{w}{h}
             if (zt_parent.parent == web_root
                     and zt_parent.name.startswith("zt")):
-                cand = paths.cloud_mask_dir(bw, bh) / mask_path.parent.name
+                # Same SKU library on the way out as on the way in: a
+                # 480x480 panel at PM 3 lives in zt480480y, and rotating it
+                # into plain zt480480 would silently swap its mask set.
+                cand = (self.libraries(key).cloud_mask_dir(bw, bh)
+                        / mask_path.parent.name)
                 if cand.exists() and cand != mask_path.parent:
                     log.info("_on_orientation_changed: reload mask %s → %s",
                              mask_path.parent.name, cand)
                     self.dispatch(ApplyMask(key=key, path=cand))
+
+    def libraries(self, key: str) -> DeviceLibraries:
+        """The artwork libraries the device at *key* reads from.
+
+        THE place the per-SKU suffix is decided.  Every consumer -- theme
+        browser, mask rotation, theme-name search, the data installer -- takes
+        the answer from here rather than deriving it, so there is one reading
+        of the handshake and one fallback rule.
+
+        A device that is absent, not yet handshaken, or of unknown resolution
+        gets the generic libraries, which is what the overwhelming majority of
+        panels use anyway.
+        """
+        paths = self.platform.paths()
+        device = self.devices.get(key)
+        hs = getattr(device, "handshake", None) if device is not None else None
+        profile = getattr(device, "profile", None) if device is not None else None
+        if hs is None or profile is None:
+            log.debug("libraries: %s has no handshake/profile — generic", key)
+            return DeviceLibraries(paths)
+        resolution = profile.resolution
+        libs = DeviceLibraries(
+            paths,
+            variant=artwork_variant(resolution, hs.sub_byte),
+            mask_variant=mask_variant(resolution, hs.sub_byte, hs.pm_byte),
+        )
+        log.debug("libraries: %s %dx%d sub=%d pm=%d → variant=%r mask=%r",
+                  key, *resolution, hs.sub_byte, hs.pm_byte,
+                  libs.variant, libs.mask_variant)
+        return libs
 
     def set_renderer(self, renderer: Renderer) -> None:
         """Attach a Renderer (headless modes can defer until needed)."""

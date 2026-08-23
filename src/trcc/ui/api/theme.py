@@ -337,25 +337,41 @@ def cloud_list(
 def web_gallery(
     request: Request,
     resolution: str,
+    key: str = "",
 ) -> list[WebThemeSchema]:
     """Cloud-theme preview gallery for a resolution (e.g. ``320x320``).
 
-    Lists the downloaded ``a001.png`` previews under
-    ``data/web/{w}{h}`` — ``preview_url`` resolves against the
-    ``/static/web`` mount, ``has_video`` flags a sibling ``.mp4``.
-    Empty list when nothing is downloaded yet (call ``POST /theme/init``).
+    Lists the downloaded ``a001.png`` previews — ``preview_url`` resolves
+    against the ``/static/web`` mount, ``has_video`` flags a sibling
+    ``.mp4``.  Empty list when nothing is downloaded yet (call
+    ``POST /theme/init``).
+
+    ``?key=vid:pid`` is optional and names a *device*, so the gallery reads
+    that cooler's own artwork library (a SUB-3 1600x720 panel browses
+    ``1600720l``) exactly as the CLI, GUI and qtgui do.  Without it the
+    resource stays purely resolution-addressed and reads the generic
+    library, which is what nearly every panel uses.
     """
     w, h = _parse_resolution(resolution)
-    log.info("api GET /theme/web: resolution=%dx%d", w, h)
-    result = request.app.state.trcc.dispatch(ListWebThemes(width=w, height=h))
+    log.info("api GET /theme/web: resolution=%dx%d key=%s",
+             w, h, key or "(generic)")
+    result = request.app.state.trcc.dispatch(
+        ListWebThemes(width=w, height=h, key=key),
+    )
     # Domain entries → HTTP schema: the API owns the URLs (preview served
-    # by the /static/web mount; download via the cloud-load route).
+    # by the /static/web mount; download via the cloud-load route).  The URL
+    # segment is the directory the query REPORTS having read, never one
+    # re-spelled from w/h -- those disagree for a per-SKU panel, and the
+    # re-spelled one names a file that is not there.
+    web_dir = Path(result.directory).name or f"{w}{h}"
+    log.debug("api GET /theme/web: %d preview(s) under %s",
+              len(result.entries), web_dir)
     return [
         WebThemeSchema(
             id=e.id,
             category=e.category,
             has_video=e.has_video,
-            preview_url=f"/static/web/{w}{h}/{e.id}.png",
+            preview_url=f"/static/web/{web_dir}/{e.id}.png",
             download_url=f"/theme/cloud/{e.id}",
         )
         for e in result.entries

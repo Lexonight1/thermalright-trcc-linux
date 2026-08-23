@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...core.ports import Paths
+from ...core.libraries import DeviceLibraries
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class ThemeDirectories:
 
 
 def resolve_theme_directories(
-    paths: Paths,
+    libraries: DeviceLibraries,
     *,
     canvas_size: tuple[int, int],
     lcd_size: tuple[int, int],
@@ -56,10 +56,12 @@ def resolve_theme_directories(
     cw, ch = canvas_size
     bw, bh = lcd_size if is_rotated else (cw, ch)
 
-    web_dir = paths.cloud_theme_dir(bw, bh)
-    masks_dir = paths.cloud_mask_dir(bw, bh)
-    theme_dir = paths.theme_dir(bw, bh)
-    user_theme_dir = paths.user_theme_dir(bw, bh)
+    web_dir = libraries.cloud_theme_dir(bw, bh)
+    masks_dir = libraries.cloud_mask_dir(bw, bh)
+    theme_dir = libraries.theme_dir(bw, bh)
+    # User-saved themes are the user's own art, not a shipped library — one
+    # directory per resolution, no SKU split.
+    user_theme_dir = libraries.paths.user_theme_dir(bw, bh)
 
     portrait_fallback = is_rotated and not theme_dir.exists()
     if portrait_fallback:
@@ -69,8 +71,8 @@ def resolve_theme_directories(
             "cloud/mask catalogs stay portrait %dx%d",
             theme_dir, cw, ch, bw, bh,
         )
-        theme_dir = paths.theme_dir(cw, ch)
-        user_theme_dir = paths.user_theme_dir(cw, ch)
+        theme_dir = libraries.theme_dir(cw, ch)
+        user_theme_dir = libraries.paths.user_theme_dir(cw, ch)
 
     log.debug(
         "resolve_theme_directories: catalog=%dx%d rotated=%s theme_dir=%s "

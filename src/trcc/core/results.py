@@ -283,9 +283,18 @@ class ThemesListResult(Result):
 
 @dataclass(frozen=True, slots=True)
 class WebThemesListResult(Result):
-    """Downloaded cloud-theme previews for a resolution."""
+    """Downloaded cloud-theme previews for a resolution.
+
+    ``directory`` is the library actually scanned, which is NOT always
+    ``{width}{height}``: a per-SKU panel reads ``1600720l`` and one whose
+    variant archive has not landed falls back to the generic name.  Carrying
+    it means a caller that needs to address those files (the API builds a
+    ``/static/web/<dir>/<id>.png`` URL) reads the answer instead of
+    re-spelling it from the resolution and getting it wrong.
+    """
     width: int = 0
     height: int = 0
+    directory: str = ""
     entries: list[WebPreviewInfo] = field(default_factory=list)
 
 
@@ -780,6 +789,8 @@ class OverlayElementEntry:
     y: int = 0
     color: str = OVERLAY_DEFAULT_COLOR
     size: int = OVERLAY_DEFAULT_SIZE
+    #: Font family, or "" for the theme default — see OverlayElement.font.
+    font: str = ""
     bold: bool = False
     italic: bool = False
     text: str = ""

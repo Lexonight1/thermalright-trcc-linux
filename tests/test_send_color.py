@@ -570,7 +570,8 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
     installed: list[tuple[int, int]] = []
 
     class _SpyInstall:
-        def ensure_all(self, resolution: tuple[int, int]) -> EnsureDataResult:
+        def ensure_all(self, resolution: tuple[int, int], variant: str = "",
+                       mask_variant: str = "") -> EnsureDataResult:
             installed.append(resolution)
             return EnsureDataResult(
                 resolution=resolution,

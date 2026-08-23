@@ -132,3 +132,80 @@ def test_a_user_element_keeps_its_font_across_a_restart(tmp_path: Path) -> None:
     assert reloaded.to_dict()["name"] == "Comic Sans MS", (
         "the reloaded element must still hand the renderer its family"
     )
+
+
+def test_the_commands_can_set_a_font(tmp_home: Path) -> None:
+    """The UIs' only way in is a Command, and neither carried a font.
+
+    Everything below the Command was already in place -- ``OverlayElement``
+    has ``font``, ``to_dict`` publishes it under ``name``, ``from_dict`` reads
+    it back, and ``OverlayService._element_family`` hands it to
+    ``draw_text``.  But ``AddOverlayElement`` had no ``font`` field, so every
+    element a CLI, API or daemon client created was born with ``font=""``,
+    and ``UpdateOverlayElement`` had none either, so nothing could ever change
+    it afterwards.  The whole chain worked and no caller could reach it.
+
+    MUTATION CHECK -- delete ``font`` from either Command's field list, or
+    stop passing it through in ``execute``, and this fails.
+    """
+    from tests.conftest import FakePlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import AddOverlayElement, UpdateOverlayElement
+
+    # The Commands invalidate the display, so the App needs a renderer.
+    app = App(platform=FakePlatform(tmp_home))
+    app.set_renderer(QtRenderer())
+    key = "0402:3922"
+
+    added = app.dispatch(AddOverlayElement(
+        key=key, type="text", text="hi", font="Comic Sans MS"))
+    assert added.ok is True
+    assert added.element is not None
+    assert added.element.font == "Comic Sans MS", (
+        "the Result must report the font back, or a client cannot read what "
+        "it just set"
+    )
+
+    stored = app.settings.for_device(key).user_overlay_elements[0]
+    assert stored.font == "Comic Sans MS"
+    assert stored.to_dict()["name"] == "Comic Sans MS", (
+        "the stored element must hand the renderer its family"
+    )
+
+    updated = app.dispatch(UpdateOverlayElement(
+        key=key, element_id=added.element.id, font="Noto Sans"))
+    assert updated.ok is True
+    assert updated.element is not None
+    assert updated.element.font == "Noto Sans"
+    assert app.settings.for_device(key).user_overlay_elements[0].font \
+        == "Noto Sans"
+
+
+def test_updating_another_field_leaves_the_font_alone(tmp_home: Path) -> None:
+    """``font=None`` means "don't touch", not "clear it".
+
+    ``Settings.update_user_overlay_element`` skips ``None`` values, so moving
+    an element must not silently reset its typeface.
+    """
+    from tests.conftest import FakePlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import AddOverlayElement, UpdateOverlayElement
+
+    # The Commands invalidate the display, so the App needs a renderer.
+    app = App(platform=FakePlatform(tmp_home))
+    app.set_renderer(QtRenderer())
+    key = "0402:3922"
+
+    added = app.dispatch(AddOverlayElement(
+        key=key, type="text", text="hi", font="Comic Sans MS"))
+    assert added.element is not None
+
+    app.dispatch(UpdateOverlayElement(key=key, element_id=added.element.id,
+                                      x=42))
+    element = app.settings.for_device(key).user_overlay_elements[0]
+    assert element.x == 42
+    assert element.font == "Comic Sans MS", (
+        "moving an element must not clear the font the user chose"
+    )

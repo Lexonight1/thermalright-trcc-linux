@@ -1941,7 +1941,12 @@ class TRCCApp(QMainWindow):
             return ""
         if not (w and hw):
             return ""
-        cloud_dir = self._app.platform.paths().cloud_theme_dir(w, hw)
+        # This device's library, so the dialog opens where its downloaded
+        # videos actually are — a 1600x720 panel at SUB 3 keeps them under
+        # web/1600720l.  getattr: handlers without a key (LED) fall back to
+        # the generic dir rather than raising inside a file dialog.
+        key = getattr(h, "_device_key", "")
+        cloud_dir = self._app.libraries(key).cloud_theme_dir(w, hw)
         return str(cloud_dir) if cloud_dir.exists() else ""
 
     def _on_load_image_clicked(self) -> None:

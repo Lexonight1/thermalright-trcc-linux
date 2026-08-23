@@ -45,6 +45,10 @@ def app(tmp_home: Path) -> App:
     # read by the observer, so a minimal stand-in is enough.
     a.devices[_KEY] = SimpleNamespace(  # type: ignore[assignment]
         profile=SimpleNamespace(resolution=(1280, 480)),
+        # The Device port declares handshake; _oriented_theme_path reads it to
+        # pick the per-SKU theme library.  None = generic, which is what a
+        # 1280x480 panel gets anyway (no variant at that resolution).
+        handshake=None,
     )
     return a
 

@@ -10,8 +10,9 @@ Handshake:   write 2048 bytes → read 512-byte response.
 Frame send:  payload → 512-byte chunks (16-byte header + 496 data),
              sent in 4096-byte USB writes, then 512-byte ACK read.
 
-Protocol reverse-engineered from TRCC v2.1.2 USBLCDNEW.dll
-ThreadSendDeviceDataLY / ThreadSendDeviceDataLY1.
+Protocol read from TRCC 2.1.6 ``USBLCDNEW.dll`` — ``ThreadSendDeviceDataLY``
+/ ``ThreadSendDeviceDataLY1``, with Form1.cs:1071 naming which shared-memory
+slot is PM and which is SUB.  See doc/PROTOCOL_USBLCDNEW.md.
 """
 from __future__ import annotations
 
@@ -113,15 +114,18 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
                 raw = 1
             self._pm = 64 + raw
             raw_sub = resp[22] if len(resp) > 22 else 0
-            # The +1 carries no citation in either tree — it arrived with the
-            # cutover (4fa876be) from the legacy adapter, which cites the C#
-            # for the PM line directly above it and nothing for this one, and
-            # neither decompile has an LY handshake parse to check it against
-            # (the C# takes PM/SUB from the HID discovery report,
-            # `receive[6]`/`receive[5]`, never from this 512-byte response).
+            # The +1 is the vendor's own, cited: USBLCDNEW.dll 2.1.6
+            # ``ThreadSendDeviceDataLY`` packs this handshake into shared
+            # memory as ``obj3[1] = (byte)(1 + array[22])``, and Form1.cs:1071
+            # unpacks slot 1 as the SUB argument —
+            # ``FormCZTVInit(72, 2, …, shareMemoryValRGB[4], text,
+            # shareMemoryValRGB[1])``.  The comment here used to say no
+            # citation existed in either tree; that was true only of the 2.0.3
+            # decompile, whose USBLCDNEW has no LY thread at all (it declares
+            # three VID/PID pairs, 2.1.6 declares five).
             #
-            # It is nonetheless CORRECT, established 2026-08-17 without
-            # hardware:
+            # It was independently established as CORRECT on 2026-08-17,
+            # before that citation was found, without hardware:
             #
             #   * #248's reporter states `handshake PM=65 SUB=5` on a real
             #     Trofeo Vision 9.16 — that is this line's OUTPUT, so their

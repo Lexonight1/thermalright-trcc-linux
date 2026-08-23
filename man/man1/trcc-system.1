@@ -293,13 +293,16 @@ Show this command's help and exit.
 .PP
 \fBtrcc system paths\fR [\fIOPTIONS\fR]
 .PP
-Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at ~/.trcc versus ~/.trcc\-user.
+Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at ~/.trcc versus ~/.trcc\-user. With \-\-key the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per\-SKU library, so the output points at the directories the app actually opens for it.
 .PP
 Options:
 .RS 4
 .TP
 \fB\-\-resolution, \-r \fIRESOLUTION\fR\fR
 WxH (e.g. 854x480)  \-  also show the per\-resolution theme/mask dirs
+.TP
+\fB\-\-key, \-k \fIKEY\fR\fR
+Device key (e.g. 0402:3922)  \-  use that cooler's own artwork libraries, and its resolution when \-\-resolution is omitted
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

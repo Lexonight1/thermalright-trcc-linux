@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.conftest import FakePaths
+from trcc.core.libraries import DeviceLibraries
 from trcc.ui.presentation.theme_directories import (
     ThemeDirectories,
     oriented_theme_reload_target,
@@ -19,9 +20,17 @@ _CANVAS = (854, 480)        # pre-rotation landscape
 _PORTRAIT = (480, 854)      # post-rotation portrait (lcd_size when rotated)
 
 
-def _resolve(root: Path, *, lcd: tuple[int, int], rotated: bool) -> ThemeDirectories:
+def _resolve(root: Path, *, lcd: tuple[int, int], rotated: bool,
+             variant: str = "", mask_variant: str = "") -> ThemeDirectories:
+    """Resolve for a device with no per-SKU artwork unless a test says so.
+
+    Empty suffixes are the overwhelmingly common case — every panel except the
+    1600x720 pair and the PM-3 480x480 — so they stay the default here and the
+    existing expectations below are unchanged by the SKU-library work.
+    """
     return resolve_theme_directories(
-        FakePaths(root), canvas_size=_CANVAS, lcd_size=lcd, is_rotated=rotated,
+        DeviceLibraries(FakePaths(root), variant, mask_variant),
+        canvas_size=_CANVAS, lcd_size=lcd, is_rotated=rotated,
     )
 
 

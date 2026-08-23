@@ -46,6 +46,7 @@ from ..models import (
     Wire,
     oriented_resolution,
 )
+from ..protocol import artwork_variant, mask_variant
 from ..registry import find_product
 from ..results import (
     ActiveDeviceResult,
@@ -348,7 +349,18 @@ class ConnectDevice(Command[ConnectResult]):
 
         w, h = handshake.resolution
         if w and h:
-            app.data_install_runner.submit((w, h))
+            # Which artwork LIBRARY, not just which size.  Two coolers can
+            # share a panel and ship different chrome: the C# picks
+            # 1600720u/l/'' from the SUB byte and zt480480y from PM
+            # (FormCZTV.cs:1290, :5746).  This is the one place both bytes and
+            # the resolution are known together, so it is where the choice is
+            # made -- everything downstream takes a resolved suffix.
+            variant = artwork_variant((w, h), handshake.sub_byte)
+            masks = mask_variant((w, h), handshake.sub_byte, handshake.pm_byte)
+            log.info("ConnectDevice %s: data library %dx%d variant=%r mask=%r "
+                     "(sub=%d pm=%d)", self.key, w, h, variant, masks,
+                     handshake.sub_byte, handshake.pm_byte)
+            app.data_install_runner.submit((w, h), variant, masks)
 
         # Hand the wire to a per-device send worker — it owns every write
         # from here (serialization + Bulk/LY keepalive) until disconnect.
@@ -1878,6 +1890,8 @@ class AddOverlayElement(Command[OverlayElementResult]):
     y: int = 0
     color: str = OVERLAY_DEFAULT_COLOR
     size: int = OVERLAY_DEFAULT_SIZE
+    #: Font family; "" keeps the theme default (OverlayElement.font).
+    font: str = ""
     bold: bool = False
     italic: bool = False
     text: str = ""
@@ -1905,7 +1919,8 @@ class AddOverlayElement(Command[OverlayElementResult]):
         element = OverlayElement(
             id=eid, type=self.type,  # type: ignore[arg-type]
             x=self.x, y=self.y, color=self.color, size=self.size,
-            bold=self.bold, italic=self.italic, text=self.text,
+            font=self.font, bold=self.bold, italic=self.italic,
+            text=self.text,
             metric=self.metric, format=self.format,
             show_unit=self.show_unit,
             source=self.source,  # type: ignore[arg-type]
@@ -1927,6 +1942,7 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
     y: int | None = None
     color: str | None = None
     size: int | None = None
+    font: str | None = None
     bold: bool | None = None
     italic: bool | None = None
     text: str | None = None
@@ -1940,7 +1956,8 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
             element = app.settings.update_user_overlay_element(
                 self.key, self.element_id,
                 x=self.x, y=self.y, color=self.color, size=self.size,
-                bold=self.bold, italic=self.italic, text=self.text,
+                font=self.font, bold=self.bold, italic=self.italic,
+                text=self.text,
                 metric=self.metric, format=self.format,
                 show_unit=self.show_unit, source=self.source,
             )

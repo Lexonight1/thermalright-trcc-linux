@@ -147,6 +147,24 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
 }
 # fmt: on
 
+# FBL 59 is the SECOND route to the 640x172 panel.  The C# reaches that screen
+# two ways -- ``mode == 2 && pm == 15`` (which we serve through
+# ``_FBL_224_BY_PM``) and ``mode == 3 && pm == 100 && fbl == 59``, the HID
+# discovery path, where FormCZTV.cs:1036 records the screen and then rewrites
+# the code it will encode under:
+#
+#     else if (myDeviceMode == 3 && myDevicePingMu == 100 && fbl == 59)
+#     { is640x172 = true; fbl = 224; }
+#
+# Without this row that handshake fell to ``_DEFAULT_PROFILE`` -- 320x320
+# RGB565 for a 640x172 JPEG panel, wrong on both axes and wrong encoder.
+#
+# Derived from the 224 base rather than written out, because the two routes
+# describe ONE panel: a flag added to 224 that this row spelled by hand would
+# silently apply to the PM-15 device and not this one.
+FBL_PROFILES[59] = dataclasses.replace(
+    FBL_PROFILES[224], width=640, height=172)
+
 
 _DEFAULT_PROFILE = DeviceProfile(320, 320, big_endian=True)
 
@@ -598,3 +616,52 @@ def wire_angle(
     if orientation and not portrait_content:
         return (360 - orientation) % 360
     return 0
+
+
+# ── Per-SKU artwork variants ──────────────────────────────────────────────
+#
+# One resolution can have MORE THAN ONE artwork library, chosen by a handshake
+# byte, because two coolers with the same panel are different products with
+# different chrome.  The C# picks the directory, not just the resolution:
+#
+#     is1600x720 → pmSub 2 → 1600720u / 7201600u   (FormCZTV.cs:1290-1353)
+#                  pmSub 3 → 1600720l / 7201600l
+#                  pmSub 4 → 1600720u / 7201600u
+#                  else    → 1600720  / 7201600
+#     is480x480  → PM 3    → zt480480y             (FormCZTV.cs:5746, masks only)
+#                  else    → zt480480
+#
+# The landscape/portrait half of that choice is already ours: callers pass the
+# ORIENTED resolution.  What is missing is only the trailing letter, which is
+# why these return one and not a directory name.
+_VARIANT_RESOLUTIONS = frozenset({(1600, 720), (720, 1600)})
+_VARIANT_BY_SUB: dict[int, str] = {2: "u", 3: "l", 4: "u"}
+
+
+def artwork_variant(resolution: tuple[int, int], sub: int = 0) -> str:
+    """The theme/background library suffix for this panel: ``""``, ``u``, ``l``.
+
+    ``""`` means the unsuffixed library, which is every panel except the
+    1600x720 pair at SUB 2/3/4 — so passing a SUB we have no rule for is not a
+    guess, it is the C#'s own ``default:`` arm.
+    """
+    if resolution not in _VARIANT_RESOLUTIONS:
+        return ""
+    variant = _VARIANT_BY_SUB.get(sub, "")
+    log.debug("artwork_variant: %dx%d sub=%d → %r",
+              resolution[0], resolution[1], sub, variant)
+    return variant
+
+
+def mask_variant(resolution: tuple[int, int], sub: int = 0, pm: int = 0) -> str:
+    """The mask library suffix — the theme rule plus one PM-keyed arm.
+
+    Masks carry a variant the theme and background libraries do not: 480x480 at
+    PM 3 has its own ``zt480480y``.  It is keyed on PM rather than SUB, which is
+    why this is a second function and not a flag on the first — the two arms
+    read different handshake bytes.
+    """
+    if resolution == (480, 480) and pm == 3:
+        log.debug("mask_variant: 480x480 pm=3 → 'y'")
+        return "y"
+    return artwork_variant(resolution, sub)

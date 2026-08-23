@@ -9,6 +9,7 @@ import typer
 from ...core.commands import (
     CheckForUpdate,
     ControlCenterSnapshot,
+    DeviceState,
     DisableAutostart,
     EnableAutostart,
     EnsureDataDownload,
@@ -555,13 +556,23 @@ def paths(
         "", "--resolution", "-r",
         help="WxH (e.g. 854x480) — also show the per-resolution theme/mask dirs",
     ),
+    key: str = typer.Option(
+        "", "--key", "-k",
+        help="Device key (e.g. 0402:3922) — use that cooler's own artwork "
+             "libraries, and its resolution when --resolution is omitted",
+    ),
 ) -> None:
     """Show where this install keeps config, data, logs and user content.
 
     Answers "where did my theme go?" and "which log do I attach to an issue?"
     without the user guessing at ``~/.trcc`` versus ``~/.trcc-user``.
+
+    With ``--key`` the answer is that device's: the resolution comes from its
+    handshake (oriented) and the theme/cloud dirs name its per-SKU library, so
+    the output points at the directories the app actually opens for it.
     """
-    log.info("cli system paths: resolution=%s", resolution or "(none)")
+    log.info("cli system paths: resolution=%s key=%s",
+             resolution or "(none)", key or "(none)")
     size: tuple[int, int] | None = None
     if resolution:
         try:
@@ -572,7 +583,21 @@ def paths(
                         "(expected WxH, e.g. 854x480)", resolution)
             typer.echo(f"Bad --resolution {resolution!r}; expected WxH e.g. 854x480")
             raise typer.Exit(code=1) from None
-    result = get_app().dispatch(GetPaths(resolution=size))
+    app_obj = get_app()
+    if key:
+        # Ask the bus, never ``app.devices`` — that attribute is absent on the
+        # AppProxy a daemon-mode client holds (#249).  A one-shot CLI does not
+        # coldplug, so without this the answer would quietly be the generic
+        # one and read as if it were the device's.
+        state = app_obj.dispatch(DeviceState(key=key))
+        if not state.ok or not state.connected:
+            typer.echo(
+                f"Device {key} not connected — connect first so we can read "
+                "its artwork libraries (or omit --key for the generic paths)",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    result = app_obj.dispatch(GetPaths(resolution=size, key=key))
     for field in (
         "config_dir", "data_dir", "user_content_dir", "user_data_dir",
         "log_file", "uploads_dir", "media_player_dir", "screencast_dir",

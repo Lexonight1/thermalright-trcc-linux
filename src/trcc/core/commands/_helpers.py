@@ -64,11 +64,24 @@ def oriented_theme_path(
     # ``stored`` when the same-name oriented variant isn't on disk in that tree
     # (the renderer pixel-rotates the art).
     if is_under(stored, paths.user_content_dir()):
-        base = paths.user_theme_dir(bw, bh)
+        bases = [paths.user_theme_dir(bw, bh)]
     else:
-        base = paths.theme_dir(bw, bh)
-    cand = base / stored.name
-    return cand if cand.exists() else stored
+        # Per-SKU library first, generic second.  A 1600x720 panel at SUB 3
+        # keeps its themes in ``theme7201600l``; looking only in
+        # ``theme7201600`` finds nothing, falls back to ``stored``, and the
+        # oriented-theme swap quietly stops happening for exactly the coolers
+        # that have their own artwork.  Both are tried because the variant
+        # archive is a separate download that may not have landed.
+        libs = app.libraries(key)
+        bases = [libs.theme_dir(bw, bh)]
+        if bases[0] != paths.theme_dir(bw, bh):
+            bases.append(paths.theme_dir(bw, bh))
+    for base in bases:
+        cand = base / stored.name
+        if cand.exists():
+            log.debug("_oriented_theme_path: resolved %s", cand)
+            return cand
+    return stored
 
 
 _VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
@@ -434,8 +447,9 @@ def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:
     log.debug("_element_to_entry: id=%s type=%s", e.id, e.type)
     return OverlayElementEntry(
         id=e.id, type=e.type, x=e.x, y=e.y, color=e.color, size=e.size,
-        bold=e.bold, italic=e.italic, text=e.text, metric=e.metric,
-        format=e.format, show_unit=e.show_unit, source=e.source,
+        font=e.font, bold=e.bold, italic=e.italic, text=e.text,
+        metric=e.metric, format=e.format, show_unit=e.show_unit,
+        source=e.source,
     )
 
 
@@ -471,6 +485,13 @@ def _search_theme_by_name(
     candidates: list[Path] = []
     if resolution is not None:
         w, h = resolution
+        # Per-SKU libraries first: a cooler with its own artwork should find
+        # its own copy of a theme name before the generic one.  Ordinary
+        # panels resolve variant to "" and these collapse to the three
+        # candidates this always had.
+        libs = app.libraries(key)
+        candidates.append(libs.theme_dir(w, h) / name)
+        candidates.append(libs.cloud_theme_dir(w, h) / name)
         candidates.append(paths.theme_dir(w, h) / name)
         candidates.append(paths.user_theme_dir(w, h) / name)
         candidates.append(paths.cloud_theme_dir(w, h) / name)

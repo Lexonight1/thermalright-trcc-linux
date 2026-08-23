@@ -153,7 +153,7 @@ Runs per-resolution data installs OFF the caller's thread.
 
 ```python
 shutdown() -> None
-submit(resolution: 'tuple[int, int]') -> None
+submit(resolution: 'tuple[int, int]', variant: 'str' = '', mask_variant: 'str' = '') -> None
 ```
 
 **Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`

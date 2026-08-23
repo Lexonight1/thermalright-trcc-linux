@@ -605,7 +605,7 @@ def list_masks(
             )
             raise typer.Exit(code=1)
         result = app_obj.dispatch(
-            ListMasks(resolution=device.profile.resolution),
+            ListMasks(resolution=device.profile.resolution, key=key),
         )
     else:
         typer.echo("Provide a device key, or --dir DIRECTORY.", err=True)

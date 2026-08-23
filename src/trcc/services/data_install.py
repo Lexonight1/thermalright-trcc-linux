@@ -48,46 +48,59 @@ class DataInstallService:
         self._paths = paths
         self._installer = installer
 
-    def ensure_themes(self, width: int, height: int) -> bool:
-        log.info("ensure_themes: %dx%d", width, height)
+    def ensure_themes(self, width: int, height: int,
+                      variant: str = "") -> bool:
+        log.info("ensure_themes: %dx%d variant=%r", width, height, variant)
         return self._installer.install(
-            archive_name=f"theme{width}{height}.7z",
-            target_dir=self._paths.theme_dir(width, height),
+            archive_name=f"theme{width}{height}{variant}.7z",
+            target_dir=self._paths.theme_dir(width, height, variant),
         )
 
-    def ensure_web(self, width: int, height: int) -> bool:
-        log.info("ensure_web: %dx%d", width, height)
+    def ensure_web(self, width: int, height: int,
+                   variant: str = "") -> bool:
+        log.info("ensure_web: %dx%d variant=%r", width, height, variant)
         return self._installer.install(
-            archive_name=f"{width}{height}.7z",
-            target_dir=self._paths.cloud_theme_dir(width, height),
+            archive_name=f"{width}{height}{variant}.7z",
+            target_dir=self._paths.cloud_theme_dir(width, height, variant),
             subpath="web",
         )
 
-    def ensure_masks(self, width: int, height: int) -> bool:
-        log.info("ensure_masks: %dx%d", width, height)
+    def ensure_masks(self, width: int, height: int,
+                     variant: str = "") -> bool:
+        log.info("ensure_masks: %dx%d variant=%r", width, height, variant)
         return self._installer.install(
-            archive_name=f"zt{width}{height}.7z",
-            target_dir=self._paths.cloud_mask_dir(width, height),
+            archive_name=f"zt{width}{height}{variant}.7z",
+            target_dir=self._paths.cloud_mask_dir(width, height, variant),
             subpath="web",
         )
 
-    def ensure_all(self, resolution: tuple[int, int]) -> EnsureDataResult:
+    def ensure_all(self, resolution: tuple[int, int],
+                   variant: str = "", mask_variant: str = "") -> EnsureDataResult:
         """Install all three archives for ``resolution`` + the rotated
-        counterpart when non-square.  Idempotent."""
+        counterpart when non-square.  Idempotent.
+
+        *variant* is the per-SKU artwork suffix (``core.protocol
+        .artwork_variant``); *mask_variant* is its mask counterpart, which has
+        one extra arm.  Both default to the unsuffixed libraries, so a caller
+        that does not know the device's handshake bytes fetches what it always
+        did.  They are two parameters rather than one because the C# reads a
+        different byte for each — SUB for themes, PM for the 480x480 mask.
+        """
         w, h = resolution
-        log.info("ensure_all: starting %dx%d", w, h)
-        themes_ok = self.ensure_themes(w, h)
-        web_ok = self.ensure_web(w, h)
-        masks_ok = self.ensure_masks(w, h)
+        log.info("ensure_all: starting %dx%d variant=%r mask=%r",
+                 w, h, variant, mask_variant)
+        themes_ok = self.ensure_themes(w, h, variant)
+        web_ok = self.ensure_web(w, h, variant)
+        masks_ok = self.ensure_masks(w, h, mask_variant)
         if w != h:
             log.info("ensure_all: non-square — also installing %dx%d", h, w)
             # Themes too, not just web+masks — a rotated panel loads its
             # background/theme from the oriented dir (theme480854), so without
             # this the portrait orientation had no theme catalog and fell back
             # to the landscape one.
-            self.ensure_themes(h, w)
-            self.ensure_web(h, w)
-            self.ensure_masks(h, w)
+            self.ensure_themes(h, w, variant)
+            self.ensure_web(h, w, variant)
+            self.ensure_masks(h, w, mask_variant)
         result = EnsureDataResult(
             resolution=resolution,
             themes_ok=themes_ok, web_ok=web_ok, masks_ok=masks_ok,

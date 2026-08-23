@@ -271,3 +271,66 @@ def test_360_fan_hub_matches_the_csharp_default_branch() -> None:
         "the oracle and the hand-written row above disagree — one of them is "
         "a stale transcription"
     )
+
+
+# The C#'s mode-3 FBL rewrites — the HID discovery path, where
+# ``AddhidDeviceList`` calls ``FormCZTVInit((byte)data, 3, …, 95, 100, …)``
+# (Form1.cs:1604): the FBL arrives as the FIRST argument and the PM is the
+# constant 100.  ``FormCZTVInit`` then rewrites three of those codes
+# (FormCZTV.cs:1032-1044):
+#
+#     fbl == 129 → fbl = 72                          (straight alias)
+#     fbl == 59  → is640x172 = true;  fbl = 224
+#     fbl == 60  → is176x320 = true;  fbl = 224
+#
+# ``test_pm_resolves_to_the_csharp_resolution`` above cannot see any of this:
+# its table is PM-keyed and every entry is a mode-2 PM, so a mode-3 panel is
+# outside its universe no matter how wrong we get it.  That is how fbl 59 sat
+# resolving to 320x320 RGB565 — wrong size AND wrong encoder for a 640x172
+# JPEG panel — under a green suite.
+_CSHARP_MODE3_REWRITES: dict[int, tuple[int, int]] = {
+    129: (480, 480),
+    59: (640, 172),
+}
+
+
+@pytest.mark.parametrize("fbl,resolution",
+                         sorted(_CSHARP_MODE3_REWRITES.items()))
+def test_mode3_fbl_rewrites_match_the_csharp(
+    fbl: int, resolution: tuple[int, int],
+) -> None:
+    """A mode-3 handshake must land on the panel the C# rewrites it to."""
+    got = fbl_to_resolution(fbl, 100)
+    assert got == resolution, (
+        f"mode-3 fbl {fbl} → {got} but the C# rewrites it to {resolution}"
+    )
+
+
+def test_fbl_59_is_the_same_panel_as_the_pm_15_route() -> None:
+    """Both C# routes to 640x172 must produce ONE profile, not two.
+
+    ``mode == 2 && pm == 15`` and ``mode == 3 && pm == 100 && fbl == 59`` are
+    the same screen; the C# proves it by rewriting the second to 224, the very
+    code the first already carries.  Asserting equality rather than repeating
+    the flags is what stops a change to 224 from reaching one route only.
+    """
+    assert get_profile(59, 100) == get_profile(224, 15)
+
+
+def test_the_176x320_panel_is_still_unsupported() -> None:
+    """The third rewrite is NOT implemented, and says so out loud.
+
+    ``fbl == 60`` is a dual-orientation screen: FormCZTV.cs:1265 picks the
+    theme directory by SUB — ``pmSub < 5`` → ``320176\\`` at 0°, otherwise
+    ``176320\\`` at 90° — so it needs SUB-keyed geometry, not a table row.  We
+    already ship ``theme176320.7z`` and ``theme320176.7z``, which no code path
+    can currently select.
+
+    This test pins the CURRENT answer so the gap is visible instead of
+    implied.  When 176x320 lands, this test fails and is replaced by a row in
+    ``_CSHARP_MODE3_REWRITES`` — that failure is the reminder.
+    """
+    assert fbl_to_resolution(60, 100) == (320, 320), (
+        "fbl 60 now resolves somewhere — add it to _CSHARP_MODE3_REWRITES "
+        "and delete this test"
+    )

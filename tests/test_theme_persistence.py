@@ -1874,3 +1874,104 @@ def test_load_image_background_actually_reaches_the_frame(
         "red and black sources produced identical frames — the background "
         "is not reaching the wire (#245)"
     )
+
+
+def test_save_theme_references_the_devices_own_library(
+    app: App, tmp_home: Path,
+) -> None:
+    """A background from the device's PER-SKU library is referenced, not copied.
+
+    1600x720 ships six artwork libraries, picked by the SUB byte crossed with
+    orientation (FormCZTV.cs:1290): SUB 3 browses ``web/1600720l``.  The
+    catalog check used to try only ``user_background_dir`` and the GENERIC
+    ``cloud_theme_dir``, so an asset the user picked out of their own cooler's
+    library matched neither, fell through to the copy branch, and was
+    duplicated into the user library — a second copy of a file already sitting
+    in a shipped one.
+
+    The ref is also derived from the matched root rather than re-spelled from
+    width/height, which is what lets it name ``1600720l`` at all.
+
+    MUTATION CHECK -- drop the ``app.libraries(...)`` root from the tuple in
+    ``_store_background``, or put back the ``f"web/{width}{height}/..."``
+    literal, and this fails.
+    """
+    import json as _json
+    from types import SimpleNamespace
+
+    key = "0416:5408"
+    resolution = (1600, 720)
+    # A REAL profile — the save path reads rotate/jpeg off it, and a stub
+    # that carries only a resolution hides which fields are load-bearing.
+    from trcc.core.protocol import get_profile
+
+    app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
+        profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
+        handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
+        info=SimpleNamespace(key=key, native_resolution=resolution),
+        is_connected=True,
+    )
+
+    source = _write_theme_with_real_pngs(tmp_home, "srcly")
+    app.active_themes[key] = ThemeService().load(source)
+
+    # The per-SKU cloud library must EXIST on disk, or DeviceLibraries falls
+    # back to the generic one — that fallback is deliberate and tested by its
+    # own case below.
+    w, h = resolution
+    lib_dir = app.platform.paths().cloud_theme_dir(w, h, "l")
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    assert lib_dir.name == "1600720l"
+    lib_image = lib_dir / "a077.png"
+    lib_image.write_bytes(_png_bytes(red=0x44))
+    app.settings.set_background_path(key, str(lib_image))
+
+    assert app.dispatch(SaveTheme(key=key, name="skuref")).ok
+    saved = app.platform.paths().user_theme_dir(w, h) / "skuref"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+
+    assert manifest["background"] == "web/1600720l/a077.png", (
+        "the saved theme must point at the library the asset is actually in"
+    )
+    assert not (saved / "00.png").exists(), "referenced, never bundled"
+
+
+def test_save_theme_falls_back_when_the_sku_library_is_absent(
+    app: App, tmp_home: Path,
+) -> None:
+    """No variant dir on disk → the generic library, and refs say so.
+
+    The suffixed libraries are a separate download, so every consumer has to
+    behave when they have not landed.  Same device as above, no ``1600720l``
+    directory created.
+    """
+    import json as _json
+    from types import SimpleNamespace
+
+    key = "0416:5409"
+    resolution = (1600, 720)
+    # A REAL profile — the save path reads rotate/jpeg off it, and a stub
+    # that carries only a resolution hides which fields are load-bearing.
+    from trcc.core.protocol import get_profile
+
+    app.devices[key] = SimpleNamespace(          # type: ignore[assignment]
+        profile=get_profile(114, 64),            # FBL 114 PM 64 → 1600x720
+        handshake=SimpleNamespace(sub_byte=3, pm_byte=64),
+        info=SimpleNamespace(key=key, native_resolution=resolution),
+        is_connected=True,
+    )
+
+    source = _write_theme_with_real_pngs(tmp_home, "srcgen")
+    app.active_themes[key] = ThemeService().load(source)
+
+    w, h = resolution
+    lib_dir = app.platform.paths().cloud_theme_dir(w, h)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    lib_image = lib_dir / "a078.png"
+    lib_image.write_bytes(_png_bytes(red=0x45))
+    app.settings.set_background_path(key, str(lib_image))
+
+    assert app.dispatch(SaveTheme(key=key, name="genref")).ok
+    saved = app.platform.paths().user_theme_dir(w, h) / "genref"
+    manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["background"] == "web/1600720/a078.png"

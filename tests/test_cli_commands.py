@@ -1327,3 +1327,43 @@ def test_display_play_stays_quiet_for_a_normal_theme(
     out = result.stdout + (result.stderr or "")
     assert "is a video" not in out
     assert "play-video" not in out
+
+
+# =========================================================================
+# system paths --key — a diagnostic must not answer generically by accident
+# =========================================================================
+
+
+def test_system_paths_key_errors_when_the_device_is_not_connected(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """``--key`` on an unconnected device fails loudly instead of answering.
+
+    A one-shot CLI does not coldplug (``App.discover_and_connect``: "one-shot
+    CLI scripts skip it"), so without this guard the command would print the
+    GENERIC libraries under a flag that says "this device's" -- indistinguish-
+    able from a correct answer, and the user pastes it into an issue.
+
+    The check goes through ``DeviceState``, not ``app.devices``, because that
+    attribute does not exist on the AppProxy a daemon-mode client holds (#249).
+
+    MUTATION CHECK -- delete the ``if key:`` guard in ``ui/cli/system.py`` and
+    this passes with exit 0 and generic paths on stdout.
+    """
+    result = cli_runner.invoke(_app(), ["system", "paths", "--key", "dead:beef"])
+
+    assert result.exit_code == 1, result.output
+    assert "not connected" in result.output
+
+
+def test_system_paths_without_key_still_reports_generic_dirs(
+    cli_runner: CliRunner, cli_app,
+) -> None:
+    """No ``--key`` → the resolution-only output every existing caller uses."""
+    result = cli_runner.invoke(
+        _app(), ["system", "paths", "--resolution", "1600x720"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "theme1600720" in result.output
+    assert "config_dir" in result.output

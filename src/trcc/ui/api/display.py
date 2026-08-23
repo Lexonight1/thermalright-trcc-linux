@@ -1110,6 +1110,12 @@ def list_masks(
         resolution = state.resolution
     elif width is not None and height is not None:
         resolution = (width, height)
-    result = request.app.state.trcc.dispatch(ListMasks(resolution=resolution))
+    # Hand the key on, not just the resolution it yielded: a PM-3 480x480
+    # panel keeps its masks in ``zt480480y``.  Dropping it here is what made
+    # this route answer generically while the CLI and qtgui -- same command,
+    # same device -- answered with the device's own library.
+    result = request.app.state.trcc.dispatch(
+        ListMasks(resolution=resolution, key=key or ""),
+    )
     http_error_if_failed(result)
     return result

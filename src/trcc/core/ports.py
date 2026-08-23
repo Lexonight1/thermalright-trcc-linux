@@ -814,10 +814,17 @@ class Paths(ABC):
         log.debug("user_data_dir: called")
         return self.user_content_dir() / "data"
 
-    def theme_dir(self, width: int, height: int) -> Path:
-        """Themes shipped with the app or downloaded from GitHub releases."""
-        log.debug("theme_dir: %dx%d", width, height)
-        return self.data_dir() / f"theme{width}{height}"
+    def theme_dir(self, width: int, height: int, variant: str = "") -> Path:
+        """Themes shipped with the app or downloaded from GitHub releases.
+
+        *variant* is the per-SKU artwork suffix from
+        ``core.protocol.artwork_variant`` -- ``""`` for every panel except the
+        1600x720 pair, which has separate libraries at SUB 2/3/4.  It defaults
+        to the unsuffixed library, so a caller that does not know the device's
+        SUB gets exactly what it got before.
+        """
+        log.debug("theme_dir: %dx%d variant=%r", width, height, variant)
+        return self.data_dir() / f"theme{width}{height}{variant}"
 
     def user_theme_dir(self, width: int, height: int) -> Path:
         """Per-resolution user-saved theme dir.
@@ -827,10 +834,14 @@ class Paths(ABC):
         log.debug("user_theme_dir: %dx%d", width, height)
         return self.user_data_dir() / f"theme{width}{height}"
 
-    def cloud_theme_dir(self, width: int, height: int) -> Path:
-        """Cloud-catalog themes (backgrounds) downloaded at runtime."""
-        log.debug("cloud_theme_dir: %dx%d", width, height)
-        return self.data_dir() / "web" / f"{width}{height}"
+    def cloud_theme_dir(self, width: int, height: int,
+                        variant: str = "") -> Path:
+        """Cloud-catalog themes (backgrounds) downloaded at runtime.
+
+        Same *variant* suffix as :meth:`theme_dir`.
+        """
+        log.debug("cloud_theme_dir: %dx%d variant=%r", width, height, variant)
+        return self.data_dir() / "web" / f"{width}{height}{variant}"
 
     def user_background_dir(self, width: int, height: int) -> Path:
         """Per-resolution user-saved backgrounds.
@@ -841,10 +852,15 @@ class Paths(ABC):
         log.debug("user_background_dir: %dx%d", width, height)
         return self.user_data_dir() / "web" / f"{width}{height}"
 
-    def cloud_mask_dir(self, width: int, height: int) -> Path:
-        """Cloud-catalog masks downloaded at runtime."""
-        log.debug("cloud_mask_dir: %dx%d", width, height)
-        return self.data_dir() / "web" / f"zt{width}{height}"
+    def cloud_mask_dir(self, width: int, height: int,
+                       variant: str = "") -> Path:
+        """Cloud-catalog masks downloaded at runtime.
+
+        Takes ``core.protocol.mask_variant`` rather than ``artwork_variant``:
+        masks have one arm the other libraries do not (480x480 at PM 3).
+        """
+        log.debug("cloud_mask_dir: %dx%d variant=%r", width, height, variant)
+        return self.data_dir() / "web" / f"zt{width}{height}{variant}"
 
     def user_mask_dir(self, width: int, height: int) -> Path:
         """User-created masks — survives uninstall + redownload.
@@ -1675,12 +1691,18 @@ class DataInstallRunner(ABC):
     """
 
     @abstractmethod
-    def submit(self, resolution: tuple[int, int]) -> None:
+    def submit(self, resolution: tuple[int, int],
+               variant: str = "", mask_variant: str = "") -> None:
         """Queue *resolution* for install.  Returns immediately.
 
-        Idempotent per resolution: re-submitting one already queued, running
-        or done is a no-op, so the discover -> connect sequence (which sees
-        the same panel twice) downloads once.
+        *variant* / *mask_variant* are the per-SKU artwork suffixes from
+        ``core.protocol.artwork_variant`` / ``mask_variant``; both default to
+        the unsuffixed libraries.
+
+        Idempotent per REQUEST -- resolution and suffixes together, not
+        resolution alone.  The discover -> connect sequence sees the same panel
+        twice and downloads once, while two coolers that share a panel but want
+        different libraries each get theirs.
         """
 
     @abstractmethod

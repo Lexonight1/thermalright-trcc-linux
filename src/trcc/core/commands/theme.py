@@ -740,10 +740,22 @@ class SaveTheme(Command[ThemeResult]):
         # copy it into the USER library first (deduped, native res) so its ref
         # resolves there.  Either way the saved theme's config just points at the
         # library asset by URI — no in-dir copy.
+        # This device's cloud library is checked as well as the generic one:
+        # a 1600x720 panel at SUB 3 browses ``web/1600720l``, and an asset
+        # picked from there is under NEITHER of the two roots this used to
+        # try — so it fell through to the copy branch and duplicated a file
+        # that was already in a library.
+        #
+        # The ref is derived from whichever root matched rather than spelled
+        # again from width/height.  Both roots end in exactly the fragment
+        # ``_resolve_asset_ref`` joins under the data dirs, so deriving is
+        # both shorter and the only version that can carry a suffix without
+        # being taught about one.
         for root in (paths.user_background_dir(width, height),
+                     app.libraries(self.key).cloud_theme_dir(width, height),
                      paths.cloud_theme_dir(width, height)):
             if is_under(src_resolved, root):
-                ref = f"web/{width}{height}/{src.name}"
+                ref = f"web/{root.name}/{src.name}"
                 break
         else:
             data = (src.read_bytes() if is_video
@@ -784,10 +796,12 @@ class SaveTheme(Command[ThemeResult]):
         paths = app.platform.paths()
         mask_dir = src.resolve().parent
 
+        # Same three roots, same derivation — see _store_background.
         for root in (paths.user_mask_dir(width, height),
+                     app.libraries(self.key).cloud_mask_dir(width, height),
                      paths.cloud_mask_dir(width, height)):
             if is_under(mask_dir, root):
-                ref = f"web/zt{width}{height}/{mask_dir.name}"
+                ref = f"web/{root.name}/{mask_dir.name}"
                 break
         else:
             try:
@@ -1256,15 +1270,20 @@ class ListWebThemes(Query[WebThemesListResult]):
     """
     width: int
     height: int
+    #: Optional device key — see ``ListMasks.key``.
+    key: str = ""
 
     def execute(self, app: App) -> WebThemesListResult:
-        log.info("ListWebThemes: %dx%d", self.width, self.height)
-        web_dir = app.platform.paths().cloud_theme_dir(self.width, self.height)
+        log.info("ListWebThemes: %dx%d key=%s", self.width, self.height,
+                 self.key or "(generic)")
+        web_dir = app.libraries(self.key).cloud_theme_dir(
+            self.width, self.height)
         entries = app.themes.list_web_previews(web_dir)
         return WebThemesListResult(
-            ok=True, width=self.width, height=self.height, entries=entries,
+            ok=True, width=self.width, height=self.height,
+            directory=str(web_dir), entries=entries,
             message=f"{len(entries)} cloud preview(s) for "
-                    f"{self.width}x{self.height}",
+                    f"{self.width}x{self.height} in {web_dir.name}",
         )
 
 @dataclass(frozen=True, slots=True)
@@ -1479,6 +1498,10 @@ class ListMasks(Query[MasksListResult]):
     """
     resolution: tuple[int, int] | None = None
     directory: Path | None = None
+    #: Optional device key.  Given one, the scan uses that device's mask
+    #: library (a PM-3 480x480 panel reads ``zt480480y``) instead of the
+    #: generic one, so a CLI/API/qtgui browser lists what the GUI lists.
+    key: str = ""
 
     def execute(self, app: App) -> MasksListResult:
         # Delegate to the SAME discovery the gui skin uses — one implementation,
@@ -1492,7 +1515,7 @@ class ListMasks(Query[MasksListResult]):
         elif self.resolution is not None:
             paths = app.platform.paths()
             w, h = self.resolution
-            cloud_dir = paths.cloud_mask_dir(w, h)
+            cloud_dir = app.libraries(self.key).cloud_mask_dir(w, h)
             user_dir = paths.user_mask_dir(w, h)
         else:
             return MasksListResult(

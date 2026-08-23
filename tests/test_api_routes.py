@@ -1234,3 +1234,171 @@ def test_display_tick_restores_then_ticks(api_client: TestClient) -> None:
     assert seen == [RestoreDeviceState.__name__, TickDisplay.__name__], (
         f"expected restore-then-animation-tick, got {seen}"
     )
+
+
+# =========================================================================
+# Per-SKU artwork libraries reached through the API
+#
+# A resolution does not identify an artwork library (FormCZTV.cs:1290-1353,
+# FormCZTV.cs:5746).  ``ListMasks`` / ``ListWebThemes`` have carried an optional
+# ``key`` since the libraries landed, and the CLI (ui/cli/display.py) and qtgui
+# (ui/qtgui/panels/mask_browser.py) both pass it -- the API did not, so the same
+# device answered one way through three UIs and another way through the fourth.
+# =========================================================================
+
+
+def _attach_sku_device(
+    trcc: App, key: str, fbl: int, pm: int, sub: int,
+) -> None:
+    """Attach a device whose handshake selects a per-SKU library.
+
+    Real ``ProductInfo`` + real ``get_profile`` rather than a stub carrying
+    only a resolution: ``/display/masks?key=`` resolves through ``DeviceState``,
+    which reads wire/kind/model/fbl off the registry row, and a stub hides
+    which of those fields are load-bearing.
+    """
+    from types import SimpleNamespace
+
+    from trcc.core.protocol import get_profile
+    from trcc.core.registry import ALL_DEVICES
+
+    vid, pid = (int(part, 16) for part in key.split(":"))
+    info = ALL_DEVICES.get((vid, pid)) or SimpleNamespace(
+        key=key, native_resolution=get_profile(fbl, pm).resolution,
+    )
+    trcc.devices[key] = SimpleNamespace(   # type: ignore[assignment]
+        profile=get_profile(fbl, pm),
+        handshake=SimpleNamespace(sub_byte=sub, pm_byte=pm),
+        info=info,
+        is_connected=True,
+        is_led=False,
+    )
+
+
+def test_display_masks_reads_the_devices_own_mask_library(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """``GET /display/masks?key=`` scans the device's library, not the generic.
+
+    480x480 at PM 3 keeps its masks in ``zt480480y`` (FormCZTV.cs:5746) -- the
+    one library arm keyed on PM rather than SUB.  The route already resolved
+    ``key`` into a resolution; it dropped the key itself when building the
+    Command, so it read ``zt480480`` while the CLI and qtgui read ``zt480480y``.
+
+    MUTATION CHECK -- drop ``key=key or ""`` from the ``ListMasks(...)`` call in
+    ``ui/api/display.py`` and this fails with the generic mask.
+    """
+    key = "87ad:70db"                     # GrandVision 360 AIO, FBL 72, 480x480
+    _attach_sku_device(
+        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        key, fbl=72, pm=3, sub=0,
+    )
+
+    paths = fake_platform.paths()
+    # BOTH libraries on disk, each holding a DIFFERENT mask: if only the
+    # variant existed, the fallback would make the generic case pass too and
+    # the test would not distinguish them.
+    for variant, mask_id in (("", "generic01"), ("y", "sku01")):
+        mask_dir = paths.cloud_mask_dir(480, 480, variant) / mask_id
+        mask_dir.mkdir(parents=True, exist_ok=True)
+        (mask_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert paths.cloud_mask_dir(480, 480, "y").name == "zt480480y"
+
+    resp = api_client.get("/display/masks", params={"key": key})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert [m["name"] for m in body["masks"]] == ["sku01"], (
+        "a PM-3 480x480 panel must browse zt480480y, as it does in the "
+        f"CLI and qtgui — got {body['masks']}"
+    )
+
+
+def test_theme_web_gallery_reads_the_devices_own_library(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """``GET /theme/web?key=`` scans the SKU library AND names it in the URL.
+
+    1600x720 ships six theme libraries picked by SUB crossed with orientation
+    (FormCZTV.cs:1290-1353); SUB 3 browses ``1600720l``.  Two separate facts
+    have to follow the device, and the second is the one that bites: the
+    ``preview_url`` used to be re-spelled as ``f"/static/web/{w}{h}/..."``, so
+    even with the right entries it addressed ``1600720`` -- a directory the
+    file is not in.
+
+    MUTATION CHECK -- drop ``key=key`` from the ``ListWebThemes(...)`` call and
+    the entries go generic; put the ``{w}{h}`` literal back and the URL does.
+    """
+    key = "0416:5408"
+    _attach_sku_device(
+        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        key, fbl=114, pm=64, sub=3,
+    )
+
+    paths = fake_platform.paths()
+    for variant, preview_id in (("", "a001"), ("l", "a077")):
+        web_dir = paths.cloud_theme_dir(1600, 720, variant)
+        web_dir.mkdir(parents=True, exist_ok=True)
+        (web_dir / f"{preview_id}.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert paths.cloud_theme_dir(1600, 720, "l").name == "1600720l"
+
+    resp = api_client.get(
+        "/theme/web", params={"resolution": "1600x720", "key": key},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    assert [i["id"] for i in items] == ["a077"], (
+        f"SUB 3 must browse 1600720l — got {items}"
+    )
+    assert items[0]["preview_url"] == "/static/web/1600720l/a077.png", (
+        "the URL must name the directory the file is actually in"
+    )
+
+
+def test_theme_web_gallery_without_a_key_stays_generic(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """No ``key`` → the generic library, so the resolution-only contract holds.
+
+    ``?key=`` is additive: a client that only knows a resolution (and has no
+    device to ask) must keep getting exactly what it got before.
+    """
+    web_dir = fake_platform.paths().cloud_theme_dir(1600, 720)
+    web_dir.mkdir(parents=True, exist_ok=True)
+    (web_dir / "a001.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    resp = api_client.get("/theme/web", params={"resolution": "1600x720"})
+    assert resp.status_code == 200
+    items = resp.json()
+    assert [i["id"] for i in items] == ["a001"]
+    assert items[0]["preview_url"] == "/static/web/1600720/a001.png"
+
+
+def test_theme_web_gallery_falls_back_when_the_sku_library_is_absent(
+    api_client: TestClient, fake_platform: FakePlatform,
+) -> None:
+    """Variant dir not on disk → generic entries AND a generic URL.
+
+    The suffixed libraries are a separate download, so the fallback is the one
+    path that must not produce a URL nobody can serve: deriving the segment
+    from the directory the query REPORTS reading keeps the two in step, where
+    re-spelling from the variant would 404.
+    """
+    key = "0416:5409"
+    _attach_sku_device(
+        api_client.app.state.trcc,        # type: ignore[attr-defined]
+        key, fbl=114, pm=64, sub=3,
+    )
+
+    web_dir = fake_platform.paths().cloud_theme_dir(1600, 720)   # generic only
+    web_dir.mkdir(parents=True, exist_ok=True)
+    (web_dir / "a078.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert not fake_platform.paths().cloud_theme_dir(1600, 720, "l").exists()
+
+    resp = api_client.get(
+        "/theme/web", params={"resolution": "1600x720", "key": key},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    assert [i["id"] for i in items] == ["a078"]
+    assert items[0]["preview_url"] == "/static/web/1600720/a078.png"

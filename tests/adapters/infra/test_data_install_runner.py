@@ -44,9 +44,12 @@ class _SlowService:
     def __init__(self, delay: float = _SLOW_S) -> None:
         self.delay = delay
         self.calls: list[tuple[int, int]] = []
+        self.variants: list[tuple[str, str]] = []
 
-    def ensure_all(self, resolution: tuple[int, int]) -> EnsureDataResult:
+    def ensure_all(self, resolution: tuple[int, int], variant: str = "",
+                   mask_variant: str = "") -> EnsureDataResult:
         self.calls.append(resolution)
+        self.variants.append((variant, mask_variant))
         time.sleep(self.delay)
         return EnsureDataResult(
             resolution=resolution, themes_ok=True, web_ok=True, masks_ok=True,
@@ -60,9 +63,12 @@ class _Service:
         self.ok = ok
         self.raises = raises
         self.calls: list[tuple[int, int]] = []
+        self.variants: list[tuple[str, str]] = []
 
-    def ensure_all(self, resolution: tuple[int, int]) -> EnsureDataResult:
+    def ensure_all(self, resolution: tuple[int, int], variant: str = "",
+                   mask_variant: str = "") -> EnsureDataResult:
         self.calls.append(resolution)
+        self.variants.append((variant, mask_variant))
         if self.raises:
             raise RuntimeError("network on fire")
         return EnsureDataResult(

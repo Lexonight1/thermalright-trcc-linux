@@ -59,6 +59,7 @@ from ._base import Command, Query
 from ._helpers import (
     _autostart_path,
     _health_entries,
+    _resolve_oriented_resolution,
     _slideshow_snapshot,
 )
 
@@ -941,24 +942,55 @@ class GetPaths(Query[PathsResult]):
     ``resolution`` fills the resolution-scoped fields (theme / mask /
     background / cloud dirs, which are per-canvas-size).  Omit it and those
     come back empty rather than guessed at.
+
+    ``key`` names a DEVICE and makes the answer that device's own.  It does two
+    things a bare resolution cannot: it supplies the resolution when none is
+    given (oriented, so a portrait panel reports the directory it will really
+    read), and it resolves the three LIBRARY dirs through that cooler's
+    artwork libraries -- a SUB-3 1600x720 panel reads ``theme1600720l``.
+
+    This is a diagnostic before it is anything else: users answer "where did my
+    theme go?" from this output and paste it into issues.  Naming the generic
+    library for a per-SKU cooler is not a small inaccuracy there, it points the
+    reporter (and us) at a directory the app never opens.
+
+    The three USER dirs stay generic on purpose -- the user's own art is one
+    directory per resolution, with no per-SKU split.
     """
     resolution: tuple[int, int] | None = None
+    key: str = ""
 
     def execute(self, app: App) -> PathsResult:
         p = app.platform.paths()
+        resolution = self.resolution
+        if self.key and app.devices.get(self.key) is None:
+            # Answering generically here would look exactly like a correct
+            # answer, which is how a caller that forgot to connect ends up
+            # reading a directory the app never opens.  Say it instead.
+            log.warning(
+                "GetPaths: %s is not attached — reporting the GENERIC "
+                "libraries, not that device's (connect it first)", self.key,
+            )
+        if resolution is None and self.key:
+            resolution = _resolve_oriented_resolution(app, self.key)
+            log.debug("GetPaths.execute: %s → resolution=%s", self.key,
+                      resolution)
         scoped: dict[str, str] = {}
-        if self.resolution is not None:
-            w, h = self.resolution
+        if resolution is not None:
+            w, h = resolution
+            # Generic when key is "" (no device → no variant), so the
+            # resolution-only answer is exactly what it has always been.
+            libs = app.libraries(self.key)
             scoped = {
-                "theme_dir": str(p.theme_dir(w, h)),
+                "theme_dir": str(libs.theme_dir(w, h)),
                 "user_theme_dir": str(p.user_theme_dir(w, h)),
                 "user_mask_dir": str(p.user_mask_dir(w, h)),
                 "user_background_dir": str(p.user_background_dir(w, h)),
-                "cloud_theme_dir": str(p.cloud_theme_dir(w, h)),
-                "cloud_mask_dir": str(p.cloud_mask_dir(w, h)),
+                "cloud_theme_dir": str(libs.cloud_theme_dir(w, h)),
+                "cloud_mask_dir": str(libs.cloud_mask_dir(w, h)),
             }
-        log.debug("GetPaths.execute: resolution=%s scoped=%d",
-                  self.resolution, len(scoped))
+        log.debug("GetPaths.execute: resolution=%s key=%s scoped=%d",
+                  resolution, self.key or "(none)", len(scoped))
         return PathsResult(
             ok=True,
             config_dir=str(p.config_dir()),

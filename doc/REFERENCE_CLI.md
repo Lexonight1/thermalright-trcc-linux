@@ -1564,7 +1564,7 @@ trcc system mark-setup-done
 
 ### `trcc system paths`
 
-Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`.
+Show where this install keeps config, data, logs and user content. Answers "where did my theme go?" and "which log do I attach to an issue?" without the user guessing at `~/.trcc` versus `~/.trcc-user`. With `--key` the answer is that device's: the resolution comes from its handshake (oriented) and the theme/cloud dirs name its per-SKU library, so the output points at the directories the app actually opens for it.
 
 ```bash
 trcc system paths [OPTIONS]
@@ -1573,6 +1573,7 @@ trcc system paths [OPTIONS]
 | Option | Description |
 |---|---|
 | `--resolution`, `-r` `RESOLUTION` | WxH (e.g. 854x480) — also show the per-resolution theme/mask dirs |
+| `--key`, `-k` `KEY` | Device key (e.g. 0402:3922) — use that cooler's own artwork libraries, and its resolution when --resolution is omitted |
 
 ### `trcc system platform-info`
 

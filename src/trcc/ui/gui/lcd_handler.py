@@ -274,11 +274,12 @@ class LCDHandler(BaseHandler):
         # rotation can switch the browser to the rotated dir on demand
         # (auto-rotation portrait).  Log the initial landscape set so
         # the connect-time picture is preserved.
+        libs = self._app.libraries(self._device_key)
         self.log.info(
             "_refresh: theme_dir=%s web_dir=%s masks_dir(cloud)=%s "
             "user_mask_dir=%s",
-            paths.theme_dir(w, h), paths.cloud_theme_dir(w, h),
-            paths.cloud_mask_dir(w, h), paths.user_mask_dir(w, h),
+            libs.theme_dir(w, h), libs.cloud_theme_dir(w, h),
+            libs.cloud_mask_dir(w, h), paths.user_mask_dir(w, h),
         )
         # Typed source: every _restore_* below reads DeviceSettings
         # directly.  Pre-S1.2 this slot built an intermediate
@@ -345,6 +346,7 @@ class LCDHandler(BaseHandler):
         text = "  ·  ".join(parts)
         self.log.info("_update_device_info: %s", text)
         self._w['device_info_label'].setText(text)
+
 
     def _restore_brightness(self, ds: DeviceSettings) -> None:
         self._pm.brightness_level = ds.brightness
@@ -1122,7 +1124,7 @@ class LCDHandler(BaseHandler):
         if active is None:
             return
         dirs = resolve_theme_directories(
-            self._app.platform.paths(),
+            self._app.libraries(self._device_key),
             canvas_size=self._pm.state.canvas_size,
             lcd_size=self._pm.state.lcd_size,
             is_rotated=self._pm.state.is_rotated,
@@ -1395,7 +1397,7 @@ class LCDHandler(BaseHandler):
         # portrait-fallback rule live in the Qt-free presentation layer; this
         # View only pokes the resulting paths into the browser widgets.
         dirs = resolve_theme_directories(
-            self._app.platform.paths(),
+            self._app.libraries(self._device_key),
             canvas_size=self._pm.state.canvas_size,
             lcd_size=self._pm.state.lcd_size,
             is_rotated=self._pm.state.is_rotated,
