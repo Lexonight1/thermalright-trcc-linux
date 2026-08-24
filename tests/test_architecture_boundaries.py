@@ -727,3 +727,171 @@ def test_cli_and_api_never_touch_app_settings_directly() -> None:
         "app.settings (AppProxy exposes dispatch() only, so these crash "
         "under TRCC_DAEMON=1):\n  " + "\n  ".join(offenders)
     )
+
+
+# =============================================================================
+# Storage boundary — the one outbound dependency with no port
+# =============================================================================
+#
+# ``core`` and ``services`` are the inner rings; CLAUDE.md calls services "the
+# core hexagon — all business logic, PURE PYTHON".  Core declares 23 outbound
+# ports (transports, sensors, Paths, Renderer, HttpFetcher, ScreenCapture,
+# PackageManager, …) — every outbound dependency EXCEPT the filesystem.
+# ``Paths`` answers *where* a thing belongs; nothing answers *put it there*, so
+# the inner rings call ``shutil`` / ``Path.write_bytes`` directly.
+#
+# Nothing caught it: the import gate above bans adapters, UI and frameworks,
+# and ``shutil`` / ``zipfile`` / ``pathlib`` are unbanned stdlib.  These two
+# ratchets are that missing gate.  Both work like ``test_logging_coverage``:
+# a count that RISES fails (new breach) and a count that FALLS fails (fix
+# landed — lower the baseline so the ground cannot be given back quietly).
+
+_FS_WRITE_CALLS = frozenset({
+    "write_text", "write_bytes", "mkdir", "unlink", "rmdir", "touch",
+    "symlink_to", "chmod",
+})
+_FS_READ_CALLS = frozenset({"read_text", "read_bytes"})
+_FS_MODULES = frozenset({"shutil", "zipfile", "tarfile", "tempfile"})
+
+# Per-file file-I/O counts in core/ + services/, as they stand.  Burn these
+# down by moving the work behind the storage port; drop an entry when it hits
+# zero.  ``.replace()`` and ``.open()`` are deliberately NOT counted — str.replace
+# and builtins.open share those names, and counting them inflated the first
+# measurement of this by 40%.
+# ``services/theme.py`` went UP when ``stage()`` landed there: the staging
+# transaction MOVED out of ``SaveTheme`` rather than disappearing.  It leaves
+# core+services entirely when ``ThemeService`` moves to ``adapters/`` — this
+# ratchet counts the inner rings, and the class is a persistence adapter
+# (21 of its 25 methods touch the filesystem) that has not been re-homed yet.
+KNOWN_FS_IO: dict[str, int] = {
+    "trcc/core/_safe.py": 1,
+    "trcc/core/commands/_helpers.py": 1,
+    "trcc/core/commands/device.py": 2,
+    "trcc/core/commands/theme.py": 12,
+    "trcc/core/toolchain.py": 1,
+    "trcc/services/_dc.py": 2,
+    "trcc/services/first_run.py": 3,
+    "trcc/services/media.py": 1,
+    "trcc/services/migration.py": 4,
+    "trcc/services/settings.py": 1,
+    "trcc/services/theme.py": 34,
+    "trcc/services/video_export.py": 5,
+}
+
+
+def _fs_io_counts() -> dict[str, int]:
+    """Per-file count of unambiguous filesystem calls in core/ + services/."""
+    counts: dict[str, int] = {}
+    for area in ("core", "services"):
+        for path in sorted((_SRC / "trcc" / area).rglob("*.py")):
+            rel = str(path.relative_to(_SRC))
+            n = 0
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)):
+                    continue
+                name = node.func.attr
+                module = getattr(node.func.value, "id", None)
+                if (module in _FS_MODULES or name in _FS_WRITE_CALLS
+                        or name in _FS_READ_CALLS):
+                    n += 1
+            if n:
+                counts[rel] = n
+    return counts
+
+
+def test_no_new_filesystem_io_in_core_or_services() -> None:
+    """The inner rings must not grow new direct filesystem calls."""
+    counts = _fs_io_counts()
+    risen = {f: (KNOWN_FS_IO.get(f, 0), n) for f, n in counts.items()
+             if n > KNOWN_FS_IO.get(f, 0)}
+    assert not risen, (
+        "New direct filesystem I/O in core/services — infrastructure belongs "
+        "behind a port, not in the hexagon:\n"
+        + "\n".join(f"  {f}: {was} → {now}" for f, (was, now) in risen.items())
+    )
+
+
+def test_filesystem_io_baseline_has_no_slack() -> None:
+    """A fixed breach must lower the baseline, so ground cannot be re-taken."""
+    counts = _fs_io_counts()
+    stale = {f: (want, counts.get(f, 0)) for f, want in KNOWN_FS_IO.items()
+             if counts.get(f, 0) < want}
+    assert not stale, (
+        "Filesystem I/O went DOWN — lower KNOWN_FS_IO to lock the win in:\n"
+        + "\n".join(f"  {f}: {want} → {now}" for f, (want, now) in stale.items())
+    )
+
+
+# ── The theme-directory layout is already a domain object; use it ────────────
+#
+# ``core.models.ThemeDir`` owns the layout (``00.png`` / ``01.png`` /
+# ``Theme.png`` / ``config1.dc`` / ``trcc.json`` / ``config.json`` /
+# ``Theme.zt``) and its docstring says ``ThemeService`` MUST use these names
+# rather than a "candidates list", so we never render ``Theme.png`` — which is
+# the panel thumbnail, not the background.
+#
+# It is used in 3 files.  The names are spelled literally in 12 more, behind 7
+# constants that duplicate a ``ThemeDir`` property that already exists —
+# including ``services/theme.py``, which defines ``_CONFIG_FILE = "trcc.json"``
+# while importing ``ThemeDir`` (which has ``.json``).  That is how a member
+# with 13 spellings and no constant (``Theme.png``) happens.
+
+_THEME_DIR_MEMBERS = frozenset({
+    "00.png", "01.png", "Theme.png", "config1.dc", "trcc.json",
+    "config.json", "Theme.zt",
+})
+
+# 48 → 2.  ``ThemeDir`` was adopted across all 12 files that re-spelled the
+# layout, and the 7 constants duplicating one of its properties are gone.
+#
+# The two survivors are NOT breaches and never will be: both name a file in
+# ``config_dir`` that merely SHARES a string with a theme member — the app's
+# own ``trcc.json`` settings file, and the legacy app ``config.json`` the
+# debug report reads.  Different files, same name; ``ThemeDir`` would be the
+# wrong owner for either.  They are listed at their real count rather than
+# exempted, so if one grows a third the gate still notices.
+KNOWN_LAYOUT_LITERALS: dict[str, int] = {
+    "trcc/adapters/diagnostics/debug_report.py": 1,
+    "trcc/services/settings.py": 1,
+}
+
+
+def _layout_literal_counts() -> dict[str, int]:
+    """Per-file count of theme-layout filenames spelled outside ``ThemeDir``."""
+    counts: dict[str, int] = {}
+    for path in sorted((_SRC / "trcc").rglob("*.py")):
+        rel = str(path.relative_to(_SRC))
+        if rel == "trcc/core/models.py":      # ThemeDir itself — the one owner
+            continue
+        n = sum(1 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                if isinstance(node, ast.Constant)
+                and node.value in _THEME_DIR_MEMBERS)
+        if n:
+            counts[rel] = n
+    return counts
+
+
+def test_no_new_theme_layout_literals() -> None:
+    """New code must ask ``ThemeDir``, not re-spell the filename."""
+    counts = _layout_literal_counts()
+    risen = {f: (KNOWN_LAYOUT_LITERALS.get(f, 0), n) for f, n in counts.items()
+             if n > KNOWN_LAYOUT_LITERALS.get(f, 0)}
+    assert not risen, (
+        "New theme-layout filename literal(s) — use core.models.ThemeDir "
+        "(.bg/.mask/.preview/.dc/.json/.legacy_json/.zt):\n"
+        + "\n".join(f"  {f}: {was} → {now}" for f, (was, now) in risen.items())
+    )
+
+
+def test_theme_layout_literal_baseline_has_no_slack() -> None:
+    """Adopting ThemeDir must lower the baseline, locking the win in."""
+    counts = _layout_literal_counts()
+    stale = {f: (want, counts.get(f, 0))
+             for f, want in KNOWN_LAYOUT_LITERALS.items()
+             if counts.get(f, 0) < want}
+    assert not stale, (
+        "Layout literals went DOWN — lower KNOWN_LAYOUT_LITERALS to lock it "
+        "in:\n"
+        + "\n".join(f"  {f}: {want} → {now}" for f, (want, now) in stale.items())
+    )
