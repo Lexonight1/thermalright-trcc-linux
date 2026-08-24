@@ -1518,8 +1518,6 @@ class ListMasks(Query[MasksListResult]):
         # Delegate to the SAME discovery the gui skin uses — one implementation,
         # and it carries the preview path so the result is self-sufficient for
         # any UI (no re-deriving the thumbnail from the path).
-        from ...services.theme import ThemeService
-
         if self.directory is not None:
             cloud_dir: Path | None = self.directory
             user_dir: Path | None = None
@@ -1534,7 +1532,7 @@ class ListMasks(Query[MasksListResult]):
                 message="ListMasks requires resolution=(w,h) or directory=...",
             )
 
-        discovered = ThemeService.discover_masks(cloud_dir, user_dir)
+        discovered = app.themes.discover_masks(cloud_dir, user_dir)
         entries = [
             FileEntry(
                 name=m.name,

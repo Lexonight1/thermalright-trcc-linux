@@ -1059,7 +1059,8 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting = UCThemeSetting(ui_state=self._ui_state)
         self.panel_stack.addWidget(self.uc_theme_setting)
 
-        self.uc_theme_mask = UCThemeMask(paths=self._app.platform.paths())
+        self.uc_theme_mask = UCThemeMask(
+            paths=self._app.platform.paths(), store=self._app.themes)
         self._set_panel_bg(self.uc_theme_mask, Assets.THEME_MASK_BG)
         self.panel_stack.addWidget(self.uc_theme_mask)
 

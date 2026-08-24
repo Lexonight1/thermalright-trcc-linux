@@ -465,8 +465,9 @@ def _search_theme_by_name(
          a theme; only consulted for ``image:<name>`` keys)
 
     Each candidate must be a directory containing a theme config
-    (``trcc.json`` or ``config1.dc``) — guarded by
-    ``ThemeService`` semantics.
+    (``trcc.json`` or ``config1.dc``) — the store answers that
+    (``ContentStore.is_theme_dir``), since which markers count is its
+    layout knowledge.
 
     The pre-cutover ``user_content_dir()/<name>`` flat candidate was
     dropped — every next/ theme writer now lands at the per-resolution
@@ -494,9 +495,8 @@ def _search_theme_by_name(
         candidates.append(
             paths.user_content_dir() / "single-image" / name[len("image:"):],
         )
-    from ...services.theme import _has_theme_marker
     for c in candidates:
-        if c.is_dir() and _has_theme_marker(c):
+        if app.themes.is_theme_dir(c):
             return c
     return None
 

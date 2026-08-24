@@ -24,7 +24,7 @@ from ...core.models import (
 from .base import BaseThumbnail, DownloadableThemeBrowser
 
 if TYPE_CHECKING:
-    from ...core.ports import Paths
+    from ...core.ports import ContentStore, Paths
 
 log = logging.getLogger(__name__)
 
@@ -57,13 +57,17 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     mask_selected = Signal(object)
 
-    def __init__(self, parent=None, paths: Paths | None = None):
+    def __init__(self, parent=None, paths: Paths | None = None,
+                 store: ContentStore | None = None):
         self.mask_directory = None
         self._resolution = ""
         self._local_masks: set[str] = set()
         self._category = 'all'
         # Paths port for resolving user-masks dir; trcc_app injects it.
         self._paths = paths
+        # ContentStore port for mask discovery — same injection, same reason:
+        # the panel asks a port, it does not walk the filesystem itself.
+        self._store = store
         super().__init__(parent)
 
     def _create_filter_buttons(self):
@@ -168,17 +172,18 @@ class UCThemeMask(DownloadableThemeBrowser):
 
     def refresh_masks(self):
         """Reload masks from disk — only shows what exists per device resolution."""
-        from ...services.theme import ThemeService
-
         self._clear_grid()
         self._local_masks.clear()
 
         if self.mask_directory:
             self.mask_directory.mkdir(parents=True, exist_ok=True)
 
-        # Service-level discovery — matches legacy convention exactly:
+        # Store-level discovery — matches legacy convention exactly:
         # user masks first, dedupe by name, accept Theme.png OR 01.png.
-        discovered = ThemeService.discover_masks(
+        if self._store is None:
+            log.warning("refresh_masks: no ContentStore injected — no masks")
+            return
+        discovered = self._store.discover_masks(
             cloud_masks_dir=self.mask_directory,
             user_masks_dir=self._user_masks_dir(),
         )

@@ -538,6 +538,21 @@ class WebPreviewInfo:
     has_video: bool
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveredMask:
+    """One mask found by ``ContentStore.discover_masks``.
+
+    Matches legacy ``MaskInfo`` — pure value object, the GUI maps it to its
+    own MaskItem for display.  A DTO the ``ContentStore`` port speaks, so it
+    lives here rather than beside an adapter, exactly as ``CloudCategory`` /
+    ``CloudThemeEntry`` do for ``CloudCatalog``.
+    """
+    name: str
+    path: Path
+    preview_path: Path
+    is_custom: bool
+
+
 # =========================================================================
 # Sensor readings
 # =========================================================================

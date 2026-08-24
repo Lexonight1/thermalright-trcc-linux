@@ -35,7 +35,7 @@ from ..core.models import (
     RenderContent,
     Theme,
 )
-from ..core.ports import Paths, Renderer
+from ..core.ports import ContentStore, Paths, Renderer
 from ..core.protocol import (
     DeviceProfile,
     get_profile,
@@ -45,7 +45,6 @@ from ._clock import compute_clock
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
-from .theme import ThemeService
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +135,7 @@ class DisplayService:
     def __init__(
         self,
         renderer: Renderer,
-        themes: ThemeService,
+        themes: ContentStore,
         overlay: OverlayService,
         settings: Settings,
         media: MediaService,

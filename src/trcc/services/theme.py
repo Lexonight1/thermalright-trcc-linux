@@ -38,24 +38,13 @@ from typing import TYPE_CHECKING
 
 from ..core._safe import is_safe_zip_member
 from ..core.errors import ThemeError
-from ..core.models import Theme, ThemeDir, WebPreviewInfo
+from ..core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
+from ..core.ports import ContentStore, SingleFileTheme
 from . import _dc as Dc
 
 if TYPE_CHECKING:
     from ..core.ports import Paths
 
-
-@dataclass(frozen=True, slots=True)
-class DiscoveredMask:
-    """One mask found by ``ThemeService.discover_masks``.
-
-    Matches legacy ``MaskInfo`` — pure value object, GUI maps it to
-    its own MaskItem for display.
-    """
-    name: str
-    path: Path
-    preview_path: Path
-    is_custom: bool
 
 log = logging.getLogger(__name__)
 
@@ -86,8 +75,8 @@ _BG_EXTS = _VIDEO_EXTS | {".png"}
 
 
 @dataclass(frozen=True, slots=True)
-class SingleFileTheme:
-    """A one-file theme directory being assembled.  Yielded by
+class FileSingleFileTheme(SingleFileTheme):
+    """The on-disk :class:`SingleFileTheme` — yielded by
     :meth:`ThemeService.single_file_theme`."""
 
     path: Path
@@ -118,11 +107,11 @@ class SingleFileTheme:
         return dest
 
 
-class ThemeService:
-    """Theme discovery + parsing.
+class ThemeService(ContentStore):
+    """The filesystem :class:`ContentStore` — theme discovery + parsing.
 
-    Pure file I/O + JSON parsing — no rendering, no device talk.  Builds
-    Theme metadata that later services consume.
+    File I/O + JSON parsing, no rendering and no device talk.  Builds the
+    Theme metadata later services consume.
     """
 
     def __init__(self, paths: Paths | None = None) -> None:
@@ -235,7 +224,7 @@ class ThemeService:
     @contextmanager
     def single_file_theme(
         self, source: Path, kind: str,
-    ) -> Iterator[SingleFileTheme]:
+    ) -> Iterator[FileSingleFileTheme]:
         """A theme directory wrapping ONE file — an image or a video.
 
         ``LoadImage`` and ``LoadVideo`` turn an arbitrary file the user picked
@@ -264,7 +253,7 @@ class ThemeService:
         path.mkdir(parents=True, exist_ok=True)
         log.info("single_file_theme: kind=%s source=%s → %s",
                  kind, source, path)
-        unit = SingleFileTheme(path, name)
+        unit = FileSingleFileTheme(path, name)
         yield unit
         marker = ThemeDir(path).json
         if not marker.is_file():
@@ -685,8 +674,20 @@ class ThemeService:
         td = ThemeDir(theme.path)
         return td.preview if td.preview.exists() else None
 
-    @staticmethod
+    def is_theme_dir(self, path: Path) -> bool:
+        """True iff *path* is a directory carrying a theme config.
+
+        The store owns which marker files count, so the caller stops
+        needing both halves of the question — ``_search_theme_by_name``
+        paired its own ``is_dir()`` with a reach into this module's
+        private ``_has_theme_marker``.
+        """
+        verdict = path.is_dir() and _has_theme_marker(path)
+        log.debug("is_theme_dir: %s → %s", path, verdict)
+        return verdict
+
     def discover_masks(
+        self,
         cloud_masks_dir: Path | None = None,
         user_masks_dir: Path | None = None,
     ) -> builtins.list[DiscoveredMask]:
@@ -699,7 +700,7 @@ class ThemeService:
         ``Theme.png`` (preview thumbnail) OR ``01.png`` (canonical mask
         overlay) — matches legacy's acceptance.  Port of legacy
         ``ThemeService.discover_masks`` so the GUI inlining at
-        ``uc_theme_mask.refresh_masks`` can be replaced by a one-liner.
+        ``uc_theme_mask.refresh_masks`` is a one-liner.
         """
         log.info("discover_masks: cloud=%s user=%s",
                  cloud_masks_dir, user_masks_dir)

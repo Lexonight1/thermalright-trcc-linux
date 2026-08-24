@@ -6,6 +6,7 @@ concrete implementations.
 """
 from __future__ import annotations
 
+import builtins
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
         CloudThemeEntry,
         DeviceInfo,
         DeviceQuirks,
+        DiscoveredMask,
         HandshakeResult,
         HardwareMetrics,
         LedHandshakeResult,
@@ -37,7 +39,9 @@ if TYPE_CHECKING:
         RawFrame,
         RenderContent,
         SensorReading,
+        Theme,
         UsbPowerState,
+        WebPreviewInfo,
         Wire,
     )
     from .protocol import DeviceProfile
@@ -884,6 +888,247 @@ class Paths(ABC):
         at play time."""
         log.debug("user_media_player_dir")
         return self.user_data_dir() / "media_player"
+
+
+# =========================================================================
+# ContentStore — the filesystem port
+# =========================================================================
+#
+# ``Paths`` answers *where* a thing belongs; nothing answered *put it there*,
+# so the inner rings called ``shutil`` / ``zipfile`` / ``pathlib`` directly —
+# 72 times.  Storage was the one outbound dependency of the 23 declared here
+# with no port, and it drifted exactly where it was unmeasured.
+#
+# The surface below is EXTRACTED, not designed: every method is a call the
+# real consumers already make (``core/commands/theme.py``, ``services/
+# display.py``, ``core/commands/_helpers.py``).  ONE port, not a read/write/
+# archive triple — three ABCs that one class implements is not ISP, and no
+# partial implementor exists.  The day one does, split it then.
+#
+# The read side returns ``Path``, deliberately.  ``display.py`` hands
+# ``background_path`` straight to the renderer and video goes to ffmpeg, an
+# external process that needs a real file; a bytes-only port would force a
+# rewrite of render + decode and still lose.  ``CloudCatalog.download_theme``
+# already sets that precedent.
+
+
+class SingleFileTheme(ABC):
+    """A one-file theme directory being assembled — yielded by
+    :meth:`ContentStore.single_file_theme`.
+
+    ``LoadImage`` and ``LoadVideo`` each turn an arbitrary file the user
+    picked into a minimal theme so it lists like any other and the ordinary
+    ``LoadTheme`` path renders it.  Both hand-rolled the same twenty lines;
+    this is the seam those lines collapsed into.
+    """
+
+    __slots__ = ()
+
+    path: Path
+    name: str
+
+    @abstractmethod
+    def install(self, source: Path, filename: str) -> Path:
+        """Copy *source* in as *filename*, skipping an unchanged re-run."""
+
+    @abstractmethod
+    def adopt(self, produced: Path, filename: str) -> Path:
+        """Move an already-produced file (a transcoder output) in as
+        *filename*, and clear the temp directory it came from."""
+
+
+class ContentStore(ABC):
+    """Where themes, masks, backgrounds and capture configs are kept.
+
+    Concrete: ``ThemeService`` (``services/theme.py``) — a filesystem store
+    under ``data_dir()`` / ``user_data_dir()``.
+    """
+
+    # ── Writers ───────────────────────────────────────────────────────
+
+    @abstractmethod
+    def stage(self, target: Path) -> AbstractContextManager[Path]:
+        """Build a content unit in a sibling dir, then swap it over *target*.
+
+        Yields the staging directory.  A clean exit swaps it into place; ANY
+        exception discards it and leaves *target* exactly as it was, so the
+        caller writes its files and does not think about rollback.
+
+        Staging rather than writing into the target is load-bearing: the unit
+        being saved is usually the target ITSELF (a prior save re-points the
+        active theme at the saved dir), so clearing it first would destroy the
+        source's own background and mask before they had been read.
+        """
+
+    @abstractmethod
+    def single_file_theme(
+        self, source: Path, kind: str,
+    ) -> AbstractContextManager[SingleFileTheme]:
+        """A theme directory wrapping ONE file — an image or a video.
+
+        Yields the unit; the caller installs its one payload file.  The theme
+        marker is written LAST, on a clean exit, so a payload that fails
+        half-way leaves a markerless directory the listing skips.
+        """
+
+    @abstractmethod
+    def store_background(
+        self, data: bytes, ext: str, width: int, height: int,
+    ) -> str:
+        """Store a background in the user library; return its manifest ref.
+
+        Identical bytes dedup to one asset.  *ext* must name a shippable
+        background container; anything else raises ``ThemeError``.
+        """
+
+    @abstractmethod
+    def store_mask(
+        self, image: bytes, width: int, height: int,
+        *, dc: bytes | None = None,
+    ) -> str:
+        """Store a mask (+ its DC) in the user library; return its ref.
+
+        The id hashes the image **plus its DC**, so two themes sharing a mask
+        image but carrying different metrics get distinct units each with its
+        own layout — hashing the image alone would collapse them and the
+        first DC would win.
+        """
+
+    @abstractmethod
+    def store_screencast(
+        self, region: tuple[int, int, int, int, bool],
+    ) -> str:
+        """Store a screencast region config; return its ref.
+
+        Not resolution-keyed — a screencast is a live region descriptor, not
+        a per-resolution asset.
+        """
+
+    @abstractmethod
+    def store_media_player(self, uri: str) -> str:
+        """Store a media-player source URI; return its ref.  The URI may be a
+        local path or a URL/stream — it is stored verbatim."""
+
+    # ── Readers ───────────────────────────────────────────────────────
+
+    @abstractmethod
+    def load(self, path: Path) -> Theme:
+        """Load a theme directory into a ``Theme``.
+
+        Raises ``ThemeError`` if the directory is missing, unreadable, or its
+        config is invalid.
+        """
+
+    @abstractmethod
+    def list(self, directory: Path) -> builtins.list[Theme]:
+        """Every theme directly under *directory*.
+
+        An invalid theme is skipped with a warning, never raised — listing
+        never fails on one bad theme.
+        """
+
+    @abstractmethod
+    def list_web_previews(
+        self, web_dir: Path,
+    ) -> builtins.list[WebPreviewInfo]:
+        """The downloaded cloud-theme previews under *web_dir*."""
+
+    @abstractmethod
+    def discover_masks(
+        self,
+        cloud_masks_dir: Path | None = None,
+        user_masks_dir: Path | None = None,
+    ) -> builtins.list[DiscoveredMask]:
+        """Mask metadata from the cloud + user mask dirs.
+
+        Cloud (shipped) first, then user — neither hides the other.  Deduped
+        by resolved path, so a same-id user + cloud pair both list.
+        """
+
+    @abstractmethod
+    def is_theme_dir(self, path: Path) -> bool:
+        """True iff *path* is a directory carrying a theme config.
+
+        The question ``_search_theme_by_name`` and the listing both ask.  It
+        is a store question, not a caller one: which marker files count is
+        this store's layout knowledge.
+        """
+
+    @abstractmethod
+    def screencast_region(
+        self, theme: Theme,
+    ) -> tuple[int, int, int, int, bool] | None:
+        """Resolve *theme*'s screencast ref → ``(x, y, w, h, audio)``."""
+
+    @abstractmethod
+    def media_player_uri(self, theme: Theme) -> str | None:
+        """Resolve *theme*'s media-player ref → its source URI."""
+
+    @abstractmethod
+    def background_path(self, theme: Theme) -> Path | None:
+        """*theme*'s background — a referenced library asset, or the in-dir
+        static/video file.
+
+        Never the panel thumbnail: returning it would ship the tile to the
+        device.
+        """
+
+    @abstractmethod
+    def video_path(self, theme: Theme) -> Path | None:
+        """*theme*'s video, bundled or referenced.
+
+        Separate from :meth:`background_path` so ``LoadTheme`` can choose
+        between playing a video and rendering a static frame without
+        inspecting a suffix.
+        """
+
+    @abstractmethod
+    def mask_path(self, theme: Theme) -> Path | None:
+        """*theme*'s mask overlay — referenced library unit or in-dir."""
+
+    @abstractmethod
+    def preview_path(self, theme: Theme) -> Path | None:
+        """*theme*'s panel thumbnail — the browser tile, distinct from what
+        the renderer ships to the LCD."""
+
+    # ── Whole units in and out ────────────────────────────────────────
+
+    @abstractmethod
+    def export(self, theme_path: Path, archive_path: Path) -> None:
+        """Archive a theme as a self-contained, shareable zip.
+
+        DEREFERENCES: a saved theme references its assets in the user
+        library, so the resolved bytes are bundled and the ref keys stripped
+        — the recipient needs nothing from the sender's library.
+        """
+
+    @abstractmethod
+    def import_(self, archive_path: Path, into_dir: Path) -> Theme:
+        """Unpack a theme archive into *into_dir*.
+
+        Rejects zip-slip; a failed extraction cleans up the partial
+        destination rather than leaving a half-written theme.
+        """
+
+    @abstractmethod
+    def export_dc(
+        self, theme_dir: Path, output_path: Path,
+        *, elements: list[dict] | None = None,
+    ) -> Path:
+        """Write *theme_dir*'s config out in the legacy binary layout — for
+        sharing with Windows TRCC users.
+
+        *elements* REPLACES the theme's own layout when given: the caller
+        passes what the device is actually showing.
+        """
+
+    @abstractmethod
+    def delete(self, directory: Path, name: str) -> Path:
+        """Delete the theme ``directory / name``.
+
+        Confined to *directory* — callers pass the trusted root and the
+        target is verified to stay inside it.
+        """
 
 
 # =========================================================================

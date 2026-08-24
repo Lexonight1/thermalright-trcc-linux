@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-32 ports.
+34 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -18,6 +18,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScreenCapture`](#screencapture) | 1 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 1 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
+| [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
@@ -41,6 +42,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
 | [`BaseOS`](#baseos) | 12 | 15 | 8 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
+| [`ContentStore`](#contentstore) | 21 | 0 | 1 |
 | [`Platform`](#platform) | 22 | 0 | 8 |
 
 ---
@@ -157,6 +159,21 @@ submit(resolution: 'tuple[int, int]', variant: 'str' = '', mask_variant: 'str' =
 ```
 
 **Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`
+
+## SingleFileTheme
+
+`core/ports.py`
+
+A one-file theme directory being assembled — yielded by :meth:`ContentStore.single_file_theme`.
+
+**You implement (2):**
+
+```python
+adopt(produced: 'Path', filename: 'str') -> Path
+install(source: 'Path', filename: 'str') -> Path
+```
+
+**Implementations (1):** `FileSingleFileTheme`
 
 ## _MappingPort
 
@@ -595,6 +612,40 @@ surface_size(surface: 'Any') -> tuple[int, int]
 **You inherit (6):** `bg_fit` · `build_frame` · `encode_payload` · `encode_png` · `get_pixels_rgb` · `list_fonts`
 
 **Implementations (1):** `QtRenderer`
+
+## ContentStore
+
+`core/ports.py`
+
+Where themes, masks, backgrounds and capture configs are kept.
+
+**You implement (21):**
+
+```python
+background_path(theme: 'Theme') -> Path | None
+delete(directory: 'Path', name: 'str') -> Path
+discover_masks(cloud_masks_dir: 'Path | None' = None, user_masks_dir: 'Path | None' = None) -> builtins.list[DiscoveredMask]
+export(theme_path: 'Path', archive_path: 'Path') -> None
+export_dc(theme_dir: 'Path', output_path: 'Path', elements: 'list[dict] | None' = None) -> Path
+import_(archive_path: 'Path', into_dir: 'Path') -> Theme
+is_theme_dir(path: 'Path') -> bool
+list(directory: 'Path') -> builtins.list[Theme]
+list_web_previews(web_dir: 'Path') -> builtins.list[WebPreviewInfo]
+load(path: 'Path') -> Theme
+mask_path(theme: 'Theme') -> Path | None
+media_player_uri(theme: 'Theme') -> str | None
+preview_path(theme: 'Theme') -> Path | None
+screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
+single_file_theme(source: 'Path', kind: 'str') -> AbstractContextManager[SingleFileTheme]
+stage(target: 'Path') -> AbstractContextManager[Path]
+store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
+store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None) -> str
+store_media_player(uri: 'str') -> str
+store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
+video_path(theme: 'Theme') -> Path | None
+```
+
+**Implementations (1):** `ThemeService`
 
 ## Platform
 
