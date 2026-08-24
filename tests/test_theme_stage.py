@@ -1,4 +1,4 @@
-"""``ThemeService.stage`` — the property the hand-rolled version bought.
+"""``FileContentStore.stage`` — the property the hand-rolled version bought.
 
 A save that fails part-way must leave the PREVIOUS unit exactly as it was.
 That is the whole reason the code stages into a sibling directory instead of
@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.errors import ThemeError
 from trcc.core.models import ThemeDir
-from trcc.services.theme import ThemeService
 
 
 class _Paths:
@@ -36,7 +36,7 @@ def _existing_unit(root: Path) -> Path:
 
 
 def test_a_clean_exit_swaps_the_unit_into_place(tmp_path: Path) -> None:
-    svc = ThemeService()
+    svc = FileContentStore()
     target = tmp_path / "New"
 
     with svc.stage(target) as staging:
@@ -49,7 +49,7 @@ def test_a_clean_exit_swaps_the_unit_into_place(tmp_path: Path) -> None:
 
 def test_a_failure_leaves_the_previous_unit_untouched(tmp_path: Path) -> None:
     """The load-bearing one."""
-    svc = ThemeService()
+    svc = FileContentStore()
     target = _existing_unit(tmp_path)
 
     with pytest.raises(ThemeError):
@@ -67,7 +67,7 @@ def test_overwriting_replaces_every_file_not_just_the_written_ones(
     tmp_path: Path,
 ) -> None:
     """A swap, not a merge — a stale file from the old unit must not survive."""
-    svc = ThemeService()
+    svc = FileContentStore()
     target = _existing_unit(tmp_path)
 
     with svc.stage(target) as staging:
@@ -83,7 +83,7 @@ def test_an_abandoned_staging_dir_does_not_block_the_next_save(
     tmp_path: Path,
 ) -> None:
     """A previous crash leaves .X.saving behind; the next save must proceed."""
-    svc = ThemeService()
+    svc = FileContentStore()
     target = tmp_path / "Crashed"
     abandoned = tmp_path / ".Crashed.saving"
     abandoned.mkdir(parents=True)
@@ -100,7 +100,7 @@ def test_an_abandoned_staging_dir_does_not_block_the_next_save(
 
 
 def test_a_one_file_theme_gets_its_payload_and_a_marker(tmp_path: Path) -> None:
-    svc = ThemeService(_Paths(tmp_path))
+    svc = FileContentStore(_Paths(tmp_path))
     src = tmp_path / "holiday.jpg"
     src.write_bytes(b"IMAGE-BYTES")
 
@@ -121,7 +121,7 @@ def test_a_failed_payload_leaves_no_marker_so_it_is_not_listed(
     list`` and load as a black canvas.  Without one, ``_has_theme_marker``
     skips it — which is why the marker is written on clean exit only.
     """
-    svc = ThemeService(_Paths(tmp_path))
+    svc = FileContentStore(_Paths(tmp_path))
     src = tmp_path / "broken.mp4"
     src.write_bytes(b"x")
 
@@ -149,7 +149,7 @@ def test_installing_an_unchanged_payload_is_skipped(
     """
     import shutil as _shutil
 
-    from trcc.services import theme as theme_mod
+    from trcc.adapters.theme import filesystem as theme_mod
 
     copies: list[tuple[Path, Path]] = []
     real = _shutil.copy2
@@ -160,7 +160,7 @@ def test_installing_an_unchanged_payload_is_skipped(
 
     monkeypatch.setattr(theme_mod.shutil, "copy2", _counting_copy2)
 
-    svc = ThemeService(_Paths(tmp_path))
+    svc = FileContentStore(_Paths(tmp_path))
     src = tmp_path / "same.png"
     src.write_bytes(b"PAYLOAD")
 
@@ -176,7 +176,7 @@ def test_installing_an_unchanged_payload_is_skipped(
 
 def test_a_changed_payload_is_re_copied(tmp_path: Path) -> None:
     """The other half — the skip must not make a real edit invisible."""
-    svc = ThemeService(_Paths(tmp_path))
+    svc = FileContentStore(_Paths(tmp_path))
     src = tmp_path / "edited.png"
     src.write_bytes(b"BEFORE")
 

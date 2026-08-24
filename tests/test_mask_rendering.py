@@ -19,13 +19,13 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import Kind, OverlayElement, ProductInfo, Theme, Wire
 from trcc.core.ports import Renderer
 from trcc.services.display import DisplayService
 from trcc.services.media import MediaService
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
-from trcc.services.theme import ThemeService
 
 from .conftest import FakePaths
 
@@ -130,7 +130,7 @@ def display(
 ) -> DisplayService:
     return DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=settings,
         media=MediaService(),
@@ -149,7 +149,7 @@ def _info() -> ProductInfo:
 
 
 def _theme_with_mask(tmp_home: Path) -> Theme:
-    """Theme directory with a real 01.png file ThemeService.mask_path() sees."""
+    """Theme directory with a real 01.png file FileContentStore.mask_path() sees."""
     theme_dir = tmp_home / "themes" / "with_mask"
     theme_dir.mkdir(parents=True)
     (theme_dir / "01.png").write_bytes(b"\x89PNG\r\n\x1a\n")
@@ -339,7 +339,7 @@ def _display_real(
     """DisplayService wired with the REAL OverlayService (draws text)."""
     return DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=OverlayService(renderer),
         settings=settings,
         media=MediaService(),

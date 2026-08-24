@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import (
     FitMode,
     Kind,
@@ -33,7 +34,6 @@ from trcc.services.display import DisplayService
 from trcc.services.media import MediaService
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
-from trcc.services.theme import ThemeService
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dev" / "decompiler"))
 
@@ -154,7 +154,7 @@ def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
     settings = Settings(paths)
     return DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=settings,
         media=MediaService(),
@@ -726,7 +726,7 @@ def test_canvas_geometry_is_orientation_driven(
 def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
     from .conftest import FakePaths
     return DisplayService(
-        renderer=renderer, themes=ThemeService(),
+        renderer=renderer, themes=FileContentStore(),
         overlay=OverlayService(renderer),          # REAL overlay → records draw_text
         settings=Settings(FakePaths(tmp_home)),
         media=MediaService(),
@@ -815,8 +815,8 @@ def test_landscape_theme_at_orientation_0_is_unchanged(
 # ── #264: the no-mask branch must do no filesystem work ──────────────
 
 
-class _CountingThemes(ThemeService):
-    """ThemeService that records how often the render path asked for a mask."""
+class _CountingThemes(FileContentStore):
+    """FileContentStore that records how often the render path asked for a mask."""
 
     def __init__(self) -> None:
         super().__init__()

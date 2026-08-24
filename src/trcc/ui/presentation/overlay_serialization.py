@@ -235,7 +235,7 @@ def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
     """Read a theme's overlay config and return the legacy ``overlay_grid``
     dict shape.
 
-    Source preference matches ``ThemeService._load_config``:
+    Source preference matches ``FileContentStore._load_config``:
 
       1. ``trcc.json`` -- next/-native; its ``elements`` list is the overlay
          layout ``SaveTheme`` now writes (saved themes carry NO ``config1.dc``).

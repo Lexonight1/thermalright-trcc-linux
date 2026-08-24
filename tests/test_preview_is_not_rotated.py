@@ -68,13 +68,13 @@ def _info(fbl: int, native: tuple[int, int]) -> ProductInfo:
 
 
 def _display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
+    from trcc.adapters.theme.filesystem import FileContentStore
     from trcc.services.media import MediaService
-    from trcc.services.theme import ThemeService
 
     from .conftest import FakePaths
     paths = FakePaths(tmp_home)
     return DisplayService(
-        renderer=renderer, themes=ThemeService(),
+        renderer=renderer, themes=FileContentStore(),
         overlay=_StubOverlay(renderer), settings=Settings(paths),
         media=MediaService(), paths=paths,
     )

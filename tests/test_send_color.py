@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, SendColor
 from trcc.core.events import FrameSent
@@ -28,7 +29,6 @@ from trcc.services.display import DisplayService
 from trcc.services.media import MediaService
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
-from trcc.services.theme import ThemeService
 from trcc.ui.cli.display import _parse_hex_color
 
 from .conftest import FakePaths, FakePlatform
@@ -123,7 +123,7 @@ def renderer() -> RecordingRenderer:
 def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
     return DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=MediaService(),

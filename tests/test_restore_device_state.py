@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import RestoreDeviceState
-from trcc.services.theme import ThemeService
 
 from .conftest import FakePlatform
 
@@ -25,7 +25,7 @@ _RES = (320, 320)
 
 
 def _write_theme(directory: Path, name: str) -> Path:
-    """Minimal next/-shape theme dir that ThemeService.load parses."""
+    """Minimal next/-shape theme dir that FileContentStore.load parses."""
     theme_dir = directory / name
     theme_dir.mkdir(parents=True)
     (theme_dir / "trcc.json").write_text(
@@ -49,7 +49,7 @@ def app(tmp_home: Path) -> App:
 
 
 def test_noop_when_active_theme_already_present(app: App, tmp_home: Path) -> None:
-    existing = ThemeService().load(_write_theme(tmp_home, "already"))
+    existing = FileContentStore().load(_write_theme(tmp_home, "already"))
     app.active_themes[_KEY] = existing
 
     result = app.dispatch(RestoreDeviceState(key=_KEY))

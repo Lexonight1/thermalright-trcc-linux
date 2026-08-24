@@ -89,7 +89,7 @@ def main() -> int:
     from trcc.services.media import MediaService, Playback
     from trcc.services.overlay import OverlayService
     from trcc.services.settings import Settings
-    from trcc.services.theme import ThemeService
+    from trcc.adapters.theme.filesystem import FileContentStore
 
     # Minimal Paths stub so Settings can boot.
     class _Paths:
@@ -111,7 +111,7 @@ def main() -> int:
         base = Path(td)
         renderer = QtRenderer()
         media = MediaService()
-        themes = ThemeService()
+        themes = FileContentStore()
         overlay = OverlayService(renderer)
         settings = Settings(_Paths(base))
 

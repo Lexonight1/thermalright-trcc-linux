@@ -171,7 +171,7 @@ def load_theme(key: str, body: ThemeRequest,
     )
     # Whitelist by basename (CodeQL py/path-injection sanitizer barrier).
     # Themes live at ``<root>/theme{w}{h}/<name>/`` under BOTH the program data
-    # dir and the user content dir (mirrors ThemeService's two-root enumeration)
+    # dir and the user content dir (mirrors ContentStore's two-root enumeration)
     # — NOT flat under ``user_content_dir``, which is why a path straight from
     # ``/theme/list`` was wrongly rejected "Unknown theme" (#239).  We match the
     # request's resolution-dir + theme-dir basenames against the trusted roots

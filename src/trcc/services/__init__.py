@@ -6,7 +6,6 @@ compose into Commands, which UIs dispatch.
 
 One module per responsibility:
     settings.py   — per-device user preferences (persisted JSON)
-    theme.py      — theme discovery + parsing
     display.py    — theme + sensors → frame bytes (Phase 5c, needs Renderer)
     overlay.py    — compositing + text (Phase 5c, needs Renderer)
     media.py      — video / animation decode (Phase 5c)

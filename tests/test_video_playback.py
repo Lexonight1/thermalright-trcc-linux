@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import (
     ConnectDevice,
@@ -39,7 +40,6 @@ from trcc.services.display import DisplayService
 from trcc.services.media import MediaService, Playback, VideoDecoder
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
-from trcc.services.theme import ThemeService
 
 from .conftest import FakePaths, FakePlatform
 
@@ -432,7 +432,7 @@ def test_display_resolves_background_from_playback_when_present(
     )
     display = DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
@@ -468,7 +468,7 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     media = MediaService()   # empty — no playbacks
     display = DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
@@ -579,7 +579,7 @@ def _video_display(tmp_home: Path, n_frames: int):
     )
     display = DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
@@ -706,7 +706,7 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
     )
     display = DisplayService(
         renderer=renderer,
-        themes=ThemeService(),
+        themes=FileContentStore(),
         overlay=OverlayService(renderer),
         settings=Settings(FakePaths(tmp_home)),
         media=media,
@@ -937,11 +937,11 @@ def test_render_never_decodes_a_video(
     cost 16 seconds, and it used the wrong size policy (``visual_size``
     instead of PlayVideo's oriented canvas).
     """
+    from trcc.adapters.theme.filesystem import FileContentStore
     from trcc.core.commands import RenderAndSend
-    from trcc.services.theme import ThemeService
 
     theme = _write_video_theme(tmp_home, "vid")
-    rendering_app.active_themes[_KEY] = ThemeService().load(theme)
+    rendering_app.active_themes[_KEY] = FileContentStore().load(theme)
     rendering_app.media.unload(_KEY)
     stub_media.clear()
 

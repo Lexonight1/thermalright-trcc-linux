@@ -10,12 +10,12 @@ gui does *iff* every capability is reachable through that contract.
 This tool finds where a UI reaches **around** the contract — importing
 ``services`` / ``adapters`` symbols directly instead of dispatching a Command.
 Each such import is a candidate **contract hole**: a capability a command-only
-UI would be missing (e.g. gui calling ``ThemeService.discover_masks`` for mask
+UI would be missing (e.g. gui calling ``FileContentStore.discover_masks`` for mask
 previews that ``ListMasks`` doesn't carry).
 
 It surfaces candidates; a human judges which are real holes vs. legitimate
 infrastructure (a GUI importing ``QtRenderer`` is fine; importing
-``ThemeService`` to compute data a Command should carry is a hole).
+``FileContentStore`` to compute data a Command should carry is a hole).
 
 Usage::
     PYTHONPATH=src python3 dev/tools/ui_contract.py

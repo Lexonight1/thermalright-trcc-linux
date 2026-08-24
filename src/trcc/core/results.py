@@ -737,7 +737,7 @@ class FileEntry:
     """One mask row: the mask dir (``path``) + its preview image (``preview``).
 
     ``preview`` is the ``Theme.png`` tile (falling back to the ``01.png``
-    overlay) resolved by ``ThemeService.discover_masks`` — carried here so every
+    overlay) resolved by ``ContentStore.discover_masks`` — carried here so every
     UI can render a thumbnail from the Command result, instead of re-deriving it
     from the path (the gap that forced gui to call the service directly)."""
     name: str

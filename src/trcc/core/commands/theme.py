@@ -1175,7 +1175,7 @@ class ImportTheme(Command[ThemeImportResult]):
     directory.
 
     ``name`` defaults to the archive filename's stem when blank.
-    Zip-slip is filtered server-side by ``ThemeService.import_``.
+    Zip-slip is filtered server-side by ``ContentStore.import_``.
     """
     key: str
     archive_path: Path

@@ -645,7 +645,7 @@ store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
 video_path(theme: 'Theme') -> Path | None
 ```
 
-**Implementations (1):** `ThemeService`
+**Implementations (1):** `FileContentStore`
 
 ## Platform
 

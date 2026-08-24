@@ -1,4 +1,4 @@
-"""ThemeService — JSON-first, DC fallback, auto-migrate."""
+"""FileContentStore — JSON-first, DC fallback, auto-migrate."""
 from __future__ import annotations
 
 import json
@@ -8,27 +8,27 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.errors import ThemeError
-from trcc.services.theme import ThemeService
 
 from .test_dc_reader import _build_dc
 
 
 def test_raises_on_missing_dir(tmp_path: Path) -> None:
-    svc = ThemeService()
+    svc = FileContentStore()
     with pytest.raises(ThemeError, match="does not exist"):
         svc.load(tmp_path / "nonexistent")
 
 
 def test_raises_on_file_path(tmp_path: Path) -> None:
-    svc = ThemeService()
+    svc = FileContentStore()
     (tmp_path / "afile").write_text("oops")
     with pytest.raises(ThemeError, match="not a directory"):
         svc.load(tmp_path / "afile")
 
 
 def test_raises_on_dir_without_config(tmp_path: Path) -> None:
-    svc = ThemeService()
+    svc = FileContentStore()
     empty = tmp_path / "empty"
     empty.mkdir()
     with pytest.raises(ThemeError, match="No trcc.json or config1.dc"):
@@ -44,7 +44,7 @@ def test_loads_json_theme(tmp_path: Path) -> None:
         "elements": [],
     }), encoding="utf-8")
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert t.name == "JSON Theme"
@@ -56,7 +56,7 @@ def test_falls_back_to_dc_and_migrates(tmp_path: Path) -> None:
     theme.mkdir()
     (theme / "config1.dc").write_bytes(_build_dc())
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     # Loaded from DC — name defaults to directory name
@@ -82,7 +82,7 @@ def test_prefers_json_over_dc_when_both_present(tmp_path: Path) -> None:
     }), encoding="utf-8")
     (theme / "config1.dc").write_bytes(_build_dc())
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert t.name == "Wins"
@@ -98,7 +98,7 @@ def test_list_finds_both_formats(tmp_path: Path) -> None:
     broken = tmp_path / "C"
     broken.mkdir()    # no config — skipped silently
 
-    svc = ThemeService()
+    svc = FileContentStore()
     themes = svc.list(tmp_path)
 
     names = {t.name for t in themes}
@@ -116,7 +116,7 @@ def test_background_path_finds_00_png(tmp_path: Path) -> None:
     (theme / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")       # render target
     (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")    # thumbnail only
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert svc.background_path(t) == theme / "00.png"
@@ -133,7 +133,7 @@ def test_background_path_returns_none_when_only_thumbnail(
     (theme / "trcc.json").write_text('{"elements": []}')
     (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert svc.background_path(t) is None
@@ -148,7 +148,7 @@ def test_loads_pre_cutover_filename(tmp_path: Path) -> None:
         "name": "Pre-cutover", "elements": [], "overlay_enabled": True,
     }), encoding="utf-8")
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert t.name == "Pre-cutover"
@@ -183,7 +183,7 @@ def test_loads_legacy_config_json(tmp_path: Path) -> None:
         },
     }), encoding="utf-8")
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert t.name == "Custom_Legacy"
@@ -210,7 +210,7 @@ def test_list_finds_legacy_config_json_themes(tmp_path: Path) -> None:
     theme.mkdir()
     (theme / "config.json").write_text('{"dc": {}}', encoding="utf-8")
 
-    themes = ThemeService().list(tmp_path)
+    themes = FileContentStore().list(tmp_path)
 
     assert {t.name for t in themes} == {"LegacyOne"}
 
@@ -221,7 +221,7 @@ def test_list_finds_pre_cutover_themes(tmp_path: Path) -> None:
     theme.mkdir()
     (theme / "trcc.json").write_text('{"elements": []}', encoding="utf-8")
 
-    themes = ThemeService().list(tmp_path)
+    themes = FileContentStore().list(tmp_path)
 
     assert {t.name for t in themes} == {"OldStill"}
 
@@ -235,7 +235,7 @@ def test_background_path_prefers_video_over_static(tmp_path: Path) -> None:
     (theme / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     (theme / "Theme.mp4").write_bytes(b"\x00" * 16)
 
-    svc = ThemeService()
+    svc = FileContentStore()
     t = svc.load(theme)
 
     assert svc.background_path(t) == theme / "Theme.mp4"
@@ -252,7 +252,7 @@ def test_list_web_previews_enumerates_pngs(tmp_path: Path) -> None:
     (web / "a001.mp4").write_bytes(b"v")          # → has_video
     (web / "b002.png").write_bytes(b"\x89PNG\r\n\x1a\n")   # no video
 
-    previews = {p.id: p for p in ThemeService().list_web_previews(web)}
+    previews = {p.id: p for p in FileContentStore().list_web_previews(web)}
 
     assert set(previews) == {"a001", "b002"}
     assert previews["a001"].category == "a"
@@ -261,7 +261,7 @@ def test_list_web_previews_enumerates_pngs(tmp_path: Path) -> None:
 
 
 def test_list_web_previews_missing_dir_returns_empty(tmp_path: Path) -> None:
-    assert ThemeService().list_web_previews(tmp_path / "nope") == []
+    assert FileContentStore().list_web_previews(tmp_path / "nope") == []
 
 
 # Keep the unused `struct` import alive even if tests don't use it directly —
@@ -272,7 +272,7 @@ _ = struct
 # ── Per-frame logging — the report tail is the diagnostic instrument ──
 
 
-def _reference_theme(tmp_path: Path) -> tuple[ThemeService, Path]:
+def _reference_theme(tmp_path: Path) -> tuple[FileContentStore, Path]:
     """A theme whose config names a library mask, as cloud themes do."""
     from .conftest import FakePaths
 
@@ -286,7 +286,7 @@ def _reference_theme(tmp_path: Path) -> tuple[ThemeService, Path]:
     (theme_dir / "config.json").write_text(json.dumps({
         "mask": "web/zt1600720/000a", "elements": [],
     }))
-    return ThemeService(paths), theme_dir
+    return FileContentStore(paths), theme_dir
 
 
 def test_resolving_a_referenced_mask_does_not_log_at_info(
@@ -303,7 +303,7 @@ def test_resolving_a_referenced_mask_does_not_log_at_info(
     svc, theme_dir = _reference_theme(tmp_path)
     theme = svc.load(theme_dir)
 
-    with caplog.at_level(logging.DEBUG, logger="trcc.services.theme"):
+    with caplog.at_level(logging.DEBUG, logger="trcc.adapters.theme.filesystem"):
         resolved = svc.mask_path(theme)
 
     assert resolved is not None and resolved.name == "01.png"   # still resolves

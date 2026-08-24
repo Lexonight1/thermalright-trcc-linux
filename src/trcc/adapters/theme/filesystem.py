@@ -1,4 +1,9 @@
-"""ThemeService — theme discovery and metadata parsing.
+"""``FileContentStore`` — the filesystem :class:`~trcc.core.ports.ContentStore`.
+
+Where themes, masks, backgrounds and capture configs are kept, under
+``data_dir()`` (program + cloud content) and ``user_data_dir()`` (what the
+user authored).  Sibling of ``cloud.py``, which is the remote half of the
+same job.
 
 A theme in TRCC is a directory containing:
     trcc.json         next/'s native element layout / fonts / colors
@@ -36,14 +41,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..core._safe import is_safe_zip_member
-from ..core.errors import ThemeError
-from ..core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
-from ..core.ports import ContentStore, SingleFileTheme
-from . import _dc as Dc
+from ...core._safe import is_safe_zip_member
+from ...core.errors import ThemeError
+from ...core.models import DiscoveredMask, Theme, ThemeDir, WebPreviewInfo
+from ...core.ports import ContentStore, SingleFileTheme
+from ...services import _dc as Dc
 
 if TYPE_CHECKING:
-    from ..core.ports import Paths
+    from ...core.ports import Paths
 
 
 log = logging.getLogger(__name__)
@@ -77,7 +82,7 @@ _BG_EXTS = _VIDEO_EXTS | {".png"}
 @dataclass(frozen=True, slots=True)
 class FileSingleFileTheme(SingleFileTheme):
     """The on-disk :class:`SingleFileTheme` — yielded by
-    :meth:`ThemeService.single_file_theme`."""
+    :meth:`FileContentStore.single_file_theme`."""
 
     path: Path
     name: str
@@ -107,7 +112,7 @@ class FileSingleFileTheme(SingleFileTheme):
         return dest
 
 
-class ThemeService(ContentStore):
+class FileContentStore(ContentStore):
     """The filesystem :class:`ContentStore` — theme discovery + parsing.
 
     File I/O + JSON parsing, no rendering and no device talk.  Builds the
@@ -699,7 +704,7 @@ class ThemeService(ContentStore):
         both belong).  Each mask must have
         ``Theme.png`` (preview thumbnail) OR ``01.png`` (canonical mask
         overlay) — matches legacy's acceptance.  Port of legacy
-        ``ThemeService.discover_masks`` so the GUI inlining at
+        ``FileContentStore.discover_masks`` so the GUI inlining at
         ``uc_theme_mask.refresh_masks`` is a one-liner.
         """
         log.info("discover_masks: cloud=%s user=%s",
@@ -838,7 +843,7 @@ class ThemeService(ContentStore):
                     zf.extract(info, into_dir)
                 if skipped:
                     log.warning(
-                        "ThemeService.import_: skipped %d unsafe member(s) in %s: %s",
+                        "FileContentStore.import_: skipped %d unsafe member(s) in %s: %s",
                         len(skipped), archive_path, skipped,
                     )
         except zipfile.BadZipFile as e:

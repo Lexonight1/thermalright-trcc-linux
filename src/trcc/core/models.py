@@ -448,7 +448,7 @@ class ThemeDir:
     """Standard TRCC theme directory layout — pure domain value object.
 
     Ported verbatim from legacy ``core/models/theme.py``: the names are
-    Windows-TRCC convention and ``ThemeService`` MUST use these (never
+    Windows-TRCC convention and ``ContentStore`` MUST use these (never
     a "candidates list") so we don't render ``Theme.png`` — which is
     the panel thumbnail, not the background.
 

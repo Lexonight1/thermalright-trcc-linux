@@ -16,6 +16,7 @@ from .adapters.device import DEVICES
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.repo.http import UrllibHttpFetcher
 from .adapters.theme.cloud import CzhordeCatalog
+from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
 from .core.errors import DeviceDisconnectedError, DeviceNotFoundError
 from .core.events import (
@@ -76,7 +77,6 @@ from .services.overlay import OverlayService
 from .services.quickstart import QuickstartService
 from .services.settings import Settings
 from .services.slideshow import SlideshowService
-from .services.theme import ThemeService
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class App:
         self._connect_issues: dict[str, ConnectResult] = {}
         self.events = EventBus()
         self.settings = Settings(platform.paths())
-        self.themes = ThemeService(platform.paths())
+        self.themes = FileContentStore(platform.paths())
         self.media = MediaService()
         # Currently-loaded Theme per device — set by LoadTheme, read by
         # RenderAndSend ticker, cleared on DisconnectDevice.

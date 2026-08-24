@@ -514,7 +514,10 @@ def test_selftest_forbidden_target_predicate() -> None:
     assert _is_forbidden_target("win32api")          # pywin32 prefix
     assert not _is_forbidden_target("trcc.core.models")
     assert not _is_forbidden_target("logging")
-    assert not _is_forbidden_target("trcc.services.theme")
+    assert not _is_forbidden_target("trcc.services.display")
+    # The content store's home.  This is the gate that makes the port real:
+    # core/services reaching back into the implementation is a breach now.
+    assert _is_forbidden_target("trcc.adapters.theme.filesystem")
 
 
 def test_selftest_presentation_forbidden_predicate() -> None:
@@ -758,11 +761,18 @@ _FS_MODULES = frozenset({"shutil", "zipfile", "tarfile", "tempfile"})
 # zero.  ``.replace()`` and ``.open()`` are deliberately NOT counted — str.replace
 # and builtins.open share those names, and counting them inflated the first
 # measurement of this by 40%.
-# ``services/theme.py`` went UP when ``stage()`` landed there: the staging
-# transaction MOVED out of ``SaveTheme`` rather than disappearing.  It leaves
-# core+services entirely when ``ThemeService`` moves to ``adapters/`` — this
-# ratchet counts the inner rings, and the class is a persistence adapter
-# (21 of its 25 methods touch the filesystem) that has not been re-homed yet.
+# ``services/theme.py`` (34) is GONE from this table, not fixed in place: the
+# class was a persistence adapter filed under ``services/`` — 21 of its 25
+# methods touched the filesystem — and it now lives at
+# ``adapters/theme/filesystem.py`` behind the ``ContentStore`` port.  This
+# ratchet counts the inner rings, so re-homing it removes it from the
+# denominator.  What remains below is work still to move.
+#
+# NOTE the narrowness of this measurement, so nobody reads the total as "every
+# filesystem call": path INTERROGATION (``exists`` / ``is_dir`` / ``is_file``
+# / ``iterdir`` / ``glob`` / ``stat`` / ``resolve``) is not counted at all.  A
+# wider AST sweep found 87 calls in the old ThemeService against the 34 counted
+# here.  Widening the sets is a separate, deliberate re-baseline.
 KNOWN_FS_IO: dict[str, int] = {
     "trcc/core/_safe.py": 1,
     "trcc/core/commands/_helpers.py": 1,
@@ -774,7 +784,6 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/services/media.py": 1,
     "trcc/services/migration.py": 4,
     "trcc/services/settings.py": 1,
-    "trcc/services/theme.py": 34,
     "trcc/services/video_export.py": 5,
 }
 
@@ -827,7 +836,7 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
 #
 # ``core.models.ThemeDir`` owns the layout (``00.png`` / ``01.png`` /
 # ``Theme.png`` / ``config1.dc`` / ``trcc.json`` / ``config.json`` /
-# ``Theme.zt``) and its docstring says ``ThemeService`` MUST use these names
+# ``Theme.zt``) and its docstring says ``FileContentStore`` MUST use these names
 # rather than a "candidates list", so we never render ``Theme.png`` — which is
 # the panel thumbnail, not the background.
 #

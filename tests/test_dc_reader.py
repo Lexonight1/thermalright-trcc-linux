@@ -338,7 +338,7 @@ def test_legacy_overlay_reads_trcc_json_elements(tmp_path: Path) -> None:
 
 
 def test_legacy_overlay_prefers_trcc_json_over_dc(tmp_path: Path) -> None:
-    """When both exist, trcc.json wins — matches ThemeService._load_config."""
+    """When both exist, trcc.json wins — matches FileContentStore._load_config."""
     import json
     (tmp_path / "trcc.json").write_text(json.dumps({
         "elements": [{"type": "text", "text": "JSON", "x": 1, "y": 2,

@@ -1,6 +1,6 @@
 """Theme persistence Commands: SaveTheme / ExportTheme / ImportTheme.
 
-Also exercises ``ThemeService.export`` / ``ThemeService.import_`` directly
+Also exercises ``FileContentStore.export`` / ``FileContentStore.import_`` directly
 since those fill the two ``not yet implemented`` stubs the parent memo
 called out.
 """
@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import (
     ExportTheme,
@@ -24,7 +25,6 @@ from trcc.core.errors import ThemeError
 from trcc.core.events import ThemeExported, ThemeImported, ThemeSaved
 from trcc.core.models import Theme
 from trcc.services.settings import Settings
-from trcc.services.theme import ThemeService
 
 from .conftest import FakePlatform
 
@@ -99,7 +99,7 @@ def user_theme_dir(app: App) -> Path:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ThemeService.export
+# FileContentStore.export
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -107,7 +107,7 @@ def test_export_writes_zip_with_expected_members(tmp_home: Path) -> None:
     theme_dir = _write_self_contained_theme(tmp_home, "demo")
     archive = tmp_home / "demo.tr"
 
-    ThemeService().export(theme_dir, archive)
+    FileContentStore().export(theme_dir, archive)
 
     assert archive.exists()
     with zipfile.ZipFile(archive) as zf:
@@ -130,7 +130,7 @@ def test_export_self_contained_theme_produces_importable_archive(
     # saved config just POINTS at them by URI (web/{w}{h}/… refs); the saved
     # dir carries no in-dir 00.png/01.png.
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ref")).ok
     saved = user_theme_dir / "ref"
     saved_manifest = _json.loads(
@@ -155,7 +155,7 @@ def test_export_self_contained_theme_produces_importable_archive(
     assert "mask" not in exported
 
     # Import into a FRESH service with NO library — must resolve in-dir.
-    fresh = ThemeService()
+    fresh = FileContentStore()
     recipient = tmp_home / "recipient"
     imported = fresh.import_(archive, recipient)
     assert fresh.background_path(imported) == recipient / "00.png"
@@ -167,7 +167,7 @@ def test_export_rejects_missing_source(tmp_home: Path) -> None:
     archive = tmp_home / "out.tr"
 
     with pytest.raises(ThemeError, match="does not exist"):
-        ThemeService().export(missing, archive)
+        FileContentStore().export(missing, archive)
 
 
 def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
@@ -175,7 +175,7 @@ def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
     file_path.write_text("x")
 
     with pytest.raises(ThemeError, match="not a directory"):
-        ThemeService().export(file_path, tmp_home / "out.tr")
+        FileContentStore().export(file_path, tmp_home / "out.tr")
 
 
 # NB: export no longer preserves arbitrary subdirectory files — Phase E
@@ -185,17 +185,17 @@ def test_export_rejects_non_directory_source(tmp_home: Path) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# ThemeService.import_
+# FileContentStore.import_
 # ─────────────────────────────────────────────────────────────────────
 
 
 def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
     source = _write_self_contained_theme(tmp_home / "src", "demo")
     archive = tmp_home / "demo.tr"
-    ThemeService().export(source, archive)
+    FileContentStore().export(source, archive)
 
     target = tmp_home / "imported"
-    theme: Theme = ThemeService().import_(archive, target)
+    theme: Theme = FileContentStore().import_(archive, target)
 
     assert theme.name == "demo"
     assert theme.resolution == (320, 320)
@@ -205,19 +205,19 @@ def test_import_unpacks_a_round_tripped_archive(tmp_home: Path) -> None:
 
 def test_import_rejects_missing_archive(tmp_home: Path) -> None:
     with pytest.raises(ThemeError, match="does not exist"):
-        ThemeService().import_(tmp_home / "nope.tr", tmp_home / "out")
+        FileContentStore().import_(tmp_home / "nope.tr", tmp_home / "out")
 
 
 def test_import_rejects_existing_target(tmp_home: Path) -> None:
     source = _write_theme(tmp_home / "src", "demo")
     archive = tmp_home / "demo.tr"
-    ThemeService().export(source, archive)
+    FileContentStore().export(source, archive)
 
     target = tmp_home / "already_there"
     target.mkdir()
 
     with pytest.raises(ThemeError, match="already exists"):
-        ThemeService().import_(archive, target)
+        FileContentStore().import_(archive, target)
 
 
 def test_import_rejects_invalid_zip(tmp_home: Path) -> None:
@@ -226,7 +226,7 @@ def test_import_rejects_invalid_zip(tmp_home: Path) -> None:
     target = tmp_home / "out"
 
     with pytest.raises(ThemeError, match="Not a valid zip"):
-        ThemeService().import_(bogus, target)
+        FileContentStore().import_(bogus, target)
 
     # Failed extraction must clean up the half-created target.
     assert not target.exists()
@@ -248,7 +248,7 @@ def test_import_skips_zip_slip_members(tmp_home: Path) -> None:
         zf.writestr("subdir/../../also_escapes.txt", b"sneaky")
 
     target = tmp_home / "imported"
-    theme = ThemeService().import_(archive, target)
+    theme = FileContentStore().import_(archive, target)
 
     assert theme.name == "ok"
     # Only the safe member made it in
@@ -269,7 +269,7 @@ def test_import_cleans_up_when_archive_has_no_theme_config(
 
     target = tmp_home / "imported"
     with pytest.raises(ThemeError):
-        ThemeService().import_(archive, target)
+        FileContentStore().import_(archive, target)
     # Cleaned up
     assert not target.exists()
 
@@ -283,7 +283,7 @@ def test_save_theme_duplicates_active_theme(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
-    theme = ThemeService().load(source)
+    theme = FileContentStore().load(source)
     app.active_themes[_TEST_DEVICE_KEY] = theme
 
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="my-copy"))
@@ -309,7 +309,7 @@ def test_save_theme_rejects_unsafe_name(
     app: App, tmp_home: Path, bad_name: str,
 ) -> None:
     source = _write_theme(tmp_home, "source")
-    theme = ThemeService().load(source)
+    theme = FileContentStore().load(source)
     app.active_themes["0402:3922"] = theme
 
     result = app.dispatch(SaveTheme(key="0402:3922", name=bad_name))
@@ -322,7 +322,7 @@ def test_save_theme_flags_existing_then_overwrites(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     # First save succeeds
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="dupe")).ok
@@ -346,7 +346,7 @@ def test_save_theme_publishes_event(
     app: App, tmp_home: Path,
 ) -> None:
     source = _write_theme(tmp_home, "source")
-    app.active_themes["0402:3922"] = ThemeService().load(source)
+    app.active_themes["0402:3922"] = FileContentStore().load(source)
     events: list[ThemeSaved] = []
     app.events.subscribe(ThemeSaved, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
 
@@ -380,7 +380,7 @@ def test_reference_theme_resolves_assets_from_user_library(
             "mask": f"web/zt{w}{h}/m007",
         },
     )
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     assert svc.background_path(theme) == (bg_dir / "a042.mp4").resolve()
     assert svc.mask_path(theme) == (mask_dir / "01.png").resolve()
 
@@ -397,7 +397,7 @@ def test_store_background_round_trips_through_resolver(
     reference theme naming the returned ref resolves back to it."""
     paths = app.platform.paths()
     w, h = _TEST_RES
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     data = b"\x89PNG\r\n\x1a\nBACKGROUND"
 
     ref = svc.store_background(data, ".png", w, h)
@@ -418,7 +418,7 @@ def test_store_background_dedups_identical_bytes(app: App) -> None:
     """Storing identical bytes twice yields one file and the same ref."""
     paths = app.platform.paths()
     w, h = _TEST_RES
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     data = b"\x89PNG\r\n\x1a\nSAME"
 
     ref1 = svc.store_background(data, ".png", w, h)
@@ -430,7 +430,7 @@ def test_store_background_dedups_identical_bytes(app: App) -> None:
 
 def test_store_background_rejects_unknown_ext(app: App) -> None:
     """A background ext outside the shippable allowlist is refused."""
-    svc = ThemeService(app.platform.paths())
+    svc = FileContentStore(app.platform.paths())
     with pytest.raises(ThemeError):
         svc.store_background(b"x", ".exe", *_TEST_RES)
 
@@ -442,7 +442,7 @@ def test_store_mask_round_trips_through_resolver(
     reference theme naming the returned ref resolves back to its 01.png."""
     paths = app.platform.paths()
     w, h = _TEST_RES
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     image = b"\x89PNG\r\n\x1a\nMASKBYTES"
     dc = b"\xddDCBYTES"
 
@@ -465,7 +465,7 @@ def test_store_mask_dedups_identical_image(app: App) -> None:
     """Identical mask images dedup to one <id> directory."""
     paths = app.platform.paths()
     w, h = _TEST_RES
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     image = b"\x89PNG\r\n\x1a\nDUP"
 
     ref1 = svc.store_mask(image, w, h)
@@ -478,7 +478,7 @@ def test_store_mask_dedups_identical_image(app: App) -> None:
 def test_library_writers_require_paths() -> None:
     """Writers raise without a Paths port — a library write with no root
     is a wiring bug, not a user error."""
-    svc = ThemeService()
+    svc = FileContentStore()
     with pytest.raises(RuntimeError):
         svc.store_background(b"x", ".png", *_TEST_RES)
     with pytest.raises(RuntimeError):
@@ -517,7 +517,7 @@ def test_save_theme_repoints_active_theme_to_saved_dir(
     immediately after saving.
     """
     source = _write_theme_with_mask(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="saved-copy"))
 
@@ -580,7 +580,7 @@ def test_save_theme_bakes_user_overlay_layout_into_manifest(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_dc(tmp_home, "source")  # bundled clock
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     # The GUI grid seeds from the theme then dispatches the full grid, so
     # the user layer carries the theme's clock (kept) PLUS the new text.
@@ -618,7 +618,7 @@ def test_save_theme_without_user_edits_inlines_source_layout(
     import json as _json
 
     source = _write_theme_with_dc(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="no-edits"))
 
@@ -648,7 +648,7 @@ def test_save_theme_clears_user_overlay_after_bake(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_dc(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
         OverlayElement(
@@ -697,7 +697,7 @@ def test_explicit_load_clears_user_edits_restore_preserves(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_dc(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
         OverlayElement(id="edit1", type="text", x=5, y=5, text="X"),
@@ -743,7 +743,7 @@ def test_restore_keeps_cloud_background_explicit_load_clears_it(
     (reset_overrides=True).
     """
     source = _write_theme_with_dc(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
     app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/cloud/a078.mp4")
 
@@ -766,7 +766,7 @@ def test_save_theme_repoints_current_theme(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_dc(tmp_home, "source")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
         OverlayElement(
@@ -839,7 +839,7 @@ def test_save_theme_bakes_cloud_background_override(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     cloud_bg = tmp_home / "cloud_pool" / "fancy_bg.png"
     cloud_bg.parent.mkdir(parents=True)
@@ -872,7 +872,7 @@ def test_save_theme_references_cloud_video_from_library(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     cloud_video = tmp_home / "cloud_pool" / "loop.mp4"
     cloud_video.parent.mkdir(parents=True)
@@ -909,7 +909,7 @@ def test_resave_onto_self_keeps_referenced_background(
     asset (no black canvas on reload).
     """
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     cloud_video = tmp_home / "cloud_pool" / "loop.mp4"
     cloud_video.parent.mkdir(parents=True)
@@ -954,7 +954,7 @@ def test_save_theme_references_catalog_image_background(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     # A user-library image lives under user_background_dir (user_data/web/{w}{h}).
     w, h = _TEST_RES
@@ -990,7 +990,7 @@ def test_save_theme_references_non_catalog_mask_override(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     override = tmp_home / "picked" / "circle.png"
     override.parent.mkdir(parents=True)
@@ -1026,7 +1026,7 @@ def test_saved_pure_pointer_theme_renders_its_referenced_mask(
     from trcc.core.models import Kind, ProductInfo, Wire
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="ptr")).ok
     saved = user_theme_dir / "ptr"
 
@@ -1085,7 +1085,7 @@ def test_saved_theme_video_background_plays_via_reference(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     # A loose video the user picked (not already a catalog asset) is copied into
     # the user library on save.
     picked_video = tmp_home / "picked" / "a023.mp4"
@@ -1129,7 +1129,7 @@ def test_save_theme_inlines_mask_overlay_elements_into_manifest(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     # Mask brings its own layout — text element with distinctive value.
     app.settings.set_user_overlay_elements(
@@ -1164,7 +1164,7 @@ def test_save_theme_clears_all_overrides_after_save(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     cloud_bg = tmp_home / "pool" / "bg.png"
     cloud_mask = tmp_home / "pool" / "mask.png"
@@ -1214,7 +1214,7 @@ def test_save_theme_snapshots_preview_as_thumbnail(
 
     app.devices[_TEST_DEVICE_KEY] = _StubDevice()  # type: ignore[assignment]
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="snap")).ok
 
@@ -1237,7 +1237,7 @@ def test_save_then_reload_resolves_library_assets_not_source(
     ``Path("web/...")`` would never load).
     """
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
 
     cloud_bg = tmp_home / "pool" / "bg.png"
     cloud_mask = tmp_home / "pool" / "mask.png"
@@ -1285,7 +1285,7 @@ def test_save_theme_references_screencast_region(
     import json as _json
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_screencast_region(_TEST_DEVICE_KEY, (100, 50, 640, 480, True))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cast")).ok
@@ -1327,7 +1327,7 @@ def test_save_theme_references_media_player_uri_and_url(
     for name, uri in (("local", "/home/me/clip.mp4"),
                       ("web", "https://test-streams.mux.dev/x/y.m3u8")):
         source = _write_theme_with_real_pngs(tmp_home, f"src_{name}")
-        app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+        app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
         app.settings.set_media_player_uri(_TEST_DEVICE_KEY, uri)
 
         assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name=name)).ok
@@ -1434,7 +1434,7 @@ def test_import_theme_command_unpacks_archive(
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
     archive = tmp_home / "imported.tr"
-    ThemeService().export(source, archive)
+    FileContentStore().export(source, archive)
 
     result = app.dispatch(
         ImportTheme(
@@ -1453,7 +1453,7 @@ def test_import_theme_command_defaults_name_to_archive_stem(
 ) -> None:
     source = _write_theme(tmp_home, "src_theme")
     archive = tmp_home / "snowflake.tr"
-    ThemeService().export(source, archive)
+    FileContentStore().export(source, archive)
 
     result = app.dispatch(ImportTheme(
         key=_TEST_DEVICE_KEY, archive_path=archive, name="",
@@ -1481,7 +1481,7 @@ def test_import_theme_publishes_event(
 ) -> None:
     source = _write_theme(tmp_home, "src")
     archive = tmp_home / "src.tr"
-    ThemeService().export(source, archive)
+    FileContentStore().export(source, archive)
     events: list[ThemeImported] = []
     app.events.subscribe(ThemeImported, lambda e: events.append(e))  # type: ignore[arg-type, return-value]
 
@@ -1516,7 +1516,7 @@ def test_save_theme_references_cloud_mask_without_polluting_library(
     (cloud_dir / "config1.dc").write_bytes(b"\xddCLOUDDC")
 
     source = _write_theme_with_dc(tmp_home, "source")    # bg + clock, no mask
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_dir / "01.png"))
 
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cloud-themed"))
@@ -1591,7 +1591,7 @@ def test_store_mask_distinct_dc_yields_distinct_dirs(app: App) -> None:
     each with its own config1.dc; identical image+DC dedups."""
     paths = app.platform.paths()
     w, h = _TEST_RES
-    svc = ThemeService(paths)
+    svc = FileContentStore(paths)
     image = b"\x89PNG\r\n\x1a\nSHARED"
 
     ref1 = svc.store_mask(image, w, h, dc=b"\xddAAA")
@@ -1708,7 +1708,7 @@ def test_restore_loads_exact_stored_path_no_user_override(
     paths = app.platform.paths()
     shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Theme1")
     _write_theme_with_real_pngs(user_theme_dir, "Theme1")   # same-name user theme also exists
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(shipped)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
     assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
@@ -1721,7 +1721,7 @@ def test_restore_keeps_shipped_when_no_user_shadow(app: App) -> None:
     theme unchanged (no regression)."""
     paths = app.platform.paths()
     shipped = _write_theme_with_real_pngs(paths.theme_dir(*_TEST_RES), "Aurora")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(shipped)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(shipped)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(shipped.resolve()))
 
     assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
@@ -1733,7 +1733,7 @@ def test_restore_keeps_user_theme_unchanged(app: App, user_theme_dir: Path) -> N
     """current_theme already at a user theme → unchanged (prefer-user is a no-op
     for non-shipped paths)."""
     user = _write_theme_with_real_pngs(user_theme_dir, "MyMix")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(user)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(user)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(user.resolve()))
 
     assert app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY)).ok
@@ -1779,7 +1779,7 @@ def test_save_at_90_portrait_mask_saves_to_portrait_folder(
     device = _rotate_device()
     app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
     source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
-    app.active_themes[_ROTATE_KEY] = ThemeService().load(source)
+    app.active_themes[_ROTATE_KEY] = FileContentStore().load(source)
 
     # A real portrait mask under web/zt240320 (the portrait catalog).
     mask = app.platform.paths().cloud_mask_dir(240, 320) / "000d" / "01.png"
@@ -1816,7 +1816,7 @@ def test_save_at_90_landscape_content_saves_to_landscape_folder(
     device = _rotate_device()
     app.devices[_ROTATE_KEY] = device  # type: ignore[assignment]
     source = _write_theme_with_real_pngs(tmp_home, "land", 320, 240)
-    app.active_themes[_ROTATE_KEY] = ThemeService().load(source)
+    app.active_themes[_ROTATE_KEY] = FileContentStore().load(source)
     app.settings.set_orientation(_ROTATE_KEY, 90)
 
     assert app.dispatch(SaveTheme(key=_ROTATE_KEY, name="l")).ok
@@ -1958,7 +1958,7 @@ def test_save_theme_references_the_devices_own_library(
     )
 
     source = _write_theme_with_real_pngs(tmp_home, "srcly")
-    app.active_themes[key] = ThemeService().load(source)
+    app.active_themes[key] = FileContentStore().load(source)
 
     # The per-SKU cloud library must EXIST on disk, or DeviceLibraries falls
     # back to the generic one — that fallback is deliberate and tested by its
@@ -2007,7 +2007,7 @@ def test_save_theme_falls_back_when_the_sku_library_is_absent(
     )
 
     source = _write_theme_with_real_pngs(tmp_home, "srcgen")
-    app.active_themes[key] = ThemeService().load(source)
+    app.active_themes[key] = FileContentStore().load(source)
 
     w, h = resolution
     lib_dir = app.platform.paths().cloud_theme_dir(w, h)
@@ -2037,7 +2037,7 @@ def test_restore_seeds_a_null_layer_but_never_an_emptied_one(
     silently regress to a truthiness test and still look right.
     """
     source = _write_theme_with_dc(tmp_home, "seedsrc")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
     theme_elements = app.active_themes[_TEST_DEVICE_KEY].config.get(
         "elements") or []
@@ -2079,7 +2079,7 @@ def test_save_establishes_the_theme_through_one_path(
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_dc(tmp_home, "estsrc")
-    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
         OverlayElement(id="mine", type="text", x=7, y=7, text="MINE"),

@@ -940,7 +940,7 @@ class SingleFileTheme(ABC):
 class ContentStore(ABC):
     """Where themes, masks, backgrounds and capture configs are kept.
 
-    Concrete: ``ThemeService`` (``services/theme.py``) — a filesystem store
+    Concrete: ``FileContentStore`` (``adapters/theme/filesystem.py``) — a filesystem store
     under ``data_dir()`` / ``user_data_dir()``.
     """
 
