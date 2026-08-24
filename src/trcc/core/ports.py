@@ -984,9 +984,18 @@ class ContentStore(ABC):
     @abstractmethod
     def store_mask(
         self, image: bytes, width: int, height: int,
-        *, dc: bytes | None = None,
+        *, dc: bytes | None = None, name: str | None = None,
     ) -> str:
-        """Store a mask (+ its DC) in the user library; return its ref.
+        """Store a mask unit (``01.png`` + preview + optional DC); return its ref.
+
+        Two keying modes, because two callers mean different things:
+
+        * *name* given — the user NAMED this mask by uploading a file, and the
+          name is what they will see in the browser.  It is not a promise about
+          the bytes, so a re-store under the same name REPLACES.
+        * *name* omitted — the mask was captured implicitly (saving a theme
+          copies a loose mask into the library).  There is no user-facing
+          identity, so it is content-addressed and identical bytes dedup.
 
         The id hashes the image **plus its DC**, so two themes sharing a mask
         image but carrying different metrics get distinct units each with its
@@ -1043,6 +1052,15 @@ class ContentStore(ABC):
 
         Cloud (shipped) first, then user — neither hides the other.  Deduped
         by resolved path, so a same-id user + cloud pair both list.
+        """
+
+    @abstractmethod
+    def resolve_ref(self, ref: str) -> Path | None:
+        """Resolve a manifest ref minted by a ``store_*`` method to a path.
+
+        The store mints refs, so the store resolves them — a caller that has
+        just stored something must not re-derive where it went by spelling the
+        library layout a second time.
         """
 
     @abstractmethod

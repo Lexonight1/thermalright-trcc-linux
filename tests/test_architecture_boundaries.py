@@ -790,7 +790,7 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/core/_safe.py": 3,
     "trcc/core/commands/_helpers.py": 7,
     "trcc/core/commands/device.py": 13,
-    "trcc/core/commands/theme.py": 36,
+    "trcc/core/commands/theme.py": 32,
     "trcc/core/libraries.py": 1,
     "trcc/core/toolchain.py": 2,
     "trcc/services/_dc.py": 3,

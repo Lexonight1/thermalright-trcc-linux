@@ -1586,6 +1586,69 @@ def test_upload_custom_mask_always_writes_dc_even_without_metrics(
         "an uploaded mask must carry a config1.dc even with no metrics yet"
 
 
+def test_upload_custom_mask_writes_the_browser_tile(
+    app: App, tmp_home: Path,
+) -> None:
+    """An uploaded mask carries Theme.png as well as 01.png.
+
+    A user upload only HAS the one image, so the tile is that image.  The
+    legacy-port browsers gate visibility on Theme.png, so a mask without one
+    is stored-but-invisible — which is what happened while ``store_mask`` and
+    ``UploadCustomMask`` were two different writers of this unit.
+    """
+    from trcc.core.commands import UploadCustomMask
+
+    src = tmp_home / "tile.png"
+    src.write_bytes(_png_bytes(red=0x44))
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    w, h = _TEST_RES
+    mask_dir = app.platform.paths().user_mask_dir(w, h) / "custom_tile"
+    assert (mask_dir / "Theme.png").is_file(), \
+        "no browser tile — the mask would be stored but never shown"
+    assert (mask_dir / "Theme.png").read_bytes() == src.read_bytes()
+
+
+def test_re_uploading_the_same_name_replaces_the_image(
+    app: App, tmp_home: Path,
+) -> None:
+    """A NAME is not a promise about the bytes, so a re-upload REPLACES.
+
+    Content-addressed storage may skip a write whose id already exists — the
+    id IS the content.  A readable name carries no such guarantee: skipping
+    here would leave the OLD image sitting under the new upload's name, and
+    the user would see their replacement silently ignored.
+    """
+    from trcc.core.commands import UploadCustomMask
+
+    first, second = _png_bytes(red=0x11), _png_bytes(red=0x99)
+    assert first != second
+
+    src = tmp_home / "logo.png"
+    src.write_bytes(first)
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    src.write_bytes(second)
+    assert app.dispatch(UploadCustomMask(key=_TEST_DEVICE_KEY, source=src)).ok
+
+    w, h = _TEST_RES
+    mask_dir = app.platform.paths().user_mask_dir(w, h) / "custom_logo"
+    assert (mask_dir / "01.png").read_bytes() == second, \
+        "re-upload kept the old image — a name was treated as a content id"
+    assert (mask_dir / "Theme.png").read_bytes() == second
+
+
+def test_store_mask_rejects_a_name_that_escapes_the_library(app: App) -> None:
+    """A name becomes a path segment, so it is validated like a theme name."""
+    from trcc.core.errors import ThemeError
+
+    svc = FileContentStore(app.platform.paths())
+    w, h = _TEST_RES
+    for bad in ("../escape", "a/b", "", ".."):
+        with pytest.raises(ThemeError):
+            svc.store_mask(b"\x89PNG", w, h, name=bad)
+
+
 def test_store_mask_distinct_dc_yields_distinct_dirs(app: App) -> None:
     """Same mask image with DIFFERENT DC metrics → distinct catalog dirs,
     each with its own config1.dc; identical image+DC dedups."""

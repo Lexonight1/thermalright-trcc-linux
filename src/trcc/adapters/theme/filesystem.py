@@ -306,37 +306,56 @@ class FileContentStore(ContentStore):
 
     def store_mask(
         self, image: bytes, width: int, height: int,
-        *, dc: bytes | None = None,
+        *, dc: bytes | None = None, name: str | None = None,
     ) -> str:
-        """Store a mask (+ its DC) in the user library; return its ref.
+        """Store a mask unit in the user library; return its ref.
 
-        Writes *image* to ``user_mask_dir(w,h)/<id>/01.png`` and, when
-        *dc* is given, its layout to ``.../<id>/config1.dc`` — the
-        ``{01.png, config1.dc}`` unit a mask carries.  ``<id>`` is the
-        content hash of the mask *image* **plus its DC** when present, so
-        two themes that share a mask image but carry DIFFERENT metrics get
-        distinct catalog dirs each with its own ``config1.dc`` (hashing the
-        image alone would collapse them and the first DC would win).
-        Identical image + identical DC still dedup to one dir.  Returns the
-        directory ref ``web/zt{w}{h}/<id>`` that :meth:`mask_path` resolves
-        (write skipped when its ``01.png`` exists).
+        Writes the whole unit a mask is: ``01.png`` (the overlay), ``Theme.png``
+        (its browser tile — the same image, because a user upload only HAS the
+        one) and, when *dc* is given, ``config1.dc``.  Writing the preview here
+        is why this can be the single mask writer: ``UploadCustomMask`` used to
+        hand-roll the unit precisely because it needed a tile and this did not
+        produce one, and legacy-port browsers gate visibility on it.
+
+        Keying follows *name*, and the difference is not cosmetic:
+
+        * *name* — the user's own label for a mask they uploaded.  A name says
+          nothing about the bytes, so the unit is REPLACED; skipping the write
+          would leave the old image under the new upload's name.
+        * no *name* — content-addressed (image + DC hashed together, so two
+          themes sharing an image but not its metrics stay distinct).  Identical
+          bytes dedup, because here the id IS the content.
+
+        Returns ``web/zt{w}{h}/<id>``, which :meth:`resolve_ref` and
+        :meth:`mask_path` both resolve.
         """
         if self._paths is None:
             raise RuntimeError("store_mask requires paths injection")
-        asset_id = self._content_id(image if dc is None else image + dc)
+        asset_id = _safe_asset_name(name) if name is not None else (
+            self._content_id(image if dc is None else image + dc)
+        )
         dest_dir = self._paths.user_mask_dir(width, height) / asset_id
         td = ThemeDir(dest_dir)
         ref = f"web/zt{width}{height}/{asset_id}"
-        if td.mask.exists():
+        if name is None and td.mask.exists():
             log.info("store_mask: dedup hit %s → %s", asset_id, dest_dir)
             return ref
         dest_dir.mkdir(parents=True, exist_ok=True)
+        replacing = td.mask.exists()
         td.mask.write_bytes(image)
+        td.preview.write_bytes(image)
         if dc is not None:
             td.dc.write_bytes(dc)
-        log.info("store_mask: wrote mask=%d byte(s) dc=%s → %s (ref=%s)",
-                 len(image), "yes" if dc is not None else "no", dest_dir, ref)
+        log.info("store_mask: %s mask=%d byte(s) dc=%s key=%s → %s (ref=%s)",
+                 "replaced" if replacing else "wrote", len(image),
+                 "yes" if dc is not None else "no",
+                 "name" if name is not None else "content", dest_dir, ref)
         return ref
+
+    def resolve_ref(self, ref: str) -> Path | None:
+        """Resolve a ref minted by a ``store_*`` method back to a path."""
+        log.debug("resolve_ref: %r", ref)
+        return self._resolve_asset_ref(ref)
 
     def store_screencast(
         self, region: tuple[int, int, int, int, bool],
@@ -948,6 +967,18 @@ class FileContentStore(ContentStore):
         width = int(config.get("width", 0))
         height = int(config.get("height", 0))
         return (width, height)
+
+
+def _safe_asset_name(name: str) -> str:
+    """Validate a user-supplied library id — it becomes a path segment.
+
+    Same guard ``delete`` applies to a theme name, for the same reason: the
+    moment a name reaches the filesystem it is an injection surface.
+    """
+    if not name or "/" in name or "\\" in name or name in (".", ".."):
+        log.warning("_safe_asset_name: rejected %r", name)
+        raise ThemeError(f"Invalid asset name: {name!r}")
+    return name
 
 
 def _has_theme_marker(entry: Path) -> bool:

@@ -1427,13 +1427,6 @@ class UploadCustomMask(Command[MaskUploadResult]):
     source: Path
 
     def execute(self, app: App) -> MaskUploadResult:
-        import shutil
-
-        if not self.source.is_file():
-            return MaskUploadResult(
-                ok=False, key=self.key, path="",
-                message=f"Source not a file: {self.source}",
-            )
         resolution = _resolve_oriented_resolution(app, self.key)
         if resolution is None:
             return MaskUploadResult(
@@ -1441,43 +1434,45 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 message=(f"Cannot resolve resolution for {self.key} — "
                          "connect the device or register the product first"),
             )
-        masks_root = app.platform.paths().user_mask_dir(*resolution)
-        mask_dir = masks_root / f"custom_{self.source.stem}"
         try:
-            mask_dir.mkdir(parents=True, exist_ok=True)
+            image = self.source.read_bytes()
         except OSError as e:
             return MaskUploadResult(
                 ok=False, key=self.key, path="",
-                message=f"Failed to ensure masks dir: {e}",
-            )
-        mask_file = ThemeDir(mask_dir).mask
-        preview_file = ThemeDir(mask_dir).preview
-        try:
-            shutil.copy2(self.source, mask_file)
-            # Preview = mask itself.  Legacy's cloud catalog ships a
-            # distinct Theme.png, but user uploads only have the one
-            # image; copying it satisfies legacy-port browsers that
-            # gate visibility on Theme.png existence.
-            shutil.copy2(self.source, preview_file)
-        except OSError as e:
-            return MaskUploadResult(
-                ok=False, key=self.key, path="",
-                message=f"Copy failed: {e}",
+                message=f"Cannot read source {self.source}: {e}",
             )
         # Every uploaded mask carries an editable config1.dc from the moment
         # of upload (allow_empty=True) — seeded with the device's CURRENT
-        # overlay, or an empty placeholder the user then fills.  Written
-        # BEFORE ApplyMask so the upload applies with its metrics.
+        # overlay, or an empty placeholder the user then fills.  Stored WITH
+        # the image so the upload applies with its metrics.
         dc_bytes = overlay_elements_to_dc(
             device_overlay_layout(app, self.key), allow_empty=True,
         )
-        if dc_bytes is not None:
-            try:
-                ThemeDir(mask_dir).dc.write_bytes(dc_bytes)
-                log.info("UploadCustomMask: wrote config1.dc (%d byte(s)) → %s",
-                         len(dc_bytes), mask_dir.name)
-            except OSError as e:
-                log.warning("UploadCustomMask: config1.dc write failed (%s)", e)
+        # Named, not content-addressed: this mask is one the user chose and
+        # will look for by name in the browser.  The store owns the layout —
+        # this Command no longer spells out the mask dir, its members, or the
+        # preview convention, which is how it drifted from ``store_mask`` into
+        # a second way of writing the same unit.
+        try:
+            ref = app.themes.store_mask(
+                image, *resolution, dc=dc_bytes,
+                name=f"custom_{self.source.stem}",
+            )
+        except (ThemeError, OSError) as e:
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=f"Could not store mask: {e}",
+            )
+        mask_dir = app.themes.resolve_ref(ref)
+        if mask_dir is None:
+            return MaskUploadResult(
+                ok=False, key=self.key, path="",
+                message=f"Stored mask {ref} did not resolve back",
+            )
+        mask_file = ThemeDir(mask_dir).mask
+        log.info("UploadCustomMask: %s → %s (ref=%s, dc=%s)",
+                 self.source.name, mask_dir.name, ref,
+                 "yes" if dc_bytes is not None else "no")
         apply_result = ApplyMask(key=self.key, path=mask_file).execute(app)
         if not apply_result.ok:
             return MaskUploadResult(

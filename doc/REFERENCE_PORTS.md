@@ -42,7 +42,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
 | [`BaseOS`](#baseos) | 12 | 15 | 8 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
-| [`ContentStore`](#contentstore) | 21 | 0 | 1 |
+| [`ContentStore`](#contentstore) | 22 | 0 | 1 |
 | [`Platform`](#platform) | 22 | 0 | 8 |
 
 ---
@@ -619,7 +619,7 @@ surface_size(surface: 'Any') -> tuple[int, int]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (21):**
+**You implement (22):**
 
 ```python
 background_path(theme: 'Theme') -> Path | None
@@ -635,11 +635,12 @@ load(path: 'Path') -> Theme
 mask_path(theme: 'Theme') -> Path | None
 media_player_uri(theme: 'Theme') -> str | None
 preview_path(theme: 'Theme') -> Path | None
+resolve_ref(ref: 'str') -> Path | None
 screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None
 single_file_theme(source: 'Path', kind: 'str') -> AbstractContextManager[SingleFileTheme]
 stage(target: 'Path') -> AbstractContextManager[Path]
 store_background(data: 'bytes', ext: 'str', width: 'int', height: 'int') -> str
-store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None) -> str
+store_mask(image: 'bytes', width: 'int', height: 'int', dc: 'bytes | None' = None, name: 'str | None' = None) -> str
 store_media_player(uri: 'str') -> str
 store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
 video_path(theme: 'Theme') -> Path | None
