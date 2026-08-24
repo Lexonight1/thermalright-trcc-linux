@@ -751,9 +751,18 @@ def test_cli_and_api_never_touch_app_settings_directly() -> None:
 
 _FS_WRITE_CALLS = frozenset({
     "write_text", "write_bytes", "mkdir", "unlink", "rmdir", "touch",
-    "symlink_to", "chmod",
+    "symlink_to", "chmod", "fsync",
 })
 _FS_READ_CALLS = frozenset({"read_text", "read_bytes"})
+# Path INTERROGATION — asking the filesystem a question ABOUT a path rather
+# than moving its bytes.  These were absent until 2026-08-24, which made the
+# total read as "filesystem calls in core+services" when it only ever counted
+# content I/O: the old ``ThemeService`` scored 34 here against 87 by a full
+# sweep.  A check whose denominator excludes what it seeks reports a gap it
+# cannot see, so the probes are counted and the baselines re-measured.
+_FS_PROBE_CALLS = frozenset({
+    "exists", "is_dir", "is_file", "iterdir", "glob", "rglob", "stat", "lstat",
+})
 _FS_MODULES = frozenset({"shutil", "zipfile", "tarfile", "tempfile"})
 
 # Per-file file-I/O counts in core/ + services/, as they stand.  Burn these
@@ -766,26 +775,60 @@ _FS_MODULES = frozenset({"shutil", "zipfile", "tarfile", "tempfile"})
 # methods touched the filesystem — and it now lives at
 # ``adapters/theme/filesystem.py`` behind the ``ContentStore`` port.  This
 # ratchet counts the inner rings, so re-homing it removes it from the
-# denominator.  What remains below is work still to move.
+# denominator.
 #
-# NOTE the narrowness of this measurement, so nobody reads the total as "every
-# filesystem call": path INTERROGATION (``exists`` / ``is_dir`` / ``is_file``
-# / ``iterdir`` / ``glob`` / ``stat`` / ``resolve``) is not counted at all.  A
-# wider AST sweep found 87 calls in the old ThemeService against the 34 counted
-# here.  Widening the sets is a separate, deliberate re-baseline.
+# RE-BASELINED 2026-08-24, and the jump is the point: 33 -> 110.  Nothing
+# regressed.  The counter had never looked at path INTERROGATION, so it was
+# reporting content I/O under the name "filesystem calls" — and four files
+# doing nothing but interrogation were invisible to it ENTIRELY:
+# ``services/display.py`` (4), ``services/cloud_theme.py`` (5),
+# ``services/overlay.py`` (2) and ``core/libraries.py`` (1).  Two of those are
+# the services CLAUDE.md calls the pure-Python core hexagon.  A gate that
+# cannot see a file cannot report that file's drift, which is why the numbers
+# below are measured rather than carried forward.
 KNOWN_FS_IO: dict[str, int] = {
-    "trcc/core/_safe.py": 1,
-    "trcc/core/commands/_helpers.py": 1,
-    "trcc/core/commands/device.py": 2,
-    "trcc/core/commands/theme.py": 12,
-    "trcc/core/toolchain.py": 1,
-    "trcc/services/_dc.py": 2,
-    "trcc/services/first_run.py": 3,
-    "trcc/services/media.py": 1,
-    "trcc/services/migration.py": 4,
-    "trcc/services/settings.py": 1,
-    "trcc/services/video_export.py": 5,
+    "trcc/core/_safe.py": 3,
+    "trcc/core/commands/_helpers.py": 7,
+    "trcc/core/commands/device.py": 13,
+    "trcc/core/commands/theme.py": 36,
+    "trcc/core/libraries.py": 1,
+    "trcc/core/toolchain.py": 2,
+    "trcc/services/_dc.py": 3,
+    "trcc/services/cloud_theme.py": 5,
+    "trcc/services/display.py": 4,
+    "trcc/services/first_run.py": 5,
+    "trcc/services/media.py": 5,
+    "trcc/services/migration.py": 13,
+    "trcc/services/overlay.py": 2,
+    "trcc/services/settings.py": 4,
+    "trcc/services/video_export.py": 7,
 }
+
+
+def _is_fs_call(node: ast.Call) -> bool:
+    """True if *node* asks the filesystem something.
+
+    ``.replace()`` and ``.open()`` stay OUT: ``str.replace`` and
+    ``builtins.open`` share those names and counting them inflated the first
+    measurement of this by 40%.
+
+    ``resolve`` is the one name that needed a discriminator rather than a
+    verdict.  ``Path.resolve()`` takes no positional operand — the path IS the
+    receiver — while all three same-named calls in the inner rings that are
+    NOT filesystem calls pass one: ``Registry._on_missing.resolve(name, key,
+    table)`` and ``toolchain.resolve('ffmpeg')`` twice (a PATH probe, which
+    belongs with ``PackageManager``).  Arity is the rule, not a blocklist of
+    those three receivers, so a new non-path ``resolve`` cannot silently join
+    the count — and ``path.resolve(strict=True)`` still does.
+    """
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    name = node.func.attr
+    if getattr(node.func.value, "id", None) in _FS_MODULES:
+        return True
+    if name in _FS_WRITE_CALLS or name in _FS_READ_CALLS or name in _FS_PROBE_CALLS:
+        return True
+    return name == "resolve" and not node.args
 
 
 def _fs_io_counts() -> dict[str, int]:
@@ -794,16 +837,10 @@ def _fs_io_counts() -> dict[str, int]:
     for area in ("core", "services"):
         for path in sorted((_SRC / "trcc" / area).rglob("*.py")):
             rel = str(path.relative_to(_SRC))
-            n = 0
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if not (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)):
-                    continue
-                name = node.func.attr
-                module = getattr(node.func.value, "id", None)
-                if (module in _FS_MODULES or name in _FS_WRITE_CALLS
-                        or name in _FS_READ_CALLS):
-                    n += 1
+            n = sum(
+                1 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                if isinstance(node, ast.Call) and _is_fs_call(node)
+            )
             if n:
                 counts[rel] = n
     return counts
