@@ -6,9 +6,10 @@ touching USB / SG_IO / ioctl.
 """
 from __future__ import annotations
 
+import inspect
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
@@ -340,6 +341,33 @@ def fake_scsi() -> FakeScsiTransport:
     return FakeScsiTransport()
 
 
+def assert_stub_matches(real: Callable[..., Any], stub: Callable[..., Any]) -> None:
+    """Fail loudly when a monkeypatched stub stops matching what it replaces.
+
+    A stub restates a signature, so it drifts — and it drifts SILENTLY: the
+    caller raises ``TypeError``, something upstream catches it, and the suite
+    stays green while the stub stubs nothing.  ``_stub_data_install`` spent a
+    release in exactly that state after ``ensure_all`` gained two parameters
+    (0709ad5f), and the only symptom was an ERROR line nobody read.
+
+    Compares everything after the receiver by name, kind and required-ness, so
+    a renamed ``self`` is fine and a new parameter is not.  Call this from any
+    fixture that patches a real method with a hand-written replacement.
+    """
+    def shape(fn: Callable[..., Any]) -> list[tuple[str, object, bool]]:
+        params = list(inspect.signature(fn).parameters.values())[1:]
+        return [(p.name, p.kind, p.default is p.empty) for p in params]
+
+    if shape(real) != shape(stub):
+        raise AssertionError(
+            f"stub signature drifted from {real.__qualname__}:\n"
+            f"  real: {inspect.signature(real)}\n"
+            f"  stub: {inspect.signature(stub)}\n"
+            "Update the stub — a mismatched one raises TypeError at the call "
+            "site and is swallowed, leaving the suite green and unstubbed."
+        )
+
+
 @pytest.fixture(autouse=True)
 def _stub_data_install(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test downloads theme archives over the network.
@@ -351,11 +379,21 @@ def _stub_data_install(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from trcc.services.data_install import DataInstallService, EnsureDataResult
 
-    def _noop(_self: object, resolution: tuple[int, int]) -> EnsureDataResult:
+    def _noop(
+        _self: object, resolution: tuple[int, int],
+        variant: str = "", mask_variant: str = "",
+    ) -> EnsureDataResult:
+        # Signature MUST track ``DataInstallService.ensure_all``.  It gained
+        # ``variant`` / ``mask_variant`` with the per-SKU artwork libraries
+        # (0709ad5f) and this stub did not, so every call raised TypeError,
+        # ``data_install_runner`` swallowed it, and the suite stayed green
+        # while the stub stubbed nothing.
+        del variant, mask_variant
         return EnsureDataResult(
             resolution=resolution, themes_ok=True, web_ok=True, masks_ok=True,
         )
 
+    assert_stub_matches(DataInstallService.ensure_all, _noop)
     monkeypatch.setattr(DataInstallService, "ensure_all", _noop)
 
     # ...and keep the install SYNCHRONOUS under test.  Production runs it on a
