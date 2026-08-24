@@ -28,7 +28,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
 from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
-from ...core.models import panel_asset_dims
+from ...core.models import ThemeDir, panel_asset_dims
 from .assets import Assets
 from .base import make_icon_button
 
@@ -163,7 +163,7 @@ class ExportWorker(QThread):
 
         # Write Theme.zt
         self.progress.emit(85, "Writing Theme.zt...")
-        output_path = temp_dir / 'Theme.zt'
+        output_path = ThemeDir(temp_dir).zt
         frame_count = len(jpeg_data_list)
 
         with output_path.open('wb') as f:

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
-from ..core.models import OverlayElement
+from ..core.models import OverlayElement, ThemeDir
 from ..core.ports import Renderer
 from . import _dc as Dc
 from ._clock import is_default_date_pattern, resolve_clock
@@ -23,7 +23,6 @@ from ._clock import is_default_date_pattern, resolve_clock
 log = logging.getLogger(__name__)
 
 
-_DC_CONFIG_FILE = "config1.dc"
 
 # Unit suffixes stripped off a metric value before drawing — the Windows app
 # (TRCC.cs) removes ℃/℉/MHz/%/RPM from every sensor value and draws the bare
@@ -41,67 +40,55 @@ def _strip_metric_unit(text: str) -> str:
 
 def resolve_overlay_elements(
     theme_config: dict[str, Any],
-    mask_elements: list[OverlayElement] | None,
-    user_elements: list[OverlayElement],
+    user_elements: list[OverlayElement] | None,
 ) -> list[dict[str, Any]]:
-    """The ONE effective overlay layout for a device, by precedence.
+    """The device's overlay layout — its WORKING layer, or the theme's.
 
-    Legacy held a single ``self.config`` and ``set_config`` REPLACED it;
-    ``_restore_mask_and_overlay`` resolved it as mask > saved-user > theme.
-    The cutover split that one config into three persisted sources — the
-    user's edits, an applied mask's layout, and the theme's bundled
-    elements — that were wrongly STACKED at render time (every element
-    drew twice).  This restores legacy's single-layout semantics: exactly
-    one source wins and is drawn, never added on top of another.
+    The C# keeps ONE array (``UCXiTongXianShiSubArray``, 2.1.6 FormCZTV.cs):
+    a theme load or a mask apply reads straight into it, the editor shows it,
+    the renderer draws it, the save writes it back.  The cutover split that
+    into three stored sources — user edits, an applied mask's layout, the
+    theme's bundled elements — and STACKED them at render time, so every
+    element drew twice.  That was corrected to a precedence, and the
+    precedence is now gone too: ``LoadTheme`` / ``ApplyMask`` / ``SaveTheme``
+    ADOPT their source into the working layer, so there is only ever one.
 
-    Precedence (each REPLACES, never adds):
-
-    * ``user_elements`` (the device's live edits) win when present.  A
-      source change — explicit theme switch (``LoadTheme``) or mask apply
-      (``ApplyMask``) — clears them, so a stale layout never bleeds into a
-      new theme.  Combined with that clear, "user first" is observably
-      identical to legacy's "mask > saved-user": after applying a mask the
-      user layer is empty, so the mask wins until the user edits again.
-    * ``mask_elements`` (an applied mask's own layout, set by ``ApplyMask``
-      from the mask's ``config1.dc``) override the theme so the mask's
-      metric placement survives a theme swap.
-    * ``theme_config["elements"]`` — the theme's bundled layout — is the
-      default when neither override is present.
+    * ``user_elements`` — the working layer — is the answer whenever it
+      exists.  ``None`` means the device has none of its own; ``[]`` means it
+      has one and the user emptied it, which draws nothing.  Collapsing those
+      two is what made a deleted last element reappear (#276).
+    * ``theme_config["elements"]`` is the fallback for a null layer.  It is
+      the net under the config schema v1→v2 migration: an upgrading user's
+      layer reads as ``None`` until the first reconnect seeds it.  Strictly it
+      cannot fire — ``app.active_themes`` is written only by ``LoadTheme``,
+      which seeds the layer a few lines later, so "a theme to fall back to"
+      and "a null layer" cannot both be true — but a blank overlay is the
+      wrong thing to be wrong about, and one branch is a cheap net.
 
     Returns flat dicts (``OverlayElement.to_dict`` shape, which the theme's
     own elements already use) so every consumer — render, the DC writer,
     theme save/export — shares one definition of "what is on screen".
     """
-    if user_elements:
+    if user_elements is not None:
         return [e.to_dict() for e in user_elements]
-    if mask_elements is not None:
-        return [e.to_dict() for e in mask_elements]
     return list(theme_config.get("elements") or [])
 
 
-def overlay_source(
-    mask_elements: list[OverlayElement] | None,
-    user_elements: list[OverlayElement],
-) -> str:
+def overlay_source(user_elements: list[OverlayElement] | None) -> str:
     """Name the layer ``resolve_overlay_elements`` returns for these inputs.
 
     The same precedence, reported instead of applied, so a log line, a
     Result field and a save manifest all name the winning layer identically
     rather than each restating the ternary.
     """
-    source = (
-        "user" if user_elements
-        else "mask" if mask_elements is not None
-        else "theme"
-    )
+    source = "user" if user_elements is not None else "theme"
     log.debug("overlay_source: %s", source)
     return source
 
 
 def effective_overlay_layout(
     theme_config: dict[str, Any],
-    mask_elements: list[OverlayElement] | None,
-    user_elements: list[OverlayElement],
+    user_elements: list[OverlayElement] | None,
 ) -> list[dict[str, Any]]:
     """The effective layout with every element addressable by ``id``.
 
@@ -122,9 +109,7 @@ def effective_overlay_layout(
     second call.  A name a real id already owns is skipped, so a mint can
     never shadow a genuine element.
     """
-    elements = resolve_overlay_elements(
-        theme_config, mask_elements, user_elements,
-    )
+    elements = resolve_overlay_elements(theme_config, user_elements)
     taken = {str(e["id"]) for e in elements if e.get("id")}
     out: list[dict[str, Any]] = []
     minted = 0
@@ -196,7 +181,7 @@ class OverlayService:
         (clock elements skipped — same behaviour as ``render`` when
         clock is missing).
         """
-        dc_file = dc_path / _DC_CONFIG_FILE if dc_path.is_dir() else dc_path
+        dc_file = ThemeDir(dc_path).dc if dc_path.is_dir() else dc_path
         parsed = Dc.File(dc_file).read()
         config: dict[str, Any] = {
             "overlay_enabled": True,
@@ -237,7 +222,7 @@ class OverlayService:
         if mask_w >= lcd_w and mask_h >= lcd_h:
             return (0, 0)
         centered = ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
-        dc_path = mask_dir / _DC_CONFIG_FILE
+        dc_path = ThemeDir(mask_dir).dc
         if not dc_path.is_file():
             return centered
         try:

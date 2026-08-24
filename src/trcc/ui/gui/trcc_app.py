@@ -47,7 +47,7 @@ from ...core.commands import (
     StopScreencast,
     StopVideo,
 )
-from ...core.models import HardwareMetrics, Kind
+from ...core.models import HardwareMetrics, Kind, ThemeDir
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
@@ -2144,7 +2144,7 @@ class TRCCApp(QMainWindow):
         if img.width() != w or img.height() != hw:
             img = img.scaled(w, hw, _Qt.AspectRatioMode.IgnoreAspectRatio,
                              _Qt.TransformationMode.SmoothTransformation)
-        img.save(str(mask_dir / '01.png'))
+        img.save(str(ThemeDir(mask_dir).mask))
 
         thumb_size = 120
         scale = min(thumb_size / max(img.width(), 1), thumb_size / max(img.height(), 1))
@@ -2157,12 +2157,12 @@ class TRCCApp(QMainWindow):
         painter = _QPainter(bg)
         painter.drawImage((thumb_size - tw) // 2, (thumb_size - th) // 2, thumb)
         painter.end()
-        bg.save(str(mask_dir / 'Theme.png'))
+        bg.save(str(ThemeDir(mask_dir).preview))
         log.info("Imported custom mask: %s", mask_name)
 
         new_item = MaskItem(
             name=mask_name, path=str(mask_dir),
-            preview=str(mask_dir / 'Theme.png'),
+            preview=str(ThemeDir(mask_dir).preview),
             is_local=True, is_custom=True)
         h.apply_mask(new_item)
         if hasattr(self, 'uc_theme_mask'):

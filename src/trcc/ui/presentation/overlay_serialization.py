@@ -29,15 +29,13 @@ from ...core.models import (
     TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
+    ThemeDir,
 )
 from ...services import _dc as Dc
 
 log = logging.getLogger(__name__)
 
 
-_JSON_CONFIG_FILE = "trcc.json"
-_DC_CONFIG_FILE = "config1.dc"
-_LEGACY_CONFIG_FILE = "config.json"
 _DEFAULT_FONT_NAME = "Microsoft YaHei"
 
 
@@ -247,13 +245,14 @@ def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
 
     Returns ``{}`` when none exist or all parse empty.
     """
-    raw_json = load_json_or_default(theme_dir / _JSON_CONFIG_FILE, None)
+    layout = ThemeDir(theme_dir)
+    raw_json = load_json_or_default(layout.json, None)
     if isinstance(raw_json, dict):
         overlay = _theme_config_to_overlay_dict(raw_json)
         if overlay:
             return overlay
 
-    dc_path = theme_dir / _DC_CONFIG_FILE
+    dc_path = layout.dc
     if dc_path.is_file():
         try:
             theme_config = Dc.File(dc_path).read()
@@ -266,7 +265,7 @@ def dc_as_legacy_overlay_config(theme_dir: Path) -> dict[str, dict[str, Any]]:
             if overlay:
                 return overlay
 
-    raw = load_json_or_default(theme_dir / _LEGACY_CONFIG_FILE, None)
+    raw = load_json_or_default(layout.legacy_json, None)
     if isinstance(raw, dict):
         dc_dict = raw.get("dc")
         if isinstance(dc_dict, dict):

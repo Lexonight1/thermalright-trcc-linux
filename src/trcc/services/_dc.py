@@ -184,17 +184,17 @@ class Writer:
 
     __slots__ = ()
 
-    def serialize(
-        self,
-        config: dict[str, Any],
-        *,
-        user_overlay_elements: list[dict[str, Any]] | None = None,
-    ) -> bytes:
-        log.info("serialize: theme_elements=%d user_elements=%d",
-                 len(config.get("elements", [])),
-                 len(user_overlay_elements or []))
+    def serialize(self, config: dict[str, Any]) -> bytes:
+        """Serialise ``config`` — its ``elements`` ARE the layout.
+
+        There used to be a ``user_overlay_elements=`` parameter that this
+        appended to ``config["elements"]``, which made the codec the third
+        place that decided what an overlay contains.  Callers now resolve the
+        one layout (``device_overlay_layout``) and hand it in as the config's
+        elements; the codec decides nothing.
+        """
+        log.info("serialize: %d element(s)", len(config.get("elements", [])))
         elements: list[dict[str, Any]] = list(config.get("elements", []))
-        elements.extend(user_overlay_elements or [])
         w = _Writer()
         w.write_byte(_MAGIC_DD)
         w.write_bool(True)
@@ -248,25 +248,16 @@ class File:
             log.warning("File.read: parse failed for %s: %s", self.path, e)
             raise ThemeError(f"Invalid DC file {self.path}: {e}") from e
 
-    def write(
-        self,
-        config: dict[str, Any],
-        *,
-        user_overlay_elements: list[dict[str, Any]] | None = None,
-    ) -> None:
+    def write(self, config: dict[str, Any]) -> None:
         elements = config.get("elements") or []
-        user_n = len(user_overlay_elements or [])
-        log.info("File.write: %s — %d theme element(s) + %d user element(s)",
-                 self.path, len(elements), user_n)
+        log.info("File.write: %s — %d element(s)", self.path, len(elements))
         if self.path.parent and not self.path.parent.exists():
             log.warning("File.write: output dir missing %s — refusing",
                         self.path.parent)
             raise ThemeError(
                 f"DC output directory missing: {self.path.parent}"
             )
-        data = self.writer.serialize(
-            config, user_overlay_elements=user_overlay_elements,
-        )
+        data = self.writer.serialize(config)
         try:
             self.path.write_bytes(data)
             log.info("File.write: %s — %d bytes written", self.path, len(data))

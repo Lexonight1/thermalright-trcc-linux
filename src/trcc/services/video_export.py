@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core import toolchain
+from ..core.models import ThemeDir
 
 log = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ class VideoExporter:
         try:
             self._run_ffmpeg(req, frames_dir, progress)
             jpegs = self._collect_frames(frames_dir, progress)
-            output_path = temp_dir / "Theme.zt"
+            output_path = ThemeDir(temp_dir).zt
             self._write_zt(output_path, jpegs, progress)
             progress(100, "Done")
             return output_path

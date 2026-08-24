@@ -83,6 +83,22 @@ _CONFIG_FILE = "trcc.json"
 # state.  Next ``_save`` writes the new filename.
 _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 
+# Persisted-config schema version.  Bump ONLY when the MEANING of an existing
+# field changes — a new field needs no bump (it just defaults), and neither
+# does a removed one (``_device_settings_from_dict`` drops unknown keys).
+#
+#   1 (implicit, no key)  ``user_overlay_elements: []`` meant "this device has
+#                         no overlay layout of its own" and the render fell
+#                         back to the theme's.
+#   2                     it means "the layout is EMPTY — draw nothing".  The
+#                         no-layout state is now ``None``.
+#
+# Every config written before the bump carries ``[]`` for the majority of
+# users who never edited an overlay, so reading one at face value under v2
+# would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
+# which is the state ``LoadTheme``'s restore branch then seeds from the theme.
+_SCHEMA_VERSION = 2
+
 
 class Settings:
     """Per-app and per-device settings with JSON persistence.
@@ -323,26 +339,6 @@ class Settings:
         with self._lock:
             dev = self.for_device(key)
             dev.mask_path = path
-            if path is None:
-                dev.mask_overlay_elements = None
-            self._save()
-
-    def set_mask_overlay_elements(
-        self, key: str, elements: list[OverlayElement] | None,
-    ) -> None:
-        """Store the mask's DC overlay-element layout for a device.
-
-        ApplyMask calls this with the mask's parsed DC elements — the
-        renderer uses them as an override over ``theme.config["elements"]``
-        so the mask's metric layout survives a theme swap (cloud
-        background swap, local theme reselection, etc.).
-        """
-        log.info("set_mask_overlay_elements: key=%s count=%s", key,
-                 None if elements is None else len(elements))
-        with self._lock:
-            self.for_device(key).mask_overlay_elements = (
-                list(elements) if elements is not None else None
-            )
             self._save()
 
     def set_mask_visible(self, key: str, visible: bool) -> None:
@@ -662,7 +658,12 @@ class Settings:
         log.info("add_user_overlay_element: key=%s id=%s type=%s",
                  key, element.id, element.type)
         with self._lock:
-            self.for_device(key).user_overlay_elements.append(element)
+            dev = self.for_device(key)
+            # Adding is itself an establishment: a device with no layout of
+            # its own (``None``) gains one holding this element.
+            if dev.user_overlay_elements is None:
+                dev.user_overlay_elements = []
+            dev.user_overlay_elements.append(element)
             self._save()
 
     def update_user_overlay_element(
@@ -676,7 +677,7 @@ class Settings:
         log.info("update_user_overlay_element: key=%s id=%s fields=%s",
                  key, element_id, sorted(fields))
         with self._lock:
-            elements = self.for_device(key).user_overlay_elements
+            elements = self.for_device(key).user_overlay_elements or []
             for idx, e in enumerate(elements):
                 if e.id == element_id:
                     for name, value in fields.items():
@@ -695,7 +696,7 @@ class Settings:
         """
         log.info("delete_user_overlay_element: key=%s id=%s", key, element_id)
         with self._lock:
-            elements = self.for_device(key).user_overlay_elements
+            elements = self.for_device(key).user_overlay_elements or []
             for idx, e in enumerate(elements):
                 if e.id == element_id:
                     removed = elements.pop(idx)
@@ -793,13 +794,20 @@ class Settings:
         if not isinstance(raw, dict):
             return
 
+        schema = raw.get("schema", 1)
+        if not isinstance(schema, int):
+            log.warning("_load: %s has a non-integer schema %r — treating it "
+                        "as 1 (the pre-versioned shape)", path, schema)
+            schema = 1
         app_data = raw.get("app", {})
         with self._lock:
             for field_name, value in app_data.items():
                 if hasattr(self._app, field_name):
                     setattr(self._app, field_name, value)
             for key, data in raw.get("devices", {}).items():
-                self._devices[key] = _device_settings_from_dict(data)
+                self._devices[key] = _device_settings_from_dict(
+                    _migrate_device(data, schema, key),
+                )
             for key, data in raw.get("led_devices", {}).items():
                 self._led_devices[key] = _led_settings_from_dict(data)
 
@@ -809,6 +817,7 @@ class Settings:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         payload = {
+            "schema": _SCHEMA_VERSION,
             "app": asdict(self._app),
             "devices": {k: asdict(v) for k, v in self._devices.items()},
             "led_devices": {k: asdict(v) for k, v in self._led_devices.items()},
@@ -834,6 +843,41 @@ def _json_default(obj: Any) -> Any:
     if isinstance(obj, tuple):
         return list(obj)
     raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
+
+
+def _migrate_device(
+    data: dict[str, Any], schema: int, key: str,
+) -> dict[str, Any]:
+    """Bring one persisted device dict up to :data:`_SCHEMA_VERSION`.
+
+    **v1 → v2 — the overlay working layer.**  Under v1 an empty
+    ``user_overlay_elements`` meant "this device has no layout of its own" and
+    the renderer fell back to the theme's; under v2 it means "the layout is
+    empty, draw nothing", and no-layout is ``None``.  ``Settings._save`` writes
+    every field via ``asdict``, so essentially every config on disk carries an
+    empty list for a user who never touched an overlay — read at face value
+    under v2 that would blank their overlay on upgrade.
+
+    Reinterpreting it as ``None`` restores the v1 meaning exactly:
+    ``LoadTheme``'s restore branch seeds a null layer from the theme, so the
+    first reconnect after upgrading puts the theme's own layout in and the
+    next save records it under v2.  A NON-empty list is already an established
+    layout and is carried through untouched.
+
+    Returns the dict unchanged when it is already current, so a v2 config
+    costs one integer comparison.
+    """
+    if schema >= _SCHEMA_VERSION:
+        return data
+    out = dict(data)
+    if out.get("user_overlay_elements") == []:
+        out["user_overlay_elements"] = None
+        log.info(
+            "_migrate_device: %s schema %d→%d — empty overlay layer read as "
+            "'no layout of its own' (v1 meaning); it will be seeded from the "
+            "theme on the next restore", key, schema, _SCHEMA_VERSION,
+        )
+    return out
 
 
 def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
@@ -868,13 +912,6 @@ def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
         kwargs["user_overlay_elements"] = [
             OverlayElement.from_dict(d) if isinstance(d, dict) else d
             for d in raw_elements
-        ]
-    # mask_overlay_elements: list[dict] | None → list[OverlayElement] | None
-    raw_mask_elements = kwargs.get("mask_overlay_elements")
-    if isinstance(raw_mask_elements, list):
-        kwargs["mask_overlay_elements"] = [
-            OverlayElement.from_dict(d) if isinstance(d, dict) else d
-            for d in raw_mask_elements
         ]
     return DeviceSettings(**kwargs)
 

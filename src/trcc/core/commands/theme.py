@@ -22,6 +22,7 @@ from ..events import (
     ThemeSaved,
 )
 from ..geometry import content_is_portrait, save_folder_resolution
+from ..models import ThemeDir
 from ..registry import find_product
 from ..results import (
     CloudCategoryEntry,
@@ -46,13 +47,15 @@ from ..results import (
 from ._base import Command, Query
 from ._helpers import (
     _IMAGE_EXTS,
-    _LEGACY_MASK_FILENAME,
     _VIDEO_EXTS_FOR_LOAD,
     _VIDEO_EXTS_FOR_SAVE,
+    _invalidate_scene,
     _json_default_tuple,
     _publish_if_disconnect,
     _resolve_oriented_resolution,
     _search_theme_by_name,
+    as_working_layer,
+    device_overlay_layout,
     oriented_theme_path,
     overlay_elements_to_dc,
 )
@@ -75,7 +78,7 @@ log = logging.getLogger(__name__)
 def _theme_preview(theme_dir: Path) -> str:
     """Tile image for a theme dir: ``Theme.png`` → ``00.png`` → any ``*.png``
     → ``""``.  Single source for the browser tile so every UI agrees."""
-    for name in ("Theme.png", "00.png"):
+    for name in (ThemeDir.PREVIEW, ThemeDir.BG):
         candidate = theme_dir / name
         if candidate.is_file():
             return str(candidate)
@@ -172,18 +175,52 @@ class LoadTheme(Command[ThemeResult]):
             theme.name,
         )
 
-        # Explicit switch establishes the theme's own overlay layout: drop
-        # any live user edits so the render shows THIS theme's elements (or
-        # its mask's, applied just below), not edits made against the theme
-        # the user just left.  Skipped on restore (reset_overrides=False) so a
-        # reconnect keeps the persisted edits.  The user layer is the single
-        # live-edit source resolved by ``resolve_overlay_elements``.
-        if self.reset_overrides and app.settings.for_device(
-            self.key
-        ).user_overlay_elements:
-            log.info("LoadTheme: clearing live user overlay edits for %s "
-                     "(explicit theme switch)", self.key)
-            app.settings.set_user_overlay_elements(self.key, [])
+        # Explicit switch establishes the theme's own overlay layout as the
+        # device's WORKING layer — the C#'s model, where loading a theme reads
+        # its config1.dc straight into the one array the editor shows, the
+        # renderer draws and the save writes back
+        # (2.1.6 FormCZTV.cs:6951 → ReadSystemConfiguration →
+        # UCXiTongXianShiSet_UCXiTongXianShiSubArray, which clears then re-adds).
+        #
+        # This REPLACED a clear-to-empty.  Both make the render show this
+        # theme's elements instead of edits made against the theme the user
+        # just left, because an empty user layer falls through to the theme —
+        # but only a populated one can tell "the user has no layout" apart from
+        # "the user emptied their layout", which is what an empty clear could
+        # never express (#276).
+        #
+        # Still skipped on restore (reset_overrides=False): a reconnect must
+        # keep the persisted edits, not overwrite them with the theme's.
+        if self.reset_overrides:
+            adopted = as_working_layer(theme.config.get("elements"))
+            log.info(
+                "LoadTheme: adopting %s's %d overlay element(s) as the "
+                "working layer for %s (explicit theme switch)",
+                theme.name, len(adopted), self.key,
+            )
+            app.settings.set_user_overlay_elements(self.key, adopted)
+        elif app.settings.for_device(self.key).user_overlay_elements is None:
+            # Restore, and the working layer is empty — the state every
+            # config written before the layer existed is in.  Seed it from the
+            # theme so the device has an addressable layout on the very first
+            # reconnect after upgrading, instead of only after the user next
+            # picks a theme by hand.
+            #
+            # SAFE ONLY WHILE THE PRECEDENCE RESOLVER IS LIVE.  Empty currently
+            # means "no layout of my own" and resolves to the theme's anyway,
+            # so seeding changes nothing that renders.  Phase 2 makes empty
+            # mean "the user emptied it" — at which point this branch would
+            # resurrect a deliberate clear, and it MUST become conditional on
+            # the pre-Phase-2 config schema.  See
+            # [[project_overlay_single_config_collapse]].
+            seeded = as_working_layer(theme.config.get("elements"))
+            if seeded:
+                log.info(
+                    "LoadTheme: working layer empty on restore — seeding %d "
+                    "element(s) from %s for %s",
+                    len(seeded), theme.name, self.key,
+                )
+                app.settings.set_user_overlay_elements(self.key, seeded)
 
         # If device is attached + connected + Renderer available, send an
         # immediate first frame.  Otherwise the theme is saved for the
@@ -228,7 +265,7 @@ class LoadTheme(Command[ThemeResult]):
         # behavior here so a freshly-loaded theme renders its bundled
         # mask at the right spot, not stored-center-as-top-left.
         from ...services.overlay import OverlayService
-        theme_mask = theme.path / _LEGACY_MASK_FILENAME
+        theme_mask = ThemeDir(theme.path).mask
         pos = theme.config.get("mask_position")
         if (
             self.reset_overrides
@@ -431,7 +468,7 @@ class SaveTheme(Command[ThemeResult]):
       * no ``config1.dc`` — ``load()`` reads ``trcc.json`` directly.
 
     After a successful save the per-device overrides
-    (``background_path`` / ``mask_path`` / ``mask_overlay_elements`` /
+    (``background_path`` / ``mask_path`` /
     ``user_overlay_elements``) are cleared and ``current_theme`` is
     re-pointed to the new directory.  Without this the next render
     would re-stack the (now-baked-in) overrides on top of the saved
@@ -500,17 +537,14 @@ class SaveTheme(Command[ThemeResult]):
             )
         w, h = resolution
 
-        import shutil
         target = app.platform.paths().user_theme_dir(w, h) / self.name
         log.info(
             "SaveTheme: source=%s target=%s resolution=%dx%d "
-            "bg_override=%r mask_override=%r user_elements=%d "
-            "mask_elements=%d",
+            "bg_override=%r mask_override=%r user_elements=%d",
             theme.path, target, w, h,
             device_settings.background_path,
             device_settings.mask_path,
-            len(device_settings.user_overlay_elements),
-            len(device_settings.mask_overlay_elements or []),
+            len(device_settings.user_overlay_elements or ()),
         )
         if target.exists() and not self.overwrite:
             log.info("SaveTheme: target %s exists — overwrite confirmation "
@@ -521,79 +555,65 @@ class SaveTheme(Command[ThemeResult]):
                 message=f"A theme named {self.name!r} already exists.",
             )
 
-        # Build into a staging dir, THEN atomically swap it over the target.
-        # The theme being saved is usually the target ITSELF (re-saving the
-        # loaded theme — a prior save re-points the active theme at the saved
-        # dir), so deleting the target up-front would destroy the source's own
-        # background/mask BEFORE _build_manifest reads them — the cause of the
-        # "source theme has no background" data loss.  Staging keeps the source
-        # intact until every asset is captured, and makes overwrite crash-safe.
-        staging = target.parent / f".{self.name}.saving"
+        # Assemble into a staging dir that the store swaps over the target on
+        # a clean exit and discards on any failure.  The three hand-rolled
+        # try/except arms this replaces — create, assemble, finalize — each
+        # repeated ``rmtree(staging)`` and each returned its own wording for
+        # what is one outcome: the save did not happen and the previous theme
+        # is untouched.
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if staging.exists():
-                shutil.rmtree(staging)
-            staging.mkdir(exist_ok=False)
-        except OSError as e:
-            log.warning("SaveTheme: mkdir failed for staging %s: %s", staging, e)
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to create staging directory: {e}",
-            )
-
-        try:
-            manifest = self._build_manifest(
-                app, staging, theme, device_settings, w, h,
-            )
-            self._write_manifest(staging, manifest)
-            self._write_thumbnail(app, staging, theme)
+            with app.themes.stage(target) as staging:
+                manifest = self._build_manifest(
+                    app, staging, theme, device_settings, w, h,
+                )
+                self._write_manifest(staging, manifest)
+                self._write_thumbnail(app, staging, theme)
         except (OSError, ThemeError, TrccError) as e:
-            log.exception("SaveTheme: assembly failed; discarding staging %s",
-                          staging)
-            shutil.rmtree(staging, ignore_errors=True)
             return ThemeResult(
                 ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to assemble saved theme: {e}",
+                message=f"failed to save theme: {e}",
             )
 
-        # Swap staging → target.  Every source asset is now captured in staging,
-        # so removing the (possibly ==source) target is safe.
-        try:
-            if target.exists():
-                log.warning("SaveTheme: overwriting existing theme %s", target)
-                shutil.rmtree(target)
-            staging.replace(target)
-        except OSError as e:
-            log.exception("SaveTheme: finalize failed; discarding staging %s",
-                          staging)
-            shutil.rmtree(staging, ignore_errors=True)
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to finalize saved theme: {e}",
-            )
-
-        # Saved theme is now fully self-contained — drop the device's
-        # overrides + user edits, then re-point BOTH the live active
-        # theme (what the renderer reads via app.active_themes) and the
-        # persisted path (what RestoreLastTheme reads) at the new base.
-        # Re-pointing the live object is what stops the next render from
-        # reverting to the SOURCE theme's bundled mask/background after a
-        # save — same switch LoadTheme performs.
-        app.settings.set_user_overlay_elements(self.key, [])
-        app.settings.set_mask_overlay_elements(self.key, None)
+        # The device's overrides pointed at the SOURCE theme's assets.  They
+        # are captured inside the saved theme now, so drop them before the
+        # switch — this part IS SaveTheme's own business ("what I just baked
+        # in is no longer an override").
         app.settings.set_mask_path(self.key, None)
         app.settings.set_background_path(self.key, None)
-        app.active_themes[self.key] = app.themes.load(target)
-        app.settings.set_current_theme(self.key, str(target.resolve()))
-        # Headless callers (CLI/API one-shots, tests) may run without
-        # a Renderer attached — no scene cache to invalidate then.
-        try:
-            app.display.invalidate(self.key)
-        except RuntimeError:
-            pass
+        # Establishing the saved theme as the device's live state is EXACTLY a
+        # theme switch, so dispatch the Command that owns one.
+        #
+        # This used to hand-roll LoadTheme — its own comment admitted it
+        # ("same switch LoadTheme performs") — re-pointing ``active_themes``,
+        # writing ``current_theme`` and busting the cache itself.  Two copies
+        # of one rule, already drifted: the copy never applied the theme's own
+        # bundled mask and never restarted a video background, and when
+        # LoadTheme learned to adopt the overlay layout into the working layer
+        # the copy had to be taught the same thing separately.  One writer of
+        # ``active_themes`` means the working layer cannot disagree with the
+        # theme that is actually loaded, structurally rather than by hand.
+        switched = LoadTheme(key=self.key, path=target).execute(app)
+        if not switched.ok:
+            log.warning(
+                "SaveTheme: %s written to %s but the switch to it failed "
+                "(%s) — the theme is on disk, the device still shows the "
+                "previous one", self.name, target, switched.message,
+            )
+        # ...and re-assert self-containment afterwards.  ``mask_path`` /
+        # ``background_path`` are OVERRIDE fields ("use this instead of the
+        # theme's"), and LoadTheme writes the mask one as a side effect of
+        # applying a theme's bundled mask — so a theme that bundles its own
+        # mask comes back holding an override that points at itself.  Harmless
+        # to render (the renderer resolves the same image either way) but not
+        # harmless to keep: an override survives the next switch, so it would
+        # bleed this theme's mask onto the next maskless theme the user picks.
+        # A saved theme owns its assets; the device overrides nothing.
+        app.settings.set_mask_path(self.key, None)
+        app.settings.set_background_path(self.key, None)
+        _invalidate_scene(app, self.key)
         log.info(
-            "SaveTheme: %s — cleared overrides + re-pointed active theme "
-            "+ current_theme to %s", self.name, target,
+            "SaveTheme: %s — cleared overrides + switched the device to %s",
+            self.name, target,
         )
 
         app.events.publish(ThemeSaved(
@@ -674,13 +694,11 @@ class SaveTheme(Command[ThemeResult]):
             resolve_overlay_elements,
         )
 
-        elements = resolve_overlay_elements(
-            theme.config, s.mask_overlay_elements, s.user_overlay_elements,
-        )
+        elements = resolve_overlay_elements(theme.config, s.user_overlay_elements)
         log.info(
             "SaveTheme: baking %d overlay element(s) [source=%s]",
             len(elements),
-            overlay_source(s.mask_overlay_elements, s.user_overlay_elements),
+            overlay_source(s.user_overlay_elements),
         )
         return elements
 
@@ -819,13 +837,13 @@ class SaveTheme(Command[ThemeResult]):
         """Write the reference manifest as ``target/trcc.json``."""
         import json
 
-        (target / "trcc.json").write_text(
+        ThemeDir(target).json.write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         log.info(
             "SaveTheme: wrote manifest → %s (bg=%s mask=%s elements=%d)",
-            target / "trcc.json", manifest.get("background"),
+            ThemeDir(target).json, manifest.get("background"),
             manifest.get("mask"), len(manifest.get("elements") or []),
         )
 
@@ -855,20 +873,20 @@ class SaveTheme(Command[ThemeResult]):
                     info=device.info, theme=theme, sensors=sensors,
                     profile=device.profile,
                 )
-                (target / "Theme.png").write_bytes(
+                ThemeDir(target).preview.write_bytes(
                     app.renderer.encode_png(surface),
                 )
-                log.info("SaveTheme: preview snapshot → %s", target / "Theme.png")
+                log.info("SaveTheme: preview snapshot → %s", ThemeDir(target).preview)
                 return
             except Exception as e:
                 log.warning("SaveTheme: preview snapshot failed (%s) — "
                             "falling back to source thumbnail", e)
 
-        src = theme.path / "Theme.png"
+        src = ThemeDir(theme.path).preview
         if src.is_file():
-            shutil.copy2(src, target / "Theme.png")
+            shutil.copy2(src, ThemeDir(target).preview)
             log.info("SaveTheme: copied source thumbnail → %s",
-                     target / "Theme.png")
+                     ThemeDir(target).preview)
         else:
             log.info("SaveTheme: no device + no source thumbnail — "
                      "saved without a grid tile")
@@ -1113,8 +1131,8 @@ class ExportOverlay(Command[ThemeExportResult]):
         # Prefer the legacy binary config so Windows TRCC users can
         # import the overlay layout without next/ around.
         candidates = (
-            source_dir / "config1.dc",
-            source_dir / "trcc.json",
+            ThemeDir(source_dir).dc,
+            ThemeDir(source_dir).json,
         )
         source = next((c for c in candidates if c.is_file()), None)
         if source is None:
@@ -1334,14 +1352,10 @@ class ExportDcTheme(Command[ThemeDcExportResult]):
                 output_path=str(self.output_path),
                 message=f"theme not found at {theme_dir}",
             )
-        settings = app.settings.for_device(self.key)
-        user_overlays = [
-            e.to_dict() for e in settings.user_overlay_elements
-        ]
         try:
             written = app.themes.export_dc(
                 theme_dir, self.output_path,
-                user_overlay_elements=user_overlays,
+                elements=device_overlay_layout(app, self.key),
             )
         except ThemeError as e:
             return ThemeDcExportResult(
@@ -1436,8 +1450,8 @@ class UploadCustomMask(Command[MaskUploadResult]):
                 ok=False, key=self.key, path="",
                 message=f"Failed to ensure masks dir: {e}",
             )
-        mask_file = mask_dir / _LEGACY_MASK_FILENAME
-        preview_file = mask_dir / "Theme.png"
+        mask_file = ThemeDir(mask_dir).mask
+        preview_file = ThemeDir(mask_dir).preview
         try:
             shutil.copy2(self.source, mask_file)
             # Preview = mask itself.  Legacy's cloud catalog ships a
@@ -1454,15 +1468,12 @@ class UploadCustomMask(Command[MaskUploadResult]):
         # of upload (allow_empty=True) — seeded with the device's CURRENT
         # overlay, or an empty placeholder the user then fills.  Written
         # BEFORE ApplyMask so the upload applies with its metrics.
-        settings = app.settings.for_device(self.key)
-        elements: list[dict] = []
-        if settings.mask_overlay_elements is not None:
-            elements = [e.to_dict() for e in settings.mask_overlay_elements]
-        elements += [e.to_dict() for e in settings.user_overlay_elements]
-        dc_bytes = overlay_elements_to_dc(elements, allow_empty=True)
+        dc_bytes = overlay_elements_to_dc(
+            device_overlay_layout(app, self.key), allow_empty=True,
+        )
         if dc_bytes is not None:
             try:
-                (mask_dir / "config1.dc").write_bytes(dc_bytes)
+                ThemeDir(mask_dir).dc.write_bytes(dc_bytes)
                 log.info("UploadCustomMask: wrote config1.dc (%d byte(s)) → %s",
                          len(dc_bytes), mask_dir.name)
             except OSError as e:
@@ -1878,50 +1889,17 @@ class LoadImage(Command[ThemeResult]):
                     f"Supported: {', '.join(sorted(_IMAGE_EXTS))}."
                 ),
             )
-        import json
-        import shutil
-
-        # Stage the image as a minimal next/-shape theme under a stable
-        # subdirectory so re-runs are cheap and the theme appears in
-        # `theme list` like any other.
-        target_root = app.platform.paths().user_content_dir() / "single-image"
+        # ALWAYS install as 00.png — the strict theme-dir convention the
+        # background resolver reads (sibling LoadVideo installs Theme.zt for
+        # the same reason).  Keeping the source basename produced a dir the
+        # resolver could not see, so the panel showed a solid black canvas
+        # while the CLI still reported success (#245).  The extension is
+        # cosmetic: the renderer sniffs content, so a staged JPEG/BMP/WebP
+        # loads fine under the .png name.
         try:
-            target_root.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            return ThemeResult(
-                ok=False, key=self.key,
-                message=f"Cannot create single-image theme directory: {e}",
-            )
-        theme_name = self.path.stem
-        theme_dir = target_root / theme_name
-        if theme_dir.exists() and not theme_dir.is_dir():
-            theme_dir = (
-                target_root / f"{theme_name}-from-{self.path.parent.name}"
-            )
-        try:
-            theme_dir.mkdir(parents=True, exist_ok=True)
-            # ALWAYS stage as 00.png — the strict theme-dir convention the
-            # background resolver reads (sibling LoadVideo stages Theme.zt
-            # for the same reason).  Keeping the source basename produced a
-            # dir the resolver could not see, so the panel showed a solid
-            # black canvas while the CLI still reported success (#245).
-            # The extension is cosmetic: the renderer sniffs content, so a
-            # staged JPEG/BMP/WebP loads fine under the .png name.
-            target_image = theme_dir / "00.png"
-            if (
-                not target_image.is_file()
-                or target_image.stat().st_size != self.path.stat().st_size
-            ):
-                shutil.copy2(self.path, target_image)
-            config_path = theme_dir / "trcc.json"
-            if not config_path.is_file():
-                config_path.write_text(
-                    json.dumps({
-                        "name": f"image:{theme_name}",
-                        "elements": [],
-                    }, indent=2) + "\n",
-                    encoding="utf-8",
-                )
+            with app.themes.single_file_theme(self.path, "image") as unit:
+                unit.install(self.path, ThemeDir.BG)
+                theme_dir = unit.path
         except OSError as e:
             return ThemeResult(
                 ok=False, key=self.key,
@@ -1980,97 +1958,48 @@ class LoadVideo(Command[ThemeResult]):
                 ),
             )
 
-        import json
-        import shutil
+        from ...services.video_export import (
+            VideoExporter,
+            VideoExportError,
+            VideoExportRequest,
+            probe_duration_ms,
+        )
 
-        target_root = app.platform.paths().user_content_dir() / "single-video"
+        # One ``with`` for the whole assembly: the marker is written only on a
+        # clean exit, so any failure below leaves a markerless directory that
+        # never shows up in the theme list.  The four separate error arms this
+        # replaces each returned their own wording for the same outcome — the
+        # video was not staged.
         try:
-            target_root.mkdir(parents=True, exist_ok=True)
+            with app.themes.single_file_theme(self.path, "video") as unit:
+                theme_dir = unit.path
+                if self.path.suffix.lower() == ".zt":
+                    unit.install(self.path, ThemeDir.ZT)
+                else:
+                    end_ms = self.end_ms
+                    if end_ms is None:
+                        probed = probe_duration_ms(self.path)
+                        end_ms = (probed if probed > 0
+                                  else self.start_ms + 10_000)
+                    produced = VideoExporter().export_zt(VideoExportRequest(
+                        source=self.path,
+                        start_ms=self.start_ms,
+                        end_ms=end_ms,
+                        target_w=target_w,
+                        target_h=target_h,
+                        rotation=self.rotation,
+                    ))
+                    unit.adopt(produced, ThemeDir.ZT)
+        except VideoExportError as e:
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"Video export failed: {e}",
+            )
         except OSError as e:
             return ThemeResult(
                 ok=False, key=self.key,
-                message=f"Cannot create single-video theme directory: {e}",
+                message=f"Failed to stage video as theme: {e}",
             )
-        theme_name = self.path.stem
-        theme_dir = target_root / theme_name
-        if theme_dir.exists() and not theme_dir.is_dir():
-            theme_dir = (
-                target_root / f"{theme_name}-from-{self.path.parent.name}"
-            )
-        try:
-            theme_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            return ThemeResult(
-                ok=False, key=self.key,
-                message=f"Cannot create theme directory: {e}",
-            )
-
-        # Either copy a .zt straight in or transcode the source.
-        zt_target = theme_dir / "Theme.zt"
-        if self.path.suffix.lower() == ".zt":
-            try:
-                if (
-                    not zt_target.is_file()
-                    or zt_target.stat().st_size != self.path.stat().st_size
-                ):
-                    shutil.copy2(self.path, zt_target)
-            except OSError as e:
-                return ThemeResult(
-                    ok=False, key=self.key,
-                    message=f"Failed to stage .zt as theme: {e}",
-                )
-        else:
-            from ...services.video_export import (
-                VideoExporter,
-                VideoExportError,
-                VideoExportRequest,
-                probe_duration_ms,
-            )
-            end_ms = self.end_ms
-            if end_ms is None:
-                probed = probe_duration_ms(self.path)
-                end_ms = probed if probed > 0 else self.start_ms + 10_000
-            request = VideoExportRequest(
-                source=self.path,
-                start_ms=self.start_ms,
-                end_ms=end_ms,
-                target_w=target_w,
-                target_h=target_h,
-                rotation=self.rotation,
-            )
-            try:
-                produced = VideoExporter().export_zt(request)
-            except VideoExportError as e:
-                return ThemeResult(
-                    ok=False, key=self.key,
-                    message=f"Video export failed: {e}",
-                )
-            try:
-                shutil.move(str(produced), str(zt_target))
-                # Clean up the now-empty temp dir VideoExporter created.
-                temp_parent = produced.parent
-                shutil.rmtree(temp_parent, ignore_errors=True)
-            except OSError as e:
-                return ThemeResult(
-                    ok=False, key=self.key,
-                    message=f"Failed to install Theme.zt into theme dir: {e}",
-                )
-
-        config_path = theme_dir / "trcc.json"
-        if not config_path.is_file():
-            try:
-                config_path.write_text(
-                    json.dumps({
-                        "name": f"video:{theme_name}",
-                        "elements": [],
-                    }, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-            except OSError as e:
-                return ThemeResult(
-                    ok=False, key=self.key,
-                    message=f"Failed to write theme config: {e}",
-                )
         return LoadTheme(key=self.key, path=theme_dir).execute(app)
 
     def _resolve_target_size(self, app: App) -> tuple[int, int]:

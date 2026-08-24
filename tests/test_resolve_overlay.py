@@ -104,7 +104,7 @@ def test_a_real_id_is_never_shadowed_by_a_mint() -> None:
         {"type": "text", "text": "owns el_0", "x": 0, "y": 0, "id": "el_0"},
     ]}
 
-    out = effective_overlay_layout(config, None, [])
+    out = effective_overlay_layout(config, None)
 
     assert out[1]["id"] == "el_0"
     assert out[0]["id"] != "el_0"
@@ -126,30 +126,44 @@ def test_user_layer_wins_and_reports_itself(app: App, tmp_path: Path) -> None:
     assert [e.id for e in layout.elements] == ["mine"]
 
 
-def test_mask_layer_wins_over_theme(app: App, tmp_path: Path) -> None:
+def test_an_adopted_mask_layout_wins_over_the_theme(
+    app: App, tmp_path: Path,
+) -> None:
+    """A mask REPLACES the theme's layout, as it always did.
+
+    It used to do so from a ``mask_overlay_elements`` layer the resolver
+    ranked ahead of the theme.  ``ApplyMask`` now adopts the mask's layout
+    into the device's one working layer (the C# reads a mask's config1.dc
+    into the same array a theme load fills), so there is no mask layer left
+    to rank — and the observable answer is identical.
+    """
     _load_theme(app, tmp_path, _THEME_ELEMENTS)
-    app.settings.set_mask_overlay_elements(_KEY, [
+    app.settings.set_user_overlay_elements(_KEY, [
         OverlayElement(id="m1", type="text", text="mask", x=3, y=4),
     ])
 
     layout = app.dispatch(ResolveOverlay(key=_KEY))
 
-    assert layout.source == "mask"
+    assert layout.source == "user"
     assert [e.id for e in layout.elements] == ["m1"]
 
 
-def test_an_emptied_mask_is_distinguishable_from_a_theme(
+def test_an_emptied_layout_is_distinguishable_from_no_layout(
     app: App, tmp_path: Path,
 ) -> None:
-    """Both answer zero elements; ``source`` is what tells them apart."""
+    """Both answer zero elements; ``source`` is what tells them apart.
+
+    ``[]`` is a layout the user emptied and it draws nothing; ``None`` is no
+    layout of its own and the theme's shows.  Conflating the two is #276.
+    """
     _load_theme(app, tmp_path, _THEME_ELEMENTS)
-    app.settings.set_mask_overlay_elements(_KEY, [])
+    app.settings.set_user_overlay_elements(_KEY, [])
 
     layout = app.dispatch(ResolveOverlay(key=_KEY))
 
     assert layout.ok
     assert layout.elements == []
-    assert layout.source == "mask"
+    assert layout.source == "user"
 
 
 # ── The empty answers, which are not failures ────────────────────────────
@@ -191,17 +205,19 @@ def test_disabled_overlay_still_reports_its_elements(
 # ── overlay_source: the precedence, reported rather than applied ─────────
 
 
-@pytest.mark.parametrize(("mask", "user", "expected"), [
-    (None, [], "theme"),
-    ([], [], "mask"),
-    ([OverlayElement(id="m", type="text")], [], "mask"),
-    (None, [OverlayElement(id="u", type="text")], "user"),
-    ([OverlayElement(id="m", type="text")],
-     [OverlayElement(id="u", type="text")], "user"),
+@pytest.mark.parametrize(("user", "expected"), [
+    # ``None`` = this device has no layout of its own, so the theme's shows.
+    # ``[]``   = it HAS one and the user emptied it — that still wins, and
+    # draws nothing.  Conflating those two is #276.
+    #
+    # There is no mask arm any more: a mask is not a layer, it is a source
+    # that ApplyMask adopts INTO this one (2.1.6 FormCZTV.cs:5935 reads a
+    # mask's config1.dc into the same array a theme load fills).
+    (None, "theme"),
+    ([], "user"),
+    ([OverlayElement(id="u", type="text")], "user"),
 ])
 def test_overlay_source_names_the_winning_layer(
-    mask: list[OverlayElement] | None,
-    user: list[OverlayElement],
-    expected: str,
+    user: list[OverlayElement] | None, expected: str,
 ) -> None:
-    assert overlay_source(mask, user) == expected
+    assert overlay_source(user) == expected

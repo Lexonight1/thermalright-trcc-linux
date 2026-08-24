@@ -15,7 +15,7 @@ from ..events import (
     LedColorsChanged,
     LedSettingsChanged,
 )
-from ..models import Kind, OverlayElement, oriented_resolution
+from ..models import Kind, OverlayElement, ThemeDir, oriented_resolution
 from ..registry import find_product
 from ..results import (
     HealthCheckEntry,
@@ -96,11 +96,6 @@ _BG_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 _MASK_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
 
-_LEGACY_MASK_FILENAME = "01.png"
-
-
-_LEGACY_BG_FILENAME = "00.png"
-
 
 _IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 
@@ -176,14 +171,14 @@ def persist_user_mask_dc(app: App, key: str) -> None:
                   mask_file)
         return
 
-    elements: list[dict[str, Any]] = []
-    if settings.mask_overlay_elements is not None:
-        elements = [e.to_dict() for e in settings.mask_overlay_elements]
-    elements += [e.to_dict() for e in settings.user_overlay_elements]
+    # The mask records what is ON SCREEN.  This used to concatenate the mask
+    # layer and the user layer, which drew from a different rule than the
+    # renderer's — so a mask could persist elements nothing was showing.
+    elements = device_overlay_layout(app, key)
     # allow_empty=True → the user mask always keeps a config1.dc, even when
     # every metric is removed, so it stays an editable unit.
     dc = overlay_elements_to_dc(elements, allow_empty=True)
-    mask_dc = mask_file.parent / "config1.dc"
+    mask_dc = ThemeDir(mask_file.parent).dc
     try:
         if dc is not None:
             mask_dc.write_bytes(dc)
@@ -341,7 +336,7 @@ def _resolve_mask_path(path: Path) -> Path | None:
     if path.is_file() and path.suffix.lower() in _MASK_IMAGE_EXTS:
         return path
     if path.is_dir():
-        legacy = path / _LEGACY_MASK_FILENAME
+        legacy = ThemeDir(path).mask
         if legacy.is_file():
             return legacy
     return None
@@ -421,10 +416,9 @@ def resolve_overlay_layout(app: App, key: str) -> OverlayLayoutResult:
     s = app.settings.for_device(key)
     theme = app.active_themes.get(key)
     elements = effective_overlay_layout(
-        theme.config if theme is not None else {},
-        s.mask_overlay_elements, s.user_overlay_elements,
+        theme.config if theme is not None else {}, s.user_overlay_elements,
     )
-    source = overlay_source(s.mask_overlay_elements, s.user_overlay_elements)
+    source = overlay_source(s.user_overlay_elements)
     log.debug(
         "resolve_overlay_layout: key=%s source=%s elements=%d enabled=%s",
         key, source, len(elements), s.overlay_enabled,
@@ -538,3 +532,49 @@ def _autostart_path(app: App) -> str:
     log.debug("_autostart_path: called")
     mgr = app.platform.autostart()
     return str(getattr(mgr, "path", "")) or ""
+
+
+def device_overlay_layout(app: App, key: str) -> list[dict[str, Any]]:
+    """The ONE overlay layout for *key*, as flat dicts — what is on screen.
+
+    Every consumer that needs "the elements this device is showing" asks here:
+    the renderer's own resolution, the saved theme's bake, the user-mask DC
+    rewrite, the mask upload seed, the legacy DC export.
+
+    Before this existed the render path RESOLVED (one layer wins) while the
+    export and mask-authoring paths STACKED (``mask + user`` concatenated), so
+    the same question had two answers and exporting a theme could write
+    elements that were never drawn.  ``CLAUDE.md`` carried those three sites as
+    a known deferred bug for exactly that reason.
+    """
+    from ...services.overlay import resolve_overlay_elements
+
+    theme = app.active_themes.get(key)
+    s = app.settings.for_device(key)
+    layout = resolve_overlay_elements(
+        theme.config if theme is not None else {}, s.user_overlay_elements,
+    )
+    log.debug("device_overlay_layout: key=%s → %d element(s)", key, len(layout))
+    return layout
+
+
+def as_working_layer(elements: Any) -> list[OverlayElement]:
+    """Raw element dicts → the device's working overlay layer.
+
+    One conversion for the three places a source change establishes that layer
+    — a theme load, a mask apply, a save's re-seed — so they cannot disagree
+    about what "adopt this layout" means.  Non-dict entries are dropped rather
+    than raising: a hand-edited ``trcc.json`` should cost the user one element,
+    not the whole theme.
+
+    ``OverlayElement.from_dict`` keeps an id the source already carries and
+    mints a stable one otherwise, which is what makes the adopted elements
+    addressable by Update / Delete / Flash straight away — a theme parsed from
+    ``config1.dc`` carries no ids at all.
+    """
+    out = [
+        OverlayElement.from_dict(dict(e))
+        for e in (elements or ()) if isinstance(e, dict)
+    ]
+    log.debug("as_working_layer: %d element(s)", len(out))
+    return out

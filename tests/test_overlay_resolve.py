@@ -22,46 +22,31 @@ _THEME = {"elements": [{"id": "t0", "type": "text", "x": 1, "y": 1, "text": "the
 
 
 def test_theme_only_when_no_overrides() -> None:
-    assert resolve_overlay_elements(_THEME, None, []) == _THEME["elements"]
+    assert resolve_overlay_elements(_THEME, None) == _THEME["elements"]
 
 
 def test_empty_theme_resolves_to_empty_list() -> None:
-    assert resolve_overlay_elements({}, None, []) == []
-    assert resolve_overlay_elements({"elements": None}, None, []) == []
-
-
-def test_mask_replaces_theme_not_stacks() -> None:
-    mask = [_el("m0", "mask")]
-    result = resolve_overlay_elements(_THEME, mask, [])
-    assert result == [m.to_dict() for m in mask]
-    # REPLACE, not add: the theme element must not appear.
-    assert all(e["text"] != "theme" for e in result)
-
-
-def test_empty_mask_list_still_overrides_theme() -> None:
-    # mask_elements is the empty list (not None) — an applied mask with no
-    # metric layout REPLACES the theme with nothing, it does not fall back.
-    assert resolve_overlay_elements(_THEME, [], []) == []
+    assert resolve_overlay_elements({}, None) == []
+    assert resolve_overlay_elements({"elements": None}, None) == []
 
 
 def test_user_replaces_theme() -> None:
     user = [_el("u0", "user")]
-    result = resolve_overlay_elements(_THEME, None, user)
+    result = resolve_overlay_elements(_THEME, user)
     assert result == [u.to_dict() for u in user]
     assert all(e["text"] != "theme" for e in result)
 
 
-def test_user_wins_over_mask_and_theme() -> None:
+def test_the_working_layer_wins_over_the_theme() -> None:
     user = [_el("u0", "user")]
-    mask = [_el("m0", "mask")]
-    result = resolve_overlay_elements(_THEME, mask, user)
+    result = resolve_overlay_elements(_THEME, user)
     assert result == [u.to_dict() for u in user]
-    assert all(e["text"] not in ("mask", "theme") for e in result)
+    assert all(e["text"] != "theme" for e in result)
 
 
 def test_returns_flat_dicts_not_overlay_elements() -> None:
     user = [_el("u0", "user", x=5, y=7)]
-    result = resolve_overlay_elements(_THEME, None, user)
+    result = resolve_overlay_elements(_THEME, user)
     assert result == [{"id": "u0", "type": "text", "x": 5, "y": 7,
                        "color": "#ffffff", "size": 16, "bold": False,
                        "italic": False, "text": "user"}]
@@ -70,6 +55,25 @@ def test_returns_flat_dicts_not_overlay_elements() -> None:
 def test_returned_theme_list_is_a_copy() -> None:
     # Callers may pass the result into a {**config, "elements": result} dict;
     # mutating it must not corrupt the source theme config.
-    result = resolve_overlay_elements(_THEME, None, [])
+    result = resolve_overlay_elements(_THEME, None)
     result.append({"id": "x", "type": "text"})
     assert len(_THEME["elements"]) == 1
+
+
+def test_empty_user_list_draws_nothing_and_does_not_fall_back() -> None:
+    """The mirror of ``test_empty_mask_list_still_overrides_theme``.
+
+    The mask layer has always been sentinel-aware; the user layer was not, so
+    an emptied layout fell through to the mask's or the theme's and the last
+    element the user deleted reappeared (#276).  ``None`` = no layout of my
+    own, ``[]`` = my layout is empty.
+    """
+    assert resolve_overlay_elements(_THEME, []) == []
+    assert resolve_overlay_elements(_THEME, []) == []
+
+
+def test_no_user_layer_still_falls_back() -> None:
+    """The other half — a device that never established a layout gets the
+    theme's, exactly as before.  This is what the v1→v2 config migration
+    preserves for every existing user."""
+    assert resolve_overlay_elements(_THEME, None) == _THEME["elements"]

@@ -131,7 +131,7 @@ class OverlayEditorPanel(BasePanel):
                 self.dispatch(SetOverlayConfig(key=key, elements=tuple(seed)))
                 settings = self.app.settings.for_device(key)
         self._list.clear()
-        for element in settings.user_overlay_elements:
+        for element in (settings.user_overlay_elements or ()):
             text = self._format_element_row(element)
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, element.id)
@@ -156,8 +156,7 @@ class OverlayEditorPanel(BasePanel):
         theme = self.app.active_themes.get(key)
         theme_config = theme.config if theme is not None else {}
         elements = resolve_overlay_elements(
-            theme_config, settings.mask_overlay_elements,
-            settings.user_overlay_elements,
+            theme_config, settings.user_overlay_elements,
         )
         out: list[dict] = []
         for i, el in enumerate(elements):
@@ -233,7 +232,8 @@ class OverlayEditorPanel(BasePanel):
             return
         settings = self.app.settings.for_device(key)
         current = next(
-            (e for e in settings.user_overlay_elements if e.id == eid),
+            (e for e in (settings.user_overlay_elements or ())
+             if e.id == eid),
             None,
         )
         if current is None:

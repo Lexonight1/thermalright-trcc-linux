@@ -30,6 +30,8 @@ import json
 import logging
 import shutil
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -61,7 +63,6 @@ log = logging.getLogger(__name__)
 # Distinct filename from legacy's `config.json` — next/'s JSON layout
 # uses a list of elements, legacy's expects a dict keyed by metric name.
 # Separating filenames avoids ever reading the other tool's shape.
-_CONFIG_FILE = "trcc.json"
 # Pre-cutover name — read as a fallback so themes saved during the
 # parallel-tree period still load.  Next save under DC migration writes
 # the new name; old files are left alone for rollback.
@@ -70,20 +71,51 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 # the legacy overlay_config dict under a ``dc`` key, plus explicit
 # ``background`` and ``mask`` path fields.  Read-only — we translate to
 # next/'s shape on load but don't write this shape back.
-_LEGACY_CONFIG_FILE = "config.json"
-_DC_CONFIG_FILE = "config1.dc"
 # Video-background filenames TRCC actually ships.  ``td.bg`` (00.png)
 # is the static fallback rendered when no video is present; videos
 # live alongside it as ``Theme.{mp4,mov,webm}`` or ``Theme.zt`` (the
 # JPEG-sequence archive UCVideoCut writes).  No ``background.*`` —
 # that name never existed in legacy or Windows TRCC.
 _VIDEO_CANDIDATES = (
-    "Theme.mp4", "Theme.mov", "Theme.webm", "Theme.zt",
+    "Theme.mp4", "Theme.mov", "Theme.webm", ThemeDir.ZT,
 )
 # Video container extensions we ship (derived from _VIDEO_CANDIDATES so the
 # two never drift); the background allowlist is those plus the static PNG.
 _VIDEO_EXTS = frozenset(Path(c).suffix.lower() for c in _VIDEO_CANDIDATES)
 _BG_EXTS = _VIDEO_EXTS | {".png"}
+
+
+@dataclass(frozen=True, slots=True)
+class SingleFileTheme:
+    """A one-file theme directory being assembled.  Yielded by
+    :meth:`ThemeService.single_file_theme`."""
+
+    path: Path
+    name: str
+
+    def install(self, source: Path, filename: str) -> Path:
+        """Copy *source* in as *filename*, skipping an unchanged re-run.
+
+        The size guard is what makes re-loading the same file cheap; both
+        callers had their own copy of it.
+        """
+        dest = self.path / filename
+        if dest.is_file() and dest.stat().st_size == source.stat().st_size:
+            log.info("SingleFileTheme.install: %s unchanged — skipped", dest)
+            return dest
+        shutil.copy2(source, dest)
+        log.info("SingleFileTheme.install: %s → %s", source, dest)
+        return dest
+
+    def adopt(self, produced: Path, filename: str) -> Path:
+        """Move an already-produced file (a transcoder output) in as
+        *filename*, and clear the temp directory it came from."""
+        dest = self.path / filename
+        shutil.move(str(produced), str(dest))
+        shutil.rmtree(produced.parent, ignore_errors=True)
+        log.info("SingleFileTheme.adopt: %s → %s (temp dir cleared)",
+                 produced, dest)
+        return dest
 
 
 class ThemeService:
@@ -150,6 +182,98 @@ class ThemeService:
         the same id — that is what gives the writers their auto-dedup.
         """
         return hashlib.sha256(data).hexdigest()[:16]
+
+    @contextmanager
+    def stage(self, target: Path) -> Iterator[Path]:
+        """Build a content unit in a sibling dir, then swap it over *target*.
+
+        Yields the staging directory.  A clean exit swaps it atomically into
+        place; ANY exception discards it and leaves *target* exactly as it
+        was.  The caller writes its files and does not think about rollback.
+
+        **Why staging rather than writing into the target.**  The unit being
+        saved is usually the target ITSELF — a prior save re-points the active
+        theme at the saved dir — so clearing the target first would destroy
+        the source's own background and mask before they had been read.  That
+        was a real data-loss bug ("source theme has no background").  Staging
+        keeps the source intact until every asset is captured, and makes an
+        overwrite crash-safe.
+
+        **What it does NOT cover.**  A theme is a config that REFERENCES its
+        assets; ``store_background`` / ``store_mask`` put those in the shared
+        user library, outside this directory.  A failure here discards the
+        unit but leaves an already-ingested library asset behind, orphaned
+        until the content hash matches another save.  Wasted bytes, never a
+        wrong render — but this is not a transaction over the assets, and it
+        should not be described as one.
+
+        The commit window is one ``rmtree`` + one ``replace``, inherited from
+        the hand-rolled version this replaces: if the process dies between
+        them an overwritten unit is gone.  Closing that needs a move-aside
+        restore, which is a behaviour change and belongs in its own commit.
+        """
+        staging = target.parent / f".{target.name}.saving"
+        log.info("stage: %s → staging %s", target, staging)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if staging.exists():
+            log.warning("stage: clearing abandoned staging dir %s", staging)
+            shutil.rmtree(staging)
+        staging.mkdir(exist_ok=False)
+        try:
+            yield staging
+            if target.exists():
+                log.warning("stage: overwriting existing unit %s", target)
+                shutil.rmtree(target)
+            staging.replace(target)
+        except BaseException:
+            log.exception("stage: discarding %s — %s left untouched",
+                          staging, target)
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        log.info("stage: committed %s", target)
+
+    @contextmanager
+    def single_file_theme(
+        self, source: Path, kind: str,
+    ) -> Iterator[SingleFileTheme]:
+        """A theme directory wrapping ONE file — an image or a video.
+
+        ``LoadImage`` and ``LoadVideo`` turn an arbitrary file the user picked
+        into a minimal theme so it appears in ``theme list`` like any other and
+        the ordinary ``LoadTheme`` path can render it.  ``LoadVideo``'s own
+        docstring called itself "conceptually parallel to LoadImage"; they had
+        the same twenty lines each, and this is those lines.
+
+        Yields the unit; the caller installs its one payload file.  The
+        ``trcc.json`` marker is written LAST, on a clean exit — deliberately,
+        because a payload that fails half-way then leaves a directory with no
+        marker, which ``_has_theme_marker`` skips, so a broken load never
+        shows up in the theme list.  An exception leaves that markerless
+        directory behind exactly as the hand-written versions did.
+        """
+        if self._paths is None:
+            raise RuntimeError("single_file_theme requires paths injection")
+        root = self._paths.user_content_dir() / f"single-{kind}"
+        root.mkdir(parents=True, exist_ok=True)
+        name = source.stem
+        path = root / name
+        if path.exists() and not path.is_dir():
+            # A file already owns that name — disambiguate by the source's
+            # parent rather than clobbering it.
+            path = root / f"{name}-from-{source.parent.name}"
+        path.mkdir(parents=True, exist_ok=True)
+        log.info("single_file_theme: kind=%s source=%s → %s",
+                 kind, source, path)
+        unit = SingleFileTheme(path, name)
+        yield unit
+        marker = ThemeDir(path).json
+        if not marker.is_file():
+            marker.write_text(
+                json.dumps({"name": f"{kind}:{name}", "elements": []},
+                           indent=2) + "\n",
+                encoding="utf-8",
+            )
+            log.info("single_file_theme: wrote marker %s", marker)
 
     def store_background(
         self, data: bytes, ext: str, width: int, height: int,
@@ -241,7 +365,7 @@ class ThemeService:
         asset_id = self._content_id(blob)
         dest_dir = self._paths.user_screencast_dir() / asset_id
         ref = f"screencast/{asset_id}"
-        cfg = dest_dir / "config.json"
+        cfg = ThemeDir(dest_dir).legacy_json
         if cfg.exists():
             log.info("store_screencast: dedup hit %s → %s", asset_id, dest_dir)
             return ref
@@ -267,7 +391,7 @@ class ThemeService:
             log.warning("screencast_region: %s ref %r did not resolve",
                         theme.name, ref)
             return None
-        cfg = resolved / "config.json" if resolved.is_dir() else resolved
+        cfg = ThemeDir(resolved).legacy_json if resolved.is_dir() else resolved
         try:
             d = json.loads(cfg.read_text(encoding="utf-8"))
             return (int(d["x"]), int(d["y"]), int(d["w"]),
@@ -290,7 +414,7 @@ class ThemeService:
         asset_id = self._content_id(blob)
         dest_dir = self._paths.user_media_player_dir() / asset_id
         ref = f"media_player/{asset_id}"
-        cfg = dest_dir / "config.json"
+        cfg = ThemeDir(dest_dir).legacy_json
         if cfg.exists():
             log.info("store_media_player: dedup hit %s → %s", asset_id, dest_dir)
             return ref
@@ -313,7 +437,7 @@ class ThemeService:
             log.warning("media_player_uri: %s ref %r did not resolve",
                         theme.name, ref)
             return None
-        cfg = resolved / "config.json" if resolved.is_dir() else resolved
+        cfg = ThemeDir(resolved).legacy_json if resolved.is_dir() else resolved
         try:
             uri = json.loads(cfg.read_text(encoding="utf-8"))["uri"]
             return str(uri) if uri else None
@@ -407,28 +531,27 @@ class ThemeService:
 
     def export_dc(
         self, theme_dir: Path, output_path: Path,
-        *,
-        user_overlay_elements: list[dict] | None = None,
+        *, elements: list[dict] | None = None,
     ) -> Path:
         """Write *theme_dir*'s config out as legacy ``config1.dc`` to
         *output_path* — for sharing themes with Windows TRCC users.
 
         Reads next/'s JSON config (or falls back to the existing
-        ``config1.dc`` if no JSON), composes with the device's user
-        overlay elements (if any), and writes a 0xDD-format DC file.
-        Returns the output path.
+        ``config1.dc`` if no JSON) and writes a 0xDD-format DC file.
+
+        *elements* REPLACES the theme's own layout when given — the caller
+        passes what the device is actually showing.  It used to be
+        ``user_overlay_elements=``, which the codec APPENDED to the theme's
+        elements, so an export could contain each element twice and could
+        contain elements the renderer never drew.
         """
-        log.info("export_dc: theme_dir=%s output_path=%s user_elements=%s",
+        log.info("export_dc: theme_dir=%s output_path=%s elements=%s",
                  theme_dir, output_path,
-                 None if user_overlay_elements is None
-                 else len(user_overlay_elements))
-        try:
-            config = self._load_config(theme_dir)
-        except ThemeError:
-            raise
-        Dc.File(output_path).write(
-            config, user_overlay_elements=user_overlay_elements,
-        )
+                 None if elements is None else len(elements))
+        config = self._load_config(theme_dir)
+        if elements is not None:
+            config = {**config, "elements": elements}
+        Dc.File(output_path).write(config)
         return output_path
 
     def delete(self, directory: Path, name: str) -> Path:
@@ -659,25 +782,25 @@ class ThemeService:
             members[f"Theme{bg.suffix.lower()}"] = bg
             log.info("export: bundling video bg %s", bg.name)
         elif bg is not None:
-            members["00.png"] = bg
+            members[ThemeDir.BG] = bg
             log.info("export: dereferenced bg → 00.png (%s)", bg)
         else:
             log.info("export: theme %r has no background", theme.name)
 
         mask = self.mask_path(theme)
         if mask is not None:
-            members["01.png"] = mask
+            members[ThemeDir.MASK] = mask
             log.info("export: dereferenced mask → 01.png (%s)", mask)
 
         td = ThemeDir(theme_path)
         if td.preview.exists():
-            members["Theme.png"] = td.preview
+            members[ThemeDir.PREVIEW] = td.preview
 
         manifest = {
             k: v for k, v in theme.config.items()
             if k not in ("background", "mask")
         }
-        members["trcc.json"] = (
+        members[ThemeDir.JSON] = (
             json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
         ).encode("utf-8")
         log.info("export: manifest stripped of bg/mask refs (%d key(s))",
@@ -747,9 +870,9 @@ class ThemeService:
         permission, etc.) is logged but doesn't prevent the theme from
         loading.
         """
-        json_path = path / _CONFIG_FILE
+        json_path = ThemeDir(path).json
         if json_path.exists():
-            log.info("_load_config: %s → reading %s", path.name, _CONFIG_FILE)
+            log.info("_load_config: %s → reading %s", path.name, ThemeDir.JSON)
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
@@ -766,7 +889,7 @@ class ThemeService:
                     f"Invalid theme config {legacy_next_path}: {e}",
                 ) from e
 
-        legacy_path = path / _LEGACY_CONFIG_FILE
+        legacy_path = ThemeDir(path).legacy_json
         if legacy_path.exists():
             try:
                 raw = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -781,25 +904,25 @@ class ThemeService:
                 # Skip — let DC fallback try next.
                 log.debug(
                     "_load_config: %s → %s lacks theme markers, falling "
-                    "through to DC", path.name, _LEGACY_CONFIG_FILE,
+                    "through to DC", path.name, ThemeDir.LEGACY_JSON,
                 )
             else:
                 log.info(
                     "_load_config: %s → translating legacy %s",
-                    path.name, _LEGACY_CONFIG_FILE,
+                    path.name, ThemeDir.LEGACY_JSON,
                 )
                 return _legacy_json_to_next_config(raw, path.name)
 
-        dc_path = path / _DC_CONFIG_FILE
+        dc_path = ThemeDir(path).dc
         if dc_path.exists():
             log.info("_load_config: %s → reading %s (binary DC)",
-                     path.name, _DC_CONFIG_FILE)
+                     path.name, ThemeDir.DC)
             config = Dc.File(dc_path).read()
             self._try_migrate(json_path, config)
             return config
 
         raise ThemeError(
-            f"No {_CONFIG_FILE} or {_DC_CONFIG_FILE} in {path}"
+            f"No {ThemeDir.JSON} or {ThemeDir.DC} in {path}"
         )
 
     @staticmethod
@@ -810,7 +933,7 @@ class ThemeService:
                 json.dumps(config, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-            log.info("Migrated %s → %s", _DC_CONFIG_FILE, json_path)
+            log.info("Migrated %s → %s", ThemeDir.DC, json_path)
         except OSError as e:
             log.warning("Could not migrate DC→JSON at %s: %s", json_path, e)
 
@@ -829,13 +952,13 @@ def _has_theme_marker(entry: Path) -> bool:
     deeper check because the filename collides with unrelated config
     files — we read it and require theme-shape content.
     """
-    if (entry / _CONFIG_FILE).exists():
+    if ThemeDir(entry).json.exists():
         return True
     if (entry / _PRE_CUTOVER_CONFIG_FILE).exists():
         return True
-    if (entry / _DC_CONFIG_FILE).exists():
+    if ThemeDir(entry).dc.exists():
         return True
-    legacy = entry / _LEGACY_CONFIG_FILE
+    legacy = ThemeDir(entry).legacy_json
     if not legacy.is_file():
         return False
     try:

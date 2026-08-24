@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMenu
 
-from ...core.models import CLOUD_MASK_URLS, MaskItem, is_safe_archive_member
+from ...core.models import (
+    CLOUD_MASK_URLS,
+    MaskItem,
+    ThemeDir,
+    is_safe_archive_member,
+)
 from .base import BaseThumbnail, DownloadableThemeBrowser
 
 if TYPE_CHECKING:
@@ -266,7 +271,7 @@ class UCThemeMask(DownloadableThemeBrowser):
                         log.info("Extracted mask %s", mask_id)
                 except zipfile.BadZipFile:
                     mask_dir.mkdir(parents=True, exist_ok=True)
-                    (mask_dir / "Theme.png").write_bytes(data)
+                    ThemeDir(mask_dir).preview.write_bytes(data)
                 return True
 
             except urllib.error.HTTPError as e:
@@ -284,7 +289,7 @@ class UCThemeMask(DownloadableThemeBrowser):
         import urllib.request
 
         mask_dir.mkdir(parents=True, exist_ok=True)
-        files = ['Theme.png', '01.png', 'config1.dc']
+        files = [ThemeDir.PREVIEW, ThemeDir.MASK, ThemeDir.DC]
 
         for filename in files:
             try:

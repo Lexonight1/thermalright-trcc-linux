@@ -1105,9 +1105,7 @@ class DisplayService:
         # stacks.  The result becomes the render config's ``elements`` and
         # NO separate user layer is passed, so every element draws exactly
         # once (the cutover's additive theme+user path drew each twice).
-        elements = resolve_overlay_elements(
-            theme.config, s.mask_overlay_elements, s.user_overlay_elements,
-        )
+        elements = resolve_overlay_elements(theme.config, s.user_overlay_elements)
         # The DEVICE'S overlay-enabled state is the single authority (the
         # user/GUI toggle ``DeviceSettings.overlay_enabled``, default True) —
         # NOT the theme's baked DC flag.  Otherwise a theme authored
@@ -1119,17 +1117,14 @@ class DisplayService:
             **theme.config, "elements": elements,
             "overlay_enabled": s.overlay_enabled,
         }
-        layout = overlay_source(
-            s.mask_overlay_elements, s.user_overlay_elements,
-        )
+        layout = overlay_source(s.user_overlay_elements)
         log.debug(
             "build_overlay %s: theme=%r layout=%s (%d element(s)) "
-            "[theme=%d mask=%s user=%d] overlay_enabled=%s",
+            "[theme=%d user=%s] overlay_enabled=%s",
             info.key, theme.name, layout, len(elements),
             len(theme.config.get("elements") or []),
-            (len(s.mask_overlay_elements)
-             if s.mask_overlay_elements is not None else None),
-            len(s.user_overlay_elements),
+            (len(s.user_overlay_elements)
+             if s.user_overlay_elements is not None else None),
             theme.config.get("overlay_enabled", True),
         )
         # ``temp_unit`` flows from per-device settings — kept in sync
@@ -1220,26 +1215,13 @@ class DisplayService:
         user_sig = tuple(
             (e.id, e.type, e.x, e.y, e.color, e.size,
              e.bold, e.italic, e.text, e.metric, e.format, e.source)
-            for e in s.user_overlay_elements
-        )
-        # Mask overlay elements participate in the cache key so the
-        # overlay layer rebuilds when ApplyMask / SetMaskPath(None)
-        # change the layout — keeps the mask layout surviving theme
-        # swaps without leaking the previous mask's state.
-        mask_overlay_sig: tuple[Any, ...] = (
-            tuple(
-                (e.id, e.type, e.x, e.y, e.color, e.size,
-                 e.bold, e.italic, e.text, e.metric, e.format, e.source)
-                for e in s.mask_overlay_elements
-            )
-            if s.mask_overlay_elements is not None
-            else ()
+            for e in (s.user_overlay_elements or ())
         )
         # Temp unit participates in the key so toggling °C ↔ °F via
         # SetTempUnit busts the overlay cache and the next render
         # picks up the new format-string + value-conversion path.
         return (id(theme.config), visual_size, sensor_tuple, clock_tuple,
-                user_sig, mask_overlay_sig, s.temp_unit)
+                user_sig, s.temp_unit)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
 

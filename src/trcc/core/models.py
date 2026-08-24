@@ -461,6 +461,20 @@ class ThemeDir:
       td.legacy_json → config.json (legacy JSON, read for fallback)
     """
 
+    # The member NAMES, defined once.  Exposed as class attributes because
+    # some callers need the bare filename rather than a path — an error
+    # message naming what a directory is missing, a list of files to copy —
+    # and those callers used to re-spell it, which is how ``Theme.png`` ended
+    # up with 13 literal spellings and no constant at all.  The properties
+    # below derive from these, so a name has exactly one definition.
+    BG = "00.png"
+    MASK = "01.png"
+    PREVIEW = "Theme.png"
+    DC = "config1.dc"
+    JSON = "trcc.json"
+    LEGACY_JSON = "config.json"
+    ZT = "Theme.zt"
+
     __slots__ = ("path",)
 
     def __init__(self, path: Path | str) -> None:
@@ -468,31 +482,31 @@ class ThemeDir:
 
     @property
     def bg(self) -> Path:
-        return self.path / "00.png"
+        return self.path / self.BG
 
     @property
     def mask(self) -> Path:
-        return self.path / "01.png"
+        return self.path / self.MASK
 
     @property
     def preview(self) -> Path:
-        return self.path / "Theme.png"
+        return self.path / self.PREVIEW
 
     @property
     def dc(self) -> Path:
-        return self.path / "config1.dc"
+        return self.path / self.DC
 
     @property
     def json(self) -> Path:
-        return self.path / "trcc.json"
+        return self.path / self.JSON
 
     @property
     def legacy_json(self) -> Path:
-        return self.path / "config.json"
+        return self.path / self.LEGACY_JSON
 
     @property
     def zt(self) -> Path:
-        return self.path / "Theme.zt"
+        return self.path / self.ZT
 
     def __truediv__(self, other: str) -> Path:
         return self.path / other
@@ -590,20 +604,17 @@ class DeviceSettings:
     background_mode: Literal["theme", "color", "transparent"] = "theme"
     # Solid color used when ``background_mode == 'color'`` (RGB 0-255).
     overlay_background: tuple[int, int, int] = (0, 0, 0)
-    # User-edited overlay elements layered on top of the theme's elements.
-    # Theme-bundled elements come from ``theme.config["elements"]``; these
-    # are the user's additions / overrides created via the Add/Update/Delete
-    # overlay-element Commands.  Persisted in config.json under "user_overlay".
-    user_overlay_elements: list[OverlayElement] = field(default_factory=list)
-    # Mask-supplied overlay elements — when an external mask is applied
-    # (cloud mask or user upload), its ``config1.dc`` carries its own
-    # metric/clock/text layout that REPLACES the active theme's overlay
-    # elements at render time.  Stored here (not on theme.config) so the
-    # mask state survives a theme swap — picking a new background after
-    # a mask keeps the mask layout, mirroring legacy's OverlayService
-    # state being independent of the theme.  Set by ApplyMask, cleared
-    # by SetMaskPath(None).
-    mask_overlay_elements: list[OverlayElement] | None = None
+    # The device's WORKING overlay layer — the one layout that is edited,
+    # rendered and saved, mirroring the C#'s single ``UCXiTongXianShiSubArray``
+    # (2.1.6 FormCZTV.cs).  A source change (theme load, mask apply, save)
+    # ADOPTS that source's elements into it; Add/Update/Delete mutate it.
+    #
+    # ``None`` and ``[]`` mean different things and the difference is the
+    # whole point: ``None`` = this device has no layout of its own, ``[]`` =
+    # the layout is empty because the user emptied it.  Collapsing the two is
+    # what made a deleted last element reappear (#276).  Config schema 2; a v1
+    # config's ``[]`` is migrated to ``None`` (``settings._migrate_device``).
+    user_overlay_elements: list[OverlayElement] | None = None
     # Slideshow config — rotates through ``slideshow_themes`` every
     # ``slideshow_interval_s`` seconds while ``slideshow_enabled`` is true.
     # Cursor + timing live in SlideshowService (transient, not persisted).

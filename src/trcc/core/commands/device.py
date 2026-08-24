@@ -43,6 +43,7 @@ from ..models import (
     FitMode,
     HandshakeResult,
     OverlayElement,
+    ThemeDir,
     Wire,
     oriented_resolution,
 )
@@ -88,7 +89,6 @@ from ._base import Command, Query
 from ._helpers import (
     _BG_IMAGE_EXTS,
     _IMAGE_EXTS,
-    _LEGACY_MASK_FILENAME,
     _VIDEO_EXTS_OK,
     _element_to_entry,
     _invalidate_scene,
@@ -1676,13 +1676,13 @@ class ApplyMask(Command[MaskApplyResult]):
             log.warning(
                 "ApplyMask: %s is neither a supported image nor a legacy "
                 "mask dir with %s — rejecting",
-                candidate, _LEGACY_MASK_FILENAME,
+                candidate, ThemeDir.MASK,
             )
             return MaskApplyResult(
                 ok=False, key=self.key, path=str(candidate),
                 message=(f"mask path is neither a supported image file "
                          f"nor a legacy mask directory with "
-                         f"{_LEGACY_MASK_FILENAME}: {candidate}"),
+                         f"{ThemeDir.MASK}: {candidate}"),
             )
         resolved = str(resolved_file.resolve())
         log.info("ApplyMask: resolved %s → %s", candidate, resolved)
@@ -1699,13 +1699,22 @@ class ApplyMask(Command[MaskApplyResult]):
         # so the mask's own layout (set below) shows instead of being
         # shadowed by edits made against the previous layout.  Mirrors
         # legacy ``apply_mask``, which cleared the theme's overlay before
-        # loading the mask's config1.dc.  Safe on every caller: LoadTheme's
-        # internal ApplyMask runs after LoadTheme already cleared the layer,
-        # and RestoreLastTheme never calls ApplyMask.
-        if app.settings.for_device(self.key).user_overlay_elements:
-            log.info("ApplyMask: clearing live user overlay edits for %s "
-                     "(mask is the new layout source)", self.key)
-            app.settings.set_user_overlay_elements(self.key, [])
+        # loading the mask's config1.dc, and the C#'s own order — the mask
+        # read REPLACES the single array rather than merging into it
+        # (``UCXiTongXianShiSet_UCXiTongXianShiSubArray`` clears then re-adds,
+        # 2.1.6 UCXiTongXianShi.cs:100-126).  The repopulate is below, once
+        # the mask's own elements are parsed; a mask with no readable DC
+        # leaves the layer empty and the render falls back exactly as before.
+        # Safe on every caller: LoadTheme's internal ApplyMask runs after
+        # LoadTheme has already established the layer, and RestoreLastTheme
+        # never calls ApplyMask.
+        # NO pre-clear.  The repopulate below REPLACES the layer wholesale
+        # when the mask carries a layout, so clearing first buys nothing — and
+        # since an empty layer now means "draw nothing" rather than "fall back
+        # to the theme", a mask with no readable config1.dc would have blanked
+        # the overlay.  The warning branch below already promises the opposite
+        # ("keeping theme's overlay layout"); without the pre-clear that
+        # promise is true.
         # Auto-position the mask using its own config1.dc — legacy
         # ``OverlayService.calculate_mask_position`` behaviour: full-size
         # masks at (0,0); sub-screen masks read center coords from the
@@ -1742,7 +1751,7 @@ class ApplyMask(Command[MaskApplyResult]):
         # ``load_from_dc(mask_dir/config1.dc)``.  Each mask carries its
         # own element list with coordinates aligned to its cutouts; the
         # theme's elements get replaced (not stacked) on apply.
-        mask_dc = mask_dir / "config1.dc"
+        mask_dc = ThemeDir(mask_dir).dc
         theme = app.active_themes.get(self.key)
         if theme is not None and mask_dc.is_file():
             try:
@@ -1760,17 +1769,20 @@ class ApplyMask(Command[MaskApplyResult]):
                     # after a mask didn't drop the mask's metric layout.
                     # Mirror that here: settings is the persistent home
                     # for "what the user is currently rendering on top".
+                    # A mask is a source change: its layout BECOMES the
+                    # device's working layer, exactly as the C# reads the
+                    # mask's config1.dc into the same single array a theme
+                    # load fills (2.1.6 FormCZTV.cs:5935,
+                    # ``ReadSystemConfiguration(mask, readMyMode: false)``).
                     from ..models import OverlayElement
-                    mask_overlay = [
-                        OverlayElement.from_dict(el) for el in mask_elements
-                    ]
-                    app.settings.set_mask_overlay_elements(
-                        self.key, mask_overlay,
+                    app.settings.set_user_overlay_elements(
+                        self.key,
+                        [OverlayElement.from_dict(el) for el in mask_elements],
                     )
                     log.info(
                         "ApplyMask: %s contributes %d overlay element(s) — "
-                        "stored on DeviceSettings.mask_overlay_elements",
-                        resolved_file.name, len(mask_elements),
+                        "adopted as the working layer for %s",
+                        resolved_file.name, len(mask_elements), self.key,
                     )
         _invalidate_scene(app, self.key)
         app.events.publish(MaskApplied(key=self.key, path=resolved))
@@ -1910,7 +1922,10 @@ class AddOverlayElement(Command[OverlayElementResult]):
             )
         import uuid
         eid = self.element_id or f"el_{uuid.uuid4().hex[:8]}"
-        existing = {e.id for e in app.settings.for_device(self.key).user_overlay_elements}
+        existing = {
+            e.id for e in
+            (app.settings.for_device(self.key).user_overlay_elements or ())
+        }
         if eid in existing:
             return OverlayElementResult(
                 ok=False, key=self.key, element=None,
@@ -2091,7 +2106,14 @@ class SetOverlayConfig(Command[OverlayConfigResult]):
             parsed.append(element)
         app.settings.set_user_overlay_elements(self.key, parsed)
         app.display.invalidate(self.key)
-        app.events.publish(OverlayChanged(key=self.key, enabled=True))
+        # Report the device's actual toggle, not a hardcoded True.  This
+        # Command sets the LAYOUT; whether the overlay is switched on is
+        # ``DeviceSettings.overlay_enabled``'s to say (the single authority —
+        # see the ``build_overlay`` comment in services/display.py).
+        app.events.publish(OverlayChanged(
+            key=self.key,
+            enabled=app.settings.for_device(self.key).overlay_enabled,
+        ))
         return OverlayConfigResult(
             ok=True, key=self.key,
             elements=[_element_to_entry(e) for e in parsed],

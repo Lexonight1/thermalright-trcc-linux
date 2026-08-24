@@ -26,10 +26,8 @@ def load_dc_as_theme_config(path):
     return Dc.File(path).read()
 
 
-def write_dc_from_theme_config(path, config, *, user_overlay_elements=None):
-    return Dc.File(path).write(
-        config, user_overlay_elements=user_overlay_elements,
-    )
+def write_dc_from_theme_config(path, config):
+    return Dc.File(path).write(config)
 
 
 @pytest.fixture
@@ -161,20 +159,32 @@ def test_trailer_round_trips(theme_dir: Path) -> None:
         assert second[key] == config[key], f"second cycle dropped {key}"
 
 
-def test_user_overlay_elements_layer_on_top(theme_dir: Path) -> None:
-    """User overlay elements are concatenated after theme.config['elements']."""
+def test_the_codec_writes_the_layout_it_is_given_and_nothing_else(
+    theme_dir: Path,
+) -> None:
+    """``config["elements"]`` IS the layout — the codec adds nothing.
+
+    This replaces a test that asserted the opposite: the writer took a
+    ``user_overlay_elements=`` argument and CONCATENATED it onto the theme's
+    own elements, which made the codec a third place deciding what an overlay
+    contains — and it disagreed with the renderer, which resolves one winning
+    layer instead of stacking.  Callers now resolve the layout
+    (``device_overlay_layout``) and pass it as the config's elements.
+    """
     out = theme_dir / "config1.dc"
-    write_dc_from_theme_config(out, {
-        "elements": [
-            {"type": "text", "x": 1, "y": 1, "text": "from-theme"},
-        ],
-    }, user_overlay_elements=[
-        {"id": "u1", "type": "text", "x": 2, "y": 2, "text": "from-user"},
-    ])
+    layout = [
+        {"type": "text", "x": 1, "y": 1, "text": "on-screen"},
+        {"id": "u1", "type": "text", "x": 2, "y": 2, "text": "also-on-screen"},
+    ]
+    write_dc_from_theme_config(out, {"elements": layout})
+
     parsed = load_dc_as_theme_config(out)
-    assert len(parsed["elements"]) == 2
-    assert parsed["elements"][0]["text"] == "from-theme"
-    assert parsed["elements"][1]["text"] == "from-user"
+    assert len(parsed["elements"]) == 2, (
+        "the codec must write exactly the layout handed to it"
+    )
+    assert [e["text"] for e in parsed["elements"]] == [
+        "on-screen", "also-on-screen",
+    ]
 
 
 # =========================================================================

@@ -633,10 +633,17 @@ def test_save_theme_without_user_edits_inlines_source_layout(
 def test_save_theme_clears_user_overlay_after_bake(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """Successful bake → user_overlay_elements in DeviceSettings cleared.
+    """Successful bake → each baked element still renders exactly ONCE.
 
-    Otherwise the baked elements would render TWICE on next theme load
-    (once from the DC, once from live DeviceSettings).
+    The hazard is a double draw: the layout baked into the saved theme plus a
+    live copy in DeviceSettings.  This used to be prevented by clearing the
+    device's layer to empty; the layer is now RE-SEEDED from the saved theme
+    instead (the C#'s single-array model), and the no-double-draw guarantee
+    comes from ``resolve_overlay_elements`` REPLACING rather than stacking.
+
+    So assert the invariant, not the mechanism — a count of what actually
+    resolves for the render.  Asserting "the list is empty" would pass for a
+    broken re-seed and fail for a correct one.
     """
     from trcc.core.models import OverlayElement
 
@@ -653,7 +660,21 @@ def test_save_theme_clears_user_overlay_after_bake(
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="clear-test"))
 
-    assert app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements == []
+    from trcc.services.overlay import resolve_overlay_elements
+    s = app.settings.for_device(_TEST_DEVICE_KEY)
+    saved = app.active_themes[_TEST_DEVICE_KEY]
+    drawn = resolve_overlay_elements(
+        saved.config, s.user_overlay_elements,
+    )
+    baked = saved.config.get("elements") or []
+    assert len(drawn) == len(baked), (
+        f"each baked element must render once — {len(baked)} baked, "
+        f"{len(drawn)} would draw"
+    )
+    assert len({id(e) for e in drawn}) == len(drawn)
+    assert "ed1" in [e.get("id") for e in drawn], (
+        "the user's edit was baked into the theme and must still be on screen"
+    )
 
 
 def test_explicit_load_clears_user_edits_restore_preserves(
@@ -665,6 +686,13 @@ def test_explicit_load_clears_user_edits_restore_preserves(
     the new theme shows its own layout.  ``RestoreLastTheme`` (reconnect /
     restart) re-runs LoadTheme with ``reset_overrides=False`` and must PRESERVE
     the persisted edits — legacy restored the saved overlay config on connect.
+
+    The explicit switch now ADOPTS the theme's layout into the working layer
+    rather than clearing it to empty (the C#'s model: loading a theme reads
+    its config1.dc into the one array — 2.1.6 FormCZTV.cs:6951).  The
+    behaviour under test is unchanged — the user's edit is gone and the
+    theme's layout is what shows — but "gone" is now expressed by the theme's
+    elements being there, not by the layer being empty.
     """
     from trcc.core.models import OverlayElement
 
@@ -675,9 +703,15 @@ def test_explicit_load_clears_user_edits_restore_preserves(
         OverlayElement(id="edit1", type="text", x=5, y=5, text="X"),
     )
 
-    # Explicit switch → edits cleared.
+    # Explicit switch → the user's edit is gone, the theme's layout is in.
     app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source))
-    assert app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements == []
+    adopted = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    assert "edit1" not in [e.id for e in adopted], (
+        "an explicit theme switch must drop the previous theme's live edits"
+    )
+    assert len(adopted) == len(
+        app.active_themes[_TEST_DEVICE_KEY].config.get("elements") or []
+    ), "the working layer must hold the newly-loaded theme's own layout"
 
     # New edit, then a reconnect-style restore → edit survives.
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
@@ -685,10 +719,15 @@ def test_explicit_load_clears_user_edits_restore_preserves(
         _TEST_DEVICE_KEY,
         OverlayElement(id="edit2", type="text", x=6, y=6, text="Y"),
     )
+    before = list(app.settings.for_device(
+        _TEST_DEVICE_KEY).user_overlay_elements)
     app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
     preserved = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
-    assert [e.id for e in preserved] == ["edit2"], (
+    assert "edit2" in [e.id for e in preserved], (
         "RestoreLastTheme (reconnect) must keep the user's persisted edits"
+    )
+    assert [e.id for e in preserved] == [e.id for e in before], (
+        "a restore must leave the working layer exactly as it found it"
     )
 
 
@@ -1077,9 +1116,13 @@ def test_saved_theme_video_background_plays_via_reference(
 def test_save_theme_inlines_mask_overlay_elements_into_manifest(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.mask_overlay_elements`` set → manifest elements come
-    from the mask layout (REPLACE source theme's elements), matching the
-    runtime ``_build_overlay`` precedence.
+    """A mask's layout is what the save bakes, replacing the theme's.
+
+    The mask used to live in its own ``mask_overlay_elements`` layer that the
+    renderer resolved ahead of the theme.  ``ApplyMask`` now adopts the mask's
+    layout into the device's ONE working layer (the C#'s model — the mask read
+    replaces the same array a theme load fills), so the behaviour under test
+    is unchanged and the setup names the working layer instead.
     """
     import json as _json
 
@@ -1089,7 +1132,7 @@ def test_save_theme_inlines_mask_overlay_elements_into_manifest(
     app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
 
     # Mask brings its own layout — text element with distinctive value.
-    app.settings.set_mask_overlay_elements(
+    app.settings.set_user_overlay_elements(
         _TEST_DEVICE_KEY,
         [OverlayElement(
             id="mask_e1", type="text", x=200, y=200, color="#ff00aa",
@@ -1111,7 +1154,13 @@ def test_save_theme_inlines_mask_overlay_elements_into_manifest(
 def test_save_theme_clears_all_overrides_after_save(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """All four overrides cleared after a successful save with all set."""
+    """After a save the device holds no OVERRIDE of the theme it just wrote.
+
+    Three of the four are cleared outright.  The fourth — the overlay working
+    layer — is re-seeded from the saved theme rather than emptied, so the
+    assertion is that it MATCHES the theme (no override) instead of that it is
+    empty.
+    """
     from trcc.core.models import OverlayElement
 
     source = _write_theme_with_real_pngs(tmp_home, "src")
@@ -1124,13 +1173,6 @@ def test_save_theme_clears_all_overrides_after_save(
     cloud_mask.write_bytes(_png_bytes(red=0x44))
     app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
     app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
-    app.settings.set_mask_overlay_elements(
-        _TEST_DEVICE_KEY,
-        [OverlayElement(
-            id="m1", type="text", x=1, y=1, color="#fff",
-            size=12, bold=False, italic=False, text="m",
-        )],
-    )
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
         OverlayElement(
@@ -1144,9 +1186,12 @@ def test_save_theme_clears_all_overrides_after_save(
     s = app.settings.for_device(_TEST_DEVICE_KEY)
     assert s.background_path is None
     assert s.mask_path is None
-    assert s.mask_overlay_elements is None
-    assert s.user_overlay_elements == []
     assert s.current_theme == str((user_theme_dir / "full-state").resolve())
+    saved_elements = app.active_themes[_TEST_DEVICE_KEY].config.get(
+        "elements") or []
+    assert [e.id for e in s.user_overlay_elements] == [
+        e.get("id") for e in saved_elements
+    ], "the working layer must mirror the saved theme, overriding nothing"
 
 
 def test_save_theme_snapshots_preview_as_thumbnail(
@@ -1975,3 +2020,89 @@ def test_save_theme_falls_back_when_the_sku_library_is_absent(
     saved = app.platform.paths().user_theme_dir(w, h) / "genref"
     manifest = _json.loads((saved / "trcc.json").read_text(encoding="utf-8"))
     assert manifest["background"] == "web/1600720/a078.png"
+
+
+def test_restore_seeds_a_null_layer_but_never_an_emptied_one(
+    app: App, tmp_home: Path,
+) -> None:
+    """The seed guard the v1→v2 migration leans on.
+
+    ``None`` = this device has no layout of its own, so a restore seeds it
+    from the theme — that is how a pre-schema-2 config (migrated from ``[]``)
+    gets its layout back without the user doing anything.
+
+    ``[]`` = the user emptied it.  Seeding THAT would resurrect a deliberate
+    deletion on the next reconnect, which is #276 coming back by another road.
+    The two cases differ by a sentinel, so gate them together or the guard can
+    silently regress to a truthiness test and still look right.
+    """
+    source = _write_theme_with_dc(tmp_home, "seedsrc")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
+    theme_elements = app.active_themes[_TEST_DEVICE_KEY].config.get(
+        "elements") or []
+    assert theme_elements, "fixture must carry a layout to seed from"
+
+    app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements = None
+    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    seeded = app.settings.for_device(_TEST_DEVICE_KEY).user_overlay_elements
+    assert seeded is not None and len(seeded) == len(theme_elements), (
+        "a null layer must be seeded from the theme on restore"
+    )
+
+    app.settings.set_user_overlay_elements(_TEST_DEVICE_KEY, [])
+    app.dispatch(RestoreLastTheme(key=_TEST_DEVICE_KEY))
+    assert app.settings.for_device(
+        _TEST_DEVICE_KEY).user_overlay_elements == [], (
+        "an emptied layer must survive a restore — seeding it would undo the "
+        "user's deletion at the next reconnect"
+    )
+
+
+def test_save_establishes_the_theme_through_one_path(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """SaveTheme's post-condition, asserted as a whole.
+
+    ``SaveTheme`` used to hand-roll ``LoadTheme`` to establish the saved theme
+    — its own comment said "same switch LoadTheme performs" — re-pointing
+    ``active_themes``, writing ``current_theme`` and clearing overrides
+    itself.  Two copies of one rule, and they drifted: when LoadTheme learned
+    to adopt the layout into the working layer, the copy had to be taught
+    separately, and until it was, saving blanked the overlay.
+
+    It now delegates, so there is exactly ONE writer of ``active_themes``.
+    This asserts every part of the post-condition at once, because a future
+    re-hand-rolling will get some of it right and some of it wrong — which is
+    precisely how the last one survived.
+    """
+    from trcc.core.models import OverlayElement
+
+    source = _write_theme_with_dc(tmp_home, "estsrc")
+    app.active_themes[_TEST_DEVICE_KEY] = ThemeService().load(source)
+    app.settings.add_user_overlay_element(
+        _TEST_DEVICE_KEY,
+        OverlayElement(id="mine", type="text", x=7, y=7, text="MINE"),
+    )
+
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="established")).ok
+
+    target = user_theme_dir / "established"
+    s = app.settings.for_device(_TEST_DEVICE_KEY)
+    active = app.active_themes[_TEST_DEVICE_KEY]
+
+    assert active.path.resolve() == target.resolve(), (
+        "the live theme must be the one just saved"
+    )
+    assert s.current_theme == str(target.resolve()), (
+        "the persisted pointer must agree with the live theme"
+    )
+    assert s.mask_path is None and s.background_path is None, (
+        "a saved theme owns its assets — the device overrides nothing"
+    )
+    assert [e.id for e in (s.user_overlay_elements or [])] == [
+        e.get("id") for e in (active.config.get("elements") or [])
+    ], (
+        "the working layer must match the theme that is actually loaded — "
+        "this is the assertion the hand-rolled copy failed"
+    )
