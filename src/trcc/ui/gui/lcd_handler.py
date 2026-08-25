@@ -26,6 +26,7 @@ from PySide6.QtGui import QPixmap
 from ...core.commands import (
     ApplyMask,
     BuildPreview,
+    DeviceState,
     EnableOverlay,
     ExportTheme,
     ImportTheme,
@@ -267,8 +268,9 @@ class LCDHandler(BaseHandler):
         """
         self._pm.ui_active = False
         self._pixmap_cache.clear()
-        device = self._app.devices.get(self._device_key)
-        if device is None or not device.is_connected:
+        # ``connected`` is False for an unknown key too, so this one field
+        # answers both halves of the old ``is None or not is_connected``.
+        if not self._app.dispatch(DeviceState(key=self._device_key)).connected:
             return
         self._app.dispatch(RestoreDeviceState(key=self._device_key))
 

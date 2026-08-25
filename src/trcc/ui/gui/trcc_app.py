@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import (
     ConnectDevice,
     DeleteTheme,
+    DeviceState,
     EnableOverlay,
     ListGpus,
     SetBackground,
@@ -867,19 +868,18 @@ class TRCCApp(QMainWindow):
         log.debug("_refresh_sidebar")
         devices: list[dict] = []
         for idx, key in enumerate(self._handlers.keys()):
-            dev = self._app.devices.get(key)
-            if dev is None:
+            st = self._app.dispatch(DeviceState(key=key))
+            if not st.ok:
                 continue
-            info = dev.info
             devices.append({
-                'name': f"{info.vendor} {info.product}".strip()
-                        or f"Device {info.vid:04x}:{info.pid:04x}",
-                'path': info.key,                   # vid:pid serves as legacy 'path'
-                'button_image': getattr(info, 'button_image', '') or '',
-                'protocol': info.wire.value,
-                'model': getattr(info, 'model', '') or '',
-                'vid': info.vid,
-                'pid': info.pid,
+                'name': f"{st.vendor} {st.product}".strip()
+                        or f"Device {st.vid:04x}:{st.pid:04x}",
+                'path': st.key,                     # vid:pid serves as legacy 'path'
+                'button_image': st.button_image,
+                'protocol': st.wire,                # already the enum's value
+                'model': st.model,
+                'vid': st.vid,
+                'pid': st.pid,
                 'device_index': idx,                # legacy display ordering
             })
         self.uc_device.update_devices(devices)
