@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from ...core.commands import (
     ConnectDevice,
+    ControlCenterSnapshot,
     DeleteTheme,
     DeviceState,
     EnableOverlay,
@@ -466,7 +467,9 @@ class TRCCApp(QMainWindow):
 
         # Restore temp unit from app settings.  Legacy widgets take int
         # 0/1; next/'s AppSettings.temp_unit is a "C"/"F" literal.
-        saved_unit_int = 1 if app.settings.app.temp_unit == "F" else 0
+        saved_unit_int = (
+            1 if app.dispatch(ControlCenterSnapshot()).temp_unit == "F" else 0
+        )
         self.uc_system_info.set_temp_unit(saved_unit_int)
         self.uc_led_control.set_temp_unit(saved_unit_int)
         if saved_unit_int == 1:
@@ -1107,7 +1110,8 @@ class TRCCApp(QMainWindow):
         # LED panel — Platform port supplies the memory/disk probes.
         # Language is injected (composition root) so the panel never reaches
         # into _boot for global settings.
-        self.uc_led_control = UCLedControl(central, self._app.settings.app.language)
+        self.uc_led_control = UCLedControl(
+            central, self._app.dispatch(ControlCenterSnapshot()).language)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
         self.uc_led_control.set_hardware_fns(
@@ -1298,7 +1302,7 @@ class TRCCApp(QMainWindow):
             TITLE_BAR_TEXT,
             tr,
         )
-        lang = self._app.settings.app.language
+        lang = self._app.dispatch(ControlCenterSnapshot()).language
         self._i18n_labels: list[tuple[QLabel, str | None]] = []
 
         def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
@@ -1950,8 +1954,13 @@ class TRCCApp(QMainWindow):
         # web/1600720l.  getattr: handlers without a key (LED) fall back to
         # the generic dir rather than raising inside a file dialog.
         key = getattr(h, "_device_key", "")
-        cloud_dir = self._app.libraries(key).cloud_theme_dir(w, hw)
-        return str(cloud_dir) if cloud_dir.exists() else ""
+        # ``key`` resolves the cooler's OWN artwork library — a SUB-3
+        # 1600x720 panel keeps its videos under web/1600720l — which is
+        # exactly what ``GetPaths`` does when given a key.
+        cloud = self._app.dispatch(
+            GetPaths(key=key, resolution=(w, hw)),
+        ).cloud_theme_dir
+        return cloud if cloud and Path(cloud).exists() else ""
 
     def _on_load_image_clicked(self) -> None:
         log.info("_on_load_image_clicked")

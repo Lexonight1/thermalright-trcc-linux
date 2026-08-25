@@ -298,13 +298,17 @@ class LCDHandler(BaseHandler):
         # rotation can switch the browser to the rotated dir on demand
         # (auto-rotation portrait).  Log the initial landscape set so
         # the connect-time picture is preserved.
-        libs = self._app.libraries(self._device_key)
+        # One Query answers all four, and ``key`` resolves them through
+        # this cooler's own artwork libraries — what ``libraries(key)``
+        # was doing by hand.
+        dirs = self._app.dispatch(
+            GetPaths(key=self._device_key, resolution=(w, h)),
+        )
         self.log.info(
             "_refresh: theme_dir=%s web_dir=%s masks_dir(cloud)=%s "
             "user_mask_dir=%s",
-            libs.theme_dir(w, h), libs.cloud_theme_dir(w, h),
-            libs.cloud_mask_dir(w, h),
-            self._app.dispatch(GetPaths(resolution=(w, h))).user_mask_dir,
+            dirs.theme_dir, dirs.cloud_theme_dir,
+            dirs.cloud_mask_dir, dirs.user_mask_dir,
         )
         # Typed source: every _restore_* below reads DeviceSettings
         # directly.  Pre-S1.2 this slot built an intermediate

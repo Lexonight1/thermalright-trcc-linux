@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core._version import parse_version
+from ...core.commands import ControlCenterSnapshot
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Layout, Sizes, Styles
@@ -192,9 +193,13 @@ class UCAbout(BasePanel):
         self._autostart = autostart_mgr.is_enabled() if autostart_mgr else False
         # Initial values pulled from App settings (per Cross-cutting setter audit)
         if app is not None:
-            self._read_hdd = app.settings.app.hdd_enabled
-            self._refresh_interval = int(app.settings.app.refresh_interval_s)
-            self._gpu_device = app.settings.app.active_gpu or ''
+            # One Query, three fields — and the same Query the control
+            # centre uses, so the panel and the snapshot cannot disagree
+            # about what the app settings are.
+            cc = app.dispatch(ControlCenterSnapshot())
+            self._read_hdd = cc.hdd_enabled
+            self._refresh_interval = int(cc.refresh_interval_s)
+            self._gpu_device = cc.active_gpu or ''
         else:
             self._read_hdd = False
             self._refresh_interval = 2
