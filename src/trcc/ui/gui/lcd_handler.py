@@ -29,6 +29,7 @@ from ...core.commands import (
     DeviceState,
     EnableOverlay,
     ExportTheme,
+    GetPaths,
     ImportTheme,
     LcdSnapshot,
     ListThemes,
@@ -292,7 +293,6 @@ class LCDHandler(BaseHandler):
         # the user picks the device in the sidebar, and the paths port
         # is the source of truth for theme/mask/web directories.
         self._pm.set_canvas(w, h)
-        paths = self._app.platform.paths()
         # Theme / web / mask dirs aren't cached on _state any more —
         # ``_update_theme_directories`` derives them per-call so portrait
         # rotation can switch the browser to the rotated dir on demand
@@ -303,7 +303,8 @@ class LCDHandler(BaseHandler):
             "_refresh: theme_dir=%s web_dir=%s masks_dir(cloud)=%s "
             "user_mask_dir=%s",
             libs.theme_dir(w, h), libs.cloud_theme_dir(w, h),
-            libs.cloud_mask_dir(w, h), paths.user_mask_dir(w, h),
+            libs.cloud_mask_dir(w, h),
+            self._app.dispatch(GetPaths(resolution=(w, h))).user_mask_dir,
         )
         # Typed source: every _restore_* below reads DeviceSettings
         # directly.  Pre-S1.2 this slot built an intermediate

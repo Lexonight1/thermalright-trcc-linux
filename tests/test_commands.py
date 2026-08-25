@@ -35,6 +35,12 @@ def test_get_platform_info_returns_fake_platform_fields(fake_platform) -> None:
     assert r.install_method == "test"
     # Paths all derive from the FakePaths root
     assert r.config_dir.endswith(str(fake_platform.paths().config_dir()))
+    # The hint the gui shows when nothing is attached.  Asserted against the
+    # platform's OWN answer, not a literal: the point is that the Query
+    # CARRIES it, so the gui never has to reach ``app.platform`` — which is
+    # an AttributeError under TRCC_DAEMON=1.
+    assert r.no_devices_hint == fake_platform.no_devices_hint()
+    assert r.no_devices_hint, "platform hint came back empty"
 
 
 def test_autostart_enable_then_status_reports_enabled(fake_platform) -> None:

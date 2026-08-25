@@ -748,6 +748,7 @@ class GetPlatformInfo(Query[PlatformInfoResult]):
             user_content_dir=str(paths.user_content_dir()),
             log_file=str(paths.log_file()),
             permission_warnings=p.check_permissions(),
+            no_devices_hint=p.no_devices_hint(),
         )
 
 @dataclass(frozen=True, slots=True)

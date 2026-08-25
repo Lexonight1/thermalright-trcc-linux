@@ -522,6 +522,12 @@ class PlatformInfoResult(Result):
     user_content_dir: str = ""
     log_file: str = ""
     permission_warnings: list[str] = field(default_factory=list)
+    # What to tell a user who sees no devices — per-OS, because the answer is
+    # "install the udev rules" on Linux and something else everywhere else.
+    # Here rather than on its own Command: it is platform identity, which is
+    # what this Result already is, and the gui asking for it was reaching
+    # ``app.platform`` — a crash under TRCC_DAEMON=1 (#249).
+    no_devices_hint: str = ""
 
 
 # =========================================================================

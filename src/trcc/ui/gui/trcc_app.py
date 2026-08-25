@@ -36,6 +36,8 @@ from ...core.commands import (
     DeleteTheme,
     DeviceState,
     EnableOverlay,
+    GetPaths,
+    GetPlatformInfo,
     ListGpus,
     SetBackground,
     SetGpuDevice,
@@ -975,7 +977,8 @@ class TRCCApp(QMainWindow):
         self.uc_device.setGeometry(*Layout.SIDEBAR)
         # Per-OS "no devices" guidance comes from the Platform port (one
         # source of truth), injected here so the panel stays toolkit-pure.
-        self.uc_device.set_no_devices_hint(self._app.platform.no_devices_hint())
+        self.uc_device.set_no_devices_hint(
+            self._app.dispatch(GetPlatformInfo()).no_devices_hint)
 
         # FormCZTV container
         self.form_container = QWidget(central)
@@ -2093,7 +2096,7 @@ class TRCCApp(QMainWindow):
         # other's backgrounds.  ``user_content_dir`` is the data-port
         # owner for user-supplied content.
         target_dir = (
-            self._app.platform.paths().user_content_dir() / "backgrounds"
+            Path(self._app.dispatch(GetPaths()).user_content_dir) / "backgrounds"
         )
         target_dir.mkdir(parents=True, exist_ok=True)
         safe_key = h.device_key.replace(":", "_") or "default"
@@ -2126,7 +2129,13 @@ class TRCCApp(QMainWindow):
         if not isinstance(cropped, _QImage) or cropped.isNull():
             return
         w, hw = h.lcd_size
-        user_dir = self._app.platform.paths().user_mask_dir(w, hw)
+        # Resolution-scoped, so the Query needs the canvas — without it the
+        # field comes back None rather than being guessed at.
+        mask_dir = self._app.dispatch(GetPaths(resolution=(w, hw))).user_mask_dir
+        if mask_dir is None:
+            log.warning("mask upload: no user mask dir for %dx%d", w, hw)
+            return
+        user_dir = Path(mask_dir)
         user_dir.mkdir(parents=True, exist_ok=True)
 
         raw_name = self._mask_upload_filename or 'custom_001'
