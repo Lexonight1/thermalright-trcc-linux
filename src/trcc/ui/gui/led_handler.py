@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...core.commands import (
     EnableLedTestMode,
+    LedSnapshot,
     SelectZone,
     SetClockFormat,
     SetDiskIndex,
@@ -164,16 +165,21 @@ class LEDHandler(BaseHandler):
         """Populate the panel from ``app.settings.for_led(key)``."""
         if self._app is None:
             return
-        s = self._app.settings.for_led(self._device_key)
+        from ...core.led_models import LEDMode
+
+        s = self._app.dispatch(LedSnapshot(key=self._device_key))
         # Zone[0] for multi-zone, else the global mode/color/brightness.
+        # The snapshot spells a mode by NAME; the panel takes the IntEnum's
+        # number, so the lookup happens here rather than the Result carrying
+        # both and letting them drift.
         if s.zones:
             z = s.zones[0]
             self._panel.load_zone_state(
-                0, z.mode.value, z.color, z.brightness, z.on,
+                0, LEDMode[z.mode].value, z.color, z.brightness, z.on,
             )
         else:
             self._panel.load_zone_state(
-                0, s.mode.value, s.color, s.brightness, s.global_on,
+                0, LEDMode[s.mode].value, s.color, s.brightness, s.global_on,
             )
         # Restore carousel mode + the saved per-page/zone enabled mask.  Page
         # styles never populate ``zones`` (their selector picks a metric page,

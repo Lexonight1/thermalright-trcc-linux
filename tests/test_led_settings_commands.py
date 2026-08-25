@@ -290,3 +290,48 @@ def _new_runtime_with_timer(rgb_timer: int):
 def _new_runtime_with_test(*, timer: int, color: int):
     from trcc.core.led_models import LedRuntimeState
     return LedRuntimeState(test_timer=timer, test_color=color)
+
+
+# ── LedSnapshot carries per-zone state, not just a zone COUNT ─────────────
+#
+# ``zone_count`` said how many zones exist with no way to ask what any of
+# them IS, so the gui kept reading ``settings.for_led`` directly — an
+# AttributeError under TRCC_DAEMON=1, where a UI holds an AppProxy.
+
+
+def test_led_snapshot_reports_each_zones_own_state(tmp_path: Path) -> None:
+    """The snapshot round-trips per-zone mode / color / brightness / on."""
+    from trcc.core.commands import LedSnapshot, SetLedZoneColor, SetLedZoneMode
+    from trcc.core.led_models import LEDMode
+
+    app = _app(tmp_path)
+    key = "0416:1234"
+    # Zones must exist before one can be written — the setters range-check.
+    app.settings.set_led_zone_count(key, 2)
+    app.dispatch(SetLedZoneMode(key=key, zone=0, mode=LEDMode.BREATHING))
+    app.dispatch(SetLedZoneColor(key=key, zone=0, color=(10, 20, 30)))
+
+    snap = app.dispatch(LedSnapshot(key=key))
+
+    assert snap.ok is True
+    assert len(snap.zones) == snap.zone_count
+    assert snap.zones, "zone written but the snapshot reported none"
+    # Spelled by NAME, matching LedSnapshotResult.mode — one fact, one spelling.
+    assert snap.zones[0].mode == LEDMode.BREATHING.name
+    assert LEDMode[snap.zones[0].mode] is LEDMode.BREATHING
+    assert snap.zones[0].color == (10, 20, 30)
+
+
+def test_led_snapshot_reports_the_carousel_mask(tmp_path: Path) -> None:
+    """``zone_sync_zones`` is the carousel's source of truth — page styles
+    never populate ``zones``, so the mask has to ride separately."""
+    from trcc.core.commands import LedSnapshot, SetLedZoneSyncZones
+
+    app = _app(tmp_path)
+    key = "0416:1234"
+    app.dispatch(SetLedZoneSyncZones(key=key, zones=[True, False, True]))
+
+    snap = app.dispatch(LedSnapshot(key=key))
+
+    assert snap.zone_sync_zones == (True, False, True)
+    assert isinstance(snap.zone_sync_zones, tuple), "a frozen Result holds tuples"

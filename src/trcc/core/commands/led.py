@@ -32,6 +32,7 @@ from ..results import (
     LedSnapshotResult,
     LedStyleEntry,
     LedStylesListResult,
+    LedZoneEntry,
     MemoryRatioResult,
     WeekStartResult,
 )
@@ -1030,5 +1031,11 @@ class LedSnapshot(Query[LedSnapshotResult]):
             selected_zone=s.selected_zone,
             zone_count=len(s.zones),
             segment_count=len(s.segment_on),
+            zones=tuple(
+                LedZoneEntry(mode=z.mode.name, color=z.color,
+                             brightness=z.brightness, on=z.on)
+                for z in s.zones
+            ),
+            zone_sync_zones=tuple(s.zone_sync_zones),
             message=f"LED snapshot for {self.key}",
         )

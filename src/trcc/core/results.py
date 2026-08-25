@@ -615,6 +615,22 @@ class LcdSnapshotResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class LedZoneEntry:
+    """One zone's persisted state, as the LED snapshot reports it.
+
+    ``mode`` is the ``LEDMode`` NAME, matching ``LedSnapshotResult.mode`` — the
+    same fact spelled the same way in both places.  ``LEDMode`` is an IntEnum,
+    so a consumer wanting the wire number does ``LEDMode[entry.mode].value``
+    rather than this DTO carrying the name and the number and letting them
+    drift apart.
+    """
+    mode: str = "STATIC"
+    color: tuple[int, int, int] = (0, 0, 0)
+    brightness: int = 100
+    on: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class LedSnapshotResult(Result):
     """Per-device LED state snapshot — what's currently persisted."""
     key: str = ""
@@ -630,6 +646,12 @@ class LedSnapshotResult(Result):
     selected_zone: int = 0
     zone_count: int = 0
     segment_count: int = 0
+    # Per-zone state and the carousel mask.  Absent until 2026-08-25, which
+    # left ``zone_count`` reporting HOW MANY zones there are with no way to ask
+    # what any of them IS — so the gui kept reaching ``settings.for_led``, a
+    # crash under TRCC_DAEMON=1.  Tuples, because a Result is frozen.
+    zones: tuple[LedZoneEntry, ...] = ()
+    zone_sync_zones: tuple[bool, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
