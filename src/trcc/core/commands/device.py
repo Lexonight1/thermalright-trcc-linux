@@ -2273,6 +2273,9 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             time_format=s.time_format,
             date_format=s.date_format,
             temp_unit=s.temp_unit,
+            slideshow_enabled=s.slideshow_enabled,
+            slideshow_interval_s=s.slideshow_interval_s,
+            slideshow_themes=tuple(s.slideshow_themes),
             message=f"LCD snapshot for {self.key}",
         )
 

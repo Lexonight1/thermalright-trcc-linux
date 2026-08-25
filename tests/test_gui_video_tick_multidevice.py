@@ -149,6 +149,13 @@ class _FakeApp:
             cursor = playback.cursor
             frame_count = playback.frame_count
             interval_ms = max(1, int(1000 / playback.fps))
+        if name == "LcdSnapshot":
+            # The REAL Result, not an ad-hoc stub.  A hand-rolled stand-in
+            # carries its own idea of the fields, so it stops matching the
+            # moment the Result gains one — and then it stubs nothing.
+            from trcc.core.results import LcdSnapshotResult
+
+            return LcdSnapshotResult(ok=True, key=key)
         device = self.devices.get(key)
         ok = device is not None and device.is_connected
         return type("_R", (), {

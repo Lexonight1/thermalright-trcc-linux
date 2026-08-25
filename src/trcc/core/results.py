@@ -597,6 +597,15 @@ class LcdSnapshotResult(Result):
     time_format: str = "24h"
     date_format: str = ""
     temp_unit: str = "C"
+    # Slideshow config.  Absent until 2026-08-25, which made this Result
+    # unable to answer its own docstring: the gui restoring slideshow state
+    # had to keep reaching for ``settings.for_device`` — a crash under
+    # TRCC_DAEMON=1 — because the snapshot did not carry these three.
+    # ``themes`` is a tuple: a Result is frozen, and a list inside one is a
+    # mutable field on an immutable DTO.
+    slideshow_enabled: bool = False
+    slideshow_interval_s: float = 60.0
+    slideshow_themes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

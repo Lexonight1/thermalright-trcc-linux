@@ -29,6 +29,7 @@ from ...core.commands import (
     EnableOverlay,
     ExportTheme,
     ImportTheme,
+    LcdSnapshot,
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
@@ -42,6 +43,7 @@ from ...core.commands import (
     SetOverlayConfig,
     SetSplitMode,
     StopVideo,
+    ToggleVideo,
     UploadCustomMask,
     VideoStatus,
 )
@@ -55,8 +57,12 @@ from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
     from ...app import App
-    from ...core.models import DeviceSettings, ProductInfo
-    from ...core.results import ThemeResult, VideoStatusResult
+    from ...core.models import ProductInfo
+    from ...core.results import (
+        LcdSnapshotResult,
+        ThemeResult,
+        VideoStatusResult,
+    )
 
 log = logging.getLogger(__name__)
 
@@ -194,6 +200,22 @@ class LCDHandler(BaseHandler):
                        status.fps)
         return status
 
+    def _lcd_settings(self) -> LcdSnapshotResult:
+        """Ask the bus what this device's persisted LCD state is.
+
+        The settings twin of :meth:`_video_status`, and for the same reason:
+        ``app.settings`` is absent on the ``AppProxy`` a daemon-mode handler
+        holds, so every ``settings.for_device`` reach here raised under
+        ``TRCC_DAEMON=1`` (#249).
+        """
+        snap = self._app.dispatch(LcdSnapshot(key=self._device_key))
+        self.log.debug(
+            "_lcd_settings: orientation=%s theme=%r overlay=%s slideshow=%s",
+            snap.orientation, snap.current_theme, snap.overlay_enabled,
+            snap.slideshow_enabled,
+        )
+        return snap
+
     def has_video_playback(self) -> bool:
         """True iff MediaService has frames bound for this device.
 
@@ -287,7 +309,7 @@ class LCDHandler(BaseHandler):
         # ``cfg.get(field, default)`` shape — the shim has been removed
         # in favour of dataclass attribute access (typed by pyright,
         # defaults baked into DeviceSettings itself).
-        ds = self._app.settings.for_device(self._device_key)
+        ds = self._lcd_settings()
 
         self._w['preview'].set_resolution(w, h)
         self._w['preview'].set_image(None)
@@ -348,14 +370,14 @@ class LCDHandler(BaseHandler):
         self._w['device_info_label'].setText(text)
 
 
-    def _restore_brightness(self, ds: DeviceSettings) -> None:
+    def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
         self._pm.brightness_level = ds.brightness
         self.log.info("Restoring brightness: %d%%", self._pm.brightness_level)
         self._app.dispatch(SetBrightness(
             key=self._device_key, percent=self._pm.brightness_level,
         ))
 
-    def _restore_rotation(self, ds: DeviceSettings) -> None:
+    def _restore_rotation(self, ds: LcdSnapshotResult) -> None:
         rotation_index = ds.orientation // 90
         rotation = rotation_index * 90
         self.log.debug("_restore_rotation: rotation=%d", rotation)
@@ -369,13 +391,15 @@ class LCDHandler(BaseHandler):
         self._sync_preview_size()   # composed orientation, not pre-rotation (#136)
         self._update_theme_directories()
 
-    def _restore_split_mode(self, ds: DeviceSettings, w: int, h: int) -> None:
+    def _restore_split_mode(
+        self, ds: LcdSnapshotResult, w: int, h: int,
+    ) -> None:
         mode = self._pm.apply_split_mode(ds.split_mode, (w, h))
         self.log.debug("_restore_split_mode: split_mode=%d ldd_is_split=%s mode=%d",
                        self._pm.split_mode, self._pm.ldd_is_split, mode)
         self._app.dispatch(SetSplitMode(key=self._device_key, mode=mode))
 
-    def _restore_slideshow(self, ds: DeviceSettings) -> None:
+    def _restore_slideshow(self, ds: LcdSnapshotResult) -> None:
         """Restore slideshow UI state from typed DeviceSettings.
 
         ``SlideshowService`` owns the transient rotation cursor;
@@ -412,9 +436,7 @@ class LCDHandler(BaseHandler):
         persisted theme onto the device.
         """
         if not first_load:
-            current = self._app.settings.for_device(
-                self._device_key,
-            ).current_theme
+            current = self._lcd_settings().current_theme
             if not current:
                 self._w['preview'].set_image(None)
                 return
@@ -673,9 +695,7 @@ class LCDHandler(BaseHandler):
         persisted ``EnableOverlay`` anyway.
         """
         self.log.info("_restore_overlay_editor: dir=%s", theme_dir)
-        enabled = self._app.settings.for_device(
-            self._device_key,
-        ).overlay_enabled
+        enabled = self._lcd_settings().overlay_enabled
         self._show_overlay_layout(self._read_overlay_layout(theme_dir), enabled)
         self._pm.state.overlay_enabled = enabled
 
@@ -754,19 +774,20 @@ class LCDHandler(BaseHandler):
 
     def play_pause(self) -> None:
         self.log.info("play_pause: device=%s", self._device_key)
-        playback = self._app.media.playback(self._device_key)
-        if playback is None:
+        # ``ToggleVideo`` reads the pause flag and dispatches its inverse —
+        # the read-modify-write this used to do by hand on the Playback
+        # object.  Doing it here meant mutating service state from the view
+        # AND holding ``app.media``, which a daemon-mode handler does not
+        # have.  The Command owns both halves.
+        result = self._app.dispatch(ToggleVideo(key=self._device_key))
+        if not result.ok:
             self.log.warning(
-                "play_pause: no playback bound for %s — toggle dropped",
-                self._device_key,
+                "play_pause: no playback bound for %s — toggle dropped (%s)",
+                self._device_key, result.message,
             )
             return
-        # Toggle pause state.  next/'s Playback exposes pause(bool).
-        was_paused = playback.paused
-        playback.pause(not was_paused)
-        playing = not playback.paused
-        self.log.info("play_pause: was_paused=%s → playing=%s",
-                      was_paused, playing)
+        playing = not result.paused
+        self.log.info("play_pause: → playing=%s", playing)
         self._w['preview'].set_playing(playing)
         # Pause is a transient toggle on an EXISTING playback — no
         # VideoStarted / VideoStopped is published.  Drive the Qt timer
@@ -790,14 +811,14 @@ class LCDHandler(BaseHandler):
     def seek(self, percent: float) -> None:
         """Jump playback to ``percent`` (0.0-1.0) of total frames."""
         from ...core.commands import SeekVideo
-        playback = self._app.media.playback(self._device_key)
-        if playback is None:
+        status = self._video_status()
+        if not status.playing or not status.frame_count:
             self.log.warning(
                 "seek(%.3f): no playback bound for %s — dropped",
                 percent, self._device_key,
             )
             return
-        total = playback.frame_count
+        total = status.frame_count
         frame = self._pm.seek_frame(percent, total)
         self.log.info("seek: percent=%.3f frame=%d/%d", percent, frame, total)
         self._app.dispatch(SeekVideo(key=self._device_key, frame=frame))
@@ -1013,7 +1034,7 @@ class LCDHandler(BaseHandler):
         this View just gathers the device/theme primitives to feed it.
         """
         device = self._app.devices.get(self._device_key)
-        ds = self._app.settings.for_device(self._device_key)
+        ds = self._lcd_settings()
         return self._pm.preview_size(
             self._app.display,
             info=device.info if device is not None else None,
@@ -1027,7 +1048,7 @@ class LCDHandler(BaseHandler):
         orientation.  Cheap arithmetic; only the asset reload inside
         ``set_resolution`` is real work, and that only matters on change. (#136)"""
         ow, oh = self._composed_preview_size()
-        ds = self._app.settings.for_device(self._device_key)
+        ds = self._lcd_settings()
         self.log.info("_sync_preview_size: orientation=%d → preview %dx%d",
                       ds.orientation, ow, oh)
         self._w['preview'].set_resolution(ow, oh)
@@ -1507,7 +1528,7 @@ class LCDHandler(BaseHandler):
         # First-install auto-load: nothing rendered yet AND no saved theme →
         # load the first listed theme (user-precedence already applied by
         # ListThemes, so a user theme wins the auto-load too).
-        ds = self._app.settings.for_device(self._device_key)
+        ds = self._lcd_settings()
         if (self._pm.state.current_theme_path is None
                 and not ds.current_theme and themes):
             first = themes[0]

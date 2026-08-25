@@ -163,21 +163,30 @@ def test_restore_dispatches_no_command_at_all(
     Asserting the resulting value only catches the bug when the persisted
     value differs from what the theme would have implied.  This catches it
     either way, which is what makes it the real guard.
+
+    It asserts no WRITE rather than no dispatch.  Reading device state
+    through a ``Query`` is how a daemon-mode UI must read it at all — the
+    handler holds an ``AppProxy`` that exposes only ``dispatch`` — so
+    "dispatched nothing" was a proxy for the invariant, not the invariant.
+    A ``Command`` here is still the bug this guards.
     """
+    from trcc.core.commands import Query
+
     h, app, _ = handler
     theme = _theme_with_overlay(tmp_path)
-    dispatched: list[str] = []
+    writes: list[str] = []
     real = app.dispatch
 
     def _record(command: Any) -> Any:
-        dispatched.append(type(command).__name__)
+        if not isinstance(command, Query):
+            writes.append(type(command).__name__)
         return real(command)
 
     monkeypatch.setattr(app, "dispatch", _record)
     h._restore_overlay_editor(theme)
 
-    assert dispatched == [], (
-        f"restore must not write device state, but dispatched {dispatched}"
+    assert writes == [], (
+        f"restore must not write device state, but dispatched {writes}"
     )
 
 
