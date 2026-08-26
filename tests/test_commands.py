@@ -299,3 +299,52 @@ def test_screen_capture_is_memoised_per_platform() -> None:
     os_ = LinuxOS()
 
     assert os_.screen_capture() is os_.screen_capture()
+
+
+# ── StartScreencast refuses a device with no panel ───────────────────────
+#
+# It used to answer ok=True and PERSIST screencast_region on an LED
+# controller — a wrong-state write, and the capture driver reads exactly
+# that field to decide what to grab for.
+
+
+def _led_key() -> str:
+    from trcc.core.models import Kind
+    from trcc.core.registry import ALL_DEVICES
+
+    p = next(x for x in ALL_DEVICES.values() if x.kind is Kind.LED)
+    return f"{p.vid:04x}:{p.pid:04x}"
+
+
+def test_start_screencast_refuses_an_led_controller(fake_platform) -> None:
+    """ok=False, and — the point — nothing persisted."""
+    from trcc.core.commands import StartScreencast
+
+    app = App(fake_platform)
+    key = _led_key()
+    app.attach(int(key[:4], 16), int(key[5:], 16))
+
+    result = app.dispatch(StartScreencast(key=key, x=0, y=0, w=320, h=320))
+
+    assert result.ok is False
+    assert "no panel" in result.message
+    assert app.settings.for_device(key).screencast_region is None, (
+        "refused, but the region was written anyway — the driver reads this"
+    )
+
+
+def test_start_screencast_still_accepts_an_lcd(fake_platform) -> None:
+    """The guard must not swallow the working case."""
+    from trcc.core.commands import StartScreencast
+    from trcc.core.models import Kind
+    from trcc.core.registry import ALL_DEVICES
+
+    lcd = next(p for p in ALL_DEVICES.values() if p.kind is Kind.LCD)
+    key = f"{lcd.vid:04x}:{lcd.pid:04x}"
+    app = App(fake_platform)
+    app.attach(lcd.vid, lcd.pid)
+
+    result = app.dispatch(StartScreencast(key=key, x=1, y=2, w=64, h=48))
+
+    assert result.ok is True, result.message
+    assert app.settings.for_device(key).screencast_region == (1, 2, 64, 48, False)

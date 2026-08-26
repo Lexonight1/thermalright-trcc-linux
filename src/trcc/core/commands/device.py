@@ -1254,13 +1254,29 @@ class StartScreencast(Command[ScreencastResult]):
             )
 
         try:
-            app.get(self.key)
+            device = app.get(self.key)
         except DeviceNotFoundError as e:
             log.warning(
                 "StartScreencast.execute: device %s not found: %s",
                 self.key, e,
             )
             return ScreencastResult(ok=False, key=self.key, message=str(e))
+
+        # An LED controller has no panel to cast to.  Refused HERE, before
+        # anything is written, because this Command PERSISTS the region: it
+        # used to answer ok=True and leave ``screencast_region`` set on an
+        # LED device, which is a wrong-state write rather than a wasted call
+        # — and the capture driver reads exactly that field to decide what to
+        # grab for.  Shaped like ``SetLedColors``' own guard, inverted.
+        if device.is_led:
+            log.warning(
+                "StartScreencast.execute: %s is an LED controller — refused",
+                self.key,
+            )
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=f"{self.key} is an LED controller — it has no panel",
+            )
 
         # A live video playback overlay would race the screencast tick on
         # the same wire — stop it first so the handler owns the surface
