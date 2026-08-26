@@ -2310,3 +2310,30 @@ def test_a_theme_that_bundles_a_mask_still_applies_it(
     applied = app.settings.for_device(_TEST_DEVICE_KEY).mask_path
     assert applied is not None, "the theme's own bundled mask was not applied"
     assert Path(applied) == own_mask
+
+
+def test_delete_theme_works_on_a_headless_app(tmp_home: Path) -> None:
+    """No Renderer attached: deleting a theme a device is showing must not raise.
+
+    ``App.display`` RAISES when nothing is wired, so invalidating through it
+    directly turns a headless delete into a RuntimeError.  Every other test
+    here uses the renderer-backed ``app`` fixture, which hides it — this one
+    builds the App without one on purpose.
+    """
+    from trcc.core.commands import DeleteTheme
+    from trcc.core.models import Theme
+
+    from .conftest import FakePlatform
+
+    app = App(platform=FakePlatform(tmp_home))      # no renderer
+    root = app.platform.paths().user_content_dir() / "data" / "theme320320"
+    theme_path = _write_theme(root, "headless")
+    app.active_themes[_TEST_DEVICE_KEY] = Theme(
+        path=theme_path, name="headless", resolution=(320, 320), config={},
+    )
+
+    result = app.dispatch(DeleteTheme(path=theme_path))
+
+    assert result.ok is True, result.message
+    assert result.invalidated == (_TEST_DEVICE_KEY,)
+    assert not theme_path.exists()

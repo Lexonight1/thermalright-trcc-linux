@@ -252,7 +252,15 @@ class LoadTheme(Command[ThemeResult]):
         # its own mask still gets it applied — dropping the OVERRIDE is not the
         # same as refusing the theme's own.
         if self.reset_overrides:
+            log.info("LoadTheme: %s — dropping the applied-mask override "
+                     "(explicit theme switch)", self.key)
             app.settings.set_mask_path(self.key, None)
+        else:
+            # The silent-skip case rule 5 asks for: on restore this is the
+            # RIGHT answer, and a reader chasing "my mask vanished" needs to
+            # see that it was kept on purpose, not that nothing happened.
+            log.info("LoadTheme: %s — keeping the applied mask (restore, "
+                     "reset_overrides=False)", self.key)
         embedded_mask = theme.config.get("mask") if self.reset_overrides else None
         if isinstance(embedded_mask, str) and embedded_mask:
             resolved_mask = app.themes.mask_path(theme)
@@ -1431,10 +1439,16 @@ class DeleteTheme(Command[DeleteThemeResult]):
             k for k, t in app.active_themes.items() if t.path == deleted
         )
         for key in invalidated:
-            app.display.invalidate(key)
+            # The GUARDED seam, not ``app.display`` — that property RAISES
+            # when no Renderer is attached, and deleting a theme must work on
+            # a headless App.  ``SaveTheme`` uses the same helper.
+            _invalidate_scene(app, key)
         if invalidated:
             log.info("DeleteTheme: invalidated %d scene(s) showing %s: %s",
                      len(invalidated), deleted.name, ", ".join(invalidated))
+        else:
+            log.info("DeleteTheme: no device was showing %s — no scene "
+                     "invalidated", deleted.name)
         return DeleteThemeResult(
             ok=True, theme_name=deleted.name, path=str(deleted),
             invalidated=invalidated,
