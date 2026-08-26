@@ -1,6 +1,7 @@
 """Diagnostics — health checks, doctor, debug report bundle."""
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from trcc.adapters.diagnostics.health import (
     run_health_checks,
 )
 from trcc.adapters.infra.logging import (
+    RenderOnceRotatingFileHandler,
     configure_logging,
     tail_log,
     tail_log_actions,
@@ -84,6 +86,116 @@ def test_latest_log_holds_only_the_current_run(tmp_path: Path) -> None:
     # The cumulative history file keeps BOTH — that is its job.
     history = log_file.read_text(encoding="utf-8")
     assert "run-one-marker" in history and "run-two-marker" in history
+
+
+def _count_renders(root: logging.Logger) -> dict[str, int]:
+    """Wrap every attached formatter so a test can count real render work."""
+    calls = {"format": 0, "formatTime": 0}
+    for handler in root.handlers:
+        # Only OUR handlers.  pytest attaches its own capture handler with its
+        # own formatter, and counting that would measure the test runner.
+        if not getattr(handler, "_trcc_handler", False):
+            continue
+        fmt = handler.formatter
+        if fmt is None or getattr(fmt, "_counted", False):
+            continue
+        original_format, original_time = fmt.format, fmt.formatTime
+
+        def counted_format(record, _o=original_format):
+            calls["format"] += 1
+            return _o(record)
+
+        def counted_time(record, datefmt=None, _o=original_time):
+            calls["formatTime"] += 1
+            return _o(record, datefmt)
+
+        fmt.format = counted_format          # type: ignore[method-assign]
+        fmt.formatTime = counted_time        # type: ignore[method-assign]
+        fmt._counted = True                  # type: ignore[attr-defined]
+    return calls
+
+
+def test_a_record_is_rendered_once_not_four_times(tmp_path: Path) -> None:
+    """Two rotating handlers must not turn one record into four renders.
+
+    CPython's ``RotatingFileHandler.shouldRollover`` calls ``format(record)``
+    purely to take ``len()`` of the result and discards it, and this app
+    attaches two rotating handlers -- so a record was formatted four times,
+    with four ``strftime`` calls, three of them wasted.  Logging was measured
+    at 82-90%% of the CPU regression since v9.9.2, so the waste is not
+    academic.
+
+    MUTATION CHECK: make the handlers plain ``RotatingFileHandler`` again and
+    this fails with 4 != 1.
+    """
+    configure_logging(tmp_path / "t.log", level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+    calls = _count_renders(logging.getLogger())
+
+    logging.getLogger("render.once").debug("one %s %d", "record", 42)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert calls["format"] == 1
+    assert calls["formatTime"] == 1
+
+
+def test_rendering_once_still_writes_the_same_text_to_both_files(
+    tmp_path: Path,
+) -> None:
+    """Caching the rendered text must not change what lands on disk.
+
+    The whole point is that only the NUMBER of renders changes.  Both the
+    rolling file and the per-run ``latest`` must carry byte-identical lines.
+
+    Note this cannot detect a cache that ignores the formatter identity --
+    both handlers here share one formatter, so the text is the same either
+    way.  ``test_a_handler_with_its_own_formatter_renders_its_own_text``
+    guards that separately.
+    """
+    log_file = tmp_path / "t.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+    logging.getLogger("render.once").debug("payload %s", "value")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    rolling = [ln for ln in log_file.read_text().splitlines() if "payload" in ln]
+    latest = [ln for ln in (tmp_path / "t.latest.log").read_text().splitlines()
+              if "payload" in ln]
+
+    assert rolling == latest
+    assert len(rolling) == 1
+    assert rolling[0].endswith("payload value")
+    assert "render.once" in rolling[0]
+
+
+def test_a_handler_with_its_own_formatter_renders_its_own_text(
+    tmp_path: Path,
+) -> None:
+    """The render cache is keyed by formatter, so it cannot leak between them.
+
+    The two handlers this app configures share one formatter, so a cache that
+    ignored identity would look correct forever -- right up until someone
+    attaches a handler with its own format string and silently gets another
+    handler's text.  Keyed on identity, each renders its own.
+
+    MUTATION CHECK: drop ``cached[0] is self.formatter`` from the cache lookup
+    in ``RenderOnceRotatingFileHandler.format`` and this fails -- the second
+    handler emits the first one's line.
+    """
+    first = RenderOnceRotatingFileHandler(tmp_path / "first.log", encoding="utf-8")
+    first.setFormatter(logging.Formatter("FIRST %(message)s"))
+    second = RenderOnceRotatingFileHandler(tmp_path / "second.log", encoding="utf-8")
+    second.setFormatter(logging.Formatter("SECOND %(message)s"))
+
+    record = logging.LogRecord("t", logging.INFO, __file__, 1, "shared", None, None)
+    for handler in (first, second):
+        handler.handle(record)
+        handler.close()
+
+    assert (tmp_path / "first.log").read_text().strip() == "FIRST shared"
+    assert (tmp_path / "second.log").read_text().strip() == "SECOND shared"
 
 
 def test_tail_log_handles_missing_file(tmp_path: Path) -> None:

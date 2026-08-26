@@ -41,6 +41,44 @@ _LOG_FORMAT = (
 _LOG_DATEFMT = "%Y-%m-%dT%H:%M:%S"
 
 
+class RenderOnceRotatingFileHandler(RotatingFileHandler):
+    """A rotating handler that renders each record ONCE.
+
+    ``logging`` renders the same record four times in this app, and three of
+    those are waste.  CPython's ``RotatingFileHandler.shouldRollover`` calls
+    ``self.format(record)`` solely to take ``len()`` of the result and then
+    discards it -- and that happens once per rotating handler, of which two are
+    attached (the rolling history and the per-run ``latest``).  Each render
+    re-runs ``strftime`` as well.  Counted, not inferred: four
+    ``Formatter.format`` and four ``Formatter.formatTime`` calls per record.
+
+    That was affordable when it was assumed to be a disk question.  Measured on
+    the real device, logging is 82-90%% of the CPU regression since v9.9.2, so
+    rendering the same string four times is not free.
+
+    The rendered text is a function of (record, formatter) alone, so it is
+    cached on the record and keyed by the formatter's IDENTITY -- a handler
+    carrying a different formatter still renders its own text rather than
+    inheriting someone else's.  Nothing about WHAT gets logged changes; only
+    how many times it is turned into a string.
+
+    Deliberately carries no log line: ``logging`` calls this while formatting a
+    record, so emitting one here would recurse forever.  The coverage ratchet
+    exempts it for that reason, qualified by this base class rather than by the
+    method name.
+    """
+
+    _CACHE = "_trcc_rendered"
+
+    def format(self, record: logging.LogRecord) -> str:
+        cached = record.__dict__.get(self._CACHE)
+        if cached is not None and cached[0] is self.formatter:
+            return cached[1]
+        text = super().format(record)
+        record.__dict__[self._CACHE] = (self.formatter, text)
+        return text
+
+
 class ClassContextFilter(logging.Filter):
     """Inject the emitting method's class name into every record.
 
@@ -106,7 +144,7 @@ def configure_logging(
     formatter = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT)
     context_filter = ClassContextFilter()
 
-    file_handler = RotatingFileHandler(
+    file_handler = RenderOnceRotatingFileHandler(
         log_file, maxBytes=max_bytes, backupCount=backup_count,
         encoding="utf-8",
     )
@@ -138,7 +176,7 @@ def configure_logging(
         latest_file.write_bytes(b"")
     except OSError as e:      # read-only dir / permissions — keep logging
         truncate_error = e
-    latest_handler = RotatingFileHandler(
+    latest_handler = RenderOnceRotatingFileHandler(
         latest_file, maxBytes=latest_max_bytes, backupCount=1,
         encoding="utf-8",
     )

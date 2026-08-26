@@ -41,6 +41,48 @@ _RECURSION_RISK = frozenset({
     "__len__", "__iter__", "__next__", "__contains__", "__bool__",
 })
 
+#: Same impossibility, one level up: ``logging`` calls these ON A HANDLER OR
+#: FORMATTER while it is turning a record into text, so a log call inside one
+#: recurses forever.  Qualified by the enclosing class rather than by name
+#: alone — ``format`` is far too common a method name to exempt outright, and
+#: exempting it everywhere would hide real silent functions.
+_FORMATTER_HOOKS = frozenset({"format", "formatTime", "formatException"})
+_FORMATTER_BASES = ("Handler", "Formatter")
+
+
+def _class_bases_by_method(tree: ast.AST) -> dict[int, list[str]]:
+    """Map each method node to the base-class names of the class defining it."""
+    out: dict[int, list[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        bases = [ast.unparse(b) for b in node.bases]
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out[id(child)] = bases
+    return out
+
+
+def _exempt(fn: ast.FunctionDef | ast.AsyncFunctionDef,
+            bases: list[str]) -> bool:
+    """True if the rule does not apply to *fn* at all."""
+    if fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn):
+        return True
+    return fn.name in _FORMATTER_HOOKS and any(
+        b.endswith(_FORMATTER_BASES) for b in bases
+    )
+
+
+def _countable(tree: ast.AST):
+    """Yield every function the rule applies to, with its class context."""
+    by_method = _class_bases_by_method(tree)
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if _exempt(fn, by_method.get(id(fn), [])):
+            continue
+        yield fn
+
 
 def _emits_log(fn: ast.AST) -> bool:
     """True if *fn* calls anything that looks like a logger method."""
@@ -78,12 +120,7 @@ def silent_functions() -> list[str]:
         except SyntaxError:
             continue
         rel = path.relative_to(_SRC)
-        for fn in [
-            n for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]:
-            if fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn):
-                continue
+        for fn in _countable(tree):
             if not _emits_log(fn):
                 out.append(f"{rel}::{fn.name}")
     return out
@@ -97,12 +134,7 @@ def countable_total() -> int:
             tree = ast.parse(path.read_text())
         except SyntaxError:
             continue
-        for fn in [
-            n for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]:
-            if fn.name in _RECURSION_RISK or _is_stub(fn) or _is_abstract(fn):
-                continue
+        for _fn in _countable(tree):
             total += 1
     return total
 
