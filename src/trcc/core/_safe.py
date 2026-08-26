@@ -23,7 +23,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def load_json_or_default(path: Path, default: Any) -> Any:
@@ -154,5 +157,5 @@ def is_under(path: Path, root: Path) -> bool:
         log.debug("is_under: cannot resolve %s against %s (%s) — assuming not",
                   path, root, e)
         return False
-    log.debug("is_under: %s under %s → %s", resolved, root, inside)
+    frame_log.debug("is_under: %s under %s → %s", resolved, root, inside)
     return inside

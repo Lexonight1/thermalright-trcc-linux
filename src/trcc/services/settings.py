@@ -22,6 +22,7 @@ from typing import Any, Literal, cast
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError
 from ..core.led_models import LedDeviceSettings, LEDMode, LedZoneSettings
+from ..core.logs import per_frame
 from ..core.models import (
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
@@ -33,6 +34,7 @@ from ..core.models import (
 from ..core.ports import Paths
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -225,7 +227,7 @@ class Settings:
         defaults.  Existing devices keep whatever was persisted —
         only first-touch is seeded.
         """
-        log.debug("for_device: key=%s", key)
+        frame_log.debug("for_device: key=%s", key)
         with self._lock:
             if key not in self._devices:
                 self._devices[key] = DeviceSettings(

@@ -27,7 +27,10 @@ from ..results import (
 if TYPE_CHECKING:
     from ...app import App
 
+from ..logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def oriented_theme_path(
@@ -233,7 +236,7 @@ def _require_connected_device(app: App, key: str) -> Any:
     do their type check before the connect check and disappear entirely
     once capability dispatch lands (see §4 of the SOLID/DRY plan).
     """
-    log.debug("_require_connected_device: key=%s", key)
+    frame_log.debug("_require_connected_device: key=%s", key)
     device = app.get(key)
     if not device.is_connected:
         # DeviceNotConnectedError propagates PAST App.dispatch (no try/except

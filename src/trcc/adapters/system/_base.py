@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any
 import usb.util  # pyright: ignore[reportMissingImports]
 
 from ...core.factory import FallBackTo, Registry
+from ...core.logs import per_frame
 from ...core.models import DeviceInfo, Wire
 from ...core.ports import (
     AutostartManager,
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
     from ...core.models import UsbPowerState
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # The OS table.  A miss falls back to Linux with a warning rather than raising,
 # so a debug session on a niche OS reaches a usable app instead of dying at the
@@ -80,11 +82,11 @@ class BasePaths(Paths):
 
     def data_dir(self) -> Path:
         path = self._root / "data"
-        log.debug("%s.data_dir → %s", type(self).__name__, path)
+        frame_log.debug("%s.data_dir → %s", type(self).__name__, path)
         return path
 
     def user_content_dir(self) -> Path:
-        log.debug("%s.user_content_dir → %s",
+        frame_log.debug("%s.user_content_dir → %s",
                   type(self).__name__, self._user_content)
         return self._user_content
 
@@ -325,7 +327,7 @@ class BaseOS(Platform):
             log.info("%s.sensors: building enumerator", type(self).__name__)
             self._sensors = self._build_sensors()
         else:
-            log.debug("%s.sensors: returning cached enumerator",
+            frame_log.debug("%s.sensors: returning cached enumerator",
                       type(self).__name__)
         return self._sensors
 

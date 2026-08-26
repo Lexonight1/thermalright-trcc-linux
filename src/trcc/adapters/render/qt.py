@@ -25,10 +25,12 @@ from PySide6.QtGui import (
 )
 
 from ...core.errors import TrccError
+from ...core.logs import per_frame
 from ...core.models import RawFrame
 from ...core.ports import Renderer
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 _FONT_CACHE: dict[tuple[int, bool, bool, str], QFont] = {}
@@ -112,7 +114,7 @@ class QtRenderer(Renderer):
 
     def create_surface(self, width: int, height: int,
                        color: tuple[int, ...] | None = None) -> Any:
-        log.debug("create_surface: %dx%d color=%s", width, height, color)
+        frame_log.debug("create_surface: %dx%d color=%s", width, height, color)
         img = QImage(width, height, QImage.Format.Format_ARGB32)
         if color is None:
             img.fill(Qt.GlobalColor.transparent)
@@ -131,7 +133,7 @@ class QtRenderer(Renderer):
         return img
 
     def surface_size(self, surface: Any) -> tuple[int, int]:
-        log.debug("surface_size: called")
+        frame_log.debug("surface_size: called")
         return (surface.width(), surface.height())
 
     def surface_nbytes(self, surface: Any) -> int:
@@ -146,7 +148,7 @@ class QtRenderer(Renderer):
     def composite(self, base: Any, overlay: Any,
                   position: tuple[int, int],
                   mask: Any | None = None) -> Any:
-        log.debug("composite: position=%s mask=%s", position, mask is not None)
+        frame_log.debug("composite: position=%s mask=%s", position, mask is not None)
         result = QImage(base)
         painter = QPainter(result)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
@@ -231,7 +233,7 @@ class QtRenderer(Renderer):
         the user picked.  Empty falls back to that default, which is what the
         elements that carry no font still want.
         """
-        log.debug("draw_text: %r at (%d, %d) size=%d color=%s family=%r",
+        frame_log.debug("draw_text: %r at (%d, %d) size=%d color=%s family=%r",
                   text, x, y, size, color, family)
         font = self._get_font(size, bold, italic, family)
         painter = QPainter(surface)
@@ -284,7 +286,7 @@ class QtRenderer(Renderer):
            flag.  ``Format_RGB16`` writes native-endian bytes; swap if
            the device wants the other order.
         """
-        log.debug("encode_rgb565: byte_order=%s", byte_order)
+        frame_log.debug("encode_rgb565: byte_order=%s", byte_order)
         # Strip premultiplied alpha before quantizing.
         if surface.format() != QImage.Format.Format_RGB32:
             surface = surface.convertToFormat(QImage.Format.Format_RGB32)

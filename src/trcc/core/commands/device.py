@@ -102,7 +102,10 @@ if TYPE_CHECKING:
     from ...app import App
     from ..ports import Device
 
+from ..logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -795,7 +798,7 @@ class TickDisplay(Command[RenderResult]):
         # Resolved values, not intent: the frame actually reached is what
         # reproduces "the video is stuck" / "it plays at the wrong speed"
         # from a reporter's log alone.  Per-tick, so DEBUG.
-        log.debug(
+        frame_log.debug(
             "TickDisplay %s: advanced to frame %d/%d (interval=%dms, paused=%s)",
             self.key, playback.cursor, playback.frame_count,
             playback.interval_ms, playback.paused,

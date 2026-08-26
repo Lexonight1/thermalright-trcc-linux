@@ -28,6 +28,7 @@ from trcc.adapters.infra.logging import (
     tail_log,
     tail_log_actions,
 )
+from trcc.core.logs import PER_FRAME_ROOT, per_frame
 
 # =========================================================================
 # Logging adapter
@@ -196,6 +197,87 @@ def test_a_handler_with_its_own_formatter_renders_its_own_text(
 
     assert (tmp_path / "first.log").read_text().strip() == "FIRST shared"
     assert (tmp_path / "second.log").read_text().strip() == "SECOND shared"
+
+
+def test_per_frame_lines_are_silent_by_default(tmp_path: Path) -> None:
+    """The frame path must not write to the file during a normal run.
+
+    Per-frame lines were 92%% of every record and ~90%% of the CPU regression
+    since v9.9.2 — 44 records per rendered frame at 688/s.  At INFO their
+    ``.debug()`` short-circuits in ``isEnabledFor``, so the LogRecord is never
+    constructed, which is where the saving is.
+
+    MUTATION CHECK: drop the ``PER_FRAME_ROOT`` setLevel from
+    ``configure_logging`` and this fails — the frame line lands in the file.
+    """
+    log_file = tmp_path / "t.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+
+    per_frame(__name__).debug("frame tick %d", 7)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert "frame tick" not in log_file.read_text()
+
+
+def test_one_v_brings_the_frame_path_back(tmp_path: Path) -> None:
+    """``-v`` is what buys the firehose — it must actually restore it.
+
+    MUTATION CHECK: hard-code the level to INFO and this fails.
+    """
+    log_file = tmp_path / "t.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL, per_frame=True)
+
+    per_frame(__name__).debug("frame tick %d", 7)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert "frame tick 7" in log_file.read_text()
+
+
+def test_ordinary_debug_still_reaches_the_file_by_default(
+    tmp_path: Path,
+) -> None:
+    """The report keeps its DEBUG detail — only the FRAME path is gated.
+
+    This is the guarantee that separates this change from the one it replaced.
+    Silencing DEBUG wholesale would save the same CPU and re-break exactly
+    what the always-DEBUG rule exists to fix: the one-shot lines a reporter
+    needs — which sysfs path the device resolved to, which transport opened,
+    why a download was skipped — are only 0.6%% of the records and cost
+    nothing.
+
+    MUTATION CHECK: set the ROOT logger to INFO instead of the per-frame
+    family and this fails — the whole diagnostic trail vanishes with the noise.
+    """
+    log_file = tmp_path / "t.log"
+    configure_logging(log_file, level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+
+    logging.getLogger("trcc.adapters.system.linux").debug(
+        "_resolve_scsi_path: %s", "0402:3922")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+    assert "_resolve_scsi_path: 0402:3922" in log_file.read_text()
+
+
+def test_per_frame_loggers_are_one_family(tmp_path: Path) -> None:
+    """Every per-frame logger is silenced by ONE setLevel, with no registry.
+
+    They are children of a single parent, so a module that starts logging
+    per-frame lines is covered the moment it calls ``per_frame`` — nobody has
+    to remember to add it to a list, which is the thing that would drift.
+    """
+    configure_logging(tmp_path / "t.log", level=logging.DEBUG,
+                      stderr_level=logging.CRITICAL)
+
+    for module in ("trcc.services.display", "trcc.adapters.render.qt",
+                   "trcc.some.module.written.tomorrow"):
+        assert per_frame(module).getEffectiveLevel() == logging.INFO
+        assert per_frame(module).name.startswith(PER_FRAME_ROOT)
 
 
 def test_tail_log_handles_missing_file(tmp_path: Path) -> None:

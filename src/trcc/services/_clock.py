@@ -14,7 +14,10 @@ import logging
 from datetime import datetime
 from typing import Literal
 
+from ..core.logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 ClockSource = Literal["time", "weekday", "date"]
 
@@ -96,7 +99,7 @@ def resolve_clock(
     now: datetime | None = None,
 ) -> str:
     """Resolve a single clock source to its display string."""
-    log.debug("resolve_clock: source=%s time_format=%s date_format=%s lang=%s",
+    frame_log.debug("resolve_clock: source=%s time_format=%s date_format=%s lang=%s",
               source, time_format, date_format, language)
     moment = now or datetime.now()
     if source == "time":
@@ -121,7 +124,7 @@ def compute_clock(
     OverlayService, and includes it in the overlay cache key so frames
     rebuild when the minute / day rolls over.
     """
-    log.debug("compute_clock: time_format=%s date_format=%s lang=%s",
+    frame_log.debug("compute_clock: time_format=%s date_format=%s lang=%s",
               time_format, date_format, language)
     moment = now or datetime.now()
     return {

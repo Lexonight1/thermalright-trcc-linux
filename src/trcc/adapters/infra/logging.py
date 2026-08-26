@@ -26,6 +26,8 @@ from collections import deque
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from ...core.logs import PER_FRAME_ROOT
+
 log = logging.getLogger(__name__)
 
 _HANDLER_TAG = "_trcc_handler"
@@ -123,6 +125,7 @@ def configure_logging(
     backup_count: int = 5,
     latest_max_bytes: int = 10_000_000,
     stderr_level: int = logging.WARNING,
+    per_frame: bool = False,
 ) -> None:
     """Wire the root logger to log_file + stderr.  Idempotent.
 
@@ -134,6 +137,16 @@ def configure_logging(
 
     root = logging.getLogger()
     root.setLevel(level)
+
+    # Per-frame lines are gated as ONE family (see core.logs).  At INFO their
+    # ``.debug()`` calls short-circuit in ``isEnabledFor``, so the LogRecord is
+    # never constructed — that is where the saving is, not in the writing.
+    # Everything else still keeps DEBUG in the file, which is what a report is
+    # read for.  Set explicitly in both directions so a second call can turn
+    # the firehose back off as well as on.
+    logging.getLogger(PER_FRAME_ROOT).setLevel(
+        logging.DEBUG if per_frame else logging.INFO,
+    )
 
     # Drop any handlers we installed previously — leave foreign handlers
     # (pytest's capture handler, e.g.) untouched.
@@ -198,6 +211,8 @@ def configure_logging(
         log_file, latest_file, logging.getLevelName(level),
         max_bytes, backup_count, logging.getLevelName(stderr_level),
     )
+    log.info("configure_logging: per-frame logging %s",
+             "ON (-v)" if per_frame else "OFF (one -v enables it)")
     if truncate_error is not None:
         # Deliberately loud: a latest-log that still holds a previous run is
         # exactly what makes a diagnosis read the wrong window.

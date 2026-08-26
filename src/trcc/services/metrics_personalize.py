@@ -29,12 +29,14 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING
 
+from ..core.logs import per_frame
 from ..core.models import TempUnit, celsius_to_fahrenheit
 
 if TYPE_CHECKING:
     from ..core.models import HardwareMetrics
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def personalize_readings(
@@ -73,7 +75,7 @@ def personalize_readings(
     >>> personalize_readings({"cpu:temp": 0.0}, temp_unit="F")
     {'cpu:temp': 32.0}
     """
-    log.debug("personalize_readings: raw=%d temp_unit=%s hdd_enabled=%s",
+    frame_log.debug("personalize_readings: raw=%d temp_unit=%s hdd_enabled=%s",
               len(raw), temp_unit, hdd_enabled)
     out: dict[str, float] = {}
     for key, value in raw.items():

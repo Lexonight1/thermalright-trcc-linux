@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ._imc_timings import ImcTimings
 
 from ...core.errors import TransportError
+from ...core.logs import per_frame
 from ...core.models import UsbPowerState
 from ...core.ports import (
     AutostartManager,
@@ -46,6 +47,7 @@ from ._selinux import install as install_selinux_policy
 from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -186,7 +188,7 @@ class LinuxScsiTransport(ScsiTransport):
     @property
     def is_open(self) -> bool:
         opened = self._fd is not None
-        log.debug("LinuxScsiTransport.is_open → %s (fd=%s)", opened, self._fd)
+        frame_log.debug("LinuxScsiTransport.is_open → %s (fd=%s)", opened, self._fd)
         return opened
 
     def open(self) -> bool:
@@ -231,7 +233,7 @@ class LinuxScsiTransport(ScsiTransport):
     def send_cdb(self, cdb: bytes, data: bytes,
                  timeout_ms: int = 5000) -> bool:
         """SCSI CDB + data-out via single SG_IO ioctl.  True on status 0."""
-        log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
+        frame_log.debug("LinuxScsiTransport.send_cdb: cdb_len=%d data_len=%d timeout=%dms",
                   len(cdb), len(data), timeout_ms)
         if self._fd is None:
             log.error("LinuxScsiTransport.send_cdb: %s not open", self._path)

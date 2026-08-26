@@ -21,8 +21,10 @@ from pathlib import Path
 
 from ..core import toolchain
 from ..core.errors import ThemeError
+from ..core.logs import per_frame
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 _DEFAULT_FPS = 15          # Matches C# originalImageHz = 15
@@ -389,7 +391,7 @@ class Playback:
         Honors ``paused`` (returns current frame without advancing) and
         ``loop`` (when False, sticks at the last frame instead of wrapping).
         """
-        log.debug("advance: cursor=%d frames=%d paused=%s",
+        frame_log.debug("advance: cursor=%d frames=%d paused=%s",
                   self.cursor, len(self.frames), self.paused)
         if not self.frames:
             return None
@@ -505,7 +507,7 @@ class MediaService:
         return playback
 
     def playback(self, device_key: str) -> Playback | None:
-        log.debug("playback: key=%s", device_key)
+        frame_log.debug("playback: key=%s", device_key)
         return self._playbacks.get(device_key)
 
     def unload(self, device_key: str) -> None:

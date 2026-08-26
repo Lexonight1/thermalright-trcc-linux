@@ -628,7 +628,12 @@ def test_gui_on_handlers_log_or_are_exempt() -> None:
             if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                     and n.func.attr in log_methods):
                 base = n.func.value
-                if isinstance(base, ast.Name) and base.id in ("log", "logger"):
+                # ``frame_log`` is the per-frame family (see core.logs) — a
+                # handler that logs through it IS logging; it is simply gated
+                # behind -v with the rest of the frame path.  Not recognising
+                # it would read "moved to a cheaper logger" as "went silent".
+                if isinstance(base, ast.Name) and base.id in (
+                        "log", "logger", "frame_log"):
                     return True
                 if (isinstance(base, ast.Attribute)
                         and base.attr in ("log", "logger", "_log")):

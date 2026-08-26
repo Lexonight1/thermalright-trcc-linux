@@ -26,6 +26,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
+from ...core.logs import per_frame
 from ...core.models import MIN_REFRESH_INTERVAL_S, SensorReading
 from ...core.ports import (
     CpuSource,
@@ -51,6 +52,7 @@ from .nvml import discover_nvidia_gpus
 from .psutil_sources import ComputedIo, PsutilCpu, PsutilMemory
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # Vendor priority when GPUs tie on discreteness.  An NVML-reported NVIDIA is
@@ -286,7 +288,7 @@ class BaselineSensors(SensorEnumerator):
 
     def read_all(self) -> dict[str, float]:
         """Every current reading, refreshing the cache first if it is stale."""
-        log.debug("read_all: cached=%d", len(self._readings))
+        frame_log.debug("read_all: cached=%d", len(self._readings))
         self._refresh_if_stale()
         with self._lock:
             return dict(self._readings)
@@ -317,7 +319,7 @@ class BaselineSensors(SensorEnumerator):
         lock and pays nothing.
         """
         if self._poll_thread is not None and self._poll_thread.is_alive():
-            log.debug("_refresh_if_stale: poll thread owns the cadence")
+            frame_log.debug("_refresh_if_stale: poll thread owns the cadence")
             return
         with self._lock:
             age = time.monotonic() - self._last_poll

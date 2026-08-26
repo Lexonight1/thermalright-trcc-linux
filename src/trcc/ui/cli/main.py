@@ -533,8 +533,9 @@ def _root(
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True,
         help="Terminal log verbosity: -v shows INFO, -vv shows DEBUG. "
-             "Without it the terminal stays quiet (warnings + errors only); "
-             "the rotating log file always keeps the detail.",
+             "Without it the terminal stays quiet (warnings + errors only) "
+             "and the log file keeps everything except the per-frame render "
+             "detail, which one -v adds.",
     ),
     version: bool = typer.Option(
         False, "--version", "-V",
@@ -548,16 +549,22 @@ def _root(
     ``~/.trcc/trcc.log``) and mirrors a level to stderr that rises with
     each ``-v``:
 
-    | flag   | terminal (stderr) | file        |
-    |--------|-------------------|-------------|
-    | (none) | WARNING+          | **DEBUG+**  |
-    | ``-v`` | INFO+             | DEBUG+      |
-    | ``-vv``| DEBUG+            | DEBUG+      |
+    | flag   | terminal (stderr) | file       | per-frame |
+    |--------|-------------------|------------|-----------|
+    | (none) | WARNING+          | **DEBUG+** | no        |
+    | ``-v`` | INFO+             | DEBUG+     | **yes**   |
+    | ``-vv``| DEBUG+            | DEBUG+     | yes       |
 
-    So per-action INFO lines (theme load, overlay edit, …) land in the
-    file by default but only reach the terminal with ``-v`` — and the file
-    keeps DEBUG at every verbosity, because ``trcc report`` pastes that file
-    and a reporter should not have to have known to pass a flag.
+    So per-action INFO lines (theme load, overlay edit, …) land in the file by
+    default but only reach the terminal with ``-v`` — and the file still keeps
+    DEBUG at every verbosity, because ``trcc report`` pastes that file and a
+    reporter should not have to have known to pass a flag.
+
+    The one thing ``-v`` adds to the FILE is the per-frame render path (see
+    ``core.logs``): 92%% of all records, ~90%% of the CPU cost, and nothing a
+    report is normally read for.  Everything that fires once — device
+    detection, transport selection, distro probing, skipped downloads — is
+    written either way.
     """
     from ...adapters.infra.logging import configure_logging
     from ...adapters.system import current_platform
@@ -592,6 +599,11 @@ def _root(
         platform.paths().log_file(),
         level=file_level,
         stderr_level=stderr_level,
+        # Per-frame lines are 92%% of the records and ~90%% of the CPU
+        # regression since v9.9.2; the one-shot lines a report is actually
+        # read for are 0.6%%.  So the firehose is what -v buys, and the file
+        # still keeps DEBUG for everything else.  See core.logs.
+        per_frame=verbose > 0,
     )
 
 

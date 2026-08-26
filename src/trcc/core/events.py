@@ -12,9 +12,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .logs import per_frame
 from .models import HardwareMetrics
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -416,7 +418,7 @@ class EventBus:
         Handler exceptions are logged but do not propagate — one bad
         subscriber shouldn't break event delivery for the rest.
         """
-        log.debug("publish: event=%s", type(event).__name__)
+        frame_log.debug("publish: event=%s", type(event).__name__)
         for handler in list(self._handlers[type(event)]):
             try:
                 handler(event)

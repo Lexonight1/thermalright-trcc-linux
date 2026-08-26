@@ -15,8 +15,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .errors import DeviceDisconnectedError, UnsupportedOperationError
+from .logs import per_frame
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # Any buffer a bulk write accepts.  Kept 3.10-safe (``collections.abc.Buffer``
 # is 3.12+, but the install gate is >=3.10) so callers can hand a zero-copy
@@ -815,7 +817,7 @@ class Paths(ABC):
         byte-for-byte twin of the default one and resolution differs
         only by which root you start from.
         """
-        log.debug("user_data_dir: called")
+        frame_log.debug("user_data_dir: called")
         return self.user_content_dir() / "data"
 
     def theme_dir(self, width: int, height: int, variant: str = "") -> Path:

@@ -25,12 +25,14 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from ..core.logs import per_frame
 from ..core.ports import SendTask
 
 if TYPE_CHECKING:
     from ..core.ports import Device
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # Resend cadence for volatile wires — below the ~2-3 s firmware-revert
 # threshold by an order of magnitude (legacy ``run_static_loop`` parity).
@@ -246,7 +248,7 @@ class DeviceSender(SendTask):
         ``wait=True`` waiter or logs it for fire-and-forget / keepalive.
         """
         # DEBUG: per-frame (keepalive ~150 ms) — never INFO (flood).
-        log.debug("DeviceSender %s: write (%s)", self._device.key, reason)
+        frame_log.debug("DeviceSender %s: write (%s)", self._device.key, reason)
         with self._wire_lock:
             ok = self._device.send(payload)
         if ok:

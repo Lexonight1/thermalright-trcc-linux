@@ -51,6 +51,7 @@ from ...core.commands import (
     StopScreencast,
     StopVideo,
 )
+from ...core.logs import per_frame
 from ...core.models import HardwareMetrics, Kind, ThemeDir
 from ..bus_bridge import BusBridge
 from ..presentation import presentation_for
@@ -81,6 +82,7 @@ if TYPE_CHECKING:
     from ...ipc import IPCServer
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =============================================================================
@@ -571,7 +573,7 @@ class TRCCApp(QMainWindow):
         keepalive) leave ``surface`` None; those fall back to a one-off
         re-render.  Only the active device writes the shared preview.
         """
-        log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
+        frame_log.debug("_on_bus_frame_sent")  # per-frame — DEBUG so reports aren't flooded
         if event.key != self._active_key:
             return
         handler = self._handlers.get(event.key)

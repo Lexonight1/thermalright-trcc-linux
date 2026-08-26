@@ -14,12 +14,14 @@ import time
 import zlib
 
 from ...core.errors import TransportError
+from ...core.logs import per_frame
 from ...core.models import HandshakeResult, Wire
 from ...core.ports import ScsiTransport
 from ...core.protocol import get_profile
 from ._base import BaseDevice
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -152,7 +154,7 @@ class ScsiLcd(BaseDevice[ScsiTransport], wire=Wire.SCSI):
     def _write_frame(self, frame: bytes) -> bool:
         """Write the frame as 16-byte-CDB chunks sized by resolution class."""
         chunks = self._frame_chunks(*self._frame_size())
-        log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
+        frame_log.debug("ScsiLcd %s: sending %d bytes in %d chunk(s)",
                   self.info.key, len(frame), len(chunks))
         offset = 0
         for cmd, size in chunks:

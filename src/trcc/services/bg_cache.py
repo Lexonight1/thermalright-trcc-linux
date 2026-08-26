@@ -33,7 +33,10 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from ..core.logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 CacheKey = tuple[Any, ...]
 
@@ -82,7 +85,7 @@ class BgMaskCache:
                       len(self._entries), self._nbytes)
             return None
         self._entries.move_to_end(key)
-        log.debug("BgMaskCache.get: HIT (%d entries, %d bytes)",
+        frame_log.debug("BgMaskCache.get: HIT (%d entries, %d bytes)",
                   len(self._entries), self._nbytes)
         return entry[0]
 

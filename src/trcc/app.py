@@ -45,6 +45,7 @@ from .core.events import (
 )
 from .core.led_models import LedRuntimeState
 from .core.libraries import DeviceLibraries
+from .core.logs import per_frame
 from .core.models import (
     DeviceInfo,
     DeviceQuirks,
@@ -79,6 +80,7 @@ from .services.settings import Settings
 from .services.slideshow import SlideshowService
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 R = TypeVar("R", bound=Result)
@@ -868,7 +870,14 @@ class App:
         command's default level so they're always visible.  Per-tick
         commands set ``LOG_LEVEL = DEBUG`` so they only show under -vv.
         """
-        log.log(cmd.LOG_LEVEL, "dispatch %r", cmd)
+        # A Command already declares its own frequency: per-tick ones set
+        # ``LOG_LEVEL = DEBUG``.  So the sink follows the data rather than a
+        # second list that would drift from it — per-tick dispatches join the
+        # per-frame family and are silenced with it, while one-shot dispatches
+        # ("dispatch LoadTheme(...)") stay in every report, which is what a
+        # report is read for.
+        sink = frame_log if cmd.LOG_LEVEL <= logging.DEBUG else log
+        sink.log(cmd.LOG_LEVEL, "dispatch %r", cmd)
         result = cmd.execute(self)
         if not getattr(result, "ok", True):
             log.warning(
@@ -877,7 +886,7 @@ class App:
                 getattr(result, "message", "(no message)"),
             )
         else:
-            log.log(
+            sink.log(
                 cmd.LOG_LEVEL,
                 "%s ok: %s",
                 type(cmd).__name__,

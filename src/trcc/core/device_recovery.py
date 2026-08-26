@@ -27,7 +27,10 @@ from __future__ import annotations
 import logging
 import time
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # Generic, OS-agnostic fallback for an EACCES USB error.  The per-OS specifics
 # (udev rules / WinUSB / sudo) live on ``Platform.permission_denied_hint`` and
@@ -147,7 +150,7 @@ class RecoveryTracker:
         Callers log a single INFO line like ``"send recovered after N
         disconnect failure(s)"`` when the return value is nonzero.
         """
-        log.debug("note_success: label=%s failures=%d",
+        frame_log.debug("note_success: label=%s failures=%d",
                   self._label, self._failures)
         previous = self._failures
         self._failures = 0

@@ -15,12 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
+from ..core.logs import per_frame
 from ..core.models import OverlayElement, ThemeDir
 from ..core.ports import Renderer
 from . import _dc as Dc
 from ._clock import is_default_date_pattern, resolve_clock
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 
@@ -143,7 +145,7 @@ def _element_family(element: dict[str, Any]) -> str:
     this is the one place that reads it.
     """
     family = str(element.get("name", ""))
-    log.debug("_element_family: %r", family)
+    frame_log.debug("_element_family: %r", family)
     return family
 
 

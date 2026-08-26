@@ -17,7 +17,7 @@ trcc [OPTIONS] COMMAND [ARGS]...
 
 | Option | Description |
 |---|---|
-| `--verbose`, `-v` `VERBOSE` | Terminal log verbosity: -v shows INFO, -vv shows DEBUG. Without it the terminal stays quiet (warnings + errors only); the rotating log file always keeps the detail. |
+| `--verbose`, `-v` `VERBOSE` | Terminal log verbosity: -v shows INFO, -vv shows DEBUG. Without it the terminal stays quiet (warnings + errors only) and the log file keeps everything except the per-frame render detail, which one -v adds. |
 | `--version`, `-V` | Print the installed TRCC version and exit. |
 
 ## Contents

@@ -12,12 +12,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
 
+from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
 from .assets import Assets
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 class UCPreview(BasePanel):
@@ -204,7 +206,7 @@ class UCPreview(BasePanel):
         if image is not None:
             iw = image.width() if hasattr(image, 'width') else '?'
             ih = image.height() if hasattr(image, 'height') else '?'
-            log.debug("preview.set_image: %sx%s → widget %dx%d",
+            frame_log.debug("preview.set_image: %sx%s → widget %dx%d",
                       iw, ih, self.preview_label._width, self.preview_label._height)
         self.preview_label.set_image(image, fast=fast)
 

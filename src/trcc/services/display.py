@@ -26,6 +26,7 @@ from typing import Any
 
 from ..core._safe import is_under
 from ..core.geometry import content_is_portrait, plan_orientation
+from ..core.logs import per_frame
 from ..core.models import (
     RENDER_CACHE_MAX_BYTES,
     SPLIT_OVERLAY_MAP,
@@ -49,6 +50,7 @@ from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"}
@@ -261,7 +263,7 @@ class DisplayService:
 
         # Per-frame — DEBUG so `-vv` users see the build context without
         # drowning a default INFO log.
-        log.debug(
+        frame_log.debug(
             "build_frame %s: theme=%r visual=%dx%d orientation=%d brightness=%d",
             info.key, theme.name, visual_size[0], visual_size[1],
             s.orientation, s.brightness,
@@ -272,7 +274,7 @@ class DisplayService:
             date_format=s.date_format,
             language=self._settings.app.language,
         )
-        log.debug(
+        frame_log.debug(
             "build_frame %s: clock=%s (time_format=%s date_format=%s lang=%s)",
             info.key, sorted(clock.keys()),
             s.time_format, s.date_format,
@@ -285,7 +287,7 @@ class DisplayService:
 
         bg_hit = bg_key in self._bg_cache(info.key)
         ovl_hit = scene is not None and scene.overlay_key == overlay_key
-        log.debug(
+        frame_log.debug(
             "build_frame %s: scene cache bg=%s overlay=%s",
             info.key,
             "HIT" if bg_hit else "MISS",
@@ -743,7 +745,7 @@ class DisplayService:
         """
         scene = self._scenes.get(key)
         surface = scene.preview_surface if scene is not None else None
-        log.debug("rendered_surface: key=%s available=%s",
+        frame_log.debug("rendered_surface: key=%s available=%s",
                   key, surface is not None)
         return surface
 

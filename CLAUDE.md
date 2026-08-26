@@ -472,12 +472,54 @@ PYTHONPATH=src python3 dev/tools/logging_coverage.py --area ui   # one area
   technical impossibility, not a preference. `__init__`, `__enter__`,
   `__getitem__` and `__init_subclass__` are **not** exempt and are counted.
 
-**The file always keeps DEBUG, at every verbosity.** It used to be `DEBUG if
-verbose else INFO`, so a user who ran the app normally, hit a problem and sent
-a report shipped us a log with every DEBUG line already discarded — the branch
-decisions, the resolved values, the silent-skip reasons. Exactly what we needed,
-gone. The rotating file is capped (1 MB × 5, `latest` at 10 MB), so per-frame
-DEBUG rolls over rather than growing without limit.
+**The file always keeps DEBUG, at every verbosity — except the per-frame render
+path, which one `-v` adds.** It used to be `DEBUG if verbose else INFO`, so a
+user who ran the app normally, hit a problem and sent a report shipped us a log
+with every DEBUG line already discarded — the branch decisions, the resolved
+values, the silent-skip reasons. Exactly what we needed, gone. That is still
+the rule and still true of everything that fires once.
+
+What changed on 2026-08-26 is the **per-frame** subset, and only because it was
+finally measured. On the real device, in instructions retired per rendered
+frame (CPU% cannot answer this — see below), logging was **82-90% of the entire
+CPU regression since v9.9.2**: 41.4 M/frame in July against 64.9 M at HEAD, at
+44 DEBUG records per frame and 688 records/second.
+
+Cost and value sit in different places, so they split by **frequency, not
+severity**:
+
+* **36 emitters fire >100×/run — 92% of records.** All per-frame.
+* **109 emitters fire ≤8× — 0.6% of records.** The diagnostic gold: which sysfs
+  path resolved, which transport opened, which distro family, why a download
+  was skipped, the SCSI timeout used. These cost nothing, and they are what a
+  macOS or BSD reporter — where we cannot reproduce — sends us.
+
+Per-frame lines therefore log through `per_frame(__name__)` (`core/logs.py`),
+one family under `trcc.frame` whose level is set once in `configure_logging`:
+INFO normally, so `.debug()` short-circuits in `isEnabledFor` and the record is
+never constructed; DEBUG under `-v`. **Silencing DEBUG wholesale is the wrong
+fix** — it saves the same CPU and re-breaks exactly what the paragraph above
+exists to prevent. `tests/test_diagnostics.py` gates both halves, and its
+mutation check for "gate the root instead" fails on purpose.
+
+The rotating file is capped (1 MB × 5, `latest` at 10 MB). Records are also
+rendered **once** rather than four times (`RenderOnceRotatingFileHandler`) —
+CPython's `shouldRollover` formats a record purely to measure its length and
+throws it away, once per rotating handler.
+
+### Never measure CPU with CPU%
+
+`ps %cpu`, `utime` and `task-clock` all measure **time on CPU**, and this dev
+box runs `intel_pstate`/`powersave` — the same binary reads 2.1 GHz or 4.7 GHz
+depending on load. Measured twice: silencing logging ran **24% fewer
+instructions and 36% MORE time on CPU**, and on the mock HEAD reads 21%
+*faster* than v9.9.2 while doing 58% more work.
+
+Use `perf stat -e instructions:u` and **normalise per unit of work, counting
+the work independently** (monkeypatch `DisplayService.build_frame` /
+`DeviceSender._raw_write`) — a build that renders fewer frames "wins" by doing
+less. The mock is fine for ratios, never for CPU%. Full detail and the
+harnesses: `memory/project_cpu_regression_is_logging.md`.
 
 ## Logging coverage is mandatory
 
