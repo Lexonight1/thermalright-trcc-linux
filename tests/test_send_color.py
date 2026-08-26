@@ -663,3 +663,60 @@ def test_tick_display_preserves_the_connected_verdict(tmp_home: Path) -> None:
     assert result.connected is False, (
         "TickDisplay lost the connectivity verdict on its way through replace()"
     )
+
+
+# ── CurrentFrame mirrors the panel; BuildPreview renders one ─────────────
+
+
+def test_current_frame_is_empty_before_anything_is_rendered(
+    tmp_home: Path,
+) -> None:
+    """No cached frame is ``ok=True, surface=None`` — a normal answer.
+
+    A UI mirroring the panel pre-load has nothing to show yet; that is not a
+    failure and must not be reported as one.
+    """
+    from trcc.core.commands import CurrentFrame
+
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    result = app.dispatch(CurrentFrame(key="0402:3922"))
+
+    assert result.ok is True
+    assert result.surface is None
+
+
+def test_current_frame_returns_the_frame_without_rendering_one(
+    tmp_home: Path,
+) -> None:
+    """After a send, the cached surface comes back — and asking for it does
+    NOT drive a render, which is the whole reason this is not BuildPreview."""
+    from trcc.core.commands import CurrentFrame, RenderAndSend
+    from trcc.core.models import Theme
+
+    renderer = RecordingRenderer()
+    platform = FakePlatform(tmp_home)
+    platform.scsi.read_script.append(_scsi_poll_response(100))
+    app = App(platform=platform, renderer=renderer)
+    assert app.dispatch(ConnectDevice(key="0402:3922")).ok
+    # The scene cache is populated by the THEME render path — SendColor and
+    # friends never fill it, which is exactly why rebuild_preview keeps a
+    # build-one-off fallback behind this Query.
+    app.active_themes["0402:3922"] = Theme(
+        path=tmp_home / "t", name="t",
+        resolution=(320, 320), config={"elements": []},
+    )
+    assert app.dispatch(RenderAndSend(key="0402:3922")).ok
+
+    before = list(renderer.calls)
+    result = app.dispatch(CurrentFrame(key="0402:3922"))
+
+    assert result.ok is True
+    assert result.surface is not None, "the rendered frame was not cached"
+    assert result.surface is app.display.rendered_surface("0402:3922")
+    # ``surface_size`` is the one call it is allowed to make — it reports the
+    # dimensions of the frame it found, it does not build one.
+    new_calls = [c for c in renderer.calls[len(before):] if c[0] != "surface_size"]
+    assert new_calls == [], (
+        f"CurrentFrame drove the renderer {new_calls} — it must read the "
+        "cache, which is the only thing separating it from BuildPreview"
+    )

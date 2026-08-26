@@ -26,6 +26,7 @@ from PySide6.QtGui import QPixmap
 from ...core.commands import (
     ApplyMask,
     BuildPreview,
+    CurrentFrame,
     DeviceState,
     EnableOverlay,
     ExportTheme,
@@ -1076,7 +1077,7 @@ class LCDHandler(BaseHandler):
                 self._device_key,
             )
             return
-        image = self._app.display.rendered_surface(self._device_key)
+        image = self._app.dispatch(CurrentFrame(key=self._device_key)).surface
         if image is None:
             # No frame rendered yet (pre-load) — build a one-off surface.
             self.log.debug(

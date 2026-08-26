@@ -710,6 +710,48 @@ class RenderAndSend(Command[RenderResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class CurrentFrame(Query[PreviewResult]):
+    """The frame the device is showing RIGHT NOW — without rendering one.
+
+    :class:`BuildPreview` renders to answer: it reads the sensors, composites
+    the theme and hands back a fresh frame.  This returns the surface the
+    render pipeline last produced and cached — no sensor read, no composite.
+
+    Two questions, so two Queries, for the reason :class:`VideoStatus` is not
+    :class:`TickDisplay`: a UI that only wants to MIRROR the panel should not
+    have to drive a render to do it.  Folding this into ``BuildPreview`` as a
+    ``cached=`` flag was considered and rejected — ``TickDisplay``'s own
+    docstring records why a flag that changes WHAT WORK HAPPENS is a second
+    Command, while ``encode=`` (which only picks the carrier for one render)
+    is not.
+
+    ``ok=True`` with ``surface=None`` is a normal answer, not a failure:
+    nothing has been rendered yet (pre-load), or the scene was invalidated.
+
+    Polled by preview panels, so logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+
+    def execute(self, app: App) -> PreviewResult:
+        surface = app.display.rendered_surface(self.key)
+        if surface is None:
+            log.debug("CurrentFrame: %s has no cached frame", self.key)
+            return PreviewResult(
+                ok=True, key=self.key,
+                message="No frame rendered yet",
+            )
+        width, height = app.renderer.surface_size(surface)
+        log.debug("CurrentFrame: %s → cached %dx%d surface",
+                  self.key, width, height)
+        return PreviewResult(
+            ok=True, key=self.key, surface=surface,
+            width=width, height=height,
+            message=f"Cached frame {width}x{height}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class TickDisplay(Command[RenderResult]):
     """Advance a video playback one frame, then render + send (one tick).
 
