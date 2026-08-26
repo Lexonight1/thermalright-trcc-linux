@@ -525,13 +525,11 @@ class LCDHandler(BaseHandler):
         # which publishes VideoStarted to restart the timer.  The
         # handler does not have to coordinate that here.
 
-        # Picking a new theme clears the previous mask — legacy persists
-        # ``mask_id=''`` here so a follow-up render doesn't keep the old
-        # mask layered on top of the new theme's bg.  Direct settings
-        # write (no Command) mirrors legacy's
-        # ``Settings.save_device_settings(mask_id='')`` — the upcoming
-        # LoadTheme below triggers the render via its own publish chain.
-        self._app.settings.set_mask_path(self._device_key, None)
+        # The previous theme's mask is dropped by ``LoadTheme`` below, whose
+        # ``reset_overrides`` already owns "drop the device's overrides".
+        # This panel used to clear it here by hand, which made the behaviour
+        # the gui's rather than the Command's — every other UI switched
+        # themes with the old mask still layered on.
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
         self._w['theme_setting'].video_panel.set_enabled(False)

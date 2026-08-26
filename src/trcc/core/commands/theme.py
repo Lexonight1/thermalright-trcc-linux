@@ -239,6 +239,20 @@ class LoadTheme(Command[ThemeResult]):
         # On restore (reset_overrides=False) the user's last-applied mask is
         # already persisted — do NOT re-apply the theme's bundled mask, which
         # would override it (and ApplyMask would wipe the restored edits).
+        # An explicit theme switch drops the applied-mask override, which this
+        # Command's ``reset_overrides`` docstring has always claimed and never
+        # did.  Only the gui got it, by clearing ``mask_path`` by hand right
+        # before dispatching — so the CLI, the API and qtgui kept the previous
+        # theme's mask layered over the new theme's background.  ``SaveTheme``
+        # names the failure exactly where it clears the same field: "an
+        # override survives the next switch, so it would bleed this theme's
+        # mask onto the next maskless theme the user picks."
+        #
+        # Cleared BEFORE the embedded-mask block below, so a theme that bundles
+        # its own mask still gets it applied — dropping the OVERRIDE is not the
+        # same as refusing the theme's own.
+        if self.reset_overrides:
+            app.settings.set_mask_path(self.key, None)
         embedded_mask = theme.config.get("mask") if self.reset_overrides else None
         if isinstance(embedded_mask, str) and embedded_mask:
             resolved_mask = app.themes.mask_path(theme)

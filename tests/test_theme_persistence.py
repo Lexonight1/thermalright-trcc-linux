@@ -2224,3 +2224,89 @@ def test_delete_theme_leaves_other_devices_scenes_alone(
     assert result.ok is True, result.message
     assert dropped == ["0402:3922"]
     assert result.invalidated == ("0402:3922",)
+
+
+# ── An explicit theme switch drops the applied-mask override ─────────────
+#
+# ``LoadTheme.reset_overrides`` has always documented this and never did it.
+# The gui cleared ``mask_path`` by hand before dispatching, so only the gui
+# behaved as documented; every other UI carried the old mask onto the new
+# theme.  These exercise the Command directly — no gui in sight, which is
+# where the bug lived.
+
+
+def test_switching_themes_drops_the_applied_mask(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """Apply a mask, switch theme, and the override is gone."""
+    from trcc.core.commands import ApplyMask, LoadTheme
+
+    mask = tmp_home / "custom.png"
+    mask.write_bytes(_png_bytes(red=0x77))
+    assert app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY, path=mask)).ok
+    assert app.settings.for_device(_TEST_DEVICE_KEY).mask_path is not None
+
+    plain = _write_theme(user_theme_dir, "maskless")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=plain)).ok
+
+    assert app.settings.for_device(_TEST_DEVICE_KEY).mask_path is None, (
+        "the previous theme's mask stayed layered over the new theme"
+    )
+
+
+def test_restoring_a_theme_keeps_the_applied_mask(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The other half: a reconnect/restart must PRESERVE what the user applied.
+
+    ``reset_overrides=False`` is the restore path, and clearing there would
+    lose the user's mask on every boot — the opposite bug.
+    """
+    from trcc.core.commands import ApplyMask, LoadTheme
+
+    mask = tmp_home / "keepme.png"
+    mask.write_bytes(_png_bytes(red=0x55))
+    assert app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY, path=mask)).ok
+    before = app.settings.for_device(_TEST_DEVICE_KEY).mask_path
+
+    plain = _write_theme(user_theme_dir, "restored")
+    assert app.dispatch(LoadTheme(
+        key=_TEST_DEVICE_KEY, path=plain, reset_overrides=False,
+    )).ok
+
+    assert app.settings.for_device(_TEST_DEVICE_KEY).mask_path == before
+
+
+def test_a_theme_that_bundles_a_mask_still_applies_it(
+    app: App, user_theme_dir: Path,
+) -> None:
+    """Dropping the OVERRIDE is not refusing the theme's OWN mask.
+
+    The clear runs before the embedded-mask block on purpose.  Reversed, a
+    theme carrying its own mask would apply it and then have it wiped in the
+    same Command — and every existing test would still pass, because none of
+    them loads a theme that bundles one.
+    """
+    from trcc.core.commands import ApplyMask, LoadTheme
+
+    theme_dir = user_theme_dir / "bundled"
+    theme_dir.mkdir(parents=True)
+    own_mask = theme_dir / "01.png"
+    own_mask.write_bytes(_png_bytes(red=0x33))
+    (theme_dir / "trcc.json").write_text(
+        json.dumps({"name": "bundled", "width": 320, "height": 320,
+                    "elements": [], "mask": str(own_mask)}),
+        encoding="utf-8",
+    )
+
+    # Start with a DIFFERENT mask applied, so the assertion cannot pass by
+    # the override simply surviving.
+    stale = user_theme_dir / "stale.png"
+    stale.write_bytes(_png_bytes(red=0x11))
+    assert app.dispatch(ApplyMask(key=_TEST_DEVICE_KEY, path=stale)).ok
+
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=theme_dir)).ok
+
+    applied = app.settings.for_device(_TEST_DEVICE_KEY).mask_path
+    assert applied is not None, "the theme's own bundled mask was not applied"
+    assert Path(applied) == own_mask
