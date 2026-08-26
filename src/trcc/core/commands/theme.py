@@ -1406,8 +1406,24 @@ class DeleteTheme(Command[DeleteThemeResult]):
                 ok=False, theme_name=target.name, path=str(target),
                 message=str(e),
             )
+        # Every device SHOWING this theme now holds a scene cache built from
+        # a directory that no longer exists.  Dropping it is the deletion's
+        # own consequence, and ``display.invalidate`` is called from eleven
+        # other Commands for exactly this reason — the gui was the only
+        # caller doing it from outside, and it reached only the ACTIVE
+        # handler, so a second device showing the same theme kept a stale
+        # cache until something else happened to clear it.
+        invalidated = tuple(
+            k for k, t in app.active_themes.items() if t.path == deleted
+        )
+        for key in invalidated:
+            app.display.invalidate(key)
+        if invalidated:
+            log.info("DeleteTheme: invalidated %d scene(s) showing %s: %s",
+                     len(invalidated), deleted.name, ", ".join(invalidated))
         return DeleteThemeResult(
             ok=True, theme_name=deleted.name, path=str(deleted),
+            invalidated=invalidated,
             message=f"Deleted theme at {deleted}",
         )
 

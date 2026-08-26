@@ -2169,3 +2169,58 @@ def test_save_establishes_the_theme_through_one_path(
         "the working layer must match the theme that is actually loaded — "
         "this is the assertion the hand-rolled copy failed"
     )
+
+
+# ── Deleting a theme drops the scene cache of EVERY device showing it ─────
+#
+# ``display.invalidate`` is called from eleven Commands; the gui was the one
+# caller doing it from outside, and it reached only ``_active_lcd()``.  A
+# second device showing the same theme kept a cache built from a directory
+# that no longer exists.
+
+
+def test_delete_theme_invalidates_every_device_showing_it(
+    app: App, user_theme_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two devices, one theme, one delete — both scenes dropped."""
+    from trcc.core.commands import DeleteTheme
+
+    theme_path = _write_theme(user_theme_dir, "shared")
+    theme = FileContentStore().load(theme_path)
+    app.active_themes["0402:3922"] = theme
+    app.active_themes["0416:5302"] = theme          # background device
+
+    dropped: list[str] = []
+    monkeypatch.setattr(app.display, "invalidate", dropped.append)
+
+    result = app.dispatch(DeleteTheme(path=theme_path))
+
+    assert result.ok is True, result.message
+    assert sorted(dropped) == ["0402:3922", "0416:5302"], (
+        "a device showing the deleted theme kept its stale scene"
+    )
+    assert sorted(result.invalidated) == ["0402:3922", "0416:5302"], (
+        "the Result must name them — a UI cannot see the scene cache"
+    )
+
+
+def test_delete_theme_leaves_other_devices_scenes_alone(
+    app: App, user_theme_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A device showing a DIFFERENT theme is untouched — invalidation is
+    scoped to what actually became stale, not fired at everything."""
+    from trcc.core.commands import DeleteTheme
+
+    doomed = _write_theme(user_theme_dir, "doomed")
+    kept = _write_theme(user_theme_dir, "kept")
+    app.active_themes["0402:3922"] = FileContentStore().load(doomed)
+    app.active_themes["0416:5302"] = FileContentStore().load(kept)
+
+    dropped: list[str] = []
+    monkeypatch.setattr(app.display, "invalidate", dropped.append)
+
+    result = app.dispatch(DeleteTheme(path=doomed))
+
+    assert result.ok is True, result.message
+    assert dropped == ["0402:3922"]
+    assert result.invalidated == ("0402:3922",)

@@ -775,6 +775,10 @@ class LoopVideoResult(Result):
 class DeleteThemeResult(Result):
     theme_name: str = ""
     path: str = ""
+    # Devices whose scene cache was dropped because they were SHOWING the
+    # deleted theme.  Reported so a UI can blank the right previews without
+    # re-deriving which devices those were — it cannot see the scene cache.
+    invalidated: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

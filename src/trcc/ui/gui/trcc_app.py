@@ -1751,11 +1751,10 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if h is not None:
             h.refresh_themes()
-            # If the deleted theme was the active one, invalidate the scene
-            # cache so the next render rebuilds from whatever falls back.
-            current = h.current_theme_path
-            if current is not None and str(current) == theme_info.path:
-                self._app.display.invalidate(h.device_key)
+            # The Command dropped the scene cache for every device showing
+            # this theme and reports which — so the panel only has to blank
+            # the preview when the device it is displaying was one of them.
+            if h.device_key in result.invalidated:
                 self.uc_preview.set_image(None)
         self.uc_preview.set_status(f"Deleted: {theme_info.name}")
 
