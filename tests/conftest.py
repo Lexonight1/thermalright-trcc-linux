@@ -535,6 +535,9 @@ class _CliRenderer(Renderer):
     def surface_size(self, surface):
         return (surface.w, surface.h)
 
+    def surface_nbytes(self, surface):
+        return surface.w * surface.h * 4
+
     def composite(self, base, overlay, position, mask=None):
         return base
 

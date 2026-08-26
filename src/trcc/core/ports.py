@@ -1362,6 +1362,19 @@ class Renderer(ABC):
         """
 
     @abstractmethod
+    def surface_nbytes(self, surface: Any) -> int:
+        """How many bytes of pixel data *surface* occupies.
+
+        A surface is opaque to core, so a caller that wants to BOUND how
+        many it retains cannot measure one — it can only count them, and a
+        count is not a size when the same count costs 59 MB on a 320x320
+        panel and 3,964 MB on a 1600x720 one (#264).  Asking the adapter,
+        which knows its own pixel format, is the difference between a cache
+        capped in bytes and a cache capped in wishes.
+        """
+
+
+    @abstractmethod
     def decode_image(self, data: bytes) -> Any:
         """Decode encoded image *bytes* (JPEG/PNG) to a surface.
 

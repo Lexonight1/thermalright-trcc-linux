@@ -35,6 +35,9 @@ class _DrawRecorder(Renderer):
     def surface_size(self, surface: Any) -> tuple[int, int]:
         return (surface.w, surface.h)
 
+    def surface_nbytes(self, surface: Any) -> int:
+        return surface.w * surface.h * 4
+
     def composite(self, base: Any, overlay: Any,
                   position: tuple[int, int],
                   mask: Any | None = None) -> Any:

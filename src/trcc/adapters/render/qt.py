@@ -134,6 +134,13 @@ class QtRenderer(Renderer):
         log.debug("surface_size: called")
         return (surface.width(), surface.height())
 
+    def surface_nbytes(self, surface: Any) -> int:
+        """Qt reports its own buffer size — see Renderer.surface_nbytes."""
+        nbytes = int(surface.sizeInBytes())
+        log.debug("surface_nbytes: %dx%d -> %d byte(s)",
+                  surface.width(), surface.height(), nbytes)
+        return nbytes
+
     # ── Compositing ───────────────────────────────────────────────────
 
     def composite(self, base: Any, overlay: Any,

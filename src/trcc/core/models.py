@@ -639,6 +639,30 @@ class DeviceSettings:
 
 
 # =========================================================================
+# Render cache budget
+# =========================================================================
+
+
+# How many bytes of composed background+mask surfaces one device may retain.
+#
+# A video theme draws a new background every tick, so its bg+mask layer is a
+# small cycle of surfaces that repeats forever -- worth keeping, if keeping
+# them cannot grow without bound.  It could: the cache this replaces was
+# capped by nothing at all and pre-composed EVERY frame up front, which on a
+# 1600x720/897-frame video meant a 4.38s freeze on apply and 3,964 MB
+# retained (#264; #256 reports the same shape at 1920x462).  It was deleted
+# outright in da4be2e9 rather than bounded, and composing every tick instead
+# is what the CPU has been paying since.
+#
+# Capping by BYTES rather than frame count is the whole point -- the same 144
+# frames cost 59 MB at 320x320 and 475 MB at 1600x720, so a frame budget
+# would be generous on the panels that were fine and ruinous on the ones that
+# reported the bug.  At this cap a 320x320 video is held whole while a
+# 1600x720 one retains ~30 frames and then behaves exactly as it does today.
+RENDER_CACHE_MAX_BYTES = 128 * 1024 * 1024
+
+
+# =========================================================================
 # Overlay elements (user-edited, layered on top of theme.config["elements"])
 # =========================================================================
 

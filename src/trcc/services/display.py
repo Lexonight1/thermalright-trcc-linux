@@ -27,6 +27,7 @@ from typing import Any
 from ..core._safe import is_under
 from ..core.geometry import content_is_portrait, plan_orientation
 from ..core.models import (
+    RENDER_CACHE_MAX_BYTES,
     SPLIT_OVERLAY_MAP,
     DeviceSettings,
     FitMode,
@@ -42,6 +43,7 @@ from ..core.protocol import (
     wire_angle,
 )
 from ._clock import compute_clock
+from .bg_cache import BgMaskCache
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
@@ -95,18 +97,21 @@ def _cutout_is_right_side(
 
 @dataclass
 class SceneCache:
-    """Two surfaces + the invalidation keys that govern them.
+    """The overlay surface + the wire bytes, and the keys that govern them.
 
     ``frame_key`` and ``frame_bytes`` cache the final wire-encoded
     frame so a tick where nothing changed (cache HIT on bg+overlay
     AND identical brightness/orientation/split/rotate) can return the
     last frame directly — skipping composite + brightness + rotate +
     encode entirely.
-    """
 
-    # bg_mask layer
-    bg_mask_surface: Any
-    bg_mask_key: tuple[Any, ...]       # (theme_path, visual_size, video_cursor)
+    The background+mask layer is NOT here.  It used to be, as a single
+    surface plus its key — which is a cache of one, and a video theme
+    misses a cache of one on every tick because its cursor is part of
+    the key.  It lives in ``BgMaskCache`` instead, which holds a bounded
+    cycle of them.  One layer, one owner: a second copy here would be a
+    second answer to "what background is current".
+    """
 
     # overlay layer
     overlay_surface: Any
@@ -152,6 +157,13 @@ class DisplayService:
         # scaling.  Same axis as the PlayVideo decode-size gate.
         self._paths = paths
         self._scenes: dict[str, SceneCache] = {}
+        # Per-device byte-capped cache of composed background+mask
+        # surfaces.  A video theme's bg layer is a repeating cycle, so it
+        # is worth keeping — but only within a budget, because the same
+        # cycle costs 59 MB on a 320x320 panel and 475 MB on a 1600x720
+        # one.  Filled lazily (one composite per asking tick), so nothing
+        # is paid up front the way the unbounded pre-composed cache did.
+        self._bg_caches: dict[str, BgMaskCache] = {}
         # Cache of loaded split-overlay surfaces keyed by
         # (style, rotation, mirrored).  Loaded lazily on first
         # widescreen render so non-Levita devices pay nothing.
@@ -271,7 +283,7 @@ class DisplayService:
         bg_key = self._bg_mask_key(info, theme, visual_size)
         overlay_key = self._overlay_key(info, theme, visual_size, sensors, clock)
 
-        bg_hit = scene is not None and scene.bg_mask_key == bg_key
+        bg_hit = bg_key in self._bg_cache(info.key)
         ovl_hit = scene is not None and scene.overlay_key == overlay_key
         log.debug(
             "build_frame %s: scene cache bg=%s overlay=%s",
@@ -343,7 +355,6 @@ class DisplayService:
             preview_surface = surface
             encoded = self._encode_for_wire(surface, resolved_profile)
             self._scenes[info.key] = SceneCache(
-                bg_mask_surface=bg_surface, bg_mask_key=bg_key,
                 overlay_surface=overlay_surface, overlay_key=overlay_key,
                 frame_key=frame_key, frame_bytes=encoded,
                 preview_surface=preview_surface,
@@ -400,7 +411,6 @@ class DisplayService:
 
         encoded = self._encode_for_wire(surface, resolved_profile)
         self._scenes[info.key] = SceneCache(
-            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
             overlay_surface=overlay_surface, overlay_key=overlay_key,
             frame_key=frame_key, frame_bytes=encoded,
             preview_surface=preview_surface,
@@ -454,7 +464,6 @@ class DisplayService:
             scene, bg_key, overlay_key,
         )
         self._scenes[info.key] = SceneCache(
-            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
             overlay_surface=overlay_surface, overlay_key=overlay_key,
         )
 
@@ -494,27 +503,44 @@ class DisplayService:
         """Resolve the (bg+mask, overlay) surfaces for a tick.
 
         Shared by ``build_frame`` (wire) and ``build_preview_surface``
-        (GUI) so both go through the same cache.
+        (GUI) so both go through the same caches.
 
-        A multi-frame video puts its cursor in ``bg_key``, so it MISSES
-        the single-surface scene cache every tick and composes fresh.
-        That is deliberate and matches the C#: ``GenerateImage``
-        (UCScreenImage.cs:634) allocates a bitmap, draws background →
-        mask → text, for every frame it sends, holding ONE mask bitmap
-        rather than baking it into a copy per frame.
+        The two layers cache differently because they repeat
+        differently.  The overlay carries live sensor readings and the
+        clock, so its key moves whenever the numbers do and there is
+        nothing to reuse — one entry is the right number.  The
+        background of a video theme cycles: N frames, then the same N
+        again, forever.  ``BgMaskCache`` keeps as much of that cycle as
+        its byte budget allows, so a tick that comes back around to a
+        frame it has already composed pays a dict lookup instead of a
+        JPEG decode, a fit and a mask composite.
 
-        We used to pre-composite every frame of the video up front
-        instead.  On a 1600x720 panel that froze the UI for 3.96s and
-        retained 4.13GB — and 1.84GB even for a stock 228-frame cloud
-        theme (#264, #256).  Composing per tick costs 4.41ms more on
-        that same panel, against a 41.7ms budget at the 24fps real
-        themes report.  Static themes are unaffected: they still hit the
-        scene cache above, because their ``bg_key`` does not move.
+        A miss composes fresh, which is what the C# does unconditionally
+        — ``GenerateImage`` (UCScreenImage.cs:634) allocates a bitmap and
+        draws background → mask → text for every frame it sends.  So the
+        budget being exhausted is not a failure mode; it is the C#'s own
+        behaviour, and it is what a panel too large to fit its animation
+        in the budget falls back to.
+
+        What is NOT done here is pre-composing the whole video up front,
+        which is how this cache existed before ``da4be2e9`` deleted it:
+        unbounded, and paid in one 4.38s freeze on apply for 3,964 MB
+        retained at 1600x720 (#264, #256).  Entries appear one per asking
+        tick.
         """
-        if scene is not None and scene.bg_mask_key == bg_key:
-            bg_surface = scene.bg_mask_surface
-        else:
+        bg_cache = self._bg_cache(info.key)
+        bg_surface = bg_cache.get(bg_key)
+        if bg_surface is None:
             bg_surface = self._build_bg_mask(info, theme, visual_size)
+            nbytes = self._r.surface_nbytes(bg_surface)
+            # The cycle this device will come back around through: one
+            # composed surface per video frame, or just this one for a
+            # static theme.  The cache needs it to tell a workload it can
+            # serve from one it would only thrash on.
+            playback = self._media.playback(info.key)
+            frames = len(playback.frames) if playback is not None else 1
+            bg_cache.put(bg_key, bg_surface, nbytes,
+                         working_set_bytes=frames * nbytes)
 
         if scene is not None and scene.overlay_key == overlay_key:
             overlay_surface = scene.overlay_surface
@@ -721,18 +747,41 @@ class DisplayService:
                   key, surface is not None)
         return surface
 
+    def _bg_cache(self, key: str) -> BgMaskCache:
+        """The background+mask cache for *key*, created on first ask.
+
+        Per device rather than shared, so one large panel's animation
+        cannot evict a small one's — the budget in ``RENDER_CACHE_MAX_BYTES``
+        is what a single device may retain.
+        """
+        cache = self._bg_caches.get(key)
+        if cache is None:
+            log.info("_bg_cache: opening a %d-byte budget for %s",
+                     RENDER_CACHE_MAX_BYTES, key)
+            cache = BgMaskCache(RENDER_CACHE_MAX_BYTES)
+            self._bg_caches[key] = cache
+        return cache
+
     def invalidate(self, key: str) -> None:
         """Drop the scene cache for *key* (called on disconnect / theme change)."""
         log.info("invalidate: key=%s", key)
         self._scenes.pop(key, None)
+        # The background cache goes too.  Its keys already carry theme,
+        # mask and mode, so stale entries would simply never be asked for
+        # again — but "never asked for" still occupies the budget until it
+        # ages out, and a device that just changed theme should not be
+        # spending its allowance on the previous one.
+        self._bg_caches.pop(key, None)
         # Reset the transition tracker too, so the next build_frame for
         # this key logs INFO when the cache state first appears
         # post-invalidation (instead of comparing against stale state).
         self._cache_state.pop(key, None)
 
     def invalidate_all(self) -> None:
-        log.info("invalidate_all: scenes=%d", len(self._scenes))
+        log.info("invalidate_all: scenes=%d bg_caches=%d",
+                 len(self._scenes), len(self._bg_caches))
         self._scenes.clear()
+        self._bg_caches.clear()
         self._cache_state.clear()
 
     def _log_cache_transition(self, key: str, bg_hit: bool,

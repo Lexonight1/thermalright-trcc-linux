@@ -374,6 +374,9 @@ class _RecordingRenderer(Renderer):
     def surface_size(self, surface: Any) -> tuple[int, int]:
         return (surface.w, surface.h)
 
+    def surface_nbytes(self, surface: Any) -> int:
+        return surface.w * surface.h * 4
+
     def composite(self, base: Any, overlay: Any,
                   position: tuple[int, int],
                   mask: Any | None = None) -> Any:
@@ -673,6 +676,89 @@ def test_composing_never_scales_with_video_length(tmp_home: Path) -> None:
         display.build_frame(info=info, theme=theme, sensors={}, profile=profile)
 
     assert composites() == ticks
+
+
+def test_a_looping_video_composes_each_frame_once(tmp_home: Path) -> None:
+    """Coming back around to a frame is a cache hit, not a second composite.
+
+    This is the whole point of ``BgMaskCache``.  A video's background layer is
+    a cycle: N frames, then the same N forever.  Composing all of them on
+    every lap is what the app has done since da4be2e9 deleted the previous
+    cache, and it is per-frame work that runs whether or not the window is
+    even visible.
+
+    Three laps of a four-frame video must cost four composites, not twelve.
+
+    MUTATION CHECK: drop the ``bg_cache.put`` in ``_resolve_bg_overlay`` and
+    this fails with 12 != 4 — every lap recomposes the whole cycle.
+    """
+    display, playback, info, theme, profile = _video_display(tmp_home, 4)
+    composites = _count_composites(display)
+
+    for _lap in range(3):
+        for cursor in range(4):
+            playback.cursor = cursor
+            display.build_frame(
+                info=info, theme=theme, sensors={}, profile=profile)
+
+    assert composites() == 4
+
+
+def test_a_video_too_large_for_the_budget_composes_every_tick(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Past the byte budget the device composes every tick AND keeps nothing.
+
+    That degraded behaviour is not a failure — it is exactly what the app
+    does today, and what the C# does unconditionally.  It is the guarantee
+    that #264 and #256 stay fixed: a panel whose animation cannot fit its
+    allowance does not grow the allowance, it stops caching.
+
+    Keeping *nothing* is the sharper half, and it is why the cache is told
+    the working set rather than left to evict its way there.  A 320x320
+    ARGB32 surface is 409,600 bytes, so a two-surface budget against a
+    four-frame cycle is LRU's worst case: each entry is evicted exactly one
+    lap before it is needed, so a part-filled cache would hold 819,200 bytes
+    and serve a flat zero hits.  Measured at 1600x720x897, that was 123 MB
+    retained for 0.0 ms/tick saved.  Declining the whole workload spends
+    nothing instead.
+
+    MUTATION CHECK: drop ``working_set_bytes=`` at the ``bg_cache.put`` call
+    site and the composite count still passes — but ``nbytes`` fails at
+    819200 != 0, which is the 123 MB this rule exists to not spend.
+    """
+    monkeypatch.setattr(
+        "trcc.services.display.RENDER_CACHE_MAX_BYTES", 2 * 320 * 320 * 4)
+    display, playback, info, theme, profile = _video_display(tmp_home, 4)
+    composites = _count_composites(display)
+
+    for _lap in range(3):
+        for cursor in range(4):
+            playback.cursor = cursor
+            display.build_frame(
+                info=info, theme=theme, sensors={}, profile=profile)
+
+    assert composites() == 12
+    assert display._bg_cache(info.key).nbytes == 0
+
+
+def test_invalidate_drops_the_background_budget(tmp_home: Path) -> None:
+    """A theme change must not leave the previous theme occupying the budget.
+
+    MUTATION CHECK: drop the ``_bg_caches.pop`` in ``invalidate`` and this
+    fails with 4 != 8 — the second pass is served from the stale cache.
+    """
+    display, playback, info, theme, profile = _video_display(tmp_home, 4)
+    composites = _count_composites(display)
+
+    for _pass in range(2):
+        for cursor in range(4):
+            playback.cursor = cursor
+            display.build_frame(
+                info=info, theme=theme, sensors={}, profile=profile)
+        display.invalidate(info.key)
+
+    assert composites() == 8
 
 
 def test_preview_also_composes_one_frame_per_tick(tmp_home: Path) -> None:
