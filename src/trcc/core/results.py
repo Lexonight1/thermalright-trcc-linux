@@ -68,6 +68,9 @@ class DisconnectResult(Result):
 class SendResult(Result):
     key: str = ""
     bytes_sent: int = 0
+    # Same tri-state as ``RenderResult.connected`` — see there for why
+    # ``None`` and ``False`` must not be collapsed.
+    connected: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +93,17 @@ class RenderResult(Result):
     cursor: int | None = None
     frame_count: int | None = None
     interval_ms: int | None = None
+    # Was the device reachable?  ``False`` = absent or not connected — the
+    # caller's own fault-handling case; ``True`` = we reached it, so any
+    # failure here is something else; ``None`` = the Command failed before it
+    # ever asked (a bad argument, a missing file).
+    #
+    # Test ``is False``, never falsiness: ``None`` is "did not ask", not
+    # "disconnected", and collapsing them is the bug this field exists to
+    # avoid.  Needed because the daemon flattens a raised
+    # ``DeviceNotConnectedError`` into a message STRING, so without it a UI
+    # would have to match on that text to tell a dead device from a dead theme.
+    connected: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

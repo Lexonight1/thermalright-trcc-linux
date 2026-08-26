@@ -585,3 +585,62 @@ def test_connect_installs_data_for_handshake_resolution(tmp_home: Path) -> None:
 
     assert app.dispatch(ConnectDevice(key="0402:3922")).ok
     assert installed == [(320, 320)]   # the handshake-resolved resolution
+
+
+# ── not-connected is a Result, not an exception ──────────────────────────
+#
+# ``_require_connected_device`` raised ``DeviceNotConnectedError`` and
+# ``App.dispatch`` has no try/except, so the exception escaped to the caller.
+# But ``IPCServer._dispatch_envelope`` catches EVERYTHING and turns it into
+# ``{"ok": false, "message": "DeviceNotConnectedError: ..."}``, so the same
+# Command raised in-process and returned a Result over the daemon socket.
+# One Command, two behaviours, decided by an env var — the dual code path
+# CLAUDE.md forbids.  These pin the single behaviour.
+
+
+def test_send_to_an_attached_but_unconnected_device_returns_a_result(
+    tmp_home: Path,
+) -> None:
+    """Attached, never handshaken: a Result with ``connected is False`` —
+    NOT a raised DeviceNotConnectedError."""
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    app.attach(0x0402, 0x3922)          # attached; ConnectDevice never dispatched
+
+    result = app.dispatch(SendColor(key="0402:3922", r=1, g=2, b=3))
+
+    assert result.ok is False
+    assert result.connected is False, (
+        "an unusable device must be reported by the field, not by a message "
+        "a caller would have to string-match"
+    )
+    assert "not connected" in result.message
+
+
+def test_unknown_device_is_also_connected_false(tmp_home: Path) -> None:
+    """The other half of the same helper: not-found and not-connected are
+    both 'the device is unusable', so both answer the same field."""
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+
+    result = app.dispatch(SendColor(key="dead:beef", r=1, g=2, b=3))
+
+    assert result.ok is False
+    assert result.connected is False
+
+
+def test_a_failure_before_the_check_leaves_connected_unknown(
+    tmp_home: Path,
+) -> None:
+    """``None`` is 'never asked', and must not collapse into False.
+
+    A bad argument is rejected before the device is looked up at all, so
+    reporting ``connected=False`` there would blame the hardware for the
+    caller's mistake.
+    """
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    app.attach(0x0402, 0x3922)
+
+    result = app.dispatch(SendColor(key="0402:3922", r=999, g=0, b=0))
+
+    assert result.ok is False
+    assert result.connected is None, "a range error is not a connectivity verdict"
+    assert "out of range" in result.message

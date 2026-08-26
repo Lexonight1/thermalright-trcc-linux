@@ -454,20 +454,22 @@ class SendFrame(Command[SendResult]):
     def execute(self, app: App) -> SendResult:
         try:
             _require_connected_device(app, self.key)
-        except DeviceNotFoundError as e:
-            return SendResult(ok=False, key=self.key, message=str(e))
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            return SendResult(ok=False, key=self.key, connected=False,
+                              message=str(e))
         try:
             ok = app.send(self.key, self.data)
         except TransportError as e:
             app.events.publish(ErrorOccurred(message=str(e), kind="transport",
                                              key=self.key))
             _publish_if_disconnect(app, self.key, e)
-            return SendResult(ok=False, key=self.key, message=str(e))
+            return SendResult(ok=False, key=self.key, connected=True,
+                              message=str(e))
         bytes_sent = len(self.data) if ok else 0
         if ok:
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
-            ok=ok, key=self.key,
+            ok=ok, key=self.key, connected=True,
             message=f"Sent {bytes_sent} bytes" if ok else "Send returned False",
             bytes_sent=bytes_sent,
         )
@@ -497,9 +499,9 @@ class SendColor(Command[SendResult]):
 
         try:
             device = _require_connected_device(app, self.key)
-        except DeviceNotFoundError as e:
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
-                              message=str(e))
+                              connected=False, message=str(e))
 
         try:
             frame = app.display.build_solid_color_frame(
@@ -514,13 +516,13 @@ class SendColor(Command[SendResult]):
             ))
             _publish_if_disconnect(app, self.key, e)
             return SendResult(ok=False, key=self.key, bytes_sent=0,
-                              message=str(e))
+                              connected=True, message=str(e))
 
         bytes_sent = len(frame) if ok else 0
         if ok:
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
-            ok=ok, key=self.key, bytes_sent=bytes_sent,
+            ok=ok, key=self.key, bytes_sent=bytes_sent, connected=True,
             message=(f"Sent {bytes_sent} bytes "
                      f"(#{self.r:02x}{self.g:02x}{self.b:02x})"
                      if ok else "Send returned False"),
@@ -553,6 +555,7 @@ class SleepDevice(Command[SendResult]):
             log.info("SleepDevice %s: not connected — nothing to blank",
                      self.key)
             return SendResult(ok=False, key=self.key, bytes_sent=0,
+                              connected=False,
                               message=f"{self.key} not connected")
         if device.is_led:
             from .led import SetLedColors
@@ -600,9 +603,9 @@ class SendImage(Command[SendResult]):
             )
         try:
             device = _require_connected_device(app, self.key)
-        except DeviceNotFoundError as e:
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
-                              message=str(e))
+                              connected=False, message=str(e))
 
         try:
             frame = app.display.build_image_frame(
@@ -615,16 +618,16 @@ class SendImage(Command[SendResult]):
             ))
             _publish_if_disconnect(app, self.key, e)
             return SendResult(ok=False, key=self.key, bytes_sent=0,
-                              message=str(e))
+                              connected=True, message=str(e))
         except TrccError as e:
             return SendResult(ok=False, key=self.key, bytes_sent=0,
-                              message=str(e))
+                              connected=True, message=str(e))
 
         bytes_sent = len(frame) if ok else 0
         if ok:
             app.events.publish(FrameSent(key=self.key, bytes_sent=bytes_sent))
         return SendResult(
-            ok=ok, key=self.key, bytes_sent=bytes_sent,
+            ok=ok, key=self.key, bytes_sent=bytes_sent, connected=True,
             message=(f"Sent {bytes_sent} bytes from {self.path.name}"
                      if ok else "Send returned False"),
         )
@@ -647,13 +650,14 @@ class RenderAndSend(Command[RenderResult]):
     def execute(self, app: App) -> RenderResult:
         try:
             device = _require_connected_device(app, self.key)
-        except DeviceNotFoundError as e:
-            return RenderResult(ok=False, key=self.key, message=str(e))
+        except (DeviceNotFoundError, DeviceNotConnectedError) as e:
+            return RenderResult(ok=False, key=self.key, connected=False,
+                                message=str(e))
 
         theme = app.active_themes.get(self.key)
         if theme is None:
             return RenderResult(
-                ok=False, key=self.key,
+                ok=False, key=self.key, connected=True,
                 message="No active theme — dispatch LoadTheme first",
             )
 
@@ -686,7 +690,7 @@ class RenderAndSend(Command[RenderResult]):
             _publish_if_disconnect(app, self.key, e)
             return RenderResult(
                 ok=False, key=self.key, theme_name=theme.name,
-                message=str(e),
+                connected=True, message=str(e),
             )
 
         if ok:
@@ -698,7 +702,7 @@ class RenderAndSend(Command[RenderResult]):
                 surface=app.display.rendered_surface(self.key),
             ))
         return RenderResult(
-            ok=ok, key=self.key,
+            ok=ok, key=self.key, connected=True,
             bytes_sent=len(frame), theme_name=theme.name,
             message=(f"Rendered + sent {len(frame)} bytes"
                      if ok else "Render built frame but send returned False"),
