@@ -1681,6 +1681,23 @@ class Platform(ABC):
     @abstractmethod
     def autostart(self) -> AutostartManager: ...
 
+    # ── Screen capture ────────────────────────────────────────────────
+    @abstractmethod
+    def screen_capture(self) -> ScreenCapture:
+        """Grab a desktop rectangle — the source the screencast feed reads.
+
+        Declared on the port because WHICH tool captures a screen is an
+        OS fact: ``grim`` on wlroots, ``scrot`` on X11, and neither exists
+        on Windows or macOS, where Qt's native grab is the whole answer.
+        ``BaseOS`` supplies the Qt-backed adapter, which already degrades
+        through those tools, so an OS only overrides this when it has
+        something better.
+
+        Here rather than injected like ``Renderer`` because a Command needs
+        to reach it: the screencast driver runs core-side, and
+        ``app.platform`` is what a Command has.
+        """
+
     # ── Package manager (diagnostics; read-only) ──────────────────────
     @abstractmethod
     def packages(self) -> PackageManager:

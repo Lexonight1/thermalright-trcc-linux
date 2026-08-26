@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
-from trcc.core.models import UsbPowerState, Wire
+from trcc.core.models import RawFrame, UsbPowerState, Wire
 from trcc.core.ports import (
     AutostartManager,
     BulkTransport,
@@ -25,6 +25,7 @@ from trcc.core.ports import (
     Paths,
     Platform,
     Renderer,
+    ScreenCapture,
     ScsiTransport,
     SensorEnumerator,
     Transport,
@@ -213,6 +214,25 @@ class FakeGpu(GpuSource):
         return self.values["vram_total"]
 
 
+class FakeScreenCapture(ScreenCapture):
+    """Deterministic desktop grab — a solid frame of the requested size.
+
+    Records every region asked for, so a test can assert WHICH rectangle a
+    caller grabbed rather than only that it grabbed something.
+    """
+
+    def __init__(self, fill: int = 0x40) -> None:
+        self.regions: List[tuple] = []
+        self._fill = fill
+
+    def grab_region(self, x: int, y: int, width: int, height: int) -> RawFrame:
+        self.regions.append((x, y, width, height))
+        return RawFrame(
+            data=bytes([self._fill]) * (width * height * 3),
+            width=width, height=height,
+        )
+
+
 class FakePlatform(Platform):
     """Minimal Platform fake — bulk/scsi transports replayable from tests."""
 
@@ -222,6 +242,10 @@ class FakePlatform(Platform):
         self._paths = FakePaths(tmp_home)
         self._autostart = FakeAutostart()
         self._sensors: Optional[SensorEnumerator] = None
+        self.capture = FakeScreenCapture()
+
+    def screen_capture(self) -> ScreenCapture:
+        return self.capture
 
     def open_transport(self, wire, vid, pid, serial=None) -> Transport:
         return self.scsi if wire is Wire.SCSI else self.bulk

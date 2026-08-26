@@ -40,10 +40,10 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
-| [`BaseOS`](#baseos) | 12 | 15 | 8 |
+| [`BaseOS`](#baseos) | 12 | 16 | 8 |
 | [`Renderer`](#renderer) | 13 | 6 | 1 |
 | [`ContentStore`](#contentstore) | 22 | 0 | 1 |
-| [`Platform`](#platform) | 22 | 0 | 8 |
+| [`Platform`](#platform) | 23 | 0 | 8 |
 
 ---
 
@@ -581,7 +581,7 @@ permission_denied_hint() -> str
 setup(interactive: 'bool' = True) -> int
 ```
 
-**You inherit (15):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
+**You inherit (16):** `autostart` · `configure_stdout` · `hotplug` · `install_method` · `minimize_on_close` · `open_transport` · `package_manager` · `packages` · `paths` · `scan_devices` · `screen_capture` · `sensors` · `software_install_hint` · `upgrade_command` · `usb_power_state` · `worker_thread_context`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
@@ -654,7 +654,7 @@ video_path(theme: 'Theme') -> Path | None
 
 OS abstraction.  DI'd into App at startup.
 
-**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 15 of these 22, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
+**Extend `BaseOS` (`adapters/system/_base.py`)**, not this port directly — it answers 16 of these 23, leaving you 12 of its own to write (listed under [`BaseOS`](#baseos)).
 
 **Register by naming your key in the class line:**
 
@@ -662,7 +662,7 @@ OS abstraction.  DI'd into App at startup.
 class MyPlatform(BaseOS, key="myos"):
 ```
 
-**You implement (22):**
+**You implement (23):**
 
 ```python
 autostart() -> AutostartManager
@@ -681,6 +681,7 @@ packages() -> PackageManager
 paths() -> Paths
 permission_denied_hint() -> str
 scan_devices() -> list[DeviceInfo]
+screen_capture() -> ScreenCapture
 sensors() -> SensorEnumerator
 setup(interactive: 'bool' = True) -> int
 software_install_hint(tool: 'str') -> str

@@ -264,3 +264,38 @@ def test_advance_slideshow_holds_inside_the_interval(fake_platform) -> None:
     assert again.running is True, "the slideshow IS running, just not due"
     assert again.due is False
     assert again.theme_name is None
+
+
+# ── The capture source is reachable from core, not just from a Qt panel ───
+#
+# ``QtScreenCapture`` existed but was constructed inline by the qtgui panel,
+# so no Command could reach a capture source at all — which is why the
+# screencast driver had to live in a UI.
+
+
+def test_platform_supplies_a_screen_capture(fake_platform) -> None:
+    """A Command can reach a capture source through ``app.platform``."""
+    app = App(fake_platform)
+
+    capture = app.platform.screen_capture()
+    frame = capture.grab_region(10, 20, 4, 3)
+
+    assert frame.width == 4
+    assert frame.height == 3
+    assert len(frame.data) == 4 * 3 * 3, "RGB24 = 3 bytes per pixel"
+    assert fake_platform.capture.regions == [(10, 20, 4, 3)], (
+        "the requested rectangle must reach the capture source unchanged"
+    )
+
+
+def test_screen_capture_is_memoised_per_platform() -> None:
+    """Built once, then cached — the same idiom as sensors / autostart.
+
+    A portal-backed implementation holds a session, so handing out a fresh
+    instance per call would mean a new consent dialog each time.
+    """
+    from trcc.adapters.system.linux import LinuxOS
+
+    os_ = LinuxOS()
+
+    assert os_.screen_capture() is os_.screen_capture()

@@ -40,6 +40,7 @@ from ...core.ports import (
     PackageManager,
     Paths,
     Platform,
+    ScreenCapture,
     ScsiTransport,
     SensorEnumerator,
     Transport,
@@ -195,6 +196,7 @@ class BaseOS(Platform):
         self._autostart: AutostartManager | None = None
         self._hotplug: HotplugMonitor | None = None
         self._packages: PackageManager | None = None
+        self._screen_capture: ScreenCapture | None = None
 
     # ── Abstract hooks — the per-OS internals ────────────────────────────
 
@@ -226,6 +228,22 @@ class BaseOS(Platform):
         from ._packages import NoPackageManager
         log.debug("%s._build_packages: none for this OS", type(self).__name__)
         return NoPackageManager()
+
+    def _build_screen_capture(self) -> ScreenCapture:
+        """Build this OS's capture source (called once, then memoised).
+
+        Concrete, and truthfully so — unlike the defaults deleted on
+        2026-08-21, this one WORKS everywhere rather than answering on an
+        OS's behalf.  ``QtScreenCapture`` tries Qt's native grab first and
+        falls through to ``grim`` / ``scrot`` only where they exist, so an
+        OS that has neither still captures.  Override when a native path
+        beats it.
+        """
+        from ..screencast import QtScreenCapture
+
+        log.info("%s._build_screen_capture: QtScreenCapture (Qt native → "
+                 "grim → scrot → full-grab+crop)", type(self).__name__)
+        return QtScreenCapture()
 
     # ── Shared transport / scan ──────────────────────────────────────────
 
@@ -328,6 +346,16 @@ class BaseOS(Platform):
             log.debug("%s.hotplug: returning cached monitor",
                       type(self).__name__)
         return self._hotplug
+
+    def screen_capture(self) -> ScreenCapture:
+        if self._screen_capture is None:
+            log.info("%s.screen_capture: building capture source",
+                     type(self).__name__)
+            self._screen_capture = self._build_screen_capture()
+        else:
+            log.debug("%s.screen_capture: returning cached source",
+                      type(self).__name__)
+        return self._screen_capture
 
     def packages(self) -> PackageManager:
         if self._packages is None:
