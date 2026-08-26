@@ -158,6 +158,19 @@ class _FakeApp:
             return LcdSnapshotResult(ok=True, key=key)
         device = self.devices.get(key)
         ok = device is not None and device.is_connected
+        if name in ("TickDisplay", "RenderAndSend"):
+            # The REAL Result again — the handler reads ``connected`` off it to
+            # tell a disconnect from a render failure, and a stub that invents
+            # its own field set answers that question by accident or not at all.
+            from trcc.core.results import RenderResult
+
+            return RenderResult(
+                ok=ok, key=key, bytes_sent=1234 if ok else 0, theme_name="T",
+                connected=ok,
+                message="ok" if ok else "not connected",
+                cursor=cursor, frame_count=frame_count,
+                interval_ms=interval_ms,
+            )
         return type("_R", (), {
             "ok": ok, "bytes_sent": 1234, "theme_name": "T", "themes": [],
             "message": "ok" if ok else "not connected",

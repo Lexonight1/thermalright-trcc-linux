@@ -934,14 +934,14 @@ class LCDHandler(BaseHandler):
                 percent, result.cursor, result.frame_count,
             )
 
-        if not result.ok:
-            device = self._app.devices.get(self._device_key)
-            if device is None or not device.is_connected:
-                self._log_tick_skip(
-                    reason="device-not-connected",
-                    detail=f"device {self._device_key} not connected — skip send",
-                )
-                return
+        # ``connected is False`` — never falsiness: ``None`` means the Command
+        # failed before it looked the device up, which is not a disconnect.
+        if result.connected is False:
+            self._log_tick_skip(
+                reason="device-not-connected",
+                detail=f"device {self._device_key} not connected — skip send",
+            )
+            return
 
         # Cleared on the happy path so a subsequent disconnect re-logs.
         self._animation_last_skip_reason = None
@@ -1400,14 +1400,17 @@ class LCDHandler(BaseHandler):
                 "_render_and_send: skipped — animation timer owns the wire",
             )
             return
-        device = self._app.devices.get(self._device_key)
-        if device is None or not device.is_connected:
+        # One dispatch answers both questions.  The pre-check this replaces
+        # existed to avoid a raised DeviceNotConnectedError; the Command
+        # reports it now, so asking the device first is a second round-trip
+        # for an answer the first one carries.
+        result = self._app.dispatch(RenderAndSend(key=self._device_key))
+        if result.connected is False:
             self.log.debug(
                 "_render_and_send: device %s not connected — skip",
                 self._device_key,
             )
             return
-        result = self._app.dispatch(RenderAndSend(key=self._device_key))
         if not result.ok:
             # Static-theme render failure is user-visible.  WARN, not DEBUG.
             self.log.warning(

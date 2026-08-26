@@ -644,3 +644,22 @@ def test_a_failure_before_the_check_leaves_connected_unknown(
     assert result.ok is False
     assert result.connected is None, "a range error is not a connectivity verdict"
     assert "out of range" in result.message
+
+
+def test_tick_display_preserves_the_connected_verdict(tmp_home: Path) -> None:
+    """``TickDisplay`` rebuilds its Result with ``dataclasses.replace`` after
+    delegating to ``RenderAndSend``.  The gui's video tick reads ``connected``
+    off that Result, so the verdict has to survive the rebuild — a replace
+    that dropped it would leave the tick unable to tell a disconnect from a
+    render failure, silently."""
+    from trcc.core.commands import TickDisplay
+
+    app = App(platform=FakePlatform(tmp_home), renderer=RecordingRenderer())
+    app.attach(0x0402, 0x3922)          # attached, never connected
+
+    result = app.dispatch(TickDisplay(key="0402:3922"))
+
+    assert result.ok is False
+    assert result.connected is False, (
+        "TickDisplay lost the connectivity verdict on its way through replace()"
+    )
