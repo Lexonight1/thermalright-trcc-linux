@@ -563,6 +563,13 @@ class _CliRenderer(Renderer):
     def from_raw_rgb24(self, frame):
         return _Surface(100, 100)
 
+    def to_raw_rgb24(self, surface):
+        # The inverse the port now requires.  Test doubles carry no pixels,
+        # so this reports the surface's DIMENSIONS with blank bytes — enough
+        # for a caller that only needs a correctly-sized RawFrame.
+        w, h = self.surface_size(surface)
+        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
+
     def decode_image(self, data):
         return _Surface(100, 100)
 

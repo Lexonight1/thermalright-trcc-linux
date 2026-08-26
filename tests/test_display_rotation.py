@@ -25,6 +25,7 @@ from trcc.core.models import (
     FitMode,
     Kind,
     ProductInfo,
+    RawFrame,
     Theme,
     Wire,
 )
@@ -120,6 +121,13 @@ class RecordingRenderer(Renderer):
     # ── Legacy boundary ───────────────────────────────────────────────
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(frame.width, frame.height)
+
+    def to_raw_rgb24(self, surface):
+        # The inverse the port now requires.  Test doubles carry no pixels,
+        # so this reports the surface's DIMENSIONS with blank bytes — enough
+        # for a caller that only needs a correctly-sized RawFrame.
+        w, h = self.surface_size(surface)
+        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
 
     def decode_image(self, data: bytes) -> Any:
         return _Surface(100, 100)

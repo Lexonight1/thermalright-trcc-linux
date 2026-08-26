@@ -1351,6 +1351,17 @@ class Renderer(ABC):
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
     @abstractmethod
+    def to_raw_rgb24(self, surface: Any) -> RawFrame:
+        """A surface back to packed RGB24 — the inverse of the above.
+
+        Exists because only half the pair did.  A surface is opaque to core,
+        so a caller holding one and needing to hand it to something that
+        speaks ``RawFrame`` had nowhere to convert — and the gui screencast
+        simply passed the surface, where the attribute access on ``.data`` /
+        ``.width`` blew up every frame.
+        """
+
+    @abstractmethod
     def decode_image(self, data: bytes) -> Any:
         """Decode encoded image *bytes* (JPEG/PNG) to a surface.
 

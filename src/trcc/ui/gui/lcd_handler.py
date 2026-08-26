@@ -1271,8 +1271,14 @@ class LCDHandler(BaseHandler):
             )
             return
         try:
+            # The capture tick hands over a renderer SURFACE; the service
+            # speaks ``RawFrame``.  Passing the surface straight through is
+            # what made every frame die on ``.data`` — the preview updated
+            # and the panel stayed blank.  qtgui never had this because it
+            # captures through the port, which already returns a RawFrame.
             data = self._app.display.build_screencast_frame(
-                info=device.info, frame=image,
+                info=device.info,
+                frame=self._app.renderer.to_raw_rgb24(image),
             )
         except Exception as e:
             self.log.warning(

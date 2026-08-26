@@ -41,7 +41,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 9 | 3 | 1 |
 | [`GpuSource`](#gpusource) | 10 | 0 | 10 |
 | [`BaseOS`](#baseos) | 12 | 16 | 8 |
-| [`Renderer`](#renderer) | 13 | 6 | 1 |
+| [`Renderer`](#renderer) | 14 | 6 | 1 |
 | [`ContentStore`](#contentstore) | 22 | 0 | 1 |
 | [`Platform`](#platform) | 23 | 0 | 8 |
 
@@ -591,7 +591,7 @@ setup(interactive: 'bool' = True) -> int
 
 Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py).
 
-**You implement (13):**
+**You implement (14):**
 
 ```python
 apply_brightness(surface: 'Any', percent: 'int') -> Any
@@ -607,6 +607,7 @@ open_image(path: 'Path') -> Any
 resize(surface: 'Any', width: 'int', height: 'int') -> Any
 rotate(surface: 'Any', degrees: 'int') -> Any
 surface_size(surface: 'Any') -> tuple[int, int]
+to_raw_rgb24(surface: 'Any') -> RawFrame
 ```
 
 **You inherit (6):** `bg_fit` · `build_frame` · `encode_payload` · `encode_png` · `get_pixels_rgb` · `list_fonts`

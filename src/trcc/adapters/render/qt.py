@@ -394,6 +394,25 @@ class QtRenderer(Renderer):
         ).copy()  # .copy() detaches from input buffer
         return qimg.convertToFormat(QImage.Format.Format_ARGB32)
 
+    def to_raw_rgb24(self, surface: Any) -> RawFrame:
+        img = surface.convertToFormat(QImage.Format.Format_RGB888)
+        width, height = img.width(), img.height()
+        # ``constBits()`` spans the whole buffer INCLUDING per-line padding —
+        # Qt aligns each scanline to 4 bytes, so any width whose ``*3`` is not
+        # a multiple of 4 carries junk at the end of every row.  Copy the
+        # packed part of each line when the stride disagrees.
+        stride = img.bytesPerLine()
+        raw = bytes(img.constBits())
+        if stride == width * 3:
+            data = raw
+        else:
+            data = b"".join(
+                raw[y * stride:y * stride + width * 3] for y in range(height)
+            )
+        log.debug("to_raw_rgb24: %dx%d (stride=%d packed=%d)",
+                  width, height, stride, width * 3)
+        return RawFrame(data=data, width=width, height=height)
+
     # ── Fonts ─────────────────────────────────────────────────────────
 
     def list_fonts(self) -> list[str]:

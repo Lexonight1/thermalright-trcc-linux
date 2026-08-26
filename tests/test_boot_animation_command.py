@@ -13,6 +13,7 @@ import pytest
 
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, UploadBootAnimation
+from trcc.core.models import RawFrame
 from trcc.core.ports import Renderer
 
 from .conftest import FakePlatform
@@ -82,6 +83,13 @@ class _AnimRenderer(Renderer):
 
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _AnimRenderer._Surface(100, 100, b"\x00")
+
+    def to_raw_rgb24(self, surface):
+        # The inverse the port now requires.  Test doubles carry no pixels,
+        # so this reports the surface's DIMENSIONS with blank bytes — enough
+        # for a caller that only needs a correctly-sized RawFrame.
+        w, h = self.surface_size(surface)
+        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
 
     def decode_image(self, data: bytes) -> Any:
         return _AnimRenderer._Surface(100, 100, b"\x00")

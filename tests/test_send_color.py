@@ -22,7 +22,7 @@ from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, SendColor
 from trcc.core.events import FrameSent
-from trcc.core.models import Kind, ProductInfo, Wire
+from trcc.core.models import Kind, ProductInfo, RawFrame, Wire
 from trcc.core.ports import Renderer
 from trcc.core.protocol import get_profile
 from trcc.services.display import DisplayService
@@ -97,6 +97,13 @@ class RecordingRenderer(Renderer):
 
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _Surface(frame.width, frame.height)
+
+    def to_raw_rgb24(self, surface):
+        # The inverse the port now requires.  Test doubles carry no pixels,
+        # so this reports the surface's DIMENSIONS with blank bytes — enough
+        # for a caller that only needs a correctly-sized RawFrame.
+        w, h = self.surface_size(surface)
+        return RawFrame(data=bytes(w * h * 3), width=w, height=h)
 
     def decode_image(self, data: bytes) -> Any:
         return _Surface(100, 100)
@@ -720,3 +727,63 @@ def test_current_frame_returns_the_frame_without_rendering_one(
         f"CurrentFrame drove the renderer {new_calls} — it must read the "
         "cache, which is the only thing separating it from BuildPreview"
     )
+
+
+# ── Screencast: the gui sends a frame, not a stack trace ─────────────────
+#
+# The capture tick hands over a renderer SURFACE; build_screencast_frame
+# speaks RawFrame and reads .data/.width/.height as ATTRIBUTES.  Passing the
+# surface through raised on every frame, was swallowed by the handler's
+# `except Exception`, and SendFrame was never dispatched — preview updated,
+# panel blank, since the cutover (4fa876be).
+
+
+def test_to_raw_rgb24_round_trips_a_surface(tmp_home: Path) -> None:
+    """The inverse the port was missing: surface → RawFrame → surface.
+
+    Uses a width whose ``*3`` is NOT a multiple of 4 (7*3 = 21), because Qt
+    pads each scanline to a 4-byte boundary — reading the buffer flat would
+    carry that padding into the pixel data of every row after the first.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import RawFrame
+
+    r = QtRenderer()
+    original = RawFrame(data=bytes(range(7 * 5 * 3 % 256)) * 0 + bytes(7 * 5 * 3),
+                        width=7, height=5)
+    surface = r.from_raw_rgb24(original)
+
+    back = r.to_raw_rgb24(surface)
+
+    assert (back.width, back.height) == (7, 5)
+    assert len(back.data) == 7 * 5 * 3, (
+        "row padding leaked into the packed data — 7*3=21 is not 4-aligned"
+    )
+
+
+def test_screencast_frame_encodes_from_a_surface(tmp_home: Path) -> None:
+    """End to end: what the gui holds → wire bytes.
+
+    Fails before the fix with ``AttributeError: 'QImage' object has no
+    attribute 'data'`` — which the handler swallowed, so the device got
+    nothing while the preview kept updating.
+    """
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import Kind
+    from trcc.core.registry import ALL_DEVICES
+
+    renderer = QtRenderer()
+    app = App(platform=FakePlatform(tmp_home), renderer=renderer)
+    lcd = next(p for p in ALL_DEVICES.values() if p.kind is Kind.LCD)
+
+    # A surface exactly as the capture tick produces one.
+    surface = renderer.from_raw_rgb24(
+        RawFrame(data=bytes(64 * 48 * 3), width=64, height=48),
+    )
+
+    data = app.display.build_screencast_frame(
+        info=lcd, frame=renderer.to_raw_rgb24(surface),
+    )
+
+    assert isinstance(data, bytes)
+    assert len(data) > 0, "no wire bytes produced from a captured surface"
