@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from .._version import is_newer
 from ..errors import (
@@ -49,6 +49,7 @@ from ..results import (
     SensorsListResult,
     SensorsResult,
     SetupResult,
+    SlideshowAdvanceResult,
     SlideshowResult,
     TempUnitResult,
     TimeFormatResult,
@@ -623,6 +624,56 @@ class RunUpgrade(Command[UpgradeResult]):
                      if proc.returncode == 0
                      else f"Upgrade failed (exit {proc.returncode})"),
         )
+
+@dataclass(frozen=True, slots=True)
+class AdvanceSlideshow(Command[SlideshowAdvanceResult]):
+    """Advance a device's slideshow one tick; report the theme to load next.
+
+    The config comes from ``DeviceSettings.slideshow_*`` — the thing
+    ``ConfigureSlideshow`` persists — so the caller supplies a key and nothing
+    else.  The gui used to build a ``SlideshowConfig`` from its own panel
+    state and hand it to ``app.slideshow.advance`` directly, which made the
+    panel a second source for a fact settings already owned, and put the only
+    rotation driver inside one UI.
+
+    ``theme_name is None`` is the ordinary answer — the interval has not
+    elapsed.  The caller loads the named theme itself (``LoadTheme``) rather
+    than this Command doing it, so a UI can resolve the name against whatever
+    it is displaying before switching.
+
+    Per-tick, so logged at DEBUG.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    key: str
+
+    def execute(self, app: App) -> SlideshowAdvanceResult:
+        from ...services.slideshow import SlideshowConfig
+
+        s = app.settings.for_device(self.key)
+        if not s.slideshow_enabled or not s.slideshow_themes:
+            log.debug("AdvanceSlideshow: %s not running (enabled=%s themes=%d)",
+                      self.key, s.slideshow_enabled, len(s.slideshow_themes))
+            return SlideshowAdvanceResult(
+                ok=True, key=self.key, due=False, running=False,
+                message="No slideshow configured",
+            )
+        name = app.slideshow.advance(self.key, SlideshowConfig(
+            enabled=True,
+            interval_s=float(s.slideshow_interval_s),
+            themes=list(s.slideshow_themes),
+        ))
+        if name is None:
+            log.debug("AdvanceSlideshow: %s — interval not elapsed", self.key)
+            return SlideshowAdvanceResult(
+                ok=True, key=self.key, due=False, running=True,
+                message="Not due yet",
+            )
+        log.info("AdvanceSlideshow: %s → next theme %r", self.key, name)
+        return SlideshowAdvanceResult(
+            ok=True, key=self.key, theme_name=name, due=True, running=True,
+            message=f"Next theme: {name}",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ConfigureSlideshow(Command[SlideshowResult]):

@@ -1,10 +1,17 @@
 """SlideshowService — rotate through a list of themes on a timer.
 
-Per-device cursor that the render tick advances when the configured
-interval has elapsed.  No background thread — the existing
-``RenderAndSend`` ticker calls ``service.advance(key, now)`` once per
-tick, the service decides whether to swap themes, and (if so) it tells
-the App to dispatch ``LoadTheme``.
+Per-device cursor advanced by whoever is ticking.  No background thread:
+a caller dispatches ``AdvanceSlideshow(key)`` on its own timer, the service
+decides whether the interval has elapsed, and the caller loads the theme it
+names.
+
+This previously claimed the ``RenderAndSend`` ticker drove it.  It never
+did — ``RenderAndSend`` has no slideshow code at all — and for a long time
+the only caller of ``advance`` was the gui's own QTimer, so a slideshow
+configured through the CLI or the REST API was persisted, reported back
+correctly by ``ConfigureSlideshow``, and never rotated.  ``AdvanceSlideshow``
+is the seam that lets any surface drive it; wiring a driver into the daemon
+is a separate piece of work and has not been done.
 
 State is intentionally transient:
 * Persisted: the slideshow config (which themes, what interval, whether

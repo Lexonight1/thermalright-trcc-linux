@@ -1016,6 +1016,28 @@ class SlideshowResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class SlideshowAdvanceResult(Result):
+    """One slideshow tick — which theme comes next, if any.
+
+    Separate from :class:`SlideshowResult`, which reports what is CONFIGURED.
+    ``theme_name is None`` with ``ok=True`` is the ordinary answer: the
+    interval has not elapsed, so nothing rotates.  ``due`` says which of the
+    two "nothing happened" cases it was, because "not yet" and "no slideshow
+    running" need different reactions from a caller driving a timer.
+    """
+    key: str = ""
+    theme_name: str | None = None
+    due: bool = False
+    # Is a slideshow configured AND enabled for this device at all?
+    #
+    # ``due`` alone collapses "not yet" into "nothing running", and those want
+    # opposite reactions from a timer-driver: keep waiting, or stop ticking.
+    # The distinction lived only in ``message`` at first, which is the same
+    # string-matching this codebase rejects for ``connected``.
+    running: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class KeepaliveResult(Result):
     """Outcome of one KeepAliveLoop tick (or batch)."""
     key: str = ""

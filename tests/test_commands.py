@@ -183,3 +183,84 @@ def test_get_paths_falls_back_when_the_sku_library_is_absent(
     r = app.dispatch(GetPaths(resolution=(1600, 720), key=key))
 
     assert r.theme_dir is not None and r.theme_dir.endswith("theme1600720")
+
+
+# ── AdvanceSlideshow: rotation stops being the gui's private ability ──────
+#
+# ``slideshow.advance`` had exactly ONE caller — the gui's QTimer — so a
+# slideshow configured over the CLI or the REST API persisted, reported back
+# correctly, and never rotated.  The service module docstring claimed the
+# RenderAndSend ticker drove it; RenderAndSend has no slideshow code at all.
+
+
+def test_advance_slideshow_reads_the_persisted_config(fake_platform) -> None:
+    """No config argument — the Command takes the key and reads settings.
+
+    The gui used to build a SlideshowConfig from its own panel, making the
+    panel a second source for a fact ``ConfigureSlideshow`` already persists.
+    """
+    from trcc.core.commands import (
+        AdvanceSlideshow,
+        ConfigureSlideshow,
+        SetSlideshow,
+    )
+
+    app = App(fake_platform)
+    key = "0402:3922"
+    # Two Commands, deliberately: ConfigureSlideshow owns the list + interval,
+    # SetSlideshow owns the on/off.  The gui dispatches both, and starts its
+    # timer only when enabled — so reading ``slideshow_enabled`` here matches
+    # exactly when that timer would have been ticking.
+    app.dispatch(ConfigureSlideshow(
+        key=key, themes=("a", "b", "c"), interval_s=1.0,
+    ))
+    app.dispatch(SetSlideshow(key=key, enabled=True))
+
+    first = app.dispatch(AdvanceSlideshow(key=key))
+
+    assert first.ok is True
+    assert first.due is True
+    assert first.theme_name in ("a", "b", "c")
+
+
+def test_advance_slideshow_says_nothing_is_running(fake_platform) -> None:
+    """Unconfigured is ``ok=True, due=False`` — a normal answer for a caller
+    driving a timer, not a failure it has to special-case."""
+    from trcc.core.commands import AdvanceSlideshow
+
+    app = App(fake_platform)
+
+    result = app.dispatch(AdvanceSlideshow(key="0402:3922"))
+
+    assert result.ok is True
+    assert result.running is False, (
+        "'nothing configured' must be distinguishable from 'not due yet' — a "
+        "timer-driver stops for one and keeps waiting for the other"
+    )
+    assert result.due is False
+    assert result.theme_name is None
+
+
+def test_advance_slideshow_holds_inside_the_interval(fake_platform) -> None:
+    """A second tick inside the window does not rotate — ``due`` distinguishes
+    "not yet" from "nothing configured", which a timer-driver needs."""
+    from trcc.core.commands import (
+        AdvanceSlideshow,
+        ConfigureSlideshow,
+        SetSlideshow,
+    )
+
+    app = App(fake_platform)
+    key = "0402:3922"
+    app.dispatch(ConfigureSlideshow(
+        key=key, themes=("a", "b"), interval_s=3600.0,
+    ))
+    app.dispatch(SetSlideshow(key=key, enabled=True))
+    assert app.dispatch(AdvanceSlideshow(key=key)).due is True
+
+    again = app.dispatch(AdvanceSlideshow(key=key))
+
+    assert again.ok is True
+    assert again.running is True, "the slideshow IS running, just not due"
+    assert again.due is False
+    assert again.theme_name is None

@@ -24,6 +24,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QPixmap
 
 from ...core.commands import (
+    AdvanceSlideshow,
     ApplyMask,
     BuildPreview,
     CurrentFrame,
@@ -1331,7 +1332,6 @@ class LCDHandler(BaseHandler):
         which returns the next theme NAME (or None when not yet due).
         Single cursor across all surfaces.
         """
-        from ...services.slideshow import SlideshowConfig
         local = self._w['theme_local']
         themes = local.get_slideshow_themes()
         if not themes:
@@ -1340,19 +1340,15 @@ class LCDHandler(BaseHandler):
             )
             self._slideshow_timer.stop()
             return
-        # Build the canonical config from the user's panel state.
-        # Could read from app.settings.for_device(key).slideshow_*
-        # but the panel is the live UI source — these two should
-        # match post-S1.2 (which restored the panel state from
-        # DeviceSettings on startup).
-        config = SlideshowConfig(
-            enabled=True,
-            interval_s=float(local.get_slideshow_interval()),
-            themes=[t.name for t in themes],
-        )
-        next_name = self._app.slideshow.advance(self._device_key, config)
+        # The Command reads the PERSISTED config, which ``ConfigureSlideshow``
+        # / ``SetSlideshow`` already wrote from this same panel.  Rebuilding a
+        # SlideshowConfig here made the panel a second source for a fact
+        # settings owns — and put the only rotation driver inside this UI.
+        next_name = self._app.dispatch(
+            AdvanceSlideshow(key=self._device_key),
+        ).theme_name
         if next_name is None:
-            # Within the interval window — service decided not to
+            # Within the interval window — the service decided not to
             # rotate yet.  Qt timer will fire again at next interval.
             return
         # Resolve name → theme_info.  The slideshow stores names; the

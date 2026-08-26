@@ -88,6 +88,7 @@ from .led import (
     ToggleSegment,
 )
 from .system import (
+    AdvanceSlideshow,
     CheckForUpdate,
     ConfigureSlideshow,
     ControlCenterSnapshot,
@@ -145,6 +146,7 @@ from .theme import (
 
 __all__ = [
     "AddOverlayElement",
+    "AdvanceSlideshow",
     "ApplyMask",
     "BuildPreview",
     "CheckForUpdate",
