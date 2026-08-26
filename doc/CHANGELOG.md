@@ -1,5 +1,42 @@
 # Changelog
 
+## v9.9.11
+
+**Casting your screen to the cooler never worked, and now it does.**
+
+Screen casting has been broken since the rebuild in May. The give-away was
+odd: the preview inside TRCC showed your screen moving, so it looked like it
+was working, while the cooler itself stayed on whatever it had been showing.
+Nothing ever reached the panel. If you tried this feature and concluded you
+had set it up wrong, you had not.
+
+**The overlay switch no longer turns itself back on after a restart (#276).**
+If you switched the clock and sensor readouts off on a theme of your own, they
+came back the next time you started your PC. TRCC was working out whether to
+show them from what the theme contained, instead of remembering what you
+chose — so your choice was overwritten every boot. It now remembers. Deleting
+the last readout also sticks, where before it quietly reappeared.
+
+**Masks you save are visible again.** A mask saved through the app could end
+up missing its thumbnail, which is what the mask browser uses to decide
+whether to list it at all — so it was stored correctly and simply never shown.
+Uploading a mask under a name you have used before now replaces it, instead of
+keeping the old picture under the new name.
+
+**Switching themes no longer carries the previous theme's mask across.** If
+you drive TRCC from the terminal or the web API, picking a new theme left the
+old mask sitting on top of the new background. The app's own window did this
+correctly, which is why it went unnoticed. All three now behave the same.
+
+**Deleting a theme no longer leaves a second screen showing it.** With more
+than one display connected, deleting the theme a background screen was showing
+left that screen on a stale picture until something else happened to refresh
+it.
+
+**Clearer errors when a screen is not connected.** Asking TRCC to draw to a
+cooler that has not been connected yet gave a raw Python error in the terminal
+and over the web API. It now says what is wrong.
+
 ## v9.9.10
 
 **Some coolers were being turned the wrong way, and we had been reading the
