@@ -57,6 +57,8 @@ from ..results import (
     BrightnessResult,
     ConnectionIssuesResult,
     ConnectResult,
+    DeviceEntry,
+    DevicesListResult,
     DeviceStateResult,
     DisconnectResult,
     DiscoverResult,
@@ -2255,6 +2257,45 @@ class FlashOverlayElement(Command[OverlayElementResult]):
             ok=False, key=self.key, element=None,
             message=f"Overlay element {self.element_id!r} not found",
         )
+
+@dataclass(frozen=True, slots=True)
+class ListDevices(Query[DevicesListResult]):
+    """Every attached device — the answer to "what is here right now?".
+
+    ``DeviceState`` answers about ONE device and needs its key, so nothing
+    could produce the key list itself without reaching ``app.devices`` — which
+    is an ``AttributeError`` under ``TRCC_DAEMON=1``.  That gap is why a device
+    picker and a render ticker both reached past the bus for something as
+    ordinary as "which devices are there".
+
+    NOT a scan.  ``DiscoverDevices`` probes the USB bus and attaches what it
+    finds; calling it to populate a combo box or drive a ticker would make a
+    read do work.  This reports what is already attached.
+
+    Always ``ok=True`` — an empty fleet is a normal answer, and ``ok=False``
+    escalates to WARNING through ``App.dispatch``, which would warn on every
+    poll of a machine with nothing plugged in.
+    """
+
+    def execute(self, app: App) -> DevicesListResult:
+        log.debug("ListDevices: %d attached", len(app.devices))
+        entries = [
+            DeviceEntry(
+                key=key,
+                vendor=device.info.vendor,
+                product=device.info.product,
+                wire=device.info.wire.value,
+                kind=device.info.kind.value,
+                connected=device.is_connected,
+                has_active_theme=key in app.active_themes,
+            )
+            for key, device in sorted(app.devices.items())
+        ]
+        return DevicesListResult(
+            ok=True, devices=entries,
+            message=f"{len(entries)} device(s) attached",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolveThemeDirectories(Query[ThemeDirectoriesResult]):

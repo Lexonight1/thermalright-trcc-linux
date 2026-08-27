@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.commands import DiscoverDevices
+from ...core.commands import DiscoverDevices, ListDevices
 
 if TYPE_CHECKING:
     from ...app import App
@@ -159,11 +159,11 @@ class DevicePickerWidget(QWidget):
 
         self._combo.blockSignals(True)
         self._combo.clear()
-        for key, device in sorted(self._app.devices.items()):
-            if not self._matches_filter(device):
+        for entry in self._app.dispatch(ListDevices()).devices:
+            if not self._matches_filter(entry):
                 continue
-            label = f"{key} — {device.info.vendor} {device.info.product}".strip()
-            self._combo.addItem(label, userData=key)
+            label = f"{entry.key} — {entry.vendor} {entry.product}".strip()
+            self._combo.addItem(label, userData=entry.key)
 
         # Re-select the previous key (typed or chosen).
         if previous_key:
@@ -187,14 +187,13 @@ class DevicePickerWidget(QWidget):
             )
             self.key_changed.emit(new_key)
 
-    def _matches_filter(self, device) -> bool:
+    def _matches_filter(self, entry) -> bool:
         """Optional 'lcd' / 'led' filter — narrow when callers know."""
         if self._kind_filter is None:
             return True
-        kind = getattr(device.info, "kind", None)
-        if kind is None:
+        if not entry.kind:
             return True
-        return str(kind).lower().endswith(self._kind_filter.lower())
+        return entry.kind.lower().endswith(self._kind_filter.lower())
 
     def _index_for_key(self, key: str) -> int:
         for i in range(self._combo.count()):

@@ -1065,11 +1065,18 @@ def test_device_picker_selected_item_yields_key_not_label(
     as the key and broke every display command."""
     from types import SimpleNamespace
 
+    from trcc.core.models import Kind, Wire
     from trcc.ui.qtgui.device_picker import DevicePickerWidget
 
+    # ``wire`` / ``kind`` are ENUMS on the real ``ProductInfo``, and the picker
+    # now reads them through ``ListDevices``, which takes ``.value``.  The fake
+    # carried a bare string and no wire at all — faithful to what the widget
+    # touched at the time, and silently wrong the moment anything else looked.
     gui_app.devices["87ad:70db"] = SimpleNamespace(  # type: ignore[assignment]
         info=SimpleNamespace(
-            vendor="Thermalright", product="Mjolnir Vision", kind="lcd"),
+            vendor="Thermalright", product="Mjolnir Vision",
+            wire=Wire.BULK, kind=Kind.LCD),
+        is_connected=True,
     )
     picker = DevicePickerWidget(gui_app, _bus(gui_app))
     picker._populate_from_app()

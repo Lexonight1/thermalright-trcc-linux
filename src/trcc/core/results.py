@@ -909,6 +909,37 @@ class OverlayLayoutResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class DeviceEntry:
+    """One attached device, flattened for a list.
+
+    Identity only, plus the two live facts a caller lists devices to act on.
+    A UI wanting the full picture for ONE device asks :class:`DeviceState`;
+    this exists because nothing could ask "which devices are there?" without
+    reaching ``app.devices``, which raises under ``TRCC_DAEMON=1``.
+    """
+    key: str
+    vendor: str = ""
+    product: str = ""
+    wire: str = ""
+    kind: str = ""
+    connected: bool = False
+    #: Whether a theme is loaded for this device — the render ticker drives
+    #: exactly these, and previously read ``app.active_themes`` to find them.
+    has_active_theme: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DevicesListResult(Result):
+    """Every ATTACHED device, in registry order.
+
+    Deliberately not a scan: :class:`DiscoverDevices` probes the bus and has
+    side effects, so a UI refreshing a combo box or ticking a render loop must
+    not use it to answer "what is here now".
+    """
+    devices: list[DeviceEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class ThemeDirectoriesResult(Result):
     """Which browser directories a device's theme/mask panels point at.
 

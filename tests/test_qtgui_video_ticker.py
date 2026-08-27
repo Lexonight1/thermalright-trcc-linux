@@ -61,8 +61,34 @@ class _FakeApp:
         self.dispatched: list[tuple[str, str]] = []
 
     def dispatch(self, cmd: Any) -> Any:
-        self.dispatched.append((type(cmd).__name__, cmd.key))
+        name = type(cmd).__name__
+        self.dispatched.append((name, getattr(cmd, "key", "")))
+        if name == "ListDevices":
+            # The REAL Result: the ticker asks which devices have a theme
+            # instead of reading ``app.active_themes``, and a stub that
+            # invents its own field set answers that by accident or not at
+            # all.  ``active_themes`` stays here as the fixture's own record
+            # of what was set up.
+            from trcc.core.results import DeviceEntry, DevicesListResult
+
+            return DevicesListResult(
+                ok=True,
+                devices=[DeviceEntry(key=k, connected=True,
+                                     has_active_theme=True)
+                         for k in self.active_themes],
+            )
         return None
+
+
+def _rendered(app: "_FakeApp") -> list[str]:
+    """The devices the metrics ticker actually rendered.
+
+    Asserting the WHOLE dispatch list made these tests fail when the ticker
+    stopped reading ``app.active_themes`` and started asking ``ListDevices``
+    — a bookkeeping dispatch, not a change in what gets rendered.  These tests
+    are about which devices the ticker drives, so that is what they assert.
+    """
+    return [key for name, key in app.dispatched if name == "RenderAndSend"]
 
 
 class _Event:
@@ -87,10 +113,7 @@ def test_metrics_ticker_renders_every_device_when_no_video() -> None:
 
     _window(app)._on_tick()
 
-    assert app.dispatched == [
-        ("RenderAndSend", "0402:3922"),
-        ("RenderAndSend", "87ad:70db"),
-    ]
+    assert _rendered(app) == ["0402:3922", "87ad:70db"]
 
 
 def test_metrics_ticker_skips_a_device_its_video_ticker_owns() -> None:
@@ -106,7 +129,7 @@ def test_metrics_ticker_skips_a_device_its_video_ticker_owns() -> None:
 
     win._on_tick()
 
-    assert app.dispatched == [("RenderAndSend", "87ad:70db")], (
+    assert _rendered(app) == ["87ad:70db"], (
         "the video-driven device must not also be rendered by the metrics ticker"
     )
 
@@ -119,7 +142,7 @@ def test_a_stopped_video_ticker_returns_the_device_to_the_metrics_ticker() -> No
 
     win._on_tick()
 
-    assert app.dispatched == [("RenderAndSend", "0402:3922")]
+    assert _rendered(app) == ["0402:3922"]
 
 
 def test_video_started_paces_the_device_at_the_events_interval() -> None:

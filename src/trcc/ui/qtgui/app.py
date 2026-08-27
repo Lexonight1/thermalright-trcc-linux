@@ -34,6 +34,7 @@ from ...core.commands import (
     ControlCenterSnapshot,
     GetFirstRunStatus,
     GetPlatformInfo,
+    ListDevices,
     RenderAndSend,
     TickDisplay,
 )
@@ -227,7 +228,8 @@ class MainWindow(QMainWindow):
 
     def _ensure_ticker_running(self) -> None:
         """Start the QTimer if there are active themes; stop it otherwise."""
-        if not self._app.active_themes:
+        if not any(d.has_active_theme
+                   for d in self._app.dispatch(ListDevices()).devices):
             if self._ticker.isActive():
                 self._ticker.stop()
             return
@@ -281,10 +283,12 @@ class MainWindow(QMainWindow):
         from both would double its wire traffic.  Same rule the gui skin
         states as "animation timer owns the wire".
         """
-        if not self._app.active_themes:
+        rendering = [d.key for d in self._app.dispatch(ListDevices()).devices
+                     if d.has_active_theme]
+        if not rendering:
             self._ticker.stop()
             return
-        for key in list(self._app.active_themes):
+        for key in rendering:
             updater = self._video.get(key)
             if updater is not None and updater.is_active:
                 log.debug("_on_tick: %s driven by its video ticker — skip", key)
