@@ -45,7 +45,9 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
+    StartScreencastDriver,
     StopScreencast,
+    StopScreencastDriver,
     StopVideo,
     TickDisplay,
     ToggleVideo,
@@ -1105,6 +1107,16 @@ def screencast(
     if not result.ok:
         raise typer.Exit(code=1)
 
+    # ``StartScreencast`` only publishes ``ScreencastStarted``; the GUI's
+    # handler is what subscribes and runs a timer.  Without a driver this
+    # command printed "Capturing on …" and then captured NOTHING for as long
+    # as you left it running.
+    drive = app_obj.dispatch(StartScreencastDriver(key=key))
+    if not drive.ok:
+        typer.echo(drive.message)
+        app_obj.dispatch(StopScreencast(key=key))
+        raise typer.Exit(code=1)
+
     typer.echo(f"Capturing on {key} — Ctrl-C to stop.")
     stopped = {"flag": False}
 
@@ -1116,6 +1128,7 @@ def screencast(
     while not stopped["flag"]:
         signal.pause()
 
+    app_obj.dispatch(StopScreencastDriver(key=key))
     stop_result = app_obj.dispatch(StopScreencast(key=key))
     typer.echo(stop_result.message)
     if not stop_result.ok:

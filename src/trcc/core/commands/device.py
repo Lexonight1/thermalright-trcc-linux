@@ -1305,6 +1305,149 @@ class StartScreencast(Command[ScreencastResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class StartScreencastDriver(Command[ScreencastResult]):
+    """Drive ``CaptureScreencastFrame`` on a cadence until stopped.
+
+    Separate from ``StartScreencast`` on purpose.  ``StartScreencast`` only
+    publishes ``ScreencastStarted``, and the GUI's ``ScreencastHandler``
+    subscribes to it and runs its own 150 ms timer — so a GUI session already
+    has a driver.  Registering one there too would put TWO capture loops on the
+    same wire for anyone using the window.
+
+    So the driver is opt-in, and the clients without a timer of their own — the
+    CLI, the REST route, the daemon — ask for it explicitly.  That leaves two
+    drivers in the tree, which is honest rather than ideal: the end state is one
+    driver here and no timer in the GUI, and what blocks it is the GUI's audio
+    spectrum, which needs a ``Renderer`` rectangle primitive before it can move
+    out of the window.
+
+    Idempotent — the scheduler replaces a task registered under the same key.
+    """
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        log.info("StartScreencastDriver.execute: key=%s", self.key)
+        try:
+            app.get(self.key)
+        except DeviceNotFoundError as e:
+            log.warning("StartScreencastDriver: device %s not found: %s",
+                        self.key, e)
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+
+        if app.settings.for_device(self.key).screencast_region is None:
+            log.warning(
+                "StartScreencastDriver: %s has no screencast region — "
+                "dispatch StartScreencast first", self.key,
+            )
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=(f"no screencast session on {self.key} — "
+                         "start one before driving it"),
+            )
+
+        from ...services.screencast_driver import ScreencastDriver
+
+        app.add_task(ScreencastDriver(app, self.key))
+        return ScreencastResult(
+            ok=True, key=self.key,
+            message=f"driving screencast on {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StopScreencastDriver(Command[ScreencastResult]):
+    """Stop the cadence started by :class:`StartScreencastDriver`.
+
+    Idempotent — removing a task that was never registered is a no-op, which
+    matters because a client may stop a session it did not drive.
+    """
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        log.info("StopScreencastDriver.execute: key=%s", self.key)
+        from ...services.screencast_driver import task_key
+
+        app.remove_task(task_key(self.key))
+        return ScreencastResult(
+            ok=True, key=self.key,
+            message=f"stopped driving screencast on {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureScreencastFrame(Command[ScreencastResult]):
+    """Grab the device's screencast region once, encode it, put it on the wire.
+
+    The whole frame path in one dispatchable step, so every UI gets screencast
+    from the Command bus instead of reimplementing it.  Before this, the GUI
+    was the only thing that could capture: ``StartScreencast`` publishes
+    ``ScreencastStarted`` and nothing else, and the GUI's ``ScreencastHandler``
+    was the sole subscriber that ran a timer.  ``trcc display screencast``
+    therefore printed "Capturing on …" and then sat in ``signal.pause()``
+    capturing nothing, and the REST route had the same shape.
+
+    Reads the region from ``screencast_region`` — set by ``StartScreencast`` —
+    so "is a screencast running" has one home rather than a second flag.  No
+    region means no session: that is a skip, not an error, because a periodic
+    driver will dispatch this after the session has been stopped.
+
+    LOG_LEVEL is DEBUG: this fires ~7x a second.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+
+    key: str
+
+    def execute(self, app: App) -> ScreencastResult:
+        frame_log.debug("CaptureScreencastFrame.execute: key=%s", self.key)
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            log.warning("CaptureScreencastFrame: device %s not found: %s",
+                        self.key, e)
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+
+        region = app.settings.for_device(self.key).screencast_region
+        if region is None:
+            frame_log.debug(
+                "CaptureScreencastFrame: %s has no active session — skip",
+                self.key,
+            )
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=f"no screencast session on {self.key}",
+            )
+
+        x, y, w, h = region[0], region[1], region[2], region[3]
+        try:
+            raw = app.platform.screen_capture().grab_region(x, y, w, h)
+            data = app.display.build_screencast_frame(
+                info=device.info, frame=raw,
+            )
+        except Exception as e:
+            # Capture depends on tools and a desktop session that can vanish
+            # under us (screen locked, portal revoked, grim uninstalled).  A
+            # failed frame must not kill the driver that dispatched it, so
+            # this reports rather than raises — the next tick tries again.
+            log.warning(
+                "CaptureScreencastFrame: %s failed for %s: %s: %s",
+                "capture" if "grab_region" in repr(e) else "encode",
+                self.key, type(e).__name__, e,
+            )
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=f"screencast frame failed: {type(e).__name__}: {e}",
+            )
+
+        app.send(self.key, data)
+        frame_log.debug("CaptureScreencastFrame: %s sent %d bytes",
+                        self.key, len(data))
+        return ScreencastResult(
+            ok=True, key=self.key,
+            message=f"captured {w}x{h} for {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class StopScreencast(Command[ScreencastResult]):
     """End the screen-capture session for a device.
 

@@ -61,6 +61,7 @@ from .core.ports import (
     Platform,
     Renderer,
     SendScheduler,
+    SendTask,
 )
 from .core.protocol import artwork_variant, mask_variant
 from .core.registry import find_product
@@ -764,8 +765,38 @@ class App:
                      key)
             self.events.publish(DeviceDisconnected(key=key))
 
+    def add_task(self, task: SendTask) -> None:
+        """Drive *task* on the shared scheduler.
+
+        The scheduler is not device-senders-only: its contract is
+        ``key``/``wait``/``wake``/``run_once``, which is a periodic task and
+        says nothing about writing. This is the seam for anything else that
+        needs a cadence without owning a thread — the screencast driver is the
+        first. Such a task MUST use a namespaced key: the scheduler evicts by
+        key, so a bare device key would stop that device's own sender.
+        """
+        log.info("add_task: %s", task.key)
+        self._send_scheduler.add(task)
+
+    def remove_task(self, key: str) -> None:
+        """Stop driving the task registered under *key* (idempotent)."""
+        log.info("remove_task: %s", key)
+        self._send_scheduler.remove(key)
+
     def stop_sender(self, key: str) -> None:
-        """Stop + drop the send worker for *key* (idempotent)."""
+        """Stop + drop the send worker for *key* (idempotent).
+
+        Also drops the device's screencast driver, which lives in the same
+        scheduler under a NAMESPACED key.  Removing only the bare key would
+        leave a disconnected device being captured forever — the driver would
+        keep dispatching, and every frame would fail on a device that is no
+        longer attached.  The namespacing exists because the scheduler evicts
+        by key and would otherwise have killed this device's own sender; that
+        same namespacing is why the removal has to be explicit here.
+        """
+        from .services.screencast_driver import task_key
+
+        self._send_scheduler.remove(task_key(key))
         sender = self.senders.pop(key, None)
         if sender is None:
             return

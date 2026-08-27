@@ -54,7 +54,9 @@ from ...core.commands import (
     SetSplitMode,
     SleepDevice,
     StartScreencast,
+    StartScreencastDriver,
     StopScreencast,
+    StopScreencastDriver,
     StopVideo,
     TickDisplay,
     UpdateOverlayElement,
@@ -478,12 +480,16 @@ def screencast_start(key: str, body: ScreencastStartRequest,
                      request: Request) -> ScreencastResult:
     """Begin a screen-capture session for *key*.
 
-    Dispatches :class:`StartScreencast` which validates region geometry,
+    Dispatches :class:`StartScreencast` — which validates region geometry,
     stops any active video playback, and publishes
-    :class:`ScreencastStarted` for the GUI's ``ScreencastHandler`` to
-    pick up.  Headless API callers can fire this even without a GUI
-    attached — the bus event still fires, just no consumer picks
-    it up.
+    :class:`ScreencastStarted` — then :class:`StartScreencastDriver` to
+    actually capture.
+
+    That second dispatch is the whole feature for an API caller.  This
+    docstring used to end "the bus event still fires, just no consumer picks
+    it up", which was true and was the bug: the GUI's ``ScreencastHandler``
+    was the only subscriber that ran a capture timer, so a headless caller got
+    ``ok=True`` and an unchanged panel.
     """
     log.info(
         "api POST /devices/{key}/display/screencast/start: key=%s "
@@ -497,6 +503,8 @@ def screencast_start(key: str, body: ScreencastStartRequest,
         ),
     )
     http_error_if_failed(result)
+    drive = request.app.state.trcc.dispatch(StartScreencastDriver(key=key))
+    http_error_if_failed(drive)
     return result
 
 
@@ -507,6 +515,7 @@ def screencast_stop(key: str, request: Request) -> ScreencastResult:
     Idempotent — returns ``ok=True`` even when no session was running.
     """
     log.info("api POST /devices/{key}/display/screencast/stop: key=%s", key)
+    request.app.state.trcc.dispatch(StopScreencastDriver(key=key))
     result = request.app.state.trcc.dispatch(StopScreencast(key=key))
     http_error_if_failed(result)
     return result
