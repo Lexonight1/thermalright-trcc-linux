@@ -30,7 +30,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.led_models import LEGACY_STYLE_ID
+from ....core.commands import DeviceState
+from ....core.led_models import LEGACY_STYLE_ID, LedStyle
 from ...presentation.led_panel import led_panel_for
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -133,15 +134,22 @@ class LedPanel(BasePanel):
             segments=self._segment_tab.has_visible_content(),
         )
 
-        device = self.app.devices.get(key)
-        style = getattr(device.info, "led_style", None) if device else None
+        state = self.dispatch(DeviceState(key=key))
+        # Rebuilt from the VALUE, not used as-is.  ``LedStyle`` is a str-enum,
+        # so this field arrives as the enum in-process and as a plain
+        # ``'ax120'`` across the daemon socket.  The ``LEGACY_STYLE_ID`` lookup
+        # below survives that on its own — a str-enum hashes and compares equal
+        # to its value — but ``style.name`` in the status line does NOT, and
+        # raises on a bare string.  Rebuilding makes both paths identical
+        # rather than leaving one of two uses wire-fragile.
+        style = LedStyle(state.led_style) if state.led_style else None
         # Gate the Advanced tab's sub-sections to this device's LED style —
         # the same C#-sourced composition the gui renders from.  Unknown
         # style falls back to a plain panel (gauges only).
         sid = LEGACY_STYLE_ID.get(style) if style else None
         self._advanced_tab.apply_panel(led_panel_for(sid if sid is not None else 1))
 
-        if device is None:
+        if not state.connected:
             self._status_label.setText(
                 f"{key} isn't connected yet — settings will apply when "
                 "the device shows up.  Open the Device tab to scan.",
@@ -149,7 +157,7 @@ class LedPanel(BasePanel):
         else:
             style_name = style.name if style else "no style detected"
             self._status_label.setText(
-                f"{key} • {device.info.vendor} {device.info.product} • "
+                f"{key} • {state.vendor} {state.product} • "
                 f"style {style_name}",
             )
 

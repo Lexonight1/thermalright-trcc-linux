@@ -902,13 +902,11 @@ KNOWN_APP_REACHES: dict[str, int] = {
     "ui/gui/lcd_handler.py": 8,
     "ui/gui/splash.py": 1,
     "ui/gui/trcc_app.py": 11,
-    "ui/qtgui/app.py": 5,
+    "ui/qtgui/app.py": 3,
     "ui/qtgui/device_picker.py": 1,
-    "ui/qtgui/panels/_browser_base.py": 1,
-    "ui/qtgui/panels/cloud_theme_browser.py": 1,
     "ui/qtgui/panels/device_panel.py": 1,
     "ui/qtgui/panels/led/_base.py": 1,
-    "ui/qtgui/panels/led_panel.py": 2,
+    "ui/qtgui/panels/led_panel.py": 1,
     "ui/qtgui/panels/screencast_panel.py": 2,
 }
 
@@ -1055,4 +1053,41 @@ def test_theme_layout_literal_baseline_has_no_slack() -> None:
         "Layout literals went DOWN — lower KNOWN_LAYOUT_LITERALS to lock it "
         "in:\n"
         + "\n".join(f"  {f}: {want} → {now}" for f, (want, now) in stale.items())
+    )
+
+
+# ── A str-enum in a Result: what actually breaks, and what does not ─────────
+#
+# ``LedStyle`` subclasses ``str``, so a Result field holding one arrives
+# IN-PROCESS as the enum while the SAME Result crossing the daemon socket is
+# JSON and lands as a plain ``'ax120'``.
+#
+# Half of the obvious worry is FALSE, and the test says so on purpose: a
+# str-enum hashes and compares equal to its own value, so a dict keyed by the
+# enum is looked up perfectly well by the bare string.  It was written the
+# other way first, asserting a silent miss, and running it disproved that.
+#
+# What does break is attribute access — ``.name`` on a plain string raises.
+# So a UI reading such a field rebuilds the enum from the value.
+
+
+def test_a_str_enum_result_field_keys_dicts_but_loses_its_attributes() -> None:
+    """The precise half that a daemon-mode UI has to care about."""
+    import json
+
+    from trcc.core.led_models import LEGACY_STYLE_ID, LedStyle
+
+    style = LedStyle.AX120
+    assert isinstance(style, str), "the annotation is honest — it IS a str"
+
+    over_the_wire = json.loads(json.dumps(style))
+    assert over_the_wire == "ax120" and type(over_the_wire) is str
+
+    # NOT broken: equality and hashing carry through, so the table still hits.
+    assert LEGACY_STYLE_ID.get(over_the_wire) == LEGACY_STYLE_ID[style]
+
+    # Broken: the enum's attributes are gone.
+    assert not hasattr(over_the_wire, "name")
+    assert LedStyle(over_the_wire).name == "AX120", (
+        "rebuilding from the value is what restores them"
     )

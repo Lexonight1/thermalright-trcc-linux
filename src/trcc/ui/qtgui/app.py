@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 from ...app import App
 from ...core.commands import (
     ControlCenterSnapshot,
+    GetFirstRunStatus,
+    GetPlatformInfo,
     RenderAndSend,
     TickDisplay,
 )
@@ -186,10 +188,12 @@ class MainWindow(QMainWindow):
             qapp.quit()
 
     def _show_platform_info(self) -> None:
-        platform = self._app.platform
-        msg = (f"{platform.distro_name()}  |  install: {platform.install_method()}"
-               f"  |  config: {platform.paths().config_dir()}")
-        if self._app.first_run.is_first_run():
+        # One Query carries all three: PlatformInfoResult already flattens
+        # distro/install/config_dir, so this needs no GetPaths beside it.
+        info = self._app.dispatch(GetPlatformInfo())
+        msg = (f"{info.distro_name}  |  install: {info.install_method}"
+               f"  |  config: {info.config_dir}")
+        if self._app.dispatch(GetFirstRunStatus()).is_first_run:
             msg = (
                 "Welcome to TRCC.  Open System → run Doctor to check your "
                 "setup, then plug in a device and open Devices to scan."

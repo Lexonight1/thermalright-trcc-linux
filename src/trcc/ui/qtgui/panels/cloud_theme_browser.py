@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import ListCloudThemes, LoadCloudTheme
+from ....core.commands import DeviceState, ListCloudThemes, LoadCloudTheme
 from ..assets import thumbnail_icon
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
@@ -141,12 +141,16 @@ class CloudThemeBrowser(BasePanel):
         key = self._picker.current_key()
         if not key:
             return None
-        device = self.app.devices.get(key)
-        if device is not None:
-            if device.profile is not None:
-                return device.profile.resolution
-            if device.info.native_resolution != (0, 0):
-                return device.info.native_resolution
+        # ``DeviceState`` reports both, already flattened and daemon-safe.
+        # ``resolution`` is None until the device has answered a handshake,
+        # which is a DIFFERENT state from a 0x0 panel — so it is tested for
+        # None, not for truth.
+        state = self.dispatch(DeviceState(key=key))
+        if state.connected:
+            if state.resolution is not None:
+                return state.resolution
+            if state.native_resolution != (0, 0):
+                return state.native_resolution
         return None
 
     def _fill_list_from_result(self, result) -> None:

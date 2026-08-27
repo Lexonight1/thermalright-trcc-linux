@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QLabel, QListWidget
 
+from ....core.commands import DeviceState
 from ..base import BasePanel
 
 if TYPE_CHECKING:
@@ -123,12 +124,16 @@ class AssetBrowserPanel(BasePanel):
         device that resolves to none of those can't be authored for, and the
         status label says why rather than failing silently.
         """
-        device = self.app.devices.get(key)
-        if device is not None:
-            if device.profile is not None:
-                return device.profile.resolution
-            if device.info.native_resolution != (0, 0):
-                return device.info.native_resolution
+        # ``DeviceState`` reports both, already flattened and daemon-safe.
+        # ``resolution`` is None until the device has answered a handshake,
+        # which is a DIFFERENT state from a 0x0 panel — so it is tested for
+        # None, not for truth.
+        state = self.dispatch(DeviceState(key=key))
+        if state.connected:
+            if state.resolution is not None:
+                return state.resolution
+            if state.native_resolution != (0, 0):
+                return state.native_resolution
 
         try:
             vid_s, pid_s = key.split(":")
