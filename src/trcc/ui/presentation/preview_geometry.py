@@ -2,7 +2,6 @@
 
 The orientation-driven sizes a device View needs are pure geometry:
 
-  * :func:`composed_preview_size` — the preview bezel/label dims for the active
     theme (the DisplayService's composed canvas when a theme + profile resolve,
     else the cached canvas swapped for the user orientation, #136).
   * :func:`rotated_lcd_size` — the post-rotation LCD buffer size + the
@@ -39,34 +38,6 @@ class CanvasComposer(Protocol):
         self, info: ProductInfo, theme: Theme, profile: DeviceProfile | None,
         orientation: int,
     ) -> tuple[int, int]: ...
-
-
-def composed_preview_size(
-    display: CanvasComposer,
-    *,
-    info: ProductInfo | None,
-    theme: Theme | None,
-    profile: DeviceProfile | None,
-    orientation: int,
-    canvas_size: tuple[int, int],
-) -> tuple[int, int]:
-    """Preview bezel/label dims for the active theme (#136).
-
-    When the device is connected (``info`` + ``profile``) AND a theme is
-    loaded, defer to the DisplayService's composed canvas — it folds portrait
-    composition and the user orientation exactly as the wire frame does, so the
-    preview frame asset + label match the panel.  Otherwise (pre-handshake or
-    no theme) fall back to the cached canvas swapped for the user orientation.
-    """
-    if info is not None and theme is not None and profile is not None:
-        size = display.composed_canvas_size(info, theme, profile, orientation)
-        log.debug("composed_preview_size: composed canvas (device+theme) "
-                  "orient=%d → %dx%d", orientation, *size)
-        return size
-    size = oriented_resolution(canvas_size, orientation)
-    log.debug("composed_preview_size: cached canvas (pre-handshake/no-theme) "
-              "orient=%d → %dx%d", orientation, *size)
-    return size
 
 
 def rotated_lcd_size(

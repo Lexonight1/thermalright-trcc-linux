@@ -80,6 +80,7 @@ from ..results import (
     OverlayResult,
     PauseVideoResult,
     PreviewResult,
+    PreviewSizeResult,
     RenderDcResult,
     RenderResult,
     ScreencastResult,
@@ -2322,6 +2323,56 @@ class FlashOverlayElement(Command[OverlayElementResult]):
             ok=False, key=self.key, element=None,
             message=f"Overlay element {self.element_id!r} not found",
         )
+
+@dataclass(frozen=True, slots=True)
+class PreviewSize(Query[PreviewSizeResult]):
+    """How big a UI should draw this device's preview (#136).
+
+    Two rules, and which one applies is the whole question.  With a device AND
+    a theme, defer to the composed canvas — it folds portrait composition and
+    the user orientation exactly as the wire frame does, so the preview asset
+    and label match the panel.  Otherwise swap the device's own canvas for the
+    orientation.
+
+    The gui computed this itself, handing a Presentation Model the
+    ``DisplayService``, a ``ProductInfo``, a ``Theme`` and a ``DeviceProfile``
+    — four reaches past the bus in one expression, and a UI holding domain
+    objects that CLAUDE.md forbids outright.
+
+    ``ok=False`` when there is no profile to size from.  The caller keeps its
+    current preview; a 0x0 answer would collapse the bezel, which is worse
+    than not answering.
+    """
+    key: str
+
+    def execute(self, app: App) -> PreviewSizeResult:
+        log.debug("PreviewSize: key=%s", self.key)
+        device = app.devices.get(self.key)
+        profile = device.profile if device is not None else None
+        if device is None or profile is None:
+            log.debug("PreviewSize: %s has no profile — size unknown", self.key)
+            return PreviewSizeResult(
+                ok=False, key=self.key,
+                message=f"no canvas for {self.key} — keep the current preview",
+            )
+
+        orientation = app.settings.for_device(self.key).orientation
+        theme = app.active_themes.get(self.key)
+        if theme is not None:
+            w, h = app.display.composed_canvas_size(
+                device.info, theme, profile, orientation,
+            )
+            composed = True
+        else:
+            w, h = oriented_resolution(profile.resolution, orientation)
+            composed = False
+        log.debug("PreviewSize: %s orient=%d composed=%s → %dx%d",
+                  self.key, orientation, composed, w, h)
+        return PreviewSizeResult(
+            ok=True, key=self.key, width=w, height=h, composed=composed,
+            message=f"preview {w}x{h} for {self.key}",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ListDevices(Query[DevicesListResult]):

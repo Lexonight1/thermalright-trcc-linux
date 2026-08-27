@@ -37,6 +37,7 @@ from ...core.commands import (
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
+    PreviewSize,
     ResolveThemeDirectories,
     RestoreDeviceState,
     RestoreLastTheme,
@@ -1028,36 +1029,25 @@ class LCDHandler(BaseHandler):
                 "handle_frame: dropped (ui_active=False, %s)", self._device_key,
             )
 
-    def _composed_preview_size(self) -> tuple[int, int]:
-        """Preview bezel/label dims for the active theme.
-
-        Portrait when a portrait theme is composed on a non-square rotate=True
-        panel, else the device size swapped for user rotation — so the preview
-        frame asset + label match what the panel shows.  Falls back to the
-        cached canvas size (pre-handshake / no theme). (#136 phase 3)
-
-        The compose-vs-fallback rule + the cached canvas live on the model;
-        this View just gathers the device/theme primitives to feed it.
-        """
-        device = self._app.devices.get(self._device_key)
-        ds = self._lcd_settings()
-        return self._pm.preview_size(
-            self._app.display,
-            info=device.info if device is not None else None,
-            theme=self._app.active_themes.get(self._device_key),
-            profile=device.profile if device is not None else None,
-            orientation=ds.orientation,
-        )
-
     def _sync_preview_size(self) -> None:
         """Resize the preview bezel/label to the active theme's composed
         orientation.  Cheap arithmetic; only the asset reload inside
-        ``set_resolution`` is real work, and that only matters on change. (#136)"""
-        ow, oh = self._composed_preview_size()
-        ds = self._lcd_settings()
-        self.log.info("_sync_preview_size: orientation=%d → preview %dx%d",
-                      ds.orientation, ow, oh)
-        self._w['preview'].set_resolution(ow, oh)
+        ``set_resolution`` is real work, and that only matters on change. (#136)
+
+        The compose-vs-fallback rule moved to the ``PreviewSize`` Query, which
+        owns every input it needs.  Gathering them here meant reaching the
+        device, the theme registry and the DisplayService — three
+        AttributeErrors in daemon mode, in one expression.
+        """
+        size = self._app.dispatch(PreviewSize(key=self._device_key))
+        if not size.ok:
+            # Unknown, not zero.  Resizing to 0x0 would collapse the bezel;
+            # keeping the current one is what the cached canvas used to do.
+            self.log.debug("_sync_preview_size: %s", size.message)
+            return
+        self.log.info("_sync_preview_size: composed=%s → preview %dx%d",
+                      size.composed, size.width, size.height)
+        self._w['preview'].set_resolution(size.width, size.height)
 
     def rebuild_preview(self) -> None:
         """Fallback preview refresh for sends that carry no surface.

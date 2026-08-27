@@ -166,26 +166,7 @@ class _FakeComposer:
         return self._result
 
 
-def test_preview_size_uses_cached_canvas_in_fallback() -> None:
-    """No theme → the model swaps its OWN cached canvas (composer untouched)."""
-    pm = LcdPresentationModel("0402:3922")
-    pm.set_canvas(854, 480)
-    composer = _FakeComposer((0, 0))
-
-    size = pm.preview_size(
-        composer, info=None, theme=None, profile=None, orientation=90,
-    )
-    assert size == (480, 854)
-    assert composer.calls == 0
-
-
-def test_preview_size_defers_to_composer_when_themed() -> None:
-    pm = LcdPresentationModel("0402:3922")
-    pm.set_canvas(854, 480)
-    composer = _FakeComposer((480, 854))
-
-    size = pm.preview_size(
-        composer, info=_INFO, theme=_THEME, profile=_PROFILE, orientation=90,
-    )
-    assert size == (480, 854)
-    assert composer.calls == 1
+# ``preview_size`` moved off the model and became the ``PreviewSize`` Query
+# (the View was gathering four domain objects to feed it).  Its cases live
+# in ``tests/test_preview_size.py``, including the non-square swap these
+# two could not show.

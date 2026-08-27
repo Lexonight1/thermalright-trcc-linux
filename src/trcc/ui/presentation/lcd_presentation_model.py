@@ -21,14 +21,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .preview_geometry import (
-    CanvasComposer,
-    composed_preview_size,
     rotated_lcd_size,
 )
 
 if TYPE_CHECKING:
-    from ...core.models import ProductInfo, Theme
-    from ...core.protocol import DeviceProfile
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -148,27 +145,3 @@ class LcdPresentationModel:
                  "ldd_is_split=%s dispatch=%d", self.device_key, persisted_mode,
                  *lcd_size, self.split_mode, self.ldd_is_split, dispatch_mode)
         return dispatch_mode
-
-    def preview_size(
-        self,
-        display: CanvasComposer,
-        *,
-        info: ProductInfo | None,
-        theme: Theme | None,
-        profile: DeviceProfile | None,
-        orientation: int,
-    ) -> tuple[int, int]:
-        """Preview bezel/label dims for the active theme (#136).
-
-        Composed canvas when a device + theme are present, else the cached
-        canvas swapped for the user orientation.  The View supplies the
-        device/theme primitives; the model owns the cached ``canvas_size``.
-        """
-        size = composed_preview_size(
-            display, info=info, theme=theme, profile=profile,
-            orientation=orientation, canvas_size=self.state.canvas_size,
-        )
-        log.info("preview_size: %s orient=%d device=%s theme=%s → %dx%d",
-                 self.device_key, orientation, info is not None,
-                 theme is not None, *size)
-        return size

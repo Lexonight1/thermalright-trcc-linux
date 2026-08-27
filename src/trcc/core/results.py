@@ -909,6 +909,25 @@ class OverlayLayoutResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class PreviewSizeResult(Result):
+    """The dims a UI should size its preview bezel and label to (#136).
+
+    ``composed`` says which of the two rules produced it: the DisplayService's
+    composed canvas (device + theme present), which folds portrait composition
+    and the user orientation exactly as the wire frame does, or the plain
+    orientation swap of the device's canvas.
+
+    ``ok=False`` means the size is UNKNOWN — no attached device, or no
+    handshake yet.  A caller must then leave its preview as it is: 0x0 is not
+    a fallback, it is a collapsed bezel.
+    """
+    key: str = ""
+    width: int = 0
+    height: int = 0
+    composed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceEntry:
     """One attached device, flattened for a list.
 
