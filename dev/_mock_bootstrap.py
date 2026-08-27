@@ -567,6 +567,11 @@ def bootstrap(report_path: str | None = None,
         stderr_level=logging.DEBUG if verbosity >= 2
         else logging.INFO if verbosity == 1
         else logging.WARNING,
+        # Mirror ``ui/cli/main:_root`` here too.  Omitting this left the
+        # per-frame family at its INFO default in BOTH directions, so a mock
+        # run measured 4,497 records at default and 4,557 with -v -- the gate
+        # looked like it did nothing, when it was simply never switched on.
+        per_frame=verbosity > 0,
     )
     log.info(
         "dev bootstrap: platform=%s paths.config=%s source=%s specs=%d",
