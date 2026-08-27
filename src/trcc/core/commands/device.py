@@ -2484,6 +2484,8 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             slideshow_enabled=s.slideshow_enabled,
             slideshow_interval_s=s.slideshow_interval_s,
             slideshow_themes=tuple(s.slideshow_themes),
+            background_mode=s.background_mode,
+            overlay_background=s.overlay_background,
             message=f"LCD snapshot for {self.key}",
         )
 

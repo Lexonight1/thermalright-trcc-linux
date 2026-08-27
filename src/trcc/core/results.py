@@ -626,6 +626,14 @@ class LcdSnapshotResult(Result):
     slideshow_enabled: bool = False
     slideshow_interval_s: float = 60.0
     slideshow_themes: tuple[str, ...] = ()
+    # Added 2026-08-27.  Their absence was the reason two qtgui panels kept
+    # reaching ``app.settings.for_device`` — an AttributeError under
+    # TRCC_DAEMON=1 — and ``configuration_panel`` said so in a comment:
+    # "Background fields come from Settings since the snapshot doesn't carry
+    # overlay_background; read directly."  A snapshot that omits what its
+    # callers need sends them around it.
+    background_mode: str = "theme"
+    overlay_background: tuple[int, int, int] = (0, 0, 0)
 
 
 @dataclass(frozen=True, slots=True)

@@ -253,20 +253,17 @@ class ConfigurationPanel(BasePanel):
         self._select_combo_by_data(self._fit, snap.fit_mode)
         self._select_combo_by_data(self._split, snap.split_mode)
         self._select_combo_by_data(self._overlay, snap.overlay_enabled)
-        # Background fields come from Settings since the snapshot doesn't
-        # carry overlay_background; read directly.
-        settings = self.app.settings.for_device(key)
-        self._select_combo_by_data(self._bg_mode, settings.background_mode)
-        r, g, b = settings.overlay_background
+        self._select_combo_by_data(self._bg_mode, snap.background_mode)
+        r, g, b = snap.overlay_background
         self._bg_color = f"#{r:02x}{g:02x}{b:02x}"
         self._bg_color_label.setText(self._bg_color)
         # Slideshow fields.
         self._select_combo_by_data(
-            self._slideshow_enabled, settings.slideshow_enabled,
+            self._slideshow_enabled, snap.slideshow_enabled,
         )
-        self._slideshow_interval.setValue(float(settings.slideshow_interval_s))
+        self._slideshow_interval.setValue(float(snap.slideshow_interval_s))
         self._slideshow_themes.setPlainText(
-            "\n".join(settings.slideshow_themes),
+            "\n".join(snap.slideshow_themes),
         )
         self._status.setText(f"Loaded settings for {key}.")
 

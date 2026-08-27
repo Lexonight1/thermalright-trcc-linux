@@ -874,6 +874,117 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
     )
 
 
+# ── The gui must ask the bus, like every other UI ────────────────────────────
+#
+# ``AppProxy.__getattr__`` raises for everything except ``dispatch`` — "daemon
+# mode only exposes dispatch(cmd)".  So every ``self._app.<attr>`` in a UI is an
+# AttributeError under ``TRCC_DAEMON=1``, and that — not missing plumbing — is
+# what "GUI as a remote daemon client" being pending actually means.  Measured
+# against a real proxy: all 11 distinct attributes the two GUIs reach for raise.
+#
+# The CLI and API are already at ZERO; they dispatch Commands and read Results.
+# The Queries the GUIs need were all built for #249 and never adopted:
+# ``ControlCenterSnapshot``, ``LedSnapshot``, ``GetPaths``, ``DeviceState``,
+# ``VideoStatus``, ``BuildPreview``, ``LcdSnapshot``.
+#
+# This is a ratchet rather than a ban because burn-down leaks without one: the
+# session that first measured these added a NEW reach (``store=self._app.themes``)
+# while removing port-passing elsewhere in the same pass.
+#
+# ``dispatch`` is the whole point and is never counted.  Two reaches are
+# deliberately IN the baseline but out of scope for burn-down — ``splash``'s
+# ``discover_and_connect`` and ``closeEvent``'s ``close``.  They are app
+# LIFECYCLE, which a GUI running as a daemon *client* must not own; converting
+# them would be wrong, so they stay counted and stay put.
+_APP_ATTRS = frozenset({"_app", "app", "_trcc"})
+
+KNOWN_APP_REACHES: dict[str, int] = {
+    "ui/gui/lcd_handler.py": 8,
+    "ui/gui/splash.py": 1,
+    "ui/gui/trcc_app.py": 11,
+    "ui/qtgui/app.py": 5,
+    "ui/qtgui/device_picker.py": 1,
+    "ui/qtgui/panels/_browser_base.py": 1,
+    "ui/qtgui/panels/cloud_theme_browser.py": 1,
+    "ui/qtgui/panels/device_panel.py": 1,
+    "ui/qtgui/panels/led/_base.py": 1,
+    "ui/qtgui/panels/led_panel.py": 2,
+    "ui/qtgui/panels/overlay_editor.py": 4,
+    "ui/qtgui/panels/screencast_panel.py": 2,
+}
+
+
+def _is_app_reach(node: ast.Attribute) -> bool:
+    """True if *node* reads an App attribute other than ``dispatch``.
+
+    Matches ``self._app.x`` / ``self.app.x`` / ``self._trcc.x``.  Grep cannot
+    do this job — the pattern that was tried first required a trailing dot and
+    a fixed service list, and undercounted 15 against 50 because
+    ``self._app.display`` passed as an ARGUMENT never matched.
+    """
+    value = node.value
+    return (
+        isinstance(value, ast.Attribute)
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "self"
+        and value.attr in _APP_ATTRS
+        and node.attr != "dispatch"
+    )
+
+
+def _app_reach_counts() -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for path in (_SRC / "trcc" / "ui").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        rel = path.relative_to(_SRC / "trcc").as_posix()
+        n = sum(
+            1 for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Attribute) and _is_app_reach(node)
+        )
+        if n:
+            counts[rel] = n
+    return counts
+
+
+def test_no_new_ui_reaches_past_dispatch() -> None:
+    """A UI must not grow new App-internal reads — each one breaks daemon mode."""
+    counts = _app_reach_counts()
+    risen = {f: (KNOWN_APP_REACHES.get(f, 0), n) for f, n in counts.items()
+             if n > KNOWN_APP_REACHES.get(f, 0)}
+    assert not risen, (
+        "New UI reach past dispatch — every one is an AttributeError under "
+        "TRCC_DAEMON=1; ask the bus with a Query instead:\n"
+        + "\n".join(f"  {f}: {was} → {now}" for f, (was, now) in risen.items())
+    )
+
+
+def test_ui_reach_baseline_has_no_slack() -> None:
+    """An adopted Query must lower the baseline, so ground cannot be re-taken."""
+    counts = _app_reach_counts()
+    stale = {f: (want, counts.get(f, 0)) for f, want in KNOWN_APP_REACHES.items()
+             if counts.get(f, 0) < want}
+    assert not stale, (
+        "UI reaches went DOWN — lower KNOWN_APP_REACHES to lock the win in:\n"
+        + "\n".join(f"  {f}: {want} → {now}" for f, (want, now) in stale.items())
+    )
+
+
+def test_cli_and_api_never_reach_past_dispatch() -> None:
+    """The two UIs that are already clean must STAY clean.
+
+    Not a ratchet — an invariant.  They were measured at zero, so there is no
+    baseline to burn down and any reach at all is a regression.
+    """
+    counts = _app_reach_counts()
+    dirty = {f: n for f, n in counts.items()
+             if f.startswith(("ui/cli/", "ui/api/"))}
+    assert not dirty, (
+        "The CLI/API dispatch Commands and read Results — keep it that way:\n"
+        + "\n".join(f"  {f}: {n}" for f, n in dirty.items())
+    )
+
+
 # ── The theme-directory layout is already a domain object; use it ────────────
 #
 # ``core.models.ThemeDir`` owns the layout (``00.png`` / ``01.png`` /

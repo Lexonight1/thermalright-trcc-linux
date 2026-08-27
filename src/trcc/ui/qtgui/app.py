@@ -30,7 +30,11 @@ from PySide6.QtWidgets import (
 )
 
 from ...app import App
-from ...core.commands import RenderAndSend, TickDisplay
+from ...core.commands import (
+    ControlCenterSnapshot,
+    RenderAndSend,
+    TickDisplay,
+)
 
 if TYPE_CHECKING:
     from ...core.ports import Platform
@@ -223,7 +227,8 @@ class MainWindow(QMainWindow):
             if self._ticker.isActive():
                 self._ticker.stop()
             return
-        interval_ms = max(100, int(self._app.settings.app.refresh_interval_s * 1000))
+        snap = self._app.dispatch(ControlCenterSnapshot())
+        interval_ms = max(100, int(snap.refresh_interval_s * 1000))
         if not self._ticker.isActive() or self._ticker.interval() != interval_ms:
             self._ticker.start(interval_ms)
 
