@@ -908,6 +908,30 @@ class OverlayLayoutResult(Result):
     theme_name: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class ThemeDirectoriesResult(Result):
+    """Which browser directories a device's theme/mask panels point at.
+
+    The dims a catalog is sized to follow the ROTATED size when the user has
+    turned the panel, else the canvas.  Only the LOCAL theme browser falls back
+    to the landscape directory when no portrait one exists on disk — the render
+    pipeline pixel-rotates that art at encode time (#136).  ``portrait_fallback``
+    reports whether that happened, because the caller browses at a different
+    resolution when it did.
+
+    Paths travel as **strings**, like :class:`PathsResult`: this crosses the
+    daemon socket as JSON, and a caller that wants a ``Path`` says so at the
+    point of use.
+    """
+    key: str = ""
+    catalog_size: tuple[int, int] = (0, 0)
+    theme_dir: str = ""
+    user_theme_dir: str = ""
+    web_dir: str = ""
+    masks_dir: str = ""
+    portrait_fallback: bool = False
+
+
 # Cloud themes
 @dataclass(frozen=True, slots=True)
 class CloudCategoryEntry:

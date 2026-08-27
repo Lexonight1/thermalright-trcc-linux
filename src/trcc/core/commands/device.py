@@ -82,6 +82,7 @@ from ..results import (
     SeekVideoResult,
     SendResult,
     SplitModeResult,
+    ThemeDirectoriesResult,
     VideoResult,
     VideoStatusResult,
 )
@@ -2254,6 +2255,60 @@ class FlashOverlayElement(Command[OverlayElementResult]):
             ok=False, key=self.key, element=None,
             message=f"Overlay element {self.element_id!r} not found",
         )
+
+@dataclass(frozen=True, slots=True)
+class ResolveThemeDirectories(Query[ThemeDirectoriesResult]):
+    """Which browser directories this device's theme/mask panels point at.
+
+    Takes only a key and derives the geometry, rather than being handed it.
+    The three inputs are all knowable here — the canvas is the device's profile
+    resolution, and ``is_rotated`` / the post-rotation size follow from the
+    persisted orientation via ``oriented_resolution``, the one place that swap
+    lives.  The gui had been caching all three on its Presentation Model and
+    passing them in, which is a copy of server state that can go stale; asking
+    removes the copy.
+
+    ``ok=False`` when the device is not attached or has not handshaken — the
+    canvas is unknown then, and guessing one would point the browsers at a
+    directory for a resolution this panel does not have.
+    """
+    key: str
+
+    def execute(self, app: App) -> ThemeDirectoriesResult:
+        log.debug("ResolveThemeDirectories: key=%s", self.key)
+        from ...services.theme_directories import resolve_theme_directories
+
+        device = app.devices.get(self.key)
+        profile = device.profile if device is not None else None
+        if profile is None:
+            log.warning(
+                "ResolveThemeDirectories: %s has no profile — cannot resolve "
+                "directories without a canvas size", self.key,
+            )
+            return ThemeDirectoriesResult(
+                ok=False, key=self.key,
+                message=f"no canvas for {self.key} — connect and handshake first",
+            )
+
+        canvas = profile.resolution
+        orientation = app.settings.for_device(self.key).orientation
+        dirs = resolve_theme_directories(
+            app.libraries(self.key),
+            canvas_size=canvas,
+            lcd_size=oriented_resolution(canvas, orientation),
+            is_rotated=orientation in (90, 270),
+        )
+        return ThemeDirectoriesResult(
+            ok=True, key=self.key,
+            catalog_size=dirs.catalog_size,
+            theme_dir=str(dirs.theme_dir),
+            user_theme_dir=str(dirs.user_theme_dir),
+            web_dir=str(dirs.web_dir),
+            masks_dir=str(dirs.masks_dir),
+            portrait_fallback=dirs.portrait_fallback,
+            message=f"theme directories for {self.key}",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolveOverlay(Query[OverlayLayoutResult]):

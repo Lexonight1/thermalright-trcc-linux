@@ -149,6 +149,28 @@ class _FakeApp:
             cursor = playback.cursor
             frame_count = playback.frame_count
             interval_ms = max(1, int(1000 / playback.fps))
+        if name == "ResolveThemeDirectories":
+            # The REAL Result, for the same reason as the two below: the
+            # handler reads ``catalog_size`` / the four dirs off it, and an
+            # ad-hoc stub silently stops carrying a field the moment the
+            # Result gains one.  Resolved through the real function so the
+            # #136 portrait-fallback rule is the one under test, not a guess.
+            from trcc.core.results import ThemeDirectoriesResult
+            from trcc.services.theme_directories import (
+                resolve_theme_directories,
+            )
+
+            dirs = resolve_theme_directories(
+                self.libraries(key), canvas_size=(320, 320),
+                lcd_size=(320, 320), is_rotated=False,
+            )
+            return ThemeDirectoriesResult(
+                ok=True, key=key, catalog_size=dirs.catalog_size,
+                theme_dir=str(dirs.theme_dir),
+                user_theme_dir=str(dirs.user_theme_dir),
+                web_dir=str(dirs.web_dir), masks_dir=str(dirs.masks_dir),
+                portrait_fallback=dirs.portrait_fallback,
+            )
         if name == "LcdSnapshot":
             # The REAL Result, not an ad-hoc stub.  A hand-rolled stand-in
             # carries its own idea of the fields, so it stops matching the

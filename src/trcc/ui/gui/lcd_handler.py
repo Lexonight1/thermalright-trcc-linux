@@ -37,6 +37,7 @@ from ...core.commands import (
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
+    ResolveThemeDirectories,
     RestoreDeviceState,
     RestoreLastTheme,
     SaveTheme,
@@ -51,12 +52,9 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...services.theme_directories import oriented_theme_reload_target
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import dc_as_legacy_overlay_config
-from ..presentation.theme_directories import (
-    oriented_theme_reload_target,
-    resolve_theme_directories,
-)
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
@@ -1202,13 +1200,15 @@ class LCDHandler(BaseHandler):
         active = self._pm.state.current_theme_path
         if active is None:
             return
-        dirs = resolve_theme_directories(
-            self._app.libraries(self._device_key),
-            canvas_size=self._pm.state.canvas_size,
-            lcd_size=self._pm.state.lcd_size,
-            is_rotated=self._pm.state.is_rotated,
+        dirs = self._app.dispatch(
+            ResolveThemeDirectories(key=self._device_key))
+        if not dirs.ok:
+            self.log.warning(
+                "_reload_theme_for_orientation: %s", dirs.message)
+            return
+        target = oriented_theme_reload_target(
+            active, Path(dirs.user_theme_dir), Path(dirs.theme_dir),
         )
-        target = oriented_theme_reload_target(active, dirs)
         if target is None:
             self.log.info(
                 "_reload_theme_for_orientation: no oriented variant of '%s' in the "
@@ -1479,17 +1479,19 @@ class LCDHandler(BaseHandler):
         # Pure geometry → directories: the catalog-dims selection + #136
         # portrait-fallback rule live in the Qt-free presentation layer; this
         # View only pokes the resulting paths into the browser widgets.
-        dirs = resolve_theme_directories(
-            self._app.libraries(self._device_key),
-            canvas_size=self._pm.state.canvas_size,
-            lcd_size=self._pm.state.lcd_size,
-            is_rotated=self._pm.state.is_rotated,
-        )
+        dirs = self._app.dispatch(
+            ResolveThemeDirectories(key=self._device_key))
+        if not dirs.ok:
+            # False, not None: the return value means "a first-install
+            # auto-load happened", and an unresolvable device auto-loaded
+            # nothing.
+            self.log.warning("_update_theme_directories: %s", dirs.message)
+            return False
         bw, bh = dirs.catalog_size
-        theme_dir = dirs.theme_dir
-        user_theme_dir = dirs.user_theme_dir
-        web_dir = dirs.web_dir
-        masks_dir = dirs.masks_dir
+        theme_dir = Path(dirs.theme_dir)
+        user_theme_dir = Path(dirs.user_theme_dir)
+        web_dir = Path(dirs.web_dir)
+        masks_dir = Path(dirs.masks_dir)
 
         self.log.info(
             "_update_theme_directories: catalog=%dx%d theme_dir=%s "

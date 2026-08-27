@@ -1,4 +1,10 @@
-"""Theme-directory resolution — toolkit-free, for the LCD device View.
+"""Theme-directory resolution — which browser dirs a device's panels point at.
+
+Lives in ``services`` rather than ``ui/presentation`` because nothing here is
+presentation: it is the per-SKU library lookup plus the #136 portrait-fallback
+rule, expressed as a pure function of geometry.  It sat under the View while
+the View was its only caller; ``ResolveThemeDirectories`` made it answerable
+from the bus, and a core Command cannot import from ``ui``.
 
 The per-resolution browser directories (local themes, user themes, cloud
 backgrounds, cloud masks) + the catalog dims a device's theme/mask/cutter
@@ -21,7 +27,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...core.libraries import DeviceLibraries
+from ..core.libraries import DeviceLibraries
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +97,7 @@ def resolve_theme_directories(
 
 
 def oriented_theme_reload_target(
-    active_theme_path: Path, dirs: ThemeDirectories,
+    active_theme_path: Path, user_theme_dir: Path, theme_dir: Path,
 ) -> Path | None:
     """The theme to reload after a rotation switches the catalog, or ``None``.
 
@@ -107,9 +113,13 @@ def oriented_theme_reload_target(
     custom theme, or the #136 portrait-fallback where the dir resolves back to
     landscape) — in which case the caller keeps the current theme and the render
     pipeline pixel-rotates the landscape art.  Pure decision; the View applies it.
+
+    Takes the two directories rather than a ``ThemeDirectories`` so a caller
+    holding ``ThemeDirectoriesResult`` (whose paths are strings, for the daemon
+    socket) can pass them without rebuilding the dataclass.
     """
     name = active_theme_path.name
-    for candidate in (dirs.user_theme_dir / name, dirs.theme_dir / name):
+    for candidate in (user_theme_dir / name, theme_dir / name):
         if candidate == active_theme_path:
             return None
         if candidate.exists():

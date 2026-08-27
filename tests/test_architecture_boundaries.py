@@ -806,6 +806,14 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/services/migration.py": 13,
     "trcc/services/overlay.py": 2,
     "trcc/services/settings.py": 4,
+    "trcc/services/theme_directories.py": 2,
+    # +2 on 2026-08-27, and NOT a regression: ``theme_directories`` moved INTO
+    # services from ``ui/presentation`` so a core Query could call it, bringing
+    # its two ``.exists()`` probes (the #136 portrait fallback, and the
+    # same-name variant lookup) into the counted rings.  The mirror image of
+    # the ``services/theme.py`` row that LEFT this table when it was re-homed
+    # to an adapter: this ratchet counts the inner rings, so what it measures
+    # moves when a file does.
     "trcc/services/video_export.py": 7,
 }
 
@@ -899,7 +907,7 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
 _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 
 KNOWN_APP_REACHES: dict[str, int] = {
-    "ui/gui/lcd_handler.py": 8,
+    "ui/gui/lcd_handler.py": 6,
     "ui/gui/splash.py": 1,
     "ui/gui/trcc_app.py": 11,
     "ui/qtgui/app.py": 3,

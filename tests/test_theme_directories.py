@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tests.conftest import FakePaths
 from trcc.core.libraries import DeviceLibraries
-from trcc.ui.presentation.theme_directories import (
+from trcc.services.theme_directories import (
     ThemeDirectories,
     oriented_theme_reload_target,
     resolve_theme_directories,
@@ -86,7 +86,9 @@ def test_reload_target_picks_same_name_portrait_variant(tmp_path: Path) -> None:
     active = tmp_path / "data" / "theme854480" / "MSI2"     # landscape, was rendering
     dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
 
-    assert oriented_theme_reload_target(active, dirs) == (
+    assert oriented_theme_reload_target(
+        active, dirs.user_theme_dir, dirs.theme_dir,
+    ) == (
         tmp_path / "data" / "theme480854" / "MSI2"
     )
 
@@ -99,7 +101,9 @@ def test_reload_target_prefers_user_dir_over_cloud(tmp_path: Path) -> None:
     active = tmp_path / "data" / "theme854480" / "MSI2"
     dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
 
-    assert oriented_theme_reload_target(active, dirs) == (
+    assert oriented_theme_reload_target(
+        active, dirs.user_theme_dir, dirs.theme_dir,
+    ) == (
         tmp_path / "user" / "data" / "theme480854" / "MSI2"
     )
 
@@ -110,7 +114,9 @@ def test_reload_target_none_when_already_in_new_catalog(tmp_path: Path) -> None:
     active = tmp_path / "data" / "theme480854" / "MSI2"
     dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
 
-    assert oriented_theme_reload_target(active, dirs) is None
+    assert oriented_theme_reload_target(
+        active, dirs.user_theme_dir, dirs.theme_dir,
+    ) is None
 
 
 def test_reload_target_none_when_no_variant_exists(tmp_path: Path) -> None:
@@ -120,7 +126,9 @@ def test_reload_target_none_when_no_variant_exists(tmp_path: Path) -> None:
     active = tmp_path / "data" / "theme854480" / "MyCustomTheme"
     dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)
 
-    assert oriented_theme_reload_target(active, dirs) is None
+    assert oriented_theme_reload_target(
+        active, dirs.user_theme_dir, dirs.theme_dir,
+    ) is None
 
 
 def test_reload_target_none_on_portrait_fallback(tmp_path: Path) -> None:
@@ -130,4 +138,6 @@ def test_reload_target_none_on_portrait_fallback(tmp_path: Path) -> None:
     dirs = _resolve(tmp_path, lcd=_PORTRAIT, rotated=True)   # no theme480854 → fallback
 
     assert dirs.portrait_fallback is True
-    assert oriented_theme_reload_target(active, dirs) is None
+    assert oriented_theme_reload_target(
+        active, dirs.user_theme_dir, dirs.theme_dir,
+    ) is None
