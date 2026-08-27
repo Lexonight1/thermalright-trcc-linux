@@ -22,6 +22,7 @@ from trcc.core.commands import (
     ConnectDevice,
     PlayVideo,
     RenderAndSend,
+    SetBackground,
     StopVideo,
     TickDisplay,
 )
@@ -38,7 +39,12 @@ from trcc.core.models import (
 from trcc.core.ports import Renderer
 from trcc.core.protocol import get_profile
 from trcc.services.display import DisplayService
-from trcc.services.media import MediaService, Playback, VideoDecoder
+from trcc.services.media import (
+    MediaService,
+    Playback,
+    VideoDecoder,
+    _ffmpeg_available,
+)
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
 
@@ -1086,3 +1092,60 @@ def test_video_theme_replaces_playback_static_theme_stops_it(
         "keeps playing under the new theme"
     )
     assert rendering_app.media.playback(_KEY) is None
+
+
+# ── GIF backgrounds ──────────────────────────────────────────────────
+#
+# ``.gif`` was in no extension set, so ``SetBackground`` rejected it
+# outright — while the C# groups GIF with video in its own file dialogs
+# (``Video(*.MP4;*.AVI;*.MKV;*.MOV;*.GIF)``, FormCZTV.cs:2552) and ships
+# dedicated ``GifToJPG``/``GifTo565`` encoders.  ``core.models.MEDIA`` now
+# owns that classification.
+
+
+def test_a_gif_background_routes_to_playback_not_rejection(
+    connected_app: App,
+    stub_media: list,
+    tmp_home: Path,
+) -> None:
+    """The routing half — hermetic, no ffmpeg needed.
+
+    MUTATION CHECK: move ``.gif`` to ``MediaKind.IMAGE`` in ``MEDIA`` and this
+    fails with kind="image"; delete the row entirely and ``SetBackground``
+    returns ok=False, which is the behaviour this closes.
+    """
+    gif = tmp_home / "loop.gif"
+    gif.write_bytes(b"GIF89a")          # magic only; the decoder is stubbed
+
+    result = connected_app.dispatch(SetBackground(key=_KEY, path=gif))
+
+    assert result.ok is True, result.message
+    assert result.kind == "video", (
+        "a gif must take the animated path — the C# groups it with video"
+    )
+    assert len(stub_media) == 1 and stub_media[0][1] == gif
+    assert connected_app.media.playback(_KEY) is not None
+
+
+@pytest.mark.skipif(not _ffmpeg_available(), reason="ffmpeg not installed")
+def test_a_real_gif_decodes_to_many_frames(tmp_home: Path) -> None:
+    """The decode half — the capability was there before the table entry was.
+
+    Nothing in the decoder changed to support gif; ffmpeg always handled it.
+    Only the classification was missing, which is the point of the catalog.
+    """
+    import subprocess
+
+    gif = tmp_home / "probe.gif"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=size=64x64:rate=5:duration=2", "-y", str(gif)],
+        check=True,
+    )
+
+    frames = VideoDecoder(gif, size=(64, 64), fps=5).decode()
+
+    assert len(frames) == 10, f"expected 10 gif frames, got {len(frames)}"
+    playback = Playback(frames=frames, fps=5)
+    assert playback.frame_count == 10
+    assert playback.advance() is not None      # it rolls, unlike a still

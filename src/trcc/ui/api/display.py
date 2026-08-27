@@ -62,6 +62,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.models import MEDIA, MediaKind
 from ...core.results import (
     BackgroundModeResult,
     BootAnimationResult,
@@ -529,11 +530,6 @@ def media_player(key: str, body: MediaPlayerRequest,
     return result
 
 
-_BOOT_ANIM_IMAGE_EXTS: frozenset[str] = frozenset({
-    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
-})
-
-
 @router.post("/boot-animation")
 def upload_boot_animation(key: str, body: BootAnimationRequest,
                           request: Request) -> BootAnimationResult:
@@ -571,7 +567,7 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
 
     frame_paths = sorted(
         p for p in frames_path.iterdir()
-        if p.is_file() and p.suffix.lower() in _BOOT_ANIM_IMAGE_EXTS
+        if p.is_file() and MEDIA.kind_of(p) is MediaKind.IMAGE
     )
     if not frame_paths:
         raise HTTPException(400, "No supported image frames found in frames_dir")
@@ -588,16 +584,13 @@ def upload_boot_animation(key: str, body: BootAnimationRequest,
     return result
 
 
-# Extensions accepted by the create-theme background upload — union of
-# what ``LoadImage`` accepts (static) + what ``PlayVideo`` accepts
-# (animated).  Kept here (not imported from ``core.commands``) so the
-# API edge can reject obviously-wrong uploads before staging them.
-_CREATE_THEME_IMG_EXTS: frozenset[str] = frozenset({
-    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
-})
-_CREATE_THEME_VID_EXTS: frozenset[str] = frozenset({
-    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt", ".gif",
-})
+# Extensions accepted by the create-theme background upload — what
+# ``LoadImage`` accepts (static) plus what ``PlayVideo`` accepts (animated).
+# The API edge still validates before staging, as it always did; it just no
+# longer re-spells the list.  Spelling it here is what let this endpoint
+# accept a ``.gif`` upload that every Command downstream then rejected.
+_CREATE_THEME_IMG_EXTS = MEDIA.exts(MediaKind.IMAGE)
+_CREATE_THEME_VID_EXTS = MEDIA.exts(MediaKind.ANIMATED)
 
 
 @router.post("/create-theme", response_model=CreateThemeResponse)

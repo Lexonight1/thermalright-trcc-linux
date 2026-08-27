@@ -81,6 +81,8 @@ if TYPE_CHECKING:
     from ...app import App
     from ...ipc import IPCServer
 
+from ...core.models import MEDIA, MediaKind
+
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
@@ -1968,7 +1970,7 @@ class TRCCApp(QMainWindow):
         self._cut_mode = 'background'
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Image", "",
-            "Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)")
+            f"Image Files ({MEDIA.patterns(MediaKind.IMAGE)});;All Files (*)")
         h = self._active_lcd()
         if path and h:
             from PySide6.QtGui import QImage as _QImage

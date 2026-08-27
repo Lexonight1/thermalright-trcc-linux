@@ -38,6 +38,7 @@ from ....core.commands import (
     LoadTheme,
     SaveTheme,
 )
+from ....core.models import MEDIA, MediaKind
 from ..assets import thumbnail_icon
 from ..device_picker import DevicePickerWidget
 from ._browser_base import AssetBrowserPanel
@@ -288,7 +289,7 @@ class LocalThemeBrowser(AssetBrowserPanel):
 
         source, _ = QFileDialog.getOpenFileName(
             self, "Pick a source image", "",
-            "Images (*.png *.jpg *.jpeg *.bmp *.webp)",
+            f"Images ({MEDIA.patterns(MediaKind.IMAGE)})",
         )
         if not source:
             return

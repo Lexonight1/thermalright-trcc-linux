@@ -993,6 +993,124 @@ METRICS = MetricCatalog(
     aliases={(10000, 1): "fan:cpu"},
 )
 
+# =========================================================================
+# Media formats — what a background file IS, and therefore how it plays
+# =========================================================================
+
+
+class MediaKind(Enum):
+    """What a background file is, which is the same question as how it plays.
+
+    Every background is a frame sequence; "static" is just ``frame_count == 1``.
+    The kind decides whether a tick loop is started at all — a still image
+    spins up no timer, an animated source rolls.
+    """
+    IMAGE = "image"        #: one frame — render once, no timer
+    ANIMATED = "animated"  #: N frames — the playback cursor advances
+
+
+@dataclass(frozen=True, slots=True)
+class MediaFormat:
+    """One file extension and what it means."""
+
+    ext: str        #: lowercase, with the dot — ".png"
+    kind: MediaKind
+
+    def __str__(self) -> str:
+        return self.ext
+
+
+class MediaCatalog(Mapping[str, MediaFormat]):
+    """Every background file format, keyed by lowercase extension.
+
+    Before this existed the answer to "is this file a still image?" was
+    spelled out in **nine** places — six identically-valued frozensets (three
+    of them seven lines apart in one file) plus literal glob strings in three
+    file dialogs.  They had already drifted: the GUI's dialog omitted
+    ``.webp`` while the validator accepted it, so a file the app would load
+    could not be picked.
+
+    ``.gif`` was in none of them, so a GIF background was rejected outright —
+    while the C# groups GIF with video in its own dialogs
+    (``Video(*.MP4;*.AVI;*.MKV;*.MOV;*.GIF)``, FormCZTV.cs:2552) and ships
+    dedicated ``GifToJPG``/``GifTo565`` encoders.  Our ffmpeg decoder handled
+    it all along; only the table was missing.
+    """
+
+    __slots__ = ("_by_ext", "_by_kind")
+
+    def __init__(self, formats: tuple[MediaFormat, ...]) -> None:
+        log.debug("MediaCatalog: %d format(s)", len(formats))
+        self._by_ext = {f.ext: f for f in formats}
+        self._by_kind = {
+            kind: frozenset(f.ext for f in formats if f.kind is kind)
+            for kind in MediaKind
+        }
+
+    def __getitem__(self, ext: str) -> MediaFormat:
+        frame_log.debug("MediaCatalog[%r]", ext)
+        return self._by_ext[ext.lower()]
+
+    def __iter__(self) -> Iterator[str]:
+        log.debug("MediaCatalog.__iter__: %d ext(s)", len(self._by_ext))
+        return iter(self._by_ext)
+
+    def __len__(self) -> int:
+        return len(self._by_ext)
+
+    def kind_of(self, path: Path | str) -> MediaKind | None:
+        """The kind of *path*, or ``None`` if the extension is unsupported.
+
+        ``None`` is a real answer — callers reject the file and say what they
+        accept — so this deliberately does not raise.
+        """
+        ext = (path.suffix if isinstance(path, Path) else path).lower()
+        fmt = self._by_ext.get(ext)
+        frame_log.debug("kind_of: %s → %s", ext, fmt.kind if fmt else None)
+        return fmt.kind if fmt is not None else None
+
+    def exts(self, kind: MediaKind) -> frozenset[str]:
+        """Every extension of *kind* — precomputed, safe on a per-frame path."""
+        frame_log.debug("exts: %s", kind)
+        return self._by_kind[kind]
+
+    def patterns(self, *kinds: MediaKind) -> str:
+        """Glob patterns for *kinds*, toolkit-neutral — ``"*.bmp *.jpg …"``.
+
+        Qt, GTK and the CLI all take this shape, so the file dialogs derive
+        their filter from the catalog instead of spelling the list a fourth
+        time.
+        """
+        exts = sorted({e for k in kinds for e in self._by_kind[k]})
+        log.debug("patterns: %s → %d ext(s)", [k.value for k in kinds], len(exts))
+        return " ".join(f"*{e}" for e in exts)
+
+    def __repr__(self) -> str:
+        return f"MediaCatalog({len(self._by_ext)} formats)"
+
+
+#: The one authority for what a background file is.  Add a format HERE.
+MEDIA = MediaCatalog((
+    # Still images — one frame, rendered once, no animation timer.
+    MediaFormat(".png",  MediaKind.IMAGE),
+    MediaFormat(".jpg",  MediaKind.IMAGE),
+    MediaFormat(".jpeg", MediaKind.IMAGE),
+    MediaFormat(".bmp",  MediaKind.IMAGE),
+    MediaFormat(".webp", MediaKind.IMAGE),
+    # Animated — decoded to a frame list, played by ``MediaService``.
+    # ``.gif`` sits here because the C# puts it here; ``.zt`` is TRCC's own
+    # container.  A single-frame member of this group is still handled
+    # correctly: ``PlayVideo`` gates on ``frame_count <= 1`` and renders once.
+    MediaFormat(".gif",  MediaKind.ANIMATED),
+    MediaFormat(".mp4",  MediaKind.ANIMATED),
+    MediaFormat(".mov",  MediaKind.ANIMATED),
+    MediaFormat(".webm", MediaKind.ANIMATED),
+    MediaFormat(".mkv",  MediaKind.ANIMATED),
+    MediaFormat(".avi",  MediaKind.ANIMATED),
+    MediaFormat(".zt",   MediaKind.ANIMATED),
+))
+
+
 # DC file (main_count, sub_count) → ``HardwareMetrics`` field name.
 # DERIVED — do not hand-edit; add a row to METRICS above.
 HARDWARE_METRICS: dict[tuple[int, int], str] = {

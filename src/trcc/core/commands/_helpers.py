@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from ...app import App
 
 from ..logs import per_frame
+from ..models import MEDIA, MediaKind
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -85,27 +86,6 @@ def oriented_theme_path(
             log.debug("_oriented_theme_path: resolved %s", cand)
             return cand
     return stored
-
-
-_VIDEO_EXTS_FOR_SAVE = frozenset({".mp4", ".mov", ".webm", ".zt", ".mkv", ".avi"})
-
-
-_VIDEO_EXTS_OK = frozenset({".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"})
-
-
-_BG_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
-
-
-_MASK_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
-
-
-
-_IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
-
-
-_VIDEO_EXTS_FOR_LOAD = frozenset({
-    ".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt",
-})
 
 
 def overlay_elements_to_dc(
@@ -336,7 +316,7 @@ def _resolve_mask_path(path: Path) -> Path | None:
     or ``None`` when neither shape matches.
     """
     log.debug("_resolve_mask_path: path=%s", path)
-    if path.is_file() and path.suffix.lower() in _MASK_IMAGE_EXTS:
+    if path.is_file() and MEDIA.kind_of(path) is MediaKind.IMAGE:
         return path
     if path.is_dir():
         legacy = ThemeDir(path).mask

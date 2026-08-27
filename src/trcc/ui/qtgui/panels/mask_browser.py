@@ -41,6 +41,7 @@ from ....core.commands import (
     SetMaskVisible,
     UploadCustomMask,
 )
+from ....core.models import MEDIA, MediaKind
 from ..assets import thumbnail_icon
 from ..device_picker import DevicePickerWidget
 from ._browser_base import AssetBrowserPanel
@@ -203,7 +204,7 @@ class MaskBrowser(AssetBrowserPanel):
             self,
             "Pick a mask image",
             "",
-            "Images (*.png *.jpg *.jpeg *.bmp *.webp);;All files (*.*)",
+            f"Images ({MEDIA.patterns(MediaKind.IMAGE)});;All files (*.*)",
         )
         if not path_str:
             return

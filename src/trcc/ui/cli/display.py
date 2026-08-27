@@ -54,6 +54,7 @@ from ...core.commands import (
     UploadCustomMask,
     VideoStatus,
 )
+from ...core.models import MEDIA, MediaKind
 from ._ctx import (
     dispatch_echo,
     emit_json,
@@ -381,11 +382,6 @@ def slideshow_run(
         typer.echo("\nSlideshow stopped.")
 
 
-_IMAGE_EXTS_FOR_ANIM: frozenset[str] = frozenset({
-    ".png", ".jpg", ".jpeg", ".bmp", ".webp",
-})
-
-
 @app.command("boot-anim")
 def boot_anim(
     key: str = typer.Argument(..., help="Device key, e.g. 0402:3922 (SCSI only)"),
@@ -414,7 +410,7 @@ def boot_anim(
     )
     frame_paths = sorted(
         p for p in frames_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in _IMAGE_EXTS_FOR_ANIM
+        if p.is_file() and MEDIA.kind_of(p) is MediaKind.IMAGE
     )
     if not frame_paths:
         typer.echo(f"No supported image frames found under {frames_dir}", err=True)

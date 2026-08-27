@@ -87,9 +87,6 @@ from ..results import (
 )
 from ._base import Command, Query
 from ._helpers import (
-    _BG_IMAGE_EXTS,
-    _IMAGE_EXTS,
-    _VIDEO_EXTS_OK,
     _element_to_entry,
     _invalidate_scene,
     _publish_if_disconnect,
@@ -103,6 +100,7 @@ if TYPE_CHECKING:
     from ..ports import Device
 
 from ..logs import per_frame
+from ..models import MEDIA, MediaKind
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -596,12 +594,12 @@ class SendImage(Command[SendResult]):
                 ok=False, key=self.key, bytes_sent=0,
                 message=f"Image file not found: {self.path}",
             )
-        if self.path.suffix.lower() not in _IMAGE_EXTS:
+        if MEDIA.kind_of(self.path) is not MediaKind.IMAGE:
             return SendResult(
                 ok=False, key=self.key, bytes_sent=0,
                 message=(
                     f"Unsupported image extension {self.path.suffix!r}; "
-                    f"supported: {', '.join(sorted(_IMAGE_EXTS))}"
+                    f"supported: {', '.join(sorted(MEDIA.exts(MediaKind.IMAGE)))}"
                 ),
             )
         try:
@@ -1028,15 +1026,15 @@ class PlayVideo(Command[VideoResult]):
     def execute(self, app: App) -> VideoResult:
         log.info("PlayVideo.execute: key=%s path=%s fps=%d",
                  self.key, self.path, self.fps)
-        if self.path.suffix.lower() not in _VIDEO_EXTS_OK:
+        if MEDIA.kind_of(self.path) is not MediaKind.ANIMATED:
             log.warning(
                 "PlayVideo.execute: unsupported extension %r (allowed=%s)",
-                self.path.suffix, sorted(_VIDEO_EXTS_OK),
+                self.path.suffix, sorted(MEDIA.exts(MediaKind.ANIMATED)),
             )
             return VideoResult(
                 ok=False, key=self.key, path=str(self.path),
                 message=(f"unsupported video extension {self.path.suffix!r} "
-                         f"(expected one of {sorted(_VIDEO_EXTS_OK)})"),
+                         f"(expected one of {sorted(MEDIA.exts(MediaKind.ANIMATED))})"),
             )
         if not self.path.exists():
             log.warning("PlayVideo.execute: path does not exist: %s",
@@ -1431,7 +1429,8 @@ class SetBackground(Command[BackgroundResult]):
             )
 
         ext = self.path.suffix.lower()
-        if ext in _VIDEO_EXTS_OK:
+        kind = MEDIA.kind_of(self.path)
+        if kind is MediaKind.ANIMATED:
             log.info(
                 "SetBackground.execute: %s has video ext — delegating to "
                 "PlayVideo", self.path.name,
@@ -1442,7 +1441,7 @@ class SetBackground(Command[BackgroundResult]):
                 ok=play.ok, key=self.key, path=str(self.path), kind="video",
                 message=play.message,
             )
-        if ext in _BG_IMAGE_EXTS:
+        if kind is MediaKind.IMAGE:
             # Drop any prior video first — its animation timer would
             # otherwise tick over the static image we're about to set.
             # Routes through StopVideo (publishes VideoStopped, stops
@@ -1467,13 +1466,14 @@ class SetBackground(Command[BackgroundResult]):
         log.warning(
             "SetBackground.execute: unsupported extension %r (image=%s, "
             "video=%s)",
-            ext, sorted(_BG_IMAGE_EXTS), sorted(_VIDEO_EXTS_OK),
+            ext, sorted(MEDIA.exts(MediaKind.IMAGE)),
+            sorted(MEDIA.exts(MediaKind.ANIMATED)),
         )
         return BackgroundResult(
             ok=False, key=self.key, path=str(self.path),
             message=(f"unsupported background extension {ext!r} — "
-                     f"expected image {sorted(_BG_IMAGE_EXTS)} or "
-                     f"video {sorted(_VIDEO_EXTS_OK)}"),
+                     f"expected image {sorted(MEDIA.exts(MediaKind.IMAGE))} or "
+                     f"video {sorted(MEDIA.exts(MediaKind.ANIMATED))}"),
         )
 
 @dataclass(frozen=True, slots=True)

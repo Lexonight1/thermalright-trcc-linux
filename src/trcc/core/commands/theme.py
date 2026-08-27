@@ -46,9 +46,6 @@ from ..results import (
 )
 from ._base import Command, Query
 from ._helpers import (
-    _IMAGE_EXTS,
-    _VIDEO_EXTS_FOR_LOAD,
-    _VIDEO_EXTS_FOR_SAVE,
     _invalidate_scene,
     _json_default_tuple,
     _publish_if_disconnect,
@@ -71,6 +68,8 @@ from .device import (
 if TYPE_CHECKING:
     from ...app import App
     from ..models import DeviceSettings, Theme
+
+from ..models import MEDIA, MediaKind
 
 log = logging.getLogger(__name__)
 
@@ -772,7 +771,7 @@ class SaveTheme(Command[ThemeResult]):
             return None
 
         ext = src.suffix.lower()
-        is_video = ext in _VIDEO_EXTS_FOR_SAVE
+        is_video = MEDIA.kind_of(ext) is MediaKind.ANIMATED
         paths = app.platform.paths()
         src_resolved = src.resolve()
 
@@ -1918,12 +1917,12 @@ class LoadImage(Command[ThemeResult]):
                     "Check the path and try again."
                 ),
             )
-        if self.path.suffix.lower() not in _IMAGE_EXTS:
+        if MEDIA.kind_of(self.path) is not MediaKind.IMAGE:
             return ThemeResult(
                 ok=False, key=self.key,
                 message=(
                     f"Unsupported image extension {self.path.suffix!r}.  "
-                    f"Supported: {', '.join(sorted(_IMAGE_EXTS))}."
+                    f"Supported: {', '.join(sorted(MEDIA.exts(MediaKind.IMAGE)))}."
                 ),
             )
         # ALWAYS install as 00.png — the strict theme-dir convention the
@@ -1975,12 +1974,12 @@ class LoadVideo(Command[ThemeResult]):
                     "Check the path and try again."
                 ),
             )
-        if self.path.suffix.lower() not in _VIDEO_EXTS_FOR_LOAD:
+        if MEDIA.kind_of(self.path) is not MediaKind.ANIMATED:
             return ThemeResult(
                 ok=False, key=self.key,
                 message=(
                     f"Unsupported video extension {self.path.suffix!r}.  "
-                    f"Supported: {', '.join(sorted(_VIDEO_EXTS_FOR_LOAD))}."
+                    f"Supported: {', '.join(sorted(MEDIA.exts(MediaKind.ANIMATED)))}."
                 ),
             )
 

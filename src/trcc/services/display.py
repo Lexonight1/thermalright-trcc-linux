@@ -28,10 +28,12 @@ from ..core._safe import is_under
 from ..core.geometry import content_is_portrait, plan_orientation
 from ..core.logs import per_frame
 from ..core.models import (
+    MEDIA,
     RENDER_CACHE_MAX_BYTES,
     SPLIT_OVERLAY_MAP,
     DeviceSettings,
     FitMode,
+    MediaKind,
     ProductInfo,
     RawFrame,
     RenderContent,
@@ -53,8 +55,6 @@ log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
 
-_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".zt"}
-_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
 # Devices whose canvas is widescreen split-eligible.  Currently just
@@ -1068,7 +1068,7 @@ class DisplayService:
                 )
                 path = override
                 ext = path.suffix.lower()
-                if ext in _VIDEO_EXTS:
+                if MEDIA.kind_of(ext) is MediaKind.ANIMATED:
                     # A video background is owned by ``PlayVideo`` — the only
                     # decoder.  Reaching here means the override names a video
                     # with no playback loaded, so there is no frame to paint;
@@ -1081,7 +1081,7 @@ class DisplayService:
                         info.key, path.name,
                     )
                     return None
-                if ext in _IMAGE_EXTS:
+                if MEDIA.kind_of(ext) is MediaKind.IMAGE:
                     return self._r.open_image(path)
             else:
                 log.warning(
@@ -1102,7 +1102,7 @@ class DisplayService:
         log.debug("resolve_background %s: theme %r → %s",
                   info.key, theme.name, path)
 
-        if ext in _VIDEO_EXTS:
+        if MEDIA.kind_of(ext) is MediaKind.ANIMATED:
             # Rendering is a READ.  ``PlayVideo`` is the single decoder — it
             # owns the decode-size policy (oriented canvas, native for user
             # assets), and every path that wants a video playing dispatches it
@@ -1123,7 +1123,7 @@ class DisplayService:
             )
             return None
 
-        if ext in _IMAGE_EXTS:
+        if MEDIA.kind_of(ext) is MediaKind.IMAGE:
             return self._r.open_image(path)
 
         log.warning(
@@ -1210,7 +1210,7 @@ class DisplayService:
             cursor = pb.cursor
         else:
             path = self._themes.background_path(theme)
-            if path is not None and path.suffix.lower() in _VIDEO_EXTS:
+            if path is not None and MEDIA.kind_of(path) is MediaKind.ANIMATED:
                 # Defensive: video-backed theme without a loaded
                 # playback shouldn't happen post-Phase-1 (LoadTheme
                 # auto-dispatches PlayVideo), but pin cursor=0 so the
