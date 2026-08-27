@@ -640,7 +640,11 @@ class App:
 
     def get(self, key: str) -> Device:
         """Look up an attached device.  Raises if not attached."""
-        log.debug("get: key=%s", key)
+        # Per-frame: the render path looks the device up on every tick, so this
+        # was 16 records/second and 37% of everything a default log still
+        # wrote after the frame family was gated.  It was missed because
+        # app.py was excluded wholesale to special-case ``dispatch`` below.
+        frame_log.debug("get: key=%s", key)
         device = self.devices.get(key)
         if device is None:
             raise DeviceNotFoundError(f"Not attached: {key}")
