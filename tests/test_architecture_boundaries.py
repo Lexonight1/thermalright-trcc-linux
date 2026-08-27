@@ -909,7 +909,6 @@ KNOWN_APP_REACHES: dict[str, int] = {
     "ui/qtgui/panels/device_panel.py": 1,
     "ui/qtgui/panels/led/_base.py": 1,
     "ui/qtgui/panels/led_panel.py": 2,
-    "ui/qtgui/panels/overlay_editor.py": 4,
     "ui/qtgui/panels/screencast_panel.py": 2,
 }
 

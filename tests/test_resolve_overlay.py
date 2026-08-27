@@ -221,3 +221,81 @@ def test_overlay_source_names_the_winning_layer(
     user: list[OverlayElement] | None, expected: str,
 ) -> None:
     assert overlay_source(user) == expected
+
+
+# ── The seed guard the qtgui editor reads ────────────────────────────────
+#
+# ``overlay_editor.refresh`` adopts the active layout into the editable user
+# layer when the device has none of its own.  It used to decide that with
+# ``if not settings.user_overlay_elements`` — a TRUTHINESS test, which cannot
+# tell "this device has no layer" from "the user emptied it".  So deleting the
+# last element re-seeded it straight back from the theme, which is #276's
+# second symptom in the reporter's own words: "whichever one I delete LAST
+# still appears".
+#
+# ``source`` answers the question the truthiness test could not.
+
+
+def test_an_emptied_user_layer_reports_user_not_theme(
+    app: App, tmp_path: Path,
+) -> None:
+    """``[]`` is a user layer that is empty — NOT the absence of one.
+
+    This is the distinction the editor's seed guard now reads.  If ``source``
+    ever came back "theme" here, the editor would re-seed an emptied layout
+    and the deleted elements would return.
+    """
+    _load_theme(app, tmp_path, [{"type": "text", "text": "from-theme"}])
+    app.settings.for_device(_KEY).user_overlay_elements = []
+
+    result = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert result.source == "user", (
+        "an emptied user layer must report itself — reporting 'theme' is what "
+        "makes a deleted element come back"
+    )
+    assert result.elements == []
+
+
+def test_no_user_layer_reports_theme_so_the_editor_seeds(
+    app: App, tmp_path: Path,
+) -> None:
+    """``None`` means the device has no layout of its own — seed it.
+
+    The other half of the same distinction: this is the case where adopting
+    the theme layout into the editable layer is CORRECT.
+    """
+    _load_theme(app, tmp_path, [{"type": "text", "text": "from-theme"}])
+    app.settings.for_device(_KEY).user_overlay_elements = None
+
+    result = app.dispatch(ResolveOverlay(key=_KEY))
+
+    assert result.source == "theme"
+    assert len(result.elements) == 1
+    assert result.elements[0].id, "an adopted element must be addressable"
+
+
+def test_every_entry_field_survives_the_round_trip_the_editor_makes() -> None:
+    """The editor seeds by ``asdict(entry)`` -> ``SetOverlayConfig``.
+
+    A hand-written mapping is where a field goes missing silently: ``font``
+    was once added to ``to_dict`` and never read back, so every user element
+    lost its font on restart.  All three element types, not just the one to
+    hand.
+    """
+    import dataclasses
+
+    from trcc.core.results import OverlayElementEntry
+
+    for entry in (
+        OverlayElementEntry(id="t", type="text", text="hi", font="X", bold=True),
+        OverlayElementEntry(id="m", type="metric", metric="cpu:temp",
+                            format="{value}", show_unit=False, font="Y"),
+        OverlayElementEntry(id="c", type="clock", source="date",
+                            format="%Y", size=22, color="#abcdef"),
+    ):
+        back = OverlayElement.from_dict(dataclasses.asdict(entry))
+        for field in dataclasses.fields(entry):
+            assert getattr(back, field.name) == getattr(entry, field.name), (
+                f"{entry.type} element lost {field.name!r} on the round trip"
+            )

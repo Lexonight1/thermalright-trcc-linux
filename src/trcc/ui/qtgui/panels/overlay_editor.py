@@ -17,6 +17,7 @@ does not add a duplicate on top of the theme.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from PySide6.QtCore import Qt
@@ -44,10 +45,10 @@ from ....core.commands import (
     DeleteOverlayElement,
     FlashOverlayElement,
     LcdSnapshot,
+    ResolveOverlay,
     SetOverlayConfig,
     UpdateOverlayElement,
 )
-from ....services.overlay import resolve_overlay_elements
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -122,49 +123,49 @@ class OverlayEditorPanel(BasePanel):
         # theme/mask layout into it so the rows shown are what renders and an
         # incremental Add/Edit/Delete operates on the full layout (the render
         # draws the user layer as a REPLACEMENT, not on top of the theme).
-        settings = self.app.settings.for_device(key)
-        if not settings.user_overlay_elements:
-            seed = self._effective_layout(key, settings)
-            if seed:
-                log.info("refresh: adopting active layout into editable "
-                         "user layer for %s (%d element(s))", key, len(seed))
-                self.dispatch(SetOverlayConfig(key=key, elements=tuple(seed)))
-                settings = self.app.settings.for_device(key)
+        layout = self.dispatch(ResolveOverlay(key=key))
+        # ``source`` names the WINNING layer, and that is why the seed guard
+        # reads it rather than testing the element list for truthiness.  The
+        # two states a truthiness test collapses are exactly the ones #276
+        # turned on: a user layer of ``[]`` means "the user emptied it" and
+        # must NOT be re-seeded, while no user layer at all reports "theme".
+        # Testing ``not elements`` re-seeded the emptied layer from the theme,
+        # so the last element a user deleted came straight back.
+        if layout.source != "user" and layout.elements:
+            log.info("refresh: adopting the active %s layout into the "
+                     "editable user layer for %s (%d element(s))",
+                     layout.source, key, len(layout.elements))
+            self.dispatch(SetOverlayConfig(
+                key=key, elements=tuple(self._entry_to_dict(e) for e in layout.elements),
+            ))
+            layout = self.dispatch(ResolveOverlay(key=key))
         self._list.clear()
-        for element in (settings.user_overlay_elements or ()):
+        for element in layout.elements:
             text = self._format_element_row(element)
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, element.id)
             self._list.addItem(item)
-        if not settings.user_overlay_elements:
+        if not layout.elements:
             self._status.setText(
                 f"No overlay layout on {key} yet.  "
                 "Click 'Add element…' to start.",
             )
         else:
             self._status.setText(
-                f"{len(settings.user_overlay_elements)} element(s) on {key}.",
+                f"{len(layout.elements)} element(s) on {key}.",
             )
 
-    def _effective_layout(self, key: str, settings) -> list[dict]:
-        """The device's current overlay layout as id-carrying dicts.
+    @staticmethod
+    def _entry_to_dict(entry) -> dict:
+        """``OverlayElementEntry`` -> the flat dict ``SetOverlayConfig`` takes.
 
-        Resolves user > mask > theme (the same precedence the renderer uses),
-        and assigns a stable id to any theme element that lacks one — every
-        element needs an id for ``SetOverlayConfig`` / Update / Delete.
+        ``asdict`` rather than a hand-written mapping: the two shapes already
+        agree, and a hand-written one is where a field goes missing silently —
+        ``font`` was added to ``to_dict`` once and not read back, so every
+        user element lost its font on restart.  Round-tripped in tests for
+        text, metric AND clock elements rather than only the one to hand.
         """
-        theme = self.app.active_themes.get(key)
-        theme_config = theme.config if theme is not None else {}
-        elements = resolve_overlay_elements(
-            theme_config, settings.user_overlay_elements,
-        )
-        out: list[dict] = []
-        for i, el in enumerate(elements):
-            d = dict(el)
-            if not d.get("id"):
-                d["id"] = f"el_{i}"
-            out.append(d)
-        return out
+        return dataclasses.asdict(entry)
 
     @staticmethod
     def _format_element_row(element) -> str:
@@ -230,12 +231,8 @@ class OverlayEditorPanel(BasePanel):
         eid = self._selected_id()
         if key is None or eid is None:
             return
-        settings = self.app.settings.for_device(key)
-        current = next(
-            (e for e in (settings.user_overlay_elements or ())
-             if e.id == eid),
-            None,
-        )
+        layout = self.dispatch(ResolveOverlay(key=key))
+        current = next((e for e in layout.elements if e.id == eid), None)
         if current is None:
             self._status.setText(
                 f"Element {eid} is no longer present — Load to refresh.",

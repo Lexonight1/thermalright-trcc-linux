@@ -1321,3 +1321,47 @@ def test_uc_image_cut_spec_declares_every_toolbar_button() -> None:
         assert declared[name].rect == rect, f"{name} moved off its constant"
     # Every toolbar button carries a text fallback for a missing asset.
     assert all(c.fallback for c in mod._SPEC.controls)
+
+
+def test_overlay_editor_does_not_reseed_an_emptied_layer(gui_app: App) -> None:
+    """Deleting the last element must not bring the theme's elements back.
+
+    The editor adopts the active layout into the editable user layer when the
+    device has none of its own.  It used to decide that with ``if not
+    settings.user_overlay_elements`` — a TRUTHINESS test, which cannot tell
+    "no layer" from "the user emptied it", so refreshing after deleting the
+    last element re-seeded it from the theme.  That is #276's second symptom
+    in the reporter's words: "whichever one I delete LAST still appears."
+
+    The fix is STRUCTURAL, not a better guard, and this test documents the
+    behaviour rather than gating the condition.  Measured: flipping the guard
+    back to ``if not layout.elements`` does NOT reproduce the bug, because the
+    theme elements are no longer reachable from here — the editor used to
+    resolve the layout itself via ``resolve_overlay_elements(theme_config,
+    [])``, whose own truthiness fell through to the theme.  ``ResolveOverlay``
+    returns ``[]`` for an emptied layer, so there is nothing left to seed
+    FROM.  The ``source != "user"`` condition is belt-and-braces on top.
+
+    What DOES gate the underlying distinction is
+    ``test_resolve_overlay.py::test_an_emptied_user_layer_reports_user_not_theme``.
+    """
+    from trcc.core.models import Theme
+    from trcc.ui.qtgui.panels.overlay_editor import OverlayEditorPanel
+
+    key = next(iter(gui_app.devices), None) or "0402:3922"
+    gui_app.active_themes[key] = Theme(
+        path=Path("/nonexistent"), name="Theme1", resolution=(320, 320),
+        config={"elements": [{"type": "text", "text": "from-theme"}]},
+    )
+    # The user deleted every element: an EMPTY layer, not an absent one.
+    gui_app.settings.for_device(key).user_overlay_elements = []
+
+    panel = OverlayEditorPanel(gui_app, _bus(gui_app))
+    panel._picker.set_key(key)
+    panel.refresh()
+
+    assert gui_app.settings.for_device(key).user_overlay_elements == [], (
+        "the emptied user layer was re-seeded from the theme — the element "
+        "the user deleted has come back"
+    )
+    assert panel._list.count() == 0
