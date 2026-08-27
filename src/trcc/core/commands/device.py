@@ -2544,9 +2544,26 @@ class DeviceState(Query[DeviceStateResult]):
     daemon-mode UI holds, so all 25 of those sites raised under
     ``TRCC_DAEMON=1`` (#249).
 
-    An UNKNOWN key is ``ok=False``; a KNOWN but unconnected device is
-    ``ok=True, connected=False`` with the handshake fields ``None`` — absence
-    is a normal answer for a device we simply have not talked to yet.
+    **This answers about ATTACHED devices only.**  A key that is not attached
+    is ``ok=False``, whether or not the product registry knows it — the
+    identity fields come off the live ``Device``, so there is nothing to
+    report without one.
+
+    An ATTACHED device is ``ok=True``, and ``connected`` then says whether the
+    link is live.  Its handshake fields are ``None`` until the device has
+    answered: absence is a normal answer for a panel we have not talked to
+    yet, and ``resolution=None`` is deliberately distinct from a 0x0 panel.
+
+    This docstring previously promised that "a KNOWN but unconnected device is
+    ``ok=True, connected=False``", read naturally as registry-known.  It never
+    did that — ``app.devices`` holds attached devices, and the one branch here
+    returns ``ok=False`` when the lookup misses.  Every caller already relies
+    on the real behaviour (the CLI exits 1, the preview socket closes 1008,
+    the resolution route falls back to 0x0), so the PROMISE was the defect.
+    A registry fallback for an unattached key would be a genuinely different
+    Query — ``screencast_panel`` wants one to pre-validate before connecting —
+    and adding it here would silently make that socket accept a device it
+    cannot stream.  Gated by ``tests/test_device_state_contract.py``.
     """
     key: str
 
