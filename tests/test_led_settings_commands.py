@@ -55,8 +55,11 @@ def test_set_mode_updates_persists_resets_phase(tmp_path: Path) -> None:
     assert "RAINBOW" in result.message
     # Settings persisted
     assert app.settings.for_led(_KEY).mode is LEDMode.RAINBOW
-    # Phase reset to 0 so the new mode's animation starts fresh
-    assert app.led_runtime[_KEY].rgb_timer == 0
+    # Every phase resets so the new mode's animation starts fresh — all three,
+    # not one shared counter (see LedRuntimeState).
+    runtime = app.led_runtime[_KEY]
+    assert (runtime.breathe_phase, runtime.colorful_phase,
+            runtime.rainbow_phase) == (0, 0, 0)
 
 
 # ── Color ────────────────────────────────────────────────────────────
@@ -284,7 +287,8 @@ def test_gated_command_allows_an_unknown_key(
 
 def _new_runtime_with_timer(rgb_timer: int):
     from trcc.core.led_models import LedRuntimeState
-    return LedRuntimeState(rgb_timer=rgb_timer)
+    return LedRuntimeState(breathe_phase=rgb_timer, colorful_phase=rgb_timer,
+                           rainbow_phase=rgb_timer)
 
 
 def _new_runtime_with_test(*, timer: int, color: int):

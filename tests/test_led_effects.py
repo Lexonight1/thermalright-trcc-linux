@@ -68,8 +68,12 @@ def test_static_returns_same_color_n_times() -> None:
     colors = engine.tick(settings, runtime, sensors={}, led_count=10)
 
     assert colors == [(255, 128, 0)] * 10
-    # Counters untouched on STATIC
-    assert runtime.rgb_timer == 0
+    # The COLOURS are static; the phases still advance.  Every plane advances
+    # every tick whether or not anything is showing it — the C# shape
+    # (FormLED.cs:4136 computes all six planes regardless of the selected
+    # mode), so an effect's speed cannot depend on how many zones use it.
+    assert runtime.breathe_phase == 1
+    assert runtime.colorful_phase == 1
 
 
 # ── BREATHING — pulse cycle ────────────────────────────────────────
@@ -81,15 +85,15 @@ def test_breathing_advances_timer_each_tick() -> None:
     settings = _settings(mode=LEDMode.BREATHING, color=(255, 0, 0))
 
     engine.tick(settings, runtime, {}, led_count=5)
-    assert runtime.rgb_timer == 1
+    assert runtime.breathe_phase == 1
     engine.tick(settings, runtime, {}, led_count=5)
-    assert runtime.rgb_timer == 2
+    assert runtime.breathe_phase == 2
 
 
 def test_breathing_pulses_toward_full_then_back() -> None:
     """At timer=0 brightness should be at the minimum floor (20% of color)."""
     engine = LEDEffectEngine()
-    runtime = LedRuntimeState(rgb_timer=0)
+    runtime = LedRuntimeState(breathe_phase=0)
     settings = _settings(mode=LEDMode.BREATHING, color=(255, 0, 0))
 
     colors = engine.tick(settings, runtime, {}, led_count=1)
@@ -99,11 +103,11 @@ def test_breathing_pulses_toward_full_then_back() -> None:
 def test_breathing_period_wraps_to_zero() -> None:
     """After period-1 ticks, timer wraps back to 0."""
     engine = LEDEffectEngine()
-    runtime = LedRuntimeState(rgb_timer=65)  # period=66, so 65→ next is 0
+    runtime = LedRuntimeState(breathe_phase=65)  # period=66, so 65→ next is 0
     settings = _settings(mode=LEDMode.BREATHING, color=(0, 255, 0))
 
     engine.tick(settings, runtime, {}, led_count=1)
-    assert runtime.rgb_timer == 0
+    assert runtime.breathe_phase == 0
 
 
 # ── RAINBOW — 768-entry table shift ─────────────────────────────────
@@ -111,7 +115,7 @@ def test_breathing_period_wraps_to_zero() -> None:
 
 def test_rainbow_uses_table_with_per_segment_offset() -> None:
     engine = LEDEffectEngine()
-    runtime = LedRuntimeState(rgb_timer=0)
+    runtime = LedRuntimeState(rainbow_phase=0)
     settings = _settings(mode=LEDMode.RAINBOW)
     table = ColorEngine.get_table()
 
@@ -124,13 +128,13 @@ def test_rainbow_uses_table_with_per_segment_offset() -> None:
 def test_rainbow_advances_timer_by_step() -> None:
     """RAINBOW uses a 4-step advance to keep visible motion at low LED counts."""
     engine = LEDEffectEngine()
-    runtime = LedRuntimeState(rgb_timer=0)
+    runtime = LedRuntimeState(rainbow_phase=0)
     settings = _settings(mode=LEDMode.RAINBOW)
 
     engine.tick(settings, runtime, {}, led_count=10)
-    assert runtime.rgb_timer == 4
+    assert runtime.rainbow_phase == 4
     engine.tick(settings, runtime, {}, led_count=10)
-    assert runtime.rgb_timer == 8
+    assert runtime.rainbow_phase == 8
 
 
 # ── COLORFUL — 6-phase cycle ────────────────────────────────────────
@@ -142,16 +146,16 @@ def test_colorful_advances_timer_each_tick() -> None:
     settings = _settings(mode=LEDMode.COLORFUL)
 
     engine.tick(settings, runtime, {}, led_count=5)
-    assert runtime.rgb_timer == 1
+    assert runtime.colorful_phase == 1
 
 
 def test_colorful_period_wraps_to_zero() -> None:
     engine = LEDEffectEngine()
-    runtime = LedRuntimeState(rgb_timer=167)   # period=168
+    runtime = LedRuntimeState(colorful_phase=167)   # period=168
     settings = _settings(mode=LEDMode.COLORFUL)
 
     engine.tick(settings, runtime, {}, led_count=4)
-    assert runtime.rgb_timer == 0
+    assert runtime.colorful_phase == 0
 
 
 # ── TEMP_LINKED ─────────────────────────────────────────────────────
@@ -462,3 +466,123 @@ def test_decoration_styles_cohere_digits_keep_strip_spatial() -> None:
     fixed2 = eng.cohere_digit_groups(flat2, d10.digit_groups)
     assert len({fixed2[i] for i in d10.digit_groups[0]}) == 1
     assert len({fixed2[i] for i in d10.DECORATION}) > 1
+
+
+# ── Multi-zone phase independence ───────────────────────────────────
+#
+# The C# advances one counter per EFFECT, once per tick (`rgbTimer`,
+# `rgbTimer1`, `rgbTimer2`), because a style-2/7 device has four independent
+# per-zone modes (`myLedMode1..4`) all reading the same precomputed planes.
+# We used to advance ONE shared counter once per animated ZONE, which made
+# animation speed depend on the zone count.  11 of our 13 styles are
+# multi-zone.
+
+_ZONE_MAP = ((0, 1), (2, 3), (4, 5), (6, 7))
+
+
+def _four_zones(*modes: LEDMode) -> LedDeviceSettings:
+    return _settings(zones=[
+        LedZoneSettings(mode=m, color=(255, 0, 0), brightness=100, on=True)
+        for m in modes
+    ])
+
+
+def test_phases_advance_once_per_frame_not_once_per_zone() -> None:
+    """The defect, stated as a test.
+
+    Four animated zones must advance each phase ONCE per frame.  Advancing per
+    zone made the animation run 4x too fast on every 4-zone style.
+
+    MUTATION CHECK: move ``advance_phases`` back inside ``_tick_mode`` (or call
+    it in the zone loop) and breathe_phase reads 40 instead of 10.
+    """
+    engine = LEDEffectEngine()
+    runtime = LedRuntimeState()
+    settings = _four_zones(*[LEDMode.BREATHING] * 4)
+
+    for _ in range(10):
+        engine.tick_multi_zone(
+            settings, runtime, {}, zone_map=_ZONE_MAP,
+            metric_sources=None, led_count=8)
+
+    assert runtime.breathe_phase == 10, (
+        "four animated zones advanced the phase more than once per frame — "
+        "the animation runs as many times too fast as there are zones"
+    )
+    assert runtime.rainbow_phase == 10 * 4      # _RAINBOW_STEP per frame
+    assert runtime.colorful_phase == 10
+
+
+def test_zones_sharing_a_mode_render_in_phase() -> None:
+    """Two zones with the same mode and colour must look identical.
+
+    With one shared counter each zone read a value one step past the previous,
+    so zones that should pulse together drifted apart by a step per zone.
+
+    MUTATION CHECK: advance inside the zone loop and these differ.
+    """
+    engine = LEDEffectEngine()
+    runtime = LedRuntimeState(breathe_phase=7)
+    settings = _four_zones(*[LEDMode.BREATHING] * 4)
+
+    colors = engine.tick_multi_zone(
+        settings, runtime, {}, zone_map=_ZONE_MAP,
+        metric_sources=None, led_count=8)
+
+    assert colors[0] == colors[2] == colors[4] == colors[6]
+
+
+def test_a_breathing_zone_cannot_corrupt_a_rainbow_zone() -> None:
+    """Different modes must not share a phase.
+
+    One counter carried three incompatible moduli: a BREATHING zone wrote
+    ``% 66`` and a RAINBOW zone read that back as a ``% 768`` table index, so a
+    4-zone device in mixed modes produced phase garbage.
+
+    Deliberately runs THREE frames.  One frame cannot see this: under the old
+    code the rainbow zone rendered correctly on frame 1 and only read the
+    breathing zone's clobbered value on frame 2.  A single-frame version of
+    this test passed against the very defect it was written to catch.
+
+    MUTATION CHECK: restore the per-zone advance and this fails.
+    """
+    engine = LEDEffectEngine()
+    zone_map = ((0, 1), (2, 3))
+
+    alone = LedRuntimeState(rainbow_phase=100)
+    mixed = LedRuntimeState(rainbow_phase=100)
+    only_rainbow = with_breather = None
+    for _ in range(3):
+        only_rainbow = engine.tick_multi_zone(
+            _four_zones(LEDMode.RAINBOW, LEDMode.STATIC), alone, {},
+            zone_map=zone_map, metric_sources=None, led_count=4)
+        with_breather = engine.tick_multi_zone(
+            _four_zones(LEDMode.RAINBOW, LEDMode.BREATHING), mixed, {},
+            zone_map=zone_map, metric_sources=None, led_count=4)
+
+    assert alone.rainbow_phase == mixed.rainbow_phase
+    assert only_rainbow[0] == with_breather[0], (
+        "a BREATHING zone changed what the RAINBOW zone rendered — "
+        "they are sharing a phase"
+    )
+
+
+def test_an_idle_effect_still_advances() -> None:
+    """A plane advances whether or not any zone is showing it.
+
+    This is the C# shape (`MyTimer_Event` computes all six planes every tick
+    regardless of the selected mode).  Without it, switching a zone to RAINBOW
+    would resume from wherever the last RAINBOW zone left off, so an effect's
+    speed would depend on how long something else had been selected.
+    """
+    engine = LEDEffectEngine()
+    runtime = LedRuntimeState()
+    settings = _four_zones(*[LEDMode.STATIC] * 4)
+
+    for _ in range(5):
+        engine.tick_multi_zone(
+            settings, runtime, {}, zone_map=_ZONE_MAP,
+            metric_sources=None, led_count=8)
+
+    assert runtime.rainbow_phase == 5 * 4
+    assert runtime.breathe_phase == 5

@@ -452,7 +452,9 @@ class SetLedMode(Command[LedColorsResult]):
             app.settings.set_led_mode(self.key, self.mode)
         # Phase counters reset on mode change so animation restarts cleanly
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
-        runtime.rgb_timer = 0
+        runtime.breathe_phase = 0
+        runtime.colorful_phase = 0
+        runtime.rainbow_phase = 0
         runtime.test_timer = 0
         _publish_led_settings_changed(app, self.key)
         return LedColorsResult(

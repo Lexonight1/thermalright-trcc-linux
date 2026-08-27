@@ -115,7 +115,23 @@ class LedRuntimeState:
     Lives on the App as ``app.led_runtime[key]`` so the effects engine
     can advance its phase between ``RenderLed`` dispatches.
     """
-    rgb_timer: int = 0           # shared by BREATHING / COLORFUL / RAINBOW
+    # One phase per animated effect, NOT one shared counter.
+    #
+    # The C# keeps three (`rgbTimer` strip, `rgbTimer1` ring breathe,
+    # `rgbTimer2` ring rainbow) and advances each ONCE per tick in
+    # `MyTimer_Event` (FormLED.cs:4136), because a style-2/7 device has FOUR
+    # independent per-zone modes (`myLedMode1..4`, :889-895) all reading the
+    # same precomputed planes.  One counter shared across zones cannot express
+    # that: with N animated zones it advanced N times per tick (animation ran
+    # N-times fast), zones sharing a mode came out one step apart, and zones in
+    # DIFFERENT modes corrupted each other outright -- a `% 66` breathe write
+    # read back as a `% 768` rainbow phase.  11 of our 13 styles are
+    # multi-zone, so that was not a corner case.
+    #
+    # Advancing is `LEDEffectEngine.advance_phases`, which owns the periods.
+    breathe_phase: int = 0       # 0 .. _BREATHING_PERIOD
+    colorful_phase: int = 0      # 0 .. _COLORFUL_PERIOD
+    rainbow_phase: int = 0       # 0 .. len(RGBTable), stepped by _RAINBOW_STEP
     test_timer: int = 0          # ticks until next test-color rotation
     test_color: int = 0          # 0=white 1=red 2=green 3=blue
     zone_sync_ticks: int = 0     # ticks since last zone rotation

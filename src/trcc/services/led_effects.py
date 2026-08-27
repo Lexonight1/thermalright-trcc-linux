@@ -31,8 +31,10 @@ import logging
 from typing import ClassVar
 
 from ..core.led_models import LedDeviceSettings, LEDMode, LedRuntimeState
+from ..core.logs import per_frame
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def apply_brightness(
@@ -194,16 +196,18 @@ class LEDEffectEngine:
             return self._tick_test(runtime, led_count)
 
         if color_groups is not None:
-            return self._color_groups(
+            colors = self._color_groups(
                 settings.mode, settings.color, runtime, sensors,
                 color_groups, led_count,
                 settings.temp_source, settings.load_source,
             )
-
-        return self._tick_mode(
-            settings.mode, settings.color, runtime, sensors,
-            led_count, settings.temp_source, settings.load_source,
-        )
+        else:
+            colors = self._tick_mode(
+                settings.mode, settings.color, runtime, sensors,
+                led_count, settings.temp_source, settings.load_source,
+            )
+        self.advance_phases(runtime)
+        return colors
 
     # ── Multi-zone (PA120 / LF10 — styles with a zone_led_map) ────────
 
@@ -228,11 +232,15 @@ class LEDEffectEngine:
         LEDs by digit so each digit is one cohesive color — otherwise the
         spatial effects smear a rainbow across a digit's segments (#193).
 
-        Note the shared ``rgb_timer``: each animated zone's per-mode tick
-        advances it, so N animated zones step it N× per frame and each
-        reads a value one step past the previous zone — matching legacy's
-        multi-callback timer behaviour (animation runs proportionally
-        faster on a multi-zone device, not per-zone phase-isolated).
+        Every zone reads the SAME phase and none of them advances it — the
+        frame's single ``advance_phases`` at the end does.  Previously each
+        zone's per-mode tick advanced one shared counter, so N animated zones
+        stepped it N× per frame: animation ran N-times fast, zones sharing a
+        mode came out one step apart, and zones in different modes corrupted
+        each other (a ``% 66`` breathe write read back as a ``% 768`` rainbow
+        phase).  The C# keeps one counter per effect and advances each once per
+        tick (FormLED.cs:4136), because a style-2/7 device has four independent
+        per-zone modes reading the same planes.
         """
         # Test mode overrides the whole frame, page AND zone styles alike —
         # the C# ``SendHidVal`` cycles the reference colours across all LEDs
@@ -289,6 +297,8 @@ class LEDEffectEngine:
             for i, idx in enumerate(led_indices):
                 if idx < led_count:
                     colors[idx] = zone_colors[i]
+        # ONE advance for the whole frame, after every zone has read its phase.
+        self.advance_phases(runtime)
         return colors
 
     @staticmethod
@@ -428,6 +438,32 @@ class LEDEffectEngine:
             runtime.test_color = (runtime.test_color + 1) % len(_TEST_COLORS)
         return [_TEST_COLORS[runtime.test_color]] * led_count
 
+    # ── Phase advance ────────────────────────────────────────────────
+
+    @staticmethod
+    def advance_phases(runtime: LedRuntimeState) -> None:
+        """Advance every animated effect's phase by ONE tick.
+
+        Called once per rendered frame, AFTER the frame's colours are computed
+        — so a frame renders at the phase it started with, exactly as the
+        read-then-increment inside each effect used to do, and frame 0 still
+        renders at phase 0.
+
+        Every phase advances whether or not anything is currently showing that
+        effect, which is the C# shape: `MyTimer_Event` (FormLED.cs:4136)
+        computes all six planes for a style-2/7 device on every tick regardless
+        of which of `myLedMode1..4` each zone selected.  The alternative —
+        advancing only the modes in use — makes an effect's speed depend on how
+        many zones happen to be showing it.
+        """
+        table_len = len(ColorEngine.get_table())
+        runtime.breathe_phase = (runtime.breathe_phase + 1) % _BREATHING_PERIOD
+        runtime.colorful_phase = (runtime.colorful_phase + 1) % _COLORFUL_PERIOD
+        runtime.rainbow_phase = (runtime.rainbow_phase + _RAINBOW_STEP) % table_len
+        frame_log.debug("advance_phases: breathe=%d colorful=%d rainbow=%d",
+                        runtime.breathe_phase, runtime.colorful_phase,
+                        runtime.rainbow_phase)
+
     # ── Effect algorithms ────────────────────────────────────────────
 
     @staticmethod
@@ -437,7 +473,7 @@ class LEDEffectEngine:
         led_count: int,
     ) -> list[tuple[int, int, int]]:
         """Pulse brightness through a ``_BREATHING_PERIOD``-tick cycle."""
-        timer = runtime.rgb_timer
+        timer = runtime.breathe_phase
         half = _BREATHING_PERIOD // 2
         factor = timer / half if timer < half else (_BREATHING_PERIOD - 1 - timer) / half
         r, g, b = color
@@ -447,7 +483,6 @@ class LEDEffectEngine:
             int(g * factor * 0.8 + g * 0.2),
             int(b * factor * 0.8 + b * 0.2),
         )
-        runtime.rgb_timer = (timer + 1) % _BREATHING_PERIOD
         return [anim] * led_count
 
     @staticmethod
@@ -458,7 +493,7 @@ class LEDEffectEngine:
     ) -> list[tuple[int, int, int]]:
         """6-phase gradient cycle.  ``step`` overrides the per-element hue
         offset (groups pass a small fixed step; a strip wraps the spectrum)."""
-        timer = runtime.rgb_timer
+        timer = runtime.colorful_phase
         seg_offset = step if step is not None else _COLORFUL_PERIOD // max(led_count, 1)
         colors: list[tuple[int, int, int]] = []
         for i in range(led_count):
@@ -479,7 +514,6 @@ class LEDEffectEngine:
                     colors.append((t, 0, 255))
                 case _:
                     colors.append((255, 0, 255 - t))
-        runtime.rgb_timer = (timer + 1) % _COLORFUL_PERIOD
         return colors
 
     @staticmethod
@@ -492,11 +526,10 @@ class LEDEffectEngine:
         offset (groups pass a small fixed step; a strip wraps the spectrum)."""
         table = ColorEngine.get_table()
         table_len = len(table)
-        timer = runtime.rgb_timer
+        timer = runtime.rainbow_phase
         stride = step if step is not None else table_len // max(led_count, 1)
         colors = [table[(timer + i * stride) % table_len]
                   for i in range(led_count)]
-        runtime.rgb_timer = (timer + _RAINBOW_STEP) % table_len
         return colors
 
     @staticmethod
