@@ -347,9 +347,27 @@ seconds comes from `textBoxTimer.Text`:
   integer parsed out of the `textBoxTimer` text box (the user's rotation period in seconds). The
   parse is unguarded, so a non-numeric text box throws here.
 
-The `6 *` implies the master tick is **6 Hz (~166 ms)** — corroborated by `GetSystemInfo`
-throttling sensor refresh to every 6th tick (an early return when `InfoCount` is below **6** (`:3044`) → ~1 Hz sensors).
-(The QTimer interval itself is EXTERNAL, owned by `Form1`.)
+**The master tick is 150 ms (6.67 Hz), MEASURED — not the ~166 ms this section
+used to infer from the `6 *`.**  The interval is external to `FormLED`, and the
+chain that sets it is entirely in `Form1`:
+
+    Form1.cs:502   m_timer.Interval = 15          the only .Interval in the tree
+    Form1.cs:500   m_timer.Tick += Timer_event
+    Form1.cs:1184  Timer_event -> Timer_Form_event()
+    Form1.cs:905   Timer_Form_event gates on timerCount >= 10, then resets it
+    Form1.cs:913   ... and only then calls formLED.MyTimer_Event()
+
+10 x 15 ms = **150 ms**.  `Form1.cs:502` is the ONLY `.Interval` assignment in
+all 62 files, so there is no second timer this could be read from.
+
+The `6 *` is therefore not evidence of the tick rate — it is evidence the vendor
+*believed* the tick was 6 Hz.  At the real 6.67 Hz the rotation gate elapses in
+`0.9 x seconds`, so the C#'s own rotation period runs ~10%% short of the number
+the user types.  Reproduce that, don't correct it.
+
+The sensor conclusion survives the correction: `GetSystemInfo` throttling to
+every 6th tick (an early return when `InfoCount` is below **6** (`:3044`)) is
+6 x 150 ms = 900 ms, still ~1 Hz.
 
 ### Settings persistence
 `FormLEDInit` reads and `SetMyNameFile()` (1941) writes `Data\Digital\Setting<name>`, a binary
@@ -388,9 +406,13 @@ bools, then per-channel modes/colors (`myLedMode1..4`, `rgb*_1..4`, `myOnOff1..4
    style 2; `NO==129` additionally sets `nowLedStyleSub=1`. Port the table, don't assume identity.
 8. **Breathe never reaches black** on strips (80/20 mix with static color, 7734) and floors at
    **51** on rings (`ledHuxi`, 7993/8002). QCJB/CHMS *do* reach full saturation.
-9. **`GetSystemInfo` throttles to 1 in 6 ticks** (3044); rotation is `6 * seconds` (3425). The
-   `6` is load-bearing timing — the master tick is ~6 Hz. If the port's tick isn't 6 Hz, breathe
-   period (66 ticks), rainbow speed (+4/tick), and rotation seconds all skew.
+9. **The master tick is 150 ms**, measured through `Form1` — see
+   [Rotation timing](#rotation-轮播-lunbo-timing) for the five-line chain.  It is
+   load-bearing: breathe period (66 ticks), rainbow speed (+4/tick) and rotation
+   seconds all skew if a port picks its own rate.  **Our tree is correct here**
+   (`services/led_animation_loop.py`, `_TICK_INTERVAL_S = 0.15`) — this caveat
+   previously said ~6 Hz / ~166 ms, inferred from the `6 *` gate, and "fixing"
+   the port to match that would have introduced an 11%% error into working code.
 10. **Style 8 (CZ1) sends a second `byte[48]` buffer** in the same call (secondary segment/icon
     plane) — not a single flat payload like the others.
 11. **Temp unit detection is string-sniffed** from the sensor label in `GetSystemInfoVal`
