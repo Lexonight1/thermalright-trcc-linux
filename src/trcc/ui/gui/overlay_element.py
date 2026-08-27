@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from ...core.models import (
     CATEGORY_NAMES,
-    HARDWARE_METRICS,
+    METRICS,
     OVERLAY_MODE_IMAGES,
     OVERLAY_SELECT_IMAGE,
     SUB_METRICS,
@@ -63,7 +63,7 @@ class OverlayElementWidget(QWidget):
     clicked = Signal(int)           # index
     double_clicked = Signal(int)    # index (delete)
 
-    # Single source of truth: HARDWARE_METRICS in core/models.py
+    # Single source of truth: METRICS in core/models.py
 
     def __init__(self, index, parent=None):
         super().__init__(parent)
@@ -113,14 +113,13 @@ class OverlayElementWidget(QWidget):
         log.debug("update_metrics")
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
-        metric_key = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))
-        if not metric_key:
+        pair = (self.config.main_count, self.config.sub_count)
+        if pair not in METRICS:
+            log.debug("update_metrics: %s is not a known metric — skip", pair)
             return
-        raw = getattr(metrics, metric_key, None)
-        if raw is None:
-            return
+        metric = METRICS[pair]
         # Separate number from unit: "52°C" → "52" + "°C".
-        formatted = format_metric(metric_key, raw)
+        formatted = format_metric(metric.field, metrics[pair])
         m = re.match(r'([\d.]+)(.*)', formatted)
         if m:
             self._live_value = m.group(1)

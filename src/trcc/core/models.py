@@ -3,12 +3,17 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # =========================================================================
 # Wire protocols and device kinds
@@ -844,40 +849,154 @@ OVERLAY_SELECT_IMAGE = "overlay_select.png"
 # Hardware metric registry (legacy DC format)
 # =========================================================================
 
-# DC file (main_count, sub_count) → next/ ``HardwareMetrics`` field name.
-# Single source of truth shared by the DC reader/writer, overlay editor
-# grid cells, and any panel that wants to surface a labelled sensor.
+
+@dataclass(frozen=True, slots=True)
+class Metric:
+    """One reading an overlay element can show — every spelling in one place.
+
+    A metric is identified three different ways in this codebase, because the
+    C# and the render path disagreed and both had to be honoured:
+
+    * the DC file stores an ``(main_count, sub_count)`` integer pair;
+    * :class:`HardwareMetrics` names its attribute ``cpu_temp``;
+    * the render path and DC writer key on ``cpu:temp``.
+
+    Those last two are NOT mechanically convertible.  Nine of the twenty-four
+    differ by no rule at all — ``cpu_percent``/``cpu:usage``,
+    ``gpu_temp``/``gpu:primary:temp``, ``mem_*``/``memory:*`` — so the obvious
+    ``field.replace("_", ":")`` is wrong on more than a third of them, and the
+    failure is silent: the element is simply dropped from the layout.  Two
+    hand-maintained tables used to carry this, each claiming in its docstring
+    to be the single source.
+
+    One object holds all of it, so a spelling cannot drift from its pair.
+    """
+
+    main: int
+    sub: int
+    field: str        #: ``HardwareMetrics`` attribute — "cpu_temp"
+    sensor_id: str    #: render / DC vocabulary — "cpu:temp"
+    fmt: str          #: default format string — "{value:.0f}°C"
+
+    @property
+    def pair(self) -> tuple[int, int]:
+        """The DC file's ``(main_count, sub_count)`` key."""
+        frame_log.debug("Metric.pair: %s", self.sensor_id)
+        return (self.main, self.sub)
+
+    def __str__(self) -> str:
+        return self.sensor_id
+
+
+class MetricCatalog(Mapping[Any, Metric]):
+    """Every metric an element can show, addressable by ANY of its spellings.
+
+    ``METRICS[(0, 1)]``, ``METRICS["cpu_temp"]`` and ``METRICS["cpu:temp"]``
+    all return the same :class:`Metric`, and ``"cpu:temp" in METRICS`` answers
+    without the caller knowing which vocabulary it holds — which is the whole
+    point, since callers receive pairs from the DC file, field names from the
+    sensor DTO and sensor ids from the render path.
+
+    Aliases exist because the DC format reuses one reading under a second
+    pair: ``(10000, 1)`` is the Fan-LCD sentinel for the cooler's own fan
+    (``UCXiTongXianShiSubTimer`` in the C#), which is ``fan:cpu`` again.
+    """
+
+    __slots__ = ("_by_field", "_by_pair", "_by_sensor", "_canonical")
+
+    def __init__(self, metrics: tuple[Metric, ...],
+                 aliases: dict[tuple[int, int], str]) -> None:
+        log.debug("MetricCatalog: %d metric(s), %d alias(es)",
+                  len(metrics), len(aliases))
+        self._canonical = metrics
+        self._by_pair: dict[tuple[int, int], Metric] = {m.pair: m for m in metrics}
+        self._by_field = {m.field: m for m in metrics}
+        self._by_sensor = {m.sensor_id: m for m in metrics}
+        for pair, sensor_id in aliases.items():
+            self._by_pair[pair] = self._by_sensor[sensor_id]
+
+    def __getitem__(self, key: Any) -> Metric:
+        """Resolve *key* — a ``(main, sub)`` pair, a field name or a sensor id."""
+        frame_log.debug("MetricCatalog[%r]", key)
+        if isinstance(key, tuple):
+            return self._by_pair[key]
+        if key in self._by_field:
+            return self._by_field[key]
+        return self._by_sensor[key]
+
+    def __iter__(self) -> Iterator[tuple[int, int]]:
+        """Iterate the canonical pairs — aliases are reachable, not listed."""
+        return iter(m.pair for m in self._canonical)
+
+    def __len__(self) -> int:
+        return len(self._canonical)
+
+    @property
+    def by_dc_pair(self) -> Mapping[tuple[int, int], Metric]:
+        """Every DC pair that resolves, ALIASES INCLUDED.
+
+        ``__iter__`` deliberately yields only the canonical pairs, so tables
+        derived by iteration keep exactly the shape they had before this
+        catalog existed.  The DC codec needs the alias rows too, and asks
+        here rather than keeping a second table of its own.
+        """
+        log.debug("by_dc_pair: %d pair(s) incl. aliases", len(self._by_pair))
+        return MappingProxyType(self._by_pair)
+
+    def __repr__(self) -> str:
+        return f"MetricCatalog({len(self._canonical)} metrics)"
+
+
+_TEMP = "{value:.0f}°C"
+_PCT = "{value:.0f}%"
+_MHZ = "{value:.0f} MHz"
+_WATT = "{value:.0f} W"
+_RPM = "{value:.0f} RPM"
+
+#: The one authority.  Every other metric table on this page is DERIVED from
+#: it below, so a name cannot drift from the pair that selects it.
+METRICS = MetricCatalog(
+    (
+        # CPU (main_count=0)
+        Metric(0, 1, "cpu_temp", "cpu:temp", _TEMP),
+        Metric(0, 2, "cpu_percent", "cpu:usage", _PCT),
+        Metric(0, 3, "cpu_freq", "cpu:freq", _MHZ),
+        Metric(0, 4, "cpu_power", "cpu:power", _WATT),
+        # GPU (main_count=1)
+        Metric(1, 1, "gpu_temp", "gpu:primary:temp", _TEMP),
+        Metric(1, 2, "gpu_usage", "gpu:primary:usage", _PCT),
+        Metric(1, 3, "gpu_clock", "gpu:primary:clock", _MHZ),
+        Metric(1, 4, "gpu_power", "gpu:primary:power", _WATT),
+        # MEM (main_count=2)
+        Metric(2, 1, "mem_percent", "memory:percent", _PCT),
+        Metric(2, 2, "mem_clock", "memory:clock", _MHZ),
+        Metric(2, 3, "mem_available", "memory:available", "{value:.0f} MB"),
+        Metric(2, 4, "mem_temp", "memory:temp", _TEMP),
+        # HDD (main_count=3)
+        Metric(3, 1, "disk_read", "disk:read", "{value:.0f} MB/s"),
+        Metric(3, 2, "disk_write", "disk:write", "{value:.0f} MB/s"),
+        Metric(3, 3, "disk_activity", "disk:activity", _PCT),
+        Metric(3, 4, "disk_temp", "disk:temp", _TEMP),
+        # NET (main_count=4)
+        Metric(4, 1, "net_down", "net:down", "{value:.0f} KB/s"),
+        Metric(4, 2, "net_up", "net:up", "{value:.0f} KB/s"),
+        Metric(4, 3, "net_total_down", "net:total_down", "{value:.0f} MB"),
+        Metric(4, 4, "net_total_up", "net:total_up", "{value:.0f} MB"),
+        # FAN (main_count=5)
+        Metric(5, 1, "fan_cpu", "fan:cpu", _RPM),
+        Metric(5, 2, "fan_gpu", "fan:gpu", _RPM),
+        Metric(5, 3, "fan_ssd", "fan:ssd", _RPM),
+        Metric(5, 4, "fan_sys2", "fan:sys2", _RPM),
+    ),
+    # Fan-LCD sentinel: the C# maps main_count 10000 to the cooler's own fan
+    # RPM (UCXiTongXianShiSubTimer: label1="FAN", label2=RPM, label3="RPM").
+    aliases={(10000, 1): "fan:cpu"},
+)
+
+# DC file (main_count, sub_count) → ``HardwareMetrics`` field name.
+# DERIVED — do not hand-edit; add a row to METRICS above.
 HARDWARE_METRICS: dict[tuple[int, int], str] = {
-    # CPU (main_count=0)
-    (0, 1): "cpu_temp",
-    (0, 2): "cpu_percent",
-    (0, 3): "cpu_freq",
-    (0, 4): "cpu_power",
-    # GPU (main_count=1)
-    (1, 1): "gpu_temp",
-    (1, 2): "gpu_usage",
-    (1, 3): "gpu_clock",
-    (1, 4): "gpu_power",
-    # MEM (main_count=2)
-    (2, 1): "mem_percent",
-    (2, 2): "mem_clock",
-    (2, 3): "mem_available",
-    (2, 4): "mem_temp",
-    # HDD (main_count=3)
-    (3, 1): "disk_read",
-    (3, 2): "disk_write",
-    (3, 3): "disk_activity",
-    (3, 4): "disk_temp",
-    # NET (main_count=4)
-    (4, 1): "net_down",
-    (4, 2): "net_up",
-    (4, 3): "net_total_down",
-    (4, 4): "net_total_up",
-    # FAN (main_count=5)
-    (5, 1): "fan_cpu",
-    (5, 2): "fan_gpu",
-    (5, 3): "fan_ssd",
-    (5, 4): "fan_sys2",
+    pair: METRICS[pair].field for pair in METRICS
 }
 
 METRIC_TO_IDS: dict[str, tuple[int, int]] = {
@@ -1292,6 +1411,25 @@ class HardwareMetrics:
     fan_ssd: float = 0.0
     fan_sys2: float = 0.0
     readings: dict[str, float] = field(default_factory=dict)
+
+    def __getitem__(self, key: Any) -> float:
+        """The reading for *key* — a DC pair, a field name, or a sensor id.
+
+        Callers receive a metric's identity in whichever vocabulary their
+        layer speaks: the DC parser holds ``(0, 1)``, the render path holds
+        ``"cpu:temp"``, a panel holds ``"cpu_temp"``.  Resolving through
+        :data:`METRICS` means none of them has to know which one it has, and
+        none of them repeats the two-step ``table lookup -> getattr(name)``
+        dance that returned ``None`` for a typo and drew nothing.
+
+        Raises ``KeyError`` for an unknown metric, so a mistake is loud.
+        """
+        frame_log.debug("HardwareMetrics[%r]", key)
+        return float(getattr(self, METRICS[key].field))
+
+    def __contains__(self, key: Any) -> bool:
+        """Whether *key* names a metric this DTO can answer."""
+        return key in METRICS
     # Plural sources, faithful per-unit (single-element today; the scalar
     # fields above are their collapse).  See class docstring.
     cpus: list[CpuMetrics] = field(default_factory=list)

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.errors import ThemeError
-from ..core.models import DATE_FORMATS
+from ..core.models import DATE_FORMATS, METRICS
 
 log = logging.getLogger(__name__)
 
@@ -68,34 +68,14 @@ _SLOT_MAP: list[tuple[str, str | None, str, str]] = [
     ("gpu_usage_label",   None,               "GPU",   ""),
 ]
 
+# DERIVED from ``core.models.METRICS`` — the one authority for what a DC
+# ``(main_count, sub_count)`` pair means.  This used to be a second hand-kept
+# table whose docstring claimed to be "the single source"; nine of its
+# twenty-four ids differed from the other table's by no mechanical rule, and
+# picking the wrong vocabulary silently DROPPED the overlay element.
 _HW_TO_SENSOR: dict[tuple[int, int], tuple[str, str]] = {
-    (0, 1): ("cpu:temp",            "{value:.0f}°C"),
-    (0, 2): ("cpu:usage",           "{value:.0f}%"),
-    (0, 3): ("cpu:freq",            "{value:.0f} MHz"),
-    (0, 4): ("cpu:power",           "{value:.0f} W"),
-    (1, 1): ("gpu:primary:temp",    "{value:.0f}°C"),
-    (1, 2): ("gpu:primary:usage",   "{value:.0f}%"),
-    (1, 3): ("gpu:primary:clock",   "{value:.0f} MHz"),
-    (1, 4): ("gpu:primary:power",   "{value:.0f} W"),
-    (2, 1): ("memory:percent",      "{value:.0f}%"),
-    (2, 2): ("memory:clock",        "{value:.0f} MHz"),
-    (2, 3): ("memory:available",    "{value:.0f} MB"),
-    (2, 4): ("memory:temp",         "{value:.0f}°C"),
-    (3, 1): ("disk:read",           "{value:.0f} MB/s"),
-    (3, 2): ("disk:write",          "{value:.0f} MB/s"),
-    (3, 3): ("disk:activity",       "{value:.0f}%"),
-    (3, 4): ("disk:temp",           "{value:.0f}°C"),
-    (4, 1): ("net:down",            "{value:.0f} KB/s"),
-    (4, 2): ("net:up",              "{value:.0f} KB/s"),
-    (4, 3): ("net:total_down",      "{value:.0f} MB"),
-    (4, 4): ("net:total_up",        "{value:.0f} MB"),
-    (5, 1): ("fan:cpu",             "{value:.0f} RPM"),
-    (5, 2): ("fan:gpu",             "{value:.0f} RPM"),
-    (5, 3): ("fan:ssd",             "{value:.0f} RPM"),
-    (5, 4): ("fan:sys2",            "{value:.0f} RPM"),
-    # Fan-LCD "FAN" sentinel: the C# maps main_count 10000 to the cooler's own
-    # fan RPM (UCXiTongXianShiSubTimer: label1="FAN", label2=RPM, label3="RPM").
-    (10000, 1): ("fan:cpu",         "{value:.0f} RPM"),
+    pair: (metric.sensor_id, metric.fmt)
+    for pair, metric in METRICS.by_dc_pair.items()
 }
 
 
