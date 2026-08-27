@@ -114,24 +114,38 @@ def _perf_instructions(cmd: list[str], env_src: str | None) -> tuple[int, int, i
 
 
 def _slope(src: str | None, lo: int, hi: int, video: Path | None,
-           reps: int, label: str) -> float:
+           reps: int, label: str, gui: bool = False) -> float:
     """Median instructions/frame across *reps* differential pairs."""
     inner = [sys.executable, str(Path(__file__).resolve()), "--run", "0"]
     slopes: list[float] = []
     for rep in range(1, reps + 1):
-        pair: list[int] = []
+        pair: list[tuple[int, int]] = []
         for n in (lo, hi):
             cmd = list(inner)
             cmd[cmd.index("--run") + 1] = str(n)
             if video is not None:
                 cmd += ["--video", str(video)]
+            if gui:
+                cmd += ["--gui"]
             instr, requested, sent = _perf_instructions(cmd, src)
-            if requested != sent:
+            # Divide by OBSERVED work, never requested.  The GUI arm cannot stop
+            # mid-tick -- the event loop processes a build or two after quit() --
+            # so `sent` overshoots by a little and no tolerance would be exactly
+            # right.  Using the count the run actually did is not a workaround;
+            # it is the more correct denominator, and it also means a build that
+            # quietly renders FEWER frames can no longer look cheap.
+            #
+            # The guard stays for gross failures, which is what it caught before:
+            # DeviceSender coalescing let 1 tick in 30 reach the wire.
+            if sent == 0 or not (0.5 * n <= sent <= 1.5 * n):
                 raise SystemExit(
-                    f"{label}: WORK PARITY BROKEN at N={n} "
+                    f"{label}: WORK BROKEN at N={n} "
                     f"(requested={requested} sent={sent}) — measurement void")
-            pair.append(instr)
-        per_frame = (pair[1] - pair[0]) / (hi - lo)
+            pair.append((instr, sent))
+        (i_lo, n_lo), (i_hi, n_hi) = pair
+        if n_hi == n_lo:
+            raise SystemExit(f"{label}: identical frame counts — no span to measure")
+        per_frame = (i_hi - i_lo) / (n_hi - n_lo)
         slopes.append(per_frame)
         print(f"  {label} rep{rep}: {per_frame / 1e6:7.3f} M/frame")
     return statistics.median(slopes)
@@ -173,6 +187,127 @@ def _selftest() -> None:
     skew = abs(inc1 - inc2) / max(inc1, inc2) * 100
     verdict = "OK" if skew < 10 else "TOO NOISY — do not trust app numbers"
     print(f"  increments differ by {skew:.1f}%  → {verdict}")
+
+
+def _host_platform():
+    """The host Platform, built WITHOUT an App or a renderer.
+
+    The GUI arm cannot go through ``trcc()``: that builds a ``QtRenderer``,
+    which creates a ``QGuiApplication``, and ``run()`` then dies with
+    "destroy the QGuiApplication singleton before creating a new QApplication".
+
+    The accessor moved in the two-registry refactor -- ``PlatformFactory.
+    current()`` in v9.9.2, ``current_platform()`` at HEAD -- so try both rather
+    than import one by path, which would measure the import rather than the
+    drift.
+    """
+    import importlib
+
+    system = importlib.import_module("trcc.adapters.system")
+    # Resolved by NAME, not by import statement: the v9.9.2 symbol does not
+    # exist at HEAD, so a static `from ... import PlatformFactory` is a type
+    # error on the very tree this tool ships in.
+    modern = getattr(system, "current_platform", None)
+    if modern is not None:
+        return modern()
+    legacy = getattr(system, "PlatformFactory", None)
+    if legacy is None:
+        raise SystemExit("no platform accessor found — unknown tree layout")
+    return legacy.current()
+
+
+def _logging_kwargs(configure_logging) -> dict:
+    """``per_frame=`` landed in 19ab3ad0 and is absent in v9.9.2.
+
+    Pass it only where supported -- its absence IS the old behaviour under
+    measurement, so this must not be "fixed" by forcing the flag on.
+    """
+    import inspect
+
+    if "per_frame" in inspect.signature(configure_logging).parameters:
+        return {"per_frame": False}
+    return {}
+
+
+def _run_gui_arm(n: int) -> None:
+    """Inner mode, GUI: compose *n* frames inside the REAL shipping GUI.
+
+    The headless arm measures the render path.  This one adds what that path
+    never touches -- live widgets, the preview render, the sensor loop, the Qt
+    event loop -- which is the only place a regression can hide once the render
+    path measures clean.
+
+    ``run(platform, ...)`` is the ONE shared GUI composition root and its
+    signature is byte-identical in v9.9.2 and HEAD, so both arms enter through
+    the same door.  Production seams are off: no single-instance lock (it would
+    collide with a real install), no IPC socket, and ``force_exit=False`` so
+    teardown is a normal return and therefore identical at both sizes.
+
+    **Renders are DRIVEN, not awaited.**  The first version simply let the GUI
+    tick and counted -- which made the run's duration depend on whatever state
+    happened to be persisted: with a video background it composed at ~12 fps
+    (120 frames in 10 s), and with none it fell back to the 2 s metrics tick,
+    where 900 frames is half an hour.  A benchmark whose length depends on the
+    user's saved settings is not a benchmark.  A zero-interval timer drives
+    RenderAndSend instead, so the frame count is the independent variable in
+    both arms while every GUI observer, preview update and repaint still runs.
+    """
+    import logging
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+
+    from trcc.adapters.infra.logging import configure_logging
+    from trcc.core.commands import RenderAndSend
+    from trcc.services.display import DisplayService
+    from trcc.ui.gui import run
+
+    platform = _host_platform()
+    kwargs = _logging_kwargs(configure_logging)
+    configure_logging(platform.paths().log_file(), level=logging.DEBUG,
+                      stderr_level=logging.WARNING, **kwargs)
+
+    counter = {"frames": 0}
+    real_build = DisplayService.build_frame
+
+    def counting_build(self, *a, **kw):
+        counter["frames"] += 1
+        return real_build(self, *a, **kw)
+
+    DisplayService.build_frame = counting_build   # type: ignore[method-assign]
+
+    state: dict = {}
+
+    def on_ready(window) -> None:
+        app = getattr(window, "_app", None)
+        if app is None:
+            raise SystemExit("no App on the window — unknown tree layout")
+        keys = list(getattr(app, "devices", {}))
+        if not keys:
+            raise SystemExit("GUI came up with no attached device")
+        key = keys[0]
+
+        def pump() -> None:
+            if counter["frames"] >= n:
+                timer.stop()
+                qapp = QApplication.instance()
+                if qapp is not None:
+                    qapp.quit()
+                return
+            app.dispatch(RenderAndSend(key=key))
+
+        timer = QTimer()
+        timer.setInterval(0)
+        timer.timeout.connect(pump)
+        timer.start()
+        state["timer"] = timer          # keep it alive past this scope
+
+    run(platform, single_instance=False, ipc=False, force_exit=False,
+        on_ready=on_ready)
+    print(f"RESULT requested={n} sent={counter['frames']}", file=sys.stderr)
 
 
 def _run_arm(n: int, video: Path | None) -> None:
@@ -273,6 +408,8 @@ def main() -> None:
     ap.add_argument("--lo", type=int, default=1000, help="small frame count")
     ap.add_argument("--hi", type=int, default=3000, help="large frame count")
     ap.add_argument("--reps", type=int, default=3, help="replicates per arm")
+    ap.add_argument("--gui", action="store_true",
+                    help="measure the REAL GUI shell, not just the render path")
     ap.add_argument("--selftest", action="store_true",
                     help="validate perf counting against a known answer, then exit")
     args = ap.parse_args()
@@ -281,19 +418,24 @@ def main() -> None:
         _selftest()
         return
     if args.run is not None:
-        _run_arm(args.run, args.video)
+        if args.gui:
+            _run_gui_arm(args.run)
+        else:
+            _run_arm(args.run, args.video)
         return
 
     workload = f"advancing video ({args.video.name})" if args.video else "static theme"
+    workload += " · REAL GUI" if args.gui else " · headless"
     print(f"workload: {workload}   span: {args.lo} → {args.hi} frames   "
           f"reps: {args.reps}")
 
-    here = _slope(None, args.lo, args.hi, args.video, args.reps, "this tree")
+    here = _slope(None, args.lo, args.hi, args.video, args.reps, "this tree",
+                  args.gui)
     print(f"\nthis tree : {here / 1e6:7.3f} M instructions/frame (median)")
 
     if args.against:
         there = _slope(args.against, args.lo, args.hi, args.video, args.reps,
-                       "--against")
+                       "--against", args.gui)
         print(f"--against : {there / 1e6:7.3f} M instructions/frame (median)")
         faster = "cheaper" if here < there else "MORE EXPENSIVE"
         print(f"\nthis tree is {max(here, there) / min(here, there):.1f}x "
