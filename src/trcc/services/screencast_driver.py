@@ -29,6 +29,7 @@ import threading
 from typing import TYPE_CHECKING
 
 from ..core.logs import per_frame
+from ..core.models import SCREENCAST_TICK_S
 from ..core.ports import SendTask
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -37,9 +38,9 @@ if TYPE_CHECKING:                                    # pragma: no cover
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-#: Matches the GUI's own screencast timer (``ScreencastHandler``, 150 ms), so a
-#: headless cast moves at the same rate as one driven from the window.
-TICK_S = 0.15
+#: Re-exported from core, which owns it — a Command's default argument cannot
+#: reach a function-local import, and both need the same number.
+TICK_S = SCREENCAST_TICK_S
 
 #: Prefix that keeps this out of the device's own scheduler slot.
 KEY_PREFIX = "screencast:"

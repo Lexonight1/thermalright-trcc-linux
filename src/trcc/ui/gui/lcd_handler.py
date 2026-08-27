@@ -41,6 +41,7 @@ from ...core.commands import (
     RestoreDeviceState,
     RestoreLastTheme,
     SaveTheme,
+    SendScreencastFrame,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
@@ -1263,31 +1264,18 @@ class LCDHandler(BaseHandler):
         # Per-tick path; entry stays DEBUG.
         if self._pm.ui_active:
             self._w['preview'].set_image(image)
-        device = self._app.devices.get(self._device_key)
-        if device is None:
-            self.log.debug(
-                "on_screencast_frame: device %s not registered — skip send",
-                self._device_key,
-            )
-            return
-        try:
-            # The capture tick hands over a renderer SURFACE; the service
-            # speaks ``RawFrame``.  Passing the surface straight through is
-            # what made every frame die on ``.data`` — the preview updated
-            # and the panel stayed blank.  qtgui never had this because it
-            # captures through the port, which already returns a RawFrame.
-            data = self._app.display.build_screencast_frame(
-                info=device.info,
-                frame=self._app.renderer.to_raw_rgb24(image),
-            )
-        except Exception as e:
-            self.log.warning(
-                "on_screencast_frame: encode failed for %s: %s: %s",
-                self._device_key, type(e).__name__, e,
-            )
-            return
-        from ...core.commands import SendFrame
-        self._app.dispatch(SendFrame(key=self._device_key, data=data))
+        # The capture tick hands over a renderer SURFACE; the wire speaks
+        # ``RawFrame``.  Passing the surface straight through is what made
+        # every frame die on ``.data`` — the preview updated and the panel
+        # stayed blank.  The conversion is local toolkit work and stays here;
+        # everything after it (look up the device, encode for its panel, send)
+        # is one dispatch, which is also what makes it work in daemon mode.
+        result = self._app.dispatch(SendScreencastFrame(
+            key=self._device_key,
+            frame=self._app.renderer.to_raw_rgb24(image),
+        ))
+        if not result.ok:
+            self.log.debug("on_screencast_frame: %s", result.message)
 
     # ── Slideshow / Carousel ───────────────────────────────────────
 

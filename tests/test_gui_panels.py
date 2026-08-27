@@ -1136,13 +1136,13 @@ def test_screencast_panel_constructs(gui_app: App, qapp: object) -> None:
 def test_screencast_panel_start_without_region_is_a_no_op(
     gui_app: App, qapp: object,
 ) -> None:
-    """Start without a chosen region surfaces guidance, doesn't tick."""
+    """Start without a chosen region surfaces guidance, starts no cast."""
     from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._picker.set_key("0402:3922")
     panel._on_start()
-    assert panel._timer.isActive() is False
+    assert panel._casting_key is None
     assert "region" in panel._status.text().lower()
     del qapp
 
@@ -1150,13 +1150,13 @@ def test_screencast_panel_start_without_region_is_a_no_op(
 def test_screencast_panel_start_without_key_is_a_no_op(
     gui_app: App, qapp: object,
 ) -> None:
-    """Start without a chosen device surfaces guidance, doesn't tick."""
+    """Start without a chosen device surfaces guidance, starts no cast."""
     from trcc.ui.qtgui.panels.screencast_panel import ScreencastPanel
 
     panel = ScreencastPanel(gui_app, _bus(gui_app))
     panel._region = (0, 0, 200, 100)
     panel._on_start()
-    assert panel._timer.isActive() is False
+    assert panel._casting_key is None
     assert "device" in panel._status.text().lower()
     del qapp
 

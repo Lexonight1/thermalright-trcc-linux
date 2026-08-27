@@ -993,6 +993,14 @@ METRICS = MetricCatalog(
     aliases={(10000, 1): "fan:cpu"},
 )
 
+#: Seconds between screencast frames — the gui's own capture cadence, so a
+#: headless cast moves at the same rate as one driven from the window.  Lives
+#: in core because both the driver (``services.screencast_driver``) and the
+#: Command that starts it need it, and a default argument cannot reach a
+#: function-local import.
+SCREENCAST_TICK_S = 0.15
+
+
 # =========================================================================
 # Media formats — what a background file IS, and therefore how it plays
 # =========================================================================

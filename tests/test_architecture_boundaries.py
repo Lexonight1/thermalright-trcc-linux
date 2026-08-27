@@ -907,13 +907,12 @@ def test_filesystem_io_baseline_has_no_slack() -> None:
 _APP_ATTRS = frozenset({"_app", "app", "_trcc"})
 
 KNOWN_APP_REACHES: dict[str, int] = {
-    "ui/gui/lcd_handler.py": 6,
+    "ui/gui/lcd_handler.py": 4,
     "ui/gui/splash.py": 1,
     "ui/gui/trcc_app.py": 11,
     "ui/qtgui/panels/device_panel.py": 1,
     "ui/qtgui/panels/led/_base.py": 1,
     "ui/qtgui/panels/led_panel.py": 1,
-    "ui/qtgui/panels/screencast_panel.py": 2,
 }
 
 

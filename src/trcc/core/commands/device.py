@@ -40,9 +40,11 @@ from ..models import (
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
+    SCREENCAST_TICK_S,
     FitMode,
     HandshakeResult,
     OverlayElement,
+    RawFrame,
     ThemeDir,
     Wire,
     oriented_resolution,
@@ -1325,11 +1327,19 @@ class StartScreencastDriver(Command[ScreencastResult]):
     out of the window.
 
     Idempotent — the scheduler replaces a task registered under the same key.
+
+    ``interval_s`` defaults to the gui's own screencast cadence so a headless
+    cast moves at the same rate as one driven from the window.  It is a field
+    rather than a constant because a caller may already expose the rate: the
+    qtgui panel has an fps slider, and hard-coding here would have silently
+    ignored it.
     """
     key: str
+    interval_s: float = SCREENCAST_TICK_S
 
     def execute(self, app: App) -> ScreencastResult:
-        log.info("StartScreencastDriver.execute: key=%s", self.key)
+        log.info("StartScreencastDriver.execute: key=%s interval=%.3fs",
+                 self.key, self.interval_s)
         try:
             app.get(self.key)
         except DeviceNotFoundError as e:
@@ -1350,7 +1360,7 @@ class StartScreencastDriver(Command[ScreencastResult]):
 
         from ...services.screencast_driver import ScreencastDriver
 
-        app.add_task(ScreencastDriver(app, self.key))
+        app.add_task(ScreencastDriver(app, self.key, self.interval_s))
         return ScreencastResult(
             ok=True, key=self.key,
             message=f"driving screencast on {self.key}",
@@ -1374,6 +1384,64 @@ class StopScreencastDriver(Command[ScreencastResult]):
         return ScreencastResult(
             ok=True, key=self.key,
             message=f"stopped driving screencast on {self.key}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SendScreencastFrame(Command[ScreencastResult]):
+    """Encode one already-captured frame for the device and put it on the wire.
+
+    The half of a screencast tick that is not the grab.  ``CaptureScreencastFrame``
+    grabs and then delegates here, so encode-and-send exists once; a caller that
+    produced its frame some OTHER way dispatches this directly.
+
+    The gui is that caller.  Its capture tick paints an audio spectrum over the
+    frame before sending, so it cannot use the grabbing sibling — and to encode
+    it was reaching ``app.devices`` for the ``ProductInfo`` and ``app.display``
+    for the service, both AttributeErrors under ``TRCC_DAEMON=1``.
+
+    Takes a ``RawFrame`` — a plain dataclass of bytes and dimensions — rather
+    than a renderer surface, because a surface is a toolkit object that cannot
+    cross the daemon socket.  Converting to one is the caller's job and stays
+    local to whichever toolkit it drew with.
+
+    LOG_LEVEL is DEBUG: this fires at capture rate.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+
+    key: str
+    frame: RawFrame
+
+    def execute(self, app: App) -> ScreencastResult:
+        frame_log.debug("SendScreencastFrame.execute: key=%s %dx%d",
+                        self.key, self.frame.width, self.frame.height)
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            log.warning("SendScreencastFrame: device %s not found: %s",
+                        self.key, e)
+            return ScreencastResult(ok=False, key=self.key, message=str(e))
+
+        try:
+            data = app.display.build_screencast_frame(
+                info=device.info, frame=self.frame,
+            )
+        except Exception as e:
+            # A screencast outlives device churn and desktop-session churn; a
+            # failed frame costs one frame, never the session.
+            log.warning("SendScreencastFrame: encode failed for %s: %s: %s",
+                        self.key, type(e).__name__, e)
+            return ScreencastResult(
+                ok=False, key=self.key,
+                message=f"screencast encode failed: {type(e).__name__}: {e}",
+            )
+
+        app.send(self.key, data)
+        frame_log.debug("SendScreencastFrame: %s sent %d bytes",
+                        self.key, len(data))
+        return ScreencastResult(
+            ok=True, key=self.key,
+            message=f"sent {self.frame.width}x{self.frame.height} to {self.key}",
         )
 
 
@@ -1403,7 +1471,9 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
     def execute(self, app: App) -> ScreencastResult:
         frame_log.debug("CaptureScreencastFrame.execute: key=%s", self.key)
         try:
-            device = app.get(self.key)
+            # Checked here, not just in the delegate: grabbing the screen for a
+            # device that is gone is wasted work every tick.
+            app.get(self.key)
         except DeviceNotFoundError as e:
             log.warning("CaptureScreencastFrame: device %s not found: %s",
                         self.key, e)
@@ -1423,27 +1493,22 @@ class CaptureScreencastFrame(Command[ScreencastResult]):
         x, y, w, h = region[0], region[1], region[2], region[3]
         try:
             raw = app.platform.screen_capture().grab_region(x, y, w, h)
-            data = app.display.build_screencast_frame(
-                info=device.info, frame=raw,
-            )
         except Exception as e:
             # Capture depends on tools and a desktop session that can vanish
             # under us (screen locked, portal revoked, grim uninstalled).  A
             # failed frame must not kill the driver that dispatched it, so
             # this reports rather than raises — the next tick tries again.
-            log.warning(
-                "CaptureScreencastFrame: %s failed for %s: %s: %s",
-                "capture" if "grab_region" in repr(e) else "encode",
-                self.key, type(e).__name__, e,
-            )
+            log.warning("CaptureScreencastFrame: capture failed for %s: %s: %s",
+                        self.key, type(e).__name__, e)
             return ScreencastResult(
                 ok=False, key=self.key,
-                message=f"screencast frame failed: {type(e).__name__}: {e}",
+                message=f"screencast capture failed: {type(e).__name__}: {e}",
             )
 
-        app.send(self.key, data)
-        frame_log.debug("CaptureScreencastFrame: %s sent %d bytes",
-                        self.key, len(data))
+        # Encode + send live in the sibling, so there is one copy of them.
+        result = SendScreencastFrame(key=self.key, frame=raw).execute(app)
+        if not result.ok:
+            return result
         return ScreencastResult(
             ok=True, key=self.key,
             message=f"captured {w}x{h} for {self.key}",

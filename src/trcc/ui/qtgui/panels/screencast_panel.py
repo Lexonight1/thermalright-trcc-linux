@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -42,14 +42,17 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....adapters.screencast import QtScreenCapture
-from ....core.commands import SendFrame
-from ....core.registry import find_product
+from ....core.commands import (
+    StartScreencast,
+    StartScreencastDriver,
+    StopScreencast,
+    StopScreencastDriver,
+)
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
 if TYPE_CHECKING:
-    from ....core.models import ProductInfo
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -62,10 +65,11 @@ class ScreencastPanel(BasePanel):
     """Drive a captured screen region into the device on a timer."""
 
     def _setup_ui(self) -> None:
-        self._capture = QtScreenCapture()
         self._region: tuple[int, int, int, int] | None = None
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
+        #: The device currently being cast, or None.  Replaces
+        #: ``self._timer.isActive()`` now that the cadence lives in the
+        #: driver rather than in this panel.
+        self._casting_key: str | None = None
 
         # ── Device picker ─────────────────────────────────────────────
         self._picker = DevicePickerWidget(
@@ -180,11 +184,16 @@ class ScreencastPanel(BasePanel):
 
     def _on_fps_changed(self, value: int) -> None:
         log.info("_on_fps_changed: value=%s", value)
-        if self._timer.isActive():
-            self._timer.setInterval(self._tick_interval_ms(value))
+        if self._casting_key:
+            # Re-registering replaces the task under the same key, so this is
+            # how the cadence changes mid-cast.
+            self.dispatch(StartScreencastDriver(
+                key=self._casting_key, interval_s=self._fps_interval_s(),
+            ))
 
-    def _tick_interval_ms(self, fps: int) -> int:
-        return max(33, int(1000 / max(_MIN_FPS, fps)))
+    def _fps_interval_s(self) -> float:
+        """The slider's fps as the driver's tick interval, in seconds."""
+        return max(0.033, 1.0 / max(_MIN_FPS, self._fps.value()))
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -201,14 +210,23 @@ class ScreencastPanel(BasePanel):
                 "Choose a region first — click 'Choose region…' above.",
             )
             return
-        if self._product_for(key) is None:
-            self._status.setText(
-                f"No product info for {key} — that key isn't in the "
-                "registry, so we don't know the target resolution.",
-            )
+        x, y, w, h = self._region
+        started = self.dispatch(StartScreencast(key=key, x=x, y=y, w=w, h=h))
+        if not started.ok:
+            self._status.setText(started.message)
             return
-        self._timer.setInterval(self._tick_interval_ms(self._fps.value()))
-        self._timer.start()
+        # The driver replaces this panel's own QTimer + QtScreenCapture.  It
+        # was a THIRD screencast driver in the tree, beside the gui skin's and
+        # the one core grew for headless clients, and the only one that never
+        # persisted its region — so nothing else could tell a cast was running.
+        driving = self.dispatch(StartScreencastDriver(
+            key=key, interval_s=self._fps_interval_s(),
+        ))
+        if not driving.ok:
+            self._status.setText(driving.message)
+            self.dispatch(StopScreencast(key=key))
+            return
+        self._casting_key = key
         self._start_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
         self._pick_btn.setEnabled(False)
@@ -219,7 +237,11 @@ class ScreencastPanel(BasePanel):
 
     def _on_stop(self) -> None:
         log.info("_on_stop")
-        self._timer.stop()
+        key = self._casting_key
+        if key:
+            self.dispatch(StopScreencastDriver(key=key))
+            self.dispatch(StopScreencast(key=key))
+        self._casting_key = None
         self._start_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
         self._pick_btn.setEnabled(True)
@@ -227,57 +249,11 @@ class ScreencastPanel(BasePanel):
 
     def _on_key_changed(self, _key: str) -> None:
         log.info("_on_key_changed: _key=%s", _key)
-        if self._timer.isActive():
-            # Changing device mid-screencast: stop cleanly to avoid
-            # sending to whichever device the user just deselected.
+        if self._casting_key:
+            # Changing device mid-screencast: stop cleanly so we never send to
+            # whichever device the user just deselected.
             self._on_stop()
 
     # ── Tick ─────────────────────────────────────────────────────────
 
-    def _tick(self) -> None:
-        key = self._picker.current_key()
-        if not key or self._region is None:
-            self._on_stop()
-            return
-        product = self._product_for(key)
-        if product is None:
-            self._on_stop()
-            return
-
-        x, y, w, h = self._region
-        try:
-            frame = self._capture.grab_region(x, y, w, h)
-        except OSError as e:
-            log.warning("Screencast capture failed: %s", e)
-            self._status.setText(f"Capture failed: {e}")
-            self._on_stop()
-            return
-
-        try:
-            payload = self.app.display.build_screencast_frame(
-                info=product, frame=frame,
-            )
-        except Exception as e:  # last-ditch — keep the GUI alive
-            log.exception("Screencast encode failed")
-            self._status.setText(f"Encode failed: {e}")
-            self._on_stop()
-            return
-
-        result = self.dispatch(SendFrame(key=key, data=payload))
-        if not result.ok:
-            self._status.setText(f"Send failed: {result.message}")
-            self._on_stop()
-
     # ── Helpers ──────────────────────────────────────────────────────
-
-    def _product_for(self, key: str) -> ProductInfo | None:
-        device = self.app.devices.get(key)
-        if device is not None:
-            return device.info
-        try:
-            vid_s, pid_s = key.split(":")
-            vid = int(vid_s, 16)
-            pid = int(pid_s, 16)
-        except ValueError:
-            return None
-        return find_product(vid, pid)
