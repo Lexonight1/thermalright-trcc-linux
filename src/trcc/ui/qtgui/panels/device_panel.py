@@ -22,8 +22,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ....core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
-from ....core.protocol import pm_to_fbl
+from ....core.commands import ConnectDevice, DeviceState, DisconnectDevice, DiscoverDevices
 from ..base import BasePanel
 
 log = logging.getLogger(__name__)
@@ -148,46 +147,43 @@ class DevicePanel(BasePanel):
         if not key:
             self._inspector.setText("Select a device to inspect.")
             return
-        device = self.app.devices.get(key)
-        if device is None:
+        state = self.dispatch(DeviceState(key=key))
+        if not state.ok:
             self._inspector.setText(
                 f"{key} — not connected.\n"
                 "Connect it to read its handshake + profile.",
             )
             return
 
-        info = device.info
         lines = [
-            f"Device        {info.key}",
-            f"  wire        {info.wire.value}",
-            f"  native res  {info.native_resolution[0]}×{info.native_resolution[1]}",
+            f"Device        {state.key}",
+            f"  wire        {state.wire}",
+            f"  native res  {state.native_resolution[0]}×{state.native_resolution[1]}",
         ]
 
-        hs = device.handshake
-        pm = getattr(hs, "pm_byte", None)
-        sub = getattr(hs, "sub_byte", None)
-        if pm is not None and sub is not None:
+        # ``None`` means "not handshaken yet" and is distinct from a real 0 —
+        # the Result keeps them apart precisely so an inspector can.
+        if state.pm_byte is not None and state.sub_byte is not None:
             lines += [
                 "",
                 "Handshake",
-                f"  PM          {pm}",
-                f"  SUB         {sub}",
-                f"  FBL         {pm_to_fbl(pm, sub)}",
-                f"  serial      {getattr(hs, 'serial', '') or '—'}",
+                f"  PM          {state.pm_byte}",
+                f"  SUB         {state.sub_byte}",
+                f"  FBL         {state.fbl}",
+                f"  serial      {state.serial or '—'}",
             ]
 
-        prof = device.profile
-        if prof is not None:
-            enc = "JPEG" if prof.jpeg else f"RGB565 ({prof.byte_order})"
+        if state.resolution is not None:
+            enc = "JPEG" if state.jpeg else f"RGB565 ({state.byte_order})"
             lines += [
                 "",
                 "Profile (render / encode)",
-                f"  resolution  {prof.width}×{prof.height}",
+                f"  resolution  {state.resolution[0]}×{state.resolution[1]}",
                 f"  encoding    {enc}",
-                f"  rotate      {prof.rotate}",
-                f"  widescreen  {prof.widescreen}",
-                f"  encode_base {prof.encode_base}°  invert={prof.encode_invert}",
-                f"  baseline    {prof.encode_baseline}°",
+                f"  rotate      {state.rotate}",
+                f"  widescreen  {state.widescreen}",
+                f"  encode_base {state.encode_base}°  invert={state.encode_invert}",
+                f"  baseline    {state.encode_baseline}°",
             ]
 
         last = self._last_bytes.get(key)

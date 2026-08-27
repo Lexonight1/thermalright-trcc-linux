@@ -88,3 +88,31 @@ def test_handshake_fields_are_none_not_zero_before_a_handshake(app: App) -> None
     assert result.resolution is None
     assert result.pm_byte is None
     assert result.rotate is None
+
+
+def test_it_reports_the_inspector_fields(app: App) -> None:
+    """The five added for the qtgui device inspector (2026-08-27).
+
+    Each is something a UI displays, which is the bar every field on this
+    Result is held to.  ``byte_order`` is the one worth naming: it is a
+    PROPERTY on ``DeviceProfile``, not a dataclass field, so it does not come
+    along with a mechanical field walk and has to be resolved deliberately.
+
+    MUTATION CHECK: drop any of the five from the Query and this fails.
+    """
+    resp = bytearray(0xE100)
+    resp[0] = 100                       # FBL=100 -> 320x320
+    app.platform.scsi.read_script.append(bytes(resp))   # type: ignore[attr-defined]
+    assert app.dispatch(ConnectDevice(key=_KEY)).ok
+
+    result = app.dispatch(DeviceState(key=_KEY))
+    device = app.devices[_KEY]
+    profile = device.profile
+    assert profile is not None
+
+    assert result.byte_order == profile.byte_order
+    assert result.byte_order in (">", "<"), "a real endianness, not a default"
+    assert result.encode_base == profile.encode_base
+    assert result.encode_invert == profile.encode_invert
+    assert result.encode_baseline == profile.encode_baseline
+    assert result.serial == (getattr(device.handshake, "serial", "") or "")

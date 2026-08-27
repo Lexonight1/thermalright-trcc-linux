@@ -362,6 +362,16 @@ class DeviceStateResult(Result):
     rotate: bool | None = None
     widescreen: bool | None = None
     led_style: str | None = None
+    # Added 2026-08-27 for the qtgui device inspector, which was reading them
+    # off the live Device.  Every one is something a UI actually displays —
+    # the same bar the fields above were added under.
+    serial: str = ""
+    #: ">" big-endian / "<" little — a PROPERTY on the profile, not a field,
+    #: so it is resolved here rather than assumed to survive a dataclass walk.
+    byte_order: str = ""
+    encode_base: int | None = None
+    encode_invert: bool | None = None
+    encode_baseline: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
