@@ -420,7 +420,7 @@ class Settings:
 
     def for_led(self, key: str) -> LedDeviceSettings:
         """Return the LedDeviceSettings for *key*, defaulting on first touch."""
-        log.debug("for_led: key=%s", key)
+        frame_log.debug("for_led: key=%s", key)
         with self._lock:
             if key not in self._led_devices:
                 self._led_devices[key] = LedDeviceSettings()

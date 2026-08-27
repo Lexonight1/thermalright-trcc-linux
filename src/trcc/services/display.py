@@ -406,7 +406,7 @@ class DisplayService:
         #  * Squares + non-rotate panels: user orientation only.
         angle = wire_angle(resolved_profile, s.orientation, portrait)
         if angle % 360:
-            log.debug("build_frame %s: wire rotate %d°", info.key, angle)
+            frame_log.debug("build_frame %s: wire rotate %d°", info.key, angle)
             surface = self._r.rotate(composite, angle)
         else:
             surface = composite

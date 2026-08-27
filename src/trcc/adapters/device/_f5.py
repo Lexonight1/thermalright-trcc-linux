@@ -32,7 +32,10 @@ from __future__ import annotations
 import logging
 import struct
 
+from ...core.logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # 8-byte magic opening both packets; byte 1 selects command (00) vs frame (01).
 CMD_PREFIX = bytes([0xF5, 0x00, 0x01, 0x00, 0xBC, 0xFF, 0xB6, 0xC8])
@@ -58,5 +61,5 @@ def init_packet() -> bytes:
 
 def frame_header(length: int = DATA_SIZE) -> bytes:
     """The 16-byte frame header carrying *length* little-endian at [12:16]."""
-    log.debug("f5.frame_header: length=%d", length)
+    frame_log.debug("f5.frame_header: length=%d", length)
     return FRAME_PREFIX + b"\x00\x00\x00\x00" + struct.pack("<I", length)

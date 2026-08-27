@@ -25,6 +25,7 @@ from ...core.errors import (
     TransportError,
     UnsupportedOperationError,
 )
+from ...core.logs import per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import DeviceProfile, get_profile, pm_to_fbl
@@ -32,6 +33,7 @@ from . import _f5
 from ._base import HANDSHAKE_TIMEOUT_MS, BaseBulkDevice
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # =========================================================================
@@ -243,7 +245,7 @@ class HidLcd(BaseBulkDevice, wire=Wire.HID):
             packet = self._build_frame_type2(payload)
         else:
             packet = self._build_frame_type3(payload)
-        log.debug("HidLcd %s (type %d): sending %d-byte packet",
+        frame_log.debug("HidLcd %s (type %d): sending %d-byte packet",
                   self.info.key, self.info.device_type, len(packet))
         return packet
 

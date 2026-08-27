@@ -350,7 +350,7 @@ class OverlayService:
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
         size = int(element.get("size", 16))
-        log.debug("draw_text %s: %r at (%d, %d) size=%d", source, text, x, y, size)
+        frame_log.debug("draw_text %s: %r at (%d, %d) size=%d", source, text, x, y, size)
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
@@ -397,7 +397,7 @@ class OverlayService:
             text = _strip_metric_unit(text)
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
-        log.debug("draw_metric %s: %s=%s at (%d, %d)",
+        frame_log.debug("draw_metric %s: %s=%s at (%d, %d)",
                   source, metric_id, text, x, y)
         self._r.draw_text(
             surface,
@@ -442,7 +442,7 @@ class OverlayService:
             return
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
-        log.debug("draw_clock %s: %s=%r at (%d, %d)",
+        frame_log.debug("draw_clock %s: %s=%r at (%d, %d)",
                   source, clock_source, text, x, y)
         self._r.draw_text(
             surface,

@@ -175,7 +175,7 @@ class QtRenderer(Renderer):
         )
 
     def rotate(self, surface: Any, degrees: int) -> Any:
-        log.debug("rotate: degrees=%d", degrees)
+        frame_log.debug("rotate: degrees=%d", degrees)
         if degrees % 360 == 0:
             return QImage(surface)
         xform = QTransform().rotate(degrees)

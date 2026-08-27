@@ -20,7 +20,10 @@ import dataclasses
 import logging
 from dataclasses import dataclass
 
+from .logs import per_frame
+
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 # =============================================================================
 # DeviceProfile — single source of truth for FBL-derived properties
@@ -553,7 +556,7 @@ def resolve_encode_angle(profile: DeviceProfile, orientation: int) -> int:
     """
     signed = orientation if not profile.encode_invert else -orientation
     angle = (profile.encode_base + signed) % 360
-    log.debug("resolve_encode_angle: base=%d invert=%s orient=%d → %d°",
+    frame_log.debug("resolve_encode_angle: base=%d invert=%s orient=%d → %d°",
               profile.encode_base, profile.encode_invert, orientation, angle)
     return angle
 

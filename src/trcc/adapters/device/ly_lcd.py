@@ -23,6 +23,7 @@ import struct
 from ...core.errors import (
     HandshakeError,
 )
+from ...core.logs import per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import (
@@ -33,6 +34,7 @@ from ...core.protocol import (
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ class LyLcd(BaseBulkDevice, wire=Wire.LY):
         """
         total_size = len(payload)
         num_chunks = total_size // _CHUNK_DATA_SIZE + 1
-        log.debug("LyLcd %s: sending %d-byte payload in %d chunks",
+        frame_log.debug("LyLcd %s: sending %d-byte payload in %d chunks",
                   self.info.key, total_size, num_chunks)
         last_chunk_data = total_size % _CHUNK_DATA_SIZE
 

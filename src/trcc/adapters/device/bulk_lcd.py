@@ -18,6 +18,7 @@ from ...core.errors import (
     HandshakeError,
     TransportError,
 )
+from ...core.logs import per_frame
 from ...core.models import HandshakeResult, ProductInfo, Wire
 from ...core.ports import BulkTransport
 from ...core.protocol import (
@@ -31,6 +32,7 @@ from ...core.protocol import (
 from ._base import BaseBulkDevice
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 # ── Wire constants ─────────────────────────────────────────────────────
@@ -108,7 +110,7 @@ def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
         if marker in _JPEG_SOF_MARKERS:
             height = int.from_bytes(data[i + 5:i + 7], "big")
             width = int.from_bytes(data[i + 7:i + 9], "big")
-            log.debug("jpeg_dimensions: %dx%d", width, height)
+            frame_log.debug("jpeg_dimensions: %dx%d", width, height)
             return (width, height)
         i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
     log.debug("jpeg_dimensions: no SOF segment in %d bytes", n)
@@ -292,7 +294,7 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
                     self.info.key, len(payload), width, height, expected,
                 )
                 return
-        log.debug("_warn_if_payload_shape_disagrees: %s matches %dx%d",
+        frame_log.debug("_warn_if_payload_shape_disagrees: %s matches %dx%d",
                   self.info.key, width, height)
 
     def _prepare_frame(self, payload: bytes) -> bytes:
@@ -318,7 +320,7 @@ class BulkLcd(BaseBulkDevice, wire=Wire.BULK):
         struct.pack_into("<I", header, 60, len(payload))
 
         frame = bytes(header) + payload
-        log.debug("BulkLcd %s: sending %d-byte frame (%s, %dx%d)",
+        frame_log.debug("BulkLcd %s: sending %d-byte frame (%s, %dx%d)",
                   self.info.key, len(frame),
                   "JPEG" if self._profile.jpeg else "RGB565", width, height)
         return frame
